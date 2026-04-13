@@ -1,0 +1,378 @@
+Tendering Improvement Roadmap Inspired by Pipedrive
+Project: Project Operations ERP
+Workspace: C:\Dev\ProjectOperations
+Prepared: 2026-04-03
+
+Purpose
+
+This file is a handoff-ready roadmap for improving the Tendering module using Pipedrive as product inspiration.
+It is intended to be given directly to the next AI agent together with the continuation log.
+
+Important Context
+
+1. Current active workspace is:
+   C:\Dev\ProjectOperations
+
+2. Current app/runtime context:
+   - visible version is 0.1.1
+   - Tendering dashboard, create flow, and workspace are functioning locally
+   - create/workspace regression caused by pageSize=200 on clients/contacts requests has already been fixed
+
+3. Research limitation:
+   - many direct Pipedrive Vidyard links were not accessible in the current environment
+   - many Pipedrive Academy course links were only partially accessible
+   - roadmap below is based on accessible official Pipedrive Academy/Knowledge Base material and consistent product patterns
+
+4. Supporting local handoff log:
+   C:\Dev\ProjectOperations\docs\continuation-log.md
+
+What Pipedrive Patterns Matter Most For Tendering
+
+1. Pipeline-first workflow
+   - stage board is the primary operating surface
+   - deals move visibly through stages
+   - filtering and prioritization are always close at hand
+
+2. Detail-view execution
+   - a deal can be progressed largely from its detail view
+   - summary, activity, documents, contacts, and important fields are visible together
+
+3. Activities are first-class
+   - calls, meetings, tasks, deadlines, emails, and custom activity types are central workflow objects
+   - they are strongly linked to deals, contacts, and next actions
+
+4. Forecasting and weighted pipeline
+   - value is not just total value
+   - expected close dates, stage, and probability matter
+   - forecasting is a distinct planning lens
+
+5. Strong data field model
+   - custom fields are used in add view, detail view, list view, and import
+   - field visibility can be pipeline-specific
+
+6. List and filter power
+   - list view is operational, not secondary
+   - sorting, visible columns, filters, and bulk operations matter
+
+7. Import discipline
+   - import maps across categories such as deals, activities, notes, products, people, organizations
+   - import supports pipeline/stage targeting and cleaner mapping decisions
+
+8. Contact and communication centricity
+   - deal progression is deeply tied to contact and organization context
+   - next action is often communication-driven
+
+Current Tendering Strengths
+
+- board and list register already exist
+- Tender workspace/detail page already exists
+- notes, clarifications, follow-ups, documents, and conversion already exist
+- dashboard KPI and pipeline summary already exist
+- import preview and commit already exist
+- create flow is now stable again
+
+Current Tendering Gaps Relative To Pipedrive
+
+1. Activity model is fragmented
+   - notes, clarifications, and follow-ups exist, but not as one first-class activity system
+
+2. No real idle / rotting tender behavior
+   - no standard way to detect stale tenders or surface attention-needed items by inactivity
+
+3. No dedicated forecast view
+   - current dashboard gives live KPIs, but not a forecast-oriented pipeline lens
+
+4. No stage-required field governance
+   - stage movement is not yet guarded by stage-specific completeness rules
+
+5. No full field-customization model
+   - persistent custom fields are still deferred
+
+6. No spreadsheet-grade list operations
+   - no visible-column chooser
+   - no bulk update experience
+   - no export/filter sophistication yet
+
+7. Communication panel is still light
+   - contact context exists, but not yet as a richer communications workspace
+
+Recommended Product Roadmap
+
+Phase 1: High-Value, Low-Risk Wins
+
+Goal:
+Make Tendering feel more like a true pipeline workspace without introducing risky schema changes.
+
+Build:
+
+1. Idle / rotting tender indicators
+   - define inactivity thresholds by stage
+   - add "days in stage"
+   - add "last activity"
+   - add "needs attention" indicator
+   - show this in dashboard, board, list, and workspace
+
+2. Stronger pipeline filters
+   - estimator / owner filter
+   - due date / overdue filter
+   - idle / rotting filter
+   - client / contact filter
+   - value band filter
+   - probability band filter
+
+3. Better next-action visibility
+   - one clearly pinned next action in workspace
+   - overdue count and upcoming count
+   - stronger "what should I do next?" block
+
+4. Workspace progression context
+   - show tender age
+   - show stage age
+   - show last touch / last activity
+   - show next due activity
+
+Why this phase first:
+   - highest practical payoff
+   - low schema risk
+   - strongly aligned with Pipedrive’s operating model
+
+Phase 2: Activity Model Upgrade
+
+Goal:
+Turn Tendering from a mostly record-centric module into a work-centric module.
+
+Build:
+
+1. Introduce a first-class Tender Activity model
+   - activity types: call, meeting, follow-up, clarification, internal note, submission task, commercial review
+   - activity status: open, scheduled, overdue, done, canceled
+   - due date / due time
+   - owner
+   - linked tender
+   - optionally linked client/contact
+
+2. Unify current note / clarification / follow-up behavior
+   - preserve existing concepts, but converge them into a common activity architecture
+   - keep type-specific metadata where useful
+
+3. Add focused activity views
+   - all activities
+   - open
+   - overdue
+   - completed
+   - by owner
+
+4. Add quick-create activity patterns from more places
+   - board card
+   - list row
+   - workspace header
+   - contact panel
+
+Why:
+   - this is one of the biggest Pipedrive-like leaps in usability
+   - it improves execution, not just presentation
+
+Phase 3: Stage Rules And Operational Readiness
+
+Goal:
+Make stage movement meaningful and reliable.
+
+Build:
+
+1. Required-field rules by stage
+   - before Submitted:
+     - tender number
+     - title
+     - value
+     - due date
+     - estimator
+     - linked client
+   - before Awarded:
+     - awarded client
+     - outcome summary
+   - before Contract:
+     - contract-issued information
+
+2. Stage movement validation UX
+   - clearly explain what is missing
+   - show blocking items inline
+   - show which fields are "important" vs strictly required
+
+3. Conversion readiness panel
+   - separate deal/tender readiness from job conversion readiness
+   - highlight all missing conversion inputs
+
+Why:
+   - Pipedrive’s strength is not just moving cards, but making the pipeline operationally meaningful
+
+Phase 4: Forecasting And Commercial Reporting
+
+Goal:
+Add a planning lens beyond the live dashboard.
+
+Build:
+
+1. Forecast view
+   - expected award date / close date
+   - weighted pipeline by probability
+   - bucket by week/month
+   - filter by estimator, client, stage
+
+2. Commercial confidence reporting
+   - weighted value
+   - unweighted value
+   - submitted value
+   - aging by stage
+   - slippage / pushed-out dates
+
+3. Dashboard additions
+   - rotting tenders
+   - stage-age heat spots
+   - upcoming submissions by week
+   - estimator workload by due pressure
+
+Why:
+   - this turns Tendering into a more useful planning and forecasting tool
+
+Phase 5: Persistent Custom Fields
+
+Goal:
+Support business-specific Tendering data without hardcoding every field.
+
+Build:
+
+1. Persistent Tender custom fields
+   - schema support
+   - API support
+   - admin configuration
+
+2. Surface custom fields in:
+   - create view
+   - workspace/detail view
+   - list/register columns
+   - import mapping
+   - filtering
+
+3. Consider stage- or pipeline-specific field visibility
+
+Important caution:
+   - this was previously deferred due to Prisma/runtime stability issues
+   - approach carefully and only after environment stability is comfortable
+
+Phase 6: Contact / Communication Experience
+
+Goal:
+Make tender progression feel relationship-aware, not just record-aware.
+
+Build:
+
+1. Richer contact panel
+   - role in tender
+   - phone / email / company
+   - relationship notes
+   - recent communications / activities
+
+2. Communications timeline
+   - contact-linked activity visibility
+   - tender-level and person-level activity context
+
+3. Better awarded-client / stakeholder clarity
+   - clear internal distinction between:
+     - client organization
+     - contact person
+     - awarded party
+     - approver / reviewer / procurement contact
+
+Phase 7: List And Bulk Operations
+
+Goal:
+Make the list/register a true operations tool.
+
+Build:
+
+1. Configurable visible columns
+2. Better sorting
+3. Bulk updates
+4. Export filtered results
+5. Saved filter presets
+
+Why:
+   - this is a major operational strength in CRM tools like Pipedrive
+
+Phase 8: Import And Document Workflow Maturity
+
+Goal:
+Make Tender import and document handling stronger and safer.
+
+Build:
+
+1. Better import mapping UX
+   - guided mapping
+   - better duplicate strategies
+   - richer import summary and warnings
+   - optional stage/pipeline targeting
+
+2. Document readiness by stage
+   - submission checklist
+   - contract checklist
+   - conversion carry-forward controls
+
+3. Longer-term option
+   - proposal / quote / submission pack concepts inspired by document-centric CRM workflows
+
+Recommended Technical Implementation Order
+
+1. Idle / rotting logic and next-action surfacing
+2. Filter improvements in board/list
+3. Stage age / last activity / next activity display
+4. Activity model unification
+5. Stage-required field rules
+6. Forecast reporting
+7. Persistent custom fields
+8. Rich communication panel
+9. Bulk list operations
+10. Advanced import/document maturity
+
+Best Immediate Sprint For The Next Agent
+
+If only one sprint is chosen, do this:
+
+1. Implement idle / rotting tender logic
+2. Add last activity / next action / days in stage
+3. Add owner/estimator and attention-management filters
+4. Reflect those signals in dashboard, board, list, and workspace
+
+Why this is the best next sprint:
+   - it is the most Pipedrive-like value gain per unit effort
+   - it improves operator behavior immediately
+   - it does not require the risky persistent custom-field work yet
+
+Suggested Execution Instructions For The Next Agent
+
+1. Read:
+   C:\Dev\ProjectOperations\docs\continuation-log.md
+
+2. Then read this file:
+   C:\Dev\ProjectOperations\docs\tendering-pipedrive-roadmap.txt
+
+3. Resume from the local workspace only:
+   C:\Dev\ProjectOperations
+
+4. Start with the "Best Immediate Sprint For The Next Agent" section above.
+
+5. Before ending the session:
+   - update the continuation log
+   - record completed work
+   - record blockers and verification status
+   - record the next best recommended step
+
+Useful Official Pipedrive References Consulted
+
+- https://support.pipedrive.com/en/article/activities
+- https://support.pipedrive.com/en/article/custom-fields
+- https://support.pipedrive.com/en/article/import-fields
+- https://support.pipedrive.com/en/article/importing-deals-into-a-specific-stage-or-pipeline
+- https://support.pipedrive.com/hc/en/articles/207497075-Filtering
+- https://support.pipedrive.com/en/article/data-fields-in-pipedrive
+- https://support.pipedrive.com/article/what-types-of-custom-fields-are-there
+- https://support.pipedrive.com/en/article/products

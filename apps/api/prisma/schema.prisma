@@ -1,0 +1,1239 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model HealthcheckSeedMarker {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("healthcheck_seed_markers")
+}
+
+model User {
+  id                 String             @id @default(cuid())
+  email              String             @unique
+  firstName          String             @map("first_name")
+  lastName           String             @map("last_name")
+  passwordHash       String             @map("password_hash")
+  isActive           Boolean            @default(true) @map("is_active")
+  lastLoginAt        DateTime?          @map("last_login_at")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+  createdById        String?            @map("created_by_id")
+  updatedById        String?            @map("updated_by_id")
+  createdBy          User?              @relation("UserCreatedBy", fields: [createdById], references: [id])
+  updatedBy          User?              @relation("UserUpdatedBy", fields: [updatedById], references: [id])
+  createdUsers       User[]             @relation("UserCreatedBy")
+  updatedUsers       User[]             @relation("UserUpdatedBy")
+  userRoles          UserRole[]
+  refreshTokens      RefreshToken[]
+  auditLogs          AuditLog[]         @relation("AuditActor")
+  notifications      Notification[]
+  dashboards         Dashboard[]        @relation("DashboardOwner")
+  workerProfile      Worker?
+  estimatedTenders   Tender[]           @relation("TenderEstimator")
+  tenderNotes        TenderNote[]       @relation("TenderNoteAuthor")
+  tenderFollowUps    TenderFollowUp[]   @relation("TenderFollowUpAssignee")
+  managedJobs        Job[]              @relation("JobProjectManager")
+  supervisedJobs     Job[]              @relation("JobSupervisor")
+  reportedJobIssues  JobIssue[]         @relation("JobIssueReporter")
+  approvedVariations JobVariation[]     @relation("JobVariationApprover")
+  progressEntries    JobProgressEntry[] @relation("JobProgressEntryAuthor")
+  statusChanges      JobStatusHistory[] @relation("JobStatusHistoryActor")
+  formSubmissions    FormSubmission[]
+  createdDocuments   DocumentLink[]     @relation("DocumentCreatedBy")
+  updatedDocuments   DocumentLink[]     @relation("DocumentUpdatedBy")
+  archivedCloseouts  JobCloseout[]      @relation("JobCloseoutArchivedBy")
+
+  @@index([isActive])
+  @@map("users")
+}
+
+model Role {
+  id              String           @id @default(cuid())
+  name            String           @unique
+  description     String?
+  isSystem        Boolean          @default(false) @map("is_system")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+  dashboards      Dashboard[]      @relation("DashboardOwnerRole")
+
+  @@map("roles")
+}
+
+model Permission {
+  id              String           @id @default(cuid())
+  code            String           @unique
+  description     String
+  module          String
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  rolePermissions RolePermission[]
+
+  @@index([module])
+  @@map("permissions")
+}
+
+model UserRole {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  roleId     String   @map("role_id")
+  assignedAt DateTime @default(now()) @map("assigned_at")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  id           String     @id @default(cuid())
+  roleId       String     @map("role_id")
+  permissionId String     @map("permission_id")
+  assignedAt   DateTime   @default(now()) @map("assigned_at")
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  tokenHash String    @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?  @map("actor_id")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+  actor      User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@index([action])
+  @@map("audit_logs")
+}
+
+model SharePointFolderLink {
+  id               String               @id @default(cuid())
+  siteId           String               @map("site_id")
+  driveId          String               @map("drive_id")
+  itemId           String               @map("item_id")
+  name             String
+  relativePath     String               @map("relative_path")
+  module           String
+  linkedEntityType String?              @map("linked_entity_type")
+  linkedEntityId   String?              @map("linked_entity_id")
+  metadata         Json?
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+  files            SharePointFileLink[]
+  documents        DocumentLink[]
+  tenderDocuments  TenderDocumentLink[]
+
+  @@unique([siteId, driveId, itemId])
+  @@index([module])
+  @@index([linkedEntityType, linkedEntityId])
+  @@map("sharepoint_folder_links")
+}
+
+model SharePointFileLink {
+  id               String                @id @default(cuid())
+  folderLinkId     String?               @map("folder_link_id")
+  siteId           String                @map("site_id")
+  driveId          String                @map("drive_id")
+  itemId           String                @map("item_id")
+  name             String
+  relativePath     String                @map("relative_path")
+  webUrl           String                @map("web_url")
+  mimeType         String?               @map("mime_type")
+  sizeBytes        Int?                  @map("size_bytes")
+  versionLabel     String?               @map("version_label")
+  versionNumber    Int?                  @map("version_number")
+  linkedEntityType String?               @map("linked_entity_type")
+  linkedEntityId   String?               @map("linked_entity_id")
+  metadata         Json?
+  createdAt        DateTime              @default(now()) @map("created_at")
+  updatedAt        DateTime              @updatedAt @map("updated_at")
+  folderLink       SharePointFolderLink? @relation(fields: [folderLinkId], references: [id], onDelete: SetNull)
+  documents        DocumentLink[]
+  tenderDocuments  TenderDocumentLink[]
+
+  @@unique([siteId, driveId, itemId])
+  @@index([folderLinkId])
+  @@index([linkedEntityType, linkedEntityId])
+  @@map("sharepoint_file_links")
+}
+
+model DocumentLink {
+  id                String                @id @default(cuid())
+  linkedEntityType  String                @map("linked_entity_type")
+  linkedEntityId    String                @map("linked_entity_id")
+  module            String
+  category          String
+  status            String                @default("ACTIVE")
+  title             String
+  description       String?
+  versionLabel      String?               @map("version_label")
+  versionNumber     Int                   @default(1) @map("version_number")
+  documentFamilyKey String?               @map("document_family_key")
+  isCurrentVersion  Boolean               @default(true) @map("is_current_version")
+  supersededAt      DateTime?             @map("superseded_at")
+  folderLinkId      String?               @map("folder_link_id")
+  fileLinkId        String?               @map("file_link_id")
+  createdById       String?               @map("created_by_id")
+  updatedById       String?               @map("updated_by_id")
+  metadata          Json?
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
+  folderLink        SharePointFolderLink? @relation(fields: [folderLinkId], references: [id], onDelete: SetNull)
+  fileLink          SharePointFileLink?   @relation(fields: [fileLinkId], references: [id], onDelete: SetNull)
+  createdBy         User?                 @relation("DocumentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy         User?                 @relation("DocumentUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  tags              DocumentTag[]
+  accessRules       DocumentAccessRule[]
+
+  @@index([linkedEntityType, linkedEntityId])
+  @@index([module])
+  @@index([category])
+  @@index([documentFamilyKey, versionNumber])
+  @@index([status, isCurrentVersion])
+  @@map("document_links")
+}
+
+model DocumentTag {
+  id             String       @id @default(cuid())
+  documentLinkId String       @map("document_link_id")
+  tag            String
+  createdAt      DateTime     @default(now()) @map("created_at")
+  document       DocumentLink @relation(fields: [documentLinkId], references: [id], onDelete: Cascade)
+
+  @@unique([documentLinkId, tag])
+  @@index([tag])
+  @@map("document_tags")
+}
+
+model DocumentAccessRule {
+  id             String       @id @default(cuid())
+  documentLinkId String       @map("document_link_id")
+  accessType     String       @map("access_type")
+  roleName       String?      @map("role_name")
+  permissionCode String?      @map("permission_code")
+  canView        Boolean      @default(true) @map("can_view")
+  canDownload    Boolean      @default(true) @map("can_download")
+  canOpenLink    Boolean      @default(true) @map("can_open_link")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  document       DocumentLink @relation(fields: [documentLinkId], references: [id], onDelete: Cascade)
+
+  @@index([accessType])
+  @@index([roleName])
+  @@index([permissionCode])
+  @@map("document_access_rules")
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  title     String
+  body      String
+  severity  String
+  status    String    @default("UNREAD")
+  linkUrl   String?   @map("link_url")
+  metadata  Json?
+  createdAt DateTime  @default(now()) @map("created_at")
+  readAt    DateTime? @map("read_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@map("notifications")
+}
+
+model SearchEntry {
+  id         String   @id @default(cuid())
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  title      String
+  subtitle   String?
+  body       String?
+  module     String
+  url        String?
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([module])
+  @@index([entityType, entityId])
+  @@map("search_entries")
+}
+
+model Dashboard {
+  id          String            @id @default(cuid())
+  name        String
+  description String?
+  scope       String
+  ownerUserId String?           @map("owner_user_id")
+  ownerRoleId String?           @map("owner_role_id")
+  isDefault   Boolean           @default(false) @map("is_default")
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+  ownerUser   User?             @relation("DashboardOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  ownerRole   Role?             @relation("DashboardOwnerRole", fields: [ownerRoleId], references: [id], onDelete: SetNull)
+  widgets     DashboardWidget[]
+
+  @@index([scope])
+  @@index([ownerUserId])
+  @@index([ownerRoleId])
+  @@map("dashboards")
+}
+
+model DashboardWidget {
+  id          String    @id @default(cuid())
+  dashboardId String    @map("dashboard_id")
+  type        String
+  title       String
+  description String?
+  position    Int
+  width       Int       @default(1)
+  height      Int       @default(1)
+  config      Json?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  dashboard   Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+
+  @@index([dashboardId, position])
+  @@map("dashboard_widgets")
+}
+
+model Client {
+  id              String           @id @default(cuid())
+  name            String
+  code            String?          @unique
+  status          String           @default("ACTIVE")
+  email           String?
+  phone           String?
+  notes           String?
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  contacts        Contact[]
+  sites           Site[]
+  tenderClients   TenderClient[]
+  jobs            Job[]
+  formSubmissions FormSubmission[]
+
+  @@unique([name])
+  @@index([status])
+  @@map("clients")
+}
+
+model Contact {
+  id            String         @id @default(cuid())
+  clientId      String         @map("client_id")
+  firstName     String         @map("first_name")
+  lastName      String         @map("last_name")
+  email         String?
+  phone         String?
+  position      String?
+  isPrimary     Boolean        @default(false) @map("is_primary")
+  notes         String?
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+  client        Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenderClients TenderClient[]
+
+  @@index([clientId])
+  @@index([lastName, firstName])
+  @@map("contacts")
+}
+
+model Site {
+  id              String           @id @default(cuid())
+  clientId        String?          @map("client_id")
+  name            String
+  code            String?          @unique
+  addressLine1    String?          @map("address_line_1")
+  suburb          String?
+  state           String?
+  postcode        String?
+  notes           String?
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  client          Client?          @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  jobs            Job[]
+  formSubmissions FormSubmission[]
+
+  @@unique([name])
+  @@index([clientId])
+  @@map("sites")
+}
+
+model ResourceType {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  code        String?  @unique
+  category    String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  workers     Worker[]
+  assets      Asset[]
+
+  @@index([category])
+  @@map("resource_types")
+}
+
+model AssetCategory {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  code        String?  @unique
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  assets      Asset[]
+
+  @@index([isActive])
+  @@map("asset_categories")
+}
+
+model Competency {
+  id                    String                 @id @default(cuid())
+  name                  String                 @unique
+  code                  String?                @unique
+  description           String?
+  createdAt             DateTime               @default(now()) @map("created_at")
+  updatedAt             DateTime               @updatedAt @map("updated_at")
+  workerCompetencies    WorkerCompetency[]
+  shiftRoleRequirements ShiftRoleRequirement[]
+
+  @@map("competencies")
+}
+
+model Worker {
+  id                  String                  @id @default(cuid())
+  userId              String?                 @unique @map("user_id")
+  resourceTypeId      String?                 @map("resource_type_id")
+  employeeCode        String?                 @unique @map("employee_code")
+  firstName           String                  @map("first_name")
+  lastName            String                  @map("last_name")
+  email               String?
+  phone               String?
+  employmentType      String?                 @map("employment_type")
+  status              String                  @default("ACTIVE")
+  notes               String?
+  createdAt           DateTime                @default(now()) @map("created_at")
+  updatedAt           DateTime                @updatedAt @map("updated_at")
+  user                User?                   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  resourceType        ResourceType?           @relation(fields: [resourceTypeId], references: [id], onDelete: SetNull)
+  crewMemberships     CrewWorker[]
+  competencies        WorkerCompetency[]
+  shiftAssignments    ShiftWorkerAssignment[]
+  availabilityWindows AvailabilityWindow[]
+  roleSuitabilities   WorkerRoleSuitability[]
+  formSubmissions     FormSubmission[]
+
+  @@index([status])
+  @@index([resourceTypeId])
+  @@index([lastName, firstName])
+  @@map("workers")
+}
+
+model Crew {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  code        String?      @unique
+  description String?
+  status      String       @default("ACTIVE")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+  members     CrewWorker[]
+
+  @@index([status])
+  @@map("crews")
+}
+
+model CrewWorker {
+  id        String   @id @default(cuid())
+  crewId    String   @map("crew_id")
+  workerId  String   @map("worker_id")
+  roleLabel String?  @map("role_label")
+  createdAt DateTime @default(now()) @map("created_at")
+  crew      Crew     @relation(fields: [crewId], references: [id], onDelete: Cascade)
+  worker    Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@unique([crewId, workerId])
+  @@index([workerId])
+  @@map("crew_workers")
+}
+
+model Asset {
+  id                String                  @id @default(cuid())
+  assetCategoryId   String?                 @map("asset_category_id")
+  resourceTypeId    String?                 @map("resource_type_id")
+  name              String
+  assetCode         String                  @unique @map("asset_code")
+  serialNumber      String?                 @unique @map("serial_number")
+  status            String                  @default("AVAILABLE")
+  homeBase          String?                 @map("home_base")
+  currentLocation   String?                 @map("current_location")
+  notes             String?
+  createdAt         DateTime                @default(now()) @map("created_at")
+  updatedAt         DateTime                @updatedAt @map("updated_at")
+  category          AssetCategory?          @relation(fields: [assetCategoryId], references: [id], onDelete: SetNull)
+  resourceType      ResourceType?           @relation(fields: [resourceTypeId], references: [id], onDelete: SetNull)
+  shiftAssignments  ShiftAssetAssignment[]
+  maintenancePlans  AssetMaintenancePlan[]
+  maintenanceEvents AssetMaintenanceEvent[]
+  inspections       AssetInspection[]
+  breakdowns        AssetBreakdown[]
+  statusHistory     AssetStatusHistory[]
+  formSubmissions   FormSubmission[]
+
+  @@index([status])
+  @@index([assetCategoryId])
+  @@index([resourceTypeId])
+  @@map("assets")
+}
+
+model WorkerCompetency {
+  id           String     @id @default(cuid())
+  workerId     String     @map("worker_id")
+  competencyId String     @map("competency_id")
+  achievedAt   DateTime?  @map("achieved_at")
+  expiresAt    DateTime?  @map("expires_at")
+  notes        String?
+  createdAt    DateTime   @default(now()) @map("created_at")
+  worker       Worker     @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  competency   Competency @relation(fields: [competencyId], references: [id], onDelete: Cascade)
+
+  @@unique([workerId, competencyId])
+  @@index([competencyId])
+  @@map("worker_competencies")
+}
+
+model LookupValue {
+  id          String   @id @default(cuid())
+  category    String
+  key         String
+  value       String
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([category, key])
+  @@index([category, isActive])
+  @@map("lookup_values")
+}
+
+model Tender {
+  id                String                  @id @default(cuid())
+  tenderNumber      String                  @unique @map("tender_number")
+  title             String
+  description       String?
+  estimatorUserId   String?                 @map("estimator_user_id")
+  status            String                  @default("DRAFT")
+  dueDate           DateTime?               @map("due_date")
+  proposedStartDate DateTime?               @map("proposed_start_date")
+  leadTimeDays      Int?                    @map("lead_time_days")
+  probability       Int?
+  estimatedValue    Decimal?                @map("estimated_value") @db.Decimal(14, 2)
+  notes             String?
+  createdAt         DateTime                @default(now()) @map("created_at")
+  updatedAt         DateTime                @updatedAt @map("updated_at")
+  estimator         User?                   @relation("TenderEstimator", fields: [estimatorUserId], references: [id], onDelete: SetNull)
+  tenderClients     TenderClient[]
+  tenderNotes       TenderNote[]
+  clarifications    TenderClarification[]
+  pricingSnapshots  TenderPricingSnapshot[]
+  followUps         TenderFollowUp[]
+  outcomes          TenderOutcome[]
+  tenderDocuments   TenderDocumentLink[]
+  sourceJob         Job?
+  jobConversion     JobConversion?
+
+  @@index([status])
+  @@index([estimatorUserId])
+  @@map("tenders")
+}
+
+model TenderClient {
+  id               String         @id @default(cuid())
+  tenderId         String         @map("tender_id")
+  clientId         String         @map("client_id")
+  contactId        String?        @map("contact_id")
+  isAwarded        Boolean        @default(false) @map("is_awarded")
+  contractIssued   Boolean        @default(false) @map("contract_issued")
+  contractIssuedAt DateTime?      @map("contract_issued_at")
+  relationshipType String?        @map("relationship_type")
+  notes            String?
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+  tender           Tender         @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  client           Client         @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  contact          Contact?       @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  jobConversion    JobConversion?
+
+  @@unique([tenderId, clientId])
+  @@index([clientId])
+  @@index([isAwarded])
+  @@map("tender_clients")
+}
+
+model TenderNote {
+  id           String   @id @default(cuid())
+  tenderId     String   @map("tender_id")
+  authorUserId String?  @map("author_user_id")
+  body         String
+  createdAt    DateTime @default(now()) @map("created_at")
+  tender       Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  author       User?    @relation("TenderNoteAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenderId])
+  @@map("tender_notes")
+}
+
+model TenderClarification {
+  id        String    @id @default(cuid())
+  tenderId  String    @map("tender_id")
+  subject   String
+  response  String?
+  status    String    @default("OPEN")
+  dueDate   DateTime? @map("due_date")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  tender    Tender    @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+
+  @@index([tenderId, status])
+  @@map("tender_clarifications")
+}
+
+model TenderPricingSnapshot {
+  id             String   @id @default(cuid())
+  tenderId       String   @map("tender_id")
+  versionLabel   String   @map("version_label")
+  estimatedValue Decimal? @map("estimated_value") @db.Decimal(14, 2)
+  marginPercent  Decimal? @map("margin_percent") @db.Decimal(5, 2)
+  assumptions    String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  tender         Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+
+  @@index([tenderId])
+  @@map("tender_pricing_snapshots")
+}
+
+model TenderFollowUp {
+  id             String   @id @default(cuid())
+  tenderId       String   @map("tender_id")
+  dueAt          DateTime @map("due_at")
+  status         String   @default("OPEN")
+  details        String
+  assignedUserId String?  @map("assigned_user_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  tender         Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  assignedUser   User?    @relation("TenderFollowUpAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenderId, status])
+  @@map("tender_follow_ups")
+}
+
+model TenderOutcome {
+  id          String   @id @default(cuid())
+  tenderId    String   @map("tender_id")
+  outcomeType String   @map("outcome_type")
+  notes       String?
+  recordedAt  DateTime @default(now()) @map("recorded_at")
+  tender      Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+
+  @@index([tenderId])
+  @@map("tender_outcomes")
+}
+
+model TenderDocumentLink {
+  id           String                @id @default(cuid())
+  tenderId     String                @map("tender_id")
+  category     String
+  title        String
+  description  String?
+  folderLinkId String?               @map("folder_link_id")
+  fileLinkId   String?               @map("file_link_id")
+  createdAt    DateTime              @default(now()) @map("created_at")
+  updatedAt    DateTime              @updatedAt @map("updated_at")
+  tender       Tender                @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  folderLink   SharePointFolderLink? @relation(fields: [folderLinkId], references: [id], onDelete: SetNull)
+  fileLink     SharePointFileLink?   @relation(fields: [fileLinkId], references: [id], onDelete: SetNull)
+
+  @@index([tenderId, category])
+  @@map("tender_document_links")
+}
+
+model Job {
+  id               String             @id @default(cuid())
+  jobNumber        String             @unique @map("job_number")
+  name             String
+  description      String?
+  clientId         String             @map("client_id")
+  siteId           String?            @map("site_id")
+  sourceTenderId   String?            @unique @map("source_tender_id")
+  status           String             @default("PLANNING")
+  projectManagerId String?            @map("project_manager_id")
+  supervisorId     String?            @map("supervisor_id")
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
+  client           Client             @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  site             Site?              @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  sourceTender     Tender?            @relation(fields: [sourceTenderId], references: [id], onDelete: SetNull)
+  projectManager   User?              @relation("JobProjectManager", fields: [projectManagerId], references: [id], onDelete: SetNull)
+  supervisor       User?              @relation("JobSupervisor", fields: [supervisorId], references: [id], onDelete: SetNull)
+  conversion       JobConversion?
+  stages           JobStage[]
+  activities       JobActivity[]
+  shifts           Shift[]
+  issues           JobIssue[]
+  variations       JobVariation[]
+  progressEntries  JobProgressEntry[]
+  statusHistory    JobStatusHistory[]
+  formSubmissions  FormSubmission[]
+  closeout         JobCloseout?
+
+  @@index([clientId])
+  @@index([status])
+  @@index([projectManagerId])
+  @@index([supervisorId])
+  @@map("jobs")
+}
+
+model JobConversion {
+  id               String       @id @default(cuid())
+  tenderId         String       @unique @map("tender_id")
+  tenderClientId   String       @unique @map("tender_client_id")
+  jobId            String       @unique @map("job_id")
+  carriedDocuments Boolean      @default(false) @map("carried_documents")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  tender           Tender       @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  tenderClient     TenderClient @relation(fields: [tenderClientId], references: [id], onDelete: Cascade)
+  job              Job          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@map("job_conversions")
+}
+
+model JobStage {
+  id          String        @id @default(cuid())
+  jobId       String        @map("job_id")
+  name        String
+  description String?
+  stageOrder  Int           @default(0) @map("stage_order")
+  status      String        @default("PLANNED")
+  startDate   DateTime?     @map("start_date")
+  endDate     DateTime?     @map("end_date")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  job         Job           @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  activities  JobActivity[]
+  shifts      Shift[]
+
+  @@index([jobId, stageOrder])
+  @@index([status])
+  @@map("job_stages")
+}
+
+model JobActivity {
+  id            String    @id @default(cuid())
+  jobId         String    @map("job_id")
+  jobStageId    String    @map("job_stage_id")
+  name          String
+  description   String?
+  activityOrder Int       @default(0) @map("activity_order")
+  status        String    @default("PLANNED")
+  plannedDate   DateTime? @map("planned_date")
+  notes         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  job           Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  stage         JobStage  @relation(fields: [jobStageId], references: [id], onDelete: Cascade)
+  shifts        Shift[]
+
+  @@index([jobId, jobStageId])
+  @@index([status])
+  @@map("job_activities")
+}
+
+model JobIssue {
+  id           String    @id @default(cuid())
+  jobId        String    @map("job_id")
+  title        String
+  description  String?
+  severity     String    @default("MEDIUM")
+  status       String    @default("OPEN")
+  reportedById String?   @map("reported_by_id")
+  reportedAt   DateTime  @default(now()) @map("reported_at")
+  dueDate      DateTime? @map("due_date")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  job          Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  reportedBy   User?     @relation("JobIssueReporter", fields: [reportedById], references: [id], onDelete: SetNull)
+
+  @@index([jobId, status])
+  @@index([severity])
+  @@map("job_issues")
+}
+
+model JobVariation {
+  id           String    @id @default(cuid())
+  jobId        String    @map("job_id")
+  reference    String    @map("reference")
+  title        String
+  description  String?
+  status       String    @default("PROPOSED")
+  amount       Decimal?  @db.Decimal(14, 2)
+  approvedById String?   @map("approved_by_id")
+  approvedAt   DateTime? @map("approved_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  job          Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  approvedBy   User?     @relation("JobVariationApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@unique([jobId, reference])
+  @@index([jobId, status])
+  @@map("job_variations")
+}
+
+model JobProgressEntry {
+  id              String   @id @default(cuid())
+  jobId           String   @map("job_id")
+  entryType       String   @default("PROGRESS") @map("entry_type")
+  entryDate       DateTime @map("entry_date")
+  summary         String
+  percentComplete Int?     @map("percent_complete")
+  details         String?
+  authorUserId    String?  @map("author_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  job             Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  author          User?    @relation("JobProgressEntryAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+
+  @@index([jobId, entryDate])
+  @@index([entryType])
+  @@map("job_progress_entries")
+}
+
+model JobStatusHistory {
+  id          String   @id @default(cuid())
+  jobId       String   @map("job_id")
+  fromStatus  String?  @map("from_status")
+  toStatus    String   @map("to_status")
+  note        String?
+  changedById String?  @map("changed_by_id")
+  changedAt   DateTime @default(now()) @map("changed_at")
+  job         Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  changedBy   User?    @relation("JobStatusHistoryActor", fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@index([jobId, changedAt])
+  @@map("job_status_history")
+}
+
+model JobCloseout {
+  id                   String   @id @default(cuid())
+  jobId                String   @unique @map("job_id")
+  status               String   @default("DRAFT")
+  checklistJson        Json?    @map("checklist_json")
+  summary              String?
+  archivedAt           DateTime? @map("archived_at")
+  archivedById         String?  @map("archived_by_id")
+  readOnlyFrom         DateTime? @map("read_only_from")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+  job                  Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  archivedBy           User?    @relation("JobCloseoutArchivedBy", fields: [archivedById], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([archivedAt])
+  @@map("job_closeouts")
+}
+
+model Shift {
+  id                String                  @id @default(cuid())
+  jobId             String                  @map("job_id")
+  jobStageId        String?                 @map("job_stage_id")
+  jobActivityId     String                  @map("job_activity_id")
+  title             String
+  startAt           DateTime                @map("start_at")
+  endAt             DateTime                @map("end_at")
+  status            String                  @default("PLANNED")
+  notes             String?
+  workInstructions  String?                 @map("work_instructions")
+  createdAt         DateTime                @default(now()) @map("created_at")
+  updatedAt         DateTime                @updatedAt @map("updated_at")
+  job               Job                     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  stage             JobStage?               @relation(fields: [jobStageId], references: [id], onDelete: SetNull)
+  activity          JobActivity             @relation(fields: [jobActivityId], references: [id], onDelete: Cascade)
+  workerAssignments ShiftWorkerAssignment[]
+  assetAssignments  ShiftAssetAssignment[]
+  roleRequirements  ShiftRoleRequirement[]
+  conflicts         SchedulingConflict[]
+  formSubmissions   FormSubmission[]
+
+  @@index([jobId, startAt])
+  @@index([jobActivityId, startAt])
+  @@index([status])
+  @@map("shifts")
+}
+
+model ShiftWorkerAssignment {
+  id         String   @id @default(cuid())
+  shiftId    String   @map("shift_id")
+  workerId   String   @map("worker_id")
+  roleLabel  String?  @map("role_label")
+  assignedAt DateTime @default(now()) @map("assigned_at")
+  shift      Shift    @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  worker     Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@unique([shiftId, workerId])
+  @@index([workerId])
+  @@map("shift_worker_assignments")
+}
+
+model ShiftAssetAssignment {
+  id         String   @id @default(cuid())
+  shiftId    String   @map("shift_id")
+  assetId    String   @map("asset_id")
+  assignedAt DateTime @default(now()) @map("assigned_at")
+  shift      Shift    @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  asset      Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([shiftId, assetId])
+  @@index([assetId])
+  @@map("shift_asset_assignments")
+}
+
+model SchedulingConflict {
+  id        String   @id @default(cuid())
+  shiftId   String   @map("shift_id")
+  severity  String
+  code      String
+  message   String
+  createdAt DateTime @default(now()) @map("created_at")
+  shift     Shift    @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+
+  @@index([shiftId, severity])
+  @@map("scheduling_conflicts")
+}
+
+model AvailabilityWindow {
+  id        String   @id @default(cuid())
+  workerId  String   @map("worker_id")
+  startAt   DateTime @map("start_at")
+  endAt     DateTime @map("end_at")
+  status    String   @default("AVAILABLE")
+  notes     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  worker    Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@index([workerId, startAt])
+  @@index([status])
+  @@map("availability_windows")
+}
+
+model WorkerRoleSuitability {
+  id          String   @id @default(cuid())
+  workerId    String   @map("worker_id")
+  roleLabel   String   @map("role_label")
+  suitability String   @default("SUITABLE")
+  notes       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  worker      Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@unique([workerId, roleLabel])
+  @@index([roleLabel])
+  @@map("worker_role_suitabilities")
+}
+
+model ShiftRoleRequirement {
+  id            String      @id @default(cuid())
+  shiftId       String      @map("shift_id")
+  roleLabel     String      @map("role_label")
+  competencyId  String?     @map("competency_id")
+  requiredCount Int         @default(1) @map("required_count")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  shift         Shift       @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  competency    Competency? @relation(fields: [competencyId], references: [id], onDelete: SetNull)
+
+  @@index([shiftId])
+  @@index([competencyId])
+  @@map("shift_role_requirements")
+}
+
+model AssetMaintenancePlan {
+  id               String                  @id @default(cuid())
+  assetId          String                  @map("asset_id")
+  title            String
+  description      String?
+  intervalDays     Int                     @map("interval_days")
+  warningDays      Int                     @default(7) @map("warning_days")
+  blockWhenOverdue Boolean                 @default(true) @map("block_when_overdue")
+  lastCompletedAt  DateTime?               @map("last_completed_at")
+  nextDueAt        DateTime?               @map("next_due_at")
+  status           String                  @default("ACTIVE")
+  createdAt        DateTime                @default(now()) @map("created_at")
+  updatedAt        DateTime                @updatedAt @map("updated_at")
+  asset            Asset                   @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  events           AssetMaintenanceEvent[]
+
+  @@index([assetId, status])
+  @@index([nextDueAt])
+  @@map("asset_maintenance_plans")
+}
+
+model AssetMaintenanceEvent {
+  id                String                @id @default(cuid())
+  assetId           String                @map("asset_id")
+  maintenancePlanId String?               @map("maintenance_plan_id")
+  eventType         String                @map("event_type")
+  scheduledAt       DateTime?             @map("scheduled_at")
+  completedAt       DateTime?             @map("completed_at")
+  status            String                @default("SCHEDULED")
+  notes             String?
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
+  asset             Asset                 @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  plan              AssetMaintenancePlan? @relation(fields: [maintenancePlanId], references: [id], onDelete: SetNull)
+
+  @@index([assetId, status])
+  @@index([maintenancePlanId])
+  @@map("asset_maintenance_events")
+}
+
+model AssetInspection {
+  id             String   @id @default(cuid())
+  assetId        String   @map("asset_id")
+  inspectionType String   @map("inspection_type")
+  inspectedAt    DateTime @map("inspected_at")
+  status         String   @default("PASS")
+  notes          String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  asset          Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([assetId, inspectedAt])
+  @@map("asset_inspections")
+}
+
+model AssetBreakdown {
+  id         String    @id @default(cuid())
+  assetId    String    @map("asset_id")
+  reportedAt DateTime  @map("reported_at")
+  resolvedAt DateTime? @map("resolved_at")
+  severity   String    @default("MEDIUM")
+  status     String    @default("OPEN")
+  summary    String
+  notes      String?
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  asset      Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([assetId, status])
+  @@map("asset_breakdowns")
+}
+
+model AssetStatusHistory {
+  id         String   @id @default(cuid())
+  assetId    String   @map("asset_id")
+  fromStatus String?  @map("from_status")
+  toStatus   String   @map("to_status")
+  note       String?
+  changedAt  DateTime @default(now()) @map("changed_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  asset      Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([assetId, changedAt])
+  @@map("asset_status_history")
+}
+
+model FormTemplate {
+  id                 String                @id @default(cuid())
+  name               String
+  code               String                @unique
+  description        String?
+  status             String                @default("DRAFT")
+  geolocationEnabled Boolean               @default(false) @map("geolocation_enabled")
+  associationScopes  Json?                 @map("association_scopes")
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
+  versions           FormTemplateVersion[]
+
+  @@index([status])
+  @@map("form_templates")
+}
+
+model FormTemplateVersion {
+  id            String           @id @default(cuid())
+  templateId    String           @map("template_id")
+  versionNumber Int              @map("version_number")
+  status        String           @default("ACTIVE")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  template      FormTemplate     @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  sections      FormSection[]
+  rules         FormRule[]
+  submissions   FormSubmission[]
+
+  @@unique([templateId, versionNumber])
+  @@index([templateId, status])
+  @@map("form_template_versions")
+}
+
+model FormSection {
+  id           String              @id @default(cuid())
+  versionId    String              @map("version_id")
+  title        String
+  description  String?
+  sectionOrder Int                 @map("section_order")
+  createdAt    DateTime            @default(now()) @map("created_at")
+  version      FormTemplateVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  fields       FormField[]
+
+  @@index([versionId, sectionOrder])
+  @@map("form_sections")
+}
+
+model FormField {
+  id          String                @id @default(cuid())
+  sectionId   String                @map("section_id")
+  fieldKey    String                @map("field_key")
+  label       String
+  fieldType   String                @map("field_type")
+  fieldOrder  Int                   @map("field_order")
+  isRequired  Boolean               @default(false) @map("is_required")
+  placeholder String?
+  helpText    String?               @map("help_text")
+  optionsJson Json?                 @map("options_json")
+  createdAt   DateTime              @default(now()) @map("created_at")
+  section     FormSection           @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  values      FormSubmissionValue[]
+
+  @@unique([sectionId, fieldKey])
+  @@index([sectionId, fieldOrder])
+  @@map("form_fields")
+}
+
+model FormRule {
+  id              String              @id @default(cuid())
+  versionId       String              @map("version_id")
+  sourceFieldKey  String              @map("source_field_key")
+  targetFieldKey  String              @map("target_field_key")
+  operator        String
+  comparisonValue String?             @map("comparison_value")
+  effect          String              @default("SHOW")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  version         FormTemplateVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([versionId])
+  @@map("form_rules")
+}
+
+model FormSubmission {
+  id                String                @id @default(cuid())
+  templateVersionId String                @map("template_version_id")
+  status            String                @default("SUBMITTED")
+  submittedAt       DateTime              @default(now()) @map("submitted_at")
+  submittedById     String?               @map("submitted_by_id")
+  jobId             String?               @map("job_id")
+  clientId          String?               @map("client_id")
+  assetId           String?               @map("asset_id")
+  workerId          String?               @map("worker_id")
+  siteId            String?               @map("site_id")
+  shiftId           String?               @map("shift_id")
+  supplierName      String?               @map("supplier_name")
+  geolocation       String?
+  summary           String?
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
+  templateVersion   FormTemplateVersion   @relation(fields: [templateVersionId], references: [id], onDelete: Restrict)
+  submittedBy       User?                 @relation(fields: [submittedById], references: [id], onDelete: SetNull)
+  job               Job?                  @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  client            Client?               @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  asset             Asset?                @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  worker            Worker?               @relation(fields: [workerId], references: [id], onDelete: SetNull)
+  site              Site?                 @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  shift             Shift?                @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  values            FormSubmissionValue[]
+  attachments       FormAttachment[]
+  signatures        FormSignature[]
+
+  @@index([templateVersionId, submittedAt])
+  @@index([jobId])
+  @@index([assetId])
+  @@index([workerId])
+  @@index([shiftId])
+  @@map("form_submissions")
+}
+
+model FormSubmissionValue {
+  id            String         @id @default(cuid())
+  submissionId  String         @map("submission_id")
+  fieldId       String?        @map("field_id")
+  fieldKey      String         @map("field_key")
+  valueText     String?        @map("value_text")
+  valueNumber   Decimal?       @map("value_number") @db.Decimal(14, 2)
+  valueDateTime DateTime?      @map("value_date_time")
+  valueJson     Json?          @map("value_json")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  submission    FormSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  field         FormField?     @relation(fields: [fieldId], references: [id], onDelete: SetNull)
+
+  @@index([submissionId])
+  @@index([fieldKey])
+  @@map("form_submission_values")
+}
+
+model FormAttachment {
+  id           String         @id @default(cuid())
+  submissionId String         @map("submission_id")
+  fieldKey     String?        @map("field_key")
+  fileName     String         @map("file_name")
+  fileUrl      String?        @map("file_url")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  submission   FormSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId])
+  @@map("form_attachments")
+}
+
+model FormSignature {
+  id           String         @id @default(cuid())
+  submissionId String         @map("submission_id")
+  fieldKey     String?        @map("field_key")
+  signerName   String         @map("signer_name")
+  signedAt     DateTime       @default(now()) @map("signed_at")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  submission   FormSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId])
+  @@map("form_signatures")
+}

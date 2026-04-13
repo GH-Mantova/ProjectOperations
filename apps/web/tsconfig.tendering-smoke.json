@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "outDir": ".tmp-smoke",
+    "rootDir": "src",
+    "noEmit": false
+  },
+  "include": [
+    "src/pages/tendering-page-helpers.ts",
+    "src/pages/tendering-page-helpers.smoke.ts"
+  ]
+}

@@ -2,6 +2,13 @@ import { defineConfig, devices } from "@playwright/test";
 
 const apiPort = 3000;
 const webPort = 4173;
+const isWindows = process.platform === "win32";
+const apiWebServerCommand = isWindows
+  ? "pnpm dev:api:e2e"
+  : `CORS_ORIGIN=http://127.0.0.1:${webPort} pnpm --filter @project-ops/api exec node dist/src/main.js`;
+const webWebServerCommand = isWindows
+  ? "pnpm dev:web:e2e"
+  : `VITE_API_BASE_URL=http://127.0.0.1:${apiPort}/api/v1 pnpm --filter @project-ops/web dev:e2e`;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -40,13 +47,13 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: "pnpm dev:api:e2e",
+      command: apiWebServerCommand,
       url: `http://127.0.0.1:${apiPort}/api/v1/health`,
       reuseExistingServer: false,
       timeout: 120_000
     },
     {
-      command: "pnpm dev:web:e2e",
+      command: webWebServerCommand,
       url: `http://127.0.0.1:${webPort}`,
       reuseExistingServer: false,
       timeout: 120_000

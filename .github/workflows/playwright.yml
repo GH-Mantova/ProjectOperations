@@ -25,6 +25,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Generate Prisma client
+        run: pnpm --filter @project-ops/api prisma generate
+
       - name: Validate API build
         run: pnpm --filter @project-ops/api build
 

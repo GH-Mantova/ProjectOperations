@@ -1,8 +1,10 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { CreateNotificationDto } from "./dto/create-notification.dto";
+import { CreateManualFollowUpDto } from "./dto/create-manual-follow-up.dto";
+import { ResolveManualFollowUpDto } from "./dto/resolve-manual-follow-up.dto";
 import { AssignFollowUpNotificationDto } from "./dto/assign-follow-up-notification.dto";
 import { SyncFollowUpNotificationsDto } from "./dto/sync-follow-up-notifications.dto";
 import { TriageFollowUpNotificationDto } from "./dto/triage-follow-up-notification.dto";
@@ -24,29 +26,53 @@ export class NotificationsService {
   async listSharedFollowUps(actorId?: string) {
     await this.ensureLiveFollowUps(actorId);
 
-    return this.prisma.notification.findMany({
+    const items = await this.prisma.notification.findMany({
       where: {
-        metadata: {
-          path: ["kind"],
-          equals: "LIVE_FOLLOW_UP"
-        }
+        OR: [
+          {
+            metadata: {
+              path: ["kind"],
+              equals: "LIVE_FOLLOW_UP"
+            }
+          },
+          {
+            metadata: {
+              path: ["kind"],
+              equals: "MANUAL_FOLLOW_UP"
+            }
+          }
+        ]
       },
       orderBy: { createdAt: "desc" }
     });
+
+    return items.filter((item) => this.isVisibleSharedFollowUp(item));
   }
 
   async refreshLiveFollowUps(actorId?: string) {
     await this.ensureLiveFollowUps(actorId);
 
-    return this.prisma.notification.findMany({
+    const items = await this.prisma.notification.findMany({
       where: {
-        metadata: {
-          path: ["kind"],
-          equals: "LIVE_FOLLOW_UP"
-        }
+        OR: [
+          {
+            metadata: {
+              path: ["kind"],
+              equals: "LIVE_FOLLOW_UP"
+            }
+          },
+          {
+            metadata: {
+              path: ["kind"],
+              equals: "MANUAL_FOLLOW_UP"
+            }
+          }
+        ]
       },
       orderBy: { createdAt: "desc" }
     });
+
+    return items.filter((item) => this.isVisibleSharedFollowUp(item));
   }
 
   async create(input: CreateNotificationDto, actorId?: string) {
@@ -66,6 +92,81 @@ export class NotificationsService {
       entityType: "Notification",
       entityId: notification.id,
       metadata: { userId: input.userId, severity: input.severity }
+    });
+
+    return notification;
+  }
+
+  async createManualFollowUp(input: CreateManualFollowUpDto, actorId?: string) {
+    const assignee = await this.prisma.user.findUniqueOrThrow({
+      where: { id: input.userId },
+      select: {
+        firstName: true,
+        lastName: true
+      }
+    });
+
+    const actor = actorId
+      ? await this.prisma.user.findUnique({
+          where: { id: actorId },
+          select: {
+            firstName: true,
+            lastName: true
+          }
+        })
+      : null;
+
+    const promptKey = `manual-${input.jobId}-${input.activityId ?? "job"}-${Date.now()}`;
+    const notification = await this.prisma.notification.create({
+      data: {
+        userId: input.userId,
+        title: input.title,
+        body: input.body,
+        severity: input.severity,
+        linkUrl: input.linkUrl ?? `/jobs?jobId=${input.jobId}`,
+        metadata: {
+          kind: "MANUAL_FOLLOW_UP",
+          manualType: input.manualType,
+          reasonCode: input.reasonCode,
+          reasonDetail: input.reasonDetail ?? null,
+          promptKey,
+          jobId: input.jobId,
+          activityId: input.activityId ?? null,
+          actionTarget: input.actionTarget,
+          nextOwnerId: input.userId,
+          nextOwnerLabel: input.nextOwnerLabel,
+          ownerRole: input.ownerRole,
+          audienceLabel: actorId && input.userId === actorId ? "Assigned to me" : "Team follow-up",
+          urgencyLabel: input.urgencyLabel,
+          assignmentMode: "MANUAL",
+          triageState: "OPEN",
+          triagedById: null,
+          triagedByLabel: null,
+          triagedAt: null,
+          resolutionState: "OPEN",
+          outcomeCode: null,
+          resolutionNote: null,
+          resolvedById: null,
+          resolvedByLabel: null,
+          resolvedAt: null,
+          assignedById: actorId ?? null,
+          assignedByLabel: actor ? `${actor.firstName} ${actor.lastName}`.trim() : null,
+          assignedAt: new Date().toISOString()
+        } satisfies Prisma.InputJsonValue
+      }
+    });
+
+    await this.auditService.write({
+      actorId,
+      action: "notifications.followups.manual.create",
+      entityType: "Notification",
+      entityId: notification.id,
+      metadata: {
+        userId: input.userId,
+        jobId: input.jobId,
+        activityId: input.activityId ?? null,
+        severity: input.severity
+      }
     });
 
     return notification;
@@ -244,6 +345,195 @@ export class NotificationsService {
       entityId: notification.id,
       metadata: {
         assignedUserId: dto.userId
+      }
+    });
+
+    return notification;
+  }
+
+  async resolveManualFollowUp(
+    notificationId: string,
+    dto: ResolveManualFollowUpDto,
+    actorId?: string
+  ) {
+    const existing = await this.prisma.notification.findUniqueOrThrow({
+      where: { id: notificationId }
+    });
+
+    const currentMetadata = (existing.metadata as Record<string, unknown> | null | undefined) ?? {};
+    if (currentMetadata.kind !== "MANUAL_FOLLOW_UP") {
+      throw new BadRequestException("Only manual follow-up prompts can be resolved.");
+    }
+
+    const actor = actorId
+      ? await this.prisma.user.findUnique({
+          where: { id: actorId },
+          select: {
+            firstName: true,
+            lastName: true
+          }
+        })
+      : null;
+
+    const notification = await this.prisma.notification.update({
+      where: { id: notificationId },
+      data: {
+        status: "READ",
+        readAt: new Date(),
+        metadata: {
+          ...currentMetadata,
+          resolutionState: "RESOLVED",
+          outcomeCode: dto.outcomeCode,
+          resolutionNote: dto.resolutionNote ?? null,
+          resolvedById: actorId ?? null,
+          resolvedByLabel: actor ? `${actor.firstName} ${actor.lastName}`.trim() : null,
+          resolvedAt: new Date().toISOString()
+        } satisfies Prisma.InputJsonValue
+      }
+    });
+
+    await this.auditService.write({
+      actorId,
+      action: "notifications.followups.manual.resolve",
+      entityType: "Notification",
+      entityId: notification.id,
+      metadata: {
+        outcomeCode: dto.outcomeCode
+      }
+    });
+
+    return notification;
+  }
+
+  async acceptManualHandoff(notificationId: string, actorId?: string) {
+    if (!actorId) {
+      throw new BadRequestException("A signed-in user is required to accept a handoff.");
+    }
+
+    const existing = await this.prisma.notification.findUniqueOrThrow({
+      where: { id: notificationId }
+    });
+
+    const currentMetadata = (existing.metadata as Record<string, unknown> | null | undefined) ?? {};
+    if (currentMetadata.kind !== "MANUAL_FOLLOW_UP" || currentMetadata.manualType !== "HANDOFF") {
+      throw new BadRequestException("Only manual handoff prompts can be accepted.");
+    }
+
+    const activityId =
+      typeof currentMetadata.activityId === "string" ? currentMetadata.activityId : null;
+    if (!activityId) {
+      throw new BadRequestException("This handoff is not linked to a specific activity.");
+    }
+
+    const actor = await this.prisma.user.findUniqueOrThrow({
+      where: { id: actorId },
+      select: {
+        firstName: true,
+        lastName: true
+      }
+    });
+
+    await this.prisma.jobActivity.update({
+      where: { id: activityId },
+      data: {
+        ownerUserId: actorId
+      }
+    });
+
+    const notification = await this.prisma.notification.update({
+      where: { id: notificationId },
+      data: {
+        userId: actorId,
+        status: "READ",
+        readAt: new Date(),
+        metadata: {
+          ...currentMetadata,
+          nextOwnerId: actorId,
+          nextOwnerLabel: `${actor.firstName} ${actor.lastName}`.trim(),
+          resolutionState: "RESOLVED",
+          outcomeCode: "ACCEPTED_HANDOFF",
+          resolutionNote: "Handoff accepted and activity ownership transferred.",
+          resolvedById: actorId,
+          resolvedByLabel: `${actor.firstName} ${actor.lastName}`.trim(),
+          resolvedAt: new Date().toISOString()
+        } satisfies Prisma.InputJsonValue
+      }
+    });
+
+    await this.auditService.write({
+      actorId,
+      action: "notifications.followups.manual.accept-handoff",
+      entityType: "Notification",
+      entityId: notification.id,
+      metadata: {
+        activityId
+      }
+    });
+
+    return notification;
+  }
+
+  async acceptManualEscalation(notificationId: string, actorId?: string) {
+    if (!actorId) {
+      throw new BadRequestException("A signed-in user is required to accept an escalation.");
+    }
+
+    const existing = await this.prisma.notification.findUniqueOrThrow({
+      where: { id: notificationId }
+    });
+
+    const currentMetadata = (existing.metadata as Record<string, unknown> | null | undefined) ?? {};
+    if (currentMetadata.kind !== "MANUAL_FOLLOW_UP" || currentMetadata.manualType !== "ESCALATION") {
+      throw new BadRequestException("Only manual escalation prompts can be accepted.");
+    }
+
+    const activityId =
+      typeof currentMetadata.activityId === "string" ? currentMetadata.activityId : null;
+
+    const actor = await this.prisma.user.findUniqueOrThrow({
+      where: { id: actorId },
+      select: {
+        firstName: true,
+        lastName: true
+      }
+    });
+
+    if (activityId) {
+      await this.prisma.jobActivity.update({
+        where: { id: activityId },
+        data: {
+          ownerUserId: actorId
+        }
+      });
+    }
+
+    const notification = await this.prisma.notification.update({
+      where: { id: notificationId },
+      data: {
+        userId: actorId,
+        status: "READ",
+        readAt: new Date(),
+        metadata: {
+          ...currentMetadata,
+          nextOwnerId: actorId,
+          nextOwnerLabel: `${actor.firstName} ${actor.lastName}`.trim(),
+          resolutionState: "RESOLVED",
+          outcomeCode: "ACCEPTED_ESCALATION",
+          resolutionNote: "Escalation accepted and execution ownership claimed.",
+          resolvedById: actorId,
+          resolvedByLabel: `${actor.firstName} ${actor.lastName}`.trim(),
+          resolvedAt: new Date().toISOString()
+        } satisfies Prisma.InputJsonValue
+      }
+    });
+
+    await this.auditService.write({
+      actorId,
+      action: "notifications.followups.manual.accept-escalation",
+      entityType: "Notification",
+      entityId: notification.id,
+      metadata: {
+        activityId
       }
     });
 
@@ -693,5 +983,10 @@ export class NotificationsService {
     }
 
     return "Upcoming";
+  }
+
+  private isVisibleSharedFollowUp(item: { metadata: Prisma.JsonValue | null }) {
+    const metadata = (item.metadata as Record<string, unknown> | null | undefined) ?? {};
+    return metadata.kind !== "MANUAL_FOLLOW_UP" || metadata.resolutionState !== "RESOLVED";
   }
 }

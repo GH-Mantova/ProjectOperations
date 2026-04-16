@@ -11,13 +11,28 @@ type UserOption = {
 
 type SharedFollowUpItem = {
   id: string;
+  title: string;
+  body: string;
   userId: string;
   metadata?: {
     kind?: string;
     promptKey?: string;
     jobId?: string;
+    activityId?: string | null;
     nextOwnerId?: string | null;
     nextOwnerLabel?: string | null;
+    manualType?: "HANDOFF" | "ESCALATION";
+    reasonCode?: string;
+    reasonDetail?: string | null;
+    outcomeCode?:
+      | "UNBLOCKED"
+      | "WAITING_EXTERNAL"
+      | "REASSIGNED"
+      | "WATCH_CONTINUES"
+      | "ACCEPTED_HANDOFF"
+      | "ACCEPTED_ESCALATION"
+      | null;
+    resolutionNote?: string | null;
     assignmentMode?: "DERIVED" | "MANUAL";
     assignedByLabel?: string | null;
     assignedAt?: string | null;
@@ -152,6 +167,18 @@ function formatCurrency(value?: string | number | null) {
   }).format(amount);
 }
 
+function startOfMonth(value: Date) {
+  return new Date(value.getFullYear(), value.getMonth(), 1);
+}
+
+function addMonths(value: Date, amount: number) {
+  return new Date(value.getFullYear(), value.getMonth() + amount, 1);
+}
+
+function formatMonthDayKey(value: Date) {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
 function getPillClass(status: string) {
   if (status.includes("COMPLETE") || status.includes("CLOSED")) {
     return "pill pill--green";
@@ -168,6 +195,38 @@ function getPillClass(status: string) {
   return "pill pill--blue";
 }
 
+function getCoordinationOutcomeLabel(summary: string) {
+  if (summary.startsWith("Execution escalation accepted")) {
+    return {
+      title: "Escalation accepted",
+      pillClass: "pill pill--red"
+    };
+  }
+
+  if (summary.startsWith("Execution handoff accepted")) {
+    return {
+      title: "Handoff accepted",
+      pillClass: "pill pill--amber"
+    };
+  }
+
+  if (summary.startsWith("Execution escalation resolved")) {
+    return {
+      title: "Escalation outcome",
+      pillClass: "pill pill--red"
+    };
+  }
+
+  if (summary.startsWith("Execution handoff resolved")) {
+    return {
+      title: "Handoff outcome",
+      pillClass: "pill pill--amber"
+    };
+  }
+
+  return null;
+}
+
 export function JobsPage() {
   const { authFetch, user } = useAuth();
   const location = useLocation();
@@ -177,6 +236,9 @@ export function JobsPage() {
   const [users, setUsers] = useState<UserOption[]>([]);
   const [sharedFollowUps, setSharedFollowUps] = useState<SharedFollowUpItem[]>([]);
   const [followUpAssignmentDrafts, setFollowUpAssignmentDrafts] = useState<Record<string, string>>({});
+  const [manualResolutionDrafts, setManualResolutionDrafts] = useState<
+    Record<string, { outcomeCode: "UNBLOCKED" | "WAITING_EXTERNAL" | "REASSIGNED" | "WATCH_CONTINUES"; resolutionNote: string }>
+  >({});
   const [sites, setSites] = useState<SiteOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [statusForm, setStatusForm] = useState({ status: "ACTIVE", note: "" });
@@ -289,6 +351,21 @@ export function JobsPage() {
     });
   }, [sharedFollowUps]);
 
+  useEffect(() => {
+    setManualResolutionDrafts((current) => {
+      const next = { ...current };
+      for (const item of sharedFollowUps) {
+        if (item.metadata?.kind === "MANUAL_FOLLOW_UP" && !next[item.id]) {
+          next[item.id] = {
+            outcomeCode: "UNBLOCKED",
+            resolutionNote: ""
+          };
+        }
+      }
+      return next;
+    });
+  }, [sharedFollowUps]);
+
   const reloadJobs = async (focusJobId?: string) => {
     const response = await authFetch("/jobs?page=1&pageSize=50");
     if (!response.ok) {
@@ -313,7 +390,11 @@ export function JobsPage() {
     () =>
       new Map(
         sharedFollowUps
-          .filter((item) => item.metadata?.kind === "LIVE_FOLLOW_UP" && item.metadata?.promptKey)
+          .filter(
+            (item) =>
+              (item.metadata?.kind === "LIVE_FOLLOW_UP" || item.metadata?.kind === "MANUAL_FOLLOW_UP") &&
+              item.metadata?.promptKey
+          )
           .map((item) => [item.metadata?.promptKey as string, item])
       ),
     [sharedFollowUps]
@@ -336,6 +417,63 @@ export function JobsPage() {
     });
 
     await loadSharedFollowUps();
+  };
+
+  const resolveManualFollowUp = async (item: SharedFollowUpItem) => {
+    const resolution = manualResolutionDrafts[item.id] ?? {
+      outcomeCode: "UNBLOCKED" as const,
+      resolutionNote: ""
+    };
+
+    await authFetch(`/notifications/follow-ups/${item.id}/resolve`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        outcomeCode: resolution.outcomeCode,
+        resolutionNote: resolution.resolutionNote || undefined
+      })
+    });
+
+    if (selectedJob && focusedDeliveryContext?.activity) {
+      const activityLabel = focusedDeliveryContext.activity.name;
+      const outcomeLabel = resolution.outcomeCode.replaceAll("_", " ").toLowerCase();
+      await submitToJob(`/jobs/${selectedJob.id}/progress-entries`, {
+        entryType: "DAILY_NOTE",
+        entryDate: new Date().toISOString().slice(0, 10),
+        summary: `${
+          item.metadata?.manualType === "ESCALATION" ? "Execution escalation" : "Execution handoff"
+        } resolved for ${activityLabel}: ${outcomeLabel}${resolution.resolutionNote ? ` - ${resolution.resolutionNote}` : ""}`
+      });
+    }
+
+    await loadSharedFollowUps();
+  };
+
+  const acceptManualHandoff = async (item: SharedFollowUpItem) => {
+    await authFetch(`/notifications/follow-ups/${item.id}/accept-handoff`, {
+      method: "PATCH"
+    });
+
+    await loadSharedFollowUps();
+    await reloadJobs(selectedJob?.id);
+  };
+
+  const acceptManualEscalation = async (item: SharedFollowUpItem) => {
+    await authFetch(`/notifications/follow-ups/${item.id}/accept-escalation`, {
+      method: "PATCH"
+    });
+
+    if (selectedJob && focusedDeliveryContext?.activity) {
+      await submitToJob(`/jobs/${selectedJob.id}/progress-entries`, {
+        entryType: "DAILY_NOTE",
+        entryDate: new Date().toISOString().slice(0, 10),
+        summary: `Execution escalation accepted for ${focusedDeliveryContext.activity.name}: ownership claimed by ${
+          user ? `${user.firstName} ${user.lastName}` : "current user"
+        }.`
+      });
+    }
+
+    await loadSharedFollowUps();
+    await reloadJobs(selectedJob?.id);
   };
 
   const renderFollowUpAssignment = (promptKey: string, emptyStateLabel: string) => {
@@ -578,6 +716,89 @@ export function JobsPage() {
     };
   }, [selectedJob]);
 
+  const planningSnapshot = useMemo(() => {
+    const monthAnchor = startOfMonth(new Date());
+    const nextMonth = addMonths(monthAnchor, 1);
+    const lastDay = new Date(nextMonth.getTime() - 1).getDate();
+    const monthDays = Array.from({ length: lastDay }, (_, index) => {
+      const day = new Date(monthAnchor.getFullYear(), monthAnchor.getMonth(), index + 1);
+      return {
+        key: formatMonthDayKey(day),
+        date: day,
+        dayNumber: index + 1,
+        shortLabel: day.toLocaleDateString([], { weekday: "short" })
+      };
+    });
+
+    const shiftsInMonth = schedulingMetrics.allShifts.filter((shift) => {
+      const start = new Date(shift.startAt);
+      return start >= monthAnchor && start < nextMonth;
+    });
+
+    const matrixCells = new Map<
+      string,
+      {
+        shifts: typeof schedulingMetrics.allShifts;
+        blocked: boolean;
+        warning: boolean;
+      }
+    >();
+
+    shiftsInMonth.forEach((shift) => {
+      const key = formatMonthDayKey(new Date(shift.startAt));
+      const existing = matrixCells.get(key) ?? { shifts: [], blocked: false, warning: false };
+      existing.shifts.push(shift);
+      existing.blocked ||= shift.conflicts.some((conflict) => conflict.severity === "RED");
+      existing.warning ||= shift.conflicts.some((conflict) => conflict.severity === "AMBER");
+      matrixCells.set(key, existing);
+    });
+
+    const stageRows =
+      selectedJob?.stages
+        ?.map((stage) => {
+          const stageShifts = stage.activities.flatMap((activity) =>
+            activity.shifts
+              .filter((shift) => {
+                const start = new Date(shift.startAt);
+                return start >= monthAnchor && start < nextMonth;
+              })
+              .map((shift) => ({ shift, activity }))
+          );
+
+          if (!stageShifts.length) {
+            return null;
+          }
+
+          const sorted = [...stageShifts].sort(
+            (left, right) => new Date(left.shift.startAt).getTime() - new Date(right.shift.startAt).getTime()
+          );
+          const startDay = new Date(sorted[0].shift.startAt).getDate();
+          const endDay = new Date(sorted[sorted.length - 1].shift.endAt).getDate();
+          const blocked = sorted.some(({ shift }) => shift.conflicts.some((conflict) => conflict.severity === "RED"));
+          const warning =
+            !blocked && sorted.some(({ shift }) => shift.conflicts.some((conflict) => conflict.severity === "AMBER"));
+
+          return {
+            id: stage.id,
+            name: stage.name,
+            shiftCount: sorted.length,
+            startDay,
+            spanDays: Math.max(endDay - startDay + 1, 1),
+            tone: blocked ? "red" : warning ? "amber" : "blue",
+            firstShiftId: sorted[0].shift.id,
+            firstActivityId: sorted[0].activity.id
+          };
+        })
+        .filter((row): row is NonNullable<typeof row> => Boolean(row)) ?? [];
+
+    return {
+      monthLabel: monthAnchor.toLocaleDateString([], { month: "long", year: "numeric" }),
+      monthDays,
+      matrixCells,
+      stageRows
+    };
+  }, [schedulingMetrics.allShifts, selectedJob]);
+
   const planningBlockers = useMemo(() => {
     const blockedItems = schedulingMetrics.allShifts.flatMap((shift) =>
       shift.conflicts
@@ -645,6 +866,25 @@ export function JobsPage() {
 
     return { stage, activity, shift, from: jobFocus.from };
   }, [jobFocus, selectedJob]);
+
+  const focusedManualFollowUps = useMemo(() => {
+    if (!selectedJob || !focusedDeliveryContext?.activity) {
+      return [];
+    }
+
+    return sharedFollowUps
+      .filter(
+        (item) =>
+          item.metadata?.kind === "MANUAL_FOLLOW_UP" &&
+          item.metadata?.jobId === selectedJob.id &&
+          item.metadata?.activityId === focusedDeliveryContext.activity?.id
+      )
+      .sort((left, right) => {
+        const leftTime = new Date(left.metadata?.assignedAt ?? 0).getTime();
+        const rightTime = new Date(right.metadata?.assignedAt ?? 0).getTime();
+        return rightTime - leftTime;
+      });
+  }, [focusedDeliveryContext?.activity, selectedJob, sharedFollowUps]);
 
   const focusedRecommendations = useMemo(() => {
     if (!focusedDeliveryContext?.activity) {
@@ -1197,6 +1437,97 @@ export function JobsPage() {
                       : `${focusedDeliveryContext.activity.owner.firstName} ${focusedDeliveryContext.activity.owner.lastName} currently owns the next delivery follow-through for this activity.`
                     : "No activity owner is set yet, so the next delivery follow-through is still unassigned."}
                 </p>
+                {focusedManualFollowUps.length ? (
+                  <div className="dashboard-list">
+                    {focusedManualFollowUps.map((item) => (
+                      <div key={item.id} className="tendering-focus-list__item">
+                        <div className="split-header">
+                          <strong>{item.metadata?.manualType === "ESCALATION" ? "Execution escalation" : "Execution handoff"}</strong>
+                          <span className={`pill ${item.metadata?.manualType === "ESCALATION" ? "pill--red" : "pill--amber"}`}>
+                            {item.metadata?.manualType === "ESCALATION" ? "Escalated" : "Handed off"}
+                          </span>
+                        </div>
+                        <p className="muted-text">{item.body}</p>
+                        <p className="muted-text">
+                          Routed to {item.metadata?.nextOwnerLabel ?? "team owner"}
+                          {item.metadata?.assignedByLabel ? ` by ${item.metadata.assignedByLabel}` : ""}
+                          {item.metadata?.assignedAt ? ` on ${formatDateTime(item.metadata.assignedAt)}` : ""}.
+                        </p>
+                        {item.metadata?.reasonCode || item.metadata?.reasonDetail ? (
+                          <p className="muted-text">
+                            Why: {item.metadata?.reasonCode?.replaceAll("_", " ").toLowerCase() ?? "manual follow-up"}
+                            {item.metadata?.reasonDetail ? ` - ${item.metadata.reasonDetail}` : ""}
+                          </p>
+                        ) : null}
+                        <div className="inline-fields">
+                          <select
+                            value={manualResolutionDrafts[item.id]?.outcomeCode ?? "UNBLOCKED"}
+                            onChange={(event) =>
+                              setManualResolutionDrafts((current) => ({
+                                ...current,
+                                [item.id]: {
+                                  outcomeCode: event.target.value as
+                                    | "UNBLOCKED"
+                                    | "WAITING_EXTERNAL"
+                                    | "REASSIGNED"
+                                    | "WATCH_CONTINUES",
+                                  resolutionNote: current[item.id]?.resolutionNote ?? ""
+                                }
+                              }))
+                            }
+                          >
+                            <option value="UNBLOCKED">Unblocked</option>
+                            <option value="WAITING_EXTERNAL">Waiting external</option>
+                            <option value="REASSIGNED">Reassigned</option>
+                            <option value="WATCH_CONTINUES">Watch continues</option>
+                          </select>
+                          <input
+                            value={manualResolutionDrafts[item.id]?.resolutionNote ?? ""}
+                            onChange={(event) =>
+                              setManualResolutionDrafts((current) => ({
+                                ...current,
+                                [item.id]: {
+                                  outcomeCode: current[item.id]?.outcomeCode ?? "UNBLOCKED",
+                                  resolutionNote: event.target.value
+                                }
+                              }))
+                            }
+                            placeholder="Resolution note"
+                          />
+                        </div>
+                        <div className="inline-fields">
+                          <button type="button" onClick={() => void resolveManualFollowUp(item)}>
+                            Resolve prompt
+                          </button>
+                          {item.metadata?.manualType === "HANDOFF" &&
+                          (item.metadata?.nextOwnerId ?? item.userId) === user?.id ? (
+                            <button type="button" onClick={() => void acceptManualHandoff(item)}>
+                              Accept handoff
+                            </button>
+                          ) : null}
+                          {item.metadata?.manualType === "ESCALATION" &&
+                          (item.metadata?.nextOwnerId ?? item.userId) === user?.id ? (
+                            <button type="button" onClick={() => void acceptManualEscalation(item)}>
+                              Accept escalation
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setFocusedProgressSummary(
+                                item.metadata?.manualType === "ESCALATION"
+                                  ? `Escalation resolved for ${focusedDeliveryContext.activity!.name}: `
+                                  : `Handoff settled for ${focusedDeliveryContext.activity!.name}: `
+                              )
+                            }
+                          >
+                            Draft follow-up note
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 {focusedRecommendations.length ? (
                   <div className="dashboard-list">
                     {focusedRecommendations.map((recommendation) => (
@@ -1299,11 +1630,11 @@ export function JobsPage() {
               </div>
             ) : null}
 
-            <div className="subsection">
-              <div className="split-header">
-                <strong>Scheduling readiness</strong>
-                <span className="muted-text">
-                  {schedulingMetrics.shiftCount} shifts linked across {schedulingMetrics.activityCount} activities
+              <div className="subsection">
+                <div className="split-header">
+                  <strong>Scheduling readiness</strong>
+                  <span className="muted-text">
+                    {schedulingMetrics.shiftCount} shifts linked across {schedulingMetrics.activityCount} activities
                 </span>
               </div>
               <div className="tendering-focus-list tendering-focus-list--activity">
@@ -1319,13 +1650,76 @@ export function JobsPage() {
                   <strong>{schedulingMetrics.warningShifts}</strong>
                   <span>Warning shifts</span>
                 </div>
-                <div className="tendering-focus-list__item">
-                  <strong>{schedulingMetrics.blockedShifts}</strong>
-                  <span>Blocked shifts</span>
+                  <div className="tendering-focus-list__item">
+                    <strong>{schedulingMetrics.blockedShifts}</strong>
+                    <span>Blocked shifts</span>
+                  </div>
                 </div>
-              </div>
-              <div className="tendering-insight-grid">
-                <section className="subsection">
+                <div className="subsection">
+                  <div className="split-header">
+                    <strong>Schedule shape snapshot</strong>
+                    <span className="muted-text">{planningSnapshot.monthLabel}</span>
+                  </div>
+                  <div className="job-planning-strip">
+                    {planningSnapshot.monthDays.map((day) => {
+                      const cell = planningSnapshot.matrixCells.get(day.key);
+                      const toneClass = cell?.blocked
+                        ? "job-planning-strip__cell job-planning-strip__cell--red"
+                        : cell?.warning
+                          ? "job-planning-strip__cell job-planning-strip__cell--amber"
+                          : cell?.shifts.length
+                            ? "job-planning-strip__cell job-planning-strip__cell--blue"
+                            : "job-planning-strip__cell";
+
+                      return (
+                        <button
+                          key={day.key}
+                          type="button"
+                          className={toneClass}
+                          disabled={!cell?.shifts.length}
+                          onClick={() => {
+                            if (!cell?.shifts[0]) return;
+                            openSchedulerForShift(cell.shifts[0].stageId, cell.shifts[0].activityId, cell.shifts[0].id);
+                          }}
+                        >
+                          <strong>{day.dayNumber}</strong>
+                          <span>{cell?.shifts.length ?? 0}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="job-program-mini">
+                    {planningSnapshot.stageRows.map((row) => (
+                      <button
+                        key={row.id}
+                        type="button"
+                        className="job-program-mini__row"
+                        onClick={() => openSchedulerForShift(row.id, row.firstActivityId, row.firstShiftId)}
+                      >
+                        <div className="job-program-mini__label">
+                          <strong>{row.name}</strong>
+                          <span>{row.shiftCount} shifts in month</span>
+                        </div>
+                        <div className="job-program-mini__track">
+                          <span
+                            className={`job-program-mini__bar job-program-mini__bar--${row.tone}`}
+                            style={{
+                              left: `${((row.startDay - 1) / planningSnapshot.monthDays.length) * 100}%`,
+                              width: `${(row.spanDays / planningSnapshot.monthDays.length) * 100}%`
+                            }}
+                          />
+                        </div>
+                      </button>
+                    ))}
+                    {!planningSnapshot.stageRows.length ? (
+                      <p className="muted-text">
+                        No stage spans fall inside the current month yet. Use Scheduler when you are ready to shape the first delivery plan.
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="tendering-insight-grid">
+                  <section className="subsection">
                   <div className="split-header">
                     <strong>Planning blockers digest</strong>
                     <span className="muted-text">Why planning is stuck right now</span>
@@ -1784,6 +2178,13 @@ export function JobsPage() {
                       <strong>{entry.entryType}</strong>
                       <span className="muted-text">{formatDate(entry.entryDate)}</span>
                     </div>
+                    {getCoordinationOutcomeLabel(entry.summary) ? (
+                      <div className="inline-fields">
+                        <span className={getCoordinationOutcomeLabel(entry.summary)!.pillClass}>
+                          {getCoordinationOutcomeLabel(entry.summary)!.title}
+                        </span>
+                      </div>
+                    ) : null}
                     <p className="muted-text">{entry.summary}</p>
                   </div>
                 ))}

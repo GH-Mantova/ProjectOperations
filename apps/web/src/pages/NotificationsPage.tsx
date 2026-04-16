@@ -54,9 +54,16 @@ type SharedFollowUpItem = {
     triagedByLabel?: string | null;
     triagedAt?: string | null;
     assignmentMode?: "DERIVED" | "MANUAL";
+    manualType?: "HANDOFF" | "ESCALATION";
+    reasonCode?: string;
+    reasonDetail?: string | null;
     assignedById?: string | null;
     assignedByLabel?: string | null;
     assignedAt?: string | null;
+    resolutionState?: "OPEN" | "RESOLVED";
+    resolvedById?: string | null;
+    resolvedByLabel?: string | null;
+    resolvedAt?: string | null;
   } | null;
 };
 
@@ -136,6 +143,60 @@ function formatRelativeDateTime(dateValue?: string | null) {
   return `${days}d ago`;
 }
 
+function getFollowUpPriorityScore(item: SharedFollowUpItem, userId?: string) {
+  const isMine = (item.metadata?.nextOwnerId ?? item.userId) === userId;
+  const isRecentManualAssignment =
+    item.metadata?.assignmentMode === "MANUAL" &&
+    Boolean(item.metadata?.assignedAt) &&
+    Date.now() - new Date(item.metadata?.assignedAt ?? 0).getTime() <= 24 * 60 * 60 * 1000;
+  const triageScore =
+    item.metadata?.triageState === "ACKNOWLEDGED"
+      ? 1
+      : item.metadata?.triageState === "WATCH"
+        ? 2
+        : 0;
+  const urgencyScore =
+    item.metadata?.urgencyLabel === "Urgent today"
+      ? 0
+      : item.metadata?.urgencyLabel === "Due soon"
+        ? 1
+        : 2;
+  const severityScore = item.severity === "HIGH" ? 0 : item.severity === "MEDIUM" ? 1 : 2;
+  const waitingExternalPenalty = item.metadata?.reasonCode === "DEPENDENCY_WAIT" ? 4 : 0;
+  const recentManualBoost = isMine && isRecentManualAssignment ? -3 : 0;
+  const mineBoost = isMine ? -1 : 0;
+
+  return recentManualBoost + mineBoost + triageScore + urgencyScore + severityScore + waitingExternalPenalty;
+}
+
+function getPromptStateLabel(item?: SharedFollowUpItem) {
+  if (item?.metadata?.kind === "MANUAL_FOLLOW_UP" && item.metadata?.reasonCode === "DEPENDENCY_WAIT") {
+    return {
+      text: "Waiting external",
+      className: "pill pill--amber"
+    };
+  }
+
+  if (item?.metadata?.triageState === "ACKNOWLEDGED") {
+    return {
+      text: "I'm handling it",
+      className: "pill pill--green"
+    };
+  }
+
+  if (item?.metadata?.triageState === "WATCH") {
+    return {
+      text: "Watch continues",
+      className: "pill pill--amber"
+    };
+  }
+
+  return {
+    text: "Open",
+    className: "pill pill--slate"
+  };
+}
+
 export function NotificationsPage() {
   const { authFetch, user } = useAuth();
   const navigate = useNavigate();
@@ -187,7 +248,11 @@ export function NotificationsPage() {
     () =>
       new Map(
         sharedFollowUps
-          .filter((item) => item.metadata?.kind === "LIVE_FOLLOW_UP" && item.metadata?.promptKey)
+          .filter(
+            (item) =>
+              (item.metadata?.kind === "LIVE_FOLLOW_UP" || item.metadata?.kind === "MANUAL_FOLLOW_UP") &&
+              item.metadata?.promptKey
+          )
           .map((item) => [item.metadata?.promptKey as string, item])
       ),
     [sharedFollowUps]
@@ -195,7 +260,7 @@ export function NotificationsPage() {
 
   const followUpPrompts = useMemo(() => {
     const prompts = sharedFollowUps
-      .filter((item) => item.metadata?.kind === "LIVE_FOLLOW_UP")
+      .filter((item) => item.metadata?.kind === "LIVE_FOLLOW_UP" || item.metadata?.kind === "MANUAL_FOLLOW_UP")
       .map((item) => ({
         id: item.metadata?.promptKey ?? item.id,
         jobId: item.metadata?.jobId ?? "",
@@ -221,24 +286,11 @@ export function NotificationsPage() {
         assignmentMode: item.metadata?.assignmentMode ?? "DERIVED"
       }))
       .sort((left, right) => {
-        const triageRank = (prompt: { id: string }) => {
-          const triageState = sharedFollowUpsByPrompt.get(prompt.id)?.metadata?.triageState ?? "OPEN";
-          if (triageState === "OPEN") return 0;
-          if (triageState === "ACKNOWLEDGED") return 1;
-          return 2;
-        };
-        const urgencyRank = (label: FollowUpPrompt["urgencyLabel"]) =>
-          label === "Urgent today" ? 0 : label === "Due soon" ? 1 : 2;
-        const severityRank = (severity: string) =>
-          severity === "HIGH" ? 0 : severity === "MEDIUM" ? 1 : 2;
-        const audienceRank = (label: FollowUpPrompt["audienceLabel"]) =>
-          label === "Assigned to me" ? 0 : 1;
-
+        const leftItem = sharedFollowUpsByPrompt.get(left.id);
+        const rightItem = sharedFollowUpsByPrompt.get(right.id);
         return (
-          triageRank(left) - triageRank(right) ||
-          audienceRank(left.audienceLabel) - audienceRank(right.audienceLabel) ||
-          urgencyRank(left.urgencyLabel) - urgencyRank(right.urgencyLabel) ||
-          severityRank(left.severity) - severityRank(right.severity)
+          getFollowUpPriorityScore(leftItem ?? { id: left.id, title: left.title, body: left.body, severity: left.severity, userId: left.nextOwnerId ?? "", metadata: null }, user?.id) -
+            getFollowUpPriorityScore(rightItem ?? { id: right.id, title: right.title, body: right.body, severity: right.severity, userId: right.nextOwnerId ?? "", metadata: null }, user?.id)
         );
       });
 
@@ -353,6 +405,57 @@ export function NotificationsPage() {
         userId: targetUserId,
         userLabel: assignee ? `${assignee.firstName} ${assignee.lastName}` : undefined
       })
+    });
+
+    const sharedFollowUpsResponse = await authFetch("/notifications/follow-ups/shared");
+    if (sharedFollowUpsResponse.ok) {
+      setSharedFollowUps(await sharedFollowUpsResponse.json());
+    }
+  };
+
+  const resolveManualPrompt = async (promptId: string) => {
+    const sharedItem = sharedFollowUpsByPrompt.get(promptId);
+    if (!sharedItem || sharedItem.metadata?.kind !== "MANUAL_FOLLOW_UP") {
+      return;
+    }
+
+    await authFetch(`/notifications/follow-ups/${sharedItem.id}/resolve`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        outcomeCode: "UNBLOCKED"
+      })
+    });
+
+    const sharedFollowUpsResponse = await authFetch("/notifications/follow-ups/shared");
+    if (sharedFollowUpsResponse.ok) {
+      setSharedFollowUps(await sharedFollowUpsResponse.json());
+    }
+  };
+
+  const acceptManualPrompt = async (promptId: string) => {
+    const sharedItem = sharedFollowUpsByPrompt.get(promptId);
+    if (!sharedItem || sharedItem.metadata?.kind !== "MANUAL_FOLLOW_UP") {
+      return;
+    }
+
+    await authFetch(`/notifications/follow-ups/${sharedItem.id}/accept-handoff`, {
+      method: "PATCH"
+    });
+
+    const sharedFollowUpsResponse = await authFetch("/notifications/follow-ups/shared");
+    if (sharedFollowUpsResponse.ok) {
+      setSharedFollowUps(await sharedFollowUpsResponse.json());
+    }
+  };
+
+  const acceptManualEscalationPrompt = async (promptId: string) => {
+    const sharedItem = sharedFollowUpsByPrompt.get(promptId);
+    if (!sharedItem || sharedItem.metadata?.kind !== "MANUAL_FOLLOW_UP") {
+      return;
+    }
+
+    await authFetch(`/notifications/follow-ups/${sharedItem.id}/accept-escalation`, {
+      method: "PATCH"
     });
 
     const sharedFollowUpsResponse = await authFetch("/notifications/follow-ups/shared");
@@ -486,20 +589,8 @@ export function NotificationsPage() {
                   </span>
                   <span className={getOwnerRolePillClass(prompt.ownerRole)}>{prompt.ownerRole}</span>
                   <span className="pill pill--blue">{prompt.nextOwnerLabel}</span>
-                  <span
-                    className={`pill ${
-                      getPromptState(prompt.id) === "ACKNOWLEDGED"
-                        ? "pill--green"
-                        : getPromptState(prompt.id) === "WATCH"
-                          ? "pill--amber"
-                          : "pill--slate"
-                    }`}
-                  >
-                    {getPromptState(prompt.id) === "ACKNOWLEDGED"
-                      ? "I'm handling it"
-                      : getPromptState(prompt.id) === "WATCH"
-                        ? "Watch only"
-                        : "Open"}
+                  <span className={getPromptStateLabel(sharedFollowUpsByPrompt.get(prompt.id)).className}>
+                    {getPromptStateLabel(sharedFollowUpsByPrompt.get(prompt.id)).text}
                   </span>
                 </div>
                 {sharedFollowUpsByPrompt.get(prompt.id)?.metadata?.triageState &&
@@ -515,13 +606,24 @@ export function NotificationsPage() {
                 ) : null}
                 {sharedFollowUpsByPrompt.get(prompt.id)?.metadata?.assignmentMode === "MANUAL" ? (
                   <p className="muted-text">
-                    Manually assigned to {sharedFollowUpsByPrompt.get(prompt.id)?.metadata?.nextOwnerLabel ?? "team owner"}
+                    {sharedFollowUpsByPrompt.get(prompt.id)?.metadata?.manualType === "ESCALATION"
+                      ? "Escalated"
+                      : "Handed off"}{" "}
+                    to {sharedFollowUpsByPrompt.get(prompt.id)?.metadata?.nextOwnerLabel ?? "team owner"}
                     {sharedFollowUpsByPrompt.get(prompt.id)?.metadata?.assignedByLabel
                       ? ` by ${sharedFollowUpsByPrompt.get(prompt.id)?.metadata?.assignedByLabel}`
                       : ""}
                     {sharedFollowUpsByPrompt.get(prompt.id)?.metadata?.assignedAt
                       ? ` ${formatRelativeDateTime(sharedFollowUpsByPrompt.get(prompt.id)?.metadata?.assignedAt) ?? ""}`
                       : ""}.
+                    {sharedFollowUpsByPrompt.get(prompt.id)?.metadata?.reasonCode
+                      ? ` Reason: ${sharedFollowUpsByPrompt.get(prompt.id)?.metadata?.reasonCode
+                          ?.replaceAll("_", " ")
+                          .toLowerCase()}.`
+                      : ""}
+                    {sharedFollowUpsByPrompt.get(prompt.id)?.metadata?.reasonDetail
+                      ? ` ${sharedFollowUpsByPrompt.get(prompt.id)?.metadata?.reasonDetail}`
+                      : ""}
                   </p>
                 ) : (
                   <p className="muted-text">
@@ -568,6 +670,27 @@ export function NotificationsPage() {
                   <button type="button" onClick={() => updatePromptAssignment(prompt.id)}>
                     Reassign owner
                   </button>
+                  {sharedFollowUpsByPrompt.get(prompt.id)?.metadata?.kind === "MANUAL_FOLLOW_UP" ? (
+                    <button type="button" onClick={() => resolveManualPrompt(prompt.id)}>
+                      Resolve
+                    </button>
+                  ) : null}
+                  {sharedFollowUpsByPrompt.get(prompt.id)?.metadata?.kind === "MANUAL_FOLLOW_UP" &&
+                  sharedFollowUpsByPrompt.get(prompt.id)?.metadata?.manualType === "HANDOFF" &&
+                  (sharedFollowUpsByPrompt.get(prompt.id)?.metadata?.nextOwnerId ??
+                    sharedFollowUpsByPrompt.get(prompt.id)?.userId) === user?.id ? (
+                    <button type="button" onClick={() => acceptManualPrompt(prompt.id)}>
+                      Accept handoff
+                    </button>
+                  ) : null}
+                  {sharedFollowUpsByPrompt.get(prompt.id)?.metadata?.kind === "MANUAL_FOLLOW_UP" &&
+                  sharedFollowUpsByPrompt.get(prompt.id)?.metadata?.manualType === "ESCALATION" &&
+                  (sharedFollowUpsByPrompt.get(prompt.id)?.metadata?.nextOwnerId ??
+                    sharedFollowUpsByPrompt.get(prompt.id)?.userId) === user?.id ? (
+                    <button type="button" onClick={() => acceptManualEscalationPrompt(prompt.id)}>
+                      Accept escalation
+                    </button>
+                  ) : null}
                 </div>
               </div>
             ))}

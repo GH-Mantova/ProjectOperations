@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { AppCard } from "@project-ops/ui";
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { readTenderingLabels } from "../tendering-labels";
@@ -46,20 +45,13 @@ type SharedFollowUpItem = {
     audienceLabel?: "Assigned to me" | "Team follow-up";
     urgencyLabel?: "Urgent today" | "Due soon" | "Upcoming";
     triageState?: "OPEN" | "ACKNOWLEDGED" | "WATCH";
+    manualType?: "HANDOFF" | "ESCALATION";
+    reasonCode?: string;
+    assignmentMode?: "DERIVED" | "MANUAL";
+    assignedByLabel?: string | null;
+    assignedAt?: string | null;
   } | null;
 };
-
-function getUrgencyPillClass(urgencyLabel?: "Urgent today" | "Due soon" | "Upcoming") {
-  if (urgencyLabel === "Urgent today") {
-    return "pill pill--red";
-  }
-
-  if (urgencyLabel === "Due soon") {
-    return "pill pill--amber";
-  }
-
-  return "pill pill--blue";
-}
 
 export function ShellLayout() {
   const { user, logout, authFetch } = useAuth();
@@ -84,62 +76,22 @@ export function ShellLayout() {
     void loadSharedFollowUps();
   }, [authFetch, location.pathname]);
 
-  const shellActionCenter = useMemo(() => {
-    const prompts = sharedFollowUps
-      .filter((item) => item.metadata?.kind === "LIVE_FOLLOW_UP")
-      .map((item) => ({
-        ...item,
-        audienceLabel:
-          (item.metadata?.nextOwnerId ?? item.userId) === user?.id ? "Assigned to me" : "Team follow-up",
-        urgencyLabel: item.metadata?.urgencyLabel ?? "Upcoming",
-        actionTarget: item.metadata?.actionTarget ?? "job"
-      }))
-      .slice(0, 3);
+  const shellActionSummary = useMemo(() => {
+    const prompts = sharedFollowUps.filter(
+      (item) => item.metadata?.kind === "LIVE_FOLLOW_UP" || item.metadata?.kind === "MANUAL_FOLLOW_UP"
+    );
+    const assignedToMe = prompts.filter((item) => (item.metadata?.nextOwnerId ?? item.userId) === user?.id).length;
+    const urgentToday = prompts.filter((item) => item.metadata?.urgencyLabel === "Urgent today").length;
 
     return {
-      prompts,
-      assignedToMe: prompts.filter((item) => item.audienceLabel === "Assigned to me").length,
-      urgentToday: prompts.filter((item) => item.urgencyLabel === "Urgent today").length
+      total: prompts.length,
+      assignedToMe,
+      urgentToday
     };
   }, [sharedFollowUps, user?.id]);
 
-  const openActionCenterTarget = (item: SharedFollowUpItem) => {
-    const jobId = item.metadata?.jobId;
-    if (!jobId) {
-      navigate("/notifications");
-      return;
-    }
-
-    if (item.metadata?.actionTarget === "documents") {
-      navigate("/documents", {
-        state: {
-          documentFocus: {
-            linkedEntityType: "Job",
-            linkedEntityId: jobId,
-            from: "shell-action-center",
-            title: "Focused job documents"
-          }
-        }
-      });
-      return;
-    }
-
-    navigate("/jobs", {
-      state: {
-        jobFocus: {
-          jobId,
-          from: "shell-action-center"
-        }
-      }
-    });
-  };
-
-  const updateFollowUpTriage = async (item: SharedFollowUpItem, triageState: "OPEN" | "ACKNOWLEDGED" | "WATCH") => {
-    await authFetch(`/notifications/follow-ups/${item.id}/triage`, {
-      method: "PATCH",
-      body: JSON.stringify({ triageState })
-    });
-    await loadSharedFollowUps();
+  const openNotifications = () => {
+    navigate("/notifications");
   };
 
   return (
@@ -158,7 +110,12 @@ export function ShellLayout() {
                 isActive ? "shell__nav-link shell__nav-link--active" : "shell__nav-link"
               }
             >
-              {item.label}
+              <span>{item.label}</span>
+              {item.to === "/notifications" && shellActionSummary.total ? (
+                <span className="shell__nav-badge" aria-label={`${shellActionSummary.total} live prompts`}>
+                  {shellActionSummary.total}
+                </span>
+              ) : null}
             </NavLink>
           ))}
           <div className="shell__nav-group">
@@ -212,70 +169,24 @@ export function ShellLayout() {
               Signed in as {user?.firstName} {user?.lastName}. Local auth and admin controls are now active.
             </p>
           </div>
-          <button className="shell__header-action shell__header-action--button" onClick={logout}>
-            Logout
-          </button>
-        </header>
-        <section className="shell__action-center">
-          <AppCard title="Action Center" subtitle="Live coordination prompts surfaced across planning and document continuity">
-            <div className="inline-fields">
-              <span className="pill pill--blue">{shellActionCenter.prompts.length} live prompts</span>
-              <span className="pill pill--green">{shellActionCenter.assignedToMe} assigned to me</span>
-              <span className="pill pill--amber">{shellActionCenter.urgentToday} urgent today</span>
-            </div>
-            <div className="shell__action-list">
-              {shellActionCenter.prompts.map((item) => (
-                <div key={item.id} className="shell__action-item">
-                  <div className="split-header">
-                    <strong>{item.title}</strong>
-                    <span className={getUrgencyPillClass(item.urgencyLabel)}>{item.urgencyLabel}</span>
-                  </div>
-                  <p className="muted-text">{item.body}</p>
-                  <div className="inline-fields">
-                    <span className={`pill ${item.audienceLabel === "Assigned to me" ? "pill--green" : "pill--slate"}`}>
-                      {item.audienceLabel}
-                    </span>
-                    <span className="pill pill--slate">{item.metadata?.nextOwnerLabel ?? "Team owner"}</span>
-                    <span
-                      className={`pill ${
-                        item.metadata?.triageState === "ACKNOWLEDGED"
-                          ? "pill--green"
-                          : item.metadata?.triageState === "WATCH"
-                            ? "pill--amber"
-                            : "pill--slate"
-                      }`}
-                    >
-                      {item.metadata?.triageState === "ACKNOWLEDGED"
-                        ? "I'm handling it"
-                        : item.metadata?.triageState === "WATCH"
-                          ? "Watch only"
-                          : "Open"}
-                    </span>
-                  </div>
-                  <div className="inline-fields">
-                    <button type="button" onClick={() => openActionCenterTarget(item)}>
-                      Open action
-                    </button>
-                    <button type="button" onClick={() => void updateFollowUpTriage(item, "ACKNOWLEDGED")}>
-                      I'm handling this
-                    </button>
-                    <button type="button" onClick={() => void updateFollowUpTriage(item, "WATCH")}>
-                      Watch only
-                    </button>
-                    {item.metadata?.triageState && item.metadata.triageState !== "OPEN" ? (
-                      <button type="button" onClick={() => void updateFollowUpTriage(item, "OPEN")}>
-                        Reset
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
-              {!shellActionCenter.prompts.length ? (
-                <p className="muted-text">No live actions are surfacing right now.</p>
+          <div className="shell__header-actions">
+            <button
+              className="shell__header-action shell__header-action--secondary shell__header-action--button"
+              onClick={openNotifications}
+            >
+              Action Center
+              {shellActionSummary.total ? (
+                <span className="shell__header-action-count">
+                  {shellActionSummary.total}
+                  {shellActionSummary.urgentToday ? ` / ${shellActionSummary.urgentToday} urgent` : ""}
+                </span>
               ) : null}
-            </div>
-          </AppCard>
-        </section>
+            </button>
+            <button className="shell__header-action shell__header-action--button" onClick={logout}>
+              Logout
+            </button>
+          </div>
+        </header>
         <main className="shell__content">
           <Outlet />
         </main>

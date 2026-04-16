@@ -31,6 +31,8 @@ const emptySuitabilityForm = {
 export function ResourcesPage() {
   const { authFetch } = useAuth();
   const [workers, setWorkers] = useState<WorkerRecord[]>([]);
+  const [selectedWorkerId, setSelectedWorkerId] = useState("");
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [query, setQuery] = useState("");
   const [availabilityForm, setAvailabilityForm] = useState(emptyAvailabilityForm);
   const [suitabilityForm, setSuitabilityForm] = useState(emptySuitabilityForm);
@@ -50,9 +52,59 @@ export function ResourcesPage() {
     load().catch((loadError) => setError((loadError as Error).message));
   }, []);
 
+  useEffect(() => {
+    const saved = window.localStorage.getItem("project-ops-resource-groups");
+    if (!saved) return;
+
+    try {
+      setCollapsedGroups(JSON.parse(saved) as Record<string, boolean>);
+    } catch {
+      // Ignore invalid persisted state.
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("project-ops-resource-groups", JSON.stringify(collapsedGroups));
+  }, [collapsedGroups]);
+
+  useEffect(() => {
+    if (!workers.length) {
+      setSelectedWorkerId("");
+      return;
+    }
+
+    const existing = workers.find((worker) => worker.id === selectedWorkerId);
+    if (!existing) {
+      setSelectedWorkerId(workers[0].id);
+    }
+  }, [workers, selectedWorkerId]);
+
   const workerOptions = useMemo(
     () => workers.map((worker) => ({ id: worker.id, label: `${worker.firstName} ${worker.lastName}` })),
     [workers]
+  );
+  const groupedWorkers = useMemo(() => {
+    const groups = new Map<string, WorkerRecord[]>();
+
+    workers.forEach((worker) => {
+      const key = worker.resourceType?.name ?? "General workers";
+      const existing = groups.get(key) ?? [];
+      existing.push(worker);
+      groups.set(key, existing);
+    });
+
+    return Array.from(groups.entries())
+      .map(([label, items]) => ({
+        label,
+        items: [...items].sort((left, right) =>
+          `${left.firstName} ${left.lastName}`.localeCompare(`${right.firstName} ${right.lastName}`)
+        )
+      }))
+      .sort((left, right) => right.items.length - left.items.length || left.label.localeCompare(right.label));
+  }, [workers]);
+  const selectedWorker = useMemo(
+    () => workers.find((worker) => worker.id === selectedWorkerId) ?? null,
+    [selectedWorkerId, workers]
   );
   const unavailableWorkers = workers.filter((worker) =>
     worker.availabilityWindows.some((entry) => entry.status === "UNAVAILABLE")
@@ -60,6 +112,7 @@ export function ResourcesPage() {
   const reviewSuitabilityCount = workers.filter((worker) =>
     worker.roleSuitabilities.some((entry) => entry.suitability === "REVIEW" || entry.suitability === "UNSUITABLE")
   ).length;
+  const competencyCoverageCount = workers.filter((worker) => worker.competencies.length > 0).length;
 
   const submitAvailability = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -105,7 +158,7 @@ export function ResourcesPage() {
       {error ? <p className="error-text">{error}</p> : null}
 
       <div className="crm-page__sidebar">
-        <AppCard title="Resource Directory" subtitle="Worker skills, availability, and assignment suitability">
+        <AppCard title="Resource Directory" subtitle="Grouped worker rail for fast planning and resourcing checks">
           <div className="stack-grid">
             <div className="module-summary-grid">
               <div className="module-summary-card">
@@ -120,6 +173,10 @@ export function ResourcesPage() {
                 <strong>{reviewSuitabilityCount}</strong>
                 <span>Coverage risks to review</span>
               </div>
+              <div className="module-summary-card">
+                <strong>{competencyCoverageCount}</strong>
+                <span>Workers with competencies</span>
+              </div>
             </div>
 
             <form className="admin-form subsection" onSubmit={runSearch}>
@@ -131,50 +188,147 @@ export function ResourcesPage() {
             </form>
 
             <div className="dashboard-list dashboard-list--capped">
-              {workers.length ? workers.map((worker) => (
-                <div key={worker.id} className="resource-card">
-                  <div className="split-header">
-                    <div>
-                      <strong>{worker.firstName} {worker.lastName}</strong>
-                      <p className="muted-text">
-                        {worker.employeeCode ?? "No code"} | {worker.resourceType?.name ?? "Worker"}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="resource-tags">
-                    {worker.competencies.map((entry) => (
-                      <span key={entry.competency.id} className="resource-tag">
-                        {entry.competency.name}
-                      </span>
-                    ))}
-                    {worker.competencies.length === 0 ? <span className="muted-text">No competencies recorded</span> : null}
-                  </div>
-                  <div className="detail-list">
-                    <div>
-                      <dt>Availability</dt>
-                      <dd>
-                        {worker.availabilityWindows[0]
-                          ? `${worker.availabilityWindows[0].status} until ${new Date(worker.availabilityWindows[0].endAt).toLocaleString()}`
-                          : "No windows configured"}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Role Suitability</dt>
-                      <dd>
-                        {worker.roleSuitabilities[0]
-                          ? `${worker.roleSuitabilities[0].roleLabel}: ${worker.roleSuitabilities[0].suitability}`
-                          : "No suitability records"}
-                      </dd>
-                    </div>
-                  </div>
-                </div>
-              )) : <p className="module-empty-state">No workers matched the current search.</p>}
+              {groupedWorkers.length ? groupedWorkers.map((group) => {
+                const groupKey = group.label.toLowerCase().replace(/\s+/g, "-");
+                const isCollapsed = collapsedGroups[groupKey] ?? false;
+
+                return (
+                  <section key={group.label} className="planner-group">
+                    <button
+                      type="button"
+                      className="planner-group__header"
+                      onClick={() =>
+                        setCollapsedGroups((current) => ({
+                          ...current,
+                          [groupKey]: !isCollapsed
+                        }))
+                      }
+                    >
+                      <div>
+                        <strong>{group.label}</strong>
+                        <p className="muted-text">{group.items.length} workers</p>
+                      </div>
+                      <span className="planner-group__toggle">{isCollapsed ? "+" : "-"}</span>
+                    </button>
+                    {!isCollapsed ? (
+                      <div className="planner-group__body">
+                        {group.items.map((worker) => (
+                          <button
+                            key={worker.id}
+                            type="button"
+                            className={`planner-list-card${selectedWorkerId === worker.id ? " planner-list-card--active" : ""}`}
+                            onClick={() => setSelectedWorkerId(worker.id)}
+                          >
+                            <div className="split-header">
+                              <strong>{worker.firstName} {worker.lastName}</strong>
+                              <span className="pill pill--slate">{worker.competencies.length} skills</span>
+                            </div>
+                            <p className="muted-text">
+                              {worker.employeeCode ?? "No code"} | {worker.resourceType?.name ?? "Worker"}
+                            </p>
+                            <div className="inline-fields">
+                              {worker.availabilityWindows[0] ? (
+                                <span className={worker.availabilityWindows[0].status === "UNAVAILABLE" ? "pill pill--amber" : "pill pill--green"}>
+                                  {worker.availabilityWindows[0].status}
+                                </span>
+                              ) : (
+                                <span className="pill pill--slate">No availability set</span>
+                              )}
+                              {worker.roleSuitabilities[0] ? (
+                                <span className="pill pill--blue">{worker.roleSuitabilities[0].roleLabel}</span>
+                              ) : null}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </section>
+                );
+              }) : <p className="module-empty-state">No workers matched the current search.</p>}
             </div>
           </div>
         </AppCard>
       </div>
 
       <div className="crm-page__main">
+        <AppCard
+          title="Worker Detail"
+          subtitle={selectedWorker ? "Expanded operational context for the selected worker" : "Select a worker from the grouped rail"}
+        >
+          {selectedWorker ? (
+            <div className="stack-grid">
+              <div className="resource-card">
+                <div className="split-header">
+                  <div>
+                    <strong>{selectedWorker.firstName} {selectedWorker.lastName}</strong>
+                    <p className="muted-text">
+                      {selectedWorker.employeeCode ?? "No employee code"} | {selectedWorker.resourceType?.name ?? "Worker"}
+                    </p>
+                  </div>
+                  <span className="pill pill--blue">
+                    {selectedWorker.competencies.length} competencies
+                  </span>
+                </div>
+                <div className="resource-tags">
+                  {selectedWorker.competencies.length ? selectedWorker.competencies.map((entry) => (
+                    <span key={entry.competency.id} className="resource-tag">
+                      {entry.competency.name}
+                    </span>
+                  )) : <span className="muted-text">No competencies recorded yet.</span>}
+                </div>
+              </div>
+
+              <div className="compact-two-up">
+                <section className="subsection">
+                  <div className="split-header">
+                    <strong>Availability windows</strong>
+                    <span className="muted-text">{selectedWorker.availabilityWindows.length} entries</span>
+                  </div>
+                  <div className="dashboard-list dashboard-list--capped-sm">
+                    {selectedWorker.availabilityWindows.map((entry) => (
+                      <div key={entry.id} className="record-row record-row--card">
+                        <div>
+                          <span>{entry.status}</span>
+                          <p className="muted-text">
+                            {new Date(entry.startAt).toLocaleString()} - {new Date(entry.endAt).toLocaleString()}
+                          </p>
+                          {entry.notes ? <p className="muted-text">{entry.notes}</p> : null}
+                        </div>
+                      </div>
+                    ))}
+                    {!selectedWorker.availabilityWindows.length ? (
+                      <p className="muted-text">No availability windows configured.</p>
+                    ) : null}
+                  </div>
+                </section>
+
+                <section className="subsection">
+                  <div className="split-header">
+                    <strong>Role suitability</strong>
+                    <span className="muted-text">{selectedWorker.roleSuitabilities.length} entries</span>
+                  </div>
+                  <div className="dashboard-list dashboard-list--capped-sm">
+                    {selectedWorker.roleSuitabilities.map((entry) => (
+                      <div key={entry.id} className="record-row record-row--card">
+                        <div>
+                          <span>{entry.roleLabel}</span>
+                          <p className="muted-text">{entry.suitability}</p>
+                          {entry.notes ? <p className="muted-text">{entry.notes}</p> : null}
+                        </div>
+                      </div>
+                    ))}
+                    {!selectedWorker.roleSuitabilities.length ? (
+                      <p className="muted-text">No suitability records configured.</p>
+                    ) : null}
+                  </div>
+                </section>
+              </div>
+            </div>
+          ) : (
+            <p className="muted-text">Select a worker from the grouped rail to review skills, availability, and suitability in one place.</p>
+          )}
+        </AppCard>
+
         <div className="compact-two-up">
           <AppCard title="Availability Windows" subtitle="Capture leave, training, or blocked periods">
             <form className="admin-form" onSubmit={submitAvailability}>

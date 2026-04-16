@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { AppCard } from "@project-ops/ui";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
@@ -155,6 +155,18 @@ function toDateTimeLocalString(value: Date) {
   return localValue.toISOString().slice(0, 16);
 }
 
+function startOfMonth(value: Date) {
+  return new Date(value.getFullYear(), value.getMonth(), 1);
+}
+
+function addMonths(value: Date, amount: number) {
+  return new Date(value.getFullYear(), value.getMonth() + amount, 1);
+}
+
+function formatMonthKey(value: Date) {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}`;
+}
+
 function buildAssetPlanningState(asset: AssetRecord) {
   const now = new Date();
   const openBreakdown = asset.breakdowns.some((breakdown) => breakdown.status !== "RESOLVED");
@@ -208,10 +220,13 @@ export function SchedulerPage() {
   const [planningOwnerDraft, setPlanningOwnerDraft] = useState("");
   const [shiftLeadDraft, setShiftLeadDraft] = useState("");
   const [selectedShift, setSelectedShift] = useState<ShiftRecord | null>(null);
-  const [viewMode, setViewMode] = useState<"timeline" | "calendar">("timeline");
+  const [viewMode, setViewMode] = useState<"timeline" | "calendar" | "gantt">("timeline");
   const [planningMode, setPlanningMode] = useState<"weekly" | "monthly">("weekly");
+  const [monthAnchor, setMonthAnchor] = useState(() => startOfMonth(new Date()));
   const [resourceView, setResourceView] = useState<"project" | "resource">("project");
   const [shiftOwnershipFilter, setShiftOwnershipFilter] = useState<"ALL" | "MY_SHIFTS">("ALL");
+  const [collapsedJobs, setCollapsedJobs] = useState<Record<string, boolean>>({});
+  const [collapsedStages, setCollapsedStages] = useState<Record<string, boolean>>({});
   const [workerSearch, setWorkerSearch] = useState("");
   const [competencyFilter, setCompetencyFilter] = useState("");
   const [assetSearch, setAssetSearch] = useState("");
@@ -261,6 +276,35 @@ export function SchedulerPage() {
   useEffect(() => {
     load().catch((loadError) => setError((loadError as Error).message));
   }, []);
+
+  useEffect(() => {
+    const savedJobs = window.localStorage.getItem("project-ops-scheduler-jobs");
+    const savedStages = window.localStorage.getItem("project-ops-scheduler-stages");
+
+    if (savedJobs) {
+      try {
+        setCollapsedJobs(JSON.parse(savedJobs) as Record<string, boolean>);
+      } catch {
+        // Ignore invalid persisted state.
+      }
+    }
+
+    if (savedStages) {
+      try {
+        setCollapsedStages(JSON.parse(savedStages) as Record<string, boolean>);
+      } catch {
+        // Ignore invalid persisted state.
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("project-ops-scheduler-jobs", JSON.stringify(collapsedJobs));
+  }, [collapsedJobs]);
+
+  useEffect(() => {
+    window.localStorage.setItem("project-ops-scheduler-stages", JSON.stringify(collapsedStages));
+  }, [collapsedStages]);
 
   useEffect(() => {
     if (!plannerFocus?.shiftId || !jobs.length) return;
@@ -388,6 +432,85 @@ export function SchedulerPage() {
     return sorted;
   }, [allShifts, planningMode, shiftOwnershipFilter, user?.id]);
 
+  const monthDays = useMemo(() => {
+    const year = monthAnchor.getFullYear();
+    const month = monthAnchor.getMonth();
+    const lastDay = new Date(year, month + 1, 0).getDate();
+
+    return Array.from({ length: lastDay }, (_, index) => {
+      const day = new Date(year, month, index + 1);
+      return {
+        key: formatMonthKey(day) + `-${String(index + 1).padStart(2, "0")}`,
+        date: day,
+        dayNumber: index + 1,
+        shortLabel: day.toLocaleDateString([], { weekday: "short" })
+      };
+    });
+  }, [monthAnchor]);
+
+  const ganttRows = useMemo(() => {
+    const monthStart = startOfMonth(monthAnchor);
+    const nextMonth = addMonths(monthStart, 1);
+    const monthEnd = new Date(nextMonth.getTime() - 1);
+    const totalDays = monthDays.length;
+
+    return jobs
+      .flatMap((job) =>
+        job.stages.flatMap((stage) => {
+          const stageShifts = stage.activities.flatMap((activity) =>
+            activity.shifts
+              .filter((shift) => {
+                const shiftStart = new Date(shift.startAt);
+                return shiftStart >= monthStart && shiftStart < nextMonth;
+              })
+              .map((shift) => ({ shift, activity }))
+          );
+
+          if (!stageShifts.length && plannerFocus?.stageId !== stage.id) {
+            return [];
+          }
+
+          const sorted = [...stageShifts].sort(
+            (left, right) => new Date(left.shift.startAt).getTime() - new Date(right.shift.startAt).getTime()
+          );
+          const firstShift = sorted[0]?.shift;
+          const lastShift = sorted[sorted.length - 1]?.shift;
+          const start = firstShift ? new Date(firstShift.startAt) : monthStart;
+          const end = lastShift ? new Date(lastShift.endAt) : start;
+          const clampedStart = start < monthStart ? monthStart : start;
+          const clampedEnd = end > monthEnd ? monthEnd : end;
+          const startDay = Math.max(clampedStart.getDate(), 1);
+          const endDay = Math.min(clampedEnd.getDate(), totalDays);
+          const spanDays = Math.max(endDay - startDay + 1, 1);
+          const blocked = sorted.some(({ shift }) => shift.conflicts.some((conflict) => conflict.severity === "RED"));
+          const warning =
+            !blocked &&
+            sorted.some(({ shift }) => shift.conflicts.some((conflict) => conflict.severity === "AMBER"));
+
+          return [
+            {
+              id: `${job.id}:${stage.id}`,
+              label: `${job.jobNumber} | ${stage.name}`,
+              meta: `${stage.activities.length} activities | ${sorted.length} shifts`,
+              barLabel: sorted.length ? `${sorted.length} shifts scheduled` : "No shifts in month",
+              startDay,
+              spanDays,
+              tone: blocked ? "red" : warning ? "amber" : "blue",
+              stageId: stage.id,
+              shiftId: firstShift?.id ?? null,
+              activityOwnerLabel:
+                sorted[0]?.activity.owner
+                  ? `${sorted[0].activity.owner.firstName} ${sorted[0].activity.owner.lastName}`
+                  : job.supervisor
+                    ? `${job.supervisor.firstName} ${job.supervisor.lastName}`
+                    : "No owner"
+            }
+          ];
+        })
+      )
+      .sort((left, right) => left.label.localeCompare(right.label));
+  }, [jobs, monthAnchor, monthDays.length, plannerFocus?.stageId]);
+
   const myShiftCount = useMemo(
     () => (user?.id ? allShifts.filter((shift) => shift.lead?.id === user.id).length : 0),
     [allShifts, user?.id]
@@ -454,6 +577,23 @@ export function SchedulerPage() {
 
     return { job, stage, activity, shift };
   }, [jobs, plannerFocus]);
+
+  useEffect(() => {
+    if (!plannerSelection) return;
+
+    setCollapsedJobs((current) => ({
+      ...current,
+      [plannerSelection.job.id]: false
+    }));
+
+    if (plannerSelection.stage) {
+      const stageKey = `${plannerSelection.job.id}:${plannerSelection.stage.id}`;
+      setCollapsedStages((current) => ({
+        ...current,
+        [stageKey]: false
+      }));
+    }
+  }, [plannerSelection]);
 
   useEffect(() => {
     if (!plannerSelection?.activity?.owner?.id) {
@@ -686,6 +826,135 @@ export function SchedulerPage() {
 
     return null;
   }, [jobs, selectedShift]);
+
+  const shiftContextById = useMemo(() => {
+    const contextMap = new Map<
+      string,
+      {
+        job: JobRecord;
+        stage: StageRecord;
+        activity: ActivityRecord;
+      }
+    >();
+
+    jobs.forEach((job) => {
+      job.stages.forEach((stage) => {
+        stage.activities.forEach((activity) => {
+          activity.shifts.forEach((shift) => {
+            contextMap.set(shift.id, { job, stage, activity });
+          });
+        });
+      });
+    });
+
+    return contextMap;
+  }, [jobs]);
+
+  const schedulerSignals = useMemo(() => {
+    const blocked = allShifts.filter((shift) => shift.conflicts.some((conflict) => conflict.severity === "RED")).length;
+    const warning = allShifts.filter(
+      (shift) =>
+        !shift.conflicts.some((conflict) => conflict.severity === "RED") &&
+        shift.conflicts.some((conflict) => conflict.severity === "AMBER")
+    ).length;
+    const unscheduled = jobPlanningSummaries.reduce((total, summary) => total + summary.unscheduledActivities, 0);
+
+    return {
+      visibleShifts: visibleShifts.length,
+      blocked,
+      warning,
+      unscheduled
+    };
+  }, [allShifts, jobPlanningSummaries, visibleShifts.length]);
+
+  const monthlyMatrixRows = useMemo(() => {
+    const monthStart = startOfMonth(monthAnchor);
+    const nextMonth = addMonths(monthStart, 1);
+    const shiftsInMonth = allShifts.filter((shift) => {
+      const shiftStart = new Date(shift.startAt);
+      return shiftStart >= monthStart && shiftStart < nextMonth;
+    });
+
+    const dayKeyForShift = (shift: ShiftRecord) => {
+      const shiftStart = new Date(shift.startAt);
+      return `${formatMonthKey(shiftStart)}-${String(shiftStart.getDate()).padStart(2, "0")}`;
+    };
+
+    if (resourceView === "project") {
+      const rows = jobs.flatMap((job) =>
+        job.stages.flatMap((stage) =>
+          stage.activities.map((activity) => {
+            const rowShifts = activity.shifts.filter((shift) => {
+              const shiftStart = new Date(shift.startAt);
+              return shiftStart >= monthStart && shiftStart < nextMonth;
+            });
+            const cells = new Map<string, ShiftRecord[]>();
+            rowShifts.forEach((shift) => {
+              const key = dayKeyForShift(shift);
+              const existing = cells.get(key) ?? [];
+              existing.push(shift);
+              cells.set(key, existing);
+            });
+
+            return {
+              id: activity.id,
+              label: activity.name,
+              meta: `${job.jobNumber} | ${stage.name}`,
+              ownerLabel: activity.owner ? `${activity.owner.firstName} ${activity.owner.lastName}` : "No owner",
+              shifts: rowShifts,
+              cells
+            };
+          })
+        )
+      );
+
+      return rows.filter((row) => row.shifts.length > 0 || plannerFocus?.activityId === row.id);
+    }
+
+    const grouped = new Map<
+      string,
+      {
+        id: string;
+        label: string;
+        meta: string;
+        ownerLabel: string;
+        shifts: ShiftRecord[];
+        cells: Map<string, ShiftRecord[]>;
+      }
+    >();
+
+    shiftsInMonth.forEach((shift) => {
+      const context = shiftContextById.get(shift.id);
+      const owner =
+        shift.lead
+          ? `${shift.lead.firstName} ${shift.lead.lastName}`
+          : context?.activity.owner
+            ? `${context.activity.owner.firstName} ${context.activity.owner.lastName}`
+            : context?.job.supervisor
+              ? `${context.job.supervisor.firstName} ${context.job.supervisor.lastName}`
+              : "Unassigned owner";
+      const id = shift.lead?.id ?? context?.activity.owner?.id ?? context?.job.supervisor?.id ?? `unassigned-${owner}`;
+      const existing =
+        grouped.get(id) ??
+        {
+          id,
+          label: owner,
+          meta: shift.lead ? "Shift lead view" : context?.activity.owner ? "Activity owner fallback" : "Planning owner fallback",
+          ownerLabel: owner,
+          shifts: [],
+          cells: new Map<string, ShiftRecord[]>()
+        };
+
+      existing.shifts.push(shift);
+      const cellKey = dayKeyForShift(shift);
+      const current = existing.cells.get(cellKey) ?? [];
+      current.push(shift);
+      existing.cells.set(cellKey, current);
+      grouped.set(id, existing);
+    });
+
+    return Array.from(grouped.values()).sort((left, right) => right.shifts.length - left.shifts.length || left.label.localeCompare(right.label));
+  }, [allShifts, jobs, monthAnchor, plannerFocus?.activityId, resourceView, shiftContextById]);
 
   useEffect(() => {
     setPlanningOwnerDraft(selectedShiftContext?.job.supervisor?.id ?? "");
@@ -952,6 +1221,9 @@ export function SchedulerPage() {
           <button className={viewMode === "calendar" ? "tab-button tab-button--active" : "tab-button"} onClick={() => setViewMode("calendar")}>
             Calendar
           </button>
+          <button className={viewMode === "gantt" ? "tab-button tab-button--active" : "tab-button"} onClick={() => setViewMode("gantt")}>
+            Program
+          </button>
         </div>
         <div className="tab-row">
           <button className={resourceView === "project" ? "tab-button tab-button--active" : "tab-button"} onClick={() => setResourceView("project")}>
@@ -979,103 +1251,158 @@ export function SchedulerPage() {
         </div>
       </div>
 
+      <div className="scheduler-overview-band">
+        <div className="scheduler-overview-band__intro">
+          <span className="eyebrow">Planner workspace</span>
+          <h3>Keep the scheduler dense, but much easier to scan.</h3>
+          <p className="muted-text">
+            The left rail now behaves more like a real planning directory, while the live shift canvas stays focused on execution.
+          </p>
+        </div>
+        <div className="scheduler-overview-band__stats">
+          <div className="scheduler-overview-stat">
+            <strong>{schedulerSignals.visibleShifts}</strong>
+            <span>Visible shifts</span>
+          </div>
+          <div className="scheduler-overview-stat">
+            <strong>{schedulerSignals.blocked}</strong>
+            <span>Blocked shifts</span>
+          </div>
+          <div className="scheduler-overview-stat">
+            <strong>{schedulerSignals.warning}</strong>
+            <span>Warning shifts</span>
+          </div>
+          <div className="scheduler-overview-stat">
+            <strong>{schedulerSignals.unscheduled}</strong>
+            <span>Unscheduled activities</span>
+          </div>
+        </div>
+      </div>
+
       <div className="scheduler-grid">
         <AppCard title="Jobs / Stages / Activities" subtitle="Planning hierarchy">
           <div className="scheduler-pane">
             {jobs.map((job) => (
               <div key={job.id} className="scheduler-tree">
-                <div className="split-header">
-                  <strong>{job.jobNumber} - {job.name}</strong>
-                  {(() => {
-                    const summary = jobPlanningSummaries.find((item) => item.id === job.id);
-                    if (!summary) return null;
-
-                    const signalClass =
-                      summary.blockedShifts > 0
-                        ? "pill pill--red"
-                        : summary.warningShifts > 0 || summary.unscheduledActivities > 0
-                          ? "pill pill--amber"
-                          : "pill pill--green";
-
-                    const signalLabel =
-                      summary.blockedShifts > 0
-                        ? `${summary.blockedShifts} blocked`
-                        : summary.warningShifts > 0
-                          ? `${summary.warningShifts} warnings`
-                          : summary.unscheduledActivities > 0
-                            ? `${summary.unscheduledActivities} unscheduled`
-                            : "Ready";
-
-                    return <span className={signalClass}>{signalLabel}</span>;
-                  })()}
-                </div>
                 {(() => {
                   const summary = jobPlanningSummaries.find((item) => item.id === job.id);
                   if (!summary) return null;
 
+                  const isJobCollapsed = collapsedJobs[job.id] ?? false;
+                  const signalClass =
+                    summary.blockedShifts > 0
+                      ? "pill pill--red"
+                      : summary.warningShifts > 0 || summary.unscheduledActivities > 0
+                        ? "pill pill--amber"
+                        : "pill pill--green";
+                  const signalLabel =
+                    summary.blockedShifts > 0
+                      ? `${summary.blockedShifts} blocked`
+                      : summary.warningShifts > 0
+                        ? `${summary.warningShifts} warnings`
+                        : summary.unscheduledActivities > 0
+                          ? `${summary.unscheduledActivities} unscheduled`
+                          : "Ready";
+
                   return (
-                    <p className="muted-text">
-                      {summary.stageCount} stages | {summary.activityCount} activities | {summary.shiftCount} shifts
-                    </p>
+                    <>
+                      <button
+                        type="button"
+                        className="scheduler-tree__header"
+                        onClick={() =>
+                          setCollapsedJobs((current) => ({
+                            ...current,
+                            [job.id]: !isJobCollapsed
+                          }))
+                        }
+                      >
+                        <div>
+                          <strong>{job.jobNumber} - {job.name}</strong>
+                          <p className="muted-text">
+                            {summary.stageCount} stages | {summary.activityCount} activities | {summary.shiftCount} shifts
+                          </p>
+                        </div>
+                        <div className="scheduler-tree__header-meta">
+                          <span className={signalClass}>{signalLabel}</span>
+                          <span className="scheduler-tree__toggle">{isJobCollapsed ? "+" : "-"}</span>
+                        </div>
+                      </button>
+                      {!isJobCollapsed ? (
+                        <>
+                          {job.stages.map((stage) => {
+                            const stageKey = `${job.id}:${stage.id}`;
+                            const isStageCollapsed = collapsedStages[stageKey] ?? false;
+                            const unscheduledCount = stage.activities.filter((activity) => activity.shifts.length === 0).length;
+
+                            return (
+                              <div key={stage.id} className="scheduler-tree__branch">
+                                <button
+                                  type="button"
+                                  className="scheduler-tree__stage"
+                                  onClick={() =>
+                                    setCollapsedStages((current) => ({
+                                      ...current,
+                                      [stageKey]: !isStageCollapsed
+                                    }))
+                                  }
+                                >
+                                  <div>
+                                    <strong>{stage.name}</strong>
+                                    <p className="muted-text">{stage.activities.length} activities</p>
+                                  </div>
+                                  <div className="scheduler-tree__header-meta">
+                                    <span className="pill pill--slate">{unscheduledCount} unscheduled</span>
+                                    <span className="scheduler-tree__toggle">{isStageCollapsed ? "+" : "-"}</span>
+                                  </div>
+                                </button>
+                                {!isStageCollapsed
+                                  ? stage.activities.map((activity) => (
+                                      <button
+                                        key={activity.id}
+                                        type="button"
+                                        className={`scheduler-tree__leaf${plannerFocus?.activityId === activity.id ? " scheduler-tree__leaf--active" : ""}`}
+                                        onClick={() =>
+                                          setShiftForm((current) => ({
+                                            ...current,
+                                            jobId: job.id,
+                                            jobStageId: stage.id,
+                                            jobActivityId: activity.id,
+                                            title: current.title || activity.name
+                                          }))
+                                        }
+                                      >
+                                        <div className="split-header">
+                                          <strong>{activity.name}</strong>
+                                          <span className="pill pill--slate">{activity.shifts.length} shifts</span>
+                                        </div>
+                                        <p className="muted-text">
+                                          {activity.owner
+                                            ? `Owner ${activity.owner.firstName} ${activity.owner.lastName}`
+                                            : "No explicit owner"}
+                                        </p>
+                                        <p className="muted-text">
+                                          {activity.shifts.length
+                                            ? `${activity.shifts.filter((shift) => shift.conflicts.length === 0).length} ready`
+                                            : "No shifts yet"}
+                                        </p>
+                                      </button>
+                                    ))
+                                  : null}
+                              </div>
+                            );
+                          })}
+                        </>
+                      ) : null}
+                    </>
                   );
                 })()}
-                {job.stages.map((stage) => (
-                  <div key={stage.id} className="scheduler-tree__branch">
-                    <div className="split-header">
-                      <span>{stage.name}</span>
-                      <span className="muted-text">
-                        {stage.activities.filter((activity) => activity.shifts.length === 0).length} unscheduled
-                      </span>
-                    </div>
-                    {job.stages
-                      .find((item) => item.id === stage.id)
-                      ?.activities.map((activity) => (
-                        <button
-                          key={activity.id}
-                          type="button"
-                          className="scheduler-tree__leaf"
-                          onClick={() =>
-                            setShiftForm((current) => ({
-                              ...current,
-                              jobId: job.id,
-                              jobStageId: stage.id,
-                              jobActivityId: activity.id,
-                              title: current.title || activity.name
-                            }))
-                          }
-                          style={
-                            plannerFocus?.activityId === activity.id
-                              ? {
-                                  borderColor: "#1f6fb2",
-                                  boxShadow: "inset 3px 0 0 #1f6fb2",
-                                  background: "#f4f9fd"
-                                }
-                              : undefined
-                          }
-                        >
-                          {activity.name} ({activity.shifts.length})
-                          {activity.owner ? (
-                            <span className="muted-text"> · owner {activity.owner.firstName} {activity.owner.lastName}</span>
-                          ) : null}
-                          {activity.shifts.length ? (
-                            <span className="muted-text">
-                              {" "}
-                              · {activity.shifts.filter((shift) => shift.conflicts.length === 0).length} ready
-                            </span>
-                          ) : (
-                            <span className="muted-text"> · no shifts</span>
-                          )}
-                        </button>
-                      ))}
-                  </div>
-                ))}
               </div>
             ))}
           </div>
         </AppCard>
 
         <AppCard
-          title={viewMode === "timeline" ? "Timeline Workspace" : "Calendar Workspace"}
+          title={viewMode === "timeline" ? "Timeline Workspace" : viewMode === "calendar" ? "Calendar Workspace" : "Program Workspace"}
           subtitle={
             shiftOwnershipFilter === "MY_SHIFTS"
               ? `Focused on shifts led by you${myShiftCount ? ` (${myShiftCount})` : ""}`
@@ -1163,26 +1490,201 @@ export function SchedulerPage() {
               ) : null}
               <button type="submit">Create Shift</button>
             </form>
+            {viewMode === "gantt" ? (
+              <div className="scheduler-gantt-shell">
+                <div className="scheduler-matrix-toolbar">
+                  <div>
+                    <strong>{monthAnchor.toLocaleDateString([], { month: "long", year: "numeric" })}</strong>
+                    <p className="muted-text">
+                      Program view across stages, using the same monthly window as the allocation matrix.
+                    </p>
+                  </div>
+                  <div className="inline-fields">
+                    <button type="button" className="tab-button" onClick={() => setMonthAnchor((current) => addMonths(current, -1))}>
+                      Previous month
+                    </button>
+                    <button type="button" className="tab-button" onClick={() => setMonthAnchor(startOfMonth(new Date()))}>
+                      This month
+                    </button>
+                    <button type="button" className="tab-button" onClick={() => setMonthAnchor((current) => addMonths(current, 1))}>
+                      Next month
+                    </button>
+                  </div>
+                </div>
 
-            <div className={viewMode === "timeline" ? "scheduler-timeline" : "scheduler-calendar"}>
-              {visibleShifts.map((shift) => (
-                <button
-                  key={shift.id}
-                  type="button"
-                  className={`${conflictClass(shift)}${selectedShift?.id === shift.id ? " tab-button--active" : ""}`}
-                  onClick={() => setSelectedShift(shift)}
-                >
-                  <strong>{shift.title}</strong>
-                  <span>{new Date(shift.startAt).toLocaleString()} - {new Date(shift.endAt).toLocaleTimeString()}</span>
-                  <span>{shift.workerAssignments.length} workers / {shift.assetAssignments.length} assets</span>
-                  <span>{shift.roleRequirements.map((requirement) => `${requirement.roleLabel}${requirement.competency ? ` - ${requirement.competency.name}` : ""}`).join(", ") || "No role requirements"}</span>
-                  <span className={getShiftSignalClass(shift)}>
-                    {shift.conflicts.map((conflict) => conflict.code).join(", ") || "Ready"}
-                  </span>
-                  {selectedShift?.id === shift.id ? <span className="pill pill--blue">Focused shift</span> : null}
-                </button>
-              ))}
-            </div>
+                <div className="scheduler-gantt">
+                  <div className="scheduler-gantt__header scheduler-gantt__header--stub">
+                    <span>Stage program</span>
+                  </div>
+                  {monthDays.map((day) => (
+                    <div key={`gantt-${day.key}`} className="scheduler-gantt__header">
+                      <strong>{day.dayNumber}</strong>
+                      <span>{day.shortLabel}</span>
+                    </div>
+                  ))}
+
+                  {ganttRows.map((row) => (
+                    <Fragment key={row.id}>
+                      <div className="scheduler-gantt__label">
+                        <strong>{row.label}</strong>
+                        <span>{row.meta}</span>
+                        <small>{row.activityOwnerLabel}</small>
+                      </div>
+                      <button
+                        type="button"
+                        className="scheduler-gantt__track"
+                        style={{ gridColumn: `2 / span ${monthDays.length}` }}
+                        onClick={() => {
+                          if (row.shiftId) {
+                            const shift = allShifts.find((item) => item.id === row.shiftId);
+                            if (shift) {
+                              setSelectedShift(shift);
+                              setViewMode("timeline");
+                              return;
+                            }
+                          }
+
+                          const stageJob = jobs.find((job) => job.stages.some((stage) => stage.id === row.stageId));
+                          const stage = stageJob?.stages.find((item) => item.id === row.stageId);
+                          const firstActivity = stage?.activities[0];
+                          if (stageJob && stage && firstActivity) {
+                            setShiftForm((current) => ({
+                              ...current,
+                              jobId: stageJob.id,
+                              jobStageId: stage.id,
+                              jobActivityId: firstActivity.id,
+                              title: current.title || firstActivity.name
+                            }));
+                          }
+                        }}
+                      >
+                        <span
+                          className={`scheduler-gantt__bar scheduler-gantt__bar--${row.tone}`}
+                          style={{
+                            left: `calc(${((row.startDay - 1) / monthDays.length) * 100}% + 4px)`,
+                            width: `calc(${(row.spanDays / monthDays.length) * 100}% - 8px)`
+                          }}
+                        >
+                          {row.barLabel}
+                        </span>
+                      </button>
+                    </Fragment>
+                  ))}
+                </div>
+              </div>
+            ) : planningMode === "monthly" ? (
+              <div className="scheduler-matrix-shell">
+                <div className="scheduler-matrix-toolbar">
+                  <div>
+                    <strong>{monthAnchor.toLocaleDateString([], { month: "long", year: "numeric" })}</strong>
+                    <p className="muted-text">
+                      {resourceView === "project"
+                        ? "Activity rows with day-by-day shift density"
+                        : "Ownership rows showing who carries the monthly workload"}
+                    </p>
+                  </div>
+                  <div className="inline-fields">
+                    <button type="button" className="tab-button" onClick={() => setMonthAnchor((current) => addMonths(current, -1))}>
+                      Previous month
+                    </button>
+                    <button type="button" className="tab-button" onClick={() => setMonthAnchor(startOfMonth(new Date()))}>
+                      This month
+                    </button>
+                    <button type="button" className="tab-button" onClick={() => setMonthAnchor((current) => addMonths(current, 1))}>
+                      Next month
+                    </button>
+                  </div>
+                </div>
+
+                <div className="scheduler-matrix">
+                  <div className="scheduler-matrix__header scheduler-matrix__header--stub">
+                    <span>{resourceView === "project" ? "Activity" : "Owner"}</span>
+                  </div>
+                  {monthDays.map((day) => (
+                    <div key={day.key} className="scheduler-matrix__header">
+                      <strong>{day.dayNumber}</strong>
+                      <span>{day.shortLabel}</span>
+                    </div>
+                  ))}
+
+                  {monthlyMatrixRows.map((row) => (
+                    <Fragment key={row.id}>
+                      <div key={`${row.id}-stub`} className="scheduler-matrix__row-label">
+                        <strong>{row.label}</strong>
+                        <span>{row.meta}</span>
+                        <small>{row.shifts.length} shifts | {row.ownerLabel}</small>
+                      </div>
+                      {monthDays.map((day) => {
+                        const cellShifts = row.cells.get(day.key) ?? [];
+                        const hasRed = cellShifts.some((shift) => shift.conflicts.some((conflict) => conflict.severity === "RED"));
+                        const hasAmber = cellShifts.some(
+                          (shift) =>
+                            !shift.conflicts.some((conflict) => conflict.severity === "RED") &&
+                            shift.conflicts.some((conflict) => conflict.severity === "AMBER")
+                        );
+                        const cellClass = hasRed
+                          ? "scheduler-matrix__cell scheduler-matrix__cell--red"
+                          : hasAmber
+                            ? "scheduler-matrix__cell scheduler-matrix__cell--amber"
+                            : cellShifts.length
+                              ? "scheduler-matrix__cell scheduler-matrix__cell--green"
+                              : "scheduler-matrix__cell";
+
+                        return (
+                          <button
+                            key={`${row.id}-${day.key}`}
+                            type="button"
+                            className={cellClass}
+                            onClick={() => {
+                              if (!cellShifts.length) return;
+                              setSelectedShift(cellShifts[0]);
+                              setViewMode("timeline");
+                            }}
+                            disabled={!cellShifts.length}
+                          >
+                            {cellShifts.length ? (
+                              <>
+                                <strong>{cellShifts.length}</strong>
+                                <span>{hasRed ? "Blocked" : hasAmber ? "Watch" : "Ready"}</span>
+                              </>
+                            ) : (
+                              <span>-</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </Fragment>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className={viewMode === "timeline" ? "scheduler-timeline" : "scheduler-calendar"}>
+                {visibleShifts.map((shift) => (
+                  <button
+                    key={shift.id}
+                    type="button"
+                    className={`${conflictClass(shift)}${selectedShift?.id === shift.id ? " scheduler-block--focused" : ""}`}
+                    onClick={() => setSelectedShift(shift)}
+                  >
+                    <div className="split-header">
+                      <strong>{shift.title}</strong>
+                      {selectedShift?.id === shift.id ? <span className="pill pill--blue">Focused shift</span> : null}
+                    </div>
+                    {shiftContextById.get(shift.id) ? (
+                      <span className="scheduler-shift-meta">
+                        {shiftContextById.get(shift.id)?.job.jobNumber} | {shiftContextById.get(shift.id)?.stage.name} | {shiftContextById.get(shift.id)?.activity.name}
+                      </span>
+                    ) : null}
+                    <span>{new Date(shift.startAt).toLocaleString()} - {new Date(shift.endAt).toLocaleTimeString()}</span>
+                    <span>{shift.workerAssignments.length} workers / {shift.assetAssignments.length} assets</span>
+                    <span>{shift.roleRequirements.map((requirement) => `${requirement.roleLabel}${requirement.competency ? ` - ${requirement.competency.name}` : ""}`).join(", ") || "No role requirements"}</span>
+                    <span className={getShiftSignalClass(shift)}>
+                      {shift.conflicts.map((conflict) => conflict.code).join(", ") || "Ready"}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </AppCard>
 
@@ -1231,7 +1733,7 @@ export function SchedulerPage() {
                 <div className="split-header">
                   <strong>Why this shift is flagged</strong>
                   <span className="muted-text">
-                    {shiftConflictSummary.red.length} blocking · {shiftConflictSummary.amber.length} warning
+                    {shiftConflictSummary.red.length} blocking | {shiftConflictSummary.amber.length} warning
                   </span>
                 </div>
                 <div className="dashboard-list">
@@ -1376,7 +1878,7 @@ export function SchedulerPage() {
                 <div className="split-header">
                   <strong>Coverage guidance</strong>
                   <span className="muted-text">
-                    {shiftCoverage.assignedWorkers} workers · {shiftCoverage.assignedAssets} assets assigned
+                    {shiftCoverage.assignedWorkers} workers | {shiftCoverage.assignedAssets} assets assigned
                   </span>
                 </div>
                 <div className="tendering-focus-list tendering-focus-list--activity">

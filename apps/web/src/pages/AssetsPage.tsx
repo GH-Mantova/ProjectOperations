@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppCard } from "@project-ops/ui";
 import { useAuth } from "../auth/AuthContext";
 
@@ -86,6 +86,7 @@ export function AssetsPage() {
   const [categories, setCategories] = useState<AssetCategory[]>([]);
   const [resourceTypes, setResourceTypes] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedAsset, setSelectedAsset] = useState<AssetRecord | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -128,6 +129,52 @@ export function AssetsPage() {
   useEffect(() => {
     load().catch((loadError) => setError((loadError as Error).message));
   }, []);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem("project-ops-asset-groups");
+    if (!saved) return;
+
+    try {
+      setCollapsedGroups(JSON.parse(saved) as Record<string, boolean>);
+    } catch {
+      // Ignore invalid persisted state.
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("project-ops-asset-groups", JSON.stringify(collapsedGroups));
+  }, [collapsedGroups]);
+
+  const groupedAssets = useMemo(() => {
+    const groups = new Map<string, AssetRecord[]>();
+
+    assets.forEach((asset) => {
+      const key = asset.category?.name ?? asset.resourceType?.name ?? "Uncategorised";
+      const existing = groups.get(key) ?? [];
+      existing.push(asset);
+      groups.set(key, existing);
+    });
+
+    return Array.from(groups.entries())
+      .map(([label, items]) => ({
+        label,
+        items: [...items].sort((left, right) => left.name.localeCompare(right.name))
+      }))
+      .sort((left, right) => right.items.length - left.items.length || left.label.localeCompare(right.label));
+  }, [assets]);
+
+  const assetSummary = useMemo(
+    () => ({
+      available: assets.filter((asset) => asset.status === "AVAILABLE").length,
+      maintenanceRisk: assets.filter(
+        (asset) =>
+          asset.maintenanceSummary?.schedulerImpact === "WARN" ||
+          asset.maintenanceSummary?.schedulerImpact === "BLOCK"
+      ).length,
+      assigned: assets.filter((asset) => asset.shiftAssignments.length > 0).length
+    }),
+    [assets]
+  );
 
   const searchAssets = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -182,8 +229,26 @@ export function AssetsPage() {
       {error ? <p className="error-text">{error}</p> : null}
 
       <div className="crm-page__sidebar">
-        <AppCard title="Asset Register" subtitle="Schedulable plant and equipment with live assignment visibility">
+        <AppCard title="Asset Register" subtitle="Grouped plant and equipment rail for fast scheduling review">
           <div className="scheduler-pane">
+            <div className="module-summary-grid">
+              <div className="module-summary-card">
+                <strong>{assets.length}</strong>
+                <span>Assets in scope</span>
+              </div>
+              <div className="module-summary-card">
+                <strong>{assetSummary.available}</strong>
+                <span>Available</span>
+              </div>
+              <div className="module-summary-card">
+                <strong>{assetSummary.assigned}</strong>
+                <span>On shifts</span>
+              </div>
+              <div className="module-summary-card">
+                <strong>{assetSummary.maintenanceRisk}</strong>
+                <span>Need maintenance review</span>
+              </div>
+            </div>
             <form className="admin-form subsection" onSubmit={searchAssets}>
               <div className="compact-filter-grid">
                 <label>
@@ -219,21 +284,60 @@ export function AssetsPage() {
             </form>
 
             <div className="dashboard-list dashboard-list--capped">
-              {assets.map((asset) => (
-                <button key={asset.id} type="button" className="asset-record" onClick={() => openAsset(asset.id)}>
-                  <div>
-                    <strong>{asset.name}</strong>
-                    <p className="muted-text">
-                      {asset.assetCode} {asset.serialNumber ? `| ${asset.serialNumber}` : ""}
-                    </p>
-                  </div>
-                  <div className="asset-record__meta">
-                    <span className={asset.status === "AVAILABLE" ? "pill pill--green" : "pill pill--amber"}>{asset.status}</span>
-                    <span className="muted-text">{asset.category?.name ?? asset.resourceType?.name ?? "Uncategorised"}</span>
-                    <span className="muted-text">{asset.maintenanceSummary?.maintenanceState ?? "No maintenance summary"}</span>
-                  </div>
-                </button>
-              ))}
+              {groupedAssets.map((group) => {
+                const groupKey = group.label.toLowerCase().replace(/\s+/g, "-");
+                const isCollapsed = collapsedGroups[groupKey] ?? false;
+
+                return (
+                  <section key={group.label} className="planner-group">
+                    <button
+                      type="button"
+                      className="planner-group__header"
+                      onClick={() =>
+                        setCollapsedGroups((current) => ({
+                          ...current,
+                          [groupKey]: !isCollapsed
+                        }))
+                      }
+                    >
+                      <div>
+                        <strong>{group.label}</strong>
+                        <p className="muted-text">{group.items.length} assets</p>
+                      </div>
+                      <span className="planner-group__toggle">{isCollapsed ? "+" : "-"}</span>
+                    </button>
+                    {!isCollapsed ? (
+                      <div className="planner-group__body">
+                        {group.items.map((asset) => (
+                          <button
+                            key={asset.id}
+                            type="button"
+                            className={`planner-list-card${selectedAsset?.id === asset.id ? " planner-list-card--active" : ""}`}
+                            onClick={() => openAsset(asset.id)}
+                          >
+                            <div className="split-header">
+                              <strong>{asset.name}</strong>
+                              <span className={asset.status === "AVAILABLE" ? "pill pill--green" : "pill pill--amber"}>
+                                {asset.status}
+                              </span>
+                            </div>
+                            <p className="muted-text">
+                              {asset.assetCode} {asset.serialNumber ? `| ${asset.serialNumber}` : ""}
+                            </p>
+                            <div className="inline-fields">
+                              <span className="pill pill--slate">{asset.shiftAssignments.length} shifts</span>
+                              <span className="muted-text">
+                                {asset.maintenanceSummary?.maintenanceState ?? "No maintenance summary"}
+                              </span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </section>
+                );
+              })}
+              {!groupedAssets.length ? <p className="module-empty-state">No assets matched the current filter.</p> : null}
             </div>
           </div>
         </AppCard>
@@ -279,6 +383,33 @@ export function AssetsPage() {
         <AppCard title="Asset Detail" subtitle="Job and shift assignment visibility">
           {selectedAsset ? (
             <div className="scheduler-pane">
+              <div className="resource-card">
+                <div className="split-header">
+                  <div>
+                    <strong>{selectedAsset.name}</strong>
+                    <p className="muted-text">
+                      {selectedAsset.assetCode}
+                      {selectedAsset.serialNumber ? ` | ${selectedAsset.serialNumber}` : ""}
+                      {selectedAsset.category?.name ? ` | ${selectedAsset.category.name}` : ""}
+                    </p>
+                  </div>
+                  <span className={selectedAsset.status === "AVAILABLE" ? "pill pill--green" : "pill pill--amber"}>
+                    {selectedAsset.status}
+                  </span>
+                </div>
+                <div className="inline-fields">
+                  <span className="pill pill--blue">
+                    {selectedAsset.shiftAssignments.length} shift assignments
+                  </span>
+                  <span className="pill pill--slate">
+                    {selectedAsset.maintenanceSummary?.maintenanceState ?? "Unknown maintenance state"}
+                  </span>
+                  <span className="muted-text">
+                    {selectedAsset.currentLocation ?? selectedAsset.homeBase ?? "Location not set"}
+                  </span>
+                </div>
+              </div>
+
               <dl className="detail-list">
                 <div>
                   <dt>Asset code</dt>
@@ -360,7 +491,7 @@ export function AssetsPage() {
                     <div>
                       <span>{document.title}</span>
                       <p className="muted-text">
-                        {document.category} {document.versionLabel ? `· ${document.versionLabel}` : ""}
+                        {document.category} {document.versionLabel ? `| ${document.versionLabel}` : ""}
                       </p>
                     </div>
                     <a href={document.fileLink?.webUrl ?? "#"} target="_blank" rel="noreferrer">

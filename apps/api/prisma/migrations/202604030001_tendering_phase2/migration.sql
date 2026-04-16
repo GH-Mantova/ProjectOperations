@@ -1,0 +1,2 @@
+-- Intentionally left blank after redesigning the Tendering phase-two slice
+-- to avoid Prisma schema changes inside the SharePoint-synced workspace.

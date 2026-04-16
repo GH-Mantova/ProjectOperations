@@ -86,25 +86,25 @@ export function DashboardPlaceholderPage() {
   const [jobs, setJobs] = useState<JobPlanningRecord[]>([]);
   const [sharedFollowUps, setSharedFollowUps] = useState<SharedFollowUpItem[]>([]);
 
+  const load = async () => {
+    const [jobsResponse, followUpsResponse] = await Promise.all([
+      authFetch("/jobs?page=1&pageSize=50"),
+      authFetch("/notifications/follow-ups/shared")
+    ]);
+
+    if (!jobsResponse.ok || !followUpsResponse.ok) {
+      setJobs([]);
+      setSharedFollowUps([]);
+      return;
+    }
+
+    const jobsData = await jobsResponse.json();
+    const followUpsData = await followUpsResponse.json();
+    setJobs(jobsData.items);
+    setSharedFollowUps(followUpsData);
+  };
+
   useEffect(() => {
-    const load = async () => {
-      const [jobsResponse, followUpsResponse] = await Promise.all([
-        authFetch("/jobs?page=1&pageSize=50"),
-        authFetch("/notifications/follow-ups/shared")
-      ]);
-
-      if (!jobsResponse.ok || !followUpsResponse.ok) {
-        setJobs([]);
-        setSharedFollowUps([]);
-        return;
-      }
-
-      const jobsData = await jobsResponse.json();
-      const followUpsData = await followUpsResponse.json();
-      setJobs(jobsData.items);
-      setSharedFollowUps(followUpsData);
-    };
-
     void load();
   }, [authFetch]);
 
@@ -315,6 +315,14 @@ export function DashboardPlaceholderPage() {
     });
   };
 
+  const updateFollowUpTriage = async (item: SharedFollowUpItem, triageState: "OPEN" | "ACKNOWLEDGED" | "WATCH") => {
+    await authFetch(`/notifications/follow-ups/${item.id}/triage`, {
+      method: "PATCH",
+      body: JSON.stringify({ triageState })
+    });
+    await load();
+  };
+
   const openExecutionItem = (item: ExecutionQueueItem) => {
     if (item.target === "scheduler") {
       navigate("/scheduler", {
@@ -406,10 +414,38 @@ export function DashboardPlaceholderPage() {
                     {item.audienceLabel}
                   </span>
                   <span className="pill pill--slate">{item.metadata?.nextOwnerLabel ?? "Team owner"}</span>
+                  <span
+                    className={`pill ${
+                      item.metadata?.triageState === "ACKNOWLEDGED"
+                        ? "pill--green"
+                        : item.metadata?.triageState === "WATCH"
+                          ? "pill--amber"
+                          : "pill--slate"
+                    }`}
+                  >
+                    {item.metadata?.triageState === "ACKNOWLEDGED"
+                      ? "I'm handling it"
+                      : item.metadata?.triageState === "WATCH"
+                        ? "Watch only"
+                        : "Open"}
+                  </span>
                 </div>
-                <button type="button" onClick={() => openSharedAction(item)}>
-                  Open action
-                </button>
+                <div className="inline-fields">
+                  <button type="button" onClick={() => openSharedAction(item)}>
+                    Open action
+                  </button>
+                  <button type="button" onClick={() => void updateFollowUpTriage(item, "ACKNOWLEDGED")}>
+                    I'm handling this
+                  </button>
+                  <button type="button" onClick={() => void updateFollowUpTriage(item, "WATCH")}>
+                    Watch only
+                  </button>
+                  {item.metadata?.triageState && item.metadata.triageState !== "OPEN" ? (
+                    <button type="button" onClick={() => void updateFollowUpTriage(item, "OPEN")}>
+                      Reset
+                    </button>
+                  ) : null}
+                </div>
               </div>
             ))}
             {!homeSignals.topActions.length ? (

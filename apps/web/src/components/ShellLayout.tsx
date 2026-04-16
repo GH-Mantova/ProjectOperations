@@ -70,17 +70,17 @@ export function ShellLayout() {
   const tenderingActive = location.pathname === "/tenders" || location.pathname.startsWith("/tenders/");
   const tenderingLabels = useMemo(() => readTenderingLabels(), [location.pathname]);
 
+  const loadSharedFollowUps = async () => {
+    const response = await authFetch("/notifications/follow-ups/shared");
+    if (!response.ok) {
+      setSharedFollowUps([]);
+      return;
+    }
+
+    setSharedFollowUps(await response.json());
+  };
+
   useEffect(() => {
-    const loadSharedFollowUps = async () => {
-      const response = await authFetch("/notifications/follow-ups/shared");
-      if (!response.ok) {
-        setSharedFollowUps([]);
-        return;
-      }
-
-      setSharedFollowUps(await response.json());
-    };
-
     void loadSharedFollowUps();
   }, [authFetch, location.pathname]);
 
@@ -132,6 +132,14 @@ export function ShellLayout() {
         }
       }
     });
+  };
+
+  const updateFollowUpTriage = async (item: SharedFollowUpItem, triageState: "OPEN" | "ACKNOWLEDGED" | "WATCH") => {
+    await authFetch(`/notifications/follow-ups/${item.id}/triage`, {
+      method: "PATCH",
+      body: JSON.stringify({ triageState })
+    });
+    await loadSharedFollowUps();
   };
 
   return (
@@ -244,9 +252,22 @@ export function ShellLayout() {
                           : "Open"}
                     </span>
                   </div>
-                  <button type="button" onClick={() => openActionCenterTarget(item)}>
-                    Open action
-                  </button>
+                  <div className="inline-fields">
+                    <button type="button" onClick={() => openActionCenterTarget(item)}>
+                      Open action
+                    </button>
+                    <button type="button" onClick={() => void updateFollowUpTriage(item, "ACKNOWLEDGED")}>
+                      I'm handling this
+                    </button>
+                    <button type="button" onClick={() => void updateFollowUpTriage(item, "WATCH")}>
+                      Watch only
+                    </button>
+                    {item.metadata?.triageState && item.metadata.triageState !== "OPEN" ? (
+                      <button type="button" onClick={() => void updateFollowUpTriage(item, "OPEN")}>
+                        Reset
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               ))}
               {!shellActionCenter.prompts.length ? (

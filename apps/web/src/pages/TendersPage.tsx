@@ -401,7 +401,7 @@ export function TendersPage({ mode = "full" }: TendersPageProps) {
       usersResult,
       jobsResult
     ] = await Promise.allSettled([
-      authFetch("/tenders"),
+      authFetch("/tenders?page=1&pageSize=100"),
       authFetch("/master-data/clients?page=1&pageSize=100"),
       authFetch("/master-data/contacts?page=1&pageSize=100"),
       authFetch("/master-data/sites?page=1&pageSize=100"),

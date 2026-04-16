@@ -396,6 +396,14 @@ export function DashboardsPage() {
     });
   };
 
+  const updateFollowUpTriage = async (item: SharedFollowUpItem, triageState: "OPEN" | "ACKNOWLEDGED" | "WATCH") => {
+    await authFetch(`/notifications/follow-ups/${item.id}/triage`, {
+      method: "PATCH",
+      body: JSON.stringify({ triageState })
+    });
+    await load();
+  };
+
   return (
     <div className="crm-page crm-page--operations">
       <div className="crm-page__sidebar">
@@ -450,10 +458,38 @@ export function DashboardsPage() {
                       {item.audienceLabel}
                     </span>
                     <span className="pill pill--slate">{item.metadata?.nextOwnerLabel ?? "Team owner"}</span>
+                    <span
+                      className={`pill ${
+                        item.metadata?.triageState === "ACKNOWLEDGED"
+                          ? "pill--green"
+                          : item.metadata?.triageState === "WATCH"
+                            ? "pill--amber"
+                            : "pill--slate"
+                      }`}
+                    >
+                      {item.metadata?.triageState === "ACKNOWLEDGED"
+                        ? "I'm handling it"
+                        : item.metadata?.triageState === "WATCH"
+                          ? "Watch only"
+                          : "Open"}
+                    </span>
                   </div>
-                  <button type="button" onClick={() => openFollowUpFromDashboard(item)}>
-                    Open action
-                  </button>
+                  <div className="inline-fields">
+                    <button type="button" onClick={() => openFollowUpFromDashboard(item)}>
+                      Open action
+                    </button>
+                    <button type="button" onClick={() => void updateFollowUpTriage(item, "ACKNOWLEDGED")}>
+                      I'm handling this
+                    </button>
+                    <button type="button" onClick={() => void updateFollowUpTriage(item, "WATCH")}>
+                      Watch only
+                    </button>
+                    {item.metadata?.triageState && item.metadata.triageState !== "OPEN" ? (
+                      <button type="button" onClick={() => void updateFollowUpTriage(item, "OPEN")}>
+                        Reset
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               ))}
               {!dashboardActionCenter.prompts.length ? (

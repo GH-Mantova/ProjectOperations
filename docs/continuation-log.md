@@ -765,3 +765,96 @@ So the honest state is:
 2. If another polish pass is needed, target the smallest remaining visual inconsistencies rather than reworking already-strong modules.
 
 3. If product development resumes instead of hardening, continue from the coordination/ownership spine rather than circling back into module foundation work.
+
+---
+
+# Update - 2026-04-16 (Follow-up Hardening Pass + Action Surface Controls)
+
+## What Was Done
+
+Completed another full sanity pass, fixed a real Tendering register regression, re-ran the live browser suite successfully, and then resumed development by turning the shell/home/dashboard action surfaces into true triage points rather than read-only summaries.
+
+## Real Regression Fixed
+
+### Tendering register was silently truncating the live pipeline
+
+Found in:
+- [TendersPage.tsx](C:\Dev\ProjectOperations\apps\web\src\pages\TendersPage.tsx)
+
+Root cause:
+- the Tendering page was loading `/tenders` without an explicit page size
+- the API default page size only returned the first 10 records
+- that meant the board/list/forecast UI quietly hid older live tenders even though the module had no pagination affordance
+- this also caused the Tendering Playwright suite to fail in realistic runtime conditions because:
+  - the `OVER_70` filter could collapse to zero records inside the truncated dataset
+  - the expected seeded tender `Western corridor traffic switch` could exist in the database but not in the UI response
+
+Fix:
+- changed the Tendering register load path to request:
+  - `/tenders?page=1&pageSize=100`
+
+Outcome:
+- the full working pipeline is now visible again
+- board/list/forecast behavior is consistent with what users expect
+- the Tendering browser suite returned to green
+
+## Development Resumed After Hardening
+
+### Shell / Home / Dashboards are now actionable, not just informative
+
+Updated:
+- [ShellLayout.tsx](C:\Dev\ProjectOperations\apps\web\src\components\ShellLayout.tsx)
+- [DashboardPlaceholderPage.tsx](C:\Dev\ProjectOperations\apps\web\src\pages\DashboardPlaceholderPage.tsx)
+- [DashboardsPage.tsx](C:\Dev\ProjectOperations\apps\web\src\pages\DashboardsPage.tsx)
+
+What changed:
+- the shared live follow-up feed shown in the shell `Action Center` can now be triaged directly
+- the `Priority Actions` section on the Overview / home page can now be triaged directly
+- the `Action center snapshot` section in Dashboards can now be triaged directly
+
+Supported actions from those surfaces now include:
+- `Open action`
+- `I'm handling this`
+- `Watch only`
+- `Reset`
+
+This means:
+- users no longer need to go into Notifications for every small coordination acknowledgment
+- home/dashboard/shell surfaces now work as real daily control points
+- the shared follow-up engine remains the source of truth, but top-level ERP surfaces are now better aligned with how people actually work
+
+## Validation Results
+
+Passing in this pass:
+- `pnpm --filter @project-ops/api build`
+- `pnpm test:api:serial`
+- `node .\\node_modules\\typescript\\bin\\tsc -p . --noEmit` from [apps/web](C:\Dev\ProjectOperations\apps\web)
+- `pnpm test:web:logic`
+- `pnpm compliance:smoke`
+- `pnpm test:tendering:e2e:reuse`
+
+Browser result:
+- Tendering reuse-runtime E2E is green again
+- latest live result:
+  - `18 passed`
+
+## Current State After This Pass
+
+- Tendering register no longer silently drops live records because of backend default pagination
+- Tendering board/list/forecast behavior is back in line with the actual live dataset
+- the full Tendering browser suite is passing again
+- shell/home/dashboard coordination surfaces are now writable triage points, not passive visibility panels
+- the cross-module operational spine is stronger and more usable:
+  - Shell -> Jobs / Documents
+  - Overview -> Jobs / Scheduler / Notifications / Dashboards
+  - Dashboards -> Jobs / Documents / Scheduler
+  - Notifications -> Jobs / Documents
+  - Jobs <-> Scheduler
+
+## Best Next Steps
+
+1. If development continues, keep building from the coordination / execution spine rather than revisiting stable foundations.
+2. The strongest next product step is to extend shared triage farther into ownership workflows:
+   - expose direct reassignment or acknowledgment for execution queue items themselves
+   - continue tightening the daily-use surfaces rather than adding disconnected module features
+3. If another polish pass is needed later, focus only on small remaining visual inconsistencies rather than any broad redesign.

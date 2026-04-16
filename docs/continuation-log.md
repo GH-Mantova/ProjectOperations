@@ -858,3 +858,54 @@ Browser result:
    - expose direct reassignment or acknowledgment for execution queue items themselves
    - continue tightening the daily-use surfaces rather than adding disconnected module features
 3. If another polish pass is needed later, focus only on small remaining visual inconsistencies rather than any broad redesign.
+
+---
+
+# Update - 2026-04-16 (Roadmap Refresh + Execution Queue Direct Actions)
+
+## Documentation Updated
+
+Updated:
+- [tendering-pipedrive-roadmap.txt](C:\Dev\ProjectOperations\docs\tendering-pipedrive-roadmap.txt)
+- [continuation-log.md](C:\Dev\ProjectOperations\docs\continuation-log.md)
+
+What changed in the roadmap:
+- clarified that Tendering is now a stable pilot-ready baseline
+- added a broader platform development note so the roadmap reflects the current multi-module operational spine
+- recorded that the main product direction is now execution / coordination maturity rather than isolated Tendering redesign
+- added the current next-stage priority order:
+  - deeper execution-queue actions
+  - stronger ownership workflows
+  - document continuity maturity
+  - online rollout preparation
+
+## Development Resumed
+
+### Home and Dashboards execution queues can now move work forward directly
+
+Updated:
+- [DashboardPlaceholderPage.tsx](C:\Dev\ProjectOperations\apps\web\src\pages\DashboardPlaceholderPage.tsx)
+- [DashboardsPage.tsx](C:\Dev\ProjectOperations\apps\web\src\pages\DashboardsPage.tsx)
+
+What changed:
+- execution queue items now carry enough activity context to support direct top-surface actions
+- owned activity items on Home and Dashboards can now:
+  - `Mark Active`
+  - `Log progress`
+- items that still need planner intervention continue to route into Scheduler
+- items already in a Jobs-ready state can now be advanced from the top surfaces without forcing a deeper page transition first
+
+What this means:
+- the product has moved one step further from visibility-only coordination into lightweight direct execution
+- activity owners can now progress owned work from the surfaces they are most likely to open first
+- the execution queue is becoming a real daily work surface rather than just a navigation layer
+
+## Suggested Next Product Step
+
+The strongest next step after this change is:
+- extend the same direct-action model to shift leads and escalation flows
+
+Examples:
+- acknowledge or escalate a blocked shift directly from top-level execution surfaces
+- add lightweight "waiting on planner" / "handoff complete" actions
+- keep deep module pages for richer work, but continue pulling the most common daily actions upward

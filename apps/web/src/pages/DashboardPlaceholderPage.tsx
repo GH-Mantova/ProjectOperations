@@ -14,6 +14,8 @@ type JobPlanningRecord = {
     activities: Array<{
       id: string;
       name: string;
+      status: string;
+      plannedDate?: string | null;
       owner?: {
         id: string;
         firstName: string;
@@ -60,6 +62,9 @@ type ExecutionQueueItem = {
   stageName: string;
   activityId: string;
   activityName: string;
+  activityStatus: string;
+  activityPlannedDate?: string | null;
+  activityOwnerId?: string;
   shiftId?: string;
   shiftTitle?: string;
   stateLabel: "Blocked" | "Warning" | "Needs planning" | "Ready to update";
@@ -154,6 +159,9 @@ export function DashboardPlaceholderPage() {
                 stageName: stage.name,
                 activityId: activity.id,
                 activityName: activity.name,
+                activityStatus: activity.status,
+                activityPlannedDate: activity.plannedDate ?? null,
+                activityOwnerId: activity.owner?.id,
                 shiftId: activity.shifts[0]?.id,
                 shiftTitle: activity.shifts[0]?.title ?? undefined,
                 stateLabel:
@@ -207,6 +215,9 @@ export function DashboardPlaceholderPage() {
                   stageName: stage.name,
                   activityId: activity.id,
                   activityName: activity.name,
+                  activityStatus: activity.status,
+                  activityPlannedDate: activity.plannedDate ?? null,
+                  activityOwnerId: activity.owner?.id,
                   shiftId: shift.id,
                   shiftTitle: shift.title,
                   stateLabel: shift.conflicts.some((conflict) => conflict.severity === "RED")
@@ -351,6 +362,32 @@ export function DashboardPlaceholderPage() {
     });
   };
 
+  const updateExecutionItem = async (item: ExecutionQueueItem, action: "mark-active" | "log-progress") => {
+    if (action === "mark-active") {
+      await authFetch(`/jobs/${item.jobId}/activities/${item.activityId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          jobStageId: item.stageId,
+          name: item.activityName,
+          status: "ACTIVE",
+          plannedDate: item.activityPlannedDate ?? undefined,
+          ownerUserId: item.activityOwnerId ?? user?.id ?? undefined
+        })
+      });
+    } else {
+      await authFetch(`/jobs/${item.jobId}/progress-entries`, {
+        method: "POST",
+        body: JSON.stringify({
+          entryType: "DAILY_NOTE",
+          entryDate: new Date().toISOString().slice(0, 10),
+          summary: `Execution update for ${item.activityName}: progress reviewed from Overview.`
+        })
+      });
+    }
+
+    await load();
+  };
+
   return (
     <div className="crm-page crm-page--operations">
       <div className="crm-page__sidebar">
@@ -472,9 +509,23 @@ export function DashboardPlaceholderPage() {
                     {item.target === "scheduler" ? "Best handled in Scheduler" : "Best handled in Jobs"}
                   </span>
                 </div>
-                <button type="button" onClick={() => openExecutionItem(item)}>
-                  {item.target === "scheduler" ? "Open in Scheduler" : "Open in Jobs"}
-                </button>
+                <div className="inline-fields">
+                  <button type="button" onClick={() => openExecutionItem(item)}>
+                    {item.target === "scheduler" ? "Open in Scheduler" : "Open in Jobs"}
+                  </button>
+                  {item.target === "jobs" ? (
+                    <>
+                      {item.activityStatus === "PLANNED" ? (
+                        <button type="button" onClick={() => void updateExecutionItem(item, "mark-active")}>
+                          Mark Active
+                        </button>
+                      ) : null}
+                      <button type="button" onClick={() => void updateExecutionItem(item, "log-progress")}>
+                        Log progress
+                      </button>
+                    </>
+                  ) : null}
+                </div>
               </div>
             ))}
             {!homeSignals.executionQueue.length ? (

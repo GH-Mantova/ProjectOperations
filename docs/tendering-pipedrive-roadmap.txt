@@ -232,3 +232,53 @@ Recommended Instruction For The Next AI Agent
    - then use the priority order above
 
 5. Do not update the continuation log unless the user explicitly asks.
+
+Broader Platform Development Note
+
+Tendering is no longer the only high-priority work surface in the product.
+The app has now moved into a wider operational coordination stage across:
+
+- Home / Overview
+- Shell action center
+- Dashboards
+- Notifications
+- Jobs
+- Scheduler
+- Documents
+
+Current platform direction:
+
+1. Keep Tendering stable and pilot-ready.
+2. Continue strengthening the execution / coordination spine.
+3. Prefer work that reduces daily operational friction across modules over isolated feature growth in one module.
+
+What has now been added beyond the original Tendering roadmap:
+
+- shared live follow-up engine
+- triage states and triage history
+- owner-aware and user-aware coordination prompts
+- execution-level ownership signals
+- action-center visibility in the shell, home, dashboards, and notifications
+- direct top-surface triage controls
+- direct execution-queue actions from home and dashboards for owned work
+
+Recommended next platform priority after the current state:
+
+1. Deepen execution-queue actions
+   - richer direct updates for activity owners and shift leads
+   - lightweight escalation and handoff from top-level surfaces
+
+2. Strengthen ownership workflows
+   - explicit reassignment history
+   - clearer backup ownership
+   - stronger alignment between follow-up ownership and operational record ownership
+
+3. Continue document continuity
+   - stage-aware job document expectations
+   - clearer missing-deliverable prompts
+
+4. Prepare for online rollout
+   - production hosting
+   - production database
+   - pilot user rollout
+   - SharePoint-backed operational file continuity later

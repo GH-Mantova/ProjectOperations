@@ -9,6 +9,32 @@ jobs:
   tendering-e2e:
     timeout-minutes: 60
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: project_operations
+          POSTGRES_USER: project_ops
+          POSTGRES_PASSWORD: project_ops
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U project_ops -d project_operations"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://project_ops:project_ops@localhost:5432/project_operations?schema=public
+      API_PORT: 3000
+      API_PREFIX: api/v1
+      JWT_ACCESS_SECRET: replace-me-access
+      JWT_REFRESH_SECRET: replace-me-refresh
+      JWT_ACCESS_TTL: 15m
+      JWT_REFRESH_TTL: 7d
+      SHAREPOINT_MODE: mock
+      SHAREPOINT_SITE_ID: project-operations-site
+      SHAREPOINT_LIBRARY_ID: project-operations-library
+      SHAREPOINT_ROOT_FOLDER: Project Operations
 
     steps:
       - uses: actions/checkout@v4
@@ -27,6 +53,12 @@ jobs:
 
       - name: Generate Prisma client
         run: pnpm --dir apps/api exec prisma generate
+
+      - name: Apply Prisma migrations
+        run: pnpm --dir apps/api exec prisma migrate deploy
+
+      - name: Seed database
+        run: pnpm --filter @project-ops/api seed
 
       - name: Validate API build
         run: pnpm --filter @project-ops/api build

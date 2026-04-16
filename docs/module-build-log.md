@@ -378,3 +378,18 @@ Known limitations:
 - the compliance runner is a smoke test, not an exhaustive UI automation suite
 - SharePoint interactions are still mock-backed, so document verification covers integration flow and metadata rather than live Microsoft Graph file transfer
 - scheduler interactions are still API-driven in the compliance pass rather than browser drag-and-drop automation
+
+## Post-Module Hardening Notes
+
+After the main module sequence, the project received additional Tendering-focused hardening and rollout work that is not captured as a separate numbered module.
+
+Highlights:
+
+- Tendering was reshaped toward a more CRM-style `Dashboard / Pipeline / Create / Workspace` flow
+- board / list / forecast register surfaces were strengthened
+- unified Tendering activity handling was introduced over notes / clarifications / follow-ups
+- stakeholder role/note context and communication queue behavior were added to the Tendering workspace
+- local Playwright browser coverage was extended across the major Tendering flows
+- cross-platform Playwright startup compatibility was later merged into `main`
+
+This means the module list above is accurate for implementation coverage, but the current Tendering experience is materially more mature than the original Module 5 baseline described earlier in this file.

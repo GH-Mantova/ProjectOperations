@@ -49,6 +49,7 @@ export class CreateJobActivityDto {
   @IsOptional() @IsString() status?: string;
   @IsOptional() @IsDateString() plannedDate?: string;
   @IsOptional() @IsString() notes?: string;
+  @IsOptional() @IsString() ownerUserId?: string;
 }
 
 export class UpdateJobActivityDto extends CreateJobActivityDto {}

@@ -1,6 +1,10 @@
 import { SchedulerService } from "./scheduler.service";
 
 describe("SchedulerService", () => {
+  const notificationsServiceMock = {
+    refreshLiveFollowUps: jest.fn()
+  };
+
   it("adds an amber conflict when a shift has partial assignments", async () => {
     const createMany = jest.fn();
     const service = new SchedulerService(
@@ -20,7 +24,8 @@ describe("SchedulerService", () => {
           createMany
         }
       } as never,
-      { write: jest.fn() } as never
+      { write: jest.fn() } as never,
+      notificationsServiceMock as never
     );
 
     await service["refreshConflicts"]("shift-1");

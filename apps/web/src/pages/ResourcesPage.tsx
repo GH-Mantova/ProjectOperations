@@ -54,6 +54,12 @@ export function ResourcesPage() {
     () => workers.map((worker) => ({ id: worker.id, label: `${worker.firstName} ${worker.lastName}` })),
     [workers]
   );
+  const unavailableWorkers = workers.filter((worker) =>
+    worker.availabilityWindows.some((entry) => entry.status === "UNAVAILABLE")
+  ).length;
+  const reviewSuitabilityCount = workers.filter((worker) =>
+    worker.roleSuitabilities.some((entry) => entry.suitability === "REVIEW" || entry.suitability === "UNSUITABLE")
+  ).length;
 
   const submitAvailability = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -95,131 +101,150 @@ export function ResourcesPage() {
   };
 
   return (
-    <div className="stack-grid">
+    <div className="crm-page crm-page--operations">
       {error ? <p className="error-text">{error}</p> : null}
 
-      <AppCard title="Resource Directory" subtitle="Worker skills, availability, and assignment suitability">
-        <div className="scheduler-pane">
-          <form className="admin-form" onSubmit={runSearch}>
-            <label>
-              Search workers
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name or employee code" />
-            </label>
-            <button type="submit">Search</button>
-          </form>
-
-          <div className="dashboard-list">
-            {workers.map((worker) => (
-              <div key={worker.id} className="resource-card">
-                <div className="split-header">
-                  <div>
-                    <strong>{worker.firstName} {worker.lastName}</strong>
-                    <p className="muted-text">
-                      {worker.employeeCode ?? "No code"} · {worker.resourceType?.name ?? "Worker"}
-                    </p>
-                  </div>
-                </div>
-                <div className="resource-tags">
-                  {worker.competencies.map((entry) => (
-                    <span key={entry.competency.id} className="resource-tag">
-                      {entry.competency.name}
-                    </span>
-                  ))}
-                  {worker.competencies.length === 0 ? <span className="muted-text">No competencies recorded</span> : null}
-                </div>
-                <div className="detail-list">
-                  <div>
-                    <dt>Availability</dt>
-                    <dd>
-                      {worker.availabilityWindows[0]
-                        ? `${worker.availabilityWindows[0].status} until ${new Date(worker.availabilityWindows[0].endAt).toLocaleString()}`
-                        : "No windows configured"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Role Suitability</dt>
-                    <dd>
-                      {worker.roleSuitabilities[0]
-                        ? `${worker.roleSuitabilities[0].roleLabel}: ${worker.roleSuitabilities[0].suitability}`
-                        : "No suitability records"}
-                    </dd>
-                  </div>
-                </div>
+      <div className="crm-page__sidebar">
+        <AppCard title="Resource Directory" subtitle="Worker skills, availability, and assignment suitability">
+          <div className="stack-grid">
+            <div className="module-summary-grid">
+              <div className="module-summary-card">
+                <strong>{workers.length}</strong>
+                <span>Workers in scope</span>
               </div>
-            ))}
+              <div className="module-summary-card">
+                <strong>{unavailableWorkers}</strong>
+                <span>Unavailable right now</span>
+              </div>
+              <div className="module-summary-card">
+                <strong>{reviewSuitabilityCount}</strong>
+                <span>Coverage risks to review</span>
+              </div>
+            </div>
+
+            <form className="admin-form subsection" onSubmit={runSearch}>
+              <label>
+                Search workers
+                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name or employee code" />
+              </label>
+              <button type="submit">Search</button>
+            </form>
+
+            <div className="dashboard-list dashboard-list--capped">
+              {workers.length ? workers.map((worker) => (
+                <div key={worker.id} className="resource-card">
+                  <div className="split-header">
+                    <div>
+                      <strong>{worker.firstName} {worker.lastName}</strong>
+                      <p className="muted-text">
+                        {worker.employeeCode ?? "No code"} | {worker.resourceType?.name ?? "Worker"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="resource-tags">
+                    {worker.competencies.map((entry) => (
+                      <span key={entry.competency.id} className="resource-tag">
+                        {entry.competency.name}
+                      </span>
+                    ))}
+                    {worker.competencies.length === 0 ? <span className="muted-text">No competencies recorded</span> : null}
+                  </div>
+                  <div className="detail-list">
+                    <div>
+                      <dt>Availability</dt>
+                      <dd>
+                        {worker.availabilityWindows[0]
+                          ? `${worker.availabilityWindows[0].status} until ${new Date(worker.availabilityWindows[0].endAt).toLocaleString()}`
+                          : "No windows configured"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Role Suitability</dt>
+                      <dd>
+                        {worker.roleSuitabilities[0]
+                          ? `${worker.roleSuitabilities[0].roleLabel}: ${worker.roleSuitabilities[0].suitability}`
+                          : "No suitability records"}
+                      </dd>
+                    </div>
+                  </div>
+                </div>
+              )) : <p className="module-empty-state">No workers matched the current search.</p>}
+            </div>
           </div>
+        </AppCard>
+      </div>
+
+      <div className="crm-page__main">
+        <div className="compact-two-up">
+          <AppCard title="Availability Windows" subtitle="Capture leave, training, or blocked periods">
+            <form className="admin-form" onSubmit={submitAvailability}>
+              <label>
+                Worker
+                <select value={availabilityForm.workerId} onChange={(event) => setAvailabilityForm({ ...availabilityForm, workerId: event.target.value })}>
+                  <option value="">Select worker</option>
+                  {workerOptions.map((worker) => (
+                    <option key={worker.id} value={worker.id}>
+                      {worker.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Start
+                <input type="datetime-local" value={availabilityForm.startAt} onChange={(event) => setAvailabilityForm({ ...availabilityForm, startAt: event.target.value })} />
+              </label>
+              <label>
+                End
+                <input type="datetime-local" value={availabilityForm.endAt} onChange={(event) => setAvailabilityForm({ ...availabilityForm, endAt: event.target.value })} />
+              </label>
+              <label>
+                Status
+                <select value={availabilityForm.status} onChange={(event) => setAvailabilityForm({ ...availabilityForm, status: event.target.value })}>
+                  <option value="AVAILABLE">Available</option>
+                  <option value="UNAVAILABLE">Unavailable</option>
+                </select>
+              </label>
+              <label>
+                Notes
+                <input value={availabilityForm.notes} onChange={(event) => setAvailabilityForm({ ...availabilityForm, notes: event.target.value })} />
+              </label>
+              <button type="submit">Save Availability</button>
+            </form>
+          </AppCard>
+
+          <AppCard title="Role Suitability" subtitle="Track whether workers suit specific shift roles">
+            <form className="admin-form" onSubmit={submitSuitability}>
+              <label>
+                Worker
+                <select value={suitabilityForm.workerId} onChange={(event) => setSuitabilityForm({ ...suitabilityForm, workerId: event.target.value })}>
+                  <option value="">Select worker</option>
+                  {workerOptions.map((worker) => (
+                    <option key={worker.id} value={worker.id}>
+                      {worker.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Role label
+                <input value={suitabilityForm.roleLabel} onChange={(event) => setSuitabilityForm({ ...suitabilityForm, roleLabel: event.target.value })} placeholder="Leading Hand" />
+              </label>
+              <label>
+                Suitability
+                <select value={suitabilityForm.suitability} onChange={(event) => setSuitabilityForm({ ...suitabilityForm, suitability: event.target.value })}>
+                  <option value="SUITABLE">Suitable</option>
+                  <option value="UNSUITABLE">Unsuitable</option>
+                  <option value="REVIEW">Review</option>
+                </select>
+              </label>
+              <label>
+                Notes
+                <input value={suitabilityForm.notes} onChange={(event) => setSuitabilityForm({ ...suitabilityForm, notes: event.target.value })} />
+              </label>
+              <button type="submit">Save Suitability</button>
+            </form>
+          </AppCard>
         </div>
-      </AppCard>
-
-      <div className="admin-grid">
-        <AppCard title="Availability Windows" subtitle="Capture leave, training, or blocked periods">
-          <form className="admin-form" onSubmit={submitAvailability}>
-            <label>
-              Worker
-              <select value={availabilityForm.workerId} onChange={(event) => setAvailabilityForm({ ...availabilityForm, workerId: event.target.value })}>
-                <option value="">Select worker</option>
-                {workerOptions.map((worker) => (
-                  <option key={worker.id} value={worker.id}>
-                    {worker.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Start
-              <input type="datetime-local" value={availabilityForm.startAt} onChange={(event) => setAvailabilityForm({ ...availabilityForm, startAt: event.target.value })} />
-            </label>
-            <label>
-              End
-              <input type="datetime-local" value={availabilityForm.endAt} onChange={(event) => setAvailabilityForm({ ...availabilityForm, endAt: event.target.value })} />
-            </label>
-            <label>
-              Status
-              <select value={availabilityForm.status} onChange={(event) => setAvailabilityForm({ ...availabilityForm, status: event.target.value })}>
-                <option value="AVAILABLE">Available</option>
-                <option value="UNAVAILABLE">Unavailable</option>
-              </select>
-            </label>
-            <label>
-              Notes
-              <input value={availabilityForm.notes} onChange={(event) => setAvailabilityForm({ ...availabilityForm, notes: event.target.value })} />
-            </label>
-            <button type="submit">Save Availability</button>
-          </form>
-        </AppCard>
-
-        <AppCard title="Role Suitability" subtitle="Track whether workers suit specific shift roles">
-          <form className="admin-form" onSubmit={submitSuitability}>
-            <label>
-              Worker
-              <select value={suitabilityForm.workerId} onChange={(event) => setSuitabilityForm({ ...suitabilityForm, workerId: event.target.value })}>
-                <option value="">Select worker</option>
-                {workerOptions.map((worker) => (
-                  <option key={worker.id} value={worker.id}>
-                    {worker.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Role label
-              <input value={suitabilityForm.roleLabel} onChange={(event) => setSuitabilityForm({ ...suitabilityForm, roleLabel: event.target.value })} placeholder="Leading Hand" />
-            </label>
-            <label>
-              Suitability
-              <select value={suitabilityForm.suitability} onChange={(event) => setSuitabilityForm({ ...suitabilityForm, suitability: event.target.value })}>
-                <option value="SUITABLE">Suitable</option>
-                <option value="UNSUITABLE">Unsuitable</option>
-                <option value="REVIEW">Review</option>
-              </select>
-            </label>
-            <label>
-              Notes
-              <input value={suitabilityForm.notes} onChange={(event) => setSuitabilityForm({ ...suitabilityForm, notes: event.target.value })} />
-            </label>
-            <button type="submit">Save Suitability</button>
-          </form>
-        </AppCard>
       </div>
     </div>
   );

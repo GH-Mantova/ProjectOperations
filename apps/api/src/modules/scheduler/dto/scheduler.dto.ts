@@ -21,6 +21,7 @@ export class CreateShiftDto {
   @IsOptional() @IsString() status?: string;
   @IsOptional() @IsString() notes?: string;
   @IsOptional() @IsString() workInstructions?: string;
+  @IsOptional() @IsString() leadUserId?: string;
 }
 
 export class UpdateShiftDto extends CreateShiftDto {}

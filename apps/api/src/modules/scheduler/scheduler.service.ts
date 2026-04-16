@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
+import { NotificationsService } from "../platform/notifications.service";
 import {
   AssignAssetDto,
   AssignWorkerDto,
@@ -17,7 +18,24 @@ import {
 const shiftInclude = {
   job: true,
   stage: true,
-  activity: true,
+  activity: {
+    include: {
+      owner: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true
+        }
+      }
+    }
+  },
+  lead: {
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true
+    }
+  },
   roleRequirements: {
     include: {
       competency: true
@@ -92,13 +110,28 @@ const refreshShiftInclude = {
 export class SchedulerService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly auditService: AuditService
+    private readonly auditService: AuditService,
+    private readonly notificationsService: NotificationsService
   ) {}
 
   async workspace(query: SchedulerQueryDto) {
     const [jobs, workers, assets, shifts] = await Promise.all([
       this.prisma.job.findMany({
         include: {
+          projectManager: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true
+            }
+          },
+          supervisor: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true
+            }
+          },
           stages: {
             orderBy: { stageOrder: "asc" },
             include: {
@@ -220,7 +253,8 @@ export class SchedulerService {
         endAt: new Date(dto.endAt),
         status: dto.status ?? "PLANNED",
         notes: dto.notes,
-        workInstructions: dto.workInstructions
+        workInstructions: dto.workInstructions,
+        leadUserId: dto.leadUserId ?? null
       },
       include: shiftInclude
     });
@@ -236,6 +270,7 @@ export class SchedulerService {
         jobActivityId: dto.jobActivityId
       }
     });
+    await this.notificationsService.refreshLiveFollowUps(actorId);
 
     return this.getShift(shift.id);
   }
@@ -258,7 +293,8 @@ export class SchedulerService {
         endAt: new Date(dto.endAt),
         status: dto.status ?? existing.status,
         notes: dto.notes,
-        workInstructions: dto.workInstructions
+        workInstructions: dto.workInstructions,
+        leadUserId: dto.leadUserId ?? null
       }
     });
 
@@ -269,6 +305,7 @@ export class SchedulerService {
       entityType: "Shift",
       entityId: updated.id
     });
+    await this.notificationsService.refreshLiveFollowUps(actorId);
 
     return this.getShift(updated.id);
   }
@@ -299,6 +336,7 @@ export class SchedulerService {
         workerId: dto.workerId
       }
     });
+    await this.notificationsService.refreshLiveFollowUps(actorId);
 
     return this.getShift(shiftId);
   }
@@ -328,6 +366,7 @@ export class SchedulerService {
         assetId: dto.assetId
       }
     });
+    await this.notificationsService.refreshLiveFollowUps(actorId);
 
     return this.getShift(shiftId);
   }
@@ -344,6 +383,7 @@ export class SchedulerService {
       entityId: shiftId,
       metadata: { shiftId, workerId }
     });
+    await this.notificationsService.refreshLiveFollowUps(actorId);
     return this.getShift(shiftId);
   }
 
@@ -359,6 +399,7 @@ export class SchedulerService {
       entityId: shiftId,
       metadata: { shiftId, assetId }
     });
+    await this.notificationsService.refreshLiveFollowUps(actorId);
     return this.getShift(shiftId);
   }
 

@@ -43,6 +43,15 @@ The implementation sequence follows the master build pack:
 - PostgreSQL will hold transactional and operational data.
 - SharePoint will hold files and folders once the live SharePoint integration layer replaces the current mock foundation.
 
+## Current rollout posture
+
+- Tendering is now in a strong, pilot-ready state.
+- The recommended deployment shape is hosted web + hosted API + PostgreSQL.
+- SharePoint is currently best treated as:
+  - launch surface via the Intranet site
+  - document and backup repository via the Initialservices documents site
+- The app-side SharePoint integration is still mock-backed and has not yet been replaced with live Microsoft Graph folder/file operations.
+
 ## API conventions
 
 - base prefix: `/api/v1`
@@ -55,3 +64,5 @@ The implementation sequence follows the master build pack:
 ## Operational verification
 
 - `pnpm compliance:smoke` runs a repeatable backend smoke flow across the core lifecycle: login, tender creation, tender award/contract, job conversion, scheduler planning, maintenance visibility, forms, documents, dashboards, and closeout/archive
+- Tendering also has local browser verification coverage via Playwright. In the managed Windows environment, the most reliable browser-validation path is the manual reuse-runtime flow documented in:
+  - [local-development.md](C:\Dev\ProjectOperations\docs\local-development.md)

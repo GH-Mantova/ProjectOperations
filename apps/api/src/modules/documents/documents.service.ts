@@ -8,6 +8,7 @@ import { randomUUID } from "crypto";
 import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
+import { NotificationsService } from "../platform/notifications.service";
 import { SharePointService } from "../platform/sharepoint.service";
 import {
   CreateDocumentDto,
@@ -45,7 +46,8 @@ export class DocumentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
-    private readonly sharePointService: SharePointService
+    private readonly sharePointService: SharePointService,
+    private readonly notificationsService: NotificationsService
   ) {}
 
   async list(query: DocumentsQueryDto, actor: AuthenticatedUser) {
@@ -288,6 +290,7 @@ export class DocumentsService {
         versionNumber
       }
     });
+    await this.notificationsService.refreshLiveFollowUps(actor.sub);
 
     return this.getById(created.id, actor);
   }

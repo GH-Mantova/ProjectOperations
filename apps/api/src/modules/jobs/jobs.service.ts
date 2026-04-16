@@ -8,6 +8,7 @@ import {
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
+import { NotificationsService } from "../platform/notifications.service";
 import { SharePointService } from "../platform/sharepoint.service";
 import {
   CloseoutJobDto,
@@ -96,7 +97,17 @@ const jobInclude = {
       id: true,
       tenderNumber: true,
       title: true,
-      status: true
+      status: true,
+      dueDate: true,
+      estimatedValue: true,
+      probability: true,
+      estimator: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true
+        }
+      }
     }
   },
   projectManager: {
@@ -122,7 +133,10 @@ const jobInclude = {
       tenderClient: {
         select: {
           id: true,
-          client: true
+          client: true,
+          contact: true,
+          relationshipType: true,
+          notes: true
         }
       }
     }
@@ -131,7 +145,43 @@ const jobInclude = {
     orderBy: { stageOrder: "asc" },
     include: {
       activities: {
-        orderBy: { activityOrder: "asc" }
+        orderBy: { activityOrder: "asc" },
+        include: {
+          owner: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true
+            }
+          },
+          shifts: {
+            orderBy: { startAt: "asc" },
+            select: {
+              id: true,
+              title: true,
+              status: true,
+              startAt: true,
+              endAt: true,
+              lead: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  email: true
+                }
+              },
+              conflicts: {
+                select: {
+                  id: true,
+                  severity: true,
+                  code: true,
+                  message: true
+                }
+              }
+            }
+          }
+        }
       }
     }
   },
@@ -201,7 +251,8 @@ export class JobsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
-    private readonly sharePointService: SharePointService
+    private readonly sharePointService: SharePointService,
+    private readonly notificationsService: NotificationsService
   ) {}
 
   async list(query: JobQueryDto) {
@@ -321,6 +372,7 @@ export class JobsService {
       entityId: updated.id,
       metadata: dto as Prisma.InputJsonValue
     });
+    await this.notificationsService.refreshLiveFollowUps(actorId);
 
     return this.getById(id);
   }
@@ -357,6 +409,7 @@ export class JobsService {
         note: dto.note
       }
     });
+    await this.notificationsService.refreshLiveFollowUps(actorId);
 
     return this.getById(id);
   }
@@ -384,6 +437,7 @@ export class JobsService {
       entityId: stage.id,
       metadata: { jobId, name: stage.name }
     });
+    await this.notificationsService.refreshLiveFollowUps(actorId);
 
     return this.getById(jobId);
   }
@@ -411,6 +465,7 @@ export class JobsService {
       entityId: stage.id,
       metadata: { jobId, name: dto.name }
     });
+    await this.notificationsService.refreshLiveFollowUps(actorId);
 
     return this.getById(jobId);
   }
@@ -429,7 +484,8 @@ export class JobsService {
         activityOrder: dto.activityOrder ?? 0,
         status: dto.status ?? "PLANNED",
         plannedDate: dto.plannedDate ? new Date(dto.plannedDate) : null,
-        notes: dto.notes
+        notes: dto.notes,
+        ownerUserId: dto.ownerUserId ?? null
       }
     });
 
@@ -440,6 +496,7 @@ export class JobsService {
       entityId: activity.id,
       metadata: { jobId, stageId: dto.jobStageId, name: dto.name }
     });
+    await this.notificationsService.refreshLiveFollowUps(actorId);
 
     return this.getById(jobId);
   }
@@ -458,7 +515,8 @@ export class JobsService {
         activityOrder: dto.activityOrder,
         status: dto.status,
         plannedDate: dto.plannedDate ? new Date(dto.plannedDate) : null,
-        notes: dto.notes
+        notes: dto.notes,
+        ownerUserId: dto.ownerUserId ?? null
       }
     });
 
@@ -469,6 +527,7 @@ export class JobsService {
       entityId: activity.id,
       metadata: { jobId, stageId: dto.jobStageId, name: dto.name }
     });
+    await this.notificationsService.refreshLiveFollowUps(actorId);
 
     return this.getById(jobId);
   }
@@ -496,6 +555,7 @@ export class JobsService {
       entityId: issue.id,
       metadata: { jobId, title: dto.title }
     });
+    await this.notificationsService.refreshLiveFollowUps(actorId);
 
     return this.getById(jobId);
   }
@@ -522,6 +582,7 @@ export class JobsService {
       entityId: issue.id,
       metadata: { jobId, title: dto.title }
     });
+    await this.notificationsService.refreshLiveFollowUps(actorId);
 
     return this.getById(jobId);
   }
@@ -551,6 +612,7 @@ export class JobsService {
       entityId: variation.id,
       metadata: { jobId, reference: dto.reference }
     });
+    await this.notificationsService.refreshLiveFollowUps(actorId);
 
     return this.getById(jobId);
   }
@@ -582,6 +644,7 @@ export class JobsService {
       entityId: variation.id,
       metadata: { jobId, reference: dto.reference }
     });
+    await this.notificationsService.refreshLiveFollowUps(actorId);
 
     return this.getById(jobId);
   }
@@ -609,6 +672,7 @@ export class JobsService {
       entityId: entry.id,
       metadata: { jobId, entryType: entry.entryType }
     });
+    await this.notificationsService.refreshLiveFollowUps(actorId);
 
     return this.getById(jobId);
   }
@@ -707,6 +771,7 @@ export class JobsService {
         clientId: targetClient.clientId
       }
     });
+    await this.notificationsService.refreshLiveFollowUps(actorId);
 
     return this.requireTender(tenderId);
   }
@@ -750,6 +815,7 @@ export class JobsService {
         contractIssuedAt: contractIssuedAt.toISOString()
       }
     });
+    await this.notificationsService.refreshLiveFollowUps(actorId);
 
     return this.requireTender(tenderId);
   }
@@ -896,6 +962,7 @@ export class JobsService {
         tenderDocumentIds: selectedDocuments.map((document) => document.id)
       }
     });
+    await this.notificationsService.refreshLiveFollowUps(actorId);
 
     return this.getById(job.id);
   }
@@ -1062,6 +1129,7 @@ export class JobsService {
         tenderDocumentIds: selectedDocuments.map((document) => document.id)
       }
     });
+    await this.notificationsService.refreshLiveFollowUps(actorId);
 
     return this.getById(job.id);
   }
@@ -1162,6 +1230,7 @@ export class JobsService {
         detachedJobId: tender.sourceJob?.id ?? null
       }
     });
+    await this.notificationsService.refreshLiveFollowUps(actorId);
 
     return this.requireTender(tenderId);
   }

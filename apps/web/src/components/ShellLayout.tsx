@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
-import { Outlet, NavLink, useLocation } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { AppCard } from "@project-ops/ui";
+import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { readTenderingLabels } from "../tendering-labels";
 
@@ -30,12 +31,108 @@ const tenderingItems = [
   { to: "/tenders/settings", labelKey: "nav.settings" }
 ] as const;
 
+type SharedFollowUpItem = {
+  id: string;
+  title: string;
+  body: string;
+  userId: string;
+  metadata?: {
+    kind?: string;
+    promptKey?: string;
+    jobId?: string;
+    actionTarget?: "job" | "documents";
+    nextOwnerId?: string | null;
+    nextOwnerLabel?: string;
+    audienceLabel?: "Assigned to me" | "Team follow-up";
+    urgencyLabel?: "Urgent today" | "Due soon" | "Upcoming";
+    triageState?: "OPEN" | "ACKNOWLEDGED" | "WATCH";
+  } | null;
+};
+
+function getUrgencyPillClass(urgencyLabel?: "Urgent today" | "Due soon" | "Upcoming") {
+  if (urgencyLabel === "Urgent today") {
+    return "pill pill--red";
+  }
+
+  if (urgencyLabel === "Due soon") {
+    return "pill pill--amber";
+  }
+
+  return "pill pill--blue";
+}
+
 export function ShellLayout() {
-  const { user, logout } = useAuth();
+  const { user, logout, authFetch } = useAuth();
+  const navigate = useNavigate();
   const location = useLocation();
   const [isTenderingOpen, setIsTenderingOpen] = useState(true);
+  const [sharedFollowUps, setSharedFollowUps] = useState<SharedFollowUpItem[]>([]);
   const tenderingActive = location.pathname === "/tenders" || location.pathname.startsWith("/tenders/");
   const tenderingLabels = useMemo(() => readTenderingLabels(), [location.pathname]);
+
+  useEffect(() => {
+    const loadSharedFollowUps = async () => {
+      const response = await authFetch("/notifications/follow-ups/shared");
+      if (!response.ok) {
+        setSharedFollowUps([]);
+        return;
+      }
+
+      setSharedFollowUps(await response.json());
+    };
+
+    void loadSharedFollowUps();
+  }, [authFetch, location.pathname]);
+
+  const shellActionCenter = useMemo(() => {
+    const prompts = sharedFollowUps
+      .filter((item) => item.metadata?.kind === "LIVE_FOLLOW_UP")
+      .map((item) => ({
+        ...item,
+        audienceLabel:
+          (item.metadata?.nextOwnerId ?? item.userId) === user?.id ? "Assigned to me" : "Team follow-up",
+        urgencyLabel: item.metadata?.urgencyLabel ?? "Upcoming",
+        actionTarget: item.metadata?.actionTarget ?? "job"
+      }))
+      .slice(0, 3);
+
+    return {
+      prompts,
+      assignedToMe: prompts.filter((item) => item.audienceLabel === "Assigned to me").length,
+      urgentToday: prompts.filter((item) => item.urgencyLabel === "Urgent today").length
+    };
+  }, [sharedFollowUps, user?.id]);
+
+  const openActionCenterTarget = (item: SharedFollowUpItem) => {
+    const jobId = item.metadata?.jobId;
+    if (!jobId) {
+      navigate("/notifications");
+      return;
+    }
+
+    if (item.metadata?.actionTarget === "documents") {
+      navigate("/documents", {
+        state: {
+          documentFocus: {
+            linkedEntityType: "Job",
+            linkedEntityId: jobId,
+            from: "shell-action-center",
+            title: "Focused job documents"
+          }
+        }
+      });
+      return;
+    }
+
+    navigate("/jobs", {
+      state: {
+        jobFocus: {
+          jobId,
+          from: "shell-action-center"
+        }
+      }
+    });
+  };
 
   return (
     <div className="shell">
@@ -111,6 +208,53 @@ export function ShellLayout() {
             Logout
           </button>
         </header>
+        <section className="shell__action-center">
+          <AppCard title="Action Center" subtitle="Live coordination prompts surfaced across planning and document continuity">
+            <div className="inline-fields">
+              <span className="pill pill--blue">{shellActionCenter.prompts.length} live prompts</span>
+              <span className="pill pill--green">{shellActionCenter.assignedToMe} assigned to me</span>
+              <span className="pill pill--amber">{shellActionCenter.urgentToday} urgent today</span>
+            </div>
+            <div className="shell__action-list">
+              {shellActionCenter.prompts.map((item) => (
+                <div key={item.id} className="shell__action-item">
+                  <div className="split-header">
+                    <strong>{item.title}</strong>
+                    <span className={getUrgencyPillClass(item.urgencyLabel)}>{item.urgencyLabel}</span>
+                  </div>
+                  <p className="muted-text">{item.body}</p>
+                  <div className="inline-fields">
+                    <span className={`pill ${item.audienceLabel === "Assigned to me" ? "pill--green" : "pill--slate"}`}>
+                      {item.audienceLabel}
+                    </span>
+                    <span className="pill pill--slate">{item.metadata?.nextOwnerLabel ?? "Team owner"}</span>
+                    <span
+                      className={`pill ${
+                        item.metadata?.triageState === "ACKNOWLEDGED"
+                          ? "pill--green"
+                          : item.metadata?.triageState === "WATCH"
+                            ? "pill--amber"
+                            : "pill--slate"
+                      }`}
+                    >
+                      {item.metadata?.triageState === "ACKNOWLEDGED"
+                        ? "I'm handling it"
+                        : item.metadata?.triageState === "WATCH"
+                          ? "Watch only"
+                          : "Open"}
+                    </span>
+                  </div>
+                  <button type="button" onClick={() => openActionCenterTarget(item)}>
+                    Open action
+                  </button>
+                </div>
+              ))}
+              {!shellActionCenter.prompts.length ? (
+                <p className="muted-text">No live actions are surfacing right now.</p>
+              ) : null}
+            </div>
+          </AppCard>
+        </section>
         <main className="shell__content">
           <Outlet />
         </main>

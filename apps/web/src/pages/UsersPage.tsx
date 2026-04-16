@@ -79,7 +79,21 @@ export function UsersPage() {
     <div className="admin-grid">
       <AppCard title="Users" subtitle="Create, activate, and review application users.">
         {error ? <p className="error-text">{error}</p> : null}
-        <div className="table-shell">
+        <div className="module-summary-grid">
+          <div className="module-summary-card">
+            <strong>{users.length}</strong>
+            <span>Total users</span>
+          </div>
+          <div className="module-summary-card">
+            <strong>{users.filter((user) => user.isActive).length}</strong>
+            <span>Active users</span>
+          </div>
+          <div className="module-summary-card">
+            <strong>{roles.length}</strong>
+            <span>Available roles</span>
+          </div>
+        </div>
+        <div className="table-shell table-shell--capped">
           <table className="data-table">
             <thead>
               <tr>
@@ -104,6 +118,7 @@ export function UsersPage() {
               ))}
             </tbody>
           </table>
+          {!users.length ? <p className="module-empty-state">No users have been created yet.</p> : null}
         </div>
       </AppCard>
 

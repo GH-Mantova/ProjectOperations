@@ -1,8 +1,17 @@
 import { DocumentsService } from "./documents.service";
 
 describe("DocumentsService", () => {
+  const notificationsServiceMock = {
+    refreshLiveFollowUps: jest.fn()
+  };
+
   it("lists documents for an entity by delegating to the filtered list endpoint shape", async () => {
-    const service = new DocumentsService({} as never, {} as never, {} as never);
+    const service = new DocumentsService(
+      {} as never,
+      {} as never,
+      {} as never,
+      notificationsServiceMock as never
+    );
     const actor = { sub: "user-1", email: "planner@test.local", permissions: ["documents.view"] };
     const listSpy = jest.spyOn(service, "list").mockResolvedValue({
       items: [{ id: "doc-1" } as never],
@@ -26,7 +35,12 @@ describe("DocumentsService", () => {
   });
 
   it("creates a new version by reusing the previous document context", async () => {
-    const service = new DocumentsService({} as never, {} as never, {} as never);
+    const service = new DocumentsService(
+      {} as never,
+      {} as never,
+      {} as never,
+      notificationsServiceMock as never
+    );
     const actor = { sub: "user-1", email: "planner@test.local", permissions: ["documents.manage"] };
 
     jest.spyOn(service as any, "requireDocument").mockResolvedValue({

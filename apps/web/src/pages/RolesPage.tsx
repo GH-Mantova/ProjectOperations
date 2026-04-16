@@ -64,7 +64,21 @@ export function RolesPage() {
     <div className="admin-grid">
       <AppCard title="Roles" subtitle="Manage reusable permission bundles.">
         {error ? <p className="error-text">{error}</p> : null}
-        <div className="table-shell">
+        <div className="module-summary-grid">
+          <div className="module-summary-card">
+            <strong>{roles.length}</strong>
+            <span>Total roles</span>
+          </div>
+          <div className="module-summary-card">
+            <strong>{permissions.length}</strong>
+            <span>Available permissions</span>
+          </div>
+          <div className="module-summary-card">
+            <strong>{roles.reduce((max, role) => Math.max(max, role.permissions.length), 0)}</strong>
+            <span>Largest permission set</span>
+          </div>
+        </div>
+        <div className="table-shell table-shell--capped">
           <table className="data-table">
             <thead>
               <tr>
@@ -83,6 +97,7 @@ export function RolesPage() {
               ))}
             </tbody>
           </table>
+          {!roles.length ? <p className="module-empty-state">No roles have been created yet.</p> : null}
         </div>
       </AppCard>
 

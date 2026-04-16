@@ -63,13 +63,41 @@ docker compose up -d postgres
 pnpm install
 pnpm prisma:generate
 pnpm prisma:migrate
-pnpm --filter @project-ops/web build
-cd apps/api
-node .\node_modules\@nestjs\cli\bin\nest.js start --watch
+pnpm dev
 ```
 
 4. Work normally from the local folder.
 5. Sync local changes back to SharePoint.
+
+## Managed-Windows validation note
+
+This environment has recurring `spawn EPERM` issues. For reliable verification, prefer the local safe validation path instead of assuming generic frontend tooling is always the best signal:
+
+```powershell
+pnpm --filter @project-ops/api build
+pnpm test:api:serial
+pnpm --filter @project-ops/web exec -- tsc -p . --noEmit
+pnpm test:web:logic
+```
+
+For Tendering browser verification, prefer:
+
+```powershell
+pnpm dev:api:e2e
+pnpm dev:web:e2e
+pnpm test:tendering:e2e:reuse
+```
+
+## Operational SharePoint note
+
+SharePoint currently serves two different purposes around this project:
+
+1. Sync/storage for the source tree when using the local-workflow pattern in this document
+2. Future operational environment support for the live app, where:
+   - the Intranet site can act as the launch surface
+   - the Initialservices site can act as the document/backups repository
+
+The app-side SharePoint integration is still mock-backed, so this document remains specifically about source/workspace sync rather than full live document integration inside the app.
 
 ## Important note
 

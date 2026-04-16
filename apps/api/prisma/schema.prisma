@@ -42,6 +42,8 @@ model User {
   tenderFollowUps    TenderFollowUp[]   @relation("TenderFollowUpAssignee")
   managedJobs        Job[]              @relation("JobProjectManager")
   supervisedJobs     Job[]              @relation("JobSupervisor")
+  ownedActivities    JobActivity[]      @relation("JobActivityOwner")
+  ledShifts          Shift[]            @relation("ShiftLead")
   reportedJobIssues  JobIssue[]         @relation("JobIssueReporter")
   approvedVariations JobVariation[]     @relation("JobVariationApprover")
   progressEntries    JobProgressEntry[] @relation("JobProgressEntryAuthor")
@@ -766,6 +768,7 @@ model JobActivity {
   id            String    @id @default(cuid())
   jobId         String    @map("job_id")
   jobStageId    String    @map("job_stage_id")
+  ownerUserId   String?   @map("owner_user_id")
   name          String
   description   String?
   activityOrder Int       @default(0) @map("activity_order")
@@ -776,9 +779,11 @@ model JobActivity {
   updatedAt     DateTime  @updatedAt @map("updated_at")
   job           Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
   stage         JobStage  @relation(fields: [jobStageId], references: [id], onDelete: Cascade)
+  owner         User?     @relation("JobActivityOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
   shifts        Shift[]
 
   @@index([jobId, jobStageId])
+  @@index([ownerUserId])
   @@index([status])
   @@map("job_activities")
 }
@@ -881,6 +886,7 @@ model Shift {
   jobId             String                  @map("job_id")
   jobStageId        String?                 @map("job_stage_id")
   jobActivityId     String                  @map("job_activity_id")
+  leadUserId        String?                 @map("lead_user_id")
   title             String
   startAt           DateTime                @map("start_at")
   endAt             DateTime                @map("end_at")
@@ -892,6 +898,7 @@ model Shift {
   job               Job                     @relation(fields: [jobId], references: [id], onDelete: Cascade)
   stage             JobStage?               @relation(fields: [jobStageId], references: [id], onDelete: SetNull)
   activity          JobActivity             @relation(fields: [jobActivityId], references: [id], onDelete: Cascade)
+  lead             User?                    @relation("ShiftLead", fields: [leadUserId], references: [id], onDelete: SetNull)
   workerAssignments ShiftWorkerAssignment[]
   assetAssignments  ShiftAssetAssignment[]
   roleRequirements  ShiftRoleRequirement[]
@@ -900,6 +907,7 @@ model Shift {
 
   @@index([jobId, startAt])
   @@index([jobActivityId, startAt])
+  @@index([leadUserId])
   @@index([status])
   @@map("shifts")
 }

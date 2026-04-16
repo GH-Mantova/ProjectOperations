@@ -68,6 +68,26 @@ export function PlatformPage() {
     <div className="admin-grid">
       <AppCard title="Platform Configuration" subtitle="SharePoint and shared services foundation">
         {error ? <p className="error-text">{error}</p> : null}
+        <div className="notice-banner">
+          <strong>Current operating posture</strong>
+          <p className="muted-text">
+            The app is still using the tracked SharePoint abstraction for local and pilot workflows. Keep using this workspace to verify the folder model before switching to live Graph-backed provisioning.
+          </p>
+        </div>
+        <div className="module-summary-grid">
+          <div className="module-summary-card">
+            <strong>{config?.sharePoint.mode ?? "-"}</strong>
+            <span>SharePoint mode</span>
+          </div>
+          <div className="module-summary-card">
+            <strong>{folders.length}</strong>
+            <span>Tracked folders</span>
+          </div>
+          <div className="module-summary-card">
+            <strong>{config?.sharePoint.rootFolder ?? "-"}</strong>
+            <span>Root operational folder</span>
+          </div>
+        </div>
         <dl className="detail-list">
           <div>
             <dt>SharePoint mode</dt>
@@ -86,7 +106,7 @@ export function PlatformPage() {
             <dd>{config?.sharePoint.rootFolder ?? "-"}</dd>
           </div>
         </dl>
-        <div className="table-shell">
+        <div className="table-shell table-shell--capped">
           <table className="data-table">
             <thead>
               <tr>
@@ -105,10 +125,11 @@ export function PlatformPage() {
               ))}
             </tbody>
           </table>
+          {!folders.length ? <p className="module-empty-state">No SharePoint folders have been tracked yet.</p> : null}
         </div>
       </AppCard>
 
-      <AppCard title="Ensure Folder" subtitle="Mock-backed SharePoint folder provisioning foundation">
+      <AppCard title="Ensure Folder" subtitle="Create or confirm the operational folder structure without leaving the ERP.">
         <form className="admin-form" onSubmit={ensureFolder}>
           <label>
             Name

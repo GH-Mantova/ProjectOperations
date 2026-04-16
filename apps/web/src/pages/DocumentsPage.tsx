@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { AppCard } from "@project-ops/ui";
+import { useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 
 type DocumentRecord = {
@@ -41,6 +42,7 @@ const emptyDocumentForm = {
 
 export function DocumentsPage() {
   const { authFetch } = useAuth();
+  const location = useLocation();
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [jobs, setJobs] = useState<Array<{ id: string; jobNumber: string; name: string }>>([]);
   const [assets, setAssets] = useState<Array<{ id: string; assetCode: string; name: string }>>([]);
@@ -51,6 +53,14 @@ export function DocumentsPage() {
   const [versionTargetId, setVersionTargetId] = useState("");
   const [versionFileName, setVersionFileName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const documentFocus = (location.state as {
+    documentFocus?: {
+      linkedEntityType?: string;
+      linkedEntityId?: string;
+      from?: string;
+      title?: string;
+    };
+  } | null)?.documentFocus;
 
   const load = async () => {
     const [documentsResponse, jobsResponse, assetsResponse, submissionsResponse] = await Promise.all([
@@ -80,6 +90,25 @@ export function DocumentsPage() {
   useEffect(() => {
     load().catch((loadError) => setError((loadError as Error).message));
   }, []);
+
+  useEffect(() => {
+    if (!documentFocus?.linkedEntityId || !documentFocus?.linkedEntityType) return;
+
+    setEntityTypeFilter(documentFocus.linkedEntityType);
+    setDocumentForm((current) => ({
+      ...current,
+      linkedEntityType: documentFocus.linkedEntityType ?? current.linkedEntityType,
+      linkedEntityId: documentFocus.linkedEntityId ?? current.linkedEntityId
+    }));
+  }, [documentFocus]);
+
+  const visibleDocuments = documentFocus?.linkedEntityId
+    ? documents.filter(
+        (document) =>
+          document.linkedEntityType === documentFocus.linkedEntityType &&
+          document.linkedEntityId === documentFocus.linkedEntityId
+      )
+    : documents;
 
   const entityOptions =
     documentForm.linkedEntityType === "Asset"
@@ -172,6 +201,15 @@ export function DocumentsPage() {
       <div className="crm-page__sidebar">
         <AppCard title="Documents" subtitle="SharePoint-backed files linked to jobs, assets, and forms">
           <div className="stack-grid">
+            {documentFocus?.linkedEntityId ? (
+              <div className="notice-banner notice-banner--warning">
+                <strong>Document focus</strong>
+                <p>
+                  You arrived from {documentFocus.from ?? "another module"} for <strong>{documentFocus.title ?? documentFocus.linkedEntityType}</strong>.
+                  The register is focused on that linked record so you can continue the operational follow-through without re-filtering.
+                </p>
+              </div>
+            ) : null}
             <form
               className="admin-form subsection"
               onSubmit={(event) => {
@@ -199,7 +237,7 @@ export function DocumentsPage() {
             </form>
 
             <div className="dashboard-list dashboard-list--capped">
-              {documents.map((document) => (
+              {visibleDocuments.map((document) => (
                 <div key={document.id} className="resource-card resource-card--compact">
                   <div className="split-header">
                     <div>
@@ -226,6 +264,13 @@ export function DocumentsPage() {
                   </div>
                 </div>
               ))}
+              {!visibleDocuments.length ? (
+                <p className="muted-text">
+                  {documentFocus?.linkedEntityId
+                    ? "No documents are linked to this focused record yet."
+                    : "No documents match the current filters."}
+                </p>
+              ) : null}
             </div>
           </div>
         </AppCard>

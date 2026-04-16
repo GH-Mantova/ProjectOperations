@@ -7,6 +7,7 @@ export function TenderingSettingsPage() {
   const [savedAt, setSavedAt] = useState<string | null>(null);
 
   const entries = useMemo(() => Object.entries(defaultTenderingLabels), []);
+  const customisedCount = entries.filter(([key, value]) => labels[key as keyof typeof labels] !== value).length;
 
   return (
     <div className="admin-grid">
@@ -14,6 +15,26 @@ export function TenderingSettingsPage() {
         title="Tendering Settings"
         subtitle="Rename visible Tendering labels without changing the underlying data keys or relationships."
       >
+        <div className="module-summary-grid">
+          <div className="module-summary-card">
+            <strong>{entries.length}</strong>
+            <span>Visible labels</span>
+          </div>
+          <div className="module-summary-card">
+            <strong>{customisedCount}</strong>
+            <span>Customised labels</span>
+          </div>
+          <div className="module-summary-card">
+            <strong>{savedAt ?? "Not saved yet"}</strong>
+            <span>Last local save</span>
+          </div>
+        </div>
+        <div className="notice-banner">
+          <strong>Safe rename surface</strong>
+          <p className="muted-text">
+            These labels only change what users see in Tendering. They do not alter database keys, automation routes, lifecycle states, or cross-module relationships.
+          </p>
+        </div>
         <form
           className="admin-form"
           onSubmit={(event) => {

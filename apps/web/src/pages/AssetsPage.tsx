@@ -224,7 +224,7 @@ export function AssetsPage() {
                   <div>
                     <strong>{asset.name}</strong>
                     <p className="muted-text">
-                      {asset.assetCode} {asset.serialNumber ? `· ${asset.serialNumber}` : ""}
+                      {asset.assetCode} {asset.serialNumber ? `| ${asset.serialNumber}` : ""}
                     </p>
                   </div>
                   <div className="asset-record__meta">

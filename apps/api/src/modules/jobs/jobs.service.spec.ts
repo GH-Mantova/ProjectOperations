@@ -2,6 +2,10 @@ import { NotFoundException } from "@nestjs/common";
 import { JobsService } from "./jobs.service";
 
 describe("JobsService", () => {
+  const notificationsServiceMock = {
+    refreshLiveFollowUps: jest.fn()
+  };
+
   it("rejects contract issuance for a non-awarded tender client", async () => {
     const service = new JobsService(
       {
@@ -24,7 +28,8 @@ describe("JobsService", () => {
         jobCloseout: { findUnique: jest.fn().mockResolvedValue(null) }
       } as never,
       { write: jest.fn() } as never,
-      { ensureFolder: jest.fn() } as never
+      { ensureFolder: jest.fn() } as never,
+      notificationsServiceMock as never
     );
 
     await expect(
@@ -74,7 +79,8 @@ describe("JobsService", () => {
         )
       } as never,
       { write: jest.fn() } as never,
-      { ensureFolder: jest.fn() } as never
+      { ensureFolder: jest.fn() } as never,
+      notificationsServiceMock as never
     );
 
     await service.rollbackTenderLifecycle(
@@ -157,7 +163,8 @@ describe("JobsService", () => {
         )
       } as never,
       { write: jest.fn() } as never,
-      { ensureFolder: jest.fn() } as never
+      { ensureFolder: jest.fn() } as never,
+      notificationsServiceMock as never
     );
 
     await service.rollbackTenderLifecycle(
@@ -240,7 +247,8 @@ describe("JobsService", () => {
         )
       } as never,
       { write: jest.fn() } as never,
-      { ensureFolder: jest.fn() } as never
+      { ensureFolder: jest.fn() } as never,
+      notificationsServiceMock as never
     );
 
     await service.reuseArchivedJobConversion(
@@ -332,7 +340,8 @@ describe("JobsService", () => {
         )
       } as never,
       { write: jest.fn() } as never,
-      { ensureFolder: jest.fn() } as never
+      { ensureFolder: jest.fn() } as never,
+      notificationsServiceMock as never
     );
 
     await service.reuseArchivedJobConversion(
@@ -382,7 +391,8 @@ describe("JobsService", () => {
         }
       } as never,
       { write: jest.fn() } as never,
-      { ensureFolder: jest.fn() } as never
+      { ensureFolder: jest.fn() } as never,
+      notificationsServiceMock as never
     );
 
     await expect(
@@ -423,7 +433,8 @@ describe("JobsService", () => {
         )
       } as never,
       { write: jest.fn() } as never,
-      { ensureFolder: jest.fn() } as never
+      { ensureFolder: jest.fn() } as never,
+      notificationsServiceMock as never
     );
 
     await service.updateStatus("job-1", { status: "ACTIVE", note: "Mobilised" }, "user-1");
@@ -448,7 +459,8 @@ describe("JobsService", () => {
         jobStage: { findUnique: jest.fn().mockResolvedValue({ id: "stage-1", jobId: "job-2" }) }
       } as never,
       { write: jest.fn() } as never,
-      { ensureFolder: jest.fn() } as never
+      { ensureFolder: jest.fn() } as never,
+      notificationsServiceMock as never
     );
 
     await expect(
@@ -467,7 +479,8 @@ describe("JobsService", () => {
         }
       } as never,
       { write: jest.fn() } as never,
-      { ensureFolder: jest.fn() } as never
+      { ensureFolder: jest.fn() } as never,
+      notificationsServiceMock as never
     );
 
     await expect(service.updateJob("job-1", { name: "Changed" }, "user-1")).rejects.toThrow(

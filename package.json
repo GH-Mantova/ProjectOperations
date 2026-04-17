@@ -10,6 +10,8 @@
     "dev:web": "pnpm --filter @project-ops/web dev",
     "dev:web:e2e": "set VITE_API_BASE_URL=http://127.0.0.1:3000/api/v1&& pnpm --filter @project-ops/web dev:e2e",
     "build": "pnpm -r build",
+    "build:azure": "pnpm --filter @project-ops/web build && pnpm --filter @project-ops/api build",
+    "start:azure": "pnpm --filter @project-ops/api start",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
     "test:api:serial": "pnpm --filter @project-ops/api test:serial",

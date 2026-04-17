@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 
 export type EnsureFolderInput = {
   siteId: string;
@@ -7,8 +7,24 @@ export type EnsureFolderInput = {
   relativePath: string;
 };
 
+export type EnsureFolderResult = {
+  siteId: string;
+  driveId: string;
+  itemId: string;
+  name: string;
+  relativePath: string;
+};
+
+export interface SharePointAdapter {
+  ensureFolder(input: EnsureFolderInput): Promise<EnsureFolderResult>;
+}
+
+export const SHAREPOINT_ADAPTER = Symbol("SHAREPOINT_ADAPTER");
+
+export const InjectSharePointAdapter = () => Inject(SHAREPOINT_ADAPTER);
+
 @Injectable()
-export class MockSharePointAdapter {
+export class MockSharePointAdapter implements SharePointAdapter {
   async ensureFolder(input: EnsureFolderInput) {
     return {
       siteId: input.siteId,

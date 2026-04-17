@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { AuditModule } from "../audit/audit.module";
 import { NotificationsController } from "./notifications.controller";
 import { NotificationsService } from "./notifications.service";
@@ -7,7 +8,8 @@ import { SearchController } from "./search.controller";
 import { SearchService } from "./search.service";
 import { SharePointController } from "./sharepoint.controller";
 import { SharePointService } from "./sharepoint.service";
-import { MockSharePointAdapter } from "./sharepoint.adapter";
+import { GraphSharePointAdapter } from "./graph-sharepoint.adapter";
+import { MockSharePointAdapter, SHAREPOINT_ADAPTER } from "./sharepoint.adapter";
 import { DashboardsController } from "./dashboards.controller";
 import { DashboardsService } from "./dashboards.service";
 
@@ -22,6 +24,20 @@ import { DashboardsService } from "./dashboards.service";
   ],
   providers: [
     MockSharePointAdapter,
+    GraphSharePointAdapter,
+    {
+      provide: SHAREPOINT_ADAPTER,
+      inject: [ConfigService, MockSharePointAdapter, GraphSharePointAdapter],
+      useFactory: (
+        configService: ConfigService,
+        mockAdapter: MockSharePointAdapter,
+        graphAdapter: GraphSharePointAdapter
+      ) => {
+        return configService.get<string>("SHAREPOINT_MODE", "mock") === "graph"
+          ? graphAdapter
+          : mockAdapter;
+      }
+    },
     SharePointService,
     NotificationsService,
     SearchService,

@@ -3,7 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { EnsureSharePointFolderDto } from "./dto/sharepoint-folder.dto";
-import { MockSharePointAdapter } from "./sharepoint.adapter";
+import { InjectSharePointAdapter, SharePointAdapter } from "./sharepoint.adapter";
 
 @Injectable()
 export class SharePointService {
@@ -11,7 +11,7 @@ export class SharePointService {
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
-    private readonly adapter: MockSharePointAdapter
+    @InjectSharePointAdapter() private readonly adapter: SharePointAdapter
   ) {}
 
   getConfiguration() {

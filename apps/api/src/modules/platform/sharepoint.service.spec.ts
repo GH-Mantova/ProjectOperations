@@ -1,11 +1,10 @@
-import { ConfigService } from "@nestjs/config";
 import { SharePointService } from "./sharepoint.service";
 
 describe("SharePointService", () => {
   it("returns mock-backed configuration and ensures a folder", async () => {
     const configService = {
       get: jest.fn((key: string, fallback: string) => fallback)
-    } as unknown as ConfigService;
+    };
 
     const prisma = {
       sharePointFolderLink: {
@@ -28,7 +27,7 @@ describe("SharePointService", () => {
     };
 
     const service = new SharePointService(
-      configService,
+      configService as never,
       prisma as never,
       auditService as never,
       adapter as never

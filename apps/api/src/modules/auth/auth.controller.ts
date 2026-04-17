@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { AuthService } from "./auth.service";
+import { EntraLoginDto } from "./dto/entra-login.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RefreshTokenDto } from "./dto/refresh-token.dto";
 
@@ -17,10 +18,22 @@ export class AuthController {
     return this.authService.login(dto);
   }
 
+  @Post("entra")
+  @ApiOperation({ summary: "Exchange a Microsoft Entra ID token for an internal application session" })
+  loginWithEntra(@Body() dto: EntraLoginDto) {
+    return this.authService.loginWithEntra(dto);
+  }
+
   @Post("refresh")
   @ApiOperation({ summary: "Refresh access and refresh tokens" })
   refresh(@Body() dto: RefreshTokenDto) {
     return this.authService.refresh(dto);
+  }
+
+  @Get("config")
+  @ApiOperation({ summary: "Get public login configuration for the active authentication mode" })
+  getLoginConfiguration() {
+    return this.authService.getLoginConfiguration();
   }
 
   @Get("me")

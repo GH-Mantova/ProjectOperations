@@ -5,6 +5,9 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { PasswordService } from "../../common/security/password.service";
 import { AuditService } from "../audit/audit.service";
 import { UsersService } from "../users/users.service";
+import { AuthProviderService } from "./auth-provider.service";
+import { EntraAuthService } from "./entra-auth.service";
+import { EntraLoginDto } from "./dto/entra-login.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RefreshTokenDto } from "./dto/refresh-token.dto";
 
@@ -16,54 +19,43 @@ export class AuthService {
     private readonly passwordService: PasswordService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
-    private readonly auditService: AuditService
+    private readonly auditService: AuditService,
+    private readonly authProviderService: AuthProviderService,
+    private readonly entraAuthService: EntraAuthService
   ) {}
 
   async login(input: LoginDto) {
-    const user = await this.usersService.findByEmailWithSecurity(input.email);
-
-    if (!user || !user.isActive) {
-      throw new UnauthorizedException("Invalid credentials.");
-    }
-
-    if (!this.passwordService.verifyPassword(input.password, user.passwordHash)) {
-      throw new UnauthorizedException("Invalid credentials.");
-    }
-
-    const permissions = this.usersService.flattenPermissions(user);
-    const tokens = await this.issueTokens(user.id, user.email, permissions);
-
-    await this.prisma.$transaction([
-      this.prisma.user.update({
-        where: { id: user.id },
-        data: { lastLoginAt: new Date() }
-      }),
-      this.prisma.refreshToken.create({
-        data: {
-          userId: user.id,
-          tokenHash: this.passwordService.hashToken(tokens.refreshToken),
-          expiresAt: tokens.refreshTokenExpiresAt
-        }
-      })
-    ]);
-
-    await this.auditService.write({
-      actorId: user.id,
-      action: "auth.login",
-      entityType: "User",
-      entityId: user.id,
-      metadata: { email: user.email }
+    const { user, permissions } = await this.authProviderService.authenticate(input);
+    return this.finishLogin(user.id, user.email, permissions, user, {
+      provider: "local"
     });
+  }
+
+  async loginWithEntra(input: EntraLoginDto) {
+    const { user, permissions, principal } = await this.entraAuthService.authenticate(input.idToken);
+    return this.finishLogin(user.id, user.email, permissions, user, {
+      provider: "entra",
+      issuer: principal.issuer,
+      audience: principal.audience,
+      entraSubject: principal.subject
+    });
+  }
+
+  getLoginConfiguration() {
+    const mode = this.configService.get<string>("auth.mode", "local");
+
+    if (mode !== "entra") {
+      return { mode: "local" as const };
+    }
 
     return {
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
-      user: this.usersService.toSafeUser(user, permissions)
+      mode: "entra" as const,
+      entra: this.entraAuthService.getPublicConfiguration()
     };
   }
 
   async refresh(input: RefreshTokenDto) {
-    const refreshSecret = this.configService.get<string>("JWT_REFRESH_SECRET", "replace-me-refresh");
+    const refreshSecret = this.configService.get<string>("auth.refreshSecret", "replace-me-refresh");
 
     let payload: { sub: string; email: string };
 
@@ -139,11 +131,49 @@ export class AuthService {
     return this.usersService.toSafeUser(user);
   }
 
+  private async finishLogin(
+    userId: string,
+    email: string,
+    permissions: string[],
+    user: Parameters<UsersService["toSafeUser"]>[0],
+    metadata: Record<string, unknown>
+  ) {
+    const tokens = await this.issueTokens(userId, email, permissions);
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: { lastLoginAt: new Date() }
+      }),
+      this.prisma.refreshToken.create({
+        data: {
+          userId,
+          tokenHash: this.passwordService.hashToken(tokens.refreshToken),
+          expiresAt: tokens.refreshTokenExpiresAt
+        }
+      })
+    ]);
+
+    await this.auditService.write({
+      actorId: userId,
+      action: "auth.login",
+      entityType: "User",
+      entityId: userId,
+      metadata: { email, ...metadata }
+    });
+
+    return {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      user: this.usersService.toSafeUser(user, permissions)
+    };
+  }
+
   private async issueTokens(userId: string, email: string, permissions: string[]) {
-    const accessSecret = this.configService.get<string>("JWT_ACCESS_SECRET", "replace-me-access");
-    const refreshSecret = this.configService.get<string>("JWT_REFRESH_SECRET", "replace-me-refresh");
-    const accessTtl = this.configService.get<string>("JWT_ACCESS_TTL", "15m");
-    const refreshTtl = this.configService.get<string>("JWT_REFRESH_TTL", "7d");
+    const accessSecret = this.configService.get<string>("auth.accessSecret", "replace-me-access");
+    const refreshSecret = this.configService.get<string>("auth.refreshSecret", "replace-me-refresh");
+    const accessTtl = this.configService.get<string>("auth.accessTtl", "15m");
+    const refreshTtl = this.configService.get<string>("auth.refreshTtl", "7d");
 
     const accessToken = await this.jwtService.signAsync(
       { sub: userId, email, permissions },

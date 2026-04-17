@@ -1,4 +1,4 @@
-import { UnauthorizedException } from "@nestjs/common";
+import { ForbiddenException, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
 import { AuthService } from "./auth.service";
@@ -17,13 +17,10 @@ describe("AuthService", () => {
   };
 
   const usersService = {
-    findByEmailWithSecurity: jest.fn(),
-    flattenPermissions: jest.fn().mockReturnValue(["users.view"]),
     toSafeUser: jest.fn().mockReturnValue({ id: "user-1" })
   };
 
   const passwordService = {
-    verifyPassword: jest.fn(),
     hashToken: jest.fn().mockReturnValue("hashed-token")
   };
 
@@ -40,13 +37,27 @@ describe("AuthService", () => {
     write: jest.fn().mockResolvedValue(undefined)
   };
 
+  const authProviderService = {
+    authenticate: jest.fn()
+  };
+
+  const entraAuthService = {
+    authenticate: jest.fn(),
+    getPublicConfiguration: jest.fn().mockReturnValue({
+      clientId: "entra-client-id",
+      authority: "https://login.microsoftonline.com/test-tenant"
+    })
+  };
+
   const service = new AuthService(
     prisma as never,
     usersService as never,
     passwordService as never,
     jwtService,
     configService,
-    auditService as never
+    auditService as never,
+    authProviderService as never,
+    entraAuthService as never
   );
 
   beforeEach(() => {
@@ -54,11 +65,7 @@ describe("AuthService", () => {
   });
 
   it("rejects inactive users", async () => {
-    usersService.findByEmailWithSecurity.mockResolvedValue({
-      id: "user-1",
-      email: "inactive@example.com",
-      isActive: false
-    });
+    authProviderService.authenticate.mockRejectedValue(new UnauthorizedException("Invalid credentials."));
 
     await expect(
       service.login({ email: "inactive@example.com", password: "Password123!" })
@@ -66,14 +73,19 @@ describe("AuthService", () => {
   });
 
   it("logs in active users with a valid password", async () => {
-    usersService.findByEmailWithSecurity.mockResolvedValue({
-      id: "user-1",
-      email: "active@example.com",
-      isActive: true,
-      passwordHash: "stored",
-      userRoles: []
+    authProviderService.authenticate.mockResolvedValue({
+      user: {
+        id: "user-1",
+        email: "active@example.com",
+        firstName: "Active",
+        lastName: "User",
+        isActive: true,
+        lastLoginAt: null,
+        passwordHash: "stored",
+        userRoles: []
+      },
+      permissions: ["users.view"]
     });
-    passwordService.verifyPassword.mockReturnValue(true);
 
     const result = await service.login({
       email: "active@example.com",
@@ -82,5 +94,35 @@ describe("AuthService", () => {
 
     expect(result.accessToken).toBe("token");
     expect(auditService.write).toHaveBeenCalled();
+  });
+
+  it("rejects Entra users who are not provisioned internally", async () => {
+    entraAuthService.authenticate.mockRejectedValue(
+      new ForbiddenException(
+        "Access denied. Your Microsoft account is not provisioned for Project Operations."
+      )
+    );
+
+    await expect(service.loginWithEntra({ idToken: "entra-token" })).rejects.toBeInstanceOf(
+      ForbiddenException
+    );
+  });
+
+  it("returns public Entra config when hosted auth mode is enabled", () => {
+    (configService.get as jest.Mock).mockImplementation((key: string, fallback?: string) => {
+      if (key === "auth.mode") {
+        return "entra";
+      }
+
+      return fallback;
+    });
+
+    expect(service.getLoginConfiguration()).toEqual({
+      mode: "entra",
+      entra: {
+        clientId: "entra-client-id",
+        authority: "https://login.microsoftonline.com/test-tenant"
+      }
+    });
   });
 });

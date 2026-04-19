@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  api:
+    name: API — lint, test, compliance smoke
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: project_ops
+          POSTGRES_PASSWORD: project_ops
+          POSTGRES_DB: project_operations
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: '10' }
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm prisma:generate
+        env:
+          DATABASE_URL: postgresql://project_ops:project_ops@localhost:5432/project_operations?schema=public
+      - run: pnpm prisma:migrate
+        env:
+          DATABASE_URL: postgresql://project_ops:project_ops@localhost:5432/project_operations?schema=public
+      - run: pnpm seed
+        env:
+          DATABASE_URL: postgresql://project_ops:project_ops@localhost:5432/project_operations?schema=public
+          JWT_ACCESS_SECRET: ci-access-secret
+          JWT_REFRESH_SECRET: ci-refresh-secret
+          SHAREPOINT_MODE: mock
+      - run: pnpm --filter @project-ops/api lint
+      - run: pnpm test:api:serial
+        env:
+          DATABASE_URL: postgresql://project_ops:project_ops@localhost:5432/project_operations?schema=public
+          JWT_ACCESS_SECRET: ci-access-secret
+          JWT_REFRESH_SECRET: ci-refresh-secret
+          SHAREPOINT_MODE: mock
+      - run: pnpm compliance:smoke
+        env:
+          DATABASE_URL: postgresql://project_ops:project_ops@localhost:5432/project_operations?schema=public
+          JWT_ACCESS_SECRET: ci-access-secret
+          JWT_REFRESH_SECRET: ci-refresh-secret
+          SHAREPOINT_MODE: mock
+
+  web:
+    name: Web — lint, logic tests, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: '10' }
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @project-ops/web lint
+      - run: pnpm test:web:logic
+      - run: pnpm --filter @project-ops/web build
+        env:
+          VITE_API_BASE_URL: http://localhost:3000/api/v1

@@ -6,9 +6,9 @@
   "scripts": {
     "dev": "pnpm --parallel --filter @project-ops/api --filter @project-ops/web dev",
     "dev:api": "pnpm --filter @project-ops/api dev",
-    "dev:api:e2e": "set CORS_ORIGIN=http://127.0.0.1:4173&& pnpm --filter @project-ops/api exec node dist/src/main.js",
+    "dev:api:e2e": "cross-env CORS_ORIGIN=http://127.0.0.1:4173 pnpm --filter @project-ops/api exec node dist/src/main.js",
     "dev:web": "pnpm --filter @project-ops/web dev",
-    "dev:web:e2e": "set VITE_API_BASE_URL=http://127.0.0.1:3000/api/v1&& pnpm --filter @project-ops/web dev:e2e",
+    "dev:web:e2e": "cross-env VITE_API_BASE_URL=http://127.0.0.1:3000/api/v1 pnpm --filter @project-ops/web dev:e2e",
     "build": "pnpm -r build",
     "build:azure": "pnpm --filter @project-ops/web build && pnpm --filter @project-ops/api build",
     "start:azure": "pnpm --filter @project-ops/api start",
@@ -27,6 +27,7 @@
   "devDependencies": {
     "@playwright/test": "^1.59.1",
     "@types/node": "^22.13.10",
+    "cross-env": "^10.1.0",
     "playwright": "^1.59.1"
   }
 }

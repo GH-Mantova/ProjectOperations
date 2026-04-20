@@ -37,6 +37,9 @@ import { WorkerDetailPage } from "./pages/workers/WorkerDetailPage";
 import { AssetsListPage } from "./pages/assets/AssetsListPage";
 import { AssetDetailPage } from "./pages/assets/AssetDetailPage";
 import { MaintenancePage as MaintenanceDashboardPage } from "./pages/maintenance/MaintenancePage";
+import { FormsListPage } from "./pages/forms/FormsListPage";
+import { FormDesignerPage } from "./pages/forms/FormDesignerPage";
+import { FormSubmitPage } from "./pages/forms/FormSubmitPage";
 
 function ProtectedRoute() {
   const { isAuthenticated } = useAuth();
@@ -74,7 +77,10 @@ export function App() {
             <Route path="/assets/:id" element={<AssetDetailPage />} />
             <Route path="/maintenance" element={<MaintenanceDashboardPage />} />
             <Route path="/maintenance/legacy" element={<MaintenancePage />} />
-            <Route path="/forms" element={<FormsPage />} />
+            <Route path="/forms" element={<FormsListPage />} />
+            <Route path="/forms/legacy" element={<FormsPage />} />
+            <Route path="/forms/designer/:templateId" element={<FormDesignerPage />} />
+            <Route path="/forms/submit/:templateId" element={<FormSubmitPage />} />
             <Route path="/documents" element={<DocumentsPage />} />
             <Route path="/admin/users" element={<UsersPage />} />
             <Route path="/admin/roles" element={<RolesPage />} />

@@ -102,7 +102,7 @@ export function DocumentsWorkspacePage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await authFetch("/documents?page=1&pageSize=500");
+      const response = await authFetch("/documents?page=1&pageSize=100");
       if (!response.ok) throw new Error("Could not load documents.");
       const data = (await response.json()) as DocumentsResponse;
       setDocuments(data.items);

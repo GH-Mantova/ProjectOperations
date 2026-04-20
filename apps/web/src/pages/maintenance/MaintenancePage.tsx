@@ -132,7 +132,7 @@ export function MaintenancePage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await authFetch("/maintenance/assets?page=1&pageSize=200");
+      const response = await authFetch("/maintenance/assets?page=1&pageSize=100");
       if (!response.ok) throw new Error("Could not load maintenance data.");
       setData((await response.json()) as MaintenanceResponse);
     } catch (err) {

@@ -58,7 +58,7 @@ export function AssetsListPage() {
       setLoading(true);
       setError(null);
       try {
-        const response = await authFetch("/assets?page=1&pageSize=200");
+        const response = await authFetch("/assets?page=1&pageSize=100");
         if (!response.ok) throw new Error("Could not load assets.");
         const data = (await response.json()) as AssetsResponse;
         if (!cancelled) setAssets(data.items);

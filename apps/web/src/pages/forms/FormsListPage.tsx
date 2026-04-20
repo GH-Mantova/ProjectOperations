@@ -78,8 +78,8 @@ export function FormsListPage() {
       setError(null);
       try {
         const [templatesRes, submissionsRes] = await Promise.all([
-          authFetch("/forms/templates?page=1&pageSize=200"),
-          authFetch("/forms/submissions?page=1&pageSize=200")
+          authFetch("/forms/templates?page=1&pageSize=100"),
+          authFetch("/forms/submissions?page=1&pageSize=100")
         ]);
         if (!templatesRes.ok) throw new Error("Could not load templates.");
         if (!submissionsRes.ok) throw new Error("Could not load submissions.");

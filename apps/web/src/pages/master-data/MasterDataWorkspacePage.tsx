@@ -113,7 +113,7 @@ function ClientsTab({ authFetch }: { authFetch: AuthFetch }) {
     setLoading(true);
     setError(null);
     try {
-      const response = await authFetch("/master-data/clients?page=1&pageSize=200");
+      const response = await authFetch("/master-data/clients?page=1&pageSize=100");
       if (!response.ok) throw new Error("Could not load clients.");
       const data = (await response.json()) as ListResponse<Client>;
       setClients(data.items);
@@ -285,8 +285,8 @@ function SitesTab({ authFetch }: { authFetch: AuthFetch }) {
     setError(null);
     try {
       const [sitesRes, clientsRes] = await Promise.all([
-        authFetch("/master-data/sites?page=1&pageSize=200"),
-        authFetch("/master-data/clients?page=1&pageSize=200")
+        authFetch("/master-data/sites?page=1&pageSize=100"),
+        authFetch("/master-data/clients?page=1&pageSize=100")
       ]);
       if (!sitesRes.ok) throw new Error("Could not load sites.");
       const data = (await sitesRes.json()) as ListResponse<Site>;

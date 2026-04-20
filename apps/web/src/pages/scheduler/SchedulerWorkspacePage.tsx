@@ -154,7 +154,7 @@ export function SchedulerWorkspacePage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await authFetch("/scheduler/workspace?page=1&pageSize=200");
+      const response = await authFetch("/scheduler/workspace?page=1&pageSize=100");
       if (!response.ok) throw new Error("Could not load scheduler workspace.");
       setWorkspace((await response.json()) as WorkspaceResponse);
     } catch (err) {

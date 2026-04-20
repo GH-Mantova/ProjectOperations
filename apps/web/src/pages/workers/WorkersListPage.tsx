@@ -69,7 +69,7 @@ export function WorkersListPage() {
       setLoading(true);
       setError(null);
       try {
-        const response = await authFetch("/resources/workers?page=1&pageSize=200");
+        const response = await authFetch("/resources/workers?page=1&pageSize=100");
         if (!response.ok) throw new Error("Could not load workers.");
         const data = (await response.json()) as WorkersResponse;
         if (!cancelled) setWorkers(data.items);

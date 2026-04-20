@@ -93,7 +93,7 @@ export function TenderingPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await authFetch("/tenders?page=1&pageSize=200");
+      const response = await authFetch("/tenders?page=1&pageSize=100");
       if (!response.ok) throw new Error("Could not load tenders.");
       const data = (await response.json()) as TenderListResponse;
       setTenders(data.items);

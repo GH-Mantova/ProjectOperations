@@ -82,7 +82,7 @@ export function JobsListPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await authFetch("/jobs?page=1&pageSize=200");
+      const response = await authFetch("/jobs?page=1&pageSize=100");
       if (!response.ok) throw new Error("Could not load jobs.");
       const data = (await response.json()) as JobListResponse;
       setJobs(data.items);
@@ -102,9 +102,9 @@ export function JobsListPage() {
     (async () => {
       try {
         const [clientsRes, sitesRes, workersRes] = await Promise.all([
-          authFetch("/master-data/clients?page=1&pageSize=200"),
-          authFetch("/master-data/sites?page=1&pageSize=200"),
-          authFetch("/resources/workers?page=1&pageSize=200")
+          authFetch("/master-data/clients?page=1&pageSize=100"),
+          authFetch("/master-data/sites?page=1&pageSize=100"),
+          authFetch("/resources/workers?page=1&pageSize=100")
         ]);
         if (clientsRes.ok && !cancelled) {
           const data = await clientsRes.json();

@@ -150,6 +150,26 @@ export class TenderingService {
     return tender;
   }
 
+  async updateStatus(id: string, status: string, actorId?: string) {
+    const existing = await this.prisma.tender.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException("Tender not found.");
+    }
+    const tender = await this.prisma.tender.update({
+      where: { id },
+      data: { status },
+      include: tenderInclude
+    });
+    await this.auditService.write({
+      actorId,
+      action: "tenders.status.update",
+      entityType: "Tender",
+      entityId: id,
+      metadata: { from: existing.status, to: status }
+    });
+    return tender;
+  }
+
   async update(id: string, dto: UpsertTenderDto, actorId?: string) {
     const existing = await this.prisma.tender.findUnique({ where: { id } });
     if (!existing) {

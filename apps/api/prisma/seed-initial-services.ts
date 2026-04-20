@@ -2516,20 +2516,53 @@ export async function seedEstimateRates(prisma: PrismaClient): Promise<void> {
     });
   }
 
-  type WasteRow = { wasteType: string; facility: string; tonRate: string; loadRate?: string };
+  type WasteRow = {
+    wasteType: string;
+    facility: string;
+    wasteGroup: string;
+    unit: string;
+    tonRate: string;
+    loadRate?: string;
+  };
   const waste: WasteRow[] = [
-    { wasteType: "Concrete — clean", facility: "BMI Acacia Ridge", tonRate: "17.00", loadRate: "360.00" },
-    { wasteType: "Concrete — clean", facility: "Rowcon (Bells Creek)", tonRate: "4.50" },
-    { wasteType: "C&D — general", facility: "BMI Hendra", tonRate: "219.00" },
-    { wasteType: "C&D — general", facility: "Rowcon (Bells Creek)", tonRate: "263.00" },
-    { wasteType: "Asbestos NF", facility: "BMI Stapylton", tonRate: "350.00" },
-    { wasteType: "Asphalt — clean", facility: "Rowcon (Bells Creek)", tonRate: "4.50" },
-    { wasteType: "Green waste", facility: "Sunshine Coast Council", tonRate: "63.00" }
+    // Alex Fraser (m³ rates)
+    { facility: "Alex Fraser", wasteType: "Asphalt — clean", wasteGroup: "Asphalt", unit: "m³", tonRate: "10.00" },
+    { facility: "Alex Fraser", wasteType: "Concrete/Brick — mixed", wasteGroup: "Rubble", unit: "m³", tonRate: "28.00" },
+    { facility: "Alex Fraser", wasteType: "Concrete — clean", wasteGroup: "Rubble", unit: "m³", tonRate: "14.00" },
+    { facility: "Alex Fraser", wasteType: "Rock — clean", wasteGroup: "Soil", unit: "m³", tonRate: "22.00" },
+    // BMI Acacia Ridge (tonne rates)
+    { facility: "BMI Acacia Ridge", wasteType: "C&D — general", wasteGroup: "General waste", unit: "tonne", tonRate: "216.00" },
+    { facility: "BMI Acacia Ridge", wasteType: "C&D — non-recyclable", wasteGroup: "General waste", unit: "tonne", tonRate: "256.00" },
+    { facility: "BMI Acacia Ridge", wasteType: "Concrete — clean", wasteGroup: "Rubble", unit: "tonne", tonRate: "18.00", loadRate: "360.00" },
+    { facility: "BMI Acacia Ridge", wasteType: "Concrete — dirty", wasteGroup: "Rubble", unit: "tonne", tonRate: "32.00" },
+    { facility: "BMI Acacia Ridge", wasteType: "Fill — clean", wasteGroup: "Soil", unit: "tonne", tonRate: "43.00" },
+    { facility: "BMI Acacia Ridge", wasteType: "Plasterboard", wasteGroup: "General waste", unit: "tonne", tonRate: "90.00" },
+    // BMI Stapylton (hazmat)
+    { facility: "BMI Stapylton", wasteType: "Asbestos — Levy Applicable", wasteGroup: "Hazmat", unit: "tonne", tonRate: "360.00" },
+    { facility: "BMI Stapylton", wasteType: "Asbestos — Levy Exempt", wasteGroup: "Hazmat", unit: "tonne", tonRate: "218.00" },
+    { facility: "BMI Stapylton", wasteType: "Asbestos in C&D — NF Levy Applicable", wasteGroup: "Hazmat", unit: "tonne", tonRate: "400.00" },
+    { facility: "BMI Stapylton", wasteType: "Asbestos in C&D — Friable Levy Exempt", wasteGroup: "Hazmat", unit: "tonne", tonRate: "278.00" },
+    // BMI Hendra
+    { facility: "BMI Hendra", wasteType: "C&D — general", wasteGroup: "General waste", unit: "tonne", tonRate: "222.00" },
+    { facility: "BMI Hendra", wasteType: "Concrete — clean", wasteGroup: "Rubble", unit: "tonne", tonRate: "70.00" },
+    // Rowcon (Bells Creek)
+    { facility: "Rowcon (Bells Creek)", wasteType: "Concrete — clean", wasteGroup: "Rubble", unit: "tonne", tonRate: "4.50" },
+    { facility: "Rowcon (Bells Creek)", wasteType: "C&D — general", wasteGroup: "General waste", unit: "tonne", tonRate: "263.00" },
+    { facility: "Rowcon (Bells Creek)", wasteType: "Asphalt — clean", wasteGroup: "Asphalt", unit: "tonne", tonRate: "4.50" },
+    // Cleanaway
+    { facility: "Cleanaway", wasteType: "Concrete — clean", wasteGroup: "Rubble", unit: "tonne", tonRate: "38.00" },
+    // Moreton Bay Recycling (m³ rates)
+    { facility: "Moreton Bay Recycling", wasteType: "Concrete — clean", wasteGroup: "Rubble", unit: "m³", tonRate: "16.00" },
+    { facility: "Moreton Bay Recycling", wasteType: "Concrete — dirty", wasteGroup: "Rubble", unit: "m³", tonRate: "25.00" },
+    // Council green waste
+    { facility: "Sunshine Coast Council", wasteType: "Green waste", wasteGroup: "Vegetation", unit: "tonne", tonRate: "63.00" }
   ];
   for (const [index, row] of waste.entries()) {
     await prisma.estimateWasteRate.upsert({
       where: { wasteType_facility: { wasteType: row.wasteType, facility: row.facility } },
       update: {
+        wasteGroup: row.wasteGroup,
+        unit: row.unit,
         tonRate: new Prisma.Decimal(row.tonRate),
         loadRate: new Prisma.Decimal(row.loadRate ?? "0"),
         isActive: true,
@@ -2538,6 +2571,8 @@ export async function seedEstimateRates(prisma: PrismaClient): Promise<void> {
       create: {
         wasteType: row.wasteType,
         facility: row.facility,
+        wasteGroup: row.wasteGroup,
+        unit: row.unit,
         tonRate: new Prisma.Decimal(row.tonRate),
         loadRate: new Prisma.Decimal(row.loadRate ?? "0"),
         isActive: true,
@@ -2546,28 +2581,148 @@ export async function seedEstimateRates(prisma: PrismaClient): Promise<void> {
     });
   }
 
-  type CuttingRow = { cuttingType: string; unit: string; rate: string };
+  // Cutrite rates — full matrix from IS spreadsheet. Elevation stored as "Floor" for
+  // the base rate; Wall/Inverted multipliers applied client-side.
+  type CuttingRow = {
+    equipment: string;
+    elevation: string;
+    material: string;
+    depthMm: number;
+    ratePerM: string;
+  };
   const cutting: CuttingRow[] = [
-    { cuttingType: "Wall saw", unit: "m", rate: "95.00" },
-    { cuttingType: "Road saw", unit: "m", rate: "42.00" },
-    { cuttingType: "Hand saw", unit: "m", rate: "65.00" },
-    { cuttingType: "Core drill", unit: "ea", rate: "180.00" }
+    // Roadsaw — Asphalt (Floor)
+    { equipment: "Roadsaw", elevation: "Floor", material: "Asphalt", depthMm: 50, ratePerM: "4.30" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Asphalt", depthMm: 75, ratePerM: "6.00" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Asphalt", depthMm: 100, ratePerM: "8.00" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Asphalt", depthMm: 125, ratePerM: "9.40" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Asphalt", depthMm: 150, ratePerM: "12.60" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Asphalt", depthMm: 175, ratePerM: "14.25" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Asphalt", depthMm: 200, ratePerM: "16.50" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Asphalt", depthMm: 225, ratePerM: "18.50" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Asphalt", depthMm: 250, ratePerM: "21.10" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Asphalt", depthMm: 275, ratePerM: "23.85" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Asphalt", depthMm: 300, ratePerM: "27.25" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Asphalt", depthMm: 325, ratePerM: "31.75" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Asphalt", depthMm: 350, ratePerM: "35.90" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Asphalt", depthMm: 375, ratePerM: "37.20" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Asphalt", depthMm: 400, ratePerM: "41.35" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Asphalt", depthMm: 450, ratePerM: "70.21" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Asphalt", depthMm: 500, ratePerM: "78.03" },
+    // Roadsaw — Concrete (Floor)
+    { equipment: "Roadsaw", elevation: "Floor", material: "Concrete", depthMm: 50, ratePerM: "4.85" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Concrete", depthMm: 75, ratePerM: "8.40" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Concrete", depthMm: 100, ratePerM: "11.10" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Concrete", depthMm: 125, ratePerM: "13.70" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Concrete", depthMm: 150, ratePerM: "14.30" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Concrete", depthMm: 175, ratePerM: "16.40" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Concrete", depthMm: 200, ratePerM: "18.95" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Concrete", depthMm: 225, ratePerM: "21.40" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Concrete", depthMm: 250, ratePerM: "25.55" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Concrete", depthMm: 275, ratePerM: "30.70" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Concrete", depthMm: 300, ratePerM: "39.35" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Concrete", depthMm: 325, ratePerM: "42.15" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Concrete", depthMm: 350, ratePerM: "51.30" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Concrete", depthMm: 375, ratePerM: "54.35" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Concrete", depthMm: 400, ratePerM: "58.70" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Concrete", depthMm: 450, ratePerM: "82.60" },
+    { equipment: "Roadsaw", elevation: "Floor", material: "Concrete", depthMm: 500, ratePerM: "91.80" },
+    // Demosaw — Any (Floor)
+    { equipment: "Demosaw", elevation: "Floor", material: "Any", depthMm: 25, ratePerM: "7.55" },
+    { equipment: "Demosaw", elevation: "Floor", material: "Any", depthMm: 50, ratePerM: "10.90" },
+    { equipment: "Demosaw", elevation: "Floor", material: "Any", depthMm: 75, ratePerM: "15.35" },
+    { equipment: "Demosaw", elevation: "Floor", material: "Any", depthMm: 100, ratePerM: "22.25" },
+    { equipment: "Demosaw", elevation: "Floor", material: "Any", depthMm: 125, ratePerM: "24.70" },
+    { equipment: "Demosaw", elevation: "Floor", material: "Any", depthMm: 150, ratePerM: "28.40" },
+    // Demosaw — Brick/Block (Wall)
+    { equipment: "Demosaw", elevation: "Wall", material: "Brick/Block", depthMm: 25, ratePerM: "7.90" },
+    { equipment: "Demosaw", elevation: "Wall", material: "Brick/Block", depthMm: 50, ratePerM: "13.95" },
+    { equipment: "Demosaw", elevation: "Wall", material: "Brick/Block", depthMm: 75, ratePerM: "21.40" },
+    { equipment: "Demosaw", elevation: "Wall", material: "Brick/Block", depthMm: 100, ratePerM: "26.80" },
+    { equipment: "Demosaw", elevation: "Wall", material: "Brick/Block", depthMm: 125, ratePerM: "34.55" },
+    { equipment: "Demosaw", elevation: "Wall", material: "Brick/Block", depthMm: 150, ratePerM: "43.10" },
+    // Demosaw — Concrete (Wall)
+    { equipment: "Demosaw", elevation: "Wall", material: "Concrete", depthMm: 25, ratePerM: "9.95" },
+    { equipment: "Demosaw", elevation: "Wall", material: "Concrete", depthMm: 50, ratePerM: "17.00" },
+    { equipment: "Demosaw", elevation: "Wall", material: "Concrete", depthMm: 75, ratePerM: "23.60" },
+    { equipment: "Demosaw", elevation: "Wall", material: "Concrete", depthMm: 100, ratePerM: "31.70" },
+    { equipment: "Demosaw", elevation: "Wall", material: "Concrete", depthMm: 125, ratePerM: "39.75" },
+    { equipment: "Demosaw", elevation: "Wall", material: "Concrete", depthMm: 150, ratePerM: "48.60" },
+    // Ringsaw — Any/Any
+    { equipment: "Ringsaw", elevation: "Any", material: "Any", depthMm: 175, ratePerM: "71.30" },
+    { equipment: "Ringsaw", elevation: "Any", material: "Any", depthMm: 200, ratePerM: "84.25" },
+    { equipment: "Ringsaw", elevation: "Any", material: "Any", depthMm: 225, ratePerM: "96.10" },
+    { equipment: "Ringsaw", elevation: "Any", material: "Any", depthMm: 250, ratePerM: "108.00" },
+    { equipment: "Ringsaw", elevation: "Any", material: "Any", depthMm: 275, ratePerM: "117.70" },
+    { equipment: "Ringsaw", elevation: "Any", material: "Any", depthMm: 300, ratePerM: "126.35" },
+    { equipment: "Ringsaw", elevation: "Any", material: "Any", depthMm: 320, ratePerM: "141.50" },
+    // Flush-cut
+    { equipment: "Flush-cut", elevation: "Any", material: "Any", depthMm: 25, ratePerM: "18.00" },
+    // Tracksaw
+    { equipment: "Tracksaw", elevation: "Any", material: "Any", depthMm: 25, ratePerM: "18.00" }
   ];
   for (const [index, row] of cutting.entries()) {
     await prisma.estimateCuttingRate.upsert({
-      where: { cuttingType: row.cuttingType },
+      where: {
+        equipment_elevation_material_depthMm: {
+          equipment: row.equipment,
+          elevation: row.elevation,
+          material: row.material,
+          depthMm: row.depthMm
+        }
+      },
       update: {
-        unit: row.unit,
-        rate: new Prisma.Decimal(row.rate),
+        ratePerM: new Prisma.Decimal(row.ratePerM),
         isActive: true,
         sortOrder: index + 1
       },
       create: {
-        cuttingType: row.cuttingType,
-        unit: row.unit,
-        rate: new Prisma.Decimal(row.rate),
+        equipment: row.equipment,
+        elevation: row.elevation,
+        material: row.material,
+        depthMm: row.depthMm,
+        ratePerM: new Prisma.Decimal(row.ratePerM),
         isActive: true,
         sortOrder: index + 1
+      }
+    });
+  }
+
+  // Core hole rates ($/hole by diameter)
+  type CoreHoleRow = { diameterMm: number; ratePerHole: string };
+  const coreHoles: CoreHoleRow[] = [
+    { diameterMm: 32, ratePerHole: "1.70" },
+    { diameterMm: 50, ratePerHole: "2.05" },
+    { diameterMm: 75, ratePerHole: "2.30" },
+    { diameterMm: 100, ratePerHole: "2.55" },
+    { diameterMm: 125, ratePerHole: "2.75" },
+    { diameterMm: 150, ratePerHole: "3.20" },
+    { diameterMm: 175, ratePerHole: "3.95" },
+    { diameterMm: 200, ratePerHole: "4.85" },
+    { diameterMm: 225, ratePerHole: "5.45" },
+    { diameterMm: 250, ratePerHole: "6.95" },
+    { diameterMm: 275, ratePerHole: "9.40" },
+    { diameterMm: 300, ratePerHole: "10.90" },
+    { diameterMm: 350, ratePerHole: "12.90" },
+    { diameterMm: 375, ratePerHole: "14.50" },
+    { diameterMm: 400, ratePerHole: "17.90" },
+    { diameterMm: 450, ratePerHole: "23.75" },
+    { diameterMm: 500, ratePerHole: "29.15" },
+    { diameterMm: 550, ratePerHole: "34.55" },
+    { diameterMm: 600, ratePerHole: "41.00" },
+    { diameterMm: 650, ratePerHole: "49.70" }
+  ];
+  for (const row of coreHoles) {
+    await prisma.estimateCoreHoleRate.upsert({
+      where: { diameterMm: row.diameterMm },
+      update: {
+        ratePerHole: new Prisma.Decimal(row.ratePerHole),
+        isActive: true
+      },
+      create: {
+        diameterMm: row.diameterMm,
+        ratePerHole: new Prisma.Decimal(row.ratePerHole),
+        isActive: true
       }
     });
   }

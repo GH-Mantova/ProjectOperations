@@ -7538,6 +7538,65 @@ textarea {
   border-top: 1px solid var(--border-subtle, rgba(0,0,0,0.06));
 }
 
+/* Cutting tab: Saw cut / Core hole mode pills */
+.estimate-editor__cutting-add {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface-subtle, rgba(0,0,0,0.02));
+  border-radius: 6px;
+}
+.estimate-editor__cutting-mode { display: inline-flex; gap: 4px; }
+.estimate-editor__cutting-mode-pill {
+  padding: 4px 12px;
+  background: transparent;
+  border: 1px solid var(--border-subtle, rgba(0,0,0,0.08));
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+.estimate-editor__cutting-mode-pill--active {
+  background: color-mix(in srgb, #FEAA6D 15%, transparent);
+  color: #9A4A00;
+  border-color: color-mix(in srgb, #FEAA6D 45%, transparent);
+}
+.estimate-editor__cutting-add .estimate-editor__line-add {
+  padding: 0;
+  background: transparent;
+}
+
+/* Waste density calculator */
+.density-calc {
+  border: 1px solid var(--border-subtle, rgba(0,0,0,0.08));
+  border-radius: 6px;
+  margin-bottom: 10px;
+}
+.density-calc__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--surface-subtle, rgba(0,0,0,0.02));
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: inherit;
+  text-align: left;
+  border-radius: 6px;
+}
+.density-calc__body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border-subtle, rgba(0,0,0,0.06));
+}
+
 /* Item detail tabs (replaces the old vertical sections) */
 .estimate-editor__item-tabs { margin-top: 16px; }
 .estimate-editor__item-tabbar {

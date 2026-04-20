@@ -31,6 +31,8 @@ export class UpsertPlantRateDto {
 export class UpsertWasteRateDto {
   @IsString() wasteType!: string;
   @IsString() facility!: string;
+  @IsOptional() @IsString() wasteGroup?: string;
+  @IsOptional() @IsString() unit?: string;
   @IsNumberString() tonRate!: string;
   @IsOptional() @IsNumberString() loadRate?: string;
   @IsOptional() @IsBoolean() isActive?: boolean;
@@ -38,11 +40,19 @@ export class UpsertWasteRateDto {
 }
 
 export class UpsertCuttingRateDto {
-  @IsString() cuttingType!: string;
-  @IsString() unit!: string;
-  @IsNumberString() rate!: string;
+  @IsString() equipment!: string;
+  @IsString() elevation!: string;
+  @IsString() material!: string;
+  @Type(() => Number) @IsInt() depthMm!: number;
+  @IsNumberString() ratePerM!: string;
   @IsOptional() @IsBoolean() isActive?: boolean;
   @IsOptional() @Type(() => Number) @IsInt() sortOrder?: number;
+}
+
+export class UpsertCoreHoleRateDto {
+  @Type(() => Number) @IsInt() diameterMm!: number;
+  @IsNumberString() ratePerHole!: string;
+  @IsOptional() @IsBoolean() isActive?: boolean;
 }
 
 export class UpsertFuelRateDto {
@@ -119,6 +129,11 @@ export class UpsertWasteLineDto {
 
 export class UpsertCuttingLineDto {
   @IsString() cuttingType!: string;
+  @IsOptional() @IsString() equipment?: string;
+  @IsOptional() @IsString() elevation?: string;
+  @IsOptional() @IsString() material?: string;
+  @IsOptional() @Type(() => Number) @IsInt() depthMm?: number;
+  @IsOptional() @Type(() => Number) @IsInt() diameterMm?: number;
   @IsNumberString() qty!: string;
   @IsString() unit!: string;
   @IsOptional() @IsString() comment?: string;
@@ -181,6 +196,11 @@ export class UpdateWasteLineDto {
 
 export class UpdateCuttingLineDto {
   @IsOptional() @IsString() cuttingType?: string;
+  @IsOptional() @IsString() equipment?: string;
+  @IsOptional() @IsString() elevation?: string;
+  @IsOptional() @IsString() material?: string;
+  @IsOptional() @Type(() => Number) @IsInt() depthMm?: number;
+  @IsOptional() @Type(() => Number) @IsInt() diameterMm?: number;
   @IsOptional() @IsNumberString() qty?: string;
   @IsOptional() @IsString() unit?: string;
   @IsOptional() @IsString() comment?: string;

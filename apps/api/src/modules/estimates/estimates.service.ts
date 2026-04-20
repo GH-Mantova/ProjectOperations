@@ -12,6 +12,7 @@ import {
   UpdatePlantLineDto,
   UpdateWasteLineDto,
   UpsertAssumptionDto,
+  UpsertCoreHoleRateDto,
   UpsertCuttingLineDto,
   UpsertCuttingRateDto,
   UpsertEnclosureRateDto,
@@ -145,6 +146,8 @@ export class EstimatesService {
     const data = {
       wasteType: dto.wasteType,
       facility: dto.facility,
+      wasteGroup: dto.wasteGroup ?? null,
+      unit: dto.unit ?? "tonne",
       tonRate: new Prisma.Decimal(dto.tonRate),
       loadRate: new Prisma.Decimal(dto.loadRate ?? "0"),
       isActive: dto.isActive ?? true,
@@ -174,14 +177,22 @@ export class EstimatesService {
 
   listCuttingRates() {
     return this.prisma.estimateCuttingRate.findMany({
-      orderBy: [{ isActive: "desc" }, { sortOrder: "asc" }, { cuttingType: "asc" }]
+      orderBy: [
+        { isActive: "desc" },
+        { equipment: "asc" },
+        { material: "asc" },
+        { elevation: "asc" },
+        { depthMm: "asc" }
+      ]
     });
   }
   async upsertCuttingRate(id: string | undefined, dto: UpsertCuttingRateDto, actorId?: string) {
     const data = {
-      cuttingType: dto.cuttingType,
-      unit: dto.unit,
-      rate: new Prisma.Decimal(dto.rate),
+      equipment: dto.equipment,
+      elevation: dto.elevation,
+      material: dto.material,
+      depthMm: dto.depthMm,
+      ratePerM: new Prisma.Decimal(dto.ratePerM),
       isActive: dto.isActive ?? true,
       sortOrder: dto.sortOrder ?? 0
     };
@@ -202,6 +213,39 @@ export class EstimatesService {
       actorId,
       action: "estimates.cuttingRate.delete",
       entityType: "EstimateCuttingRate",
+      entityId: id
+    });
+    return { id };
+  }
+
+  listCoreHoleRates() {
+    return this.prisma.estimateCoreHoleRate.findMany({
+      orderBy: [{ isActive: "desc" }, { diameterMm: "asc" }]
+    });
+  }
+  async upsertCoreHoleRate(id: string | undefined, dto: UpsertCoreHoleRateDto, actorId?: string) {
+    const data = {
+      diameterMm: dto.diameterMm,
+      ratePerHole: new Prisma.Decimal(dto.ratePerHole),
+      isActive: dto.isActive ?? true
+    };
+    const record = id
+      ? await this.prisma.estimateCoreHoleRate.update({ where: { id }, data })
+      : await this.prisma.estimateCoreHoleRate.create({ data });
+    await this.auditService.write({
+      actorId,
+      action: id ? "estimates.coreHoleRate.update" : "estimates.coreHoleRate.create",
+      entityType: "EstimateCoreHoleRate",
+      entityId: record.id
+    });
+    return record;
+  }
+  async deleteCoreHoleRate(id: string, actorId?: string) {
+    await this.prisma.estimateCoreHoleRate.delete({ where: { id } });
+    await this.auditService.write({
+      actorId,
+      action: "estimates.coreHoleRate.delete",
+      entityType: "EstimateCoreHoleRate",
       entityId: id
     });
     return { id };
@@ -712,6 +756,11 @@ export class EstimatesService {
       data: {
         itemId,
         cuttingType: dto.cuttingType,
+        equipment: dto.equipment ?? null,
+        elevation: dto.elevation ?? null,
+        material: dto.material ?? null,
+        depthMm: dto.depthMm ?? null,
+        diameterMm: dto.diameterMm ?? null,
         qty: new Prisma.Decimal(dto.qty),
         unit: dto.unit,
         comment: dto.comment ?? null,
@@ -733,6 +782,11 @@ export class EstimatesService {
     await this.ensureCuttingLineInItem(itemId, lineId);
     const data: Prisma.EstimateCuttingLineUpdateInput = {};
     if (dto.cuttingType !== undefined) data.cuttingType = dto.cuttingType;
+    if (dto.equipment !== undefined) data.equipment = dto.equipment;
+    if (dto.elevation !== undefined) data.elevation = dto.elevation;
+    if (dto.material !== undefined) data.material = dto.material;
+    if (dto.depthMm !== undefined) data.depthMm = dto.depthMm;
+    if (dto.diameterMm !== undefined) data.diameterMm = dto.diameterMm;
     if (dto.qty !== undefined) data.qty = new Prisma.Decimal(dto.qty);
     if (dto.unit !== undefined) data.unit = dto.unit;
     if (dto.comment !== undefined) data.comment = dto.comment;

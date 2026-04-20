@@ -1,6 +1,7 @@
 import { Prisma, PrismaClient } from "@prisma/client";
 import { randomBytes, scryptSync } from "crypto";
 import { permissionRegistry } from "../src/common/permissions/permission-registry";
+import { seedMantovaDataset } from "./seed-mantova";
 
 const databaseUrl =
   process.env.DATABASE_URL ??
@@ -2296,6 +2297,8 @@ async function main() {
       }
     });
   }
+
+  await seedMantovaDataset(prisma);
 }
 
 main()

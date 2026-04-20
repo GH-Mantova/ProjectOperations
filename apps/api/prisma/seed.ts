@@ -191,13 +191,12 @@ async function main() {
     ]
   });
 
+  // Only the dev/test admin is seeded here. The real Initial Services staff
+  // roster is populated in seed-initial-services.ts with stable IDs and
+  // granular roles (Project Manager / Senior Estimator / WHS Officer / Accounts
+  // / Warehouse Manager).
   const seedUsers = [
-    ["admin@projectops.local", "Alex", "Admin", adminRole.id],
-    ["estimator@projectops.local", "Erin", "Estimator", plannerRole.id],
-    ["pm@projectops.local", "Paula", "Manager", plannerRole.id],
-    ["scheduler@projectops.local", "Sam", "Scheduler", plannerRole.id],
-    ["supervisor@projectops.local", "Sophie", "Supervisor", fieldRole.id],
-    ["field@projectops.local", "Finn", "Field", fieldRole.id]
+    ["admin@projectops.local", "Alex", "Admin", adminRole.id]
   ] as const;
 
   for (const [email, firstName, lastName, roleId] of seedUsers) {
@@ -225,6 +224,21 @@ async function main() {
       }
     });
   }
+
+  // Remove fictional demo users from previous seeds.
+  await prisma.user.deleteMany({
+    where: {
+      email: {
+        in: [
+          "estimator@projectops.local",
+          "pm@projectops.local",
+          "scheduler@projectops.local",
+          "supervisor@projectops.local",
+          "field@projectops.local"
+        ]
+      }
+    }
+  });
 
   const adminUser = await prisma.user.findUnique({
     where: { email: "admin@projectops.local" }
@@ -459,6 +473,11 @@ async function main() {
     });
   }
 
+  // Seed the Initial Services staff roster + granular roles BEFORE the demo
+  // tenders/jobs below so that seedInitialServicesDataset's stable user IDs
+  // (user-estimator, user-pm-001, etc.) resolve when demo tenders look them up.
+  await seedInitialServicesDataset(prisma);
+
   const [clientA, clientB] = await Promise.all([
     prisma.client.upsert({
       where: { name: "Acme Infrastructure" },
@@ -677,9 +696,12 @@ async function main() {
     }
   });
 
-  const estimatorUser = await prisma.user.findUnique({
-    where: { email: "estimator@projectops.local" }
-  });
+  // Estimator reference: points at the real Senior Estimator (Raj Pudasaini)
+  // via the stable IS seed ID. Falls back to the legacy demo email only when
+  // the IS dataset hasn't been seeded yet.
+  const estimatorUser =
+    (await prisma.user.findUnique({ where: { id: "user-estimator" } })) ??
+    (await prisma.user.findUnique({ where: { email: "raj.pudasaini@initialservices.net.au" } }));
 
   if (estimatorUser) {
     const primaryContact = await prisma.contact.findFirst({
@@ -1120,13 +1142,16 @@ async function main() {
       where: { code: "GATEWAY" }
     });
 
-    const pmUser = await prisma.user.findUnique({
-      where: { email: "pm@projectops.local" }
-    });
+    // PM and supervisor references: point at the real Project Manager
+    // (Beau Murphy) and — because there's no dedicated field supervisor in the
+    // current roster — also Beau for supervisor assignments.
+    const pmUser =
+      (await prisma.user.findUnique({ where: { id: "user-pm-001" } })) ??
+      (await prisma.user.findUnique({ where: { email: "beau.murphy@initialservices.net.au" } }));
 
-    const supervisorUser = await prisma.user.findUnique({
-      where: { email: "supervisor@projectops.local" }
-    });
+    const supervisorUser =
+      (await prisma.user.findUnique({ where: { id: "user-pm-001" } })) ??
+      (await prisma.user.findUnique({ where: { email: "beau.murphy@initialservices.net.au" } }));
 
     const convertedTenderFolder = await prisma.sharePointFolderLink.upsert({
       where: {
@@ -2298,7 +2323,9 @@ async function main() {
     });
   }
 
-  await seedInitialServicesDataset(prisma);
+  // seedInitialServicesDataset is called early (above, before the demo tenders
+  // and jobs that reference its user IDs). The remaining IS-dependent seeds run
+  // at the end once every other record exists.
   await seedEstimateRates(prisma);
   await backfillTenderLifecycleTimestamps(prisma);
   await seedUserDashboards(prisma);

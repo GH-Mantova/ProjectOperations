@@ -65,17 +65,208 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
     data: viewPermissions.map((permission) => ({ roleId: viewerRole.id, permissionId: permission.id }))
   });
 
-  type UserSeed = { id: string; email: string; firstName: string; lastName: string; roleId: string };
-  const userSeeds: UserSeed[] = [
-    { id: "user-admin", email: "admin@initialservices.net", firstName: "Alex", lastName: "Administrator", roleId: adminRole.id },
-    { id: "user-pm-001", email: "s.mitchell@initialservices.net", firstName: "Sarah", lastName: "Mitchell", roleId: plannerRole.id },
-    { id: "user-pm-002", email: "j.okafor@initialservices.net", firstName: "James", lastName: "Okafor", roleId: plannerRole.id },
-    { id: "user-estimator", email: "p.sharma@initialservices.net", firstName: "Priya", lastName: "Sharma", roleId: plannerRole.id },
-    { id: "user-scheduler", email: "t.brennan@initialservices.net", firstName: "Tom", lastName: "Brennan", roleId: plannerRole.id },
-    { id: "user-supervisor-001", email: "d.kowalski@initialservices.net", firstName: "Dean", lastName: "Kowalski", roleId: fieldRole.id },
-    { id: "user-supervisor-002", email: "l.tran@initialservices.net", firstName: "Lisa", lastName: "Tran", roleId: fieldRole.id },
-    { id: "user-viewer", email: "m.reader@initialservices.net", firstName: "Mark", lastName: "Reader", roleId: viewerRole.id }
+  // ── Operational roles for the real Initial Services staff roster ─────────
+  // "projects.manage" is surfaced in this codebase as `jobs.manage`; "scheduling.manage" as
+  // `scheduler.manage`; "whs.manage" and "compliance.manage" as `forms.manage` + `audit.view`
+  // (compliance lives in the forms module today); "finance.manage" has no module yet so
+  // Accounts gets view-scoped access across tenders/jobs + tenderconversion; "warehouse.manage"
+  // maps to `assets.manage` + `maintenance.manage`.
+  async function seedRoleWithPermissions(
+    name: string,
+    description: string,
+    permissionCodes: string[]
+  ) {
+    const role = await prisma.role.upsert({
+      where: { name },
+      update: { description, isSystem: true },
+      create: { name, description, isSystem: true }
+    });
+    const perms = await prisma.permission.findMany({ where: { code: { in: permissionCodes } } });
+    await prisma.rolePermission.deleteMany({ where: { roleId: role.id } });
+    if (perms.length > 0) {
+      await prisma.rolePermission.createMany({
+        data: perms.map((p) => ({ roleId: role.id, permissionId: p.id }))
+      });
+    }
+    return role;
+  }
+
+  const baseView = [
+    "users.view",
+    "dashboards.view",
+    "masterdata.view",
+    "search.view",
+    "notifications.view"
   ];
+
+  const projectManagerRole = await seedRoleWithPermissions(
+    "Project Manager",
+    "Project delivery — jobs, scheduling, and resource coordination.",
+    [
+      ...baseView,
+      "jobs.view",
+      "jobs.manage",
+      "resources.view",
+      "resources.manage",
+      "scheduler.view",
+      "scheduler.manage",
+      "tenders.view",
+      "tenderconversion.manage",
+      "assets.view",
+      "maintenance.view",
+      "forms.view",
+      "forms.manage",
+      "documents.view",
+      "documents.manage"
+    ]
+  );
+
+  const seniorEstimatorRole = await seedRoleWithPermissions(
+    "Senior Estimator",
+    "Tendering and estimating — full control of rate library and tender pricing.",
+    [
+      ...baseView,
+      "tenders.view",
+      "tenders.manage",
+      "tenderdocuments.view",
+      "tenderdocuments.manage",
+      "estimates.view",
+      "estimates.manage",
+      "estimates.admin",
+      "documents.view"
+    ]
+  );
+
+  const whsOfficerRole = await seedRoleWithPermissions(
+    "WHS Officer",
+    "Work Health & Safety + commercial compliance — forms, audits, document control.",
+    [
+      ...baseView,
+      "forms.view",
+      "forms.manage",
+      "documents.view",
+      "documents.manage",
+      "audit.view",
+      "tenders.view",
+      "jobs.view"
+    ]
+  );
+
+  const accountsRole = await seedRoleWithPermissions(
+    "Accounts",
+    "Accounts payable / receivable — tender + job visibility, contract lifecycle access.",
+    [
+      ...baseView,
+      "tenders.view",
+      "tenderdocuments.view",
+      "tenderconversion.manage",
+      "jobs.view",
+      "documents.view"
+    ]
+  );
+
+  const warehouseManagerRole = await seedRoleWithPermissions(
+    "Warehouse Manager",
+    "Assets and maintenance — warehouse + equipment lifecycle.",
+    [
+      ...baseView,
+      "assets.view",
+      "assets.manage",
+      "maintenance.view",
+      "maintenance.manage",
+      "resources.view",
+      "jobs.view",
+      "scheduler.view"
+    ]
+  );
+
+  type UserSeed = {
+    id: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    roleId: string;
+    position: string;
+  };
+  // Real Initial Services staff roster. Stable IDs are retained so existing seed
+  // references (tender estimator, job PM/supervisor) continue to resolve.
+  const userSeeds: UserSeed[] = [
+    {
+      id: "user-admin",
+      email: "sean.lattin@initialservices.net.au",
+      firstName: "Sean",
+      lastName: "Lattin",
+      roleId: adminRole.id,
+      position: "Company Director"
+    },
+    {
+      id: "user-pm-002",
+      email: "colin.hanlon@initialservices.net.au",
+      firstName: "Colin",
+      lastName: "Hanlon",
+      roleId: adminRole.id,
+      position: "Operations Manager"
+    },
+    {
+      id: "user-pm-001",
+      email: "beau.murphy@initialservices.net.au",
+      firstName: "Beau",
+      lastName: "Murphy",
+      roleId: projectManagerRole.id,
+      position: "Project Manager"
+    },
+    {
+      id: "user-supervisor-001",
+      email: "marco.mantovaninni@initialservices.net.au",
+      firstName: "Marco",
+      lastName: "Mantovaninni",
+      roleId: whsOfficerRole.id,
+      position: "WHS & Commercial Compliance"
+    },
+    {
+      id: "user-estimator",
+      email: "raj.pudasaini@initialservices.net.au",
+      firstName: "Raj",
+      lastName: "Pudasaini",
+      roleId: seniorEstimatorRole.id,
+      position: "Senior Estimator"
+    },
+    {
+      id: "user-supervisor-002",
+      email: "amy.russian@initialservices.net.au",
+      firstName: "Amy",
+      lastName: "Russian",
+      roleId: accountsRole.id,
+      position: "Accounts Payable/Receivable"
+    },
+    {
+      id: "user-scheduler",
+      email: "matthew.knox@initialservices.net.au",
+      firstName: "Matthew",
+      lastName: "Knox",
+      roleId: warehouseManagerRole.id,
+      position: "Warehouse Manager"
+    }
+  ];
+
+  // Clean up the old fictional IS seed users that are no longer in the roster.
+  await prisma.user.deleteMany({
+    where: {
+      email: {
+        in: [
+          "admin@initialservices.net",
+          "s.mitchell@initialservices.net",
+          "j.okafor@initialservices.net",
+          "p.sharma@initialservices.net",
+          "t.brennan@initialservices.net",
+          "d.kowalski@initialservices.net",
+          "l.tran@initialservices.net",
+          "m.reader@initialservices.net"
+        ]
+      },
+      id: { notIn: userSeeds.map((u) => u.id) }
+    }
+  });
 
   for (const seed of userSeeds) {
     const user = await prisma.user.upsert({

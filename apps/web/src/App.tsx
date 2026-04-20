@@ -31,6 +31,7 @@ import { TenderingPage } from "./pages/tendering/TenderingPage";
 import { TenderDetailPage } from "./pages/tendering/TenderDetailPage";
 import { JobsListPage } from "./pages/jobs/JobsListPage";
 import { JobDetailPage } from "./pages/jobs/JobDetailPage";
+import { SchedulerWorkspacePage } from "./pages/scheduler/SchedulerWorkspacePage";
 
 function ProtectedRoute() {
   const { isAuthenticated } = useAuth();
@@ -46,7 +47,8 @@ export function App() {
         <Route element={<ProtectedRoute />}>
           <Route element={<ShellLayout />}>
             <Route path="/" element={<DashboardPlaceholderPage />} />
-            <Route path="/scheduler" element={<SchedulerPage />} />
+            <Route path="/scheduler" element={<SchedulerWorkspacePage />} />
+            <Route path="/scheduler/legacy" element={<SchedulerPage />} />
             <Route path="/tenders" element={<TenderingPage />} />
             <Route path="/tenders/dashboard" element={<TenderingDashboardPage />} />
             <Route path="/tenders/pipeline" element={<TenderPipelinePage />} />

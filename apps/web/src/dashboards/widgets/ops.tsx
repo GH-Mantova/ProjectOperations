@@ -67,10 +67,16 @@ export function UpcomingMaintenanceKpi(_props: WidgetProps) {
   return <KpiTile label="Upcoming maintenance" value={count} accent="#F59E0B" />;
 }
 
-export function JobsByStatusDonut(_props: WidgetProps) {
+export function JobsByStatusDonut(props: WidgetProps) {
   const { data: jobs, isLoading } = useJobs();
+  const filters = props.config.filters ?? {};
+  const statusFilter = Array.isArray(filters.statuses) ? (filters.statuses as string[]) : null;
+  const allowed = statusFilter && statusFilter.length > 0 ? new Set(statusFilter) : null;
   const counts = new Map<string, number>();
-  for (const j of jobs ?? []) counts.set(j.status, (counts.get(j.status) ?? 0) + 1);
+  for (const j of jobs ?? []) {
+    if (allowed && !allowed.has(j.status)) continue;
+    counts.set(j.status, (counts.get(j.status) ?? 0) + 1);
+  }
   const data = Array.from(counts.entries()).map(([label, value]) => ({ label, value }));
   if (isLoading) return <Skeleton width="100%" height={240} />;
   return <DonutChartWidget title="Jobs by status" data={data} />;
@@ -93,28 +99,50 @@ export function TenderPipelineDonut(_props: WidgetProps) {
 }
 
 export function MonthlyRevenueLine(props: WidgetProps) {
-  const period = resolvePeriod(props.config, props.globalPeriod);
-  const since = periodStart(period);
+  const filters = props.config.filters ?? {};
+  const periodFilter = typeof filters.period === "string" ? filters.period : null;
+  const show = typeof filters.show === "string" ? filters.show : "won";
+  const monthsBack = periodFilter === "3m" ? 3 : periodFilter === "12m" ? 12 : 6;
+  const since = new Date();
+  since.setMonth(since.getMonth() - monthsBack);
+  if (!periodFilter) {
+    // fall back to dashboard global period when no filter set
+    const mapped = resolvePeriod(props.config, props.globalPeriod);
+    since.setTime(periodStart(mapped).getTime());
+  }
+
   const { data: tenders, isLoading } = useTenders();
   const wonSet = new Set(["AWARDED", "CONTRACT_ISSUED", "CONVERTED"]);
   const byMonth = new Map<string, number>();
   for (const t of tenders ?? []) {
     if (isComplianceTender(t)) continue;
-    if (!wonSet.has(t.status)) continue;
-    const stamp = t.wonAt ?? t.updatedAt;
-    if (!stamp) continue;
-    const d = new Date(stamp);
-    if (d < since) continue;
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    byMonth.set(key, (byMonth.get(key) ?? 0) + Number(t.estimatedValue ?? 0));
+
+    if (show !== "submitted" && wonSet.has(t.status)) {
+      const stamp = t.wonAt ?? t.updatedAt;
+      if (stamp) {
+        const d = new Date(stamp);
+        if (d >= since) {
+          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+          byMonth.set(key, (byMonth.get(key) ?? 0) + Number(t.estimatedValue ?? 0));
+        }
+      }
+    }
+    if (show !== "won" && t.submittedAt) {
+      const d = new Date(t.submittedAt);
+      if (d >= since) {
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        byMonth.set(key, (byMonth.get(key) ?? 0) + Number(t.estimatedValue ?? 0));
+      }
+    }
   }
   const data = Array.from(byMonth.entries())
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([label, value]) => ({ label, value: Math.round(value) }));
   if (isLoading) return <Skeleton width="100%" height={240} />;
+  const title = show === "submitted" ? "Monthly submitted value" : show === "both" ? "Monthly revenue & submitted" : "Monthly revenue";
   return (
     <LineChartWidget
-      title="Monthly revenue"
+      title={title}
       data={data}
       yAxisFormatter={formatCompactCurrency}
       tooltipFormatter={formatCurrency}
@@ -123,12 +151,20 @@ export function MonthlyRevenueLine(props: WidgetProps) {
 }
 
 export function FormSubmissionsBar(props: WidgetProps) {
-  const period = resolvePeriod(props.config, props.globalPeriod);
-  const since = periodStart(period);
+  const filters = props.config.filters ?? {};
+  const periodFilter = typeof filters.period === "string" ? filters.period : null;
+  const templateIds = Array.isArray(filters.templateIds) ? (filters.templateIds as string[]) : null;
+  const allowedTemplates = templateIds && templateIds.length > 0 ? new Set(templateIds) : null;
+  const weeksBack = periodFilter === "4w" ? 4 : periodFilter === "12w" ? 12 : 6;
+  const since = periodFilter
+    ? new Date(Date.now() - weeksBack * 7 * 86_400_000)
+    : periodStart(resolvePeriod(props.config, props.globalPeriod));
+
   const { data, isLoading } = useFormSubmissions();
   const byWeek = new Map<string, number>();
   for (const sub of data ?? []) {
     if (!sub.submittedAt) continue;
+    if (allowedTemplates && (!sub.template || !allowedTemplates.has(sub.template.id))) continue;
     const date = new Date(sub.submittedAt);
     if (date < since) continue;
     const weekStart = new Date(date);
@@ -142,10 +178,12 @@ export function FormSubmissionsBar(props: WidgetProps) {
   return <BarChartWidget title="Form submissions by week" data={points} color="#005B61" />;
 }
 
-export function MaintenanceBar(_props: WidgetProps) {
+export function MaintenanceBar(props: WidgetProps) {
+  const filters = props.config.filters ?? {};
+  const daysAhead = typeof filters.daysAhead === "number" && filters.daysAhead > 0 ? filters.daysAhead : 30;
   const { data, isLoading } = useMaintenancePlans();
   if (isLoading) return <Skeleton width="100%" height={240} />;
-  const windowEnd = Date.now() + 30 * MS_PER_DAY;
+  const windowEnd = Date.now() + daysAhead * MS_PER_DAY;
   const points = (data ?? [])
     .filter((p) => p.status === "ACTIVE" && p.nextDueAt && new Date(p.nextDueAt).getTime() <= windowEnd)
     .map((p) => ({

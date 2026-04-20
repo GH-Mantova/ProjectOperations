@@ -54,12 +54,29 @@ export type WidgetProps = {
 
 export type WidgetSize = "kpi" | "half" | "full";
 
+export type ConfigFieldOption = { value: string; label: string };
+
+export type ConfigFieldType = "select" | "multiselect" | "period" | "number";
+
+export type ConfigField = {
+  key: string;
+  label: string;
+  type: ConfigFieldType;
+  options?: ConfigFieldOption[];
+  dynamicOptions?: "estimators" | "formTemplates";
+  defaultValue?: string | number | string[] | null;
+  min?: number;
+  max?: number;
+  step?: number;
+};
+
 export type WidgetMeta = {
   type: string;
   name: string;
   category: WidgetCategory;
   description: string;
   size: WidgetSize;
+  configSchema?: ConfigField[];
   component: (props: WidgetProps) => ReactNode;
 };
 

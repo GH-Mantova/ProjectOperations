@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { IsString } from "class-validator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
@@ -14,6 +15,11 @@ import {
   UpdateTenderActivityDto,
   UpsertTenderDto
 } from "./dto/tender.dto";
+
+class UpdateTenderStatusDto {
+  @IsString()
+  status!: string;
+}
 import { TenderingService } from "./tendering.service";
 
 @ApiTags("Tendering")
@@ -110,5 +116,16 @@ export class TenderingController {
   @ApiOperation({ summary: "Update a tender" })
   update(@Param("id") id: string, @Body() dto: UpsertTenderDto, @CurrentUser() actor: { sub: string }) {
     return this.service.update(id, dto, actor.sub);
+  }
+
+  @Patch(":id/status")
+  @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Update only the stage/status of a tender (used by the Kanban drag-drop flow)" })
+  updateStatus(
+    @Param("id") id: string,
+    @Body() dto: UpdateTenderStatusDto,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.updateStatus(id, dto.status, actor.sub);
   }
 }

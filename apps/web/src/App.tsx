@@ -27,6 +27,8 @@ import { FormsPage } from "./pages/FormsPage";
 import { DocumentsPage } from "./pages/DocumentsPage";
 import { ArchivePage } from "./pages/archive/ArchivePage";
 import { ArchiveDetailPage } from "./pages/archive/ArchiveDetailPage";
+import { TenderingPage } from "./pages/tendering/TenderingPage";
+import { TenderDetailPage } from "./pages/tendering/TenderDetailPage";
 
 function ProtectedRoute() {
   const { isAuthenticated } = useAuth();
@@ -43,14 +45,15 @@ export function App() {
           <Route element={<ShellLayout />}>
             <Route path="/" element={<DashboardPlaceholderPage />} />
             <Route path="/scheduler" element={<SchedulerPage />} />
-            <Route path="/tenders" element={<TenderingDashboardPage />} />
-            <Route path="/tenders/dashboard" element={<Navigate to="/tenders" replace />} />
+            <Route path="/tenders" element={<TenderingPage />} />
+            <Route path="/tenders/dashboard" element={<TenderingDashboardPage />} />
             <Route path="/tenders/pipeline" element={<TenderPipelinePage />} />
             <Route path="/tenders/create" element={<CreateTenderPage />} />
             <Route path="/tenders/workspace" element={<TenderWorkspacePage />} />
             <Route path="/tenders/clients" element={<TenderClientsPage />} />
             <Route path="/tenders/contacts" element={<TenderContactsPage />} />
             <Route path="/tenders/settings" element={<TenderingSettingsPage />} />
+            <Route path="/tenders/:id" element={<TenderDetailPage />} />
             <Route path="/jobs" element={<JobsPage />} />
             <Route path="/resources" element={<ResourcesPage />} />
             <Route path="/assets" element={<AssetsPage />} />

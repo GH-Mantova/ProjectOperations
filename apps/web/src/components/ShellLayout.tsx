@@ -153,7 +153,18 @@ const NAV_GROUPS: NavGroup[] = [
     id: "commercial",
     label: "Commercial",
     items: [
-      { to: "/tenders", label: "Tendering", icon: ICON_TENDERING, match: (path) => path === "/tenders" || path.startsWith("/tenders/") },
+      {
+        to: "/tenders",
+        label: "Tendering",
+        icon: ICON_TENDERING,
+        match: (path) =>
+          path === "/tenders" ||
+          (path.startsWith("/tenders/") &&
+            !path.startsWith("/tenders/dashboard") &&
+            !path.startsWith("/tenders/reports"))
+      },
+      { to: "/tenders/dashboard", label: "Dashboard", icon: ICON_DASHBOARD, match: (path) => path.startsWith("/tenders/dashboard") },
+      { to: "/tenders/reports", label: "Reports", icon: ICON_AUDIT, match: (path) => path.startsWith("/tenders/reports") },
       { to: "/jobs?filter=contracts", label: "Contracts", icon: ICON_CONTRACTS }
     ]
   },
@@ -218,6 +229,8 @@ const BREADCRUMBS: Record<string, string> = {
   "/scheduler": "Scheduler",
   "/forms": "Forms",
   "/tenders": "Tendering",
+  "/tenders/dashboard": "Tender Dashboard",
+  "/tenders/reports": "Tender Reports",
   "/resources": "Workers",
   "/assets": "Assets",
   "/maintenance": "Maintenance",

@@ -378,7 +378,7 @@ export class DashboardsService {
         return plans.map((plan) => ({
           label: plan.asset.assetCode,
           value: plan.nextDueAt
-            ? Math.round((plan.nextDueAt.getTime() - Date.now()) / MS_PER_DAY)
+            ? Math.max(0, Math.round((plan.nextDueAt.getTime() - Date.now()) / MS_PER_DAY))
             : 0
         }));
       }

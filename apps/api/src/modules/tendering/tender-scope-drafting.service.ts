@@ -1,7 +1,7 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
+import { PlatformConfigService } from "../platform/platform-config.service";
 
 const MODEL_ID = "claude-sonnet-4-6";
 const MAX_TOKENS = 2048;
@@ -25,9 +25,16 @@ export type DraftScopeResult = {
   proposals: ProposedScopeItem[];
   documentsRead: number;
   documentsSkipped: string[];
-  mode: "live" | "mock";
+  mode: "live";
   revisionId?: string;
 };
+
+export class AnthropicKeyMissingError extends Error {
+  constructor() {
+    super("Anthropic API key not configured. Go to Admin → Platform settings to add your key.");
+    this.name = "AnthropicKeyMissingError";
+  }
+}
 
 const SYSTEM_PROMPT = `You are an expert estimator for Initial Services Pty Ltd, a Brisbane-based contractor specialising in three core disciplines:
 
@@ -86,12 +93,10 @@ Respond ONLY with a valid JSON array of scope items. No preamble, no explanation
 
 @Injectable()
 export class TenderScopeDraftingService {
-  private readonly logger = new Logger(TenderScopeDraftingService.name);
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly config: ConfigService
+    private readonly platformConfig: PlatformConfigService
   ) {}
 
   async draft(tenderId: string, correction: string | null, actorId?: string): Promise<DraftScopeResult> {
@@ -165,22 +170,11 @@ export class TenderScopeDraftingService {
     );
 
     const userMessage = userMessageParts.join("\n");
-    const apiKey = this.config.get<string>("ANTHROPIC_API_KEY");
-    let proposals: ProposedScopeItem[];
-    let mode: "live" | "mock" = "mock";
-
-    if (apiKey) {
-      try {
-        proposals = await this.callAnthropic(apiKey, userMessage);
-        mode = "live";
-      } catch (err) {
-        this.logger.warn(`Anthropic call failed; falling back to mock proposals: ${(err as Error).message}`);
-        proposals = this.mockProposals(tender.title);
-      }
-    } else {
-      this.logger.log("ANTHROPIC_API_KEY not set; returning mock proposals");
-      proposals = this.mockProposals(tender.title);
+    const apiKey = await this.platformConfig.getAnthropicApiKey();
+    if (!apiKey) {
+      throw new AnthropicKeyMissingError();
     }
+    const proposals = await this.callAnthropic(apiKey, userMessage);
 
     let revisionId: string | undefined;
     if (correction) {
@@ -201,14 +195,14 @@ export class TenderScopeDraftingService {
       action: "tenders.scopeDraft",
       entityType: "Tender",
       entityId: tenderId,
-      metadata: { mode, documentsRead: readable.length, skipped: skipped.length, correction: correction ?? null }
+      metadata: { mode: "live", documentsRead: readable.length, skipped: skipped.length, correction: correction ?? null }
     });
 
     return {
       proposals,
       documentsRead: readable.length,
       documentsSkipped: skipped,
-      mode,
+      mode: "live",
       revisionId
     };
   }
@@ -239,59 +233,6 @@ export class TenderScopeDraftingService {
     return parseJsonArray(text);
   }
 
-  private mockProposals(tenderTitle: string): ProposedScopeItem[] {
-    const prefix = tenderTitle.slice(0, 40);
-    return [
-      {
-        code: "SO",
-        title: `Strip-out — ${prefix}`,
-        description:
-          "Full internal strip-out of non-structural fitout, ceilings, partitions, joinery, floor coverings and services to slab.",
-        estimatedLabourDays: 12,
-        estimatedLabourRole: "Demolition labourer",
-        estimatedPlantItems: [{ item: "Bobcat", days: 4 }],
-        estimatedWasteTonnes: [{ type: "C&D — general", tonnes: 30 }],
-        confidence: "medium",
-        sourceReference: "Mock proposal — example"
-      },
-      {
-        code: "Asb",
-        title: "Asbestos register review + removal allowance",
-        description:
-          "Review pre-1990 asbestos register, confirm ACM extent, remove non-friable ACM linings and flooring in controlled work zones.",
-        estimatedLabourDays: 6,
-        estimatedLabourRole: "Asbestos labourer",
-        estimatedPlantItems: [],
-        estimatedWasteTonnes: [{ type: "Asbestos NF", tonnes: 4 }],
-        confidence: "low",
-        sourceReference: "Mock proposal — example"
-      },
-      {
-        code: "Str",
-        title: "Structural demolition — concrete elements",
-        description:
-          "Saw-cut and break out identified concrete walls, slab openings and stair shaft where shown on drawings.",
-        estimatedLabourDays: 8,
-        estimatedLabourRole: "Machine operator",
-        estimatedPlantItems: [{ item: "Excavator 16T-25T (wet hire)", days: 5 }],
-        estimatedWasteTonnes: [{ type: "Concrete — clean", tonnes: 60 }],
-        confidence: "medium",
-        sourceReference: "Mock proposal — example"
-      },
-      {
-        code: "Prv",
-        title: "Provisional sum — GPR scanning & unknowns",
-        description:
-          "Allowance for GPR scanning of slabs prior to penetrations and for unforeseen services encountered during demolition.",
-        estimatedLabourDays: 2,
-        estimatedLabourRole: "Project manager",
-        estimatedPlantItems: [],
-        estimatedWasteTonnes: [],
-        confidence: "low",
-        sourceReference: "Mock proposal — example"
-      }
-    ];
-  }
 }
 
 function parseJsonArray(raw: string): ProposedScopeItem[] {

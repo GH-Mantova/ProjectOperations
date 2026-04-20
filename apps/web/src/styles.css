@@ -7755,6 +7755,76 @@ textarea {
 }
 .tender-detail__client-caret { color: var(--text-muted); font-size: 12px; }
 
+/* ─────────────────────────────────────────────────────────────
+   Contrast rule: dark bg (luminance < 0.2) must use white / light
+   text. Light bg must use dark text. Never use black text on dark
+   backgrounds.
+   ───────────────────────────────────────────────────────────── */
+
+/* Drafted scope tab pulse + table + type badges */
+@keyframes draftedTabPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(254, 170, 109, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(254, 170, 109, 0);
+  }
+}
+.tender-detail__tab--pulse {
+  color: #FEAA6D !important;
+  border-radius: 6px;
+  animation: draftedTabPulse 1.6s ease-in-out infinite;
+}
+
+.drafted-scope-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.drafted-scope-table th,
+.drafted-scope-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-subtle, rgba(0,0,0,0.08));
+  vertical-align: top;
+  text-align: left;
+}
+.drafted-scope-table th {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.type-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.drafted-scope-desc {
+  background: transparent;
+  border: none;
+  text-align: left;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  width: 100%;
+}
+.drafted-scope-desc[aria-expanded="false"] { line-height: 1.35; }
+.drafted-scope-desc[aria-expanded="true"] { white-space: pre-wrap; line-height: 1.45; }
+
+/* Anthropic key modal */
+.anthropic-key-modal {
+  max-width: 480px;
+  margin: 10vh auto;
+  padding: 24px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.24);
+}
+
 /* Tender documents upload + draft-scope panel */
 .doc-upload-zone {
   border: 2px dashed #FEAA6D;

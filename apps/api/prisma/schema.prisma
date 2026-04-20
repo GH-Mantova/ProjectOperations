@@ -1517,3 +1517,13 @@ model TenderClientNote {
   @@index([tenderId, clientId])
   @@map("tender_client_notes")
 }
+
+model PlatformConfig {
+  id                  String   @id
+  anthropicApiKey     String?  @map("anthropic_api_key")
+  anthropicKeyUpdatedAt DateTime? @map("anthropic_key_updated_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  updatedById         String?  @map("updated_by_id")
+
+  @@map("platform_config")
+}

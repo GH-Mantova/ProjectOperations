@@ -5,6 +5,8 @@ import { useAuth } from "../../auth/AuthContext";
 import { EstimateEditor } from "./EstimateEditor";
 import { TenderDocumentsPanel } from "./TenderDocumentsPanel";
 import { TenderClientNotesSection } from "./TenderClientNotesSection";
+import { AnthropicKeyModal } from "./AnthropicKeyModal";
+import { DraftedScopePanel, type DraftResult, type EstimateItemRef } from "./DraftedScopePanel";
 
 type TenderDetail = {
   id: string;
@@ -61,7 +63,7 @@ const STAGE_ACCENT: Record<string, string> = {
   WITHDRAWN: "var(--text-muted, #9CA3AF)"
 };
 
-type Tab = "overview" | "estimate" | "documents";
+type Tab = "overview" | "estimate" | "documents" | "drafted";
 
 type EstimateSummaryPayload = {
   estimateId: string | null;
@@ -140,6 +142,12 @@ export function TenderDetailPage() {
   const [newNote, setNewNote] = useState("");
   const [newClarification, setNewClarification] = useState("");
   const [newFollowUp, setNewFollowUp] = useState({ details: "", dueAt: "" });
+  const [draftResult, setDraftResult] = useState<DraftResult | null>(null);
+  const [draftBadge, setDraftBadge] = useState<"none" | "new" | "reviewed">("none");
+  const [drafting, setDrafting] = useState(false);
+  const [estimateItemsForLink, setEstimateItemsForLink] = useState<EstimateItemRef[]>([]);
+  const [keyModalOpen, setKeyModalOpen] = useState(false);
+  const [pendingCorrection, setPendingCorrection] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     if (!id) return;
@@ -165,8 +173,9 @@ export function TenderDetailPage() {
       ]);
       if (summaryRes.ok) setEstimateSummary((await summaryRes.json()) as EstimateSummaryPayload);
       if (estimateRes.ok) {
-        const body = (await estimateRes.json()) as { lockedAt: string | null } | null;
+        const body = (await estimateRes.json()) as { lockedAt: string | null; items?: EstimateItemRef[] } | null;
         setEstimateLock(body ? { lockedAt: body.lockedAt } : null);
+        setEstimateItemsForLink(body?.items ?? []);
       }
     } catch {
       // non-fatal — summary/lock are decorative
@@ -181,13 +190,44 @@ export function TenderDetailPage() {
   useEffect(() => {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<Tab>).detail;
-      if (detail === "overview" || detail === "estimate" || detail === "documents") {
+      if (detail === "overview" || detail === "estimate" || detail === "documents" || detail === "drafted") {
         setTab(detail);
       }
     };
     window.addEventListener("tender-detail:switch-tab", handler);
     return () => window.removeEventListener("tender-detail:switch-tab", handler);
   }, []);
+
+  const requestDraft = useCallback(
+    async (correction: string | null) => {
+      if (!tender) return;
+      setDrafting(true);
+      setError(null);
+      try {
+        const response = await authFetch(`/tenders/${tender.id}/draft-scope`, {
+          method: "POST",
+          body: JSON.stringify(correction ? { correction } : {})
+        });
+        if (!response.ok) {
+          if (response.status === 412) {
+            setPendingCorrection(correction);
+            setKeyModalOpen(true);
+            return;
+          }
+          throw new Error(await response.text());
+        }
+        const body = (await response.json()) as DraftResult;
+        setDraftResult(body);
+        setDraftBadge("new");
+        setTab("drafted");
+      } catch (err) {
+        setError((err as Error).message);
+      } finally {
+        setDrafting(false);
+      }
+    },
+    [authFetch, tender]
+  );
 
   const probabilityBucket = bucketForProbability(tender?.probability);
 
@@ -404,17 +444,29 @@ export function TenderDetailPage() {
           >
             Documents ({tender.tenderDocuments.length})
           </button>
+          {draftResult ? (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "drafted"}
+              className={
+                (tab === "drafted"
+                  ? "tender-detail__tab tender-detail__tab--active"
+                  : "tender-detail__tab") +
+                (draftBadge === "new" ? " tender-detail__tab--pulse" : "")
+              }
+              onClick={() => {
+                setTab("drafted");
+                setDraftBadge((prev) => (prev === "new" ? "reviewed" : prev));
+              }}
+            >
+              Drafted Scope {draftBadge === "reviewed" ? "✓" : "✨"}
+            </button>
+          ) : null}
         </nav>
 
         {tab === "overview" && (
           <div className="tender-detail__sections">
-            <TenderDocumentsPanel
-              tenderId={tender.id}
-              documents={tender.tenderDocuments}
-              onDocumentsChanged={() => void reload()}
-              canManage={canManageTenders}
-            />
-
             {estimateSummary && estimateSummary.estimateId ? (
               <section className="s7-card">
                 <div className="tender-detail__section-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -610,29 +662,46 @@ export function TenderDetailPage() {
         )}
 
         {tab === "documents" && (
-          <section className="s7-card">
-            <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>Documents</h3>
-            {tender.tenderDocuments.length === 0 ? (
-              <EmptyState heading="No documents yet" subtext="Linked SharePoint documents appear here once uploaded or registered." />
-            ) : (
-              <ul className="tender-docs">
-                {tender.tenderDocuments.map((doc) => (
-                  <li key={doc.id} className="tender-docs__item">
-                    <div>
-                      <strong>{doc.title}</strong>
-                      <p className="tender-docs__meta">{doc.category}{doc.description ? ` · ${doc.description}` : ""}</p>
-                    </div>
-                    {doc.fileLink ? (
-                      <a href={doc.fileLink.webUrl} target="_blank" rel="noreferrer" className="s7-btn s7-btn--secondary s7-btn--sm">
-                        Open
-                      </a>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+          <TenderDocumentsPanel
+            tenderId={tender.id}
+            documents={tender.tenderDocuments}
+            onDocumentsChanged={() => void reload()}
+            canManage={canManageTenders}
+            onDraftRequest={() => {
+              if (draftResult) {
+                setTab("drafted");
+                return;
+              }
+              void requestDraft(null);
+            }}
+            drafting={drafting}
+            draftBadgeState={draftBadge}
+          />
         )}
+
+        {tab === "drafted" && draftResult ? (
+          <DraftedScopePanel
+            tenderId={tender.id}
+            draft={draftResult}
+            estimateItems={estimateItemsForLink}
+            onReDraft={(correction) => void requestDraft(correction)}
+            onClear={() => {
+              setDraftResult(null);
+              setDraftBadge("none");
+              setTab("overview");
+            }}
+            onImported={(count) => {
+              setDraftBadge("reviewed");
+              void loadEstimate();
+              void reload();
+              window.alert(`${count} item${count === 1 ? "" : "s"} imported into estimate`);
+              setTab("estimate");
+              window.dispatchEvent(new CustomEvent("tender-detail:estimate-pulse"));
+            }}
+            drafting={drafting}
+            canManage={canManageTenders}
+          />
+        ) : null}
 
       </div>
 
@@ -780,6 +849,16 @@ export function TenderDetailPage() {
           )}
         </section>
       </aside>
+
+      <AnthropicKeyModal
+        open={keyModalOpen}
+        onClose={() => setKeyModalOpen(false)}
+        onSaved={() => {
+          setKeyModalOpen(false);
+          void requestDraft(pendingCorrection);
+          setPendingCorrection(null);
+        }}
+      />
     </div>
   );
 }

@@ -2449,3 +2449,126 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
     });
   }
 }
+
+export async function seedEstimateRates(prisma: PrismaClient): Promise<void> {
+  type LabourRow = { role: string; dayRate: string; nightRate: string; weekendRate: string };
+  const labour: LabourRow[] = [
+    { role: "Demolition labourer", dayRate: "600.00", nightRate: "1000.00", weekendRate: "900.00" },
+    { role: "Demolition supervisor", dayRate: "600.00", nightRate: "1000.00", weekendRate: "900.00" },
+    { role: "Asbestos labourer", dayRate: "600.00", nightRate: "1000.00", weekendRate: "900.00" },
+    { role: "Asbestos supervisor", dayRate: "600.00", nightRate: "1000.00", weekendRate: "900.00" },
+    { role: "Machine operator", dayRate: "600.00", nightRate: "1000.00", weekendRate: "900.00" },
+    { role: "Project manager", dayRate: "850.00", nightRate: "1400.00", weekendRate: "1200.00" },
+    { role: "Senior supervisor", dayRate: "850.00", nightRate: "1400.00", weekendRate: "1200.00" }
+  ];
+  for (const [index, row] of labour.entries()) {
+    await prisma.estimateLabourRate.upsert({
+      where: { role: row.role },
+      update: {
+        dayRate: new Prisma.Decimal(row.dayRate),
+        nightRate: new Prisma.Decimal(row.nightRate),
+        weekendRate: new Prisma.Decimal(row.weekendRate),
+        isActive: true,
+        sortOrder: index + 1
+      },
+      create: {
+        role: row.role,
+        dayRate: new Prisma.Decimal(row.dayRate),
+        nightRate: new Prisma.Decimal(row.nightRate),
+        weekendRate: new Prisma.Decimal(row.weekendRate),
+        isActive: true,
+        sortOrder: index + 1
+      }
+    });
+  }
+
+  type PlantRow = { item: string; unit: string; rate: string; fuelRate?: string };
+  const plant: PlantRow[] = [
+    { item: "Excavator 16T-25T (wet hire)", unit: "day", rate: "1500.00" },
+    { item: "Excavator 01T-03T (dry hire)", unit: "day", rate: "327.75" },
+    { item: "Bobcat", unit: "day", rate: "1000.00" },
+    { item: "Franna 14T", unit: "day", rate: "3500.00" },
+    { item: "Hook truck (10T concrete / 5T C&D)", unit: "day", rate: "1250.00" },
+    { item: "Semi tipper (20T concrete / 10T C&D)", unit: "day", rate: "1750.00" },
+    { item: "Plant float — over 13T", unit: "each way", rate: "1035.00" },
+    { item: "Plant float — under 13T", unit: "each way", rate: "402.50" },
+    { item: "Robot excavator", unit: "day", rate: "4000.00" },
+    { item: "Attachment 16T-25T", unit: "day", rate: "281.00" }
+  ];
+  for (const [index, row] of plant.entries()) {
+    await prisma.estimatePlantRate.upsert({
+      where: { item: row.item },
+      update: {
+        unit: row.unit,
+        rate: new Prisma.Decimal(row.rate),
+        fuelRate: new Prisma.Decimal(row.fuelRate ?? "0"),
+        isActive: true,
+        sortOrder: index + 1
+      },
+      create: {
+        item: row.item,
+        unit: row.unit,
+        rate: new Prisma.Decimal(row.rate),
+        fuelRate: new Prisma.Decimal(row.fuelRate ?? "0"),
+        isActive: true,
+        sortOrder: index + 1
+      }
+    });
+  }
+
+  type WasteRow = { wasteType: string; facility: string; tonRate: string; loadRate?: string };
+  const waste: WasteRow[] = [
+    { wasteType: "Concrete — clean", facility: "BMI Acacia Ridge", tonRate: "17.00", loadRate: "360.00" },
+    { wasteType: "Concrete — clean", facility: "Rowcon (Bells Creek)", tonRate: "4.50" },
+    { wasteType: "C&D — general", facility: "BMI Hendra", tonRate: "219.00" },
+    { wasteType: "C&D — general", facility: "Rowcon (Bells Creek)", tonRate: "263.00" },
+    { wasteType: "Asbestos NF", facility: "BMI Stapylton", tonRate: "350.00" },
+    { wasteType: "Asphalt — clean", facility: "Rowcon (Bells Creek)", tonRate: "4.50" },
+    { wasteType: "Green waste", facility: "Sunshine Coast Council", tonRate: "63.00" }
+  ];
+  for (const [index, row] of waste.entries()) {
+    await prisma.estimateWasteRate.upsert({
+      where: { wasteType_facility: { wasteType: row.wasteType, facility: row.facility } },
+      update: {
+        tonRate: new Prisma.Decimal(row.tonRate),
+        loadRate: new Prisma.Decimal(row.loadRate ?? "0"),
+        isActive: true,
+        sortOrder: index + 1
+      },
+      create: {
+        wasteType: row.wasteType,
+        facility: row.facility,
+        tonRate: new Prisma.Decimal(row.tonRate),
+        loadRate: new Prisma.Decimal(row.loadRate ?? "0"),
+        isActive: true,
+        sortOrder: index + 1
+      }
+    });
+  }
+
+  type CuttingRow = { cuttingType: string; unit: string; rate: string };
+  const cutting: CuttingRow[] = [
+    { cuttingType: "Wall saw", unit: "m", rate: "95.00" },
+    { cuttingType: "Road saw", unit: "m", rate: "42.00" },
+    { cuttingType: "Hand saw", unit: "m", rate: "65.00" },
+    { cuttingType: "Core drill", unit: "ea", rate: "180.00" }
+  ];
+  for (const [index, row] of cutting.entries()) {
+    await prisma.estimateCuttingRate.upsert({
+      where: { cuttingType: row.cuttingType },
+      update: {
+        unit: row.unit,
+        rate: new Prisma.Decimal(row.rate),
+        isActive: true,
+        sortOrder: index + 1
+      },
+      create: {
+        cuttingType: row.cuttingType,
+        unit: row.unit,
+        rate: new Prisma.Decimal(row.rate),
+        isActive: true,
+        sortOrder: index + 1
+      }
+    });
+  }
+}

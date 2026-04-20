@@ -578,6 +578,7 @@ model Tender {
   tenderDocuments   TenderDocumentLink[]
   sourceJob         Job?
   jobConversion     JobConversion?
+  estimate          TenderEstimate?
 
   @@index([status])
   @@index([estimatorUserId])
@@ -1245,4 +1246,173 @@ model FormSignature {
 
   @@index([submissionId])
   @@map("form_signatures")
+}
+
+model EstimateLabourRate {
+  id          String   @id @default(uuid())
+  role        String   @unique
+  dayRate     Decimal  @db.Decimal(10, 2) @map("day_rate")
+  nightRate   Decimal  @db.Decimal(10, 2) @map("night_rate")
+  weekendRate Decimal  @db.Decimal(10, 2) @map("weekend_rate")
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("estimate_labour_rates")
+}
+
+model EstimatePlantRate {
+  id        String   @id @default(uuid())
+  item      String   @unique
+  unit      String   @default("day")
+  rate      Decimal  @db.Decimal(10, 2)
+  fuelRate  Decimal  @db.Decimal(10, 2) @default(0) @map("fuel_rate")
+  isActive  Boolean  @default(true) @map("is_active")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("estimate_plant_rates")
+}
+
+model EstimateWasteRate {
+  id        String   @id @default(uuid())
+  wasteType String   @map("waste_type")
+  facility  String
+  tonRate   Decimal  @db.Decimal(10, 2) @map("ton_rate")
+  loadRate  Decimal  @db.Decimal(10, 2) @default(0) @map("load_rate")
+  isActive  Boolean  @default(true) @map("is_active")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([wasteType, facility])
+  @@map("estimate_waste_rates")
+}
+
+model EstimateCuttingRate {
+  id          String   @id @default(uuid())
+  cuttingType String   @unique @map("cutting_type")
+  unit        String
+  rate        Decimal  @db.Decimal(10, 2)
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("estimate_cutting_rates")
+}
+
+model TenderEstimate {
+  id         String    @id @default(uuid())
+  tenderId   String    @unique @map("tender_id")
+  tender     Tender    @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  markup     Decimal   @db.Decimal(5, 2) @default(30)
+  notes      String?
+  lockedAt   DateTime? @map("locked_at")
+  lockedById String?   @map("locked_by_id")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  items      EstimateItem[]
+
+  @@map("tender_estimates")
+}
+
+model EstimateItem {
+  id                String   @id @default(uuid())
+  estimateId        String   @map("estimate_id")
+  estimate          TenderEstimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  code              String
+  itemNumber        Int      @default(1) @map("item_number")
+  title             String
+  description       String?
+  markup            Decimal  @db.Decimal(5, 2) @default(30)
+  isProvisional     Boolean  @default(false) @map("is_provisional")
+  provisionalAmount Decimal? @db.Decimal(12, 2) @map("provisional_amount")
+  sortOrder         Int      @default(0) @map("sort_order")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  labourLines  EstimateLabourLine[]
+  plantLines   EstimatePlantLine[]
+  wasteLines   EstimateWasteLine[]
+  cuttingLines EstimateCuttingLine[]
+  assumptions  EstimateAssumption[]
+
+  @@index([estimateId, code, itemNumber])
+  @@map("estimate_items")
+}
+
+model EstimateLabourLine {
+  id        String   @id @default(uuid())
+  itemId    String   @map("item_id")
+  item      EstimateItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  role      String
+  qty       Decimal  @db.Decimal(8, 2)
+  days      Decimal  @db.Decimal(8, 2)
+  shift     String   @default("Day")
+  rate      Decimal  @db.Decimal(10, 2)
+  sortOrder Int      @default(0) @map("sort_order")
+
+  @@index([itemId])
+  @@map("estimate_labour_lines")
+}
+
+model EstimatePlantLine {
+  id        String   @id @default(uuid())
+  itemId    String   @map("item_id")
+  item      EstimateItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  plantItem String   @map("plant_item")
+  qty       Decimal  @db.Decimal(8, 2)
+  days      Decimal  @db.Decimal(8, 2)
+  comment   String?
+  rate      Decimal  @db.Decimal(10, 2)
+  sortOrder Int      @default(0) @map("sort_order")
+
+  @@index([itemId])
+  @@map("estimate_plant_lines")
+}
+
+model EstimateWasteLine {
+  id         String   @id @default(uuid())
+  itemId     String   @map("item_id")
+  item       EstimateItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  wasteGroup String?  @map("waste_group")
+  wasteType  String   @map("waste_type")
+  facility   String
+  qtyTonnes  Decimal  @db.Decimal(10, 3) @map("qty_tonnes")
+  tonRate    Decimal  @db.Decimal(10, 2) @map("ton_rate")
+  loads      Int      @default(0)
+  loadRate   Decimal  @db.Decimal(10, 2) @default(0) @map("load_rate")
+  sortOrder  Int      @default(0) @map("sort_order")
+
+  @@index([itemId])
+  @@map("estimate_waste_lines")
+}
+
+model EstimateCuttingLine {
+  id          String   @id @default(uuid())
+  itemId      String   @map("item_id")
+  item        EstimateItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  cuttingType String   @map("cutting_type")
+  qty         Decimal  @db.Decimal(10, 2)
+  unit        String
+  comment     String?
+  rate        Decimal  @db.Decimal(10, 2)
+  sortOrder   Int      @default(0) @map("sort_order")
+
+  @@index([itemId])
+  @@map("estimate_cutting_lines")
+}
+
+model EstimateAssumption {
+  id        String   @id @default(uuid())
+  itemId    String   @map("item_id")
+  item      EstimateItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  text      String
+  sortOrder Int      @default(0) @map("sort_order")
+
+  @@index([itemId])
+  @@map("estimate_assumptions")
 }

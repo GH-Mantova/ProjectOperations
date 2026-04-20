@@ -1,7 +1,7 @@
 import { Prisma, PrismaClient } from "@prisma/client";
 import { randomBytes, scryptSync } from "crypto";
 import { permissionRegistry } from "../src/common/permissions/permission-registry";
-import { seedInitialServicesDataset } from "./seed-initial-services";
+import { seedEstimateRates, seedInitialServicesDataset } from "./seed-initial-services";
 
 const databaseUrl =
   process.env.DATABASE_URL ??
@@ -2299,6 +2299,7 @@ async function main() {
   }
 
   await seedInitialServicesDataset(prisma);
+  await seedEstimateRates(prisma);
 }
 
 main()

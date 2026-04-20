@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { EstimateEditor } from "./EstimateEditor";
 
 type TenderDetail = {
   id: string;
@@ -57,7 +58,7 @@ const STAGE_ACCENT: Record<string, string> = {
   WITHDRAWN: "var(--text-muted, #9CA3AF)"
 };
 
-type Tab = "overview" | "documents";
+type Tab = "overview" | "estimate" | "documents";
 
 function formatCurrency(raw?: string | null): string {
   if (!raw) return "—";
@@ -77,7 +78,9 @@ function formatDateTime(iso: string): string {
 
 export function TenderDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { authFetch } = useAuth();
+  const { authFetch, user } = useAuth();
+  const canManageEstimates = useMemo(() => user?.permissions.includes("estimates.manage") ?? false, [user]);
+  const canAdminEstimates = useMemo(() => user?.permissions.includes("estimates.admin") ?? false, [user]);
   const [tender, setTender] = useState<TenderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -261,6 +264,15 @@ export function TenderDetailPage() {
           <button
             type="button"
             role="tab"
+            aria-selected={tab === "estimate"}
+            className={tab === "estimate" ? "tender-detail__tab tender-detail__tab--active" : "tender-detail__tab"}
+            onClick={() => setTab("estimate")}
+          >
+            Estimate
+          </button>
+          <button
+            type="button"
+            role="tab"
             aria-selected={tab === "documents"}
             className={tab === "documents" ? "tender-detail__tab tender-detail__tab--active" : "tender-detail__tab"}
             onClick={() => setTab("documents")}
@@ -269,7 +281,7 @@ export function TenderDetailPage() {
           </button>
         </nav>
 
-        {tab === "overview" ? (
+        {tab === "overview" && (
           <div className="tender-detail__sections">
             <section className="s7-card">
               <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>Description</h3>
@@ -414,7 +426,13 @@ export function TenderDetailPage() {
               )}
             </section>
           </div>
-        ) : (
+        )}
+
+        {tab === "estimate" && (
+          <EstimateEditor tenderId={tender.id} canManage={canManageEstimates} canAdmin={canAdminEstimates} />
+        )}
+
+        {tab === "documents" && (
           <section className="s7-card">
             <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>Documents</h3>
             {tender.tenderDocuments.length === 0 ? (
@@ -438,6 +456,7 @@ export function TenderDetailPage() {
             )}
           </section>
         )}
+
       </div>
 
       <aside className="tender-detail__rail">

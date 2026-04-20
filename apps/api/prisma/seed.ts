@@ -2300,6 +2300,62 @@ async function main() {
 
   await seedInitialServicesDataset(prisma);
   await seedEstimateRates(prisma);
+  await backfillTenderLifecycleTimestamps(prisma);
+}
+
+// Stable string hash → small integer (for deterministic per-tender offsets)
+function stableHash(input: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < input.length; i += 1) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return Math.abs(h);
+}
+
+async function backfillTenderLifecycleTimestamps(prisma: PrismaClient) {
+  const tenders = await prisma.tender.findMany({
+    select: { id: true, tenderNumber: true, status: true, submittedAt: true, wonAt: true, lostAt: true }
+  });
+  const now = Date.now();
+  const DAY = 86_400_000;
+
+  for (const t of tenders) {
+    if (t.tenderNumber.startsWith("TEN-COMP-")) continue; // skip smoke test artifacts
+    // Only backdate deterministic seed tenders (IS-T*, TEN-2026-*); leave user-created data alone.
+    if (!t.tenderNumber.startsWith("IS-T") && !t.tenderNumber.startsWith("TEN-2026-")) continue;
+
+    const seed = stableHash(t.tenderNumber);
+    const data: { submittedAt?: Date | null; wonAt?: Date | null; lostAt?: Date | null } = {};
+
+    if (t.status === "SUBMITTED") {
+      // 3–21 days ago; ensures some are >7 days for the follow-up queue
+      const offset = 3 + (seed % 19);
+      data.submittedAt = new Date(now - offset * DAY);
+      data.wonAt = null;
+      data.lostAt = null;
+    } else if (t.status === "AWARDED" || t.status === "CONTRACT_ISSUED" || t.status === "CONVERTED") {
+      const wonOffset = 5 + (seed % 80);
+      const won = new Date(now - wonOffset * DAY);
+      const submitGap = 20 + ((seed >>> 3) % 40);
+      data.wonAt = won;
+      data.submittedAt = new Date(won.getTime() - submitGap * DAY);
+      data.lostAt = null;
+    } else if (t.status === "LOST") {
+      const lostOffset = 10 + (seed % 70);
+      const lost = new Date(now - lostOffset * DAY);
+      const submitGap = 20 + ((seed >>> 3) % 40);
+      data.lostAt = lost;
+      data.submittedAt = new Date(lost.getTime() - submitGap * DAY);
+      data.wonAt = null;
+    } else {
+      data.submittedAt = null;
+      data.wonAt = null;
+      data.lostAt = null;
+    }
+
+    await prisma.tender.update({ where: { id: t.id }, data });
+  }
 }
 
 main()

@@ -26,10 +26,12 @@ type Tab = "estimators" | "pipeline" | "clients";
 
 const STAGE_ORDER: Array<{ key: string; label: string; color: string }> = [
   { key: "DRAFT", label: "Draft", color: "#94A3B8" },
-  { key: "IN_PROGRESS", label: "Estimating", color: "#3B82F6" },
-  { key: "SUBMITTED", label: "Submitted", color: "#F59E0B" },
-  { key: "AWARDED", label: "Awarded", color: "#10B981" },
-  { key: "LOST", label: "Lost", color: "#EF4444" }
+  { key: "IN_PROGRESS", label: "Estimating", color: "#FEAA6D" },
+  { key: "SUBMITTED", label: "Submitted", color: "#005B61" },
+  { key: "AWARDED", label: "Awarded", color: "#22C55E" },
+  { key: "CONTRACT_ISSUED", label: "Contract", color: "#22C55E" },
+  { key: "LOST", label: "Lost", color: "#EF4444" },
+  { key: "WITHDRAWN", label: "Withdrawn", color: "#E2E8F0" }
 ];
 
 function formatCurrency(value: number): string {

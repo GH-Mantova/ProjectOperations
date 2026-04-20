@@ -220,9 +220,20 @@ export class TenderingService {
     if (!existing) {
       throw new NotFoundException("Tender not found.");
     }
+    const now = new Date();
+    const data: Prisma.TenderUpdateInput = { status };
+    if (status === "SUBMITTED" && !existing.submittedAt) data.submittedAt = now;
+    if ((status === "AWARDED" || status === "CONTRACT_ISSUED" || status === "CONVERTED") && !existing.wonAt) {
+      data.wonAt = now;
+      if (!existing.submittedAt) data.submittedAt = now;
+    }
+    if (status === "LOST" && !existing.lostAt) {
+      data.lostAt = now;
+      if (!existing.submittedAt) data.submittedAt = now;
+    }
     const tender = await this.prisma.tender.update({
       where: { id },
-      data: { status },
+      data,
       include: tenderInclude
     });
     await this.auditService.write({

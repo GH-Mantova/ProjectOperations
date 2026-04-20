@@ -38,5 +38,8 @@ export const permissionRegistry = [
   { code: "tenderconversion.manage", module: "tendering", description: "Award tenders, issue contracts, and convert tenders to jobs" },
   { code: "estimates.view", module: "tendering", description: "View tender estimates and rate library" },
   { code: "estimates.manage", module: "tendering", description: "Create and update tender estimates" },
-  { code: "estimates.admin", module: "tendering", description: "Manage rate library and estimate configuration" }
+  { code: "estimates.admin", module: "tendering", description: "Manage rate library and estimate configuration" },
+  { code: "projects.view", module: "projects", description: "View projects, scope, team, and activity log" },
+  { code: "projects.manage", module: "projects", description: "Update project team, status, budget, milestones, documents" },
+  { code: "projects.admin", module: "projects", description: "Create projects manually, change contract value, reopen closed projects" }
 ] as const;

@@ -32,6 +32,8 @@ import { TenderDetailPage } from "./pages/tendering/TenderDetailPage";
 import { TenderingReportsPage } from "./pages/tendering/TenderingReportsPage";
 import { JobsListPage } from "./pages/jobs/JobsListPage";
 import { JobDetailPage } from "./pages/jobs/JobDetailPage";
+import { ProjectsListPage } from "./pages/projects/ProjectsListPage";
+import { ProjectDetailPage } from "./pages/projects/ProjectDetailPage";
 import { SchedulerWorkspacePage } from "./pages/scheduler/SchedulerWorkspacePage";
 import { WorkersListPage } from "./pages/workers/WorkersListPage";
 import { WorkerDetailPage } from "./pages/workers/WorkerDetailPage";
@@ -75,6 +77,8 @@ export function App() {
             <Route path="/jobs" element={<JobsListPage />} />
             <Route path="/jobs/workspace" element={<JobsPage />} />
             <Route path="/jobs/:id" element={<JobDetailPage />} />
+            <Route path="/projects" element={<ProjectsListPage />} />
+            <Route path="/projects/:id" element={<ProjectDetailPage />} />
             <Route path="/resources" element={<WorkersListPage />} />
             <Route path="/resources/legacy" element={<ResourcesPage />} />
             <Route path="/resources/:id" element={<WorkerDetailPage />} />

@@ -1,5 +1,5 @@
 import { BarChartWidget, DonutChartWidget, LineChartWidget, Skeleton } from "@project-ops/ui";
-import { isComplianceTender, useJobs, useMaintenancePlans, useTenders, useFormSubmissions } from "../hooks";
+import { isComplianceTender, useJobs, useMaintenancePlans, useProjects, useTenders, useFormSubmissions } from "../hooks";
 import { periodStart, resolvePeriod, type WidgetProps } from "../types";
 import { EmptyNote, KpiTile, PanelCard, formatCompactCurrency, formatCurrency } from "./shared";
 
@@ -36,6 +36,15 @@ export function ActiveJobsKpi(_props: WidgetProps) {
   if (isLoading) return <KpiTile label="Active jobs" value="—" />;
   const count = (jobs ?? []).filter((j) => j.status === "ACTIVE").length;
   return <KpiTile label="Active jobs" value={count} accent="#005B61" />;
+}
+
+const ACTIVE_PROJECT_STATUSES = new Set(["MOBILISING", "ACTIVE", "PRACTICAL_COMPLETION", "DEFECTS"]);
+
+export function ActiveProjectsKpi(_props: WidgetProps) {
+  const { data: projects, isLoading } = useProjects();
+  if (isLoading) return <KpiTile label="Active projects" value="—" />;
+  const count = (projects ?? []).filter((p) => ACTIVE_PROJECT_STATUSES.has(p.status)).length;
+  return <KpiTile label="Active projects" value={count} accent="#005B61" />;
 }
 
 export function TenderPipelineKpi(_props: WidgetProps) {

@@ -25,6 +25,7 @@ type AuthContextValue = {
   user: SafeUser | null;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
+  loginWithSso: (idToken: string) => Promise<void>;
   logout: () => void;
   authFetch: (input: string, init?: RequestInit) => Promise<Response>;
 };
@@ -83,6 +84,25 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setUser(data.user);
   };
 
+  const loginWithSso = async (idToken: string) => {
+    const response = await fetch(`${API_BASE_URL}/auth/sso`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ idToken })
+    });
+
+    if (!response.ok) {
+      throw new Error("Microsoft sign-in failed.");
+    }
+
+    const data = await response.json();
+    setAccessToken(data.accessToken);
+    setRefreshToken(data.refreshToken);
+    setUser(data.user);
+  };
+
   const authFetch = async (input: string, init: RequestInit = {}) => {
     const request = async (token: string | null) =>
       fetch(`${API_BASE_URL}${input}`, {
@@ -128,6 +148,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       user,
       isAuthenticated: Boolean(accessToken && user),
       login,
+      loginWithSso,
       logout,
       authFetch
     }),

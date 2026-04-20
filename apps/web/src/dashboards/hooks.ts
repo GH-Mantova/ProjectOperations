@@ -63,6 +63,29 @@ export function useTenders() {
   });
 }
 
+export type ProjectForDashboard = {
+  id: string;
+  projectNumber: string;
+  name: string;
+  status: string;
+  contractValue?: string | null;
+  proposedStartDate?: string | null;
+};
+
+export function useProjects() {
+  const { authFetch } = useAuth();
+  return useQuery({
+    queryKey: ["dashboard", "projects"],
+    queryFn: async () => {
+      const response = await authFetch("/projects?page=1&limit=100");
+      if (!response.ok) return [] as ProjectForDashboard[];
+      const body = await response.json();
+      return (body.items ?? []) as ProjectForDashboard[];
+    },
+    staleTime: 30_000
+  });
+}
+
 export function useJobs() {
   const { authFetch } = useAuth();
   return useQuery({

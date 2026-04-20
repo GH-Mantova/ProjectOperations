@@ -7,6 +7,7 @@ import { TenderDocumentsPanel } from "./TenderDocumentsPanel";
 import { TenderClientNotesSection } from "./TenderClientNotesSection";
 import { AnthropicKeyModal } from "./AnthropicKeyModal";
 import { DraftedScopePanel, type DraftResult, type EstimateItemRef } from "./DraftedScopePanel";
+import { ConvertToProjectModal } from "./ConvertToProjectModal";
 
 type TenderDetail = {
   id: string;
@@ -131,6 +132,11 @@ export function TenderDetailPage() {
   const canManageTenders = useMemo(() => user?.permissions.includes("tenders.manage") ?? false, [user]);
   const canManageEstimates = useMemo(() => user?.permissions.includes("estimates.manage") ?? false, [user]);
   const canAdminEstimates = useMemo(() => user?.permissions.includes("estimates.admin") ?? false, [user]);
+  const canConvertTender = useMemo(
+    () => user?.permissions.includes("tenderconversion.manage") ?? false,
+    [user]
+  );
+  const [convertOpen, setConvertOpen] = useState(false);
   const [tender, setTender] = useState<TenderDetail | null>(null);
   const [estimateSummary, setEstimateSummary] = useState<EstimateSummaryPayload | null>(null);
   const [estimateLock, setEstimateLock] = useState<EstimateLockInfo | null>(null);
@@ -411,6 +417,15 @@ export function TenderDetailPage() {
                 disabled={duplicating}
               >
                 {duplicating ? "Duplicating…" : "Duplicate"}
+              </button>
+            ) : null}
+            {canConvertTender && tender.status === "AWARDED" ? (
+              <button
+                type="button"
+                className="s7-btn s7-btn--primary s7-btn--sm"
+                onClick={() => setConvertOpen(true)}
+              >
+                Convert to project →
               </button>
             ) : null}
           </div>
@@ -859,6 +874,27 @@ export function TenderDetailPage() {
           setPendingCorrection(null);
         }}
       />
+
+      {convertOpen ? (
+        <ConvertToProjectModal
+          tender={{
+            id: tender.id,
+            tenderNumber: tender.tenderNumber,
+            title: tender.title,
+            estimatedValue: tender.estimatedValue,
+            proposedStartDate: tender.proposedStartDate,
+            tenderClients: tender.tenderClients.map((c) => ({
+              client: c.client,
+              isAwarded: c.isAwarded
+            }))
+          }}
+          onClose={() => setConvertOpen(false)}
+          onConverted={(result) => {
+            setConvertOpen(false);
+            navigate(`/projects/${result.projectId}`);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

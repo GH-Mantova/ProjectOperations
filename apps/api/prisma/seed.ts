@@ -185,6 +185,14 @@ async function main() {
         permissionId: permissionIdByCode.get("tenderconversion.manage")!
       },
       {
+        roleId: plannerRole.id,
+        permissionId: permissionIdByCode.get("projects.view")!
+      },
+      {
+        roleId: plannerRole.id,
+        permissionId: permissionIdByCode.get("projects.manage")!
+      },
+      {
         roleId: fieldRole.id,
         permissionId: permissionIdByCode.get("permissions.view")!
       }

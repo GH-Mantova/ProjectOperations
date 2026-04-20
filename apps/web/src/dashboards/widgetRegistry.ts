@@ -1,6 +1,7 @@
 import type { WidgetMeta } from "./types";
 import {
   ActiveJobsKpi,
+  ActiveProjectsKpi,
   FormSubmissionsBar,
   JobsByStatusDonut,
   MaintenanceBar,
@@ -48,6 +49,7 @@ const JOB_STATUS_OPTIONS = [
 export const WIDGETS: WidgetMeta[] = [
   // ── Operations ────────────────────────────────────────────
   { type: "ops_active_jobs_kpi", name: "Active jobs", category: "operations", size: "kpi", description: "Count of jobs currently ACTIVE.", component: ActiveJobsKpi },
+  { type: "ops_active_projects_kpi", name: "Active projects", category: "operations", size: "kpi", description: "Projects in MOBILISING / ACTIVE / PRACTICAL_COMPLETION / DEFECTS.", component: ActiveProjectsKpi },
   { type: "ops_tender_pipeline_kpi", name: "Tender pipeline value", category: "operations", size: "kpi", description: "Sum value of non-terminal tenders.", component: TenderPipelineKpi },
   { type: "ops_open_issues_kpi", name: "Open issues", category: "operations", size: "kpi", description: "Job issues with status OPEN across all jobs.", component: OpenIssuesKpi },
   { type: "ops_upcoming_maintenance_kpi", name: "Upcoming maintenance", category: "operations", size: "kpi", description: "Maintenance plans due in the next 7 days.", component: UpcomingMaintenanceKpi },

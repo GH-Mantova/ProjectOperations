@@ -23,29 +23,31 @@ const TREND_COLOR: Record<KpiTrend, string> = {
 };
 
 export function KpiCard({ label, value, trend, trendValue, color }: KpiCardProps) {
-  const accent = color ?? "var(--brand-primary, #1f4bff)";
+  const accent = color ?? "var(--brand-primary, #1D9E75)";
   return (
     <div
       className="kpi-card"
       style={{
         background: "var(--surface-card, #ffffff)",
-        border: "1px solid var(--surface-border, #e5e7eb)",
+        border: "1px solid var(--border-default, #E5E7EB)",
+        borderLeft: `4px solid ${accent}`,
         borderRadius: "var(--radius-lg, 12px)",
-        padding: "16px 18px",
-        minHeight: 44,
+        padding: "16px 20px",
+        minHeight: 100,
         display: "flex",
         flexDirection: "column",
         gap: 6,
-        boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)"
+        boxShadow: "var(--shadow-card, 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04))"
       }}
     >
       <span
         className="kpi-card__label"
         style={{
-          color: "var(--text-muted, #6b7280)",
+          color: "var(--text-secondary, #6B7280)",
           fontSize: 12,
+          fontWeight: 500,
           textTransform: "uppercase",
-          letterSpacing: 0.4
+          letterSpacing: "0.04em"
         }}
       >
         {label}
@@ -53,8 +55,8 @@ export function KpiCard({ label, value, trend, trendValue, color }: KpiCardProps
       <strong
         className="kpi-card__value"
         style={{
-          color: accent,
-          fontSize: 28,
+          color: "var(--text-primary, #0F1117)",
+          fontSize: 30,
           fontWeight: 600,
           lineHeight: 1.1
         }}

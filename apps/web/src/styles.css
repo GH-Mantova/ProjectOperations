@@ -3265,6 +3265,226 @@ textarea {
   color: var(--text-secondary, #6B7280);
 }
 
+/* Documents workspace (7.9) */
+.docs-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.docs-split {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 16px;
+  min-height: calc(100vh - 180px);
+}
+
+@media (max-width: 1024px) {
+  .docs-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.docs-tree,
+.docs-list {
+  background: var(--surface-card, #FFFFFF);
+  border: 1px solid var(--border-default, #E5E7EB);
+  border-radius: var(--radius-lg, 12px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.docs-tree__head {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-default, #E5E7EB);
+}
+
+.docs-tree__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.docs-tree__item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+  border-radius: var(--radius-md, 8px);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: var(--text-primary, #0F1117);
+}
+
+.docs-tree__item:hover {
+  background: var(--border-subtle, #F3F4F6);
+}
+
+.docs-tree__item--active {
+  background: var(--brand-primary-light, #E1F5EE);
+  color: var(--brand-primary-dark, #0F6E56);
+}
+
+.docs-tree__group {
+  margin-top: 8px;
+}
+
+.docs-tree__group-head {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  gap: 6px;
+  align-items: center;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  background: transparent;
+  border-radius: var(--radius-md, 8px);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.docs-tree__caret {
+  font-size: 13px;
+  color: var(--text-secondary, #6B7280);
+}
+
+.docs-tree__group-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary, #6B7280);
+}
+
+.docs-tree__entities {
+  list-style: none;
+  margin: 4px 0 6px 14px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Documents list */
+.docs-list {
+  padding: 0;
+}
+
+.docs-list--drag-over {
+  border-color: var(--brand-primary, #1D9E75);
+  background: var(--brand-primary-light, #E1F5EE);
+}
+
+.docs-list__dropzone {
+  padding: 14px;
+  text-align: center;
+  color: var(--text-muted, #9CA3AF);
+  font-size: 12px;
+  border-bottom: 1px dashed var(--border-default, #E5E7EB);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.docs-list__dropzone-sub {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.docs-list__body {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.docs-row {
+  display: grid;
+  grid-template-columns: 44px 2fr auto 1fr auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-subtle, #F3F4F6);
+}
+
+@media (max-width: 900px) {
+  .docs-row {
+    grid-template-columns: 44px 1fr auto;
+  }
+  .docs-row__uploader,
+  .docs-row__date {
+    display: none;
+  }
+}
+
+.docs-row:hover {
+  background: var(--border-subtle, #F3F4F6);
+}
+
+.docs-row--superseded {
+  opacity: 0.6;
+}
+
+.docs-row__icon {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md, 8px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.docs-row__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.docs-row__name {
+  font-size: 14px;
+  color: var(--text-primary, #0F1117);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.docs-row__sub {
+  font-size: 12px;
+  color: var(--text-secondary, #6B7280);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.docs-row__uploader,
+.docs-row__date {
+  font-size: 12px;
+  color: var(--text-secondary, #6B7280);
+  white-space: nowrap;
+}
+
+.docs-row__actions {
+  display: flex;
+  gap: 6px;
+}
+
 .shell__content {
   padding: 24px;
   background: var(--surface-page, #F7F8FA);

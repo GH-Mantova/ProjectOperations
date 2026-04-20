@@ -104,11 +104,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
   };
 
   const authFetch = async (input: string, init: RequestInit = {}) => {
+    const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
     const request = async (token: string | null) =>
       fetch(`${API_BASE_URL}${input}`, {
         ...init,
         headers: {
-          "Content-Type": "application/json",
+          ...(isFormData ? {} : { "Content-Type": "application/json" }),
           ...(init.headers ?? {}),
           ...(token ? { Authorization: `Bearer ${token}` } : {})
         }

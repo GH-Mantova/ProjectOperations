@@ -40,6 +40,7 @@ import { MaintenancePage as MaintenanceDashboardPage } from "./pages/maintenance
 import { FormsListPage } from "./pages/forms/FormsListPage";
 import { FormDesignerPage } from "./pages/forms/FormDesignerPage";
 import { FormSubmitPage } from "./pages/forms/FormSubmitPage";
+import { DocumentsWorkspacePage } from "./pages/documents/DocumentsWorkspacePage";
 
 function ProtectedRoute() {
   const { isAuthenticated } = useAuth();
@@ -81,7 +82,8 @@ export function App() {
             <Route path="/forms/legacy" element={<FormsPage />} />
             <Route path="/forms/designer/:templateId" element={<FormDesignerPage />} />
             <Route path="/forms/submit/:templateId" element={<FormSubmitPage />} />
-            <Route path="/documents" element={<DocumentsPage />} />
+            <Route path="/documents" element={<DocumentsWorkspacePage />} />
+            <Route path="/documents/legacy" element={<DocumentsPage />} />
             <Route path="/admin/users" element={<UsersPage />} />
             <Route path="/admin/roles" element={<RolesPage />} />
             <Route path="/admin/permissions" element={<PermissionsPage />} />

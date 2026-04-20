@@ -34,6 +34,9 @@ import { JobDetailPage } from "./pages/jobs/JobDetailPage";
 import { SchedulerWorkspacePage } from "./pages/scheduler/SchedulerWorkspacePage";
 import { WorkersListPage } from "./pages/workers/WorkersListPage";
 import { WorkerDetailPage } from "./pages/workers/WorkerDetailPage";
+import { AssetsListPage } from "./pages/assets/AssetsListPage";
+import { AssetDetailPage } from "./pages/assets/AssetDetailPage";
+import { MaintenancePage as MaintenanceDashboardPage } from "./pages/maintenance/MaintenancePage";
 
 function ProtectedRoute() {
   const { isAuthenticated } = useAuth();
@@ -66,8 +69,11 @@ export function App() {
             <Route path="/resources" element={<WorkersListPage />} />
             <Route path="/resources/legacy" element={<ResourcesPage />} />
             <Route path="/resources/:id" element={<WorkerDetailPage />} />
-            <Route path="/assets" element={<AssetsPage />} />
-            <Route path="/maintenance" element={<MaintenancePage />} />
+            <Route path="/assets" element={<AssetsListPage />} />
+            <Route path="/assets/legacy" element={<AssetsPage />} />
+            <Route path="/assets/:id" element={<AssetDetailPage />} />
+            <Route path="/maintenance" element={<MaintenanceDashboardPage />} />
+            <Route path="/maintenance/legacy" element={<MaintenancePage />} />
             <Route path="/forms" element={<FormsPage />} />
             <Route path="/documents" element={<DocumentsPage />} />
             <Route path="/admin/users" element={<UsersPage />} />

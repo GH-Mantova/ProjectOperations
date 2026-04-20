@@ -2340,4 +2340,112 @@ export async function seedMantovaDataset(prisma: PrismaClient): Promise<void> {
       ]
     });
   }
+
+  // Search-entry registry for the Cmd/Ctrl+K palette (7.15).
+  type SearchEntrySeed = {
+    entityType: string;
+    entityId: string;
+    title: string;
+    subtitle: string;
+    module: string;
+    url: string;
+  };
+  const searchSeeds: SearchEntrySeed[] = [
+    ...tenderSeeds.map((tender) => ({
+      entityType: "Tender",
+      entityId: tender.id,
+      title: `${tender.tenderNumber} — ${tender.title}`,
+      subtitle: `${tender.status} · $${tender.estimatedValue}`,
+      module: "tendering",
+      url: `/tenders?highlight=${tender.id}`
+    })),
+    ...clientSeeds.map((client) => ({
+      entityType: "Client",
+      entityId: client.id,
+      title: client.name,
+      subtitle: `${client.type} · ${client.industry}`,
+      module: "masterdata",
+      url: `/master-data?tab=clients&highlight=${client.id}`
+    })),
+    ...workerSeeds.map((worker) => ({
+      entityType: "Worker",
+      entityId: worker.id,
+      title: `${worker.firstName} ${worker.lastName}`,
+      subtitle: `${worker.role}${worker.status === "ON_LEAVE" ? " · On leave" : ""}`,
+      module: "resources",
+      url: `/resources?highlight=${worker.id}`
+    })),
+    ...assetSeeds.map((asset) => ({
+      entityType: "Asset",
+      entityId: asset.id,
+      title: asset.name,
+      subtitle: `${asset.assetCode} · ${asset.homeBase}`,
+      module: "assets",
+      url: `/assets?highlight=${asset.id}`
+    })),
+    {
+      entityType: "FormTemplate",
+      entityId: "form-tpl-001",
+      title: "Daily Prestart Checklist",
+      subtitle: "MCW-FORM-001-PRESTART · v1",
+      module: "forms",
+      url: "/forms?highlight=form-tpl-001"
+    },
+    {
+      entityType: "FormTemplate",
+      entityId: "form-tpl-002",
+      title: "Plant Pre-Start Inspection",
+      subtitle: "MCW-FORM-002-PLANT-PRESTART · v1",
+      module: "forms",
+      url: "/forms?highlight=form-tpl-002"
+    },
+    {
+      entityType: "FormTemplate",
+      entityId: "form-tpl-003",
+      title: "Incident / Near Miss Report",
+      subtitle: "MCW-FORM-003-INCIDENT · v1",
+      module: "forms",
+      url: "/forms?highlight=form-tpl-003"
+    },
+    {
+      entityType: "FormTemplate",
+      entityId: "form-tpl-004",
+      title: "Concrete Pour Record",
+      subtitle: "MCW-FORM-004-CONCRETE-POUR · v1",
+      module: "forms",
+      url: "/forms?highlight=form-tpl-004"
+    },
+    ...jobSeeds.map((job) => ({
+      entityType: "Job",
+      entityId: job.id,
+      title: `${job.jobNumber} — ${job.name}`,
+      subtitle: job.description,
+      module: "jobs",
+      url: `/jobs?highlight=${job.id}`
+    }))
+  ];
+
+  for (const seed of searchSeeds) {
+    const id = `${seed.entityType}:${seed.entityId}`;
+    await prisma.searchEntry.upsert({
+      where: { id },
+      update: {
+        entityType: seed.entityType,
+        entityId: seed.entityId,
+        title: seed.title,
+        subtitle: seed.subtitle,
+        module: seed.module,
+        url: seed.url
+      },
+      create: {
+        id,
+        entityType: seed.entityType,
+        entityId: seed.entityId,
+        title: seed.title,
+        subtitle: seed.subtitle,
+        module: seed.module,
+        url: seed.url
+      }
+    });
+  }
 }

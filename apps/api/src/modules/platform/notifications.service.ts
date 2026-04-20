@@ -559,6 +559,22 @@ export class NotificationsService {
     return notification;
   }
 
+  async markAllReadForUser(userId: string) {
+    const result = await this.prisma.notification.updateMany({
+      where: { userId, status: "UNREAD" },
+      data: { status: "READ", readAt: new Date() }
+    });
+
+    await this.auditService.write({
+      actorId: userId,
+      action: "notifications.read_all",
+      entityType: "Notification",
+      metadata: { count: result.count }
+    });
+
+    return { count: result.count };
+  }
+
   private async ensureLiveFollowUps(actorId?: string) {
     const jobs = await this.prisma.job.findMany({
       where: {

@@ -1,7 +1,30 @@
 import { useEffect, useMemo, useState } from "react";
-import { AppCard } from "@project-ops/ui";
+import {
+  AppCard,
+  BarChartWidget,
+  DonutChartWidget,
+  KpiCard,
+  LineChartWidget
+} from "@project-ops/ui";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+
+type WidgetDataPoint = { label: string; value: number; color?: string };
+
+type RenderedWidget =
+  | {
+      type: "kpi";
+      title: string;
+      metricKey: string;
+      value: number | string;
+      trend: "up" | "down" | "flat" | null;
+      trendValue: string | null;
+    }
+  | { type: "bar_chart"; title: string; metricKey: string; data: WidgetDataPoint[] }
+  | { type: "line_chart"; title: string; metricKey: string; data: WidgetDataPoint[] }
+  | { type: "donut_chart"; title: string; metricKey: string; data: WidgetDataPoint[] }
+  | { type: "table"; title: string; metricKey: string; columns: string[]; rows: string[][] }
+  | { type: "unsupported"; title: string; metricKey: string };
 
 type Dashboard = {
   id: string;
@@ -12,11 +35,7 @@ type Dashboard = {
   widgets: Array<{ id: string; title: string; type: string; description?: string | null; config?: { metricKey?: string } | null }>;
   render: Array<{
     type: string;
-    data:
-      | { kind: "kpi"; metricKey: string; value: number }
-      | { kind: "chart"; metricKey: string; points: Array<{ label: string; value: number }> }
-      | { kind: "table"; metricKey: string; columns: string[]; rows: string[][] }
-      | { kind: "unsupported"; metricKey: string };
+    data: RenderedWidget;
   }>;
 };
 
@@ -576,13 +595,13 @@ export function DashboardsPage() {
     "operations-overview": [
       { type: "kpi", title: "Tender Pipeline", description: "Open tenders", position: 0, config: { metricKey: "tender.pipeline" } },
       { type: "kpi", title: "Active Jobs", description: "Currently active jobs", position: 1, config: { metricKey: "jobs.active" } },
-      { type: "chart", title: "Jobs by Status", description: "Live jobs status chart", position: 2, width: 2, config: { metricKey: "jobs.byStatus" } },
+      { type: "donut_chart", title: "Jobs by Status", description: "Live jobs status chart", position: 2, width: 2, config: { metricKey: "jobs.byStatus" } },
       { type: "table", title: "Scheduler Summary", description: "Upcoming shifts", position: 3, width: 2, config: { metricKey: "scheduler.summary" } }
     ],
     "planner-view": [
       { type: "kpi", title: "Scheduler Conflicts", description: "Red and amber conflicts", position: 0, config: { metricKey: "scheduler.conflicts" } },
       { type: "kpi", title: "Resource Utilisation", description: "Assigned worker count", position: 1, config: { metricKey: "resources.utilization" } },
-      { type: "chart", title: "Tender Status Mix", description: "Tender pipeline", position: 2, width: 2, config: { metricKey: "tenders.byStatus" } },
+      { type: "donut_chart", title: "Tender Status Mix", description: "Tender pipeline", position: 2, width: 2, config: { metricKey: "tenders.byStatus" } },
       { type: "table", title: "Maintenance Due List", description: "Due maintenance", position: 3, width: 2, config: { metricKey: "maintenance.dueList" } }
     ]
   };
@@ -1308,18 +1327,24 @@ export function DashboardsPage() {
                           </div>
                           <span className="pill pill--green">{widget.type}</span>
                         </div>
-                        {rendered?.kind === "kpi" ? <p className="dashboard-kpi">{rendered.value}</p> : null}
-                        {rendered?.kind === "chart" ? (
-                          <div className="subsection">
-                            {rendered.points.map((point) => (
-                              <div key={`${widget.id}-${point.label}`} className="record-row">
-                                <span>{point.label}</span>
-                                <span className="muted-text">{point.value}</span>
-                              </div>
-                            ))}
-                          </div>
+                        {rendered?.type === "kpi" ? (
+                          <KpiCard
+                            label={rendered.title ?? widget.title}
+                            value={rendered.value}
+                            trend={rendered.trend ?? undefined}
+                            trendValue={rendered.trendValue ?? undefined}
+                          />
                         ) : null}
-                        {rendered?.kind === "table" ? (
+                        {rendered?.type === "bar_chart" ? (
+                          <BarChartWidget title={rendered.title ?? widget.title} data={rendered.data} />
+                        ) : null}
+                        {rendered?.type === "line_chart" ? (
+                          <LineChartWidget title={rendered.title ?? widget.title} data={rendered.data} />
+                        ) : null}
+                        {rendered?.type === "donut_chart" ? (
+                          <DonutChartWidget title={rendered.title ?? widget.title} data={rendered.data} />
+                        ) : null}
+                        {rendered?.type === "table" ? (
                           <div className="subsection">
                             {rendered.rows.slice(0, 5).map((row, rowIndex) => (
                               <div key={`${widget.id}-row-${rowIndex}`} className="record-row">

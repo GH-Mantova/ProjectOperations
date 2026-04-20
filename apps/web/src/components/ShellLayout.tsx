@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { NotificationsDropdown } from "./NotificationsDropdown";
+import { CommandPalette } from "./CommandPalette";
 
 type NavItem = {
   to: string;
@@ -252,6 +254,10 @@ export function ShellLayout() {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const [sharedFollowUps, setSharedFollowUps] = useState<SharedFollowUpItem[]>([]);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [notifBadge, setNotifBadge] = useState(0);
+  const bellRef = useRef<HTMLButtonElement | null>(null);
 
   const isAdmin = useMemo(() => {
     const roleNames = user?.roles?.map((role) => role.name) ?? [];
@@ -273,13 +279,40 @@ export function ShellLayout() {
     };
   }, [authFetch, location.pathname]);
 
-  const unreadCount = useMemo(
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const response = await authFetch("/notifications/me");
+      if (!response.ok) return;
+      const data = (await response.json()) as Array<{ status?: string }>;
+      if (cancelled) return;
+      setNotifBadge(data.filter((item) => item.status === "UNREAD").length);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch]);
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen(true);
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, []);
+
+  const followUpFallbackCount = useMemo(
     () =>
       sharedFollowUps.filter(
         (item) => item.metadata?.kind === "LIVE_FOLLOW_UP" || item.metadata?.kind === "MANUAL_FOLLOW_UP"
       ).length,
     [sharedFollowUps]
   );
+
+  const badgeCount = notifBadge || followUpFallbackCount;
 
   const breadcrumb = resolveBreadcrumb(location.pathname);
   const initials = initialsOf(user?.firstName, user?.lastName, user?.email);
@@ -372,21 +405,32 @@ export function ShellLayout() {
             <span className="shell__breadcrumb-current">{breadcrumb}</span>
           </div>
           <div className="shell__topbar-actions">
+            <div className="shell__topbar-bell-wrap">
+              <button
+                ref={bellRef}
+                type="button"
+                className="shell__topbar-action"
+                onClick={() => setNotifOpen((current) => !current)}
+                aria-label={`Notifications${badgeCount ? `, ${badgeCount} unread` : ""}`}
+                aria-expanded={notifOpen}
+                aria-haspopup="dialog"
+              >
+                {ICON_BELL}
+                {badgeCount ? <span className="shell__topbar-badge">{badgeCount}</span> : null}
+              </button>
+              <NotificationsDropdown
+                anchorRef={bellRef}
+                open={notifOpen}
+                onClose={() => setNotifOpen(false)}
+                onUnreadCountChange={setNotifBadge}
+              />
+            </div>
             <button
               type="button"
               className="shell__topbar-action"
-              onClick={() => navigate("/notifications")}
-              aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`}
-            >
-              {ICON_BELL}
-              {unreadCount ? <span className="shell__topbar-badge">{unreadCount}</span> : null}
-            </button>
-            <button
-              type="button"
-              className="shell__topbar-action"
-              onClick={() => navigate("/master-data")}
-              aria-label="Search"
-              title="Search (Cmd/Ctrl+K) — full palette lands in improvement/s7-notifications-search"
+              onClick={() => setPaletteOpen(true)}
+              aria-label="Search (Cmd/Ctrl+K)"
+              title="Search (Cmd/Ctrl+K)"
             >
               {ICON_SEARCH}
             </button>
@@ -404,6 +448,7 @@ export function ShellLayout() {
           <Outlet />
         </main>
       </div>
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </div>
   );
 }

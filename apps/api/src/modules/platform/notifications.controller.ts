@@ -107,4 +107,11 @@ export class NotificationsController {
   markRead(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
     return this.notificationsService.markRead(id, actor.sub);
   }
+
+  @Patch("read-all")
+  @RequirePermissions("notifications.manage")
+  @ApiOperation({ summary: "Mark all notifications as read for the current user" })
+  markAllRead(@CurrentUser() actor: { sub: string }) {
+    return this.notificationsService.markAllReadForUser(actor.sub);
+  }
 }

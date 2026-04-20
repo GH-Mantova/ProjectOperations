@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { AppConfigModule } from "./config/app-config.module";
+import { ArchiveModule } from "./modules/archive/archive.module";
 import { AssetsModule } from "./modules/assets/assets.module";
 import { AuditModule } from "./modules/audit/audit.module";
 import { AuthModule } from "./modules/auth/auth.module";
@@ -31,6 +32,7 @@ import { UsersModule } from "./modules/users/users.module";
     SecurityModule,
     PrismaModule,
     HealthModule,
+    ArchiveModule,
     AssetsModule,
     AuditModule,
     DocumentsModule,

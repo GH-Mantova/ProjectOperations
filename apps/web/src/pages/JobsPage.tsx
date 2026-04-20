@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { AppCard } from "@project-ops/ui";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 
 type UserOption = {
@@ -1155,25 +1155,21 @@ export function JobsPage() {
           </div>
         </AppCard>
 
-        <AppCard title="Archive" subtitle="Historical read-only jobs preserved for reporting and audit visibility">
-          <div className="dashboard-list dashboard-list--capped">
-            {archiveJobs.map((job) => (
-              <div key={job.id} className="resource-card">
-                <div className="split-header">
-                  <div>
-                    <strong>{job.jobNumber} - {job.name}</strong>
-                    <p className="muted-text">{job.client.name}</p>
-                  </div>
-                  <span className="pill pill--amber">{job.closeout?.status ?? job.status}</span>
-                </div>
-                <p className="muted-text">
-                  Archived: {job.closeout?.archivedAt ? new Date(job.closeout.archivedAt).toLocaleString() : "Not archived"}
-                </p>
-                <p className="muted-text">{job.closeout?.summary ?? "No closeout summary recorded."}</p>
-              </div>
-            ))}
-            {archiveJobs.length === 0 ? <p className="muted-text">No archived jobs yet.</p> : null}
-          </div>
+        <AppCard
+          title="Archive"
+          subtitle="Archived and closed jobs have moved to the Archive workspace"
+        >
+          <p className="muted-text">
+            {archiveJobs.length > 0
+              ? `${archiveJobs.length} archived job${archiveJobs.length === 1 ? "" : "s"} available for historical review.`
+              : "No archived jobs yet."}
+          </p>
+          <Link
+            to="/archive"
+            style={{ minHeight: 44, display: "inline-flex", alignItems: "center", fontWeight: 500 }}
+          >
+            View in Archive →
+          </Link>
         </AppCard>
       </div>
 
@@ -2237,48 +2233,59 @@ export function JobsPage() {
 
             <div className="subsection">
               <strong>Closeout and archive</strong>
-              {selectedJob.closeout?.readOnlyFrom ? (
-                <p className="muted-text">
-                  Read-only from {new Date(selectedJob.closeout.readOnlyFrom).toLocaleString()}
-                </p>
+              {selectedJob.closeout ? (
+                <>
+                  <p className="muted-text">
+                    This job has been {selectedJob.closeout.status.toLowerCase()}. Inline editing has moved to the
+                    Archive workspace.
+                  </p>
+                  <Link
+                    to={`/archive/${selectedJob.id}`}
+                    style={{ minHeight: 44, display: "inline-flex", alignItems: "center", fontWeight: 500 }}
+                  >
+                    View in Archive →
+                  </Link>
+                </>
               ) : (
-                <p className="muted-text">Job remains editable until closeout is completed.</p>
+                <>
+                  <p className="muted-text">Job remains editable until closeout is completed.</p>
+                  <form
+                    className="admin-form"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void submitToJob(`/jobs/${selectedJob.id}/closeout`, {
+                        status: closeoutForm.status,
+                        summary: closeoutForm.summary,
+                        checklistJson: {
+                          notes: closeoutForm.checklistNotes,
+                          items: [
+                            { key: "documents_complete", label: "Documents complete", completed: true },
+                            { key: "forms_complete", label: "Forms complete", completed: true },
+                            { key: "handover_complete", label: "Handover complete", completed: true }
+                          ]
+                        }
+                      });
+                    }}
+                  >
+                    <label>
+                      Closeout status
+                      <select value={closeoutForm.status} onChange={(event) => setCloseoutForm({ ...closeoutForm, status: event.target.value })}>
+                        <option value="CLOSED">Closed</option>
+                        <option value="ARCHIVED">Archived</option>
+                      </select>
+                    </label>
+                    <label>
+                      Summary
+                      <input value={closeoutForm.summary} onChange={(event) => setCloseoutForm({ ...closeoutForm, summary: event.target.value })} />
+                    </label>
+                    <label>
+                      Checklist notes
+                      <input value={closeoutForm.checklistNotes} onChange={(event) => setCloseoutForm({ ...closeoutForm, checklistNotes: event.target.value })} />
+                    </label>
+                    <button type="submit">Close Out Job</button>
+                  </form>
+                </>
               )}
-              <form
-                className="admin-form"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void submitToJob(`/jobs/${selectedJob.id}/closeout`, {
-                    status: closeoutForm.status,
-                    summary: closeoutForm.summary,
-                    checklistJson: {
-                      notes: closeoutForm.checklistNotes,
-                      items: [
-                        { key: "documents_complete", label: "Documents complete", completed: true },
-                        { key: "forms_complete", label: "Forms complete", completed: true },
-                        { key: "handover_complete", label: "Handover complete", completed: true }
-                      ]
-                    }
-                  });
-                }}
-              >
-                <label>
-                  Closeout status
-                  <select value={closeoutForm.status} onChange={(event) => setCloseoutForm({ ...closeoutForm, status: event.target.value })}>
-                    <option value="CLOSED">Closed</option>
-                    <option value="ARCHIVED">Archived</option>
-                  </select>
-                </label>
-                <label>
-                  Summary
-                  <input value={closeoutForm.summary} onChange={(event) => setCloseoutForm({ ...closeoutForm, summary: event.target.value })} />
-                </label>
-                <label>
-                  Checklist notes
-                  <input value={closeoutForm.checklistNotes} onChange={(event) => setCloseoutForm({ ...closeoutForm, checklistNotes: event.target.value })} />
-                </label>
-                <button type="submit">Close Out Job</button>
-              </form>
             </div>
           </div>
         ) : (

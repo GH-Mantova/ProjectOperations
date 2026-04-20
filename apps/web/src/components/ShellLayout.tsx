@@ -15,6 +15,7 @@ const navItems = [
   { to: "/master-data", label: "Master Data" },
   { to: "/notifications", label: "Notifications" },
   { to: "/dashboards", label: "Dashboards" },
+  { to: "/archive", label: "📦 Archive" },
   { to: "/admin/users", label: "Users" },
   { to: "/admin/roles", label: "Roles" },
   { to: "/admin/permissions", label: "Permissions" },

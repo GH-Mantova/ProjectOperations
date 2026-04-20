@@ -6,6 +6,7 @@ import { PublicClientApplication } from "@azure/msal-browser";
 import { MsalProvider } from "@azure/msal-react";
 import { App } from "./App";
 import { isSsoEnabled, msalConfig } from "./auth/msal.config";
+import "./styles/tokens.css";
 import "./styles.css";
 
 const queryClient = new QueryClient();

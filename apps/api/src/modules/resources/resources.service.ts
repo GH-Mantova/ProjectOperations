@@ -15,6 +15,34 @@ export class ResourcesService {
     private readonly auditService: AuditService
   ) {}
 
+  async getWorker(workerId: string) {
+    const worker = await this.prisma.worker.findUnique({
+      where: { id: workerId },
+      include: {
+        resourceType: true,
+        competencies: { include: { competency: true } },
+        availabilityWindows: { orderBy: { startAt: "asc" } },
+        roleSuitabilities: { orderBy: { roleLabel: "asc" } },
+        shiftAssignments: {
+          include: {
+            shift: {
+              include: {
+                job: { select: { id: true, jobNumber: true, name: true } },
+                activity: { select: { id: true, name: true } },
+                conflicts: { select: { id: true, severity: true, code: true, message: true } }
+              }
+            }
+          },
+          orderBy: { assignedAt: "desc" }
+        }
+      }
+    });
+    if (!worker) {
+      throw new NotFoundException("Worker not found.");
+    }
+    return worker;
+  }
+
   async listWorkers(query: ResourcesQueryDto) {
     const where = {
       ...(query.q

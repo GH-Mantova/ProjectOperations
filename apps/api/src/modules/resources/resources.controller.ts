@@ -26,6 +26,13 @@ export class ResourcesController {
     return this.service.listWorkers(query);
   }
 
+  @Get("workers/:id")
+  @RequirePermissions("resources.view")
+  @ApiOperation({ summary: "Get a single worker with full competencies, availability, suitability, and assigned-shift detail" })
+  getWorker(@Param("id") id: string) {
+    return this.service.getWorker(id);
+  }
+
   @Post("availability-windows")
   @RequirePermissions("resources.manage")
   @ApiOperation({ summary: "Create availability window" })

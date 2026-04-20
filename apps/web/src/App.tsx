@@ -25,6 +25,8 @@ import { AssetsPage } from "./pages/AssetsPage";
 import { MaintenancePage } from "./pages/MaintenancePage";
 import { FormsPage } from "./pages/FormsPage";
 import { DocumentsPage } from "./pages/DocumentsPage";
+import { ArchivePage } from "./pages/archive/ArchivePage";
+import { ArchiveDetailPage } from "./pages/archive/ArchiveDetailPage";
 
 function ProtectedRoute() {
   const { isAuthenticated } = useAuth();
@@ -63,6 +65,8 @@ export function App() {
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/dashboards" element={<DashboardsPage />} />
             <Route path="/master-data" element={<MasterDataPage />} />
+            <Route path="/archive" element={<ArchivePage />} />
+            <Route path="/archive/:jobId" element={<ArchiveDetailPage />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

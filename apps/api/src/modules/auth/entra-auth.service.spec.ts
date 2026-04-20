@@ -156,12 +156,12 @@ describe("EntraAuthService", () => {
         issuer: "issuer",
         audience: "aud",
         subject: "sub",
-        email: "new.user@mantova.com.au",
+        email: "new.user@initialservices.net",
         displayName: "New User"
       });
       const provisioned = {
         id: "user-new",
-        email: "new.user@mantova.com.au",
+        email: "new.user@initialservices.net",
         firstName: "New",
         lastName: "User",
         isActive: true,
@@ -183,7 +183,7 @@ describe("EntraAuthService", () => {
       expect(prismaService.user.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            email: "new.user@mantova.com.au",
+            email: "new.user@initialservices.net",
             ssoOnly: true,
             isActive: true,
             firstName: "New",

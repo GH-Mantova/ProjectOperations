@@ -558,7 +558,7 @@ function NewTenderSlideOver({ open, onClose, onCreated }: NewTenderSlideOverProp
               className="s7-input"
               value={form.tenderNumber}
               onChange={(event) => setForm((current) => ({ ...current, tenderNumber: event.target.value }))}
-              placeholder="MCW-T009"
+              placeholder="IS-T009"
               required
             />
           </label>

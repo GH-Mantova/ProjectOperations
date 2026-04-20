@@ -1,35 +1,190 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { readTenderingLabels } from "../tendering-labels";
 
-const navItems = [
-  { to: "/", label: "Overview" },
-  { to: "/jobs", label: "Jobs" },
-  { to: "/scheduler", label: "Scheduler" },
-  { to: "/resources", label: "Resources" },
-  { to: "/assets", label: "Assets" },
-  { to: "/maintenance", label: "Maintenance" },
-  { to: "/forms", label: "Forms" },
-  { to: "/documents", label: "Documents" },
-  { to: "/master-data", label: "Master Data" },
-  { to: "/notifications", label: "Notifications" },
-  { to: "/dashboards", label: "Dashboards" },
-  { to: "/archive", label: "📦 Archive" },
-  { to: "/admin/users", label: "Users" },
-  { to: "/admin/roles", label: "Roles" },
-  { to: "/admin/permissions", label: "Permissions" },
-  { to: "/admin/audit", label: "Audit" },
-  { to: "/admin/platform", label: "Platform" }
+type NavItem = {
+  to: string;
+  label: string;
+  icon: ReactNode;
+  match?: (pathname: string) => boolean;
+};
+
+type NavGroup = {
+  id: string;
+  label: string;
+  items: NavItem[];
+  adminOnly?: boolean;
+};
+
+const ICON_DASHBOARD = (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <rect x="3" y="3" width="7" height="9" rx="1.5" />
+    <rect x="14" y="3" width="7" height="5" rx="1.5" />
+    <rect x="14" y="12" width="7" height="9" rx="1.5" />
+    <rect x="3" y="16" width="7" height="5" rx="1.5" />
+  </svg>
+);
+const ICON_JOBS = (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <rect x="3" y="7" width="18" height="13" rx="2" />
+    <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+  </svg>
+);
+const ICON_SCHEDULER = (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <rect x="3" y="5" width="18" height="16" rx="2" />
+    <path d="M16 3v4M8 3v4M3 10h18" />
+  </svg>
+);
+const ICON_FORMS = (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+    <path d="M14 3v6h6M8 13h8M8 17h6" />
+  </svg>
+);
+const ICON_TENDERING = (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M12 2l3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z" />
+  </svg>
+);
+const ICON_CONTRACTS = (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M7 3h8l4 4v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
+    <path d="M9 9h6M9 13h6M9 17h4" />
+  </svg>
+);
+const ICON_WORKERS = (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <circle cx="9" cy="8" r="3.5" />
+    <path d="M2.5 20a6.5 6.5 0 0 1 13 0" />
+    <circle cx="17" cy="9" r="2.5" />
+    <path d="M15 20a5 5 0 0 1 6.5-4.5" />
+  </svg>
+);
+const ICON_ASSETS = (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M12 2l9 5v10l-9 5-9-5V7z" />
+    <path d="M12 12l9-5M12 12l-9-5M12 12v10" />
+  </svg>
+);
+const ICON_MAINTENANCE = (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.6-.4-.4-2.6z" />
+  </svg>
+);
+const ICON_CLIENTS = (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <rect x="3" y="7" width="18" height="14" rx="2" />
+    <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18" />
+  </svg>
+);
+const ICON_SITES = (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M12 2C8 2 5 5 5 9c0 5.5 7 13 7 13s7-7.5 7-13c0-4-3-7-7-7z" />
+    <circle cx="12" cy="9" r="2.5" />
+  </svg>
+);
+const ICON_DOCUMENTS = (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+    <path d="M14 3v6h6" />
+  </svg>
+);
+const ICON_ARCHIVE = (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <rect x="3" y="4" width="18" height="5" rx="1" />
+    <path d="M5 9v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4" />
+  </svg>
+);
+const ICON_USERS = (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <circle cx="12" cy="8" r="4" />
+    <path d="M4 21a8 8 0 0 1 16 0" />
+  </svg>
+);
+const ICON_ROLES = (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z" />
+  </svg>
+);
+const ICON_AUDIT = (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <circle cx="11" cy="11" r="7" />
+    <path d="M16 16l5 5" />
+  </svg>
+);
+const ICON_BELL = (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+    <path d="M10 21a2 2 0 0 0 4 0" />
+  </svg>
+);
+const ICON_SEARCH = (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <circle cx="11" cy="11" r="7" />
+    <path d="M16 16l5 5" />
+  </svg>
+);
+const ICON_COLLAPSE = (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M15 6l-6 6 6 6" />
+  </svg>
+);
+const ICON_EXPAND = (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M9 6l6 6-6 6" />
+  </svg>
+);
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    id: "operations",
+    label: "Operations",
+    items: [
+      { to: "/", label: "Dashboard", icon: ICON_DASHBOARD, match: (path) => path === "/" },
+      { to: "/jobs", label: "Jobs", icon: ICON_JOBS },
+      { to: "/scheduler", label: "Scheduler", icon: ICON_SCHEDULER },
+      { to: "/forms", label: "Forms", icon: ICON_FORMS }
+    ]
+  },
+  {
+    id: "commercial",
+    label: "Commercial",
+    items: [
+      { to: "/tenders", label: "Tendering", icon: ICON_TENDERING, match: (path) => path === "/tenders" || path.startsWith("/tenders/") },
+      { to: "/jobs?filter=contracts", label: "Contracts", icon: ICON_CONTRACTS }
+    ]
+  },
+  {
+    id: "resources",
+    label: "Resources",
+    items: [
+      { to: "/resources", label: "Workers", icon: ICON_WORKERS },
+      { to: "/assets", label: "Assets", icon: ICON_ASSETS },
+      { to: "/maintenance", label: "Maintenance", icon: ICON_MAINTENANCE }
+    ]
+  },
+  {
+    id: "data",
+    label: "Data",
+    items: [
+      { to: "/master-data?tab=clients", label: "Clients", icon: ICON_CLIENTS, match: (path) => path.startsWith("/master-data") },
+      { to: "/master-data?tab=sites", label: "Sites", icon: ICON_SITES, match: () => false },
+      { to: "/documents", label: "Documents", icon: ICON_DOCUMENTS },
+      { to: "/archive", label: "Archive", icon: ICON_ARCHIVE, match: (path) => path.startsWith("/archive") }
+    ]
+  },
+  {
+    id: "admin",
+    label: "Admin",
+    adminOnly: true,
+    items: [
+      { to: "/admin/users", label: "Users", icon: ICON_USERS },
+      { to: "/admin/roles", label: "Roles", icon: ICON_ROLES },
+      { to: "/admin/audit", label: "Audit", icon: ICON_AUDIT }
+    ]
+  }
 ];
-
-const tenderingItems = [
-  { to: "/tenders/pipeline", labelKey: "nav.pipeline" },
-  { to: "/tenders/create", labelKey: "nav.createTender" },
-  { to: "/tenders/clients", labelKey: "nav.clients" },
-  { to: "/tenders/contacts", labelKey: "nav.contacts" },
-  { to: "/tenders/settings", labelKey: "nav.settings" }
-] as const;
 
 type SharedFollowUpItem = {
   id: string;
@@ -54,137 +209,194 @@ type SharedFollowUpItem = {
   } | null;
 };
 
+const BREADCRUMBS: Record<string, string> = {
+  "/": "Dashboard",
+  "/jobs": "Jobs",
+  "/scheduler": "Scheduler",
+  "/forms": "Forms",
+  "/tenders": "Tendering",
+  "/resources": "Workers",
+  "/assets": "Assets",
+  "/maintenance": "Maintenance",
+  "/master-data": "Master Data",
+  "/documents": "Documents",
+  "/archive": "Archive",
+  "/notifications": "Notifications",
+  "/dashboards": "Dashboards",
+  "/admin/users": "Users",
+  "/admin/roles": "Roles",
+  "/admin/permissions": "Permissions",
+  "/admin/audit": "Audit",
+  "/admin/platform": "Platform"
+};
+
+function initialsOf(firstName?: string, lastName?: string, email?: string): string {
+  if (firstName || lastName) {
+    return `${firstName?.[0] ?? ""}${lastName?.[0] ?? ""}`.toUpperCase() || "?";
+  }
+  return email?.slice(0, 2).toUpperCase() ?? "?";
+}
+
+function resolveBreadcrumb(pathname: string): string {
+  if (BREADCRUMBS[pathname]) return BREADCRUMBS[pathname];
+  const prefixes = Object.keys(BREADCRUMBS).sort((a, b) => b.length - a.length);
+  for (const prefix of prefixes) {
+    if (prefix !== "/" && pathname.startsWith(prefix + "/")) return BREADCRUMBS[prefix];
+  }
+  return "Workspace";
+}
+
 export function ShellLayout() {
   const { user, logout, authFetch } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [isTenderingOpen, setIsTenderingOpen] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
   const [sharedFollowUps, setSharedFollowUps] = useState<SharedFollowUpItem[]>([]);
-  const tenderingActive = location.pathname === "/tenders" || location.pathname.startsWith("/tenders/");
-  const tenderingLabels = useMemo(() => readTenderingLabels(), [location.pathname]);
 
-  const loadSharedFollowUps = async () => {
-    const response = await authFetch("/notifications/follow-ups/shared");
-    if (!response.ok) {
-      setSharedFollowUps([]);
-      return;
-    }
-
-    setSharedFollowUps(await response.json());
-  };
+  const isAdmin = useMemo(() => {
+    const roleNames = user?.roles?.map((role) => role.name) ?? [];
+    return roleNames.includes("Admin");
+  }, [user?.roles]);
 
   useEffect(() => {
-    void loadSharedFollowUps();
+    let cancelled = false;
+    (async () => {
+      const response = await authFetch("/notifications/follow-ups/shared");
+      if (!response.ok) {
+        if (!cancelled) setSharedFollowUps([]);
+        return;
+      }
+      if (!cancelled) setSharedFollowUps(await response.json());
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [authFetch, location.pathname]);
 
-  const shellActionSummary = useMemo(() => {
-    const prompts = sharedFollowUps.filter(
-      (item) => item.metadata?.kind === "LIVE_FOLLOW_UP" || item.metadata?.kind === "MANUAL_FOLLOW_UP"
-    );
-    const assignedToMe = prompts.filter((item) => (item.metadata?.nextOwnerId ?? item.userId) === user?.id).length;
-    const urgentToday = prompts.filter((item) => item.metadata?.urgencyLabel === "Urgent today").length;
+  const unreadCount = useMemo(
+    () =>
+      sharedFollowUps.filter(
+        (item) => item.metadata?.kind === "LIVE_FOLLOW_UP" || item.metadata?.kind === "MANUAL_FOLLOW_UP"
+      ).length,
+    [sharedFollowUps]
+  );
 
-    return {
-      total: prompts.length,
-      assignedToMe,
-      urgentToday
-    };
-  }, [sharedFollowUps, user?.id]);
+  const breadcrumb = resolveBreadcrumb(location.pathname);
+  const initials = initialsOf(user?.firstName, user?.lastName, user?.email);
+  const primaryRole = user?.roles?.[0]?.name ?? "Member";
 
-  const openNotifications = () => {
-    navigate("/notifications");
-  };
+  const filteredGroups = NAV_GROUPS.filter((group) => !group.adminOnly || isAdmin);
 
   return (
-    <div className="shell">
-      <aside className="shell__sidebar">
+    <div className={`shell${collapsed ? " shell--collapsed" : ""}`}>
+      <aside className="shell__sidebar" aria-label="Primary">
         <div className="shell__brand">
-          <p>Project Operations</p>
-          <span>Platform Foundation</span>
+          <span className="shell__brand-logo" aria-hidden>PO</span>
+          <span className="shell__brand-name">Project Ops</span>
+          <button
+            type="button"
+            className="shell__collapse-toggle"
+            onClick={() => setCollapsed((current) => !current)}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {collapsed ? ICON_EXPAND : ICON_COLLAPSE}
+          </button>
         </div>
-        <nav className="shell__nav" aria-label="Primary">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }: { isActive: boolean }) =>
-                isActive ? "shell__nav-link shell__nav-link--active" : "shell__nav-link"
-              }
-            >
-              <span>{item.label}</span>
-              {item.to === "/notifications" && shellActionSummary.total ? (
-                <span className="shell__nav-badge" aria-label={`${shellActionSummary.total} live prompts`}>
-                  {shellActionSummary.total}
-                </span>
-              ) : null}
-            </NavLink>
-          ))}
-          <div className="shell__nav-group">
-            <div className={tenderingActive ? "shell__nav-parent shell__nav-parent--active" : "shell__nav-parent"}>
-              <NavLink
-                to="/tenders"
-                className={({ isActive }: { isActive: boolean }) =>
-                  isActive
-                    ? "shell__nav-link shell__nav-link--active shell__nav-parent-link"
-                    : "shell__nav-link shell__nav-parent-link"
-                }
-              >
-                {tenderingLabels["nav.tendering"]}
-              </NavLink>
-              <button
-                type="button"
-                className="shell__nav-parent-toggle"
-                aria-label={isTenderingOpen ? "Collapse Tendering menu" : "Expand Tendering menu"}
-                aria-expanded={isTenderingOpen}
-                onClick={() => setIsTenderingOpen((current) => !current)}
-              >
-                {isTenderingOpen ? "-" : "+"}
-              </button>
-            </div>
-            {isTenderingOpen ? (
-              <div className="shell__subnav">
-                {tenderingItems.map((item) => (
+
+        <nav className="shell__nav" aria-label="Main navigation">
+          {filteredGroups.map((group) => (
+            <div key={group.id} className="shell__nav-group">
+              <p className="shell__nav-group-label">{group.label}</p>
+              {group.items.map((item) => {
+                const isActive = item.match ? item.match(location.pathname) : location.pathname === item.to || location.pathname.startsWith(item.to + "/");
+                return (
                   <NavLink
-                    key={item.to}
+                    key={`${group.id}-${item.to}-${item.label}`}
                     to={item.to}
-                    className={({ isActive }: { isActive: boolean }) =>
-                      isActive ? "shell__subnav-link shell__subnav-link--active" : "shell__subnav-link"
-                    }
+                    className={isActive ? "shell__nav-link shell__nav-link--active" : "shell__nav-link"}
+                    title={collapsed ? item.label : undefined}
+                    end={item.to === "/"}
                   >
-                    {tenderingLabels[item.labelKey]}
+                    <span className="shell__nav-icon">{item.icon}</span>
+                    <span className="shell__nav-label">{item.label}</span>
                   </NavLink>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        </nav>
-      </aside>
-      <div className="shell__main">
-        <header className="shell__header">
-          <div>
-            <div className="shell__title-row">
-              <h1>Operational Workspace</h1>
-              <span className="shell__version">Version {__APP_VERSION__}</span>
+                );
+              })}
             </div>
-            <p>
-              Signed in as {user?.firstName} {user?.lastName}. Local auth and admin controls are now active.
-            </p>
+          ))}
+        </nav>
+
+        <div className="shell__sidebar-footer">
+          <div className="shell__sidebar-user" title={collapsed ? user?.email ?? "" : undefined}>
+            <span className="shell__sidebar-user-avatar">{initials}</span>
+            <div className="shell__sidebar-user-meta">
+              <span className="shell__sidebar-user-name">
+                {user?.firstName} {user?.lastName}
+              </span>
+              <span className="shell__sidebar-user-role">{primaryRole}</span>
+            </div>
           </div>
-          <div className="shell__header-actions">
+          <button type="button" className="shell__sidebar-logout" onClick={logout} aria-label="Logout">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M15 17l5-5-5-5M20 12H9M12 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6" />
+            </svg>
+            <span className="shell__sidebar-logout-label">Logout</span>
+          </button>
+        </div>
+      </aside>
+
+      <nav className="shell__tab-bar" aria-label="Mobile navigation">
+        {filteredGroups.flatMap((group) =>
+          group.items.slice(0, 1).map((item) => {
+            const isActive = item.match ? item.match(location.pathname) : location.pathname === item.to;
+            return (
+              <NavLink
+                key={`tab-${group.id}`}
+                to={item.to}
+                className={isActive ? "shell__tab shell__tab--active" : "shell__tab"}
+                aria-label={group.label}
+              >
+                <span className="shell__tab-icon">{item.icon}</span>
+                <span className="shell__tab-label">{group.label}</span>
+              </NavLink>
+            );
+          })
+        )}
+      </nav>
+
+      <div className="shell__main">
+        <header className="shell__topbar">
+          <div className="shell__breadcrumb">
+            <span className="shell__breadcrumb-root">Project Ops</span>
+            <span className="shell__breadcrumb-sep">/</span>
+            <span className="shell__breadcrumb-current">{breadcrumb}</span>
+          </div>
+          <div className="shell__topbar-actions">
             <button
-              className="shell__header-action shell__header-action--secondary shell__header-action--button"
-              onClick={openNotifications}
+              type="button"
+              className="shell__topbar-action"
+              onClick={() => navigate("/notifications")}
+              aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`}
             >
-              Action Center
-              {shellActionSummary.total ? (
-                <span className="shell__header-action-count">
-                  {shellActionSummary.total}
-                  {shellActionSummary.urgentToday ? ` / ${shellActionSummary.urgentToday} urgent` : ""}
-                </span>
-              ) : null}
+              {ICON_BELL}
+              {unreadCount ? <span className="shell__topbar-badge">{unreadCount}</span> : null}
             </button>
-            <button className="shell__header-action shell__header-action--button" onClick={logout}>
-              Logout
+            <button
+              type="button"
+              className="shell__topbar-action"
+              onClick={() => navigate("/master-data")}
+              aria-label="Search"
+              title="Search (Cmd/Ctrl+K) — full palette lands in improvement/s7-notifications-search"
+            >
+              {ICON_SEARCH}
+            </button>
+            <button
+              type="button"
+              className="shell__topbar-avatar"
+              onClick={() => navigate("/admin/users")}
+              aria-label={`Signed in as ${user?.firstName} ${user?.lastName}`}
+            >
+              {initials}
             </button>
           </div>
         </header>

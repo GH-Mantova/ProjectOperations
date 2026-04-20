@@ -7661,6 +7661,116 @@ textarea {
   .estimate-editor__markup-control { grid-row: auto; }
 }
 
+/* Tender dashboard v2 (clean legacy-style layout) */
+.td-v2 {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.td-v2__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+}
+.td-v2__kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+@media (max-width: 900px) {
+  .td-v2__kpis { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 500px) {
+  .td-v2__kpis { grid-template-columns: 1fr; }
+}
+.td-v2__kpi {
+  background: var(--surface-card, white);
+  border: 1px solid var(--border-subtle, rgba(0,0,0,0.08));
+  border-radius: 12px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.td-v2__kpi-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.td-v2__kpi-value {
+  font-size: 28px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary, #111827);
+}
+.td-v2__kpi-subtitle {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.td-v2__body {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  gap: 20px;
+  align-items: flex-start;
+}
+@media (max-width: 1100px) {
+  .td-v2__body { grid-template-columns: 1fr; }
+}
+.td-v2__col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.td-v2__rows {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.td-v2__row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle, rgba(0,0,0,0.08));
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 120ms;
+}
+.td-v2__row:hover {
+  background: var(--surface-subtle, rgba(0,0,0,0.02));
+}
+.td-v2__row--followup {
+  grid-template-columns: auto 1fr auto auto auto;
+  cursor: default;
+}
+.td-v2__row--followup:hover { background: transparent; }
+.td-v2__tnum {
+  font-family: var(--font-mono, monospace);
+  font-size: 13px;
+  min-width: 110px;
+}
+.td-v2__row-body { min-width: 0; }
+.td-v2__row-title {
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.td-v2__row-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
 /* Admin page (rate library) */
 .admin-page {
   display: flex;

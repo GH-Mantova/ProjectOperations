@@ -58,6 +58,41 @@ const TREND_ACCENT: Record<string, string> = {
   flat: "var(--status-info, #3B82F6)"
 };
 
+const TENDER_STATUS_COLOURS: Record<string, string> = {
+  DRAFT: "#94A3B8",
+  IDENTIFIED: "#94A3B8",
+  IN_PROGRESS: "#FEAA6D",
+  SUBMITTED: "#005B61",
+  AWARDED: "#22C55E",
+  CONTRACT_ISSUED: "#22C55E",
+  LOST: "#EF4444",
+  WITHDRAWN: "#E2E8F0",
+  CONVERTED: "#242424"
+};
+
+const CURRENCY_METRIC_KEYS = new Set(["revenue.monthly", "tenders.pipelineValue", "revenue.pipeline"]);
+const DAYS_METRIC_KEYS = new Set(["maintenance.upcoming"]);
+
+function formatCompactCurrency(value: number): string {
+  if (!Number.isFinite(value)) return "$0";
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `$${(value / 1_000).toFixed(0)}K`;
+  return `$${value.toFixed(0)}`;
+}
+
+function formatFullCurrency(value: number): string {
+  return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 0 }).format(value);
+}
+
+function colouriseDonut(metricKey: string, data: WidgetDataPoint[]): WidgetDataPoint[] {
+  if (metricKey !== "tenders.byStatus" && metricKey !== "tenders.byStage") return data;
+  return data.map((slice) => ({
+    ...slice,
+    color: slice.color ?? TENDER_STATUS_COLOURS[slice.label.toUpperCase()] ?? slice.color
+  }));
+}
+
 const HIDDEN_KEY = "project-ops.dashboard.hidden-widgets";
 
 function readHidden(): Set<string> {
@@ -233,13 +268,45 @@ export function DashboardPlaceholderPage() {
             const data = widget.data;
             if (!data) return null;
             if (data.type === "bar_chart") {
-              return <BarChartWidget key={widget.id} title={data.title ?? widget.title} data={data.data} />;
+              const isCurrency = CURRENCY_METRIC_KEYS.has(data.metricKey);
+              const isDays = DAYS_METRIC_KEYS.has(data.metricKey);
+              return (
+                <BarChartWidget
+                  key={widget.id}
+                  title={data.title ?? widget.title}
+                  data={data.data}
+                  unit={isDays ? "days" : undefined}
+                  yAxisFormatter={isCurrency ? formatCompactCurrency : undefined}
+                  tooltipFormatter={
+                    isCurrency
+                      ? formatFullCurrency
+                      : isDays
+                        ? (value: number) => `${value} ${value === 1 ? "day" : "days"}`
+                        : undefined
+                  }
+                />
+              );
             }
             if (data.type === "line_chart") {
-              return <LineChartWidget key={widget.id} title={data.title ?? widget.title} data={data.data} />;
+              const isCurrency = CURRENCY_METRIC_KEYS.has(data.metricKey);
+              return (
+                <LineChartWidget
+                  key={widget.id}
+                  title={data.title ?? widget.title}
+                  data={data.data}
+                  yAxisFormatter={isCurrency ? formatCompactCurrency : undefined}
+                  tooltipFormatter={isCurrency ? formatFullCurrency : undefined}
+                />
+              );
             }
             if (data.type === "donut_chart") {
-              return <DonutChartWidget key={widget.id} title={data.title ?? widget.title} data={data.data} />;
+              return (
+                <DonutChartWidget
+                  key={widget.id}
+                  title={data.title ?? widget.title}
+                  data={colouriseDonut(data.metricKey, data.data)}
+                />
+              );
             }
             return null;
           })

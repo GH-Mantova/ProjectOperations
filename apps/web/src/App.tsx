@@ -13,7 +13,7 @@ import { DashboardsPage } from "./pages/DashboardsPage";
 import { MasterDataPage } from "./pages/MasterDataPage";
 import { JobsPage } from "./pages/JobsPage";
 import { SchedulerPage } from "./pages/SchedulerPage";
-import { TenderingDashboardPage } from "./pages/TenderingDashboardPage";
+import { TenderingDashboardPage } from "./pages/tendering/TenderingDashboardPage";
 import { CreateTenderPage } from "./pages/CreateTenderPage";
 import { TenderPipelinePage } from "./pages/TenderPipelinePage";
 import { TenderWorkspacePage } from "./pages/TenderWorkspacePage";

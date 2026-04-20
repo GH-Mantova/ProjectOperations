@@ -7319,7 +7319,7 @@ textarea {
   display: grid;
   grid-template-columns: 72px 1fr auto;
   gap: 8px;
-  align-items: center;
+  align-items: start;
   width: 100%;
   padding: 10px 12px;
   background: transparent;
@@ -7340,7 +7340,7 @@ textarea {
   font-size: 12px;
   color: var(--text-muted);
 }
-.estimate-editor__item-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.estimate-editor__item-title { font-weight: 500; white-space: normal; word-break: break-word; line-height: 1.35; }
 .estimate-editor__item-price { font-variant-numeric: tabular-nums; font-weight: 600; }
 .estimate-editor__detail { min-height: 400px; }
 .estimate-editor__detail-head {
@@ -7351,7 +7351,26 @@ textarea {
   margin-bottom: 12px;
   flex-wrap: wrap;
 }
-.estimate-editor__detail-title { font-size: 18px; font-weight: 600; min-width: 320px; }
+.estimate-editor__detail-title {
+  font-size: 18px;
+  font-weight: 500;
+  min-width: 320px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #E2E8F0;
+  border-radius: 0;
+  padding: 4px 0;
+  color: inherit;
+  transition: border-color 140ms;
+}
+.estimate-editor__detail-title:focus {
+  outline: none;
+  border-bottom-color: #FEAA6D;
+}
+.estimate-editor__detail-title:disabled {
+  background: transparent;
+  color: var(--text-muted);
+}
 .estimate-editor__detail-actions {
   display: flex;
   gap: 12px;
@@ -7649,6 +7668,18 @@ textarea {
   gap: 16px;
 }
 .admin-page__header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+
+.rates-row {
+  cursor: pointer;
+  outline: none;
+}
+.rates-row:hover { background: var(--surface-subtle, rgba(0,0,0,0.02)); }
+.rates-row--editing {
+  background: color-mix(in srgb, var(--brand-accent, #FEAA6D) 8%, transparent);
+  cursor: default;
+}
+.rates-row--editing:hover { background: color-mix(in srgb, var(--brand-accent, #FEAA6D) 10%, transparent); }
+.rates-row td { vertical-align: middle; }
 .admin-page__tabs {
   display: flex;
   gap: 4px;

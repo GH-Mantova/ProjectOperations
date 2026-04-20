@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppCard } from "@project-ops/ui";
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../auth/AuthContext";
-import { readTenderingLabels } from "../tendering-labels";
-import { getTenderingAttentionSummary } from "./tendering-page-helpers";
+import { useAuth } from "../../auth/AuthContext";
+import { readTenderingLabels } from "../../tendering-labels";
+import { getTenderingAttentionSummary } from "../tendering-page-helpers";
 
 type TenderDashboardRecord = {
   id: string;

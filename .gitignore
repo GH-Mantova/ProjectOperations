@@ -7,9 +7,12 @@ coverage
 .env.local
 .env.*.local
 apps/api/generated
-apps/web/dist
+apps/api/dist/
+apps/web/dist/
+*.js.map
 *.log
 Desktop.ini
+.claude/
 
 # Playwright
 /test-results/

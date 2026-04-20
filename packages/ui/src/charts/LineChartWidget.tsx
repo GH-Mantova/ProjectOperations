@@ -7,9 +7,11 @@ type LineChartWidgetProps = {
   data: LinePoint[];
   color?: string;
   unit?: string;
+  yAxisFormatter?: (value: number) => string;
+  tooltipFormatter?: (value: number) => string;
 };
 
-export function LineChartWidget({ title, data, color, unit }: LineChartWidgetProps) {
+export function LineChartWidget({ title, data, color, unit, yAxisFormatter, tooltipFormatter }: LineChartWidgetProps) {
   const stroke = color ?? "var(--brand-primary, #1f4bff)";
   const chartData = data.map((point) => ({ label: point.label, value: point.value }));
 
@@ -37,9 +39,19 @@ export function LineChartWidget({ title, data, color, unit }: LineChartWidgetPro
             <LineChart data={chartData} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--surface-border, #e5e7eb)" />
               <XAxis dataKey="label" tick={{ fontSize: 12, fill: "var(--text-muted, #6b7280)" }} />
-              <YAxis tick={{ fontSize: 12, fill: "var(--text-muted, #6b7280)" }} />
+              <YAxis
+                tick={{ fontSize: 12, fill: "var(--text-muted, #6b7280)" }}
+                tickFormatter={yAxisFormatter ? (value: number) => yAxisFormatter(Number(value)) : undefined}
+                width={yAxisFormatter ? 60 : 40}
+              />
               <Tooltip
-                formatter={(value) => (unit ? `${value} ${unit}` : String(value))}
+                formatter={(value) =>
+                  tooltipFormatter
+                    ? tooltipFormatter(Number(value))
+                    : unit
+                      ? `${value} ${unit}`
+                      : String(value)
+                }
                 contentStyle={{
                   background: "var(--surface-tooltip, #111827)",
                   color: "var(--text-on-dark, #ffffff)",

@@ -94,9 +94,9 @@ const PROBABILITY_LABEL: Record<ProbabilityBucket, string> = {
 
 const PROBABILITY_BADGE_STYLE: Record<ProbabilityBucket, { background: string; color: string }> = {
   hot: { background: "#FEAA6D", color: "#3E1C00" },
-  warm: { background: "#FCD34D", color: "#3E2A00" },
-  cold: { background: "#94A3B8", color: "#0F172A" },
-  unknown: { background: "rgba(0,0,0,0.08)", color: "var(--text-muted)" }
+  warm: { background: "#FED7AA", color: "#3E2A00" },
+  cold: { background: "#E2E8F0", color: "#0F172A" },
+  unknown: { background: "rgba(0,0,0,0.08)", color: "#6B7280" }
 };
 
 function formatCurrency(raw?: string | null): string {
@@ -624,32 +624,49 @@ export function TenderDetailPage() {
             <div>
               <dt>Probability</dt>
               <dd>
-                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                  <span
-                    className="s7-badge"
+                {canManageTenders ? (
+                  <select
+                    value={probabilityBucket}
+                    onChange={(e) => void setProbabilityBucket(e.target.value as ProbabilityBucket)}
+                    disabled={posting}
                     style={{
                       background: PROBABILITY_BADGE_STYLE[probabilityBucket].background,
-                      color: PROBABILITY_BADGE_STYLE[probabilityBucket].color
+                      color: PROBABILITY_BADGE_STYLE[probabilityBucket].color,
+                      border: "none",
+                      borderRadius: 999,
+                      padding: "4px 28px 4px 12px",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: posting ? "default" : "pointer",
+                      appearance: "none",
+                      WebkitAppearance: "none",
+                      MozAppearance: "none",
+                      backgroundImage:
+                        "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%230F172A' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>\")",
+                      backgroundRepeat: "no-repeat",
+                      backgroundPosition: "right 8px center",
+                      backgroundSize: "10px"
+                    }}
+                  >
+                    <option value="hot">Hot</option>
+                    <option value="warm">Warm</option>
+                    <option value="cold">Cold</option>
+                    <option value="unknown">Not set</option>
+                  </select>
+                ) : (
+                  <span
+                    style={{
+                      background: PROBABILITY_BADGE_STYLE[probabilityBucket].background,
+                      color: PROBABILITY_BADGE_STYLE[probabilityBucket].color,
+                      borderRadius: 999,
+                      padding: "4px 12px",
+                      fontSize: 13,
+                      fontWeight: 600
                     }}
                   >
                     {PROBABILITY_LABEL[probabilityBucket]}
-                    {tender.probability !== null && tender.probability !== undefined ? ` · ${tender.probability}%` : ""}
                   </span>
-                  {canManageTenders ? (
-                    <select
-                      className="s7-input s7-input--sm"
-                      value={probabilityBucket}
-                      onChange={(e) => void setProbabilityBucket(e.target.value as ProbabilityBucket)}
-                      disabled={posting}
-                      style={{ maxWidth: 100 }}
-                    >
-                      <option value="hot">Hot</option>
-                      <option value="warm">Warm</option>
-                      <option value="cold">Cold</option>
-                      <option value="unknown">Not set</option>
-                    </select>
-                  ) : null}
-                </div>
+                )}
               </dd>
             </div>
             <div><dt>Due</dt><dd>{formatDate(tender.dueDate)}</dd></div>

@@ -7661,6 +7661,89 @@ textarea {
   .estimate-editor__markup-control { grid-row: auto; }
 }
 
+/* Dashboard canvas (builder) */
+.td-canvas__widgets {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+.td-canvas__slot { grid-column: span 4; min-width: 0; }
+.td-canvas__slot > * { height: 100%; }
+.td-canvas__slot--operations { grid-column: span 4; }
+.td-canvas__slot--tendering { grid-column: span 6; }
+.td-canvas__slot--jobs { grid-column: span 4; }
+.td-canvas__slot--maintenance { grid-column: span 4; }
+.td-canvas__slot--forms { grid-column: span 4; }
+@media (max-width: 1100px) {
+  .td-canvas__slot,
+  .td-canvas__slot--operations,
+  .td-canvas__slot--tendering,
+  .td-canvas__slot--jobs,
+  .td-canvas__slot--maintenance,
+  .td-canvas__slot--forms { grid-column: span 6; }
+}
+@media (max-width: 700px) {
+  .td-canvas__widgets { grid-template-columns: 1fr; }
+  .td-canvas__slot,
+  .td-canvas__slot--operations,
+  .td-canvas__slot--tendering,
+  .td-canvas__slot--jobs,
+  .td-canvas__slot--maintenance,
+  .td-canvas__slot--forms { grid-column: span 1; }
+}
+
+/* Customise panel */
+.customise-panel__widgets {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.customise-panel__row {
+  border: 1px solid var(--border-subtle, rgba(0,0,0,0.08));
+  border-radius: 6px;
+  background: var(--surface-card, white);
+}
+.customise-panel__row-main {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+}
+.customise-panel__drag {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+}
+.customise-panel__expand {
+  background: transparent;
+  border: none;
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+  min-width: 0;
+}
+.customise-panel__row-title { font-weight: 500; font-size: 14px; }
+.customise-panel__row-meta { font-size: 12px; color: var(--text-muted); text-transform: lowercase; }
+.customise-panel__toggle {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.customise-panel__row-expand {
+  padding: 8px 10px 12px 46px;
+  border-top: 1px dashed var(--border-subtle, rgba(0,0,0,0.08));
+}
+
 /* Tender dashboard v2 (clean legacy-style layout) */
 .td-v2 {
   display: flex;

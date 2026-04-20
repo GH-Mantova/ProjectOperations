@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { NotificationsDropdown } from "./NotificationsDropdown";
 import { CommandPalette } from "./CommandPalette";
+import { NewDashboardModal } from "../dashboards/NewDashboardModal";
+import type { UserDashboard } from "../dashboards/types";
 
 type NavItem = {
   to: string;
@@ -272,7 +274,20 @@ export function ShellLayout() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [notifBadge, setNotifBadge] = useState(0);
+  const [customDashboards, setCustomDashboards] = useState<UserDashboard[]>([]);
+  const [newDashboardOpen, setNewDashboardOpen] = useState(false);
   const bellRef = useRef<HTMLButtonElement | null>(null);
+
+  const loadCustomDashboards = useCallback(async () => {
+    const response = await authFetch("/user-dashboards");
+    if (!response.ok) return;
+    const all = (await response.json()) as UserDashboard[];
+    setCustomDashboards(all.filter((d) => !d.isSystem));
+  }, [authFetch]);
+
+  useEffect(() => {
+    void loadCustomDashboards();
+  }, [loadCustomDashboards, location.pathname]);
 
   const isAdmin = useMemo(() => {
     const roleNames = user?.roles?.map((role) => role.name) ?? [];
@@ -372,6 +387,42 @@ export function ShellLayout() {
               })}
             </div>
           ))}
+
+          <div className="shell__nav-group">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "0 6px" }}>
+              <p className="shell__nav-group-label" style={{ margin: 0 }}>My dashboards</p>
+              <button
+                type="button"
+                onClick={() => setNewDashboardOpen(true)}
+                title="New dashboard"
+                aria-label="New dashboard"
+                style={{ background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 16, padding: "2px 6px" }}
+              >
+                +
+              </button>
+            </div>
+            {customDashboards.length === 0 ? (
+              <p style={{ padding: "4px 10px", margin: 0, fontSize: 12, color: "var(--text-muted)" }}>
+                {collapsed ? "" : "No custom dashboards yet"}
+              </p>
+            ) : (
+              customDashboards.map((d) => {
+                const to = `/dashboards/${d.id}`;
+                const isActive = location.pathname === to;
+                return (
+                  <NavLink
+                    key={d.id}
+                    to={to}
+                    className={isActive ? "shell__nav-link shell__nav-link--active" : "shell__nav-link"}
+                    title={collapsed ? d.name : undefined}
+                  >
+                    <span className="shell__nav-icon">{ICON_DASHBOARD}</span>
+                    <span className="shell__nav-label">{d.name}</span>
+                  </NavLink>
+                );
+              })
+            )}
+          </div>
         </nav>
 
         <div className="shell__sidebar-footer">
@@ -464,6 +515,17 @@ export function ShellLayout() {
         </main>
       </div>
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      {newDashboardOpen ? (
+        <NewDashboardModal
+          slug="custom"
+          existingDashboards={customDashboards}
+          onClose={() => setNewDashboardOpen(false)}
+          onCreated={() => {
+            setNewDashboardOpen(false);
+            void loadCustomDashboards();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

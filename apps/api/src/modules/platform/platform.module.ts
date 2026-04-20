@@ -12,6 +12,8 @@ import { GraphSharePointAdapter } from "./graph-sharepoint.adapter";
 import { MockSharePointAdapter, SHAREPOINT_ADAPTER } from "./sharepoint.adapter";
 import { DashboardsController } from "./dashboards.controller";
 import { DashboardsService } from "./dashboards.service";
+import { UserDashboardsController } from "./user-dashboards.controller";
+import { UserDashboardsService } from "./user-dashboards.service";
 
 @Module({
   imports: [AuditModule],
@@ -20,7 +22,8 @@ import { DashboardsService } from "./dashboards.service";
     SharePointController,
     NotificationsController,
     SearchController,
-    DashboardsController
+    DashboardsController,
+    UserDashboardsController
   ],
   providers: [
     MockSharePointAdapter,
@@ -40,8 +43,9 @@ import { DashboardsService } from "./dashboards.service";
     SharePointService,
     NotificationsService,
     SearchService,
-    DashboardsService
+    DashboardsService,
+    UserDashboardsService
   ],
-  exports: [SharePointService, NotificationsService, SearchService, DashboardsService]
+  exports: [SharePointService, NotificationsService, SearchService, DashboardsService, UserDashboardsService]
 })
 export class PlatformModule {}

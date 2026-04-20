@@ -1304,6 +1304,32 @@ model EstimateCuttingRate {
   @@map("estimate_cutting_rates")
 }
 
+model EstimateFuelRate {
+  id        String   @id @default(uuid())
+  item      String   @unique
+  unit      String
+  rate      Decimal  @db.Decimal(10, 2)
+  isActive  Boolean  @default(true) @map("is_active")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("estimate_fuel_rates")
+}
+
+model EstimateEnclosureRate {
+  id            String   @id @default(uuid())
+  enclosureType String   @unique @map("enclosure_type")
+  unit          String
+  rate          Decimal  @db.Decimal(10, 2)
+  isActive      Boolean  @default(true) @map("is_active")
+  sortOrder     Int      @default(0) @map("sort_order")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("estimate_enclosure_rates")
+}
+
 model TenderEstimate {
   id         String    @id @default(uuid())
   tenderId   String    @unique @map("tender_id")
@@ -1335,6 +1361,7 @@ model EstimateItem {
   updatedAt         DateTime @updatedAt @map("updated_at")
 
   labourLines  EstimateLabourLine[]
+  equipLines   EstimateEquipLine[]
   plantLines   EstimatePlantLine[]
   wasteLines   EstimateWasteLine[]
   cuttingLines EstimateCuttingLine[]
@@ -1342,6 +1369,21 @@ model EstimateItem {
 
   @@index([estimateId, code, itemNumber])
   @@map("estimate_items")
+}
+
+model EstimateEquipLine {
+  id          String   @id @default(uuid())
+  itemId      String   @map("item_id")
+  item        EstimateItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  description String
+  qty         Decimal  @db.Decimal(8, 2)
+  duration    Decimal  @db.Decimal(8, 2)
+  period      String   @default("Day")
+  rate        Decimal  @db.Decimal(10, 2)
+  sortOrder   Int      @default(0) @map("sort_order")
+
+  @@index([itemId])
+  @@map("estimate_equip_lines")
 }
 
 model EstimateLabourLine {

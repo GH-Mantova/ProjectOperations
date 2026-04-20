@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppCard } from "@project-ops/ui";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { readTenderingLabels } from "../tendering-labels";
 import { getTenderingAttentionSummary } from "./tendering-page-helpers";
@@ -15,13 +15,75 @@ type TenderDashboardRecord = {
   probability?: number | null;
   estimatedValue?: string | null;
   dueDate?: string | null;
-  tenderClients: Array<{ isAwarded: boolean; contractIssued?: boolean; contractIssuedAt?: string | null }>;
+  estimator?: { id: string; firstName: string; lastName: string } | null;
+  tenderClients: Array<{
+    isAwarded: boolean;
+    contractIssued?: boolean;
+    contractIssuedAt?: string | null;
+    client?: { id: string; name: string } | null;
+  }>;
   tenderNotes: Array<{ createdAt?: string | null; updatedAt?: string | null }>;
   clarifications: Array<{ status: string; dueDate?: string | null; createdAt?: string | null; updatedAt?: string | null }>;
   followUps: Array<{ status: string; dueAt?: string | null; createdAt?: string | null; updatedAt?: string | null }>;
-  outcomes?: Array<{ createdAt?: string | null; updatedAt?: string | null }>;
+  outcomes?: Array<{ outcomeType?: string; recordedAt?: string | null; createdAt?: string | null; updatedAt?: string | null }>;
   tenderDocuments?: Array<{ createdAt?: string | null; updatedAt?: string | null }>;
 };
+
+type ProbabilityBucket = "hot" | "warm" | "cold" | "unknown";
+function bucketForProbability(value: number | null | undefined): ProbabilityBucket {
+  if (value === null || value === undefined) return "unknown";
+  if (value >= 70) return "hot";
+  if (value >= 30) return "warm";
+  return "cold";
+}
+const BUCKET_COLOR: Record<ProbabilityBucket, { background: string; color: string }> = {
+  hot: { background: "#FEAA6D", color: "#3E1C00" },
+  warm: { background: "#FCD34D", color: "#3E2A00" },
+  cold: { background: "#94A3B8", color: "#0F172A" },
+  unknown: { background: "rgba(0,0,0,0.08)", color: "#6B7280" }
+};
+const BUCKET_LABEL: Record<ProbabilityBucket, string> = {
+  hot: "Hot",
+  warm: "Warm",
+  cold: "Cold",
+  unknown: "—"
+};
+
+function daysBetween(a: Date, b: Date): number {
+  return Math.floor((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function estimatorName(tender: TenderDashboardRecord): string {
+  if (!tender.estimator) return "Unassigned";
+  return `${tender.estimator.firstName} ${tender.estimator.lastName}`;
+}
+
+function clientName(tender: TenderDashboardRecord): string {
+  return tender.tenderClients[0]?.client?.name ?? "No client";
+}
+
+function relativeDate(iso?: string | null): string {
+  if (!iso) return "—";
+  const target = new Date(iso);
+  const now = new Date();
+  const diff = daysBetween(target, now);
+  if (diff === 0) return "today";
+  if (diff === 1) return "yesterday";
+  if (diff > 1 && diff < 30) return `${diff}d ago`;
+  if (diff < 0 && diff > -7) return `in ${Math.abs(diff)}d`;
+  return target.toLocaleDateString();
+}
+
+function daysUntil(iso?: string | null): number {
+  if (!iso) return Number.POSITIVE_INFINITY;
+  return daysBetween(new Date(), new Date(iso));
+}
+
+function dueColorForDays(days: number): string {
+  if (days <= 1) return "#EF4444";
+  if (days <= 5) return "#F59E0B";
+  return "inherit";
+}
 
 const stageDefinitions = [
   { key: "DRAFT", label: "Draft" },
@@ -91,21 +153,43 @@ function getForecastBucketLabel(value?: string | null) {
 export function TenderingDashboardPage() {
   const labels = readTenderingLabels();
   const { authFetch } = useAuth();
+  const navigate = useNavigate();
   const [tenders, setTenders] = useState<TenderDashboardRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [logCallTenderId, setLogCallTenderId] = useState<string | null>(null);
+
+  const reloadTenders = useCallback(async () => {
+    try {
+      const response = await authFetch("/tenders?page=1&pageSize=100");
+      if (!response.ok) throw new Error("Unable to load tender dashboard data.");
+      const body = await response.json();
+      setTenders(body.items ?? []);
+    } catch (loadError) {
+      setError((loadError as Error).message);
+    }
+  }, [authFetch]);
 
   useEffect(() => {
-    authFetch("/tenders?page=1&pageSize=100")
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error("Unable to load tender dashboard data.");
-        }
+    void reloadTenders();
+  }, [reloadTenders]);
 
-        const body = await response.json();
-        setTenders(body.items ?? []);
-      })
-      .catch((loadError) => setError((loadError as Error).message));
-  }, [authFetch]);
+  const logCall = async (tenderId: string) => {
+    const note = window.prompt("Log a call / follow-up note:");
+    if (!note || !note.trim()) return;
+    setLogCallTenderId(tenderId);
+    try {
+      const response = await authFetch(`/tenders/${tenderId}/notes`, {
+        method: "POST",
+        body: JSON.stringify({ body: `[Call logged] ${note.trim()}` })
+      });
+      if (!response.ok) throw new Error("Could not log call.");
+      await reloadTenders();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLogCallTenderId(null);
+    }
+  };
 
   const dashboard = useMemo(() => {
     const attentionSummaries = tenders.map((tender) => ({
@@ -225,32 +309,230 @@ export function TenderingDashboardPage() {
   const maxStageCount = Math.max(...dashboard.stageCounts.map((item) => item.count), 1);
   const maxPressureCount = Math.max(...dashboard.estimatorPressure.map((item) => item.count), 1);
 
+  // Estimating-specific KPIs
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const yearStart = new Date(now.getFullYear(), 0, 1);
+  const activeStages = new Set(["DRAFT", "IN_PROGRESS", "SUBMITTED"]);
+  const activePipelineValue = tenders
+    .filter((t) => activeStages.has(getTenderStage(t)))
+    .reduce((sum, t) => sum + Number(t.estimatedValue ?? 0), 0);
+
+  const submittedMtd = tenders.filter(
+    (t) => t.status === "SUBMITTED" && t.updatedAt && new Date(t.updatedAt) >= monthStart
+  );
+  const submittedMtdValue = submittedMtd.reduce((sum, t) => sum + Number(t.estimatedValue ?? 0), 0);
+
+  const submittedYtd = tenders.filter(
+    (t) => ["SUBMITTED", "AWARDED", "LOST"].includes(t.status) && t.updatedAt && new Date(t.updatedAt) >= yearStart
+  );
+  const wonYtd = submittedYtd.filter((t) => t.status === "AWARDED" || t.tenderClients.some((c) => c.isAwarded));
+  const winRateYtd = submittedYtd.length > 0 ? (wonYtd.length / submittedYtd.length) * 100 : 0;
+
+  const submittedTenders = tenders.filter((t) => t.status === "SUBMITTED" && t.createdAt && t.updatedAt);
+  const avgLeadTime = submittedTenders.length > 0
+    ? submittedTenders.reduce((sum, t) => sum + daysBetween(new Date(t.createdAt!), new Date(t.updatedAt!)), 0) / submittedTenders.length
+    : 0;
+
+  // Due this week
+  const dueThisWeek = tenders
+    .filter((t) => {
+      if (!t.dueDate) return false;
+      if (!activeStages.has(getTenderStage(t))) return false;
+      const d = daysUntil(t.dueDate);
+      return d <= 7;
+    })
+    .sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""));
+
+  // Follow-up queue: SUBMITTED > 7 days ago, no outcome
+  const followUpQueue = tenders
+    .filter((t) => {
+      if (t.status !== "SUBMITTED") return false;
+      if (!t.updatedAt) return false;
+      const days = daysBetween(new Date(t.updatedAt), now);
+      if (days < 7) return false;
+      if (t.outcomes && t.outcomes.length > 0) return false;
+      if (t.tenderClients.some((c) => c.isAwarded)) return false;
+      return true;
+    })
+    .map((t) => ({
+      tender: t,
+      daysWaiting: t.updatedAt ? daysBetween(new Date(t.updatedAt), now) : 0
+    }))
+    .sort((a, b) => b.daysWaiting - a.daysWaiting);
+  const followUpQueueValue = followUpQueue.reduce((sum, item) => sum + Number(item.tender.estimatedValue ?? 0), 0);
+
+  // Recent wins (last 90 days)
+  const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+  const recentWins = tenders
+    .filter((t) => {
+      const isWon = t.status === "AWARDED" || t.tenderClients.some((c) => c.isAwarded);
+      if (!isWon) return false;
+      const when = t.tenderClients.find((c) => c.contractIssuedAt)?.contractIssuedAt ?? t.updatedAt;
+      if (!when) return false;
+      return new Date(when) >= ninetyDaysAgo;
+    })
+    .sort((a, b) => {
+      const aTime = new Date(a.updatedAt ?? 0).getTime();
+      const bTime = new Date(b.updatedAt ?? 0).getTime();
+      return bTime - aTime;
+    })
+    .slice(0, 8);
+
   return (
     <div className="tendering-dashboard">
       {error ? <p className="error-text">{error}</p> : null}
 
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <Link to="/tenders/reports" className="s7-btn s7-btn--secondary s7-btn--sm">Reports →</Link>
+      </div>
+
       <div className="tendering-kpi-row">
         <div className="tendering-kpi-card">
-          <span>Total live tenders</span>
-          <strong>{tenders.length}</strong>
+          <span>Active pipeline</span>
+          <strong>{formatCurrency(String(activePipelineValue))}</strong>
         </div>
         <div className="tendering-kpi-card">
-          <span>Pipeline value</span>
-          <strong>{formatCurrency(String(dashboard.totalValue))}</strong>
+          <span>Submitted MTD</span>
+          <strong>{submittedMtd.length}</strong>
+          <small style={{ color: "var(--text-muted)" }}>{formatCurrency(String(submittedMtdValue))}</small>
         </div>
         <div className="tendering-kpi-card">
-          <span>Submitted value</span>
-          <strong>{formatCurrency(String(dashboard.submittedValue))}</strong>
+          <span>Win rate YTD</span>
+          <strong>{winRateYtd.toFixed(0)}%</strong>
+          <small style={{ color: "var(--text-muted)" }}>{wonYtd.length}/{submittedYtd.length}</small>
+        </div>
+        <div className="tendering-kpi-card">
+          <span>Avg lead time</span>
+          <strong>{avgLeadTime.toFixed(1)}d</strong>
         </div>
         <div className="tendering-kpi-card">
           <span>Open follow-ups</span>
           <strong>{dashboard.openFollowUps}</strong>
         </div>
-        <div className="tendering-kpi-card">
-          <span>Pending clarifications</span>
-          <strong>{dashboard.openClarifications}</strong>
-        </div>
       </div>
+
+      <section className="dashboard-grid dashboard-grid--tendering" style={{ marginTop: 20 }}>
+        <AppCard title="Due this week" subtitle={`${dueThisWeek.length} tenders due within the next 7 days.`}>
+          {dueThisWeek.length === 0 ? (
+            <p style={{ color: "var(--text-muted)" }}>Nothing due this week.</p>
+          ) : (
+            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+              {dueThisWeek.map((t) => {
+                const days = daysUntil(t.dueDate);
+                const color = dueColorForDays(days);
+                return (
+                  <li
+                    key={t.id}
+                    onClick={() => navigate(`/tenders/${t.id}`)}
+                    style={{
+                      cursor: "pointer",
+                      padding: "8px 10px",
+                      borderRadius: 6,
+                      border: "1px solid var(--border-subtle, rgba(0,0,0,0.08))",
+                      display: "grid",
+                      gridTemplateColumns: "auto 1fr auto",
+                      gap: 10,
+                      alignItems: "center"
+                    }}
+                  >
+                    <strong>{t.tenderNumber}</strong>
+                    <div>
+                      <div style={{ fontSize: 13 }}>{clientName(t)} — {t.title}</div>
+                      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{estimatorName(t)} · {stageDefinitions.find((s) => s.key === getTenderStage(t))?.label ?? "Draft"}</div>
+                    </div>
+                    <span style={{ color, fontWeight: 600, fontSize: 13 }}>
+                      {days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? "due today" : days === 1 ? "due tomorrow" : `${days}d`}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </AppCard>
+
+        <AppCard title="Follow-up queue" subtitle={`${followUpQueue.length} tenders · ${formatCurrency(String(followUpQueueValue))} awaiting response.`}>
+          {followUpQueue.length === 0 ? (
+            <p style={{ color: "var(--text-muted)" }}>No submitted tenders waiting.</p>
+          ) : (
+            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+              {followUpQueue.slice(0, 8).map(({ tender, daysWaiting }) => {
+                const bucket = bucketForProbability(tender.probability);
+                return (
+                  <li
+                    key={tender.id}
+                    style={{
+                      padding: "8px 10px",
+                      borderRadius: 6,
+                      border: "1px solid var(--border-subtle, rgba(0,0,0,0.08))",
+                      display: "grid",
+                      gridTemplateColumns: "auto 1fr auto auto",
+                      gap: 10,
+                      alignItems: "center"
+                    }}
+                  >
+                    <strong style={{ cursor: "pointer" }} onClick={() => navigate(`/tenders/${tender.id}`)}>
+                      {tender.tenderNumber}
+                    </strong>
+                    <div style={{ cursor: "pointer" }} onClick={() => navigate(`/tenders/${tender.id}`)}>
+                      <div style={{ fontSize: 13 }}>{clientName(tender)} — {tender.title}</div>
+                      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                        {daysWaiting}d waiting · {formatCurrency(tender.estimatedValue)}
+                      </div>
+                    </div>
+                    <span
+                      className="s7-badge"
+                      style={{ background: BUCKET_COLOR[bucket].background, color: BUCKET_COLOR[bucket].color }}
+                    >
+                      {BUCKET_LABEL[bucket]}
+                    </span>
+                    <button
+                      type="button"
+                      className="s7-btn s7-btn--secondary s7-btn--sm"
+                      onClick={() => void logCall(tender.id)}
+                      disabled={logCallTenderId === tender.id}
+                    >
+                      Log call
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </AppCard>
+
+        <AppCard title="Recent wins" subtitle={`${recentWins.length} tenders won in the last 90 days.`}>
+          {recentWins.length === 0 ? (
+            <p style={{ color: "var(--text-muted)" }}>No wins yet in the last 90 days.</p>
+          ) : (
+            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+              {recentWins.map((t) => (
+                <li
+                  key={t.id}
+                  onClick={() => navigate(`/tenders/${t.id}`)}
+                  style={{
+                    cursor: "pointer",
+                    padding: "8px 10px",
+                    borderRadius: 6,
+                    border: "1px solid var(--border-subtle, rgba(0,0,0,0.08))",
+                    display: "grid",
+                    gridTemplateColumns: "1fr auto auto",
+                    gap: 10,
+                    alignItems: "center"
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: 13 }}>{clientName(t)} — {t.title}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{estimatorName(t)}</div>
+                  </div>
+                  <strong style={{ color: "#065F46" }}>{formatCurrency(t.estimatedValue)}</strong>
+                  <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{relativeDate(t.updatedAt)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </AppCard>
+      </section>
 
       <section className="tendering-dashboard-band">
         <div className="tendering-dashboard-band__intro">

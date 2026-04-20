@@ -5,6 +5,7 @@ import { AuditService } from "../audit/audit.service";
 import {
   UpdateAssumptionDto,
   UpdateCuttingLineDto,
+  UpdateEquipLineDto,
   UpdateEstimateDto,
   UpdateEstimateItemDto,
   UpdateLabourLineDto,
@@ -13,7 +14,10 @@ import {
   UpsertAssumptionDto,
   UpsertCuttingLineDto,
   UpsertCuttingRateDto,
+  UpsertEnclosureRateDto,
+  UpsertEquipLineDto,
   UpsertEstimateItemDto,
+  UpsertFuelRateDto,
   UpsertLabourLineDto,
   UpsertLabourRateDto,
   UpsertPlantLineDto,
@@ -27,6 +31,7 @@ const estimateInclude = Prisma.validator<Prisma.TenderEstimateInclude>()({
     orderBy: [{ code: "asc" }, { itemNumber: "asc" }, { sortOrder: "asc" }],
     include: {
       labourLines: { orderBy: { sortOrder: "asc" } },
+      equipLines: { orderBy: { sortOrder: "asc" } },
       plantLines: { orderBy: { sortOrder: "asc" } },
       wasteLines: { orderBy: { sortOrder: "asc" } },
       cuttingLines: { orderBy: { sortOrder: "asc" } },
@@ -197,6 +202,76 @@ export class EstimatesService {
       actorId,
       action: "estimates.cuttingRate.delete",
       entityType: "EstimateCuttingRate",
+      entityId: id
+    });
+    return { id };
+  }
+
+  listFuelRates() {
+    return this.prisma.estimateFuelRate.findMany({
+      orderBy: [{ isActive: "desc" }, { sortOrder: "asc" }, { item: "asc" }]
+    });
+  }
+  async upsertFuelRate(id: string | undefined, dto: UpsertFuelRateDto, actorId?: string) {
+    const data = {
+      item: dto.item,
+      unit: dto.unit,
+      rate: new Prisma.Decimal(dto.rate),
+      isActive: dto.isActive ?? true,
+      sortOrder: dto.sortOrder ?? 0
+    };
+    const record = id
+      ? await this.prisma.estimateFuelRate.update({ where: { id }, data })
+      : await this.prisma.estimateFuelRate.create({ data });
+    await this.auditService.write({
+      actorId,
+      action: id ? "estimates.fuelRate.update" : "estimates.fuelRate.create",
+      entityType: "EstimateFuelRate",
+      entityId: record.id
+    });
+    return record;
+  }
+  async deleteFuelRate(id: string, actorId?: string) {
+    await this.prisma.estimateFuelRate.delete({ where: { id } });
+    await this.auditService.write({
+      actorId,
+      action: "estimates.fuelRate.delete",
+      entityType: "EstimateFuelRate",
+      entityId: id
+    });
+    return { id };
+  }
+
+  listEnclosureRates() {
+    return this.prisma.estimateEnclosureRate.findMany({
+      orderBy: [{ isActive: "desc" }, { sortOrder: "asc" }, { enclosureType: "asc" }]
+    });
+  }
+  async upsertEnclosureRate(id: string | undefined, dto: UpsertEnclosureRateDto, actorId?: string) {
+    const data = {
+      enclosureType: dto.enclosureType,
+      unit: dto.unit,
+      rate: new Prisma.Decimal(dto.rate),
+      isActive: dto.isActive ?? true,
+      sortOrder: dto.sortOrder ?? 0
+    };
+    const record = id
+      ? await this.prisma.estimateEnclosureRate.update({ where: { id }, data })
+      : await this.prisma.estimateEnclosureRate.create({ data });
+    await this.auditService.write({
+      actorId,
+      action: id ? "estimates.enclosureRate.update" : "estimates.enclosureRate.create",
+      entityType: "EstimateEnclosureRate",
+      entityId: record.id
+    });
+    return record;
+  }
+  async deleteEnclosureRate(id: string, actorId?: string) {
+    await this.prisma.estimateEnclosureRate.delete({ where: { id } });
+    await this.auditService.write({
+      actorId,
+      action: "estimates.enclosureRate.delete",
+      entityType: "EstimateEnclosureRate",
       entityId: id
     });
     return { id };
@@ -503,6 +578,67 @@ export class EstimatesService {
     if (!line || line.itemId !== itemId) throw new NotFoundException("Plant line not found on this item.");
   }
 
+  async addEquipLine(tenderId: string, itemId: string, dto: UpsertEquipLineDto, actorId?: string) {
+    const estimate = await this.requireEstimate(tenderId);
+    this.ensureNotLocked(estimate);
+    await this.ensureItemInEstimate(estimate.id, itemId);
+    const line = await this.prisma.estimateEquipLine.create({
+      data: {
+        itemId,
+        description: dto.description,
+        qty: new Prisma.Decimal(dto.qty),
+        duration: new Prisma.Decimal(dto.duration),
+        period: dto.period ?? "Day",
+        rate: new Prisma.Decimal(dto.rate),
+        sortOrder: dto.sortOrder ?? 0
+      }
+    });
+    await this.auditService.write({
+      actorId,
+      action: "estimates.equipLine.create",
+      entityType: "EstimateEquipLine",
+      entityId: line.id
+    });
+    return this.requireEstimate(tenderId);
+  }
+  async updateEquipLine(tenderId: string, itemId: string, lineId: string, dto: UpdateEquipLineDto, actorId?: string) {
+    const estimate = await this.requireEstimate(tenderId);
+    this.ensureNotLocked(estimate);
+    await this.ensureEquipLineInItem(itemId, lineId);
+    const data: Prisma.EstimateEquipLineUpdateInput = {};
+    if (dto.description !== undefined) data.description = dto.description;
+    if (dto.qty !== undefined) data.qty = new Prisma.Decimal(dto.qty);
+    if (dto.duration !== undefined) data.duration = new Prisma.Decimal(dto.duration);
+    if (dto.period !== undefined) data.period = dto.period;
+    if (dto.rate !== undefined) data.rate = new Prisma.Decimal(dto.rate);
+    if (dto.sortOrder !== undefined) data.sortOrder = dto.sortOrder;
+    await this.prisma.estimateEquipLine.update({ where: { id: lineId }, data });
+    await this.auditService.write({
+      actorId,
+      action: "estimates.equipLine.update",
+      entityType: "EstimateEquipLine",
+      entityId: lineId
+    });
+    return this.requireEstimate(tenderId);
+  }
+  async deleteEquipLine(tenderId: string, itemId: string, lineId: string, actorId?: string) {
+    const estimate = await this.requireEstimate(tenderId);
+    this.ensureNotLocked(estimate);
+    await this.ensureEquipLineInItem(itemId, lineId);
+    await this.prisma.estimateEquipLine.delete({ where: { id: lineId } });
+    await this.auditService.write({
+      actorId,
+      action: "estimates.equipLine.delete",
+      entityType: "EstimateEquipLine",
+      entityId: lineId
+    });
+    return this.requireEstimate(tenderId);
+  }
+  private async ensureEquipLineInItem(itemId: string, lineId: string) {
+    const line = await this.prisma.estimateEquipLine.findUnique({ where: { id: lineId } });
+    if (!line || line.itemId !== itemId) throw new NotFoundException("Equipment line not found on this item.");
+  }
+
   async addWasteLine(tenderId: string, itemId: string, dto: UpsertWasteLineDto, actorId?: string) {
     const estimate = await this.requireEstimate(tenderId);
     this.ensureNotLocked(estimate);
@@ -691,17 +827,18 @@ export class EstimatesService {
         markup: 0,
         locked: false,
         items: [],
-        totals: { labour: 0, plant: 0, waste: 0, cutting: 0, subtotal: 0, price: 0 },
+        totals: { labour: 0, equip: 0, plant: 0, waste: 0, cutting: 0, subtotal: 0, price: 0 },
         markupAmount: 0
       };
     }
 
     const items = estimate.items.map((item: EstimateItemWithLines) => {
       const labour = round2(item.labourLines.reduce((sum: number, l) => sum + toNumber(l.qty) * toNumber(l.days) * toNumber(l.rate), 0));
+      const equip = round2(item.equipLines.reduce((sum: number, l) => sum + toNumber(l.qty) * toNumber(l.duration) * toNumber(l.rate), 0));
       const plant = round2(item.plantLines.reduce((sum: number, l) => sum + toNumber(l.qty) * toNumber(l.days) * toNumber(l.rate), 0));
       const waste = round2(item.wasteLines.reduce((sum: number, l) => sum + toNumber(l.qtyTonnes) * toNumber(l.tonRate) + (l.loads ?? 0) * toNumber(l.loadRate), 0));
       const cutting = round2(item.cuttingLines.reduce((sum: number, l) => sum + toNumber(l.qty) * toNumber(l.rate), 0));
-      const subtotal = round2(labour + plant + waste + cutting);
+      const subtotal = round2(labour + equip + plant + waste + cutting);
       const markup = toNumber(item.markup);
       const price = item.isProvisional
         ? round2(toNumber(item.provisionalAmount))
@@ -713,6 +850,7 @@ export class EstimatesService {
         title: item.title,
         isProvisional: item.isProvisional,
         labour,
+        equip,
         plant,
         waste,
         cutting,
@@ -722,10 +860,11 @@ export class EstimatesService {
       };
     });
 
-    type Totals = { labour: number; plant: number; waste: number; cutting: number; subtotal: number; price: number };
+    type Totals = { labour: number; equip: number; plant: number; waste: number; cutting: number; subtotal: number; price: number };
     const totals = items.reduce<Totals>(
       (acc, item) => {
         acc.labour += item.labour;
+        acc.equip += item.equip;
         acc.plant += item.plant;
         acc.waste += item.waste;
         acc.cutting += item.cutting;
@@ -733,7 +872,7 @@ export class EstimatesService {
         acc.price += item.price;
         return acc;
       },
-      { labour: 0, plant: 0, waste: 0, cutting: 0, subtotal: 0, price: 0 }
+      { labour: 0, equip: 0, plant: 0, waste: 0, cutting: 0, subtotal: 0, price: 0 }
     );
 
     for (const key of Object.keys(totals) as Array<keyof typeof totals>) {

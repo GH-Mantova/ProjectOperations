@@ -7,6 +7,7 @@ import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import {
   UpdateAssumptionDto,
   UpdateCuttingLineDto,
+  UpdateEquipLineDto,
   UpdateEstimateDto,
   UpdateEstimateItemDto,
   UpdateLabourLineDto,
@@ -15,7 +16,10 @@ import {
   UpsertAssumptionDto,
   UpsertCuttingLineDto,
   UpsertCuttingRateDto,
+  UpsertEnclosureRateDto,
+  UpsertEquipLineDto,
   UpsertEstimateItemDto,
+  UpsertFuelRateDto,
   UpsertLabourLineDto,
   UpsertLabourRateDto,
   UpsertPlantLineDto,
@@ -162,6 +166,70 @@ export class EstimatesController {
   @ApiOperation({ summary: "Delete a cutting rate" })
   deleteCuttingRate(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
     return this.service.deleteCuttingRate(id, actor.sub);
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  Rate library — fuel
+  // ──────────────────────────────────────────────────────────────
+
+  @Get("estimate-rates/fuel")
+  @RequirePermissions("estimates.view")
+  @ApiOperation({ summary: "List fuel rates (rate library)" })
+  listFuelRates() {
+    return this.service.listFuelRates();
+  }
+
+  @Post("estimate-rates/fuel")
+  @RequirePermissions("estimates.admin")
+  @ApiOperation({ summary: "Create a fuel rate" })
+  createFuelRate(@Body() dto: UpsertFuelRateDto, @CurrentUser() actor: { sub: string }) {
+    return this.service.upsertFuelRate(undefined, dto, actor.sub);
+  }
+
+  @Patch("estimate-rates/fuel/:id")
+  @RequirePermissions("estimates.admin")
+  @ApiOperation({ summary: "Update a fuel rate" })
+  updateFuelRate(@Param("id") id: string, @Body() dto: UpsertFuelRateDto, @CurrentUser() actor: { sub: string }) {
+    return this.service.upsertFuelRate(id, dto, actor.sub);
+  }
+
+  @Delete("estimate-rates/fuel/:id")
+  @RequirePermissions("estimates.admin")
+  @ApiOperation({ summary: "Delete a fuel rate" })
+  deleteFuelRate(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
+    return this.service.deleteFuelRate(id, actor.sub);
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  Rate library — enclosure
+  // ──────────────────────────────────────────────────────────────
+
+  @Get("estimate-rates/enclosure")
+  @RequirePermissions("estimates.view")
+  @ApiOperation({ summary: "List asbestos enclosure rates (rate library)" })
+  listEnclosureRates() {
+    return this.service.listEnclosureRates();
+  }
+
+  @Post("estimate-rates/enclosure")
+  @RequirePermissions("estimates.admin")
+  @ApiOperation({ summary: "Create an enclosure rate" })
+  createEnclosureRate(@Body() dto: UpsertEnclosureRateDto, @CurrentUser() actor: { sub: string }) {
+    return this.service.upsertEnclosureRate(undefined, dto, actor.sub);
+  }
+
+  @Patch("estimate-rates/enclosure/:id")
+  @RequirePermissions("estimates.admin")
+  @ApiOperation({ summary: "Update an enclosure rate" })
+  updateEnclosureRate(@Param("id") id: string, @Body() dto: UpsertEnclosureRateDto, @CurrentUser() actor: { sub: string }) {
+    return this.service.upsertEnclosureRate(id, dto, actor.sub);
+  }
+
+  @Delete("estimate-rates/enclosure/:id")
+  @RequirePermissions("estimates.admin")
+  @ApiOperation({ summary: "Delete an enclosure rate" })
+  deleteEnclosureRate(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
+    return this.service.deleteEnclosureRate(id, actor.sub);
   }
 
   // ──────────────────────────────────────────────────────────────
@@ -338,6 +406,47 @@ export class EstimatesController {
     @CurrentUser() actor: { sub: string }
   ) {
     return this.service.deletePlantLine(tenderId, itemId, lineId, actor.sub);
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  Equipment hire & subcontractor lines
+  // ──────────────────────────────────────────────────────────────
+
+  @Post("tenders/:tenderId/estimate/items/:itemId/equip")
+  @RequirePermissions("estimates.manage")
+  @ApiOperation({ summary: "Add an equipment/subcontractor line to a scope item" })
+  addEquipLine(
+    @Param("tenderId") tenderId: string,
+    @Param("itemId") itemId: string,
+    @Body() dto: UpsertEquipLineDto,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.addEquipLine(tenderId, itemId, dto, actor.sub);
+  }
+
+  @Patch("tenders/:tenderId/estimate/items/:itemId/equip/:lineId")
+  @RequirePermissions("estimates.manage")
+  @ApiOperation({ summary: "Update an equipment/subcontractor line" })
+  updateEquipLine(
+    @Param("tenderId") tenderId: string,
+    @Param("itemId") itemId: string,
+    @Param("lineId") lineId: string,
+    @Body() dto: UpdateEquipLineDto,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.updateEquipLine(tenderId, itemId, lineId, dto, actor.sub);
+  }
+
+  @Delete("tenders/:tenderId/estimate/items/:itemId/equip/:lineId")
+  @RequirePermissions("estimates.manage")
+  @ApiOperation({ summary: "Delete an equipment/subcontractor line" })
+  deleteEquipLine(
+    @Param("tenderId") tenderId: string,
+    @Param("itemId") itemId: string,
+    @Param("lineId") lineId: string,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.deleteEquipLine(tenderId, itemId, lineId, actor.sub);
   }
 
   // ──────────────────────────────────────────────────────────────

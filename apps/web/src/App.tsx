@@ -29,6 +29,7 @@ import { ArchivePage } from "./pages/archive/ArchivePage";
 import { ArchiveDetailPage } from "./pages/archive/ArchiveDetailPage";
 import { TenderingPage } from "./pages/tendering/TenderingPage";
 import { TenderDetailPage } from "./pages/tendering/TenderDetailPage";
+import { TenderingReportsPage } from "./pages/tendering/TenderingReportsPage";
 import { JobsListPage } from "./pages/jobs/JobsListPage";
 import { JobDetailPage } from "./pages/jobs/JobDetailPage";
 import { SchedulerWorkspacePage } from "./pages/scheduler/SchedulerWorkspacePage";
@@ -68,6 +69,7 @@ export function App() {
             <Route path="/tenders/clients" element={<TenderClientsPage />} />
             <Route path="/tenders/contacts" element={<TenderContactsPage />} />
             <Route path="/tenders/settings" element={<TenderingSettingsPage />} />
+            <Route path="/tenders/reports" element={<TenderingReportsPage />} />
             <Route path="/tenders/:id" element={<TenderDetailPage />} />
             <Route path="/jobs" element={<JobsListPage />} />
             <Route path="/jobs/workspace" element={<JobsPage />} />

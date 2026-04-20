@@ -150,6 +150,71 @@ export class TenderingService {
     return tender;
   }
 
+  async duplicate(id: string, actorId?: string) {
+    const source = await this.prisma.tender.findUnique({
+      where: { id },
+      include: {
+        tenderClients: true
+      }
+    });
+    if (!source) {
+      throw new NotFoundException("Tender not found.");
+    }
+
+    const newNumber = await this.generateDuplicateNumber(source.tenderNumber);
+
+    const tender = await this.prisma.tender.create({
+      data: {
+        tenderNumber: newNumber,
+        title: `${source.title} (copy)`,
+        description: source.description,
+        status: "DRAFT",
+        dueDate: source.dueDate ?? undefined,
+        proposedStartDate: source.proposedStartDate ?? undefined,
+        leadTimeDays: source.leadTimeDays ?? undefined,
+        probability: source.probability ?? undefined,
+        estimatedValue: source.estimatedValue ?? undefined,
+        notes: source.notes,
+        estimator: source.estimatorUserId ? { connect: { id: source.estimatorUserId } } : undefined,
+        tenderClients: source.tenderClients.length
+          ? {
+              create: source.tenderClients.map((item) => ({
+                client: { connect: { id: item.clientId } },
+                contact: item.contactId ? { connect: { id: item.contactId } } : undefined,
+                isAwarded: false,
+                contractIssued: false,
+                relationshipType: item.relationshipType,
+                notes: item.notes
+              }))
+            }
+          : undefined
+      },
+      include: tenderInclude
+    });
+
+    await this.auditService.write({
+      actorId,
+      action: "tenders.duplicate",
+      entityType: "Tender",
+      entityId: tender.id,
+      metadata: { sourceTenderId: id, tenderNumber: tender.tenderNumber }
+    });
+
+    return tender;
+  }
+
+  private async generateDuplicateNumber(sourceNumber: string): Promise<string> {
+    for (let suffix = 1; suffix <= 99; suffix += 1) {
+      const candidate = `${sourceNumber}-COPY${suffix > 1 ? suffix : ""}`;
+      const existing = await this.prisma.tender.findFirst({
+        where: { tenderNumber: candidate },
+        select: { id: true }
+      });
+      if (!existing) return candidate;
+    }
+    return `${sourceNumber}-COPY${Date.now()}`;
+  }
+
   async updateStatus(id: string, status: string, actorId?: string) {
     const existing = await this.prisma.tender.findUnique({ where: { id } });
     if (!existing) {
@@ -166,6 +231,26 @@ export class TenderingService {
       entityType: "Tender",
       entityId: id,
       metadata: { from: existing.status, to: status }
+    });
+    return tender;
+  }
+
+  async updateProbability(id: string, probability: number | null, actorId?: string) {
+    const existing = await this.prisma.tender.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException("Tender not found.");
+    }
+    const tender = await this.prisma.tender.update({
+      where: { id },
+      data: { probability },
+      include: tenderInclude
+    });
+    await this.auditService.write({
+      actorId,
+      action: "tenders.probability.update",
+      entityType: "Tender",
+      entityId: id,
+      metadata: { from: existing.probability, to: probability }
     });
     return tender;
   }

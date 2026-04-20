@@ -41,7 +41,28 @@ type CuttingRate = {
   sortOrder: number;
 };
 
-type Tab = "labour" | "plant" | "waste" | "cutting";
+type FuelRate = {
+  id: string;
+  item: string;
+  unit: string;
+  rate: string;
+  isActive: boolean;
+  sortOrder: number;
+};
+
+type EnclosureRate = {
+  id: string;
+  enclosureType: string;
+  unit: string;
+  rate: string;
+  isActive: boolean;
+  sortOrder: number;
+};
+
+type Tab = "labour" | "plant" | "waste" | "cutting" | "fuel" | "enclosure";
+
+const SNAPSHOT_NOTE =
+  "Rate snapshots: Every submitted quote freezes the rates in force on the submit date. Editing a rate here never changes an old quote.";
 
 export function EstimateRatesAdminPage() {
   const { authFetch, user } = useAuth();
@@ -56,6 +77,16 @@ export function EstimateRatesAdminPage() {
   const [plant, setPlant] = useState<PlantRate[]>([]);
   const [waste, setWaste] = useState<WasteRate[]>([]);
   const [cutting, setCutting] = useState<CuttingRate[]>([]);
+  const [fuel, setFuel] = useState<FuelRate[]>([]);
+  const [enclosure, setEnclosure] = useState<EnclosureRate[]>([]);
+  const [searches, setSearches] = useState<Record<Tab, string>>({
+    labour: "",
+    plant: "",
+    waste: "",
+    cutting: "",
+    fuel: "",
+    enclosure: ""
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -64,16 +95,20 @@ export function EstimateRatesAdminPage() {
     setLoading(true);
     setError(null);
     try {
-      const [l, p, w, c] = await Promise.all([
+      const [l, p, w, c, f, e] = await Promise.all([
         authFetch(`/estimate-rates/labour`).then((r) => (r.ok ? (r.json() as Promise<LabourRate[]>) : [])),
         authFetch(`/estimate-rates/plant`).then((r) => (r.ok ? (r.json() as Promise<PlantRate[]>) : [])),
         authFetch(`/estimate-rates/waste`).then((r) => (r.ok ? (r.json() as Promise<WasteRate[]>) : [])),
-        authFetch(`/estimate-rates/cutting`).then((r) => (r.ok ? (r.json() as Promise<CuttingRate[]>) : []))
+        authFetch(`/estimate-rates/cutting`).then((r) => (r.ok ? (r.json() as Promise<CuttingRate[]>) : [])),
+        authFetch(`/estimate-rates/fuel`).then((r) => (r.ok ? (r.json() as Promise<FuelRate[]>) : [])),
+        authFetch(`/estimate-rates/enclosure`).then((r) => (r.ok ? (r.json() as Promise<EnclosureRate[]>) : []))
       ]);
       setLabour(l as LabourRate[]);
       setPlant(p as PlantRate[]);
       setWaste(w as WasteRate[]);
       setCutting(c as CuttingRate[]);
+      setFuel(f as FuelRate[]);
+      setEnclosure(e as EnclosureRate[]);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -110,8 +145,27 @@ export function EstimateRatesAdminPage() {
     );
   }
 
+  const search = searches[tab];
+  const setSearch = (value: string) => setSearches((prev) => ({ ...prev, [tab]: value }));
+
+  const labourFiltered = filterRows(labour, search, (r) => r.role);
+  const plantFiltered = filterRows(plant, search, (r) => `${r.item} ${r.unit}`);
+  const wasteFiltered = filterRows(waste, search, (r) => `${r.wasteType} ${r.facility}`);
+  const cuttingFiltered = filterRows(cutting, search, (r) => `${r.cuttingType} ${r.unit}`);
+  const fuelFiltered = filterRows(fuel, search, (r) => `${r.item} ${r.unit}`);
+  const enclosureFiltered = filterRows(enclosure, search, (r) => `${r.enclosureType} ${r.unit}`);
+
+  const countFor: Record<Tab, number> = {
+    labour: labour.length,
+    plant: plant.length,
+    waste: waste.length,
+    cutting: cutting.length,
+    fuel: fuel.length,
+    enclosure: enclosure.length
+  };
+
   return (
-    <div className="admin-page">
+    <div className="admin-page" style={{ paddingBottom: 70 }}>
       <header className="admin-page__header">
         <div>
           <p className="s7-type-label">Tendering</p>
@@ -130,10 +184,12 @@ export function EstimateRatesAdminPage() {
 
       <nav className="admin-page__tabs" role="tablist">
         {([
-          { key: "labour", label: `Labour (${labour.length})` },
-          { key: "plant", label: `Plant (${plant.length})` },
-          { key: "waste", label: `Waste (${waste.length})` },
-          { key: "cutting", label: `Cutting (${cutting.length})` }
+          { key: "labour", label: `Labour (${countFor.labour})` },
+          { key: "plant", label: `Plant (${countFor.plant})` },
+          { key: "waste", label: `Disposal (${countFor.waste})` },
+          { key: "cutting", label: `Cutting (${countFor.cutting})` },
+          { key: "fuel", label: `Fuel (${countFor.fuel})` },
+          { key: "enclosure", label: `Enclosures (${countFor.enclosure})` }
         ] as Array<{ key: Tab; label: string }>).map((t) => (
           <button
             key={t.key}
@@ -148,20 +204,84 @@ export function EstimateRatesAdminPage() {
         ))}
       </nav>
 
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <input
+          type="search"
+          className="s7-input"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={`Search ${tab}…`}
+          style={{ maxWidth: 320, flex: 1 }}
+        />
+        <span style={{ color: "var(--text-muted)", fontSize: 13 }}>
+          {currentFilteredLength(tab, { labourFiltered, plantFiltered, wasteFiltered, cuttingFiltered, fuelFiltered, enclosureFiltered })}
+          {" of "}
+          {countFor[tab]}
+          {" entries"}
+        </span>
+      </div>
+
       {loading ? (
         <div className="s7-card">
           <Skeleton width="100%" height={200} />
         </div>
       ) : (
         <section className="s7-card">
-          {tab === "labour" && <LabourRatesTable rows={labour} canAdmin={canAdmin} saving={saving} callApi={callApi} />}
-          {tab === "plant" && <PlantRatesTable rows={plant} canAdmin={canAdmin} saving={saving} callApi={callApi} />}
-          {tab === "waste" && <WasteRatesTable rows={waste} canAdmin={canAdmin} saving={saving} callApi={callApi} />}
-          {tab === "cutting" && <CuttingRatesTable rows={cutting} canAdmin={canAdmin} saving={saving} callApi={callApi} />}
+          {tab === "labour" && <LabourRatesTable rows={labourFiltered} canAdmin={canAdmin} saving={saving} callApi={callApi} />}
+          {tab === "plant" && <PlantRatesTable rows={plantFiltered} canAdmin={canAdmin} saving={saving} callApi={callApi} />}
+          {tab === "waste" && <WasteRatesTable rows={wasteFiltered} canAdmin={canAdmin} saving={saving} callApi={callApi} />}
+          {tab === "cutting" && <CuttingRatesTable rows={cuttingFiltered} canAdmin={canAdmin} saving={saving} callApi={callApi} />}
+          {tab === "fuel" && <FuelRatesTable rows={fuelFiltered} canAdmin={canAdmin} saving={saving} callApi={callApi} />}
+          {tab === "enclosure" && <EnclosureRatesTable rows={enclosureFiltered} canAdmin={canAdmin} saving={saving} callApi={callApi} />}
         </section>
       )}
+
+      <footer
+        style={{
+          position: "sticky",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          background: "var(--surface-raised, white)",
+          borderTop: "1px solid var(--border-subtle, rgba(0,0,0,0.08))",
+          padding: "10px 16px",
+          fontSize: 12,
+          color: "var(--text-muted)",
+          marginTop: 12,
+          zIndex: 10
+        }}
+      >
+        {SNAPSHOT_NOTE}
+      </footer>
     </div>
   );
+}
+
+function filterRows<T>(rows: T[], search: string, accessor: (row: T) => string): T[] {
+  if (!search.trim()) return rows;
+  const needle = search.trim().toLowerCase();
+  return rows.filter((row) => accessor(row).toLowerCase().includes(needle));
+}
+
+function currentFilteredLength(
+  tab: Tab,
+  filtered: {
+    labourFiltered: LabourRate[];
+    plantFiltered: PlantRate[];
+    wasteFiltered: WasteRate[];
+    cuttingFiltered: CuttingRate[];
+    fuelFiltered: FuelRate[];
+    enclosureFiltered: EnclosureRate[];
+  }
+): number {
+  switch (tab) {
+    case "labour": return filtered.labourFiltered.length;
+    case "plant": return filtered.plantFiltered.length;
+    case "waste": return filtered.wasteFiltered.length;
+    case "cutting": return filtered.cuttingFiltered.length;
+    case "fuel": return filtered.fuelFiltered.length;
+    case "enclosure": return filtered.enclosureFiltered.length;
+  }
 }
 
 type Api = (path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown) => Promise<void>;
@@ -190,7 +310,7 @@ function LabourRatesTable({ rows, canAdmin, saving, callApi }: { rows: LabourRat
         </div>
       ) : null}
       {rows.length === 0 ? (
-        <EmptyState heading="No labour rates yet" subtext="Add a rate to start building the library." />
+        <EmptyState heading="No labour rates match" subtext="Clear your search or add a new rate." />
       ) : (
         <table className="admin-page__table">
           <thead>
@@ -260,7 +380,7 @@ function PlantRatesTable({ rows, canAdmin, saving, callApi }: { rows: PlantRate[
         </div>
       ) : null}
       {rows.length === 0 ? (
-        <EmptyState heading="No plant rates yet" subtext="Add a rate to start building the library." />
+        <EmptyState heading="No plant rates match" subtext="Clear your search or add a new rate." />
       ) : (
         <table className="admin-page__table">
           <thead>
@@ -322,7 +442,7 @@ function WasteRatesTable({ rows, canAdmin, saving, callApi }: { rows: WasteRate[
     <div>
       {canAdmin ? (
         <div className="admin-page__add-row">
-          <input className="s7-input" value={form.wasteType} onChange={(e) => setForm({ ...form, wasteType: e.target.value })} placeholder="Waste type…" />
+          <input className="s7-input" value={form.wasteType} onChange={(e) => setForm({ ...form, wasteType: e.target.value })} placeholder="Disposal type…" />
           <input className="s7-input" value={form.facility} onChange={(e) => setForm({ ...form, facility: e.target.value })} placeholder="Facility" />
           <input type="number" step="0.01" className="s7-input" value={form.tonRate} onChange={(e) => setForm({ ...form, tonRate: e.target.value })} placeholder="Ton rate" />
           <input type="number" step="0.01" className="s7-input" value={form.loadRate} onChange={(e) => setForm({ ...form, loadRate: e.target.value })} placeholder="Load rate" />
@@ -330,7 +450,7 @@ function WasteRatesTable({ rows, canAdmin, saving, callApi }: { rows: WasteRate[
         </div>
       ) : null}
       {rows.length === 0 ? (
-        <EmptyState heading="No waste rates yet" subtext="Add a rate to start building the library." />
+        <EmptyState heading="No disposal rates match" subtext="Clear your search or add a new rate." />
       ) : (
         <table className="admin-page__table">
           <thead>
@@ -362,7 +482,7 @@ function WasteRatesTable({ rows, canAdmin, saving, callApi }: { rows: WasteRate[
                 <td>
                   {canAdmin ? (
                     <button type="button" className="s7-btn s7-btn--danger s7-btn--sm"
-                      onClick={() => { if (window.confirm(`Delete waste rate "${row.wasteType} @ ${row.facility}"?`)) void callApi(`/estimate-rates/waste/${row.id}`, "DELETE"); }}>
+                      onClick={() => { if (window.confirm(`Delete disposal rate "${row.wasteType} @ ${row.facility}"?`)) void callApi(`/estimate-rates/waste/${row.id}`, "DELETE"); }}>
                       Delete
                     </button>
                   ) : null}
@@ -398,7 +518,7 @@ function CuttingRatesTable({ rows, canAdmin, saving, callApi }: { rows: CuttingR
         </div>
       ) : null}
       {rows.length === 0 ? (
-        <EmptyState heading="No cutting rates yet" subtext="Add a rate to start building the library." />
+        <EmptyState heading="No cutting rates match" subtext="Clear your search or add a new rate." />
       ) : (
         <table className="admin-page__table">
           <thead>
@@ -427,6 +547,134 @@ function CuttingRatesTable({ rows, canAdmin, saving, callApi }: { rows: CuttingR
                   {canAdmin ? (
                     <button type="button" className="s7-btn s7-btn--danger s7-btn--sm"
                       onClick={() => { if (window.confirm(`Delete cutting rate "${row.cuttingType}"?`)) void callApi(`/estimate-rates/cutting/${row.id}`, "DELETE"); }}>
+                      Delete
+                    </button>
+                  ) : null}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function FuelRatesTable({ rows, canAdmin, saving, callApi }: { rows: FuelRate[]; canAdmin: boolean; saving: boolean; callApi: Api }) {
+  const [form, setForm] = useState({ item: "", unit: "L", rate: "" });
+  const add = async () => {
+    if (!form.item.trim()) return;
+    await callApi(`/estimate-rates/fuel`, "POST", {
+      item: form.item.trim(),
+      unit: form.unit || "L",
+      rate: form.rate || "0"
+    });
+    setForm({ item: "", unit: "L", rate: "" });
+  };
+  return (
+    <div>
+      {canAdmin ? (
+        <div className="admin-page__add-row">
+          <input className="s7-input" value={form.item} onChange={(e) => setForm({ ...form, item: e.target.value })} placeholder="Fuel item…" />
+          <input className="s7-input" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} placeholder="Unit (L)" />
+          <input type="number" step="0.01" className="s7-input" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} placeholder="Rate" />
+          <button type="button" className="s7-btn s7-btn--primary s7-btn--sm" onClick={add} disabled={saving || !form.item.trim()}>Add</button>
+        </div>
+      ) : null}
+      {rows.length === 0 ? (
+        <EmptyState heading="No fuel rates match" subtext="Clear your search or add a new rate." />
+      ) : (
+        <table className="admin-page__table">
+          <thead>
+            <tr><th>Item</th><th>Unit</th><th>Rate</th><th>Active</th><th /></tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.id}>
+                <td>
+                  <input className="s7-input s7-input--sm" defaultValue={row.item} disabled={!canAdmin}
+                    onBlur={(e) => { if (e.target.value !== row.item) void callApi(`/estimate-rates/fuel/${row.id}`, "PATCH", { item: e.target.value, unit: row.unit, rate: row.rate, isActive: row.isActive }); }} />
+                </td>
+                <td>
+                  <input className="s7-input s7-input--sm" defaultValue={row.unit} disabled={!canAdmin}
+                    onBlur={(e) => { if (e.target.value !== row.unit) void callApi(`/estimate-rates/fuel/${row.id}`, "PATCH", { item: row.item, unit: e.target.value, rate: row.rate, isActive: row.isActive }); }} />
+                </td>
+                <td>
+                  <input type="number" step="0.01" className="s7-input s7-input--sm" defaultValue={row.rate} disabled={!canAdmin}
+                    onBlur={(e) => { if (e.target.value !== row.rate) void callApi(`/estimate-rates/fuel/${row.id}`, "PATCH", { item: row.item, unit: row.unit, rate: e.target.value, isActive: row.isActive }); }} />
+                </td>
+                <td>
+                  <input type="checkbox" defaultChecked={row.isActive} disabled={!canAdmin}
+                    onChange={(e) => void callApi(`/estimate-rates/fuel/${row.id}`, "PATCH", { item: row.item, unit: row.unit, rate: row.rate, isActive: e.target.checked })} />
+                </td>
+                <td>
+                  {canAdmin ? (
+                    <button type="button" className="s7-btn s7-btn--danger s7-btn--sm"
+                      onClick={() => { if (window.confirm(`Delete fuel rate "${row.item}"?`)) void callApi(`/estimate-rates/fuel/${row.id}`, "DELETE"); }}>
+                      Delete
+                    </button>
+                  ) : null}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function EnclosureRatesTable({ rows, canAdmin, saving, callApi }: { rows: EnclosureRate[]; canAdmin: boolean; saving: boolean; callApi: Api }) {
+  const [form, setForm] = useState({ enclosureType: "", unit: "m²", rate: "" });
+  const add = async () => {
+    if (!form.enclosureType.trim()) return;
+    await callApi(`/estimate-rates/enclosure`, "POST", {
+      enclosureType: form.enclosureType.trim(),
+      unit: form.unit || "m²",
+      rate: form.rate || "0"
+    });
+    setForm({ enclosureType: "", unit: "m²", rate: "" });
+  };
+  return (
+    <div>
+      {canAdmin ? (
+        <div className="admin-page__add-row">
+          <input className="s7-input" value={form.enclosureType} onChange={(e) => setForm({ ...form, enclosureType: e.target.value })} placeholder="Enclosure type…" />
+          <input className="s7-input" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} placeholder="Unit (m²/day/ea)" />
+          <input type="number" step="0.01" className="s7-input" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} placeholder="Rate" />
+          <button type="button" className="s7-btn s7-btn--primary s7-btn--sm" onClick={add} disabled={saving || !form.enclosureType.trim()}>Add</button>
+        </div>
+      ) : null}
+      {rows.length === 0 ? (
+        <EmptyState heading="No enclosure rates match" subtext="Clear your search or add a new rate." />
+      ) : (
+        <table className="admin-page__table">
+          <thead>
+            <tr><th>Type</th><th>Unit</th><th>Rate</th><th>Active</th><th /></tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.id}>
+                <td>
+                  <input className="s7-input s7-input--sm" defaultValue={row.enclosureType} disabled={!canAdmin}
+                    onBlur={(e) => { if (e.target.value !== row.enclosureType) void callApi(`/estimate-rates/enclosure/${row.id}`, "PATCH", { enclosureType: e.target.value, unit: row.unit, rate: row.rate, isActive: row.isActive }); }} />
+                </td>
+                <td>
+                  <input className="s7-input s7-input--sm" defaultValue={row.unit} disabled={!canAdmin}
+                    onBlur={(e) => { if (e.target.value !== row.unit) void callApi(`/estimate-rates/enclosure/${row.id}`, "PATCH", { enclosureType: row.enclosureType, unit: e.target.value, rate: row.rate, isActive: row.isActive }); }} />
+                </td>
+                <td>
+                  <input type="number" step="0.01" className="s7-input s7-input--sm" defaultValue={row.rate} disabled={!canAdmin}
+                    onBlur={(e) => { if (e.target.value !== row.rate) void callApi(`/estimate-rates/enclosure/${row.id}`, "PATCH", { enclosureType: row.enclosureType, unit: row.unit, rate: e.target.value, isActive: row.isActive }); }} />
+                </td>
+                <td>
+                  <input type="checkbox" defaultChecked={row.isActive} disabled={!canAdmin}
+                    onChange={(e) => void callApi(`/estimate-rates/enclosure/${row.id}`, "PATCH", { enclosureType: row.enclosureType, unit: row.unit, rate: row.rate, isActive: e.target.checked })} />
+                </td>
+                <td>
+                  {canAdmin ? (
+                    <button type="button" className="s7-btn s7-btn--danger s7-btn--sm"
+                      onClick={() => { if (window.confirm(`Delete enclosure rate "${row.enclosureType}"?`)) void callApi(`/estimate-rates/enclosure/${row.id}`, "DELETE"); }}>
                       Delete
                     </button>
                   ) : null}

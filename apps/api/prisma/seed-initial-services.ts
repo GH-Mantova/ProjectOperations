@@ -2571,4 +2571,53 @@ export async function seedEstimateRates(prisma: PrismaClient): Promise<void> {
       }
     });
   }
+
+  type FuelRow = { item: string; unit: string; rate: string };
+  const fuel: FuelRow[] = [
+    { item: "Diesel fuel adjustment", unit: "L", rate: "2.05" }
+  ];
+  for (const [index, row] of fuel.entries()) {
+    await prisma.estimateFuelRate.upsert({
+      where: { item: row.item },
+      update: {
+        unit: row.unit,
+        rate: new Prisma.Decimal(row.rate),
+        isActive: true,
+        sortOrder: index + 1
+      },
+      create: {
+        item: row.item,
+        unit: row.unit,
+        rate: new Prisma.Decimal(row.rate),
+        isActive: true,
+        sortOrder: index + 1
+      }
+    });
+  }
+
+  type EnclosureRow = { enclosureType: string; unit: string; rate: string };
+  const enclosures: EnclosureRow[] = [
+    { enclosureType: "ACM enclosure (Class A, friable)", unit: "m²", rate: "185.00" },
+    { enclosureType: "ACM enclosure (Class B, non-friable)", unit: "m²", rate: "95.00" },
+    { enclosureType: "Air monitoring", unit: "day", rate: "540.00" },
+    { enclosureType: "Clearance certificate", unit: "ea", rate: "850.00" }
+  ];
+  for (const [index, row] of enclosures.entries()) {
+    await prisma.estimateEnclosureRate.upsert({
+      where: { enclosureType: row.enclosureType },
+      update: {
+        unit: row.unit,
+        rate: new Prisma.Decimal(row.rate),
+        isActive: true,
+        sortOrder: index + 1
+      },
+      create: {
+        enclosureType: row.enclosureType,
+        unit: row.unit,
+        rate: new Prisma.Decimal(row.rate),
+        isActive: true,
+        sortOrder: index + 1
+      }
+    });
+  }
 }

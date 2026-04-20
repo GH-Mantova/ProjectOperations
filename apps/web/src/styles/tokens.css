@@ -1,0 +1,297 @@
+:root {
+  --brand-primary: #1D9E75;
+  --brand-primary-light: #E1F5EE;
+  --brand-primary-dark: #0F6E56;
+  --surface-page: #F7F8FA;
+  --surface-card: #FFFFFF;
+  --surface-sidebar: #1A1D23;
+  --sidebar-text: #A8AEBB;
+  --sidebar-text-active: #FFFFFF;
+  --sidebar-active-bg: rgba(29,158,117,0.15);
+  --text-primary: #0F1117;
+  --text-secondary: #6B7280;
+  --text-muted: #9CA3AF;
+  --border-default: #E5E7EB;
+  --border-subtle: #F3F4F6;
+  --status-active: #1D9E75;
+  --status-warning: #F59E0B;
+  --status-danger: #EF4444;
+  --status-info: #3B82F6;
+  --status-neutral: #6B7280;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-dropdown: 0 4px 16px rgba(0,0,0,0.10);
+}
+
+/* Typography scale per 7.0 */
+.s7-type-page-title {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.s7-type-section-heading {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.s7-type-card-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.s7-type-body {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text-primary);
+}
+
+.s7-type-label {
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+/* Card surface per 7.0 */
+.s7-card {
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 16px 20px;
+}
+
+/* Status badges per 7.0 — coloured background at 10% opacity, matching text */
+.s7-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  line-height: 1;
+}
+
+.s7-badge--active {
+  background: rgba(29, 158, 117, 0.1);
+  color: var(--status-active);
+}
+
+.s7-badge--warning {
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--status-warning);
+}
+
+.s7-badge--danger {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--status-danger);
+}
+
+.s7-badge--info {
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--status-info);
+}
+
+.s7-badge--neutral {
+  background: rgba(107, 114, 128, 0.1);
+  color: var(--status-neutral);
+}
+
+/* Tables per 7.0 — sticky header, zebra rows, hover state */
+.s7-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.s7-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-card);
+  text-align: left;
+  font-weight: 500;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-default);
+  z-index: 1;
+}
+
+.s7-table tbody tr {
+  height: 40px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.s7-table tbody tr:nth-child(odd) {
+  background: #FAFAFA;
+}
+
+.s7-table tbody tr:hover {
+  background: var(--border-subtle);
+}
+
+.s7-table tbody tr.s7-table__row--clickable {
+  cursor: pointer;
+}
+
+.s7-table tbody td {
+  padding: 10px 12px;
+  vertical-align: middle;
+}
+
+/* Buttons per 7.0 */
+.s7-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+  padding: 0 16px;
+  height: 36px;
+  border: 1px solid transparent;
+}
+
+.s7-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.s7-btn--lg {
+  height: 40px;
+  padding: 0 20px;
+  font-size: 14px;
+}
+
+.s7-btn--sm {
+  height: 28px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.s7-btn--primary {
+  background: var(--brand-primary);
+  color: #ffffff;
+  border-color: var(--brand-primary);
+}
+
+.s7-btn--primary:hover:not(:disabled) {
+  background: var(--brand-primary-dark);
+  border-color: var(--brand-primary-dark);
+}
+
+.s7-btn--secondary {
+  background: var(--surface-card);
+  color: var(--text-primary);
+  border-color: var(--border-default);
+}
+
+.s7-btn--secondary:hover:not(:disabled) {
+  border-color: var(--text-secondary);
+}
+
+.s7-btn--ghost {
+  background: transparent;
+  color: var(--text-primary);
+  border-color: transparent;
+}
+
+.s7-btn--ghost:hover:not(:disabled) {
+  background: var(--border-subtle);
+}
+
+/* Inputs per 7.0 */
+.s7-input,
+.s7-select,
+.s7-textarea {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text-primary);
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.s7-textarea {
+  height: auto;
+  min-height: 72px;
+  padding: 10px 12px;
+  resize: vertical;
+}
+
+.s7-input:focus,
+.s7-select:focus,
+.s7-textarea:focus {
+  outline: none;
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 3px rgba(29, 158, 117, 0.3);
+}
+
+/* Skeleton loader per 7.13 */
+@keyframes pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+.skeleton {
+  animation: pulse 1.5s ease-in-out infinite;
+  background: var(--border-default);
+  border-radius: var(--radius-sm);
+}
+
+/* Responsive breakpoints per 7.14
+   - Sidebar → bottom tab bar below 768px is implemented in s7-sidebar-nav
+   - Card grids → 1 col below 640px
+   - Tables stay full width and scroll horizontally on small screens
+   - Touch targets min 44×44px */
+.s7-card-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+
+.s7-card-grid--kpi {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 1024px) {
+  .s7-card-grid--kpi {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .s7-card-grid,
+  .s7-card-grid--kpi {
+    grid-template-columns: 1fr;
+  }
+}
+
+.s7-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.s7-touch-target {
+  min-width: 44px;
+  min-height: 44px;
+}

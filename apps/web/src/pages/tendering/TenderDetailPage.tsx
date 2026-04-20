@@ -3,6 +3,8 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { EstimateEditor } from "./EstimateEditor";
+import { TenderDocumentsPanel } from "./TenderDocumentsPanel";
+import { TenderClientNotesSection } from "./TenderClientNotesSection";
 
 type TenderDetail = {
   id: string;
@@ -36,7 +38,8 @@ type TenderDetail = {
     category: string;
     title: string;
     description?: string | null;
-    fileLink?: { name: string; webUrl: string } | null;
+    createdAt?: string;
+    fileLink?: { name: string; webUrl: string; sizeBytes?: number | null; mimeType?: string | null } | null;
   }>;
 };
 
@@ -174,6 +177,17 @@ export function TenderDetailPage() {
     void reload();
     void loadEstimate();
   }, [reload, loadEstimate]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<Tab>).detail;
+      if (detail === "overview" || detail === "estimate" || detail === "documents") {
+        setTab(detail);
+      }
+    };
+    window.addEventListener("tender-detail:switch-tab", handler);
+    return () => window.removeEventListener("tender-detail:switch-tab", handler);
+  }, []);
 
   const probabilityBucket = bucketForProbability(tender?.probability);
 
@@ -394,6 +408,13 @@ export function TenderDetailPage() {
 
         {tab === "overview" && (
           <div className="tender-detail__sections">
+            <TenderDocumentsPanel
+              tenderId={tender.id}
+              documents={tender.tenderDocuments}
+              onDocumentsChanged={() => void reload()}
+              canManage={canManageTenders}
+            />
+
             {estimateSummary && estimateSummary.estimateId ? (
               <section className="s7-card">
                 <div className="tender-detail__section-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -724,14 +745,19 @@ export function TenderDetailPage() {
           {tender.tenderClients.length === 0 ? (
             <p style={{ color: "var(--text-muted)" }}>No clients linked.</p>
           ) : (
-            <ul className="tender-detail__clients">
+            <ul className="tender-detail__clients" style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
               {tender.tenderClients.map((tc) => (
-                <li key={tc.id}>
-                  <strong>{tc.client.name}</strong>
-                  {tc.relationshipType ? <span className="tender-detail__client-tag">{tc.relationshipType}</span> : null}
-                  {tc.isAwarded ? <span className="s7-badge s7-badge--active">Awarded</span> : null}
-                  {tc.contractIssued ? <span className="s7-badge s7-badge--info">Contract issued</span> : null}
-                </li>
+                <ExpandableClientRow
+                  key={tc.id}
+                  tenderId={tender.id}
+                  clientId={tc.client.id}
+                  clientName={tc.client.name}
+                  contact={tc.contact ?? null}
+                  relationshipType={tc.relationshipType ?? null}
+                  isAwarded={tc.isAwarded}
+                  contractIssued={tc.contractIssued}
+                  canManage={canManageTenders}
+                />
               ))}
             </ul>
           )}
@@ -755,5 +781,66 @@ export function TenderDetailPage() {
         </section>
       </aside>
     </div>
+  );
+}
+
+function ExpandableClientRow({
+  tenderId,
+  clientId,
+  clientName,
+  contact,
+  relationshipType,
+  isAwarded,
+  contractIssued,
+  canManage
+}: {
+  tenderId: string;
+  clientId: string;
+  clientName: string;
+  contact: { id: string; firstName: string; lastName: string; email?: string | null } | null;
+  relationshipType: string | null;
+  isAwarded: boolean;
+  contractIssued: boolean;
+  canManage: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <li className="tender-detail__client-row">
+      <button
+        type="button"
+        className="tender-detail__client-header"
+        onClick={() => setExpanded((prev) => !prev)}
+        aria-expanded={expanded}
+        style={{ background: "transparent", border: "none", width: "100%", padding: 0, textAlign: "left", color: "inherit" }}
+      >
+        <span className="tender-detail__client-caret" aria-hidden>{expanded ? "▾" : "▸"}</span>
+        <span>
+          <strong>{clientName}</strong>
+          {relationshipType ? <span className="tender-detail__client-tag" style={{ marginLeft: 6 }}>{relationshipType}</span> : null}
+          {isAwarded ? <span className="s7-badge s7-badge--active" style={{ marginLeft: 6 }}>Awarded</span> : null}
+          {contractIssued ? <span className="s7-badge s7-badge--info" style={{ marginLeft: 6 }}>Contract</span> : null}
+        </span>
+        <span />
+      </button>
+      {expanded ? (
+        <div style={{ marginTop: 8 }}>
+          {contact ? (
+            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              <strong style={{ color: "inherit" }}>
+                {contact.firstName} {contact.lastName}
+              </strong>
+              {contact.email ? (
+                <div>
+                  <a href={`mailto:${contact.email}`}>{contact.email}</a>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>No contact on file.</p>
+          )}
+          <TenderClientNotesSection tenderId={tenderId} clientId={clientId} canManage={canManage} />
+        </div>
+      ) : null}
+    </li>
   );
 }

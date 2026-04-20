@@ -54,6 +54,8 @@ model User {
   createdDocuments   DocumentLink[]     @relation("DocumentCreatedBy")
   updatedDocuments   DocumentLink[]     @relation("DocumentUpdatedBy")
   archivedCloseouts  JobCloseout[]      @relation("JobCloseoutArchivedBy")
+  tenderClientNotes  TenderClientNote[] @relation("TenderClientNoteAuthor")
+  tenderScopeRevisions TenderScopeRevision[] @relation("TenderScopeRevisionAuthor")
 
   @@index([isActive])
   @@map("users")
@@ -347,6 +349,7 @@ model Client {
   tenderClients   TenderClient[]
   jobs            Job[]
   formSubmissions FormSubmission[]
+  tenderClientNotes TenderClientNote[]
 
   @@unique([name])
   @@index([status])
@@ -583,6 +586,8 @@ model Tender {
   sourceJob         Job?
   jobConversion     JobConversion?
   estimate          TenderEstimate?
+  clientNotes       TenderClientNote[]
+  scopeRevisions    TenderScopeRevision[]
 
   @@index([status])
   @@index([estimatorUserId])
@@ -1478,4 +1483,37 @@ model UserDashboard {
   @@unique([userId, slug, isSystem])
   @@index([userId])
   @@map("user_dashboards")
+}
+
+model TenderScopeRevision {
+  id               String   @id @default(uuid())
+  tenderId         String   @map("tender_id")
+  tender           Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  originalProposal Json     @map("original_proposal")
+  correction       String
+  revisedProposal  Json?    @map("revised_proposal")
+  createdById      String?  @map("created_by_id")
+  createdBy        User?    @relation("TenderScopeRevisionAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@index([tenderId])
+  @@map("tender_scope_revisions")
+}
+
+model TenderClientNote {
+  id          String   @id @default(uuid())
+  tenderId    String   @map("tender_id")
+  tender      Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  clientId    String   @map("client_id")
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  noteType    String   @default("note") @map("note_type")
+  subject     String?
+  body        String
+  occurredAt  DateTime @default(now()) @map("occurred_at")
+  createdById String?  @map("created_by_id")
+  createdBy   User?    @relation("TenderClientNoteAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([tenderId, clientId])
+  @@map("tender_client_notes")
 }

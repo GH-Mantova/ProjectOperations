@@ -52,11 +52,14 @@ export type WidgetProps = {
   onConfigChange?: (config: WidgetSubConfig) => void;
 };
 
+export type WidgetSize = "kpi" | "half" | "full";
+
 export type WidgetMeta = {
   type: string;
   name: string;
   category: WidgetCategory;
   description: string;
+  size: WidgetSize;
   component: (props: WidgetProps) => ReactNode;
 };
 

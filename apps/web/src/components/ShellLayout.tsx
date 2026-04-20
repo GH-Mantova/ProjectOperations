@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { NotificationsDropdown } from "./NotificationsDropdown";
 import { CommandPalette } from "./CommandPalette";
 import { NewDashboardModal } from "../dashboards/NewDashboardModal";
-import type { UserDashboard } from "../dashboards/types";
+import { useUserDashboards, useUserDashboardsActions } from "../dashboards/userDashboards";
 
 type NavItem = {
   to: string;
@@ -274,20 +274,15 @@ export function ShellLayout() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [notifBadge, setNotifBadge] = useState(0);
-  const [customDashboards, setCustomDashboards] = useState<UserDashboard[]>([]);
   const [newDashboardOpen, setNewDashboardOpen] = useState(false);
   const bellRef = useRef<HTMLButtonElement | null>(null);
 
-  const loadCustomDashboards = useCallback(async () => {
-    const response = await authFetch("/user-dashboards");
-    if (!response.ok) return;
-    const all = (await response.json()) as UserDashboard[];
-    setCustomDashboards(all.filter((d) => !d.isSystem));
-  }, [authFetch]);
-
-  useEffect(() => {
-    void loadCustomDashboards();
-  }, [loadCustomDashboards, location.pathname]);
+  const { data: allDashboards } = useUserDashboards();
+  const { remove: removeDashboard } = useUserDashboardsActions();
+  const customDashboards = useMemo(
+    () => (allDashboards ?? []).filter((d) => !d.isSystem),
+    [allDashboards]
+  );
 
   const isAdmin = useMemo(() => {
     const roleNames = user?.roles?.map((role) => role.name) ?? [];
@@ -410,15 +405,31 @@ export function ShellLayout() {
                 const to = `/dashboards/${d.id}`;
                 const isActive = location.pathname === to;
                 return (
-                  <NavLink
-                    key={d.id}
-                    to={to}
-                    className={isActive ? "shell__nav-link shell__nav-link--active" : "shell__nav-link"}
-                    title={collapsed ? d.name : undefined}
-                  >
-                    <span className="shell__nav-icon">{ICON_DASHBOARD}</span>
-                    <span className="shell__nav-label">{d.name}</span>
-                  </NavLink>
+                  <div key={d.id} className="shell__nav-link-wrap">
+                    <NavLink
+                      to={to}
+                      className={isActive ? "shell__nav-link shell__nav-link--active" : "shell__nav-link"}
+                      title={collapsed ? d.name : undefined}
+                    >
+                      <span className="shell__nav-icon">{ICON_DASHBOARD}</span>
+                      <span className="shell__nav-label">{d.name}</span>
+                    </NavLink>
+                    <button
+                      type="button"
+                      className="shell__nav-remove"
+                      aria-label={`Remove ${d.name}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (!window.confirm(`Remove "${d.name}"?`)) return;
+                        void removeDashboard(d.id).then(() => {
+                          if (isActive) navigate("/");
+                        });
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
                 );
               })
             )}
@@ -520,10 +531,7 @@ export function ShellLayout() {
           slug="custom"
           existingDashboards={customDashboards}
           onClose={() => setNewDashboardOpen(false)}
-          onCreated={() => {
-            setNewDashboardOpen(false);
-            void loadCustomDashboards();
-          }}
+          onCreated={() => setNewDashboardOpen(false)}
         />
       ) : null}
     </div>

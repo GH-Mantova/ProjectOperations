@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { useAuth } from "../auth/AuthContext";
 import { NewDashboardModal } from "./NewDashboardModal";
 import type { UserDashboard } from "./types";
+import { useUserDashboardsActions } from "./userDashboards";
 
 type Props = {
   slug: string;
@@ -12,7 +12,7 @@ type Props = {
 };
 
 export function DashboardSwitcher({ slug, dashboards, activeId, onSelect, onListRefresh }: Props) {
-  const { authFetch } = useAuth();
+  const { setDefault: setDefaultApi, remove, rename: renameApi } = useUserDashboardsActions();
   const [open, setOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
@@ -29,23 +29,20 @@ export function DashboardSwitcher({ slug, dashboards, activeId, onSelect, onList
   }, [open]);
 
   const setDefault = async (id: string) => {
-    await authFetch(`/user-dashboards/${id}/default`, { method: "POST" });
+    await setDefaultApi(id);
     onListRefresh();
   };
 
   const deleteDashboard = async (id: string) => {
     if (!window.confirm("Delete this dashboard?")) return;
-    await authFetch(`/user-dashboards/${id}`, { method: "DELETE" });
+    await remove(id);
     onListRefresh();
   };
 
   const rename = async (dash: UserDashboard) => {
     const next = window.prompt("New dashboard name:", dash.name);
     if (!next || !next.trim() || next.trim() === dash.name) return;
-    await authFetch(`/user-dashboards/${dash.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ name: next.trim() })
-    });
+    await renameApi(dash.id, next.trim());
     onListRefresh();
   };
 

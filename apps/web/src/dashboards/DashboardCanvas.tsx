@@ -11,6 +11,7 @@ import type {
 } from "./types";
 import { CustomisePanel } from "./CustomisePanel";
 import { DashboardSwitcher } from "./DashboardSwitcher";
+import { useUserDashboardsActions } from "./userDashboards";
 
 type Mode = "by-slug" | "by-id";
 
@@ -34,6 +35,7 @@ export function DashboardCanvas({
   actions
 }: Props) {
   const { authFetch } = useAuth();
+  const { invalidate } = useUserDashboardsActions();
   const [dashboards, setDashboards] = useState<UserDashboard[] | null>(null);
   const [active, setActive] = useState<UserDashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -63,11 +65,12 @@ export function DashboardCanvas({
         const created = (await createResponse.json()) as UserDashboard;
         setDashboards([created]);
         setActive(created);
+        invalidate();
       } else {
         setActive(null);
       }
     },
-    [authFetch, defaultConfig, defaultName, title]
+    [authFetch, defaultConfig, defaultName, title, invalidate]
   );
 
   const loadById = useCallback(
@@ -105,6 +108,7 @@ export function DashboardCanvas({
       const updated = (await response.json()) as UserDashboard;
       setActive(updated);
       setDashboards((prev) => (prev ? prev.map((d) => (d.id === updated.id ? updated : d)) : [updated]));
+      invalidate();
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -187,7 +191,7 @@ export function DashboardCanvas({
             }
             const WidgetComponent = meta.component;
             return (
-              <div key={entry.id} className={`td-canvas__slot td-canvas__slot--${categoryClassName(meta.category)}`}>
+              <div key={entry.id} className={`td-canvas__slot td-canvas__slot--${meta.size}`}>
                 <WidgetComponent
                   config={entry.config}
                   globalPeriod={active.config.period as WidgetPeriod}
@@ -212,6 +216,3 @@ export function DashboardCanvas({
   );
 }
 
-function categoryClassName(category: string): string {
-  return category;
-}

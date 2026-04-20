@@ -26,6 +26,8 @@ type WasteRate = {
   id: string;
   wasteType: string;
   facility: string;
+  wasteGroup: string | null;
+  unit: string;
   tonRate: string;
   loadRate: string;
   isActive: boolean;
@@ -34,11 +36,20 @@ type WasteRate = {
 
 type CuttingRate = {
   id: string;
-  cuttingType: string;
-  unit: string;
-  rate: string;
+  equipment: string;
+  elevation: string;
+  material: string;
+  depthMm: number;
+  ratePerM: string;
   isActive: boolean;
   sortOrder: number;
+};
+
+type CoreHoleRate = {
+  id: string;
+  diameterMm: number;
+  ratePerHole: string;
+  isActive: boolean;
 };
 
 type FuelRate = {
@@ -59,7 +70,7 @@ type EnclosureRate = {
   sortOrder: number;
 };
 
-type Tab = "labour" | "plant" | "waste" | "cutting" | "fuel" | "enclosure";
+type Tab = "labour" | "plant" | "waste" | "cutting" | "coreholes" | "fuel" | "enclosure";
 
 const SNAPSHOT_NOTE =
   "Rate snapshots: Every submitted quote freezes the rates in force on the submit date. Editing a rate here never changes an old quote.";
@@ -88,6 +99,7 @@ export function EstimateRatesAdminPage() {
   const [plant, setPlant] = useState<PlantRate[]>([]);
   const [waste, setWaste] = useState<WasteRate[]>([]);
   const [cutting, setCutting] = useState<CuttingRate[]>([]);
+  const [coreHoles, setCoreHoles] = useState<CoreHoleRate[]>([]);
   const [fuel, setFuel] = useState<FuelRate[]>([]);
   const [enclosure, setEnclosure] = useState<EnclosureRate[]>([]);
   const [searches, setSearches] = useState<Record<Tab, string>>({
@@ -95,6 +107,7 @@ export function EstimateRatesAdminPage() {
     plant: "",
     waste: "",
     cutting: "",
+    coreholes: "",
     fuel: "",
     enclosure: ""
   });
@@ -106,11 +119,12 @@ export function EstimateRatesAdminPage() {
     setLoading(true);
     setError(null);
     try {
-      const [l, p, w, c, f, e] = await Promise.all([
+      const [l, p, w, c, ch, f, e] = await Promise.all([
         authFetch(`/estimate-rates/labour`).then((r) => (r.ok ? (r.json() as Promise<LabourRate[]>) : [])),
         authFetch(`/estimate-rates/plant`).then((r) => (r.ok ? (r.json() as Promise<PlantRate[]>) : [])),
         authFetch(`/estimate-rates/waste`).then((r) => (r.ok ? (r.json() as Promise<WasteRate[]>) : [])),
         authFetch(`/estimate-rates/cutting`).then((r) => (r.ok ? (r.json() as Promise<CuttingRate[]>) : [])),
+        authFetch(`/estimate-rates/core-holes`).then((r) => (r.ok ? (r.json() as Promise<CoreHoleRate[]>) : [])),
         authFetch(`/estimate-rates/fuel`).then((r) => (r.ok ? (r.json() as Promise<FuelRate[]>) : [])),
         authFetch(`/estimate-rates/enclosure`).then((r) => (r.ok ? (r.json() as Promise<EnclosureRate[]>) : []))
       ]);
@@ -118,6 +132,7 @@ export function EstimateRatesAdminPage() {
       setPlant(p as PlantRate[]);
       setWaste(w as WasteRate[]);
       setCutting(c as CuttingRate[]);
+      setCoreHoles(ch as CoreHoleRate[]);
       setFuel(f as FuelRate[]);
       setEnclosure(e as EnclosureRate[]);
     } catch (err) {
@@ -161,8 +176,9 @@ export function EstimateRatesAdminPage() {
 
   const labourFiltered = filterRows(labour, search, (r) => r.role);
   const plantFiltered = filterRows(plant, search, (r) => `${r.item} ${r.unit}`);
-  const wasteFiltered = filterRows(waste, search, (r) => `${r.wasteType} ${r.facility}`);
-  const cuttingFiltered = filterRows(cutting, search, (r) => `${r.cuttingType} ${r.unit}`);
+  const wasteFiltered = filterRows(waste, search, (r) => `${r.wasteType} ${r.facility} ${r.wasteGroup ?? ""}`);
+  const cuttingFiltered = filterRows(cutting, search, (r) => `${r.equipment} ${r.material} ${r.elevation} ${r.depthMm}`);
+  const coreHolesFiltered = filterRows(coreHoles, search, (r) => String(r.diameterMm));
   const fuelFiltered = filterRows(fuel, search, (r) => `${r.item} ${r.unit}`);
   const enclosureFiltered = filterRows(enclosure, search, (r) => `${r.enclosureType} ${r.unit}`);
 
@@ -171,6 +187,7 @@ export function EstimateRatesAdminPage() {
     plant: plant.length,
     waste: waste.length,
     cutting: cutting.length,
+    coreholes: coreHoles.length,
     fuel: fuel.length,
     enclosure: enclosure.length
   };
@@ -180,6 +197,7 @@ export function EstimateRatesAdminPage() {
     plant: plantFiltered.length,
     waste: wasteFiltered.length,
     cutting: cuttingFiltered.length,
+    coreholes: coreHolesFiltered.length,
     fuel: fuelFiltered.length,
     enclosure: enclosureFiltered.length
   };
@@ -207,7 +225,8 @@ export function EstimateRatesAdminPage() {
           { key: "labour", label: `Labour (${countFor.labour})` },
           { key: "plant", label: `Plant (${countFor.plant})` },
           { key: "waste", label: `Disposal (${countFor.waste})` },
-          { key: "cutting", label: `Cutting (${countFor.cutting})` },
+          { key: "cutting", label: `Saw Cutting (${countFor.cutting})` },
+          { key: "coreholes", label: `Core holes (${countFor.coreholes})` },
           { key: "fuel", label: `Fuel (${countFor.fuel})` },
           { key: "enclosure", label: `Enclosures (${countFor.enclosure})` }
         ] as Array<{ key: Tab; label: string }>).map((t) => (
@@ -280,13 +299,15 @@ export function EstimateRatesAdminPage() {
             <RatesTable
               rows={wasteFiltered}
               columns={[
-                { key: "wasteType", label: "Type", type: "text", widthPct: 30 },
-                { key: "facility", label: "Facility", type: "text", widthPct: 30 },
-                { key: "tonRate", label: "$/t", type: "number", step: "0.01", render: currency, widthPct: 13 },
-                { key: "loadRate", label: "$/load", type: "number", step: "0.01", render: currency, widthPct: 13 }
+                { key: "wasteGroup", label: "Group", type: "text", widthPct: 15 },
+                { key: "wasteType", label: "Type", type: "text", widthPct: 26 },
+                { key: "facility", label: "Facility", type: "text", widthPct: 23 },
+                { key: "unit", label: "Unit", type: "text", widthPct: 8 },
+                { key: "tonRate", label: "Rate", type: "number", step: "0.01", render: currency, widthPct: 12 },
+                { key: "loadRate", label: "$/load", type: "number", step: "0.01", render: currency, widthPct: 12 }
               ]}
               basePath="/estimate-rates/waste"
-              addDefaults={{ wasteType: "", facility: "", tonRate: "0", loadRate: "0" }}
+              addDefaults={{ wasteGroup: "", wasteType: "", facility: "", unit: "tonne", tonRate: "0", loadRate: "0" }}
               deleteLabel={(r) => `${r.wasteType} @ ${r.facility}`}
               canAdmin={canAdmin}
               saving={saving}
@@ -297,13 +318,30 @@ export function EstimateRatesAdminPage() {
             <RatesTable
               rows={cuttingFiltered}
               columns={[
-                { key: "cuttingType", label: "Type", type: "text", widthPct: 55 },
-                { key: "unit", label: "Unit", type: "text", widthPct: 15 },
-                { key: "rate", label: "Rate", type: "number", step: "0.01", render: currency, widthPct: 20 }
+                { key: "equipment", label: "Equipment", type: "text", widthPct: 18 },
+                { key: "elevation", label: "Elevation", type: "text", widthPct: 14 },
+                { key: "material", label: "Material", type: "text", widthPct: 20 },
+                { key: "depthMm", label: "Depth (mm)", type: "number", step: "1", widthPct: 14 },
+                { key: "ratePerM", label: "$/m", type: "number", step: "0.0001", render: currency, widthPct: 18 }
               ]}
               basePath="/estimate-rates/cutting"
-              addDefaults={{ cuttingType: "", unit: "lm", rate: "0" }}
-              deleteLabel={(r) => r.cuttingType}
+              addDefaults={{ equipment: "Roadsaw", elevation: "Floor", material: "Concrete", depthMm: 100, ratePerM: "0" }}
+              deleteLabel={(r) => `${r.equipment} / ${r.material} / ${r.depthMm}mm / ${r.elevation}`}
+              canAdmin={canAdmin}
+              saving={saving}
+              callApi={callApi}
+            />
+          )}
+          {tab === "coreholes" && (
+            <RatesTable
+              rows={coreHolesFiltered}
+              columns={[
+                { key: "diameterMm", label: "Diameter (mm)", type: "number", step: "1", widthPct: 40 },
+                { key: "ratePerHole", label: "$/hole", type: "number", step: "0.0001", render: currency, widthPct: 40 }
+              ]}
+              basePath="/estimate-rates/core-holes"
+              addDefaults={{ diameterMm: 100, ratePerHole: "0" }}
+              deleteLabel={(r) => `${r.diameterMm} mm`}
               canAdmin={canAdmin}
               saving={saving}
               callApi={callApi}

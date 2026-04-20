@@ -1289,6 +1289,8 @@ model EstimateWasteRate {
   id        String   @id @default(uuid())
   wasteType String   @map("waste_type")
   facility  String
+  wasteGroup String? @map("waste_group")
+  unit      String   @default("tonne")
   tonRate   Decimal  @db.Decimal(10, 2) @map("ton_rate")
   loadRate  Decimal  @db.Decimal(10, 2) @default(0) @map("load_rate")
   isActive  Boolean  @default(true) @map("is_active")
@@ -1301,16 +1303,30 @@ model EstimateWasteRate {
 }
 
 model EstimateCuttingRate {
+  id         String   @id @default(uuid())
+  equipment  String
+  elevation  String
+  material   String
+  depthMm    Int      @map("depth_mm")
+  ratePerM   Decimal  @db.Decimal(10, 4) @map("rate_per_m")
+  isActive   Boolean  @default(true) @map("is_active")
+  sortOrder  Int      @default(0) @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@unique([equipment, elevation, material, depthMm])
+  @@map("estimate_cutting_rates")
+}
+
+model EstimateCoreHoleRate {
   id          String   @id @default(uuid())
-  cuttingType String   @unique @map("cutting_type")
-  unit        String
-  rate        Decimal  @db.Decimal(10, 2)
+  diameterMm  Int      @unique @map("diameter_mm")
+  ratePerHole Decimal  @db.Decimal(10, 4) @map("rate_per_hole")
   isActive    Boolean  @default(true) @map("is_active")
-  sortOrder   Int      @default(0) @map("sort_order")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  @@map("estimate_cutting_rates")
+  @@map("estimate_core_hole_rates")
 }
 
 model EstimateFuelRate {
@@ -1447,10 +1463,15 @@ model EstimateCuttingLine {
   itemId      String   @map("item_id")
   item        EstimateItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
   cuttingType String   @map("cutting_type")
+  equipment   String?
+  elevation   String?
+  material    String?
+  depthMm     Int?     @map("depth_mm")
+  diameterMm  Int?     @map("diameter_mm")
   qty         Decimal  @db.Decimal(10, 2)
   unit        String
   comment     String?
-  rate        Decimal  @db.Decimal(10, 2)
+  rate        Decimal  @db.Decimal(10, 4)
   sortOrder   Int      @default(0) @map("sort_order")
 
   @@index([itemId])

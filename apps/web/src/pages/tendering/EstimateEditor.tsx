@@ -18,7 +18,20 @@ type WasteLine = {
   loadRate: Decimal;
   sortOrder: number;
 };
-type CuttingLine = { id: string; cuttingType: string; qty: Decimal; unit: string; comment: string | null; rate: Decimal; sortOrder: number };
+type CuttingLine = {
+  id: string;
+  cuttingType: string;
+  equipment: string | null;
+  elevation: string | null;
+  material: string | null;
+  depthMm: number | null;
+  diameterMm: number | null;
+  qty: Decimal;
+  unit: string;
+  comment: string | null;
+  rate: Decimal;
+  sortOrder: number;
+};
 type Assumption = { id: string; text: string; sortOrder: number };
 
 type EstimateItem = {
@@ -76,8 +89,31 @@ type Summary = {
 
 type LabourRate = { id: string; role: string; dayRate: Decimal; nightRate: Decimal; weekendRate: Decimal; isActive: boolean };
 type PlantRate = { id: string; item: string; unit: string; rate: Decimal; fuelRate: Decimal; isActive: boolean };
-type WasteRate = { id: string; wasteType: string; facility: string; tonRate: Decimal; loadRate: Decimal; isActive: boolean };
-type CuttingRate = { id: string; cuttingType: string; unit: string; rate: Decimal; isActive: boolean };
+type WasteRate = {
+  id: string;
+  wasteType: string;
+  facility: string;
+  wasteGroup: string | null;
+  unit: string;
+  tonRate: Decimal;
+  loadRate: Decimal;
+  isActive: boolean;
+};
+type CuttingRate = {
+  id: string;
+  equipment: string;
+  elevation: string;
+  material: string;
+  depthMm: number;
+  ratePerM: Decimal;
+  isActive: boolean;
+};
+type CoreHoleRate = {
+  id: string;
+  diameterMm: number;
+  ratePerHole: Decimal;
+  isActive: boolean;
+};
 
 type CategoryKey = "SO" | "Str" | "Asb" | "Civ" | "Prv";
 
@@ -127,7 +163,8 @@ export function EstimateEditor({ tenderId, canManage, canAdmin }: { tenderId: st
     plant: PlantRate[];
     waste: WasteRate[];
     cutting: CuttingRate[];
-  }>({ labour: [], plant: [], waste: [], cutting: [] });
+    coreHoles: CoreHoleRate[];
+  }>({ labour: [], plant: [], waste: [], cutting: [], coreHoles: [] });
   const { toast, show } = useToast();
 
   const reloadSummary = useCallback(async () => {
@@ -157,17 +194,19 @@ export function EstimateEditor({ tenderId, canManage, canAdmin }: { tenderId: st
   }, [authFetch, tenderId, reloadSummary]);
 
   const loadRates = useCallback(async () => {
-    const [l, p, w, c] = await Promise.all([
+    const [l, p, w, c, ch] = await Promise.all([
       authFetch(`/estimate-rates/labour`).then((r) => (r.ok ? (r.json() as Promise<LabourRate[]>) : [])),
       authFetch(`/estimate-rates/plant`).then((r) => (r.ok ? (r.json() as Promise<PlantRate[]>) : [])),
       authFetch(`/estimate-rates/waste`).then((r) => (r.ok ? (r.json() as Promise<WasteRate[]>) : [])),
-      authFetch(`/estimate-rates/cutting`).then((r) => (r.ok ? (r.json() as Promise<CuttingRate[]>) : []))
+      authFetch(`/estimate-rates/cutting`).then((r) => (r.ok ? (r.json() as Promise<CuttingRate[]>) : [])),
+      authFetch(`/estimate-rates/core-holes`).then((r) => (r.ok ? (r.json() as Promise<CoreHoleRate[]>) : []))
     ]);
     setRates({
       labour: (l as LabourRate[]).filter((x) => x.isActive),
       plant: (p as PlantRate[]).filter((x) => x.isActive),
       waste: (w as WasteRate[]).filter((x) => x.isActive),
-      cutting: (c as CuttingRate[]).filter((x) => x.isActive)
+      cutting: (c as CuttingRate[]).filter((x) => x.isActive),
+      coreHoles: (ch as CoreHoleRate[]).filter((x) => x.isActive)
     });
   }, [authFetch]);
 
@@ -505,7 +544,7 @@ function ItemDetail({
   tenderId: string;
   item: EstimateItem;
   summary: SummaryItem | null;
-  rates: { labour: LabourRate[]; plant: PlantRate[]; waste: WasteRate[]; cutting: CuttingRate[] };
+  rates: { labour: LabourRate[]; plant: PlantRate[]; waste: WasteRate[]; cutting: CuttingRate[]; coreHoles: CoreHoleRate[] };
   disabled: boolean;
   canManage: boolean;
   saving: boolean;
@@ -604,7 +643,7 @@ function ItemDetailTabs({
 }: {
   item: EstimateItem;
   summary: SummaryItem | null;
-  rates: { labour: LabourRate[]; plant: PlantRate[]; waste: WasteRate[]; cutting: CuttingRate[] };
+  rates: { labour: LabourRate[]; plant: PlantRate[]; waste: WasteRate[]; cutting: CuttingRate[]; coreHoles: CoreHoleRate[] };
   disabled: boolean;
   mutate: Mutator;
   base: string;
@@ -639,7 +678,7 @@ function ItemDetailTabs({
         {activeTab === "equip" && <EquipSection item={item} disabled={disabled} mutate={mutate} base={base} />}
         {activeTab === "plant" && <PlantSection item={item} rates={rates.plant} disabled={disabled} mutate={mutate} base={base} />}
         {activeTab === "waste" && <WasteSection item={item} rates={rates.waste} disabled={disabled} mutate={mutate} base={base} />}
-        {activeTab === "cutting" && <CuttingSection item={item} rates={rates.cutting} disabled={disabled} mutate={mutate} base={base} />}
+        {activeTab === "cutting" && <CuttingSection item={item} rates={rates.cutting} coreHoles={rates.coreHoles} disabled={disabled} mutate={mutate} base={base} />}
         {activeTab === "assumptions" && <AssumptionsSection item={item} disabled={disabled} mutate={mutate} base={base} />}
       </div>
     </div>
@@ -984,19 +1023,145 @@ function PlantAddRow({ rates, mutate, base }: { rates: PlantRate[]; mutate: Muta
   );
 }
 
+type DensityUnit = "m³" | "m²" | "each";
+
+type MaterialDensity = {
+  label: string;
+  unit: DensityUnit;
+  density: number; // tonnes per unit (or T/m² for surface materials)
+  needsDepth?: boolean;
+};
+
+const DENSITY_TABLE: MaterialDensity[] = [
+  { label: "Concrete — normal", unit: "m³", density: 2.45 },
+  { label: "Concrete — reinforced", unit: "m³", density: 2.7 },
+  { label: "Asphalt — compacted", unit: "m³", density: 1.43 },
+  { label: "Asphalt — loose", unit: "m³", density: 1.02 },
+  { label: "Brick (single)", unit: "m³", density: 1.8 },
+  { label: "Block (core filled)", unit: "m³", density: 2.2 },
+  { label: "Ceramic tiles", unit: "m³", density: 2.4 },
+  { label: "Sand", unit: "m³", density: 1.6 },
+  { label: "Soil — clay dry", unit: "m³", density: 1.8 },
+  { label: "Soil — clay wet", unit: "m³", density: 2.1 },
+  { label: "Rock", unit: "m³", density: 2.5 },
+  { label: "Sandstone", unit: "m³", density: 2.65 },
+  { label: "Gravel — dry", unit: "m³", density: 1.7 },
+  { label: "Gravel — wet", unit: "m³", density: 2.0 },
+  { label: "C&D general waste", unit: "m³", density: 0.25 },
+  { label: "Plasterboard", unit: "m³", density: 0.8 },
+  { label: "Vinyl floor", unit: "m³", density: 1.16 },
+  { label: "Timber studs (framed wall)", unit: "m²", density: 0.025 },
+  { label: "FC sheet", unit: "m²", density: 0.012 },
+  { label: "Super six", unit: "m²", density: 0.019 },
+  { label: "Carpet + underlay", unit: "m²", density: 0.01 },
+  { label: "Carpet tile", unit: "m²", density: 0.004 }
+];
+
+function DensityCalculator({ onCopy }: { onCopy: (tonnes: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [qty, setQty] = useState("1");
+  const [material, setMaterial] = useState(DENSITY_TABLE[0].label);
+  const [depthMm, setDepthMm] = useState("100");
+  const current = DENSITY_TABLE.find((m) => m.label === material) ?? DENSITY_TABLE[0];
+  const isM2 = current.unit === "m²";
+
+  const tonnes = useMemo(() => {
+    const q = Number(qty) || 0;
+    if (current.unit === "m³") return q * current.density;
+    if (current.unit === "m²") {
+      // Two interpretations in the spec: m² with depth (volume) or m² with T/m² density.
+      // If density is < 0.1 we treat it as T/m² (surface spec). Otherwise, volume-based.
+      if (current.density < 0.1) return q * current.density;
+      const d = (Number(depthMm) || 0) / 1000;
+      return q * d * current.density;
+    }
+    return q * current.density;
+  }, [qty, current, depthMm]);
+
+  return (
+    <div className="density-calc">
+      <button
+        type="button"
+        className="density-calc__toggle"
+        onClick={() => setOpen((prev) => !prev)}
+        aria-expanded={open}
+      >
+        <span aria-hidden>{open ? "▾" : "▸"}</span>
+        ⚖ Volume → Tonnes converter
+      </button>
+      {open ? (
+        <div className="density-calc__body">
+          <input
+            type="number"
+            step="0.01"
+            className="s7-input s7-input--sm"
+            value={qty}
+            onChange={(e) => setQty(e.target.value)}
+            style={{ maxWidth: 100 }}
+          />
+          <select
+            className="s7-input s7-input--sm"
+            value={current.unit}
+            disabled
+            style={{ maxWidth: 80 }}
+          >
+            <option>{current.unit}</option>
+          </select>
+          <select
+            className="s7-input s7-input--sm"
+            value={material}
+            onChange={(e) => setMaterial(e.target.value)}
+            style={{ minWidth: 210 }}
+          >
+            {DENSITY_TABLE.map((m) => (
+              <option key={m.label} value={m.label}>{m.label} ({m.density} T/{m.unit})</option>
+            ))}
+          </select>
+          {isM2 && current.density >= 0.1 ? (
+            <input
+              type="number"
+              step="1"
+              className="s7-input s7-input--sm"
+              value={depthMm}
+              onChange={(e) => setDepthMm(e.target.value)}
+              placeholder="Depth mm"
+              style={{ maxWidth: 110 }}
+            />
+          ) : null}
+          <span style={{ fontWeight: 500, whiteSpace: "nowrap" }}>
+            = {tonnes.toFixed(2)} tonnes
+          </span>
+          <button
+            type="button"
+            className="s7-btn s7-btn--secondary s7-btn--sm"
+            onClick={() => onCopy(tonnes.toFixed(3))}
+            disabled={tonnes <= 0}
+          >
+            → Copy to line
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function WasteSection({ item, rates, disabled, mutate, base }: { item: EstimateItem; rates: WasteRate[]; disabled: boolean; mutate: Mutator; base: string }) {
+  const [prefilledTonnes, setPrefilledTonnes] = useState<string>("");
+
   return (
     <div className="estimate-editor__lines">
+      {!disabled ? <DensityCalculator onCopy={(v) => setPrefilledTonnes(v)} /> : null}
       {item.wasteLines.length === 0 ? (
         <p style={{ color: "var(--text-muted)" }}>No disposal lines.</p>
       ) : (
         <table className="estimate-editor__table">
           <thead>
-            <tr><th>Type</th><th>Facility</th><th>Tonnes</th><th>$/t</th><th>Loads</th><th>$/load</th><th>Total</th><th /></tr>
+            <tr><th>Type</th><th>Facility</th><th>Qty</th><th>Unit</th><th>Rate</th><th>Loads</th><th>$/load</th><th>Total</th><th /></tr>
           </thead>
           <tbody>
             {item.wasteLines.map((line) => {
               const total = Number(line.qtyTonnes) * Number(line.tonRate) + line.loads * Number(line.loadRate);
+              const unit = rates.find((r) => r.wasteType === line.wasteType && r.facility === line.facility)?.unit ?? "tonne";
               return (
                 <tr key={line.id}>
                   <td>{line.wasteType}</td>
@@ -1005,6 +1170,7 @@ function WasteSection({ item, rates, disabled, mutate, base }: { item: EstimateI
                     <input type="number" step="0.001" className="s7-input s7-input--sm" defaultValue={line.qtyTonnes} disabled={disabled}
                       onBlur={(e) => { if (e.target.value !== line.qtyTonnes) void mutate(`${base}/waste/${line.id}`, "PATCH", { qtyTonnes: e.target.value }); }} />
                   </td>
+                  <td style={{ fontSize: 12, color: "var(--text-muted)" }}>{unit}</td>
                   <td>
                     <input type="number" step="0.01" className="s7-input s7-input--sm" defaultValue={line.tonRate} disabled={disabled}
                       onBlur={(e) => { if (e.target.value !== line.tonRate) void mutate(`${base}/waste/${line.id}`, "PATCH", { tonRate: e.target.value }); }} />
@@ -1029,52 +1195,126 @@ function WasteSection({ item, rates, disabled, mutate, base }: { item: EstimateI
           </tbody>
         </table>
       )}
-      {!disabled ? <WasteAddRow rates={rates} mutate={mutate} base={base} /> : null}
+      {!disabled ? <WasteAddRow rates={rates} mutate={mutate} base={base} prefilledTonnes={prefilledTonnes} onConsumePrefill={() => setPrefilledTonnes("")} /> : null}
     </div>
   );
 }
 
-function WasteAddRow({ rates, mutate, base }: { rates: WasteRate[]; mutate: Mutator; base: string }) {
-  const [selection, setSelection] = useState(rates[0] ? `${rates[0].wasteType}__${rates[0].facility}` : "");
-  const [qtyTonnes, setQtyTonnes] = useState("1");
+function WasteAddRow({
+  rates,
+  mutate,
+  base,
+  prefilledTonnes,
+  onConsumePrefill
+}: {
+  rates: WasteRate[];
+  mutate: Mutator;
+  base: string;
+  prefilledTonnes: string;
+  onConsumePrefill: () => void;
+}) {
+  const groups = useMemo(
+    () => Array.from(new Set(rates.map((r) => r.wasteGroup).filter((g): g is string => !!g))).sort(),
+    [rates]
+  );
+  const [group, setGroup] = useState<string>("");
+  const filteredByGroup = useMemo(
+    () => (group ? rates.filter((r) => r.wasteGroup === group) : rates),
+    [rates, group]
+  );
+  const typeOptions = useMemo(
+    () => Array.from(new Set(filteredByGroup.map((r) => r.wasteType))).sort(),
+    [filteredByGroup]
+  );
+  const [wasteType, setWasteType] = useState<string>(typeOptions[0] ?? "");
+  useEffect(() => {
+    if (!typeOptions.includes(wasteType)) setWasteType(typeOptions[0] ?? "");
+  }, [typeOptions, wasteType]);
+
+  const facilityOptions = useMemo(
+    () => filteredByGroup.filter((r) => r.wasteType === wasteType),
+    [filteredByGroup, wasteType]
+  );
+  const [facility, setFacility] = useState<string>(facilityOptions[0]?.facility ?? "");
+  useEffect(() => {
+    if (!facilityOptions.some((f) => f.facility === facility)) {
+      setFacility(facilityOptions[0]?.facility ?? "");
+    }
+  }, [facilityOptions, facility]);
+
+  const current = facilityOptions.find((f) => f.facility === facility) ?? null;
+  const [qty, setQty] = useState("1");
   const [loads, setLoads] = useState("0");
 
-  const [wasteType, facility] = selection.split("__");
-  const current = rates.find((r) => r.wasteType === wasteType && r.facility === facility);
-  const tonRate = current?.tonRate ?? "0";
-  const loadRate = current?.loadRate ?? "0";
+  useEffect(() => {
+    if (prefilledTonnes) {
+      setQty(prefilledTonnes);
+      onConsumePrefill();
+    }
+  }, [prefilledTonnes, onConsumePrefill]);
 
   const add = async () => {
     if (!current) return;
     await mutate(`${base}/waste`, "POST", {
+      wasteGroup: current.wasteGroup ?? undefined,
       wasteType: current.wasteType,
       facility: current.facility,
-      qtyTonnes,
+      qtyTonnes: qty,
       tonRate: current.tonRate,
       loads: Number(loads),
       loadRate: current.loadRate
     });
-    setQtyTonnes("1");
+    setQty("1");
     setLoads("0");
   };
 
   return (
     <div className="estimate-editor__line-add">
-      <select className="s7-input" value={selection} onChange={(e) => setSelection(e.target.value)}>
-        <option value="">Select disposal…</option>
-        {rates.map((r) => (
-          <option key={r.id} value={`${r.wasteType}__${r.facility}`}>{r.wasteType} @ {r.facility}</option>
-        ))}
+      <select className="s7-input" value={group} onChange={(e) => setGroup(e.target.value)} style={{ maxWidth: 150 }}>
+        <option value="">All groups</option>
+        {groups.map((g) => (<option key={g} value={g}>{g}</option>))}
       </select>
-      <input type="number" step="0.01" className="s7-input" value={qtyTonnes} onChange={(e) => setQtyTonnes(e.target.value)} placeholder="Tonnes" />
-      <input type="number" step="1" className="s7-input" value={loads} onChange={(e) => setLoads(e.target.value)} placeholder="Loads" />
-      <span className="estimate-editor__rate-preview">{formatCurrency(Number(tonRate))}/t + {formatCurrency(Number(loadRate))}/load</span>
+      <select className="s7-input" value={wasteType} onChange={(e) => setWasteType(e.target.value)}>
+        <option value="">Type…</option>
+        {typeOptions.map((t) => (<option key={t} value={t}>{t}</option>))}
+      </select>
+      <select className="s7-input" value={facility} onChange={(e) => setFacility(e.target.value)}>
+        <option value="">Facility…</option>
+        {facilityOptions.map((f) => (<option key={f.id} value={f.facility}>{f.facility}</option>))}
+      </select>
+      <input type="number" step="0.01" className="s7-input" value={qty} onChange={(e) => setQty(e.target.value)} placeholder={current?.unit === "m³" ? "m³" : "Tonnes"} style={{ maxWidth: 110 }} />
+      <input type="number" step="1" className="s7-input" value={loads} onChange={(e) => setLoads(e.target.value)} placeholder="Loads" style={{ maxWidth: 80 }} />
+      <span className="estimate-editor__rate-preview">
+        {current ? `${formatCurrency(Number(current.tonRate))}/${current.unit}${Number(current.loadRate) > 0 ? ` + ${formatCurrency(Number(current.loadRate))}/load` : ""}` : "—"}
+      </span>
       <button type="button" className="s7-btn s7-btn--primary s7-btn--sm" onClick={add} disabled={!current}>+ Add line</button>
     </div>
   );
 }
 
-function CuttingSection({ item, rates, disabled, mutate, base }: { item: EstimateItem; rates: CuttingRate[]; disabled: boolean; mutate: Mutator; base: string }) {
+const ELEVATION_MULTIPLIER: Record<string, number> = { Floor: 1, Wall: 1.1, Inverted: 2 };
+
+function elevationLabel(el: string | null | undefined): string {
+  if (!el || el === "Any") return "Any";
+  const m = ELEVATION_MULTIPLIER[el];
+  return m === 1 || !m ? el : `${el} (×${m})`;
+}
+
+function CuttingSection({
+  item,
+  rates,
+  coreHoles,
+  disabled,
+  mutate,
+  base
+}: {
+  item: EstimateItem;
+  rates: CuttingRate[];
+  coreHoles: CoreHoleRate[];
+  disabled: boolean;
+  mutate: Mutator;
+  base: string;
+}) {
   return (
     <div className="estimate-editor__lines">
       {item.cuttingLines.length === 0 ? (
@@ -1082,21 +1322,36 @@ function CuttingSection({ item, rates, disabled, mutate, base }: { item: Estimat
       ) : (
         <table className="estimate-editor__table">
           <thead>
-            <tr><th>Type</th><th>Qty</th><th>Unit</th><th>Rate</th><th>Comment</th><th>Total</th><th /></tr>
+            <tr>
+              <th>Type</th>
+              <th>Details</th>
+              <th>Qty</th>
+              <th>Unit</th>
+              <th>Rate</th>
+              <th>Comment</th>
+              <th>Total</th>
+              <th />
+            </tr>
           </thead>
           <tbody>
             {item.cuttingLines.map((line) => {
               const total = Number(line.qty) * Number(line.rate);
+              const details = line.cuttingType === "Core hole"
+                ? `Ø ${line.diameterMm ?? "—"} mm`
+                : [line.equipment, line.material, line.depthMm ? `${line.depthMm}mm` : null, elevationLabel(line.elevation)]
+                    .filter(Boolean)
+                    .join(" · ");
               return (
                 <tr key={line.id}>
                   <td>{line.cuttingType}</td>
+                  <td style={{ fontSize: 12, color: "var(--text-muted)" }}>{details || "—"}</td>
                   <td>
                     <input type="number" step="0.01" className="s7-input s7-input--sm" defaultValue={line.qty} disabled={disabled}
                       onBlur={(e) => { if (e.target.value !== line.qty) void mutate(`${base}/cutting/${line.id}`, "PATCH", { qty: e.target.value }); }} />
                   </td>
                   <td>{line.unit}</td>
                   <td>
-                    <input type="number" step="0.01" className="s7-input s7-input--sm" defaultValue={line.rate} disabled={disabled}
+                    <input type="number" step="0.0001" className="s7-input s7-input--sm" defaultValue={line.rate} disabled={disabled}
                       onBlur={(e) => { if (e.target.value !== line.rate) void mutate(`${base}/cutting/${line.id}`, "PATCH", { rate: e.target.value }); }} />
                   </td>
                   <td>
@@ -1115,36 +1370,205 @@ function CuttingSection({ item, rates, disabled, mutate, base }: { item: Estimat
           </tbody>
         </table>
       )}
-      {!disabled ? <CuttingAddRow rates={rates} mutate={mutate} base={base} /> : null}
+      {!disabled ? <CuttingAddRow rates={rates} coreHoles={coreHoles} mutate={mutate} base={base} /> : null}
     </div>
   );
 }
 
-function CuttingAddRow({ rates, mutate, base }: { rates: CuttingRate[]; mutate: Mutator; base: string }) {
-  const [cuttingType, setCuttingType] = useState(rates[0]?.cuttingType ?? "");
+type CuttingMode = "saw" | "core";
+
+function CuttingAddRow({
+  rates,
+  coreHoles,
+  mutate,
+  base
+}: {
+  rates: CuttingRate[];
+  coreHoles: CoreHoleRate[];
+  mutate: Mutator;
+  base: string;
+}) {
+  const [mode, setMode] = useState<CuttingMode>("saw");
+  return (
+    <div className="estimate-editor__cutting-add">
+      <div className="estimate-editor__cutting-mode" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "saw"}
+          className={mode === "saw" ? "estimate-editor__cutting-mode-pill estimate-editor__cutting-mode-pill--active" : "estimate-editor__cutting-mode-pill"}
+          onClick={() => setMode("saw")}
+        >
+          Saw cut
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "core"}
+          className={mode === "core" ? "estimate-editor__cutting-mode-pill estimate-editor__cutting-mode-pill--active" : "estimate-editor__cutting-mode-pill"}
+          onClick={() => setMode("core")}
+        >
+          Core hole
+        </button>
+      </div>
+      {mode === "saw" ? (
+        <SawCutAddRow rates={rates} mutate={mutate} base={base} />
+      ) : (
+        <CoreHoleAddRow coreHoles={coreHoles} mutate={mutate} base={base} />
+      )}
+    </div>
+  );
+}
+
+function SawCutAddRow({ rates, mutate, base }: { rates: CuttingRate[]; mutate: Mutator; base: string }) {
+  const equipmentOptions = useMemo(
+    () => Array.from(new Set(rates.map((r) => r.equipment))).sort(),
+    [rates]
+  );
+  const [equipment, setEquipment] = useState(equipmentOptions[0] ?? "");
+
+  useEffect(() => {
+    if (!equipment && equipmentOptions[0]) setEquipment(equipmentOptions[0]);
+  }, [equipmentOptions, equipment]);
+
+  const materialOptions = useMemo(
+    () => Array.from(new Set(rates.filter((r) => r.equipment === equipment).map((r) => r.material))).sort(),
+    [rates, equipment]
+  );
+  const [material, setMaterial] = useState(materialOptions[0] ?? "");
+  useEffect(() => {
+    if (!materialOptions.includes(material) && materialOptions[0]) setMaterial(materialOptions[0]);
+  }, [materialOptions, material]);
+
+  const depthOptions = useMemo(
+    () =>
+      Array.from(new Set(
+        rates.filter((r) => r.equipment === equipment && r.material === material).map((r) => r.depthMm)
+      )).sort((a, b) => a - b),
+    [rates, equipment, material]
+  );
+  const [depthMm, setDepthMm] = useState<number | null>(depthOptions[0] ?? null);
+  useEffect(() => {
+    if ((!depthMm || !depthOptions.includes(depthMm)) && depthOptions[0]) setDepthMm(depthOptions[0]);
+  }, [depthOptions, depthMm]);
+
+  const [elevation, setElevation] = useState<string>("Floor");
   const [qty, setQty] = useState("1");
   const [comment, setComment] = useState("");
-  const current = rates.find((r) => r.cuttingType === cuttingType);
-  const unit = current?.unit ?? "";
-  const rate = current?.rate ?? "0";
+
+  const baseRate = useMemo(() => {
+    if (!equipment || !material || depthMm == null) return 0;
+    // Prefer exact match on elevation, else Any, else Floor.
+    const candidates = rates.filter(
+      (r) => r.equipment === equipment && r.material === material && r.depthMm === depthMm
+    );
+    const match =
+      candidates.find((r) => r.elevation === elevation) ??
+      candidates.find((r) => r.elevation === "Any") ??
+      candidates.find((r) => r.elevation === "Floor") ??
+      candidates[0];
+    return match ? Number(match.ratePerM) : 0;
+  }, [rates, equipment, material, depthMm, elevation]);
+
+  const multiplier = ELEVATION_MULTIPLIER[elevation] ?? 1;
+  const computedRate = baseRate * multiplier;
 
   const add = async () => {
-    if (!current) return;
-    await mutate(`${base}/cutting`, "POST", { cuttingType: current.cuttingType, qty, unit: current.unit, comment: comment || undefined, rate: current.rate });
+    if (!equipment || !material || depthMm == null) return;
+    const rateString = computedRate.toFixed(4);
+    await mutate(`${base}/cutting`, "POST", {
+      cuttingType: "Saw cut",
+      equipment,
+      elevation,
+      material,
+      depthMm,
+      qty,
+      unit: "m",
+      comment: comment || undefined,
+      rate: rateString
+    });
     setQty("1");
     setComment("");
   };
 
+  const canAdd = equipment && material && depthMm != null && Number(qty) > 0 && computedRate > 0;
+
   return (
     <div className="estimate-editor__line-add">
-      <select className="s7-input" value={cuttingType} onChange={(e) => setCuttingType(e.target.value)}>
-        <option value="">Select cutting…</option>
-        {rates.map((r) => (<option key={r.id} value={r.cuttingType}>{r.cuttingType} ({r.unit})</option>))}
+      <select className="s7-input" value={equipment} onChange={(e) => setEquipment(e.target.value)}>
+        {equipmentOptions.map((opt) => (
+          <option key={opt} value={opt}>{opt}</option>
+        ))}
       </select>
-      <input type="number" step="0.01" className="s7-input" value={qty} onChange={(e) => setQty(e.target.value)} placeholder={`Qty (${unit || "unit"})`} />
+      <select className="s7-input" value={material} onChange={(e) => setMaterial(e.target.value)}>
+        {materialOptions.map((opt) => (
+          <option key={opt} value={opt}>{opt}</option>
+        ))}
+      </select>
+      <select className="s7-input" value={depthMm ?? ""} onChange={(e) => setDepthMm(Number(e.target.value) || null)}>
+        {depthOptions.map((d) => (
+          <option key={d} value={d}>{d} mm</option>
+        ))}
+      </select>
+      <select className="s7-input" value={elevation} onChange={(e) => setElevation(e.target.value)}>
+        <option value="Floor">Floor (×1.0)</option>
+        <option value="Wall">Wall (×1.1)</option>
+        <option value="Inverted">Inverted (×2.0)</option>
+      </select>
+      <input type="number" step="0.01" className="s7-input" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="Qty (lm)" />
       <input className="s7-input" value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comment" />
-      <span className="estimate-editor__rate-preview">{formatCurrency(Number(rate))}/{unit || "unit"}</span>
-      <button type="button" className="s7-btn s7-btn--primary s7-btn--sm" onClick={add} disabled={!current}>+ Add line</button>
+      <span className="estimate-editor__rate-preview">
+        {formatCurrency(computedRate)}/m
+      </span>
+      <button type="button" className="s7-btn s7-btn--primary s7-btn--sm" onClick={add} disabled={!canAdd}>+ Add line</button>
+    </div>
+  );
+}
+
+function CoreHoleAddRow({ coreHoles, mutate, base }: { coreHoles: CoreHoleRate[]; mutate: Mutator; base: string }) {
+  const sorted = useMemo(() => [...coreHoles].sort((a, b) => a.diameterMm - b.diameterMm), [coreHoles]);
+  const [diameterMm, setDiameterMm] = useState<number | null>(sorted[0]?.diameterMm ?? null);
+  const [qty, setQty] = useState("1");
+  const [comment, setComment] = useState("");
+
+  useEffect(() => {
+    if ((diameterMm == null || !sorted.some((c) => c.diameterMm === diameterMm)) && sorted[0]) {
+      setDiameterMm(sorted[0].diameterMm);
+    }
+  }, [sorted, diameterMm]);
+
+  const rate = useMemo(() => {
+    const match = sorted.find((c) => c.diameterMm === diameterMm);
+    return match ? Number(match.ratePerHole) : 0;
+  }, [sorted, diameterMm]);
+
+  const add = async () => {
+    if (diameterMm == null) return;
+    await mutate(`${base}/cutting`, "POST", {
+      cuttingType: "Core hole",
+      diameterMm,
+      qty,
+      unit: "ea",
+      comment: comment || undefined,
+      rate: rate.toFixed(4)
+    });
+    setQty("1");
+    setComment("");
+  };
+
+  const canAdd = diameterMm != null && Number(qty) > 0 && rate > 0;
+
+  return (
+    <div className="estimate-editor__line-add">
+      <select className="s7-input" value={diameterMm ?? ""} onChange={(e) => setDiameterMm(Number(e.target.value) || null)}>
+        {sorted.map((c) => (
+          <option key={c.id} value={c.diameterMm}>{c.diameterMm} mm</option>
+        ))}
+      </select>
+      <input type="number" step="1" className="s7-input" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="Holes" />
+      <input className="s7-input" value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comment" />
+      <span className="estimate-editor__rate-preview">{formatCurrency(rate)}/hole</span>
+      <button type="button" className="s7-btn s7-btn--primary s7-btn--sm" onClick={add} disabled={!canAdd}>+ Add hole</button>
     </div>
   );
 }

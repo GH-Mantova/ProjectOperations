@@ -14,6 +14,7 @@ import {
   UpdatePlantLineDto,
   UpdateWasteLineDto,
   UpsertAssumptionDto,
+  UpsertCoreHoleRateDto,
   UpsertCuttingLineDto,
   UpsertCuttingRateDto,
   UpsertEnclosureRateDto,
@@ -166,6 +167,38 @@ export class EstimatesController {
   @ApiOperation({ summary: "Delete a cutting rate" })
   deleteCuttingRate(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
     return this.service.deleteCuttingRate(id, actor.sub);
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  Rate library — core holes
+  // ──────────────────────────────────────────────────────────────
+
+  @Get("estimate-rates/core-holes")
+  @RequirePermissions("estimates.view")
+  @ApiOperation({ summary: "List concrete core-hole drilling rates ($/hole by diameter)" })
+  listCoreHoleRates() {
+    return this.service.listCoreHoleRates();
+  }
+
+  @Post("estimate-rates/core-holes")
+  @RequirePermissions("estimates.admin")
+  @ApiOperation({ summary: "Create a core-hole rate" })
+  createCoreHoleRate(@Body() dto: UpsertCoreHoleRateDto, @CurrentUser() actor: { sub: string }) {
+    return this.service.upsertCoreHoleRate(undefined, dto, actor.sub);
+  }
+
+  @Patch("estimate-rates/core-holes/:id")
+  @RequirePermissions("estimates.admin")
+  @ApiOperation({ summary: "Update a core-hole rate" })
+  updateCoreHoleRate(@Param("id") id: string, @Body() dto: UpsertCoreHoleRateDto, @CurrentUser() actor: { sub: string }) {
+    return this.service.upsertCoreHoleRate(id, dto, actor.sub);
+  }
+
+  @Delete("estimate-rates/core-holes/:id")
+  @RequirePermissions("estimates.admin")
+  @ApiOperation({ summary: "Delete a core-hole rate" })
+  deleteCoreHoleRate(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
+    return this.service.deleteCoreHoleRate(id, actor.sub);
   }
 
   // ──────────────────────────────────────────────────────────────

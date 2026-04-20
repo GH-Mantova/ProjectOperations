@@ -25,6 +25,51 @@ const ACTIVE = new Set(["DRAFT", "IN_PROGRESS", "SUBMITTED"]);
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const IS_PALETTE = ["#FEAA6D", "#005B61", "#94A3B8", "#242424", "#FED7AA", "#22C55E"];
 
+function filterStrings(raw: unknown): string[] | null {
+  if (!Array.isArray(raw)) return null;
+  const clean = raw.filter((v): v is string => typeof v === "string");
+  return clean.length > 0 ? clean : null;
+}
+
+function filterNumber(raw: unknown, fallback: number): number {
+  return typeof raw === "number" && Number.isFinite(raw) ? raw : fallback;
+}
+
+function filterString(raw: unknown, fallback: string): string {
+  return typeof raw === "string" && raw.length > 0 ? raw : fallback;
+}
+
+function matchesEstimator(t: TenderForDashboard, estimatorIds: string[] | null): boolean {
+  if (!estimatorIds) return true;
+  return t.estimator != null && estimatorIds.includes(t.estimator.id);
+}
+
+function periodToCutoff(period: string): Date {
+  const now = Date.now();
+  switch (period) {
+    case "30d": return new Date(now - 30 * DAY);
+    case "60d": return new Date(now - 60 * DAY);
+    case "90d": return new Date(now - 90 * DAY);
+    case "3m": {
+      const d = new Date();
+      d.setMonth(d.getMonth() - 3);
+      return d;
+    }
+    case "6m": {
+      const d = new Date();
+      d.setMonth(d.getMonth() - 6);
+      return d;
+    }
+    case "12m": {
+      const d = new Date();
+      d.setFullYear(d.getFullYear() - 1);
+      return d;
+    }
+    default:
+      return new Date(now - 90 * DAY);
+  }
+}
+
 type Bucket = "hot" | "warm" | "cold" | "unknown";
 function bucketFor(value: number | null | undefined): Bucket {
   if (value === null || value === undefined) return "unknown";
@@ -90,11 +135,16 @@ function useCleanTenders() {
   return { tenders: (data ?? []).filter((t) => !isComplianceTender(t)), isLoading };
 }
 
-export function ActivePipelineKpi(_props: WidgetProps) {
+export function ActivePipelineKpi(props: WidgetProps) {
   const { tenders, isLoading } = useCleanTenders();
+  const stageFilter = filterStrings(props.config.filters?.stages);
   if (isLoading) return <KpiTile label="Active pipeline" value="—" />;
   const total = tenders
-    .filter((t) => !TERMINAL.has(t.status))
+    .filter((t) => {
+      if (TERMINAL.has(t.status)) return false;
+      if (stageFilter && !stageFilter.includes(t.status)) return false;
+      return true;
+    })
     .reduce((sum, t) => sum + Number(t.estimatedValue ?? 0), 0);
   return <KpiTile label="Active pipeline" value={formatCurrency(total)} />;
 }
@@ -131,12 +181,13 @@ export function AvgLeadTimeKpi(_props: WidgetProps) {
   return <KpiTile label="Avg lead time" value={`${avg.toFixed(1)}d`} />;
 }
 
-export function DueThisWeekPanel(_props: WidgetProps) {
+export function DueThisWeekPanel(props: WidgetProps) {
   const navigate = useNavigate();
   const { tenders, isLoading } = useCleanTenders();
+  const daysAhead = filterNumber(props.config.filters?.daysAhead, 7);
   if (isLoading) return <Skeleton width="100%" height={180} />;
   const dueThisWeek = tenders
-    .filter((t) => t.dueDate && ACTIVE.has(t.status) && daysUntil(t.dueDate) <= 7)
+    .filter((t) => t.dueDate && ACTIVE.has(t.status) && daysUntil(t.dueDate) <= daysAhead)
     .sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""));
   return (
     <PanelCard title="Due this week">
@@ -172,21 +223,23 @@ export function DueThisWeekPanel(_props: WidgetProps) {
   );
 }
 
-export function FollowUpQueuePanel(_props: WidgetProps) {
+export function FollowUpQueuePanel(props: WidgetProps) {
   const navigate = useNavigate();
   const { authFetch } = useAuth();
   const { tenders, isLoading } = useCleanTenders();
   const [pendingCallId, setPendingCallId] = useState<string | null>(null);
+  const daysThreshold = filterNumber(props.config.filters?.daysThreshold, 7);
+  const maxRows = filterNumber(props.config.filters?.maxRows, 5);
 
   if (isLoading) return <Skeleton width="100%" height={180} />;
   const now = new Date();
-  const sevenDaysAgo = new Date(now.getTime() - 7 * DAY);
+  const thresholdCutoff = new Date(now.getTime() - daysThreshold * DAY);
   const queue = tenders
     .filter(
       (t) =>
         t.status === "SUBMITTED" &&
         t.submittedAt &&
-        new Date(t.submittedAt) < sevenDaysAgo &&
+        new Date(t.submittedAt) < thresholdCutoff &&
         !t.wonAt &&
         !t.lostAt
     )
@@ -203,7 +256,7 @@ export function FollowUpQueuePanel(_props: WidgetProps) {
       };
     })
     .sort((a, b) => b.daysWaiting - a.daysWaiting)
-    .slice(0, 5);
+    .slice(0, maxRows);
   const totalValue = queue.reduce((sum, item) => sum + Number(item.tender.estimatedValue ?? 0), 0);
 
   const logCall = async (tenderId: string) => {
@@ -281,36 +334,63 @@ export function FollowUpQueuePanel(_props: WidgetProps) {
   );
 }
 
-export function WinRateChart(_props: WidgetProps) {
+export function WinRateChart(props: WidgetProps) {
   const { tenders, isLoading } = useCleanTenders();
+  const period = filterString(props.config.filters?.period, "6m");
+  const groupBy = filterString(props.config.filters?.groupBy, "month");
+  const estimatorIds = filterStrings(props.config.filters?.estimatorIds);
   const now = new Date();
-  const buckets: Array<{ monthKey: string; label: string; submitted: number; won: number }> = [];
-  for (let i = 5; i >= 0; i -= 1) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    buckets.push({
-      monthKey: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
-      label: MONTH_SHORT[d.getMonth()],
-      submitted: 0,
-      won: 0
-    });
+
+  const monthsBack = period === "3m" ? 3 : period === "12m" ? 12 : 6;
+  const buckets: Array<{ bucketKey: string; label: string; submitted: number; won: number }> = [];
+
+  if (groupBy === "quarter") {
+    const quartersBack = Math.ceil(monthsBack / 3);
+    for (let i = quartersBack - 1; i >= 0; i -= 1) {
+      const base = new Date(now.getFullYear(), now.getMonth() - i * 3, 1);
+      const q = Math.floor(base.getMonth() / 3) + 1;
+      buckets.push({
+        bucketKey: `${base.getFullYear()}-Q${q}`,
+        label: `Q${q} ${String(base.getFullYear()).slice(2)}`,
+        submitted: 0,
+        won: 0
+      });
+    }
+  } else {
+    for (let i = monthsBack - 1; i >= 0; i -= 1) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      buckets.push({
+        bucketKey: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+        label: MONTH_SHORT[d.getMonth()],
+        submitted: 0,
+        won: 0
+      });
+    }
   }
-  const byKey = new Map(buckets.map((b) => [b.monthKey, b]));
+  const byKey = new Map(buckets.map((b) => [b.bucketKey, b]));
+
+  const bucketKeyFor = (date: Date): string => {
+    if (groupBy === "quarter") {
+      const q = Math.floor(date.getMonth() / 3) + 1;
+      return `${date.getFullYear()}-Q${q}`;
+    }
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  };
+
   for (const t of tenders) {
+    if (!matchesEstimator(t, estimatorIds)) continue;
     if (t.submittedAt) {
-      const d = new Date(t.submittedAt);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      const b = byKey.get(key);
+      const b = byKey.get(bucketKeyFor(new Date(t.submittedAt)));
       if (b) b.submitted += 1;
     }
     if (t.wonAt) {
-      const d = new Date(t.wonAt);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      const b = byKey.get(key);
+      const b = byKey.get(bucketKeyFor(new Date(t.wonAt)));
       if (b) b.won += 1;
     }
   }
+  const title = period === "3m" ? "Win rate — last 3 months" : period === "12m" ? "Win rate — last 12 months" : "Win rate — last 6 months";
   return (
-    <PanelCard title="Win rate — last 6 months">
+    <PanelCard title={title}>
       {isLoading ? (
         <Skeleton width="100%" height={220} />
       ) : (
@@ -332,20 +412,24 @@ export function WinRateChart(_props: WidgetProps) {
   );
 }
 
-export function PipelineByEstimatorDonut(_props: WidgetProps) {
+export function PipelineByEstimatorDonut(props: WidgetProps) {
   const { tenders, isLoading } = useCleanTenders();
+  const estimatorIds = filterStrings(props.config.filters?.estimatorIds);
+  const metric = filterString(props.config.filters?.metric, "value");
   const estimatorMap = new Map<string, { name: string; value: number }>();
   for (const t of tenders) {
     if (!ACTIVE.has(t.status)) continue;
-    const value = Number(t.estimatedValue ?? 0);
-    if (value <= 0) continue;
+    if (!matchesEstimator(t, estimatorIds)) continue;
+    const amount = metric === "count" ? 1 : Number(t.estimatedValue ?? 0);
+    if (metric !== "count" && amount <= 0) continue;
     const key = t.estimator?.id ?? "unassigned";
     const name = estimatorName(t);
     const entry = estimatorMap.get(key) ?? { name, value: 0 };
-    entry.value += value;
+    entry.value += amount;
     estimatorMap.set(key, entry);
   }
   const rows = Array.from(estimatorMap.values()).sort((a, b) => b.value - a.value);
+  const formatSlice = (value: number) => (metric === "count" ? `${value} tender${value === 1 ? "" : "s"}` : formatCurrency(value));
   return (
     <PanelCard title="Pipeline by estimator">
       {isLoading ? (
@@ -361,7 +445,7 @@ export function PipelineByEstimatorDonut(_props: WidgetProps) {
                   <Cell key={slice.name} fill={IS_PALETTE[index % IS_PALETTE.length]} />
                 ))}
               </Pie>
-              <Tooltip formatter={(value) => formatCurrency(Number(value))} contentStyle={{ fontSize: 12 }} />
+              <Tooltip formatter={(value) => formatSlice(Number(value))} contentStyle={{ fontSize: 12 }} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
             </PieChart>
           </ResponsiveContainer>
@@ -373,13 +457,15 @@ export function PipelineByEstimatorDonut(_props: WidgetProps) {
 
 export function RecentWinsPanel(props: WidgetProps) {
   const navigate = useNavigate();
-  const period = resolvePeriod(props.config, props.globalPeriod);
-  const cutoff = periodStart(period);
+  const periodFilter = filterString(props.config.filters?.period, "");
+  const maxRows = filterNumber(props.config.filters?.maxRows, 4);
+  const estimatorIds = filterStrings(props.config.filters?.estimatorIds);
+  const cutoff = periodFilter ? periodToCutoff(periodFilter) : periodStart(resolvePeriod(props.config, props.globalPeriod));
   const { tenders, isLoading } = useCleanTenders();
   const wins = tenders
-    .filter((t) => t.wonAt && new Date(t.wonAt) >= cutoff)
+    .filter((t) => t.wonAt && new Date(t.wonAt) >= cutoff && matchesEstimator(t, estimatorIds))
     .sort((a, b) => new Date(b.wonAt!).getTime() - new Date(a.wonAt!).getTime())
-    .slice(0, 4);
+    .slice(0, maxRows);
   return (
     <PanelCard title="Recent wins">
       {isLoading ? (

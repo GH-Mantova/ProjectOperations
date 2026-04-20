@@ -1,14 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  DndContext,
-  PointerSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent
-} from "@dnd-kit/core";
-import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { useEffect, useRef, useState } from "react";
 import { WIDGET_BY_TYPE } from "./widgetRegistry";
 import { PERIOD_LABELS, PERIOD_ORDER, type UserDashboard, type UserDashboardConfig, type WidgetConfigEntry, type WidgetPeriod } from "./types";
 
@@ -38,21 +28,7 @@ export function CustomisePanel({ open, onClose, dashboard, saving, onSave }: Pro
     return () => document.removeEventListener("keydown", handler);
   }, [open, onClose]);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
-  );
-
   if (!open) return null;
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = draft.widgets.findIndex((w) => w.id === active.id);
-    const newIndex = draft.widgets.findIndex((w) => w.id === over.id);
-    if (oldIndex < 0 || newIndex < 0) return;
-    const reordered = arrayMove(draft.widgets, oldIndex, newIndex).map((w, index) => ({ ...w, order: index }));
-    setDraft({ ...draft, widgets: reordered });
-  };
 
   const toggleVisible = (widgetId: string) => {
     setDraft({
@@ -131,22 +107,21 @@ export function CustomisePanel({ open, onClose, dashboard, saving, onSave }: Pro
           </label>
 
           <h3 className="s7-type-section-heading" style={{ fontSize: 14, marginTop: 20, marginBottom: 8 }}>Widgets</h3>
+          <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 8px 0" }}>
+            Reorder widgets by dragging their handle on the canvas. Toggle visibility here.
+          </p>
 
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={draft.widgets.map((w) => w.id)} strategy={verticalListSortingStrategy}>
-              <ul className="customise-panel__widgets">
-                {draft.widgets.map((widget) => (
-                  <CustomiseRow
-                    key={widget.id}
-                    widget={widget}
-                    globalPeriod={draft.period as WidgetPeriod}
-                    onToggleVisible={() => toggleVisible(widget.id)}
-                    onSetPeriod={(period) => setWidgetPeriod(widget.id, period)}
-                  />
-                ))}
-              </ul>
-            </SortableContext>
-          </DndContext>
+          <ul className="customise-panel__widgets">
+            {draft.widgets.map((widget) => (
+              <CustomiseRow
+                key={widget.id}
+                widget={widget}
+                globalPeriod={draft.period as WidgetPeriod}
+                onToggleVisible={() => toggleVisible(widget.id)}
+                onSetPeriod={(period) => setWidgetPeriod(widget.id, period)}
+              />
+            ))}
+          </ul>
         </div>
 
         <footer className="slide-over__footer">
@@ -171,39 +146,13 @@ function CustomiseRow({
   onToggleVisible: () => void;
   onSetPeriod: (period: WidgetPeriod | null) => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: widget.id });
   const meta = WIDGET_BY_TYPE[widget.type];
-  const style = useMemo(
-    () => ({
-      transform: CSS.Transform.toString(transform),
-      transition,
-      opacity: isDragging ? 0.5 : 1
-    }),
-    [transform, transition, isDragging]
-  );
-
   const effectivePeriod = widget.config.period ?? globalPeriod;
   const isOverridden = widget.config.period != null && widget.config.period !== globalPeriod;
 
   return (
-    <li ref={setNodeRef} style={style} className="customise-panel__row">
+    <li className="customise-panel__row">
       <div className="customise-panel__row-main">
-        <button
-          type="button"
-          className="customise-panel__drag"
-          aria-label="Drag to reorder"
-          {...attributes}
-          {...listeners}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
-            <circle cx="5" cy="3" r="1.5" />
-            <circle cx="5" cy="8" r="1.5" />
-            <circle cx="5" cy="13" r="1.5" />
-            <circle cx="11" cy="3" r="1.5" />
-            <circle cx="11" cy="8" r="1.5" />
-            <circle cx="11" cy="13" r="1.5" />
-          </svg>
-        </button>
         <div className="customise-panel__row-info">
           <div className="customise-panel__row-title">{meta?.name ?? widget.type}</div>
           <div className="customise-panel__row-meta">{meta?.category ?? "unknown"}</div>

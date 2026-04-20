@@ -2281,7 +2281,7 @@ export async function seedMantovaDataset(prisma: PrismaClient): Promise<void> {
         },
         {
           dashboardId: adminDashboard.id,
-          type: "donut",
+          type: "donut_chart",
           title: "Jobs by status",
           description: "Active, awarded, completed",
           position: 4,
@@ -2291,7 +2291,7 @@ export async function seedMantovaDataset(prisma: PrismaClient): Promise<void> {
         },
         {
           dashboardId: adminDashboard.id,
-          type: "donut",
+          type: "donut_chart",
           title: "Tender pipeline by stage",
           description: "Tender status mix",
           position: 5,
@@ -2301,7 +2301,7 @@ export async function seedMantovaDataset(prisma: PrismaClient): Promise<void> {
         },
         {
           dashboardId: adminDashboard.id,
-          type: "line",
+          type: "line_chart",
           title: "Monthly revenue (last 6 months)",
           description: "Derived from tender awarded dates and contract values",
           position: 6,
@@ -2311,7 +2311,7 @@ export async function seedMantovaDataset(prisma: PrismaClient): Promise<void> {
         },
         {
           dashboardId: adminDashboard.id,
-          type: "bar",
+          type: "bar_chart",
           title: "Form submissions by week (last 6 weeks)",
           description: "Derived from submission seed data",
           position: 7,
@@ -2321,7 +2321,7 @@ export async function seedMantovaDataset(prisma: PrismaClient): Promise<void> {
         },
         {
           dashboardId: adminDashboard.id,
-          type: "bar",
+          type: "bar_chart",
           title: "Upcoming maintenance by asset (next 30 days)",
           description: "Assets with upcoming or overdue maintenance",
           position: 8,
@@ -2330,10 +2330,10 @@ export async function seedMantovaDataset(prisma: PrismaClient): Promise<void> {
           config: {
             chart: "maintenance.upcoming",
             data: [
-              { label: "asset-001", daysUntilDue: 15 },
-              { label: "asset-002", daysUntilDue: 30 },
-              { label: "asset-003", daysUntilDue: -5, status: "OVERDUE" },
-              { label: "asset-013", daysUntilDue: -7, status: "BREAKDOWN" }
+              { label: "asset-001", value: 15 },
+              { label: "asset-002", value: 30 },
+              { label: "asset-003", value: -5 },
+              { label: "asset-013", value: -7 }
             ]
           }
         }

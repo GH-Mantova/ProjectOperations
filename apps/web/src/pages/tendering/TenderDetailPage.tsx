@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { EstimateEditor } from "./EstimateEditor";
@@ -60,6 +60,45 @@ const STAGE_ACCENT: Record<string, string> = {
 
 type Tab = "overview" | "estimate" | "documents";
 
+type EstimateSummaryPayload = {
+  estimateId: string | null;
+  locked: boolean;
+  items: Array<{ itemId: string; code: string; itemNumber: number; title: string; price: number }>;
+  totals: { labour: number; equip: number; plant: number; waste: number; cutting: number; subtotal: number; price: number };
+};
+
+type EstimateLockInfo = { lockedAt: string | null };
+
+type ProbabilityBucket = "hot" | "warm" | "cold" | "unknown";
+
+function bucketForProbability(value: number | null | undefined): ProbabilityBucket {
+  if (value === null || value === undefined) return "unknown";
+  if (value >= 70) return "hot";
+  if (value >= 30) return "warm";
+  return "cold";
+}
+
+function valueForBucket(bucket: ProbabilityBucket): number | null {
+  if (bucket === "hot") return 80;
+  if (bucket === "warm") return 50;
+  if (bucket === "cold") return 20;
+  return null;
+}
+
+const PROBABILITY_LABEL: Record<ProbabilityBucket, string> = {
+  hot: "Hot",
+  warm: "Warm",
+  cold: "Cold",
+  unknown: "Not set"
+};
+
+const PROBABILITY_BADGE_STYLE: Record<ProbabilityBucket, { background: string; color: string }> = {
+  hot: { background: "#FEAA6D", color: "#3E1C00" },
+  warm: { background: "#FCD34D", color: "#3E2A00" },
+  cold: { background: "#94A3B8", color: "#0F172A" },
+  unknown: { background: "rgba(0,0,0,0.08)", color: "var(--text-muted)" }
+};
+
 function formatCurrency(raw?: string | null): string {
   if (!raw) return "—";
   const value = Number(raw);
@@ -76,21 +115,30 @@ function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString();
 }
 
+function formatNumber(n: number): string {
+  return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 0 }).format(n);
+}
+
 export function TenderDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { authFetch, user } = useAuth();
+  const canManageTenders = useMemo(() => user?.permissions.includes("tenders.manage") ?? false, [user]);
   const canManageEstimates = useMemo(() => user?.permissions.includes("estimates.manage") ?? false, [user]);
   const canAdminEstimates = useMemo(() => user?.permissions.includes("estimates.admin") ?? false, [user]);
   const [tender, setTender] = useState<TenderDetail | null>(null);
+  const [estimateSummary, setEstimateSummary] = useState<EstimateSummaryPayload | null>(null);
+  const [estimateLock, setEstimateLock] = useState<EstimateLockInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
   const [posting, setPosting] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
   const [newNote, setNewNote] = useState("");
   const [newClarification, setNewClarification] = useState("");
   const [newFollowUp, setNewFollowUp] = useState({ details: "", dueAt: "" });
 
-  const reload = async () => {
+  const reload = useCallback(async () => {
     if (!id) return;
     setLoading(true);
     setError(null);
@@ -103,11 +151,62 @@ export function TenderDetailPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [authFetch, id]);
+
+  const loadEstimate = useCallback(async () => {
+    if (!id) return;
+    try {
+      const [summaryRes, estimateRes] = await Promise.all([
+        authFetch(`/tenders/${id}/estimate/summary`),
+        authFetch(`/tenders/${id}/estimate`)
+      ]);
+      if (summaryRes.ok) setEstimateSummary((await summaryRes.json()) as EstimateSummaryPayload);
+      if (estimateRes.ok) {
+        const body = (await estimateRes.json()) as { lockedAt: string | null } | null;
+        setEstimateLock(body ? { lockedAt: body.lockedAt } : null);
+      }
+    } catch {
+      // non-fatal — summary/lock are decorative
+    }
+  }, [authFetch, id]);
 
   useEffect(() => {
     void reload();
-  }, [authFetch, id]);
+    void loadEstimate();
+  }, [reload, loadEstimate]);
+
+  const probabilityBucket = bucketForProbability(tender?.probability);
+
+  const setProbabilityBucket = async (bucket: ProbabilityBucket) => {
+    if (!tender) return;
+    setPosting(true);
+    try {
+      const response = await authFetch(`/tenders/${tender.id}/probability`, {
+        method: "PATCH",
+        body: JSON.stringify({ probability: valueForBucket(bucket) })
+      });
+      if (!response.ok) throw new Error("Could not update probability.");
+      await reload();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setPosting(false);
+    }
+  };
+
+  const duplicateTender = async () => {
+    if (!tender) return;
+    setDuplicating(true);
+    try {
+      const response = await authFetch(`/tenders/${tender.id}/duplicate`, { method: "POST" });
+      if (!response.ok) throw new Error("Could not duplicate tender.");
+      const copy = (await response.json()) as { id: string };
+      navigate(`/tenders/${copy.id}`);
+    } catch (err) {
+      setError((err as Error).message);
+      setDuplicating(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -240,15 +339,27 @@ export function TenderDetailPage() {
             <p className="s7-type-label">{tender.tenderNumber}</p>
             <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>{tender.title}</h1>
           </div>
-          <span
-            className="s7-badge"
-            style={{
-              background: `color-mix(in srgb, ${stageAccent} 15%, transparent)`,
-              color: stageAccent
-            }}
-          >
-            {stageLabel}
-          </span>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span
+              className="s7-badge"
+              style={{
+                background: `color-mix(in srgb, ${stageAccent} 15%, transparent)`,
+                color: stageAccent
+              }}
+            >
+              {stageLabel}
+            </span>
+            {canManageTenders ? (
+              <button
+                type="button"
+                className="s7-btn s7-btn--secondary s7-btn--sm"
+                onClick={() => void duplicateTender()}
+                disabled={duplicating}
+              >
+                {duplicating ? "Duplicating…" : "Duplicate"}
+              </button>
+            ) : null}
+          </div>
         </div>
 
         <nav className="tender-detail__tabs" role="tablist">
@@ -283,6 +394,51 @@ export function TenderDetailPage() {
 
         {tab === "overview" && (
           <div className="tender-detail__sections">
+            {estimateSummary && estimateSummary.estimateId ? (
+              <section className="s7-card">
+                <div className="tender-detail__section-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <h3 className="s7-type-section-heading" style={{ margin: 0 }}>Estimate breakdown</h3>
+                  <button
+                    type="button"
+                    className="s7-btn s7-btn--secondary s7-btn--sm"
+                    onClick={() => setTab("estimate")}
+                  >
+                    Open estimate →
+                  </button>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginTop: 12 }}>
+                  <div>
+                    <p className="s7-type-label">Scope items</p>
+                    <strong style={{ fontSize: 20 }}>{estimateSummary.items.length}</strong>
+                  </div>
+                  <div>
+                    <p className="s7-type-label">Labour</p>
+                    <strong>{formatNumber(estimateSummary.totals.labour)}</strong>
+                  </div>
+                  <div>
+                    <p className="s7-type-label">Equip & sub</p>
+                    <strong>{formatNumber(estimateSummary.totals.equip)}</strong>
+                  </div>
+                  <div>
+                    <p className="s7-type-label">Plant</p>
+                    <strong>{formatNumber(estimateSummary.totals.plant)}</strong>
+                  </div>
+                  <div>
+                    <p className="s7-type-label">Disposal</p>
+                    <strong>{formatNumber(estimateSummary.totals.waste)}</strong>
+                  </div>
+                  <div>
+                    <p className="s7-type-label">Cutting</p>
+                    <strong>{formatNumber(estimateSummary.totals.cutting)}</strong>
+                  </div>
+                  <div>
+                    <p className="s7-type-label">Tender price</p>
+                    <strong style={{ fontSize: 20, color: "var(--brand-accent, #FEAA6D)" }}>{formatNumber(estimateSummary.totals.price)}</strong>
+                  </div>
+                </div>
+              </section>
+            ) : null}
+
             <section className="s7-card">
               <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>Description</h3>
               {tender.description ? (
@@ -465,11 +621,68 @@ export function TenderDetailPage() {
           <dl className="tender-detail__dl">
             <div><dt>Stage</dt><dd>{stageLabel}</dd></div>
             <div><dt>Value</dt><dd>{formatCurrency(tender.estimatedValue)}</dd></div>
-            <div><dt>Probability</dt><dd>{tender.probability !== null && tender.probability !== undefined ? `${tender.probability}%` : "—"}</dd></div>
+            <div>
+              <dt>Probability</dt>
+              <dd>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                  <span
+                    className="s7-badge"
+                    style={{
+                      background: PROBABILITY_BADGE_STYLE[probabilityBucket].background,
+                      color: PROBABILITY_BADGE_STYLE[probabilityBucket].color
+                    }}
+                  >
+                    {PROBABILITY_LABEL[probabilityBucket]}
+                    {tender.probability !== null && tender.probability !== undefined ? ` · ${tender.probability}%` : ""}
+                  </span>
+                  {canManageTenders ? (
+                    <select
+                      className="s7-input s7-input--sm"
+                      value={probabilityBucket}
+                      onChange={(e) => void setProbabilityBucket(e.target.value as ProbabilityBucket)}
+                      disabled={posting}
+                      style={{ maxWidth: 100 }}
+                    >
+                      <option value="hot">Hot</option>
+                      <option value="warm">Warm</option>
+                      <option value="cold">Cold</option>
+                      <option value="unknown">Not set</option>
+                    </select>
+                  ) : null}
+                </div>
+              </dd>
+            </div>
             <div><dt>Due</dt><dd>{formatDate(tender.dueDate)}</dd></div>
             <div><dt>Proposed start</dt><dd>{formatDate(tender.proposedStartDate)}</dd></div>
             <div><dt>Last activity</dt><dd>{formatDateTime(tender.updatedAt)}</dd></div>
           </dl>
+        </section>
+
+        <section className="s7-card tender-detail__rail-card">
+          <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>Rate snapshot</h3>
+          {estimateSummary && estimateSummary.estimateId ? (
+            estimateLock && estimateLock.lockedAt ? (
+              <div>
+                <span className="s7-badge" style={{ background: "#D1FAE5", color: "#065F46" }}>
+                  Rates locked
+                </span>
+                <p style={{ color: "var(--text-muted)", marginTop: 8, fontSize: 13 }}>
+                  Locked {formatDateTime(estimateLock.lockedAt)}. Editing rates in the library will not change this quote.
+                </p>
+              </div>
+            ) : (
+              <div>
+                <span className="s7-badge" style={{ background: "#FEAA6D", color: "#3E1C00" }}>
+                  Using live rates
+                </span>
+                <p style={{ color: "var(--text-muted)", marginTop: 8, fontSize: 13 }}>
+                  This estimate reads the current rate library. Lock when submitting to freeze.
+                </p>
+              </div>
+            )
+          ) : (
+            <p style={{ color: "var(--text-muted)" }}>No estimate created yet.</p>
+          )}
         </section>
 
         <section className="s7-card tender-detail__rail-card">

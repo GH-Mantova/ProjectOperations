@@ -45,6 +45,22 @@ export class UpsertCuttingRateDto {
   @IsOptional() @Type(() => Number) @IsInt() sortOrder?: number;
 }
 
+export class UpsertFuelRateDto {
+  @IsString() item!: string;
+  @IsString() unit!: string;
+  @IsNumberString() rate!: string;
+  @IsOptional() @IsBoolean() isActive?: boolean;
+  @IsOptional() @Type(() => Number) @IsInt() sortOrder?: number;
+}
+
+export class UpsertEnclosureRateDto {
+  @IsString() enclosureType!: string;
+  @IsString() unit!: string;
+  @IsNumberString() rate!: string;
+  @IsOptional() @IsBoolean() isActive?: boolean;
+  @IsOptional() @Type(() => Number) @IsInt() sortOrder?: number;
+}
+
 // Estimate & item DTOs
 export class UpdateEstimateDto {
   @IsOptional() @IsNumberString() markup?: string;
@@ -107,6 +123,24 @@ export class UpsertCuttingLineDto {
   @IsString() unit!: string;
   @IsOptional() @IsString() comment?: string;
   @IsNumberString() rate!: string;
+  @IsOptional() @Type(() => Number) @IsInt() sortOrder?: number;
+}
+
+export class UpsertEquipLineDto {
+  @IsString() description!: string;
+  @IsNumberString() qty!: string;
+  @IsNumberString() duration!: string;
+  @IsOptional() @IsString() period?: string;
+  @IsNumberString() rate!: string;
+  @IsOptional() @Type(() => Number) @IsInt() sortOrder?: number;
+}
+
+export class UpdateEquipLineDto {
+  @IsOptional() @IsString() description?: string;
+  @IsOptional() @IsNumberString() qty?: string;
+  @IsOptional() @IsNumberString() duration?: string;
+  @IsOptional() @IsString() period?: string;
+  @IsOptional() @IsNumberString() rate?: string;
   @IsOptional() @Type(() => Number) @IsInt() sortOrder?: number;
 }
 

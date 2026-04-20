@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
-import { IsString } from "class-validator";
+import { IsInt, IsOptional, IsString, Max, Min } from "class-validator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
@@ -19,6 +19,14 @@ import {
 class UpdateTenderStatusDto {
   @IsString()
   status!: string;
+}
+
+class UpdateTenderProbabilityDto {
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  probability?: number | null;
 }
 import { TenderingService } from "./tendering.service";
 
@@ -118,6 +126,14 @@ export class TenderingController {
     return this.service.update(id, dto, actor.sub);
   }
 
+  @Post(":id/duplicate")
+  @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Duplicate a tender (copies fields and clients, resets lifecycle dates and outcomes)" })
+  @ApiResponse({ status: 201, description: "Newly created tender copy." })
+  duplicate(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
+    return this.service.duplicate(id, actor.sub);
+  }
+
   @Patch(":id/status")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Update only the stage/status of a tender (used by the Kanban drag-drop flow)" })
@@ -129,5 +145,16 @@ export class TenderingController {
     @CurrentUser() actor: { sub: string }
   ) {
     return this.service.updateStatus(id, dto.status, actor.sub);
+  }
+
+  @Patch(":id/probability")
+  @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Update only the probability of a tender (preserves all related records)" })
+  updateProbability(
+    @Param("id") id: string,
+    @Body() dto: UpdateTenderProbabilityDto,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.updateProbability(id, dto.probability ?? null, actor.sub);
   }
 }

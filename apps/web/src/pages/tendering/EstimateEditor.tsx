@@ -5,6 +5,7 @@ import { useAuth } from "../../auth/AuthContext";
 type Decimal = string;
 
 type LabourLine = { id: string; role: string; qty: Decimal; days: Decimal; shift: string; rate: Decimal; sortOrder: number };
+type EquipLine = { id: string; description: string; qty: Decimal; duration: Decimal; period: string; rate: Decimal; sortOrder: number };
 type PlantLine = { id: string; plantItem: string; qty: Decimal; days: Decimal; comment: string | null; rate: Decimal; sortOrder: number };
 type WasteLine = {
   id: string;
@@ -31,6 +32,7 @@ type EstimateItem = {
   provisionalAmount: Decimal | null;
   sortOrder: number;
   labourLines: LabourLine[];
+  equipLines: EquipLine[];
   plantLines: PlantLine[];
   wasteLines: WasteLine[];
   cuttingLines: CuttingLine[];
@@ -47,25 +49,28 @@ type Estimate = {
   items: EstimateItem[];
 };
 
+type SummaryItem = {
+  itemId: string;
+  code: string;
+  itemNumber: number;
+  title: string;
+  isProvisional: boolean;
+  labour: number;
+  equip: number;
+  plant: number;
+  waste: number;
+  cutting: number;
+  subtotal: number;
+  markup: number;
+  price: number;
+};
+
 type Summary = {
   estimateId: string | null;
   markup: number;
   locked: boolean;
-  items: Array<{
-    itemId: string;
-    code: string;
-    itemNumber: number;
-    title: string;
-    isProvisional: boolean;
-    labour: number;
-    plant: number;
-    waste: number;
-    cutting: number;
-    subtotal: number;
-    markup: number;
-    price: number;
-  }>;
-  totals: { labour: number; plant: number; waste: number; cutting: number; subtotal: number; price: number };
+  items: SummaryItem[];
+  totals: { labour: number; equip: number; plant: number; waste: number; cutting: number; subtotal: number; price: number };
   markupAmount: number;
 };
 
@@ -74,24 +79,22 @@ type PlantRate = { id: string; item: string; unit: string; rate: Decimal; fuelRa
 type WasteRate = { id: string; wasteType: string; facility: string; tonRate: Decimal; loadRate: Decimal; isActive: boolean };
 type CuttingRate = { id: string; cuttingType: string; unit: string; rate: Decimal; isActive: boolean };
 
-const CODE_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: "SO", label: "SO — Site Overheads" },
-  { value: "Str", label: "Str — Structural Demo" },
-  { value: "Asb", label: "Asb — Asbestos" },
-  { value: "Civ", label: "Civ — Civil Works" },
-  { value: "Prv", label: "Prv — Provisional" }
+type CategoryKey = "SO" | "Str" | "Asb" | "Civ" | "Prv";
+
+type CategoryMeta = { key: CategoryKey; short: string; long: string; quickAddLabel: string; isProvisional?: boolean };
+
+const CATEGORIES: CategoryMeta[] = [
+  { key: "SO", short: "SO", long: "Site Overheads", quickAddLabel: "+ SO" },
+  { key: "Str", short: "Str", long: "Structural Demo", quickAddLabel: "+ Str" },
+  { key: "Asb", short: "Asb", long: "Asbestos", quickAddLabel: "+ Asb" },
+  { key: "Civ", short: "Civ", long: "Civil Works", quickAddLabel: "+ Civ" },
+  { key: "Prv", short: "Prv", long: "Provisional", quickAddLabel: "+ Provisional Sum", isProvisional: true }
 ];
 
+const PERIOD_OPTIONS = ["Day", "Week", "Month", "Lump-sum", "Ea"];
 const SHIFT_OPTIONS = ["Day", "Night", "Weekend"];
-const LINE_TAB_OPTIONS: Array<{ key: LineTab; label: string }> = [
-  { key: "labour", label: "Labour" },
-  { key: "plant", label: "Plant" },
-  { key: "waste", label: "Waste" },
-  { key: "cutting", label: "Cutting" },
-  { key: "assumptions", label: "Assumptions" }
-];
 
-type LineTab = "labour" | "plant" | "waste" | "cutting" | "assumptions";
+type SectionKey = "labour" | "equip" | "plant" | "waste" | "cutting" | "assumptions";
 
 function formatCurrency(n: number): string {
   return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 2 }).format(n);
@@ -99,6 +102,16 @@ function formatCurrency(n: number): string {
 
 function num(value: Decimal | null | undefined): string {
   return value ?? "0";
+}
+
+function useToast() {
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 2200);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+  return { toast, show: setToast };
 }
 
 export function EstimateEditor({ tenderId, canManage, canAdmin }: { tenderId: string; canManage: boolean; canAdmin: boolean }) {
@@ -109,13 +122,21 @@ export function EstimateEditor({ tenderId, canManage, canAdmin }: { tenderId: st
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-  const [tab, setTab] = useState<LineTab>("labour");
+  const [collapsedSections, setCollapsedSections] = useState<Record<SectionKey, boolean>>({
+    labour: false,
+    equip: false,
+    plant: false,
+    waste: false,
+    cutting: false,
+    assumptions: false
+  });
   const [rates, setRates] = useState<{
     labour: LabourRate[];
     plant: PlantRate[];
     waste: WasteRate[];
     cutting: CuttingRate[];
   }>({ labour: [], plant: [], waste: [], cutting: [] });
+  const { toast, show } = useToast();
 
   const reloadSummary = useCallback(async () => {
     const response = await authFetch(`/tenders/${tenderId}/estimate/summary`);
@@ -166,6 +187,7 @@ export function EstimateEditor({ tenderId, canManage, canAdmin }: { tenderId: st
   const locked = estimate?.lockedAt != null;
   const disabled = locked || !canManage;
   const selectedItem = estimate?.items.find((item) => item.id === selectedItemId) ?? null;
+  const selectedSummary = summary?.items.find((s) => s.itemId === selectedItemId) ?? null;
 
   const mutate = useCallback(
     async (path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown) => {
@@ -218,6 +240,15 @@ export function EstimateEditor({ tenderId, canManage, canAdmin }: { tenderId: st
   const updateEstimateField = (patch: Partial<{ markup: string; notes: string }>) =>
     mutate(`/tenders/${tenderId}/estimate`, "PATCH", patch);
 
+  const addQuickItem = async (category: CategoryMeta) => {
+    await mutate(`/tenders/${tenderId}/estimate/items`, "POST", {
+      code: category.key,
+      title: category.isProvisional ? "Provisional sum" : `${category.long} item`,
+      isProvisional: category.isProvisional ?? false,
+      provisionalAmount: category.isProvisional ? "0" : undefined
+    });
+  };
+
   if (loading) {
     return (
       <div className="s7-card">
@@ -232,7 +263,7 @@ export function EstimateEditor({ tenderId, canManage, canAdmin }: { tenderId: st
       <section className="s7-card">
         <EmptyState
           heading="No estimate yet"
-          subtext="Start a cost build for this tender. You'll be able to add scope items, labour, plant, waste, cutting and assumptions."
+          subtext="Start a cost build for this tender. You'll be able to add scope items, labour, equip, plant, disposal, cutting and assumptions."
           action={
             canManage ? (
               <button type="button" className="s7-btn s7-btn--primary" onClick={createEstimate} disabled={saving}>
@@ -245,8 +276,41 @@ export function EstimateEditor({ tenderId, canManage, canAdmin }: { tenderId: st
     );
   }
 
+  // Group items by category
+  const groupedItems = CATEGORIES.map((category) => {
+    const items = estimate.items.filter((item) => item.code === category.key);
+    const total = items.reduce((sum, item) => {
+      const s = summary?.items.find((x) => x.itemId === item.id);
+      return sum + (s?.price ?? 0);
+    }, 0);
+    return { category, items, total };
+  }).filter((group) => group.items.length > 0 || CATEGORIES.find((c) => c.key === group.category.key));
+
+  const toggleSection = (key: SectionKey) => {
+    setCollapsedSections((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
   return (
     <div className="estimate-editor">
+      {toast ? (
+        <div
+          role="status"
+          className="s7-card"
+          style={{
+            position: "fixed",
+            bottom: 24,
+            right: 24,
+            zIndex: 100,
+            background: "var(--brand-primary, #005B61)",
+            color: "white",
+            padding: "10px 16px",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.2)"
+          }}
+        >
+          {toast}
+        </div>
+      ) : null}
+
       {error ? (
         <div className="s7-card" role="alert" style={{ borderColor: "var(--status-danger)", color: "var(--status-danger)" }}>
           {error}
@@ -268,13 +332,19 @@ export function EstimateEditor({ tenderId, canManage, canAdmin }: { tenderId: st
             ) : (
               <span className="s7-badge s7-badge--neutral">Draft</span>
             )}
+            <button type="button" className="s7-btn s7-btn--secondary s7-btn--sm" onClick={() => show("Excel export — coming soon")}>
+              Export .xlsx
+            </button>
+            <button type="button" className="s7-btn s7-btn--secondary s7-btn--sm" onClick={() => show("PDF preview — coming soon")}>
+              Preview PDF
+            </button>
             {!locked && canManage ? (
-              <button type="button" className="s7-btn s7-btn--secondary" onClick={lock} disabled={saving}>
-                Lock
+              <button type="button" className="s7-btn s7-btn--primary s7-btn--sm" onClick={lock} disabled={saving}>
+                Submit & lock rates
               </button>
             ) : null}
             {locked && canAdmin ? (
-              <button type="button" className="s7-btn s7-btn--secondary" onClick={unlock} disabled={saving}>
+              <button type="button" className="s7-btn s7-btn--secondary s7-btn--sm" onClick={unlock} disabled={saving}>
                 Unlock
               </button>
             ) : null}
@@ -315,34 +385,62 @@ export function EstimateEditor({ tenderId, canManage, canAdmin }: { tenderId: st
           <div className="estimate-editor__items-head">
             <h3 className="s7-type-section-heading" style={{ margin: 0 }}>Scope items</h3>
           </div>
-          {canManage && !locked ? <AddItemForm tenderId={tenderId} onAdd={mutate} saving={saving} /> : null}
           {estimate.items.length === 0 ? (
-            <p style={{ color: "var(--text-muted)", marginTop: 12 }}>No scope items yet.</p>
+            <p style={{ color: "var(--text-muted)", marginTop: 8 }}>No scope items yet. Use a quick-add button below.</p>
           ) : (
-            <ul className="estimate-editor__item-list">
-              {estimate.items.map((item) => {
-                const rollup = summary?.items.find((s) => s.itemId === item.id);
-                const active = item.id === selectedItemId;
-                return (
-                  <li key={item.id}>
-                    <button
-                      type="button"
-                      className={active ? "estimate-editor__item estimate-editor__item--active" : "estimate-editor__item"}
-                      onClick={() => setSelectedItemId(item.id)}
-                    >
-                      <span className="estimate-editor__item-code">
-                        {item.code}-{item.itemNumber}
-                      </span>
-                      <span className="estimate-editor__item-title">{item.title}</span>
-                      <span className="estimate-editor__item-price">
-                        {rollup ? formatCurrency(rollup.price) : "—"}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
+            <div className="estimate-editor__groups">
+              {groupedItems.map((group) => (
+                <div key={group.category.key} className="estimate-editor__group">
+                  <div className="estimate-editor__group-head">
+                    <span className="estimate-editor__group-label">
+                      {group.category.short} · {group.category.long.toUpperCase()}
+                    </span>
+                    <span className="estimate-editor__group-total">{formatCurrency(group.total)}</span>
+                  </div>
+                  {group.items.length > 0 ? (
+                    <ul className="estimate-editor__item-list">
+                      {group.items.map((item) => {
+                        const rollup = summary?.items.find((s) => s.itemId === item.id);
+                        const active = item.id === selectedItemId;
+                        return (
+                          <li key={item.id}>
+                            <button
+                              type="button"
+                              className={active ? "estimate-editor__item estimate-editor__item--active" : "estimate-editor__item"}
+                              onClick={() => setSelectedItemId(item.id)}
+                            >
+                              <span className="estimate-editor__item-code">
+                                {item.code}-{item.itemNumber}
+                              </span>
+                              <span className="estimate-editor__item-title estimate-editor__item-title--wrap">{item.title}</span>
+                              <span className="estimate-editor__item-price">
+                                {rollup ? formatCurrency(rollup.price) : "—"}
+                              </span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : null}
+                </div>
+              ))}
+            </div>
           )}
+          {canManage && !locked ? (
+            <div className="estimate-editor__quick-add">
+              {CATEGORIES.map((category) => (
+                <button
+                  key={category.key}
+                  type="button"
+                  className="s7-btn s7-btn--secondary s7-btn--sm"
+                  onClick={() => void addQuickItem(category)}
+                  disabled={saving}
+                >
+                  {category.quickAddLabel}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </aside>
 
         <section className="estimate-editor__detail s7-card">
@@ -351,14 +449,14 @@ export function EstimateEditor({ tenderId, canManage, canAdmin }: { tenderId: st
               key={selectedItem.id}
               tenderId={tenderId}
               item={selectedItem}
-              summary={summary?.items.find((s) => s.itemId === selectedItem.id) ?? null}
+              summary={selectedSummary}
               rates={rates}
               disabled={disabled}
               canManage={canManage}
               saving={saving}
               mutate={mutate}
-              tab={tab}
-              setTab={setTab}
+              collapsedSections={collapsedSections}
+              toggleSection={toggleSection}
             />
           ) : (
             <EmptyState heading="Select a scope item" subtext="Pick an item from the list to edit its costs." />
@@ -371,6 +469,10 @@ export function EstimateEditor({ tenderId, canManage, canAdmin }: { tenderId: st
           <div className="estimate-editor__total-row">
             <span>Labour</span>
             <strong>{formatCurrency(summary.totals.labour)}</strong>
+          </div>
+          <div className="estimate-editor__total-row">
+            <span>Equip</span>
+            <strong>{formatCurrency(summary.totals.equip)}</strong>
           </div>
           <div className="estimate-editor__total-row">
             <span>Plant</span>
@@ -402,73 +504,7 @@ export function EstimateEditor({ tenderId, canManage, canAdmin }: { tenderId: st
   );
 }
 
-function AddItemForm({
-  tenderId,
-  onAdd,
-  saving
-}: {
-  tenderId: string;
-  onAdd: (path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown) => Promise<void>;
-  saving: boolean;
-}) {
-  const [code, setCode] = useState("SO");
-  const [title, setTitle] = useState("");
-  const [isProvisional, setIsProvisional] = useState(false);
-  const [provisionalAmount, setProvisionalAmount] = useState("");
-
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!title.trim()) return;
-    await onAdd(`/tenders/${tenderId}/estimate/items`, "POST", {
-      code,
-      title: title.trim(),
-      isProvisional,
-      provisionalAmount: isProvisional && provisionalAmount ? provisionalAmount : undefined
-    });
-    setTitle("");
-    setProvisionalAmount("");
-    setIsProvisional(false);
-  };
-
-  return (
-    <form className="estimate-editor__add-item" onSubmit={submit}>
-      <div className="estimate-editor__add-item-row">
-        <select className="s7-input" value={code} onChange={(e) => setCode(e.target.value)}>
-          {CODE_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-        <input
-          className="s7-input"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Item title…"
-        />
-      </div>
-      <div className="estimate-editor__add-item-row">
-        <label className="estimate-editor__checkbox">
-          <input type="checkbox" checked={isProvisional} onChange={(e) => setIsProvisional(e.target.checked)} />
-          Provisional
-        </label>
-        {isProvisional ? (
-          <input
-            className="s7-input"
-            type="number"
-            step="0.01"
-            value={provisionalAmount}
-            onChange={(e) => setProvisionalAmount(e.target.value)}
-            placeholder="Provisional amount"
-          />
-        ) : null}
-        <button type="submit" className="s7-btn s7-btn--primary s7-btn--sm" disabled={saving || !title.trim()}>
-          Add
-        </button>
-      </div>
-    </form>
-  );
-}
+type Mutator = (path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown) => Promise<void>;
 
 function ItemDetail({
   tenderId,
@@ -479,19 +515,19 @@ function ItemDetail({
   canManage,
   saving,
   mutate,
-  tab,
-  setTab
+  collapsedSections,
+  toggleSection
 }: {
   tenderId: string;
   item: EstimateItem;
-  summary: Summary["items"][number] | null;
+  summary: SummaryItem | null;
   rates: { labour: LabourRate[]; plant: PlantRate[]; waste: WasteRate[]; cutting: CuttingRate[] };
   disabled: boolean;
   canManage: boolean;
   saving: boolean;
-  mutate: (path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown) => Promise<void>;
-  tab: LineTab;
-  setTab: (t: LineTab) => void;
+  mutate: Mutator;
+  collapsedSections: Record<SectionKey, boolean>;
+  toggleSection: (key: SectionKey) => void;
 }) {
   const base = `/tenders/${tenderId}/estimate/items/${item.id}`;
   const deleteItem = async () => {
@@ -502,7 +538,7 @@ function ItemDetail({
   return (
     <div className="estimate-editor__item-detail">
       <div className="estimate-editor__detail-head">
-        <div>
+        <div style={{ flex: 1, minWidth: 280 }}>
           <span className="s7-type-label">{item.code}-{item.itemNumber}</span>
           <input
             className="s7-input estimate-editor__detail-title"
@@ -514,19 +550,6 @@ function ItemDetail({
           />
         </div>
         <div className="estimate-editor__detail-actions">
-          <label className="estimate-editor__field">
-            <span>Markup %</span>
-            <input
-              type="number"
-              step="0.01"
-              className="s7-input"
-              defaultValue={item.markup}
-              disabled={disabled || item.isProvisional}
-              onBlur={(e) => {
-                if (e.target.value !== item.markup) void mutate(base, "PATCH", { markup: e.target.value });
-              }}
-            />
-          </label>
           <label className="estimate-editor__checkbox">
             <input
               type="checkbox"
@@ -561,83 +584,185 @@ function ItemDetail({
         </div>
       </div>
 
-      <div className="estimate-editor__detail-summary">
-        <span>Labour: <strong>{summary ? formatCurrency(summary.labour) : "—"}</strong></span>
-        <span>Plant: <strong>{summary ? formatCurrency(summary.plant) : "—"}</strong></span>
-        <span>Waste: <strong>{summary ? formatCurrency(summary.waste) : "—"}</strong></span>
-        <span>Cutting: <strong>{summary ? formatCurrency(summary.cutting) : "—"}</strong></span>
-        <span>Subtotal: <strong>{summary ? formatCurrency(summary.subtotal) : "—"}</strong></span>
-        <span className="estimate-editor__detail-price">Price: <strong>{summary ? formatCurrency(summary.price) : "—"}</strong></span>
-      </div>
+      <ItemSummaryPanel item={item} summary={summary} disabled={disabled} mutate={mutate} base={base} />
 
-      <nav className="estimate-editor__tabs" role="tablist">
-        {LINE_TAB_OPTIONS.map((opt) => (
-          <button
-            key={opt.key}
-            type="button"
-            role="tab"
-            aria-selected={tab === opt.key}
-            className={tab === opt.key ? "estimate-editor__tab estimate-editor__tab--active" : "estimate-editor__tab"}
-            onClick={() => setTab(opt.key)}
-          >
-            {opt.label}
-          </button>
-        ))}
-      </nav>
+      <div className="estimate-editor__sections">
+        <Section
+          title="Labour"
+          sectionKey="labour"
+          total={summary?.labour ?? 0}
+          collapsed={collapsedSections.labour}
+          onToggle={() => toggleSection("labour")}
+        >
+          <LabourSection item={item} rates={rates.labour} disabled={disabled} mutate={mutate} base={base} />
+        </Section>
 
-      <div className="estimate-editor__tab-content">
-        {tab === "labour" && <LabourTab item={item} rates={rates.labour} disabled={disabled} mutate={mutate} base={base} />}
-        {tab === "plant" && <PlantTab item={item} rates={rates.plant} disabled={disabled} mutate={mutate} base={base} />}
-        {tab === "waste" && <WasteTab item={item} rates={rates.waste} disabled={disabled} mutate={mutate} base={base} />}
-        {tab === "cutting" && <CuttingTab item={item} rates={rates.cutting} disabled={disabled} mutate={mutate} base={base} />}
-        {tab === "assumptions" && <AssumptionsTab item={item} disabled={disabled} mutate={mutate} base={base} />}
+        <Section
+          title="Equipment Hire & Subcontractors"
+          sectionKey="equip"
+          total={summary?.equip ?? 0}
+          collapsed={collapsedSections.equip}
+          onToggle={() => toggleSection("equip")}
+        >
+          <EquipSection item={item} disabled={disabled} mutate={mutate} base={base} />
+        </Section>
+
+        <Section
+          title="Plant"
+          sectionKey="plant"
+          total={summary?.plant ?? 0}
+          collapsed={collapsedSections.plant}
+          onToggle={() => toggleSection("plant")}
+        >
+          <PlantSection item={item} rates={rates.plant} disabled={disabled} mutate={mutate} base={base} />
+        </Section>
+
+        <Section
+          title="Material Disposal"
+          sectionKey="waste"
+          total={summary?.waste ?? 0}
+          collapsed={collapsedSections.waste}
+          onToggle={() => toggleSection("waste")}
+        >
+          <WasteSection item={item} rates={rates.waste} disabled={disabled} mutate={mutate} base={base} />
+        </Section>
+
+        <Section
+          title="Concrete Cutting"
+          sectionKey="cutting"
+          total={summary?.cutting ?? 0}
+          collapsed={collapsedSections.cutting}
+          onToggle={() => toggleSection("cutting")}
+        >
+          <CuttingSection item={item} rates={rates.cutting} disabled={disabled} mutate={mutate} base={base} />
+        </Section>
+
+        <div className="estimate-editor__section estimate-editor__section--static">
+          <div className="estimate-editor__section-head">
+            <span className="estimate-editor__section-title">Assumptions & exclusions</span>
+          </div>
+          <AssumptionsSection item={item} disabled={disabled} mutate={mutate} base={base} />
+        </div>
       </div>
     </div>
   );
 }
 
-type Mutator = (path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown) => Promise<void>;
+function Section({
+  title,
+  sectionKey,
+  total,
+  collapsed,
+  onToggle,
+  children
+}: {
+  title: string;
+  sectionKey: SectionKey;
+  total: number;
+  collapsed: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="estimate-editor__section" data-section={sectionKey}>
+      <button type="button" className="estimate-editor__section-head" onClick={onToggle} aria-expanded={!collapsed}>
+        <span className="estimate-editor__section-chevron" aria-hidden>{collapsed ? "▸" : "▾"}</span>
+        <span className="estimate-editor__section-title">{title}</span>
+        <span className="estimate-editor__section-total">{formatCurrency(total)}</span>
+      </button>
+      {!collapsed ? <div className="estimate-editor__section-body">{children}</div> : null}
+    </div>
+  );
+}
 
-function LabourTab({ item, rates, disabled, mutate, base }: { item: EstimateItem; rates: LabourRate[]; disabled: boolean; mutate: Mutator; base: string }) {
-  const [role, setRole] = useState(rates[0]?.role ?? "");
-  const [qty, setQty] = useState("1");
-  const [days, setDays] = useState("1");
-  const [shift, setShift] = useState("Day");
+function ItemSummaryPanel({
+  item,
+  summary,
+  disabled,
+  mutate,
+  base
+}: {
+  item: EstimateItem;
+  summary: SummaryItem | null;
+  disabled: boolean;
+  mutate: Mutator;
+  base: string;
+}) {
+  const [markup, setMarkup] = useState<string>(item.markup);
 
-  const rate = useMemo(() => {
-    const r = rates.find((x) => x.role === role);
-    if (!r) return "0";
-    if (shift === "Night") return r.nightRate;
-    if (shift === "Weekend") return r.weekendRate;
-    return r.dayRate;
-  }, [rates, role, shift]);
+  useEffect(() => {
+    setMarkup(item.markup);
+  }, [item.markup]);
 
-  const add = async () => {
-    if (!role) return;
-    await mutate(`${base}/labour`, "POST", { role, qty, days, shift, rate });
-    setQty("1");
-    setDays("1");
+  const commitMarkup = (value: string) => {
+    if (value !== item.markup) void mutate(base, "PATCH", { markup: value });
   };
 
   return (
-    <div className="estimate-editor__lines">
-      {!disabled ? (
-        <div className="estimate-editor__line-add">
-          <select className="s7-input" value={role} onChange={(e) => setRole(e.target.value)}>
-            <option value="">Select role…</option>
-            {rates.map((r) => (
-              <option key={r.id} value={r.role}>{r.role}</option>
-            ))}
-          </select>
-          <input type="number" step="0.01" className="s7-input" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="Qty" />
-          <input type="number" step="0.01" className="s7-input" value={days} onChange={(e) => setDays(e.target.value)} placeholder="Days" />
-          <select className="s7-input" value={shift} onChange={(e) => setShift(e.target.value)}>
-            {SHIFT_OPTIONS.map((s) => (<option key={s} value={s}>{s}</option>))}
-          </select>
-          <span className="estimate-editor__rate-preview">{formatCurrency(Number(rate))}</span>
-          <button type="button" className="s7-btn s7-btn--primary s7-btn--sm" onClick={add} disabled={!role}>Add</button>
+    <div className="estimate-editor__item-summary">
+      <div className="estimate-editor__item-summary-grid">
+        <div className="estimate-editor__item-summary-row">
+          <span>Labour</span>
+          <strong>{summary ? formatCurrency(summary.labour) : "—"}</strong>
         </div>
-      ) : null}
+        <div className="estimate-editor__item-summary-row">
+          <span>Equip & sub</span>
+          <strong>{summary ? formatCurrency(summary.equip) : "—"}</strong>
+        </div>
+        <div className="estimate-editor__item-summary-row">
+          <span>Plant</span>
+          <strong>{summary ? formatCurrency(summary.plant) : "—"}</strong>
+        </div>
+        <div className="estimate-editor__item-summary-row">
+          <span>Disposal</span>
+          <strong>{summary ? formatCurrency(summary.waste) : "—"}</strong>
+        </div>
+        <div className="estimate-editor__item-summary-row">
+          <span>Cutting</span>
+          <strong>{summary ? formatCurrency(summary.cutting) : "—"}</strong>
+        </div>
+        <div className="estimate-editor__item-summary-row estimate-editor__item-summary-row--subtotal">
+          <span>Subtotal</span>
+          <strong>{summary ? formatCurrency(summary.subtotal) : "—"}</strong>
+        </div>
+      </div>
+      <div className="estimate-editor__markup-control">
+        <label>
+          <span>Markup {Number(markup).toFixed(2)}%</span>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            value={Number(markup)}
+            disabled={disabled || item.isProvisional}
+            onChange={(e) => setMarkup(e.target.value)}
+            onMouseUp={(e) => commitMarkup((e.target as HTMLInputElement).value)}
+            onTouchEnd={(e) => commitMarkup((e.target as HTMLInputElement).value)}
+          />
+        </label>
+        <input
+          type="number"
+          step="0.01"
+          className="s7-input s7-input--sm"
+          value={markup}
+          disabled={disabled || item.isProvisional}
+          onChange={(e) => setMarkup(e.target.value)}
+          onBlur={(e) => commitMarkup(e.target.value)}
+          style={{ width: 80 }}
+        />
+      </div>
+      <div className="estimate-editor__item-summary-price">
+        <span>Item price</span>
+        <strong>{summary ? formatCurrency(summary.price) : "—"}</strong>
+      </div>
+    </div>
+  );
+}
+
+function LabourSection({ item, rates, disabled, mutate, base }: { item: EstimateItem; rates: LabourRate[]; disabled: boolean; mutate: Mutator; base: string }) {
+  return (
+    <div className="estimate-editor__lines">
       {item.labourLines.length === 0 ? (
         <p style={{ color: "var(--text-muted)" }}>No labour lines.</p>
       ) : (
@@ -681,40 +806,137 @@ function LabourTab({ item, rates, disabled, mutate, base }: { item: EstimateItem
           </tbody>
         </table>
       )}
+      {!disabled ? <LabourAddRow rates={rates} mutate={mutate} base={base} /> : null}
     </div>
   );
 }
 
-function PlantTab({ item, rates, disabled, mutate, base }: { item: EstimateItem; rates: PlantRate[]; disabled: boolean; mutate: Mutator; base: string }) {
-  const [plantItem, setPlantItem] = useState(rates[0]?.item ?? "");
+function LabourAddRow({ rates, mutate, base }: { rates: LabourRate[]; mutate: Mutator; base: string }) {
+  const [role, setRole] = useState(rates[0]?.role ?? "");
   const [qty, setQty] = useState("1");
   const [days, setDays] = useState("1");
-  const [comment, setComment] = useState("");
-  const rate = rates.find((r) => r.item === plantItem)?.rate ?? "0";
+  const [shift, setShift] = useState("Day");
+
+  const rate = useMemo(() => {
+    const r = rates.find((x) => x.role === role);
+    if (!r) return "0";
+    if (shift === "Night") return r.nightRate;
+    if (shift === "Weekend") return r.weekendRate;
+    return r.dayRate;
+  }, [rates, role, shift]);
 
   const add = async () => {
-    if (!plantItem) return;
-    await mutate(`${base}/plant`, "POST", { plantItem, qty, days, comment: comment || undefined, rate });
+    if (!role) return;
+    await mutate(`${base}/labour`, "POST", { role, qty, days, shift, rate });
     setQty("1");
     setDays("1");
-    setComment("");
   };
 
   return (
+    <div className="estimate-editor__line-add">
+      <select className="s7-input" value={role} onChange={(e) => setRole(e.target.value)}>
+        <option value="">Select role…</option>
+        {rates.map((r) => (<option key={r.id} value={r.role}>{r.role}</option>))}
+      </select>
+      <input type="number" step="0.01" className="s7-input" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="Qty" />
+      <input type="number" step="0.01" className="s7-input" value={days} onChange={(e) => setDays(e.target.value)} placeholder="Days" />
+      <select className="s7-input" value={shift} onChange={(e) => setShift(e.target.value)}>
+        {SHIFT_OPTIONS.map((s) => (<option key={s} value={s}>{s}</option>))}
+      </select>
+      <span className="estimate-editor__rate-preview">{formatCurrency(Number(rate))}</span>
+      <button type="button" className="s7-btn s7-btn--primary s7-btn--sm" onClick={add} disabled={!role}>+ Add line</button>
+    </div>
+  );
+}
+
+function EquipSection({ item, disabled, mutate, base }: { item: EstimateItem; disabled: boolean; mutate: Mutator; base: string }) {
+  return (
     <div className="estimate-editor__lines">
-      {!disabled ? (
-        <div className="estimate-editor__line-add">
-          <select className="s7-input" value={plantItem} onChange={(e) => setPlantItem(e.target.value)}>
-            <option value="">Select plant…</option>
-            {rates.map((r) => (<option key={r.id} value={r.item}>{r.item}</option>))}
-          </select>
-          <input type="number" step="0.01" className="s7-input" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="Qty" />
-          <input type="number" step="0.01" className="s7-input" value={days} onChange={(e) => setDays(e.target.value)} placeholder="Days" />
-          <input className="s7-input" value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comment" />
-          <span className="estimate-editor__rate-preview">{formatCurrency(Number(rate))}</span>
-          <button type="button" className="s7-btn s7-btn--primary s7-btn--sm" onClick={add} disabled={!plantItem}>Add</button>
-        </div>
-      ) : null}
+      {item.equipLines.length === 0 ? (
+        <p style={{ color: "var(--text-muted)" }}>No equipment/subcontractor lines.</p>
+      ) : (
+        <table className="estimate-editor__table">
+          <thead>
+            <tr><th>#</th><th>Description</th><th>Qty</th><th>Duration</th><th>Period</th><th>Rate ($)</th><th>Budget ($)</th><th /></tr>
+          </thead>
+          <tbody>
+            {item.equipLines.map((line, index) => {
+              const total = Number(line.qty) * Number(line.duration) * Number(line.rate);
+              return (
+                <tr key={line.id}>
+                  <td style={{ color: "var(--text-muted)" }}>{index + 1}</td>
+                  <td>
+                    <input className="s7-input s7-input--sm" defaultValue={line.description} disabled={disabled}
+                      onBlur={(e) => { if (e.target.value !== line.description) void mutate(`${base}/equip/${line.id}`, "PATCH", { description: e.target.value }); }} />
+                  </td>
+                  <td>
+                    <input type="number" step="0.01" className="s7-input s7-input--sm" defaultValue={line.qty} disabled={disabled}
+                      onBlur={(e) => { if (e.target.value !== line.qty) void mutate(`${base}/equip/${line.id}`, "PATCH", { qty: e.target.value }); }} />
+                  </td>
+                  <td>
+                    <input type="number" step="0.01" className="s7-input s7-input--sm" defaultValue={line.duration} disabled={disabled}
+                      onBlur={(e) => { if (e.target.value !== line.duration) void mutate(`${base}/equip/${line.id}`, "PATCH", { duration: e.target.value }); }} />
+                  </td>
+                  <td>
+                    <select className="s7-input s7-input--sm" defaultValue={line.period} disabled={disabled}
+                      onChange={(e) => void mutate(`${base}/equip/${line.id}`, "PATCH", { period: e.target.value })}>
+                      {PERIOD_OPTIONS.map((p) => (<option key={p} value={p}>{p}</option>))}
+                    </select>
+                  </td>
+                  <td>
+                    <input type="number" step="0.01" className="s7-input s7-input--sm" defaultValue={line.rate} disabled={disabled}
+                      onBlur={(e) => { if (e.target.value !== line.rate) void mutate(`${base}/equip/${line.id}`, "PATCH", { rate: e.target.value }); }} />
+                  </td>
+                  <td><strong>{formatCurrency(total)}</strong></td>
+                  <td>
+                    {!disabled ? (
+                      <button type="button" className="s7-btn s7-btn--danger s7-btn--sm" onClick={() => void mutate(`${base}/equip/${line.id}`, "DELETE")}>Remove</button>
+                    ) : null}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+      {!disabled ? <EquipAddRow mutate={mutate} base={base} /> : null}
+    </div>
+  );
+}
+
+function EquipAddRow({ mutate, base }: { mutate: Mutator; base: string }) {
+  const [description, setDescription] = useState("");
+  const [qty, setQty] = useState("1");
+  const [duration, setDuration] = useState("1");
+  const [period, setPeriod] = useState("Day");
+  const [rate, setRate] = useState("0");
+
+  const add = async () => {
+    if (!description.trim()) return;
+    await mutate(`${base}/equip`, "POST", { description: description.trim(), qty, duration, period, rate });
+    setDescription("");
+    setQty("1");
+    setDuration("1");
+    setRate("0");
+  };
+
+  return (
+    <div className="estimate-editor__line-add">
+      <input className="s7-input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description (e.g. Scaffold hire, Crane subcontractor)" />
+      <input type="number" step="0.01" className="s7-input" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="Qty" />
+      <input type="number" step="0.01" className="s7-input" value={duration} onChange={(e) => setDuration(e.target.value)} placeholder="Duration" />
+      <select className="s7-input" value={period} onChange={(e) => setPeriod(e.target.value)}>
+        {PERIOD_OPTIONS.map((p) => (<option key={p} value={p}>{p}</option>))}
+      </select>
+      <input type="number" step="0.01" className="s7-input" value={rate} onChange={(e) => setRate(e.target.value)} placeholder="Rate" />
+      <button type="button" className="s7-btn s7-btn--primary s7-btn--sm" onClick={add} disabled={!description.trim()}>+ Add line</button>
+    </div>
+  );
+}
+
+function PlantSection({ item, rates, disabled, mutate, base }: { item: EstimateItem; rates: PlantRate[]; disabled: boolean; mutate: Mutator; base: string }) {
+  return (
+    <div className="estimate-editor__lines">
       {item.plantLines.length === 0 ? (
         <p style={{ color: "var(--text-muted)" }}>No plant lines.</p>
       ) : (
@@ -756,52 +978,46 @@ function PlantTab({ item, rates, disabled, mutate, base }: { item: EstimateItem;
           </tbody>
         </table>
       )}
+      {!disabled ? <PlantAddRow rates={rates} mutate={mutate} base={base} /> : null}
     </div>
   );
 }
 
-function WasteTab({ item, rates, disabled, mutate, base }: { item: EstimateItem; rates: WasteRate[]; disabled: boolean; mutate: Mutator; base: string }) {
-  const [selection, setSelection] = useState(rates[0] ? `${rates[0].wasteType}__${rates[0].facility}` : "");
-  const [qtyTonnes, setQtyTonnes] = useState("1");
-  const [loads, setLoads] = useState("0");
-
-  const [wasteType, facility] = selection.split("__");
-  const current = rates.find((r) => r.wasteType === wasteType && r.facility === facility);
-  const tonRate = current?.tonRate ?? "0";
-  const loadRate = current?.loadRate ?? "0";
+function PlantAddRow({ rates, mutate, base }: { rates: PlantRate[]; mutate: Mutator; base: string }) {
+  const [plantItem, setPlantItem] = useState(rates[0]?.item ?? "");
+  const [qty, setQty] = useState("1");
+  const [days, setDays] = useState("1");
+  const [comment, setComment] = useState("");
+  const rate = rates.find((r) => r.item === plantItem)?.rate ?? "0";
 
   const add = async () => {
-    if (!current) return;
-    await mutate(`${base}/waste`, "POST", {
-      wasteType: current.wasteType,
-      facility: current.facility,
-      qtyTonnes,
-      tonRate: current.tonRate,
-      loads: Number(loads),
-      loadRate: current.loadRate
-    });
-    setQtyTonnes("1");
-    setLoads("0");
+    if (!plantItem) return;
+    await mutate(`${base}/plant`, "POST", { plantItem, qty, days, comment: comment || undefined, rate });
+    setQty("1");
+    setDays("1");
+    setComment("");
   };
 
   return (
+    <div className="estimate-editor__line-add">
+      <select className="s7-input" value={plantItem} onChange={(e) => setPlantItem(e.target.value)}>
+        <option value="">Select plant…</option>
+        {rates.map((r) => (<option key={r.id} value={r.item}>{r.item}</option>))}
+      </select>
+      <input type="number" step="0.01" className="s7-input" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="Qty" />
+      <input type="number" step="0.01" className="s7-input" value={days} onChange={(e) => setDays(e.target.value)} placeholder="Days" />
+      <input className="s7-input" value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comment" />
+      <span className="estimate-editor__rate-preview">{formatCurrency(Number(rate))}</span>
+      <button type="button" className="s7-btn s7-btn--primary s7-btn--sm" onClick={add} disabled={!plantItem}>+ Add line</button>
+    </div>
+  );
+}
+
+function WasteSection({ item, rates, disabled, mutate, base }: { item: EstimateItem; rates: WasteRate[]; disabled: boolean; mutate: Mutator; base: string }) {
+  return (
     <div className="estimate-editor__lines">
-      {!disabled ? (
-        <div className="estimate-editor__line-add">
-          <select className="s7-input" value={selection} onChange={(e) => setSelection(e.target.value)}>
-            <option value="">Select waste…</option>
-            {rates.map((r) => (
-              <option key={r.id} value={`${r.wasteType}__${r.facility}`}>{r.wasteType} @ {r.facility}</option>
-            ))}
-          </select>
-          <input type="number" step="0.01" className="s7-input" value={qtyTonnes} onChange={(e) => setQtyTonnes(e.target.value)} placeholder="Tonnes" />
-          <input type="number" step="1" className="s7-input" value={loads} onChange={(e) => setLoads(e.target.value)} placeholder="Loads" />
-          <span className="estimate-editor__rate-preview">{formatCurrency(Number(tonRate))}/t + {formatCurrency(Number(loadRate))}/load</span>
-          <button type="button" className="s7-btn s7-btn--primary s7-btn--sm" onClick={add} disabled={!current}>Add</button>
-        </div>
-      ) : null}
       {item.wasteLines.length === 0 ? (
-        <p style={{ color: "var(--text-muted)" }}>No waste lines.</p>
+        <p style={{ color: "var(--text-muted)" }}>No disposal lines.</p>
       ) : (
         <table className="estimate-editor__table">
           <thead>
@@ -842,41 +1058,56 @@ function WasteTab({ item, rates, disabled, mutate, base }: { item: EstimateItem;
           </tbody>
         </table>
       )}
+      {!disabled ? <WasteAddRow rates={rates} mutate={mutate} base={base} /> : null}
     </div>
   );
 }
 
-function CuttingTab({ item, rates, disabled, mutate, base }: { item: EstimateItem; rates: CuttingRate[]; disabled: boolean; mutate: Mutator; base: string }) {
-  const [cuttingType, setCuttingType] = useState(rates[0]?.cuttingType ?? "");
-  const [qty, setQty] = useState("1");
-  const [comment, setComment] = useState("");
-  const current = rates.find((r) => r.cuttingType === cuttingType);
-  const unit = current?.unit ?? "";
-  const rate = current?.rate ?? "0";
+function WasteAddRow({ rates, mutate, base }: { rates: WasteRate[]; mutate: Mutator; base: string }) {
+  const [selection, setSelection] = useState(rates[0] ? `${rates[0].wasteType}__${rates[0].facility}` : "");
+  const [qtyTonnes, setQtyTonnes] = useState("1");
+  const [loads, setLoads] = useState("0");
+
+  const [wasteType, facility] = selection.split("__");
+  const current = rates.find((r) => r.wasteType === wasteType && r.facility === facility);
+  const tonRate = current?.tonRate ?? "0";
+  const loadRate = current?.loadRate ?? "0";
 
   const add = async () => {
     if (!current) return;
-    await mutate(`${base}/cutting`, "POST", { cuttingType: current.cuttingType, qty, unit: current.unit, comment: comment || undefined, rate: current.rate });
-    setQty("1");
-    setComment("");
+    await mutate(`${base}/waste`, "POST", {
+      wasteType: current.wasteType,
+      facility: current.facility,
+      qtyTonnes,
+      tonRate: current.tonRate,
+      loads: Number(loads),
+      loadRate: current.loadRate
+    });
+    setQtyTonnes("1");
+    setLoads("0");
   };
 
   return (
+    <div className="estimate-editor__line-add">
+      <select className="s7-input" value={selection} onChange={(e) => setSelection(e.target.value)}>
+        <option value="">Select disposal…</option>
+        {rates.map((r) => (
+          <option key={r.id} value={`${r.wasteType}__${r.facility}`}>{r.wasteType} @ {r.facility}</option>
+        ))}
+      </select>
+      <input type="number" step="0.01" className="s7-input" value={qtyTonnes} onChange={(e) => setQtyTonnes(e.target.value)} placeholder="Tonnes" />
+      <input type="number" step="1" className="s7-input" value={loads} onChange={(e) => setLoads(e.target.value)} placeholder="Loads" />
+      <span className="estimate-editor__rate-preview">{formatCurrency(Number(tonRate))}/t + {formatCurrency(Number(loadRate))}/load</span>
+      <button type="button" className="s7-btn s7-btn--primary s7-btn--sm" onClick={add} disabled={!current}>+ Add line</button>
+    </div>
+  );
+}
+
+function CuttingSection({ item, rates, disabled, mutate, base }: { item: EstimateItem; rates: CuttingRate[]; disabled: boolean; mutate: Mutator; base: string }) {
+  return (
     <div className="estimate-editor__lines">
-      {!disabled ? (
-        <div className="estimate-editor__line-add">
-          <select className="s7-input" value={cuttingType} onChange={(e) => setCuttingType(e.target.value)}>
-            <option value="">Select cutting…</option>
-            {rates.map((r) => (<option key={r.id} value={r.cuttingType}>{r.cuttingType} ({r.unit})</option>))}
-          </select>
-          <input type="number" step="0.01" className="s7-input" value={qty} onChange={(e) => setQty(e.target.value)} placeholder={`Qty (${unit || "unit"})`} />
-          <input className="s7-input" value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comment" />
-          <span className="estimate-editor__rate-preview">{formatCurrency(Number(rate))}/{unit || "unit"}</span>
-          <button type="button" className="s7-btn s7-btn--primary s7-btn--sm" onClick={add} disabled={!current}>Add</button>
-        </div>
-      ) : null}
       {item.cuttingLines.length === 0 ? (
-        <p style={{ color: "var(--text-muted)" }}>No cutting lines.</p>
+        <p style={{ color: "var(--text-muted)" }}>No concrete cutting lines.</p>
       ) : (
         <table className="estimate-editor__table">
           <thead>
@@ -913,11 +1144,41 @@ function CuttingTab({ item, rates, disabled, mutate, base }: { item: EstimateIte
           </tbody>
         </table>
       )}
+      {!disabled ? <CuttingAddRow rates={rates} mutate={mutate} base={base} /> : null}
     </div>
   );
 }
 
-function AssumptionsTab({ item, disabled, mutate, base }: { item: EstimateItem; disabled: boolean; mutate: Mutator; base: string }) {
+function CuttingAddRow({ rates, mutate, base }: { rates: CuttingRate[]; mutate: Mutator; base: string }) {
+  const [cuttingType, setCuttingType] = useState(rates[0]?.cuttingType ?? "");
+  const [qty, setQty] = useState("1");
+  const [comment, setComment] = useState("");
+  const current = rates.find((r) => r.cuttingType === cuttingType);
+  const unit = current?.unit ?? "";
+  const rate = current?.rate ?? "0";
+
+  const add = async () => {
+    if (!current) return;
+    await mutate(`${base}/cutting`, "POST", { cuttingType: current.cuttingType, qty, unit: current.unit, comment: comment || undefined, rate: current.rate });
+    setQty("1");
+    setComment("");
+  };
+
+  return (
+    <div className="estimate-editor__line-add">
+      <select className="s7-input" value={cuttingType} onChange={(e) => setCuttingType(e.target.value)}>
+        <option value="">Select cutting…</option>
+        {rates.map((r) => (<option key={r.id} value={r.cuttingType}>{r.cuttingType} ({r.unit})</option>))}
+      </select>
+      <input type="number" step="0.01" className="s7-input" value={qty} onChange={(e) => setQty(e.target.value)} placeholder={`Qty (${unit || "unit"})`} />
+      <input className="s7-input" value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comment" />
+      <span className="estimate-editor__rate-preview">{formatCurrency(Number(rate))}/{unit || "unit"}</span>
+      <button type="button" className="s7-btn s7-btn--primary s7-btn--sm" onClick={add} disabled={!current}>+ Add line</button>
+    </div>
+  );
+}
+
+function AssumptionsSection({ item, disabled, mutate, base }: { item: EstimateItem; disabled: boolean; mutate: Mutator; base: string }) {
   const [text, setText] = useState("");
   const add = async () => {
     if (!text.trim()) return;
@@ -926,14 +1187,8 @@ function AssumptionsTab({ item, disabled, mutate, base }: { item: EstimateItem; 
   };
   return (
     <div className="estimate-editor__lines">
-      {!disabled ? (
-        <div className="estimate-editor__line-add">
-          <input className="s7-input" value={text} onChange={(e) => setText(e.target.value)} placeholder="Assumption…" />
-          <button type="button" className="s7-btn s7-btn--primary s7-btn--sm" onClick={add} disabled={!text.trim()}>Add</button>
-        </div>
-      ) : null}
       {item.assumptions.length === 0 ? (
-        <p style={{ color: "var(--text-muted)" }}>No assumptions.</p>
+        <p style={{ color: "var(--text-muted)" }}>No assumptions or exclusions.</p>
       ) : (
         <ul className="estimate-editor__assumption-list">
           {item.assumptions.map((a) => (
@@ -952,6 +1207,12 @@ function AssumptionsTab({ item, disabled, mutate, base }: { item: EstimateItem; 
           ))}
         </ul>
       )}
+      {!disabled ? (
+        <div className="estimate-editor__line-add">
+          <input className="s7-input" value={text} onChange={(e) => setText(e.target.value)} placeholder="Add an assumption or exclusion…" />
+          <button type="button" className="s7-btn s7-btn--primary s7-btn--sm" onClick={add} disabled={!text.trim()}>+ Add line</button>
+        </div>
+      ) : null}
     </div>
   );
 }

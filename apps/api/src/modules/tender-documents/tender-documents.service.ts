@@ -130,6 +130,37 @@ export class TenderDocumentsService {
     return document;
   }
 
+  async remove(tenderId: string, documentId: string, actorId?: string) {
+    const document = await this.prisma.tenderDocumentLink.findUnique({
+      where: { id: documentId },
+      include: { fileLink: true }
+    });
+    if (!document || document.tenderId !== tenderId) {
+      throw new NotFoundException("Document not found on this tender.");
+    }
+    await this.prisma.$transaction(async (tx) => {
+      await tx.tenderDocumentLink.delete({ where: { id: documentId } });
+      if (document.fileLinkId) {
+        await tx.documentLink.deleteMany({
+          where: {
+            fileLinkId: document.fileLinkId,
+            linkedEntityType: "Tender",
+            linkedEntityId: tenderId
+          }
+        });
+        await tx.sharePointFileLink.delete({ where: { id: document.fileLinkId } }).catch(() => undefined);
+      }
+    });
+    await this.auditService.write({
+      actorId,
+      action: "tenderdocuments.delete",
+      entityType: "TenderDocumentLink",
+      entityId: documentId,
+      metadata: { tenderId, title: document.title }
+    });
+    return { id: documentId };
+  }
+
   private slugify(value: string) {
     return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
   }

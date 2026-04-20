@@ -14,6 +14,8 @@ import { DashboardsController } from "./dashboards.controller";
 import { DashboardsService } from "./dashboards.service";
 import { UserDashboardsController } from "./user-dashboards.controller";
 import { UserDashboardsService } from "./user-dashboards.service";
+import { PlatformConfigController } from "./platform-config.controller";
+import { PlatformConfigService } from "./platform-config.service";
 
 @Module({
   imports: [AuditModule],
@@ -23,7 +25,8 @@ import { UserDashboardsService } from "./user-dashboards.service";
     NotificationsController,
     SearchController,
     DashboardsController,
-    UserDashboardsController
+    UserDashboardsController,
+    PlatformConfigController
   ],
   providers: [
     MockSharePointAdapter,
@@ -44,8 +47,9 @@ import { UserDashboardsService } from "./user-dashboards.service";
     NotificationsService,
     SearchService,
     DashboardsService,
-    UserDashboardsService
+    UserDashboardsService,
+    PlatformConfigService
   ],
-  exports: [SharePointService, NotificationsService, SearchService, DashboardsService, UserDashboardsService]
+  exports: [SharePointService, NotificationsService, SearchService, DashboardsService, UserDashboardsService, PlatformConfigService]
 })
 export class PlatformModule {}

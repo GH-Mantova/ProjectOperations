@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
@@ -43,5 +44,16 @@ export class TenderDocumentsController {
     @UploadedFile() file?: Express.Multer.File
   ) {
     return this.service.create(tenderId, dto, actor.sub, file);
+  }
+
+  @Delete(":documentId")
+  @RequirePermissions("tenderdocuments.manage")
+  @ApiOperation({ summary: "Delete a tender-linked document (removes the DB row; SharePoint file is left in place)" })
+  remove(
+    @Param("tenderId") tenderId: string,
+    @Param("documentId") documentId: string,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.remove(tenderId, documentId, actor.sub);
   }
 }

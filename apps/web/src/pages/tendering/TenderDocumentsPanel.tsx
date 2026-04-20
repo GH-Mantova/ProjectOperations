@@ -1,5 +1,4 @@
 import { useMemo, useRef, useState, type DragEvent } from "react";
-import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 
 const ACCEPTED = [".pdf", ".docx", ".doc", ".xlsx", ".xls", ".dwg", ".png", ".jpg", ".jpeg"];
@@ -7,7 +6,7 @@ const MAX_BYTES = 100 * 1024 * 1024;
 const DWG_PATTERN = /\.dwg$/i;
 const READABLE_PATTERN = /\.(pdf|docx?|xlsx?|png|jpe?g)$/i;
 
-type DocumentRecord = {
+export type DocumentRecord = {
   id: string;
   title: string;
   category: string;
@@ -21,29 +20,6 @@ type DocumentRecord = {
   } | null;
 };
 
-type ProposedScopeItem = {
-  code: "SO" | "Str" | "Asb" | "Civ" | "Prv";
-  title: string;
-  description: string;
-  estimatedLabourDays?: number;
-  estimatedLabourRole?: string;
-  estimatedPlantItems?: Array<{ item: string; days: number }>;
-  estimatedWasteTonnes?: Array<{ type: string; tonnes: number }>;
-  confidence: "high" | "medium" | "low";
-  sourceReference?: string;
-};
-
-type DraftResult = {
-  proposals: ProposedScopeItem[];
-  documentsRead: number;
-  documentsSkipped: string[];
-  mode: "live" | "mock";
-  revisionId?: string;
-};
-
-type LabourRate = { id: string; role: string; dayRate: string; nightRate: string; weekendRate: string; isActive: boolean };
-type PlantRate = { id: string; item: string; rate: string; isActive: boolean };
-
 function formatSize(bytes?: number | null): string {
   if (!bytes) return "";
   if (bytes < 1024) return `${bytes} B`;
@@ -51,45 +27,42 @@ function formatSize(bytes?: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function confidenceColour(c: ProposedScopeItem["confidence"]): { bg: string; fg: string } {
-  switch (c) {
-    case "high": return { bg: "#D1FAE5", fg: "#065F46" };
-    case "medium": return { bg: "#FEF3C7", fg: "#92400E" };
-    case "low": return { bg: "#FEE2E2", fg: "#991B1B" };
-  }
+function isMockSharePoint(webUrl?: string): boolean {
+  return !webUrl || webUrl.includes("sharepoint.local");
 }
 
 export function TenderDocumentsPanel({
   tenderId,
   documents,
   onDocumentsChanged,
-  canManage
+  canManage,
+  onDraftRequest,
+  drafting,
+  draftBadgeState,
+  showInlineUploadOnly
 }: {
   tenderId: string;
   documents: DocumentRecord[];
   onDocumentsChanged: () => void;
   canManage: boolean;
+  onDraftRequest: () => void;
+  drafting: boolean;
+  draftBadgeState: "none" | "new" | "reviewed";
+  showInlineUploadOnly?: boolean;
 }) {
   const { authFetch } = useAuth();
-  const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [drafting, setDrafting] = useState(false);
-  const [draftError, setDraftError] = useState<string | null>(null);
-  const [draft, setDraft] = useState<DraftResult | null>(null);
-  const [selectedTypes, setSelectedTypes] = useState<Set<number>>(new Set());
-  const [revisionInstruction, setRevisionInstruction] = useState("");
-  const [revising, setRevising] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   const hasReadableDoc = useMemo(
-    () => documents.some((d) => {
-      const name = d.fileLink?.name ?? d.title;
-      return READABLE_PATTERN.test(name);
-    }),
+    () =>
+      documents.some((d) => {
+        const name = d.fileLink?.name ?? d.title;
+        return READABLE_PATTERN.test(name);
+      }),
     [documents]
   );
 
@@ -100,24 +73,15 @@ export function TenderDocumentsPanel({
       : null;
 
   const uploadFile = async (file: File) => {
-    if (file.size > MAX_BYTES) {
-      setUploadError(`${file.name} exceeds the 100 MB limit.`);
-      return;
-    }
+    if (file.size > MAX_BYTES) throw new Error(`${file.name} exceeds the 100 MB limit.`);
     const form = new FormData();
     form.append("file", file);
     form.append("category", "tender");
     form.append("title", file.name);
     form.append("fileName", file.name);
     form.append("mimeType", file.type || "application/octet-stream");
-
-    const response = await authFetch(`/tenders/${tenderId}/documents`, {
-      method: "POST",
-      body: form
-    });
-    if (!response.ok) {
-      throw new Error(`${file.name}: ${await response.text()}`);
-    }
+    const response = await authFetch(`/tenders/${tenderId}/documents`, { method: "POST", body: form });
+    if (!response.ok) throw new Error(`${file.name}: ${await response.text()}`);
   };
 
   const handleFiles = async (files: FileList | File[]) => {
@@ -127,9 +91,7 @@ export function TenderDocumentsPanel({
     setUploading(true);
     setUploadError(null);
     try {
-      for (const file of list) {
-        await uploadFile(file);
-      }
+      for (const file of list) await uploadFile(file);
       onDocumentsChanged();
     } catch (err) {
       setUploadError((err as Error).message);
@@ -146,143 +108,26 @@ export function TenderDocumentsPanel({
     }
   };
 
-  const requestDraft = async (correction?: string) => {
-    const isRevise = correction != null;
-    if (isRevise) setRevising(true);
-    else setDrafting(true);
-    setDraftError(null);
+  const removeDocument = async (docId: string, name: string) => {
+    if (!window.confirm(`Delete ${name}? This cannot be undone.`)) return;
     try {
-      const response = await authFetch(`/tenders/${tenderId}/draft-scope`, {
-        method: "POST",
-        body: JSON.stringify(correction ? { correction } : {})
-      });
+      const response = await authFetch(`/tenders/${tenderId}/documents/${docId}`, { method: "DELETE" });
       if (!response.ok) throw new Error(await response.text());
-      const body = (await response.json()) as DraftResult;
-      setDraft(body);
-      // Default: check everything except Prv items
-      const initial = new Set<number>();
-      body.proposals.forEach((p, idx) => {
-        if (p.code !== "Prv") initial.add(idx);
-      });
-      setSelectedTypes(initial);
-      setRevisionInstruction("");
-    } catch (err) {
-      setDraftError((err as Error).message);
-    } finally {
-      setDrafting(false);
-      setRevising(false);
-    }
-  };
-
-  const toggleSelected = (idx: number) => {
-    setSelectedTypes((prev) => {
-      const next = new Set(prev);
-      if (next.has(idx)) next.delete(idx);
-      else next.add(idx);
-      return next;
-    });
-  };
-
-  const createSelected = async () => {
-    if (!draft) return;
-    setCreating(true);
-    setCreateError(null);
-    try {
-      // Ensure the estimate exists
-      const estimateResponse = await authFetch(`/tenders/${tenderId}/estimate`);
-      if (estimateResponse.status === 404 || (estimateResponse.ok && (await estimateResponse.clone().text()) === "null")) {
-        await authFetch(`/tenders/${tenderId}/estimate`, { method: "POST" });
-      } else if (!estimateResponse.ok) {
-        await authFetch(`/tenders/${tenderId}/estimate`, { method: "POST" });
-      }
-
-      const [labourRatesRes, plantRatesRes] = await Promise.all([
-        authFetch(`/estimate-rates/labour`),
-        authFetch(`/estimate-rates/plant`)
-      ]);
-      const labourRates: LabourRate[] = labourRatesRes.ok ? await labourRatesRes.json() : [];
-      const plantRates: PlantRate[] = plantRatesRes.ok ? await plantRatesRes.json() : [];
-
-      let created = 0;
-      for (const idx of Array.from(selectedTypes).sort((a, b) => a - b)) {
-        const proposal = draft.proposals[idx];
-        if (!proposal) continue;
-        const itemResponse = await authFetch(`/tenders/${tenderId}/estimate/items`, {
-          method: "POST",
-          body: JSON.stringify({
-            code: proposal.code,
-            title: proposal.title.slice(0, 120),
-            description: proposal.description,
-            isProvisional: proposal.code === "Prv",
-            provisionalAmount: proposal.code === "Prv" ? "0" : undefined
-          })
-        });
-        if (!itemResponse.ok) continue;
-        const updated = (await itemResponse.json()) as { items: Array<{ id: string; code: string; title: string }> };
-        const fresh = updated.items.find((i) => i.title === proposal.title.slice(0, 120));
-        const itemId = fresh?.id;
-        if (!itemId) {
-          created += 1;
-          continue;
-        }
-
-        // Labour line
-        if (proposal.estimatedLabourDays && proposal.estimatedLabourDays > 0) {
-          const role = proposal.estimatedLabourRole ?? labourRates[0]?.role;
-          const rate = labourRates.find((r) => r.role === role) ?? labourRates[0];
-          if (role && rate) {
-            await authFetch(`/tenders/${tenderId}/estimate/items/${itemId}/labour`, {
-              method: "POST",
-              body: JSON.stringify({
-                role,
-                qty: "1",
-                days: String(proposal.estimatedLabourDays),
-                shift: "Day",
-                rate: rate.dayRate
-              })
-            });
-          }
-        }
-
-        // Plant lines
-        for (const p of proposal.estimatedPlantItems ?? []) {
-          const rate = plantRates.find((r) => r.item === p.item);
-          if (!rate) continue;
-          await authFetch(`/tenders/${tenderId}/estimate/items/${itemId}/plant`, {
-            method: "POST",
-            body: JSON.stringify({
-              plantItem: p.item,
-              qty: "1",
-              days: String(p.days),
-              rate: rate.rate
-            })
-          });
-        }
-
-        created += 1;
-      }
-      // Signal the parent page that documents (and indirectly the estimate) changed
       onDocumentsChanged();
-      setDraft(null);
-      setSelectedTypes(new Set());
-      // Navigate to Estimate tab — TenderDetailPage handles tab state via URL? No — switch via pushState event.
-      const detailUrl = new URL(window.location.href);
-      detailUrl.hash = "#estimate";
-      window.history.replaceState(null, "", detailUrl.toString());
-      window.dispatchEvent(new CustomEvent("tender-detail:switch-tab", { detail: "estimate" }));
-      void navigate(window.location.pathname + window.location.hash, { replace: true });
-
-      window.alert(`${created} scope items imported — review and adjust costs.`);
     } catch (err) {
-      setCreateError((err as Error).message);
-    } finally {
-      setCreating(false);
+      setUploadError((err as Error).message);
     }
   };
 
-  const removeDocument = async (_docId: string) => {
-    // The API currently has no DELETE endpoint for tender documents; keep UI-level removal disabled.
-    window.alert("Deleting documents is not yet supported. Remove from the source SharePoint folder.");
+  const openDocument = (doc: DocumentRecord) => {
+    if (isMockSharePoint(doc.fileLink?.webUrl)) {
+      setToast(
+        "Document preview requires SharePoint connection. Contact your administrator to configure SharePoint."
+      );
+      window.setTimeout(() => setToast(null), 4500);
+      return;
+    }
+    window.open(doc.fileLink!.webUrl, "_blank", "noopener,noreferrer");
   };
 
   return (
@@ -316,7 +161,7 @@ export function TenderDocumentsPanel({
             <path d="M12 3v12" />
           </svg>
           <p style={{ margin: 0, fontSize: 14 }}>
-            <span style={{ color: "#FEAA6D", fontWeight: 500 }}>Drag & drop files here, or browse</span>
+            <span style={{ color: "#FEAA6D", fontWeight: 500 }}>Drag &amp; drop files here, or browse</span>
           </p>
           <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)" }}>
             PDF, Word, Excel, DWG, PNG, JPG · up to 100 MB
@@ -355,17 +200,19 @@ export function TenderDocumentsPanel({
                     {isDwg ? " · Preview not available" : ""}
                   </span>
                 </div>
-                {doc.fileLink?.webUrl ? (
-                  <a href={doc.fileLink.webUrl} target="_blank" rel="noreferrer" className="s7-btn s7-btn--secondary s7-btn--sm">
-                    Open
-                  </a>
-                ) : null}
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--secondary s7-btn--sm"
+                  onClick={() => openDocument(doc)}
+                >
+                  Open
+                </button>
                 {canManage ? (
                   <button
                     type="button"
                     className="s7-btn s7-btn--danger s7-btn--sm"
-                    onClick={() => void removeDocument(doc.id)}
-                    aria-label={`Remove ${name}`}
+                    onClick={() => void removeDocument(doc.id, name)}
+                    aria-label={`Delete ${name}`}
                   >
                     ×
                   </button>
@@ -376,129 +223,50 @@ export function TenderDocumentsPanel({
         </ul>
       ) : null}
 
-      <div className="draft-scope-panel">
-        <div>
-          <div style={{ fontSize: 15, fontWeight: 500 }}>✨ Draft scope with Claude</div>
-          <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--text-muted)" }}>
-            Claude reads the uploaded docs and proposes SO/Str/Asb/Civ/Prv items with descriptions &amp; quantities.
-          </p>
+      {showInlineUploadOnly ? null : (
+        <div className="draft-scope-panel">
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 500 }}>✨ Draft scope with Claude</div>
+            <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--text-muted)" }}>
+              Claude reads the uploaded docs and proposes SO/Str/Asb/Civ/Prv items with descriptions &amp; quantities.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="s7-btn s7-btn--primary"
+            onClick={() => onDraftRequest()}
+            disabled={!!draftButtonTooltip || drafting || !canManage}
+            title={draftButtonTooltip ?? undefined}
+          >
+            {drafting
+              ? "Claude is reading…"
+              : draftBadgeState === "new"
+                ? "View drafted scope →"
+                : draftBadgeState === "reviewed"
+                  ? "Re-draft scope →"
+                  : "Draft scope →"}
+          </button>
         </div>
-        <button
-          type="button"
-          className="s7-btn s7-btn--primary"
-          onClick={() => void requestDraft()}
-          disabled={!!draftButtonTooltip || drafting || !canManage}
-          title={draftButtonTooltip ?? undefined}
-          style={{ background: "#0F172A", whiteSpace: "nowrap" }}
+      )}
+
+      {toast ? (
+        <div
+          role="status"
+          style={{
+            position: "fixed",
+            bottom: 24,
+            right: 24,
+            zIndex: 100,
+            background: "#242424",
+            color: "#FFFFFF",
+            padding: "10px 16px",
+            borderRadius: 8,
+            maxWidth: 360,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+            fontSize: 13
+          }}
         >
-          {drafting ? "Claude is reading…" : "Draft scope →"}
-        </button>
-      </div>
-
-      {draftError ? (
-        <p style={{ color: "var(--status-danger)", marginTop: 8 }}>{draftError}</p>
-      ) : null}
-
-      {draft ? (
-        <div className="draft-scope-review">
-          <div className="draft-scope-review__head">
-            <h4 style={{ margin: 0 }}>
-              Claude proposed {draft.proposals.length} scope item{draft.proposals.length === 1 ? "" : "s"}
-            </h4>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span className="s7-badge s7-badge--neutral">Read {draft.documentsRead} document{draft.documentsRead === 1 ? "" : "s"}</span>
-              {draft.mode === "mock" ? (
-                <span className="s7-badge" style={{ background: "#FEF3C7", color: "#92400E" }}>
-                  Mock mode — no API key
-                </span>
-              ) : null}
-            </div>
-          </div>
-
-          <ul className="draft-scope-review__list">
-            {draft.proposals.map((p, idx) => {
-              const c = confidenceColour(p.confidence);
-              const qtySummary: string[] = [];
-              if (p.estimatedLabourDays) qtySummary.push(`~${p.estimatedLabourDays} labour days`);
-              const totalWaste = (p.estimatedWasteTonnes ?? []).reduce((s, w) => s + w.tonnes, 0);
-              if (totalWaste > 0) qtySummary.push(`~${totalWaste.toFixed(1)} tonnes waste`);
-              return (
-                <li key={idx} className="draft-scope-card">
-                  <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer" }}>
-                    <input
-                      type="checkbox"
-                      checked={selectedTypes.has(idx)}
-                      onChange={() => toggleSelected(idx)}
-                      style={{ marginTop: 2 }}
-                    />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                        <span className="draft-scope-card__code">{p.code}</span>
-                        <strong>{p.title}</strong>
-                        <span className="s7-badge" style={{ background: c.bg, color: c.fg, marginLeft: "auto" }}>
-                          {p.confidence[0].toUpperCase() + p.confidence.slice(1)}
-                        </span>
-                      </div>
-                      <p className="draft-scope-card__description">{p.description}</p>
-                      {p.sourceReference ? (
-                        <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "4px 0 0" }}>
-                          Source: {p.sourceReference}
-                        </p>
-                      ) : null}
-                      {qtySummary.length > 0 ? (
-                        <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "4px 0 0" }}>
-                          {qtySummary.join(" · ")}
-                        </p>
-                      ) : null}
-                    </div>
-                  </label>
-                </li>
-              );
-            })}
-          </ul>
-
-          <div className="draft-scope-review__actions">
-            <button
-              type="button"
-              className="s7-btn s7-btn--primary"
-              onClick={() => void createSelected()}
-              disabled={selectedTypes.size === 0 || creating}
-            >
-              {creating ? "Importing…" : `Create ${selectedTypes.size} selected item${selectedTypes.size === 1 ? "" : "s"} →`}
-            </button>
-            <button
-              type="button"
-              className="s7-btn s7-btn--secondary"
-              onClick={() => setDraft(null)}
-            >
-              Dismiss
-            </button>
-          </div>
-
-          <div className="draft-scope-review__revise">
-            <label style={{ fontSize: 12, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-              Ask Claude to revise
-            </label>
-            <textarea
-              className="s7-input"
-              rows={2}
-              value={revisionInstruction}
-              onChange={(e) => setRevisionInstruction(e.target.value)}
-              placeholder="e.g. Add scaffolding for levels 2-3; remove the structural demo item — that's a separate package."
-            />
-            <button
-              type="button"
-              className="s7-btn s7-btn--secondary s7-btn--sm"
-              onClick={() => void requestDraft(revisionInstruction.trim())}
-              disabled={!revisionInstruction.trim() || revising}
-            >
-              {revising ? "Revising…" : "Revise with this feedback"}
-            </button>
-          </div>
-
-          {createError ? (
-            <p style={{ color: "var(--status-danger)", marginTop: 8 }}>{createError}</p>
-          ) : null}
+          {toast}
         </div>
       ) : null}
     </section>

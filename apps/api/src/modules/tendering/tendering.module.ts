@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
+import { PlatformModule } from "../platform/platform.module";
 import { TenderingController } from "./tendering.controller";
 import { TenderingService } from "./tendering.service";
 import { TenderClientNotesController } from "./tender-client-notes.controller";
@@ -8,7 +9,7 @@ import { TenderScopeDraftingController } from "./tender-scope-drafting.controlle
 import { TenderScopeDraftingService } from "./tender-scope-drafting.service";
 
 @Module({
-  imports: [AuditModule],
+  imports: [AuditModule, PlatformModule],
   controllers: [TenderingController, TenderClientNotesController, TenderScopeDraftingController],
   providers: [TenderingService, TenderClientNotesService, TenderScopeDraftingService],
   exports: [TenderingService]

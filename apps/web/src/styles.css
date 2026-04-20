@@ -727,60 +727,170 @@ textarea {
   display: grid;
   place-items: center;
   padding: 24px;
+  background: var(--surface-sidebar, #1A1D23);
 }
 
-.login-panel {
-  width: min(100%, 960px);
-  display: grid;
-  grid-template-columns: 1.1fr 0.9fr;
-  gap: 24px;
-  padding: 28px;
-  border-radius: 28px;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 22px 50px rgba(18, 45, 72, 0.12);
+.login-card {
+  width: min(100%, 420px);
+  background: var(--surface-card, #FFFFFF);
+  border-radius: var(--radius-xl, 16px);
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.3),
+    0 4px 12px rgba(0, 0, 0, 0.12);
 }
 
-.eyebrow {
-  margin: 0 0 8px;
+.login-card__brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 4px;
+}
+
+.login-card__logo {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md, 8px);
+  background: var(--brand-primary, #1D9E75);
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 17px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.login-card__title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-primary, #0F1117);
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+.login-card__subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-secondary, #6B7280);
+}
+
+.login-card__error {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--status-danger, #EF4444);
+  padding: 10px 14px;
+  border-radius: var(--radius-md, 8px);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.login-card__form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.login-card__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.login-card__label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary, #6B7280);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.login-card__password {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.login-card__password-input {
+  padding-right: 44px;
+}
+
+.login-card__password-toggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm, 6px);
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary, #6B7280);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.login-card__password-toggle:hover {
+  background: var(--border-subtle, #F3F4F6);
+  color: var(--text-primary, #0F1117);
+}
+
+.login-card__submit {
+  margin-top: 6px;
+  width: 100%;
+}
+
+.login-card__divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-muted, #9CA3AF);
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #1f6fb2;
-  font-size: 0.82rem;
-  font-weight: 700;
+  font-weight: 500;
 }
 
-.login-panel h1 {
-  margin: 0 0 10px;
-  font-size: 2.2rem;
+.login-card__divider::before,
+.login-card__divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border-default, #E5E7EB);
 }
 
-.login-form {
-  display: grid;
-  gap: 16px;
-  align-content: start;
-}
-
-.login-form label {
-  display: grid;
-  gap: 8px;
-  font-weight: 600;
-}
-
-.login-form input {
+.login-card__sso {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   width: 100%;
-  padding: 12px 14px;
-  border-radius: 12px;
-  border: 1px solid #bfd0de;
-  background: #f7fbff;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid var(--border-default, #E5E7EB);
+  background: var(--surface-card, #FFFFFF);
+  color: var(--text-primary, #0F1117);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
 }
 
-.login-form button {
-  border: 0;
-  padding: 12px 16px;
-  border-radius: 12px;
-  background: #90a6bb;
-  color: white;
-  font-weight: 700;
+.login-card__sso:hover:not(:disabled) {
+  border-color: var(--text-secondary, #6B7280);
+  background: var(--border-subtle, #F3F4F6);
+}
+
+.login-card__sso:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .admin-grid {

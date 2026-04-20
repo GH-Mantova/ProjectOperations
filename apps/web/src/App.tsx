@@ -42,6 +42,7 @@ import { FormDesignerPage } from "./pages/forms/FormDesignerPage";
 import { FormSubmitPage } from "./pages/forms/FormSubmitPage";
 import { DocumentsWorkspacePage } from "./pages/documents/DocumentsWorkspacePage";
 import { MasterDataWorkspacePage } from "./pages/master-data/MasterDataWorkspacePage";
+import { EstimateRatesAdminPage } from "./pages/EstimateRatesAdminPage";
 
 function ProtectedRoute() {
   const { isAuthenticated } = useAuth();
@@ -90,6 +91,7 @@ export function App() {
             <Route path="/admin/permissions" element={<PermissionsPage />} />
             <Route path="/admin/audit" element={<AuditLogsPage />} />
             <Route path="/admin/platform" element={<PlatformPage />} />
+            <Route path="/admin/estimate-rates" element={<EstimateRatesAdminPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/dashboards" element={<DashboardsPage />} />
             <Route path="/master-data" element={<MasterDataWorkspacePage />} />

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   PointerSensor,
@@ -23,7 +23,6 @@ type Props = {
 export function CustomisePanel({ open, onClose, dashboard, saving, onSave }: Props) {
   const [draft, setDraft] = useState<UserDashboardConfig>(dashboard.config);
   const [name, setName] = useState(dashboard.name);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     setDraft(dashboard.config);
@@ -140,8 +139,7 @@ export function CustomisePanel({ open, onClose, dashboard, saving, onSave }: Pro
                   <CustomiseRow
                     key={widget.id}
                     widget={widget}
-                    expanded={expandedId === widget.id}
-                    onToggleExpand={() => setExpandedId((prev) => (prev === widget.id ? null : widget.id))}
+                    globalPeriod={draft.period as WidgetPeriod}
                     onToggleVisible={() => toggleVisible(widget.id)}
                     onSetPeriod={(period) => setWidgetPeriod(widget.id, period)}
                   />
@@ -164,14 +162,12 @@ export function CustomisePanel({ open, onClose, dashboard, saving, onSave }: Pro
 
 function CustomiseRow({
   widget,
-  expanded,
-  onToggleExpand,
+  globalPeriod,
   onToggleVisible,
   onSetPeriod
 }: {
   widget: WidgetConfigEntry;
-  expanded: boolean;
-  onToggleExpand: () => void;
+  globalPeriod: WidgetPeriod;
   onToggleVisible: () => void;
   onSetPeriod: (period: WidgetPeriod | null) => void;
 }) {
@@ -186,6 +182,9 @@ function CustomiseRow({
     [transform, transition, isDragging]
   );
 
+  const effectivePeriod = widget.config.period ?? globalPeriod;
+  const isOverridden = widget.config.period != null && widget.config.period !== globalPeriod;
+
   return (
     <li ref={setNodeRef} style={style} className="customise-panel__row">
       <div className="customise-panel__row-main">
@@ -195,42 +194,111 @@ function CustomiseRow({
           aria-label="Drag to reorder"
           {...attributes}
           {...listeners}
-          style={{ cursor: "grab" }}
         >
-          ⠿
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+            <circle cx="5" cy="3" r="1.5" />
+            <circle cx="5" cy="8" r="1.5" />
+            <circle cx="5" cy="13" r="1.5" />
+            <circle cx="11" cy="3" r="1.5" />
+            <circle cx="11" cy="8" r="1.5" />
+            <circle cx="11" cy="13" r="1.5" />
+          </svg>
         </button>
-        <button type="button" className="customise-panel__expand" onClick={onToggleExpand} aria-expanded={expanded}>
+        <div className="customise-panel__row-info">
           <div className="customise-panel__row-title">{meta?.name ?? widget.type}</div>
-          <div className="customise-panel__row-meta">
-            {meta?.category ?? "unknown"}{widget.config.period ? ` · period: ${widget.config.period}` : ""}
-          </div>
-        </button>
-        <label className="customise-panel__toggle">
-          <input type="checkbox" checked={widget.visible} onChange={onToggleVisible} />
-          <span>{widget.visible ? "On" : "Off"}</span>
-        </label>
-      </div>
-      {expanded ? (
-        <div className="customise-panel__row-expand">
-          <label className="estimate-editor__field">
-            <span>Period override</span>
-            <select
-              className="s7-input s7-input--sm"
-              value={widget.config.period ?? ""}
-              onChange={(e) => onSetPeriod((e.target.value || null) as WidgetPeriod | null)}
-            >
-              <option value="">Use global</option>
-              {PERIOD_ORDER.map((p) => (
-                <option key={p} value={p}>{PERIOD_LABELS[p]}</option>
-              ))}
-            </select>
-          </label>
-          {meta?.description ? (
-            <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8 }}>{meta.description}</p>
-          ) : null}
+          <div className="customise-panel__row-meta">{meta?.category ?? "unknown"}</div>
         </div>
+        <PeriodPill
+          period={effectivePeriod}
+          overridden={isOverridden}
+          globalPeriod={globalPeriod}
+          onChange={onSetPeriod}
+        />
+        <button
+          type="button"
+          role="switch"
+          aria-checked={widget.visible}
+          aria-label={widget.visible ? "Visible (click to hide)" : "Hidden (click to show)"}
+          className={widget.visible ? "toggle-pill on" : "toggle-pill"}
+          onClick={onToggleVisible}
+        />
+      </div>
+      {meta?.description ? (
+        <p className="customise-panel__row-description">{meta.description}</p>
       ) : null}
     </li>
+  );
+}
+
+function PeriodPill({
+  period,
+  overridden,
+  globalPeriod,
+  onChange
+}: {
+  period: WidgetPeriod;
+  overridden: boolean;
+  globalPeriod: WidgetPeriod;
+  onChange: (period: WidgetPeriod | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (event: MouseEvent) => {
+      if (!wrapRef.current) return;
+      if (!wrapRef.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const select = (next: WidgetPeriod | null) => {
+    onChange(next === globalPeriod ? null : next);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={wrapRef} className="period-pill-wrap">
+      <button
+        type="button"
+        className={overridden ? "period-pill period-pill--overridden" : "period-pill"}
+        onClick={() => setOpen((prev) => !prev)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        Period: {period}
+        <span aria-hidden style={{ marginLeft: 4, fontSize: 9 }}>▾</span>
+      </button>
+      {open ? (
+        <div role="menu" className="period-pill__menu">
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => select(null)}
+            className="period-pill__menu-item"
+          >
+            Use global ({globalPeriod})
+          </button>
+          {PERIOD_ORDER.map((p) => (
+            <button
+              key={p}
+              type="button"
+              role="menuitem"
+              onClick={() => select(p)}
+              className={
+                p === period
+                  ? "period-pill__menu-item period-pill__menu-item--active"
+                  : "period-pill__menu-item"
+              }
+            >
+              {PERIOD_LABELS[p]}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

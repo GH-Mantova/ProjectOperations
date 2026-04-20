@@ -84,7 +84,7 @@ type CategoryKey = "SO" | "Str" | "Asb" | "Civ" | "Prv";
 type CategoryMeta = { key: CategoryKey; short: string; long: string; quickAddLabel: string; isProvisional?: boolean };
 
 const CATEGORIES: CategoryMeta[] = [
-  { key: "SO", short: "SO", long: "Site Overheads", quickAddLabel: "+ SO" },
+  { key: "SO", short: "SO", long: "Strip-outs", quickAddLabel: "+ SO" },
   { key: "Str", short: "Str", long: "Structural Demo", quickAddLabel: "+ Str" },
   { key: "Asb", short: "Asb", long: "Asbestos", quickAddLabel: "+ Asb" },
   { key: "Civ", short: "Civ", long: "Civil Works", quickAddLabel: "+ Civ" },
@@ -122,14 +122,6 @@ export function EstimateEditor({ tenderId, canManage, canAdmin }: { tenderId: st
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-  const [collapsedSections, setCollapsedSections] = useState<Record<SectionKey, boolean>>({
-    labour: false,
-    equip: false,
-    plant: false,
-    waste: false,
-    cutting: false,
-    assumptions: false
-  });
   const [rates, setRates] = useState<{
     labour: LabourRate[];
     plant: PlantRate[];
@@ -285,10 +277,6 @@ export function EstimateEditor({ tenderId, canManage, canAdmin }: { tenderId: st
     }, 0);
     return { category, items, total };
   }).filter((group) => group.items.length > 0 || CATEGORIES.find((c) => c.key === group.category.key));
-
-  const toggleSection = (key: SectionKey) => {
-    setCollapsedSections((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
 
   return (
     <div className="estimate-editor">
@@ -455,8 +443,6 @@ export function EstimateEditor({ tenderId, canManage, canAdmin }: { tenderId: st
               canManage={canManage}
               saving={saving}
               mutate={mutate}
-              collapsedSections={collapsedSections}
-              toggleSection={toggleSection}
             />
           ) : (
             <EmptyState heading="Select a scope item" subtext="Pick an item from the list to edit its costs." />
@@ -514,9 +500,7 @@ function ItemDetail({
   disabled,
   canManage,
   saving,
-  mutate,
-  collapsedSections,
-  toggleSection
+  mutate
 }: {
   tenderId: string;
   item: EstimateItem;
@@ -526,9 +510,8 @@ function ItemDetail({
   canManage: boolean;
   saving: boolean;
   mutate: Mutator;
-  collapsedSections: Record<SectionKey, boolean>;
-  toggleSection: (key: SectionKey) => void;
 }) {
+  const [activeTab, setActiveTab] = useState<SectionKey>("labour");
   const base = `/tenders/${tenderId}/estimate/items/${item.id}`;
   const deleteItem = async () => {
     if (!window.confirm(`Delete item ${item.code}-${item.itemNumber} "${item.title}"?`)) return;
@@ -586,91 +569,79 @@ function ItemDetail({
 
       <ItemSummaryPanel item={item} summary={summary} disabled={disabled} mutate={mutate} base={base} />
 
-      <div className="estimate-editor__sections">
-        <Section
-          title="Labour"
-          sectionKey="labour"
-          total={summary?.labour ?? 0}
-          collapsed={collapsedSections.labour}
-          onToggle={() => toggleSection("labour")}
-        >
-          <LabourSection item={item} rates={rates.labour} disabled={disabled} mutate={mutate} base={base} />
-        </Section>
-
-        <Section
-          title="Equipment Hire & Subcontractors"
-          sectionKey="equip"
-          total={summary?.equip ?? 0}
-          collapsed={collapsedSections.equip}
-          onToggle={() => toggleSection("equip")}
-        >
-          <EquipSection item={item} disabled={disabled} mutate={mutate} base={base} />
-        </Section>
-
-        <Section
-          title="Plant"
-          sectionKey="plant"
-          total={summary?.plant ?? 0}
-          collapsed={collapsedSections.plant}
-          onToggle={() => toggleSection("plant")}
-        >
-          <PlantSection item={item} rates={rates.plant} disabled={disabled} mutate={mutate} base={base} />
-        </Section>
-
-        <Section
-          title="Material Disposal"
-          sectionKey="waste"
-          total={summary?.waste ?? 0}
-          collapsed={collapsedSections.waste}
-          onToggle={() => toggleSection("waste")}
-        >
-          <WasteSection item={item} rates={rates.waste} disabled={disabled} mutate={mutate} base={base} />
-        </Section>
-
-        <Section
-          title="Concrete Cutting"
-          sectionKey="cutting"
-          total={summary?.cutting ?? 0}
-          collapsed={collapsedSections.cutting}
-          onToggle={() => toggleSection("cutting")}
-        >
-          <CuttingSection item={item} rates={rates.cutting} disabled={disabled} mutate={mutate} base={base} />
-        </Section>
-
-        <div className="estimate-editor__section estimate-editor__section--static">
-          <div className="estimate-editor__section-head">
-            <span className="estimate-editor__section-title">Assumptions & exclusions</span>
-          </div>
-          <AssumptionsSection item={item} disabled={disabled} mutate={mutate} base={base} />
-        </div>
-      </div>
+      <ItemDetailTabs
+        item={item}
+        summary={summary}
+        rates={rates}
+        disabled={disabled}
+        mutate={mutate}
+        base={base}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+      />
     </div>
   );
 }
 
-function Section({
-  title,
-  sectionKey,
-  total,
-  collapsed,
-  onToggle,
-  children
+const ITEM_TABS: Array<{ key: SectionKey; label: string; totalKey: keyof Omit<SummaryItem, "itemId" | "code" | "itemNumber" | "title" | "isProvisional" | "subtotal" | "markup" | "price"> | null }> = [
+  { key: "labour", label: "Labour", totalKey: "labour" },
+  { key: "equip", label: "Equip & Sub", totalKey: "equip" },
+  { key: "plant", label: "Plant", totalKey: "plant" },
+  { key: "waste", label: "Disposal", totalKey: "waste" },
+  { key: "cutting", label: "Cutting", totalKey: "cutting" },
+  { key: "assumptions", label: "Assumptions", totalKey: null }
+];
+
+function ItemDetailTabs({
+  item,
+  summary,
+  rates,
+  disabled,
+  mutate,
+  base,
+  activeTab,
+  setActiveTab
 }: {
-  title: string;
-  sectionKey: SectionKey;
-  total: number;
-  collapsed: boolean;
-  onToggle: () => void;
-  children: React.ReactNode;
+  item: EstimateItem;
+  summary: SummaryItem | null;
+  rates: { labour: LabourRate[]; plant: PlantRate[]; waste: WasteRate[]; cutting: CuttingRate[] };
+  disabled: boolean;
+  mutate: Mutator;
+  base: string;
+  activeTab: SectionKey;
+  setActiveTab: (key: SectionKey) => void;
 }) {
   return (
-    <div className="estimate-editor__section" data-section={sectionKey}>
-      <button type="button" className="estimate-editor__section-head" onClick={onToggle} aria-expanded={!collapsed}>
-        <span className="estimate-editor__section-chevron" aria-hidden>{collapsed ? "▸" : "▾"}</span>
-        <span className="estimate-editor__section-title">{title}</span>
-        <span className="estimate-editor__section-total">{formatCurrency(total)}</span>
-      </button>
-      {!collapsed ? <div className="estimate-editor__section-body">{children}</div> : null}
+    <div className="estimate-editor__item-tabs">
+      <nav className="estimate-editor__item-tabbar" role="tablist">
+        {ITEM_TABS.map((tab) => {
+          const total = tab.totalKey && summary ? (summary[tab.totalKey] as number) : null;
+          const isActive = activeTab === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              className={isActive ? "estimate-editor__item-tab estimate-editor__item-tab--active" : "estimate-editor__item-tab"}
+              onClick={() => setActiveTab(tab.key)}
+            >
+              <span>{tab.label}</span>
+              {total !== null ? (
+                <span className="estimate-editor__item-tab-total">{formatCurrency(total)}</span>
+              ) : null}
+            </button>
+          );
+        })}
+      </nav>
+      <div className="estimate-editor__item-tab-content">
+        {activeTab === "labour" && <LabourSection item={item} rates={rates.labour} disabled={disabled} mutate={mutate} base={base} />}
+        {activeTab === "equip" && <EquipSection item={item} disabled={disabled} mutate={mutate} base={base} />}
+        {activeTab === "plant" && <PlantSection item={item} rates={rates.plant} disabled={disabled} mutate={mutate} base={base} />}
+        {activeTab === "waste" && <WasteSection item={item} rates={rates.waste} disabled={disabled} mutate={mutate} base={base} />}
+        {activeTab === "cutting" && <CuttingSection item={item} rates={rates.cutting} disabled={disabled} mutate={mutate} base={base} />}
+        {activeTab === "assumptions" && <AssumptionsSection item={item} disabled={disabled} mutate={mutate} base={base} />}
+      </div>
     </div>
   );
 }

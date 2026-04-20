@@ -37,7 +37,7 @@ export function LoginPage() {
           <span className="login-card__logo" aria-hidden>PO</span>
           <div>
             <h1 className="login-card__title">Project Ops</h1>
-            <p className="login-card__subtitle">Mantova Civil Works platform</p>
+            <p className="login-card__subtitle">Initial Services platform</p>
           </div>
         </div>
 

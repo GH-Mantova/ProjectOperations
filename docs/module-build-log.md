@@ -401,7 +401,7 @@ This means the module list above is accurate for implementation coverage, but th
 After the 16-module baseline documented above, a v2 improvement pass split into nine
 sections (S1–S9) extended the platform with cross-platform scripts, CI/CD, the
 SharePoint Graph live adapter, Microsoft 365 SSO, a Recharts-based dashboard, a
-standalone Archive route, a comprehensive Mantova Civil Works seed, a full UI/UX
+standalone Archive route, a comprehensive Initial Services seed, a full UI/UX
 overhaul, and a final quality pass. Every section shipped as a dedicated
 `improvement/s{N}-{slug}` branch and PR to `main`.
 
@@ -552,11 +552,13 @@ page is reachable under `/{route}/legacy`.
   pinned save/cancel footer.
 
 ### Section 8 — Comprehensive seed data
-- Additive Mantova Civil Works seed in `apps/api/prisma/seed-mantova.ts`
+- Additive Initial Services seed in `apps/api/prisma/seed-initial-services.ts`
   (~2,300 lines), called at the end of the existing `main()` in `seed.ts`.
   Preserves the existing `@projectops.local` dev-test data so
-  compliance-smoke / LoginPage default / tendering e2e still pass.
-- 8 Mantova users (Admin, two PMs, Estimator, Scheduler, two Supervisors, Viewer)
+  compliance-smoke / LoginPage default / tendering e2e still pass. (Originally
+  branded "Mantova Civil Works"; rebranded to Initial Services in a follow-up
+  `fix/rebrand-initial-services` branch.)
+- 8 Initial Services users (Admin, two PMs, Estimator, Scheduler, two Supervisors, Viewer)
   and the new `Viewer` role with 16 view-only permissions.
 - 5 clients + 10 contacts, 7 sites, 7 resource types, 12 competencies, 16
   workers with competency links, 4 crews, 7 asset categories, 14 assets.

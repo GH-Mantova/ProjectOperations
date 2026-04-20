@@ -6,6 +6,7 @@ import { AuthService } from "./auth.service";
 import { EntraLoginDto } from "./dto/entra-login.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RefreshTokenDto } from "./dto/refresh-token.dto";
+import { SsoLoginDto } from "./dto/sso-login.dto";
 
 @ApiTags("Auth")
 @Controller("auth")
@@ -22,6 +23,12 @@ export class AuthController {
   @ApiOperation({ summary: "Exchange a Microsoft Entra ID token for an internal application session" })
   loginWithEntra(@Body() dto: EntraLoginDto) {
     return this.authService.loginWithEntra(dto);
+  }
+
+  @Post("sso")
+  @ApiOperation({ summary: "Microsoft 365 SSO login with auto-provisioning for first-time users" })
+  loginWithSso(@Body() dto: SsoLoginDto) {
+    return this.authService.loginWithSso(dto);
   }
 
   @Post("refresh")

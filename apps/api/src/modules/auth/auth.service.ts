@@ -41,6 +41,16 @@ export class AuthService {
     });
   }
 
+  async loginWithSso(input: { idToken: string }) {
+    const { user, permissions, principal } = await this.entraAuthService.authenticateWithSso(input.idToken);
+    return this.finishLogin(user.id, user.email, permissions, user, {
+      provider: "sso",
+      issuer: principal.issuer,
+      audience: principal.audience,
+      entraSubject: principal.subject
+    });
+  }
+
   getLoginConfiguration() {
     const mode = this.configService.get<string>("auth.mode", "local");
 

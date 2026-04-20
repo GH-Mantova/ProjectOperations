@@ -33,9 +33,8 @@ import { DashboardsService } from "./dashboards.service";
         mockAdapter: MockSharePointAdapter,
         graphAdapter: GraphSharePointAdapter
       ) => {
-        return configService.get<string>("SHAREPOINT_MODE", "mock") === "graph"
-          ? graphAdapter
-          : mockAdapter;
+        const mode = configService.get<string>("SHAREPOINT_MODE", "mock");
+        return mode === "live" || mode === "graph" ? graphAdapter : mockAdapter;
       }
     },
     SharePointService,

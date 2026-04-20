@@ -89,7 +89,8 @@ describe("DocumentsService", () => {
         versionLabel: "v2",
         tags: ["daily"]
       }),
-      actor
+      actor,
+      undefined
     );
     expect(result).toEqual({ id: "doc-2" });
   });

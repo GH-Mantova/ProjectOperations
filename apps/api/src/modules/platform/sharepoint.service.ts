@@ -75,4 +75,19 @@ export class SharePointService {
       orderBy: [{ module: "asc" }, { relativePath: "asc" }]
     });
   }
+
+  async uploadFile(input: {
+    folderId: string;
+    siteId: string;
+    driveId: string;
+    name: string;
+    content: Buffer;
+    mimeType?: string;
+  }) {
+    return this.adapter.uploadFile(input);
+  }
+
+  async getDownloadUrl(input: { siteId: string; driveId: string; fileId: string }) {
+    return this.adapter.getDownloadUrl(input);
+  }
 }

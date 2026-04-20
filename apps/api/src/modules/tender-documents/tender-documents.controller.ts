@@ -1,5 +1,15 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors
+} from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
@@ -23,12 +33,15 @@ export class TenderDocumentsController {
 
   @Post()
   @RequirePermissions("tenderdocuments.manage")
-  @ApiOperation({ summary: "Create a tender-linked document using the SharePoint foundation" })
+  @UseInterceptors(FileInterceptor("file"))
+  @ApiConsumes("multipart/form-data", "application/json")
+  @ApiOperation({ summary: "Create a tender-linked document (optional multipart file upload)" })
   create(
     @Param("tenderId") tenderId: string,
     @Body() dto: CreateTenderDocumentDto,
-    @CurrentUser() actor: { sub: string }
+    @CurrentUser() actor: { sub: string },
+    @UploadedFile() file?: Express.Multer.File
   ) {
-    return this.service.create(tenderId, dto, actor.sub);
+    return this.service.create(tenderId, dto, actor.sub, file);
   }
 }

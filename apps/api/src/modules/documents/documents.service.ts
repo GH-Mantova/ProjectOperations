@@ -173,7 +173,7 @@ export class DocumentsService {
     };
   }
 
-  async create(dto: CreateDocumentDto, actor: AuthenticatedUser) {
+  async create(dto: CreateDocumentDto, actor: AuthenticatedUser, file?: Express.Multer.File) {
     await this.resolveEntityContext(dto.linkedEntityType, dto.linkedEntityId);
 
     const previousVersion = dto.versionOfDocumentId
@@ -187,23 +187,47 @@ export class DocumentsService {
     const folder = await this.ensureEntityFolder(dto.linkedEntityType, dto.linkedEntityId, actor.sub);
     const familyKey = previousVersion?.documentFamilyKey ?? previousVersion?.id ?? dto.documentFamilyKey ?? randomUUID();
     const versionNumber = previousVersion ? previousVersion.versionNumber + 1 : 1;
+    const uploadName = file?.originalname ?? dto.fileName;
+    const uploadMime = file?.mimetype ?? dto.mimeType ?? "application/octet-stream";
+
+    let uploadItemId = `mock-file-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    let uploadWebUrl = `https://sharepoint.local/${folder.relativePath}/${uploadName}`;
+    let uploadMode: "mock" | "graph" = "mock";
+    let uploadETag: string | null = null;
+
+    if (file?.buffer) {
+      const uploaded = await this.sharePointService.uploadFile({
+        folderId: folder.itemId,
+        siteId: folder.siteId,
+        driveId: folder.driveId,
+        name: uploadName,
+        content: file.buffer,
+        mimeType: uploadMime
+      });
+      uploadItemId = uploaded.id;
+      uploadWebUrl = uploaded.webUrl;
+      uploadETag = uploaded.eTag;
+      uploadMode = "graph";
+    }
 
     const fileLink = await this.prisma.sharePointFileLink.create({
       data: {
         folderLinkId: folder.id,
         siteId: folder.siteId,
         driveId: folder.driveId,
-        itemId: `mock-file-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        name: dto.fileName,
-        relativePath: `${folder.relativePath}/${dto.fileName}`,
-        webUrl: `https://sharepoint.local/${folder.relativePath}/${dto.fileName}`,
-        mimeType: dto.mimeType ?? "application/octet-stream",
+        itemId: uploadItemId,
+        name: uploadName,
+        relativePath: `${folder.relativePath}/${uploadName}`,
+        webUrl: uploadWebUrl,
+        mimeType: uploadMime,
+        sizeBytes: file?.size ?? null,
         versionLabel: dto.versionLabel ?? `v${versionNumber}`,
         versionNumber,
         linkedEntityType: dto.linkedEntityType,
         linkedEntityId: dto.linkedEntityId,
         metadata: {
-          uploadMode: "mock",
+          uploadMode,
+          eTag: uploadETag,
           notes: dto.notes ?? null
         }
       }
@@ -295,7 +319,7 @@ export class DocumentsService {
     return this.getById(created.id, actor);
   }
 
-  async createVersion(id: string, dto: CreateDocumentVersionDto, actor: AuthenticatedUser) {
+  async createVersion(id: string, dto: CreateDocumentVersionDto, actor: AuthenticatedUser, file?: Express.Multer.File) {
     const existing = await this.requireDocument(id);
 
     return this.create(
@@ -322,7 +346,8 @@ export class DocumentsService {
           canOpenLink: rule.canOpenLink
         }))
       },
-      actor
+      actor,
+      file
     );
   }
 

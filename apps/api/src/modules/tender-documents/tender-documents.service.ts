@@ -23,7 +23,7 @@ export class TenderDocumentsService {
     });
   }
 
-  async create(tenderId: string, dto: CreateTenderDocumentDto, actorId?: string) {
+  async create(tenderId: string, dto: CreateTenderDocumentDto, actorId?: string, file?: Express.Multer.File) {
     const tender = await this.prisma.tender.findUnique({
       where: { id: tenderId }
     });
@@ -44,20 +44,45 @@ export class TenderDocumentsService {
       actorId
     );
 
+    const uploadName = file?.originalname ?? dto.fileName;
+    const uploadMime = file?.mimetype ?? dto.mimeType ?? "application/octet-stream";
+
+    let uploadItemId = `mock-file-${Date.now()}`;
+    let uploadWebUrl = `https://sharepoint.local/${folder.relativePath}/${uploadName}`;
+    let uploadMode: "mock" | "graph" = "mock";
+    let uploadETag: string | null = null;
+
+    if (file?.buffer) {
+      const uploaded = await this.sharePointService.uploadFile({
+        folderId: folder.itemId,
+        siteId: folder.siteId,
+        driveId: folder.driveId,
+        name: uploadName,
+        content: file.buffer,
+        mimeType: uploadMime
+      });
+      uploadItemId = uploaded.id;
+      uploadWebUrl = uploaded.webUrl;
+      uploadETag = uploaded.eTag;
+      uploadMode = "graph";
+    }
+
     const fileLink = await this.prisma.sharePointFileLink.create({
       data: {
         folderLinkId: folder.id,
         siteId: folder.siteId,
         driveId: folder.driveId,
-        itemId: `mock-file-${Date.now()}`,
-        name: dto.fileName,
-        relativePath: `${folder.relativePath}/${dto.fileName}`,
-        webUrl: `https://sharepoint.local/${folder.relativePath}/${dto.fileName}`,
-        mimeType: dto.mimeType ?? "application/octet-stream",
+        itemId: uploadItemId,
+        name: uploadName,
+        relativePath: `${folder.relativePath}/${uploadName}`,
+        webUrl: uploadWebUrl,
+        mimeType: uploadMime,
+        sizeBytes: file?.size ?? null,
         linkedEntityType: "Tender",
         linkedEntityId: tenderId,
         metadata: {
-          uploadMode: "mock"
+          uploadMode,
+          eTag: uploadETag
         }
       }
     });

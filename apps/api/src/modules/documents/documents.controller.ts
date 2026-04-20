@@ -1,5 +1,16 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors
+} from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
@@ -60,19 +71,28 @@ export class DocumentsController {
 
   @Post()
   @RequirePermissions("documents.manage")
-  @ApiOperation({ summary: "Create and register a SharePoint-backed document link" })
-  create(@Body() dto: CreateDocumentDto, @CurrentUser() actor: AuthenticatedUser) {
-    return this.service.create(dto, actor);
+  @UseInterceptors(FileInterceptor("file"))
+  @ApiConsumes("multipart/form-data", "application/json")
+  @ApiOperation({ summary: "Create and register a SharePoint-backed document link (optional multipart file upload)" })
+  create(
+    @Body() dto: CreateDocumentDto,
+    @CurrentUser() actor: AuthenticatedUser,
+    @UploadedFile() file?: Express.Multer.File
+  ) {
+    return this.service.create(dto, actor, file);
   }
 
   @Post(":id/versions")
   @RequirePermissions("documents.manage")
-  @ApiOperation({ summary: "Create a new version of an existing document" })
+  @UseInterceptors(FileInterceptor("file"))
+  @ApiConsumes("multipart/form-data", "application/json")
+  @ApiOperation({ summary: "Create a new version of an existing document (optional multipart file upload)" })
   createVersion(
     @Param("id") id: string,
     @Body() dto: CreateDocumentVersionDto,
-    @CurrentUser() actor: AuthenticatedUser
+    @CurrentUser() actor: AuthenticatedUser,
+    @UploadedFile() file?: Express.Multer.File
   ) {
-    return this.service.createVersion(id, dto, actor);
+    return this.service.createVersion(id, dto, actor, file);
   }
 }

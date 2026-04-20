@@ -22,7 +22,7 @@ type NotificationsDropdownProps = {
 
 const SEVERITY_COLOR: Record<string, string> = {
   INFO: "var(--status-info, #3B82F6)",
-  SUCCESS: "var(--status-active, #1D9E75)",
+  SUCCESS: "var(--status-active, #005B61)",
   WARNING: "var(--status-warning, #F59E0B)",
   ERROR: "var(--status-danger, #EF4444)"
 };

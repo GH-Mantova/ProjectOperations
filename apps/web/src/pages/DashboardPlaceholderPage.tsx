@@ -53,7 +53,7 @@ type DashboardRenderResponse = DashboardListItem & {
 };
 
 const TREND_ACCENT: Record<string, string> = {
-  up: "var(--status-active, #1D9E75)",
+  up: "var(--status-active, #005B61)",
   down: "var(--status-danger, #EF4444)",
   flat: "var(--status-info, #3B82F6)"
 };
@@ -198,7 +198,7 @@ export function DashboardPlaceholderPage() {
           kpis.map((widget) => {
             const data = widget.data;
             if (!data || data.type !== "kpi") return null;
-            const accent = data.trend ? TREND_ACCENT[data.trend] : "var(--brand-primary, #1D9E75)";
+            const accent = data.trend ? TREND_ACCENT[data.trend] : "var(--brand-accent, #FEAA6D)";
             return (
               <KpiCard
                 key={widget.id}

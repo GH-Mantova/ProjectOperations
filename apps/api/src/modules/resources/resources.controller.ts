@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
@@ -29,6 +29,8 @@ export class ResourcesController {
   @Get("workers/:id")
   @RequirePermissions("resources.view")
   @ApiOperation({ summary: "Get a single worker with full competencies, availability, suitability, and assigned-shift detail" })
+  @ApiResponse({ status: 200, description: "Worker detail record with eager-loaded competencies, availability windows, role suitabilities, and assigned shifts (each including job, activity, and conflicts)." })
+  @ApiResponse({ status: 404, description: "Worker not found." })
   getWorker(@Param("id") id: string) {
     return this.service.getWorker(id);
   }

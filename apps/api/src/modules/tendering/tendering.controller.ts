@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { IsString } from "class-validator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
@@ -121,6 +121,8 @@ export class TenderingController {
   @Patch(":id/status")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Update only the stage/status of a tender (used by the Kanban drag-drop flow)" })
+  @ApiResponse({ status: 200, description: "Updated tender record with the new status and all existing relations preserved." })
+  @ApiResponse({ status: 404, description: "Tender not found." })
   updateStatus(
     @Param("id") id: string,
     @Body() dto: UpdateTenderStatusDto,

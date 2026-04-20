@@ -393,3 +393,210 @@ Highlights:
 - cross-platform Playwright startup compatibility was later merged into `main`
 
 This means the module list above is accurate for implementation coverage, but the current Tendering experience is materially more mature than the original Module 5 baseline described earlier in this file.
+
+---
+
+## V2 Improvements (April 2026)
+
+After the 16-module baseline documented above, a v2 improvement pass split into nine
+sections (S1–S9) extended the platform with cross-platform scripts, CI/CD, the
+SharePoint Graph live adapter, Microsoft 365 SSO, a Recharts-based dashboard, a
+standalone Archive route, a comprehensive Mantova Civil Works seed, a full UI/UX
+overhaul, and a final quality pass. Every section shipped as a dedicated
+`improvement/s{N}-{slug}` branch and PR to `main`.
+
+### Section 1 — Cross-platform script fix
+- Replaced Windows CMD `set VAR=val&&` prefixes in root `dev:api:e2e` and
+  `dev:web:e2e` scripts with `cross-env VAR=val`.
+- Added `cross-env` as a root-workspace dev dependency. Audited every other
+  workspace `package.json` for the same pattern — no other occurrences.
+
+### Section 2 — CI/CD pipeline
+- New `.github/workflows/ci.yml` — API job (Postgres 16 service, `prisma generate`
+  + `migrate deploy` + seed + api lint + serial tests + compliance smoke) and Web
+  job (lint + logic tests + build).
+- New `.github/workflows/deploy.yml` — `pnpm build:azure`, deploy API to Azure App
+  Service, deploy web `dist` to Azure Static Web Apps. Requires four repo secrets:
+  `PROD_API_BASE_URL`, `AZURE_API_APP_NAME`, `AZURE_API_PUBLISH_PROFILE`,
+  `AZURE_STATIC_WEB_APPS_TOKEN`.
+- A follow-up `fix/ci-pnpm-version` dropped the explicit `version: '10'` input from
+  `pnpm/action-setup@v4` so the action reads the version from
+  `packageManager: pnpm@10.0.0` in `package.json`, resolving the conflict that was
+  blocking CI.
+
+### Section 3 — SharePoint Graph live adapter
+- Installed `@microsoft/microsoft-graph-client` and `@azure/identity` in
+  `@project-ops/api`, plus `@types/multer` as a dev dep for `FileInterceptor`
+  typing. (The spec's `@types/jwks-rsa` was skipped — `jwks-rsa` ships its own
+  types.)
+- `.env.example` appended `SHAREPOINT_TENANT_ID`, `SHAREPOINT_CLIENT_ID`,
+  `SHAREPOINT_CLIENT_SECRET`.
+- Extended the `SharePointAdapter` interface with `uploadFile` and
+  `getDownloadUrl`; replaced the stub `GraphSharePointAdapter` with a real
+  implementation using `Client.initWithMiddleware({ authProvider:
+  new TokenCredentialAuthenticationProvider(…) })`. Typed error logging via
+  `Logger` + `ServiceUnavailableException` on config / network failure.
+- `MockSharePointAdapter` grew matching implementations so CI in mock mode stays
+  green.
+- `platform.module.ts` factory now selects the Graph adapter when
+  `SHAREPOINT_MODE === "live"` (accepts `"graph"` for backward compatibility).
+- Multipart upload wired on `POST /documents`, `POST /documents/:id/versions`, and
+  `POST /tenders/:tenderId/documents` via
+  `@UseInterceptors(FileInterceptor('file'))` + `@UploadedFile() file?: Express.Multer.File`.
+  When a file is present, the adapter is called and the returned `{ id, webUrl, eTag }`
+  is persisted; when absent, the mock path is retained byte-identically.
+
+### Section 4 — Microsoft 365 SSO foundation
+- Installed `@azure/msal-browser` and `@azure/msal-react` in `@project-ops/web`;
+  `jwks-rsa`, `jsonwebtoken`, and `@types/jsonwebtoken` in `@project-ops/api`.
+- `.env.example` appended `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `SSO_ENABLED`,
+  `VITE_SSO_ENABLED`, `VITE_ENTRA_CLIENT_ID`, `VITE_ENTRA_TENANT_ID`.
+- New `apps/web/src/auth/msal.config.ts` exports `msalConfig`, `loginRequest`, and
+  the derived `isSsoEnabled` boolean. `main.tsx` wraps the app tree in
+  `MsalProvider` only when `isSsoEnabled` is true.
+- Login page renders a "Sign in with Microsoft" button below the existing form
+  when SSO is on; on success it POSTs the MSAL id-token to `POST /api/v1/auth/sso`.
+- Backend: new `POST /auth/sso` endpoint with auto-provisioning. Existing active
+  users are returned as-is; inactive users → 403; unknown emails are created with
+  `ssoOnly: true`, empty password hash, and the lowest-privilege available role
+  (priority order: Viewer → Field → Planner → Admin).
+- Schema: `User.ssoOnly Boolean @default(false)` added with migration
+  `20260418_s4_sso_user_flag`.
+
+### Section 5 — Visual dashboard charts
+- Installed `recharts` in both `@project-ops/web` and `@project-ops/ui`.
+- New `packages/ui/src/charts/` — `KpiCard`, `BarChartWidget`, `LineChartWidget`,
+  `DonutChartWidget`, re-exported from `packages/ui/src/index.ts`.
+- Reshaped `DashboardsService.renderWidget` to the spec output contract:
+  `{ type: 'kpi', title, value, trend, trendValue }` for KPIs and
+  `{ type: 'bar_chart' | 'line_chart' | 'donut_chart', title, data: [{label,value}] }`
+  for charts. New metric keys wired: `tenders.pipelineValue`, `jobs.issuesOpen`,
+  `maintenance.dueSoon`, `tenders.byStage`, `revenue.monthly`, `forms.byWeek`,
+  `maintenance.upcoming`.
+- Frontend `DashboardsPage.tsx` routes widgets by `type` through the new components;
+  table rendering retained for legacy table widgets.
+- S8 seed widget types renamed to the new `donut_chart` / `line_chart` /
+  `bar_chart` values.
+
+### Section 6 — Archive as standalone route
+- New `ArchiveModule` with `GET /api/v1/archive` (paginated with
+  `search / clientId / year / status` filters; returns
+  `id, jobNumber, name, clientName, closedAt, archivedAt, status` per item) and
+  `GET /api/v1/archive/:jobId/export` (full read-only snapshot of summary,
+  closeout, checklist, stages, activities, issues, variations, progress entries,
+  status history, documents metadata, form submissions). Full Swagger decorators
+  on both endpoints.
+- New `/archive` (`ArchivePage.tsx`) with header + "Export CSV" button + filters
+  + paginated table.
+- New `/archive/:jobId` (`ArchiveDetailPage.tsx`) — read-only with 7 collapsible
+  panels and a JSON "Export record" download.
+- "Archive" entry added to the sidebar navigation.
+- Jobs workspace inline archive panel replaced with "View in Archive →" link; job
+  detail closeout form swaps to the same link when the job is already closed /
+  archived.
+
+### Section 7 — Full UI/UX overhaul
+Shipped as 13 consecutive PRs. The existing `@projectops.local` dev seed, legacy
+routes, and compliance-smoke dependencies were preserved throughout — every legacy
+page is reachable under `/{route}/legacy`.
+
+- **7.0 / 7.12 / 7.13 / 7.14 foundations** — `apps/web/src/styles/tokens.css` with
+  the full `:root` token block (brand palette, sidebar tones, status colours,
+  radii, shadows) plus typography, card, badge, table, button, and input utility
+  classes. `EmptyState` + `Skeleton` primitives in `packages/ui`. Responsive
+  grid breakpoints + `.s7-table-scroll` + `.s7-touch-target`.
+- **7.1 dark sidebar** — 240px / 64px-collapsed sidebar with 5 groups (Operations,
+  Commercial, Resources, Data, Admin — role-gated), inline-SVG icons, user footer,
+  collapse toggle. 56px white top bar with breadcrumb + bell + search icon + user
+  avatar. Bottom tab bar below 768px.
+- **7.11 login** — dark full-screen background, centred white card with PO logo +
+  wordmark, email + password (show/hide toggle), primary button, conditional
+  Microsoft SSO divider + button with the official four-square SVG logo.
+- **7.15 notifications + Cmd/Ctrl+K palette** — `NotificationsDropdown` (400×480,
+  severity icons, mark-all-read) with new `PATCH /notifications/read-all`
+  endpoint. `CommandPalette` with Cmd/Ctrl+K shortcut, 160ms debounce, results
+  grouped by entity type, full keyboard navigation. 52 additional `SearchEntry`
+  seed rows covering the 7 required palette types.
+- **7.2 dashboard** — KPI grid (4 cols desktop / 2 tablet / 1 mobile) with
+  coloured left accent bars + 2-col chart grid, skeleton loaders, "Customise"
+  slide-over with localStorage-backed widget toggles.
+- **7.3 tendering** — Kanban pipeline (6 columns) with native HTML5 drag-drop
+  stage changes + `PATCH /tenders/:id/status` lightweight endpoint. Register
+  table with sort/filter toggle. `/tenders/:id` detail with 60/40 split, merged
+  activity timeline, inline add-note / clarification / follow-up forms.
+- **7.4 jobs** — card grid (default) + table toggle with 7 filters. `/jobs/:id`
+  with 7 tabs. Activity completion toggles via
+  `PATCH /jobs/:id/activities/:activityId`.
+- **7.5 scheduler** — 3-pane layout (hierarchy | timeline | resource panel), week
+  + month views, conflict-aware shift pills, click-to-open slide-over with
+  worker/asset assignment management, resource-click highlight.
+- **7.6 workers** — list at `/resources` with card grid + filters.
+  `/resources/:id` with 5 tabs. New `GET /resources/workers/:id` endpoint for
+  detail.
+- **7.7 assets + maintenance** — `/assets` card grid + detail with 4 tabs.
+  `/maintenance` two-pane split (upcoming/overdue + month calendar) with "Log
+  event" slide-over supporting service / inspection / breakdown modes.
+- **7.8 forms** — `/forms` with Templates + Submissions tabs.
+  `/forms/designer/:templateId` 3-pane designer with draggable field chips,
+  click-to-select fields, property editor, conditional rules editor, Preview
+  modal. `/forms/submit/:templateId` distraction-free wizard with progress bar,
+  one-section-at-a-time, signature canvas, photo upload, final review.
+- **7.9 documents** — `/documents` split view: context tree + document list with
+  file-type coloured icons, version badges, uploader, date, Download + New
+  version actions. Drag-and-drop upload zone with 11-extension whitelist. Fixed
+  `AuthContext.authFetch` to skip default `Content-Type` for `FormData` bodies
+  so multipart uploads work.
+- **7.10 master data** — `/master-data` with Clients + Sites tabs (Workers links
+  to `/resources`). Card/table toggle per tab, filters, "New" slide-over with
+  `<fieldset>` section groupings, inline validation (required / email / postcode),
+  pinned save/cancel footer.
+
+### Section 8 — Comprehensive seed data
+- Additive Mantova Civil Works seed in `apps/api/prisma/seed-mantova.ts`
+  (~2,300 lines), called at the end of the existing `main()` in `seed.ts`.
+  Preserves the existing `@projectops.local` dev-test data so
+  compliance-smoke / LoginPage default / tendering e2e still pass.
+- 8 Mantova users (Admin, two PMs, Estimator, Scheduler, two Supervisors, Viewer)
+  and the new `Viewer` role with 16 view-only permissions.
+- 5 clients + 10 contacts, 7 sites, 7 resource types, 12 competencies, 16
+  workers with competency links, 4 crews, 7 asset categories, 14 assets.
+- 5 maintenance plans / 10 events / 5 inspections / 1 breakdown.
+- 8 tenders across all pipeline stages with notes, clarifications, pricing
+  snapshots, follow-ups, outcomes.
+- 2 jobs (`job-001` Ipswich Motorway, `job-002` Sandgate Stormwater) with full
+  stage / activity trees, issues, variations, weekly progress, status history.
+- 20 shifts across two weeks with seeded conflicts (asset-maintenance-block,
+  worker-overlap) and `worker-007`'s annual-leave availability window.
+- 4 form templates (Daily Prestart / Plant Pre-Start / Incident / Concrete Pour)
+  with conditional rules, plus 9 submissions covering all spec scenarios.
+- 15 SharePoint folder/file mock pairs + 19 `DocumentLink` records across jobs,
+  tenders, assets.
+- Dashboard widgets updated to cover the 9 required 8.14 items.
+- All upserts are idempotent — verified by running `pnpm seed` twice and
+  comparing row counts across 16 tables.
+
+### Section 9 — Code quality pass
+- Installed `eslint`, `@typescript-eslint/parser`,
+  `@typescript-eslint/eslint-plugin` (+ `eslint-plugin-react-hooks` for web) in
+  `@project-ops/api` and `@project-ops/web`.
+- Added flat-config `eslint.config.js` (api) and `eslint.config.cjs` (web,
+  required because `apps/web/package.json` sets `"type": "module"`).
+  Conservative rules — parses TS/TSX correctly without imposing style rules that
+  would force a large refactor.
+- `pnpm lint` now passes clean across the monorepo (previously the api package's
+  `lint` script referenced `eslint` without having it installed).
+- Added missing `@ApiResponse` decorators to every new endpoint created during
+  the v2 cycle: `POST /auth/sso`, `PATCH /notifications/read-all`,
+  `PATCH /tenders/:id/status`, `GET /resources/workers/:id`. (Existing
+  controllers untouched.)
+- Verified: `pnpm build`, `pnpm --filter @project-ops/api test`,
+  `pnpm test:web:logic`, `pnpm seed` (idempotent across 2 runs), and
+  `pnpm compliance:smoke` all pass.
+- Consistency checks: 42 React Router routes with 0 duplicates, 152 API
+  endpoints with 0 duplicates, `prisma generate` clean.
+- Zero `any` types on component props in new files across `apps/web/src/pages`,
+  `apps/web/src/components`, and `packages/ui/src`.
+- Migration audit: `20260418_s4_sso_user_flag` is the only schema change from
+  the v2 cycle and is present and applied.
+- `docs/module-build-log.md` (this file) and `docs/architecture-overview.md`
+  refreshed to describe the v2 state.

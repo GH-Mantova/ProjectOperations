@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
@@ -111,6 +111,7 @@ export class NotificationsController {
   @Patch("read-all")
   @RequirePermissions("notifications.manage")
   @ApiOperation({ summary: "Mark all notifications as read for the current user" })
+  @ApiResponse({ status: 200, description: "Bulk-read ack. Returns { count } — the number of notifications transitioned from UNREAD to READ." })
   markAllRead(@CurrentUser() actor: { sub: string }) {
     return this.notificationsService.markAllReadForUser(actor.sub);
   }

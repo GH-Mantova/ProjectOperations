@@ -176,7 +176,6 @@ export function JobDetailPage() {
 
   useEffect(() => {
     void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authFetch, id]);
 
   useEffect(() => {

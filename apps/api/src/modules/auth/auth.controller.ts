@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { AuthService } from "./auth.service";
@@ -27,6 +27,9 @@ export class AuthController {
 
   @Post("sso")
   @ApiOperation({ summary: "Microsoft 365 SSO login with auto-provisioning for first-time users" })
+  @ApiResponse({ status: 201, description: "SSO token exchanged; returns accessToken, refreshToken, and user (same envelope as /auth/login)." })
+  @ApiResponse({ status: 401, description: "Microsoft identity token is invalid or expired." })
+  @ApiResponse({ status: 403, description: "Account exists but is deactivated, or no lowest-privilege role is configured for auto-provisioning." })
   loginWithSso(@Body() dto: SsoLoginDto) {
     return this.authService.loginWithSso(dto);
   }

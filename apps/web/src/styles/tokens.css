@@ -1,19 +1,22 @@
 :root {
-  --brand-primary: #1D9E75;
-  --brand-primary-light: #E1F5EE;
-  --brand-primary-dark: #0F6E56;
-  --surface-page: #F7F8FA;
+  --brand-primary: #005B61;
+  --brand-primary-light: #E6F0F1;
+  --brand-primary-dark: #004449;
+  --brand-accent: #FEAA6D;
+  --brand-accent-dark: #E8914F;
+  --brand-dark: #242424;
+  --surface-page: #F6F6F6;
   --surface-card: #FFFFFF;
-  --surface-sidebar: #1A1D23;
+  --surface-sidebar: #000000;
   --sidebar-text: #A8AEBB;
   --sidebar-text-active: #FFFFFF;
-  --sidebar-active-bg: rgba(29,158,117,0.15);
-  --text-primary: #0F1117;
+  --sidebar-active-bg: rgba(254,170,109,0.18);
+  --text-primary: #000000;
   --text-secondary: #6B7280;
   --text-muted: #9CA3AF;
   --border-default: #E5E7EB;
   --border-subtle: #F3F4F6;
-  --status-active: #1D9E75;
+  --status-active: #005B61;
   --status-warning: #F59E0B;
   --status-danger: #EF4444;
   --status-info: #3B82F6;
@@ -81,7 +84,7 @@
 }
 
 .s7-badge--active {
-  background: rgba(29, 158, 117, 0.1);
+  background: rgba(0, 91, 97, 0.1);
   color: var(--status-active);
 }
 
@@ -185,14 +188,14 @@
 }
 
 .s7-btn--primary {
-  background: var(--brand-primary);
-  color: #ffffff;
-  border-color: var(--brand-primary);
+  background: var(--brand-accent);
+  color: #000000;
+  border-color: var(--brand-accent);
 }
 
 .s7-btn--primary:hover:not(:disabled) {
-  background: var(--brand-primary-dark);
-  border-color: var(--brand-primary-dark);
+  background: var(--brand-accent-dark);
+  border-color: var(--brand-accent-dark);
 }
 
 .s7-btn--secondary {
@@ -242,8 +245,8 @@
 .s7-select:focus,
 .s7-textarea:focus {
   outline: none;
-  border-color: var(--brand-primary);
-  box-shadow: 0 0 0 3px rgba(29, 158, 117, 0.3);
+  border-color: var(--brand-accent);
+  box-shadow: 0 0 0 3px rgba(254, 170, 109, 0.35);
 }
 
 /* Skeleton loader per 7.13 */

@@ -43,7 +43,7 @@ const STAGE_ACCENT: Record<Stage, string> = {
   DRAFT: "var(--status-neutral, #6B7280)",
   IN_PROGRESS: "var(--status-info, #3B82F6)",
   SUBMITTED: "var(--status-warning, #F59E0B)",
-  AWARDED: "var(--status-active, #1D9E75)",
+  AWARDED: "var(--status-active, #005B61)",
   LOST: "var(--status-danger, #EF4444)",
   WITHDRAWN: "var(--text-muted, #9CA3AF)"
 };

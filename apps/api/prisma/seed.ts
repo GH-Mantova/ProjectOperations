@@ -2301,6 +2301,79 @@ async function main() {
   await seedInitialServicesDataset(prisma);
   await seedEstimateRates(prisma);
   await backfillTenderLifecycleTimestamps(prisma);
+  await seedUserDashboards(prisma);
+}
+
+async function seedUserDashboards(prisma: PrismaClient) {
+  const users = await prisma.user.findMany({ select: { id: true } });
+
+  const defaults: Array<{ slug: string; name: string; widgets: string[] }> = [
+    {
+      slug: "operations",
+      name: "Operations Overview",
+      widgets: [
+        "ops_active_jobs_kpi",
+        "ops_tender_pipeline_kpi",
+        "ops_open_issues_kpi",
+        "ops_upcoming_maintenance_kpi",
+        "ops_jobs_by_status_donut",
+        "ops_tender_pipeline_donut",
+        "ops_monthly_revenue_line",
+        "ops_form_submissions_bar",
+        "ops_maintenance_bar"
+      ]
+    },
+    {
+      slug: "tendering",
+      name: "Tender Dashboard",
+      widgets: [
+        "ten_active_pipeline_kpi",
+        "ten_submitted_mtd_kpi",
+        "ten_win_rate_kpi",
+        "ten_avg_lead_time_kpi",
+        "ten_due_this_week",
+        "ten_follow_up_queue",
+        "ten_win_rate_chart",
+        "ten_pipeline_by_estimator",
+        "ten_recent_wins"
+      ]
+    }
+  ];
+
+  for (const user of users) {
+    for (const def of defaults) {
+      const config = {
+        period: "30d",
+        widgets: def.widgets.map((type, order) => ({
+          id: `${type}-default`,
+          type,
+          visible: true,
+          order,
+          config: { period: null, filters: {} }
+        }))
+      };
+      const existing = await prisma.userDashboard.findUnique({
+        where: { userId_slug_isSystem: { userId: user.id, slug: def.slug, isSystem: true } }
+      });
+      if (existing) {
+        await prisma.userDashboard.update({
+          where: { id: existing.id },
+          data: { name: def.name, config }
+        });
+      } else {
+        await prisma.userDashboard.create({
+          data: {
+            userId: user.id,
+            name: def.name,
+            slug: def.slug,
+            isSystem: true,
+            isDefault: true,
+            config
+          }
+        });
+      }
+    }
+  }
 }
 
 // Stable string hash → small integer (for deterministic per-tender offsets)

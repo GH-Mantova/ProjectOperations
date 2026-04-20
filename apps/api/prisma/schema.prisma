@@ -37,6 +37,7 @@ model User {
   auditLogs          AuditLog[]         @relation("AuditActor")
   notifications      Notification[]
   dashboards         Dashboard[]        @relation("DashboardOwner")
+  userDashboards     UserDashboard[]
   workerProfile      Worker?
   estimatedTenders   Tender[]           @relation("TenderEstimator")
   tenderNotes        TenderNote[]       @relation("TenderNoteAuthor")
@@ -1460,4 +1461,21 @@ model EstimateAssumption {
 
   @@index([itemId])
   @@map("estimate_assumptions")
+}
+
+model UserDashboard {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  slug      String
+  isSystem  Boolean  @default(false) @map("is_system")
+  isDefault Boolean  @default(false) @map("is_default")
+  config    Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, slug, isSystem])
+  @@index([userId])
+  @@map("user_dashboards")
 }

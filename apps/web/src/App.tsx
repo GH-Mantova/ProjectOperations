@@ -41,6 +41,7 @@ import { FormsListPage } from "./pages/forms/FormsListPage";
 import { FormDesignerPage } from "./pages/forms/FormDesignerPage";
 import { FormSubmitPage } from "./pages/forms/FormSubmitPage";
 import { DocumentsWorkspacePage } from "./pages/documents/DocumentsWorkspacePage";
+import { MasterDataWorkspacePage } from "./pages/master-data/MasterDataWorkspacePage";
 
 function ProtectedRoute() {
   const { isAuthenticated } = useAuth();
@@ -91,7 +92,8 @@ export function App() {
             <Route path="/admin/platform" element={<PlatformPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/dashboards" element={<DashboardsPage />} />
-            <Route path="/master-data" element={<MasterDataPage />} />
+            <Route path="/master-data" element={<MasterDataWorkspacePage />} />
+            <Route path="/master-data/legacy" element={<MasterDataPage />} />
             <Route path="/archive" element={<ArchivePage />} />
             <Route path="/archive/:jobId" element={<ArchiveDetailPage />} />
           </Route>

@@ -7,6 +7,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  Max,
   Min,
   ValidateNested
 } from "class-validator";
@@ -21,6 +22,12 @@ class WidgetSubConfigDto {
   @IsOptional()
   @IsObject()
   filters?: Record<string, unknown>;
+
+  // Ordered list of field keys the widget should render (PR #43 dashboard v2).
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  fields?: string[];
 }
 
 export class UserDashboardWidgetConfigDto {
@@ -36,6 +43,19 @@ export class UserDashboardWidgetConfigDto {
   @IsInt()
   @Min(0)
   order!: number;
+
+  // Grid span overrides (PR #43 dashboard v2 snap-to-grid resize).
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(4)
+  colSpan?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(4)
+  rowSpan?: number;
 
   @ValidateNested()
   @Type(() => WidgetSubConfigDto)

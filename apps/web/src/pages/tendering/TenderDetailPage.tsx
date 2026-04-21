@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
-import { EstimateEditor } from "./EstimateEditor";
+import { QuoteTab } from "./QuoteTab";
 import { TenderDocumentsPanel } from "./TenderDocumentsPanel";
 import { TenderClientNotesSection } from "./TenderClientNotesSection";
 import { TenderClarificationLog } from "./TenderClarificationLog";
@@ -481,7 +481,7 @@ export function TenderDetailPage() {
             className={tab === "estimate" ? "tender-detail__tab tender-detail__tab--active" : "tender-detail__tab"}
             onClick={() => setTab("estimate")}
           >
-            Estimate
+            Quote
           </button>
         </nav>
 
@@ -842,7 +842,11 @@ export function TenderDetailPage() {
         )}
 
         {tab === "estimate" && (
-          <EstimateEditor tenderId={tender.id} canManage={canManageEstimates} canAdmin={canAdminEstimates} />
+          <QuoteTab
+            tenderId={tender.id}
+            tender={{ tenderNumber: tender.tenderNumber, estimator: tender.estimator }}
+            canManage={canManageTenders}
+          />
         )}
 
       </div>

@@ -14,9 +14,13 @@ import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import {
+  BulkApproveTimesheetsDto,
   CreatePreStartDto,
   CreateTimesheetDto,
   FieldListQueryDto,
+  ManageTimesheetQueryDto,
+  RejectTimesheetDto,
+  TimesheetSummaryQueryDto,
   UpdatePreStartDto,
   UpdateTimesheetDto
 } from "./dto/field.dto";
@@ -107,6 +111,48 @@ export class FieldController {
     return this.service.listTimesheets(query, ctx(user));
   }
 
+  @Get("timesheets/pending")
+  @RequirePermissions("field.manage")
+  @ApiOperation({
+    summary: "List all SUBMITTED timesheets awaiting approval across all workers (oldest first)."
+  })
+  listPendingTimesheets(@Query() query: FieldListQueryDto) {
+    return this.service.listPendingTimesheets(query);
+  }
+
+  @Get("timesheets/all")
+  @RequirePermissions("field.manage")
+  @ApiOperation({
+    summary: "List all timesheets across all workers with status / worker / project / date filters."
+  })
+  listAllTimesheets(@Query() query: ManageTimesheetQueryDto) {
+    return this.service.listAllTimesheets(query);
+  }
+
+  @Get("timesheets/summary")
+  @RequirePermissions("field.manage")
+  @ApiOperation({
+    summary:
+      "Aggregated timesheet summary: total approved hours, counts by status, byWorker/byProject breakdowns, and oldest pending date."
+  })
+  timesheetSummary(@Query() query: TimesheetSummaryQueryDto) {
+    return this.service.timesheetSummary(query);
+  }
+
+  @Post("timesheets/bulk-approve")
+  @RequirePermissions("field.manage")
+  @ApiOperation({
+    summary:
+      "Approve up to 50 SUBMITTED timesheets in a single transaction. Sends one notification per worker."
+  })
+  @ApiResponse({
+    status: 400,
+    description: "Some IDs were missing or not in SUBMITTED state — returns { invalidIds }. No partial approvals committed."
+  })
+  bulkApproveTimesheets(@Body() dto: BulkApproveTimesheetsDto, @CurrentUser() user: RequestUser) {
+    return this.service.bulkApproveTimesheets(dto, ctx(user));
+  }
+
   @Post("timesheets")
   @RequirePermissions("field.view")
   @ApiOperation({ summary: "Create a DRAFT timesheet for an allocation + date." })
@@ -138,8 +184,26 @@ export class FieldController {
 
   @Post("timesheets/:id/approve")
   @RequirePermissions("field.manage")
-  @ApiOperation({ summary: "Approve a submitted timesheet (PM / WHS / Admin)." })
+  @ApiOperation({
+    summary:
+      "Approve a submitted timesheet (PM / WHS / Admin). Notifies the worker if an internal login is linked."
+  })
   approveTimesheet(@Param("id") id: string, @CurrentUser() user: RequestUser) {
     return this.service.approveTimesheet(id, ctx(user));
+  }
+
+  @Post("timesheets/:id/reject")
+  @RequirePermissions("field.manage")
+  @ApiOperation({
+    summary:
+      "Return a SUBMITTED timesheet to the worker as DRAFT with a required reason (min 10 chars). Writes TIMESHEET_REJECTED activity log and notifies the worker."
+  })
+  @ApiResponse({ status: 400, description: "Timesheet is not in SUBMITTED state, or reason is too short." })
+  rejectTimesheet(
+    @Param("id") id: string,
+    @Body() dto: RejectTimesheetDto,
+    @CurrentUser() user: RequestUser
+  ) {
+    return this.service.rejectTimesheet(id, dto, ctx(user));
   }
 }

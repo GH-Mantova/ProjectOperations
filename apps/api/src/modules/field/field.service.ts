@@ -9,9 +9,13 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { NotificationsService } from "../platform/notifications.service";
 import {
+  BulkApproveTimesheetsDto,
   CreatePreStartDto,
   CreateTimesheetDto,
   FieldListQueryDto,
+  ManageTimesheetQueryDto,
+  RejectTimesheetDto,
+  TimesheetSummaryQueryDto,
   UpdatePreStartDto,
   UpdateTimesheetDto
 } from "./dto/field.dto";
@@ -339,6 +343,8 @@ export class FieldService {
           date: true,
           hoursWorked: true,
           status: true,
+          rejectedReason: true,
+          rejectedAt: true,
           project: { select: { projectNumber: true, name: true } }
         }
       })
@@ -350,6 +356,8 @@ export class FieldService {
         date: i.date,
         hoursWorked: i.hoursWorked.toString(),
         status: i.status,
+        rejectedReason: i.rejectedReason,
+        rejectedAt: i.rejectedAt,
         projectNumber: i.project.projectNumber,
         projectName: i.project.name
       })),
@@ -476,16 +484,338 @@ export class FieldService {
   }
 
   async approveTimesheet(id: string, actor: ActorContext) {
-    const timesheet = await this.prisma.timesheet.findUnique({ where: { id } });
+    const timesheet = await this.prisma.timesheet.findUnique({
+      where: { id },
+      include: {
+        workerProfile: { select: { firstName: true, lastName: true, internalUserId: true } },
+        project: { select: { id: true, projectNumber: true, name: true } }
+      }
+    });
     if (!timesheet) throw new NotFoundException("Timesheet not found.");
     if (timesheet.status === "APPROVED") return timesheet;
     if (timesheet.status === "DRAFT") {
       throw new BadRequestException("Timesheet must be submitted before it can be approved.");
     }
 
-    return this.prisma.timesheet.update({
+    const updated = await this.prisma.timesheet.update({
       where: { id },
       data: { status: "APPROVED", approvedById: actor.userId, approvedAt: new Date() }
     });
+
+    if (timesheet.workerProfile?.internalUserId) {
+      await this.notifications.create(
+        {
+          userId: timesheet.workerProfile.internalUserId,
+          title: `Timesheet approved for ${timesheet.project.projectNumber}`,
+          body: `Your timesheet for ${timesheet.project.name} on ${formatDateDdMmmYyyy(timesheet.date)} has been approved`,
+          severity: "LOW",
+          linkUrl: `/field/timesheet`
+        },
+        actor.userId
+      );
+    }
+
+    return updated;
   }
+
+  // ── Management (field.manage) ────────────────────────────────────────
+  async listPendingTimesheets(query: FieldListQueryDto) {
+    const page = Math.max(1, Number(query.page ?? 1));
+    const limit = Math.min(100, Math.max(1, Number(query.limit ?? 50)));
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.TimesheetWhereInput = { status: "SUBMITTED" };
+    const [total, items] = await this.prisma.$transaction([
+      this.prisma.timesheet.count({ where }),
+      this.prisma.timesheet.findMany({
+        where,
+        orderBy: { date: "asc" },
+        skip,
+        take: limit,
+        include: {
+          workerProfile: { select: { id: true, firstName: true, lastName: true, role: true } },
+          project: { select: { id: true, projectNumber: true, name: true } },
+          allocation: { select: { id: true, roleOnProject: true } }
+        }
+      })
+    ]);
+    return { items: items.map(this.serialiseManagedTimesheet), total, page, limit };
+  }
+
+  async listAllTimesheets(query: ManageTimesheetQueryDto) {
+    const page = Math.max(1, Number(query.page ?? 1));
+    const limit = Math.min(100, Math.max(1, Number(query.limit ?? 50)));
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.TimesheetWhereInput = {
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.workerId ? { workerProfileId: query.workerId } : {}),
+      ...(query.projectId ? { projectId: query.projectId } : {}),
+      ...(query.dateFrom || query.dateTo
+        ? {
+            date: {
+              ...(query.dateFrom ? { gte: new Date(query.dateFrom) } : {}),
+              ...(query.dateTo ? { lte: new Date(query.dateTo) } : {})
+            }
+          }
+        : {})
+    };
+
+    const [total, items] = await this.prisma.$transaction([
+      this.prisma.timesheet.count({ where }),
+      this.prisma.timesheet.findMany({
+        where,
+        orderBy: { date: "desc" },
+        skip,
+        take: limit,
+        include: {
+          workerProfile: { select: { id: true, firstName: true, lastName: true, role: true } },
+          project: { select: { id: true, projectNumber: true, name: true } },
+          allocation: { select: { id: true, roleOnProject: true } },
+          approvedBy: { select: { id: true, firstName: true, lastName: true } },
+          rejectedBy: { select: { id: true, firstName: true, lastName: true } }
+        }
+      })
+    ]);
+    return { items: items.map(this.serialiseManagedTimesheet), total, page, limit };
+  }
+
+  async timesheetSummary(query: TimesheetSummaryQueryDto) {
+    const where: Prisma.TimesheetWhereInput = {
+      ...(query.projectId ? { projectId: query.projectId } : {}),
+      ...(query.dateFrom || query.dateTo
+        ? {
+            date: {
+              ...(query.dateFrom ? { gte: new Date(query.dateFrom) } : {}),
+              ...(query.dateTo ? { lte: new Date(query.dateTo) } : {})
+            }
+          }
+        : {})
+    };
+
+    const [approvedCount, pendingCount, draftCount, approvedRows, oldestPending] = await this.prisma.$transaction([
+      this.prisma.timesheet.count({ where: { ...where, status: "APPROVED" } }),
+      this.prisma.timesheet.count({ where: { ...where, status: "SUBMITTED" } }),
+      this.prisma.timesheet.count({ where: { ...where, status: "DRAFT" } }),
+      this.prisma.timesheet.findMany({
+        where: { ...where, status: "APPROVED" },
+        select: {
+          hoursWorked: true,
+          workerProfileId: true,
+          projectId: true,
+          workerProfile: { select: { firstName: true, lastName: true } },
+          project: { select: { projectNumber: true, name: true } }
+        }
+      }),
+      this.prisma.timesheet.findFirst({
+        where: { ...where, status: "SUBMITTED" },
+        orderBy: { date: "asc" },
+        select: { date: true }
+      })
+    ]);
+
+    let totalHours = 0;
+    const byWorker = new Map<
+      string,
+      { workerProfileId: string; firstName: string; lastName: string; totalHours: number; timesheetCount: number }
+    >();
+    const byProject = new Map<
+      string,
+      { projectId: string; projectNumber: string; projectName: string; totalHours: number; timesheetCount: number }
+    >();
+    for (const row of approvedRows) {
+      const hours = Number(row.hoursWorked.toString());
+      totalHours += hours;
+      const wkr = byWorker.get(row.workerProfileId) ?? {
+        workerProfileId: row.workerProfileId,
+        firstName: row.workerProfile.firstName,
+        lastName: row.workerProfile.lastName,
+        totalHours: 0,
+        timesheetCount: 0
+      };
+      wkr.totalHours += hours;
+      wkr.timesheetCount += 1;
+      byWorker.set(row.workerProfileId, wkr);
+
+      const proj = byProject.get(row.projectId) ?? {
+        projectId: row.projectId,
+        projectNumber: row.project.projectNumber,
+        projectName: row.project.name,
+        totalHours: 0,
+        timesheetCount: 0
+      };
+      proj.totalHours += hours;
+      proj.timesheetCount += 1;
+      byProject.set(row.projectId, proj);
+    }
+
+    return {
+      totalHours: Number(totalHours.toFixed(2)),
+      pendingCount,
+      draftCount,
+      approvedCount,
+      oldestPendingDate: oldestPending?.date ?? null,
+      byWorker: Array.from(byWorker.values()).map((w) => ({ ...w, totalHours: Number(w.totalHours.toFixed(2)) })),
+      byProject: Array.from(byProject.values()).map((p) => ({ ...p, totalHours: Number(p.totalHours.toFixed(2)) }))
+    };
+  }
+
+  async rejectTimesheet(id: string, dto: RejectTimesheetDto, actor: ActorContext) {
+    const timesheet = await this.prisma.timesheet.findUnique({
+      where: { id },
+      include: {
+        workerProfile: { select: { firstName: true, lastName: true, internalUserId: true } },
+        project: { select: { id: true, projectNumber: true, name: true } }
+      }
+    });
+    if (!timesheet) throw new NotFoundException("Timesheet not found.");
+    if (timesheet.status !== "SUBMITTED") {
+      throw new BadRequestException("Only SUBMITTED timesheets can be returned.");
+    }
+
+    const now = new Date();
+    const updated = await this.prisma.timesheet.update({
+      where: { id },
+      data: {
+        status: "DRAFT",
+        rejectedReason: dto.reason,
+        rejectedById: actor.userId,
+        rejectedAt: now,
+        submittedAt: null
+      }
+    });
+
+    await this.prisma.projectActivityLog.create({
+      data: {
+        projectId: timesheet.projectId,
+        userId: actor.userId,
+        action: "TIMESHEET_REJECTED",
+        details: {
+          timesheetId: timesheet.id,
+          workerName: `${timesheet.workerProfile.firstName} ${timesheet.workerProfile.lastName}`.trim(),
+          date: timesheet.date.toISOString(),
+          hoursWorked: timesheet.hoursWorked.toString(),
+          reason: dto.reason,
+          rejectedById: actor.userId
+        } satisfies Prisma.InputJsonValue
+      }
+    });
+
+    if (timesheet.workerProfile.internalUserId) {
+      await this.notifications.create(
+        {
+          userId: timesheet.workerProfile.internalUserId,
+          title: `Timesheet returned for ${timesheet.project.projectNumber}`,
+          body: `Your timesheet for ${timesheet.project.name} on ${formatDateDdMmmYyyy(timesheet.date)} has been returned — ${dto.reason}`,
+          severity: "MEDIUM",
+          linkUrl: `/field/timesheet`
+        },
+        actor.userId
+      );
+    }
+
+    return updated;
+  }
+
+  async bulkApproveTimesheets(dto: BulkApproveTimesheetsDto, actor: ActorContext) {
+    const rows = await this.prisma.timesheet.findMany({
+      where: { id: { in: dto.timesheetIds } },
+      include: {
+        workerProfile: { select: { firstName: true, lastName: true, internalUserId: true } },
+        project: { select: { id: true, projectNumber: true, name: true } }
+      }
+    });
+
+    const foundIds = new Set(rows.map((r) => r.id));
+    const invalidIds: string[] = [];
+    for (const id of dto.timesheetIds) {
+      if (!foundIds.has(id)) invalidIds.push(id);
+    }
+    for (const row of rows) {
+      if (row.status !== "SUBMITTED") invalidIds.push(row.id);
+    }
+    if (invalidIds.length > 0) {
+      throw new BadRequestException({
+        message: "Some timesheets could not be approved — not found or not in SUBMITTED state.",
+        invalidIds: Array.from(new Set(invalidIds))
+      });
+    }
+
+    const now = new Date();
+    const approved = await this.prisma.$transaction(
+      rows.map((row) =>
+        this.prisma.timesheet.update({
+          where: { id: row.id },
+          data: { status: "APPROVED", approvedById: actor.userId, approvedAt: now }
+        })
+      )
+    );
+
+    // Deduplicate notifications — one per worker.
+    const notifiedUsers = new Set<string>();
+    for (const row of rows) {
+      const userId = row.workerProfile.internalUserId;
+      if (!userId || notifiedUsers.has(userId)) continue;
+      notifiedUsers.add(userId);
+      const matching = rows.filter((r) => r.workerProfile.internalUserId === userId);
+      const projectNumbers = Array.from(new Set(matching.map((r) => r.project.projectNumber)));
+      await this.notifications.create(
+        {
+          userId,
+          title: `${matching.length} timesheet${matching.length === 1 ? "" : "s"} approved`,
+          body:
+            matching.length === 1
+              ? `Your timesheet for ${matching[0].project.name} on ${formatDateDdMmmYyyy(matching[0].date)} has been approved`
+              : `${matching.length} of your timesheets have been approved (${projectNumbers.join(", ")})`,
+          severity: "LOW",
+          linkUrl: `/field/timesheet`
+        },
+        actor.userId
+      );
+    }
+
+    return { approved: approved.length, timesheets: approved };
+  }
+
+  private serialiseManagedTimesheet = (t: {
+    id: string;
+    date: Date;
+    hoursWorked: Prisma.Decimal;
+    breakMinutes: number;
+    description: string | null;
+    clockOnTime: Date | null;
+    clockOffTime: Date | null;
+    status: string;
+    submittedAt: Date | null;
+    approvedAt?: Date | null;
+    rejectedReason?: string | null;
+    rejectedAt?: Date | null;
+    workerProfile: { id: string; firstName: string; lastName: string; role: string };
+    project: { id: string; projectNumber: string; name: string };
+    allocation: { id: string; roleOnProject: string | null };
+    approvedBy?: { id: string; firstName: string; lastName: string } | null;
+    rejectedBy?: { id: string; firstName: string; lastName: string } | null;
+  }) => ({
+    id: t.id,
+    date: t.date,
+    hoursWorked: t.hoursWorked.toString(),
+    breakMinutes: t.breakMinutes,
+    description: t.description,
+    clockOnTime: t.clockOnTime,
+    clockOffTime: t.clockOffTime,
+    status: t.status,
+    submittedAt: t.submittedAt,
+    approvedAt: t.approvedAt ?? null,
+    rejectedReason: t.rejectedReason ?? null,
+    rejectedAt: t.rejectedAt ?? null,
+    workerProfile: t.workerProfile,
+    project: t.project,
+    allocation: t.allocation,
+    approvedBy: t.approvedBy
+      ? { id: t.approvedBy.id, firstName: t.approvedBy.firstName, lastName: t.approvedBy.lastName }
+      : null,
+    rejectedBy: t.rejectedBy
+      ? { id: t.rejectedBy.id, firstName: t.rejectedBy.firstName, lastName: t.rejectedBy.lastName }
+      : null
+  });
 }

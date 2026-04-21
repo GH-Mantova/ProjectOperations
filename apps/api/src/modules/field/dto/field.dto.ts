@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
   IsBoolean,
   IsDateString,
   IsInt,
@@ -8,7 +10,8 @@ import {
   IsString,
   Max,
   MaxLength,
-  Min
+  Min,
+  MinLength
 } from "class-validator";
 import { Type } from "class-transformer";
 
@@ -86,4 +89,39 @@ export class UpdateTimesheetDto {
 export class FieldListQueryDto {
   @ApiPropertyOptional() @IsOptional() @IsString() page?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() limit?: string;
+}
+
+export class ManageTimesheetQueryDto {
+  @ApiPropertyOptional({ enum: ["DRAFT", "SUBMITTED", "APPROVED"] })
+  @IsOptional()
+  @IsString()
+  status?: "DRAFT" | "SUBMITTED" | "APPROVED";
+  @ApiPropertyOptional() @IsOptional() @IsString() workerId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() projectId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsDateString() dateFrom?: string;
+  @ApiPropertyOptional() @IsOptional() @IsDateString() dateTo?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() page?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() limit?: string;
+}
+
+export class TimesheetSummaryQueryDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() projectId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsDateString() dateFrom?: string;
+  @ApiPropertyOptional() @IsOptional() @IsDateString() dateTo?: string;
+}
+
+export class RejectTimesheetDto {
+  @ApiProperty({ minLength: 10, maxLength: 1000 })
+  @IsString()
+  @MinLength(10)
+  @MaxLength(1000)
+  reason!: string;
+}
+
+export class BulkApproveTimesheetsDto {
+  @ApiProperty({ description: "Up to 50 SUBMITTED timesheet IDs to approve in a single transaction." })
+  @IsString({ each: true })
+  @ArrayMinSize(1)
+  @ArrayMaxSize(50)
+  timesheetIds!: string[];
 }

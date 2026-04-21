@@ -1,5 +1,6 @@
 import { BarChartWidget, DonutChartWidget, LineChartWidget, Skeleton } from "@project-ops/ui";
-import { isComplianceTender, useJobs, useMaintenancePlans, useProjects, useTenders, useFormSubmissions } from "../hooks";
+import { useNavigate } from "react-router-dom";
+import { isComplianceTender, useJobs, useMaintenancePlans, useProjects, useTenders, useTimesheetSummary, useFormSubmissions } from "../hooks";
 import { periodStart, resolvePeriod, type WidgetProps } from "../types";
 import { EmptyNote, KpiTile, PanelCard, formatCompactCurrency, formatCurrency } from "./shared";
 
@@ -45,6 +46,26 @@ export function ActiveProjectsKpi(_props: WidgetProps) {
   if (isLoading) return <KpiTile label="Active projects" value="—" />;
   const count = (projects ?? []).filter((p) => ACTIVE_PROJECT_STATUSES.has(p.status)).length;
   return <KpiTile label="Active projects" value={count} accent="#005B61" />;
+}
+
+export function TimesheetsPendingKpi(_props: WidgetProps) {
+  const navigate = useNavigate();
+  const { data, isLoading } = useTimesheetSummary();
+  if (isLoading) return <KpiTile label="Timesheets pending" value="—" />;
+  const count = data?.pendingCount ?? 0;
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => navigate("/timesheets/approval")}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") navigate("/timesheets/approval");
+      }}
+      style={{ cursor: "pointer" }}
+    >
+      <KpiTile label="Timesheets pending" value={count} accent="#FEAA6D" />
+    </div>
+  );
 }
 
 export function TenderPipelineKpi(_props: WidgetProps) {

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { EmptyState } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { AddPersonalProviderModal } from "./AddPersonalProviderModal";
+import { GlobalListsSection } from "./GlobalListsSection";
 
 type PersonalProvider = {
   id: string;
@@ -37,6 +38,7 @@ const PROVIDER_LABELS: Record<string, string> = {
 
 export function UserProfilePage() {
   const { user, authFetch } = useAuth();
+  const isAdmin = useMemo(() => user?.roles?.some((r) => r.name === "Admin") ?? false, [user]);
   const [data, setData] = useState<ListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
@@ -216,6 +218,8 @@ export function UserProfilePage() {
           )}
         </section>
       </section>
+
+      <GlobalListsSection isAdmin={isAdmin} />
 
       {addOpen ? (
         <AddPersonalProviderModal

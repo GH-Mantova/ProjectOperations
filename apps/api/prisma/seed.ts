@@ -2337,6 +2337,172 @@ async function main() {
   await seedEstimateRates(prisma);
   await backfillTenderLifecycleTimestamps(prisma);
   await seedUserDashboards(prisma);
+  if (adminUser) await seedGlobalLists(prisma, adminUser.id);
+}
+
+async function seedGlobalLists(prisma: PrismaClient, adminUserId: string) {
+  type StaticListSpec = {
+    slug: string;
+    name: string;
+    description: string;
+    items: Array<{ value?: string; label: string; metadata?: Record<string, unknown> }>;
+  };
+
+  const staticLists: StaticListSpec[] = [
+    {
+      slug: "measurement-units",
+      name: "Measurement units",
+      description: "Units used across scope, cutting and waste lines.",
+      items: [
+        { value: "lm", label: "Lm" },
+        { value: "sqm", label: "Sqm" },
+        { value: "m3", label: "M³" },
+        { value: "kg", label: "Kg" },
+        { value: "unit", label: "Unit" },
+        { value: "tonne", label: "Tonne" },
+        { value: "each", label: "Each" },
+        { value: "rl", label: "RL" },
+        { value: "hr", label: "Hr" }
+      ]
+    },
+    {
+      slug: "materials",
+      name: "Materials",
+      description: "Material categories referenced on scope items and cutting sheets.",
+      items: [
+        { label: "Concrete (unreinforced)" },
+        { label: "Concrete (reinforced)" },
+        { label: "Masonry/Brick" },
+        { label: "Timber" },
+        { label: "Steel" },
+        { label: "Plasterboard" },
+        { label: "Vinyl/Floor coverings" },
+        { label: "Asbestos cement sheet" },
+        { label: "Friable asbestos" },
+        { label: "Roof sheeting" },
+        { label: "Glass" },
+        { label: "Mixed rubble" },
+        { label: "Asphalt" },
+        { label: "Sand" },
+        { label: "Soil" },
+        { label: "Rock" },
+        { label: "Ceramic tiles" },
+        { label: "Plywood" },
+        { label: "FC sheet" },
+        { label: "Super six" }
+      ]
+    },
+    {
+      slug: "row-types",
+      name: "Scope row types",
+      description: "Row types shown in the Scope of Works editor, filtered by discipline.",
+      items: [
+        { value: "demolition", label: "Demolition", metadata: { disciplines: ["SO", "Str"] } },
+        { value: "asbestos-removal", label: "Asbestos removal", metadata: { disciplines: ["Asb"] } },
+        { value: "enclosure", label: "Enclosure", metadata: { disciplines: ["Asb"] } },
+        { value: "excavation", label: "Excavation", metadata: { disciplines: ["Civ"] } },
+        { value: "earthworks", label: "Earthworks", metadata: { disciplines: ["Civ"] } },
+        {
+          value: "waste-disposal",
+          label: "Waste/Disposal",
+          metadata: { disciplines: ["SO", "Str", "Asb", "Civ", "Prv"] }
+        },
+        {
+          value: "plant-only",
+          label: "Plant only",
+          metadata: { disciplines: ["SO", "Str", "Asb", "Civ", "Prv"] }
+        },
+        {
+          value: "general-labour",
+          label: "General/Labour",
+          metadata: { disciplines: ["SO", "Str", "Asb", "Civ", "Prv"] }
+        },
+        {
+          value: "cutting",
+          label: "Cutting (see cutting sheet)",
+          metadata: { disciplines: ["SO", "Str", "Civ", "Prv"] }
+        }
+      ]
+    }
+  ];
+
+  for (const spec of staticLists) {
+    const list = await prisma.globalList.upsert({
+      where: { slug: spec.slug },
+      create: {
+        name: spec.name,
+        slug: spec.slug,
+        description: spec.description,
+        type: "STATIC",
+        isSystem: true,
+        createdById: adminUserId
+      },
+      update: { name: spec.name, description: spec.description, isSystem: true }
+    });
+    for (let i = 0; i < spec.items.length; i += 1) {
+      const item = spec.items[i];
+      const value = (item.value ?? slugifyForSeed(item.label)).toLowerCase();
+      await prisma.globalListItem.upsert({
+        where: { listId_value: { listId: list.id, value } },
+        create: {
+          listId: list.id,
+          value,
+          label: item.label,
+          metadata: (item.metadata ?? null) as never,
+          sortOrder: i,
+          createdById: adminUserId
+        },
+        update: {
+          label: item.label,
+          metadata: (item.metadata ?? null) as never,
+          sortOrder: i,
+          isArchived: false
+        }
+      });
+    }
+  }
+
+  const dynamicLists: Array<{ slug: string; name: string; sourceModule: string; description: string }> = [
+    {
+      slug: "equipment",
+      name: "Equipment",
+      sourceModule: "assets",
+      description: "Live list of non-retired assets from the Assets module."
+    },
+    {
+      slug: "plant",
+      name: "Plant",
+      sourceModule: "assets",
+      description: "Assets in Plant/Equipment categories — subset of Equipment."
+    }
+  ];
+  for (const spec of dynamicLists) {
+    await prisma.globalList.upsert({
+      where: { slug: spec.slug },
+      create: {
+        name: spec.name,
+        slug: spec.slug,
+        description: spec.description,
+        type: "DYNAMIC",
+        sourceModule: spec.sourceModule,
+        isSystem: true,
+        createdById: adminUserId
+      },
+      update: {
+        name: spec.name,
+        description: spec.description,
+        sourceModule: spec.sourceModule,
+        isSystem: true
+      }
+    });
+  }
+}
+
+function slugifyForSeed(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 async function seedUserDashboards(prisma: PrismaClient) {

@@ -5,6 +5,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { EstimateEditor } from "./EstimateEditor";
 import { TenderDocumentsPanel } from "./TenderDocumentsPanel";
 import { TenderClientNotesSection } from "./TenderClientNotesSection";
+import { TenderClarificationLog } from "./TenderClarificationLog";
 import { AnthropicKeyModal } from "./AnthropicKeyModal";
 import { AiProviderSelector, type AvailableProvider } from "../../components/ai/AiProviderSelector";
 // NOTE: the Drafted Scope tab + panel are retired in PR #44 — AI draft items
@@ -784,6 +785,8 @@ export function TenderDetailPage() {
                 </ul>
               )}
             </section>
+
+            <TenderClarificationLog tenderId={tender.id} canManage={canManageTenders} />
 
             <section className="s7-card">
               <div className="tender-detail__section-head">

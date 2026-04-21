@@ -1,4 +1,54 @@
-import type { WidgetMeta } from "./types";
+import type { WidgetField, WidgetMeta } from "./types";
+
+const AGGREGATION_FIELD = {
+  key: "aggregation",
+  label: "Show as",
+  type: "select" as const,
+  defaultValue: "Sum",
+  options: [
+    { value: "Sum", label: "Sum" },
+    { value: "Count", label: "Count" },
+    { value: "Average", label: "Average" },
+    { value: "Max", label: "Max" },
+    { value: "Min", label: "Min" }
+  ]
+};
+
+const FIELDS_FOLLOW_UP: WidgetField[] = [
+  { key: "tenderNumber", label: "Tender #", defaultVisible: true, type: "text" },
+  { key: "clientName", label: "Client", defaultVisible: true, type: "text" },
+  { key: "projectName", label: "Project", defaultVisible: true, type: "text" },
+  { key: "daysWaiting", label: "Days waiting", defaultVisible: true, type: "number" },
+  { key: "probability", label: "Hot/Warm/Cold", defaultVisible: true, type: "badge" },
+  { key: "value", label: "Value", defaultVisible: true, type: "currency" },
+  { key: "logCall", label: "Log call button", defaultVisible: true, type: "text" },
+  { key: "estimator", label: "Estimator", defaultVisible: false, type: "text" },
+  { key: "lastActivity", label: "Last activity", defaultVisible: false, type: "text" }
+];
+
+const FIELDS_DUE_THIS_WEEK: WidgetField[] = [
+  { key: "tenderNumber", label: "Tender #", defaultVisible: true, type: "text" },
+  { key: "clientName", label: "Client", defaultVisible: true, type: "text" },
+  { key: "projectName", label: "Project", defaultVisible: true, type: "text" },
+  { key: "estimator", label: "Estimator", defaultVisible: true, type: "text" },
+  { key: "status", label: "Status", defaultVisible: true, type: "badge" },
+  { key: "dueDate", label: "Due date", defaultVisible: true, type: "date" },
+  { key: "daysUntilDue", label: "Days until due", defaultVisible: false, type: "number" }
+];
+
+const FIELDS_RECENT_WINS: WidgetField[] = [
+  { key: "clientName", label: "Client", defaultVisible: true, type: "text" },
+  { key: "projectName", label: "Project", defaultVisible: true, type: "text" },
+  { key: "value", label: "Value", defaultVisible: true, type: "currency" },
+  { key: "estimator", label: "Estimator", defaultVisible: true, type: "text" },
+  { key: "wonDate", label: "Won date", defaultVisible: true, type: "date" },
+  { key: "tenderNumber", label: "Tender #", defaultVisible: false, type: "text" }
+];
+
+const FIELDS_ACTIVE_PROJECTS: WidgetField[] = [
+  { key: "count", label: "Count", defaultVisible: true, type: "number" },
+  { key: "totalValue", label: "Total value", defaultVisible: false, type: "currency" }
+];
 import {
   ActiveJobsKpi,
   ActiveProjectsKpi,
@@ -49,7 +99,16 @@ const JOB_STATUS_OPTIONS = [
 export const WIDGETS: WidgetMeta[] = [
   // ── Operations ────────────────────────────────────────────
   { type: "ops_active_jobs_kpi", name: "Active jobs", category: "operations", size: "kpi", description: "Count of jobs currently ACTIVE.", component: ActiveJobsKpi },
-  { type: "ops_active_projects_kpi", name: "Active projects", category: "operations", size: "kpi", description: "Projects in MOBILISING / ACTIVE / PRACTICAL_COMPLETION / DEFECTS.", component: ActiveProjectsKpi },
+  {
+    type: "ops_active_projects_kpi",
+    name: "Active projects",
+    category: "operations",
+    size: "kpi",
+    description: "Projects in MOBILISING / ACTIVE / PRACTICAL_COMPLETION / DEFECTS.",
+    fieldSchema: FIELDS_ACTIVE_PROJECTS,
+    configSchema: [AGGREGATION_FIELD],
+    component: ActiveProjectsKpi
+  },
   { type: "ops_tender_pipeline_kpi", name: "Tender pipeline value", category: "operations", size: "kpi", description: "Sum value of non-terminal tenders.", component: TenderPipelineKpi },
   { type: "ops_open_issues_kpi", name: "Open issues", category: "operations", size: "kpi", description: "Job issues with status OPEN across all jobs.", component: OpenIssuesKpi },
   { type: "ops_upcoming_maintenance_kpi", name: "Upcoming maintenance", category: "operations", size: "kpi", description: "Maintenance plans due in the next 7 days.", component: UpcomingMaintenanceKpi },
@@ -134,21 +193,47 @@ export const WIDGETS: WidgetMeta[] = [
     name: "Active pipeline",
     category: "tendering",
     size: "kpi",
-    description: "Sum value of all non-terminal tenders.",
+    description: "Aggregated value of non-terminal tenders (sum, count, avg, max, min).",
     configSchema: [
-      { key: "stages", label: "Include stages", type: "multiselect", options: TENDER_STAGE_OPTIONS }
+      { key: "stages", label: "Include stages", type: "multiselect", options: TENDER_STAGE_OPTIONS },
+      AGGREGATION_FIELD
     ],
     component: ActivePipelineKpi
   },
-  { type: "ten_submitted_mtd_kpi", name: "Submitted MTD", category: "tendering", size: "kpi", description: "Tenders submitted this calendar month + value.", component: SubmittedMtdKpi },
-  { type: "ten_win_rate_kpi", name: "Win rate YTD", category: "tendering", size: "kpi", description: "Won / (Won + Lost) year-to-date.", component: WinRateYtdKpi },
-  { type: "ten_avg_lead_time_kpi", name: "Avg lead time", category: "tendering", size: "kpi", description: "Average days from invited to submitted.", component: AvgLeadTimeKpi },
+  {
+    type: "ten_submitted_mtd_kpi",
+    name: "Submitted MTD",
+    category: "tendering",
+    size: "kpi",
+    description: "Tenders submitted this calendar month — aggregated.",
+    configSchema: [AGGREGATION_FIELD],
+    component: SubmittedMtdKpi
+  },
+  {
+    type: "ten_win_rate_kpi",
+    name: "Win rate YTD",
+    category: "tendering",
+    size: "kpi",
+    description: "Won / (Won + Lost) year-to-date — configurable aggregation.",
+    configSchema: [AGGREGATION_FIELD],
+    component: WinRateYtdKpi
+  },
+  {
+    type: "ten_avg_lead_time_kpi",
+    name: "Avg lead time",
+    category: "tendering",
+    size: "kpi",
+    description: "Days from invited to submitted — average by default, configurable.",
+    configSchema: [AGGREGATION_FIELD],
+    component: AvgLeadTimeKpi
+  },
   {
     type: "ten_due_this_week",
     name: "Due this week",
     category: "tendering",
     size: "half",
     description: "Tenders with due date within the next N days.",
+    fieldSchema: FIELDS_DUE_THIS_WEEK,
     configSchema: [
       { key: "daysAhead", label: "Days ahead", type: "number", min: 1, max: 30, step: 1, defaultValue: 7 }
     ],
@@ -160,6 +245,7 @@ export const WIDGETS: WidgetMeta[] = [
     category: "tendering",
     size: "full",
     description: "Submitted tenders older than threshold with no outcome yet.",
+    fieldSchema: FIELDS_FOLLOW_UP,
     configSchema: [
       { key: "daysThreshold", label: "Days threshold", type: "number", min: 1, max: 60, step: 1, defaultValue: 7 },
       { key: "maxRows", label: "Max rows", type: "number", min: 1, max: 10, step: 1, defaultValue: 5 }
@@ -222,6 +308,7 @@ export const WIDGETS: WidgetMeta[] = [
     category: "tendering",
     size: "half",
     description: "Tenders won in the selected period.",
+    fieldSchema: FIELDS_RECENT_WINS,
     configSchema: [
       {
         key: "period",

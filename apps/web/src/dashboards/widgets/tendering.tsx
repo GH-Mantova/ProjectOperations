@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Bar,
@@ -16,8 +16,46 @@ import {
 import { Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { isComplianceTender, useTenders, type TenderForDashboard } from "../hooks";
-import { periodStart, resolvePeriod, type WidgetProps } from "../types";
+import { LIST_ROW_HEIGHT_PX, GRID_ROW_HEIGHT_PX, periodStart, resolvePeriod, type AggregationOp, type WidgetProps } from "../types";
 import { EmptyNote, KpiTile, PanelCard, formatCurrency } from "./shared";
+
+function aggregationFrom(config: WidgetProps["config"]): AggregationOp {
+  const raw = config.filters?.aggregation;
+  if (raw === "Sum" || raw === "Count" || raw === "Average" || raw === "Max" || raw === "Min") return raw;
+  return "Sum";
+}
+
+function applyAggregation(values: number[], op: AggregationOp): number {
+  if (values.length === 0) return 0;
+  if (op === "Count") return values.length;
+  if (op === "Sum") return values.reduce((sum, v) => sum + v, 0);
+  if (op === "Average") return values.reduce((sum, v) => sum + v, 0) / values.length;
+  if (op === "Max") return Math.max(...values);
+  if (op === "Min") return Math.min(...values);
+  return 0;
+}
+
+function labelForAggregation(op: AggregationOp, raw: number, formatted: string): string {
+  switch (op) {
+    case "Count": return `${Math.round(raw)} tender${Math.round(raw) === 1 ? "" : "s"}`;
+    case "Average": return `${formatted} avg`;
+    case "Max": return `${formatted} max`;
+    case "Min": return `${formatted} min`;
+    case "Sum":
+    default:
+      return formatted;
+  }
+}
+
+function availableRowsFor(rowSpan: number | undefined, headerPx = 72): number {
+  const span = Math.max(1, rowSpan ?? 2);
+  return Math.max(1, Math.floor((span * GRID_ROW_HEIGHT_PX - headerPx) / LIST_ROW_HEIGHT_PX));
+}
+
+function fieldSet(config: WidgetProps["config"], defaultVisible: string[]): Set<string> {
+  const fields = config.fields && config.fields.length > 0 ? config.fields : defaultVisible;
+  return new Set(fields);
+}
 
 const DAY = 86_400_000;
 const TERMINAL = new Set(["LOST", "WITHDRAWN", "CONVERTED"]);
@@ -138,57 +176,76 @@ function useCleanTenders() {
 export function ActivePipelineKpi(props: WidgetProps) {
   const { tenders, isLoading } = useCleanTenders();
   const stageFilter = filterStrings(props.config.filters?.stages);
+  const op = aggregationFrom(props.config);
   if (isLoading) return <KpiTile label="Active pipeline" value="—" />;
-  const total = tenders
+  const values = tenders
     .filter((t) => {
       if (TERMINAL.has(t.status)) return false;
       if (stageFilter && !stageFilter.includes(t.status)) return false;
       return true;
     })
-    .reduce((sum, t) => sum + Number(t.estimatedValue ?? 0), 0);
-  return <KpiTile label="Active pipeline" value={formatCurrency(total)} />;
+    .map((t) => Number(t.estimatedValue ?? 0));
+  const raw = applyAggregation(values, op);
+  const display = labelForAggregation(op, raw, formatCurrency(raw));
+  return <KpiTile label="Active pipeline" value={display} />;
 }
 
-export function SubmittedMtdKpi(_props: WidgetProps) {
+export function SubmittedMtdKpi(props: WidgetProps) {
   const { tenders, isLoading } = useCleanTenders();
+  const op = aggregationFrom(props.config);
   if (isLoading) return <KpiTile label="Submitted MTD" value="—" />;
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   const subset = tenders.filter((t) => t.submittedAt && new Date(t.submittedAt) >= monthStart);
-  const value = subset.reduce((sum, t) => sum + Number(t.estimatedValue ?? 0), 0);
-  return <KpiTile label="Submitted MTD" value={subset.length} subtitle={formatCurrency(value)} />;
+  const values = subset.map((t) => Number(t.estimatedValue ?? 0));
+  const raw = applyAggregation(values, op);
+  const display = labelForAggregation(op, raw, formatCurrency(raw));
+  const subtitle = op === "Count" ? formatCurrency(applyAggregation(values, "Sum")) : `${subset.length} submitted`;
+  return <KpiTile label="Submitted MTD" value={op === "Count" ? subset.length : display} subtitle={subtitle} />;
 }
 
-export function WinRateYtdKpi(_props: WidgetProps) {
+export function WinRateYtdKpi(props: WidgetProps) {
   const { tenders, isLoading } = useCleanTenders();
+  const op = aggregationFrom(props.config);
   if (isLoading) return <KpiTile label="Win rate YTD" value="—" />;
   const yearStart = new Date(new Date().getFullYear(), 0, 1);
   const won = tenders.filter((t) => t.wonAt && new Date(t.wonAt) >= yearStart);
   const lost = tenders.filter((t) => t.lostAt && new Date(t.lostAt) >= yearStart);
   const resolved = won.length + lost.length;
   const rate = resolved > 0 ? (won.length / resolved) * 100 : 0;
+  if (op === "Count") {
+    return <KpiTile label="Win rate YTD" value={`${won.length} won`} subtitle={`${resolved} resolved`} />;
+  }
   return <KpiTile label="Win rate YTD" value={`${rate.toFixed(0)}%`} subtitle={`${won.length}/${resolved}`} />;
 }
 
-export function AvgLeadTimeKpi(_props: WidgetProps) {
+export function AvgLeadTimeKpi(props: WidgetProps) {
   const { tenders, isLoading } = useCleanTenders();
+  const op = aggregationFrom(props.config);
   if (isLoading) return <KpiTile label="Avg lead time" value="—" />;
   const leadTimes = tenders
     .filter((t) => t.submittedAt && t.createdAt)
     .map((t) => daysBetween(new Date(t.createdAt!), new Date(t.submittedAt!)))
     .filter((days) => days > 0);
   if (leadTimes.length === 0) return <KpiTile label="Avg lead time" value="—" />;
-  const avg = leadTimes.reduce((sum, d) => sum + d, 0) / leadTimes.length;
-  return <KpiTile label="Avg lead time" value={`${avg.toFixed(1)}d`} />;
+  const raw = applyAggregation(leadTimes, op === "Sum" ? "Average" : op);
+  const label = op === "Count" ? `${leadTimes.length} tenders` : `${raw.toFixed(1)}d`;
+  const subtitle = op === "Average" || op === "Sum" ? "average" : op.toLowerCase();
+  return <KpiTile label="Avg lead time" value={label} subtitle={subtitle} />;
 }
+
+const DUE_DEFAULT_FIELDS = ["tenderNumber", "clientName", "projectName", "estimator", "status", "dueDate"];
 
 export function DueThisWeekPanel(props: WidgetProps) {
   const navigate = useNavigate();
   const { tenders, isLoading } = useCleanTenders();
   const daysAhead = filterNumber(props.config.filters?.daysAhead, 7);
+  const visible = useMemo(() => fieldSet(props.config, DUE_DEFAULT_FIELDS), [props.config]);
+  const availableRows = availableRowsFor(props.rowSpan);
   if (isLoading) return <Skeleton width="100%" height={180} />;
   const dueThisWeek = tenders
     .filter((t) => t.dueDate && ACTIVE.has(t.status) && daysUntil(t.dueDate) <= daysAhead)
-    .sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""));
+    .sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""))
+    .slice(0, availableRows);
   return (
     <PanelCard title="Due this week">
       {dueThisWeek.length === 0 ? (
@@ -198,22 +255,40 @@ export function DueThisWeekPanel(props: WidgetProps) {
           {dueThisWeek.map((t) => {
             const days = daysUntil(t.dueDate);
             const color = dueColor(days);
+            const client = t.tenderClients[0]?.client?.name ?? "No client";
+            const metaBits: string[] = [];
+            if (visible.has("estimator")) metaBits.push(estimatorName(t));
+            if (visible.has("status")) metaBits.push(labelForStatus(t.status));
+            const titleBits: string[] = [];
+            if (visible.has("clientName")) titleBits.push(client);
+            if (visible.has("projectName")) titleBits.push(t.title);
             return (
               <li key={t.id} className="td-v2__row" onClick={() => navigate(`/tenders/${t.id}`)}>
-                <strong className="td-v2__tnum">{t.tenderNumber}</strong>
+                {visible.has("tenderNumber") ? (
+                  <strong className="td-v2__tnum">{t.tenderNumber}</strong>
+                ) : null}
                 <div className="td-v2__row-body">
-                  <div className="td-v2__row-title">{clientProject(t)}</div>
-                  <div className="td-v2__row-meta">{estimatorName(t)} · {labelForStatus(t.status)}</div>
+                  <div className="td-v2__row-title">{titleBits.join(" — ") || t.title}</div>
+                  {metaBits.length > 0 ? (
+                    <div className="td-v2__row-meta">{metaBits.join(" · ")}</div>
+                  ) : null}
                 </div>
-                <span style={{ color, fontWeight: 600, whiteSpace: "nowrap" }}>
-                  {days < 0
-                    ? `${Math.abs(days)}d overdue`
-                    : days === 0
-                      ? "due today"
-                      : days === 1
-                        ? "due tomorrow"
-                        : formatDueDate(t.dueDate)}
-                </span>
+                {visible.has("daysUntilDue") ? (
+                  <span style={{ color, fontWeight: 600, whiteSpace: "nowrap" }}>
+                    {days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? "today" : `${days}d`}
+                  </span>
+                ) : null}
+                {visible.has("dueDate") ? (
+                  <span style={{ color, fontWeight: 600, whiteSpace: "nowrap" }}>
+                    {days < 0
+                      ? `${Math.abs(days)}d overdue`
+                      : days === 0
+                        ? "due today"
+                        : days === 1
+                          ? "due tomorrow"
+                          : formatDueDate(t.dueDate)}
+                  </span>
+                ) : null}
               </li>
             );
           })}
@@ -223,13 +298,26 @@ export function DueThisWeekPanel(props: WidgetProps) {
   );
 }
 
+const FOLLOW_UP_DEFAULT_FIELDS = [
+  "tenderNumber",
+  "clientName",
+  "projectName",
+  "daysWaiting",
+  "probability",
+  "value",
+  "logCall"
+];
+
 export function FollowUpQueuePanel(props: WidgetProps) {
   const navigate = useNavigate();
   const { authFetch } = useAuth();
   const { tenders, isLoading } = useCleanTenders();
   const [pendingCallId, setPendingCallId] = useState<string | null>(null);
   const daysThreshold = filterNumber(props.config.filters?.daysThreshold, 7);
-  const maxRows = filterNumber(props.config.filters?.maxRows, 5);
+  const configuredMax = filterNumber(props.config.filters?.maxRows, 5);
+  const availableRows = availableRowsFor(props.rowSpan);
+  const maxRows = Math.min(configuredMax, Math.max(configuredMax, availableRows));
+  const visible = useMemo(() => fieldSet(props.config, FOLLOW_UP_DEFAULT_FIELDS), [props.config]);
 
   if (isLoading) return <Skeleton width="100%" height={180} />;
   const now = new Date();
@@ -252,7 +340,8 @@ export function FollowUpQueuePanel(props: WidgetProps) {
       return {
         tender: t,
         daysWaiting: t.submittedAt ? daysBetween(new Date(t.submittedAt), now) : 0,
-        lastNote: notes[0]?.body ?? null
+        lastNote: notes[0]?.body ?? null,
+        lastActivity: notes[0]?.createdAt ?? t.updatedAt ?? null
       };
     })
     .sort((a, b) => b.daysWaiting - a.daysWaiting)
@@ -289,42 +378,57 @@ export function FollowUpQueuePanel(props: WidgetProps) {
         <EmptyNote>No tenders awaiting follow-up.</EmptyNote>
       ) : (
         <ul className="td-v2__rows">
-          {queue.map(({ tender, daysWaiting, lastNote }) => {
+          {queue.map(({ tender, daysWaiting, lastNote, lastActivity }) => {
             const bucket = bucketFor(tender.probability);
+            const client = tender.tenderClients[0]?.client?.name ?? "No client";
+            const titleBits: string[] = [];
+            if (visible.has("clientName")) titleBits.push(client);
+            if (visible.has("projectName")) titleBits.push(tender.title);
+            const metaBits: string[] = [];
+            if (visible.has("daysWaiting")) metaBits.push(`Submitted ${daysWaiting}d ago`);
+            if (visible.has("estimator")) metaBits.push(estimatorName(tender));
+            if (visible.has("lastActivity") && lastActivity) metaBits.push(`Last activity ${relativeDate(lastActivity)}`);
+            if (visible.has("logCall") === false && lastNote) metaBits.push(lastNote.slice(0, 60));
             return (
               <li key={tender.id} className="td-v2__row td-v2__row--followup">
-                <strong
-                  className="td-v2__tnum"
-                  onClick={() => navigate(`/tenders/${tender.id}`)}
-                  style={{ cursor: "pointer" }}
-                >
-                  {tender.tenderNumber}
-                </strong>
+                {visible.has("tenderNumber") ? (
+                  <strong
+                    className="td-v2__tnum"
+                    onClick={() => navigate(`/tenders/${tender.id}`)}
+                    style={{ cursor: "pointer" }}
+                  >
+                    {tender.tenderNumber}
+                  </strong>
+                ) : null}
                 <div
                   className="td-v2__row-body"
                   onClick={() => navigate(`/tenders/${tender.id}`)}
                   style={{ cursor: "pointer" }}
                 >
-                  <div className="td-v2__row-title">{clientProject(tender)}</div>
-                  <div className="td-v2__row-meta">
-                    Submitted {daysWaiting}d ago{lastNote ? ` · ${lastNote.slice(0, 80)}` : ""}
-                  </div>
+                  <div className="td-v2__row-title">{titleBits.join(" — ") || tender.title}</div>
+                  {metaBits.length > 0 ? <div className="td-v2__row-meta">{metaBits.join(" · ")}</div> : null}
                 </div>
-                <span
-                  className="s7-badge"
-                  style={{ background: BUCKET_STYLE[bucket].background, color: BUCKET_STYLE[bucket].color }}
-                >
-                  {bucket === "unknown" ? "—" : bucket[0].toUpperCase() + bucket.slice(1)}
-                </span>
-                <strong style={{ whiteSpace: "nowrap" }}>{formatCurrency(Number(tender.estimatedValue ?? 0))}</strong>
-                <button
-                  type="button"
-                  className="s7-btn s7-btn--secondary s7-btn--sm"
-                  onClick={() => void logCall(tender.id)}
-                  disabled={pendingCallId === tender.id}
-                >
-                  Log call
-                </button>
+                {visible.has("probability") ? (
+                  <span
+                    className="s7-badge"
+                    style={{ background: BUCKET_STYLE[bucket].background, color: BUCKET_STYLE[bucket].color }}
+                  >
+                    {bucket === "unknown" ? "—" : bucket[0].toUpperCase() + bucket.slice(1)}
+                  </span>
+                ) : null}
+                {visible.has("value") ? (
+                  <strong style={{ whiteSpace: "nowrap" }}>{formatCurrency(Number(tender.estimatedValue ?? 0))}</strong>
+                ) : null}
+                {visible.has("logCall") ? (
+                  <button
+                    type="button"
+                    className="s7-btn s7-btn--secondary s7-btn--sm"
+                    onClick={() => void logCall(tender.id)}
+                    disabled={pendingCallId === tender.id}
+                  >
+                    Log call
+                  </button>
+                ) : null}
               </li>
             );
           })}
@@ -455,12 +559,17 @@ export function PipelineByEstimatorDonut(props: WidgetProps) {
   );
 }
 
+const RECENT_WINS_DEFAULT_FIELDS = ["clientName", "projectName", "value", "estimator", "wonDate"];
+
 export function RecentWinsPanel(props: WidgetProps) {
   const navigate = useNavigate();
   const periodFilter = filterString(props.config.filters?.period, "");
-  const maxRows = filterNumber(props.config.filters?.maxRows, 4);
+  const configuredMax = filterNumber(props.config.filters?.maxRows, 4);
+  const availableRows = availableRowsFor(props.rowSpan);
+  const maxRows = Math.min(configuredMax, Math.max(configuredMax, availableRows));
   const estimatorIds = filterStrings(props.config.filters?.estimatorIds);
   const cutoff = periodFilter ? periodToCutoff(periodFilter) : periodStart(resolvePeriod(props.config, props.globalPeriod));
+  const visible = useMemo(() => fieldSet(props.config, RECENT_WINS_DEFAULT_FIELDS), [props.config]);
   const { tenders, isLoading } = useCleanTenders();
   const wins = tenders
     .filter((t) => t.wonAt && new Date(t.wonAt) >= cutoff && matchesEstimator(t, estimatorIds))
@@ -474,17 +583,29 @@ export function RecentWinsPanel(props: WidgetProps) {
         <EmptyNote>No wins in the selected period.</EmptyNote>
       ) : (
         <ul className="td-v2__rows">
-          {wins.map((t) => (
-            <li key={t.id} className="td-v2__row" onClick={() => navigate(`/tenders/${t.id}`)}>
-              <div className="td-v2__row-body">
-                <div className="td-v2__row-title">{clientProject(t)}</div>
-                <div className="td-v2__row-meta">{estimatorName(t)} · {relativeDate(t.wonAt)}</div>
-              </div>
-              <strong style={{ color: "#FEAA6D", fontWeight: 500, whiteSpace: "nowrap" }}>
-                {formatCurrency(Number(t.estimatedValue ?? 0))}
-              </strong>
-            </li>
-          ))}
+          {wins.map((t) => {
+            const client = t.tenderClients[0]?.client?.name ?? "No client";
+            const titleBits: string[] = [];
+            if (visible.has("clientName")) titleBits.push(client);
+            if (visible.has("projectName")) titleBits.push(t.title);
+            const metaBits: string[] = [];
+            if (visible.has("tenderNumber")) metaBits.push(t.tenderNumber);
+            if (visible.has("estimator")) metaBits.push(estimatorName(t));
+            if (visible.has("wonDate")) metaBits.push(relativeDate(t.wonAt));
+            return (
+              <li key={t.id} className="td-v2__row" onClick={() => navigate(`/tenders/${t.id}`)}>
+                <div className="td-v2__row-body">
+                  <div className="td-v2__row-title">{titleBits.join(" — ") || t.title}</div>
+                  {metaBits.length > 0 ? <div className="td-v2__row-meta">{metaBits.join(" · ")}</div> : null}
+                </div>
+                {visible.has("value") ? (
+                  <strong style={{ color: "#FEAA6D", fontWeight: 500, whiteSpace: "nowrap" }}>
+                    {formatCurrency(Number(t.estimatedValue ?? 0))}
+                  </strong>
+                ) : null}
+              </li>
+            );
+          })}
         </ul>
       )}
     </PanelCard>

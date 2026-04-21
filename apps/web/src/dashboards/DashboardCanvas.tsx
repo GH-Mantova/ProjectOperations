@@ -12,14 +12,16 @@ import { CSS } from "@dnd-kit/utilities";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../auth/AuthContext";
 import { WIDGET_BY_TYPE } from "./widgetRegistry";
-import type {
-  UserDashboard,
-  UserDashboardConfig,
-  WidgetConfigEntry,
-  WidgetFilters,
-  WidgetMeta,
-  WidgetPeriod,
-  WidgetSubConfig
+import {
+  GRID_ROW_HEIGHT_PX,
+  resolveSpan,
+  type UserDashboard,
+  type UserDashboardConfig,
+  type WidgetConfigEntry,
+  type WidgetFilters,
+  type WidgetMeta,
+  type WidgetPeriod,
+  type WidgetSubConfig
 } from "./types";
 import { CustomisePanel } from "./CustomisePanel";
 import { DashboardSwitcher } from "./DashboardSwitcher";
@@ -179,6 +181,15 @@ export function DashboardCanvas({
     updateConfig(next);
   };
 
+  const updateWidgetSpan = (widgetId: string, colSpan: number, rowSpan: number) => {
+    if (!active) return;
+    const next: UserDashboardConfig = {
+      ...active.config,
+      widgets: active.config.widgets.map((w) => (w.id === widgetId ? { ...w, colSpan, rowSpan } : w))
+    };
+    updateConfig(next);
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
     if (!active) return;
     const { active: dragged, over } = event;
@@ -282,6 +293,10 @@ export function DashboardCanvas({
                     onFiltersChange={(nextFilters) =>
                       updateWidgetConfig(entry.id, { ...entry.config, filters: nextFilters })
                     }
+                    onFieldsChange={(fields) =>
+                      updateWidgetConfig(entry.id, { ...entry.config, fields })
+                    }
+                    onResize={(colSpan, rowSpan) => updateWidgetSpan(entry.id, colSpan, rowSpan)}
                   />
                 );
               })}
@@ -311,7 +326,9 @@ function SortableWidget({
   onOpenSettings,
   onCloseSettings,
   onConfigChange,
-  onFiltersChange
+  onFiltersChange,
+  onFieldsChange,
+  onResize
 }: {
   entry: WidgetConfigEntry;
   meta: WidgetMeta;
@@ -321,23 +338,89 @@ function SortableWidget({
   onCloseSettings: () => void;
   onConfigChange: (next: WidgetSubConfig) => void;
   onFiltersChange: (next: WidgetFilters) => void;
+  onFieldsChange: (fields: string[]) => void;
+  onResize: (colSpan: number, rowSpan: number) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({
     id: entry.id
   });
-  const style = {
+  const { colSpan, rowSpan } = resolveSpan(meta, entry);
+  const minCol = meta.minColSpan ?? 1;
+  const maxCol = meta.maxColSpan ?? 4;
+  const minRow = meta.minRowSpan ?? 1;
+  const maxRow = meta.maxRowSpan ?? 4;
+
+  const [ghost, setGhost] = useState<{ colSpan: number; rowSpan: number } | null>(null);
+  const slotRef = useRef<HTMLDivElement | null>(null);
+
+  const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
-    transition
+    transition,
+    gridColumn: `span ${colSpan}`,
+    gridRow: `span ${rowSpan}`,
+    minHeight: rowSpan * GRID_ROW_HEIGHT_PX
   };
-  const classes = ["td-canvas__slot", `td-canvas__slot--${meta.size}`];
+  const classes = ["td-canvas__slot"];
   if (isDragging) classes.push("td-canvas__slot--dragging");
   if (isOver && !isDragging) classes.push("td-canvas__slot--over");
 
   const WidgetComponent = meta.component;
-  const hasSchema = meta.configSchema && meta.configSchema.length > 0;
+  const hasSchema = (meta.configSchema && meta.configSchema.length > 0) || (meta.fieldSchema && meta.fieldSchema.length > 0);
+
+  const startResize = (axis: "col" | "row" | "both") => (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const canvas = slotRef.current?.closest<HTMLElement>(".td-canvas__widgets");
+    if (!canvas) return;
+    const canvasRect = canvas.getBoundingClientRect();
+    const startRect = slotRef.current!.getBoundingClientRect();
+    const colWidth = canvasRect.width / 4;
+    const rowHeight = GRID_ROW_HEIGHT_PX;
+    const startX = e.clientX;
+    const startY = e.clientY;
+
+    const move = (ev: PointerEvent) => {
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      let nextCol = colSpan;
+      let nextRow = rowSpan;
+      if (axis === "col" || axis === "both") {
+        const pxWidth = startRect.width + dx;
+        nextCol = Math.round(pxWidth / colWidth);
+        nextCol = Math.max(minCol, Math.min(maxCol, nextCol));
+      }
+      if (axis === "row" || axis === "both") {
+        const pxHeight = startRect.height + dy;
+        nextRow = Math.round(pxHeight / rowHeight);
+        nextRow = Math.max(minRow, Math.min(maxRow, nextRow));
+      }
+      setGhost({ colSpan: nextCol, rowSpan: nextRow });
+    };
+
+    const up = () => {
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", up);
+      setGhost((current) => {
+        if (current && (current.colSpan !== colSpan || current.rowSpan !== rowSpan)) {
+          onResize(current.colSpan, current.rowSpan);
+        }
+        return null;
+      });
+    };
+
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerup", up);
+  };
 
   return (
-    <div ref={setNodeRef} style={style} className={classes.join(" ")}>
+    <div
+      ref={(node) => {
+        setNodeRef(node);
+        slotRef.current = node;
+      }}
+      style={style}
+      className={classes.join(" ")}
+    >
       <div className="td-canvas__slot-chrome">
         {hasSchema ? (
           <button
@@ -375,9 +458,10 @@ function SortableWidget({
 
       {settingsOpen && hasSchema ? (
         <WidgetSettingsPopover
-          schema={meta.configSchema!}
-          initial={entry.config.filters ?? {}}
-          onApply={(nextFilters) => onFiltersChange(nextFilters)}
+          meta={meta}
+          entry={entry}
+          onApplyFilters={(nextFilters) => onFiltersChange(nextFilters)}
+          onApplyFields={(fields) => onFieldsChange(fields)}
           onClose={onCloseSettings}
         />
       ) : null}
@@ -386,6 +470,42 @@ function SortableWidget({
         config={entry.config}
         globalPeriod={globalPeriod}
         onConfigChange={onConfigChange}
+        colSpan={colSpan}
+        rowSpan={rowSpan}
+      />
+
+      {ghost ? (
+        <div
+          className="td-canvas__resize-ghost"
+          aria-hidden
+          style={{
+            width: `calc(${(ghost.colSpan / colSpan) * 100}% + ${(ghost.colSpan - colSpan) * 16}px)`,
+            height: `${ghost.rowSpan * GRID_ROW_HEIGHT_PX + (ghost.rowSpan - rowSpan) * 16}px`
+          }}
+        >
+          <span>
+            {ghost.colSpan} × {ghost.rowSpan}
+          </span>
+        </div>
+      ) : null}
+
+      <button
+        type="button"
+        className="td-canvas__resize td-canvas__resize--col"
+        aria-label="Resize horizontally"
+        onPointerDown={startResize("col")}
+      />
+      <button
+        type="button"
+        className="td-canvas__resize td-canvas__resize--row"
+        aria-label="Resize vertically"
+        onPointerDown={startResize("row")}
+      />
+      <button
+        type="button"
+        className="td-canvas__resize td-canvas__resize--corner"
+        aria-label="Resize"
+        onPointerDown={startResize("both")}
       />
     </div>
   );

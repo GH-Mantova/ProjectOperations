@@ -3,7 +3,8 @@ import {
   Catch,
   ExceptionFilter,
   HttpException,
-  HttpStatus
+  HttpStatus,
+  Logger
 } from "@nestjs/common";
 import { Request, Response } from "express";
 
@@ -17,12 +18,24 @@ type ErrorShape = {
 
 @Catch()
 export class ApiExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger("ApiExceptionFilter");
+
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
 
     const payload = this.toPayload(exception, request.url);
+    if (payload.statusCode >= 500) {
+      // Never swallow a 500 silently — the original error is often the
+      // only signal we have that a DB or upstream call went wrong.
+      const err = exception as Error;
+      const summary = `${request.method} ${request.url} — ${err?.constructor?.name ?? "Error"}: ${err?.message ?? "unknown"}`;
+      this.logger.error(summary, err?.stack);
+      // Also hit stderr directly so the failure is visible even when
+      // Nest's logger is silenced (e.g. in compliance-smoke runs).
+      process.stderr.write(`[ApiExceptionFilter] ${summary}\n${err?.stack ?? ""}\n`);
+    }
     response.status(payload.statusCode).json(payload);
   }
 

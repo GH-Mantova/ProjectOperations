@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
+import { randomBytes } from "node:crypto";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { SharePointService } from "../platform/sharepoint.service";
@@ -47,7 +48,9 @@ export class TenderDocumentsService {
     const uploadName = file?.originalname ?? dto.fileName;
     const uploadMime = file?.mimetype ?? dto.mimeType ?? "application/octet-stream";
 
-    let uploadItemId = `mock-file-${Date.now()}`;
+    // No-file path (metadata-only links): generate a unique id so two
+    // fast requests don't collide on the SharePointFileLink unique index.
+    let uploadItemId = `mock-file-${Date.now()}-${randomBytes(4).toString("hex")}`;
     let uploadWebUrl = `https://sharepoint.local/${folder.relativePath}/${uploadName}`;
     let uploadMode: "mock" | "graph" = "mock";
     let uploadETag: string | null = null;

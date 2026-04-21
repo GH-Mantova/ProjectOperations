@@ -1,12 +1,16 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { PasswordService } from "../../common/security/password.service";
 import { CreateWorkerDto } from "./dto/create-worker.dto";
 import { ListWorkersQueryDto, UpdateWorkerDto } from "./dto/update-worker.dto";
 
 @Injectable()
 export class WorkersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly passwordService: PasswordService
+  ) {}
 
   async list(query: ListWorkersQueryDto) {
     const page = Math.max(1, Number(query.page ?? 1));
@@ -134,5 +138,53 @@ export class WorkersService {
         }
       }
     });
+  }
+
+  async provisionMobileAccess(id: string, tempPassword: string) {
+    const worker = await this.prisma.workerProfile.findUnique({ where: { id } });
+    if (!worker) throw new NotFoundException("Worker not found.");
+    if (worker.hasMobileAccess || worker.internalUserId) {
+      throw new BadRequestException("Mobile access has already been provisioned for this worker.");
+    }
+    if (!worker.email) {
+      throw new BadRequestException("Worker must have an email address before mobile access can be provisioned.");
+    }
+
+    const existing = await this.prisma.user.findUnique({ where: { email: worker.email.toLowerCase() } });
+    if (existing) {
+      throw new BadRequestException("A user account with this email already exists.");
+    }
+
+    const fieldRole = await this.prisma.role.findUnique({ where: { name: "Field Worker" } });
+    if (!fieldRole) {
+      throw new BadRequestException(
+        "Field Worker role is not configured. Re-run the Initial Services seed to create it."
+      );
+    }
+
+    const passwordHash = this.passwordService.hashPassword(tempPassword);
+
+    const user = await this.prisma.$transaction(async (tx) => {
+      const createdUser = await tx.user.create({
+        data: {
+          email: worker.email!.toLowerCase(),
+          firstName: worker.firstName,
+          lastName: worker.lastName,
+          passwordHash,
+          isActive: true,
+          forcePasswordReset: true,
+          userRoles: {
+            create: [{ roleId: fieldRole.id }]
+          }
+        }
+      });
+      await tx.workerProfile.update({
+        where: { id },
+        data: { hasMobileAccess: true, internalUserId: createdUser.id }
+      });
+      return createdUser;
+    });
+
+    return { message: "Mobile access provisioned", userId: user.id };
   }
 }

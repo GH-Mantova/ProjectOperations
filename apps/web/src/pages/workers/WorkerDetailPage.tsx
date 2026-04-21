@@ -204,30 +204,7 @@ export function WorkerDetailPage() {
         )}
       </section>
 
-      <section className="s7-card" style={{ marginTop: 16 }}>
-        <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>Mobile access</h3>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span
-            className="type-badge"
-            style={{
-              background: worker.hasMobileAccess
-                ? "color-mix(in srgb, #005B61 15%, transparent)"
-                : "#E2E8F0",
-              color: worker.hasMobileAccess ? "#005B61" : "#1F2937"
-            }}
-          >
-            {worker.hasMobileAccess ? "Enabled" : "Disabled"}
-          </span>
-          <button
-            type="button"
-            className="s7-btn s7-btn--secondary s7-btn--sm"
-            disabled
-            title="Mobile login provisioning is coming in PR #41 — field worker accounts will be created there"
-          >
-            Toggle mobile access
-          </button>
-        </div>
-      </section>
+      <MobileAccessSection worker={worker} canManage={canManage} onProvisioned={() => void load()} />
 
       {canManage && worker.isActive ? (
         <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end" }}>
@@ -400,5 +377,275 @@ function Labeled({ label, children }: { label: string; children: React.ReactNode
       </span>
       {children}
     </label>
+  );
+}
+
+function MobileAccessSection({
+  worker,
+  canManage,
+  onProvisioned
+}: {
+  worker: WorkerDetail;
+  canManage: boolean;
+  onProvisioned: () => void;
+}) {
+  const [provisionOpen, setProvisionOpen] = useState(false);
+  const [issuedPassword, setIssuedPassword] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  return (
+    <section className="s7-card" style={{ marginTop: 16 }}>
+      <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>Mobile access</h3>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <span
+          className="type-badge"
+          style={{
+            background: worker.hasMobileAccess
+              ? "color-mix(in srgb, #005B61 15%, transparent)"
+              : "#E2E8F0",
+            color: worker.hasMobileAccess ? "#005B61" : "#1F2937"
+          }}
+        >
+          {worker.hasMobileAccess ? "Enabled" : "Not provisioned"}
+        </span>
+        {canManage && !worker.hasMobileAccess ? (
+          <button
+            type="button"
+            className="s7-btn s7-btn--primary s7-btn--sm"
+            onClick={() => setProvisionOpen(true)}
+          >
+            Provision mobile access
+          </button>
+        ) : null}
+        {worker.hasMobileAccess ? (
+          <>
+            <button
+              type="button"
+              className="s7-btn s7-btn--secondary s7-btn--sm"
+              onClick={() =>
+                setToast("SMS integration coming soon — note the temp password and share it directly with the worker for now")
+              }
+            >
+              Send welcome SMS
+            </button>
+            {canManage ? (
+              <button
+                type="button"
+                className="s7-btn s7-btn--ghost s7-btn--sm"
+                onClick={() =>
+                  setToast("To revoke access, deactivate the worker profile or contact your system administrator")
+                }
+              >
+                Revoke access
+              </button>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+
+      {issuedPassword ? (
+        <div
+          style={{
+            marginTop: 12,
+            padding: "12px 16px",
+            background: "#FEF3C7",
+            border: "1px solid #F59E0B",
+            borderRadius: 6
+          }}
+        >
+          <p style={{ margin: 0, fontWeight: 600, color: "#92400E" }}>
+            Temporary password — copy now, it will not be shown again
+          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+            <code
+              style={{
+                background: "#fff",
+                padding: "6px 10px",
+                borderRadius: 4,
+                fontSize: 15,
+                fontFamily: "monospace"
+              }}
+            >
+              {issuedPassword}
+            </code>
+            <button
+              type="button"
+              className="s7-btn s7-btn--secondary s7-btn--sm"
+              onClick={() => {
+                void navigator.clipboard.writeText(issuedPassword);
+                setToast("Copied to clipboard");
+              }}
+            >
+              Copy
+            </button>
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={() => setIssuedPassword(null)}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {provisionOpen ? (
+        <ProvisionMobileAccessModal
+          workerId={worker.id}
+          workerName={`${worker.firstName} ${worker.lastName}`}
+          onClose={() => setProvisionOpen(false)}
+          onProvisioned={(tempPassword) => {
+            setProvisionOpen(false);
+            setIssuedPassword(tempPassword);
+            setToast(`Mobile access provisioned for ${worker.firstName}`);
+            onProvisioned();
+          }}
+        />
+      ) : null}
+
+      {toast ? (
+        <div
+          role="status"
+          style={{
+            position: "fixed",
+            bottom: 24,
+            right: 24,
+            background: "#005B61",
+            color: "#fff",
+            padding: "10px 16px",
+            borderRadius: 6,
+            boxShadow: "0 6px 20px rgba(0,0,0,0.15)"
+          }}
+        >
+          {toast}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function ProvisionMobileAccessModal({
+  workerId,
+  workerName,
+  onClose,
+  onProvisioned
+}: {
+  workerId: string;
+  workerName: string;
+  onClose: () => void;
+  onProvisioned: (tempPassword: string) => void;
+}) {
+  const { authFetch } = useAuth();
+  const [tempPassword, setTempPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (tempPassword.length < 8) {
+      setError("Temporary password must be at least 8 characters.");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      const response = await authFetch(`/workers/${workerId}/provision-mobile-access`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tempPassword })
+      });
+      if (!response.ok) throw new Error(await response.text());
+      onProvisioned(tempPassword);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15, 23, 42, 0.55)",
+        display: "grid",
+        placeItems: "center",
+        zIndex: 100
+      }}
+      onClick={onClose}
+    >
+      <div
+        className="s7-card"
+        style={{ width: "min(480px, 92vw)", padding: 24 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="s7-type-section-title" style={{ margin: 0 }}>
+          Provision mobile access
+        </h2>
+        <p style={{ color: "var(--text-muted)", margin: "8px 0" }}>
+          This will create a login account for <strong>{workerName}</strong>. They will be required to reset their
+          password on first login.
+        </p>
+        <form onSubmit={submit}>
+          <label style={{ display: "block", marginTop: 12 }}>
+            <span className="s7-type-label">Temporary password (min 8 chars)</span>
+            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+              <input
+                className="s7-input"
+                type={showPassword ? "text" : "password"}
+                value={tempPassword}
+                onChange={(e) => setTempPassword(e.target.value)}
+                minLength={8}
+                required
+                style={{ flex: 1 }}
+                autoFocus
+              />
+              <button
+                type="button"
+                className="s7-btn s7-btn--ghost s7-btn--sm"
+                onClick={() => setShowPassword((s) => !s)}
+              >
+                {showPassword ? "Hide" : "Show"}
+              </button>
+            </div>
+          </label>
+
+          {error ? (
+            <div
+              role="alert"
+              style={{
+                background: "#FCEBEB",
+                color: "#A32D2D",
+                padding: "8px 12px",
+                borderRadius: 6,
+                marginTop: 12,
+                fontSize: 13
+              }}
+            >
+              {error}
+            </div>
+          ) : null}
+
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+            <button type="button" className="s7-btn s7-btn--ghost" onClick={onClose} disabled={submitting}>
+              Cancel
+            </button>
+            <button type="submit" className="s7-btn s7-btn--primary" disabled={submitting}>
+              {submitting ? "Provisioning…" : "Provision access"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }

@@ -119,7 +119,8 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       "forms.view",
       "forms.manage",
       "documents.view",
-      "documents.manage"
+      "documents.manage",
+      "field.manage"
     ]
   );
 
@@ -154,7 +155,8 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       "tenders.view",
       "jobs.view",
       "projects.view",
-      "resources.view"
+      "resources.view",
+      "field.manage"
     ]
   );
 
@@ -188,6 +190,15 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       "projects.view",
       "scheduler.view"
     ]
+  );
+
+  // Field Worker role — given to provisioned mobile users only. Access is
+  // restricted to the field worker app (their own allocations, pre-starts,
+  // timesheets, and project documents).
+  await seedRoleWithPermissions(
+    "Field Worker",
+    "Mobile field access — own allocations, pre-starts, timesheets, documents.",
+    ["field.view", "notifications.view"]
   );
 
   type UserSeed = {

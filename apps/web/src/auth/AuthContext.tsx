@@ -24,7 +24,8 @@ type AuthContextValue = {
   refreshToken: string | null;
   user: SafeUser | null;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<{ requiresPasswordReset?: boolean; tempToken?: string }>;
+  resetPassword: (tempToken: string, newPassword: string) => Promise<void>;
   loginWithSso: (idToken: string) => Promise<void>;
   logout: () => void;
   authFetch: (input: string, init?: RequestInit) => Promise<Response>;
@@ -78,6 +79,26 @@ export function AuthProvider({ children }: PropsWithChildren) {
       throw new Error("Unable to login.");
     }
 
+    const data = await response.json();
+    if (data.requiresPasswordReset) {
+      return { requiresPasswordReset: true as const, tempToken: data.tempToken as string };
+    }
+    setAccessToken(data.accessToken);
+    setRefreshToken(data.refreshToken);
+    setUser(data.user);
+    return {};
+  };
+
+  const resetPassword = async (tempToken: string, newPassword: string) => {
+    const response = await fetch(`${API_BASE_URL}/auth/reset-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tempToken, newPassword })
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || "Unable to reset password.");
+    }
     const data = await response.json();
     setAccessToken(data.accessToken);
     setRefreshToken(data.refreshToken);
@@ -149,6 +170,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       user,
       isAuthenticated: Boolean(accessToken && user),
       login,
+      resetPassword,
       loginWithSso,
       logout,
       authFetch

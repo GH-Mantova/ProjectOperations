@@ -8,6 +8,7 @@ export type LocalAuthUser = {
   isActive: boolean;
   lastLoginAt: Date | null;
   passwordHash: string;
+  forcePasswordReset?: boolean;
   userRoles: Array<{
     role: {
       id: string;

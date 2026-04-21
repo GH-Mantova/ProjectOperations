@@ -41,5 +41,7 @@ export const permissionRegistry = [
   { code: "estimates.admin", module: "tendering", description: "Manage rate library and estimate configuration" },
   { code: "projects.view", module: "projects", description: "View projects, scope, team, and activity log" },
   { code: "projects.manage", module: "projects", description: "Update project team, status, budget, milestones, documents" },
-  { code: "projects.admin", module: "projects", description: "Create projects manually, change contract value, reopen closed projects" }
+  { code: "projects.admin", module: "projects", description: "Create projects manually, change contract value, reopen closed projects" },
+  { code: "field.view", module: "field", description: "Access the field worker app — own allocations, pre-starts, timesheets, documents" },
+  { code: "field.manage", module: "field", description: "Approve timesheets and view all field submissions (PM / WHS / Admin)" }
 ] as const;

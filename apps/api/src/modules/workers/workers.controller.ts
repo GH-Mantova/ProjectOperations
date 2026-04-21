@@ -4,6 +4,7 @@ import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { CreateWorkerDto } from "./dto/create-worker.dto";
+import { ProvisionMobileAccessDto } from "./dto/provision-mobile-access.dto";
 import { ListWorkersQueryDto, UpdateWorkerDto } from "./dto/update-worker.dto";
 import { WorkersService } from "./workers.service";
 
@@ -67,5 +68,24 @@ export class WorkersController {
   @ApiResponse({ status: 200, description: "All allocations for this worker (no pagination)." })
   allocations(@Param("id") id: string) {
     return this.service.allocationsForWorker(id);
+  }
+
+  @Post(":id/provision-mobile-access")
+  @RequirePermissions("resources.manage")
+  @ApiOperation({
+    summary:
+      "Provision a field-worker login for this worker. Creates a User with the Field Worker role and forcePasswordReset=true, links it to the worker profile, and flips hasMobileAccess to true."
+  })
+  @ApiResponse({
+    status: 201,
+    description: "{ message, userId } — caller must show the temp password to the office user once; it is not stored in plain text."
+  })
+  @ApiResponse({
+    status: 400,
+    description: "Mobile access already provisioned, email missing/duplicated, or Field Worker role not seeded."
+  })
+  @ApiResponse({ status: 404, description: "Worker not found." })
+  provisionMobileAccess(@Param("id") id: string, @Body() dto: ProvisionMobileAccessDto) {
+    return this.service.provisionMobileAccess(id, dto.tempPassword);
   }
 }

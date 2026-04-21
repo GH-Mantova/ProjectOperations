@@ -67,6 +67,7 @@ model User {
   projectAllocationsCreated ProjectAllocation[] @relation("ProjectAllocationCreatedBy")
   approvedTimesheets Timesheet[]        @relation("TimesheetApprover")
   rejectedTimesheets Timesheet[]        @relation("TimesheetRejecter")
+  scopeItemsCreated  ScopeOfWorksItem[] @relation("ScopeOfWorksCreatedBy")
 
   @@index([isActive])
   @@map("users")
@@ -601,6 +602,8 @@ model Tender {
   estimate          TenderEstimate?
   clientNotes       TenderClientNote[]
   scopeRevisions    TenderScopeRevision[]
+  scopeItems        ScopeOfWorksItem[]
+  scopeHeader       ScopeOfWorksHeader?
   projects          Project[]
 
   @@index([status])
@@ -1858,4 +1861,98 @@ model Timesheet {
   @@index([workerProfileId, date])
   @@index([status])
   @@map("timesheets")
+}
+
+// ── Scope of Works (PR #44) ───────────────────────────────────────────────
+// Interactive QS sheet — sits between the tender documents and the
+// estimate. Rows are discipline-typed and carry row-type-specific fields
+// (demolition sqm, cutting lm, asbestos ACM, excavation m3, waste tonnes,
+// plant days). AI-drafted rows start as status="draft", aiProposed=true;
+// confirming a row triggers auto-creation of the matching EstimateItem.
+model ScopeOfWorksItem {
+  id            String   @id @default(uuid())
+  tenderId      String   @map("tender_id")
+  tender        Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  wbsCode       String   @map("wbs_code")
+  discipline    String
+  itemNumber    Int      @map("item_number")
+  rowType       String   @map("row_type")
+  description   String
+  status        String   @default("confirmed")
+  aiProposed    Boolean  @default(false) @map("ai_proposed")
+  aiConfidence  String?  @map("ai_confidence")
+  aiSourceRef   String?  @map("ai_source_ref")
+  sortOrder     Int      @default(0) @map("sort_order")
+  notes         String?
+
+  // General (all rows)
+  men   Decimal? @db.Decimal(8, 2)
+  days  Decimal? @db.Decimal(8, 2)
+  shift String?
+
+  // Demolition
+  sqm          Decimal? @db.Decimal(10, 2)
+  m3           Decimal? @db.Decimal(10, 2)
+  materialType String?  @map("material_type")
+
+  // Cutting
+  cuttingEquipment   String?  @map("cutting_equipment")
+  elevation          String?
+  depthMm            Int?     @map("depth_mm")
+  lm                 Decimal? @db.Decimal(10, 2)
+  coreHoleDiameterMm Int?     @map("core_hole_diameter_mm")
+  coreHoleQty        Decimal? @db.Decimal(10, 2) @map("core_hole_qty")
+
+  // Asbestos
+  acmType           String?  @map("acm_type")
+  acmMaterial       String?  @map("acm_material")
+  enclosureRequired Boolean? @map("enclosure_required")
+  airMonitoring     Boolean? @map("air_monitoring")
+
+  // Excavation / civil
+  excavationDepthM   Decimal? @db.Decimal(8, 2) @map("excavation_depth_m")
+  excavationMaterial String?  @map("excavation_material")
+  machineSize        String?  @map("machine_size")
+
+  // Waste / disposal
+  wasteType     String?  @map("waste_type")
+  wasteFacility String?  @map("waste_facility")
+  wasteTonnes   Decimal? @db.Decimal(10, 3) @map("waste_tonnes")
+  wasteLoads    Int?     @map("waste_loads")
+  wasteM3       Decimal? @db.Decimal(10, 2) @map("waste_m3")
+
+  // Plant days
+  excavatorDays  Decimal? @db.Decimal(8, 2) @map("excavator_days")
+  bobcatDays     Decimal? @db.Decimal(8, 2) @map("bobcat_days")
+  ewpDays        Decimal? @db.Decimal(8, 2) @map("ewp_days")
+  hookTruckDays  Decimal? @db.Decimal(8, 2) @map("hook_truck_days")
+  semiTipperDays Decimal? @db.Decimal(8, 2) @map("semi_tipper_days")
+  assetId        String?  @map("asset_id")
+
+  estimateItemId String?  @map("estimate_item_id")
+  createdById    String   @map("created_by_id")
+  createdBy      User     @relation("ScopeOfWorksCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenderId, discipline, itemNumber])
+  @@index([tenderId, status])
+  @@map("scope_of_works_items")
+}
+
+model ScopeOfWorksHeader {
+  id                String    @id @default(uuid())
+  tenderId          String    @unique @map("tender_id")
+  tender            Tender    @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  siteAddress       String?   @map("site_address")
+  siteContactName   String?   @map("site_contact_name")
+  siteContactPhone  String?   @map("site_contact_phone")
+  accessConstraints String?   @map("access_constraints")
+  proposedStartDate DateTime? @map("proposed_start_date")
+  durationWeeks     Int?      @map("duration_weeks")
+  specialConditions String?   @map("special_conditions")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  @@map("scope_of_works_headers")
 }

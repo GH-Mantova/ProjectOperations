@@ -71,6 +71,9 @@ model User {
   estimateExports    EstimateExport[]
   personalAiProviders UserAiProvider[]
   aiPreference       UserAiPreference?
+  globalListsCreated GlobalList[]       @relation("GlobalListCreatedBy")
+  listItemsCreated   GlobalListItem[]   @relation("GlobalListItemCreatedBy")
+  clarificationNotesCreated TenderClarificationNote[] @relation("TenderClarificationNoteAuthor")
 
   @@index([isActive])
   @@map("users")
@@ -609,6 +612,7 @@ model Tender {
   scopeHeader       ScopeOfWorksHeader?
   estimateExports   EstimateExport[]
   projects          Project[]
+  clarificationNotes TenderClarificationNote[]
 
   @@index([status])
   @@index([estimatorUserId])
@@ -2022,4 +2026,71 @@ model EstimateExport {
 
   @@index([tenderId])
   @@map("estimate_exports")
+}
+
+// ── Global Lists ────────────────────────────────────────────────────────
+// User-manageable reference data (materials, measurement units, row types,
+// etc.) plus dynamic lists that proxy to other modules (assets, workers).
+// Items are archived, never hard-deleted — the `value` string is stored
+// verbatim on the consuming record, so archived items still render on
+// existing rows but drop out of dropdowns for new entries.
+enum GlobalListType {
+  STATIC
+  DYNAMIC
+}
+
+model GlobalList {
+  id           String           @id @default(cuid())
+  name         String           @unique
+  slug         String           @unique
+  description  String?
+  type         GlobalListType
+  sourceModule String?          @map("source_module")
+  isSystem     Boolean          @default(false) @map("is_system")
+  createdById  String           @map("created_by_id")
+  createdBy    User             @relation("GlobalListCreatedBy", fields: [createdById], references: [id])
+  items        GlobalListItem[]
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+
+  @@map("global_lists")
+}
+
+model GlobalListItem {
+  id          String     @id @default(cuid())
+  listId      String     @map("list_id")
+  list        GlobalList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  value       String
+  label       String
+  metadata    Json?
+  sortOrder   Int        @default(0) @map("sort_order")
+  isArchived  Boolean    @default(false) @map("is_archived")
+  createdById String     @map("created_by_id")
+  createdBy   User       @relation("GlobalListItemCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  @@unique([listId, value])
+  @@index([listId, isArchived])
+  @@map("global_list_items")
+}
+
+// ── Tender Clarification Notes ─────────────────────────────────────────
+// Simple sent/received communication log for a tender — the existing
+// TenderClarification model is a different shape (Q&A with status/dueDate)
+// used by the follow-up queue, so this is a parallel model for the
+// Overview-tab clarifications log.
+model TenderClarificationNote {
+  id          String   @id @default(cuid())
+  tenderId    String   @map("tender_id")
+  tender      Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  direction   String
+  text        String
+  occurredAt  DateTime @default(now()) @map("occurred_at")
+  createdById String   @map("created_by_id")
+  createdBy   User     @relation("TenderClarificationNoteAuthor", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([tenderId, occurredAt])
+  @@map("tender_clarification_notes")
 }

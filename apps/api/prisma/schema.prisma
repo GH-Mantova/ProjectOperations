@@ -1990,6 +1990,10 @@ model ScopeOfWorksItem {
   plantAssetId    String?  @map("plant_asset_id")
   plantAsset      Asset?   @relation("ScopeItemPlant", fields: [plantAssetId], references: [id], onDelete: SetNull)
 
+  // Provisional sum amount (discipline=Prv only). Final price = this value,
+  // no markup applied. Ignored for non-Prv rows.
+  provisionalAmount Decimal? @db.Decimal(12, 2) @map("provisional_amount")
+
   // Plant days
   excavatorDays  Decimal? @db.Decimal(8, 2) @map("excavator_days")
   bobcatDays     Decimal? @db.Decimal(8, 2) @map("bobcat_days")

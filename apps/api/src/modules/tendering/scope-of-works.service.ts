@@ -65,7 +65,9 @@ function numericFieldsFrom(dto: Partial<UpdateScopeItemDto & CreateScopeItemDto>
     measurementUnit: dto.measurementUnit,
     material: dto.material,
     plantAssetId: dto.plantAssetId,
-    wasteGroup: dto.wasteGroup
+    wasteGroup: dto.wasteGroup,
+    provisionalAmount:
+      dto.provisionalAmount !== undefined ? toDecimal(dto.provisionalAmount) : undefined
   };
 }
 

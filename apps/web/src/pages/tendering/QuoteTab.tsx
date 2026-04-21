@@ -88,10 +88,21 @@ export function QuoteTab({
       ]);
       if (sumRes.ok) setSummary((await sumRes.json()) as ScopeSummary);
       if (scopeRes.ok) {
-        const body = (await scopeRes.json()) as { items: Array<{ id: string; discipline: string; description: string }> };
+        const body = (await scopeRes.json()) as {
+          items: Array<{
+            id: string;
+            discipline: string;
+            description: string;
+            provisionalAmount: string | null;
+          }>;
+        };
         const prv = body.items
           .filter((i) => i.discipline === "Prv")
-          .map((i) => ({ id: i.id, description: i.description, amount: 0 }));
+          .map((i) => ({
+            id: i.id,
+            description: i.description,
+            amount: i.provisionalAmount ? Number(i.provisionalAmount) : 0
+          }));
         setProvisional(prv);
       }
     } catch (err) {

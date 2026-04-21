@@ -1,11 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
-import { PlatformConfigService } from "../platform/platform-config.service";
+import { PlatformConfigService, type AiProviderName } from "../platform/platform-config.service";
 import { ScopeOfWorksService } from "./scope-of-works.service";
-
-const MODEL_ID = "claude-sonnet-4-6";
-const MAX_TOKENS = 2048;
+import { ClaudeProvider } from "./ai-providers/claude.provider";
+import { GeminiProvider } from "./ai-providers/gemini.provider";
+import { GroqProvider } from "./ai-providers/groq.provider";
+import { MockAiProvider, OpenAiProvider } from "./ai-providers/openai.provider";
+import type { AiProvider } from "./ai-providers/ai-provider.interface";
 
 const READABLE_EXT = /\.(pdf|docx?|xlsx?|png|jpe?g)$/i;
 const UNREADABLE_EXT = /\.(dwg)$/i;
@@ -26,15 +28,24 @@ export type DraftScopeResult = {
   proposals: ProposedScopeItem[];
   documentsRead: number;
   documentsSkipped: string[];
-  mode: "live";
+  mode: "live" | "mock";
+  provider: string;
+  providerLabel: string;
+  model: string;
   revisionId?: string;
   itemsCreated: number;
   items: Array<{ id: string; wbsCode: string; discipline: string; description: string }>;
 };
 
+/**
+ * Retained for backward-compatible controller behaviour — the HTTP layer maps
+ * this to a 412 "api_key_required" response.
+ */
 export class AnthropicKeyMissingError extends Error {
-  constructor() {
-    super("Anthropic API key not configured. Go to Admin → Platform settings to add your key.");
+  constructor(
+    message = "No AI provider is configured. Go to Admin → Platform settings and add an Anthropic, Gemini, or Groq API key."
+  ) {
+    super(message);
     this.name = "AnthropicKeyMissingError";
   }
 }
@@ -174,11 +185,8 @@ export class TenderScopeDraftingService {
     );
 
     const userMessage = userMessageParts.join("\n");
-    const apiKey = await this.platformConfig.getAnthropicApiKey();
-    if (!apiKey) {
-      throw new AnthropicKeyMissingError();
-    }
-    const proposals = await this.callAnthropic(apiKey, userMessage);
+    const provider = await this.pickProvider();
+    const proposals = await provider.draftScope(SYSTEM_PROMPT, userMessage);
 
     let revisionId: string | undefined;
     if (correction) {
@@ -214,13 +222,16 @@ export class TenderScopeDraftingService {
         )
       : [];
 
+    const mode: "live" | "mock" = provider.name === "mock" ? "mock" : "live";
     await this.audit.write({
       actorId,
       action: "tenders.scopeDraft",
       entityType: "Tender",
       entityId: tenderId,
       metadata: {
-        mode: "live",
+        mode,
+        provider: provider.name,
+        model: provider.model,
         documentsRead: readable.length,
         skipped: skipped.length,
         correction: correction ?? null,
@@ -232,7 +243,10 @@ export class TenderScopeDraftingService {
       proposals,
       documentsRead: readable.length,
       documentsSkipped: skipped,
-      mode: "live",
+      mode,
+      provider: provider.name,
+      providerLabel: provider.label,
+      model: provider.model,
       revisionId,
       itemsCreated: createdItems.length,
       items: createdItems.map((i) => ({
@@ -244,46 +258,38 @@ export class TenderScopeDraftingService {
     };
   }
 
-  private async callAnthropic(apiKey: string, userMessage: string): Promise<ProposedScopeItem[]> {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        model: MODEL_ID,
-        max_tokens: MAX_TOKENS,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content: userMessage }]
-      })
-    });
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Anthropic API ${response.status}: ${errorText.slice(0, 400)}`);
+  /**
+   * Picks the first provider that has a configured API key, honouring the
+   * admin's `preferredProvider` choice if set, else falling back through the
+   * priority order Anthropic → Gemini → Groq → OpenAI. When nothing is
+   * configured we return a MockAiProvider so the draft flow still produces
+   * a reviewable scope item (useful for demos and first-run environments).
+   */
+  private async pickProvider(): Promise<AiProvider> {
+    const order: AiProviderName[] = ["anthropic", "gemini", "groq", "openai"];
+    const status = await this.platformConfig.status();
+    const preferred: AiProviderName | null = (status.preferredProvider as AiProviderName | null) ?? null;
+    const configuredOrder = preferred
+      ? [preferred, ...order.filter((p) => p !== preferred)]
+      : order;
+    for (const p of configuredOrder) {
+      if (p === "anthropic" && status.anthropic.configured) {
+        const key = await this.platformConfig.getAnthropicApiKey();
+        if (key) return new ClaudeProvider(key, status.anthropic.model);
+      }
+      if (p === "gemini" && status.gemini.configured) {
+        const key = await this.platformConfig.getGeminiApiKey();
+        if (key) return new GeminiProvider(key, status.gemini.model);
+      }
+      if (p === "groq" && status.groq.configured) {
+        const key = await this.platformConfig.getGroqApiKey();
+        if (key) return new GroqProvider(key, status.groq.model);
+      }
+      if (p === "openai" && status.openai.configured) {
+        const key = await this.platformConfig.getOpenAiApiKey();
+        if (key) return new OpenAiProvider(key, status.openai.model);
+      }
     }
-    const body = (await response.json()) as {
-      content: Array<{ type: string; text?: string }>;
-    };
-    const text = body.content.map((block) => block.text ?? "").join("").trim();
-    return parseJsonArray(text);
+    return new MockAiProvider();
   }
-
-}
-
-function parseJsonArray(raw: string): ProposedScopeItem[] {
-  const trimmed = raw.trim();
-  const unfenced = trimmed.startsWith("```")
-    ? trimmed.replace(/^```[a-z]*\n?/i, "").replace(/```$/, "").trim()
-    : trimmed;
-  const start = unfenced.indexOf("[");
-  const end = unfenced.lastIndexOf("]");
-  if (start < 0 || end < 0 || end <= start) {
-    throw new Error("Claude response did not contain a JSON array.");
-  }
-  const slice = unfenced.slice(start, end + 1);
-  const parsed = JSON.parse(slice);
-  if (!Array.isArray(parsed)) throw new Error("Claude response was not an array.");
-  return parsed as ProposedScopeItem[];
 }

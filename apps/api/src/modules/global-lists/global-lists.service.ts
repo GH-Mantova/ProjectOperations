@@ -93,7 +93,7 @@ export class GlobalListsService {
     if (dto.type && dto.type !== "STATIC") {
       throw new BadRequestException("Only STATIC lists can be created via this API.");
     }
-    const cleanSlug = dto.slug.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+    const cleanSlug = slugify(dto.slug);
     if (!cleanSlug) throw new BadRequestException("Slug must contain at least one alphanumeric character.");
     const existing = await this.prisma.globalList.findFirst({
       where: { OR: [{ slug: cleanSlug }, { name: dto.name }] }
@@ -113,7 +113,7 @@ export class GlobalListsService {
 
   async createItem(
     slug: string,
-    actorId: string,
+    actor: { id: string; isAdmin: boolean },
     dto: { value?: string; label: string; metadata?: Prisma.JsonValue | null; sortOrder?: number }
   ) {
     const list = await this.requireStaticList(slug);
@@ -126,6 +126,13 @@ export class GlobalListsService {
     });
     if (conflict) {
       if (conflict.isArchived) {
+        // Only the original creator or an admin may unarchive + overwrite
+        // another user's archived item — otherwise this is an edit-by-proxy.
+        if (conflict.createdById !== actor.id && !actor.isAdmin) {
+          throw new ConflictException(
+            "An archived item with this value already exists. Ask an administrator to restore it."
+          );
+        }
         return this.prisma.globalListItem.update({
           where: { id: conflict.id },
           data: { isArchived: false, label, metadata: dto.metadata ?? undefined }
@@ -144,7 +151,7 @@ export class GlobalListsService {
         metadata: (dto.metadata ?? undefined) as Prisma.InputJsonValue | undefined,
         sortOrder: nextSortOrder,
         isArchived: false,
-        createdById: actorId
+        createdById: actor.id
       }
     });
   }
@@ -181,8 +188,18 @@ export class GlobalListsService {
     });
   }
 
-  async reorder(slug: string, order: Array<{ itemId: string; sortOrder: number }>) {
+  async reorder(
+    slug: string,
+    actor: { id: string; isAdmin: boolean },
+    order: Array<{ itemId: string; sortOrder: number }>
+  ) {
     const list = await this.requireStaticList(slug);
+    // System lists are seeded by the platform and define canonical ordering;
+    // only admins may re-sequence them. User-created lists are free-for-all,
+    // matching the existing add/archive permission model.
+    if (list.isSystem && !actor.isAdmin) {
+      throw new ForbiddenException("Only administrators can reorder items on system lists.");
+    }
     if (order.length === 0) return { updated: 0 };
     const ids = order.map((o) => o.itemId);
     const existing = await this.prisma.globalListItem.findMany({
@@ -266,9 +283,37 @@ export class GlobalListsService {
   }
 }
 
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+const MAX_SLUG_INPUT = 200;
+
+// Linear-time slugify with explicit input cap. Previous chained regex
+// (/[^a-z0-9-]+/g plus /^-+|-+$/g) triggered CodeQL's polynomial-regex
+// warning because the `+g` quantifier on arbitrary input is not trivially
+// linear. This version walks the characters once and then collapses a
+// bounded run, so worst-case time is O(n) regardless of input shape.
+function slugify(input: string): string {
+  const trimmed = (input ?? "").trim().slice(0, MAX_SLUG_INPUT).toLowerCase();
+  if (!trimmed) return "";
+  const chars: string[] = [];
+  for (let i = 0; i < trimmed.length; i += 1) {
+    const c = trimmed.charCodeAt(i);
+    const isLower = c >= 97 && c <= 122;
+    const isDigit = c >= 48 && c <= 57;
+    const isDash = c === 45;
+    chars.push(isLower || isDigit || isDash ? trimmed[i] : "-");
+  }
+  // Collapse runs of dashes without regex, O(n).
+  const collapsed: string[] = [];
+  let prevDash = false;
+  for (const ch of chars) {
+    const isDash = ch === "-";
+    if (isDash && prevDash) continue;
+    collapsed.push(ch);
+    prevDash = isDash;
+  }
+  // Trim leading/trailing dashes.
+  let start = 0;
+  let end = collapsed.length;
+  while (start < end && collapsed[start] === "-") start += 1;
+  while (end > start && collapsed[end - 1] === "-") end -= 1;
+  return collapsed.slice(start, end).join("");
 }

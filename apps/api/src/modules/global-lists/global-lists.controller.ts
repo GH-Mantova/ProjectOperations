@@ -88,9 +88,9 @@ export class GlobalListsController {
   @Post(":slug/items")
   @ApiOperation({ summary: "Add an item to a STATIC list." })
   @ApiResponse({ status: 201, description: "Created (or unarchived if value previously existed archived)." })
-  @ApiResponse({ status: 409, description: "Value already exists in list." })
+  @ApiResponse({ status: 409, description: "Value already exists in list (or is archived and owned by another user)." })
   createItem(@Param("slug") slug: string, @Body() dto: CreateItemDto, @CurrentUser() actor: AuthenticatedUser) {
-    return this.service.createItem(slug, actor.sub, dto);
+    return this.service.createItem(slug, toActor(actor), dto);
   }
 
   @Patch(":slug/items/:itemId")
@@ -121,8 +121,12 @@ export class GlobalListsController {
   }
 
   @Post(":slug/items/reorder")
-  @ApiOperation({ summary: "Bulk update sortOrder on items in a single transaction." })
-  reorder(@Param("slug") slug: string, @Body() dto: ReorderDto) {
-    return this.service.reorder(slug, dto.order);
+  @ApiOperation({
+    summary:
+      "Bulk update sortOrder on items in a single transaction. System lists require platform.admin to reorder."
+  })
+  @ApiResponse({ status: 403, description: "Non-admin attempted to reorder a system list." })
+  reorder(@Param("slug") slug: string, @Body() dto: ReorderDto, @CurrentUser() actor: AuthenticatedUser) {
+    return this.service.reorder(slug, toActor(actor), dto.order);
   }
 }

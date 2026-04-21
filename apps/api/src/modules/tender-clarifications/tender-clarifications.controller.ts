@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Post, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
-import { IsIn, IsOptional, IsString } from "class-validator";
+import { IsDateString, IsIn, IsOptional, IsString } from "class-validator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
@@ -10,7 +10,7 @@ import { TenderClarificationsService } from "./tender-clarifications.service";
 class CreateClarificationDto {
   @IsString() @IsIn(["sent", "received"]) direction!: "sent" | "received";
   @IsString() text!: string;
-  @IsOptional() @IsString() date?: string;
+  @IsOptional() @IsDateString() date?: string;
 }
 
 @ApiTags("Tender Clarification Notes")

@@ -28,12 +28,27 @@ export class TenderClarificationsService {
     }
     const clean = dto.text?.trim();
     if (!clean) throw new BadRequestException("text cannot be empty.");
+
+    // Parse the date here so an invalid string returns 400 (and a clear
+    // message) instead of cascading into a 500 when Prisma rejects an
+    // Invalid Date.
+    let occurredAt: Date;
+    if (dto.date) {
+      const parsed = new Date(dto.date);
+      if (Number.isNaN(parsed.getTime())) {
+        throw new BadRequestException("Invalid date format — expected ISO-8601 (e.g. 2026-04-22).");
+      }
+      occurredAt = parsed;
+    } else {
+      occurredAt = new Date();
+    }
+
     return this.prisma.tenderClarificationNote.create({
       data: {
         tenderId,
         direction: dto.direction,
         text: clean,
-        occurredAt: dto.date ? new Date(dto.date) : new Date(),
+        occurredAt,
         createdById: actorId
       },
       include: { createdBy: { select: { id: true, firstName: true, lastName: true } } }

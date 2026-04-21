@@ -145,7 +145,6 @@ const NAV_GROUPS: NavGroup[] = [
     id: "operations",
     label: "Operations",
     items: [
-      { to: "/", label: "Dashboard", icon: ICON_DASHBOARD, match: (path) => path === "/" },
       {
         to: "/projects",
         label: "Projects",
@@ -189,7 +188,6 @@ const NAV_GROUPS: NavGroup[] = [
             !path.startsWith("/tenders/dashboard") &&
             !path.startsWith("/tenders/reports"))
       },
-      { to: "/tenders/dashboard", label: "Dashboard", icon: ICON_DASHBOARD, match: (path) => path.startsWith("/tenders/dashboard") },
       { to: "/tenders/reports", label: "Reports", icon: ICON_AUDIT, match: (path) => path.startsWith("/tenders/reports") },
       { to: "/jobs?filter=contracts", label: "Contracts", icon: ICON_CONTRACTS }
     ]
@@ -388,6 +386,69 @@ export function ShellLayout() {
         </div>
 
         <nav className="shell__nav" aria-label="Main navigation">
+          <div className="shell__nav-group">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "0 6px" }}>
+              <p className="shell__nav-group-label" style={{ margin: 0 }}>Dashboards</p>
+              <button
+                type="button"
+                onClick={() => setNewDashboardOpen(true)}
+                title="New dashboard"
+                aria-label="New dashboard"
+                style={{ background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 16, padding: "2px 6px" }}
+              >
+                +
+              </button>
+            </div>
+            <NavLink
+              to="/"
+              end
+              className={({ isActive }) => (isActive ? "shell__nav-link shell__nav-link--active" : "shell__nav-link")}
+              title={collapsed ? "Operations" : undefined}
+            >
+              <span className="shell__nav-icon">{ICON_DASHBOARD}</span>
+              <span className="shell__nav-label">Operations</span>
+            </NavLink>
+            <NavLink
+              to="/tenders/dashboard"
+              className={location.pathname.startsWith("/tenders/dashboard") ? "shell__nav-link shell__nav-link--active" : "shell__nav-link"}
+              title={collapsed ? "Tendering" : undefined}
+            >
+              <span className="shell__nav-icon">{ICON_DASHBOARD}</span>
+              <span className="shell__nav-label">Tendering</span>
+            </NavLink>
+            {customDashboards.map((d) => {
+              const to = `/dashboards/${d.id}`;
+              const isActive = location.pathname === to;
+              return (
+                <div key={d.id} className="shell__nav-link-wrap">
+                  <NavLink
+                    to={to}
+                    className={isActive ? "shell__nav-link shell__nav-link--active" : "shell__nav-link"}
+                    title={collapsed ? d.name : undefined}
+                  >
+                    <span className="shell__nav-icon">{ICON_DASHBOARD}</span>
+                    <span className="shell__nav-label">{d.name}</span>
+                  </NavLink>
+                  <button
+                    type="button"
+                    className="shell__nav-remove"
+                    aria-label={`Remove ${d.name}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (!window.confirm(`Remove "${d.name}"?`)) return;
+                      void removeDashboard(d.id).then(() => {
+                        if (isActive) navigate("/");
+                      });
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
           {filteredGroups.map((group) => (
             <div key={group.id} className="shell__nav-group">
               <p className="shell__nav-group-label">{group.label}</p>
@@ -408,58 +469,6 @@ export function ShellLayout() {
               })}
             </div>
           ))}
-
-          <div className="shell__nav-group">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "0 6px" }}>
-              <p className="shell__nav-group-label" style={{ margin: 0 }}>My dashboards</p>
-              <button
-                type="button"
-                onClick={() => setNewDashboardOpen(true)}
-                title="New dashboard"
-                aria-label="New dashboard"
-                style={{ background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 16, padding: "2px 6px" }}
-              >
-                +
-              </button>
-            </div>
-            {customDashboards.length === 0 ? (
-              <p style={{ padding: "4px 10px", margin: 0, fontSize: 12, color: "var(--text-muted)" }}>
-                {collapsed ? "" : "No custom dashboards yet"}
-              </p>
-            ) : (
-              customDashboards.map((d) => {
-                const to = `/dashboards/${d.id}`;
-                const isActive = location.pathname === to;
-                return (
-                  <div key={d.id} className="shell__nav-link-wrap">
-                    <NavLink
-                      to={to}
-                      className={isActive ? "shell__nav-link shell__nav-link--active" : "shell__nav-link"}
-                      title={collapsed ? d.name : undefined}
-                    >
-                      <span className="shell__nav-icon">{ICON_DASHBOARD}</span>
-                      <span className="shell__nav-label">{d.name}</span>
-                    </NavLink>
-                    <button
-                      type="button"
-                      className="shell__nav-remove"
-                      aria-label={`Remove ${d.name}`}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (!window.confirm(`Remove "${d.name}"?`)) return;
-                        void removeDashboard(d.id).then(() => {
-                          if (isActive) navigate("/");
-                        });
-                      }}
-                    >
-                      ×
-                    </button>
-                  </div>
-                );
-              })
-            )}
-          </div>
         </nav>
 
         <div className="shell__sidebar-footer">

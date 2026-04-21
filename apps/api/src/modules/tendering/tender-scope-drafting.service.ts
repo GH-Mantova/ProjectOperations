@@ -6,6 +6,7 @@ import { ScopeOfWorksService } from "./scope-of-works.service";
 import { ClaudeProvider } from "./ai-providers/claude.provider";
 import { GeminiProvider } from "./ai-providers/gemini.provider";
 import { GroqProvider } from "./ai-providers/groq.provider";
+import { MockAiProvider, OpenAiProvider } from "./ai-providers/openai.provider";
 import type { AiProvider } from "./ai-providers/ai-provider.interface";
 
 const READABLE_EXT = /\.(pdf|docx?|xlsx?|png|jpe?g)$/i;
@@ -27,9 +28,10 @@ export type DraftScopeResult = {
   proposals: ProposedScopeItem[];
   documentsRead: number;
   documentsSkipped: string[];
-  mode: "live";
-  provider: AiProviderName;
+  mode: "live" | "mock";
+  provider: string;
   providerLabel: string;
+  model: string;
   revisionId?: string;
   itemsCreated: number;
   items: Array<{ id: string; wbsCode: string; discipline: string; description: string }>;
@@ -184,9 +186,6 @@ export class TenderScopeDraftingService {
 
     const userMessage = userMessageParts.join("\n");
     const provider = await this.pickProvider();
-    if (!provider) {
-      throw new AnthropicKeyMissingError();
-    }
     const proposals = await provider.draftScope(SYSTEM_PROMPT, userMessage);
 
     let revisionId: string | undefined;
@@ -223,14 +222,16 @@ export class TenderScopeDraftingService {
         )
       : [];
 
+    const mode: "live" | "mock" = provider.name === "mock" ? "mock" : "live";
     await this.audit.write({
       actorId,
       action: "tenders.scopeDraft",
       entityType: "Tender",
       entityId: tenderId,
       metadata: {
-        mode: "live",
+        mode,
         provider: provider.name,
+        model: provider.model,
         documentsRead: readable.length,
         skipped: skipped.length,
         correction: correction ?? null,
@@ -242,9 +243,10 @@ export class TenderScopeDraftingService {
       proposals,
       documentsRead: readable.length,
       documentsSkipped: skipped,
-      mode: "live",
+      mode,
       provider: provider.name,
       providerLabel: provider.label,
+      model: provider.model,
       revisionId,
       itemsCreated: createdItems.length,
       items: createdItems.map((i) => ({
@@ -258,29 +260,36 @@ export class TenderScopeDraftingService {
 
   /**
    * Picks the first provider that has a configured API key, honouring the
-   * admin's `preferredProvider` choice if set, else falling back to the
-   * priority order Anthropic → Gemini → Groq.
+   * admin's `preferredProvider` choice if set, else falling back through the
+   * priority order Anthropic → Gemini → Groq → OpenAI. When nothing is
+   * configured we return a MockAiProvider so the draft flow still produces
+   * a reviewable scope item (useful for demos and first-run environments).
    */
-  private async pickProvider(): Promise<AiProvider | null> {
+  private async pickProvider(): Promise<AiProvider> {
+    const order: AiProviderName[] = ["anthropic", "gemini", "groq", "openai"];
     const status = await this.platformConfig.status();
     const preferred: AiProviderName | null = (status.preferredProvider as AiProviderName | null) ?? null;
-    const configuredOrder: AiProviderName[] = preferred
-      ? [preferred, ...(["anthropic", "gemini", "groq"] as AiProviderName[]).filter((p) => p !== preferred)]
-      : ["anthropic", "gemini", "groq"];
+    const configuredOrder = preferred
+      ? [preferred, ...order.filter((p) => p !== preferred)]
+      : order;
     for (const p of configuredOrder) {
       if (p === "anthropic" && status.anthropic.configured) {
         const key = await this.platformConfig.getAnthropicApiKey();
-        if (key) return new ClaudeProvider(key);
+        if (key) return new ClaudeProvider(key, status.anthropic.model);
       }
       if (p === "gemini" && status.gemini.configured) {
         const key = await this.platformConfig.getGeminiApiKey();
-        if (key) return new GeminiProvider(key);
+        if (key) return new GeminiProvider(key, status.gemini.model);
       }
       if (p === "groq" && status.groq.configured) {
         const key = await this.platformConfig.getGroqApiKey();
-        if (key) return new GroqProvider(key);
+        if (key) return new GroqProvider(key, status.groq.model);
+      }
+      if (p === "openai" && status.openai.configured) {
+        const key = await this.platformConfig.getOpenAiApiKey();
+        if (key) return new OpenAiProvider(key, status.openai.model);
       }
     }
-    return null;
+    return new MockAiProvider();
   }
 }

@@ -8,9 +8,16 @@ const SINGLETON_ID = "singleton";
 const IV_BYTES = 12;
 const ALGO = "aes-256-gcm";
 
-export type AiProviderName = "anthropic" | "gemini" | "groq";
+export type AiProviderName = "anthropic" | "gemini" | "groq" | "openai";
 
-export const PROVIDER_PRIORITY: AiProviderName[] = ["anthropic", "gemini", "groq"];
+export const PROVIDER_PRIORITY: AiProviderName[] = ["anthropic", "gemini", "groq", "openai"];
+
+export const DEFAULT_MODELS: Record<AiProviderName, string> = {
+  anthropic: "claude-sonnet-4-6",
+  gemini: "gemini-1.5-flash",
+  groq: "llama3-8b-8192",
+  openai: "gpt-4o-mini"
+};
 
 @Injectable()
 export class PlatformConfigService {
@@ -32,30 +39,50 @@ export class PlatformConfigService {
     return this.resolveKey("groq");
   }
 
+  async getOpenAiApiKey(): Promise<string | null> {
+    return this.resolveKey("openai");
+  }
+
+  async getModel(provider: AiProviderName): Promise<string> {
+    const record = await this.prisma.platformConfig.findUnique({ where: { id: SINGLETON_ID } });
+    const stored = this.modelFieldFor(record, provider);
+    return stored && stored.trim() ? stored.trim() : DEFAULT_MODELS[provider];
+  }
+
   async status() {
     const record = await this.prisma.platformConfig.findUnique({ where: { id: SINGLETON_ID } });
     const anthropic = await this.providerStatus(
       "anthropic",
       record?.anthropicApiKey ?? null,
-      record?.anthropicKeyUpdatedAt ?? null
+      record?.anthropicKeyUpdatedAt ?? null,
+      record?.anthropicModel ?? null
     );
     const gemini = await this.providerStatus(
       "gemini",
       record?.geminiApiKey ?? null,
-      record?.geminiKeyUpdatedAt ?? null
+      record?.geminiKeyUpdatedAt ?? null,
+      record?.geminiModel ?? null
     );
     const groq = await this.providerStatus(
       "groq",
       record?.groqApiKey ?? null,
-      record?.groqKeyUpdatedAt ?? null
+      record?.groqKeyUpdatedAt ?? null,
+      record?.groqModel ?? null
+    );
+    const openai = await this.providerStatus(
+      "openai",
+      record?.openaiApiKey ?? null,
+      record?.openaiKeyUpdatedAt ?? null,
+      record?.openaiModel ?? null
     );
     const preferred = (record?.preferredProvider as AiProviderName | null | undefined) ?? null;
     return {
       anthropic,
       gemini,
       groq,
+      openai,
       preferredProvider: preferred,
-      activeProvider: this.pickActiveProvider({ anthropic, gemini, groq }, preferred),
+      activeProvider: this.pickActiveProvider({ anthropic, gemini, groq, openai }, preferred),
       sharePoint: { mode: this.config.get<string>("SHAREPOINT_MODE", "mock") }
     };
   }
@@ -92,6 +119,36 @@ export class PlatformConfigService {
       action: "platformConfig.groqKey.update",
       entityType: "PlatformConfig",
       entityId: SINGLETON_ID
+    });
+    return this.status();
+  }
+
+  async setOpenAiApiKey(rawKey: string, actorId?: string) {
+    const clean = this.validateKey("openai", rawKey);
+    await this.persistKey({ openaiApiKey: this.encrypt(clean), openaiKeyUpdatedAt: new Date() }, actorId);
+    await this.audit.write({
+      actorId,
+      action: "platformConfig.openaiKey.update",
+      entityType: "PlatformConfig",
+      entityId: SINGLETON_ID
+    });
+    return this.status();
+  }
+
+  async setModel(provider: AiProviderName, rawModel: string | null, actorId?: string) {
+    const clean = rawModel?.trim() || null;
+    const patch: Parameters<PlatformConfigService["persistKey"]>[0] = {};
+    if (provider === "anthropic") patch.anthropicModel = clean;
+    else if (provider === "gemini") patch.geminiModel = clean;
+    else if (provider === "groq") patch.groqModel = clean;
+    else if (provider === "openai") patch.openaiModel = clean;
+    await this.persistKey(patch, actorId);
+    await this.audit.write({
+      actorId,
+      action: "platformConfig.model.update",
+      entityType: "PlatformConfig",
+      entityId: SINGLETON_ID,
+      metadata: { provider, model: clean }
     });
     return this.status();
   }
@@ -183,6 +240,79 @@ export class PlatformConfigService {
     }
   }
 
+  async testOpenAiKey(): Promise<{ ok: boolean; message: string }> {
+    const key = await this.getOpenAiApiKey();
+    if (!key) return { ok: false, message: "No OpenAI API key configured." };
+    try {
+      const response = await fetch("https://api.openai.com/v1/models", {
+        method: "GET",
+        headers: { authorization: `Bearer ${key}` }
+      });
+      if (response.ok) return { ok: true, message: "Connection successful." };
+      const text = await response.text();
+      return { ok: false, message: `OpenAI API ${response.status}: ${text.slice(0, 240)}` };
+    } catch (err) {
+      return { ok: false, message: (err as Error).message };
+    }
+  }
+
+  async listModels(provider: AiProviderName): Promise<{ provider: AiProviderName; models: string[] }> {
+    if (provider === "anthropic") {
+      return {
+        provider,
+        models: ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"]
+      };
+    }
+    if (provider === "openai") {
+      const key = await this.getOpenAiApiKey();
+      if (!key) throw new Error("OpenAI API key not configured.");
+      const response = await fetch("https://api.openai.com/v1/models", {
+        headers: { authorization: `Bearer ${key}` }
+      });
+      if (!response.ok) {
+        throw new Error(`OpenAI API ${response.status}: ${(await response.text()).slice(0, 240)}`);
+      }
+      const body = (await response.json()) as { data: Array<{ id: string }> };
+      const models = body.data
+        .map((m) => m.id)
+        .filter((id) => {
+          const lower = id.toLowerCase();
+          return !/(embedding|whisper|tts|dall-?e|audio|image|vision-only|moderation)/.test(lower);
+        })
+        .sort();
+      return { provider, models };
+    }
+    if (provider === "groq") {
+      const key = await this.getGroqApiKey();
+      if (!key) throw new Error("Groq API key not configured.");
+      const response = await fetch("https://api.groq.com/openai/v1/models", {
+        headers: { authorization: `Bearer ${key}` }
+      });
+      if (!response.ok) {
+        throw new Error(`Groq API ${response.status}: ${(await response.text()).slice(0, 240)}`);
+      }
+      const body = (await response.json()) as { data: Array<{ id: string }> };
+      return { provider, models: body.data.map((m) => m.id).sort() };
+    }
+    // gemini
+    const key = await this.getGeminiApiKey();
+    if (!key) throw new Error("Gemini API key not configured.");
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1/models?key=${encodeURIComponent(key)}`
+    );
+    if (!response.ok) {
+      throw new Error(`Gemini API ${response.status}: ${(await response.text()).slice(0, 240)}`);
+    }
+    const body = (await response.json()) as {
+      models: Array<{ name: string; supportedGenerationMethods?: string[] }>;
+    };
+    const models = body.models
+      .filter((m) => (m.supportedGenerationMethods ?? []).includes("generateContent"))
+      .map((m) => m.name.replace(/^models\//, ""))
+      .sort();
+    return { provider, models };
+  }
+
   // ── Helpers ─────────────────────────────────────────────────────────
   private async resolveKey(provider: AiProviderName): Promise<string | null> {
     const record = await this.prisma.platformConfig.findUnique({ where: { id: SINGLETON_ID } });
@@ -202,23 +332,48 @@ export class PlatformConfigService {
         return "GEMINI_API_KEY";
       case "groq":
         return "GROQ_API_KEY";
+      case "openai":
+        return "OPENAI_API_KEY";
     }
   }
 
   private storedFieldFor(
-    record: { anthropicApiKey: string | null; geminiApiKey: string | null; groqApiKey: string | null } | null,
+    record: {
+      anthropicApiKey: string | null;
+      geminiApiKey: string | null;
+      groqApiKey: string | null;
+      openaiApiKey: string | null;
+    } | null,
     provider: AiProviderName
   ): string | null {
     if (!record) return null;
     if (provider === "anthropic") return record.anthropicApiKey;
     if (provider === "gemini") return record.geminiApiKey;
-    return record.groqApiKey;
+    if (provider === "groq") return record.groqApiKey;
+    return record.openaiApiKey;
+  }
+
+  private modelFieldFor(
+    record: {
+      anthropicModel: string | null;
+      geminiModel: string | null;
+      groqModel: string | null;
+      openaiModel: string | null;
+    } | null,
+    provider: AiProviderName
+  ): string | null {
+    if (!record) return null;
+    if (provider === "anthropic") return record.anthropicModel;
+    if (provider === "gemini") return record.geminiModel;
+    if (provider === "groq") return record.groqModel;
+    return record.openaiModel;
   }
 
   private async providerStatus(
     provider: AiProviderName,
     storedEncrypted: string | null,
-    updatedAt: Date | null
+    updatedAt: Date | null,
+    storedModel: string | null
   ) {
     const storedKey = storedEncrypted ? this.tryDecrypt(storedEncrypted) : null;
     const envKey = this.config.get<string>(this.envNameFor(provider)) ?? null;
@@ -227,7 +382,8 @@ export class PlatformConfigService {
       configured: Boolean(effective),
       source: storedKey ? ("database" as const) : envKey ? ("env" as const) : null,
       maskedKey: effective ? this.mask(effective) : null,
-      updatedAt
+      updatedAt,
+      model: storedModel && storedModel.trim() ? storedModel.trim() : DEFAULT_MODELS[provider]
     };
   }
 
@@ -236,18 +392,15 @@ export class PlatformConfigService {
       anthropic: { configured: boolean };
       gemini: { configured: boolean };
       groq: { configured: boolean };
+      openai: { configured: boolean };
     },
     preferred: AiProviderName | null
   ): AiProviderName | null {
-    if (preferred) {
-      if (preferred === "anthropic" && s.anthropic.configured) return "anthropic";
-      if (preferred === "gemini" && s.gemini.configured) return "gemini";
-      if (preferred === "groq" && s.groq.configured) return "groq";
-    }
-    for (const p of PROVIDER_PRIORITY) {
-      if (p === "anthropic" && s.anthropic.configured) return p;
-      if (p === "gemini" && s.gemini.configured) return p;
-      if (p === "groq" && s.groq.configured) return p;
+    const considered: AiProviderName[] = preferred
+      ? [preferred, ...PROVIDER_PRIORITY.filter((p) => p !== preferred)]
+      : [...PROVIDER_PRIORITY];
+    for (const p of considered) {
+      if (s[p].configured) return p;
     }
     return null;
   }
@@ -261,6 +414,9 @@ export class PlatformConfigService {
     if (provider === "groq" && !clean.startsWith("gsk_")) {
       throw new Error('Groq API keys start with "gsk_". Double-check the value.');
     }
+    if (provider === "openai" && !clean.startsWith("sk-")) {
+      throw new Error('OpenAI API keys start with "sk-". Double-check the value.');
+    }
     // Gemini keys are arbitrary — no prefix check.
     return clean;
   }
@@ -269,10 +425,16 @@ export class PlatformConfigService {
     patch: {
       anthropicApiKey?: string;
       anthropicKeyUpdatedAt?: Date;
+      anthropicModel?: string | null;
       geminiApiKey?: string;
       geminiKeyUpdatedAt?: Date;
+      geminiModel?: string | null;
       groqApiKey?: string;
       groqKeyUpdatedAt?: Date;
+      groqModel?: string | null;
+      openaiApiKey?: string;
+      openaiKeyUpdatedAt?: Date;
+      openaiModel?: string | null;
       preferredProvider?: string | null;
     },
     actorId?: string

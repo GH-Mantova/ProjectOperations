@@ -1,10 +1,14 @@
 import type { ProposedScopeItem } from "../tender-scope-drafting.service";
 
+export type AiProviderKey = "anthropic" | "gemini" | "groq" | "openai" | "mock";
+
 export interface AiProvider {
-  /** Stable provider key — "anthropic" | "gemini" | "groq". */
-  readonly name: "anthropic" | "gemini" | "groq";
+  /** Stable provider key. */
+  readonly name: AiProviderKey;
   /** Human label for logs / audit entries. */
   readonly label: string;
+  /** Model identifier used for this invocation (exposed for audit/UI). */
+  readonly model: string;
   /**
    * Send the system prompt + user message to the provider and return the parsed
    * scope-item array. Providers must return JSON only; implementations strip

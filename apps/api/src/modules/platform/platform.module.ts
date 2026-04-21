@@ -14,7 +14,7 @@ import { DashboardsController } from "./dashboards.controller";
 import { DashboardsService } from "./dashboards.service";
 import { UserDashboardsController } from "./user-dashboards.controller";
 import { UserDashboardsService } from "./user-dashboards.service";
-import { PlatformConfigController } from "./platform-config.controller";
+import { AiProvidersController, PlatformConfigController } from "./platform-config.controller";
 import { PlatformConfigService } from "./platform-config.service";
 
 @Module({
@@ -26,7 +26,8 @@ import { PlatformConfigService } from "./platform-config.service";
     SearchController,
     DashboardsController,
     UserDashboardsController,
-    PlatformConfigController
+    PlatformConfigController,
+    AiProvidersController
   ],
   providers: [
     MockSharePointAdapter,

@@ -1,14 +1,20 @@
 import type { ProposedScopeItem } from "../tender-scope-drafting.service";
 import { parseJsonArray, type AiProvider } from "./ai-provider.interface";
 
-const MODEL_ID = "claude-sonnet-4-6";
+export const CLAUDE_DEFAULT_MODEL = "claude-sonnet-4-6";
 const MAX_TOKENS = 2048;
 
 export class ClaudeProvider implements AiProvider {
   readonly name = "anthropic" as const;
   readonly label = "Claude (Anthropic)";
+  readonly model: string;
 
-  constructor(private readonly apiKey: string) {}
+  constructor(
+    private readonly apiKey: string,
+    model: string | null | undefined = CLAUDE_DEFAULT_MODEL
+  ) {
+    this.model = (model && model.trim()) || CLAUDE_DEFAULT_MODEL;
+  }
 
   async draftScope(systemPrompt: string, userMessage: string): Promise<ProposedScopeItem[]> {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -19,7 +25,7 @@ export class ClaudeProvider implements AiProvider {
         "content-type": "application/json"
       },
       body: JSON.stringify({
-        model: MODEL_ID,
+        model: this.model,
         max_tokens: MAX_TOKENS,
         system: systemPrompt,
         messages: [{ role: "user", content: userMessage }]

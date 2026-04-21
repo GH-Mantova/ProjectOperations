@@ -34,6 +34,7 @@
     "jose": "^6.2.2",
     "jsonwebtoken": "^9.0.3",
     "jwks-rsa": "^4.0.1",
+    "openai": "^6.34.0",
     "pdfkit": "^0.18.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",

@@ -1,8 +1,32 @@
 import { BarChartWidget, DonutChartWidget, LineChartWidget, Skeleton } from "@project-ops/ui";
 import { useNavigate } from "react-router-dom";
-import { isComplianceTender, useJobs, useMaintenancePlans, useProjects, useTenders, useTimesheetSummary, useFormSubmissions } from "../hooks";
-import { periodStart, resolvePeriod, type WidgetProps } from "../types";
+import {
+  isComplianceTender,
+  useJobs,
+  useMaintenancePlans,
+  useProjects,
+  useTenders,
+  useTimesheetSummary,
+  useFormSubmissions
+} from "../hooks";
+import { periodStart, resolvePeriod, type AggregationOp, type WidgetProps } from "../types";
 import { EmptyNote, KpiTile, PanelCard, formatCompactCurrency, formatCurrency } from "./shared";
+
+function aggFrom(config: WidgetProps["config"]): AggregationOp {
+  const raw = config.filters?.aggregation;
+  if (raw === "Sum" || raw === "Count" || raw === "Average" || raw === "Max" || raw === "Min") return raw;
+  return "Sum";
+}
+
+function applyAgg(values: number[], op: AggregationOp): number {
+  if (values.length === 0) return 0;
+  if (op === "Count") return values.length;
+  if (op === "Sum") return values.reduce((sum, v) => sum + v, 0);
+  if (op === "Average") return values.reduce((sum, v) => sum + v, 0) / values.length;
+  if (op === "Max") return Math.max(...values);
+  if (op === "Min") return Math.min(...values);
+  return 0;
+}
 
 const ACTIVE_TENDER = new Set(["DRAFT", "IN_PROGRESS", "SUBMITTED", "AWARDED", "CONTRACT_ISSUED"]);
 const MS_PER_DAY = 86_400_000;
@@ -41,18 +65,44 @@ export function ActiveJobsKpi(_props: WidgetProps) {
 
 const ACTIVE_PROJECT_STATUSES = new Set(["MOBILISING", "ACTIVE", "PRACTICAL_COMPLETION", "DEFECTS"]);
 
-export function ActiveProjectsKpi(_props: WidgetProps) {
+export function ActiveProjectsKpi(props: WidgetProps) {
   const { data: projects, isLoading } = useProjects();
+  const op = aggFrom(props.config);
+  const fields = props.config.fields && props.config.fields.length > 0 ? props.config.fields : ["count"];
   if (isLoading) return <KpiTile label="Active projects" value="—" />;
-  const count = (projects ?? []).filter((p) => ACTIVE_PROJECT_STATUSES.has(p.status)).length;
+  const active = (projects ?? []).filter((p) => ACTIVE_PROJECT_STATUSES.has(p.status));
+  const values = active.map((p) => Number(p.contractValue ?? 0));
+  const showValue = fields.includes("totalValue");
+  const count = active.length;
+  if (showValue) {
+    const raw = applyAgg(values, op);
+    const subtitle =
+      op === "Count"
+        ? `${count} active`
+        : `${count} active · ${op === "Sum" ? "total" : op.toLowerCase()}`;
+    return (
+      <KpiTile
+        label="Active projects"
+        value={op === "Count" ? count : formatCurrency(raw)}
+        subtitle={subtitle}
+        accent="#005B61"
+      />
+    );
+  }
   return <KpiTile label="Active projects" value={count} accent="#005B61" />;
 }
 
-export function TimesheetsPendingKpi(_props: WidgetProps) {
+export function TimesheetsPendingKpi(props: WidgetProps) {
   const navigate = useNavigate();
   const { data, isLoading } = useTimesheetSummary();
+  const fields =
+    props.config.fields && props.config.fields.length > 0 ? props.config.fields : ["count"];
   if (isLoading) return <KpiTile label="Timesheets pending" value="—" />;
   const count = data?.pendingCount ?? 0;
+  const subtitle =
+    fields.includes("oldestPendingDate") && data?.oldestPendingDate
+      ? `Oldest ${new Date(data.oldestPendingDate).toLocaleDateString("en-AU", { day: "numeric", month: "short" })}`
+      : undefined;
   return (
     <div
       role="button"
@@ -61,9 +111,9 @@ export function TimesheetsPendingKpi(_props: WidgetProps) {
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") navigate("/timesheets/approval");
       }}
-      style={{ cursor: "pointer" }}
+      style={{ cursor: "pointer", height: "100%" }}
     >
-      <KpiTile label="Timesheets pending" value={count} accent="#FEAA6D" />
+      <KpiTile label="Timesheets pending" value={count} subtitle={subtitle} accent="#FEAA6D" />
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { TenderClientNotesSection } from "./TenderClientNotesSection";
 import { AnthropicKeyModal } from "./AnthropicKeyModal";
 import { DraftedScopePanel, type DraftResult, type EstimateItemRef } from "./DraftedScopePanel";
 import { ConvertToProjectModal } from "./ConvertToProjectModal";
+import { ScopeOfWorksTab } from "./ScopeOfWorksTab";
 
 type TenderDetail = {
   id: string;
@@ -64,7 +65,7 @@ const STAGE_ACCENT: Record<string, string> = {
   WITHDRAWN: "var(--text-muted, #9CA3AF)"
 };
 
-type Tab = "overview" | "estimate" | "documents" | "drafted";
+type Tab = "overview" | "scope" | "estimate" | "drafted";
 
 type EstimateSummaryPayload = {
   estimateId: string | null;
@@ -196,7 +197,7 @@ export function TenderDetailPage() {
   useEffect(() => {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<Tab>).detail;
-      if (detail === "overview" || detail === "estimate" || detail === "documents" || detail === "drafted") {
+      if (detail === "overview" || detail === "scope" || detail === "estimate" || detail === "drafted") {
         setTab(detail);
       }
     };
@@ -444,20 +445,20 @@ export function TenderDetailPage() {
           <button
             type="button"
             role="tab"
+            aria-selected={tab === "scope"}
+            className={tab === "scope" ? "tender-detail__tab tender-detail__tab--active" : "tender-detail__tab"}
+            onClick={() => setTab("scope")}
+          >
+            Scope of Works
+          </button>
+          <button
+            type="button"
+            role="tab"
             aria-selected={tab === "estimate"}
             className={tab === "estimate" ? "tender-detail__tab tender-detail__tab--active" : "tender-detail__tab"}
             onClick={() => setTab("estimate")}
           >
             Estimate
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "documents"}
-            className={tab === "documents" ? "tender-detail__tab tender-detail__tab--active" : "tender-detail__tab"}
-            onClick={() => setTab("documents")}
-          >
-            Documents ({tender.tenderDocuments.length})
           </button>
           {draftResult ? (
             <button
@@ -482,6 +483,170 @@ export function TenderDetailPage() {
 
         {tab === "overview" && (
           <div className="tender-detail__sections">
+            <section className="tender-detail__info-cards">
+              <div className="tender-detail__info-card">
+                <p className="s7-type-label">Stage</p>
+                <div className="tender-detail__info-card-value">
+                  <span
+                    className="s7-badge"
+                    style={{
+                      background: `color-mix(in srgb, ${stageAccent} 15%, transparent)`,
+                      color: stageAccent
+                    }}
+                  >
+                    {stageLabel}
+                  </span>
+                </div>
+              </div>
+              <div className="tender-detail__info-card">
+                <p className="s7-type-label">Value</p>
+                <div className="tender-detail__info-card-value">{formatCurrency(tender.estimatedValue)}</div>
+              </div>
+              <div className="tender-detail__info-card">
+                <p className="s7-type-label">Probability</p>
+                <div className="tender-detail__info-card-value" style={{ display: "flex", alignItems: "center" }}>
+                  {canManageTenders ? (
+                    <select
+                      value={probabilityBucket}
+                      onChange={(e) => void setProbabilityBucket(e.target.value as ProbabilityBucket)}
+                      disabled={posting}
+                      style={{
+                        background: PROBABILITY_BADGE_STYLE[probabilityBucket].background,
+                        color: PROBABILITY_BADGE_STYLE[probabilityBucket].color,
+                        border: "none",
+                        borderRadius: 999,
+                        padding: "4px 28px 4px 12px",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: posting ? "default" : "pointer",
+                        appearance: "none",
+                        WebkitAppearance: "none",
+                        MozAppearance: "none",
+                        backgroundImage:
+                          "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%230F172A' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>\")",
+                        backgroundRepeat: "no-repeat",
+                        backgroundPosition: "right 8px center",
+                        backgroundSize: "10px"
+                      }}
+                    >
+                      <option value="hot">Hot</option>
+                      <option value="warm">Warm</option>
+                      <option value="cold">Cold</option>
+                      <option value="unknown">Not set</option>
+                    </select>
+                  ) : (
+                    <span
+                      style={{
+                        background: PROBABILITY_BADGE_STYLE[probabilityBucket].background,
+                        color: PROBABILITY_BADGE_STYLE[probabilityBucket].color,
+                        borderRadius: 999,
+                        padding: "4px 12px",
+                        fontSize: 13,
+                        fontWeight: 600
+                      }}
+                    >
+                      {PROBABILITY_LABEL[probabilityBucket]}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="tender-detail__info-card">
+                <p className="s7-type-label">Due date</p>
+                <div className="tender-detail__info-card-value">{formatDate(tender.dueDate)}</div>
+              </div>
+              <div className="tender-detail__info-card">
+                <p className="s7-type-label">Rate snapshot</p>
+                <div className="tender-detail__info-card-value">
+                  {estimateSummary && estimateSummary.estimateId ? (
+                    estimateLock && estimateLock.lockedAt ? (
+                      <span className="s7-badge" style={{ background: "#D1FAE5", color: "#065F46" }}>Locked</span>
+                    ) : (
+                      <span className="s7-badge" style={{ background: "#FEAA6D", color: "#3E1C00" }}>Live rates</span>
+                    )
+                  ) : (
+                    <span style={{ color: "var(--text-muted)", fontSize: 14 }}>No estimate yet</span>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            <div className="tender-detail__two-col">
+              <section className="s7-card">
+                <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>Description</h3>
+                {tender.description ? (
+                  <p>{tender.description}</p>
+                ) : (
+                  <p style={{ color: "var(--text-muted)" }}>No description recorded.</p>
+                )}
+                {tender.notes ? (
+                  <>
+                    <h4 className="s7-type-card-title" style={{ marginBottom: 6 }}>Scope notes</h4>
+                    <p>{tender.notes}</p>
+                  </>
+                ) : null}
+              </section>
+
+              <section className="s7-card">
+                <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>Team</h3>
+                <div className="tender-detail__team">
+                  {tender.estimator ? (
+                    <div className="tender-detail__team-row">
+                      <span className="tender-detail__avatar">{tender.estimator.firstName[0]}{tender.estimator.lastName[0]}</span>
+                      <div>
+                        <strong>{tender.estimator.firstName} {tender.estimator.lastName}</strong>
+                        <p className="s7-type-label">Estimator</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p style={{ color: "var(--text-muted)" }}>No estimator assigned.</p>
+                  )}
+                </div>
+                <h4 className="s7-type-card-title" style={{ marginTop: 16, marginBottom: 6 }}>Clients</h4>
+                {tender.tenderClients.length === 0 ? (
+                  <p style={{ color: "var(--text-muted)" }}>No clients linked.</p>
+                ) : (
+                  <ul className="tender-detail__clients" style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+                    {tender.tenderClients.map((tc) => (
+                      <ExpandableClientRow
+                        key={tc.id}
+                        tenderId={tender.id}
+                        clientId={tc.client.id}
+                        clientName={tc.client.name}
+                        contact={tc.contact ?? null}
+                        relationshipType={tc.relationshipType ?? null}
+                        isAwarded={tc.isAwarded}
+                        contractIssued={tc.contractIssued}
+                        canManage={canManageTenders}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </section>
+            </div>
+
+            <section className="s7-card">
+              <div className="tender-detail__section-head">
+                <h3 className="s7-type-section-heading" style={{ margin: 0 }}>
+                  Documents ({tender.tenderDocuments.length})
+                </h3>
+              </div>
+              <TenderDocumentsPanel
+                tenderId={tender.id}
+                documents={tender.tenderDocuments}
+                onDocumentsChanged={() => void reload()}
+                canManage={canManageTenders}
+                onDraftRequest={() => {
+                  if (draftResult) {
+                    setTab("drafted");
+                    return;
+                  }
+                  void requestDraft(null);
+                }}
+                drafting={drafting}
+                draftBadgeState={draftBadge}
+              />
+            </section>
+
             {estimateSummary && estimateSummary.estimateId ? (
               <section className="s7-card">
                 <div className="tender-detail__section-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -672,26 +837,12 @@ export function TenderDetailPage() {
           </div>
         )}
 
-        {tab === "estimate" && (
-          <EstimateEditor tenderId={tender.id} canManage={canManageEstimates} canAdmin={canAdminEstimates} />
+        {tab === "scope" && (
+          <ScopeOfWorksTab tenderId={tender.id} tenderTitle={tender.title} />
         )}
 
-        {tab === "documents" && (
-          <TenderDocumentsPanel
-            tenderId={tender.id}
-            documents={tender.tenderDocuments}
-            onDocumentsChanged={() => void reload()}
-            canManage={canManageTenders}
-            onDraftRequest={() => {
-              if (draftResult) {
-                setTab("drafted");
-                return;
-              }
-              void requestDraft(null);
-            }}
-            drafting={drafting}
-            draftBadgeState={draftBadge}
-          />
+        {tab === "estimate" && (
+          <EstimateEditor tenderId={tender.id} canManage={canManageEstimates} canAdmin={canAdminEstimates} />
         )}
 
         {tab === "drafted" && draftResult ? (
@@ -720,150 +871,6 @@ export function TenderDetailPage() {
 
       </div>
 
-      <aside className="tender-detail__rail">
-        <section className="s7-card tender-detail__rail-card">
-          <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>Snapshot</h3>
-          <dl className="tender-detail__dl">
-            <div><dt>Stage</dt><dd>{stageLabel}</dd></div>
-            <div><dt>Value</dt><dd>{formatCurrency(tender.estimatedValue)}</dd></div>
-            <div>
-              <dt>Probability</dt>
-              <dd>
-                {canManageTenders ? (
-                  <select
-                    value={probabilityBucket}
-                    onChange={(e) => void setProbabilityBucket(e.target.value as ProbabilityBucket)}
-                    disabled={posting}
-                    style={{
-                      background: PROBABILITY_BADGE_STYLE[probabilityBucket].background,
-                      color: PROBABILITY_BADGE_STYLE[probabilityBucket].color,
-                      border: "none",
-                      borderRadius: 999,
-                      padding: "4px 28px 4px 12px",
-                      fontSize: 13,
-                      fontWeight: 600,
-                      cursor: posting ? "default" : "pointer",
-                      appearance: "none",
-                      WebkitAppearance: "none",
-                      MozAppearance: "none",
-                      backgroundImage:
-                        "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%230F172A' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>\")",
-                      backgroundRepeat: "no-repeat",
-                      backgroundPosition: "right 8px center",
-                      backgroundSize: "10px"
-                    }}
-                  >
-                    <option value="hot">Hot</option>
-                    <option value="warm">Warm</option>
-                    <option value="cold">Cold</option>
-                    <option value="unknown">Not set</option>
-                  </select>
-                ) : (
-                  <span
-                    style={{
-                      background: PROBABILITY_BADGE_STYLE[probabilityBucket].background,
-                      color: PROBABILITY_BADGE_STYLE[probabilityBucket].color,
-                      borderRadius: 999,
-                      padding: "4px 12px",
-                      fontSize: 13,
-                      fontWeight: 600
-                    }}
-                  >
-                    {PROBABILITY_LABEL[probabilityBucket]}
-                  </span>
-                )}
-              </dd>
-            </div>
-            <div><dt>Due</dt><dd>{formatDate(tender.dueDate)}</dd></div>
-            <div><dt>Proposed start</dt><dd>{formatDate(tender.proposedStartDate)}</dd></div>
-            <div><dt>Last activity</dt><dd>{formatDateTime(tender.updatedAt)}</dd></div>
-          </dl>
-        </section>
-
-        <section className="s7-card tender-detail__rail-card">
-          <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>Rate snapshot</h3>
-          {estimateSummary && estimateSummary.estimateId ? (
-            estimateLock && estimateLock.lockedAt ? (
-              <div>
-                <span className="s7-badge" style={{ background: "#D1FAE5", color: "#065F46" }}>
-                  Rates locked
-                </span>
-                <p style={{ color: "var(--text-muted)", marginTop: 8, fontSize: 13 }}>
-                  Locked {formatDateTime(estimateLock.lockedAt)}. Editing rates in the library will not change this quote.
-                </p>
-              </div>
-            ) : (
-              <div>
-                <span className="s7-badge" style={{ background: "#FEAA6D", color: "#3E1C00" }}>
-                  Using live rates
-                </span>
-                <p style={{ color: "var(--text-muted)", marginTop: 8, fontSize: 13 }}>
-                  This estimate reads the current rate library. Lock when submitting to freeze.
-                </p>
-              </div>
-            )
-          ) : (
-            <p style={{ color: "var(--text-muted)" }}>No estimate created yet.</p>
-          )}
-        </section>
-
-        <section className="s7-card tender-detail__rail-card">
-          <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>Team</h3>
-          <div className="tender-detail__team">
-            {tender.estimator ? (
-              <div className="tender-detail__team-row">
-                <span className="tender-detail__avatar">{tender.estimator.firstName[0]}{tender.estimator.lastName[0]}</span>
-                <div>
-                  <strong>{tender.estimator.firstName} {tender.estimator.lastName}</strong>
-                  <p className="s7-type-label">Estimator</p>
-                </div>
-              </div>
-            ) : (
-              <p style={{ color: "var(--text-muted)" }}>No estimator assigned.</p>
-            )}
-          </div>
-        </section>
-
-        <section className="s7-card tender-detail__rail-card">
-          <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>Clients</h3>
-          {tender.tenderClients.length === 0 ? (
-            <p style={{ color: "var(--text-muted)" }}>No clients linked.</p>
-          ) : (
-            <ul className="tender-detail__clients" style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
-              {tender.tenderClients.map((tc) => (
-                <ExpandableClientRow
-                  key={tc.id}
-                  tenderId={tender.id}
-                  clientId={tc.client.id}
-                  clientName={tc.client.name}
-                  contact={tc.contact ?? null}
-                  relationshipType={tc.relationshipType ?? null}
-                  isAwarded={tc.isAwarded}
-                  contractIssued={tc.contractIssued}
-                  canManage={canManageTenders}
-                />
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section className="s7-card tender-detail__rail-card">
-          <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>Pricing snapshots</h3>
-          {tender.pricingSnapshots.length === 0 ? (
-            <p style={{ color: "var(--text-muted)" }}>No pricing recorded.</p>
-          ) : (
-            <ul className="tender-detail__pricing">
-              {tender.pricingSnapshots.map((snapshot) => (
-                <li key={snapshot.id}>
-                  <strong>{snapshot.versionLabel}</strong>
-                  <span>{formatCurrency(snapshot.estimatedValue)}{snapshot.marginPercent ? ` · ${snapshot.marginPercent}% margin` : ""}</span>
-                  {snapshot.assumptions ? <span className="tender-detail__pricing-assumptions">{snapshot.assumptions}</span> : null}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </aside>
 
       <AnthropicKeyModal
         open={keyModalOpen}

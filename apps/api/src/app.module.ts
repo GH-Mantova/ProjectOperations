@@ -23,6 +23,8 @@ import { SchedulerModule } from "./modules/scheduler/scheduler.module";
 import { TenderingModule } from "./modules/tendering/tendering.module";
 import { TenderDocumentsModule } from "./modules/tender-documents/tender-documents.module";
 import { UsersModule } from "./modules/users/users.module";
+import { WorkersModule } from "./modules/workers/workers.module";
+import { AllocationsModule } from "./modules/allocations/allocations.module";
 
 @Module({
   imports: [
@@ -52,7 +54,9 @@ import { UsersModule } from "./modules/users/users.module";
     TenderingModule,
     TenderDocumentsModule,
     UsersModule,
-    RolesModule
+    RolesModule,
+    WorkersModule,
+    AllocationsModule
   ]
 })
 export class AppModule {}

@@ -167,14 +167,25 @@ export class EstimateExportService {
       const waste = round2(wasteLines.reduce((sum, l) => sum + l.total, 0));
       const cutting = round2(cuttingLines.reduce((sum, l) => sum + l.total, 0));
 
-      let subtotal = round2(labour + equip + plant + waste + cutting);
-      if (item.isProvisional && item.provisionalAmount) {
-        subtotal = round2(toNum(item.provisionalAmount));
+      // Provisional sum items are passed through at cost — provisionalAmount IS
+      // the client-facing price, with no markup applied (IS QS practice).
+      const storedMarkupPct = toNum(item.markup);
+      let subtotal: number;
+      let markupPct: number;
+      let markup: number;
+      let price: number;
+      if (item.isProvisional) {
+        const amount = round2(toNum(item.provisionalAmount));
+        subtotal = amount;
+        markupPct = 0;
+        markup = 0;
+        price = amount;
+      } else {
+        subtotal = round2(labour + equip + plant + waste + cutting);
+        markupPct = storedMarkupPct;
+        markup = round2(subtotal * (markupPct / 100));
+        price = round2(subtotal + markup);
       }
-
-      const markupPct = toNum(item.markup);
-      const markup = round2(subtotal * (markupPct / 100));
-      const price = round2(subtotal + markup);
 
       itemPayloads.push({
         itemId: item.id,

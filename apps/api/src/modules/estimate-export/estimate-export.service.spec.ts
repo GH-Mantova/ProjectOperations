@@ -198,6 +198,37 @@ describe("EstimateExportService.loadPayload", () => {
     expect(payload.tender.tenderNumber).toBe("TEN-001");
   });
 
+  it("ignores any stored markup on a provisional item and passes provisionalAmount through as the final price", async () => {
+    const tender = buildTender([
+      item({
+        id: "prov",
+        code: "Prv",
+        itemNumber: 1,
+        title: "GPR scanning",
+        isProvisional: true,
+        provisionalAmount: makeDecimal(2500),
+        // Even with a non-zero stored markup %, the item must pass through at cost.
+        markup: makeDecimal(30),
+        labourLines: [
+          // Spurious labour line — must NOT contribute to price for a provisional item.
+          { role: "Labourer", qty: makeDecimal(1), days: makeDecimal(1), shift: "Day", rate: makeDecimal(1000) }
+        ]
+      })
+    ]);
+    const svc = makeService(tender);
+    const payload = await svc.loadPayload("t-1");
+    const prov = payload.items.find((i) => i.itemId === "prov")!;
+    expect(prov.subtotal).toBeCloseTo(2500, 2);
+    expect(prov.markup).toBeCloseTo(0, 2);
+    expect(prov.markupPct).toBeCloseTo(0, 2);
+    expect(prov.price).toBeCloseTo(2500, 2);
+    // Nothing rolls through to the main subtotal or the rolled-up markup.
+    expect(payload.totals.subtotal).toBeCloseTo(0, 2);
+    expect(payload.totals.markup).toBeCloseTo(0, 2);
+    expect(payload.totals.provisionalTotal).toBeCloseTo(2500, 2);
+    expect(payload.totals.totalExGst).toBeCloseTo(2500, 2);
+  });
+
   it("returns totals.totalExGst > 0 so the GST disclaimer will render on the PDF", async () => {
     const tender = buildTender([
       item({

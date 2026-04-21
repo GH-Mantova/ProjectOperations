@@ -1,3 +1,4 @@
+import type { ReactElement } from "react";
 import { Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { LoginPage } from "./pages/LoginPage";
@@ -47,11 +48,43 @@ import { DocumentsWorkspacePage } from "./pages/documents/DocumentsWorkspacePage
 import { MasterDataWorkspacePage } from "./pages/master-data/MasterDataWorkspacePage";
 import { EstimateRatesAdminPage } from "./pages/EstimateRatesAdminPage";
 import { UserDashboardPage } from "./pages/dashboards/UserDashboardPage";
+import { FieldLayout } from "./layouts/FieldLayout";
+import { FieldAllocationsPage } from "./pages/field/FieldAllocationsPage";
+import { FieldPreStartPage } from "./pages/field/FieldPreStartPage";
+import { FieldTimesheetPage } from "./pages/field/FieldTimesheetPage";
+import { FieldDocumentsPage } from "./pages/field/FieldDocumentsPage";
+import { FieldSafetyPage } from "./pages/field/FieldSafetyPage";
 
 function ProtectedRoute() {
   const { isAuthenticated } = useAuth();
 
   return isAuthenticated ? <Outlet /> : <Navigate to="/login" replace />;
+}
+
+function FieldOnlyGuard({ children }: { children: ReactElement }) {
+  const { user } = useAuth();
+  // Field-only users (have field.view but not projects.view / tenders.view / users.view) are
+  // redirected here from the root. If a desktop user lands on /field/* they can still use it.
+  if (!user) return children;
+  const hasField = user.permissions.includes("field.view");
+  if (!hasField) return <Navigate to="/" replace />;
+  return children;
+}
+
+function RootRedirect({ children }: { children: ReactElement }) {
+  const { user } = useAuth();
+  if (user) {
+    const hasField = user.permissions.includes("field.view");
+    const hasDesktop =
+      user.permissions.includes("projects.view") ||
+      user.permissions.includes("tenders.view") ||
+      user.permissions.includes("users.view") ||
+      user.permissions.includes("dashboards.view");
+    if (hasField && !hasDesktop) {
+      return <Navigate to="/field/allocations" replace />;
+    }
+  }
+  return children;
 }
 
 export function App() {
@@ -60,8 +93,30 @@ export function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route element={<ProtectedRoute />}>
+          <Route
+            path="/field"
+            element={
+              <FieldOnlyGuard>
+                <FieldLayout />
+              </FieldOnlyGuard>
+            }
+          >
+            <Route index element={<Navigate to="/field/allocations" replace />} />
+            <Route path="allocations" element={<FieldAllocationsPage />} />
+            <Route path="pre-start" element={<FieldPreStartPage />} />
+            <Route path="timesheet" element={<FieldTimesheetPage />} />
+            <Route path="documents" element={<FieldDocumentsPage />} />
+            <Route path="safety" element={<FieldSafetyPage />} />
+          </Route>
           <Route element={<ShellLayout />}>
-            <Route path="/" element={<DashboardPlaceholderPage />} />
+            <Route
+              path="/"
+              element={
+                <RootRedirect>
+                  <DashboardPlaceholderPage />
+                </RootRedirect>
+              }
+            />
             <Route path="/scheduler" element={<SchedulerWorkspacePage />} />
             <Route path="/scheduler/legacy" element={<SchedulerPage />} />
             <Route path="/tenders" element={<TenderingPage />} />

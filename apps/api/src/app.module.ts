@@ -25,6 +25,7 @@ import { TenderDocumentsModule } from "./modules/tender-documents/tender-documen
 import { UsersModule } from "./modules/users/users.module";
 import { WorkersModule } from "./modules/workers/workers.module";
 import { AllocationsModule } from "./modules/allocations/allocations.module";
+import { FieldModule } from "./modules/field/field.module";
 
 @Module({
   imports: [
@@ -56,7 +57,8 @@ import { AllocationsModule } from "./modules/allocations/allocations.module";
     UsersModule,
     RolesModule,
     WorkersModule,
-    AllocationsModule
+    AllocationsModule,
+    FieldModule
   ]
 })
 export class AppModule {}

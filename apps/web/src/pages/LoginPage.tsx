@@ -5,13 +5,16 @@ import { useAuth } from "../auth/AuthContext";
 import { isSsoEnabled, loginRequest } from "../auth/msal.config";
 
 export function LoginPage() {
-  const { isAuthenticated, login, loginWithSso } = useAuth();
+  const { isAuthenticated, login, loginWithSso, resetPassword } = useAuth();
   const [email, setEmail] = useState("admin@projectops.local");
   const [password, setPassword] = useState("Password123!");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [ssoSubmitting, setSsoSubmitting] = useState(false);
+  const [resetMode, setResetMode] = useState<{ tempToken: string } | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
   if (isAuthenticated) {
     return <Navigate to="/" replace />;
@@ -22,13 +25,89 @@ export function LoginPage() {
     setSubmitting(true);
     setError(null);
     try {
-      await login(email, password);
+      const result = await login(email, password);
+      if (result.requiresPasswordReset && result.tempToken) {
+        setResetMode({ tempToken: result.tempToken });
+      }
     } catch (loginError) {
       setError((loginError as Error).message);
     } finally {
       setSubmitting(false);
     }
   };
+
+  const submitReset = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (newPassword.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      await resetPassword(resetMode!.tempToken, newPassword);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (resetMode) {
+    return (
+      <div className="login-page">
+        <div className="login-card" role="main">
+          <div className="login-card__brand">
+            <span className="login-card__logo" aria-hidden>PO</span>
+            <div>
+              <h1 className="login-card__title">Set a new password</h1>
+              <p className="login-card__subtitle">Your account requires a password reset before you can continue.</p>
+            </div>
+          </div>
+          {error ? (
+            <div className="login-card__error" role="alert">{error}</div>
+          ) : null}
+          <form className="login-card__form" onSubmit={submitReset} noValidate>
+            <label className="login-card__field">
+              <span className="login-card__label">New password</span>
+              <input
+                type="password"
+                autoComplete="new-password"
+                className="s7-input"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                minLength={8}
+                required
+              />
+            </label>
+            <label className="login-card__field">
+              <span className="login-card__label">Confirm password</span>
+              <input
+                type="password"
+                autoComplete="new-password"
+                className="s7-input"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                minLength={8}
+                required
+              />
+            </label>
+            <button
+              type="submit"
+              className="s7-btn s7-btn--primary s7-btn--lg login-card__submit"
+              disabled={submitting}
+            >
+              {submitting ? "Saving…" : "Set password and sign in"}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="login-page">

@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, Injectable, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -10,6 +10,7 @@ import { EntraAuthService } from "./entra-auth.service";
 import { EntraLoginDto } from "./dto/entra-login.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RefreshTokenDto } from "./dto/refresh-token.dto";
+import { ResetPasswordDto } from "./dto/reset-password.dto";
 
 @Injectable()
 export class AuthService {
@@ -26,9 +27,63 @@ export class AuthService {
 
   async login(input: LoginDto) {
     const { user, permissions } = await this.authProviderService.authenticate(input);
+    if (user.forcePasswordReset) {
+      const tempToken = await this.issueResetToken(user.id, user.email);
+      await this.auditService.write({
+        actorId: user.id,
+        action: "auth.login.reset-required",
+        entityType: "User",
+        entityId: user.id,
+        metadata: { email: user.email }
+      });
+      return { requiresPasswordReset: true, tempToken };
+    }
     return this.finishLogin(user.id, user.email, permissions, user, {
       provider: "local"
     });
+  }
+
+  async resetPassword(input: ResetPasswordDto) {
+    const resetSecret = this.configService.get<string>("auth.accessSecret", "replace-me-access");
+    let payload: { sub: string; email: string; purpose: string };
+    try {
+      payload = await this.jwtService.verifyAsync(input.tempToken, { secret: resetSecret });
+    } catch {
+      throw new UnauthorizedException("Reset token is invalid or has expired.");
+    }
+    if (payload.purpose !== "password-reset") {
+      throw new UnauthorizedException("Reset token is not valid for this action.");
+    }
+
+    const user = await this.usersService.findByIdWithRelations(payload.sub);
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException("User is not available.");
+    }
+    if (!user.forcePasswordReset) {
+      throw new BadRequestException("Password reset is not required for this account.");
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash: this.passwordService.hashPassword(input.newPassword),
+        forcePasswordReset: false
+      }
+    });
+
+    const permissions = this.usersService.flattenPermissions(user);
+    return this.finishLogin(user.id, user.email, permissions, user, {
+      provider: "local",
+      flow: "password-reset"
+    });
+  }
+
+  private async issueResetToken(userId: string, email: string): Promise<string> {
+    const secret = this.configService.get<string>("auth.accessSecret", "replace-me-access");
+    return this.jwtService.signAsync(
+      { sub: userId, email, purpose: "password-reset" },
+      { secret, expiresIn: "15m" as never }
+    );
   }
 
   async loginWithEntra(input: EntraLoginDto) {

@@ -6,6 +6,7 @@ import { AuthService } from "./auth.service";
 import { EntraLoginDto } from "./dto/entra-login.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RefreshTokenDto } from "./dto/refresh-token.dto";
+import { ResetPasswordDto } from "./dto/reset-password.dto";
 import { SsoLoginDto } from "./dto/sso-login.dto";
 
 @ApiTags("Auth")
@@ -38,6 +39,18 @@ export class AuthController {
   @ApiOperation({ summary: "Refresh access and refresh tokens" })
   refresh(@Body() dto: RefreshTokenDto) {
     return this.authService.refresh(dto);
+  }
+
+  @Post("reset-password")
+  @ApiOperation({
+    summary:
+      "Set a new password using the short-lived tempToken returned by /auth/login when requiresPasswordReset is true."
+  })
+  @ApiResponse({ status: 201, description: "Password updated; returns normal accessToken + refreshToken envelope." })
+  @ApiResponse({ status: 400, description: "Password reset is not required for this account." })
+  @ApiResponse({ status: 401, description: "Reset token is invalid or has expired." })
+  resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto);
   }
 
   @Get("config")

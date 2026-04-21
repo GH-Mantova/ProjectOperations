@@ -23,6 +23,7 @@ model User {
   passwordHash       String             @map("password_hash")
   isActive           Boolean            @default(true) @map("is_active")
   ssoOnly            Boolean            @default(false) @map("sso_only")
+  forcePasswordReset Boolean            @default(false) @map("force_password_reset")
   lastLoginAt        DateTime?          @map("last_login_at")
   createdAt          DateTime           @default(now()) @map("created_at")
   updatedAt          DateTime           @updatedAt @map("updated_at")
@@ -64,6 +65,7 @@ model User {
   projectsCreated    Project[]          @relation("ProjectCreatedBy")
   projectActivityLogs ProjectActivityLog[]
   projectAllocationsCreated ProjectAllocation[] @relation("ProjectAllocationCreatedBy")
+  approvedTimesheets Timesheet[]        @relation("TimesheetApprover")
 
   @@index([isActive])
   @@map("users")
@@ -1586,6 +1588,8 @@ enum ProjectActivityAction {
   DOCUMENT_REMOVED
   WORKER_ALLOCATED
   ASSET_ALLOCATED
+  TIMESHEET_SUBMITTED
+  PRESTART_SUBMITTED
 }
 
 enum AllocationTargetType {
@@ -1637,6 +1641,8 @@ model Project {
   activityLog             ProjectActivityLog[]
   documents               TenderDocumentLink[]
   allocations             ProjectAllocation[]
+  preStartChecklists      PreStartChecklist[]
+  timesheets              Timesheet[]
   createdAt               DateTime       @default(now()) @map("created_at")
   updatedAt               DateTime       @updatedAt @map("updated_at")
 
@@ -1716,6 +1722,8 @@ model WorkerProfile {
   internalUser          User?               @relation(fields: [internalUserId], references: [id], onDelete: SetNull)
   isActive              Boolean             @default(true) @map("is_active")
   allocations           ProjectAllocation[]
+  preStartChecklists    PreStartChecklist[]
+  timesheets            Timesheet[]
   createdAt             DateTime            @default(now()) @map("created_at")
   updatedAt             DateTime            @updatedAt @map("updated_at")
 
@@ -1739,6 +1747,8 @@ model ProjectAllocation {
   notes           String?
   createdById     String               @map("created_by_id")
   createdBy       User                 @relation("ProjectAllocationCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  preStartChecklists PreStartChecklist[]
+  timesheets      Timesheet[]
   createdAt       DateTime             @default(now()) @map("created_at")
   updatedAt       DateTime             @updatedAt @map("updated_at")
 
@@ -1746,4 +1756,100 @@ model ProjectAllocation {
   @@index([workerProfileId, startDate])
   @@index([assetId, startDate])
   @@map("project_allocations")
+}
+
+// ── Field Worker Experience (PR #41) ──────────────────────────────────────
+// PreStartChecklist + Timesheet are field-submitted records keyed to a worker
+// (WorkerProfile) + their allocation on a project. DRAFT records are editable
+// by the worker; SUBMITTED locks the record and fires a notification + a
+// project activity log entry. Timesheet has an additional APPROVED state set
+// by a user with field.manage.
+
+enum PreStartStatus {
+  DRAFT
+  SUBMITTED
+}
+
+enum TimesheetStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+}
+
+model PreStartChecklist {
+  id                    String          @id @default(cuid())
+  projectId             String          @map("project_id")
+  project               Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workerProfileId       String          @map("worker_profile_id")
+  workerProfile         WorkerProfile   @relation(fields: [workerProfileId], references: [id], onDelete: Cascade)
+  allocationId          String          @map("allocation_id")
+  allocation            ProjectAllocation @relation(fields: [allocationId], references: [id], onDelete: Cascade)
+  date                  DateTime
+  status                PreStartStatus  @default(DRAFT)
+  supervisorName        String?         @map("supervisor_name")
+  supervisorSignedAt    DateTime?       @map("supervisor_signed_at")
+
+  siteHazardsAcknowledged   Boolean   @default(false) @map("site_hazards_acknowledged")
+  hazardNotes               String?   @map("hazard_notes")
+
+  ppeHelmet                 Boolean   @default(false) @map("ppe_helmet")
+  ppeGloves                 Boolean   @default(false) @map("ppe_gloves")
+  ppeBoots                  Boolean   @default(false) @map("ppe_boots")
+  ppeHighVis                Boolean   @default(false) @map("ppe_high_vis")
+  ppeRespirator             Boolean   @default(false) @map("ppe_respirator")
+  ppeOther                  String?   @map("ppe_other")
+
+  plantChecksCompleted      Boolean   @default(false) @map("plant_checks_completed")
+  plantCheckNotes           String?   @map("plant_check_notes")
+
+  fitForWork                Boolean   @default(false) @map("fit_for_work")
+  fitForWorkDeclaration     String?   @map("fit_for_work_declaration")
+  workerSignature           String?   @map("worker_signature")
+  workerSignedAt            DateTime? @map("worker_signed_at")
+
+  asbEnclosureInspection    Boolean?  @map("asb_enclosure_inspection")
+  asbAirMonitoring          Boolean?  @map("asb_air_monitoring")
+  asbDeconOperational       Boolean?  @map("asb_decon_operational")
+
+  civExcavationPermit       Boolean?  @map("civ_excavation_permit")
+  civUndergroundClearance   Boolean?  @map("civ_underground_clearance")
+
+  submittedAt               DateTime? @map("submitted_at")
+  createdAt                 DateTime  @default(now()) @map("created_at")
+  updatedAt                 DateTime  @updatedAt @map("updated_at")
+
+  @@unique([workerProfileId, allocationId, date])
+  @@index([projectId, date])
+  @@index([workerProfileId, date])
+  @@index([status])
+  @@map("pre_start_checklists")
+}
+
+model Timesheet {
+  id                String            @id @default(cuid())
+  projectId         String            @map("project_id")
+  project           Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workerProfileId   String            @map("worker_profile_id")
+  workerProfile     WorkerProfile     @relation(fields: [workerProfileId], references: [id], onDelete: Cascade)
+  allocationId      String            @map("allocation_id")
+  allocation        ProjectAllocation @relation(fields: [allocationId], references: [id], onDelete: Cascade)
+  date              DateTime
+  hoursWorked       Decimal           @db.Decimal(4, 2) @map("hours_worked")
+  breakMinutes      Int               @default(0) @map("break_minutes")
+  description       String?
+  clockOnTime       DateTime?         @map("clock_on_time")
+  clockOffTime      DateTime?         @map("clock_off_time")
+  status            TimesheetStatus   @default(DRAFT)
+  submittedAt       DateTime?         @map("submitted_at")
+  approvedById      String?           @map("approved_by_id")
+  approvedBy        User?             @relation("TimesheetApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt        DateTime?         @map("approved_at")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+
+  @@unique([workerProfileId, allocationId, date])
+  @@index([projectId, date])
+  @@index([workerProfileId, date])
+  @@index([status])
+  @@map("timesheets")
 }

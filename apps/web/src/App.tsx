@@ -54,6 +54,7 @@ import { FieldPreStartPage } from "./pages/field/FieldPreStartPage";
 import { FieldTimesheetPage } from "./pages/field/FieldTimesheetPage";
 import { FieldDocumentsPage } from "./pages/field/FieldDocumentsPage";
 import { FieldSafetyPage } from "./pages/field/FieldSafetyPage";
+import { TimesheetApprovalPage } from "./pages/timesheets/TimesheetApprovalPage";
 
 function ProtectedRoute() {
   const { isAuthenticated } = useAuth();
@@ -134,6 +135,7 @@ export function App() {
             <Route path="/jobs/:id" element={<JobDetailPage />} />
             <Route path="/projects" element={<ProjectsListPage />} />
             <Route path="/projects/:id" element={<ProjectDetailPage />} />
+            <Route path="/timesheets/approval" element={<TimesheetApprovalPage />} />
             <Route path="/workers" element={<WorkersListPage />} />
             <Route path="/workers/:id" element={<WorkerDetailPage />} />
             <Route path="/resources" element={<ResourcesPage />} />

@@ -86,6 +86,27 @@ export function useProjects() {
   });
 }
 
+export type TimesheetSummary = {
+  totalHours: number;
+  pendingCount: number;
+  draftCount: number;
+  approvedCount: number;
+  oldestPendingDate: string | null;
+};
+
+export function useTimesheetSummary() {
+  const { authFetch } = useAuth();
+  return useQuery({
+    queryKey: ["dashboard", "timesheet-summary"],
+    queryFn: async () => {
+      const response = await authFetch("/field/timesheets/summary");
+      if (!response.ok) return null;
+      return (await response.json()) as TimesheetSummary;
+    },
+    staleTime: 30_000
+  });
+}
+
 export function useJobs() {
   const { authFetch } = useAuth();
   return useQuery({

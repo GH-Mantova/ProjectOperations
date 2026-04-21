@@ -152,6 +152,12 @@ const NAV_GROUPS: NavGroup[] = [
         icon: ICON_CONTRACTS,
         match: (path) => path === "/projects" || path.startsWith("/projects/")
       },
+      {
+        to: "/timesheets/approval",
+        label: "Timesheets",
+        icon: ICON_FORMS,
+        match: (path) => path.startsWith("/timesheets")
+      },
       { to: "/jobs", label: "Jobs", icon: ICON_JOBS },
       { to: "/scheduler", label: "Scheduler", icon: ICON_SCHEDULER },
       { to: "/forms", label: "Forms", icon: ICON_FORMS }
@@ -245,6 +251,7 @@ type SharedFollowUpItem = {
 const BREADCRUMBS: Record<string, string> = {
   "/": "Dashboard",
   "/projects": "Projects",
+  "/timesheets/approval": "Timesheets",
   "/jobs": "Jobs",
   "/scheduler": "Scheduler",
   "/forms": "Forms",

@@ -14,6 +14,13 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '22', cache: 'pnpm' }
       - run: pnpm install --frozen-lockfile
+      - name: Generate Prisma client
+        run: pnpm --filter @project-ops/api exec prisma generate
+      - name: Run database migrations
+        if: ${{ secrets.PROD_DATABASE_URL != '' }}
+        run: pnpm --filter @project-ops/api exec prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
       - run: pnpm build:azure
         env:
           VITE_API_BASE_URL: ${{ secrets.PROD_API_BASE_URL }}

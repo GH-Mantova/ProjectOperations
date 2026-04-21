@@ -33,7 +33,10 @@ type ExpectedCommunicationQueueItem = {
 async function login(page: Page) {
   await page.goto("/login");
   await page.getByLabel("Email").fill(credentials.email);
-  await page.getByLabel("Password").fill(credentials.password);
+  // The Password <label> wraps both the input and a show-password toggle
+  // button, so getByLabel('Password') resolves to two elements under strict
+  // mode. Target the input by its unique placeholder instead.
+  await page.getByPlaceholder("Password").fill(credentials.password);
   await page.getByRole("button", { name: "Login" }).click();
   await expect(page.getByRole("heading", { name: "Operational Workspace" })).toBeVisible();
 }

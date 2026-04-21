@@ -6,6 +6,7 @@ import { AssetsModule } from "./modules/assets/assets.module";
 import { AuditModule } from "./modules/audit/audit.module";
 import { AuthModule } from "./modules/auth/auth.module";
 import { DocumentsModule } from "./modules/documents/documents.module";
+import { EstimateExportModule } from "./modules/estimate-export/estimate-export.module";
 import { EstimatesModule } from "./modules/estimates/estimates.module";
 import { FormsModule } from "./modules/forms/forms.module";
 import { HealthModule } from "./health/health.module";
@@ -41,6 +42,7 @@ import { FieldModule } from "./modules/field/field.module";
     AssetsModule,
     AuditModule,
     DocumentsModule,
+    EstimateExportModule,
     EstimatesModule,
     PermissionsModule,
     PlatformModule,

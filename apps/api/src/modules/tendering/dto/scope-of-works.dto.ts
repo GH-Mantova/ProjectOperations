@@ -16,7 +16,25 @@ import {
 import { Type } from "class-transformer";
 
 export const DISCIPLINES = ["SO", "Str", "Asb", "Civ", "Prv"] as const;
-export const ROW_TYPES = ["demolition", "cutting", "asbestos", "excavation", "waste", "general"] as const;
+// Row-type slugs accepted by the API. The first six entries are the legacy
+// names (kept so historical rows keep passing validation); the rest are the
+// new canonical slugs introduced with the scope redesign and match the
+// system `row-types` GlobalList. Discipline × row-type is enforced
+// separately in the service.
+export const ROW_TYPES = [
+  "demolition",
+  "cutting",
+  "asbestos",
+  "excavation",
+  "waste",
+  "general",
+  "asbestos-removal",
+  "enclosure",
+  "earthworks",
+  "waste-disposal",
+  "plant-only",
+  "general-labour"
+] as const;
 export const STATUSES = ["draft", "confirmed", "excluded"] as const;
 export const SHIFTS = ["Day", "Night", "Weekend"] as const;
 
@@ -80,6 +98,16 @@ class ScopeItemFieldsBase {
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() hookTruckDays?: number | null;
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() semiTipperDays?: number | null;
   @ApiPropertyOptional() @IsOptional() @IsString() assetId?: string | null;
+
+  // Redesign additions — generic measurement/material/plant columns.
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() measurementQty?: number | null;
+  @ApiPropertyOptional() @IsOptional() @IsString() measurementUnit?: string | null;
+  @ApiPropertyOptional() @IsOptional() @IsString() material?: string | null;
+  @ApiPropertyOptional() @IsOptional() @IsString() plantAssetId?: string | null;
+  @ApiPropertyOptional() @IsOptional() @IsString() wasteGroup?: string | null;
+
+  // Scope item may arrive with a specific wbsCode on redesign create.
+  @ApiPropertyOptional() @IsOptional() @IsString() wbsCode?: string | null;
 }
 
 export class CreateScopeItemDto extends ScopeItemFieldsBase {

@@ -1,6 +1,23 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { ScopeCuttingSheet } from "./ScopeCuttingSheet";
+import {
+  ScopeDisciplineBar,
+  ScopeGrandTotalBar,
+  type Discipline as SelDiscipline,
+  type DisciplineStat
+} from "./ScopeDisciplineBar";
+
+type ScopeSummaryResponse = {
+  SO: DisciplineStat;
+  Str: DisciplineStat;
+  Asb: DisciplineStat;
+  Civ: DisciplineStat;
+  Prv: DisciplineStat;
+  cutting: { itemCount: number; subtotal: number };
+  tenderPrice: number;
+};
 
 const DISCIPLINES = ["SO", "Str", "Asb", "Civ", "Prv"] as const;
 type Discipline = (typeof DISCIPLINES)[number];
@@ -95,19 +112,23 @@ export function ScopeOfWorksTab({ tenderId, tenderTitle }: { tenderId: string; t
   const [toast, setToast] = useState<string | null>(null);
   const [addOpenForDiscipline, setAddOpenForDiscipline] = useState<Discipline | null>(null);
   const [headerOpen, setHeaderOpen] = useState(false);
+  const [selectedDiscipline, setSelectedDiscipline] = useState<SelDiscipline>("SO");
+  const [summary, setSummary] = useState<ScopeSummaryResponse | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [listRes, headerRes] = await Promise.all([
+      const [listRes, headerRes, summaryRes] = await Promise.all([
         authFetch(`/tenders/${tenderId}/scope/items`),
-        authFetch(`/tenders/${tenderId}/scope/header`)
+        authFetch(`/tenders/${tenderId}/scope/header`),
+        authFetch(`/tenders/${tenderId}/scope/summary`)
       ]);
       if (!listRes.ok) throw new Error(await listRes.text());
       if (!headerRes.ok) throw new Error(await headerRes.text());
       setData((await listRes.json()) as ListResponse);
       setHeader((await headerRes.json()) as Header);
+      if (summaryRes.ok) setSummary((await summaryRes.json()) as ScopeSummaryResponse);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -288,53 +309,39 @@ export function ScopeOfWorksTab({ tenderId, tenderTitle }: { tenderId: string; t
         />
       ) : null}
 
-      {data && data.summary.length > 0 ? (
-        <section
-          style={{ display: "grid", gridTemplateColumns: `repeat(${DISCIPLINES.length}, 1fr)`, gap: 12 }}
-        >
-          {data.summary.map((s) => {
-            const meta = DISCIPLINE_META[s.discipline as Discipline];
-            return (
-              <button
-                key={s.discipline}
-                type="button"
-                className="s7-card sow-summary-card"
-                onClick={() => {
-                  const el = document.getElementById(`sow-group-${s.discipline}`);
-                  el?.scrollIntoView({ behavior: "smooth", block: "start" });
-                }}
-                style={{
-                  textAlign: "left",
-                  cursor: "pointer",
-                  borderLeft: `4px solid ${meta.accent}`,
-                  padding: 14
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span
-                    style={{
-                      background: meta.accent,
-                      color: "#fff",
-                      fontWeight: 700,
-                      fontSize: 11,
-                      letterSpacing: "0.05em",
-                      padding: "2px 8px",
-                      borderRadius: 999
-                    }}
-                  >
-                    {s.discipline}
-                  </span>
-                  <strong style={{ fontSize: 13 }}>{meta.long}</strong>
-                </div>
-                <p style={{ color: "var(--text-muted)", fontSize: 12, margin: "6px 0 2px" }}>
-                  {s.itemCount} {s.itemCount === 1 ? "item" : "items"}
-                </p>
-                <strong style={{ fontSize: 16 }}>{fmtCurrency(s.totalValue)}</strong>
-              </button>
-            );
-          })}
-        </section>
-      ) : null}
+      <ScopeDisciplineBar
+        selected={selectedDiscipline}
+        onSelect={(d) => {
+          setSelectedDiscipline(d);
+          // Keep the smooth-scroll affordance — jumps to the selected group below.
+          requestAnimationFrame(() => {
+            document.getElementById(`sow-group-${d}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+          });
+        }}
+        stats={
+          summary
+            ? {
+                SO: summary.SO,
+                Str: summary.Str,
+                Asb: summary.Asb,
+                Civ: summary.Civ,
+                Prv: summary.Prv
+              }
+            : {
+                SO: { itemCount: 0, subtotal: 0, withMarkup: 0 },
+                Str: { itemCount: 0, subtotal: 0, withMarkup: 0 },
+                Asb: { itemCount: 0, subtotal: 0, withMarkup: 0 },
+                Civ: { itemCount: 0, subtotal: 0, withMarkup: 0 },
+                Prv: { itemCount: 0, subtotal: 0, withMarkup: 0 }
+              }
+        }
+      />
+
+      {summary ? null : (
+        <p style={{ color: "var(--text-muted)", fontSize: 12, marginTop: -8 }}>
+          Legacy summary fallback · reopen the tab if totals look stale.
+        </p>
+      )}
 
       {error ? (
         <div
@@ -367,7 +374,9 @@ export function ScopeOfWorksTab({ tenderId, tenderTitle }: { tenderId: string; t
         </div>
       ) : null}
 
-      {grouped.map((group) => (
+      {grouped
+        .filter((group) => group.discipline === selectedDiscipline)
+        .map((group) => (
         <DisciplineGroup
           key={group.discipline}
           discipline={group.discipline}
@@ -399,6 +408,30 @@ export function ScopeOfWorksTab({ tenderId, tenderTitle }: { tenderId: string; t
           onDuplicate={duplicateItem}
         />
       ))}
+
+      {selectedDiscipline !== "Asb" ? (
+        <ScopeCuttingSheet
+          tenderId={tenderId}
+          wbsRefs={(data?.items ?? [])
+            .filter((i) => i.discipline === selectedDiscipline)
+            .map((i) => i.wbsCode)}
+          canManage={true}
+        />
+      ) : null}
+
+      {summary ? (
+        <ScopeGrandTotalBar
+          stats={{
+            SO: summary.SO,
+            Str: summary.Str,
+            Asb: summary.Asb,
+            Civ: summary.Civ,
+            Prv: summary.Prv
+          }}
+          cuttingSubtotal={summary.cutting.subtotal}
+          tenderPrice={summary.tenderPrice}
+        />
+      ) : null}
 
       {toast ? (
         <div

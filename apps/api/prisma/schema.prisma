@@ -74,6 +74,7 @@ model User {
   globalListsCreated GlobalList[]       @relation("GlobalListCreatedBy")
   listItemsCreated   GlobalListItem[]   @relation("GlobalListItemCreatedBy")
   clarificationNotesCreated TenderClarificationNote[] @relation("TenderClarificationNoteAuthor")
+  cuttingSheetItemsCreated  CuttingSheetItem[]        @relation("CuttingSheetItemCreatedBy")
 
   @@index([isActive])
   @@map("users")
@@ -538,6 +539,7 @@ model Asset {
   statusHistory     AssetStatusHistory[]
   formSubmissions   FormSubmission[]
   allocations       ProjectAllocation[]
+  scopePlantRefs    ScopeOfWorksItem[]      @relation("ScopeItemPlant")
 
   @@index([status])
   @@index([assetCategoryId])
@@ -613,6 +615,8 @@ model Tender {
   estimateExports   EstimateExport[]
   projects          Project[]
   clarificationNotes TenderClarificationNote[]
+  cuttingSheetItems CuttingSheetItem[]
+  scopeViewConfigs  ScopeViewConfig[]
 
   @@index([status])
   @@index([estimatorUserId])
@@ -1967,11 +1971,21 @@ model ScopeOfWorksItem {
   machineSize        String?  @map("machine_size")
 
   // Waste / disposal
+  wasteGroup    String?  @map("waste_group")
   wasteType     String?  @map("waste_type")
   wasteFacility String?  @map("waste_facility")
   wasteTonnes   Decimal? @db.Decimal(10, 3) @map("waste_tonnes")
   wasteLoads    Int?     @map("waste_loads")
   wasteM3       Decimal? @db.Decimal(10, 2) @map("waste_m3")
+
+  // Redesign additions — generic measurement + material + plant FK.
+  // The legacy sqm/m3/materialType/assetId columns are kept so old rows
+  // render unchanged; new UI writes to these.
+  measurementQty  Decimal? @db.Decimal(12, 3) @map("measurement_qty")
+  measurementUnit String?  @map("measurement_unit")
+  material        String?
+  plantAssetId    String?  @map("plant_asset_id")
+  plantAsset      Asset?   @relation("ScopeItemPlant", fields: [plantAssetId], references: [id], onDelete: SetNull)
 
   // Plant days
   excavatorDays  Decimal? @db.Decimal(8, 2) @map("excavator_days")
@@ -2093,4 +2107,57 @@ model TenderClarificationNote {
 
   @@index([tenderId, occurredAt])
   @@map("tender_clarification_notes")
+}
+
+// ── Scope redesign — view config + cutting sheet ───────────────────────
+// ScopeViewConfig persists which optional columns the user has enabled
+// for a given (tender × discipline) combination. The server owns the set
+// of available columns per row type; this model only remembers the
+// user's current selection so the UI can restore it after reload.
+model ScopeViewConfig {
+  id         String   @id @default(cuid())
+  tenderId   String   @map("tender_id")
+  tender     Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  discipline String
+  columns    Json
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenderId, discipline])
+  @@map("scope_view_configs")
+}
+
+// CuttingSheetItem is the concrete-cutting line-item store used by the
+// Cutting Sheet tab of the Scope of Works redesign. It is tender-scoped
+// (not estimate-item-scoped like the legacy EstimateCuttingLine) so it
+// can be edited independently of estimate lines. Rate lookups and
+// lineTotal calculations are performed server-side at write time.
+model CuttingSheetItem {
+  id            String   @id @default(cuid())
+  tenderId      String   @map("tender_id")
+  tender        Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  wbsRef        String   @map("wbs_ref")
+  description   String?
+  itemType      String   @map("item_type") // saw-cut | core-hole
+  equipment     String?
+  elevation     String?                      // Floor | Wall | Inverted
+  material      String?
+  depthMm       Int?     @map("depth_mm")
+  diameterMm    Int?     @map("diameter_mm")
+  quantityLm    Decimal? @db.Decimal(10, 2) @map("quantity_lm")
+  quantityEach  Int?     @map("quantity_each")
+  ratePerM      Decimal? @db.Decimal(10, 4) @map("rate_per_m")
+  ratePerHole   Decimal? @db.Decimal(10, 4) @map("rate_per_hole")
+  lineTotal     Decimal? @db.Decimal(12, 2) @map("line_total")
+  shift         String?
+  shiftLoading  Decimal? @db.Decimal(10, 2) @map("shift_loading")
+  notes         String?
+  sortOrder     Int      @default(0) @map("sort_order")
+  createdById   String   @map("created_by_id")
+  createdBy     User     @relation("CuttingSheetItemCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@index([tenderId, itemType, sortOrder])
+  @@map("cutting_sheet_items")
 }

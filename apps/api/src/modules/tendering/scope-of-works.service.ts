@@ -10,6 +10,7 @@ import {
   UpdateScopeHeaderDto,
   UpdateScopeItemDto
 } from "./dto/scope-of-works.dto";
+import { assertRowTypeForDiscipline } from "./scope-redesign.service";
 
 const DEFAULT_ROLE_BY_DISCIPLINE: Record<Discipline, string> = {
   SO: "Demolition labourer",
@@ -58,7 +59,13 @@ function numericFieldsFrom(dto: Partial<UpdateScopeItemDto & CreateScopeItemDto>
     hookTruckDays: dto.hookTruckDays !== undefined ? toDecimal(dto.hookTruckDays) : undefined,
     semiTipperDays: dto.semiTipperDays !== undefined ? toDecimal(dto.semiTipperDays) : undefined,
     assetId: dto.assetId,
-    notes: dto.notes
+    notes: dto.notes,
+    // Redesign additions.
+    measurementQty: dto.measurementQty !== undefined ? toDecimal(dto.measurementQty) : undefined,
+    measurementUnit: dto.measurementUnit,
+    material: dto.material,
+    plantAssetId: dto.plantAssetId,
+    wasteGroup: dto.wasteGroup
   };
 }
 
@@ -136,8 +143,14 @@ export class ScopeOfWorksService {
     if (!DISCIPLINE_ORDER.includes(discipline)) {
       throw new BadRequestException(`Unknown discipline "${discipline}".`);
     }
+    assertRowTypeForDiscipline(discipline, dto.rowType);
     const itemNumber = await this.nextItemNumber(tenderId, discipline);
-    const wbsCode = `${discipline}${itemNumber}`;
+    // Honour an incoming wbsCode only if it's a clean flat code for this
+    // discipline (e.g. "SO3"); otherwise auto-assign. This prevents the
+    // frontend from ever submitting sub-level codes like "SO1.1".
+    const providedWbs = dto.wbsCode?.trim();
+    const flatPattern = new RegExp(`^${discipline}\\d+$`);
+    const wbsCode = providedWbs && flatPattern.test(providedWbs) ? providedWbs : `${discipline}${itemNumber}`;
     return this.prisma.scopeOfWorksItem.create({
       data: {
         tenderId,
@@ -156,6 +169,13 @@ export class ScopeOfWorksService {
 
   // ── Items: partial update (inline cell edits) ────────────────────────
   async updateItem(tenderId: string, itemId: string, dto: UpdateScopeItemDto, actorId: string) {
+    if (dto.rowType) {
+      const existing = await this.prisma.scopeOfWorksItem.findUnique({
+        where: { id: itemId },
+        select: { discipline: true, tenderId: true }
+      });
+      if (existing) assertRowTypeForDiscipline(existing.discipline as Discipline, dto.rowType);
+    }
     const existing = await this.prisma.scopeOfWorksItem.findUnique({ where: { id: itemId } });
     if (!existing || existing.tenderId !== tenderId) {
       throw new NotFoundException("Scope item not found.");

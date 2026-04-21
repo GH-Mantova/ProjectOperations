@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { PlatformConfigService } from "../platform/platform-config.service";
+import { ScopeOfWorksService } from "./scope-of-works.service";
 
 const MODEL_ID = "claude-sonnet-4-6";
 const MAX_TOKENS = 2048;
@@ -27,6 +28,8 @@ export type DraftScopeResult = {
   documentsSkipped: string[];
   mode: "live";
   revisionId?: string;
+  itemsCreated: number;
+  items: Array<{ id: string; wbsCode: string; discipline: string; description: string }>;
 };
 
 export class AnthropicKeyMissingError extends Error {
@@ -96,7 +99,8 @@ export class TenderScopeDraftingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly platformConfig: PlatformConfigService
+    private readonly platformConfig: PlatformConfigService,
+    private readonly scopeOfWorks: ScopeOfWorksService
   ) {}
 
   async draft(tenderId: string, correction: string | null, actorId?: string): Promise<DraftScopeResult> {
@@ -190,12 +194,38 @@ export class TenderScopeDraftingService {
       revisionId = revision.id;
     }
 
+    // Create draft ScopeOfWorksItem rows so the estimator can review them in the
+    // Scope of Works tab (the Drafted Scope tab is retired in PR #44).
+    const createdItems = actorId
+      ? await this.scopeOfWorks.createDraftItemsFromAi(
+          tenderId,
+          actorId,
+          proposals.map((p) => ({
+            code: p.code,
+            title: p.title,
+            description: p.description,
+            confidence: p.confidence,
+            sourceReference: p.sourceReference,
+            estimatedLabourDays: p.estimatedLabourDays,
+            estimatedLabourRole: p.estimatedLabourRole,
+            estimatedPlantItems: p.estimatedPlantItems,
+            estimatedWasteTonnes: p.estimatedWasteTonnes
+          }))
+        )
+      : [];
+
     await this.audit.write({
       actorId,
       action: "tenders.scopeDraft",
       entityType: "Tender",
       entityId: tenderId,
-      metadata: { mode: "live", documentsRead: readable.length, skipped: skipped.length, correction: correction ?? null }
+      metadata: {
+        mode: "live",
+        documentsRead: readable.length,
+        skipped: skipped.length,
+        correction: correction ?? null,
+        itemsCreated: createdItems.length
+      }
     });
 
     return {
@@ -203,7 +233,14 @@ export class TenderScopeDraftingService {
       documentsRead: readable.length,
       documentsSkipped: skipped,
       mode: "live",
-      revisionId
+      revisionId,
+      itemsCreated: createdItems.length,
+      items: createdItems.map((i) => ({
+        id: i.id,
+        wbsCode: i.wbsCode,
+        discipline: i.discipline,
+        description: i.description
+      }))
     };
   }
 

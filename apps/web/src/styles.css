@@ -1442,6 +1442,56 @@ textarea {
   gap: 16px;
   margin-bottom: 16px;
 }
+.sow-items-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.sow-items-table th {
+  background: #F1EFE8;
+  font-weight: 600;
+  text-align: left;
+  padding: 6px 8px;
+  position: sticky;
+  top: 0;
+  white-space: nowrap;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle, rgba(0,0,0,0.08));
+}
+.sow-items-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-subtle, rgba(0,0,0,0.05));
+  vertical-align: top;
+}
+.sow-cell-input {
+  width: 100%;
+  min-width: 80px;
+  border: 1px solid transparent;
+  background: transparent;
+  font: inherit;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+.sow-cell-input:focus,
+.sow-cell-input:hover {
+  border-color: var(--border-subtle, rgba(0,0,0,0.15));
+  background: white;
+  outline: none;
+}
+.sow-cell-input--num {
+  min-width: 60px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.sow-summary-card:hover {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+  transition: all 120ms ease;
+}
+
 .sow-summary__totals {
   display: flex;
   flex-wrap: wrap;

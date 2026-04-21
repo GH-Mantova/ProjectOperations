@@ -9,6 +9,8 @@ import { TenderClientNotesService } from "./tender-client-notes.service";
 import { TenderScopeDraftingController } from "./tender-scope-drafting.controller";
 import { TenderScopeDraftingService } from "./tender-scope-drafting.service";
 import { TenderConvertController } from "./tender-convert.controller";
+import { ScopeOfWorksController } from "./scope-of-works.controller";
+import { ScopeOfWorksService } from "./scope-of-works.service";
 
 @Module({
   imports: [AuditModule, PlatformModule, forwardRef(() => ProjectsModule)],
@@ -16,9 +18,15 @@ import { TenderConvertController } from "./tender-convert.controller";
     TenderingController,
     TenderClientNotesController,
     TenderScopeDraftingController,
-    TenderConvertController
+    TenderConvertController,
+    ScopeOfWorksController
   ],
-  providers: [TenderingService, TenderClientNotesService, TenderScopeDraftingService],
+  providers: [
+    TenderingService,
+    TenderClientNotesService,
+    TenderScopeDraftingService,
+    ScopeOfWorksService
+  ],
   exports: [TenderingService]
 })
 export class TenderingModule {}

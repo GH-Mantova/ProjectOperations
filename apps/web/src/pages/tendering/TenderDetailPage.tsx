@@ -6,7 +6,8 @@ import { EstimateEditor } from "./EstimateEditor";
 import { TenderDocumentsPanel } from "./TenderDocumentsPanel";
 import { TenderClientNotesSection } from "./TenderClientNotesSection";
 import { AnthropicKeyModal } from "./AnthropicKeyModal";
-import { DraftedScopePanel, type DraftResult, type EstimateItemRef } from "./DraftedScopePanel";
+// NOTE: the Drafted Scope tab + panel are retired in PR #44 — AI draft items
+// now land directly in the Scope of Works tab as status="draft" rows.
 import { ConvertToProjectModal } from "./ConvertToProjectModal";
 import { ScopeOfWorksTab } from "./ScopeOfWorksTab";
 
@@ -65,7 +66,7 @@ const STAGE_ACCENT: Record<string, string> = {
   WITHDRAWN: "var(--text-muted, #9CA3AF)"
 };
 
-type Tab = "overview" | "scope" | "estimate" | "drafted";
+type Tab = "overview" | "scope" | "estimate";
 
 type EstimateSummaryPayload = {
   estimateId: string | null;
@@ -149,10 +150,8 @@ export function TenderDetailPage() {
   const [newNote, setNewNote] = useState("");
   const [newClarification, setNewClarification] = useState("");
   const [newFollowUp, setNewFollowUp] = useState({ details: "", dueAt: "" });
-  const [draftResult, setDraftResult] = useState<DraftResult | null>(null);
-  const [draftBadge, setDraftBadge] = useState<"none" | "new" | "reviewed">("none");
   const [drafting, setDrafting] = useState(false);
-  const [estimateItemsForLink, setEstimateItemsForLink] = useState<EstimateItemRef[]>([]);
+  const [draftToast, setDraftToast] = useState<string | null>(null);
   const [keyModalOpen, setKeyModalOpen] = useState(false);
   const [pendingCorrection, setPendingCorrection] = useState<string | null>(null);
 
@@ -180,9 +179,8 @@ export function TenderDetailPage() {
       ]);
       if (summaryRes.ok) setEstimateSummary((await summaryRes.json()) as EstimateSummaryPayload);
       if (estimateRes.ok) {
-        const body = (await estimateRes.json()) as { lockedAt: string | null; items?: EstimateItemRef[] } | null;
+        const body = (await estimateRes.json()) as { lockedAt: string | null } | null;
         setEstimateLock(body ? { lockedAt: body.lockedAt } : null);
-        setEstimateItemsForLink(body?.items ?? []);
       }
     } catch {
       // non-fatal — summary/lock are decorative
@@ -197,7 +195,7 @@ export function TenderDetailPage() {
   useEffect(() => {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<Tab>).detail;
-      if (detail === "overview" || detail === "scope" || detail === "estimate" || detail === "drafted") {
+      if (detail === "overview" || detail === "scope" || detail === "estimate") {
         setTab(detail);
       }
     };
@@ -223,10 +221,14 @@ export function TenderDetailPage() {
           }
           throw new Error(await response.text());
         }
-        const body = (await response.json()) as DraftResult;
-        setDraftResult(body);
-        setDraftBadge("new");
-        setTab("drafted");
+        const body = (await response.json()) as { itemsCreated?: number };
+        const count = body.itemsCreated ?? 0;
+        setDraftToast(
+          count > 0
+            ? `Claude proposed ${count} scope item${count === 1 ? "" : "s"} — review them in the Scope of Works tab.`
+            : "Claude returned no new scope items."
+        );
+        setTab("scope");
       } catch (err) {
         setError((err as Error).message);
       } finally {
@@ -460,25 +462,6 @@ export function TenderDetailPage() {
           >
             Estimate
           </button>
-          {draftResult ? (
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === "drafted"}
-              className={
-                (tab === "drafted"
-                  ? "tender-detail__tab tender-detail__tab--active"
-                  : "tender-detail__tab") +
-                (draftBadge === "new" ? " tender-detail__tab--pulse" : "")
-              }
-              onClick={() => {
-                setTab("drafted");
-                setDraftBadge((prev) => (prev === "new" ? "reviewed" : prev));
-              }}
-            >
-              Drafted Scope {draftBadge === "reviewed" ? "✓" : "✨"}
-            </button>
-          ) : null}
         </nav>
 
         {tab === "overview" && (
@@ -635,15 +618,9 @@ export function TenderDetailPage() {
                 documents={tender.tenderDocuments}
                 onDocumentsChanged={() => void reload()}
                 canManage={canManageTenders}
-                onDraftRequest={() => {
-                  if (draftResult) {
-                    setTab("drafted");
-                    return;
-                  }
-                  void requestDraft(null);
-                }}
+                onDraftRequest={() => void requestDraft(null)}
                 drafting={drafting}
-                draftBadgeState={draftBadge}
+                draftBadgeState="none"
               />
             </section>
 
@@ -845,31 +822,28 @@ export function TenderDetailPage() {
           <EstimateEditor tenderId={tender.id} canManage={canManageEstimates} canAdmin={canAdminEstimates} />
         )}
 
-        {tab === "drafted" && draftResult ? (
-          <DraftedScopePanel
-            tenderId={tender.id}
-            draft={draftResult}
-            estimateItems={estimateItemsForLink}
-            onReDraft={(correction) => void requestDraft(correction)}
-            onClear={() => {
-              setDraftResult(null);
-              setDraftBadge("none");
-              setTab("overview");
-            }}
-            onImported={(count) => {
-              setDraftBadge("reviewed");
-              void loadEstimate();
-              void reload();
-              window.alert(`${count} item${count === 1 ? "" : "s"} imported into estimate`);
-              setTab("estimate");
-              window.dispatchEvent(new CustomEvent("tender-detail:estimate-pulse"));
-            }}
-            drafting={drafting}
-            canManage={canManageTenders}
-          />
-        ) : null}
-
       </div>
+
+      {draftToast ? (
+        <div
+          role="status"
+          style={{
+            position: "fixed",
+            bottom: 24,
+            right: 24,
+            background: "#005B61",
+            color: "#fff",
+            padding: "10px 16px",
+            borderRadius: 6,
+            boxShadow: "0 6px 20px rgba(0,0,0,0.15)",
+            zIndex: 100,
+            maxWidth: 420
+          }}
+          onClick={() => setDraftToast(null)}
+        >
+          {draftToast}
+        </div>
+      ) : null}
 
 
       <AnthropicKeyModal

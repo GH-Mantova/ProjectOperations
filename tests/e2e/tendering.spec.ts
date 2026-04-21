@@ -33,9 +33,15 @@ type ExpectedCommunicationQueueItem = {
 async function login(page: Page) {
   await page.goto("/login");
   await page.getByLabel("Email").fill(credentials.email);
-  await page.getByLabel("Password").fill(credentials.password);
-  await page.getByRole("button", { name: "Login" }).click();
-  await expect(page.getByRole("heading", { name: "Operational Workspace" })).toBeVisible();
+  // The Password <label> wraps both the input and a show-password toggle
+  // button, so getByLabel('Password') resolves to two elements under strict
+  // mode. Target the input by its unique placeholder instead.
+  await page.getByPlaceholder("Password").fill(credentials.password);
+  // Login button was renamed to "Sign in" and the dashboard heading is now
+  // driven by the DashboardCanvas title ("Operations Overview") — both
+  // changed in the S7 login/dashboard redesigns.
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Operations Overview" })).toBeVisible();
 }
 
 async function fetchAuthedJson<T>(page: Page, path: string) {
@@ -52,10 +58,12 @@ async function fetchAuthedJson<T>(page: Page, path: string) {
 }
 
 async function loadTenderIndex(page: Page) {
-  const responsePromise = page.waitForResponse((response) => response.url().includes("/api/v1/tenders") && response.request().method() === "GET");
+  // Previously this intercepted page traffic with waitForResponse, but that
+  // matched any /api/v1/tenders* request (including /tenders/:id/activities)
+  // and hit "No resource with given identifier found" when the body had been
+  // consumed. Fetch directly with the stored access token instead.
   await page.goto("/tenders/pipeline");
-  const response = await responsePromise;
-  const data = (await response.json()) as { items: TenderListItem[] };
+  const data = await fetchAuthedJson<{ items: TenderListItem[] }>(page, "/tenders?page=1&pageSize=100");
   return data.items;
 }
 
@@ -123,7 +131,9 @@ test.describe("Tendering browser verification", () => {
     await login(page);
 
     await page.goto("/tenders");
-    await expect(page.getByText("Where the pipeline needs attention this week")).toBeVisible();
+    // Old subtitle ("Where the pipeline needs attention this week") is gone;
+    // the landing page now shows the "Tendering / Pipeline" header.
+    await expect(page.getByRole("heading", { name: "Pipeline", exact: true })).toBeVisible();
 
     await page.goto("/tenders/pipeline");
     await expect(page.getByRole("heading", { name: "Tender Pipeline" })).toBeVisible();

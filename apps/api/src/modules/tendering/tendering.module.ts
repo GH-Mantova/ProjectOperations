@@ -2,6 +2,7 @@ import { Module, forwardRef } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { PlatformModule } from "../platform/platform.module";
 import { ProjectsModule } from "../projects/projects.module";
+import { UserAiProvidersModule } from "../user-ai-providers/user-ai-providers.module";
 import { TenderingController } from "./tendering.controller";
 import { TenderingService } from "./tendering.service";
 import { TenderClientNotesController } from "./tender-client-notes.controller";
@@ -13,7 +14,7 @@ import { ScopeOfWorksController } from "./scope-of-works.controller";
 import { ScopeOfWorksService } from "./scope-of-works.service";
 
 @Module({
-  imports: [AuditModule, PlatformModule, forwardRef(() => ProjectsModule)],
+  imports: [AuditModule, PlatformModule, UserAiProvidersModule, forwardRef(() => ProjectsModule)],
   controllers: [
     TenderingController,
     TenderClientNotesController,

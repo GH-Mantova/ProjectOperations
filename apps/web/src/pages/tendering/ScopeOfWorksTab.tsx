@@ -8,6 +8,7 @@ import {
   type Discipline as SelDiscipline,
   type DisciplineStat
 } from "./ScopeDisciplineBar";
+import { ScopeQuantitiesTable, type ScopeItem as TableItem } from "./ScopeQuantitiesTable";
 
 type ScopeSummaryResponse = {
   SO: DisciplineStat;
@@ -374,7 +375,16 @@ export function ScopeOfWorksTab({ tenderId, tenderTitle }: { tenderId: string; t
         </div>
       ) : null}
 
-      {grouped
+      <ScopeQuantitiesTable
+        tenderId={tenderId}
+        discipline={selectedDiscipline}
+        items={(data?.items ?? []).filter((i) => i.discipline === selectedDiscipline) as unknown as TableItem[]}
+        subtotal={summary ? summary[selectedDiscipline].subtotal : 0}
+        subtotalWithMarkup={summary ? summary[selectedDiscipline].withMarkup : 0}
+        onItemsChanged={load}
+      />
+
+      {false && grouped
         .filter((group) => group.discipline === selectedDiscipline)
         .map((group) => (
         <DisciplineGroup

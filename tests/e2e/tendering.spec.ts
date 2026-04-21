@@ -44,17 +44,26 @@ async function login(page: Page) {
   await expect(page.getByRole("heading", { name: "Operations Overview" })).toBeVisible();
 }
 
-async function fetchAuthedJson<T>(page: Page, path: string) {
+async function fetchAuthedJson<T>(page: Page, path: string): Promise<T> {
+  // Retry transient network failures — Firefox in CI occasionally sees
+  // ECONNRESET when the API closes the connection before the request
+  // completes. Three tries with a 500ms backoff is enough in practice.
   const token = await page.evaluate(() => window.localStorage.getItem("project-ops.accessToken"));
-  const response = await page.request.get(`${apiBaseUrl}${path}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {}
-  });
-
-  if (!response.ok()) {
-    throw new Error(`Request failed for ${path}: ${response.status()}`);
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  let lastError: Error | undefined;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const response = await page.request.get(`${apiBaseUrl}${path}`, { headers });
+      if (!response.ok()) {
+        throw new Error(`Request failed for ${path}: ${response.status()}`);
+      }
+      return (await response.json()) as T;
+    } catch (err) {
+      lastError = err as Error;
+      if (attempt < 3) await page.waitForTimeout(500);
+    }
   }
-
-  return (await response.json()) as T;
+  throw lastError ?? new Error(`Request failed for ${path}`);
 }
 
 async function loadTenderIndex(page: Page) {
@@ -63,6 +72,9 @@ async function loadTenderIndex(page: Page) {
   // and hit "No resource with given identifier found" when the body had been
   // consumed. Fetch directly with the stored access token instead.
   await page.goto("/tenders/pipeline");
+  // Firefox sends the first API request slightly later than Chromium/WebKit —
+  // a brief settle prevents an early ECONNRESET race.
+  await page.waitForTimeout(500);
   const data = await fetchAuthedJson<{ items: TenderListItem[] }>(page, "/tenders?page=1&pageSize=100");
   return data.items;
 }

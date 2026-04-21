@@ -887,6 +887,29 @@ export class EstimatesService {
     }
 
     const items = estimate.items.map((item: EstimateItemWithLines) => {
+      // Provisional sum items are passed through at cost — provisionalAmount
+      // IS the client-facing price with no markup applied (IS QS practice).
+      // Subtotal is set to the same value so the rolled-up markupAmount
+      // ( = totals.price - totals.subtotal ) stays accurate.
+      if (item.isProvisional) {
+        const amount = round2(toNumber(item.provisionalAmount));
+        return {
+          itemId: item.id,
+          code: item.code,
+          itemNumber: item.itemNumber,
+          title: item.title,
+          isProvisional: true,
+          labour: 0,
+          equip: 0,
+          plant: 0,
+          waste: 0,
+          cutting: 0,
+          subtotal: amount,
+          markup: 0,
+          price: amount
+        };
+      }
+
       const labour = round2(item.labourLines.reduce((sum: number, l) => sum + toNumber(l.qty) * toNumber(l.days) * toNumber(l.rate), 0));
       const equip = round2(item.equipLines.reduce((sum: number, l) => sum + toNumber(l.qty) * toNumber(l.duration) * toNumber(l.rate), 0));
       const plant = round2(item.plantLines.reduce((sum: number, l) => sum + toNumber(l.qty) * toNumber(l.days) * toNumber(l.rate), 0));
@@ -894,15 +917,13 @@ export class EstimatesService {
       const cutting = round2(item.cuttingLines.reduce((sum: number, l) => sum + toNumber(l.qty) * toNumber(l.rate), 0));
       const subtotal = round2(labour + equip + plant + waste + cutting);
       const markup = toNumber(item.markup);
-      const price = item.isProvisional
-        ? round2(toNumber(item.provisionalAmount))
-        : round2(subtotal * (1 + markup / 100));
+      const price = round2(subtotal * (1 + markup / 100));
       return {
         itemId: item.id,
         code: item.code,
         itemNumber: item.itemNumber,
         title: item.title,
-        isProvisional: item.isProvisional,
+        isProvisional: false,
         labour,
         equip,
         plant,

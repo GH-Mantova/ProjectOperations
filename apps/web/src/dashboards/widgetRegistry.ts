@@ -49,6 +49,11 @@ const FIELDS_ACTIVE_PROJECTS: WidgetField[] = [
   { key: "count", label: "Count", defaultVisible: true, type: "number" },
   { key: "totalValue", label: "Total value", defaultVisible: false, type: "currency" }
 ];
+
+const FIELDS_TIMESHEETS_PENDING: WidgetField[] = [
+  { key: "count", label: "Count", defaultVisible: true, type: "number" },
+  { key: "oldestPendingDate", label: "Oldest pending date", defaultVisible: false, type: "date" }
+];
 import {
   ActiveJobsKpi,
   ActiveProjectsKpi,
@@ -59,6 +64,7 @@ import {
   OpenIssuesKpi,
   TenderPipelineDonut,
   TenderPipelineKpi,
+  TimesheetsPendingKpi,
   UpcomingMaintenanceKpi
 } from "./widgets/ops";
 import {
@@ -108,6 +114,21 @@ export const WIDGETS: WidgetMeta[] = [
     fieldSchema: FIELDS_ACTIVE_PROJECTS,
     configSchema: [AGGREGATION_FIELD],
     component: ActiveProjectsKpi
+  },
+  {
+    type: "ops_timesheets_pending_kpi",
+    name: "Timesheets pending",
+    category: "operations",
+    size: "kpi",
+    description: "Submitted timesheets awaiting approval — tap to open the approval workspace.",
+    defaultColSpan: 1,
+    defaultRowSpan: 1,
+    minColSpan: 1,
+    minRowSpan: 1,
+    maxColSpan: 4,
+    maxRowSpan: 2,
+    fieldSchema: FIELDS_TIMESHEETS_PENDING,
+    component: TimesheetsPendingKpi
   },
   { type: "ops_tender_pipeline_kpi", name: "Tender pipeline value", category: "operations", size: "kpi", description: "Sum value of non-terminal tenders.", component: TenderPipelineKpi },
   { type: "ops_open_issues_kpi", name: "Open issues", category: "operations", size: "kpi", description: "Job issues with status OPEN across all jobs.", component: OpenIssuesKpi },

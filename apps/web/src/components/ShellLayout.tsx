@@ -263,6 +263,7 @@ const BREADCRUMBS: Record<string, string> = {
   "/master-data": "Master Data",
   "/documents": "Documents",
   "/archive": "Archive",
+  "/account": "My account",
   "/notifications": "Notifications",
   "/dashboards": "Dashboards",
   "/admin/users": "Users",
@@ -549,8 +550,9 @@ export function ShellLayout() {
             <button
               type="button"
               className="shell__topbar-avatar"
-              onClick={() => navigate("/admin/users")}
-              aria-label={`Signed in as ${user?.firstName} ${user?.lastName}`}
+              onClick={() => navigate("/account")}
+              aria-label={`Account — signed in as ${user?.firstName} ${user?.lastName}`}
+              title="My account"
             >
               {initials}
             </button>

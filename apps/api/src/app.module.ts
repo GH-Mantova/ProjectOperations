@@ -23,6 +23,7 @@ import { SecurityModule } from "./modules/security/security.module";
 import { SchedulerModule } from "./modules/scheduler/scheduler.module";
 import { TenderingModule } from "./modules/tendering/tendering.module";
 import { TenderDocumentsModule } from "./modules/tender-documents/tender-documents.module";
+import { UserAiProvidersModule } from "./modules/user-ai-providers/user-ai-providers.module";
 import { UsersModule } from "./modules/users/users.module";
 import { WorkersModule } from "./modules/workers/workers.module";
 import { AllocationsModule } from "./modules/allocations/allocations.module";
@@ -56,6 +57,7 @@ import { FieldModule } from "./modules/field/field.module";
     ProjectsModule,
     TenderingModule,
     TenderDocumentsModule,
+    UserAiProvidersModule,
     UsersModule,
     RolesModule,
     WorkersModule,

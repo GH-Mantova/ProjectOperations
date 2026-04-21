@@ -2,12 +2,27 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { PlatformConfigService, type AiProviderName } from "../platform/platform-config.service";
+import { UserAiProvidersService } from "../user-ai-providers/user-ai-providers.service";
 import { ScopeOfWorksService } from "./scope-of-works.service";
 import { ClaudeProvider } from "./ai-providers/claude.provider";
 import { GeminiProvider } from "./ai-providers/gemini.provider";
 import { GroqProvider } from "./ai-providers/groq.provider";
 import { MockAiProvider, OpenAiProvider } from "./ai-providers/openai.provider";
 import type { AiProvider } from "./ai-providers/ai-provider.interface";
+
+const PROVIDER_LABELS: Record<AiProviderName, string> = {
+  anthropic: "Claude (Anthropic)",
+  gemini: "Gemini (Google)",
+  groq: "Llama 3 on Groq",
+  openai: "ChatGPT (OpenAI)"
+};
+
+export type ProviderMeta = {
+  id: string;
+  type: AiProviderName | "mock";
+  source: "company" | "personal" | "mock";
+  label: string;
+};
 
 const READABLE_EXT = /\.(pdf|docx?|xlsx?|png|jpe?g)$/i;
 const UNREADABLE_EXT = /\.(dwg)$/i;
@@ -32,6 +47,7 @@ export type DraftScopeResult = {
   provider: string;
   providerLabel: string;
   model: string;
+  providerMeta: ProviderMeta;
   revisionId?: string;
   itemsCreated: number;
   items: Array<{ id: string; wbsCode: string; discipline: string; description: string }>;
@@ -111,10 +127,16 @@ export class TenderScopeDraftingService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly platformConfig: PlatformConfigService,
+    private readonly userAiProviders: UserAiProvidersService,
     private readonly scopeOfWorks: ScopeOfWorksService
   ) {}
 
-  async draft(tenderId: string, correction: string | null, actorId?: string): Promise<DraftScopeResult> {
+  async draft(
+    tenderId: string,
+    correction: string | null,
+    actorId?: string,
+    selectedProviderId?: string | null
+  ): Promise<DraftScopeResult> {
     const tender = await this.prisma.tender.findUnique({
       where: { id: tenderId },
       select: {
@@ -185,8 +207,15 @@ export class TenderScopeDraftingService {
     );
 
     const userMessage = userMessageParts.join("\n");
-    const provider = await this.pickProvider();
+    const { provider, providerMeta } = await this.resolveProviderForUser(actorId, selectedProviderId ?? null);
     const proposals = await provider.draftScope(SYSTEM_PROMPT, userMessage);
+
+    // Remember the provider the user just used so the next at-use trigger can
+    // skip the picker. Only applies when the user has multiple available and
+    // we have a resolved id (the mock fallback is not rememberable).
+    if (actorId && providerMeta.source !== "mock") {
+      await this.userAiProviders.setPreference(actorId, providerMeta.id).catch(() => undefined);
+    }
 
     let revisionId: string | undefined;
     if (correction) {
@@ -231,6 +260,8 @@ export class TenderScopeDraftingService {
       metadata: {
         mode,
         provider: provider.name,
+        providerSource: providerMeta.source,
+        providerId: providerMeta.id,
         model: provider.model,
         documentsRead: readable.length,
         skipped: skipped.length,
@@ -247,6 +278,7 @@ export class TenderScopeDraftingService {
       provider: provider.name,
       providerLabel: provider.label,
       model: provider.model,
+      providerMeta,
       revisionId,
       itemsCreated: createdItems.length,
       items: createdItems.map((i) => ({
@@ -259,37 +291,109 @@ export class TenderScopeDraftingService {
   }
 
   /**
-   * Picks the first provider that has a configured API key, honouring the
-   * admin's `preferredProvider` choice if set, else falling back through the
-   * priority order Anthropic → Gemini → Groq → OpenAI. When nothing is
-   * configured we return a MockAiProvider so the draft flow still produces
-   * a reviewable scope item (useful for demos and first-run environments).
+   * Resolve the AI provider to use for a given user. Priority:
+   *   1. Explicit override passed from the UI (a company-<name> id or a
+   *      personal provider cuid).
+   *   2. The user's stored lastUsedProviderId preference.
+   *   3. Fall back to the existing company priority chain
+   *      (Claude → Gemini → Groq → OpenAI → Mock).
    */
-  private async pickProvider(): Promise<AiProvider> {
+  async resolveProviderForUser(
+    userId: string | undefined,
+    overrideProviderId: string | null
+  ): Promise<{ provider: AiProvider; providerMeta: ProviderMeta }> {
+    const candidateIds: string[] = [];
+    if (overrideProviderId) candidateIds.push(overrideProviderId);
+    if (userId) {
+      const pref = await this.prisma.userAiPreference.findUnique({ where: { userId } });
+      if (pref?.lastUsedProviderId && !candidateIds.includes(pref.lastUsedProviderId)) {
+        candidateIds.push(pref.lastUsedProviderId);
+      }
+    }
+
+    for (const id of candidateIds) {
+      const resolved = await this.tryResolveById(userId, id);
+      if (resolved) return resolved;
+    }
+
+    return this.pickCompanyProvider();
+  }
+
+  private async tryResolveById(
+    userId: string | undefined,
+    id: string
+  ): Promise<{ provider: AiProvider; providerMeta: ProviderMeta } | null> {
+    if (id.startsWith("company-")) {
+      const name = id.slice("company-".length) as AiProviderName;
+      const company = await this.buildCompanyProvider(name);
+      if (!company) return null;
+      return company;
+    }
+    if (!userId) return null;
+    try {
+      const personal = await this.userAiProviders.getPersonalKey(userId, id);
+      const inst = this.instantiate(personal.provider, personal.apiKey, personal.model ?? null);
+      return {
+        provider: inst,
+        providerMeta: {
+          id,
+          type: personal.provider,
+          source: "personal",
+          label: `${PROVIDER_LABELS[personal.provider]} (personal)`
+        }
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private async buildCompanyProvider(
+    name: AiProviderName
+  ): Promise<{ provider: AiProvider; providerMeta: ProviderMeta } | null> {
+    const status = await this.platformConfig.status();
+    if (!status[name].configured) return null;
+    let key: string | null = null;
+    if (name === "anthropic") key = await this.platformConfig.getAnthropicApiKey();
+    else if (name === "gemini") key = await this.platformConfig.getGeminiApiKey();
+    else if (name === "groq") key = await this.platformConfig.getGroqApiKey();
+    else if (name === "openai") key = await this.platformConfig.getOpenAiApiKey();
+    if (!key) return null;
+    return {
+      provider: this.instantiate(name, key, status[name].model),
+      providerMeta: {
+        id: `company-${name}`,
+        type: name,
+        source: "company",
+        label: `${PROVIDER_LABELS[name]} (company)`
+      }
+    };
+  }
+
+  private instantiate(name: AiProviderName, key: string, model: string | null): AiProvider {
+    if (name === "anthropic") return new ClaudeProvider(key, model);
+    if (name === "gemini") return new GeminiProvider(key, model);
+    if (name === "groq") return new GroqProvider(key, model);
+    return new OpenAiProvider(key, model);
+  }
+
+  private async pickCompanyProvider(): Promise<{ provider: AiProvider; providerMeta: ProviderMeta }> {
     const order: AiProviderName[] = ["anthropic", "gemini", "groq", "openai"];
     const status = await this.platformConfig.status();
     const preferred: AiProviderName | null = (status.preferredProvider as AiProviderName | null) ?? null;
-    const configuredOrder = preferred
-      ? [preferred, ...order.filter((p) => p !== preferred)]
-      : order;
+    const configuredOrder = preferred ? [preferred, ...order.filter((p) => p !== preferred)] : order;
     for (const p of configuredOrder) {
-      if (p === "anthropic" && status.anthropic.configured) {
-        const key = await this.platformConfig.getAnthropicApiKey();
-        if (key) return new ClaudeProvider(key, status.anthropic.model);
-      }
-      if (p === "gemini" && status.gemini.configured) {
-        const key = await this.platformConfig.getGeminiApiKey();
-        if (key) return new GeminiProvider(key, status.gemini.model);
-      }
-      if (p === "groq" && status.groq.configured) {
-        const key = await this.platformConfig.getGroqApiKey();
-        if (key) return new GroqProvider(key, status.groq.model);
-      }
-      if (p === "openai" && status.openai.configured) {
-        const key = await this.platformConfig.getOpenAiApiKey();
-        if (key) return new OpenAiProvider(key, status.openai.model);
-      }
+      const built = await this.buildCompanyProvider(p);
+      if (built) return built;
     }
-    return new MockAiProvider();
+    return {
+      provider: new MockAiProvider(),
+      providerMeta: {
+        id: "mock",
+        type: "mock",
+        source: "mock",
+        label: "Mock (no provider configured)"
+      }
+    };
   }
+
 }

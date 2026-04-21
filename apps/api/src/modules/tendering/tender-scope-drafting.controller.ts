@@ -11,6 +11,10 @@ class DraftScopeDto {
   @IsOptional()
   @IsString()
   correction?: string;
+
+  @IsOptional()
+  @IsString()
+  selectedProviderId?: string;
 }
 
 @ApiTags("Tender Scope Drafting")
@@ -39,7 +43,12 @@ export class TenderScopeDraftingController {
     @CurrentUser() actor: { sub: string }
   ) {
     try {
-      return await this.service.draft(tenderId, dto.correction ?? null, actor.sub);
+      return await this.service.draft(
+        tenderId,
+        dto.correction ?? null,
+        actor.sub,
+        dto.selectedProviderId ?? null
+      );
     } catch (err) {
       if (err instanceof AnthropicKeyMissingError) {
         throw new HttpException(

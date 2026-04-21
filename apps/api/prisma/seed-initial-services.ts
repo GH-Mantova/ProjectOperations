@@ -136,6 +136,7 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       "estimates.manage",
       "estimates.admin",
       "projects.view",
+      "resources.view",
       "documents.view"
     ]
   );
@@ -152,7 +153,8 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       "audit.view",
       "tenders.view",
       "jobs.view",
-      "projects.view"
+      "projects.view",
+      "resources.view"
     ]
   );
 
@@ -166,6 +168,7 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       "tenderconversion.manage",
       "jobs.view",
       "projects.view",
+      "resources.view",
       "documents.view"
     ]
   );
@@ -180,6 +183,7 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       "maintenance.view",
       "maintenance.manage",
       "resources.view",
+      "resources.manage",
       "jobs.view",
       "projects.view",
       "scheduler.view"

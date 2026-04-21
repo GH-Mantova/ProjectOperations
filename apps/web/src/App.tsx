@@ -79,9 +79,10 @@ export function App() {
             <Route path="/jobs/:id" element={<JobDetailPage />} />
             <Route path="/projects" element={<ProjectsListPage />} />
             <Route path="/projects/:id" element={<ProjectDetailPage />} />
-            <Route path="/resources" element={<WorkersListPage />} />
+            <Route path="/workers" element={<WorkersListPage />} />
+            <Route path="/workers/:id" element={<WorkerDetailPage />} />
+            <Route path="/resources" element={<ResourcesPage />} />
             <Route path="/resources/legacy" element={<ResourcesPage />} />
-            <Route path="/resources/:id" element={<WorkerDetailPage />} />
             <Route path="/assets" element={<AssetsListPage />} />
             <Route path="/assets/legacy" element={<AssetsPage />} />
             <Route path="/assets/:id" element={<AssetDetailPage />} />

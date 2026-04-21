@@ -66,7 +66,9 @@ const ACTION_LABEL: Record<string, string> = {
   CONTRACT_VALUE_CHANGED: "Contract value changed",
   BUDGET_CHANGED: "Budget changed",
   DOCUMENT_ADDED: "Document added",
-  DOCUMENT_REMOVED: "Document removed"
+  DOCUMENT_REMOVED: "Document removed",
+  WORKER_ALLOCATED: "Worker allocated",
+  ASSET_ALLOCATED: "Asset allocated"
 };
 
 function formatCurrency(raw: string): string {
@@ -430,14 +432,662 @@ function DocumentsTab({ project }: { project: ProjectDetail }) {
   );
 }
 
-function TeamTab({ project: _project }: { project: ProjectDetail }) {
+type WorkerAllocation = {
+  id: string;
+  workerProfile: { id: string; firstName: string; lastName: string; role: string } | null;
+  roleOnProject: string | null;
+  startDate: string;
+  endDate: string | null;
+  notes: string | null;
+};
+type AssetAllocation = {
+  id: string;
+  asset: { id: string; name: string; assetNumber: string; category: string | null } | null;
+  roleOnProject: string | null;
+  startDate: string;
+  endDate: string | null;
+  notes: string | null;
+};
+type AllocationsResponse = { workers: WorkerAllocation[]; assets: AssetAllocation[] };
+
+function TeamTab({ project }: { project: ProjectDetail }) {
+  const { authFetch, user } = useAuth();
+  const canManageResources = useMemo(
+    () => user?.permissions.includes("resources.manage") ?? false,
+    [user]
+  );
+  const [data, setData] = useState<AllocationsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [workerModalOpen, setWorkerModalOpen] = useState(false);
+  const [assetModalOpen, setAssetModalOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await authFetch(`/projects/${project.id}/allocations`);
+      if (!response.ok) throw new Error(await response.text());
+      setData((await response.json()) as AllocationsResponse);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, [authFetch, project.id]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  async function removeAllocation(allocId: string, label: string) {
+    if (!window.confirm(`Remove ${label} from this project?`)) return;
+    try {
+      const response = await authFetch(`/projects/${project.id}/allocations/${allocId}`, {
+        method: "DELETE"
+      });
+      if (!response.ok) throw new Error(await response.text());
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  if (loading && !data) {
+    return <div className="s7-card"><Skeleton width="100%" height={200} /></div>;
+  }
+
   return (
-    <section className="s7-card" style={{ padding: 32, textAlign: "center" }}>
-      <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>👥 Resource allocation coming in PR #40</h3>
-      <p style={{ color: "var(--text-muted)" }}>
-        Worker assignments, crew rosters, and shift planning will surface here.
-      </p>
-    </section>
+    <div style={{ display: "grid", gap: 16 }}>
+      {error ? (
+        <div className="s7-card" role="alert" style={{ borderColor: "var(--status-danger)", color: "var(--status-danger)" }}>
+          {error}
+        </div>
+      ) : null}
+
+      <section className="s7-card">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <h3 className="s7-type-section-heading" style={{ margin: 0 }}>Workers</h3>
+          {canManageResources ? (
+            <button type="button" className="s7-btn s7-btn--primary s7-btn--sm" onClick={() => setWorkerModalOpen(true)}>
+              Add worker
+            </button>
+          ) : null}
+        </div>
+        {!data || data.workers.length === 0 ? (
+          <EmptyState heading="No workers allocated" subtext="Add workers to build the delivery team." />
+        ) : (
+          <table className="admin-page__table" style={{ marginTop: 12 }}>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Role on project</th>
+                <th>Start</th>
+                <th>End</th>
+                {canManageResources ? <th style={{ width: 60 }}></th> : null}
+              </tr>
+            </thead>
+            <tbody>
+              {data.workers.map((w) => {
+                const name = w.workerProfile
+                  ? `${w.workerProfile.firstName} ${w.workerProfile.lastName}`
+                  : "(removed)";
+                return (
+                  <tr key={w.id}>
+                    <td>
+                      {w.workerProfile ? (
+                        <Link to={`/workers/${w.workerProfile.id}`} style={{ color: "var(--brand-accent, #FEAA6D)" }}>
+                          {name}
+                        </Link>
+                      ) : (
+                        name
+                      )}
+                      {w.workerProfile ? (
+                        <span style={{ color: "var(--text-muted)", marginLeft: 8, fontSize: 12 }}>
+                          ({w.workerProfile.role})
+                        </span>
+                      ) : null}
+                    </td>
+                    <td>{w.roleOnProject ?? "—"}</td>
+                    <td>{formatDate(w.startDate)}</td>
+                    <td>{w.endDate ? formatDate(w.endDate) : "Ongoing"}</td>
+                    {canManageResources ? (
+                      <td>
+                        <button
+                          type="button"
+                          className="s7-btn s7-btn--ghost s7-btn--sm"
+                          aria-label={`Remove ${name}`}
+                          onClick={() => void removeAllocation(w.id, name)}
+                        >
+                          🗑
+                        </button>
+                      </td>
+                    ) : null}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <section className="s7-card">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <h3 className="s7-type-section-heading" style={{ margin: 0 }}>Plant &amp; equipment</h3>
+          {canManageResources ? (
+            <button type="button" className="s7-btn s7-btn--primary s7-btn--sm" onClick={() => setAssetModalOpen(true)}>
+              Add asset
+            </button>
+          ) : null}
+        </div>
+        {!data || data.assets.length === 0 ? (
+          <EmptyState heading="No assets allocated" subtext="Assign plant & equipment to this project." />
+        ) : (
+          <table className="admin-page__table" style={{ marginTop: 12 }}>
+            <thead>
+              <tr>
+                <th>Asset</th>
+                <th>Asset number</th>
+                <th>Role on project</th>
+                <th>Start</th>
+                <th>End</th>
+                {canManageResources ? <th style={{ width: 60 }}></th> : null}
+              </tr>
+            </thead>
+            <tbody>
+              {data.assets.map((a) => {
+                const name = a.asset?.name ?? "(removed)";
+                return (
+                  <tr key={a.id}>
+                    <td>
+                      {a.asset ? (
+                        <Link to={`/assets/${a.asset.id}`} style={{ color: "var(--brand-accent, #FEAA6D)" }}>
+                          {name}
+                        </Link>
+                      ) : (
+                        name
+                      )}
+                    </td>
+                    <td>{a.asset?.assetNumber ?? "—"}</td>
+                    <td>{a.roleOnProject ?? "—"}</td>
+                    <td>{formatDate(a.startDate)}</td>
+                    <td>{a.endDate ? formatDate(a.endDate) : "Ongoing"}</td>
+                    {canManageResources ? (
+                      <td>
+                        <button
+                          type="button"
+                          className="s7-btn s7-btn--ghost s7-btn--sm"
+                          aria-label={`Remove ${name}`}
+                          onClick={() => void removeAllocation(a.id, name)}
+                        >
+                          🗑
+                        </button>
+                      </td>
+                    ) : null}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      {workerModalOpen ? (
+        <AllocateWorkerModal
+          projectId={project.id}
+          onClose={() => setWorkerModalOpen(false)}
+          onAllocated={() => {
+            setWorkerModalOpen(false);
+            setToast("Worker allocated");
+            void load();
+          }}
+        />
+      ) : null}
+
+      {assetModalOpen ? (
+        <AllocateAssetModal
+          projectId={project.id}
+          onClose={() => setAssetModalOpen(false)}
+          onAllocated={() => {
+            setAssetModalOpen(false);
+            setToast("Asset allocated");
+            void load();
+          }}
+        />
+      ) : null}
+
+      {toast ? (
+        <div
+          role="status"
+          style={{
+            position: "fixed",
+            bottom: 24,
+            right: 24,
+            background: "#005B61",
+            color: "#fff",
+            padding: "10px 16px",
+            borderRadius: 6,
+            boxShadow: "0 6px 20px rgba(0,0,0,0.15)"
+          }}
+        >
+          {toast}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+type WorkerSearchRow = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  role: string;
+};
+
+function AllocateWorkerModal({
+  projectId,
+  onClose,
+  onAllocated
+}: {
+  projectId: string;
+  onClose: () => void;
+  onAllocated: () => void;
+}) {
+  const { authFetch } = useAuth();
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<WorkerSearchRow[]>([]);
+  const [selected, setSelected] = useState<WorkerSearchRow | null>(null);
+  const [roleOnProject, setRoleOnProject] = useState("");
+  const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
+  const [endDate, setEndDate] = useState("");
+  const [notes, setNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pendingWarnings, setPendingWarnings] = useState<
+    Array<{ projectId: string; projectNumber: string; projectName: string; startDate: string; endDate: string | null }> | null
+  >(null);
+  const [forceSubmit, setForceSubmit] = useState(false);
+
+  useEffect(() => {
+    if (!query.trim()) {
+      setResults([]);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ search: query.trim(), isActive: "true" });
+        const response = await authFetch(`/workers?${params.toString()}`);
+        if (!response.ok) return;
+        const body = (await response.json()) as { items: WorkerSearchRow[] };
+        if (!cancelled) setResults(body.items);
+      } catch {
+        // ignore search errors
+      }
+    }, 200);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [authFetch, query]);
+
+  async function submit() {
+    if (!selected) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const body: Record<string, string> = {
+        type: "WORKER",
+        workerProfileId: selected.id,
+        startDate
+      };
+      if (roleOnProject.trim()) body.roleOnProject = roleOnProject.trim();
+      if (endDate) body.endDate = endDate;
+      if (notes.trim()) body.notes = notes.trim();
+
+      const response = await authFetch(`/projects/${projectId}/allocations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const payload = (await response.json()) as {
+        allocation: unknown;
+        warnings: Array<{
+          projectId: string;
+          projectNumber: string;
+          projectName: string;
+          startDate: string;
+          endDate: string | null;
+        }>;
+      };
+      if (payload.warnings.length > 0 && !forceSubmit) {
+        setPendingWarnings(payload.warnings);
+        setForceSubmit(true);
+        return;
+      }
+      onAllocated();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.55)", display: "grid", placeItems: "center", zIndex: 100 }}
+      onClick={onClose}
+    >
+      <div
+        className="s7-card"
+        style={{ width: "min(520px, 92vw)", padding: 24, maxHeight: "90vh", overflowY: "auto" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="s7-type-section-title" style={{ margin: 0 }}>Allocate worker</h2>
+
+        {!selected ? (
+          <>
+            <p style={{ color: "var(--text-muted)", margin: "8px 0" }}>Search by name or role.</p>
+            <input
+              className="s7-input"
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Type to search…"
+              style={{ width: "100%" }}
+            />
+            <ul style={{ listStyle: "none", padding: 0, marginTop: 12, maxHeight: 260, overflowY: "auto" }}>
+              {results.map((r) => (
+                <li key={r.id}>
+                  <button
+                    type="button"
+                    className="s7-btn s7-btn--ghost"
+                    style={{ width: "100%", textAlign: "left", padding: "8px 12px" }}
+                    onClick={() => setSelected(r)}
+                  >
+                    <strong>{r.firstName} {r.lastName}</strong>
+                    <span style={{ color: "var(--text-muted)", marginLeft: 8 }}>· {r.role}</span>
+                  </button>
+                </li>
+              ))}
+              {query && results.length === 0 ? (
+                <li style={{ color: "var(--text-muted)", padding: 12 }}>No matches.</li>
+              ) : null}
+            </ul>
+          </>
+        ) : (
+          <>
+            <div style={{ marginTop: 12, padding: "8px 12px", background: "#F1EFE8", borderRadius: 6 }}>
+              Selected: <strong>{selected.firstName} {selected.lastName}</strong>
+              <button
+                type="button"
+                className="s7-btn s7-btn--ghost s7-btn--sm"
+                onClick={() => {
+                  setSelected(null);
+                  setPendingWarnings(null);
+                  setForceSubmit(false);
+                }}
+                style={{ marginLeft: 12 }}
+              >
+                Change
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+              <label>
+                <span className="s7-type-label">Role on project</span>
+                <input className="s7-input" value={roleOnProject} onChange={(e) => setRoleOnProject(e.target.value)} style={{ width: "100%" }} />
+              </label>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <label>
+                  <span className="s7-type-label">Start date*</span>
+                  <input type="date" className="s7-input" required value={startDate} onChange={(e) => setStartDate(e.target.value)} style={{ width: "100%" }} />
+                </label>
+                <label>
+                  <span className="s7-type-label">End date</span>
+                  <input type="date" className="s7-input" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={{ width: "100%" }} />
+                </label>
+              </div>
+              <label>
+                <span className="s7-type-label">Notes</span>
+                <textarea className="s7-input" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} style={{ width: "100%" }} />
+              </label>
+            </div>
+
+            {pendingWarnings && pendingWarnings.length > 0 ? (
+              <div
+                role="alert"
+                style={{
+                  background: "#FAEEDA",
+                  color: "#854F0B",
+                  padding: "10px 12px",
+                  borderRadius: 6,
+                  marginTop: 12,
+                  fontSize: 13
+                }}
+              >
+                <strong>Warning:</strong> {selected.firstName} {selected.lastName} is already allocated to:
+                <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>
+                  {pendingWarnings.map((w) => (
+                    <li key={w.projectId}>
+                      {w.projectNumber} — {w.projectName} ({formatDate(w.startDate)} – {w.endDate ? formatDate(w.endDate) : "Ongoing"})
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {error ? (
+              <div role="alert" style={{ background: "#FCEBEB", color: "#A32D2D", padding: "8px 12px", borderRadius: 6, marginTop: 12, fontSize: 13 }}>
+                {error}
+              </div>
+            ) : null}
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+              <button type="button" className="s7-btn s7-btn--ghost" onClick={onClose} disabled={submitting}>
+                Cancel
+              </button>
+              <button type="button" className="s7-btn s7-btn--primary" onClick={() => void submit()} disabled={submitting}>
+                {submitting ? "Allocating…" : pendingWarnings && pendingWarnings.length > 0 ? "Allocate anyway" : "Allocate"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+type AssetSearchRow = {
+  id: string;
+  name: string;
+  assetCode: string;
+  category?: { name: string } | null;
+};
+
+function AllocateAssetModal({
+  projectId,
+  onClose,
+  onAllocated
+}: {
+  projectId: string;
+  onClose: () => void;
+  onAllocated: () => void;
+}) {
+  const { authFetch } = useAuth();
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<AssetSearchRow[]>([]);
+  const [selected, setSelected] = useState<AssetSearchRow | null>(null);
+  const [roleOnProject, setRoleOnProject] = useState("");
+  const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
+  const [endDate, setEndDate] = useState("");
+  const [notes, setNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!query.trim()) {
+      setResults([]);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ q: query.trim() });
+        const response = await authFetch(`/assets?${params.toString()}`);
+        if (!response.ok) return;
+        const body = await response.json();
+        const items = (body.items ?? body ?? []) as AssetSearchRow[];
+        if (!cancelled) setResults(items);
+      } catch {
+        // ignore search errors
+      }
+    }, 200);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [authFetch, query]);
+
+  async function submit() {
+    if (!selected) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const body: Record<string, string> = {
+        type: "ASSET",
+        assetId: selected.id,
+        startDate
+      };
+      if (roleOnProject.trim()) body.roleOnProject = roleOnProject.trim();
+      if (endDate) body.endDate = endDate;
+      if (notes.trim()) body.notes = notes.trim();
+
+      const response = await authFetch(`/projects/${projectId}/allocations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      if (!response.ok) throw new Error(await response.text());
+      onAllocated();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.55)", display: "grid", placeItems: "center", zIndex: 100 }}
+      onClick={onClose}
+    >
+      <div
+        className="s7-card"
+        style={{ width: "min(520px, 92vw)", padding: 24, maxHeight: "90vh", overflowY: "auto" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="s7-type-section-title" style={{ margin: 0 }}>Allocate asset</h2>
+
+        {!selected ? (
+          <>
+            <p style={{ color: "var(--text-muted)", margin: "8px 0" }}>Search by name or asset number.</p>
+            <input
+              className="s7-input"
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Type to search…"
+              style={{ width: "100%" }}
+            />
+            <ul style={{ listStyle: "none", padding: 0, marginTop: 12, maxHeight: 260, overflowY: "auto" }}>
+              {results.map((r) => (
+                <li key={r.id}>
+                  <button
+                    type="button"
+                    className="s7-btn s7-btn--ghost"
+                    style={{ width: "100%", textAlign: "left", padding: "8px 12px" }}
+                    onClick={() => setSelected(r)}
+                  >
+                    <strong>{r.name}</strong>
+                    <span style={{ color: "var(--text-muted)", marginLeft: 8 }}>
+                      · {r.assetCode}
+                      {r.category ? ` · ${r.category.name}` : ""}
+                    </span>
+                  </button>
+                </li>
+              ))}
+              {query && results.length === 0 ? (
+                <li style={{ color: "var(--text-muted)", padding: 12 }}>No matches.</li>
+              ) : null}
+            </ul>
+          </>
+        ) : (
+          <>
+            <div style={{ marginTop: 12, padding: "8px 12px", background: "#F1EFE8", borderRadius: 6 }}>
+              Selected: <strong>{selected.name}</strong> <span style={{ color: "var(--text-muted)" }}>· {selected.assetCode}</span>
+              <button type="button" className="s7-btn s7-btn--ghost s7-btn--sm" onClick={() => setSelected(null)} style={{ marginLeft: 12 }}>
+                Change
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+              <label>
+                <span className="s7-type-label">Role on project</span>
+                <input
+                  className="s7-input"
+                  placeholder='e.g. "Excavator", "Water Cart"'
+                  value={roleOnProject}
+                  onChange={(e) => setRoleOnProject(e.target.value)}
+                  style={{ width: "100%" }}
+                />
+              </label>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <label>
+                  <span className="s7-type-label">Start date*</span>
+                  <input type="date" className="s7-input" required value={startDate} onChange={(e) => setStartDate(e.target.value)} style={{ width: "100%" }} />
+                </label>
+                <label>
+                  <span className="s7-type-label">End date</span>
+                  <input type="date" className="s7-input" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={{ width: "100%" }} />
+                </label>
+              </div>
+              <label>
+                <span className="s7-type-label">Notes</span>
+                <textarea className="s7-input" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} style={{ width: "100%" }} />
+              </label>
+            </div>
+
+            {error ? (
+              <div role="alert" style={{ background: "#FCEBEB", color: "#A32D2D", padding: "8px 12px", borderRadius: 6, marginTop: 12, fontSize: 13 }}>
+                {error}
+              </div>
+            ) : null}
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+              <button type="button" className="s7-btn s7-btn--ghost" onClick={onClose} disabled={submitting}>
+                Cancel
+              </button>
+              <button type="button" className="s7-btn s7-btn--primary" onClick={() => void submit()} disabled={submitting}>
+                {submitting ? "Allocating…" : "Allocate"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 

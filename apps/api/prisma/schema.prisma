@@ -617,6 +617,9 @@ model Tender {
   clarificationNotes TenderClarificationNote[]
   cuttingSheetItems CuttingSheetItem[]
   scopeViewConfigs  ScopeViewConfig[]
+  tandC             TenderTandC?
+  assumptions       TenderAssumption[]
+  exclusions        TenderExclusion[]
 
   @@index([status])
   @@index([estimatorUserId])
@@ -2160,4 +2163,45 @@ model CuttingSheetItem {
 
   @@index([tenderId, itemType, sortOrder])
   @@map("cutting_sheet_items")
+}
+
+// ── Quote tab — T&C, Assumptions, Exclusions ────────────────────────────
+// Per-tender editable copies. T&Cs seed from tc-text.const.ts on first read.
+// Assumptions/exclusions pre-populate from IS standards on first list load
+// (handled in the service) if the tender has none yet.
+model TenderTandC {
+  id        String   @id @default(cuid())
+  tenderId  String   @unique @map("tender_id")
+  tender    Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  clauses   Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("tender_tandc")
+}
+
+model TenderAssumption {
+  id        String   @id @default(cuid())
+  tenderId  String   @map("tender_id")
+  tender    Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  text      String
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenderId, sortOrder])
+  @@map("tender_assumptions")
+}
+
+model TenderExclusion {
+  id        String   @id @default(cuid())
+  tenderId  String   @map("tender_id")
+  tender    Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  text      String
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenderId, sortOrder])
+  @@map("tender_exclusions")
 }

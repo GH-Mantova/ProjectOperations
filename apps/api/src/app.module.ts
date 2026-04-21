@@ -18,6 +18,7 @@ import { PermissionsModule } from "./modules/permissions/permissions.module";
 import { PlatformModule } from "./modules/platform/platform.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { ProjectsModule } from "./modules/projects/projects.module";
+import { QuoteModule } from "./modules/quote/quote.module";
 import { ResourcesModule } from "./modules/resources/resources.module";
 import { RolesModule } from "./modules/roles/roles.module";
 import { SecurityModule } from "./modules/security/security.module";
@@ -58,6 +59,7 @@ import { FieldModule } from "./modules/field/field.module";
     MasterDataModule,
     SchedulerModule,
     ProjectsModule,
+    QuoteModule,
     TenderClarificationsModule,
     TenderingModule,
     TenderDocumentsModule,

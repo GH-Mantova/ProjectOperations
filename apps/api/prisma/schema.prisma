@@ -68,6 +68,7 @@ model User {
   approvedTimesheets Timesheet[]        @relation("TimesheetApprover")
   rejectedTimesheets Timesheet[]        @relation("TimesheetRejecter")
   scopeItemsCreated  ScopeOfWorksItem[] @relation("ScopeOfWorksCreatedBy")
+  estimateExports    EstimateExport[]
 
   @@index([isActive])
   @@map("users")
@@ -604,6 +605,7 @@ model Tender {
   scopeRevisions    TenderScopeRevision[]
   scopeItems        ScopeOfWorksItem[]
   scopeHeader       ScopeOfWorksHeader?
+  estimateExports   EstimateExport[]
   projects          Project[]
 
   @@index([status])
@@ -1955,4 +1957,23 @@ model ScopeOfWorksHeader {
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
   @@map("scope_of_works_headers")
+}
+
+// ── Estimate export audit trail (PR #45) ──────────────────────────────────
+// One row per PDF / Excel export. Server-side recalc runs on every export;
+// nothing about the stored lines changes, we just keep a log of who
+// generated what and when so the audit view can surface it.
+model EstimateExport {
+  id          String   @id @default(cuid())
+  tenderId    String   @map("tender_id")
+  tender      Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  type        String
+  generatedAt DateTime @default(now()) @map("generated_at")
+  generatedBy String   @map("generated_by")
+  user        User     @relation(fields: [generatedBy], references: [id], onDelete: Restrict)
+  filePath    String?  @map("file_path")
+  version     Int      @default(1)
+
+  @@index([tenderId])
+  @@map("estimate_exports")
 }

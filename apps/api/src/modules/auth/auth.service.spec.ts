@@ -92,6 +92,9 @@ describe("AuthService", () => {
       password: "Password123!"
     });
 
+    if ("requiresPasswordReset" in result) {
+      throw new Error("Test fixture expected a successful session, got a password-reset envelope");
+    }
     expect(result.accessToken).toBe("token");
     expect(auditService.write).toHaveBeenCalled();
   });

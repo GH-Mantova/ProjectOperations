@@ -268,6 +268,35 @@ export function EstimateEditor({ tenderId, canManage, canAdmin }: { tenderId: st
   const lock = () => mutate(`/tenders/${tenderId}/estimate/lock`, "POST");
   const unlock = () => mutate(`/tenders/${tenderId}/estimate/unlock`, "POST");
 
+  const [isExporting, setIsExporting] = useState(false);
+  const downloadExport = async (kind: "pdf" | "excel") => {
+    setIsExporting(true);
+    try {
+      const response = await authFetch(`/tenders/${tenderId}/export/${kind}`);
+      if (!response.ok) throw new Error(await response.text());
+      const disposition = response.headers.get("content-disposition") ?? "";
+      const nameMatch = /filename="?([^";]+)"?/i.exec(disposition);
+      const fallback = kind === "pdf" ? "IS_Quote.pdf" : "IS_Estimate.xlsx";
+      const filename = nameMatch?.[1] ?? fallback;
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      show(kind === "pdf" ? "Quote PDF generated" : "Estimate exported");
+    } catch (err) {
+      show(`Export failed: ${(err as Error).message}`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+  const exportPdf = () => void downloadExport("pdf");
+  const exportExcel = () => void downloadExport("excel");
+
   const updateEstimateField = (patch: Partial<{ markup: string; notes: string }>) =>
     mutate(`/tenders/${tenderId}/estimate`, "PATCH", patch);
 
@@ -359,11 +388,23 @@ export function EstimateEditor({ tenderId, canManage, canAdmin }: { tenderId: st
             ) : (
               <span className="s7-badge s7-badge--neutral">Draft</span>
             )}
-            <button type="button" className="s7-btn s7-btn--secondary s7-btn--sm" onClick={() => show("Excel export — coming soon")}>
-              Export .xlsx
+            <button
+              type="button"
+              className="s7-btn s7-btn--secondary s7-btn--sm"
+              onClick={exportPdf}
+              disabled={isExporting}
+              style={{ borderColor: "#FEAA6D", color: "#854F0B" }}
+            >
+              {isExporting ? "Generating…" : "Export PDF"}
             </button>
-            <button type="button" className="s7-btn s7-btn--secondary s7-btn--sm" onClick={() => show("PDF preview — coming soon")}>
-              Preview PDF
+            <button
+              type="button"
+              className="s7-btn s7-btn--secondary s7-btn--sm"
+              onClick={exportExcel}
+              disabled={isExporting}
+              style={{ borderColor: "#FEAA6D", color: "#854F0B" }}
+            >
+              Export Excel
             </button>
             {!locked && canManage ? (
               <button type="button" className="s7-btn s7-btn--primary s7-btn--sm" onClick={lock} disabled={saving}>

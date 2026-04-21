@@ -8,6 +8,10 @@ const SINGLETON_ID = "singleton";
 const IV_BYTES = 12;
 const ALGO = "aes-256-gcm";
 
+export type AiProviderName = "anthropic" | "gemini" | "groq";
+
+export const PROVIDER_PRIORITY: AiProviderName[] = ["anthropic", "gemini", "groq"];
+
 @Injectable()
 export class PlatformConfigService {
   constructor(
@@ -17,61 +21,92 @@ export class PlatformConfigService {
   ) {}
 
   async getAnthropicApiKey(): Promise<string | null> {
-    const record = await this.prisma.platformConfig.findUnique({ where: { id: SINGLETON_ID } });
-    if (record?.anthropicApiKey) {
-      try {
-        return this.decrypt(record.anthropicApiKey);
-      } catch {
-        // ignore decrypt error; fall through to env var
-      }
-    }
-    return this.config.get<string>("ANTHROPIC_API_KEY") ?? null;
+    return this.resolveKey("anthropic");
+  }
+
+  async getGeminiApiKey(): Promise<string | null> {
+    return this.resolveKey("gemini");
+  }
+
+  async getGroqApiKey(): Promise<string | null> {
+    return this.resolveKey("groq");
   }
 
   async status() {
     const record = await this.prisma.platformConfig.findUnique({ where: { id: SINGLETON_ID } });
-    const storedKey = record?.anthropicApiKey ? this.tryDecrypt(record.anthropicApiKey) : null;
-    const envKey = this.config.get<string>("ANTHROPIC_API_KEY") ?? null;
-    const effective = storedKey ?? envKey;
+    const anthropic = await this.providerStatus(
+      "anthropic",
+      record?.anthropicApiKey ?? null,
+      record?.anthropicKeyUpdatedAt ?? null
+    );
+    const gemini = await this.providerStatus(
+      "gemini",
+      record?.geminiApiKey ?? null,
+      record?.geminiKeyUpdatedAt ?? null
+    );
+    const groq = await this.providerStatus(
+      "groq",
+      record?.groqApiKey ?? null,
+      record?.groqKeyUpdatedAt ?? null
+    );
+    const preferred = (record?.preferredProvider as AiProviderName | null | undefined) ?? null;
     return {
-      anthropic: {
-        configured: Boolean(effective),
-        source: storedKey ? ("database" as const) : envKey ? ("env" as const) : null,
-        maskedKey: effective ? this.mask(effective) : null,
-        updatedAt: record?.anthropicKeyUpdatedAt ?? null
-      },
-      sharePoint: {
-        mode: this.config.get<string>("SHAREPOINT_MODE", "mock")
-      }
+      anthropic,
+      gemini,
+      groq,
+      preferredProvider: preferred,
+      activeProvider: this.pickActiveProvider({ anthropic, gemini, groq }, preferred),
+      sharePoint: { mode: this.config.get<string>("SHAREPOINT_MODE", "mock") }
     };
   }
 
   async setAnthropicApiKey(rawKey: string, actorId?: string) {
-    const clean = rawKey.trim();
-    if (!clean) throw new Error("API key cannot be empty.");
-    if (!clean.startsWith("sk-ant-")) {
-      throw new Error("Anthropic API keys start with \"sk-ant-\". Double-check the value.");
-    }
-    const encrypted = this.encrypt(clean);
-    await this.prisma.platformConfig.upsert({
-      where: { id: SINGLETON_ID },
-      create: {
-        id: SINGLETON_ID,
-        anthropicApiKey: encrypted,
-        anthropicKeyUpdatedAt: new Date(),
-        updatedById: actorId ?? null
-      },
-      update: {
-        anthropicApiKey: encrypted,
-        anthropicKeyUpdatedAt: new Date(),
-        updatedById: actorId ?? null
-      }
-    });
+    const clean = this.validateKey("anthropic", rawKey);
+    await this.persistKey({ anthropicApiKey: this.encrypt(clean), anthropicKeyUpdatedAt: new Date() }, actorId);
     await this.audit.write({
       actorId,
       action: "platformConfig.anthropicKey.update",
       entityType: "PlatformConfig",
       entityId: SINGLETON_ID
+    });
+    return this.status();
+  }
+
+  async setGeminiApiKey(rawKey: string, actorId?: string) {
+    const clean = this.validateKey("gemini", rawKey);
+    await this.persistKey({ geminiApiKey: this.encrypt(clean), geminiKeyUpdatedAt: new Date() }, actorId);
+    await this.audit.write({
+      actorId,
+      action: "platformConfig.geminiKey.update",
+      entityType: "PlatformConfig",
+      entityId: SINGLETON_ID
+    });
+    return this.status();
+  }
+
+  async setGroqApiKey(rawKey: string, actorId?: string) {
+    const clean = this.validateKey("groq", rawKey);
+    await this.persistKey({ groqApiKey: this.encrypt(clean), groqKeyUpdatedAt: new Date() }, actorId);
+    await this.audit.write({
+      actorId,
+      action: "platformConfig.groqKey.update",
+      entityType: "PlatformConfig",
+      entityId: SINGLETON_ID
+    });
+    return this.status();
+  }
+
+  async setPreferredProvider(provider: AiProviderName | null, actorId?: string) {
+    if (provider !== null && !PROVIDER_PRIORITY.includes(provider)) {
+      throw new Error(`Unknown AI provider "${provider}".`);
+    }
+    await this.persistKey({ preferredProvider: provider }, actorId);
+    await this.audit.write({
+      actorId,
+      action: "platformConfig.preferredProvider.update",
+      entityType: "PlatformConfig",
+      entityId: SINGLETON_ID,
+      metadata: { provider: provider ?? "auto" }
     });
     return this.status();
   }
@@ -99,6 +134,154 @@ export class PlatformConfigService {
     } catch (err) {
       return { ok: false, message: (err as Error).message };
     }
+  }
+
+  async testGeminiKey(): Promise<{ ok: boolean; message: string }> {
+    const key = await this.getGeminiApiKey();
+    if (!key) return { ok: false, message: "No Gemini API key configured." };
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(key)}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ role: "user", parts: [{ text: "ping" }] }],
+            generationConfig: { maxOutputTokens: 8 }
+          })
+        }
+      );
+      if (response.ok) return { ok: true, message: "Connection successful." };
+      const text = await response.text();
+      return { ok: false, message: `Gemini API ${response.status}: ${text.slice(0, 240)}` };
+    } catch (err) {
+      return { ok: false, message: (err as Error).message };
+    }
+  }
+
+  async testGroqKey(): Promise<{ ok: boolean; message: string }> {
+    const key = await this.getGroqApiKey();
+    if (!key) return { ok: false, message: "No Groq API key configured." };
+    try {
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${key}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "llama3-8b-8192",
+          max_tokens: 8,
+          messages: [{ role: "user", content: "ping" }]
+        })
+      });
+      if (response.ok) return { ok: true, message: "Connection successful." };
+      const text = await response.text();
+      return { ok: false, message: `Groq API ${response.status}: ${text.slice(0, 240)}` };
+    } catch (err) {
+      return { ok: false, message: (err as Error).message };
+    }
+  }
+
+  // ── Helpers ─────────────────────────────────────────────────────────
+  private async resolveKey(provider: AiProviderName): Promise<string | null> {
+    const record = await this.prisma.platformConfig.findUnique({ where: { id: SINGLETON_ID } });
+    const stored = this.storedFieldFor(record, provider);
+    if (stored) {
+      const decrypted = this.tryDecrypt(stored);
+      if (decrypted) return decrypted;
+    }
+    return this.config.get<string>(this.envNameFor(provider)) ?? null;
+  }
+
+  private envNameFor(provider: AiProviderName): string {
+    switch (provider) {
+      case "anthropic":
+        return "ANTHROPIC_API_KEY";
+      case "gemini":
+        return "GEMINI_API_KEY";
+      case "groq":
+        return "GROQ_API_KEY";
+    }
+  }
+
+  private storedFieldFor(
+    record: { anthropicApiKey: string | null; geminiApiKey: string | null; groqApiKey: string | null } | null,
+    provider: AiProviderName
+  ): string | null {
+    if (!record) return null;
+    if (provider === "anthropic") return record.anthropicApiKey;
+    if (provider === "gemini") return record.geminiApiKey;
+    return record.groqApiKey;
+  }
+
+  private async providerStatus(
+    provider: AiProviderName,
+    storedEncrypted: string | null,
+    updatedAt: Date | null
+  ) {
+    const storedKey = storedEncrypted ? this.tryDecrypt(storedEncrypted) : null;
+    const envKey = this.config.get<string>(this.envNameFor(provider)) ?? null;
+    const effective = storedKey ?? envKey;
+    return {
+      configured: Boolean(effective),
+      source: storedKey ? ("database" as const) : envKey ? ("env" as const) : null,
+      maskedKey: effective ? this.mask(effective) : null,
+      updatedAt
+    };
+  }
+
+  private pickActiveProvider(
+    s: {
+      anthropic: { configured: boolean };
+      gemini: { configured: boolean };
+      groq: { configured: boolean };
+    },
+    preferred: AiProviderName | null
+  ): AiProviderName | null {
+    if (preferred) {
+      if (preferred === "anthropic" && s.anthropic.configured) return "anthropic";
+      if (preferred === "gemini" && s.gemini.configured) return "gemini";
+      if (preferred === "groq" && s.groq.configured) return "groq";
+    }
+    for (const p of PROVIDER_PRIORITY) {
+      if (p === "anthropic" && s.anthropic.configured) return p;
+      if (p === "gemini" && s.gemini.configured) return p;
+      if (p === "groq" && s.groq.configured) return p;
+    }
+    return null;
+  }
+
+  private validateKey(provider: AiProviderName, raw: string): string {
+    const clean = raw.trim();
+    if (!clean) throw new Error("API key cannot be empty.");
+    if (provider === "anthropic" && !clean.startsWith("sk-ant-")) {
+      throw new Error('Anthropic API keys start with "sk-ant-". Double-check the value.');
+    }
+    if (provider === "groq" && !clean.startsWith("gsk_")) {
+      throw new Error('Groq API keys start with "gsk_". Double-check the value.');
+    }
+    // Gemini keys are arbitrary — no prefix check.
+    return clean;
+  }
+
+  private async persistKey(
+    patch: {
+      anthropicApiKey?: string;
+      anthropicKeyUpdatedAt?: Date;
+      geminiApiKey?: string;
+      geminiKeyUpdatedAt?: Date;
+      groqApiKey?: string;
+      groqKeyUpdatedAt?: Date;
+      preferredProvider?: string | null;
+    },
+    actorId?: string
+  ) {
+    await this.prisma.platformConfig.upsert({
+      where: { id: SINGLETON_ID },
+      create: { id: SINGLETON_ID, ...patch, updatedById: actorId ?? null },
+      update: { ...patch, updatedById: actorId ?? null }
+    });
   }
 
   private encryptionKey(): Buffer {

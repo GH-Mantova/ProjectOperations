@@ -11,13 +11,20 @@ type PlatformConfig = {
   };
 };
 
+type ProviderKey = "anthropic" | "gemini" | "groq";
+type ProviderStatus = {
+  configured: boolean;
+  source: "database" | "env" | null;
+  maskedKey: string | null;
+  updatedAt: string | null;
+};
+
 type PlatformIntegrationsStatus = {
-  anthropic: {
-    configured: boolean;
-    source: "database" | "env" | null;
-    maskedKey: string | null;
-    updatedAt: string | null;
-  };
+  anthropic: ProviderStatus;
+  gemini: ProviderStatus;
+  groq: ProviderStatus;
+  preferredProvider: ProviderKey | null;
+  activeProvider: ProviderKey | null;
   sharePoint: { mode: string };
 };
 
@@ -28,17 +35,58 @@ type SharePointFolder = {
   relativePath: string;
 };
 
+type ProviderDefinition = {
+  key: ProviderKey;
+  label: string;
+  blurb: string;
+  keyPlaceholder: string;
+  testEndpoint: string;
+  patchField: "anthropicApiKey" | "geminiApiKey" | "groqApiKey";
+};
+
+const PROVIDERS: ProviderDefinition[] = [
+  {
+    key: "anthropic",
+    label: "Claude (Anthropic)",
+    blurb: "claude-sonnet-4-6 — primary provider for scope drafting when configured.",
+    keyPlaceholder: "sk-ant-…",
+    testEndpoint: "/admin/platform-config/test-anthropic",
+    patchField: "anthropicApiKey"
+  },
+  {
+    key: "gemini",
+    label: "Gemini (Google)",
+    blurb: "gemini-1.5-flash — falls back to this provider when Claude isn't configured.",
+    keyPlaceholder: "AIza…",
+    testEndpoint: "/admin/platform-config/test-gemini",
+    patchField: "geminiApiKey"
+  },
+  {
+    key: "groq",
+    label: "Groq (Llama 3)",
+    blurb: "llama3-8b-8192 — free-tier fallback provider.",
+    keyPlaceholder: "gsk_…",
+    testEndpoint: "/admin/platform-config/test-groq",
+    patchField: "groqApiKey"
+  }
+];
+
 export function PlatformPage() {
   const { authFetch } = useAuth();
   const [config, setConfig] = useState<PlatformConfig | null>(null);
   const [integrations, setIntegrations] = useState<PlatformIntegrationsStatus | null>(null);
   const [folders, setFolders] = useState<SharePointFolder[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [editingKey, setEditingKey] = useState(false);
+  const [editingKey, setEditingKey] = useState<ProviderKey | null>(null);
   const [newKey, setNewKey] = useState("");
   const [savingKey, setSavingKey] = useState(false);
-  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
-  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<Record<ProviderKey, { ok: boolean; message: string } | null>>({
+    anthropic: null,
+    gemini: null,
+    groq: null
+  });
+  const [testing, setTesting] = useState<ProviderKey | null>(null);
+  const [savingPreferred, setSavingPreferred] = useState(false);
   const [form, setForm] = useState({
     name: "Tendering",
     relativePath: "Project Operations/Tendering",
@@ -65,17 +113,17 @@ export function PlatformPage() {
     load().catch((loadError) => setError((loadError as Error).message));
   }, [load]);
 
-  const saveAnthropicKey = async () => {
+  const saveKey = async (provider: ProviderDefinition) => {
     setSavingKey(true);
     setError(null);
     try {
       const response = await authFetch("/admin/platform-config", {
         method: "PATCH",
-        body: JSON.stringify({ anthropicApiKey: newKey.trim() })
+        body: JSON.stringify({ [provider.patchField]: newKey.trim() })
       });
       if (!response.ok) throw new Error(await response.text());
       setNewKey("");
-      setEditingKey(false);
+      setEditingKey(null);
       await load();
     } catch (err) {
       setError((err as Error).message);
@@ -84,17 +132,38 @@ export function PlatformPage() {
     }
   };
 
-  const testAnthropic = async () => {
-    setTesting(true);
-    setTestResult(null);
+  const testConnection = async (provider: ProviderDefinition) => {
+    setTesting(provider.key);
+    setTestResult((prev) => ({ ...prev, [provider.key]: null }));
     try {
-      const response = await authFetch("/admin/platform-config/test-anthropic", { method: "POST" });
+      const response = await authFetch(provider.testEndpoint, { method: "POST" });
       if (!response.ok) throw new Error(await response.text());
-      setTestResult((await response.json()) as { ok: boolean; message: string });
+      const payload = (await response.json()) as { ok: boolean; message: string };
+      setTestResult((prev) => ({ ...prev, [provider.key]: payload }));
     } catch (err) {
-      setTestResult({ ok: false, message: (err as Error).message });
+      setTestResult((prev) => ({
+        ...prev,
+        [provider.key]: { ok: false, message: (err as Error).message }
+      }));
     } finally {
-      setTesting(false);
+      setTesting(null);
+    }
+  };
+
+  const setPreferredProvider = async (next: ProviderKey | "auto") => {
+    setSavingPreferred(true);
+    setError(null);
+    try {
+      const response = await authFetch("/admin/platform-config", {
+        method: "PATCH",
+        body: JSON.stringify({ preferredProvider: next })
+      });
+      if (!response.ok) throw new Error(await response.text());
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSavingPreferred(false);
     }
   };
 
@@ -118,82 +187,148 @@ export function PlatformPage() {
   return (
     <div className="admin-grid">
       <AppCard title="AI & Integrations" subtitle="Connect external services used across the workspace.">
-        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-              <strong style={{ fontSize: 14 }}>Anthropic API (Claude AI)</strong>
-              {integrations?.anthropic.configured ? (
-                <span className="s7-badge" style={{ background: "#EAF3DE", color: "#3B6D11" }}>Connected ✓</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
+              <strong style={{ fontSize: 14 }}>AI Provider</strong>
+              {integrations?.activeProvider ? (
+                <span className="s7-badge" style={{ background: "#EAF3DE", color: "#3B6D11" }}>
+                  Active: {PROVIDERS.find((p) => p.key === integrations.activeProvider)?.label ?? integrations.activeProvider}
+                </span>
               ) : (
-                <span className="s7-badge" style={{ background: "#FCEBEB", color: "#A32D2D" }}>Not configured</span>
+                <span className="s7-badge" style={{ background: "#FCEBEB", color: "#A32D2D" }}>
+                  None configured
+                </span>
               )}
             </div>
-            {!editingKey ? (
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <span style={{ fontFamily: "monospace", color: "var(--text-muted)" }}>
-                  {integrations?.anthropic.maskedKey ?? "sk-ant-…"}
-                </span>
-                <button type="button" className="s7-btn s7-btn--secondary s7-btn--sm" onClick={() => setEditingKey(true)}>
-                  Update key
-                </button>
-                <button
-                  type="button"
-                  className="s7-btn s7-btn--secondary s7-btn--sm"
-                  onClick={() => void testAnthropic()}
-                  disabled={testing || !integrations?.anthropic.configured}
-                >
-                  {testing ? "Testing…" : "Test connection"}
-                </button>
-                {integrations?.anthropic.source === "env" ? (
-                  <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
-                    (using ANTHROPIC_API_KEY env var — saving a new key here will override)
-                  </span>
-                ) : null}
-              </div>
-            ) : (
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <input
-                  className="s7-input"
-                  type="password"
-                  value={newKey}
-                  onChange={(e) => setNewKey(e.target.value)}
-                  placeholder="sk-ant-..."
-                  style={{ minWidth: 280 }}
-                />
-                <button
-                  type="button"
-                  className="s7-btn s7-btn--primary s7-btn--sm"
-                  onClick={() => void saveAnthropicKey()}
-                  disabled={savingKey || !newKey.trim()}
-                >
-                  {savingKey ? "Saving…" : "Save"}
-                </button>
-                <button
-                  type="button"
-                  className="s7-btn s7-btn--ghost s7-btn--sm"
-                  onClick={() => {
-                    setEditingKey(false);
-                    setNewKey("");
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
-            {testResult ? (
-              <p
-                style={{
-                  fontSize: 12,
-                  color: testResult.ok ? "#3B6D11" : "#A32D2D",
-                  marginTop: 6
-                }}
-              >
-                {testResult.message}
-              </p>
-            ) : null}
+            <p style={{ color: "var(--text-muted)", fontSize: 12, margin: "0 0 8px" }}>
+              Scope drafting routes to the preferred provider when set, otherwise falls back through
+              Claude → Gemini → Groq in order.
+            </p>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {(["auto", "anthropic", "gemini", "groq"] as const).map((value) => {
+                const label = value === "auto" ? "Auto" : PROVIDERS.find((p) => p.key === value)?.label ?? value;
+                const active =
+                  value === "auto"
+                    ? integrations?.preferredProvider == null
+                    : integrations?.preferredProvider === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    className="s7-btn s7-btn--sm"
+                    onClick={() => void setPreferredProvider(value)}
+                    disabled={savingPreferred}
+                    style={{
+                      background: active ? "#FEAA6D" : "transparent",
+                      color: active ? "#1F2937" : "var(--text-primary)",
+                      border: `1px solid ${active ? "#FEAA6D" : "var(--border-subtle, rgba(0,0,0,0.15))"}`,
+                      borderRadius: 999,
+                      padding: "6px 14px",
+                      fontWeight: active ? 600 : 400,
+                      cursor: savingPreferred ? "default" : "pointer"
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          <div>
+          {PROVIDERS.map((provider) => {
+            const status = integrations?.[provider.key];
+            const isEditing = editingKey === provider.key;
+            const result = testResult[provider.key];
+            return (
+              <div
+                key={provider.key}
+                style={{
+                  paddingTop: 12,
+                  borderTop: "1px solid var(--border-subtle, rgba(0,0,0,0.08))"
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
+                  <strong style={{ fontSize: 14 }}>{provider.label}</strong>
+                  {status?.configured ? (
+                    <span className="s7-badge" style={{ background: "#EAF3DE", color: "#3B6D11" }}>Connected ✓</span>
+                  ) : (
+                    <span className="s7-badge" style={{ background: "#FCEBEB", color: "#A32D2D" }}>Not configured</span>
+                  )}
+                  {integrations?.activeProvider === provider.key ? (
+                    <span className="s7-badge" style={{ background: "#FEAA6D", color: "#3E1C00" }}>In use</span>
+                  ) : null}
+                </div>
+                <p style={{ color: "var(--text-muted)", fontSize: 12, margin: "0 0 8px" }}>{provider.blurb}</p>
+                {!isEditing ? (
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <span style={{ fontFamily: "monospace", color: "var(--text-muted)" }}>
+                      {status?.maskedKey ?? provider.keyPlaceholder}
+                    </span>
+                    <button
+                      type="button"
+                      className="s7-btn s7-btn--secondary s7-btn--sm"
+                      onClick={() => {
+                        setEditingKey(provider.key);
+                        setNewKey("");
+                      }}
+                    >
+                      Update key
+                    </button>
+                    <button
+                      type="button"
+                      className="s7-btn s7-btn--secondary s7-btn--sm"
+                      onClick={() => void testConnection(provider)}
+                      disabled={testing !== null || !status?.configured}
+                    >
+                      {testing === provider.key ? "Testing…" : "Test connection"}
+                    </button>
+                    {status?.source === "env" ? (
+                      <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
+                        (using env var — saving a new key here will override)
+                      </span>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <input
+                      className="s7-input"
+                      type="password"
+                      value={newKey}
+                      onChange={(e) => setNewKey(e.target.value)}
+                      placeholder={provider.keyPlaceholder}
+                      style={{ minWidth: 280 }}
+                    />
+                    <button
+                      type="button"
+                      className="s7-btn s7-btn--primary s7-btn--sm"
+                      onClick={() => void saveKey(provider)}
+                      disabled={savingKey || !newKey.trim()}
+                    >
+                      {savingKey ? "Saving…" : "Save"}
+                    </button>
+                    <button
+                      type="button"
+                      className="s7-btn s7-btn--ghost s7-btn--sm"
+                      onClick={() => {
+                        setEditingKey(null);
+                        setNewKey("");
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+                {result ? (
+                  <p style={{ fontSize: 12, color: result.ok ? "#3B6D11" : "#A32D2D", marginTop: 6 }}>
+                    {result.message}
+                  </p>
+                ) : null}
+              </div>
+            );
+          })}
+
+          <div style={{ paddingTop: 12, borderTop: "1px solid var(--border-subtle, rgba(0,0,0,0.08))" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
               <strong style={{ fontSize: 14 }}>SharePoint</strong>
               {integrations?.sharePoint.mode === "live" || integrations?.sharePoint.mode === "graph" ? (

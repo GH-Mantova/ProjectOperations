@@ -71,9 +71,128 @@ function defaultColumnsForDiscipline(discipline: Discipline): string[] {
 
 const ELEVATION_MULTIPLIER: Record<string, number> = {
   Floor: 1.0,
+  Any: 1.0,
   Wall: 1.1,
   Inverted: 2.0
 };
+
+const METHOD_MULTIPLIER: Record<string, number> = {
+  "High-Freq": 1.25,
+  "Low-emission": 1.25
+};
+
+const ANY_ELEVATION_EQUIPMENT = new Set(["Flush-cut", "Ringsaw", "Tracksaw"]);
+const ANY_MATERIAL_EQUIPMENT = new Set(["Flush-cut", "Ringsaw", "Tracksaw"]);
+
+// User-facing material labels → Cutrite table material values. Scope rows
+// use strings like "Concrete (unreinforced)"; the rate table only stores
+// three categorical values.
+function mapUserMaterial(raw: string | null | undefined): string {
+  if (!raw) return "Concrete";
+  const s = raw.toLowerCase();
+  if (s.includes("asphalt")) return "Asphalt";
+  if (s.includes("brick") || s.includes("block") || s.includes("masonry")) return "Brick/Block";
+  return "Concrete";
+}
+
+/**
+ * Implement the spec's 6-step rate resolver. Returns null when no rate
+ * exists for the resolved key (UI shows "—" rather than erroring).
+ */
+export async function resolveCuttingRate(
+  prisma: PrismaService,
+  input: {
+    equipment: string;
+    elevation: string;
+    material: string;
+    depthMm: number;
+    method?: string | null;
+  }
+): Promise<{ baseRate: number; methodMultiplier: number; elevationMultiplier: number; finalRate: number } | null> {
+  const { equipment, depthMm } = input;
+
+  // Steps 1 + 2 — collapse elevation/material into the table's three-level
+  // categorical set. This mirrors the rate-library layout: Demosaw has
+  // separate Floor/Any and Wall/{Concrete,Brick/Block} rows; Roadsaw has
+  // Floor/{Concrete,Asphalt}; everything else is Any/Any.
+  let effectiveElevation = input.elevation;
+  let effectiveMaterial = mapUserMaterial(input.material);
+
+  if (ANY_ELEVATION_EQUIPMENT.has(equipment)) {
+    effectiveElevation = "Any";
+    effectiveMaterial = ANY_MATERIAL_EQUIPMENT.has(equipment) ? "Any" : effectiveMaterial;
+  } else if (equipment === "Demosaw") {
+    if (input.elevation === "Floor") {
+      effectiveElevation = "Floor";
+      effectiveMaterial = "Any";
+    } else {
+      effectiveElevation = "Wall";
+      if (effectiveMaterial !== "Brick/Block") effectiveMaterial = "Concrete";
+    }
+  } else if (equipment === "Roadsaw") {
+    effectiveElevation = "Floor";
+    effectiveMaterial = effectiveMaterial === "Asphalt" ? "Asphalt" : "Concrete";
+  }
+
+  // Step 3 — effective depth.
+  let rateRow: { depthMm: number; ratePerM: unknown } | null = null;
+  if (equipment === "Tracksaw" || equipment === "Flush-cut") {
+    const bucketed = Math.max(25, Math.ceil(depthMm / 25) * 25);
+    rateRow = await prisma.estimateCuttingRate.findFirst({
+      where: {
+        equipment,
+        elevation: effectiveElevation,
+        material: effectiveMaterial,
+        depthMm: bucketed,
+        isActive: true
+      }
+    });
+    // Fall back to the single seeded 25mm row if the bucketed depth isn't
+    // in the table (Tracksaw/Flush-cut only have the one seed row).
+    if (!rateRow) {
+      rateRow = await prisma.estimateCuttingRate.findFirst({
+        where: {
+          equipment,
+          elevation: effectiveElevation,
+          material: effectiveMaterial,
+          depthMm: { gte: 0 },
+          isActive: true
+        }
+      });
+    }
+  } else {
+    rateRow = await prisma.estimateCuttingRate.findFirst({
+      where: {
+        equipment,
+        elevation: effectiveElevation,
+        material: effectiveMaterial,
+        depthMm: { gte: depthMm },
+        isActive: true
+      },
+      orderBy: { depthMm: "asc" }
+    });
+    if (!rateRow) {
+      // If requested depth exceeds the max seeded depth, use the biggest available.
+      rateRow = await prisma.estimateCuttingRate.findFirst({
+        where: {
+          equipment,
+          elevation: effectiveElevation,
+          material: effectiveMaterial,
+          isActive: true
+        },
+        orderBy: { depthMm: "desc" }
+      });
+    }
+  }
+
+  if (!rateRow) return null;
+
+  const baseRate = Number(rateRow.ratePerM);
+  const methodMultiplier = METHOD_MULTIPLIER[input.method ?? ""] ?? 1.0;
+  const elevationMultiplier = ELEVATION_MULTIPLIER[input.elevation] ?? 1.0;
+  const finalRate = baseRate * methodMultiplier * elevationMultiplier;
+  return { baseRate, methodMultiplier, elevationMultiplier, finalRate };
+}
 
 @Injectable()
 export class ScopeRedesignService {
@@ -140,6 +259,7 @@ export class ScopeRedesignService {
       quantityLm?: number | null;
       quantityEach?: number | null;
       shift?: string | null;
+      method?: string | null;
       shiftLoading?: number | null;
       notes?: string | null;
       sortOrder?: number | null;
@@ -166,6 +286,7 @@ export class ScopeRedesignService {
         quantityLm: dto.quantityLm !== undefined && dto.quantityLm !== null ? new Prisma.Decimal(dto.quantityLm) : null,
         quantityEach: dto.quantityEach ?? null,
         shift: dto.shift ?? null,
+        method: dto.method ?? null,
         shiftLoading: dto.shiftLoading !== undefined && dto.shiftLoading !== null ? new Prisma.Decimal(dto.shiftLoading) : null,
         notes: dto.notes ?? null,
         sortOrder: dto.sortOrder ?? 0,
@@ -191,6 +312,7 @@ export class ScopeRedesignService {
       quantityLm: number | null;
       quantityEach: number | null;
       shift: string | null;
+      method: string | null;
       shiftLoading: number | null;
       notes: string | null;
       sortOrder: number | null;
@@ -214,6 +336,7 @@ export class ScopeRedesignService {
             : null,
       quantityEach: dto.quantityEach !== undefined ? dto.quantityEach : existing.quantityEach,
       shift: dto.shift !== undefined ? dto.shift : existing.shift,
+      method: dto.method !== undefined ? dto.method : existing.method,
       shiftLoading:
         dto.shiftLoading !== undefined
           ? dto.shiftLoading
@@ -241,6 +364,7 @@ export class ScopeRedesignService {
               : new Prisma.Decimal(dto.quantityLm),
         quantityEach: dto.quantityEach,
         shift: dto.shift,
+        method: dto.method,
         shiftLoading:
           dto.shiftLoading === undefined
             ? undefined
@@ -342,46 +466,51 @@ export class ScopeRedesignService {
     quantityLm?: number | null;
     quantityEach?: number | null;
     shiftLoading?: number | null;
+    method?: string | null;
   }): Promise<{
     ratePerM: Prisma.Decimal | null;
     ratePerHole: Prisma.Decimal | null;
     lineTotal: Prisma.Decimal | null;
   }> {
     const shiftLoading = dto.shiftLoading !== undefined && dto.shiftLoading !== null ? Number(dto.shiftLoading) : 0;
+
     if (dto.itemType === "saw-cut") {
-      if (!dto.equipment || !dto.material || !dto.depthMm) {
+      if (!dto.equipment || !dto.depthMm) {
         return { ratePerM: null, ratePerHole: null, lineTotal: null };
       }
-      const elevation = dto.elevation ?? "Floor";
-      const rate = await this.prisma.estimateCuttingRate.findFirst({
-        where: {
-          equipment: dto.equipment,
-          elevation,
-          material: dto.material,
-          depthMm: { lte: dto.depthMm },
-          isActive: true
-        },
-        orderBy: { depthMm: "desc" }
+      const resolved = await resolveCuttingRate(this.prisma, {
+        equipment: dto.equipment,
+        elevation: dto.elevation ?? "Floor",
+        material: dto.material ?? "Concrete",
+        depthMm: dto.depthMm,
+        method: dto.method ?? null
       });
-      if (!rate) return { ratePerM: null, ratePerHole: null, lineTotal: null };
-      const multiplier = ELEVATION_MULTIPLIER[elevation] ?? 1.0;
+      if (!resolved) return { ratePerM: null, ratePerHole: null, lineTotal: null };
       const qty = Number(dto.quantityLm ?? 0);
-      const total = qty * Number(rate.ratePerM) * multiplier + shiftLoading;
+      const total = qty * resolved.finalRate + shiftLoading;
       return {
-        ratePerM: rate.ratePerM,
+        ratePerM: new Prisma.Decimal(resolved.finalRate.toFixed(4)),
         ratePerHole: null,
         lineTotal: new Prisma.Decimal(total.toFixed(2))
       };
     }
-    // core-hole
+
+    // core-hole: rate per 10mm depth × depth × qty × elevation × method + shift loading
     if (!dto.diameterMm) return { ratePerM: null, ratePerHole: null, lineTotal: null };
     const rate = await this.prisma.estimateCoreHoleRate.findUnique({ where: { diameterMm: dto.diameterMm } });
     if (!rate) return { ratePerM: null, ratePerHole: null, lineTotal: null };
+    const depthMm = dto.depthMm && dto.depthMm > 0 ? dto.depthMm : 0;
+    const depthUnits = depthMm / 10; // rate is $/hole per 10mm depth
     const qty = dto.quantityEach ?? 0;
-    const total = qty * Number(rate.ratePerHole) + shiftLoading;
+    const elevationMultiplier = ELEVATION_MULTIPLIER[dto.elevation ?? "Floor"] ?? 1.0;
+    const methodMultiplier = METHOD_MULTIPLIER[dto.method ?? ""] ?? 1.0;
+    const total = Number(rate.ratePerHole) * depthUnits * qty * elevationMultiplier * methodMultiplier + shiftLoading;
+    // ratePerHole stored as the base rate (per 10mm). Final-rate-inclusive
+    // per-hole rate is surfaced to the UI via lineTotal/qty for display.
+    const finalPerHoleRate = Number(rate.ratePerHole) * depthUnits * elevationMultiplier * methodMultiplier;
     return {
       ratePerM: null,
-      ratePerHole: rate.ratePerHole,
+      ratePerHole: new Prisma.Decimal(finalPerHoleRate.toFixed(4)),
       lineTotal: new Prisma.Decimal(total.toFixed(2))
     };
   }

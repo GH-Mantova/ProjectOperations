@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { NewContractModal } from "./NewContractModal";
 
 type ContractRow = {
   id: string;
@@ -42,6 +43,7 @@ export function ContractsListPage() {
   const [statusFilter, setStatusFilter] = useState<ContractRow["status"] | "ALL">("ALL");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [newOpen, setNewOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -71,9 +73,13 @@ export function ContractsListPage() {
           </p>
         </div>
         {canManage ? (
-          <Link to="/contracts/new" className="s7-btn s7-btn--primary">+ New contract</Link>
+          <button type="button" className="s7-btn s7-btn--primary" onClick={() => setNewOpen(true)}>
+            + New contract
+          </button>
         ) : null}
       </header>
+
+      {newOpen ? <NewContractModal onClose={() => setNewOpen(false)} /> : null}
 
       <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
         {(["ALL", "ACTIVE", "PRACTICAL_COMPLETION", "DEFECTS", "CLOSED"] as const).map((s) => {

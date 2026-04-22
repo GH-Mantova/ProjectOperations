@@ -1,5 +1,7 @@
 import { BarChartWidget, DonutChartWidget, LineChartWidget, Skeleton } from "@project-ops/ui";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../auth/AuthContext";
 import {
   isComplianceTender,
   useJobs,
@@ -280,4 +282,36 @@ export function MaintenanceBar(props: WidgetProps) {
     );
   }
   return <BarChartWidget title="Upcoming maintenance by asset" data={points} unit="days" color="#F59E0B" />;
+}
+
+type ContractDashboardRow = { id: string; status: string; contractValue: string };
+
+// Active Contracts KPI — count of ACTIVE contracts + total contract value.
+// Clicking navigates to /contracts so the user can drill into the list.
+export function ActiveContractsKpi() {
+  const { authFetch } = useAuth();
+  const navigate = useNavigate();
+  const { data, isLoading } = useQuery({
+    queryKey: ["dashboard", "active-contracts"],
+    queryFn: async () => {
+      const response = await authFetch("/contracts?status=ACTIVE");
+      if (!response.ok) return [] as ContractDashboardRow[];
+      return (await response.json()) as ContractDashboardRow[];
+    },
+    staleTime: 30_000
+  });
+  if (isLoading) return <KpiTile label="Active contracts" value="—" />;
+  const rows = data ?? [];
+  const totalValue = rows.reduce((s, r) => s + Number(r.contractValue ?? 0), 0);
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => navigate("/contracts")}
+      onKeyDown={(e) => (e.key === "Enter" || e.key === " " ? navigate("/contracts") : null)}
+      style={{ cursor: "pointer" }}
+    >
+      <KpiTile label="Active contracts" value={rows.length} subtitle={formatCompactCurrency(totalValue)} accent="#005B61" />
+    </div>
+  );
 }

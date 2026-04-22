@@ -56,6 +56,7 @@ const FIELDS_TIMESHEETS_PENDING: WidgetField[] = [
 ];
 import {
   ActiveJobsKpi,
+  ActiveContractsKpi,
   ActiveProjectsKpi,
   FormSubmissionsBar,
   JobsByStatusDonut,
@@ -131,6 +132,20 @@ export const WIDGETS: WidgetMeta[] = [
     component: TimesheetsPendingKpi
   },
   { type: "ops_tender_pipeline_kpi", name: "Tender pipeline value", category: "operations", size: "kpi", description: "Sum value of non-terminal tenders.", component: TenderPipelineKpi },
+  {
+    type: "fin_contracts_summary_kpi",
+    name: "Active contracts",
+    category: "tendering",
+    size: "kpi",
+    description: "Count of ACTIVE contracts and their total contract value. Click to open /contracts.",
+    defaultColSpan: 1,
+    defaultRowSpan: 1,
+    minColSpan: 1,
+    minRowSpan: 1,
+    maxColSpan: 2,
+    maxRowSpan: 2,
+    component: ActiveContractsKpi
+  },
   { type: "ops_open_issues_kpi", name: "Open issues", category: "operations", size: "kpi", description: "Job issues with status OPEN across all jobs.", component: OpenIssuesKpi },
   { type: "ops_upcoming_maintenance_kpi", name: "Upcoming maintenance", category: "operations", size: "kpi", description: "Maintenance plans due in the next 7 days.", component: UpcomingMaintenanceKpi },
   {

@@ -457,7 +457,11 @@ type ClientFormState = {
   email: string;
   phone: string;
   notes: string;
+  claimCutoffDay: string;
+  claimCutoffContactId: string;
 };
+
+type ClientContactOption = { id: string; firstName: string; lastName: string; email: string | null };
 
 type ClientSlideOverProps = {
   existing: Client | null;
@@ -473,8 +477,25 @@ function ClientSlideOver({ existing, onClose, onSaved }: ClientSlideOverProps) {
     status: existing?.status ?? "ACTIVE",
     email: existing?.email ?? "",
     phone: existing?.phone ?? "",
-    notes: existing?.notes ?? ""
+    notes: existing?.notes ?? "",
+    claimCutoffDay:
+      (existing as unknown as { claimCutoffDay?: number | null } | null)?.claimCutoffDay?.toString() ?? "",
+    claimCutoffContactId:
+      (existing as unknown as { claimCutoffContactId?: string | null } | null)?.claimCutoffContactId ?? ""
   });
+  const [contactOptions, setContactOptions] = useState<ClientContactOption[]>([]);
+  useEffect(() => {
+    if (!existing?.id) return;
+    let cancelled = false;
+    void authFetch(`/master-data/contacts?clientId=${existing.id}&pageSize=50`).then(async (r) => {
+      if (!r.ok || cancelled) return;
+      const body = (await r.json()) as { items?: ClientContactOption[] };
+      if (!cancelled) setContactOptions(body.items ?? []);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch, existing?.id]);
   const [errors, setErrors] = useState<Partial<Record<keyof ClientFormState | "form", string>>>({});
   const [submitting, setSubmitting] = useState(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -500,13 +521,16 @@ function ClientSlideOver({ existing, onClose, onSaved }: ClientSlideOverProps) {
     if (!validate()) return;
     setSubmitting(true);
     try {
+      const cutoffDay = form.claimCutoffDay.trim() === "" ? null : parseInt(form.claimCutoffDay, 10);
       const payload = {
         name: form.name.trim(),
         code: form.code.trim() || undefined,
         status: form.status,
         email: form.email.trim() || undefined,
         phone: form.phone.trim() || undefined,
-        notes: form.notes.trim() || undefined
+        notes: form.notes.trim() || undefined,
+        claimCutoffDay: Number.isNaN(cutoffDay as number) ? null : cutoffDay,
+        claimCutoffContactId: form.claimCutoffContactId || null
       };
       const response = await authFetch(existing ? `/master-data/clients/${existing.id}` : "/master-data/clients", {
         method: existing ? "PATCH" : "POST",
@@ -582,6 +606,45 @@ function ClientSlideOver({ existing, onClose, onSaved }: ClientSlideOverProps) {
             <label className="tender-form__field">
               <span className="s7-type-label">Commercial notes</span>
               <textarea className="s7-textarea" rows={4} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+            </label>
+          </fieldset>
+
+          <fieldset className="mdata-fieldset">
+            <legend>Progress claims</legend>
+            <label className="tender-form__field">
+              <span className="s7-type-label">Monthly claim cut-off</span>
+              <input
+                className="s7-input"
+                type="number"
+                min={1}
+                max={28}
+                placeholder="Not set"
+                value={form.claimCutoffDay}
+                onChange={(e) => setForm({ ...form, claimCutoffDay: e.target.value })}
+                style={{ maxWidth: 120 }}
+              />
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                Progress claims for this client are due by this day of each month.
+              </span>
+            </label>
+            <label className="tender-form__field">
+              <span className="s7-type-label">Reminder contact</span>
+              <select
+                className="s7-input"
+                value={form.claimCutoffContactId}
+                onChange={(e) => setForm({ ...form, claimCutoffContactId: e.target.value })}
+                disabled={contactOptions.length === 0}
+              >
+                <option value="">— none —</option>
+                {contactOptions.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.firstName} {c.lastName}{c.email ? ` · ${c.email}` : ""}
+                  </option>
+                ))}
+              </select>
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                Receives a 7-day advance email reminder before each cut-off date.
+              </span>
             </label>
           </fieldset>
 

@@ -315,37 +315,47 @@ export function EstimateRatesAdminPage() {
             />
           )}
           {tab === "cutting" && (
-            <RatesTable
-              rows={cuttingFiltered}
-              columns={[
-                { key: "equipment", label: "Equipment", type: "text", widthPct: 18 },
-                { key: "elevation", label: "Elevation", type: "text", widthPct: 14 },
-                { key: "material", label: "Material", type: "text", widthPct: 20 },
-                { key: "depthMm", label: "Depth (mm)", type: "number", step: "1", widthPct: 14 },
-                { key: "ratePerM", label: "$/m", type: "number", step: "0.0001", render: currency, widthPct: 18 }
-              ]}
-              basePath="/estimate-rates/cutting"
-              addDefaults={{ equipment: "Roadsaw", elevation: "Floor", material: "Concrete", depthMm: 100, ratePerM: "0" }}
-              deleteLabel={(r) => `${r.equipment} / ${r.material} / ${r.depthMm}mm / ${r.elevation}`}
-              canAdmin={canAdmin}
-              saving={saving}
-              callApi={callApi}
-            />
+            <>
+              <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 0 }}>
+                Rates shown are base rates. High-Freq / Low-emission method adds 25%. Wall elevation adds 10%. Inverted elevation doubles the rate. These multipliers are applied at cutting-sheet save time.
+              </p>
+              <RatesTable
+                rows={cuttingFiltered}
+                columns={[
+                  { key: "equipment", label: "Equipment", type: "text", widthPct: 18 },
+                  { key: "elevation", label: "Elevation", type: "text", widthPct: 14 },
+                  { key: "material", label: "Material", type: "text", widthPct: 20 },
+                  { key: "depthMm", label: "Depth (mm)", type: "number", step: "1", widthPct: 14 },
+                  { key: "ratePerM", label: "$/m", type: "number", step: "0.0001", render: currency, widthPct: 18 }
+                ]}
+                basePath="/estimate-rates/cutting"
+                addDefaults={{ equipment: "Roadsaw", elevation: "Floor", material: "Concrete", depthMm: 100, ratePerM: "0" }}
+                deleteLabel={(r) => `${r.equipment} / ${r.material} / ${r.depthMm}mm / ${r.elevation}`}
+                canAdmin={canAdmin}
+                saving={saving}
+                callApi={callApi}
+              />
+            </>
           )}
           {tab === "coreholes" && (
-            <RatesTable
-              rows={coreHolesFiltered}
-              columns={[
-                { key: "diameterMm", label: "Diameter (mm)", type: "number", step: "1", widthPct: 40 },
-                { key: "ratePerHole", label: "$/hole", type: "number", step: "0.0001", render: currency, widthPct: 40 }
-              ]}
-              basePath="/estimate-rates/core-holes"
-              addDefaults={{ diameterMm: 100, ratePerHole: "0" }}
-              deleteLabel={(r) => `${r.diameterMm} mm`}
-              canAdmin={canAdmin}
-              saving={saving}
-              callApi={callApi}
-            />
+            <>
+              <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 0 }}>
+                Rate is per 10mm depth. Final cost = rate × (depth ÷ 10) × quantity × elevation multiplier × method multiplier.
+              </p>
+              <RatesTable
+                rows={coreHolesFiltered}
+                columns={[
+                  { key: "diameterMm", label: "Diameter (mm)", type: "number", step: "1", widthPct: 40 },
+                  { key: "ratePerHole", label: "$/hole per 10mm", type: "number", step: "0.0001", render: currency, widthPct: 40 }
+                ]}
+                basePath="/estimate-rates/core-holes"
+                addDefaults={{ diameterMm: 100, ratePerHole: "0" }}
+                deleteLabel={(r) => `${r.diameterMm} mm`}
+                canAdmin={canAdmin}
+                saving={saving}
+                callApi={callApi}
+              />
+            </>
           )}
           {tab === "fuel" && (
             <RatesTable

@@ -21,6 +21,7 @@ type CuttingItem = {
   lineTotal: string | null;
   shift: string | null;
   shiftLoading: string | null;
+  method: string | null;
   notes: string | null;
   sortOrder: number;
 };
@@ -30,6 +31,7 @@ const ELEVATIONS = ["Floor", "Wall", "Inverted"];
 const SAW_MATERIALS = ["Concrete unreinforced", "Concrete reinforced", "Masonry", "Asphalt"];
 const CORE_DIAMETERS = [32, 50, 75, 100, 150, 200, 250, 300, 400, 500, 650];
 const SHIFTS = ["Day", "Night", "Weekend"];
+const METHODS = ["N/A", "High-Freq", "Low-emission", "Fuel"];
 
 function fmt(n: string | number | null | undefined): string {
   if (n === null || n === undefined) return "—";
@@ -200,7 +202,7 @@ function SawCutTable({ items, wbsRefs, canManage, patch, remove }: RowProps) {
     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
       <thead style={{ background: "var(--surface-muted, #F6F6F6)" }}>
         <tr>
-          {["WBS", "Description", "Equipment", "Elevation", "Material", "Depth mm", "Qty Lm", "Rate $/m", "Shift", "Loading $", "Line total", "Notes", ""].map((h) => (
+          {["WBS", "Description", "Equipment", "Elevation", "Material", "Depth mm", "Qty Lm", "Rate $/m", "Shift", "Method", "Loading $", "Line total", "Notes", ""].map((h) => (
             <th key={h} style={{ padding: "8px 6px", textAlign: "left", fontWeight: 600 }}>{h}</th>
           ))}
         </tr>
@@ -298,6 +300,17 @@ function SawCutTable({ items, wbsRefs, canManage, patch, remove }: RowProps) {
                 </select>
               </td>
               <td style={{ padding: 4 }}>
+                <select
+                  className="s7-input"
+                  value={item.method ?? "N/A"}
+                  disabled={!canManage}
+                  style={{ width: 110 }}
+                  onChange={(e) => void patch(item.id, { method: e.target.value === "N/A" ? null : e.target.value })}
+                >
+                  {METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </td>
+              <td style={{ padding: 4 }}>
                 {showLoading ? (
                   <input
                     className="s7-input"
@@ -339,7 +352,7 @@ function CoreHoleTable({ items, wbsRefs, canManage, patch, remove }: RowProps) {
     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
       <thead style={{ background: "var(--surface-muted, #F6F6F6)" }}>
         <tr>
-          {["WBS", "Description", "Diameter mm", "Quantity", "Rate $/hole", "Shift", "Loading $", "Line total", "Notes", ""].map((h) => (
+          {["WBS", "Description", "Diameter mm", "Depth mm", "Quantity", "Rate $/hole", "Shift", "Method", "Loading $", "Line total", "Notes", ""].map((h) => (
             <th key={h} style={{ padding: "8px 6px", textAlign: "left", fontWeight: 600 }}>{h}</th>
           ))}
         </tr>
@@ -403,6 +416,16 @@ function CoreHoleTable({ items, wbsRefs, canManage, patch, remove }: RowProps) {
                 <input
                   className="s7-input"
                   type="number"
+                  defaultValue={item.depthMm ?? ""}
+                  disabled={!canManage}
+                  style={{ width: 80 }}
+                  onBlur={(e) => void patch(item.id, { depthMm: numOrNull(e.target.value) })}
+                />
+              </td>
+              <td style={{ padding: 4 }}>
+                <input
+                  className="s7-input"
+                  type="number"
                   defaultValue={item.quantityEach ?? ""}
                   disabled={!canManage}
                   style={{ width: 80 }}
@@ -418,6 +441,17 @@ function CoreHoleTable({ items, wbsRefs, canManage, patch, remove }: RowProps) {
                   onChange={(e) => void patch(item.id, { shift: e.target.value })}
                 >
                   {SHIFTS.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </td>
+              <td style={{ padding: 4 }}>
+                <select
+                  className="s7-input"
+                  value={item.method ?? "N/A"}
+                  disabled={!canManage}
+                  style={{ width: 110 }}
+                  onChange={(e) => void patch(item.id, { method: e.target.value === "N/A" ? null : e.target.value })}
+                >
+                  {METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
                 </select>
               </td>
               <td style={{ padding: 4 }}>

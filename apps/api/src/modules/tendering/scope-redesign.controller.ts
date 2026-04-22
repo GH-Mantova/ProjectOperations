@@ -25,6 +25,7 @@ class CreateCuttingItemDto {
   @IsOptional() @Type(() => Number) @IsNumber() quantityLm?: number;
   @IsOptional() @IsInt() quantityEach?: number;
   @IsOptional() @IsString() shift?: string;
+  @IsOptional() @IsString() method?: string;
   @IsOptional() @Type(() => Number) @IsNumber() shiftLoading?: number;
   @IsOptional() @IsString() notes?: string;
   @IsOptional() @IsInt() sortOrder?: number;
@@ -42,6 +43,7 @@ class UpdateCuttingItemDto {
   @IsOptional() @Type(() => Number) @IsNumber() quantityLm?: number | null;
   @IsOptional() @IsInt() quantityEach?: number | null;
   @IsOptional() @IsString() shift?: string | null;
+  @IsOptional() @IsString() method?: string | null;
   @IsOptional() @Type(() => Number) @IsNumber() shiftLoading?: number | null;
   @IsOptional() @IsString() notes?: string | null;
   @IsOptional() @IsInt() sortOrder?: number | null;

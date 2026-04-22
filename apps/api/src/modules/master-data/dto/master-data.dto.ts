@@ -2,8 +2,11 @@ import {
   IsArray,
   IsBoolean,
   IsDateString,
+  IsInt,
   IsOptional,
-  IsString
+  IsString,
+  Max,
+  Min
 } from "class-validator";
 
 export class UpsertClientDto {
@@ -14,6 +17,8 @@ export class UpsertClientDto {
   @IsOptional() @IsString() email?: string;
   @IsOptional() @IsString() phone?: string;
   @IsOptional() @IsString() notes?: string;
+  @IsOptional() @IsInt() @Min(1) @Max(28) claimCutoffDay?: number | null;
+  @IsOptional() @IsString() claimCutoffContactId?: string | null;
 }
 
 export class UpsertContactDto {

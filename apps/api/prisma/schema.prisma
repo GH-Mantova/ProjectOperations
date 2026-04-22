@@ -2168,6 +2168,7 @@ model CuttingSheetItem {
   lineTotal     Decimal? @db.Decimal(12, 2) @map("line_total")
   shift         String?
   shiftLoading  Decimal? @db.Decimal(10, 2) @map("shift_loading")
+  method        String?  // High-Freq | Low-emission | Fuel | N/A — applied as ×1.25 for High-Freq / Low-emission
   notes         String?
   sortOrder     Int      @default(0) @map("sort_order")
   createdById   String   @map("created_by_id")

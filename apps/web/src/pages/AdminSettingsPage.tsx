@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { AdminUsersTab } from "./admin/AdminUsersTab";
 
 type Trigger = {
   id: string;
@@ -34,6 +35,7 @@ type EmailConfig = {
 const TABS = [
   { id: "notifications", label: "Notifications" },
   { id: "email", label: "Email" },
+  { id: "users", label: "Users" },
   { id: "ai", label: "AI & Integrations" },
   { id: "platform", label: "Platform" },
   { id: "permissions", label: "Permissions" },
@@ -86,8 +88,21 @@ export function AdminSettingsPage() {
         <div>
           {tab === "notifications" && <NotificationsTab />}
           {tab === "email" && <EmailTab />}
-          {tab === "ai" && <IntegrationTab href="/admin/platform" label="AI provider configuration" />}
-          {tab === "platform" && <IntegrationTab href="/admin/platform" label="Platform integrations (SharePoint, etc.)" />}
+          {tab === "users" && <AdminUsersTab />}
+          {tab === "ai" && (
+            <IntegrationTab
+              href="/admin/platform"
+              label="AI provider configuration"
+              body="Manage Anthropic, Gemini, Groq, and OpenAI API keys and the preferred provider for scope drafting. Personal AI keys live on each user's /account page."
+            />
+          )}
+          {tab === "platform" && (
+            <IntegrationTab
+              href="/admin/platform"
+              label="Platform integrations — SharePoint"
+              body="SharePoint tenant, site, and library bindings plus the root folder tree used by Project Operations. SHAREPOINT_MODE is set by environment."
+            />
+          )}
           {tab === "permissions" && (
             <StubCard title="Role & permission management" body="Coming soon." />
           )}
@@ -98,13 +113,11 @@ export function AdminSettingsPage() {
   );
 }
 
-function IntegrationTab({ href, label }: { href: string; label: string }) {
+function IntegrationTab({ href, label, body }: { href: string; label: string; body: string }) {
   return (
     <section className="s7-card">
       <h2 className="s7-type-section-heading" style={{ marginTop: 0 }}>{label}</h2>
-      <p style={{ color: "var(--text-muted)" }}>
-        Existing admin surface. Manage integrations on the full page at <Link to={href}>{href}</Link>.
-      </p>
+      <p style={{ color: "var(--text-muted)" }}>{body}</p>
       <Link to={href} className="s7-btn s7-btn--primary">Open settings</Link>
     </section>
   );

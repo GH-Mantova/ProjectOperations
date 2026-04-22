@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { EmailService } from "../email/email.service";
 import { NotificationsService } from "../platform/notifications.service";
 import { CreateAllocationDto } from "./dto/create-allocation.dto";
 import { UpdateAllocationDto } from "./dto/update-allocation.dto";
@@ -17,7 +18,8 @@ function formatDateDdMmmYyyy(date: Date): string {
 export class AllocationsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly notifications: NotificationsService
+    private readonly notifications: NotificationsService,
+    private readonly email: EmailService
   ) {}
 
   async listForProject(projectId: string) {
@@ -169,6 +171,16 @@ export class AllocationsService {
         } satisfies Prisma.InputJsonValue
       }
     });
+
+    if (dto.type === "WORKER") {
+      // Fire-and-forget email; sendNotificationEmail swallows its own errors.
+      void this.email.sendNotificationEmail({
+        trigger: "worker.allocated",
+        subject: `Worker allocated — ${targetName} on ${project.projectNumber}`,
+        html: `<p><strong>${targetName}</strong> has been allocated to <strong>${project.projectNumber} — ${project.name}</strong>.</p><p>Role: ${dto.roleOnProject ?? "—"}</p><p>Start date: ${formatDateDdMmmYyyy(startDate)}</p>`,
+        text: `${targetName} allocated to ${project.projectNumber}. Role: ${dto.roleOnProject ?? "—"}. Start: ${formatDateDdMmmYyyy(startDate)}.`
+      });
+    }
 
     if (dto.type === "WORKER" && allocation.workerProfile?.internalUserId) {
       await this.notifications.create(

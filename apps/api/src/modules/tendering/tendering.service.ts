@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
+import { EmailService } from "../email/email.service";
 import { TenderQueryDto } from "./dto/tender-query.dto";
 import {
   CreateTenderActivityDto,
@@ -84,7 +85,8 @@ const tenderInclude = {
 export class TenderingService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly auditService: AuditService
+    private readonly auditService: AuditService,
+    private readonly email: EmailService
   ) {}
 
   async list(query: TenderQueryDto) {
@@ -243,6 +245,21 @@ export class TenderingService {
       entityId: id,
       metadata: { from: existing.status, to: status }
     });
+
+    // Fire-and-forget email for the SUBMITTED transition only. sendNotificationEmail
+    // already swallows errors internally but the Promise is still detached here
+    // so a slow SMTP never blocks the write path.
+    if (status === "SUBMITTED" && existing.status !== "SUBMITTED") {
+      const clientName = tender.tenderClients[0]?.client?.name ?? "(no client)";
+      const value = tender.estimatedValue ? `$${Number(tender.estimatedValue).toLocaleString("en-AU")}` : "TBA";
+      void this.email.sendNotificationEmail({
+        trigger: "tender.submitted",
+        subject: `Tender submitted — ${tender.tenderNumber} ${tender.title}`,
+        html: `<p>Tender <strong>${tender.tenderNumber} — ${tender.title}</strong> has been submitted.</p><p>Client: ${clientName}</p><p>Estimated value: ${value}</p>`,
+        text: `Tender ${tender.tenderNumber} — ${tender.title} submitted. Client: ${clientName}. Value: ${value}.`
+      });
+    }
+
     return tender;
   }
 

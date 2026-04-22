@@ -75,6 +75,7 @@ model User {
   listItemsCreated   GlobalListItem[]   @relation("GlobalListItemCreatedBy")
   clarificationNotesCreated TenderClarificationNote[] @relation("TenderClarificationNoteAuthor")
   cuttingSheetItemsCreated  CuttingSheetItem[]        @relation("CuttingSheetItemCreatedBy")
+  emailProviderConfigUpdates EmailProviderConfig[]
 
   @@index([isActive])
   @@map("users")
@@ -2208,4 +2209,41 @@ model TenderExclusion {
 
   @@index([tenderId, sortOrder])
   @@map("tender_exclusions")
+}
+
+// ── Admin Settings ──────────────────────────────────────────────────────
+// One row per notification trigger. isEnabled=false means "system-wide off"
+// — even if an individual user opts in via their /account page they still
+// won't receive it. Recipients are a union of role-based (roleNames) and
+// user-id-based (recipientUserIds) addressees.
+model NotificationTriggerConfig {
+  id               String   @id @default(cuid())
+  trigger          String   @unique
+  label            String
+  description      String
+  isEnabled        Boolean  @default(false) @map("is_enabled")
+  deliveryMethod   String   @default("both") @map("delivery_method")
+  recipientRoles   String[] @map("recipient_roles")
+  recipientUserIds String[] @map("recipient_user_ids")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@map("notification_trigger_configs")
+}
+
+// Singleton row (id="singleton") holding the active email provider + sender
+// identity. Provider credentials themselves continue to live in env vars
+// (SHAREPOINT_* doubles as Graph Mail credentials in practice), so this
+// model only stores the mutable presentation/selection details.
+model EmailProviderConfig {
+  id            String   @id @default("singleton")
+  provider      String   @default("outlook")
+  senderAddress String   @default("marco@initialservices.net") @map("sender_address")
+  senderName    String   @default("Initial Services") @map("sender_name")
+  isConfigured  Boolean  @default(false) @map("is_configured")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  updatedById   String?  @map("updated_by_id")
+  updatedBy     User?    @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("email_provider_config")
 }

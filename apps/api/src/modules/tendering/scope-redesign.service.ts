@@ -81,6 +81,27 @@ const METHOD_MULTIPLIER: Record<string, number> = {
   "Low-emission": 1.25
 };
 
+// Server-enforced per-equipment method allowlist. Anything outside the
+// allowlist is coerced to null (no multiplier) so a stale or malformed
+// client request can't ask for a rate combination that doesn't exist in
+// the Cutrite schedule.
+const METHODS_BY_EQUIPMENT: Record<string, Set<string>> = {
+  Roadsaw: new Set(["Fuel", "Low-emission"]),
+  Demosaw: new Set(["High-Freq", "Fuel"]),
+  Ringsaw: new Set(["High-Freq", "Fuel"]),
+  "Flush-cut": new Set(["High-Freq", "Fuel"]),
+  Tracksaw: new Set(["Fuel"])
+};
+
+// Saw cuts cap at Wall — Inverted only applies to core holes. If a stale
+// frontend sends Inverted on a saw cut we collapse to Floor so the rate
+// still resolves against a Floor-rowed rate table.
+function sanitiseSawElevation(equipment: string, elevation: string): string {
+  if (equipment === "Roadsaw") return "Floor"; // Roadsaw is Floor-only per Cutrite
+  if (elevation === "Inverted") return "Floor";
+  return elevation;
+}
+
 const ANY_ELEVATION_EQUIPMENT = new Set(["Flush-cut", "Ringsaw", "Tracksaw"]);
 const ANY_MATERIAL_EQUIPMENT = new Set(["Flush-cut", "Ringsaw", "Tracksaw"]);
 
@@ -111,18 +132,28 @@ export async function resolveCuttingRate(
 ): Promise<{ baseRate: number; methodMultiplier: number; elevationMultiplier: number; finalRate: number } | null> {
   const { equipment, depthMm } = input;
 
+  // Sanitise the inbound elevation against the saw-cut rule that Inverted
+  // only applies to core holes. Roadsaw is additionally pinned to Floor.
+  const requestedElevation = sanitiseSawElevation(equipment, input.elevation);
+
+  // Method allowlist per equipment (Roadsaw doesn't support High-Freq,
+  // Tracksaw doesn't support High-Freq, etc). Unsupported methods are
+  // dropped rather than raising — the client may be stale.
+  const allowed = METHODS_BY_EQUIPMENT[equipment] ?? new Set<string>();
+  const effectiveMethod = input.method && allowed.has(input.method) ? input.method : null;
+
   // Steps 1 + 2 — collapse elevation/material into the table's three-level
   // categorical set. This mirrors the rate-library layout: Demosaw has
   // separate Floor/Any and Wall/{Concrete,Brick/Block} rows; Roadsaw has
   // Floor/{Concrete,Asphalt}; everything else is Any/Any.
-  let effectiveElevation = input.elevation;
+  let effectiveElevation = requestedElevation;
   let effectiveMaterial = mapUserMaterial(input.material);
 
   if (ANY_ELEVATION_EQUIPMENT.has(equipment)) {
     effectiveElevation = "Any";
     effectiveMaterial = ANY_MATERIAL_EQUIPMENT.has(equipment) ? "Any" : effectiveMaterial;
   } else if (equipment === "Demosaw") {
-    if (input.elevation === "Floor") {
+    if (requestedElevation === "Floor") {
       effectiveElevation = "Floor";
       effectiveMaterial = "Any";
     } else {
@@ -188,10 +219,49 @@ export async function resolveCuttingRate(
   if (!rateRow) return null;
 
   const baseRate = Number(rateRow.ratePerM);
-  const methodMultiplier = METHOD_MULTIPLIER[input.method ?? ""] ?? 1.0;
-  const elevationMultiplier = ELEVATION_MULTIPLIER[input.elevation] ?? 1.0;
+  const methodMultiplier = METHOD_MULTIPLIER[effectiveMethod ?? ""] ?? 1.0;
+  const elevationMultiplier = ELEVATION_MULTIPLIER[requestedElevation] ?? 1.0;
   const finalRate = baseRate * methodMultiplier * elevationMultiplier;
   return { baseRate, methodMultiplier, elevationMultiplier, finalRate };
+}
+
+// Core hole resolver — spec Part 3.2. Returns isPOA=true for > 650mm so
+// the UI can display the manual-pricing flag; undersize rounds up to 32mm;
+// between-listed diameters round up to the next available diameter.
+export type CoreHoleRateResult =
+  | { isPOA: true; ratePerHole: null; methodMultiplier: number; elevationMultiplier: number }
+  | {
+      isPOA: false;
+      ratePerHole: number;
+      diameterResolved: number;
+      methodMultiplier: number;
+      elevationMultiplier: number;
+    };
+
+export async function resolveCoreHoleRate(
+  prisma: PrismaService,
+  input: { diameterMm: number; elevation?: string | null; method?: string | null }
+): Promise<CoreHoleRateResult | null> {
+  const elevationMultiplier = ELEVATION_MULTIPLIER[input.elevation ?? "Floor"] ?? 1.0;
+  const methodMultiplier = METHOD_MULTIPLIER[input.method ?? ""] ?? 1.0;
+
+  if (input.diameterMm > 650) {
+    return { isPOA: true, ratePerHole: null, methodMultiplier, elevationMultiplier };
+  }
+  // Minimum supported diameter is 32mm — anything smaller uses the 32mm rate.
+  const lookupDiameter = Math.max(32, input.diameterMm);
+  const rate = await prisma.estimateCoreHoleRate.findFirst({
+    where: { diameterMm: { gte: lookupDiameter }, isActive: true },
+    orderBy: { diameterMm: "asc" }
+  });
+  if (!rate) return null;
+  return {
+    isPOA: false,
+    ratePerHole: Number(rate.ratePerHole),
+    diameterResolved: rate.diameterMm,
+    methodMultiplier,
+    elevationMultiplier
+  };
 }
 
 @Injectable()
@@ -240,7 +310,8 @@ export class ScopeRedesignService {
     await this.requireTender(tenderId);
     return this.prisma.cuttingSheetItem.findMany({
       where: { tenderId },
-      orderBy: [{ wbsRef: "asc" }, { sortOrder: "asc" }]
+      orderBy: [{ wbsRef: "asc" }, { sortOrder: "asc" }],
+      include: { otherRate: true }
     });
   }
 
@@ -250,7 +321,7 @@ export class ScopeRedesignService {
     dto: {
       wbsRef: string;
       description?: string | null;
-      itemType: "saw-cut" | "core-hole";
+      itemType: "saw-cut" | "core-hole" | "other-rate";
       equipment?: string | null;
       elevation?: string | null;
       material?: string | null;
@@ -261,14 +332,15 @@ export class ScopeRedesignService {
       shift?: string | null;
       method?: string | null;
       shiftLoading?: number | null;
+      otherRateId?: string | null;
       notes?: string | null;
       sortOrder?: number | null;
     }
   ) {
     await this.requireTender(tenderId);
     if (!dto.wbsRef?.trim()) throw new BadRequestException("wbsRef is required.");
-    if (!["saw-cut", "core-hole"].includes(dto.itemType)) {
-      throw new BadRequestException('itemType must be "saw-cut" or "core-hole".');
+    if (!["saw-cut", "core-hole", "other-rate"].includes(dto.itemType)) {
+      throw new BadRequestException('itemType must be "saw-cut", "core-hole", or "other-rate".');
     }
     const priced = await this.pricedCuttingData(dto);
     return this.prisma.cuttingSheetItem.create({
@@ -288,12 +360,14 @@ export class ScopeRedesignService {
         shift: dto.shift ?? null,
         method: dto.method ?? null,
         shiftLoading: dto.shiftLoading !== undefined && dto.shiftLoading !== null ? new Prisma.Decimal(dto.shiftLoading) : null,
+        otherRateId: dto.otherRateId ?? null,
         notes: dto.notes ?? null,
         sortOrder: dto.sortOrder ?? 0,
         ratePerM: priced.ratePerM,
         ratePerHole: priced.ratePerHole,
         lineTotal: priced.lineTotal
-      }
+      },
+      include: { otherRate: true }
     });
   }
 
@@ -303,7 +377,7 @@ export class ScopeRedesignService {
     dto: Partial<{
       wbsRef: string;
       description: string | null;
-      itemType: "saw-cut" | "core-hole";
+      itemType: "saw-cut" | "core-hole" | "other-rate";
       equipment: string | null;
       elevation: string | null;
       material: string | null;
@@ -314,15 +388,19 @@ export class ScopeRedesignService {
       shift: string | null;
       method: string | null;
       shiftLoading: number | null;
+      otherRateId: string | null;
       notes: string | null;
       sortOrder: number | null;
     }>
   ) {
     const existing = await this.prisma.cuttingSheetItem.findUnique({ where: { id: itemId } });
     if (!existing || existing.tenderId !== tenderId) throw new NotFoundException("Cutting item not found.");
+    if (dto.itemType !== undefined && !["saw-cut", "core-hole", "other-rate"].includes(dto.itemType)) {
+      throw new BadRequestException('itemType must be "saw-cut", "core-hole", or "other-rate".');
+    }
 
     const merged = {
-      itemType: (dto.itemType ?? existing.itemType) as "saw-cut" | "core-hole",
+      itemType: (dto.itemType ?? existing.itemType) as "saw-cut" | "core-hole" | "other-rate",
       equipment: dto.equipment !== undefined ? dto.equipment : existing.equipment,
       elevation: dto.elevation !== undefined ? dto.elevation : existing.elevation,
       material: dto.material !== undefined ? dto.material : existing.material,
@@ -342,7 +420,8 @@ export class ScopeRedesignService {
           ? dto.shiftLoading
           : existing.shiftLoading
             ? Number(existing.shiftLoading)
-            : null
+            : null,
+      otherRateId: dto.otherRateId !== undefined ? dto.otherRateId : existing.otherRateId
     };
     const priced = await this.pricedCuttingData(merged);
     return this.prisma.cuttingSheetItem.update({
@@ -371,12 +450,14 @@ export class ScopeRedesignService {
             : dto.shiftLoading === null
               ? null
               : new Prisma.Decimal(dto.shiftLoading),
+        otherRateId: dto.otherRateId,
         notes: dto.notes,
         sortOrder: dto.sortOrder ?? undefined,
         ratePerM: priced.ratePerM,
         ratePerHole: priced.ratePerHole,
         lineTotal: priced.lineTotal
-      }
+      },
+      include: { otherRate: true }
     });
   }
 
@@ -457,7 +538,7 @@ export class ScopeRedesignService {
   }
 
   private async pricedCuttingData(dto: {
-    itemType: "saw-cut" | "core-hole";
+    itemType: "saw-cut" | "core-hole" | "other-rate";
     equipment?: string | null;
     elevation?: string | null;
     material?: string | null;
@@ -467,12 +548,28 @@ export class ScopeRedesignService {
     quantityEach?: number | null;
     shiftLoading?: number | null;
     method?: string | null;
+    otherRateId?: string | null;
   }): Promise<{
     ratePerM: Prisma.Decimal | null;
     ratePerHole: Prisma.Decimal | null;
     lineTotal: Prisma.Decimal | null;
   }> {
     const shiftLoading = dto.shiftLoading !== undefined && dto.shiftLoading !== null ? Number(dto.shiftLoading) : 0;
+
+    if (dto.itemType === "other-rate") {
+      // Other-rate lines reference the admin-managed catalogue directly;
+      // multipliers and shift loading don't apply here.
+      if (!dto.otherRateId) return { ratePerM: null, ratePerHole: null, lineTotal: null };
+      const rate = await this.prisma.cuttingOtherRate.findUnique({ where: { id: dto.otherRateId } });
+      if (!rate || !rate.isActive) return { ratePerM: null, ratePerHole: null, lineTotal: null };
+      const qty = Number(dto.quantityEach ?? dto.quantityLm ?? 1);
+      const total = Number(rate.rate) * qty;
+      return {
+        ratePerM: null,
+        ratePerHole: null,
+        lineTotal: new Prisma.Decimal(total.toFixed(2))
+      };
+    }
 
     if (dto.itemType === "saw-cut") {
       if (!dto.equipment || !dto.depthMm) {
@@ -497,17 +594,25 @@ export class ScopeRedesignService {
 
     // core-hole: rate per 10mm depth × depth × qty × elevation × method + shift loading
     if (!dto.diameterMm) return { ratePerM: null, ratePerHole: null, lineTotal: null };
-    const rate = await this.prisma.estimateCoreHoleRate.findUnique({ where: { diameterMm: dto.diameterMm } });
-    if (!rate) return { ratePerM: null, ratePerHole: null, lineTotal: null };
+    const resolved = await resolveCoreHoleRate(this.prisma, {
+      diameterMm: dto.diameterMm,
+      elevation: dto.elevation ?? "Floor",
+      method: dto.method ?? null
+    });
+    if (!resolved) return { ratePerM: null, ratePerHole: null, lineTotal: null };
+    if (resolved.isPOA) {
+      // > 650mm diameter — manual pricing. Zero line total, null per-hole rate.
+      return {
+        ratePerM: null,
+        ratePerHole: null,
+        lineTotal: new Prisma.Decimal(0)
+      };
+    }
     const depthMm = dto.depthMm && dto.depthMm > 0 ? dto.depthMm : 0;
     const depthUnits = depthMm / 10; // rate is $/hole per 10mm depth
     const qty = dto.quantityEach ?? 0;
-    const elevationMultiplier = ELEVATION_MULTIPLIER[dto.elevation ?? "Floor"] ?? 1.0;
-    const methodMultiplier = METHOD_MULTIPLIER[dto.method ?? ""] ?? 1.0;
-    const total = Number(rate.ratePerHole) * depthUnits * qty * elevationMultiplier * methodMultiplier + shiftLoading;
-    // ratePerHole stored as the base rate (per 10mm). Final-rate-inclusive
-    // per-hole rate is surfaced to the UI via lineTotal/qty for display.
-    const finalPerHoleRate = Number(rate.ratePerHole) * depthUnits * elevationMultiplier * methodMultiplier;
+    const total = resolved.ratePerHole * depthUnits * qty * resolved.elevationMultiplier * resolved.methodMultiplier + shiftLoading;
+    const finalPerHoleRate = resolved.ratePerHole * depthUnits * resolved.elevationMultiplier * resolved.methodMultiplier;
     return {
       ratePerM: null,
       ratePerHole: new Prisma.Decimal(finalPerHoleRate.toFixed(4)),

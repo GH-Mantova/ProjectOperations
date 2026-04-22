@@ -21,6 +21,7 @@ import {
   UpsertFuelRateDto,
   UpsertLabourLineDto,
   UpsertLabourRateDto,
+  UpsertOtherRateDto,
   UpsertPlantLineDto,
   UpsertPlantRateDto,
   UpsertWasteLineDto,
@@ -316,6 +317,49 @@ export class EstimatesService {
       actorId,
       action: "estimates.enclosureRate.delete",
       entityType: "EstimateEnclosureRate",
+      entityId: id
+    });
+    return { id };
+  }
+
+  // Other rates — flat-fee / unit-priced cutting-sheet catalogue
+  // (establishment fees, saw-blade changes, etc).
+  listOtherRates() {
+    return this.prisma.cuttingOtherRate.findMany({
+      orderBy: [{ isActive: "desc" }, { sortOrder: "asc" }, { description: "asc" }]
+    });
+  }
+  async upsertOtherRate(id: string | undefined, dto: UpsertOtherRateDto, actorId?: string) {
+    const data = {
+      description: dto.description,
+      unit: dto.unit,
+      rate: new Prisma.Decimal(dto.rate),
+      isActive: dto.isActive ?? true,
+      sortOrder: dto.sortOrder ?? 0
+    };
+    const record = id
+      ? await this.prisma.cuttingOtherRate.update({ where: { id }, data })
+      : await this.prisma.cuttingOtherRate.create({ data });
+    await this.auditService.write({
+      actorId,
+      action: id ? "estimates.otherRate.update" : "estimates.otherRate.create",
+      entityType: "CuttingOtherRate",
+      entityId: record.id
+    });
+    return record;
+  }
+  async deleteOtherRate(id: string, actorId?: string) {
+    const usage = await this.prisma.cuttingSheetItem.count({ where: { otherRateId: id } });
+    if (usage > 0) {
+      throw new ForbiddenException(
+        `Other rate is referenced by ${usage} cutting line(s). Deactivate it instead of deleting.`
+      );
+    }
+    await this.prisma.cuttingOtherRate.delete({ where: { id } });
+    await this.auditService.write({
+      actorId,
+      action: "estimates.otherRate.delete",
+      entityType: "CuttingOtherRate",
       entityId: id
     });
     return { id };

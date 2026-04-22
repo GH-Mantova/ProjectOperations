@@ -23,6 +23,7 @@ import {
   UpsertFuelRateDto,
   UpsertLabourLineDto,
   UpsertLabourRateDto,
+  UpsertOtherRateDto,
   UpsertPlantLineDto,
   UpsertPlantRateDto,
   UpsertWasteLineDto,
@@ -263,6 +264,42 @@ export class EstimatesController {
   @ApiOperation({ summary: "Delete an enclosure rate" })
   deleteEnclosureRate(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
     return this.service.deleteEnclosureRate(id, actor.sub);
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  Rate library — cutting-sheet "other" rates
+  // ──────────────────────────────────────────────────────────────
+
+  @Get("estimate-rates/other-rates")
+  @RequirePermissions("estimates.view")
+  @ApiOperation({ summary: "List cutting-sheet other-rate catalogue" })
+  @ApiResponse({ status: 200, description: "Active and inactive other-rates ordered by sortOrder." })
+  listOtherRates() {
+    return this.service.listOtherRates();
+  }
+
+  @Post("estimate-rates/other-rates")
+  @RequirePermissions("estimates.admin")
+  @ApiOperation({ summary: "Create an other-rate" })
+  @ApiResponse({ status: 201, description: "Other rate created." })
+  createOtherRate(@Body() dto: UpsertOtherRateDto, @CurrentUser() actor: { sub: string }) {
+    return this.service.upsertOtherRate(undefined, dto, actor.sub);
+  }
+
+  @Patch("estimate-rates/other-rates/:id")
+  @RequirePermissions("estimates.admin")
+  @ApiOperation({ summary: "Update an other-rate" })
+  @ApiResponse({ status: 200, description: "Other rate updated." })
+  updateOtherRate(@Param("id") id: string, @Body() dto: UpsertOtherRateDto, @CurrentUser() actor: { sub: string }) {
+    return this.service.upsertOtherRate(id, dto, actor.sub);
+  }
+
+  @Delete("estimate-rates/other-rates/:id")
+  @RequirePermissions("estimates.admin")
+  @ApiOperation({ summary: "Delete an other-rate (403 if referenced by cutting lines)" })
+  @ApiResponse({ status: 200, description: "Other rate deleted." })
+  deleteOtherRate(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
+    return this.service.deleteOtherRate(id, actor.sub);
   }
 
   // ──────────────────────────────────────────────────────────────

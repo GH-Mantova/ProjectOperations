@@ -268,11 +268,16 @@ export class ScopeRedesignService {
     await this.requireTender(tenderId);
     // Discipline subtotals come from the same resolver the existing list
     // endpoint uses: sum of linked estimate-item prices per discipline.
+    // Prv is special-cased — its final price is the provisionalAmount field
+    // with no markup, not a sum of calculated line-items.
     const items = await this.prisma.scopeOfWorksItem.findMany({
       where: { tenderId, status: { not: "excluded" } },
-      select: { discipline: true, estimateItemId: true }
+      select: { discipline: true, estimateItemId: true, provisionalAmount: true }
     });
-    const estimateItemIds = items.map((i) => i.estimateItemId).filter((id): id is string => !!id);
+    const estimateItemIds = items
+      .filter((i) => i.discipline !== "Prv")
+      .map((i) => i.estimateItemId)
+      .filter((id): id is string => !!id);
     const priceByItemId = await this.computeEstimateItemPrices(estimateItemIds);
     const markup = await this.prisma.tenderEstimate
       .findUnique({ where: { tenderId }, select: { markup: true } })
@@ -284,9 +289,18 @@ export class ScopeRedesignService {
       const bucket = perDiscipline[item.discipline];
       if (!bucket) continue;
       bucket.itemCount += 1;
-      if (item.estimateItemId) bucket.subtotal += priceByItemId.get(item.estimateItemId) ?? 0;
+      if (item.discipline === "Prv") {
+        bucket.subtotal += item.provisionalAmount ? Number(item.provisionalAmount) : 0;
+      } else if (item.estimateItemId) {
+        bucket.subtotal += priceByItemId.get(item.estimateItemId) ?? 0;
+      }
     }
-    for (const d of DISCIPLINES) perDiscipline[d].withMarkup = perDiscipline[d].subtotal * (1 + markup / 100);
+    // Markup applies to cost-based disciplines only. Prv is a fixed
+    // provisional sum by definition.
+    for (const d of DISCIPLINES) {
+      perDiscipline[d].withMarkup =
+        d === "Prv" ? perDiscipline[d].subtotal : perDiscipline[d].subtotal * (1 + markup / 100);
+    }
 
     const cuttingItems = await this.prisma.cuttingSheetItem.findMany({
       where: { tenderId },

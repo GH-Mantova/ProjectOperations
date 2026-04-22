@@ -106,6 +106,9 @@ class ScopeItemFieldsBase {
   @ApiPropertyOptional() @IsOptional() @IsString() plantAssetId?: string | null;
   @ApiPropertyOptional() @IsOptional() @IsString() wasteGroup?: string | null;
 
+  // Provisional sum amount (discipline=Prv only; ignored otherwise).
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() provisionalAmount?: number | null;
+
   // Scope item may arrive with a specific wbsCode on redesign create.
   @ApiPropertyOptional() @IsOptional() @IsString() wbsCode?: string | null;
 }

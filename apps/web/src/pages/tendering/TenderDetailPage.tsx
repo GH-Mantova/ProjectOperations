@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { QuoteTab } from "./QuoteTab";
+import { AddClientModal } from "./AddClientModal";
 import { TenderDocumentsPanel } from "./TenderDocumentsPanel";
 import { TenderClientNotesSection } from "./TenderClientNotesSection";
 import { TenderClarificationLog } from "./TenderClarificationLog";
@@ -158,6 +159,8 @@ export function TenderDetailPage() {
   const [pendingCorrection, setPendingCorrection] = useState<string | null>(null);
   const [providerPickerOpen, setProviderPickerOpen] = useState(false);
   const [pendingDraftCorrection, setPendingDraftCorrection] = useState<string | null>(null);
+  const [addClientOpen, setAddClientOpen] = useState(false);
+  const [clientMsg, setClientMsg] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     if (!id) return;
@@ -605,24 +608,71 @@ export function TenderDetailPage() {
                     <p style={{ color: "var(--text-muted)" }}>No estimator assigned.</p>
                   )}
                 </div>
-                <h4 className="s7-type-card-title" style={{ marginTop: 16, marginBottom: 6 }}>Clients</h4>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 16, marginBottom: 6 }}>
+                  <h4 className="s7-type-card-title" style={{ margin: 0 }}>Clients</h4>
+                  {canManageTenders ? (
+                    <button
+                      type="button"
+                      className="s7-btn s7-btn--ghost s7-btn--sm"
+                      onClick={() => setAddClientOpen(true)}
+                    >
+                      + Add client
+                    </button>
+                  ) : null}
+                </div>
+                {clientMsg ? (
+                  <p style={{ color: "var(--status-danger)", fontSize: 12, margin: "4px 0" }}>{clientMsg}</p>
+                ) : null}
                 {tender.tenderClients.length === 0 ? (
                   <p style={{ color: "var(--text-muted)" }}>No clients linked.</p>
                 ) : (
                   <ul className="tender-detail__clients" style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
-                    {tender.tenderClients.map((tc) => (
-                      <ExpandableClientRow
-                        key={tc.id}
-                        tenderId={tender.id}
-                        clientId={tc.client.id}
-                        clientName={tc.client.name}
-                        contact={tc.contact ?? null}
-                        relationshipType={tc.relationshipType ?? null}
-                        isAwarded={tc.isAwarded}
-                        contractIssued={tc.contractIssued}
-                        canManage={canManageTenders}
-                      />
-                    ))}
+                    {tender.tenderClients.map((tc) => {
+                      const canRemove = canManageTenders && tender.tenderClients.length > 1;
+                      return (
+                        <li key={tc.id} style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+                          <div style={{ flex: 1 }}>
+                            <ExpandableClientRow
+                              tenderId={tender.id}
+                              clientId={tc.client.id}
+                              clientName={tc.client.name}
+                              contact={tc.contact ?? null}
+                              relationshipType={tc.relationshipType ?? null}
+                              isAwarded={tc.isAwarded}
+                              contractIssued={tc.contractIssued}
+                              canManage={canManageTenders}
+                            />
+                          </div>
+                          {canManageTenders ? (
+                            <button
+                              type="button"
+                              className="s7-btn s7-btn--ghost s7-btn--sm"
+                              aria-label={`Remove ${tc.client.name}`}
+                              title={canRemove ? `Remove ${tc.client.name}` : "A tender must have at least one client"}
+                              disabled={!canRemove}
+                              onClick={async () => {
+                                if (!canRemove) return;
+                                if (!window.confirm(`Remove ${tc.client.name} from this tender?`)) return;
+                                try {
+                                  const response = await authFetch(
+                                    `/tenders/${tender.id}/clients/${tc.client.id}`,
+                                    { method: "DELETE" }
+                                  );
+                                  if (!response.ok) throw new Error(await response.text());
+                                  setClientMsg(null);
+                                  await reload();
+                                } catch (err) {
+                                  setClientMsg((err as Error).message);
+                                }
+                              }}
+                              style={{ marginTop: 6 }}
+                            >
+                              ×
+                            </button>
+                          ) : null}
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </section>
@@ -884,6 +934,19 @@ export function TenderDetailPage() {
           setPendingCorrection(null);
         }}
       />
+
+      {addClientOpen ? (
+        <AddClientModal
+          tenderId={tender.id}
+          linkedClientIds={tender.tenderClients.map((tc) => tc.client.id)}
+          onClose={() => setAddClientOpen(false)}
+          onAdded={() => {
+            setAddClientOpen(false);
+            setClientMsg(null);
+            void reload();
+          }}
+        />
+      ) : null}
 
       {providerPickerOpen ? (
         <AiProviderSelector

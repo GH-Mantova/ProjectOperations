@@ -31,6 +31,7 @@ export type ScopeItem = {
   wasteFacility: string | null;
   wasteTonnes: string | null;
   wasteLoads: number | null;
+  provisionalAmount: string | null;
   estimateItemId: string | null;
 };
 
@@ -537,21 +538,43 @@ function QuantityRow({
             ))}
           </select>
         </td>
-        {headerColumns.map((col) => (
-          <td key={col} style={{ padding: 4 }}>
-            {rowCols.includes(col) ? (
-              <CellInput
-                col={col}
-                item={item}
+        {item.discipline === "Prv" ? (
+          <td colSpan={Math.max(1, headerColumns.length)} style={{ padding: 4 }}>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <span style={{ color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.3 }}>
+                Provisional amount $
+              </span>
+              <input
+                className="s7-input"
+                type="number"
+                step="0.01"
+                defaultValue={item.provisionalAmount ?? ""}
                 disabled={isAi}
-                onPatch={onPatch}
-                debouncedPatch={debouncedPatch}
+                style={{ width: 140 }}
+                onBlur={(e) => {
+                  const n = e.target.value === "" ? null : Number(e.target.value);
+                  onPatch({ provisionalAmount: n });
+                }}
               />
-            ) : (
-              <span style={{ color: "var(--text-muted)" }}>—</span>
-            )}
+            </label>
           </td>
-        ))}
+        ) : (
+          headerColumns.map((col) => (
+            <td key={col} style={{ padding: 4 }}>
+              {rowCols.includes(col) ? (
+                <CellInput
+                  col={col}
+                  item={item}
+                  disabled={isAi}
+                  onPatch={onPatch}
+                  debouncedPatch={debouncedPatch}
+                />
+              ) : (
+                <span style={{ color: "var(--text-muted)" }}>—</span>
+              )}
+            </td>
+          ))
+        )}
         <td style={{ padding: 4, textAlign: "right" }}>
           {isAi ? (
             <div style={{ display: "inline-flex", gap: 4 }}>

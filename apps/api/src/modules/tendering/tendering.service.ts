@@ -224,14 +224,26 @@ export class TenderingService {
     }
     const now = new Date();
     const data: Prisma.TenderUpdateInput = { status };
-    if (status === "SUBMITTED" && !existing.submittedAt) data.submittedAt = now;
+    // First transition to SUBMITTED pins submittedAt AND freezes the rate
+    // snapshot timestamp — the Quote tab uses this to display "Rates as of
+    // [date]" and rates admin can warn if the library moves afterwards.
+    if (status === "SUBMITTED" && !existing.submittedAt) {
+      data.submittedAt = now;
+      if (!existing.ratesSnapshotAt) data.ratesSnapshotAt = now;
+    }
     if ((status === "AWARDED" || status === "CONTRACT_ISSUED" || status === "CONVERTED") && !existing.wonAt) {
       data.wonAt = now;
-      if (!existing.submittedAt) data.submittedAt = now;
+      if (!existing.submittedAt) {
+        data.submittedAt = now;
+        if (!existing.ratesSnapshotAt) data.ratesSnapshotAt = now;
+      }
     }
     if (status === "LOST" && !existing.lostAt) {
       data.lostAt = now;
-      if (!existing.submittedAt) data.submittedAt = now;
+      if (!existing.submittedAt) {
+        data.submittedAt = now;
+        if (!existing.ratesSnapshotAt) data.ratesSnapshotAt = now;
+      }
     }
     const tender = await this.prisma.tender.update({
       where: { id },

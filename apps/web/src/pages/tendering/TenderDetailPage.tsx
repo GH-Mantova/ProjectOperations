@@ -25,6 +25,8 @@ type TenderDetail = {
   estimatedValue?: string | null;
   probability?: number | null;
   notes?: string | null;
+  submittedAt?: string | null;
+  ratesSnapshotAt?: string | null;
   createdAt: string;
   updatedAt: string;
   estimator?: { id: string; firstName: string; lastName: string } | null;
@@ -894,7 +896,11 @@ export function TenderDetailPage() {
         {tab === "estimate" && (
           <QuoteTab
             tenderId={tender.id}
-            tender={{ tenderNumber: tender.tenderNumber, estimator: tender.estimator }}
+            tender={{
+              tenderNumber: tender.tenderNumber,
+              estimator: tender.estimator,
+              ratesSnapshotAt: tender.ratesSnapshotAt ?? null
+            }}
             canManage={canManageTenders}
           />
         )}

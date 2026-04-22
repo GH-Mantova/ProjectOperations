@@ -1,26 +1,26 @@
 // Server-side PDF builder using PDFKit primitives only. No headless browser,
-// no HTML rendering — intentional for stability.
+// no HTML rendering — intentional for stability. Data source: fetchTenderForExport
+// (ScopeOfWorksItem + CuttingSheetItem + TenderTandC/Assumption/Exclusion).
 
 import PDFDocument from "pdfkit";
-import type { ExportPayload } from "../estimate-export.service";
 import {
-  BRAND,
-  COVER_LETTER_TEXT,
-  PRELIMINARY_WORKS,
-  PROJECT_ALLOWANCES_TEXT,
-  PROJECT_ASSUMPTIONS_TEXT,
-  TC_TEXT
-} from "./tc-text.const";
+  DISCIPLINE_LABEL,
+  DISCIPLINE_ORDER,
+  type ExportPayload,
+  type ScopeRow
+} from "../estimate-export.service";
+import { BRAND, COVER_LETTER_TEXT, PRELIMINARY_WORKS } from "./tc-text.const";
 
 type Doc = InstanceType<typeof PDFDocument>;
 
 const PAGE_W = 595.28; // A4 width in points (72dpi)
 const PAGE_H = 841.89;
-const MARGIN_TOP = 70; // ~25mm
+const MARGIN_TOP = 70;
 const MARGIN_BOTTOM = 70;
-const MARGIN_L = 57; // ~20mm
+const MARGIN_L = 57;
 const MARGIN_R = 57;
 const CONTENT_W = PAGE_W - MARGIN_L - MARGIN_R;
+const LIGHT_TEAL = "#E8F4F5";
 
 function fmtCurrency(value: number): string {
   if (!Number.isFinite(value)) return "$0.00";
@@ -33,8 +33,17 @@ function fmtCurrency(value: number): string {
   }).format(value);
 }
 
-function fmtDate(d: Date): string {
+function fmtDate(d: Date | null | undefined): string {
+  if (!d) return "—";
   return new Intl.DateTimeFormat("en-AU", { day: "2-digit", month: "2-digit", year: "numeric" }).format(d);
+}
+
+function fmtQty(raw: string | number | null | undefined): string {
+  if (raw === null || raw === undefined || raw === "") return "—";
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(n)) return "—";
+  // Show integers without decimals, otherwise 2dp
+  return Number.isInteger(n) ? n.toString() : n.toFixed(2);
 }
 
 function drawHeaderBand(doc: Doc) {
@@ -48,12 +57,14 @@ function drawHeaderBand(doc: Doc) {
       18,
       { align: "right", width: CONTENT_W }
     );
+  // Thin orange rule under the band.
+  doc.save().strokeColor(BRAND.orange).lineWidth(2).moveTo(0, 41).lineTo(PAGE_W, 41).stroke().restore();
   doc.fillColor(BRAND.black);
 }
 
 function drawFooter(doc: Doc, pageIndex: number, totalPages: number) {
   const y = PAGE_H - 40;
-  doc.font("Helvetica").fontSize(8).fillColor(BRAND.teal);
+  doc.font("Helvetica").fontSize(8).fillColor("#666");
   doc.text(
     "10 Grice St, Clontarf Q 4019 | P: (07) 3888 0539 | E: admin@initialservices.net",
     MARGIN_L,
@@ -64,334 +75,485 @@ function drawFooter(doc: Doc, pageIndex: number, totalPages: number) {
   doc.fillColor(BRAND.black);
 }
 
-function addHorizRule(doc: Doc, colour: string = BRAND.orange) {
+function drawRule(doc: Doc, colour = BRAND.orange) {
   const y = doc.y + 4;
-  doc.save().strokeColor(colour).lineWidth(1.5).moveTo(MARGIN_L, y).lineTo(MARGIN_L + CONTENT_W, y).stroke();
-  doc.restore();
+  doc.save().strokeColor(colour).lineWidth(1.5).moveTo(MARGIN_L, y).lineTo(MARGIN_L + CONTENT_W, y).stroke().restore();
   doc.moveDown(0.4);
 }
 
-function drawInfoRow(doc: Doc, label: string, value: string, valueX: number, labelW = 90) {
-  doc.font("Helvetica-Bold").fontSize(9).fillColor(BRAND.black);
-  const y = doc.y;
-  doc.text(label, MARGIN_L, y, { width: labelW });
-  doc.font("Helvetica").text(value || "—", MARGIN_L + labelW, y, { width: valueX - (MARGIN_L + labelW) - 4 });
-  doc.moveDown(0.35);
-}
-
+// ── Page 1 ───────────────────────────────────────────────────────────
 function drawCoverPage(doc: Doc, p: ExportPayload) {
   drawHeaderBand(doc);
   doc.y = MARGIN_TOP;
 
-  // Client details header
-  doc.font("Helvetica-Bold").fontSize(11).fillColor(BRAND.teal).text("Client Details", MARGIN_L, doc.y);
-  addHorizRule(doc, BRAND.orange);
-  doc.fillColor(BRAND.black);
+  const primaryClient = p.tender.clients[0] ?? null;
+  const estimator = p.tender.estimator;
+  const estimatorName = estimator ? `${estimator.firstName} ${estimator.lastName}`.trim() : "—";
 
-  const clientCompany = p.client.company ?? "—";
-  const clientContact = p.client.contact ?? "—";
-  const clientPhone = p.client.phone ?? "—";
-  const clientEmail = p.client.email ?? "—";
-
-  // Two-column info layout: left = client, right = quote meta
+  // Two-column client / quote meta block.
   const colTop = doc.y;
   const rightX = MARGIN_L + CONTENT_W / 2;
+  const labelFont = () => doc.font("Helvetica-Bold").fontSize(9).fillColor(BRAND.darkGrey);
+  const valueFont = () => doc.font("Helvetica").fontSize(9).fillColor(BRAND.black);
 
-  // Left column
-  const leftBlock = (label: string, value: string) => {
-    doc.font("Helvetica-Bold").fontSize(9).fillColor(BRAND.darkGrey).text(label, MARGIN_L, doc.y, { continued: true, width: 280 });
-    doc.font("Helvetica").fillColor(BRAND.black).text(` ${value}`);
-    doc.moveDown(0.2);
+  const leftRow = (label: string, value: string) => {
+    labelFont().text(label, MARGIN_L, doc.y, { continued: true, width: 280 });
+    valueFont().text(` ${value}`);
+    doc.moveDown(0.15);
   };
-  leftBlock("Company:", clientCompany);
-  leftBlock("Attention:", clientContact);
-  leftBlock("P:", clientPhone);
-  leftBlock("E:", clientEmail);
+  leftRow("Company:", primaryClient?.name ?? "—");
+  leftRow("Attention:", primaryClient?.contactName ?? "—");
+  leftRow("Phone:", primaryClient?.contactPhone ?? "—");
+  leftRow("Email:", primaryClient?.contactEmail ?? "—");
 
-  // Right column (absolute-positioned)
-  const rightY = colTop;
+  // Right column (absolute-positioned).
   doc.save();
-  doc.font("Helvetica-Bold").fontSize(9).fillColor(BRAND.darkGrey)
-    .text("Quote:", rightX, rightY, { continued: true, width: 250 });
-  doc.font("Helvetica").fillColor(BRAND.black).text(` ${p.tender.tenderNumber}`);
-  doc.font("Helvetica-Bold").fontSize(9).fillColor(BRAND.darkGrey)
-    .text("Date:", rightX, rightY + 14, { continued: true, width: 250 });
-  doc.font("Helvetica").fillColor(BRAND.black).text(` ${fmtDate(new Date())}`);
+  const rightRows: Array<[string, string]> = [
+    ["Quote No:", p.tender.tenderNumber],
+    ["Date:", fmtDate(new Date())],
+    ["Project:", p.tender.title],
+    ["Estimator:", estimatorName]
+  ];
+  let ry = colTop;
+  for (const [lab, val] of rightRows) {
+    labelFont().text(lab, rightX, ry, { continued: true, width: 250 });
+    valueFont().text(` ${val}`);
+    ry += 14;
+  }
   doc.restore();
 
+  // Leave space below whichever column is taller.
+  doc.y = Math.max(doc.y, colTop + rightRows.length * 14 + 8);
   doc.moveDown(1);
 
-  // Project heading
-  doc.font("Helvetica-Bold").fontSize(11).fillColor(BRAND.teal)
-    .text(`Project – ${p.tender.title}`, MARGIN_L, doc.y, { width: CONTENT_W });
-  doc.moveDown(0.3);
-  doc.fillColor(BRAND.black);
-
-  // Cover letter
+  // Cover letter paragraph.
   doc.font("Helvetica").fontSize(9).fillColor(BRAND.black)
     .text(COVER_LETTER_TEXT, MARGIN_L, doc.y, { width: CONTENT_W, align: "justify" });
   doc.moveDown(0.8);
 
-  // Cost summary
-  doc.font("Helvetica-Bold").fontSize(10).fillColor(BRAND.teal).text("Cost Summary", MARGIN_L, doc.y);
-  addHorizRule(doc, BRAND.orange);
+  // Cost summary heading.
+  doc.font("Helvetica-Bold").fontSize(11).fillColor(BRAND.teal).text("Cost Summary", MARGIN_L, doc.y);
+  drawRule(doc, BRAND.orange);
 
-  // Summary table: group total ex-GST per discipline.
-  const nonProvGroups = p.groups.filter((g) => g.code !== "Prv");
-  const provGroups = p.groups.filter((g) => g.code === "Prv");
+  // Non-provisional disciplines (excluding Prv) + cutting subtotal as a row.
+  const nonProv: Array<{ code: string; label: string; amount: number }> = [];
+  for (const d of DISCIPLINE_ORDER) {
+    if (d === "Prv") continue;
+    const bucket = p.summary[d];
+    if (!bucket || (bucket.itemCount === 0 && bucket.withMarkup === 0)) continue;
+    nonProv.push({ code: d, label: DISCIPLINE_LABEL[d], amount: bucket.withMarkup });
+  }
+  if (p.summary.cutting.itemCount > 0 || p.summary.cutting.subtotal > 0) {
+    nonProv.push({ code: "Cutting", label: "Concrete Cutting", amount: p.summary.cutting.subtotal });
+  }
 
   const rowH = 20;
-  const descW = CONTENT_W * 0.65;
-  const priceX = MARGIN_L + descW;
+  const scopeColW = 80;
+  const descColW = CONTENT_W * 0.55;
+  const amountColW = CONTENT_W - scopeColW - descColW;
+  const descX = MARGIN_L + scopeColW;
+  const amountX = descX + descColW;
 
-  // Header row
-  doc.rect(MARGIN_L, doc.y, CONTENT_W, rowH).fill(BRAND.lightGrey);
-  doc.fillColor(BRAND.darkGrey).font("Helvetica-Bold").fontSize(9)
-    .text("Description", MARGIN_L + 6, doc.y + 6, { width: descW - 12 })
-    .text("Price (ex-GST)", priceX + 6, doc.y - (rowH - 6) /* offset */, { width: CONTENT_W - descW - 12, align: "right" });
-  doc.y += rowH;
-  doc.fillColor(BRAND.black);
-
-  for (const g of nonProvGroups) {
+  const drawSummaryHeader = () => {
     const y = doc.y;
-    doc.rect(MARGIN_L, y, CONTENT_W, rowH).stroke(BRAND.lightGrey);
-    doc.font("Helvetica").fontSize(9)
-      .text(`${g.code} · ${g.label}`, MARGIN_L + 6, y + 6, { width: descW - 12 });
-    doc.text(fmtCurrency(g.total), priceX + 6, y + 6, { width: CONTENT_W - descW - 12, align: "right" });
-    doc.y = y + rowH;
-  }
-
-  // Total row
-  {
-    const y = doc.y + 4;
-    doc.rect(MARGIN_L, y, CONTENT_W, rowH + 4).fill(BRAND.teal);
-    doc.fillColor(BRAND.white).font("Helvetica-Bold").fontSize(10)
-      .text("TOTAL (ex-GST)", MARGIN_L + 6, y + 7, { width: descW - 12 });
-    doc.text(
-      fmtCurrency(p.totals.totalExGst - p.totals.provisionalTotal),
-      priceX + 6,
-      y + 7,
-      { width: CONTENT_W - descW - 12, align: "right" }
-    );
+    doc.rect(MARGIN_L, y, CONTENT_W, rowH).fill(BRAND.teal);
+    doc.fillColor(BRAND.white).font("Helvetica-Bold").fontSize(9);
+    doc.text("SCOPE", MARGIN_L + 6, y + 6, { width: scopeColW - 8 });
+    doc.text("DESCRIPTION", descX + 6, y + 6, { width: descColW - 8 });
+    doc.text("AMOUNT (EX GST)", amountX + 6, y + 6, { width: amountColW - 12, align: "right" });
     doc.fillColor(BRAND.black);
-    doc.y = y + rowH + 6;
+    doc.y = y + rowH;
+  };
+  drawSummaryHeader();
+
+  nonProv.forEach((row, i) => {
+    const y = doc.y;
+    const bg = i % 2 === 0 ? BRAND.white : BRAND.lightGrey;
+    doc.rect(MARGIN_L, y, CONTENT_W, rowH).fill(bg);
+    doc.fillColor(BRAND.black).font("Helvetica").fontSize(9);
+    doc.text(row.code, MARGIN_L + 6, y + 6, { width: scopeColW - 8 });
+    doc.text(row.label, descX + 6, y + 6, { width: descColW - 8 });
+    doc.text(fmtCurrency(row.amount), amountX + 6, y + 6, { width: amountColW - 12, align: "right" });
+    doc.y = y + rowH;
+  });
+
+  // TOTAL row — teal fill, white bold.
+  {
+    const y = doc.y;
+    doc.rect(MARGIN_L, y, CONTENT_W, rowH + 2).fill(BRAND.teal);
+    const total = nonProv.reduce((s, r) => s + r.amount, 0);
+    doc.fillColor(BRAND.white).font("Helvetica-Bold").fontSize(10);
+    doc.text("TOTAL", MARGIN_L + 6, y + 7, { width: scopeColW - 8 });
+    doc.text("", descX + 6, y + 7, { width: descColW - 8 });
+    doc.text(fmtCurrency(total), amountX + 6, y + 7, { width: amountColW - 12, align: "right" });
+    doc.fillColor(BRAND.black);
+    doc.y = y + rowH + 4;
   }
 
-  // Provisional table
-  if (provGroups.length > 0) {
-    doc.moveDown(0.4);
-    doc.font("Helvetica-Bold").fontSize(9).fillColor(BRAND.darkGrey)
-      .text("TOTAL PROVISIONAL SUM", MARGIN_L, doc.y);
-    doc.moveDown(0.2);
-    for (const g of provGroups) {
+  // Provisional sums table — scope items only (cutting never provisional).
+  const provItems = p.scopeItems.filter((i) => i.discipline === "Prv");
+  if (provItems.length > 0) {
+    doc.moveDown(0.6);
+    doc.font("Helvetica-Bold").fontSize(10).fillColor(BRAND.teal).text("PROVISIONAL SUMS", MARGIN_L, doc.y);
+    drawRule(doc, BRAND.orange);
+
+    const drawProvHeader = () => {
       const y = doc.y;
-      doc.rect(MARGIN_L, y, CONTENT_W, rowH).stroke(BRAND.lightGrey);
-      doc.font("Helvetica").fontSize(9).fillColor(BRAND.black)
-        .text(`${g.code} · ${g.label}`, MARGIN_L + 6, y + 6, { width: descW - 12 });
-      doc.text(fmtCurrency(g.total), priceX + 6, y + 6, { width: CONTENT_W - descW - 12, align: "right" });
+      doc.rect(MARGIN_L, y, CONTENT_W, rowH).fill(BRAND.teal);
+      doc.fillColor(BRAND.white).font("Helvetica-Bold").fontSize(9);
+      doc.text("ITEM", MARGIN_L + 6, y + 6, { width: scopeColW - 8 });
+      doc.text("DESCRIPTION", descX + 6, y + 6, { width: descColW - 8 });
+      doc.text("AMOUNT (EX GST)", amountX + 6, y + 6, { width: amountColW - 12, align: "right" });
+      doc.fillColor(BRAND.black);
       doc.y = y + rowH;
-    }
+    };
+    drawProvHeader();
+
+    provItems.forEach((item, i) => {
+      const y = doc.y;
+      const bg = i % 2 === 0 ? BRAND.white : BRAND.lightGrey;
+      const amount = item.provisionalAmount ? Number(item.provisionalAmount) : 0;
+      doc.rect(MARGIN_L, y, CONTENT_W, rowH).fill(bg);
+      doc.fillColor(BRAND.black).font("Helvetica").fontSize(9);
+      doc.text(item.wbsCode, MARGIN_L + 6, y + 6, { width: scopeColW - 8 });
+      doc.text(item.description || "—", descX + 6, y + 6, { width: descColW - 8 });
+      doc.text(fmtCurrency(amount), amountX + 6, y + 6, { width: amountColW - 12, align: "right" });
+      doc.y = y + rowH;
+    });
+
+    const provTotal = provItems.reduce(
+      (s, i) => s + (i.provisionalAmount ? Number(i.provisionalAmount) : 0),
+      0
+    );
+    const y = doc.y;
+    doc.rect(MARGIN_L, y, CONTENT_W, rowH + 2).fill(BRAND.teal);
+    doc.fillColor(BRAND.white).font("Helvetica-Bold").fontSize(10);
+    doc.text("TOTAL PROVISIONAL SUM", MARGIN_L + 6, y + 7, { width: scopeColW + descColW - 8 });
+    doc.text(fmtCurrency(provTotal), amountX + 6, y + 7, { width: amountColW - 12, align: "right" });
+    doc.fillColor(BRAND.black);
+    doc.y = y + rowH + 4;
   }
 
+  // Disclaimers.
   doc.moveDown(0.6);
-  doc.font("Helvetica-Oblique").fontSize(8).fillColor(BRAND.darkGrey)
-    .text(
-      "The above-quoted price does not include GST. Should this quotation be subject to this tax, please add 10% to the above-quoted figure.",
-      MARGIN_L,
-      doc.y,
-      { width: CONTENT_W, align: "left" }
-    );
-  doc.moveDown(0.3);
-  doc.font("Helvetica").fontSize(8)
-    .text(
-      "This quote will remain valid for 30 days from the issue date or until the end of the current financial year, whichever happens first.",
-      MARGIN_L,
-      doc.y,
-      { width: CONTENT_W }
-    );
-  doc.moveDown(0.3);
-  const estimator = p.estimator
-    ? `${p.estimator.firstName} ${p.estimator.lastName}, ${p.estimator.email}`
-    : "the Initial Services estimating team";
+  doc.font("Helvetica-Oblique").fontSize(8).fillColor("#555");
   doc.text(
-    `If you have any queries regarding this quotation, please do not hesitate to contact: ${estimator}`,
-    MARGIN_L,
-    doc.y,
-    { width: CONTENT_W }
+    "All prices exclude GST. Add 10% if applicable.",
+    MARGIN_L, doc.y, { width: CONTENT_W }
   );
-  doc.fillColor(BRAND.black);
+  doc.moveDown(0.15);
+  doc.text(
+    "This quote is valid for 30 days from the date of issue or the end of the current financial year, whichever is first.",
+    MARGIN_L, doc.y, { width: CONTENT_W }
+  );
+  doc.moveDown(0.15);
+  const estEmail = estimator?.email ? ` | ${estimator.email}` : "";
+  doc.text(
+    `Prepared by: ${estimatorName}${estEmail}`,
+    MARGIN_L, doc.y, { width: CONTENT_W }
+  );
+  doc.moveDown(0.4);
+  doc.font("Helvetica").fontSize(8).fillColor(BRAND.black);
+  doc.text("Payment terms: 25 days from date of invoice (BIFA compliant).",
+    MARGIN_L, doc.y, { width: CONTENT_W });
 }
+
+// ── Page 2 ───────────────────────────────────────────────────────────
+type ScopeTableCol = { key: string; label: string; w: number; align?: "left" | "right" };
 
 function drawScopePage(doc: Doc, p: ExportPayload) {
   doc.addPage();
   drawHeaderBand(doc);
   doc.y = MARGIN_TOP;
 
-  doc.font("Helvetica-Bold").fontSize(12).fillColor(BRAND.teal).text("Scope of Works", MARGIN_L, doc.y);
-  addHorizRule(doc, BRAND.teal);
-  doc.fillColor(BRAND.black);
-
-  // Preliminary Works
-  doc.font("Helvetica-Bold").fontSize(10).text("Preliminary Works", MARGIN_L, doc.y);
+  // Preliminary works (fixed IS standard text).
+  doc.font("Helvetica-Bold").fontSize(10).fillColor(BRAND.teal)
+    .text("Preliminary Works", MARGIN_L, doc.y);
   doc.moveDown(0.3);
-  doc.font("Helvetica").fontSize(9);
+  doc.font("Helvetica").fontSize(9).fillColor(BRAND.black);
   for (const bullet of PRELIMINARY_WORKS) {
     doc.text(`• ${bullet}`, MARGIN_L, doc.y, { width: CONTENT_W });
     doc.moveDown(0.15);
   }
-  doc.moveDown(0.6);
+  doc.moveDown(0.5);
 
-  // Scope table
-  const colItem = 60;
-  const colQty = 50;
-  const colNote = 80;
-  const colDesc = CONTENT_W - colItem - colQty - colNote;
+  // Scope heading.
+  doc.font("Helvetica-Bold").fontSize(11).fillColor(BRAND.teal).text("Scope of Works", MARGIN_L, doc.y);
+  drawRule(doc, BRAND.orange);
+
+  const cols: ScopeTableCol[] = [
+    { key: "item", label: "ITEM", w: 50 },
+    { key: "desc", label: "SCOPE OF WORKS", w: 250 },
+    { key: "qty", label: "QTY", w: 50, align: "right" },
+    { key: "unit", label: "UNIT", w: 50 },
+    { key: "note", label: "NOTE", w: CONTENT_W - 50 - 250 - 50 - 50 }
+  ];
+  const colX = (idx: number) => MARGIN_L + cols.slice(0, idx).reduce((s, c) => s + c.w, 0);
   const rowMinH = 20;
 
-  // Header row (sticky per-page isn't available in PDFKit; we redraw at top of every page)
   const drawHead = () => {
     const y = doc.y;
     doc.rect(MARGIN_L, y, CONTENT_W, rowMinH).fill(BRAND.teal);
     doc.fillColor(BRAND.white).font("Helvetica-Bold").fontSize(9);
-    doc.text("Item", MARGIN_L + 6, y + 6, { width: colItem - 8 });
-    doc.text("Scope of Works", MARGIN_L + colItem + 6, y + 6, { width: colDesc - 8 });
-    doc.text("Qty", MARGIN_L + colItem + colDesc + 6, y + 6, { width: colQty - 8, align: "right" });
-    doc.text("Note", MARGIN_L + colItem + colDesc + colQty + 6, y + 6, { width: colNote - 8 });
+    cols.forEach((c, i) => {
+      doc.text(c.label, colX(i) + 6, y + 6, { width: c.w - 8, align: c.align ?? "left" });
+    });
     doc.fillColor(BRAND.black);
     doc.y = y + rowMinH;
   };
-  drawHead();
 
-  const groupByCode = new Map<string, typeof p.items>();
-  for (const item of p.items) {
-    const g = groupByCode.get(item.code) ?? [];
-    g.push(item);
-    groupByCode.set(item.code, g);
-  }
-
-  let rowIndex = 0;
-  for (const [code, rows] of groupByCode) {
-    // Group header
-    if (doc.y > PAGE_H - MARGIN_BOTTOM - 60) {
+  const ensureRoom = (need: number) => {
+    if (doc.y + need > PAGE_H - MARGIN_BOTTOM - 10) {
       doc.addPage();
       drawHeaderBand(doc);
       doc.y = MARGIN_TOP;
       drawHead();
     }
+  };
+
+  drawHead();
+
+  // Group scope items by discipline order.
+  const scopeByDisc = new Map<string, ScopeRow[]>();
+  for (const item of p.scopeItems) {
+    const arr = scopeByDisc.get(item.discipline) ?? [];
+    arr.push(item);
+    scopeByDisc.set(item.discipline, arr);
+  }
+
+  let rowIdx = 0;
+  for (const disc of DISCIPLINE_ORDER) {
+    const rows = scopeByDisc.get(disc) ?? [];
+    if (rows.length === 0) continue;
+    ensureRoom(24);
     const headY = doc.y;
-    doc.rect(MARGIN_L, headY, CONTENT_W, 16).fill(BRAND.lightGrey);
-    doc.fillColor(BRAND.darkGrey).font("Helvetica-Bold").fontSize(9)
-      .text(`${code} — ${rows[0]?.code === "Prv" ? "Provisional Sums" : code}`, MARGIN_L + 6, headY + 4, { width: CONTENT_W - 12 });
+    doc.rect(MARGIN_L, headY, CONTENT_W, 16).fill(LIGHT_TEAL);
+    doc.fillColor(BRAND.teal).font("Helvetica-Bold").fontSize(9);
+    doc.text(`${disc} · ${DISCIPLINE_LABEL[disc]}`, MARGIN_L + 6, headY + 4, { width: CONTENT_W - 12 });
     doc.fillColor(BRAND.black);
     doc.y = headY + 16;
 
     for (const item of rows) {
-      if (doc.y > PAGE_H - MARGIN_BOTTOM - 30) {
-        doc.addPage();
-        drawHeaderBand(doc);
-        doc.y = MARGIN_TOP;
-        drawHead();
-      }
-      const desc = (item.title + (item.description ? `\n${item.description}` : "")).slice(0, 600);
-      const wbs = `${item.code}-${item.itemNumber}`;
-      const y = doc.y;
+      const desc = (item.description || "—").slice(0, 500);
+      const note = (item.notes ?? "").slice(0, 60) || "As per scope";
+      const qty = fmtQty(item.measurementQty);
+      const unit = item.measurementUnit ?? "—";
 
-      const bg = rowIndex % 2 === 0 ? BRAND.white : BRAND.lightGrey;
-      // Estimate row height by measuring desc text height
-      const descHeight = doc.heightOfString(desc, { width: colDesc - 8 });
+      const descHeight = doc.heightOfString(desc, { width: cols[1].w - 8 });
       const rowH = Math.max(rowMinH, descHeight + 8);
+      ensureRoom(rowH);
+      const y = doc.y;
+      const bg = rowIdx % 2 === 0 ? BRAND.white : BRAND.lightGrey;
       doc.rect(MARGIN_L, y, CONTENT_W, rowH).fill(bg);
       doc.fillColor(BRAND.black).font("Helvetica").fontSize(8);
-      doc.text(wbs, MARGIN_L + 6, y + 5, { width: colItem - 8 });
-      doc.text(desc, MARGIN_L + colItem + 6, y + 5, { width: colDesc - 8 });
-      doc.text("—", MARGIN_L + colItem + colDesc + 6, y + 5, { width: colQty - 8, align: "right" });
-      doc.text("As per drawings", MARGIN_L + colItem + colDesc + colQty + 6, y + 5, { width: colNote - 8 });
+      doc.text(item.wbsCode, colX(0) + 6, y + 5, { width: cols[0].w - 8 });
+      doc.text(desc, colX(1) + 6, y + 5, { width: cols[1].w - 8 });
+      doc.text(qty, colX(2) + 6, y + 5, { width: cols[2].w - 8, align: "right" });
+      doc.text(unit, colX(3) + 6, y + 5, { width: cols[3].w - 8 });
+      doc.text(note, colX(4) + 6, y + 5, { width: cols[4].w - 8 });
       doc.y = y + rowH;
-      rowIndex += 1;
+      rowIdx += 1;
+    }
+  }
+
+  // Cutting group — saw cuts, core holes, other rates.
+  const hasCutting =
+    p.cuttingItems.sawCuts.length > 0 ||
+    p.cuttingItems.coreHoles.length > 0 ||
+    p.cuttingItems.otherRates.length > 0;
+  if (hasCutting) {
+    ensureRoom(24);
+    const headY = doc.y;
+    doc.rect(MARGIN_L, headY, CONTENT_W, 16).fill(LIGHT_TEAL);
+    doc.fillColor(BRAND.teal).font("Helvetica-Bold").fontSize(9)
+      .text("Concrete Cutting", MARGIN_L + 6, headY + 4, { width: CONTENT_W - 12 });
+    doc.fillColor(BRAND.black);
+    doc.y = headY + 16;
+
+    const drawCuttingRow = (
+      item: string,
+      desc: string,
+      qty: string,
+      unit: string,
+      note: string,
+      altIdx: number
+    ) => {
+      const descHeight = doc.heightOfString(desc, { width: cols[1].w - 8 });
+      const rowH = Math.max(rowMinH, descHeight + 8);
+      ensureRoom(rowH);
+      const y = doc.y;
+      const bg = altIdx % 2 === 0 ? BRAND.white : BRAND.lightGrey;
+      doc.rect(MARGIN_L, y, CONTENT_W, rowH).fill(bg);
+      doc.fillColor(BRAND.black).font("Helvetica").fontSize(8);
+      doc.text(item, colX(0) + 6, y + 5, { width: cols[0].w - 8 });
+      doc.text(desc, colX(1) + 6, y + 5, { width: cols[1].w - 8 });
+      doc.text(qty, colX(2) + 6, y + 5, { width: cols[2].w - 8, align: "right" });
+      doc.text(unit, colX(3) + 6, y + 5, { width: cols[3].w - 8 });
+      doc.text(note, colX(4) + 6, y + 5, { width: cols[4].w - 8 });
+      doc.y = y + rowH;
+    };
+
+    let ci = 0;
+    for (const c of p.cuttingItems.sawCuts) {
+      const desc =
+        c.description ||
+        [c.equipment, c.material, c.depthMm ? `${c.depthMm}mm` : null].filter(Boolean).join(" · ") ||
+        "Saw cut";
+      drawCuttingRow(
+        `${c.wbsRef}-CUT`,
+        desc,
+        fmtQty(c.quantityLm),
+        "Lm",
+        c.notes?.slice(0, 60) || "",
+        ci++
+      );
+    }
+    for (const c of p.cuttingItems.coreHoles) {
+      const desc = c.description || `Ø${c.diameterMm ?? "?"}mm core hole`;
+      const qty = c.isPOA ? "POA" : fmtQty(c.quantityEach);
+      drawCuttingRow(`${c.wbsRef}-HOLE`, desc, qty, "ea", c.notes?.slice(0, 60) || "", ci++);
+    }
+    for (const c of p.cuttingItems.otherRates) {
+      const desc = c.otherRate?.description || c.description || "Other";
+      const unit = c.otherRate?.unit || "ea";
+      drawCuttingRow(
+        `${c.wbsRef}-OTH`,
+        desc,
+        fmtQty(c.quantityEach),
+        unit,
+        c.notes?.slice(0, 60) || "",
+        ci++
+      );
+    }
+  }
+
+  if (p.scopeItems.length === 0 && !hasCutting) {
+    doc.moveDown(0.5);
+    doc.font("Helvetica-Oblique").fontSize(9).fillColor("#555")
+      .text("No scope items recorded for this tender.", MARGIN_L, doc.y, { width: CONTENT_W });
+    doc.fillColor(BRAND.black);
+  }
+
+  // Site details footer.
+  if (p.tender.scopeHeader) {
+    const sh = p.tender.scopeHeader;
+    const hasSite = sh.siteAddress || sh.proposedStartDate || sh.durationWeeks;
+    if (hasSite) {
+      doc.moveDown(0.8);
+      doc.font("Helvetica-Bold").fontSize(9).fillColor(BRAND.teal)
+        .text("Site details", MARGIN_L, doc.y);
+      doc.moveDown(0.2);
+      doc.font("Helvetica").fontSize(9).fillColor(BRAND.black);
+      if (sh.siteAddress) doc.text(`Site Address: ${sh.siteAddress}`, MARGIN_L, doc.y, { width: CONTENT_W });
+      if (sh.proposedStartDate)
+        doc.text(`Proposed Start: ${fmtDate(sh.proposedStartDate)}`, MARGIN_L, doc.y, { width: CONTENT_W });
+      if (sh.durationWeeks) doc.text(`Duration: ${sh.durationWeeks} weeks`, MARGIN_L, doc.y, { width: CONTENT_W });
     }
   }
 }
 
-function drawAssumptionsPage(doc: Doc) {
+// ── Page 3 ───────────────────────────────────────────────────────────
+const ALLOWANCES_BULLETS = [
+  "Standard working hours Monday to Friday 6:30am to 4:30pm unless otherwise stated",
+  "All consumables, fuel, and waste disposal included in the quoted price",
+  "All works to comply with relevant WHS, EPA, and Council regulations",
+  "Safety signage, barriers, and exclusion zones as required"
+];
+
+function drawAssumptionsPage(doc: Doc, p: ExportPayload) {
   doc.addPage();
   drawHeaderBand(doc);
   doc.y = MARGIN_TOP;
 
-  doc.font("Helvetica-Bold").fontSize(12).fillColor(BRAND.teal)
-    .text("Assumptions, Allowances & Terms", MARGIN_L, doc.y);
-  addHorizRule(doc, BRAND.teal);
-  doc.fillColor(BRAND.black);
-
-  // Allowances box
-  doc.font("Helvetica-Bold").fontSize(10).text("Project Specific Allowances", MARGIN_L, doc.y);
-  doc.moveDown(0.3);
-  {
-    const y = doc.y;
-    const boxH = doc.heightOfString(PROJECT_ALLOWANCES_TEXT, { width: CONTENT_W - 16 }) + 12;
-    doc.rect(MARGIN_L, y, CONTENT_W, boxH).fill(BRAND.lightGrey);
-    doc.fillColor(BRAND.black).font("Helvetica").fontSize(8.5)
-      .text(PROJECT_ALLOWANCES_TEXT, MARGIN_L + 8, y + 6, { width: CONTENT_W - 16, align: "justify" });
-    doc.y = y + boxH + 6;
-  }
-
-  // Assumptions box
-  doc.font("Helvetica-Bold").fontSize(10).text("Project Specific Assumptions", MARGIN_L, doc.y);
-  doc.moveDown(0.3);
-  {
-    const y = doc.y;
-    const boxH = doc.heightOfString(PROJECT_ASSUMPTIONS_TEXT, { width: CONTENT_W - 16 }) + 12;
-    doc.rect(MARGIN_L, y, CONTENT_W, boxH).fill(BRAND.lightGrey);
-    doc.fillColor(BRAND.black).font("Helvetica").fontSize(8.5)
-      .text(PROJECT_ASSUMPTIONS_TEXT, MARGIN_L + 8, y + 6, { width: CONTENT_W - 16, align: "justify" });
-    doc.y = y + boxH + 10;
-  }
-
-  // T&Cs heading
+  // Project Specific Allowances (fixed).
   doc.font("Helvetica-Bold").fontSize(10).fillColor(BRAND.teal)
-    .text("Terms & Conditions", MARGIN_L, doc.y);
-  addHorizRule(doc, BRAND.teal);
-  doc.fillColor(BRAND.black);
+    .text("PROJECT SPECIFIC ALLOWANCES", MARGIN_L, doc.y);
+  drawRule(doc, BRAND.orange);
+  doc.font("Helvetica").fontSize(8).fillColor(BRAND.black)
+    .text("The following allowances have been included in this quotation:", MARGIN_L, doc.y, { width: CONTENT_W });
+  doc.moveDown(0.2);
+  for (const line of ALLOWANCES_BULLETS) {
+    doc.text(`• ${line}`, MARGIN_L + 6, doc.y, { width: CONTENT_W - 6 });
+    doc.moveDown(0.1);
+  }
+  doc.moveDown(0.5);
 
-  // Two-column layout for T&Cs
+  // Project Specific Assumptions (per-tender TenderAssumption list).
+  if (p.assumptions.length > 0) {
+    doc.font("Helvetica-Bold").fontSize(10).fillColor(BRAND.teal)
+      .text("PROJECT SPECIFIC ASSUMPTIONS", MARGIN_L, doc.y);
+    drawRule(doc, BRAND.orange);
+    doc.font("Helvetica").fontSize(8).fillColor(BRAND.black);
+    for (const a of p.assumptions) {
+      doc.text(`• ${a.text}`, MARGIN_L + 6, doc.y, { width: CONTENT_W - 6 });
+      doc.moveDown(0.1);
+    }
+    doc.moveDown(0.5);
+  }
+
+  // Project Specific Exclusions (per-tender TenderExclusion list).
+  if (p.exclusions.length > 0) {
+    doc.font("Helvetica-Bold").fontSize(10).fillColor(BRAND.teal)
+      .text("PROJECT SPECIFIC EXCLUSIONS", MARGIN_L, doc.y);
+    drawRule(doc, BRAND.orange);
+    doc.font("Helvetica").fontSize(8).fillColor(BRAND.black);
+    for (const e of p.exclusions) {
+      doc.text(`• ${e.text}`, MARGIN_L + 6, doc.y, { width: CONTENT_W - 6 });
+      doc.moveDown(0.1);
+    }
+    doc.moveDown(0.5);
+  }
+
+  // Terms & Conditions — centred heading, two-column clause layout.
+  doc.font("Helvetica-Bold").fontSize(11).fillColor(BRAND.teal)
+    .text("TERMS AND CONDITIONS", MARGIN_L, doc.y, { width: CONTENT_W, align: "center" });
+  drawRule(doc, BRAND.orange);
+
+  const clauses = p.tandc.clauses;
   const colW = (CONTENT_W - 16) / 2;
   const colLeftX = MARGIN_L;
   const colRightX = MARGIN_L + colW + 16;
   const colTop = doc.y;
   const colBottomLimit = PAGE_H - MARGIN_BOTTOM - 10;
 
-  doc.font("Helvetica").fontSize(7).fillColor(BRAND.darkGrey);
-
-  // Render into left column, overflowing to right column, overflowing to new page.
-  const paragraphs = TC_TEXT.split(/\n\n+/).map((p) => p.trim()).filter(Boolean);
   let inRightColumn = false;
   let currentX = colLeftX;
   doc.y = colTop;
 
-  for (const para of paragraphs) {
-    const h = doc.heightOfString(para, { width: colW });
-    if (doc.y + h > colBottomLimit) {
+  const renderClause = (clause: TcLike, x: number) => {
+    doc.font("Helvetica-Bold").fontSize(7).fillColor(BRAND.darkGrey)
+      .text(`${clause.number}. ${clause.heading.toUpperCase()}`, x, doc.y, { width: colW });
+    doc.font("Helvetica").fontSize(7).fillColor("#333")
+      .text(clause.body, x, doc.y, { width: colW, align: "justify" });
+    doc.moveDown(0.35);
+  };
+
+  for (const clause of clauses) {
+    const headH = doc.heightOfString(`${clause.number}. ${clause.heading.toUpperCase()}`, { width: colW });
+    const bodyH = doc.heightOfString(clause.body, { width: colW });
+    const needed = headH + bodyH + 6;
+    if (doc.y + needed > colBottomLimit) {
       if (!inRightColumn) {
         inRightColumn = true;
         currentX = colRightX;
         doc.y = colTop;
       } else {
-        // New page; reset both columns.
         doc.addPage();
         drawHeaderBand(doc);
         doc.y = MARGIN_TOP;
-        doc.font("Helvetica-Bold").fontSize(10).fillColor(BRAND.teal)
-          .text("Terms & Conditions (continued)", MARGIN_L, doc.y);
-        addHorizRule(doc, BRAND.teal);
-        doc.fillColor(BRAND.black).font("Helvetica").fontSize(7).fillColor(BRAND.darkGrey);
+        doc.font("Helvetica-Bold").fontSize(11).fillColor(BRAND.teal)
+          .text("TERMS AND CONDITIONS (continued)", MARGIN_L, doc.y, { width: CONTENT_W, align: "center" });
+        drawRule(doc, BRAND.orange);
         inRightColumn = false;
         currentX = colLeftX;
       }
     }
-    doc.text(para, currentX, doc.y, { width: colW, align: "justify" });
-    doc.moveDown(0.3);
+    renderClause(clause, currentX);
   }
   doc.fillColor(BRAND.black);
 }
+
+type TcLike = { number: string; heading: string; body: string };
 
 export async function buildQuotePdf(payload: ExportPayload): Promise<Buffer> {
   return new Promise<Buffer>((resolve, reject) => {
@@ -409,9 +571,8 @@ export async function buildQuotePdf(payload: ExportPayload): Promise<Buffer> {
     try {
       drawCoverPage(doc, payload);
       drawScopePage(doc, payload);
-      drawAssumptionsPage(doc);
+      drawAssumptionsPage(doc, payload);
 
-      // Page numbers — loop using PDFKit's internal page counter.
       const range = doc.bufferedPageRange();
       for (let i = 0; i < range.count; i += 1) {
         doc.switchToPage(range.start + i);

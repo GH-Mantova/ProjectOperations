@@ -602,6 +602,7 @@ model Tender {
   estimatedValue    Decimal?                @map("estimated_value") @db.Decimal(14, 2)
   notes             String?
   submittedAt       DateTime?               @map("submitted_at")
+  ratesSnapshotAt   DateTime?               @map("rates_snapshot_at")
   wonAt             DateTime?               @map("won_at")
   lostAt            DateTime?               @map("lost_at")
   createdAt         DateTime                @default(now()) @map("created_at")

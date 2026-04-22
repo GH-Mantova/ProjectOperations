@@ -16,7 +16,7 @@ class UpsertViewConfigDto {
 class CreateCuttingItemDto {
   @IsString() wbsRef!: string;
   @IsOptional() @IsString() description?: string;
-  @IsIn(["saw-cut", "core-hole"]) itemType!: "saw-cut" | "core-hole";
+  @IsIn(["saw-cut", "core-hole", "other-rate"]) itemType!: "saw-cut" | "core-hole" | "other-rate";
   @IsOptional() @IsString() equipment?: string;
   @IsOptional() @IsString() elevation?: string;
   @IsOptional() @IsString() material?: string;
@@ -27,6 +27,7 @@ class CreateCuttingItemDto {
   @IsOptional() @IsString() shift?: string;
   @IsOptional() @IsString() method?: string;
   @IsOptional() @Type(() => Number) @IsNumber() shiftLoading?: number;
+  @IsOptional() @IsString() otherRateId?: string;
   @IsOptional() @IsString() notes?: string;
   @IsOptional() @IsInt() sortOrder?: number;
 }
@@ -34,7 +35,7 @@ class CreateCuttingItemDto {
 class UpdateCuttingItemDto {
   @IsOptional() @IsString() wbsRef?: string;
   @IsOptional() @IsString() description?: string | null;
-  @IsOptional() @IsIn(["saw-cut", "core-hole"]) itemType?: "saw-cut" | "core-hole";
+  @IsOptional() @IsIn(["saw-cut", "core-hole", "other-rate"]) itemType?: "saw-cut" | "core-hole" | "other-rate";
   @IsOptional() @IsString() equipment?: string | null;
   @IsOptional() @IsString() elevation?: string | null;
   @IsOptional() @IsString() material?: string | null;
@@ -45,6 +46,7 @@ class UpdateCuttingItemDto {
   @IsOptional() @IsString() shift?: string | null;
   @IsOptional() @IsString() method?: string | null;
   @IsOptional() @Type(() => Number) @IsNumber() shiftLoading?: number | null;
+  @IsOptional() @IsString() otherRateId?: string | null;
   @IsOptional() @IsString() notes?: string | null;
   @IsOptional() @IsInt() sortOrder?: number | null;
 }

@@ -2169,6 +2169,10 @@ model CuttingSheetItem {
   shift         String?
   shiftLoading  Decimal? @db.Decimal(10, 2) @map("shift_loading")
   method        String?  // High-Freq | Low-emission | Fuel | N/A — applied as ×1.25 for High-Freq / Low-emission
+  // Other-rate line items reference the CuttingOtherRate row so the rate
+  // stays live — admin edits propagate to all tenders on next load.
+  otherRateId   String?           @map("other_rate_id")
+  otherRate     CuttingOtherRate? @relation(fields: [otherRateId], references: [id], onDelete: SetNull)
   notes         String?
   sortOrder     Int      @default(0) @map("sort_order")
   createdById   String   @map("created_by_id")
@@ -2178,6 +2182,25 @@ model CuttingSheetItem {
 
   @@index([tenderId, itemType, sortOrder])
   @@map("cutting_sheet_items")
+}
+
+// ── Cutting — other rates ───────────────────────────────────────────────
+// Admin-managed flat-rate catalogue (establishment fees, wet-vac hire,
+// stand-down time etc). Line items on the cutting sheet reference these
+// rows so a rate change propagates to all tenders on next load.
+model CuttingOtherRate {
+  id           String             @id @default(cuid())
+  description  String
+  unit         String
+  rate         Decimal            @db.Decimal(10, 2)
+  isActive     Boolean            @default(true) @map("is_active")
+  sortOrder    Int                @default(0) @map("sort_order")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+  cuttingItems CuttingSheetItem[]
+
+  @@index([isActive, sortOrder])
+  @@map("cutting_other_rates")
 }
 
 // ── Quote tab — T&C, Assumptions, Exclusions ────────────────────────────

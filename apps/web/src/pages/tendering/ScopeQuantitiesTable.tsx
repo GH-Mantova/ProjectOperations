@@ -58,6 +58,25 @@ const CONFIDENCE_STYLE: Record<string, { bg: string; fg: string; label: string }
   low: { bg: "#FEE2E2", fg: "#991B1B", label: "Low" }
 };
 
+// Client-side mirror of the server's row-type → columns matrix. Used as a
+// fallback when a row carries a legacy rowType that isn't in the filtered
+// list registry (otherwise the rowCols lookup returns [] and every cell
+// renders as "—", which looks like a read-only bug).
+const FALLBACK_COLUMNS_BY_ROW_TYPE: Record<string, string[]> = {
+  demolition: ["men", "days", "shift", "measurementQty", "measurementUnit", "material", "notes"],
+  "asbestos-removal": ["men", "days", "shift", "measurementQty", "measurementUnit", "material", "notes"],
+  enclosure: ["men", "days", "measurementQty", "measurementUnit", "material", "notes"],
+  excavation: ["men", "days", "shift", "plantAssetId", "measurementQty", "measurementUnit", "material", "notes"],
+  earthworks: ["men", "days", "shift", "plantAssetId", "measurementQty", "measurementUnit", "material", "notes"],
+  "waste-disposal": ["wasteGroup", "wasteType", "wasteFacility", "wasteTonnes", "wasteLoads", "notes"],
+  "plant-only": ["plantAssetId", "days", "notes"],
+  "general-labour": ["men", "days", "shift", "notes"],
+  cutting: ["notes"],
+  asbestos: ["men", "days", "shift", "measurementQty", "measurementUnit", "material", "notes"],
+  waste: ["wasteGroup", "wasteType", "wasteFacility", "wasteTonnes", "wasteLoads", "notes"],
+  general: ["men", "days", "shift", "notes"]
+};
+
 function fmtCurrency(n: number): string {
   return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 0 }).format(n);
 }
@@ -119,21 +138,38 @@ export function ScopeQuantitiesTable({
 
   // When row-types become known, resolve each one's available-column set
   // once so the cell visibility matrix doesn't require a round-trip per row.
+  // Include legacy rowTypes that appear on existing items even if the current
+  // discipline's registry doesn't list them (otherwise their cells render as
+  // read-only "—" placeholders).
   useEffect(() => {
-    if (rowTypes.length === 0) return;
+    const registryTypes = rowTypes.map((rt) => rt.value);
+    const itemTypes = Array.from(new Set(items.map((i) => i.rowType).filter(Boolean)));
+    const allTypes = Array.from(new Set([...registryTypes, ...itemTypes]));
+    if (allTypes.length === 0) return;
     let cancelled = false;
     (async () => {
       const byRowType: Record<string, string[]> = {};
       const allAvailable = new Set<string>();
-      for (const rt of rowTypes) {
+      for (const rt of allTypes) {
         try {
-          const response = await authFetch(`/tenders/${tenderId}/scope/columns?rowType=${encodeURIComponent(rt.value)}`);
-          if (!response.ok) continue;
+          const response = await authFetch(`/tenders/${tenderId}/scope/columns?rowType=${encodeURIComponent(rt)}`);
+          if (!response.ok) {
+            const fb = FALLBACK_COLUMNS_BY_ROW_TYPE[rt];
+            if (fb) {
+              byRowType[rt] = fb;
+              fb.forEach((c) => allAvailable.add(c));
+            }
+            continue;
+          }
           const body = (await response.json()) as ColumnsResponse;
-          byRowType[rt.value] = body.available;
+          byRowType[rt] = body.available;
           body.available.forEach((c) => allAvailable.add(c));
         } catch {
-          // skip
+          const fb = FALLBACK_COLUMNS_BY_ROW_TYPE[rt];
+          if (fb) {
+            byRowType[rt] = fb;
+            fb.forEach((c) => allAvailable.add(c));
+          }
         }
       }
       if (!cancelled) {
@@ -144,7 +180,7 @@ export function ScopeQuantitiesTable({
     return () => {
       cancelled = true;
     };
-  }, [authFetch, tenderId, rowTypes]);
+  }, [authFetch, tenderId, rowTypes, items]);
 
   const saveViewConfig = async (nextColumns: string[]) => {
     setColumns(nextColumns);
@@ -273,7 +309,7 @@ export function ScopeQuantitiesTable({
   );
 
   const columnsForRow = useCallback(
-    (rowType: string): string[] => columnsByRowType[rowType] ?? [],
+    (rowType: string): string[] => columnsByRowType[rowType] ?? FALLBACK_COLUMNS_BY_ROW_TYPE[rowType] ?? [],
     [columnsByRowType]
   );
 

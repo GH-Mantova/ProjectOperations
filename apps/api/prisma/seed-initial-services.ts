@@ -2884,6 +2884,16 @@ export async function seedEstimateRates(prisma: PrismaClient): Promise<void> {
     // Tracksaw
     { equipment: "Tracksaw", elevation: "Any", material: "Any", depthMm: 25, ratePerM: "18.00" }
   ];
+
+  // Cleanup — Roadsaw is Floor-only. If any prior seed added Roadsaw rows
+  // for Wall/Any/Inverted, drop them so the rate resolver doesn't match.
+  await prisma.estimateCuttingRate.deleteMany({
+    where: {
+      equipment: "Roadsaw",
+      elevation: { notIn: ["Floor"] }
+    }
+  });
+
   for (const [index, row] of cutting.entries()) {
     await prisma.estimateCuttingRate.upsert({
       where: {
@@ -2948,6 +2958,67 @@ export async function seedEstimateRates(prisma: PrismaClient): Promise<void> {
         isActive: true
       }
     });
+  }
+
+  // Cutting "Other" rates (flat-rate catalogue) — 01/04/2026 Cutrite list.
+  type OtherRateRow = { description: string; unit: string; rate: string; sortOrder: number };
+  const otherRates: OtherRateRow[] = [
+    { description: "Establishment fee (BNE up to 80km)", unit: "per visit", rate: "120.00", sortOrder: 1 },
+    { description: "Establishment fee (Toowoomba/Sunshine Coast)", unit: "per visit", rate: "680.00", sortOrder: 2 },
+    { description: "Wet vacuum", unit: "p/day", rate: "65.00", sortOrder: 3 },
+    { description: "HEPA vac", unit: "p/day", rate: "100.00", sortOrder: 4 },
+    { description: "Extra man", unit: "p/hr", rate: "135.00", sortOrder: 5 },
+    { description: "Stand-down time", unit: "p/hr", rate: "125.00", sortOrder: 6 },
+    { description: "Clean-up time", unit: "p/hr/man", rate: "135.00", sortOrder: 7 },
+    { description: "Set-out time", unit: "p/hr/man", rate: "135.00", sortOrder: 8 },
+    { description: "Relocation", unit: "each", rate: "45.00", sortOrder: 9 },
+    { description: "GPR Concrete scanning", unit: "p/hr (min 2hrs)", rate: "225.00", sortOrder: 10 },
+    { description: "GPR Concrete scan report", unit: "each", rate: "120.00", sortOrder: 11 },
+    { description: "Minimum weekday charge", unit: "per visit", rate: "360.00", sortOrder: 12 },
+    { description: "Minimum night charge", unit: "per visit", rate: "1900.00", sortOrder: 13 },
+    { description: "Stand-down night", unit: "per visit", rate: "990.00", sortOrder: 14 },
+    { description: "Minimum Saturday charge", unit: "per visit", rate: "1200.00", sortOrder: 15 },
+    { description: "Minimum Sunday charge", unit: "per visit", rate: "1900.00", sortOrder: 16 },
+    { description: "Mini mobile scaffold", unit: "per visit", rate: "170.00", sortOrder: 17 },
+    { description: "Jack hammer hire", unit: "per visit", rate: "90.00", sortOrder: 18 },
+    { description: "Jack hammer labour", unit: "p/hr", rate: "150.00", sortOrder: 19 },
+    { description: "Grinding/scabbling", unit: "p/hr", rate: "165.00", sortOrder: 20 },
+    { description: "3-phase grinding/scabbling", unit: "p/hr", rate: "260.00", sortOrder: 21 },
+    { description: "Generator 8KVA", unit: "p/day", rate: "110.00", sortOrder: 22 },
+    { description: "Generator 12.5KVA", unit: "p/day", rate: "125.00", sortOrder: 23 },
+    { description: "Water tank", unit: "per visit", rate: "120.00", sortOrder: 24 },
+    { description: "Water/recycling slurry truck", unit: "p/day + disposal", rate: "160.00", sortOrder: 25 },
+    { description: "Water/recycling slurry ICB", unit: "p/day + disposal", rate: "85.00", sortOrder: 26 },
+    { description: "Excess steel", unit: "per 6mm bar diameter", rate: "3.20", sortOrder: 27 },
+    { description: "Overtime hourly charge beyond minimum", unit: "p/hr/man (min 4hrs)", rate: "75.00", sortOrder: 28 }
+  ];
+  // Upsert by description (unique enough for this small admin list).
+  // Existing rows update their rate/unit/sortOrder; missing rows are added.
+  for (const row of otherRates) {
+    const existing = await prisma.cuttingOtherRate.findFirst({
+      where: { description: row.description }
+    });
+    if (existing) {
+      await prisma.cuttingOtherRate.update({
+        where: { id: existing.id },
+        data: {
+          unit: row.unit,
+          rate: new Prisma.Decimal(row.rate),
+          sortOrder: row.sortOrder,
+          isActive: true
+        }
+      });
+    } else {
+      await prisma.cuttingOtherRate.create({
+        data: {
+          description: row.description,
+          unit: row.unit,
+          rate: new Prisma.Decimal(row.rate),
+          sortOrder: row.sortOrder,
+          isActive: true
+        }
+      });
+    }
   }
 
   type FuelRow = { item: string; unit: string; rate: string };

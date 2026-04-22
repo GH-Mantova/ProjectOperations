@@ -71,6 +71,14 @@ export class UpsertEnclosureRateDto {
   @IsOptional() @Type(() => Number) @IsInt() sortOrder?: number;
 }
 
+export class UpsertOtherRateDto {
+  @IsString() description!: string;
+  @IsString() unit!: string;
+  @IsNumberString() rate!: string;
+  @IsOptional() @IsBoolean() isActive?: boolean;
+  @IsOptional() @Type(() => Number) @IsInt() sortOrder?: number;
+}
+
 // Estimate & item DTOs
 export class UpdateEstimateDto {
   @IsOptional() @IsNumberString() markup?: string;

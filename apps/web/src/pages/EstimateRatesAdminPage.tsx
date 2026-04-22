@@ -70,7 +70,16 @@ type EnclosureRate = {
   sortOrder: number;
 };
 
-type Tab = "labour" | "plant" | "waste" | "cutting" | "coreholes" | "fuel" | "enclosure";
+type OtherRate = {
+  id: string;
+  description: string;
+  unit: string;
+  rate: string;
+  isActive: boolean;
+  sortOrder: number;
+};
+
+type Tab = "labour" | "plant" | "waste" | "cutting" | "coreholes" | "fuel" | "enclosure" | "other";
 
 const SNAPSHOT_NOTE =
   "Rate snapshots: Every submitted quote freezes the rates in force on the submit date. Editing a rate here never changes an old quote.";
@@ -102,6 +111,7 @@ export function EstimateRatesAdminPage() {
   const [coreHoles, setCoreHoles] = useState<CoreHoleRate[]>([]);
   const [fuel, setFuel] = useState<FuelRate[]>([]);
   const [enclosure, setEnclosure] = useState<EnclosureRate[]>([]);
+  const [other, setOther] = useState<OtherRate[]>([]);
   const [searches, setSearches] = useState<Record<Tab, string>>({
     labour: "",
     plant: "",
@@ -109,7 +119,8 @@ export function EstimateRatesAdminPage() {
     cutting: "",
     coreholes: "",
     fuel: "",
-    enclosure: ""
+    enclosure: "",
+    other: ""
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -119,14 +130,15 @@ export function EstimateRatesAdminPage() {
     setLoading(true);
     setError(null);
     try {
-      const [l, p, w, c, ch, f, e] = await Promise.all([
+      const [l, p, w, c, ch, f, e, o] = await Promise.all([
         authFetch(`/estimate-rates/labour`).then((r) => (r.ok ? (r.json() as Promise<LabourRate[]>) : [])),
         authFetch(`/estimate-rates/plant`).then((r) => (r.ok ? (r.json() as Promise<PlantRate[]>) : [])),
         authFetch(`/estimate-rates/waste`).then((r) => (r.ok ? (r.json() as Promise<WasteRate[]>) : [])),
         authFetch(`/estimate-rates/cutting`).then((r) => (r.ok ? (r.json() as Promise<CuttingRate[]>) : [])),
         authFetch(`/estimate-rates/core-holes`).then((r) => (r.ok ? (r.json() as Promise<CoreHoleRate[]>) : [])),
         authFetch(`/estimate-rates/fuel`).then((r) => (r.ok ? (r.json() as Promise<FuelRate[]>) : [])),
-        authFetch(`/estimate-rates/enclosure`).then((r) => (r.ok ? (r.json() as Promise<EnclosureRate[]>) : []))
+        authFetch(`/estimate-rates/enclosure`).then((r) => (r.ok ? (r.json() as Promise<EnclosureRate[]>) : [])),
+        authFetch(`/estimate-rates/other-rates`).then((r) => (r.ok ? (r.json() as Promise<OtherRate[]>) : []))
       ]);
       setLabour(l as LabourRate[]);
       setPlant(p as PlantRate[]);
@@ -135,6 +147,7 @@ export function EstimateRatesAdminPage() {
       setCoreHoles(ch as CoreHoleRate[]);
       setFuel(f as FuelRate[]);
       setEnclosure(e as EnclosureRate[]);
+      setOther(o as OtherRate[]);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -181,6 +194,7 @@ export function EstimateRatesAdminPage() {
   const coreHolesFiltered = filterRows(coreHoles, search, (r) => String(r.diameterMm));
   const fuelFiltered = filterRows(fuel, search, (r) => `${r.item} ${r.unit}`);
   const enclosureFiltered = filterRows(enclosure, search, (r) => `${r.enclosureType} ${r.unit}`);
+  const otherFiltered = filterRows(other, search, (r) => `${r.description} ${r.unit}`);
 
   const countFor: Record<Tab, number> = {
     labour: labour.length,
@@ -189,7 +203,8 @@ export function EstimateRatesAdminPage() {
     cutting: cutting.length,
     coreholes: coreHoles.length,
     fuel: fuel.length,
-    enclosure: enclosure.length
+    enclosure: enclosure.length,
+    other: other.length
   };
 
   const filteredCount: Record<Tab, number> = {
@@ -199,7 +214,8 @@ export function EstimateRatesAdminPage() {
     cutting: cuttingFiltered.length,
     coreholes: coreHolesFiltered.length,
     fuel: fuelFiltered.length,
-    enclosure: enclosureFiltered.length
+    enclosure: enclosureFiltered.length,
+    other: otherFiltered.length
   };
 
   return (
@@ -228,7 +244,8 @@ export function EstimateRatesAdminPage() {
           { key: "cutting", label: `Saw Cutting (${countFor.cutting})` },
           { key: "coreholes", label: `Core holes (${countFor.coreholes})` },
           { key: "fuel", label: `Fuel (${countFor.fuel})` },
-          { key: "enclosure", label: `Enclosures (${countFor.enclosure})` }
+          { key: "enclosure", label: `Enclosures (${countFor.enclosure})` },
+          { key: "other", label: `Other rates (${countFor.other})` }
         ] as Array<{ key: Tab; label: string }>).map((t) => (
           <button
             key={t.key}
@@ -388,6 +405,27 @@ export function EstimateRatesAdminPage() {
               saving={saving}
               callApi={callApi}
             />
+          )}
+          {tab === "other" && (
+            <>
+              <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 0 }}>
+                Flat-fee or unit-priced extras for the cutting sheet (establishment fees, blade changes, wet-vac hire, etc). Line total = rate × quantity; multipliers do not apply.
+              </p>
+              <RatesTable
+                rows={otherFiltered}
+                columns={[
+                  { key: "description", label: "Description", type: "text", widthPct: 55 },
+                  { key: "unit", label: "Unit", type: "text", widthPct: 15 },
+                  { key: "rate", label: "Rate", type: "number", step: "0.01", render: currency, widthPct: 20 }
+                ]}
+                basePath="/estimate-rates/other-rates"
+                addDefaults={{ description: "", unit: "each", rate: "0" }}
+                deleteLabel={(r) => r.description}
+                canAdmin={canAdmin}
+                saving={saving}
+                callApi={callApi}
+              />
+            </>
           )}
         </section>
       )}

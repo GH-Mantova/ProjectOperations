@@ -57,6 +57,8 @@ import { FieldSafetyPage } from "./pages/field/FieldSafetyPage";
 import { TimesheetApprovalPage } from "./pages/timesheets/TimesheetApprovalPage";
 import { UserProfilePage } from "./pages/account/UserProfilePage";
 import { AdminSettingsPage } from "./pages/AdminSettingsPage";
+import { ContractsListPage } from "./pages/contracts/ContractsListPage";
+import { ContractDetailPage } from "./pages/contracts/ContractDetailPage";
 
 function ProtectedRoute() {
   const { isAuthenticated } = useAuth();
@@ -159,6 +161,8 @@ export function App() {
             <Route path="/admin/audit" element={<AuditLogsPage />} />
             <Route path="/admin/platform" element={<PlatformPage />} />
             <Route path="/admin/settings" element={<AdminSettingsPage />} />
+            <Route path="/contracts" element={<ContractsListPage />} />
+            <Route path="/contracts/:id" element={<ContractDetailPage />} />
             <Route path="/admin/estimate-rates" element={<EstimateRatesAdminPage />} />
             <Route path="/account" element={<UserProfilePage />} />
             <Route path="/notifications" element={<NotificationsPage />} />

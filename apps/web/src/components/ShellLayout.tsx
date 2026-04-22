@@ -189,7 +189,12 @@ const NAV_GROUPS: NavGroup[] = [
             !path.startsWith("/tenders/reports"))
       },
       { to: "/tenders/reports", label: "Reports", icon: ICON_AUDIT, match: (path) => path.startsWith("/tenders/reports") },
-      { to: "/jobs?filter=contracts", label: "Contracts", icon: ICON_CONTRACTS }
+      {
+        to: "/contracts",
+        label: "Contracts",
+        icon: ICON_CONTRACTS,
+        match: (path) => path === "/contracts" || path.startsWith("/contracts/")
+      }
     ]
   },
   {
@@ -273,7 +278,8 @@ const BREADCRUMBS: Record<string, string> = {
   "/admin/permissions": "Permissions",
   "/admin/audit": "Audit",
   "/admin/platform": "Platform",
-  "/admin/settings": "Admin Settings"
+  "/admin/settings": "Admin Settings",
+  "/contracts": "Contracts"
 };
 
 function initialsOf(firstName?: string, lastName?: string, email?: string): string {

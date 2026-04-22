@@ -120,7 +120,8 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       "forms.manage",
       "documents.view",
       "documents.manage",
-      "field.manage"
+      "field.manage",
+      "finance.view"
     ]
   );
 
@@ -171,7 +172,9 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       "jobs.view",
       "projects.view",
       "resources.view",
-      "documents.view"
+      "documents.view",
+      "finance.view",
+      "finance.manage"
     ]
   );
 
@@ -208,17 +211,21 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
     lastName: string;
     roleId: string;
     position: string;
+    isSuperUser?: boolean;
   };
   // Real Initial Services staff roster. Stable IDs are retained so existing seed
   // references (tender estimator, job PM/supervisor) continue to resolve.
   const userSeeds: UserSeed[] = [
     {
+      // Sean is the only Super User. Super Users can manage Admins and other
+      // Super Users — the User Management UI + API enforce that tier rule.
       id: "user-admin",
       email: "sean.lattin@initialservices.net.au",
       firstName: "Sean",
       lastName: "Lattin",
       roleId: adminRole.id,
-      position: "Company Director"
+      position: "Company Director",
+      isSuperUser: true
     },
     {
       id: "user-pm-002",
@@ -298,7 +305,8 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
         email: seed.email,
         firstName: seed.firstName,
         lastName: seed.lastName,
-        isActive: true
+        isActive: true,
+        isSuperUser: seed.isSuperUser ?? false
       },
       create: {
         id: seed.id,
@@ -306,6 +314,7 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
         firstName: seed.firstName,
         lastName: seed.lastName,
         isActive: true,
+        isSuperUser: seed.isSuperUser ?? false,
         passwordHash: hashPassword("Password123!")
       }
     });

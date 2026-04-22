@@ -80,6 +80,9 @@ model User {
   contractsCreated  Contract[]      @relation("ContractCreatedBy")
   variationsCreated Variation[]     @relation("VariationCreatedBy")
   progressClaimsCreated ProgressClaim[] @relation("ProgressClaimCreatedBy")
+  createdQuotes     ClientQuote[]   @relation("QuoteCreatedBy")
+  sentQuotes        ClientQuote[]   @relation("QuoteSentBy")
+  sentQuoteEmails   QuoteEmail[]    @relation("QuoteEmailSentBy")
 
   @@index([isActive])
   @@map("users")
@@ -369,6 +372,12 @@ model Client {
   claimCutoffDay  Int?             @map("claim_cutoff_day")
   claimCutoffContactId String?     @map("claim_cutoff_contact_id")
   claimCutoffContact Contact?      @relation("ClaimCutoffContact", fields: [claimCutoffContactId], references: [id], onDelete: SetNull)
+  preferenceScore  Int?             @map("preference_score")
+  winCount         Int              @default(0) @map("win_count")
+  tenderCount      Int              @default(0) @map("tender_count")
+  winRate          Decimal?         @db.Decimal(5, 2) @map("win_rate")
+  lastTenderAt     DateTime?        @map("last_tender_at")
+  lastWonAt        DateTime?        @map("last_won_at")
   createdAt       DateTime         @default(now()) @map("created_at")
   updatedAt       DateTime         @updatedAt @map("updated_at")
   contacts        Contact[]
@@ -378,6 +387,7 @@ model Client {
   projects        Project[]
   formSubmissions FormSubmission[]
   tenderClientNotes TenderClientNote[]
+  clientQuotes    ClientQuote[]
 
   @@unique([name])
   @@index([status])
@@ -603,6 +613,7 @@ model Tender {
   notes             String?
   submittedAt       DateTime?               @map("submitted_at")
   ratesSnapshotAt   DateTime?               @map("rates_snapshot_at")
+  tenderScoreCounted Boolean                @default(false) @map("tender_score_counted")
   wonAt             DateTime?               @map("won_at")
   lostAt            DateTime?               @map("lost_at")
   createdAt         DateTime                @default(now()) @map("created_at")
@@ -630,6 +641,7 @@ model Tender {
   tandC             TenderTandC?
   assumptions       TenderAssumption[]
   exclusions        TenderExclusion[]
+  clientQuotes      ClientQuote[]
 
   @@index([status])
   @@index([estimatorUserId])
@@ -2418,4 +2430,132 @@ model ClaimNumberSequence {
   lastNumber Int @default(0) @map("last_number")
 
   @@map("claim_number_sequences")
+}
+
+// ── Client quotes (per-client, per-revision) ───────────────────────────
+// PR #62 split the PDF builder's data source away from the raw scope
+// summary. A ClientQuote holds the estimator's curated cost lines (A, B,
+// C...) that actually appear on the client PDF; the discipline totals
+// from ScopeRedesignService.summary are hidden from the client entirely.
+enum ClientQuoteStatus {
+  DRAFT
+  SENT
+  SUPERSEDED
+}
+
+model ClientQuote {
+  id              String            @id @default(cuid())
+  tenderId        String            @map("tender_id")
+  tender          Tender            @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  clientId        String            @map("client_id")
+  client          Client            @relation(fields: [clientId], references: [id])
+  revision        Int               @default(1)
+  quoteRef        String            @unique @map("quote_ref")
+  status          ClientQuoteStatus @default(DRAFT)
+  adjustmentPct   Decimal?          @db.Decimal(5, 2) @map("adjustment_pct")
+  adjustmentAmt   Decimal?          @db.Decimal(12, 2) @map("adjustment_amt")
+  adjustmentNote  String?           @map("adjustment_note")
+  assumptionMode  String            @default("free") @map("assumption_mode")
+  showProvisional Boolean           @default(false) @map("show_provisional")
+  showCostOptions Boolean           @default(false) @map("show_cost_options")
+  sentAt          DateTime?         @map("sent_at")
+  sentById        String?           @map("sent_by_id")
+  sentBy          User?             @relation("QuoteSentBy", fields: [sentById], references: [id])
+  generatedPdfPath String?          @map("generated_pdf_path")
+  createdById     String            @map("created_by_id")
+  createdBy       User              @relation("QuoteCreatedBy", fields: [createdById], references: [id])
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  costLines       QuoteCostLine[]
+  provisionalLines QuoteProvisionalLine[]
+  costOptions     QuoteCostOption[]
+  assumptions     QuoteAssumption[]
+  exclusions      QuoteExclusion[]
+  emails          QuoteEmail[]
+
+  @@unique([tenderId, clientId, revision])
+  @@index([tenderId])
+  @@index([clientId])
+  @@map("client_quotes")
+}
+
+model QuoteCostLine {
+  id          String            @id @default(cuid())
+  quoteId     String            @map("quote_id")
+  quote       ClientQuote       @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  label       String
+  description String
+  price       Decimal           @db.Decimal(12, 2)
+  sortOrder   Int               @default(0) @map("sort_order")
+  assumptions QuoteAssumption[] @relation("CostLineAssumptions")
+
+  @@index([quoteId])
+  @@map("quote_cost_lines")
+}
+
+model QuoteProvisionalLine {
+  id          String      @id @default(cuid())
+  quoteId     String      @map("quote_id")
+  quote       ClientQuote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  description String
+  price       Decimal     @db.Decimal(12, 2)
+  notes       String?
+  sortOrder   Int         @default(0) @map("sort_order")
+
+  @@index([quoteId])
+  @@map("quote_provisional_lines")
+}
+
+model QuoteCostOption {
+  id          String      @id @default(cuid())
+  quoteId     String      @map("quote_id")
+  quote       ClientQuote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  label       String
+  description String
+  price       Decimal     @db.Decimal(12, 2)
+  notes       String?
+  sortOrder   Int         @default(0) @map("sort_order")
+
+  @@index([quoteId])
+  @@map("quote_cost_options")
+}
+
+model QuoteAssumption {
+  id         String         @id @default(cuid())
+  quoteId    String         @map("quote_id")
+  quote      ClientQuote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  costLineId String?        @map("cost_line_id")
+  costLine   QuoteCostLine? @relation("CostLineAssumptions", fields: [costLineId], references: [id], onDelete: SetNull)
+  text       String
+  sortOrder  Int            @default(0) @map("sort_order")
+
+  @@index([quoteId])
+  @@index([costLineId])
+  @@map("quote_assumptions")
+}
+
+model QuoteExclusion {
+  id        String      @id @default(cuid())
+  quoteId   String      @map("quote_id")
+  quote     ClientQuote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  text      String
+  sortOrder Int         @default(0) @map("sort_order")
+
+  @@index([quoteId])
+  @@map("quote_exclusions")
+}
+
+model QuoteEmail {
+  id          String      @id @default(cuid())
+  quoteId     String      @map("quote_id")
+  quote       ClientQuote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  sentTo      String[]    @map("sent_to")
+  subject     String
+  bodyPreview String?     @map("body_preview")
+  sentAt      DateTime    @default(now()) @map("sent_at")
+  sentById    String      @map("sent_by_id")
+  sentBy      User        @relation("QuoteEmailSentBy", fields: [sentById], references: [id])
+
+  @@index([quoteId])
+  @@map("quote_emails")
 }

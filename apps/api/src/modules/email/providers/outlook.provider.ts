@@ -23,11 +23,28 @@ export class OutlookEmailProvider implements EmailProvider {
 
   async sendMail(input: SendMailInput): Promise<void> {
     const client = this.getClient();
-    const message = {
+    const message: Record<string, unknown> = {
       message: {
         subject: input.subject,
         body: { contentType: "HTML", content: input.html || input.text || "" },
-        toRecipients: input.to.map((addr) => ({ emailAddress: { address: addr } }))
+        toRecipients: input.to.map((addr) => ({ emailAddress: { address: addr } })),
+        ...(input.cc && input.cc.length > 0
+          ? { ccRecipients: input.cc.map((addr) => ({ emailAddress: { address: addr } })) }
+          : {}),
+        // Microsoft Graph expects each attachment as @odata.type fileAttachment
+        // with contentBytes as base64. File size limit on a single sendMail
+        // request is 4 MB — we don't check here because the caller controls
+        // attachment size and Graph will surface the limit as a 413 directly.
+        ...(input.attachments && input.attachments.length > 0
+          ? {
+              attachments: input.attachments.map((a) => ({
+                "@odata.type": "#microsoft.graph.fileAttachment",
+                name: a.filename,
+                contentType: a.contentType,
+                contentBytes: a.content
+              }))
+            }
+          : {})
       },
       saveToSentItems: true
     };

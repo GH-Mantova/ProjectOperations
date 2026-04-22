@@ -258,6 +258,23 @@ export class TenderingService {
       metadata: { from: existing.status, to: status }
     });
 
+    // Client scoring — SUBMITTED/AWARDED/LOST all count as a tender the
+    // client considered. Each linked client is updated once (flag on the
+    // Tender prevents double-counting when status flips back and forth).
+    const isWon = status === "AWARDED" || status === "CONTRACT_ISSUED" || status === "CONVERTED";
+    const isScorable = isWon || status === "SUBMITTED" || status === "LOST";
+    if (isScorable && !existing.tenderScoreCounted) {
+      await this.updateClientScores(id, isWon);
+      await this.prisma.tender.update({
+        where: { id },
+        data: { tenderScoreCounted: true }
+      });
+    } else if (isWon && existing.tenderScoreCounted) {
+      // Tender was previously submitted/lost (tenderCount incremented) and
+      // is now being won — bump winCount without double-counting tenderCount.
+      await this.bumpWinCount(id);
+    }
+
     // Fire-and-forget email for the SUBMITTED transition only. sendNotificationEmail
     // already swallows errors internally but the Promise is still detached here
     // so a slow SMTP never blocks the write path.
@@ -657,6 +674,62 @@ export class TenderingService {
       createdIds,
       skipped
     };
+  }
+
+  // Client scoring — increment winCount/tenderCount across every client
+  // linked to the tender. Called exactly once per tender (Tender.tenderScoreCounted).
+  private async updateClientScores(tenderId: string, isWin: boolean) {
+    const links = await this.prisma.tenderClient.findMany({
+      where: { tenderId },
+      select: { clientId: true }
+    });
+    if (links.length === 0) return;
+    const now = new Date();
+    for (const link of links) {
+      const client = await this.prisma.client.findUnique({
+        where: { id: link.clientId },
+        select: { winCount: true, tenderCount: true }
+      });
+      if (!client) continue;
+      const nextTenderCount = client.tenderCount + 1;
+      const nextWinCount = client.winCount + (isWin ? 1 : 0);
+      const nextWinRate =
+        nextTenderCount > 0 ? Number(((nextWinCount / nextTenderCount) * 100).toFixed(2)) : 0;
+      await this.prisma.client.update({
+        where: { id: link.clientId },
+        data: {
+          tenderCount: nextTenderCount,
+          winCount: nextWinCount,
+          winRate: nextWinRate,
+          lastTenderAt: now,
+          lastWonAt: isWin ? now : undefined
+        }
+      });
+    }
+  }
+
+  // Tender previously counted as a loss/submission and is now being won —
+  // tenderCount stays put but winCount goes up.
+  private async bumpWinCount(tenderId: string) {
+    const links = await this.prisma.tenderClient.findMany({
+      where: { tenderId },
+      select: { clientId: true }
+    });
+    const now = new Date();
+    for (const link of links) {
+      const client = await this.prisma.client.findUnique({
+        where: { id: link.clientId },
+        select: { winCount: true, tenderCount: true }
+      });
+      if (!client) continue;
+      const nextWinCount = client.winCount + 1;
+      const nextWinRate =
+        client.tenderCount > 0 ? Number(((nextWinCount / client.tenderCount) * 100).toFixed(2)) : 0;
+      await this.prisma.client.update({
+        where: { id: link.clientId },
+        data: { winCount: nextWinCount, winRate: nextWinRate, lastWonAt: now }
+      });
+    }
   }
 
   private async ensureUniqueTenderNumber(tenderNumber: string, ignoreId?: string) {

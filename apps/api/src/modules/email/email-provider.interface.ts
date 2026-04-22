@@ -1,8 +1,16 @@
+export type EmailAttachment = {
+  filename: string;
+  content: string; // base64-encoded payload
+  contentType: string;
+};
+
 export type SendMailInput = {
   to: string[];
+  cc?: string[];
   subject: string;
   html: string;
   text: string;
+  attachments?: EmailAttachment[];
 };
 
 export interface EmailProvider {

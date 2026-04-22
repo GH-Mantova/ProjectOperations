@@ -899,7 +899,12 @@ export function TenderDetailPage() {
             tender={{
               tenderNumber: tender.tenderNumber,
               estimator: tender.estimator,
-              ratesSnapshotAt: tender.ratesSnapshotAt ?? null
+              ratesSnapshotAt: tender.ratesSnapshotAt ?? null,
+              tenderClients: tender.tenderClients.map((tc) => ({
+                id: tc.id,
+                client: { id: tc.client.id, name: tc.client.name },
+                contact: tc.contact ?? null
+              }))
             }}
             canManage={canManageTenders}
           />

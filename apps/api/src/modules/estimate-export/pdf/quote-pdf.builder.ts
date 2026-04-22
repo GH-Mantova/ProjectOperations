@@ -2,6 +2,8 @@
 // no HTML rendering — intentional for stability. Data source: fetchTenderForExport
 // (ScopeOfWorksItem + CuttingSheetItem + TenderTandC/Assumption/Exclusion).
 
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import PDFDocument from "pdfkit";
 import {
   DISCIPLINE_LABEL,
@@ -12,6 +14,43 @@ import {
 import { BRAND, COVER_LETTER_TEXT, PRELIMINARY_WORKS } from "./tc-text.const";
 
 type Doc = InstanceType<typeof PDFDocument>;
+
+// Quote overlay — when supplied the builder replaces the cost summary on
+// page 1 with the estimator's curated QuoteCostLine rows and uses the
+// quote's per-line assumptions / exclusions on page 3. The cover page
+// also renders the per-quote quoteRef instead of the tender number.
+export type QuoteOverlay = {
+  quoteRef: string;
+  revision: number;
+  assumptionMode: "free" | "linked";
+  showProvisional: boolean;
+  showCostOptions: boolean;
+  clientFacingTotal: number;
+  costLines: Array<{ id: string; label: string; description: string; price: number; sortOrder: number }>;
+  provisionalLines: Array<{ description: string; price: number; notes: string | null }>;
+  costOptions: Array<{ label: string; description: string; price: number; notes: string | null }>;
+  assumptions: Array<{ text: string; costLineId: string | null }>;
+  exclusions: Array<{ text: string }>;
+};
+
+// Resolve the IS teal square logo from the repo root. Fallback to text if
+// the file isn't present (keeps local dev working without the asset).
+function loadLogoBuffer(): Buffer | null {
+  const candidates = [
+    join(process.cwd(), "apps/api/assets/teal_sq_logo4x.png"),
+    join(process.cwd(), "apps/api/src/modules/estimate-export/pdf/teal_sq_logo4x.png"),
+    "/mnt/project/teal_sq_logo4x.png"
+  ];
+  for (const p of candidates) {
+    try {
+      if (existsSync(p)) return readFileSync(p);
+    } catch {
+      // ignore
+    }
+  }
+  return null;
+}
+const LOGO_BUFFER: Buffer | null = loadLogoBuffer();
 
 const PAGE_W = 595.28; // A4 width in points (72dpi)
 const PAGE_H = 841.89;
@@ -46,32 +85,60 @@ function fmtQty(raw: string | number | null | undefined): string {
   return Number.isInteger(n) ? n.toString() : n.toFixed(2);
 }
 
-function drawHeaderBand(doc: Doc) {
-  doc.rect(0, 0, PAGE_W, 40).fill(BRAND.teal);
+function drawHeaderBand(doc: Doc, quoteRef?: string | null) {
+  doc.rect(0, 0, PAGE_W, 50).fill(BRAND.teal);
+  if (LOGO_BUFFER) {
+    try {
+      doc.image(LOGO_BUFFER, MARGIN_L - 4, 5, { fit: [40, 40] });
+    } catch {
+      // fall through to text fallback below
+    }
+  }
+  const titleX = LOGO_BUFFER ? MARGIN_L + 48 : MARGIN_L;
   doc.fillColor(BRAND.white).font("Helvetica-Bold").fontSize(14)
-    .text("INITIAL SERVICES", MARGIN_L, 14, { align: "left" });
+    .text("INITIAL SERVICES", titleX, 14, { align: "left" });
   doc.font("Helvetica").fontSize(8)
     .text(
       "Demolition Licence: 2328018 | Class A Asbestos Licence: 2320431",
       MARGIN_L,
-      18,
+      quoteRef ? 10 : 18,
       { align: "right", width: CONTENT_W }
     );
+  if (quoteRef) {
+    doc.font("Helvetica-Bold").fontSize(10)
+      .text(`Quote No. ${quoteRef}`, MARGIN_L, 24, { align: "right", width: CONTENT_W });
+  }
   // Thin orange rule under the band.
-  doc.save().strokeColor(BRAND.orange).lineWidth(2).moveTo(0, 41).lineTo(PAGE_W, 41).stroke().restore();
+  doc.save().strokeColor(BRAND.orange).lineWidth(2).moveTo(0, 51).lineTo(PAGE_W, 51).stroke().restore();
   doc.fillColor(BRAND.black);
+
+  if (quoteRef) {
+    // Small uncontrolled-print notice below the band.
+    doc.font("Helvetica").fontSize(7).fillColor("#777")
+      .text("Electronic document — uncontrolled when printed", MARGIN_L, 55, {
+        align: "right",
+        width: CONTENT_W
+      });
+    doc.text(
+      `Printed on: ${new Intl.DateTimeFormat("en-AU").format(new Date())}`,
+      MARGIN_L,
+      63,
+      { align: "right", width: CONTENT_W }
+    );
+    doc.fillColor(BRAND.black);
+  }
 }
 
 function drawFooter(doc: Doc, pageIndex: number, totalPages: number) {
   const y = PAGE_H - 40;
   doc.font("Helvetica").fontSize(8).fillColor("#666");
   doc.text(
-    "10 Grice St, Clontarf Q 4019 | P: (07) 3888 0539 | E: admin@initialservices.net",
+    "10 Grice St, Clontarf Q 4019 | P: (07) 3888 0539 | E: admin@initialservices.net | A.B.N: 75 631 222 556",
     MARGIN_L,
     y,
     { width: CONTENT_W, align: "left" }
   );
-  doc.text(`Page ${pageIndex} of ${totalPages}`, MARGIN_L, y, { width: CONTENT_W, align: "right" });
+  doc.text(`Page ${pageIndex} of ${totalPages}`, MARGIN_L, y + 10, { width: CONTENT_W, align: "right" });
   doc.fillColor(BRAND.black);
 }
 
@@ -82,9 +149,9 @@ function drawRule(doc: Doc, colour = BRAND.orange) {
 }
 
 // ── Page 1 ───────────────────────────────────────────────────────────
-function drawCoverPage(doc: Doc, p: ExportPayload) {
-  drawHeaderBand(doc);
-  doc.y = MARGIN_TOP;
+function drawCoverPage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay | null) {
+  drawHeaderBand(doc, overlay?.quoteRef ?? null);
+  doc.y = overlay ? MARGIN_TOP + 16 : MARGIN_TOP;
 
   const primaryClient = p.tender.clients[0] ?? null;
   const estimator = p.tender.estimator;
@@ -109,7 +176,7 @@ function drawCoverPage(doc: Doc, p: ExportPayload) {
   // Right column (absolute-positioned).
   doc.save();
   const rightRows: Array<[string, string]> = [
-    ["Quote No:", p.tender.tenderNumber],
+    ["Quote No:", overlay?.quoteRef ?? p.tender.tenderNumber],
     ["Date:", fmtDate(new Date())],
     ["Project:", p.tender.title],
     ["Estimator:", estimatorName]
@@ -135,16 +202,27 @@ function drawCoverPage(doc: Doc, p: ExportPayload) {
   doc.font("Helvetica-Bold").fontSize(11).fillColor(BRAND.teal).text("Cost Summary", MARGIN_L, doc.y);
   drawRule(doc, BRAND.orange);
 
-  // Non-provisional disciplines (excluding Prv) + cutting subtotal as a row.
+  // When a ClientQuote overlay is supplied, the cost summary uses the
+  // estimator's curated cost lines (A, B, C…) rather than discipline
+  // totals. The adjustment is baked into clientFacingTotal and never
+  // appears as a line — this is a commercial confidentiality rule.
   const nonProv: Array<{ code: string; label: string; amount: number }> = [];
-  for (const d of DISCIPLINE_ORDER) {
-    if (d === "Prv") continue;
-    const bucket = p.summary[d];
-    if (!bucket || (bucket.itemCount === 0 && bucket.withMarkup === 0)) continue;
-    nonProv.push({ code: d, label: DISCIPLINE_LABEL[d], amount: bucket.withMarkup });
-  }
-  if (p.summary.cutting.itemCount > 0 || p.summary.cutting.subtotal > 0) {
-    nonProv.push({ code: "Cutting", label: "Concrete Cutting", amount: p.summary.cutting.subtotal });
+  let overlayTotal = 0;
+  if (overlay) {
+    for (const line of overlay.costLines) {
+      nonProv.push({ code: `${line.label})`, label: line.description, amount: line.price });
+    }
+    overlayTotal = overlay.clientFacingTotal;
+  } else {
+    for (const d of DISCIPLINE_ORDER) {
+      if (d === "Prv") continue;
+      const bucket = p.summary[d];
+      if (!bucket || (bucket.itemCount === 0 && bucket.withMarkup === 0)) continue;
+      nonProv.push({ code: d, label: DISCIPLINE_LABEL[d], amount: bucket.withMarkup });
+    }
+    if (p.summary.cutting.itemCount > 0 || p.summary.cutting.subtotal > 0) {
+      nonProv.push({ code: "Cutting", label: "Concrete Cutting", amount: p.summary.cutting.subtotal });
+    }
   }
 
   const rowH = 20;
@@ -177,11 +255,13 @@ function drawCoverPage(doc: Doc, p: ExportPayload) {
     doc.y = y + rowH;
   });
 
-  // TOTAL row — teal fill, white bold.
+  // TOTAL row — teal fill, white bold. With overlay, the total comes from
+  // clientFacingTotal (base + invisible adjustment); otherwise it's the
+  // visible sum.
   {
     const y = doc.y;
     doc.rect(MARGIN_L, y, CONTENT_W, rowH + 2).fill(BRAND.teal);
-    const total = nonProv.reduce((s, r) => s + r.amount, 0);
+    const total = overlay ? overlayTotal : nonProv.reduce((s, r) => s + r.amount, 0);
     doc.fillColor(BRAND.white).font("Helvetica-Bold").fontSize(10);
     doc.text("TOTAL", MARGIN_L + 6, y + 7, { width: scopeColW - 8 });
     doc.text("", descX + 6, y + 7, { width: descColW - 8 });
@@ -190,8 +270,48 @@ function drawCoverPage(doc: Doc, p: ExportPayload) {
     doc.y = y + rowH + 4;
   }
 
-  // Provisional sums table — scope items only (cutting never provisional).
-  const provItems = p.scopeItems.filter((i) => i.discipline === "Prv");
+  // Cost options — overlay-driven, optional section above provisional sums.
+  if (overlay && overlay.showCostOptions && overlay.costOptions.length > 0) {
+    doc.moveDown(0.6);
+    doc.font("Helvetica-Bold").fontSize(10).fillColor(BRAND.teal).text("COST OPTIONS", MARGIN_L, doc.y);
+    drawRule(doc, BRAND.orange);
+    const drawHead = () => {
+      const y = doc.y;
+      doc.rect(MARGIN_L, y, CONTENT_W, rowH).fill(BRAND.lightGrey);
+      doc.fillColor(BRAND.darkGrey).font("Helvetica-Bold").fontSize(9);
+      doc.text("OPTION", MARGIN_L + 6, y + 6, { width: scopeColW - 8 });
+      doc.text("DESCRIPTION", descX + 6, y + 6, { width: descColW - 8 });
+      doc.text("PRICE", amountX + 6, y + 6, { width: amountColW - 12, align: "right" });
+      doc.fillColor(BRAND.black);
+      doc.y = y + rowH;
+    };
+    drawHead();
+    overlay.costOptions.forEach((o, i) => {
+      const y = doc.y;
+      const bg = i % 2 === 0 ? BRAND.white : BRAND.lightGrey;
+      doc.rect(MARGIN_L, y, CONTENT_W, rowH).fill(bg);
+      doc.fillColor(BRAND.black).font("Helvetica").fontSize(9);
+      doc.text(`${o.label})`, MARGIN_L + 6, y + 6, { width: scopeColW - 8 });
+      doc.text(o.description, descX + 6, y + 6, { width: descColW - 8 });
+      doc.text(fmtCurrency(o.price), amountX + 6, y + 6, { width: amountColW - 12, align: "right" });
+      doc.y = y + rowH;
+    });
+  }
+
+  // Provisional sums table. With overlay we prefer the estimator's
+  // curated provisional lines; without overlay we fall back to Prv scope
+  // items (legacy behaviour).
+  const provScopeItems = p.scopeItems.filter((i) => i.discipline === "Prv");
+  const useOverlayProv = overlay && overlay.showProvisional && overlay.provisionalLines.length > 0;
+  const provItems = useOverlayProv
+    ? overlay.provisionalLines.map((l, idx) => ({
+        wbsCode: `P${idx + 1}`,
+        description: l.description,
+        provisionalAmount: l.price.toString()
+      }))
+    : !overlay
+    ? provScopeItems
+    : [];
   if (provItems.length > 0) {
     doc.moveDown(0.6);
     doc.font("Helvetica-Bold").fontSize(10).fillColor(BRAND.teal).text("PROVISIONAL SUMS", MARGIN_L, doc.y);
@@ -261,10 +381,10 @@ function drawCoverPage(doc: Doc, p: ExportPayload) {
 // ── Page 2 ───────────────────────────────────────────────────────────
 type ScopeTableCol = { key: string; label: string; w: number; align?: "left" | "right" };
 
-function drawScopePage(doc: Doc, p: ExportPayload) {
+function drawScopePage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay | null) {
   doc.addPage();
-  drawHeaderBand(doc);
-  doc.y = MARGIN_TOP;
+  drawHeaderBand(doc, overlay?.quoteRef ?? null);
+  doc.y = overlay ? MARGIN_TOP + 16 : MARGIN_TOP;
 
   // Preliminary works (fixed IS standard text).
   doc.font("Helvetica-Bold").fontSize(10).fillColor(BRAND.teal)
@@ -305,8 +425,8 @@ function drawScopePage(doc: Doc, p: ExportPayload) {
   const ensureRoom = (need: number) => {
     if (doc.y + need > PAGE_H - MARGIN_BOTTOM - 10) {
       doc.addPage();
-      drawHeaderBand(doc);
-      doc.y = MARGIN_TOP;
+      drawHeaderBand(doc, overlay?.quoteRef ?? null);
+      doc.y = overlay ? MARGIN_TOP + 16 : MARGIN_TOP;
       drawHead();
     }
   };
@@ -460,10 +580,10 @@ const ALLOWANCES_BULLETS = [
   "Safety signage, barriers, and exclusion zones as required"
 ];
 
-function drawAssumptionsPage(doc: Doc, p: ExportPayload) {
+function drawAssumptionsPage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay | null) {
   doc.addPage();
-  drawHeaderBand(doc);
-  doc.y = MARGIN_TOP;
+  drawHeaderBand(doc, overlay?.quoteRef ?? null);
+  doc.y = overlay ? MARGIN_TOP + 16 : MARGIN_TOP;
 
   // Project Specific Allowances (fixed).
   doc.font("Helvetica-Bold").fontSize(10).fillColor(BRAND.teal)
@@ -478,27 +598,72 @@ function drawAssumptionsPage(doc: Doc, p: ExportPayload) {
   }
   doc.moveDown(0.5);
 
-  // Project Specific Assumptions (per-tender TenderAssumption list).
-  if (p.assumptions.length > 0) {
+  // Project Specific Assumptions — overlay takes priority (per-quote),
+  // then per-tender TenderAssumption. Linked mode groups by cost line.
+  const quoteAssumptions = overlay?.assumptions ?? [];
+  const hasOverlayAssumptions = quoteAssumptions.length > 0;
+  const showAssumptions = hasOverlayAssumptions || (!overlay && p.assumptions.length > 0);
+  if (showAssumptions) {
     doc.font("Helvetica-Bold").fontSize(10).fillColor(BRAND.teal)
       .text("PROJECT SPECIFIC ASSUMPTIONS", MARGIN_L, doc.y);
     drawRule(doc, BRAND.orange);
     doc.font("Helvetica").fontSize(8).fillColor(BRAND.black);
-    for (const a of p.assumptions) {
-      doc.text(`• ${a.text}`, MARGIN_L + 6, doc.y, { width: CONTENT_W - 6 });
-      doc.moveDown(0.1);
+    if (overlay && overlay.assumptionMode === "linked") {
+      // Group by cost line; free-form (null) rendered last.
+      const byLine = new Map<string | null, string[]>();
+      for (const a of quoteAssumptions) {
+        const key = a.costLineId ?? null;
+        const arr = byLine.get(key) ?? [];
+        arr.push(a.text);
+        byLine.set(key, arr);
+      }
+      for (const line of overlay.costLines) {
+        const items = byLine.get(line.id);
+        if (!items || items.length === 0) continue;
+        doc.font("Helvetica-Bold").fontSize(8).fillColor(BRAND.darkGrey)
+          .text(`— Item ${line.label}`, MARGIN_L, doc.y, { width: CONTENT_W });
+        doc.moveDown(0.05);
+        doc.font("Helvetica").fontSize(8).fillColor(BRAND.black);
+        for (const t of items) {
+          doc.text(`• ${t}`, MARGIN_L + 12, doc.y, { width: CONTENT_W - 12 });
+          doc.moveDown(0.1);
+        }
+      }
+      const freeForm = byLine.get(null);
+      if (freeForm && freeForm.length > 0) {
+        doc.moveDown(0.2);
+        doc.font("Helvetica-Bold").fontSize(8).fillColor(BRAND.darkGrey)
+          .text("— General", MARGIN_L, doc.y, { width: CONTENT_W });
+        doc.moveDown(0.05);
+        doc.font("Helvetica").fontSize(8).fillColor(BRAND.black);
+        for (const t of freeForm) {
+          doc.text(`• ${t}`, MARGIN_L + 12, doc.y, { width: CONTENT_W - 12 });
+          doc.moveDown(0.1);
+        }
+      }
+    } else {
+      const items = hasOverlayAssumptions ? quoteAssumptions.map((a) => a.text) : p.assumptions.map((a) => a.text);
+      for (const t of items) {
+        doc.text(`• ${t}`, MARGIN_L + 6, doc.y, { width: CONTENT_W - 6 });
+        doc.moveDown(0.1);
+      }
     }
     doc.moveDown(0.5);
   }
 
-  // Project Specific Exclusions (per-tender TenderExclusion list).
-  if (p.exclusions.length > 0) {
+  // Project Specific Exclusions — overlay overrides tender list.
+  const exclusions = overlay && overlay.exclusions.length > 0
+    ? overlay.exclusions.map((e) => e.text)
+    : !overlay
+    ? p.exclusions.map((e) => e.text)
+    : [];
+  if (exclusions.length > 0) {
     doc.font("Helvetica-Bold").fontSize(10).fillColor(BRAND.teal)
       .text("PROJECT SPECIFIC EXCLUSIONS", MARGIN_L, doc.y);
     drawRule(doc, BRAND.orange);
     doc.font("Helvetica").fontSize(8).fillColor(BRAND.black);
-    for (const e of p.exclusions) {
-      doc.text(`• ${e.text}`, MARGIN_L + 6, doc.y, { width: CONTENT_W - 6 });
+    for (const t of exclusions) {
+      doc.text(`• ${t}`, MARGIN_L + 6, doc.y, { width: CONTENT_W - 6 });
       doc.moveDown(0.1);
     }
     doc.moveDown(0.5);
@@ -539,8 +704,8 @@ function drawAssumptionsPage(doc: Doc, p: ExportPayload) {
         doc.y = colTop;
       } else {
         doc.addPage();
-        drawHeaderBand(doc);
-        doc.y = MARGIN_TOP;
+        drawHeaderBand(doc, overlay?.quoteRef ?? null);
+        doc.y = overlay ? MARGIN_TOP + 16 : MARGIN_TOP;
         doc.font("Helvetica-Bold").fontSize(11).fillColor(BRAND.teal)
           .text("TERMS AND CONDITIONS (continued)", MARGIN_L, doc.y, { width: CONTENT_W, align: "center" });
         drawRule(doc, BRAND.orange);
@@ -555,7 +720,10 @@ function drawAssumptionsPage(doc: Doc, p: ExportPayload) {
 
 type TcLike = { number: string; heading: string; body: string };
 
-export async function buildQuotePdf(payload: ExportPayload): Promise<Buffer> {
+export async function buildQuotePdf(
+  payload: ExportPayload,
+  overlay: QuoteOverlay | null = null
+): Promise<Buffer> {
   return new Promise<Buffer>((resolve, reject) => {
     const doc = new PDFDocument({
       size: "A4",
@@ -569,9 +737,9 @@ export async function buildQuotePdf(payload: ExportPayload): Promise<Buffer> {
     doc.on("error", reject);
 
     try {
-      drawCoverPage(doc, payload);
-      drawScopePage(doc, payload);
-      drawAssumptionsPage(doc, payload);
+      drawCoverPage(doc, payload, overlay);
+      drawScopePage(doc, payload, overlay);
+      drawAssumptionsPage(doc, payload, overlay);
 
       const range = doc.bufferedPageRange();
       for (let i = 0; i < range.count; i += 1) {

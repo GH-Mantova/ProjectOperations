@@ -32,6 +32,6 @@ import { ScopeRedesignService } from "./scope-redesign.service";
     ScopeOfWorksService,
     ScopeRedesignService
   ],
-  exports: [TenderingService]
+  exports: [TenderingService, ScopeRedesignService]
 })
 export class TenderingModule {}

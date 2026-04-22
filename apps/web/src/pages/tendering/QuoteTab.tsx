@@ -38,6 +38,7 @@ type ExportEntry = {
 type TenderHeader = {
   tenderNumber: string;
   estimator?: { id: string; firstName: string; lastName: string; email?: string | null } | null;
+  ratesSnapshotAt?: string | null;
 };
 
 const DISCIPLINE_ROWS: Array<{ key: Discipline; label: string }> = [
@@ -146,6 +147,7 @@ export function QuoteTab({
       <GenerateQuoteSection
         tenderId={tenderId}
         tenderNumber={tender.tenderNumber}
+        ratesSnapshotAt={tender.ratesSnapshotAt ?? null}
         onToast={setToast}
       />
 
@@ -653,10 +655,12 @@ function TandCSection({
 function GenerateQuoteSection({
   tenderId,
   tenderNumber,
+  ratesSnapshotAt,
   onToast
 }: {
   tenderId: string;
   tenderNumber: string;
+  ratesSnapshotAt: string | null;
   onToast: (msg: string) => void;
 }) {
   const { authFetch } = useAuth();
@@ -730,6 +734,16 @@ function GenerateQuoteSection({
           {busy === "excel" ? "Generating…" : "Download Excel"}
         </button>
       </div>
+
+      {ratesSnapshotAt ? (
+        <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 12px" }}>
+          Rates as of {new Date(ratesSnapshotAt).toLocaleDateString("en-AU", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric"
+          })}
+        </p>
+      ) : null}
 
       {error ? <p style={{ color: "var(--status-danger)" }}>{error}</p> : null}
 

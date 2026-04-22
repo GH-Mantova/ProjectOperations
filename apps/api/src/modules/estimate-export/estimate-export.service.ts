@@ -1,31 +1,98 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
-import { buildQuotePdf } from "./pdf/quote-pdf.builder";
+import { parseDefaultClauses, type TcClause } from "../quote/tc-parser";
+import { ScopeRedesignService } from "../tendering/scope-redesign.service";
 import { buildEstimateExcel } from "./excel/estimate-excel.builder";
+import { buildQuotePdf } from "./pdf/quote-pdf.builder";
 
-export const SCOPE_CODE_ORDER = ["SO", "Str", "Asb", "Civ", "Prv"] as const;
-export type ScopeCode = (typeof SCOPE_CODE_ORDER)[number];
+// Discipline display order must match the Quote tab and the cost-summary bar.
+export const DISCIPLINE_ORDER = ["SO", "Str", "Asb", "Civ", "Prv"] as const;
+export type Discipline = (typeof DISCIPLINE_ORDER)[number];
 
-export type ExportLine = {
-  itemId: string;
-  code: string;
-  itemNumber: number;
-  title: string;
+export const DISCIPLINE_LABEL: Record<string, string> = {
+  SO: "Strip-outs",
+  Str: "Structural Demolition",
+  Asb: "Asbestos Removal",
+  Civ: "Civil Works",
+  Prv: "Provisional Sums"
+};
+
+function toNum(v: unknown): number {
+  if (v === null || v === undefined) return 0;
+  const n = typeof v === "number" ? v : Number((v as { toString(): string }).toString());
+  return Number.isFinite(n) ? n : 0;
+}
+
+function toStr(v: unknown): string | null {
+  if (v === null || v === undefined) return null;
+  return (v as { toString(): string }).toString();
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+// A ScopeOfWorksItem projected into the PDF's row shape. Decimals are kept
+// as strings so the builder can format them consistently with the Quote tab.
+export type ScopeRow = {
+  id: string;
+  wbsCode: string;
+  discipline: string;
+  rowType: string;
+  description: string;
+  men: string | null;
+  days: string | null;
+  shift: string | null;
+  measurementQty: string | null;
+  measurementUnit: string | null;
+  material: string | null;
+  wasteType: string | null;
+  wasteFacility: string | null;
+  wasteTonnes: string | null;
+  wasteLoads: number | null;
+  provisionalAmount: string | null;
+  notes: string | null;
+  sortOrder: number;
+};
+
+export type SawCutRow = {
+  wbsRef: string;
   description: string | null;
-  isProvisional: boolean;
-  markupPct: number;
-  labour: number;
-  equip: number;
-  plant: number;
-  waste: number;
-  cutting: number;
-  subtotal: number;
-  markup: number;
-  price: number;
-  // Raw line detail for Excel sheets 2 + 3.
-  labourLines: Array<{ role: string; qty: number; days: number; shift: string; rate: number; total: number }>;
-  plantLines: Array<{ description: string; qty: number; days: number; rate: number; total: number }>;
-  wasteLines: Array<{ description: string; qty: number; rate: number; total: number; loads: number; loadRate: number }>;
+  equipment: string | null;
+  elevation: string | null;
+  material: string | null;
+  depthMm: number | null;
+  quantityLm: string | null;
+  ratePerM: string | null;
+  lineTotal: string | null;
+  shift: string | null;
+  shiftLoading: string | null;
+  method: string | null;
+  notes: string | null;
+};
+
+export type CoreHoleRow = {
+  wbsRef: string;
+  description: string | null;
+  diameterMm: number | null;
+  depthMm: number | null;
+  quantityEach: number | null;
+  ratePerHole: string | null;
+  lineTotal: string | null;
+  shift: string | null;
+  shiftLoading: string | null;
+  method: string | null;
+  notes: string | null;
+  isPOA: boolean;
+};
+
+export type OtherRateRow = {
+  wbsRef: string;
+  description: string | null;
+  quantityEach: number | null;
+  lineTotal: string | null;
+  notes: string | null;
+  otherRate: { description: string; unit: string; rate: string } | null;
 };
 
 export type ExportPayload = {
@@ -34,61 +101,70 @@ export type ExportPayload = {
     tenderNumber: string;
     title: string;
     status: string;
-    createdAt: Date;
+    value: string | null;
     dueDate: Date | null;
-    probability: number | null;
-    estimatedValue: string | null;
+    createdAt: Date;
+    ratesSnapshotAt: Date | null;
+    estimator: {
+      firstName: string;
+      lastName: string;
+      email: string;
+    } | null;
+    clients: Array<{
+      id: string;
+      name: string;
+      contactName: string | null;
+      contactEmail: string | null;
+      contactPhone: string | null;
+    }>;
+    scopeHeader: {
+      siteAddress: string | null;
+      siteContactName: string | null;
+      siteContactPhone: string | null;
+      proposedStartDate: Date | null;
+      durationWeeks: number | null;
+    } | null;
   };
-  client: {
-    company: string | null;
-    contact: string | null;
-    phone: string | null;
-    email: string | null;
+  scopeItems: ScopeRow[];
+  cuttingItems: {
+    sawCuts: SawCutRow[];
+    coreHoles: CoreHoleRow[];
+    otherRates: OtherRateRow[];
   };
-  estimator: {
-    firstName: string;
-    lastName: string;
-    email: string;
-  } | null;
-  markupPct: number;
-  items: ExportLine[];
-  groups: Array<{ code: string; label: string; itemCount: number; subtotal: number; total: number }>;
-  totals: {
-    labour: number;
-    equip: number;
-    plant: number;
-    waste: number;
-    cutting: number;
-    subtotal: number;
-    markup: number;
-    provisionalTotal: number;
-    totalExGst: number;
+  assumptions: Array<{ text: string }>;
+  exclusions: Array<{ text: string }>;
+  tandc: { clauses: TcClause[] };
+  summary: {
+    SO: { itemCount: number; subtotal: number; withMarkup: number };
+    Str: { itemCount: number; subtotal: number; withMarkup: number };
+    Asb: { itemCount: number; subtotal: number; withMarkup: number };
+    Civ: { itemCount: number; subtotal: number; withMarkup: number };
+    Prv: { itemCount: number; subtotal: number; withMarkup: number };
+    cutting: { itemCount: number; subtotal: number };
+    tenderPrice: number;
   };
 };
 
-const SCOPE_LABELS: Record<string, string> = {
-  SO: "Strip-outs",
-  Str: "Structural Demolition",
-  Asb: "Asbestos Removal",
-  Civ: "Civil Works",
-  Prv: "Provisional Sums"
-};
-
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
-
-function toNum(v: unknown): number {
-  if (v === null || v === undefined) return 0;
-  const n = typeof v === "number" ? v : Number(v.toString());
-  return Number.isFinite(n) ? n : 0;
+function isClauseArray(value: unknown): value is TcClause[] {
+  if (!Array.isArray(value)) return false;
+  return value.every(
+    (c) =>
+      c !== null &&
+      typeof c === "object" &&
+      typeof (c as TcClause).number === "string" &&
+      typeof (c as TcClause).heading === "string" &&
+      typeof (c as TcClause).body === "string"
+  );
 }
 
 @Injectable()
 export class EstimateExportService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly scopeSummary: ScopeRedesignService
+  ) {}
 
-  async loadPayload(tenderId: string): Promise<ExportPayload> {
+  async fetchTenderForExport(tenderId: string): Promise<ExportPayload> {
     const tender = await this.prisma.tender.findUnique({
       where: { id: tenderId },
       include: {
@@ -96,159 +172,157 @@ export class EstimateExportService {
         tenderClients: {
           orderBy: { createdAt: "asc" },
           include: {
-            client: { select: { name: true } },
-            contact: { select: { firstName: true, lastName: true, phone: true, email: true } }
+            client: { select: { id: true, name: true, email: true, phone: true } },
+            contact: { select: { firstName: true, lastName: true, email: true, phone: true } }
           }
         },
-        estimate: {
-          include: {
-            items: {
-              orderBy: [{ code: "asc" }, { itemNumber: "asc" }],
-              include: {
-                labourLines: true,
-                plantLines: true,
-                equipLines: true,
-                wasteLines: true,
-                cuttingLines: true
-              }
-            }
-          }
-        }
+        scopeHeader: true,
+        scopeItems: {
+          where: { status: { not: "excluded" } },
+          orderBy: [{ sortOrder: "asc" }, { itemNumber: "asc" }]
+        },
+        cuttingSheetItems: {
+          orderBy: [{ wbsRef: "asc" }, { sortOrder: "asc" }],
+          include: { otherRate: true }
+        },
+        assumptions: { orderBy: { sortOrder: "asc" } },
+        exclusions: { orderBy: { sortOrder: "asc" } },
+        tandC: true
       }
     });
     if (!tender) throw new NotFoundException("Tender not found.");
 
-    const primaryClient = tender.tenderClients[0] ?? null;
-    const clientContact = primaryClient?.contact ?? null;
+    // Reuse the same summary endpoint the Quote tab uses — this keeps the
+    // PDF in lock-step with what the user sees on screen and prevents
+    // double-implementation of discipline markup / provisional handling.
+    const summary = await this.scopeSummary.summary(tenderId);
 
-    // Recompute every total from raw lines — never trust stored totals.
-    const itemPayloads: ExportLine[] = [];
-    for (const item of tender.estimate?.items ?? []) {
-      const labourLines = item.labourLines.map((l) => {
-        const total = round2(toNum(l.qty) * toNum(l.days) * toNum(l.rate));
-        return {
-          role: l.role,
-          qty: toNum(l.qty),
-          days: toNum(l.days),
-          shift: l.shift,
-          rate: toNum(l.rate),
-          total
-        };
-      });
-      const equipLines = item.equipLines.map((l) => ({
-        description: l.description,
-        qty: toNum(l.qty),
-        days: toNum(l.duration),
-        rate: toNum(l.rate),
-        total: round2(toNum(l.qty) * toNum(l.duration) * toNum(l.rate))
-      }));
-      const plantLines = item.plantLines.map((l) => ({
-        description: l.plantItem,
-        qty: toNum(l.qty),
-        days: toNum(l.days),
-        rate: toNum(l.rate),
-        total: round2(toNum(l.qty) * toNum(l.days) * toNum(l.rate))
-      }));
-      const wasteLines = item.wasteLines.map((l) => ({
-        description: `${l.wasteType} @ ${l.facility}`,
-        qty: toNum(l.qtyTonnes),
-        rate: toNum(l.tonRate),
-        loads: l.loads,
-        loadRate: toNum(l.loadRate),
-        total: round2(toNum(l.qtyTonnes) * toNum(l.tonRate) + l.loads * toNum(l.loadRate))
-      }));
-      const cuttingLines = item.cuttingLines.map((l) => ({
-        total: round2(toNum(l.qty) * toNum(l.rate))
-      }));
-
-      const labour = round2(labourLines.reduce((sum, l) => sum + l.total, 0));
-      const equip = round2(equipLines.reduce((sum, l) => sum + l.total, 0));
-      const plant = round2(plantLines.reduce((sum, l) => sum + l.total, 0));
-      const waste = round2(wasteLines.reduce((sum, l) => sum + l.total, 0));
-      const cutting = round2(cuttingLines.reduce((sum, l) => sum + l.total, 0));
-
-      // Provisional sum items are passed through at cost — provisionalAmount IS
-      // the client-facing price, with no markup applied (IS QS practice).
-      const storedMarkupPct = toNum(item.markup);
-      let subtotal: number;
-      let markupPct: number;
-      let markup: number;
-      let price: number;
-      if (item.isProvisional) {
-        const amount = round2(toNum(item.provisionalAmount));
-        subtotal = amount;
-        markupPct = 0;
-        markup = 0;
-        price = amount;
-      } else {
-        subtotal = round2(labour + equip + plant + waste + cutting);
-        markupPct = storedMarkupPct;
-        markup = round2(subtotal * (markupPct / 100));
-        price = round2(subtotal + markup);
-      }
-
-      itemPayloads.push({
-        itemId: item.id,
-        code: item.code,
-        itemNumber: item.itemNumber,
-        title: item.title,
-        description: item.description,
-        isProvisional: item.isProvisional,
-        markupPct,
-        labour,
-        equip,
-        plant,
-        waste,
-        cutting,
-        subtotal,
-        markup,
-        price,
-        labourLines,
-        plantLines,
-        wasteLines: wasteLines.map((l) => ({
-          description: l.description,
-          qty: l.qty,
-          rate: l.rate,
-          total: l.total,
-          loads: l.loads,
-          loadRate: l.loadRate
-        }))
-      });
+    // T&C: use the per-tender editable copy; fall back to the canonical
+    // tc-text.const defaults if the row hasn't been created yet. The Quote
+    // tab creates the row lazily on first read, but the PDF may be the first
+    // surface that needs clauses.
+    let clauses: TcClause[];
+    if (tender.tandC && isClauseArray(tender.tandC.clauses)) {
+      clauses = tender.tandC.clauses;
+    } else {
+      clauses = parseDefaultClauses();
     }
 
-    // Sort items globally by discipline order then itemNumber.
-    itemPayloads.sort((a, b) => {
-      const ai = SCOPE_CODE_ORDER.indexOf(a.code as ScopeCode);
-      const bi = SCOPE_CODE_ORDER.indexOf(b.code as ScopeCode);
-      const aIdx = ai === -1 ? 99 : ai;
-      const bIdx = bi === -1 ? 99 : bi;
-      if (aIdx !== bIdx) return aIdx - bIdx;
-      return a.itemNumber - b.itemNumber;
+    const clients = tender.tenderClients.map((tc) => {
+      const contact = tc.contact;
+      const contactName = contact ? `${contact.firstName} ${contact.lastName}`.trim() : null;
+      return {
+        id: tc.client.id,
+        name: tc.client.name,
+        contactName: contactName || null,
+        contactEmail: contact?.email ?? tc.client.email ?? null,
+        contactPhone: contact?.phone ?? tc.client.phone ?? null
+      };
     });
 
-    // Per-group summary.
-    const groups: ExportPayload["groups"] = [];
-    for (const code of SCOPE_CODE_ORDER) {
-      const rows = itemPayloads.filter((i) => i.code === code);
-      if (rows.length === 0) continue;
-      const subtotal = round2(rows.reduce((sum, r) => sum + r.subtotal, 0));
-      const total = round2(rows.reduce((sum, r) => sum + r.price, 0));
-      groups.push({ code, label: SCOPE_LABELS[code] ?? code, itemCount: rows.length, subtotal, total });
-    }
+    const disciplineIndex: Record<string, number> = Object.fromEntries(
+      DISCIPLINE_ORDER.map((d, i) => [d, i])
+    );
+    const scopeItems: ScopeRow[] = tender.scopeItems
+      .slice()
+      .sort((a, b) => {
+        const ai = disciplineIndex[a.discipline] ?? 99;
+        const bi = disciplineIndex[b.discipline] ?? 99;
+        if (ai !== bi) return ai - bi;
+        if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+        return a.itemNumber - b.itemNumber;
+      })
+      .map((i) => ({
+        id: i.id,
+        wbsCode: i.wbsCode,
+        discipline: i.discipline,
+        rowType: i.rowType,
+        description: i.description ?? "",
+        men: toStr(i.men),
+        days: toStr(i.days),
+        shift: i.shift,
+        measurementQty: toStr(i.measurementQty),
+        measurementUnit: i.measurementUnit,
+        material: i.material,
+        wasteType: i.wasteType,
+        wasteFacility: i.wasteFacility,
+        wasteTonnes: toStr(i.wasteTonnes),
+        wasteLoads: i.wasteLoads,
+        provisionalAmount: toStr(i.provisionalAmount),
+        notes: i.notes,
+        sortOrder: i.sortOrder
+      }));
 
-    const nonProvisional = itemPayloads.filter((i) => !i.isProvisional);
-    const provisional = itemPayloads.filter((i) => i.isProvisional);
-    const totals = {
-      labour: round2(nonProvisional.reduce((sum, i) => sum + i.labour, 0)),
-      equip: round2(nonProvisional.reduce((sum, i) => sum + i.equip, 0)),
-      plant: round2(nonProvisional.reduce((sum, i) => sum + i.plant, 0)),
-      waste: round2(nonProvisional.reduce((sum, i) => sum + i.waste, 0)),
-      cutting: round2(nonProvisional.reduce((sum, i) => sum + i.cutting, 0)),
-      subtotal: round2(nonProvisional.reduce((sum, i) => sum + i.subtotal, 0)),
-      markup: round2(itemPayloads.reduce((sum, i) => sum + i.markup, 0)),
-      provisionalTotal: round2(provisional.reduce((sum, i) => sum + i.price, 0)),
-      totalExGst: round2(itemPayloads.reduce((sum, i) => sum + i.price, 0))
+    const sawCuts: SawCutRow[] = tender.cuttingSheetItems
+      .filter((c) => c.itemType === "saw-cut")
+      .map((c) => ({
+        wbsRef: c.wbsRef,
+        description: c.description,
+        equipment: c.equipment,
+        elevation: c.elevation,
+        material: c.material,
+        depthMm: c.depthMm,
+        quantityLm: toStr(c.quantityLm),
+        ratePerM: toStr(c.ratePerM),
+        lineTotal: toStr(c.lineTotal),
+        shift: c.shift,
+        shiftLoading: toStr(c.shiftLoading),
+        method: c.method,
+        notes: c.notes
+      }));
+
+    const coreHoles: CoreHoleRow[] = tender.cuttingSheetItems
+      .filter((c) => c.itemType === "core-hole")
+      .map((c) => ({
+        wbsRef: c.wbsRef,
+        description: c.description,
+        diameterMm: c.diameterMm,
+        depthMm: c.depthMm,
+        quantityEach: c.quantityEach,
+        ratePerHole: toStr(c.ratePerHole),
+        lineTotal: toStr(c.lineTotal),
+        shift: c.shift,
+        shiftLoading: toStr(c.shiftLoading),
+        method: c.method,
+        notes: c.notes,
+        isPOA: (c.diameterMm ?? 0) > 650
+      }));
+
+    const otherRates: OtherRateRow[] = tender.cuttingSheetItems
+      .filter((c) => c.itemType === "other-rate")
+      .map((c) => ({
+        wbsRef: c.wbsRef,
+        description: c.description,
+        quantityEach: c.quantityEach,
+        lineTotal: toStr(c.lineTotal),
+        notes: c.notes,
+        otherRate: c.otherRate
+          ? {
+              description: c.otherRate.description,
+              unit: c.otherRate.unit,
+              rate: c.otherRate.rate.toString()
+            }
+          : null
+      }));
+
+    // ScopeRedesignService.summary() spreads per-discipline keys into the
+    // result, but TypeScript loses that relationship through the spread.
+    // Cast to the shape we know is returned so the builders get a stable
+    // contract.
+    const summaryTyped = summary as unknown as {
+      SO: { itemCount: number; subtotal: number; withMarkup: number };
+      Str: { itemCount: number; subtotal: number; withMarkup: number };
+      Asb: { itemCount: number; subtotal: number; withMarkup: number };
+      Civ: { itemCount: number; subtotal: number; withMarkup: number };
+      Prv: { itemCount: number; subtotal: number; withMarkup: number };
+      cutting: { itemCount: number; subtotal: number };
+      tenderPrice: number;
     };
+    const discBucket = (code: Discipline) => ({
+      itemCount: summaryTyped[code].itemCount,
+      subtotal: round2(summaryTyped[code].subtotal),
+      withMarkup: round2(summaryTyped[code].withMarkup)
+    });
 
     return {
       tender: {
@@ -256,33 +330,47 @@ export class EstimateExportService {
         tenderNumber: tender.tenderNumber,
         title: tender.title,
         status: tender.status,
-        createdAt: tender.createdAt,
+        value: tender.estimatedValue ? tender.estimatedValue.toString() : null,
         dueDate: tender.dueDate,
-        probability: tender.probability,
-        estimatedValue: tender.estimatedValue ? tender.estimatedValue.toString() : null
+        createdAt: tender.createdAt,
+        ratesSnapshotAt: tender.ratesSnapshotAt,
+        estimator: tender.estimator
+          ? {
+              firstName: tender.estimator.firstName,
+              lastName: tender.estimator.lastName,
+              email: tender.estimator.email
+            }
+          : null,
+        clients,
+        scopeHeader: tender.scopeHeader
+          ? {
+              siteAddress: tender.scopeHeader.siteAddress,
+              siteContactName: tender.scopeHeader.siteContactName,
+              siteContactPhone: tender.scopeHeader.siteContactPhone,
+              proposedStartDate: tender.scopeHeader.proposedStartDate,
+              durationWeeks: tender.scopeHeader.durationWeeks
+            }
+          : null
       },
-      client: {
-        company: primaryClient?.client.name ?? null,
-        contact: clientContact ? `${clientContact.firstName} ${clientContact.lastName}`.trim() : null,
-        phone: clientContact?.phone ?? null,
-        email: clientContact?.email ?? null
-      },
-      estimator: tender.estimator
-        ? {
-            firstName: tender.estimator.firstName,
-            lastName: tender.estimator.lastName,
-            email: tender.estimator.email
-          }
-        : null,
-      markupPct: toNum(tender.estimate?.markup ?? 30),
-      items: itemPayloads,
-      groups,
-      totals
+      scopeItems,
+      cuttingItems: { sawCuts, coreHoles, otherRates },
+      assumptions: tender.assumptions.map((a) => ({ text: a.text })),
+      exclusions: tender.exclusions.map((e) => ({ text: e.text })),
+      tandc: { clauses },
+      summary: {
+        SO: discBucket("SO"),
+        Str: discBucket("Str"),
+        Asb: discBucket("Asb"),
+        Civ: discBucket("Civ"),
+        Prv: discBucket("Prv"),
+        cutting: { itemCount: summaryTyped.cutting.itemCount, subtotal: round2(summaryTyped.cutting.subtotal) },
+        tenderPrice: round2(summaryTyped.tenderPrice)
+      }
     };
   }
 
   async exportPdf(tenderId: string, userId: string): Promise<{ buffer: Buffer; filename: string }> {
-    const payload = await this.loadPayload(tenderId);
+    const payload = await this.fetchTenderForExport(tenderId);
     const buffer = await buildQuotePdf(payload);
     await this.prisma.estimateExport.create({
       data: { tenderId, type: "pdf", generatedBy: userId }
@@ -294,7 +382,7 @@ export class EstimateExportService {
   }
 
   async exportExcel(tenderId: string, userId: string): Promise<{ buffer: Buffer; filename: string }> {
-    const payload = await this.loadPayload(tenderId);
+    const payload = await this.fetchTenderForExport(tenderId);
     const buffer = await buildEstimateExcel(payload);
     await this.prisma.estimateExport.create({
       data: { tenderId, type: "excel", generatedBy: userId }
@@ -306,4 +394,4 @@ export class EstimateExportService {
   }
 }
 
-export const __test__ = { round2, toNum, SCOPE_LABELS };
+export const __test__ = { round2, toNum, DISCIPLINE_LABEL };

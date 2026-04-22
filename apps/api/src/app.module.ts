@@ -1,6 +1,9 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
+import { ScheduleModule } from "@nestjs/schedule";
 import { AdminSettingsModule } from "./modules/admin-settings/admin-settings.module";
+import { AdminUsersModule } from "./modules/admin-users/admin-users.module";
+import { ContractsModule } from "./modules/contracts/contracts.module";
 import { AppConfigModule } from "./config/app-config.module";
 import { ArchiveModule } from "./modules/archive/archive.module";
 import { AssetsModule } from "./modules/assets/assets.module";
@@ -41,12 +44,15 @@ import { FieldModule } from "./modules/field/field.module";
       isGlobal: true,
       envFilePath: [".env"]
     }),
+    ScheduleModule.forRoot(),
     AppConfigModule,
     SecurityModule,
     PrismaModule,
     HealthModule,
     EmailModule,
     AdminSettingsModule,
+    AdminUsersModule,
+    ContractsModule,
     ArchiveModule,
     AssetsModule,
     AuditModule,

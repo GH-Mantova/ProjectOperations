@@ -7,7 +7,8 @@ describe("TenderingService", () => {
       {
         tender: { findFirst: jest.fn(), create: jest.fn() }
       } as never,
-      { write: jest.fn() } as never
+      { write: jest.fn() } as never,
+      { sendNotificationEmail: jest.fn() } as never
     );
 
     await expect(
@@ -33,7 +34,8 @@ describe("TenderingService", () => {
     };
     const service = new TenderingService(
       prisma as never,
-      { write: jest.fn() } as never
+      { write: jest.fn() } as never,
+      { sendNotificationEmail: jest.fn() } as never
     );
 
     return expect(
@@ -60,7 +62,8 @@ describe("TenderingService", () => {
           findMany: jest.fn().mockResolvedValue([{ tenderNumber: "TEN-1" }])
         }
       } as never,
-      { write: jest.fn() } as never
+      { write: jest.fn() } as never,
+      { sendNotificationEmail: jest.fn() } as never
     );
 
     const result = await service.previewImport([
@@ -78,7 +81,8 @@ describe("TenderingService", () => {
   it("routes unified note activity creation through note handling", async () => {
     const service = new TenderingService(
       {} as never,
-      { write: jest.fn() } as never
+      { write: jest.fn() } as never,
+      { sendNotificationEmail: jest.fn() } as never
     );
 
     const addNoteSpy = jest.spyOn(service, "addNote").mockResolvedValue({ id: "tender-1" } as never);
@@ -105,7 +109,8 @@ describe("TenderingService", () => {
   it("requires due dates for follow-up style unified activities", async () => {
     const service = new TenderingService(
       {} as never,
-      { write: jest.fn() } as never
+      { write: jest.fn() } as never,
+      { sendNotificationEmail: jest.fn() } as never
     );
 
     await expect(

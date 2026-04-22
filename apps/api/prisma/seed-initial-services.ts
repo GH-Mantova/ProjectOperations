@@ -237,12 +237,14 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       position: "Project Manager"
     },
     {
+      // Marco has Admin for system configuration access; WHS permissions
+      // inherited via Admin role (which includes all baseView + manage verbs).
       id: "user-supervisor-001",
       email: "marco.mantovaninni@initialservices.net.au",
       firstName: "Marco",
       lastName: "Mantovaninni",
-      roleId: whsOfficerRole.id,
-      position: "WHS & Commercial Compliance"
+      roleId: adminRole.id,
+      position: "WHS & Commercial Compliance · Admin"
     },
     {
       id: "user-estimator",

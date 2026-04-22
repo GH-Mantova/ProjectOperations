@@ -8,6 +8,7 @@ import {
 import { Prisma, ProjectActivityAction, ProjectStatus } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
+import { EmailService } from "../email/email.service";
 import { NotificationsService } from "../platform/notifications.service";
 import type { CreateProjectDto } from "./dto/create-project.dto";
 import type { ListProjectsQueryDto, ProjectStatusDto, UpdateProjectDto } from "./dto/update-project.dto";
@@ -30,7 +31,8 @@ export class ProjectsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly notifications: NotificationsService
+    private readonly notifications: NotificationsService,
+    private readonly email: EmailService
   ) {}
 
   // ── Numbering ─────────────────────────────────────────────────────────
@@ -325,6 +327,16 @@ export class ProjectsService {
           timestamp: new Date().toISOString()
         } as Prisma.InputJsonValue
       }
+    });
+
+    // Fire-and-forget email notification for the status transition. The
+    // service swallows errors so no catch is needed here; void-awaiting
+    // keeps the primary write path fast.
+    void this.email.sendNotificationEmail({
+      trigger: "project.status_changed",
+      subject: `Project status updated — ${updated.projectNumber} ${updated.name}`,
+      html: `<p>Project <strong>${updated.projectNumber} — ${updated.name}</strong> status changed from <strong>${existing.status}</strong> to <strong>${nextStatus}</strong>.</p>`,
+      text: `Project ${updated.projectNumber} status: ${existing.status} → ${nextStatus}.`
     });
 
     const recipients = new Set<string>();

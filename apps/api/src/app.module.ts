@@ -1,11 +1,13 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
+import { AdminSettingsModule } from "./modules/admin-settings/admin-settings.module";
 import { AppConfigModule } from "./config/app-config.module";
 import { ArchiveModule } from "./modules/archive/archive.module";
 import { AssetsModule } from "./modules/assets/assets.module";
 import { AuditModule } from "./modules/audit/audit.module";
 import { AuthModule } from "./modules/auth/auth.module";
 import { DocumentsModule } from "./modules/documents/documents.module";
+import { EmailModule } from "./modules/email/email.module";
 import { EstimateExportModule } from "./modules/estimate-export/estimate-export.module";
 import { EstimatesModule } from "./modules/estimates/estimates.module";
 import { FormsModule } from "./modules/forms/forms.module";
@@ -43,6 +45,8 @@ import { FieldModule } from "./modules/field/field.module";
     SecurityModule,
     PrismaModule,
     HealthModule,
+    EmailModule,
+    AdminSettingsModule,
     ArchiveModule,
     AssetsModule,
     AuditModule,

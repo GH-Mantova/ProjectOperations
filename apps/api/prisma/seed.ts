@@ -2338,6 +2338,88 @@ async function main() {
   await backfillTenderLifecycleTimestamps(prisma);
   await seedUserDashboards(prisma);
   if (adminUser) await seedGlobalLists(prisma, adminUser.id);
+  await seedNotificationTriggerConfigs(prisma);
+}
+
+async function seedNotificationTriggerConfigs(prisma: PrismaClient) {
+  // Trigger catalogue. Three are seeded enabled with Marco (supervisor-001,
+  // now Admin) as the sole recipient; the rest are seeded disabled so the
+  // admin UI lets Marco opt-in case-by-case. Re-running the seed only
+  // upserts label/description — existing isEnabled/recipient state is
+  // preserved on re-seed.
+  const triggers = [
+    {
+      trigger: "tender.submitted",
+      label: "Tender submitted",
+      description: "Sent when a tender is submitted to a client",
+      isEnabled: true,
+      deliveryMethod: "both",
+      recipientUserIds: ["user-supervisor-001"]
+    },
+    {
+      trigger: "worker.allocated",
+      label: "Worker allocated",
+      description: "Sent when a worker is assigned to a project",
+      isEnabled: true,
+      deliveryMethod: "both",
+      recipientUserIds: ["user-supervisor-001"]
+    },
+    {
+      trigger: "project.status_changed",
+      label: "Project status changed",
+      description: "Sent when a project moves to a new status",
+      isEnabled: true,
+      deliveryMethod: "both",
+      recipientUserIds: ["user-supervisor-001"]
+    },
+    {
+      trigger: "tender.follow_up_due",
+      label: "Follow-up reminder",
+      description: "Sent when a tender follow-up is due"
+    },
+    {
+      trigger: "document.expiry_warning",
+      label: "Document expiry warning",
+      description: "Sent 30 days before a document expires"
+    },
+    {
+      trigger: "prestart.not_completed",
+      label: "Pre-start not completed",
+      description: "Sent when a worker has not submitted a pre-start by 7am on a work day"
+    },
+    {
+      trigger: "timesheet.submitted",
+      label: "Timesheet submitted",
+      description: "Sent when a worker submits a timesheet"
+    },
+    {
+      trigger: "timesheet.approved",
+      label: "Timesheet approved or rejected",
+      description: "Sent when a timesheet is approved or returned"
+    },
+    {
+      trigger: "project.created",
+      label: "Project created from tender",
+      description: "Sent when a won tender is converted to a project"
+    }
+  ];
+  for (const t of triggers) {
+    await prisma.notificationTriggerConfig.upsert({
+      where: { trigger: t.trigger },
+      // On re-seed only the catalogue fields (label / description) update —
+      // the admin's isEnabled + recipient selections are preserved.
+      update: { label: t.label, description: t.description },
+      create: {
+        trigger: t.trigger,
+        label: t.label,
+        description: t.description,
+        isEnabled: t.isEnabled ?? false,
+        deliveryMethod: t.deliveryMethod ?? "both",
+        recipientRoles: [],
+        recipientUserIds: t.recipientUserIds ?? []
+      }
+    });
+  }
 }
 
 async function seedGlobalLists(prisma: PrismaClient, adminUserId: string) {

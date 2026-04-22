@@ -218,6 +218,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/admin/users", label: "Users", icon: ICON_USERS },
       { to: "/admin/roles", label: "Roles", icon: ICON_ROLES },
       { to: "/admin/estimate-rates", label: "Estimate Rates", icon: ICON_TENDERING },
+      { to: "/admin/settings", label: "Settings", icon: ICON_AUDIT },
       { to: "/admin/audit", label: "Audit", icon: ICON_AUDIT }
     ]
   }
@@ -271,7 +272,8 @@ const BREADCRUMBS: Record<string, string> = {
   "/admin/estimate-rates": "Estimate Rates",
   "/admin/permissions": "Permissions",
   "/admin/audit": "Audit",
-  "/admin/platform": "Platform"
+  "/admin/platform": "Platform",
+  "/admin/settings": "Admin Settings"
 };
 
 function initialsOf(firstName?: string, lastName?: string, email?: string): string {

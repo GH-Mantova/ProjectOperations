@@ -6,6 +6,7 @@ import { EstimateExportService } from "./estimate-export.service";
 @Module({
   imports: [TenderingModule],
   controllers: [EstimateExportController],
-  providers: [EstimateExportService]
+  providers: [EstimateExportService],
+  exports: [EstimateExportService]
 })
 export class EstimateExportModule {}

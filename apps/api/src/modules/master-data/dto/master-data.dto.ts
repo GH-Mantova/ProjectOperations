@@ -19,6 +19,7 @@ export class UpsertClientDto {
   @IsOptional() @IsString() notes?: string;
   @IsOptional() @IsInt() @Min(1) @Max(28) claimCutoffDay?: number | null;
   @IsOptional() @IsString() claimCutoffContactId?: string | null;
+  @IsOptional() @IsInt() @Min(1) @Max(5) preferenceScore?: number | null;
 }
 
 export class UpsertContactDto {

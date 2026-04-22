@@ -8,6 +8,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useAuth } from "../../auth/AuthContext";
+import { ClientQuotesPanel } from "./ClientQuotesPanel";
 
 type Discipline = "SO" | "Str" | "Asb" | "Civ" | "Prv";
 
@@ -39,6 +40,11 @@ type TenderHeader = {
   tenderNumber: string;
   estimator?: { id: string; firstName: string; lastName: string; email?: string | null } | null;
   ratesSnapshotAt?: string | null;
+  tenderClients?: Array<{
+    id: string;
+    client: { id: string; name: string };
+    contact?: { id: string; firstName: string; lastName: string; email?: string | null } | null;
+  }>;
 };
 
 const DISCIPLINE_ROWS: Array<{ key: Discipline; label: string }> = [
@@ -123,6 +129,11 @@ export function QuoteTab({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+      <ClientQuotesPanel
+        tenderId={tenderId}
+        tenderClients={tender.tenderClients ?? []}
+        canManage={canManage}
+      />
       <CostSummarySection
         summary={summary}
         provisional={provisional}

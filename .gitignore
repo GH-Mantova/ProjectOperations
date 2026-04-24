@@ -24,3 +24,7 @@ Desktop.ini
 # Compiled JS artifacts in src (tsc without --noEmit pollutes src/)
 apps/web/src/**/*.js
 apps/web/src/**/*.js.map
+
+# vite.config.ts is authoritative; tsc used to emit a vite.config.js here
+# that clobbered the ESM shim. Keep it out of git.
+apps/web/vite.config.js

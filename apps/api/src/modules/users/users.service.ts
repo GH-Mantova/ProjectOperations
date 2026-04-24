@@ -153,6 +153,7 @@ export class UsersService {
       firstName: string;
       lastName: string;
       isActive: boolean;
+      isSuperUser?: boolean;
       lastLoginAt: Date | null;
       userRoles: Array<{
         role: {
@@ -171,6 +172,7 @@ export class UsersService {
       firstName: user.firstName,
       lastName: user.lastName,
       isActive: user.isActive,
+      isSuperUser: Boolean(user.isSuperUser),
       lastLoginAt: user.lastLoginAt,
       roles: user.userRoles.map((userRole) => ({
         id: userRole.role.id,

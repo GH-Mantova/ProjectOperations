@@ -24,6 +24,14 @@ export class PermissionsGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
+
+    // Super users bypass all permission checks. This is the "root" tier used for
+    // platform administration — new permission codes introduced by migrations
+    // become accessible immediately without needing a token refresh.
+    if (request.user?.isSuperUser) {
+      return true;
+    }
+
     const grantedPermissions = new Set(request.user?.permissions ?? []);
     const missingPermission = requiredPermissions.find((permission) => !grantedPermissions.has(permission));
 

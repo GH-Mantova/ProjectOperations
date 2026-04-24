@@ -163,7 +163,12 @@ export class AuthService {
     }
 
     const permissions = this.usersService.flattenPermissions(storedToken.user);
-    const tokens = await this.issueTokens(storedToken.user.id, storedToken.user.email, permissions);
+    const tokens = await this.issueTokens(
+      storedToken.user.id,
+      storedToken.user.email,
+      permissions,
+      storedToken.user.isSuperUser
+    );
 
     await this.prisma.$transaction([
       this.prisma.refreshToken.update({
@@ -203,7 +208,7 @@ export class AuthService {
     user: Parameters<UsersService["toSafeUser"]>[0],
     metadata: Record<string, unknown>
   ) {
-    const tokens = await this.issueTokens(userId, email, permissions);
+    const tokens = await this.issueTokens(userId, email, permissions, Boolean(user.isSuperUser));
 
     await this.prisma.$transaction([
       this.prisma.user.update({
@@ -234,14 +239,19 @@ export class AuthService {
     };
   }
 
-  private async issueTokens(userId: string, email: string, permissions: string[]) {
+  private async issueTokens(
+    userId: string,
+    email: string,
+    permissions: string[],
+    isSuperUser = false
+  ) {
     const accessSecret = this.configService.get<string>("auth.accessSecret", "replace-me-access");
     const refreshSecret = this.configService.get<string>("auth.refreshSecret", "replace-me-refresh");
     const accessTtl = this.configService.get<string>("auth.accessTtl", "15m");
     const refreshTtl = this.configService.get<string>("auth.refreshTtl", "7d");
 
     const accessToken = await this.jwtService.signAsync(
-      { sub: userId, email, permissions },
+      { sub: userId, email, permissions, isSuperUser },
       { secret: accessSecret, expiresIn: accessTtl as never }
     );
 

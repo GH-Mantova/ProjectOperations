@@ -71,14 +71,23 @@ const EMPTY_FILTERS: Filters = {
   sortDir: "desc"
 };
 
-const STAGES = ["DRAFT", "IN_PROGRESS", "SUBMITTED", "AWARDED", "LOST", "WITHDRAWN"] as const;
+const STAGES = [
+  "DRAFT",
+  "IN_PROGRESS",
+  "SUBMITTED",
+  "AWARDED",
+  "CONTRACT_ISSUED",
+  "LOST",
+  "WITHDRAWN"
+] as const;
 type Stage = (typeof STAGES)[number];
 
 const STAGE_LABEL: Record<Stage, string> = {
-  DRAFT: "Identified",
-  IN_PROGRESS: "In Progress",
+  DRAFT: "Draft",
+  IN_PROGRESS: "Estimating",
   SUBMITTED: "Submitted",
   AWARDED: "Awarded",
+  CONTRACT_ISSUED: "Contract",
   LOST: "Lost",
   WITHDRAWN: "Withdrawn"
 };
@@ -88,6 +97,7 @@ const STAGE_ACCENT: Record<Stage, string> = {
   IN_PROGRESS: "var(--status-info, #3B82F6)",
   SUBMITTED: "var(--status-warning, #F59E0B)",
   AWARDED: "var(--status-active, #005B61)",
+  CONTRACT_ISSUED: "var(--brand-primary, #005B61)",
   LOST: "var(--status-danger, #EF4444)",
   WITHDRAWN: "var(--text-muted, #9CA3AF)"
 };
@@ -319,7 +329,7 @@ export function TenderingPage() {
       setLoading(true);
       setError(null);
       try {
-        const qs = buildQueryString(withFilters, 500);
+        const qs = buildQueryString(withFilters, 100);
         const response = await authFetch(`/tenders?${qs}`);
         if (!response.ok) throw new Error("Could not load tenders.");
         const data = (await response.json()) as TenderListResponse;
@@ -342,7 +352,7 @@ export function TenderingPage() {
         const [presetsResp, usersResp, clientsResp] = await Promise.all([
           authFetch("/tenders/filter-presets"),
           authFetch("/users?page=1&pageSize=100"),
-          authFetch("/master-data/clients?page=1&pageSize=200")
+          authFetch("/master-data/clients?page=1&pageSize=100")
         ]);
         if (cancelled) return;
         if (presetsResp.ok) {
@@ -388,6 +398,7 @@ export function TenderingPage() {
       IN_PROGRESS: [],
       SUBMITTED: [],
       AWARDED: [],
+      CONTRACT_ISSUED: [],
       LOST: [],
       WITHDRAWN: []
     };

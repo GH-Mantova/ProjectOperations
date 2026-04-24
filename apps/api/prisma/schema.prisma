@@ -84,6 +84,7 @@ model User {
   sentQuotes        ClientQuote[]   @relation("QuoteSentBy")
   sentQuoteEmails   QuoteEmail[]    @relation("QuoteEmailSentBy")
   tenderFilterPresets TenderFilterPreset[]
+  scopeWasteItemsCreated ScopeWasteItem[] @relation("ScopeWasteItemCreatedBy")
 
   @@index([isActive])
   @@map("users")
@@ -643,6 +644,7 @@ model Tender {
   assumptions       TenderAssumption[]
   exclusions        TenderExclusion[]
   clientQuotes      ClientQuote[]
+  wasteItems        ScopeWasteItem[]
 
   @@index([status])
   @@index([estimatorUserId])
@@ -2014,6 +2016,13 @@ model ScopeOfWorksItem {
   plantAssetId    String?  @map("plant_asset_id")
   plantAsset      Asset?   @relation("ScopeItemPlant", fields: [plantAssetId], references: [id], onDelete: SetNull)
 
+  // Scope redesign v2 (PR #71) — multi-plant and multi-measurement rows.
+  // JSON so we can append/remove without a separate table per row.
+  //   plantItems:   [{ plantRateId?, description, qty, days, unit }]
+  //   measurements: [{ qty, unit }]
+  plantItems   Json? @map("plant_items")
+  measurements Json?
+
   // Provisional sum amount (discipline=Prv only). Final price = this value,
   // no markup applied. Ignored for non-Prv rows.
   provisionalAmount Decimal? @db.Decimal(12, 2) @map("provisional_amount")
@@ -2036,6 +2045,62 @@ model ScopeOfWorksItem {
   @@index([tenderId, discipline, itemNumber])
   @@index([tenderId, status])
   @@map("scope_of_works_items")
+}
+
+// Scope redesign v2 (PR #71). Waste rows move off the scope item row and
+// into their own table so we can have multiple waste streams per WBS, each
+// with its own facility / rate / truck-day calc. Legacy wasteTonnes /
+// wasteLoads / wasteType / wasteFacility columns on ScopeOfWorksItem are
+// retained for backward compat but no longer written by new code.
+model ScopeWasteItem {
+  id            String   @id @default(cuid())
+  tenderId      String   @map("tender_id")
+  tender        Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  discipline    String
+  wbsRef        String?  @map("wbs_ref")
+  description   String
+  wasteGroup    String?  @map("waste_group")
+  wasteType     String?  @map("waste_type")
+  wasteFacility String?  @map("waste_facility")
+  wasteTonnes   Decimal? @db.Decimal(10, 3) @map("waste_tonnes")
+  wasteLoads    Int?     @map("waste_loads")
+  truckDays     Decimal? @db.Decimal(5, 1) @map("truck_days")
+  ratePerTonne  Decimal? @db.Decimal(10, 2) @map("rate_per_tonne")
+  ratePerLoad   Decimal? @db.Decimal(10, 2) @map("rate_per_load")
+  lineTotal     Decimal? @db.Decimal(12, 2) @map("line_total")
+  notes         String?
+  sortOrder     Int      @default(0) @map("sort_order")
+  createdById   String   @map("created_by_id")
+  createdBy     User     @relation("ScopeWasteItemCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@index([tenderId, discipline])
+  @@map("scope_waste_items")
+}
+
+// Client-facing scope table on a ClientQuote — editable independently of
+// the shared ScopeOfWorksItem source so different clients can see different
+// levels of detail, different labels, different descriptions, or have items
+// hidden entirely on a per-quote basis.
+model QuoteScopeItem {
+  id             String      @id @default(cuid())
+  quoteId        String      @map("quote_id")
+  quote          ClientQuote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  sourceItemId   String?     @map("source_item_id")
+  sourceItemType String?     @map("source_item_type")
+  label          String?
+  description    String
+  qty            String?
+  unit           String?
+  notes          String?
+  isVisible      Boolean     @default(true) @map("is_visible")
+  sortOrder      Int         @default(0) @map("sort_order")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  @@index([quoteId])
+  @@map("quote_scope_items")
 }
 
 model ScopeOfWorksHeader {
@@ -2473,6 +2538,8 @@ model ClientQuote {
   assumptions     QuoteAssumption[]
   exclusions      QuoteExclusion[]
   emails          QuoteEmail[]
+  scopeItems      QuoteScopeItem[]
+  detailLevel     String           @default("simple") @map("detail_level")
 
   @@unique([tenderId, clientId, revision])
   @@index([tenderId])

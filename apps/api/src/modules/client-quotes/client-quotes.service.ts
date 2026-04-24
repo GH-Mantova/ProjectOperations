@@ -137,6 +137,7 @@ export class ClientQuotesService {
       showProvisional: boolean;
       showCostOptions: boolean;
       status: ClientQuoteStatus;
+      detailLevel: "simple" | "detailed";
     }>
   ) {
     await this.requireQuote(tenderId, quoteId);
@@ -150,6 +151,7 @@ export class ClientQuotesService {
     if (dto.showProvisional !== undefined) data.showProvisional = dto.showProvisional;
     if (dto.showCostOptions !== undefined) data.showCostOptions = dto.showCostOptions;
     if (dto.status !== undefined) data.status = dto.status;
+    if (dto.detailLevel !== undefined) data.detailLevel = dto.detailLevel;
     await this.prisma.clientQuote.update({ where: { id: quoteId }, data });
     return this.getOne(tenderId, quoteId);
   }

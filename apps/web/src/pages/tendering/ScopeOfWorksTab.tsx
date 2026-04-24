@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { ScopeCuttingSheet } from "./ScopeCuttingSheet";
+import { ScopeWasteTab } from "./ScopeWasteTab";
 import {
   ScopeDisciplineBar,
   ScopeGrandTotalBar,
@@ -418,6 +419,15 @@ export function ScopeOfWorksTab({ tenderId, tenderTitle }: { tenderId: string; t
           onDuplicate={duplicateItem}
         />
       ))}
+
+      <ScopeWasteTab
+        tenderId={tenderId}
+        discipline={selectedDiscipline}
+        wbsRefs={(data?.items ?? [])
+          .filter((i) => i.discipline === selectedDiscipline)
+          .map((i) => i.wbsCode)}
+        canManage={true}
+      />
 
       {selectedDiscipline !== "Asb" ? (
         <ScopeCuttingSheet

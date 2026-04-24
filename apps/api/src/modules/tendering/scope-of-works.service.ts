@@ -67,7 +67,14 @@ function numericFieldsFrom(dto: Partial<UpdateScopeItemDto & CreateScopeItemDto>
     plantAssetId: dto.plantAssetId,
     wasteGroup: dto.wasteGroup,
     provisionalAmount:
-      dto.provisionalAmount !== undefined ? toDecimal(dto.provisionalAmount) : undefined
+      dto.provisionalAmount !== undefined ? toDecimal(dto.provisionalAmount) : undefined,
+    // Scope redesign v2 (PR #71). plantItems + measurements stored as
+    // JSONB arrays. We pass through the DTO value directly; shape is
+    // enforced by the class-validator shape hints in the DTO file.
+    plantItems:
+      dto.plantItems !== undefined ? (dto.plantItems as unknown as Prisma.InputJsonValue) : undefined,
+    measurements:
+      dto.measurements !== undefined ? (dto.measurements as unknown as Prisma.InputJsonValue) : undefined
   };
 }
 

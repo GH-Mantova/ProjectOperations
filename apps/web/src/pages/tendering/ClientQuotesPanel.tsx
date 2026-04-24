@@ -47,6 +47,7 @@ type FullQuote = QuoteSummary & {
   costOptions: CostOption[];
   assumptions: AssumptionRow[];
   exclusions: ExclusionRow[];
+  detailLevel?: "simple" | "detailed";
 };
 type SummaryResult = {
   baseTotalCostLines: number;
@@ -77,7 +78,7 @@ type TenderClientLite = {
   contact?: { id: string; firstName: string; lastName: string; email?: string | null } | null;
 };
 
-type EditorTab = "cost" | "provisional" | "options" | "assumptions" | "exclusions" | "preview";
+type EditorTab = "cost" | "scope" | "provisional" | "options" | "assumptions" | "exclusions" | "preview";
 
 export function ClientQuotesPanel({
   tenderId,
@@ -479,6 +480,7 @@ function QuoteEditor({
 
   const tabs: Array<{ key: EditorTab; label: string }> = [
     { key: "cost", label: "Cost Summary" },
+    { key: "scope", label: "Scope items" },
     { key: "provisional", label: "Provisional Sums" },
     { key: "options", label: "Cost Options" },
     { key: "assumptions", label: "Assumptions" },
@@ -542,6 +544,16 @@ function QuoteEditor({
           onPatch={(id, b) => patch(`/cost-lines/${id}`, b)}
           onDelete={(id) => del(`/cost-lines/${id}`)}
           onPatchQuote={onPatchQuote}
+        />
+      ) : null}
+
+      {editorTab === "scope" ? (
+        <QuoteScopeTab
+          tenderId={tenderId}
+          quoteId={quote.id}
+          detailLevel={quote.detailLevel ?? "simple"}
+          canManage={canManage}
+          onDetailLevelChange={(v) => onPatchQuote({ detailLevel: v })}
         />
       ) : null}
 
@@ -1400,6 +1412,367 @@ function PreviewTab({
           </>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+// ── Quote Scope Items tab ──────────────────────────────────────────
+type QuoteScopeItem = {
+  id: string;
+  sourceItemId: string | null;
+  sourceItemType: string | null;
+  label: string | null;
+  description: string;
+  qty: string | null;
+  unit: string | null;
+  notes: string | null;
+  isVisible: boolean;
+  sortOrder: number;
+};
+
+function QuoteScopeTab({
+  tenderId,
+  quoteId,
+  detailLevel,
+  canManage,
+  onDetailLevelChange
+}: {
+  tenderId: string;
+  quoteId: string;
+  detailLevel: "simple" | "detailed";
+  canManage: boolean;
+  onDetailLevelChange: (v: "simple" | "detailed") => void;
+}) {
+  const { authFetch } = useAuth();
+  const [rows, setRows] = useState<QuoteScopeItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [grouped, setGrouped] = useState(true);
+
+  const base = `/tenders/${tenderId}/quotes/${quoteId}/scope-items`;
+
+  const load = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await authFetch(base);
+      if (!response.ok) throw new Error(await response.text());
+      setRows((await response.json()) as QuoteScopeItem[]);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, [tenderId, quoteId]);
+
+  const patchRow = async (id: string, patch: Record<string, unknown>) => {
+    const response = await authFetch(`${base}/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch)
+    });
+    if (!response.ok) {
+      setError(await response.text());
+      return;
+    }
+    await load();
+  };
+
+  const deleteRow = async (id: string) => {
+    if (!window.confirm("Remove this item from the quote?")) return;
+    const response = await authFetch(`${base}/${id}`, { method: "DELETE" });
+    if (!response.ok) {
+      setError(await response.text());
+      return;
+    }
+    await load();
+  };
+
+  const addBlank = async () => {
+    const response = await authFetch(base, {
+      method: "POST",
+      body: JSON.stringify({ description: "New item", isVisible: true })
+    });
+    if (!response.ok) {
+      setError(await response.text());
+      return;
+    }
+    await load();
+  };
+
+  const reset = async () => {
+    if (!window.confirm("This will replace all quote scope items with current scope of works data. Continue?")) return;
+    setBusy(true);
+    try {
+      const response = await authFetch(`${base}/reset`, { method: "POST" });
+      if (!response.ok) throw new Error(await response.text());
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pushFromScope = async () => {
+    setBusy(true);
+    try {
+      const response = await authFetch(`${base}/push-from-scope`, { method: "POST" });
+      if (!response.ok) throw new Error(await response.text());
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sourceBadge = (row: QuoteScopeItem): string => {
+    if (!row.sourceItemType) return "Manual";
+    if (row.sourceItemType === "scope") return row.label ?? "Scope";
+    if (row.sourceItemType === "waste") return "Waste";
+    if (row.sourceItemType === "cutting") return "Cutting";
+    return row.sourceItemType;
+  };
+
+  const renderRow = (row: QuoteScopeItem) => (
+    <tr key={row.id} style={{ borderTop: "1px solid var(--border, #e5e7eb)", opacity: row.isVisible ? 1 : 0.5 }}>
+      <td style={{ padding: 4, textAlign: "center" }}>
+        <input
+          type="checkbox"
+          checked={row.isVisible}
+          disabled={!canManage}
+          onChange={(e) => void patchRow(row.id, { isVisible: e.target.checked })}
+          aria-label="Visible on PDF"
+        />
+      </td>
+      <td style={{ padding: 4 }}>
+        <input
+          className="s7-input s7-input--sm"
+          defaultValue={row.label ?? ""}
+          disabled={!canManage}
+          onBlur={(e) =>
+            (e.target.value || null) !== (row.label ?? null) &&
+            void patchRow(row.id, { label: e.target.value || null })
+          }
+          style={{ width: 70 }}
+        />
+      </td>
+      <td style={{ padding: 4 }}>
+        <input
+          className="s7-input s7-input--sm"
+          defaultValue={row.description}
+          disabled={!canManage}
+          onBlur={(e) =>
+            e.target.value !== row.description &&
+            void patchRow(row.id, { description: e.target.value })
+          }
+          style={{ width: "100%" }}
+        />
+      </td>
+      <td style={{ padding: 4 }}>
+        <input
+          className="s7-input s7-input--sm"
+          defaultValue={row.qty ?? ""}
+          disabled={!canManage}
+          onBlur={(e) =>
+            (e.target.value || null) !== (row.qty ?? null) &&
+            void patchRow(row.id, { qty: e.target.value || null })
+          }
+          style={{ width: 80, textAlign: "right" }}
+        />
+      </td>
+      <td style={{ padding: 4 }}>
+        <input
+          className="s7-input s7-input--sm"
+          defaultValue={row.unit ?? ""}
+          disabled={!canManage}
+          onBlur={(e) =>
+            (e.target.value || null) !== (row.unit ?? null) &&
+            void patchRow(row.id, { unit: e.target.value || null })
+          }
+          style={{ width: 70 }}
+        />
+      </td>
+      <td style={{ padding: 4 }}>
+        <input
+          className="s7-input s7-input--sm"
+          defaultValue={row.notes ?? ""}
+          disabled={!canManage}
+          onBlur={(e) =>
+            (e.target.value || null) !== (row.notes ?? null) &&
+            void patchRow(row.id, { notes: e.target.value || null })
+          }
+          style={{ width: "100%" }}
+        />
+      </td>
+      <td style={{ padding: 4, fontSize: 11, color: "var(--text-muted)" }}>{sourceBadge(row)}</td>
+      <td style={{ padding: 4, textAlign: "right" }}>
+        {canManage ? (
+          <button
+            type="button"
+            className="s7-btn s7-btn--ghost s7-btn--sm"
+            onClick={() => void deleteRow(row.id)}
+            aria-label="Delete"
+          >
+            ×
+          </button>
+        ) : null}
+      </td>
+    </tr>
+  );
+
+  const renderHeader = () => (
+    <thead style={{ background: "var(--surface-muted, #F6F6F6)" }}>
+      <tr>
+        {[
+          { label: "✓", w: 40 },
+          { label: "Label", w: 80 },
+          { label: "Description", w: null },
+          { label: "Qty", w: 90 },
+          { label: "Unit", w: 80 },
+          { label: "Notes", w: null },
+          { label: "Source", w: 90 },
+          { label: "", w: 40 }
+        ].map((h, i) => (
+          <th
+            key={i}
+            style={{
+              padding: "6px 4px",
+              textAlign: "left",
+              fontSize: 10,
+              textTransform: "uppercase",
+              color: "var(--text-muted)",
+              width: h.w !== null ? `${h.w}px` : undefined
+            }}
+          >
+            {h.label}
+          </th>
+        ))}
+      </tr>
+    </thead>
+  );
+
+  const disciplineGroups = useMemo(() => {
+    const groups = new Map<string, QuoteScopeItem[]>();
+    for (const r of rows) {
+      const discKey = r.label ? /^[A-Za-z]+/.exec(r.label)?.[0] ?? "Other" : "Other";
+      const arr = groups.get(discKey) ?? [];
+      arr.push(r);
+      groups.set(discKey, arr);
+    }
+    return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [rows]);
+
+  return (
+    <div>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          flexWrap: "wrap",
+          marginBottom: 12,
+          padding: 10,
+          background: "var(--surface-subtle, rgba(0,0,0,0.02))",
+          borderRadius: 6
+        }}
+      >
+        <label style={{ fontSize: 13 }}>
+          <span style={{ color: "var(--text-muted)", marginRight: 6 }}>Quote detail level:</span>
+          <select
+            className="s7-select s7-input--sm"
+            value={detailLevel}
+            disabled={!canManage}
+            onChange={(e) => onDetailLevelChange(e.target.value as "simple" | "detailed")}
+          >
+            <option value="simple">Simple (no scope table on PDF)</option>
+            <option value="detailed">Detailed (scope table on PDF page 2)</option>
+          </select>
+        </label>
+        <label style={{ fontSize: 13, display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <input
+            type="checkbox"
+            checked={grouped}
+            onChange={(e) => setGrouped(e.target.checked)}
+          />
+          Group by discipline
+        </label>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+          {canManage ? (
+            <>
+              <button
+                type="button"
+                className="s7-btn s7-btn--secondary s7-btn--sm"
+                onClick={() => void pushFromScope()}
+                disabled={busy}
+              >
+                + Copy from scope
+              </button>
+              <button
+                type="button"
+                className="s7-btn s7-btn--ghost s7-btn--sm"
+                onClick={() => void reset()}
+                disabled={busy}
+              >
+                Reset from scope
+              </button>
+              <button
+                type="button"
+                className="s7-btn s7-btn--primary s7-btn--sm"
+                onClick={() => void addBlank()}
+                disabled={busy}
+              >
+                + Add item
+              </button>
+            </>
+          ) : null}
+        </div>
+      </div>
+
+      {error ? <p style={{ color: "var(--status-danger)" }}>{error}</p> : null}
+
+      {loading ? (
+        <p style={{ color: "var(--text-muted)" }}>Loading…</p>
+      ) : detailLevel === "simple" ? (
+        <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
+          Simple mode — scope items are hidden on the client PDF. Only cost lines (A, B, C…)
+          appear on page 1. Switch to Detailed to show a scope-of-works table on page 2.
+        </p>
+      ) : rows.length === 0 ? (
+        <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
+          No items yet. Click "Copy from scope" to import the tender's scope, waste, and cutting
+          rows — each becomes an editable client-facing line here.
+        </p>
+      ) : grouped ? (
+        disciplineGroups.map(([group, groupRows]) => (
+          <section key={group} style={{ marginBottom: 16 }}>
+            <h4 className="s7-type-card-title" style={{ margin: "0 0 6px" }}>
+              {group}
+              <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 6 }}>
+                ({groupRows.length})
+              </span>
+            </h4>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                {renderHeader()}
+                <tbody>{groupRows.map(renderRow)}</tbody>
+              </table>
+            </div>
+          </section>
+        ))
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            {renderHeader()}
+            <tbody>{rows.map(renderRow)}</tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

@@ -14,6 +14,8 @@ import { ScopeOfWorksController } from "./scope-of-works.controller";
 import { ScopeOfWorksService } from "./scope-of-works.service";
 import { ScopeRedesignController } from "./scope-redesign.controller";
 import { ScopeRedesignService } from "./scope-redesign.service";
+import { ScopeWasteController } from "./scope-waste.controller";
+import { ScopeWasteService } from "./scope-waste.service";
 
 @Module({
   imports: [AuditModule, PlatformModule, UserAiProvidersModule, forwardRef(() => ProjectsModule)],
@@ -23,15 +25,17 @@ import { ScopeRedesignService } from "./scope-redesign.service";
     TenderScopeDraftingController,
     TenderConvertController,
     ScopeOfWorksController,
-    ScopeRedesignController
+    ScopeRedesignController,
+    ScopeWasteController
   ],
   providers: [
     TenderingService,
     TenderClientNotesService,
     TenderScopeDraftingService,
     ScopeOfWorksService,
-    ScopeRedesignService
+    ScopeRedesignService,
+    ScopeWasteService
   ],
-  exports: [TenderingService, ScopeRedesignService]
+  exports: [TenderingService, ScopeRedesignService, ScopeWasteService]
 })
 export class TenderingModule {}

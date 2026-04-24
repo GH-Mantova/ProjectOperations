@@ -24,6 +24,7 @@ export class UpdateClientQuoteDto {
   @IsOptional() @IsBoolean() showProvisional?: boolean;
   @IsOptional() @IsBoolean() showCostOptions?: boolean;
   @IsOptional() @IsEnum(ClientQuoteStatus) status?: ClientQuoteStatus;
+  @IsOptional() @IsString() detailLevel?: "simple" | "detailed";
 }
 
 export class UpsertCostLineDto {

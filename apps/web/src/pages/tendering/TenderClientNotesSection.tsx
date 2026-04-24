@@ -201,10 +201,11 @@ export function TenderClientNotesSection({
               <span>Body</span>
               <textarea
                 className="s7-input"
-                rows={3}
+                rows={4}
                 value={draft.body}
                 onChange={(e) => setDraft((prev) => ({ ...prev, body: e.target.value }))}
                 placeholder="Summary of the interaction…"
+                style={{ minHeight: 96, resize: "vertical" }}
               />
             </label>
             <label>

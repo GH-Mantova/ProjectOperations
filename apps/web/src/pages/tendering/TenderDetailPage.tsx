@@ -632,47 +632,36 @@ export function TenderDetailPage() {
                     {tender.tenderClients.map((tc) => {
                       const canRemove = canManageTenders && tender.tenderClients.length > 1;
                       return (
-                        <li key={tc.id} style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
-                          <div style={{ flex: 1 }}>
-                            <ExpandableClientRow
-                              tenderId={tender.id}
-                              clientId={tc.client.id}
-                              clientName={tc.client.name}
-                              contact={tc.contact ?? null}
-                              relationshipType={tc.relationshipType ?? null}
-                              isAwarded={tc.isAwarded}
-                              contractIssued={tc.contractIssued}
-                              canManage={canManageTenders}
-                            />
-                          </div>
-                          {canManageTenders ? (
-                            <button
-                              type="button"
-                              className="s7-btn s7-btn--ghost s7-btn--sm"
-                              aria-label={`Remove ${tc.client.name}`}
-                              title={canRemove ? `Remove ${tc.client.name}` : "A tender must have at least one client"}
-                              disabled={!canRemove}
-                              onClick={async () => {
-                                if (!canRemove) return;
-                                if (!window.confirm(`Remove ${tc.client.name} from this tender?`)) return;
-                                try {
-                                  const response = await authFetch(
-                                    `/tenders/${tender.id}/clients/${tc.client.id}`,
-                                    { method: "DELETE" }
-                                  );
-                                  if (!response.ok) throw new Error(await response.text());
-                                  setClientMsg(null);
-                                  await reload();
-                                } catch (err) {
-                                  setClientMsg((err as Error).message);
-                                }
-                              }}
-                              style={{ marginTop: 6 }}
-                            >
-                              ×
-                            </button>
-                          ) : null}
-                        </li>
+                        <ExpandableClientRow
+                          key={tc.id}
+                          tenderId={tender.id}
+                          clientId={tc.client.id}
+                          clientName={tc.client.name}
+                          contact={tc.contact ?? null}
+                          relationshipType={tc.relationshipType ?? null}
+                          isAwarded={tc.isAwarded}
+                          contractIssued={tc.contractIssued}
+                          canManage={canManageTenders}
+                          canRemove={canRemove}
+                          onRemove={async () => {
+                            if (!canRemove) {
+                              setClientMsg("A tender must have at least one client.");
+                              return;
+                            }
+                            if (!window.confirm(`Remove ${tc.client.name} from this tender?`)) return;
+                            try {
+                              const response = await authFetch(
+                                `/tenders/${tender.id}/clients/${tc.client.id}`,
+                                { method: "DELETE" }
+                              );
+                              if (!response.ok) throw new Error(await response.text());
+                              setClientMsg(null);
+                              await reload();
+                            } catch (err) {
+                              setClientMsg((err as Error).message);
+                            }
+                          }}
+                        />
                       );
                     })}
                   </ul>
@@ -1007,7 +996,9 @@ function ExpandableClientRow({
   relationshipType,
   isAwarded,
   contractIssued,
-  canManage
+  canManage,
+  canRemove,
+  onRemove
 }: {
   tenderId: string;
   clientId: string;
@@ -1017,16 +1008,18 @@ function ExpandableClientRow({
   isAwarded: boolean;
   contractIssued: boolean;
   canManage: boolean;
+  canRemove: boolean;
+  onRemove: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   return (
-    <li className="tender-detail__client-row">
+    <li className="tender-detail__client-row" style={{ position: "relative", width: "100%" }}>
       <button
         type="button"
         className="tender-detail__client-header"
         onClick={() => setExpanded((prev) => !prev)}
         aria-expanded={expanded}
-        style={{ background: "transparent", border: "none", width: "100%", padding: 0, textAlign: "left", color: "inherit" }}
+        style={{ background: "transparent", border: "none", width: "100%", padding: 0, paddingRight: canManage ? 24 : 0, textAlign: "left", color: "inherit" }}
       >
         <span className="tender-detail__client-caret" aria-hidden>{expanded ? "▾" : "▸"}</span>
         <span>
@@ -1037,6 +1030,33 @@ function ExpandableClientRow({
         </span>
         <span />
       </button>
+      {canManage ? (
+        <button
+          type="button"
+          aria-label={`Remove ${clientName}`}
+          title={canRemove ? `Remove ${clientName}` : "A tender must have at least one client"}
+          disabled={!canRemove}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove();
+          }}
+          style={{
+            position: "absolute",
+            top: 4,
+            right: 6,
+            background: "transparent",
+            border: "none",
+            cursor: canRemove ? "pointer" : "not-allowed",
+            color: "var(--text-muted)",
+            fontSize: 18,
+            lineHeight: 1,
+            padding: "2px 6px",
+            opacity: canRemove ? 1 : 0.4
+          }}
+        >
+          ×
+        </button>
+      ) : null}
       {expanded ? (
         <div style={{ marginTop: 8 }}>
           {contact ? (

@@ -43,7 +43,8 @@ export class QuotePdfService {
         provisionalLines: { orderBy: { sortOrder: "asc" } },
         costOptions: { orderBy: { sortOrder: "asc" } },
         assumptions: { orderBy: [{ sortOrder: "asc" }] },
-        exclusions: { orderBy: { sortOrder: "asc" } }
+        exclusions: { orderBy: { sortOrder: "asc" } },
+        scopeItems: { orderBy: { sortOrder: "asc" } }
       }
     });
     if (!quote || quote.tenderId !== tenderId) throw new NotFoundException("Quote not found.");
@@ -67,6 +68,16 @@ export class QuotePdfService {
       showProvisional: quote.showProvisional,
       showCostOptions: quote.showCostOptions,
       clientFacingTotal: summary.clientFacingTotal,
+      detailLevel: quote.detailLevel === "detailed" ? "detailed" : "simple",
+      scopeItems: quote.scopeItems
+        .filter((r) => r.isVisible)
+        .map((r) => ({
+          label: r.label,
+          description: r.description,
+          qty: r.qty,
+          unit: r.unit,
+          notes: r.notes
+        })),
       costLines: quote.costLines.map((l) => ({
         id: l.id,
         label: l.label,

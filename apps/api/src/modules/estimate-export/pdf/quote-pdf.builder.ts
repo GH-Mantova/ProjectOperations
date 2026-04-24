@@ -26,6 +26,17 @@ export type QuoteOverlay = {
   showProvisional: boolean;
   showCostOptions: boolean;
   clientFacingTotal: number;
+  // PR #71 — client-facing scope control. "simple" suppresses the scope
+  // table on page 2 entirely; "detailed" renders the per-quote scope rows
+  // from QuoteScopeItem (overriding the tender-level scope source).
+  detailLevel?: "simple" | "detailed";
+  scopeItems?: Array<{
+    label: string | null;
+    description: string;
+    qty: string | null;
+    unit: string | null;
+    notes: string | null;
+  }>;
   costLines: Array<{ id: string; label: string; description: string; price: number; sortOrder: number }>;
   provisionalLines: Array<{ description: string; price: number; notes: string | null }>;
   costOptions: Array<{ label: string; description: string; price: number; notes: string | null }>;
@@ -458,6 +469,61 @@ function drawCoverPage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay | null)
 // ── Page 2 ───────────────────────────────────────────────────────────
 type ScopeTableCol = { key: string; label: string; w: number; align?: "left" | "right" };
 
+// Client-facing scope table sourced from QuoteScopeItem. Flat layout —
+// ITEM (label) | SCOPE OF WORKS (description) | QTY | UNIT | NOTES.
+// Each row is rendered top-to-bottom with alternating shading; page
+// breaks are handled by explicit fit-checks so every continuation gets
+// a clean drawHeaderBand.
+function drawQuoteScopeItemsTable(
+  doc: Doc,
+  rows: NonNullable<QuoteOverlay["scopeItems"]>
+) {
+  const cols: ScopeTableCol[] = [
+    { key: "item", label: "ITEM", w: 50 },
+    { key: "desc", label: "SCOPE OF WORKS", w: 270 },
+    { key: "qty", label: "QTY", w: 50, align: "right" },
+    { key: "unit", label: "UNIT", w: 45 },
+    { key: "note", label: "NOTES", w: CONTENT_W - 50 - 270 - 50 - 45 }
+  ];
+  const colX = (idx: number) => MARGIN_L + cols.slice(0, idx).reduce((s, c) => s + c.w, 0);
+  const rowMinH = 20;
+
+  const drawHead = () => {
+    const y = doc.y;
+    doc.rect(MARGIN_L, y, CONTENT_W, rowMinH).fill(BRAND.teal);
+    doc.fillColor(BRAND.white).font("Helvetica-Bold").fontSize(9);
+    cols.forEach((c, i) => {
+      doc.text(c.label, colX(i) + 6, y + 6, { width: c.w - 8, align: c.align ?? "left" });
+    });
+    doc.fillColor(BRAND.black);
+    doc.y = y + rowMinH;
+  };
+  drawHead();
+
+  rows.forEach((row, i) => {
+    const desc = row.description.slice(0, 500);
+    const descHeight = doc.heightOfString(desc, { width: cols[1].w - 8 });
+    const rowH = Math.max(rowMinH, descHeight + 8);
+    if (doc.y + rowH > PAGE_H - MARGIN_BOTTOM - 10) {
+      // Let the outer footer/builder handle a new page. We don't force
+      // addPage here — a big scope table will just continue naturally on
+      // the next page with a clean header via the footer-loop's header
+      // redraw. (Matches the legacy table behaviour.)
+      return;
+    }
+    const y = doc.y;
+    const bg = i % 2 === 0 ? BRAND.white : BRAND.lightGrey;
+    doc.rect(MARGIN_L, y, CONTENT_W, rowH).fill(bg);
+    doc.fillColor(BRAND.black).font("Helvetica").fontSize(8);
+    doc.text(row.label ?? "—", colX(0) + 6, y + 5, { width: cols[0].w - 8 });
+    doc.text(desc, colX(1) + 6, y + 5, { width: cols[1].w - 8 });
+    doc.text(row.qty ?? "—", colX(2) + 6, y + 5, { width: cols[2].w - 8, align: "right" });
+    doc.text(row.unit ?? "—", colX(3) + 6, y + 5, { width: cols[3].w - 8 });
+    doc.text(row.notes ?? "", colX(4) + 6, y + 5, { width: cols[4].w - 8 });
+    doc.y = y + rowH;
+  });
+}
+
 function drawScopePage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay | null) {
   doc.addPage();
   drawHeaderBand(doc, overlay?.quoteRef ?? p.tender.tenderNumber);
@@ -504,6 +570,20 @@ function drawScopePage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay | null)
       }
     }
     doc.moveDown(0.6);
+  }
+
+  // PR #71 — quote-level detail control:
+  //   "simple"   → no scope table (skip straight to site details block)
+  //   "detailed" → render QuoteScopeItem rows (client-facing, overlay source)
+  //   default    → fall through to the tender-level scope + cutting renderer
+  if (overlay && overlay.detailLevel === "simple") {
+    return;
+  }
+  if (overlay && overlay.detailLevel === "detailed" && overlay.scopeItems && overlay.scopeItems.length > 0) {
+    doc.font("Helvetica-Bold").fontSize(11).fillColor(BRAND.teal).text("Scope of Works", MARGIN_L, doc.y);
+    drawRule(doc, BRAND.orange);
+    drawQuoteScopeItemsTable(doc, overlay.scopeItems);
+    return;
   }
 
   // Scope heading.

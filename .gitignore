@@ -20,3 +20,7 @@ Desktop.ini
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+
+# Compiled JS artifacts in src (tsc without --noEmit pollutes src/)
+apps/web/src/**/*.js
+apps/web/src/**/*.js.map

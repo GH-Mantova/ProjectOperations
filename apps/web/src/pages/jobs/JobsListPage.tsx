@@ -104,7 +104,7 @@ export function JobsListPage() {
         const [clientsRes, sitesRes, workersRes] = await Promise.all([
           authFetch("/master-data/clients?page=1&pageSize=100"),
           authFetch("/master-data/sites?page=1&pageSize=100"),
-          authFetch("/workers?page=1&pageSize=100")
+          authFetch("/workers?page=1&limit=100")
         ]);
         if (clientsRes.ok && !cancelled) {
           const data = await clientsRes.json();

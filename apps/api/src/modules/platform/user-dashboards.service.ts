@@ -47,7 +47,13 @@ export class UserDashboardsService {
   }
 
   async getById(userId: string, id: string) {
-    const record = await this.prisma.userDashboard.findUnique({ where: { id } });
+    // Resolve by primary id first; if nothing matches, fall back to slug
+    // scoped to the current user so slug-style URLs (/dashboards/operations)
+    // work alongside UUID-style URLs (/dashboards/<uuid>).
+    let record = await this.prisma.userDashboard.findUnique({ where: { id } });
+    if (!record) {
+      record = await this.prisma.userDashboard.findFirst({ where: { userId, slug: id } });
+    }
     if (!record || record.userId !== userId) {
       throw new NotFoundException("Dashboard not found.");
     }

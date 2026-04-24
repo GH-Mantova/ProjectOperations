@@ -296,7 +296,8 @@ export function ActiveContractsKpi() {
     queryFn: async () => {
       const response = await authFetch("/contracts?status=ACTIVE");
       if (!response.ok) return [] as ContractDashboardRow[];
-      return (await response.json()) as ContractDashboardRow[];
+      const body = (await response.json()) as { items: ContractDashboardRow[] };
+      return body.items;
     },
     staleTime: 30_000
   });

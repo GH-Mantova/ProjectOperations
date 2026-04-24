@@ -51,7 +51,8 @@ export function ContractsListPage() {
       const url = statusFilter === "ALL" ? "/contracts" : `/contracts?status=${statusFilter}`;
       const response = await authFetch(url);
       if (!response.ok) throw new Error(await response.text());
-      setContracts((await response.json()) as ContractRow[]);
+      const body = (await response.json()) as { items: ContractRow[] };
+      setContracts(body.items);
     } catch (err) {
       setError((err as Error).message);
     } finally {

@@ -769,12 +769,46 @@ function CostTab({
             {suggestion.suggestedAdjustmentPct}% — {suggestion.rationale}
           </p>
         ) : null}
-        <div style={{ marginTop: 12, fontSize: 13 }}>
-          Base cost lines: <strong>{fmtCurrency(summary.baseTotalCostLines)}</strong>
-          {"  ·  "}
-          Adjustment: <strong>{fmtCurrency(summary.adjustmentAmount)}</strong>
-          {"  ·  "}
-          Client-facing total: <strong style={{ color: "#005B61" }}>{fmtCurrency(summary.clientFacingTotal)}</strong>
+        <div
+          style={{
+            marginTop: 12,
+            fontSize: 13,
+            display: "grid",
+            gridTemplateColumns: "auto 1fr auto",
+            columnGap: 10,
+            rowGap: 4,
+            alignItems: "baseline"
+          }}
+        >
+          <span style={{ color: "var(--text-muted)" }}>Base total:</span>
+          <span />
+          <strong>{fmtCurrency(summary.baseTotalCostLines)}</strong>
+          <span style={{ color: "#D97706" }}>
+            Adjustment
+            {quote.adjustmentPct !== null && quote.adjustmentPct !== undefined
+              ? ` (${Number(quote.adjustmentPct) >= 0 ? "+" : ""}${Number(quote.adjustmentPct)}%)`
+              : quote.adjustmentAmt !== null && quote.adjustmentAmt !== undefined
+                ? ` ($)`
+                : ""}
+            :
+          </span>
+          <span style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>
+            Internal only — not shown on quote
+          </span>
+          <strong style={{ color: "#D97706" }}>{fmtCurrency(summary.adjustmentAmount)}</strong>
+          <span
+            style={{
+              gridColumn: "1 / -1",
+              borderTop: "1px solid var(--border, #e5e7eb)",
+              marginTop: 4,
+              marginBottom: 4
+            }}
+          />
+          <span style={{ fontWeight: 600 }}>Client sees:</span>
+          <span />
+          <strong style={{ color: "#005B61", fontSize: 15 }}>
+            {fmtCurrency(summary.clientFacingTotal)}
+          </strong>
         </div>
       </div>
     </div>

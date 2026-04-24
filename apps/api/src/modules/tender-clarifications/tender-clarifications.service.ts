@@ -55,6 +55,41 @@ export class TenderClarificationsService {
     });
   }
 
+  async update(
+    tenderId: string,
+    id: string,
+    dto: { direction?: string; text?: string; date?: string | null }
+  ) {
+    const existing = await this.prisma.tenderClarificationNote.findUnique({ where: { id } });
+    if (!existing || existing.tenderId !== tenderId) {
+      throw new NotFoundException("Clarification not found on this tender.");
+    }
+    const data: { direction?: string; text?: string; occurredAt?: Date } = {};
+    if (dto.direction !== undefined) {
+      if (!DIRECTIONS.includes(dto.direction as Direction)) {
+        throw new BadRequestException(`direction must be one of ${DIRECTIONS.join(", ")}.`);
+      }
+      data.direction = dto.direction;
+    }
+    if (dto.text !== undefined) {
+      const clean = dto.text.trim();
+      if (!clean) throw new BadRequestException("text cannot be empty.");
+      data.text = clean;
+    }
+    if (dto.date !== undefined && dto.date !== null) {
+      const parsed = new Date(dto.date);
+      if (Number.isNaN(parsed.getTime())) {
+        throw new BadRequestException("Invalid date format — expected ISO-8601.");
+      }
+      data.occurredAt = parsed;
+    }
+    return this.prisma.tenderClarificationNote.update({
+      where: { id },
+      data,
+      include: { createdBy: { select: { id: true, firstName: true, lastName: true } } }
+    });
+  }
+
   async remove(tenderId: string, id: string) {
     const existing = await this.prisma.tenderClarificationNote.findUnique({ where: { id } });
     if (!existing || existing.tenderId !== tenderId) {

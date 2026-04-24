@@ -105,28 +105,34 @@ function displayMaterial(raw: string | null | undefined): string | null {
 
 function drawHeaderBand(doc: Doc, quoteRef?: string | null) {
   doc.save();
-  doc.rect(0, 0, PAGE_W, 50).fill(BRAND.teal);
+  const BAND_H = 50;
+  const LOGO_SIZE = 40;
+  const LOGO_X = MARGIN_L;
+  const LOGO_Y = (BAND_H - LOGO_SIZE) / 2; // 5 — vertically centred
+  const LOGO_GAP = 8;
+  doc.rect(0, 0, PAGE_W, BAND_H).fill(BRAND.teal);
   if (LOGO_BUFFER) {
     try {
-      doc.image(LOGO_BUFFER, MARGIN_L - 4, 3, { fit: [44, 44] });
+      doc.image(LOGO_BUFFER, LOGO_X, LOGO_Y, { fit: [LOGO_SIZE, LOGO_SIZE] });
     } catch {
       // fall through to text fallback below
     }
   }
-  const titleX = LOGO_BUFFER ? MARGIN_L + 48 : MARGIN_L;
-  // Licence numbers render first (top line); centred quote ref under them
-  // on the band. Draw order: title on left, licences on right, quote ref
-  // centred. Save/restore around the whole band prevents the teal fill's
-  // implicit path state from interfering with later text positioning.
+  const titleX = LOGO_BUFFER ? LOGO_X + LOGO_SIZE + LOGO_GAP : MARGIN_L;
+  // Title "INITIAL SERVICES" sits on the baseline matching the vertical
+  // centre of the band; licences align right at the same y; quote ref
+  // centres in the lower half. Save/restore around the whole band isolates
+  // graphics state from the page body.
+  const titleY = 17; // baseline that visually centres a 14pt bold line in a 50pt band
+  doc.fillColor(BRAND.white).font("Helvetica-Bold").fontSize(14)
+    .text("INITIAL SERVICES", titleX, titleY, { lineBreak: false });
   doc.fillColor(BRAND.white).font("Helvetica").fontSize(8)
     .text(
       "Demolition Licence: 2328018 | Class A Asbestos Licence: 2320431",
       MARGIN_L,
-      8,
+      21,
       { align: "right", width: CONTENT_W, lineBreak: false }
     );
-  doc.fillColor(BRAND.white).font("Helvetica-Bold").fontSize(14)
-    .text("INITIAL SERVICES", titleX, 14, { lineBreak: false });
   if (quoteRef) {
     // Quote reference centred in the band. We measure the string and
     // position it explicitly because PDFKit's `align: "center"` + `width`
@@ -136,7 +142,7 @@ function drawHeaderBand(doc: Doc, quoteRef?: string | null) {
     doc.font("Helvetica-Bold").fontSize(10).fillColor(BRAND.white);
     const labelW = doc.widthOfString(label);
     const centerX = (PAGE_W - labelW) / 2;
-    doc.text(label, centerX, 20, { lineBreak: false });
+    doc.text(label, centerX, 36, { lineBreak: false });
   }
   // Thin orange rule under the band.
   doc.save().strokeColor(BRAND.orange).lineWidth(2).moveTo(0, 51).lineTo(PAGE_W, 51).stroke().restore();
@@ -194,8 +200,16 @@ function drawCoverPage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay | null)
   doc.y = MARGIN_TOP + 16;
 
   const primaryClient = p.tender.clients[0] ?? null;
-  const estimator = p.tender.estimator;
-  const estimatorName = estimator ? `${estimator.firstName} ${estimator.lastName}`.trim() : "—";
+  // Always resolve to a usable estimator — the tender's assigned estimator
+  // when one is set, otherwise a safe fallback identity so quotes can still
+  // go out with a real contact point.
+  const estimator = p.tender.estimator ?? {
+    firstName: "Initial",
+    lastName: "Services",
+    email: "admin@initialservices.net",
+    phone: null
+  };
+  const estimatorName = `${estimator.firstName} ${estimator.lastName}`.trim();
 
   // Two-column client / quote meta block.
   const colTop = doc.y;
@@ -787,63 +801,85 @@ function drawAssumptionsPage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay |
     doc.moveDown(0.5);
   }
 
-  // Terms & Conditions — single-column, explicit per-clause pagination.
-  // Why not two-column: the previous layout let PDFKit's built-in auto
-  // line-wrap cross page boundaries inside long clause bodies, which
-  // triggered implicit addPage() calls. Those pages missed drawHeaderBand
-  // (only the footer was stamped retrospectively) and showed up as
-  // half-blank pages in the final PDF. Single column + explicit fit-check
-  // before every clause means we always call drawHeaderBand on any
-  // continuation page.
-  doc.font("Helvetica-Bold").fontSize(11).fillColor(BRAND.teal)
+  // Terms & Conditions — two-column, 6pt. Each column is laid out
+  // independently: we fill the left column first, then the right column,
+  // then break to a new page with a "(continued)" heading when both are
+  // full. Per-clause fit checks prevent PDFKit's auto-wrap from crossing
+  // column / page boundaries and creating undecorated phantom pages.
+  doc.font("Helvetica-Bold").fontSize(10).fillColor(BRAND.teal)
     .text("TERMS AND CONDITIONS", MARGIN_L, doc.y, { width: CONTENT_W, align: "center" });
   drawRule(doc, BRAND.orange);
 
   const clauses = p.tandc.clauses;
+  const TC_GUTTER = 14;
+  const TC_COL_W = (CONTENT_W - TC_GUTTER) / 2;
+  const TC_COL_LEFT_X = MARGIN_L;
+  const TC_COL_RIGHT_X = MARGIN_L + TC_COL_W + TC_GUTTER;
   const tcBottomLimit = PAGE_H - MARGIN_BOTTOM - 10;
+  const tcTopAfterHeading = doc.y;
+
+  type ColumnState = { x: number; y: number };
+  let col: ColumnState = { x: TC_COL_LEFT_X, y: tcTopAfterHeading };
+  let onRightColumn = false;
 
   const measureClause = (clause: TcLike): { headH: number; bodyH: number } => {
     const headH = doc
-      .font("Helvetica-Bold").fontSize(9)
-      .heightOfString(`${clause.number}. ${clause.heading.toUpperCase()}`, { width: CONTENT_W });
+      .font("Helvetica-Bold").fontSize(6.5)
+      .heightOfString(`${clause.number}. ${clause.heading.toUpperCase()}`, { width: TC_COL_W });
     const bodyH = doc
-      .font("Helvetica").fontSize(8)
-      .heightOfString(clause.body, { width: CONTENT_W, lineGap: 1 });
+      .font("Helvetica").fontSize(6)
+      .heightOfString(clause.body, { width: TC_COL_W, lineGap: 1.5 });
     return { headH, bodyH };
   };
 
   const renderClause = (clause: TcLike) => {
-    doc.font("Helvetica-Bold").fontSize(9).fillColor(BRAND.teal)
-      .text(`${clause.number}. ${clause.heading.toUpperCase()}`, MARGIN_L, doc.y, {
-        width: CONTENT_W
+    doc.font("Helvetica-Bold").fontSize(6.5).fillColor(BRAND.teal)
+      .text(`${clause.number}. ${clause.heading.toUpperCase()}`, col.x, col.y, {
+        width: TC_COL_W,
+        lineBreak: true
       });
-    doc.moveDown(0.15);
-    doc.font("Helvetica").fontSize(8).fillColor("#333")
-      .text(clause.body, MARGIN_L, doc.y, {
-        width: CONTENT_W,
+    // Advance y to after the heading using heightOfString (doc.y would be
+    // fine but using explicit heights keeps column independence exact).
+    const { headH, bodyH } = measureClause(clause);
+    col.y += headH + 1;
+    doc.font("Helvetica").fontSize(6).fillColor("#333")
+      .text(clause.body, col.x, col.y, {
+        width: TC_COL_W,
         align: "justify",
-        lineGap: 1
+        lineGap: 1.5,
+        lineBreak: true
       });
-    doc.moveDown(0.45);
+    col.y += bodyH + 4; // 4pt gap between clauses
+  };
+
+  const switchToRightColumn = () => {
+    onRightColumn = true;
+    col = { x: TC_COL_RIGHT_X, y: tcTopAfterHeading };
   };
 
   const startContinuation = () => {
     doc.addPage();
     drawHeaderBand(doc, overlay?.quoteRef ?? p.tender.tenderNumber);
     doc.y = MARGIN_TOP + 16;
-    doc.font("Helvetica-Bold").fontSize(11).fillColor(BRAND.teal)
+    doc.font("Helvetica-Bold").fontSize(10).fillColor(BRAND.teal)
       .text("TERMS AND CONDITIONS (continued)", MARGIN_L, doc.y, {
         width: CONTENT_W,
         align: "center"
       });
     drawRule(doc, BRAND.orange);
+    onRightColumn = false;
+    col = { x: TC_COL_LEFT_X, y: doc.y };
   };
 
   for (const clause of clauses) {
     const { headH, bodyH } = measureClause(clause);
-    const needed = headH + bodyH + 14; // +14 for spacers between heading and body
-    if (doc.y + needed > tcBottomLimit) {
-      startContinuation();
+    const needed = headH + bodyH + 5;
+    if (col.y + needed > tcBottomLimit) {
+      if (!onRightColumn) {
+        switchToRightColumn();
+      } else {
+        startContinuation();
+      }
     }
     renderClause(clause);
   }

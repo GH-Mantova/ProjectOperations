@@ -28,7 +28,7 @@ export function NewContractModal({ onClose }: { onClose: () => void }) {
     setLoading(true);
     try {
       const [projectsRes, contractsRes] = await Promise.all([
-        authFetch("/projects?pageSize=100"),
+        authFetch("/projects?limit=100"),
         authFetch("/contracts")
       ]);
       if (!projectsRes.ok) throw new Error(await projectsRes.text());
@@ -36,10 +36,10 @@ export function NewContractModal({ onClose }: { onClose: () => void }) {
         items?: Array<{ id: string; projectNumber: string; name: string; client?: { name: string } | null }>;
       };
       const items = projectsBody.items ?? [];
-      const contractsBody: Array<{ project: { id: string } }> = contractsRes.ok
-        ? ((await contractsRes.json()) as Array<{ project: { id: string } }>)
-        : [];
-      const withContract = new Set(contractsBody.map((c) => c.project.id));
+      const contractsBody: { items: Array<{ project: { id: string } }> } = contractsRes.ok
+        ? ((await contractsRes.json()) as { items: Array<{ project: { id: string } }> })
+        : { items: [] };
+      const withContract = new Set(contractsBody.items.map((c) => c.project.id));
       setProjects(
         items.map((p) => ({
           id: p.id,

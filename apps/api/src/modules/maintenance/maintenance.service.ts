@@ -65,6 +65,15 @@ export class MaintenanceService {
     };
   }
 
+  async listPlans() {
+    return this.prisma.assetMaintenancePlan.findMany({
+      orderBy: [{ nextDueAt: "asc" }, { createdAt: "desc" }],
+      include: {
+        asset: { select: { id: true, assetCode: true, name: true } }
+      }
+    });
+  }
+
   async upsertPlan(id: string | undefined, dto: UpsertMaintenancePlanDto, actorId?: string) {
     await this.requireAsset(dto.assetId);
 

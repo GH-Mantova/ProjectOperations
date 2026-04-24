@@ -68,6 +68,18 @@ async function main() {
     )
   );
 
+  // Clean up orphans: when a permission is removed from the registry we still
+  // have its Permission + RolePermission rows from previous seed runs, which
+  // surface as stale entries in every Admin JWT. Delete RolePermission first
+  // (FK), then the Permission itself. No-op on clean DBs.
+  const registryCodes = permissionRegistry.map((p) => p.code);
+  await prisma.rolePermission.deleteMany({
+    where: { permission: { code: { notIn: registryCodes } } }
+  });
+  await prisma.permission.deleteMany({
+    where: { code: { notIn: registryCodes } }
+  });
+
   const permissions = await prisma.permission.findMany();
   const permissionIdByCode = new Map(permissions.map((permission) => [permission.code, permission.id]));
 

@@ -35,6 +35,13 @@ export class MaintenanceController {
     return this.service.getAssetMaintenance(assetId);
   }
 
+  @Get("plans")
+  @RequirePermissions("maintenance.view")
+  @ApiOperation({ summary: "List all maintenance plans (with asset summary) — used by the Operations dashboard 'Upcoming maintenance' widget." })
+  listPlans() {
+    return this.service.listPlans();
+  }
+
   @Post("plans")
   @RequirePermissions("maintenance.manage")
   createPlan(@Body() dto: UpsertMaintenancePlanDto, @CurrentUser() actor: { sub: string }) {

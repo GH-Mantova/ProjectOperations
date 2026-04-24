@@ -30,16 +30,21 @@ export class ContractsService {
 
   // ── Contracts ────────────────────────────────────────────────────────
   async listContracts(filter: { status?: ContractStatus; projectId?: string }) {
-    return this.prisma.contract.findMany({
-      where: {
-        status: filter.status,
-        projectId: filter.projectId
-      },
-      include: {
-        project: { select: { id: true, projectNumber: true, name: true, client: { select: { id: true, name: true } } } }
-      },
-      orderBy: { createdAt: "desc" }
-    });
+    const where = {
+      status: filter.status,
+      projectId: filter.projectId
+    };
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.contract.findMany({
+        where,
+        include: {
+          project: { select: { id: true, projectNumber: true, name: true, client: { select: { id: true, name: true } } } }
+        },
+        orderBy: { createdAt: "desc" }
+      }),
+      this.prisma.contract.count({ where })
+    ]);
+    return { items, total, page: 1, limit: items.length };
   }
 
   async getContract(id: string) {

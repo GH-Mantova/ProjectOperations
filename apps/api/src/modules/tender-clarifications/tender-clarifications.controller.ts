@@ -7,16 +7,20 @@ import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { TenderClarificationsService } from "./tender-clarifications.service";
 
+const NOTE_TYPES = ["call", "email", "meeting", "note", "response"] as const;
+
 class CreateClarificationDto {
   @IsString() @IsIn(["sent", "received"]) direction!: "sent" | "received";
   @IsString() text!: string;
   @IsOptional() @IsDateString() date?: string;
+  @IsOptional() @IsString() @IsIn(NOTE_TYPES as unknown as string[]) noteType?: string;
 }
 
 class UpdateClarificationDto {
   @IsOptional() @IsString() @IsIn(["sent", "received"]) direction?: "sent" | "received";
   @IsOptional() @IsString() text?: string;
   @IsOptional() @IsDateString() date?: string;
+  @IsOptional() @IsString() @IsIn(NOTE_TYPES as unknown as string[]) noteType?: string;
 }
 
 @ApiTags("Tender Clarification Notes")

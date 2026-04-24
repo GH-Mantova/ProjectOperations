@@ -26,6 +26,20 @@ type WasteRow = {
   sortOrder: number;
 };
 
+type WasteRate = {
+  id: string;
+  wasteGroup: string | null;
+  wasteType: string;
+  facility: string;
+  tonRate: string;
+  loadRate: string;
+  isActive: boolean;
+};
+
+function ceilHalf(value: number): number {
+  return Math.ceil(value * 2) / 2;
+}
+
 function fmtCurrency(value: string | number | null): string {
   if (value === null || value === undefined || value === "") return "—";
   const n = typeof value === "number" ? value : Number(value);
@@ -50,6 +64,7 @@ export function ScopeWasteTab({
 }) {
   const { authFetch } = useAuth();
   const [rows, setRows] = useState<WasteRow[]>([]);
+  const [rates, setRates] = useState<WasteRate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,9 +72,16 @@ export function ScopeWasteTab({
     setLoading(true);
     setError(null);
     try {
-      const response = await authFetch(`/tenders/${tenderId}/scope/waste?discipline=${discipline}`);
-      if (!response.ok) throw new Error(await response.text());
-      setRows((await response.json()) as WasteRow[]);
+      const [rowsResp, ratesResp] = await Promise.all([
+        authFetch(`/tenders/${tenderId}/scope/waste?discipline=${discipline}`),
+        authFetch(`/estimate-rates/waste`)
+      ]);
+      if (!rowsResp.ok) throw new Error(await rowsResp.text());
+      setRows((await rowsResp.json()) as WasteRow[]);
+      if (ratesResp.ok) {
+        const arr = (await ratesResp.json()) as WasteRate[];
+        setRates(arr.filter((r) => r.isActive));
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -70,6 +92,29 @@ export function ScopeWasteTab({
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Cascade helpers — group → types → facilities → rate record. Exposed
+  // as plain computed arrays so the row renderer can filter on each
+  // change cheaply.
+  const groups = useMemo(() => {
+    const s = new Set<string>();
+    for (const r of rates) if (r.wasteGroup) s.add(r.wasteGroup);
+    return [...s].sort();
+  }, [rates]);
+  const typesForGroup = (group: string | null) => {
+    const s = new Set<string>();
+    for (const r of rates) if (!group || r.wasteGroup === group) s.add(r.wasteType);
+    return [...s].sort();
+  };
+  const facilitiesForType = (type: string | null) => {
+    const s = new Set<string>();
+    for (const r of rates) if (!type || r.wasteType === type) s.add(r.facility);
+    return [...s].sort();
+  };
+  const rateFor = (type: string | null, facility: string | null) => {
+    if (!type || !facility) return null;
+    return rates.find((r) => r.wasteType === type && r.facility === facility) ?? null;
+  };
 
   const addRow = async () => {
     if (!canManage) return;
@@ -218,43 +263,85 @@ export function ScopeWasteTab({
                     />
                   </td>
                   <td style={{ padding: 2 }}>
-                    <input
-                      className="s7-input s7-input--sm"
-                      defaultValue={row.wasteGroup ?? ""}
+                    <select
+                      className="s7-select s7-input--sm"
+                      value={row.wasteGroup ?? ""}
                       disabled={!canManage}
-                      onBlur={(e) =>
-                        (e.target.value || null) !== (row.wasteGroup ?? null) &&
-                        void patchRow(row.id, { wasteGroup: e.target.value || null })
-                      }
-                      placeholder="e.g. C&D"
-                      style={{ width: 100 }}
-                    />
+                      onChange={(e) => {
+                        const next = e.target.value || null;
+                        // Group change clears type + facility so the
+                        // cascade stays consistent.
+                        void patchRow(row.id, {
+                          wasteGroup: next,
+                          wasteType: null,
+                          wasteFacility: null,
+                          ratePerTonne: null,
+                          ratePerLoad: null
+                        });
+                      }}
+                      style={{ width: 110, fontSize: 12, padding: 2 }}
+                    >
+                      <option value="">—</option>
+                      {row.wasteGroup && !groups.includes(row.wasteGroup) ? (
+                        <option value={row.wasteGroup}>{row.wasteGroup}</option>
+                      ) : null}
+                      {groups.map((g) => (
+                        <option key={g} value={g}>{g}</option>
+                      ))}
+                    </select>
                   </td>
                   <td style={{ padding: 2 }}>
-                    <input
-                      className="s7-input s7-input--sm"
-                      defaultValue={row.wasteType ?? ""}
-                      disabled={!canManage}
-                      onBlur={(e) =>
-                        (e.target.value || null) !== (row.wasteType ?? null) &&
-                        void patchRow(row.id, { wasteType: e.target.value || null })
-                      }
-                      placeholder="e.g. General"
-                      style={{ width: 110 }}
-                    />
+                    <select
+                      className="s7-select s7-input--sm"
+                      value={row.wasteType ?? ""}
+                      disabled={!canManage || !row.wasteGroup}
+                      onChange={(e) => {
+                        const next = e.target.value || null;
+                        void patchRow(row.id, {
+                          wasteType: next,
+                          wasteFacility: null,
+                          ratePerTonne: null,
+                          ratePerLoad: null
+                        });
+                      }}
+                      style={{ width: 130, fontSize: 12, padding: 2 }}
+                    >
+                      <option value="">—</option>
+                      {row.wasteType && !typesForGroup(row.wasteGroup).includes(row.wasteType) ? (
+                        <option value={row.wasteType}>{row.wasteType}</option>
+                      ) : null}
+                      {typesForGroup(row.wasteGroup).map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
                   </td>
                   <td style={{ padding: 2 }}>
-                    <input
-                      className="s7-input s7-input--sm"
-                      defaultValue={row.wasteFacility ?? ""}
-                      disabled={!canManage}
-                      onBlur={(e) =>
-                        (e.target.value || null) !== (row.wasteFacility ?? null) &&
-                        void patchRow(row.id, { wasteFacility: e.target.value || null })
-                      }
-                      placeholder="e.g. BMI"
-                      style={{ width: 120 }}
-                    />
+                    <select
+                      className="s7-select s7-input--sm"
+                      value={row.wasteFacility ?? ""}
+                      disabled={!canManage || !row.wasteType}
+                      onChange={(e) => {
+                        const next = e.target.value || null;
+                        const rate = rateFor(row.wasteType, next);
+                        // Auto-populate rates from the catalogue on facility
+                        // select. User can still override afterwards — any
+                        // later PATCH to ratePerTonne/ratePerLoad wins.
+                        void patchRow(row.id, {
+                          wasteFacility: next,
+                          ratePerTonne: rate ? Number(rate.tonRate) : null,
+                          ratePerLoad: rate ? Number(rate.loadRate) : null
+                        });
+                      }}
+                      style={{ width: 140, fontSize: 12, padding: 2 }}
+                    >
+                      <option value="">—</option>
+                      {row.wasteFacility && !facilitiesForType(row.wasteType).includes(row.wasteFacility) ? (
+                        <option value={row.wasteFacility}>{row.wasteFacility}</option>
+                      ) : null}
+                      {facilitiesForType(row.wasteType).map((f) => (
+                        <option key={f} value={f}>{f}</option>
+                      ))}
+                    </select>
                   </td>
                   <td style={{ padding: 2 }}>
                     <input
@@ -286,7 +373,9 @@ export function ScopeWasteTab({
                     />
                   </td>
                   <td style={{ padding: 2, fontSize: 12, color: "var(--text-muted)", textAlign: "right" }}>
-                    {row.truckDays ?? "—"}
+                    {row.wasteLoads !== null && row.wasteLoads !== undefined
+                      ? ceilHalf(row.wasteLoads / 3).toFixed(1) + " d"
+                      : "—"}
                   </td>
                   <td style={{ padding: 2 }}>
                     <input

@@ -39,6 +39,7 @@ import { FormDesignerPage } from "./pages/forms/FormDesignerPage";
 import { FormSubmitPage } from "./pages/forms/FormSubmitPage";
 import { DocumentsWorkspacePage } from "./pages/documents/DocumentsWorkspacePage";
 import { MasterDataWorkspacePage } from "./pages/master-data/MasterDataWorkspacePage";
+import { SubcontractorsPage } from "./pages/directory/SubcontractorsPage";
 import { EstimateRatesAdminPage } from "./pages/EstimateRatesAdminPage";
 import { UserDashboardPage } from "./pages/dashboards/UserDashboardPage";
 import { FieldLayout } from "./layouts/FieldLayout";
@@ -155,6 +156,7 @@ export function App() {
             <Route path="/dashboards" element={<DashboardsPage />} />
             <Route path="/dashboards/:id" element={<UserDashboardPage />} />
             <Route path="/master-data" element={<MasterDataWorkspacePage />} />
+            <Route path="/directory/subcontractors" element={<SubcontractorsPage />} />
             <Route path="/archive" element={<ArchivePage />} />
             <Route path="/archive/:jobId" element={<ArchiveDetailPage />} />
           </Route>

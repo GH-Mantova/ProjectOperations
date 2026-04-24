@@ -46,5 +46,9 @@ export const permissionRegistry = [
   { code: "projects.manage", module: "projects", description: "Update project team, status, budget, milestones, documents" },
   { code: "projects.admin", module: "projects", description: "Create projects manually, change contract value, reopen closed projects" },
   { code: "field.view", module: "field", description: "Access the field worker app — own allocations, pre-starts, timesheets, documents" },
-  { code: "field.manage", module: "field", description: "Approve timesheets and view all field submissions (PM / WHS / Admin)" }
+  { code: "field.manage", module: "field", description: "Approve timesheets and view all field submissions (PM / WHS / Admin)" },
+  { code: "directory.view", module: "directory", description: "View business directory — clients, subcontractors, suppliers" },
+  { code: "directory.manage", module: "directory", description: "Create and update directory entries, contacts, licences, insurances" },
+  { code: "directory.admin", module: "directory", description: "Delete directory entries, approve credit, update prequalification status" },
+  { code: "directory.finance", module: "directory", description: "View and edit bank details on directory entries" }
 ] as const;

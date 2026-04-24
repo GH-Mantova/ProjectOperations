@@ -57,7 +57,8 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
     "jobs.view",
     "scheduler.view",
     "search.view",
-    "notifications.view"
+    "notifications.view",
+    "directory.view"
   ];
   const viewPermissions = await prisma.permission.findMany({ where: { code: { in: viewPermissionCodes } } });
   await prisma.rolePermission.deleteMany({ where: { roleId: viewerRole.id } });
@@ -121,7 +122,8 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       "documents.view",
       "documents.manage",
       "field.manage",
-      "finance.view"
+      "finance.view",
+      "directory.view"
     ]
   );
 
@@ -139,7 +141,9 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       "estimates.admin",
       "projects.view",
       "resources.view",
-      "documents.view"
+      "documents.view",
+      "directory.view",
+      "directory.manage"
     ]
   );
 
@@ -174,7 +178,10 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       "resources.view",
       "documents.view",
       "finance.view",
-      "finance.manage"
+      "finance.manage",
+      "directory.view",
+      "directory.manage",
+      "directory.finance"
     ]
   );
 
@@ -3135,6 +3142,86 @@ export async function seedEstimateRates(prisma: PrismaClient): Promise<void> {
         rate: new Prisma.Decimal(row.rate),
         isActive: true,
         sortOrder: index + 1
+      }
+    });
+  }
+}
+
+export async function seedBusinessDirectoryDemos(prisma: PrismaClient): Promise<void> {
+  const admin = await prisma.user.findUnique({ where: { email: "admin@projectops.local" } });
+  if (!admin) return;
+
+  const demos: Array<{
+    id: string;
+    name: string;
+    categories: string[];
+    entityType: "subcontractor" | "supplier" | "both";
+    abn?: string;
+    prequalStatus: "approved" | "pending" | "suspended" | "rejected";
+    physicalSuburb?: string;
+    physicalState?: string;
+  }> = [
+    {
+      id: "sub-cutrite",
+      name: "Cutrite Concrete Sawing",
+      categories: ["Concrete Cutting"],
+      entityType: "supplier",
+      abn: "50 155 464 985",
+      prequalStatus: "approved",
+      physicalSuburb: "Yatala",
+      physicalState: "QLD"
+    },
+    {
+      id: "sub-swanbank-waste",
+      name: "Swanbank Waste",
+      categories: ["Waste Facilities"],
+      entityType: "supplier",
+      prequalStatus: "approved",
+      physicalSuburb: "Swanbank",
+      physicalState: "QLD"
+    },
+    {
+      id: "sub-bmi-waste",
+      name: "BMI Waste",
+      categories: ["Waste Facilities"],
+      entityType: "supplier",
+      prequalStatus: "approved",
+      physicalSuburb: "Ipswich",
+      physicalState: "QLD"
+    },
+    {
+      id: "sub-generic-labour-hire",
+      name: "Generic Labour Hire Co",
+      categories: ["Labour Hire"],
+      entityType: "subcontractor",
+      prequalStatus: "pending",
+      physicalSuburb: "Brisbane",
+      physicalState: "QLD"
+    }
+  ];
+
+  for (const d of demos) {
+    await prisma.subcontractorSupplier.upsert({
+      where: { id: d.id },
+      update: {
+        name: d.name,
+        categories: d.categories,
+        entityType: d.entityType,
+        abn: d.abn ?? null,
+        prequalStatus: d.prequalStatus,
+        physicalSuburb: d.physicalSuburb ?? null,
+        physicalState: d.physicalState ?? "QLD"
+      },
+      create: {
+        id: d.id,
+        name: d.name,
+        categories: d.categories,
+        entityType: d.entityType,
+        abn: d.abn ?? null,
+        prequalStatus: d.prequalStatus,
+        physicalSuburb: d.physicalSuburb ?? null,
+        physicalState: d.physicalState ?? "QLD",
+        createdById: admin.id
       }
     });
   }

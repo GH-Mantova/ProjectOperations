@@ -206,10 +206,22 @@ const NAV_GROUPS: NavGroup[] = [
     ]
   },
   {
+    id: "directory",
+    label: "Directory",
+    items: [
+      { to: "/master-data?tab=clients", label: "Clients", icon: ICON_CLIENTS, match: (path) => path.startsWith("/master-data") && !path.startsWith("/directory") },
+      {
+        to: "/directory/subcontractors",
+        label: "Subcontractors & Suppliers",
+        icon: ICON_CLIENTS,
+        match: (path) => path.startsWith("/directory")
+      }
+    ]
+  },
+  {
     id: "data",
     label: "Data",
     items: [
-      { to: "/master-data?tab=clients", label: "Clients", icon: ICON_CLIENTS, match: (path) => path.startsWith("/master-data") },
       { to: "/master-data?tab=sites", label: "Sites", icon: ICON_SITES, match: () => false },
       { to: "/documents", label: "Documents", icon: ICON_DOCUMENTS },
       { to: "/archive", label: "Archive", icon: ICON_ARCHIVE, match: (path) => path.startsWith("/archive") }

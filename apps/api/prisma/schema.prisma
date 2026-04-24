@@ -85,6 +85,10 @@ model User {
   sentQuoteEmails   QuoteEmail[]    @relation("QuoteEmailSentBy")
   tenderFilterPresets TenderFilterPreset[]
   scopeWasteItemsCreated ScopeWasteItem[] @relation("ScopeWasteItemCreatedBy")
+  subcontractorsCreated   SubcontractorSupplier[] @relation("SubcontractorCreatedBy")
+  subcontractorDocsUploaded SubcontractorDocument[] @relation("SubDocUploadedBy")
+  creditAppsCreated       CreditApplication[]     @relation("CreditAppCreator")
+  creditAppsReviewed      CreditApplication[]     @relation("CreditAppReviewer")
 
   @@index([isActive])
   @@map("users")
@@ -371,6 +375,36 @@ model Client {
   email           String?
   phone           String?
   notes           String?
+  tradingName     String?          @map("trading_name")
+  businessType    String?          @default("company") @map("business_type")
+  abn             String?
+  acn             String?
+  gstRegistered   Boolean          @default(true) @map("gst_registered")
+  industry        String?
+  website         String?
+  physicalAddress  String?         @map("physical_address")
+  physicalSuburb   String?         @map("physical_suburb")
+  physicalState    String?         @default("QLD") @map("physical_state")
+  physicalPostcode String?         @map("physical_postcode")
+  postalAddress    String?         @map("postal_address")
+  postalSuburb     String?         @map("postal_suburb")
+  postalState      String?         @map("postal_state")
+  postalPostcode   String?         @map("postal_postcode")
+  postalSameAs     Boolean         @default(true) @map("postal_same_as")
+  paymentTermsDays Int?            @default(30) @map("payment_terms_days")
+  creditLimit      Decimal?        @db.Decimal(12, 2) @map("credit_limit")
+  creditApproved   Boolean         @default(false) @map("credit_approved")
+  preferredPayment String?         @map("preferred_payment")
+  bankName         String?         @map("bank_name")
+  bankAccountName  String?         @map("bank_account_name")
+  bankBsb          String?         @map("bank_bsb")
+  bankAccountNumber String?        @map("bank_account_number")
+  xeroContactId    String?         @map("xero_contact_id")
+  myobCardId       String?         @map("myob_card_id")
+  isActive         Boolean         @default(true) @map("is_active")
+  onHold           Boolean         @default(false) @map("on_hold")
+  onHoldReason     String?         @map("on_hold_reason")
+  internalNotes    String?         @map("internal_notes")
   claimCutoffDay  Int?             @map("claim_cutoff_day")
   claimCutoffContactId String?     @map("claim_cutoff_contact_id")
   claimCutoffContact Contact?      @relation("ClaimCutoffContact", fields: [claimCutoffContactId], references: [id], onDelete: SetNull)
@@ -390,9 +424,14 @@ model Client {
   formSubmissions FormSubmission[]
   tenderClientNotes TenderClientNote[]
   clientQuotes    ClientQuote[]
+  licences        EntityLicence[]     @relation("ClientLicences")
+  insurances      EntityInsurance[]   @relation("ClientInsurances")
+  creditApplications CreditApplication[] @relation("ClientCreditApps")
 
   @@unique([name])
   @@index([status])
+  @@index([isActive])
+  @@index([onHold])
   @@map("clients")
 }
 
@@ -403,8 +442,10 @@ model Contact {
   lastName      String         @map("last_name")
   email         String?
   phone         String?
+  mobile        String?
   position      String?
   isPrimary     Boolean        @default(false) @map("is_primary")
+  hasPortalAccess Boolean      @default(false) @map("has_portal_access")
   notes         String?
   createdAt     DateTime       @default(now()) @map("created_at")
   updatedAt     DateTime       @updatedAt @map("updated_at")
@@ -2645,4 +2686,177 @@ model TenderFilterPreset {
   @@unique([userId, name])
   @@index([userId])
   @@map("tender_filter_presets")
+}
+
+// ─── Business Directory (PR #73) ─────────────────────────────────────────────
+
+model SubcontractorSupplier {
+  id               String    @id @default(cuid())
+  name             String
+  tradingName      String?   @map("trading_name")
+  businessType     String    @default("company") @map("business_type")
+  abn              String?
+  acn              String?
+  gstRegistered    Boolean   @default(true) @map("gst_registered")
+  website          String?
+  entityType       String    @default("subcontractor") @map("entity_type")
+  categories       String[]
+  prequalStatus    String    @default("pending") @map("prequal_status")
+  prequalNotes     String?   @map("prequal_notes")
+  prequalReviewedAt DateTime? @map("prequal_reviewed_at")
+  prequalReviewedBy String?   @map("prequal_reviewed_by")
+  swmsOnFile       Boolean   @default(false) @map("swms_on_file")
+  swmsReviewedAt   DateTime? @map("swms_reviewed_at")
+  email            String?
+  phone            String?
+  physicalAddress  String?   @map("physical_address")
+  physicalSuburb   String?   @map("physical_suburb")
+  physicalState    String?   @default("QLD") @map("physical_state")
+  physicalPostcode String?   @map("physical_postcode")
+  postalAddress    String?   @map("postal_address")
+  postalSuburb     String?   @map("postal_suburb")
+  postalState      String?   @map("postal_state")
+  postalPostcode   String?   @map("postal_postcode")
+  postalSameAs     Boolean   @default(true) @map("postal_same_as")
+  paymentTermsDays Int?      @default(30) @map("payment_terms_days")
+  creditLimit      Decimal?  @db.Decimal(12, 2) @map("credit_limit")
+  creditApproved   Boolean   @default(false) @map("credit_approved")
+  preferredPayment String?   @map("preferred_payment")
+  bankName         String?   @map("bank_name")
+  bankAccountName  String?   @map("bank_account_name")
+  bankBsb          String?   @map("bank_bsb")
+  bankAccountNumber String?  @map("bank_account_number")
+  xeroContactId    String?   @map("xero_contact_id")
+  myobCardId       String?   @map("myob_card_id")
+  isActive         Boolean   @default(true) @map("is_active")
+  onHold           Boolean   @default(false) @map("on_hold")
+  onHoldReason     String?   @map("on_hold_reason")
+  internalNotes    String?   @map("internal_notes")
+  performanceRating Int?     @map("performance_rating")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  createdById      String    @map("created_by_id")
+  createdBy        User      @relation("SubcontractorCreatedBy", fields: [createdById], references: [id])
+
+  contacts         SubcontractorContact[]
+  documents        SubcontractorDocument[]
+  licences         EntityLicence[]         @relation("SubLicences")
+  insurances       EntityInsurance[]       @relation("SubInsurances")
+  creditApplications CreditApplication[]   @relation("SubCreditApps")
+
+  @@index([entityType])
+  @@index([prequalStatus])
+  @@index([isActive])
+  @@map("subcontractor_suppliers")
+}
+
+model SubcontractorContact {
+  id              String               @id @default(cuid())
+  subcontractorId String               @map("subcontractor_id")
+  subcontractor   SubcontractorSupplier @relation(fields: [subcontractorId], references: [id], onDelete: Cascade)
+  firstName       String               @map("first_name")
+  lastName        String               @map("last_name")
+  role            String?
+  phone           String?
+  mobile          String?
+  email           String?
+  isPrimary       Boolean              @default(false) @map("is_primary")
+  hasPortalAccess Boolean              @default(false) @map("has_portal_access")
+  notes           String?
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  @@index([subcontractorId])
+  @@map("subcontractor_contacts")
+}
+
+model EntityLicence {
+  id               String    @id @default(cuid())
+  licenceType      String    @map("licence_type")
+  licenceNumber    String?   @map("licence_number")
+  issuingAuthority String?   @map("issuing_authority")
+  issueDate        DateTime? @map("issue_date")
+  expiryDate       DateTime? @map("expiry_date")
+  documentPath     String?   @map("document_path")
+  notes            String?
+  status           String    @default("active")
+  clientId         String?   @map("client_id")
+  client           Client?   @relation("ClientLicences", fields: [clientId], references: [id], onDelete: Cascade)
+  subcontractorId  String?   @map("subcontractor_id")
+  subcontractor    SubcontractorSupplier? @relation("SubLicences", fields: [subcontractorId], references: [id], onDelete: Cascade)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  @@index([expiryDate])
+  @@index([clientId])
+  @@index([subcontractorId])
+  @@map("entity_licences")
+}
+
+model EntityInsurance {
+  id              String    @id @default(cuid())
+  insuranceType   String    @map("insurance_type")
+  insurerName     String?   @map("insurer_name")
+  policyNumber    String?   @map("policy_number")
+  coverageAmount  Decimal?  @db.Decimal(14, 2) @map("coverage_amount")
+  expiryDate      DateTime? @map("expiry_date")
+  documentPath    String?   @map("document_path")
+  notes           String?
+  status          String    @default("active")
+  clientId        String?   @map("client_id")
+  client          Client?   @relation("ClientInsurances", fields: [clientId], references: [id], onDelete: Cascade)
+  subcontractorId String?   @map("subcontractor_id")
+  subcontractor   SubcontractorSupplier? @relation("SubInsurances", fields: [subcontractorId], references: [id], onDelete: Cascade)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([expiryDate])
+  @@index([clientId])
+  @@index([subcontractorId])
+  @@map("entity_insurances")
+}
+
+model CreditApplication {
+  id              String    @id @default(cuid())
+  direction       String
+  status          String    @default("draft")
+  creditLimit     Decimal?  @db.Decimal(12, 2) @map("credit_limit")
+  paymentTerms    Int?      @map("payment_terms")
+  applicationDate DateTime? @map("application_date")
+  approvedDate    DateTime? @map("approved_date")
+  rejectedDate    DateTime? @map("rejected_date")
+  reviewedById    String?   @map("reviewed_by_id")
+  reviewedBy      User?     @relation("CreditAppReviewer", fields: [reviewedById], references: [id])
+  notes           String?
+  documentPath    String?   @map("document_path")
+  accountNumber   String?   @map("account_number")
+  clientId        String?   @map("client_id")
+  client          Client?   @relation("ClientCreditApps", fields: [clientId], references: [id], onDelete: Cascade)
+  subcontractorId String?   @map("subcontractor_id")
+  subcontractor   SubcontractorSupplier? @relation("SubCreditApps", fields: [subcontractorId], references: [id], onDelete: Cascade)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  createdById     String    @map("created_by_id")
+  createdBy       User      @relation("CreditAppCreator", fields: [createdById], references: [id])
+
+  @@index([status])
+  @@index([clientId])
+  @@index([subcontractorId])
+  @@map("credit_applications")
+}
+
+model SubcontractorDocument {
+  id              String               @id @default(cuid())
+  subcontractorId String               @map("subcontractor_id")
+  subcontractor   SubcontractorSupplier @relation(fields: [subcontractorId], references: [id], onDelete: Cascade)
+  documentType    String               @map("document_type")
+  name            String
+  filePath        String?              @map("file_path")
+  uploadedAt      DateTime             @default(now()) @map("uploaded_at")
+  uploadedById    String               @map("uploaded_by_id")
+  uploadedBy      User                 @relation("SubDocUploadedBy", fields: [uploadedById], references: [id])
+  notes           String?
+
+  @@index([subcontractorId])
+  @@map("subcontractor_documents")
 }

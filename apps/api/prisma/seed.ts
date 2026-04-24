@@ -1,7 +1,11 @@
 import { Prisma, PrismaClient } from "@prisma/client";
 import { randomBytes, scryptSync } from "crypto";
 import { permissionRegistry } from "../src/common/permissions/permission-registry";
-import { seedEstimateRates, seedInitialServicesDataset } from "./seed-initial-services";
+import {
+  seedBusinessDirectoryDemos,
+  seedEstimateRates,
+  seedInitialServicesDataset
+} from "./seed-initial-services";
 
 const databaseUrl =
   process.env.DATABASE_URL ??
@@ -2376,6 +2380,7 @@ async function main() {
   await backfillTenderLifecycleTimestamps(prisma);
   await seedUserDashboards(prisma);
   if (adminUser) await seedGlobalLists(prisma, adminUser.id);
+  await seedBusinessDirectoryDemos(prisma);
   await seedNotificationTriggerConfigs(prisma);
 }
 
@@ -2542,6 +2547,31 @@ async function seedGlobalLists(prisma: PrismaClient, adminUserId: string) {
           label: "Cutting (see cutting sheet)",
           metadata: { disciplines: ["SO", "Str", "Civ", "Prv"] }
         }
+      ]
+    },
+    {
+      slug: "subcontractor-categories",
+      name: "Subcontractor & supplier categories",
+      description:
+        "Trade categories for directory entries — mirrors the IS SharePoint folder structure.",
+      items: [
+        { label: "Arborist" },
+        { label: "Asbestos Removal" },
+        { label: "Concrete Cutting" },
+        { label: "Credit Applications" },
+        { label: "Engineering" },
+        { label: "Geotech Testing" },
+        { label: "Hygienists" },
+        { label: "Labour Hire" },
+        { label: "Petrol Station" },
+        { label: "Plant Hire" },
+        { label: "Service Scanning" },
+        { label: "Site Protections" },
+        { label: "Survey" },
+        { label: "Traffic Control" },
+        { label: "Truck Hire" },
+        { label: "Vacuum Excavation" },
+        { label: "Waste Facilities" }
       ]
     }
   ];

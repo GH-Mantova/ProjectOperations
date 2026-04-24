@@ -1,4 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useAuth } from "../../auth/AuthContext";
 import { SendQuoteModal } from "./SendQuoteModal";
 
@@ -1430,6 +1445,154 @@ type QuoteScopeItem = {
   sortOrder: number;
 };
 
+type QuoteRowProps = {
+  row: QuoteScopeItem;
+  canManage: boolean;
+  patchRow: (id: string, patch: Record<string, unknown>) => Promise<void>;
+  deleteRow: (id: string) => Promise<void>;
+  sourceBadge: (row: QuoteScopeItem) => string;
+  dragHandle?: React.ReactNode;
+  dragStyle?: React.CSSProperties;
+  nodeRef?: (node: HTMLTableRowElement | null) => void;
+};
+
+function QuoteRowCells({ row, canManage, patchRow, deleteRow, sourceBadge, dragHandle }: QuoteRowProps) {
+  return (
+    <>
+      {dragHandle ? <td style={{ padding: 4, width: 24 }}>{dragHandle}</td> : null}
+      <td style={{ padding: 4, textAlign: "center" }}>
+        <input
+          type="checkbox"
+          checked={row.isVisible}
+          disabled={!canManage}
+          onChange={(e) => void patchRow(row.id, { isVisible: e.target.checked })}
+          aria-label="Visible on PDF"
+        />
+      </td>
+      <td style={{ padding: 4 }}>
+        <input
+          className="s7-input s7-input--sm"
+          defaultValue={row.label ?? ""}
+          disabled={!canManage}
+          onBlur={(e) =>
+            (e.target.value || null) !== (row.label ?? null) &&
+            void patchRow(row.id, { label: e.target.value || null })
+          }
+          style={{ width: 70 }}
+        />
+      </td>
+      <td style={{ padding: 4 }}>
+        <textarea
+          className="s7-input s7-input--sm"
+          defaultValue={row.description}
+          disabled={!canManage}
+          rows={2}
+          onBlur={(e) =>
+            e.target.value !== row.description &&
+            void patchRow(row.id, { description: e.target.value })
+          }
+          style={{ width: "100%", resize: "vertical", minHeight: 30 }}
+        />
+      </td>
+      <td style={{ padding: 4 }}>
+        <input
+          className="s7-input s7-input--sm"
+          defaultValue={row.qty ?? ""}
+          disabled={!canManage}
+          onBlur={(e) =>
+            (e.target.value || null) !== (row.qty ?? null) &&
+            void patchRow(row.id, { qty: e.target.value || null })
+          }
+          style={{ width: 80, textAlign: "right" }}
+        />
+      </td>
+      <td style={{ padding: 4 }}>
+        <input
+          className="s7-input s7-input--sm"
+          defaultValue={row.unit ?? ""}
+          disabled={!canManage}
+          onBlur={(e) =>
+            (e.target.value || null) !== (row.unit ?? null) &&
+            void patchRow(row.id, { unit: e.target.value || null })
+          }
+          style={{ width: 70 }}
+        />
+      </td>
+      <td style={{ padding: 4 }}>
+        <input
+          className="s7-input s7-input--sm"
+          defaultValue={row.notes ?? ""}
+          disabled={!canManage}
+          onBlur={(e) =>
+            (e.target.value || null) !== (row.notes ?? null) &&
+            void patchRow(row.id, { notes: e.target.value || null })
+          }
+          style={{ width: "100%" }}
+        />
+      </td>
+      <td style={{ padding: 4, fontSize: 11, color: "var(--text-muted)" }}>{sourceBadge(row)}</td>
+      <td style={{ padding: 4, textAlign: "right" }}>
+        {canManage ? (
+          <button
+            type="button"
+            className="s7-btn s7-btn--ghost s7-btn--sm"
+            onClick={() => void deleteRow(row.id)}
+            aria-label="Delete"
+          >
+            ×
+          </button>
+        ) : null}
+      </td>
+    </>
+  );
+}
+
+function StaticQuoteRow(props: QuoteRowProps) {
+  const { row } = props;
+  return (
+    <tr style={{ borderTop: "1px solid var(--border, #e5e7eb)", opacity: row.isVisible ? 1 : 0.5 }}>
+      <QuoteRowCells {...props} />
+    </tr>
+  );
+}
+
+function SortableQuoteRow(props: QuoteRowProps) {
+  const { row } = props;
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: row.id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    borderTop: "1px solid var(--border, #e5e7eb)",
+    opacity: isDragging ? 0.6 : row.isVisible ? 1 : 0.5,
+    background: isDragging ? "var(--surface-muted, #f6f6f6)" : undefined
+  };
+  const handle = (
+    <button
+      type="button"
+      {...attributes}
+      {...listeners}
+      aria-label="Drag to reorder"
+      style={{
+        cursor: "grab",
+        background: "transparent",
+        border: "none",
+        padding: 2,
+        color: "var(--text-muted)",
+        fontSize: 14,
+        lineHeight: 1,
+        touchAction: "none"
+      }}
+    >
+      ⠿
+    </button>
+  );
+  return (
+    <tr ref={setNodeRef} style={style}>
+      <QuoteRowCells {...props} dragHandle={handle} />
+    </tr>
+  );
+}
+
 function QuoteScopeTab({
   tenderId,
   quoteId,
@@ -1449,6 +1612,10 @@ function QuoteScopeTab({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [grouped, setGrouped] = useState(true);
+
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  );
 
   const base = `/tenders/${tenderId}/quotes/${quoteId}/scope-items`;
 
@@ -1539,97 +1706,60 @@ function QuoteScopeTab({
     return row.sourceItemType;
   };
 
-  const renderRow = (row: QuoteScopeItem) => (
-    <tr key={row.id} style={{ borderTop: "1px solid var(--border, #e5e7eb)", opacity: row.isVisible ? 1 : 0.5 }}>
-      <td style={{ padding: 4, textAlign: "center" }}>
-        <input
-          type="checkbox"
-          checked={row.isVisible}
-          disabled={!canManage}
-          onChange={(e) => void patchRow(row.id, { isVisible: e.target.checked })}
-          aria-label="Visible on PDF"
-        />
-      </td>
-      <td style={{ padding: 4 }}>
-        <input
-          className="s7-input s7-input--sm"
-          defaultValue={row.label ?? ""}
-          disabled={!canManage}
-          onBlur={(e) =>
-            (e.target.value || null) !== (row.label ?? null) &&
-            void patchRow(row.id, { label: e.target.value || null })
-          }
-          style={{ width: 70 }}
-        />
-      </td>
-      <td style={{ padding: 4 }}>
-        <input
-          className="s7-input s7-input--sm"
-          defaultValue={row.description}
-          disabled={!canManage}
-          onBlur={(e) =>
-            e.target.value !== row.description &&
-            void patchRow(row.id, { description: e.target.value })
-          }
-          style={{ width: "100%" }}
-        />
-      </td>
-      <td style={{ padding: 4 }}>
-        <input
-          className="s7-input s7-input--sm"
-          defaultValue={row.qty ?? ""}
-          disabled={!canManage}
-          onBlur={(e) =>
-            (e.target.value || null) !== (row.qty ?? null) &&
-            void patchRow(row.id, { qty: e.target.value || null })
-          }
-          style={{ width: 80, textAlign: "right" }}
-        />
-      </td>
-      <td style={{ padding: 4 }}>
-        <input
-          className="s7-input s7-input--sm"
-          defaultValue={row.unit ?? ""}
-          disabled={!canManage}
-          onBlur={(e) =>
-            (e.target.value || null) !== (row.unit ?? null) &&
-            void patchRow(row.id, { unit: e.target.value || null })
-          }
-          style={{ width: 70 }}
-        />
-      </td>
-      <td style={{ padding: 4 }}>
-        <input
-          className="s7-input s7-input--sm"
-          defaultValue={row.notes ?? ""}
-          disabled={!canManage}
-          onBlur={(e) =>
-            (e.target.value || null) !== (row.notes ?? null) &&
-            void patchRow(row.id, { notes: e.target.value || null })
-          }
-          style={{ width: "100%" }}
-        />
-      </td>
-      <td style={{ padding: 4, fontSize: 11, color: "var(--text-muted)" }}>{sourceBadge(row)}</td>
-      <td style={{ padding: 4, textAlign: "right" }}>
-        {canManage ? (
-          <button
-            type="button"
-            className="s7-btn s7-btn--ghost s7-btn--sm"
-            onClick={() => void deleteRow(row.id)}
-            aria-label="Delete"
-          >
-            ×
-          </button>
-        ) : null}
-      </td>
-    </tr>
+  const reorderRows = useCallback(
+    async (newRows: QuoteScopeItem[]) => {
+      const prev = rows;
+      const withOrder = newRows.map((r, i) => ({ ...r, sortOrder: i }));
+      setRows(withOrder);
+      const response = await authFetch(`${base}/reorder`, {
+        method: "POST",
+        body: JSON.stringify({
+          order: withOrder.map((r) => ({ itemId: r.id, sortOrder: r.sortOrder }))
+        })
+      });
+      if (!response.ok) {
+        setError(await response.text());
+        setRows(prev);
+      }
+    },
+    [authFetch, base, rows]
   );
 
-  const renderHeader = () => (
+  const handleDragEnd = (event: DragEndEvent, source: QuoteScopeItem[]) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = source.findIndex((r) => r.id === active.id);
+    const newIndex = source.findIndex((r) => r.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    void reorderRows(arrayMove(source, oldIndex, newIndex));
+  };
+
+  const renderRow = (row: QuoteScopeItem, draggable: boolean) =>
+    draggable && canManage ? (
+      <SortableQuoteRow
+        key={row.id}
+        row={row}
+        canManage={canManage}
+        patchRow={patchRow}
+        deleteRow={deleteRow}
+        sourceBadge={sourceBadge}
+      />
+    ) : (
+      <StaticQuoteRow
+        key={row.id}
+        row={row}
+        canManage={canManage}
+        patchRow={patchRow}
+        deleteRow={deleteRow}
+        sourceBadge={sourceBadge}
+      />
+    );
+
+  const renderHeader = (draggable: boolean) => (
     <thead style={{ background: "var(--surface-muted, #F6F6F6)" }}>
       <tr>
         {[
+          ...(draggable ? [{ label: "", w: 24 }] : []),
           { label: "✓", w: 40 },
           { label: "Label", w: 80 },
           { label: "Description", w: null },
@@ -1759,19 +1889,30 @@ function QuoteScopeTab({
             </h4>
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                {renderHeader()}
-                <tbody>{groupRows.map(renderRow)}</tbody>
+                {renderHeader(false)}
+                <tbody>{groupRows.map((r) => renderRow(r, false))}</tbody>
               </table>
             </div>
           </section>
         ))
       ) : (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-            {renderHeader()}
-            <tbody>{rows.map(renderRow)}</tbody>
-          </table>
-        </div>
+        <DndContext
+          sensors={dndSensors}
+          collisionDetection={closestCenter}
+          onDragEnd={(e) => handleDragEnd(e, rows)}
+        >
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              {renderHeader(true)}
+              <SortableContext
+                items={rows.map((r) => r.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <tbody>{rows.map((r) => renderRow(r, true))}</tbody>
+              </SortableContext>
+            </table>
+          </div>
+        </DndContext>
       )}
     </div>
   );

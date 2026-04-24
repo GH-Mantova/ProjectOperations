@@ -20,7 +20,7 @@ export class TenderClarificationsService {
   async create(
     tenderId: string,
     actorId: string,
-    dto: { direction: string; text: string; date?: string | null }
+    dto: { direction: string; text: string; date?: string | null; noteType?: string }
   ) {
     await this.requireTender(tenderId);
     if (!DIRECTIONS.includes(dto.direction as Direction)) {
@@ -47,6 +47,7 @@ export class TenderClarificationsService {
       data: {
         tenderId,
         direction: dto.direction,
+        noteType: dto.noteType ?? "note",
         text: clean,
         occurredAt,
         createdById: actorId
@@ -58,13 +59,13 @@ export class TenderClarificationsService {
   async update(
     tenderId: string,
     id: string,
-    dto: { direction?: string; text?: string; date?: string | null }
+    dto: { direction?: string; text?: string; date?: string | null; noteType?: string }
   ) {
     const existing = await this.prisma.tenderClarificationNote.findUnique({ where: { id } });
     if (!existing || existing.tenderId !== tenderId) {
       throw new NotFoundException("Clarification not found on this tender.");
     }
-    const data: { direction?: string; text?: string; occurredAt?: Date } = {};
+    const data: { direction?: string; text?: string; occurredAt?: Date; noteType?: string } = {};
     if (dto.direction !== undefined) {
       if (!DIRECTIONS.includes(dto.direction as Direction)) {
         throw new BadRequestException(`direction must be one of ${DIRECTIONS.join(", ")}.`);
@@ -83,6 +84,7 @@ export class TenderClarificationsService {
       }
       data.occurredAt = parsed;
     }
+    if (dto.noteType !== undefined) data.noteType = dto.noteType;
     return this.prisma.tenderClarificationNote.update({
       where: { id },
       data,

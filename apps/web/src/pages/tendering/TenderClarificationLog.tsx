@@ -18,9 +18,12 @@ type RfiItem = {
   dueDate?: string | null;
 };
 
+type NoteType = "call" | "email" | "meeting" | "note" | "response";
+
 type NoteItem = {
   id: string;
   direction: "sent" | "received";
+  noteType?: string;
   text: string;
   occurredAt: string;
   createdBy: { id: string; firstName: string; lastName: string } | null;
@@ -41,10 +44,41 @@ type UnifiedEntry =
       kind: "note";
       id: string;
       timestamp: string;
-      badge: "Sent" | "Received";
+      badge: "Call" | "Email" | "Meeting" | "Note" | "Response";
+      noteType: NoteType;
+      direction: "sent" | "received";
       text: string;
       createdBy: { firstName: string; lastName: string } | null;
     };
+
+const NOTE_TYPE_OPTIONS: Array<{ value: NoteType; label: string }> = [
+  { value: "call", label: "Call" },
+  { value: "email", label: "Email" },
+  { value: "meeting", label: "Meeting" },
+  { value: "note", label: "Note" },
+  { value: "response", label: "Response" }
+];
+
+const BADGE_PALETTE: Record<UnifiedEntry["badge"], string> = {
+  RFI: "#0D9488",       // teal
+  Call: "#F97316",      // orange
+  Email: "#3B82F6",     // blue
+  Meeting: "#8B5CF6",   // purple
+  Note: "#6B7280",      // grey
+  Response: "#22C55E"   // green
+};
+
+type NoteBadge = "Call" | "Email" | "Meeting" | "Note" | "Response";
+
+function noteTypeToBadge(t: string | undefined): NoteBadge {
+  switch ((t ?? "note").toLowerCase()) {
+    case "call": return "Call";
+    case "email": return "Email";
+    case "meeting": return "Meeting";
+    case "response": return "Response";
+    default: return "Note";
+  }
+}
 
 function formatDate(iso: string): string {
   try {
@@ -76,6 +110,7 @@ export function TenderClarificationLog({
   const [adding, setAdding] = useState(false);
   const [entryKind, setEntryKind] = useState<"rfi" | "note">("note");
   const [direction, setDirection] = useState<"sent" | "received">("received");
+  const [noteType, setNoteType] = useState<NoteType>("note");
   const [subject, setSubject] = useState("");
   const [text, setText] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -110,19 +145,26 @@ export function TenderClarificationLog({
       subject: r.subject,
       response: r.response ?? null
     })),
-    ...notes.map<UnifiedEntry>((n) => ({
-      kind: "note",
-      id: n.id,
-      timestamp: n.occurredAt,
-      badge: n.direction === "sent" ? "Sent" : "Received",
-      text: n.text,
-      createdBy: n.createdBy
-    }))
+    ...notes.map<UnifiedEntry>((n) => {
+      const badge = noteTypeToBadge(n.noteType);
+      const nt: NoteType = badge.toLowerCase() as NoteType;
+      return {
+        kind: "note",
+        id: n.id,
+        timestamp: n.occurredAt,
+        badge,
+        noteType: nt,
+        direction: n.direction,
+        text: n.text,
+        createdBy: n.createdBy
+      };
+    })
   ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
   const resetForm = () => {
     setEntryKind("note");
     setDirection("received");
+    setNoteType("note");
     setSubject("");
     setText("");
     setDueDate("");
@@ -153,6 +195,7 @@ export function TenderClarificationLog({
           method: "POST",
           body: JSON.stringify({
             direction,
+            noteType,
             text: text.trim(),
             date: occurredAt || undefined
           })
@@ -183,11 +226,7 @@ export function TenderClarificationLog({
     else await load();
   };
 
-  const badgeTone = (badge: UnifiedEntry["badge"]) => {
-    if (badge === "RFI") return "#005B61";
-    if (badge === "Sent") return "#3B82F6";
-    return "#FEAA6D";
-  };
+  const badgeTone = (badge: UnifiedEntry["badge"]) => BADGE_PALETTE[badge];
 
   return (
     <section className="s7-card">
@@ -236,17 +275,31 @@ export function TenderClarificationLog({
               </select>
             </label>
             {entryKind === "note" ? (
-              <label style={{ fontSize: 12, display: "inline-flex", flexDirection: "column", gap: 2 }}>
-                <span>Direction</span>
-                <select
-                  className="s7-select s7-input--sm"
-                  value={direction}
-                  onChange={(e) => setDirection(e.target.value as "sent" | "received")}
-                >
-                  <option value="received">Received from client</option>
-                  <option value="sent">Sent by IS</option>
-                </select>
-              </label>
+              <>
+                <label style={{ fontSize: 12, display: "inline-flex", flexDirection: "column", gap: 2 }}>
+                  <span>Type</span>
+                  <select
+                    className="s7-select s7-input--sm"
+                    value={noteType}
+                    onChange={(e) => setNoteType(e.target.value as NoteType)}
+                  >
+                    {NOTE_TYPE_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label style={{ fontSize: 12, display: "inline-flex", flexDirection: "column", gap: 2 }}>
+                  <span>Direction</span>
+                  <select
+                    className="s7-select s7-input--sm"
+                    value={direction}
+                    onChange={(e) => setDirection(e.target.value as "sent" | "received")}
+                  >
+                    <option value="received">Received from client</option>
+                    <option value="sent">Sent by IS</option>
+                  </select>
+                </label>
+              </>
             ) : null}
             {entryKind === "rfi" ? (
               <label style={{ fontSize: 12, display: "inline-flex", flexDirection: "column", gap: 2 }}>
@@ -439,6 +492,11 @@ function ClarificationEntryRow({
         <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
           {formatDate(entry.timestamp)}
         </span>
+        {entry.kind === "note" ? (
+          <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
+            · {entry.direction === "sent" ? "Sent" : "Received"}
+          </span>
+        ) : null}
         {entry.kind === "note" && entry.createdBy ? (
           <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
             · {entry.createdBy.firstName} {entry.createdBy.lastName}

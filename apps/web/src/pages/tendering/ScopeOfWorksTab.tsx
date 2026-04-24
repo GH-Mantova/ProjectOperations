@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { ScopeCuttingSheet } from "./ScopeCuttingSheet";
+import { ScopeRowPills } from "./ScopeRowPills";
 import { ScopeWasteTab } from "./ScopeWasteTab";
 import {
   ScopeDisciplineBar,
@@ -23,8 +24,25 @@ type ScopeSummaryResponse = {
 
 const DISCIPLINES = ["SO", "Str", "Asb", "Civ", "Prv"] as const;
 type Discipline = (typeof DISCIPLINES)[number];
-const ROW_TYPES = ["demolition", "cutting", "asbestos", "excavation", "waste", "general"] as const;
+// PR #72 — waste rows moved to their own tab (ScopeWasteTab). Dropping
+// "waste" from the UI row-type options; legacy rows with rowType="waste"
+// will render as "general" via the fallback in the row's Row Type select.
+const ROW_TYPES = ["demolition", "cutting", "asbestos", "excavation", "general"] as const;
 type RowType = (typeof ROW_TYPES)[number];
+
+// PR #72 — multi-plant and multi-measurement arrays stored as JSONB on
+// ScopeOfWorksItem (PR #71 schema addition). Shapes enforced client-side.
+type ScopePlantItem = {
+  plantRateId?: string;
+  description: string;
+  qty: number;
+  days: number;
+  unit?: string;
+};
+type ScopeMeasurement = {
+  qty: number;
+  unit: string;
+};
 
 type ScopeItem = {
   id: string;
@@ -70,6 +88,14 @@ type ScopeItem = {
   hookTruckDays: string | null;
   semiTipperDays: string | null;
   estimateItemId: string | null;
+  // PR #72 — multi-plant + multi-measurement arrays (stored as JSONB
+  // Json? on the row; null when untouched).
+  plantItems: ScopePlantItem[] | null;
+  measurements: ScopeMeasurement[] | null;
+  // Legacy single-measurement columns — kept here so the pill row can
+  // sync the first entry down for backward compat with the main table.
+  measurementQty: string | null;
+  measurementUnit: string | null;
 };
 
 type Summary = { discipline: string; itemCount: number; totalValue: number };
@@ -812,6 +838,7 @@ function ItemRow({
   const rowStyle: React.CSSProperties = isDraft ? { background: "#FEF3C7" } : {};
 
   return (
+    <>
     <tr style={rowStyle}>
       <td style={{ fontWeight: 600, whiteSpace: "nowrap" }}>
         {isDraft ? (
@@ -851,7 +878,7 @@ function ItemRow({
       </td>
       <td>
         <select
-          value={item.rowType}
+          value={ROW_TYPES.includes(item.rowType as RowType) ? item.rowType : "general"}
           onChange={(e) => void onEdit(item.id, { rowType: e.target.value })}
           style={{ fontSize: 13, padding: 4 }}
         >
@@ -975,6 +1002,15 @@ function ItemRow({
         )}
       </td>
     </tr>
+    <tr>
+      <td colSpan={99} style={{ padding: "4px 8px 10px", background: "rgba(0,0,0,0.015)" }}>
+        <ScopeRowPills
+          item={item}
+          onPatch={(body) => onEdit(item.id, body)}
+        />
+      </td>
+    </tr>
+    </>
   );
 }
 
@@ -1084,14 +1120,8 @@ function AddRow({
                 <AddTextInput label="Machine size" onChange={(v) => update("machineSize", v)} />
               </>
             ) : null}
-            {rowType === "waste" ? (
-              <>
-                <AddTextInput label="Waste type" onChange={(v) => update("wasteType", v)} />
-                <AddTextInput label="Facility" onChange={(v) => update("wasteFacility", v)} />
-                <AddNumInput label="Tonnes" onChange={(v) => update("wasteTonnes", v)} />
-                <AddIntInput label="Loads" onChange={(v) => update("wasteLoads", v)} />
-              </>
-            ) : null}
+            {/* PR #72 — waste row type removed; waste rows live on the
+                dedicated Waste tab. Intentionally no waste inputs here. */}
           </div>
 
           <details>

@@ -2195,6 +2195,10 @@ model TenderClarificationNote {
   tenderId    String   @map("tender_id")
   tender      Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
   direction   String
+  // PR #72 — note type (call | email | meeting | note | response). RFI
+  // remains a separate model (TenderClarification). Existing rows default
+  // to "note" via the column default below.
+  noteType    String   @default("note") @map("note_type")
   text        String
   occurredAt  DateTime @default(now()) @map("occurred_at")
   createdById String   @map("created_by_id")

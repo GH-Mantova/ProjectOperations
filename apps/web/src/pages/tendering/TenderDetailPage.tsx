@@ -161,7 +161,6 @@ export function TenderDetailPage() {
   const [posting, setPosting] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
   const [newNote, setNewNote] = useState("");
-  const [newClarification, setNewClarification] = useState("");
   const [newFollowUp, setNewFollowUp] = useState({ details: "", dueAt: "" });
   const [drafting, setDrafting] = useState(false);
   const [draftToast, setDraftToast] = useState<string | null>(null);
@@ -388,24 +387,6 @@ export function TenderDetailPage() {
     }
   };
 
-  const postClarification = async () => {
-    if (!tender || !newClarification.trim()) return;
-    setPosting(true);
-    try {
-      const response = await authFetch(`/tenders/${tender.id}/clarifications`, {
-        method: "POST",
-        body: JSON.stringify({ subject: newClarification.trim() })
-      });
-      if (!response.ok) throw new Error("Could not add clarification.");
-      setNewClarification("");
-      await reload();
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setPosting(false);
-    }
-  };
-
   const postFollowUp = async () => {
     if (!tender || !newFollowUp.details.trim() || !newFollowUp.dueAt) return;
     setPosting(true);
@@ -590,17 +571,35 @@ export function TenderDetailPage() {
             <div className="tender-detail__two-col">
               <section className="s7-card">
                 <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>Description</h3>
-                {tender.description ? (
-                  <p>{tender.description}</p>
-                ) : (
-                  <p style={{ color: "var(--text-muted)" }}>No description recorded.</p>
-                )}
-                {tender.notes ? (
-                  <>
-                    <h4 className="s7-type-card-title" style={{ marginBottom: 6 }}>Scope notes</h4>
-                    <p>{tender.notes}</p>
-                  </>
-                ) : null}
+                <InlineEditableText
+                  value={tender.description ?? ""}
+                  placeholder="No description recorded."
+                  canEdit={canManageTenders}
+                  rows={4}
+                  onSave={async (next) => {
+                    const response = await authFetch(`/tenders/${tender.id}/quick-edit`, {
+                      method: "PATCH",
+                      body: JSON.stringify({ description: next || null })
+                    });
+                    if (!response.ok) throw new Error(await response.text());
+                    await reload();
+                  }}
+                />
+                <h4 className="s7-type-card-title" style={{ marginTop: 12, marginBottom: 6 }}>Scope notes</h4>
+                <InlineEditableText
+                  value={tender.notes ?? ""}
+                  placeholder="No scope notes yet."
+                  canEdit={canManageTenders}
+                  rows={3}
+                  onSave={async (next) => {
+                    const response = await authFetch(`/tenders/${tender.id}/quick-edit`, {
+                      method: "PATCH",
+                      body: JSON.stringify({ notes: next || null })
+                    });
+                    if (!response.ok) throw new Error(await response.text());
+                    await reload();
+                  }}
+                />
               </section>
 
               <section className="s7-card">
@@ -763,21 +762,6 @@ export function TenderDetailPage() {
             ) : null}
 
             <section className="s7-card">
-              <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>Description</h3>
-              {tender.description ? (
-                <p>{tender.description}</p>
-              ) : (
-                <p style={{ color: "var(--text-muted)" }}>No description recorded.</p>
-              )}
-              {tender.notes ? (
-                <>
-                  <h4 className="s7-type-card-title" style={{ marginBottom: 6 }}>Scope notes</h4>
-                  <p>{tender.notes}</p>
-                </>
-              ) : null}
-            </section>
-
-            <section className="s7-card">
               <div className="tender-detail__section-head">
                 <h3 className="s7-type-section-heading" style={{ margin: 0 }}>Activity timeline</h3>
               </div>
@@ -819,46 +803,12 @@ export function TenderDetailPage() {
               )}
             </section>
 
-            <section className="s7-card">
-              <div className="tender-detail__section-head">
-                <h3 className="s7-type-section-heading" style={{ margin: 0 }}>Clarifications</h3>
-              </div>
-              <form
-                className="tender-detail__form"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void postClarification();
-                }}
-              >
-                <input
-                  className="s7-input"
-                  value={newClarification}
-                  onChange={(event) => setNewClarification(event.target.value)}
-                  placeholder="Subject of the clarification…"
-                />
-                <button type="submit" className="s7-btn s7-btn--primary" disabled={posting || !newClarification.trim()}>
-                  Add
-                </button>
-              </form>
-              {tender.clarifications.length === 0 ? (
-                <EmptyState heading="No clarifications" subtext="Record questions and their responses to keep the audit trail complete." />
-              ) : (
-                <ul className="tender-clarifications">
-                  {tender.clarifications.map((item) => (
-                    <li key={item.id} className="tender-clarifications__item">
-                      <div className="tender-clarifications__head">
-                        <strong>Q: {item.subject}</strong>
-                        <span className="s7-badge s7-badge--neutral">{item.status}</span>
-                      </div>
-                      {item.response ? <p>A: {item.response}</p> : <p style={{ color: "var(--text-muted)" }}>Awaiting response.</p>}
-                      {item.dueDate ? <span className="tender-clarifications__due">Due {formatDate(item.dueDate)}</span> : null}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            <TenderClarificationLog tenderId={tender.id} canManage={canManageTenders} />
+            <TenderClarificationLog
+              tenderId={tender.id}
+              canManage={canManageTenders}
+              rfiItems={tender.clarifications}
+              onRfiChanged={() => void reload()}
+            />
 
             <section className="s7-card">
               <div className="tender-detail__section-head">
@@ -892,16 +842,13 @@ export function TenderDetailPage() {
               ) : (
                 <ul className="tender-followups">
                   {tender.followUps.map((item) => (
-                    <li key={item.id} className="tender-followups__item">
-                      <div className="tender-followups__head">
-                        <strong>{item.details}</strong>
-                        <span className="s7-badge s7-badge--neutral">{item.status}</span>
-                      </div>
-                      <span className="tender-followups__due">
-                        Due {formatDate(item.dueAt)}
-                        {item.assignedUser ? ` · ${item.assignedUser.firstName} ${item.assignedUser.lastName}` : ""}
-                      </span>
-                    </li>
+                    <FollowUpRow
+                      key={item.id}
+                      item={item}
+                      tenderId={tender.id}
+                      canManage={canManageTenders}
+                      onChanged={() => void reload()}
+                    />
                   ))}
                 </ul>
               )}
@@ -1145,5 +1092,272 @@ function ExpandableClientRow({
         </div>
       ) : null}
     </li>
+  );
+}
+
+function FollowUpRow({
+  item,
+  tenderId,
+  canManage,
+  onChanged
+}: {
+  item: TenderDetail["followUps"][number];
+  tenderId: string;
+  canManage: boolean;
+  onChanged: () => void;
+}) {
+  const { authFetch } = useAuth();
+  const [editing, setEditing] = useState(false);
+  const [draftDetails, setDraftDetails] = useState(item.details);
+  const [draftDue, setDraftDue] = useState(item.dueAt ? item.dueAt.slice(0, 10) : "");
+  const [busy, setBusy] = useState(false);
+  const isDone = item.status === "DONE";
+  const dueTime = item.dueAt ? new Date(item.dueAt).getTime() : null;
+  const isOverdue = !isDone && dueTime !== null && dueTime < Date.now();
+
+  const activityPath = `/tenders/${tenderId}/activities/${encodeURIComponent(`follow-up:${item.id}`)}`;
+
+  const saveEdit = async () => {
+    if (!draftDetails.trim() || !draftDue) return;
+    setBusy(true);
+    try {
+      const response = await authFetch(activityPath, {
+        method: "PATCH",
+        body: JSON.stringify({
+          details: draftDetails.trim(),
+          dueAt: new Date(draftDue).toISOString()
+        })
+      });
+      if (!response.ok) throw new Error(await response.text());
+      setEditing(false);
+      onChanged();
+    } catch {
+      // swallow — parent shows the error via its own state
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleDone = async () => {
+    setBusy(true);
+    try {
+      const response = await authFetch(activityPath, {
+        method: "PATCH",
+        body: JSON.stringify({ status: isDone ? "OPEN" : "DONE" })
+      });
+      if (!response.ok) throw new Error(await response.text());
+      onChanged();
+    } catch {
+      // swallow
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pillStyle: React.CSSProperties = isDone
+    ? { background: "#D1FAE5", color: "#065F46" }
+    : isOverdue
+      ? { background: "#FEE2E2", color: "#991B1B" }
+      : { background: "#FEAA6D", color: "#3E1C00" };
+
+  if (editing) {
+    return (
+      <li className="tender-followups__item" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <textarea
+          autoFocus
+          className="s7-input"
+          rows={2}
+          value={draftDetails}
+          onChange={(e) => setDraftDetails(e.target.value)}
+          style={{ width: "100%", resize: "vertical" }}
+          disabled={busy}
+        />
+        <div style={{ display: "flex", gap: 6 }}>
+          <input
+            className="s7-input s7-input--sm"
+            type="date"
+            value={draftDue}
+            onChange={(e) => setDraftDue(e.target.value)}
+            disabled={busy}
+          />
+          <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={() => {
+                setDraftDetails(item.details);
+                setDraftDue(item.dueAt ? item.dueAt.slice(0, 10) : "");
+                setEditing(false);
+              }}
+              disabled={busy}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="s7-btn s7-btn--primary s7-btn--sm"
+              onClick={() => void saveEdit()}
+              disabled={busy || !draftDetails.trim() || !draftDue}
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      </li>
+    );
+  }
+
+  return (
+    <li
+      className="tender-followups__item"
+      style={{ position: "relative", opacity: isDone ? 0.65 : 1 }}
+    >
+      <div className="tender-followups__head">
+        <strong style={{ textDecoration: isDone ? "line-through" : "none" }}>{item.details}</strong>
+        <span
+          className="s7-badge"
+          style={{ ...pillStyle, fontSize: 11, padding: "2px 8px" }}
+        >
+          {isDone ? "Done" : isOverdue ? "Overdue" : `Due ${formatDate(item.dueAt)}`}
+        </span>
+      </div>
+      <span className="tender-followups__due">
+        Due {formatDate(item.dueAt)}
+        {item.assignedUser ? ` · ${item.assignedUser.firstName} ${item.assignedUser.lastName}` : ""}
+      </span>
+      {canManage ? (
+        <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+          <button
+            type="button"
+            className="s7-btn s7-btn--ghost s7-btn--sm"
+            onClick={() => setEditing(true)}
+            disabled={busy}
+            aria-label="Edit follow-up"
+            title="Edit"
+          >
+            ✎ Edit
+          </button>
+          <button
+            type="button"
+            className="s7-btn s7-btn--ghost s7-btn--sm"
+            onClick={() => void toggleDone()}
+            disabled={busy}
+            aria-label={isDone ? "Reopen follow-up" : "Mark follow-up complete"}
+            title={isDone ? "Reopen" : "Mark complete"}
+          >
+            {isDone ? "↺ Reopen" : "✓ Complete"}
+          </button>
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+// Click-to-edit text block for free-form fields (description, notes). Shows
+// the current value as a paragraph with a subtle hover affordance; clicking
+// swaps in a textarea that saves on blur (or Enter-to-save / Esc-to-cancel).
+// Errors surface inline rather than being thrown.
+function InlineEditableText({
+  value,
+  placeholder,
+  canEdit,
+  rows = 3,
+  onSave
+}: {
+  value: string;
+  placeholder: string;
+  canEdit: boolean;
+  rows?: number;
+  onSave: (next: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  const commit = async () => {
+    if (draft.trim() === (value ?? "").trim()) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave(draft.trim());
+      setEditing(false);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!canEdit) {
+    return value ? (
+      <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>{value}</p>
+    ) : (
+      <p style={{ color: "var(--text-muted)", margin: 0 }}>{placeholder}</p>
+    );
+  }
+
+  if (editing) {
+    return (
+      <div>
+        <textarea
+          autoFocus
+          rows={rows}
+          className="s7-input"
+          style={{ width: "100%", resize: "vertical", minHeight: 80 }}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => void commit()}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setDraft(value);
+              setEditing(false);
+            }
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              void commit();
+            }
+          }}
+          disabled={saving}
+        />
+        {error ? <p style={{ color: "var(--status-danger)", fontSize: 12 }}>{error}</p> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => setEditing(true)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          setEditing(true);
+        }
+      }}
+      title="Click to edit"
+      style={{
+        borderRadius: 4,
+        padding: "2px 4px",
+        margin: "0 -4px",
+        cursor: "text",
+        transition: "background 120ms"
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-subtle, rgba(0,0,0,0.03))")}
+      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+    >
+      {value ? (
+        <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>{value}</p>
+      ) : (
+        <p style={{ color: "var(--text-muted)", margin: 0 }}>{placeholder}</p>
+      )}
+    </div>
   );
 }

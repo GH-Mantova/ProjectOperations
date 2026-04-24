@@ -2,7 +2,23 @@ import { useCallback, useEffect, useState } from "react";
 import { EmptyState } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 
-type ClarificationNote = {
+// Unified "Clarifications & Communications" section.
+// Merges two data sources into one chronological list:
+//   • TenderClarification (RFI / Q&A register) — passed in as `rfiItems`
+//   • TenderClarificationNote (sent/received comms log) — fetched here
+// Each entry has its own delete + edit actions. RFI items are edited via
+// the activities PATCH endpoint; notes via the clarification-notes PATCH.
+
+type RfiItem = {
+  id: string;
+  subject: string;
+  response?: string | null;
+  status: string;
+  createdAt: string;
+  dueDate?: string | null;
+};
+
+type NoteItem = {
   id: string;
   direction: "sent" | "received";
   text: string;
@@ -10,24 +26,60 @@ type ClarificationNote = {
   createdBy: { id: string; firstName: string; lastName: string } | null;
 };
 
+type UnifiedEntry =
+  | {
+      kind: "rfi";
+      id: string;
+      timestamp: string;
+      badge: "RFI";
+      status: string;
+      dueDate: string | null;
+      subject: string;
+      response: string | null;
+    }
+  | {
+      kind: "note";
+      id: string;
+      timestamp: string;
+      badge: "Sent" | "Received";
+      text: string;
+      createdBy: { firstName: string; lastName: string } | null;
+    };
+
 function formatDate(iso: string): string {
   try {
-    const d = new Date(iso);
-    return d.toLocaleDateString("en-AU", { day: "2-digit", month: "short", year: "numeric" });
+    return new Date(iso).toLocaleDateString("en-AU", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric"
+    });
   } catch {
     return iso;
   }
 }
 
-export function TenderClarificationLog({ tenderId, canManage }: { tenderId: string; canManage: boolean }) {
+export function TenderClarificationLog({
+  tenderId,
+  canManage,
+  rfiItems,
+  onRfiChanged
+}: {
+  tenderId: string;
+  canManage: boolean;
+  rfiItems: RfiItem[];
+  onRfiChanged: () => void;
+}) {
   const { authFetch } = useAuth();
-  const [notes, setNotes] = useState<ClarificationNote[]>([]);
+  const [notes, setNotes] = useState<NoteItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [entryKind, setEntryKind] = useState<"rfi" | "note">("note");
   const [direction, setDirection] = useState<"sent" | "received">("received");
+  const [subject, setSubject] = useState("");
   const [text, setText] = useState("");
-  const [date, setDate] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [occurredAt, setOccurredAt] = useState("");
   const [posting, setPosting] = useState(false);
 
   const load = useCallback(async () => {
@@ -35,7 +87,7 @@ export function TenderClarificationLog({ tenderId, canManage }: { tenderId: stri
     try {
       const response = await authFetch(`/tenders/${tenderId}/clarification-notes`);
       if (!response.ok) throw new Error(await response.text());
-      setNotes((await response.json()) as ClarificationNote[]);
+      setNotes((await response.json()) as NoteItem[]);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -47,20 +99,68 @@ export function TenderClarificationLog({ tenderId, canManage }: { tenderId: stri
     void load();
   }, [load]);
 
+  const entries: UnifiedEntry[] = [
+    ...rfiItems.map<UnifiedEntry>((r) => ({
+      kind: "rfi",
+      id: r.id,
+      timestamp: r.createdAt,
+      badge: "RFI",
+      status: r.status,
+      dueDate: r.dueDate ?? null,
+      subject: r.subject,
+      response: r.response ?? null
+    })),
+    ...notes.map<UnifiedEntry>((n) => ({
+      kind: "note",
+      id: n.id,
+      timestamp: n.occurredAt,
+      badge: n.direction === "sent" ? "Sent" : "Received",
+      text: n.text,
+      createdBy: n.createdBy
+    }))
+  ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+  const resetForm = () => {
+    setEntryKind("note");
+    setDirection("received");
+    setSubject("");
+    setText("");
+    setDueDate("");
+    setOccurredAt("");
+    setAdding(false);
+  };
+
   const submit = async () => {
-    if (!text.trim()) return;
     setPosting(true);
     setError(null);
     try {
-      const response = await authFetch(`/tenders/${tenderId}/clarification-notes`, {
-        method: "POST",
-        body: JSON.stringify({ direction, text: text.trim(), date: date || undefined })
-      });
-      if (!response.ok) throw new Error(await response.text());
-      setText("");
-      setDate("");
-      setAdding(false);
-      await load();
+      if (entryKind === "rfi") {
+        if (!subject.trim()) throw new Error("Subject is required for RFIs.");
+        const response = await authFetch(`/tenders/${tenderId}/clarifications`, {
+          method: "POST",
+          body: JSON.stringify({
+            subject: subject.trim(),
+            response: text.trim() || undefined,
+            status: "OPEN",
+            dueDate: dueDate || undefined
+          })
+        });
+        if (!response.ok) throw new Error(await response.text());
+        onRfiChanged();
+      } else {
+        if (!text.trim()) throw new Error("Text is required for communications.");
+        const response = await authFetch(`/tenders/${tenderId}/clarification-notes`, {
+          method: "POST",
+          body: JSON.stringify({
+            direction,
+            text: text.trim(),
+            date: occurredAt || undefined
+          })
+        });
+        if (!response.ok) throw new Error(await response.text());
+        await load();
+      }
+      resetForm();
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -68,27 +168,49 @@ export function TenderClarificationLog({ tenderId, canManage }: { tenderId: stri
     }
   };
 
-  const remove = async (id: string) => {
-    if (!window.confirm("Remove this clarification note?")) return;
-    const response = await authFetch(`/tenders/${tenderId}/clarification-notes/${id}`, { method: "DELETE" });
+  const deleteEntry = async (entry: UnifiedEntry) => {
+    if (!window.confirm("Delete this entry?")) return;
+    const path =
+      entry.kind === "rfi"
+        ? `/tenders/${tenderId}/activities/${encodeURIComponent(`clarification:${entry.id}`)}`
+        : `/tenders/${tenderId}/clarification-notes/${entry.id}`;
+    const response = await authFetch(path, { method: "DELETE" });
     if (!response.ok) {
       setError(await response.text());
       return;
     }
-    await load();
+    if (entry.kind === "rfi") onRfiChanged();
+    else await load();
+  };
+
+  const badgeTone = (badge: UnifiedEntry["badge"]) => {
+    if (badge === "RFI") return "#005B61";
+    if (badge === "Sent") return "#3B82F6";
+    return "#FEAA6D";
   };
 
   return (
-    <section className="s7-card" style={{ marginTop: 12 }}>
-      <div className="tender-detail__section-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h3 className="s7-type-section-heading" style={{ margin: 0 }}>Clarification log</h3>
+    <section className="s7-card">
+      <div
+        className="tender-detail__section-head"
+        style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
+      >
+        <h3 className="s7-type-section-heading" style={{ margin: 0 }}>
+          Clarifications &amp; Communications
+        </h3>
         {canManage ? (
           <button
             type="button"
             className="s7-btn s7-btn--primary s7-btn--sm"
-            onClick={() => setAdding((v) => !v)}
+            onClick={() => {
+              if (adding) {
+                resetForm();
+              } else {
+                setAdding(true);
+              }
+            }}
           >
-            {adding ? "Cancel" : "+ Add"}
+            {adding ? "Cancel" : "+ Add entry"}
           </button>
         ) : null}
       </div>
@@ -101,117 +223,315 @@ export function TenderClarificationLog({ tenderId, canManage }: { tenderId: stri
             void submit();
           }}
         >
-          <div style={{ display: "flex", gap: 8 }}>
-            <div role="radiogroup" aria-label="Direction" style={{ display: "flex", gap: 4 }}>
-              <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 13 }}>
-                <input
-                  type="radio"
-                  checked={direction === "sent"}
-                  onChange={() => setDirection("sent")}
-                />
-                Sent
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <label style={{ fontSize: 12, display: "inline-flex", flexDirection: "column", gap: 2 }}>
+              <span>Type</span>
+              <select
+                className="s7-select s7-input--sm"
+                value={entryKind}
+                onChange={(e) => setEntryKind(e.target.value as "rfi" | "note")}
+              >
+                <option value="note">Communication (sent/received)</option>
+                <option value="rfi">RFI (Q&amp;A register)</option>
+              </select>
+            </label>
+            {entryKind === "note" ? (
+              <label style={{ fontSize: 12, display: "inline-flex", flexDirection: "column", gap: 2 }}>
+                <span>Direction</span>
+                <select
+                  className="s7-select s7-input--sm"
+                  value={direction}
+                  onChange={(e) => setDirection(e.target.value as "sent" | "received")}
+                >
+                  <option value="received">Received from client</option>
+                  <option value="sent">Sent by IS</option>
+                </select>
               </label>
-              <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 13 }}>
+            ) : null}
+            {entryKind === "rfi" ? (
+              <label style={{ fontSize: 12, display: "inline-flex", flexDirection: "column", gap: 2 }}>
+                <span>Due date (optional)</span>
                 <input
-                  type="radio"
-                  checked={direction === "received"}
-                  onChange={() => setDirection("received")}
+                  type="date"
+                  className="s7-input s7-input--sm"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
                 />
-                Received
               </label>
-            </div>
-            <input
-              type="date"
-              className="s7-input"
-              style={{ maxWidth: 180 }}
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
+            ) : (
+              <label style={{ fontSize: 12, display: "inline-flex", flexDirection: "column", gap: 2 }}>
+                <span>Date (optional)</span>
+                <input
+                  type="date"
+                  className="s7-input s7-input--sm"
+                  value={occurredAt}
+                  onChange={(e) => setOccurredAt(e.target.value)}
+                />
+              </label>
+            )}
           </div>
-          <textarea
-            className="s7-input"
-            rows={3}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Clarification text…"
-            required
-          />
+          {entryKind === "rfi" ? (
+            <>
+              <input
+                className="s7-input"
+                placeholder="Question / subject…"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+              />
+              <textarea
+                className="s7-input"
+                rows={3}
+                placeholder="Initial response or notes (optional)…"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+              />
+            </>
+          ) : (
+            <textarea
+              className="s7-input"
+              rows={4}
+              placeholder="Message content…"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              required
+            />
+          )}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <button type="button" className="s7-btn s7-btn--ghost" onClick={() => setAdding(false)}>Cancel</button>
-            <button type="submit" className="s7-btn s7-btn--primary" disabled={posting || !text.trim()}>
+            <button type="button" className="s7-btn s7-btn--ghost" onClick={resetForm}>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="s7-btn s7-btn--primary"
+              disabled={posting || (entryKind === "rfi" ? !subject.trim() : !text.trim())}
+            >
               {posting ? "Saving…" : "Save"}
             </button>
           </div>
         </form>
       ) : null}
 
-      {error ? <p style={{ color: "var(--status-danger)" }}>{error}</p> : null}
+      {error ? (
+        <p style={{ color: "var(--status-danger)", marginTop: 8 }}>{error}</p>
+      ) : null}
 
       {loading ? (
-        <p style={{ color: "var(--text-muted)" }}>Loading…</p>
-      ) : notes.length === 0 ? (
+        <p style={{ color: "var(--text-muted)", marginTop: 12 }}>Loading…</p>
+      ) : entries.length === 0 ? (
         <EmptyState
-          heading="No clarification log entries"
-          subtext="Log every sent or received message here to keep a clean audit trail alongside the Q&A clarifications above."
+          heading="No clarifications or communications yet"
+          subtext="Log every RFI, email, call, or meeting here for a clean audit trail."
         />
       ) : (
-        <ul className="tender-clarifications" style={{ marginTop: 12 }}>
-          {notes.map((n) => {
-            const isSent = n.direction === "sent";
-            const tone = isSent ? "var(--brand-primary, #005B61)" : "var(--brand-accent, #FEAA6D)";
-            return (
-              <li
-                key={n.id}
-                style={{
-                  padding: 10,
-                  border: "1px solid var(--border, #e5e7eb)",
-                  borderLeft: `4px solid ${tone}`,
-                  borderRadius: 6,
-                  marginBottom: 6,
-                  display: "flex",
-                  gap: 10,
-                  alignItems: "flex-start"
-                }}
-              >
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        padding: "2px 8px",
-                        background: tone,
-                        color: "#fff",
-                        borderRadius: 999,
-                        textTransform: "uppercase",
-                        letterSpacing: 0.3
-                      }}
-                    >
-                      {isSent ? "Sent →" : "← Received"}
-                    </span>
-                    <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{formatDate(n.occurredAt)}</span>
-                    {n.createdBy ? (
-                      <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
-                        · {n.createdBy.firstName} {n.createdBy.lastName}
-                      </span>
-                    ) : null}
-                  </div>
-                  <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{n.text}</p>
-                </div>
-                {canManage ? (
-                  <button
-                    type="button"
-                    className="s7-btn s7-btn--ghost s7-btn--sm"
-                    aria-label="Delete clarification"
-                    onClick={() => void remove(n.id)}
-                  >
-                    ×
-                  </button>
-                ) : null}
-              </li>
-            );
-          })}
+        <ul
+          style={{ listStyle: "none", padding: 0, margin: "12px 0 0", display: "flex", flexDirection: "column", gap: 6 }}
+        >
+          {entries.map((entry) => (
+            <ClarificationEntryRow
+              key={`${entry.kind}-${entry.id}`}
+              entry={entry}
+              tenderId={tenderId}
+              canManage={canManage}
+              badgeTone={badgeTone(entry.badge)}
+              onChanged={entry.kind === "rfi" ? onRfiChanged : load}
+              onDelete={() => void deleteEntry(entry)}
+            />
+          ))}
         </ul>
       )}
     </section>
+  );
+}
+
+function ClarificationEntryRow({
+  entry,
+  tenderId,
+  canManage,
+  badgeTone,
+  onChanged,
+  onDelete
+}: {
+  entry: UnifiedEntry;
+  tenderId: string;
+  canManage: boolean;
+  badgeTone: string;
+  onChanged: () => void;
+  onDelete: () => void;
+}) {
+  const { authFetch } = useAuth();
+  const [editing, setEditing] = useState(false);
+  const [draftText, setDraftText] = useState(
+    entry.kind === "rfi" ? (entry.response ?? entry.subject) : entry.text
+  );
+  const [draftSubject, setDraftSubject] = useState(entry.kind === "rfi" ? entry.subject : "");
+  const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const save = async () => {
+    setBusy(true);
+    setSaveError(null);
+    try {
+      if (entry.kind === "rfi") {
+        const response = await authFetch(
+          `/tenders/${tenderId}/activities/${encodeURIComponent(`clarification:${entry.id}`)}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({
+              title: draftSubject.trim() || entry.subject,
+              details: draftText.trim() || undefined
+            })
+          }
+        );
+        if (!response.ok) throw new Error(await response.text());
+      } else {
+        const response = await authFetch(
+          `/tenders/${tenderId}/clarification-notes/${entry.id}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({ text: draftText.trim() })
+          }
+        );
+        if (!response.ok) throw new Error(await response.text());
+      }
+      setEditing(false);
+      onChanged();
+    } catch (err) {
+      setSaveError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <li
+      style={{
+        padding: 10,
+        border: "1px solid var(--border, #e5e7eb)",
+        borderLeft: `4px solid ${badgeTone}`,
+        borderRadius: 6,
+        display: "flex",
+        flexDirection: "column",
+        gap: 6
+      }}
+    >
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <span
+          style={{
+            fontSize: 11,
+            padding: "2px 8px",
+            background: badgeTone,
+            color: "#fff",
+            borderRadius: 999,
+            textTransform: "uppercase",
+            letterSpacing: 0.3
+          }}
+        >
+          {entry.badge}
+        </span>
+        {entry.kind === "rfi" ? (
+          <span
+            className="s7-badge"
+            style={{ fontSize: 11, padding: "2px 8px" }}
+          >
+            {entry.status}
+          </span>
+        ) : null}
+        <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
+          {formatDate(entry.timestamp)}
+        </span>
+        {entry.kind === "note" && entry.createdBy ? (
+          <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
+            · {entry.createdBy.firstName} {entry.createdBy.lastName}
+          </span>
+        ) : null}
+        {entry.kind === "rfi" && entry.dueDate ? (
+          <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
+            · Due {formatDate(entry.dueDate)}
+          </span>
+        ) : null}
+        {canManage && !editing ? (
+          <span style={{ marginLeft: "auto", display: "inline-flex", gap: 4 }}>
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={() => setEditing(true)}
+              aria-label="Edit"
+              title="Edit"
+            >
+              ✎
+            </button>
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={onDelete}
+              aria-label="Delete"
+              title="Delete"
+            >
+              ×
+            </button>
+          </span>
+        ) : null}
+      </div>
+
+      {editing ? (
+        <>
+          {entry.kind === "rfi" ? (
+            <input
+              className="s7-input"
+              value={draftSubject}
+              onChange={(e) => setDraftSubject(e.target.value)}
+              placeholder="Subject"
+              disabled={busy}
+            />
+          ) : null}
+          <textarea
+            autoFocus
+            className="s7-input"
+            rows={3}
+            value={draftText}
+            onChange={(e) => setDraftText(e.target.value)}
+            disabled={busy}
+          />
+          {saveError ? (
+            <p style={{ color: "var(--status-danger)", fontSize: 12, margin: 0 }}>{saveError}</p>
+          ) : null}
+          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={() => {
+                setEditing(false);
+                setDraftText(entry.kind === "rfi" ? (entry.response ?? entry.subject) : entry.text);
+                setDraftSubject(entry.kind === "rfi" ? entry.subject : "");
+              }}
+              disabled={busy}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="s7-btn s7-btn--primary s7-btn--sm"
+              onClick={() => void save()}
+              disabled={busy}
+            >
+              Save
+            </button>
+          </div>
+        </>
+      ) : entry.kind === "rfi" ? (
+        <>
+          <strong>{entry.subject}</strong>
+          {entry.response ? (
+            <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{entry.response}</p>
+          ) : (
+            <p style={{ color: "var(--text-muted)", margin: 0, fontStyle: "italic" }}>
+              Awaiting response.
+            </p>
+          )}
+        </>
+      ) : (
+        <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{entry.text}</p>
+      )}
+    </li>
   );
 }

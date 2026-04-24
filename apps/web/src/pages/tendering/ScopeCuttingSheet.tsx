@@ -117,10 +117,32 @@ export function ScopeCuttingSheet({
     // update cutting rows (e.g. orphan wbsRef remapping).
   }, [load, wbsKey]);
 
-  const visible = useMemo(() => items.filter((i) => i.itemType === tab), [items, tab]);
+  // Discipline is inferred from the scope wbs refs passed in by the parent
+  // (e.g. ["SO1","SO2"] → "SO"). Fallback to null when the parent supplies
+  // no refs — in that case we show everything so the sheet still works
+  // during tender setup before any scope items exist.
+  const discipline = useMemo(() => {
+    const first = wbsRefs[0];
+    if (!first) return null;
+    const match = /^[A-Za-z]+/.exec(first);
+    return match ? match[0] : null;
+  }, [wbsRefs]);
+
+  const disciplineItems = useMemo(() => {
+    if (!discipline) return items;
+    return items.filter((i) => {
+      const m = /^[A-Za-z]+/.exec(i.wbsRef);
+      return m !== null && m[0] === discipline;
+    });
+  }, [items, discipline]);
+
+  const visible = useMemo(
+    () => disciplineItems.filter((i) => i.itemType === tab),
+    [disciplineItems, tab]
+  );
   const subtotal = useMemo(
-    () => items.reduce((sum, i) => sum + (i.lineTotal ? Number(i.lineTotal) : 0), 0),
-    [items]
+    () => disciplineItems.reduce((sum, i) => sum + (i.lineTotal ? Number(i.lineTotal) : 0), 0),
+    [disciplineItems]
   );
 
   const addItem = async () => {
@@ -170,17 +192,22 @@ export function ScopeCuttingSheet({
 
   return (
     <section className="s7-card" style={{ marginTop: 16 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
         <h3 className="s7-type-section-heading" style={{ margin: 0 }}>
           Concrete cutting
           <span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: 8 }}>
-            ({items.length} item{items.length === 1 ? "" : "s"})
+            ({disciplineItems.length} item{disciplineItems.length === 1 ? "" : "s"})
           </span>
         </h3>
         <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
           Subtotal: <strong style={{ color: "var(--text)" }}>{fmt(subtotal)}</strong>
         </div>
       </div>
+      {discipline ? (
+        <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 12px" }}>
+          Showing items linked to {discipline} scope. Switch discipline above to see others.
+        </p>
+      ) : null}
 
       <div style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border, #e5e7eb)", marginBottom: 12 }}>
         {(["saw-cut", "core-hole", "other-rate"] as ItemType[]).map((t) => {
@@ -201,7 +228,7 @@ export function ScopeCuttingSheet({
                 cursor: "pointer"
               }}
             >
-              {label} ({items.filter((i) => i.itemType === t).length})
+              {label} ({disciplineItems.filter((i) => i.itemType === t).length})
             </button>
           );
         })}

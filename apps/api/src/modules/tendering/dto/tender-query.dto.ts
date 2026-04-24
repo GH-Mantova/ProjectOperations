@@ -123,6 +123,14 @@ export class QuickEditDto {
   @IsOptional()
   @IsString()
   assignedEstimatorId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  description?: string | null;
+
+  @IsOptional()
+  @IsString()
+  notes?: string | null;
 }
 
 export { SORTABLE_FIELDS };

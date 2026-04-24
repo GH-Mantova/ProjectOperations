@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { IsDateString, IsIn, IsOptional, IsString } from "class-validator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
@@ -10,6 +10,12 @@ import { TenderClarificationsService } from "./tender-clarifications.service";
 class CreateClarificationDto {
   @IsString() @IsIn(["sent", "received"]) direction!: "sent" | "received";
   @IsString() text!: string;
+  @IsOptional() @IsDateString() date?: string;
+}
+
+class UpdateClarificationDto {
+  @IsOptional() @IsString() @IsIn(["sent", "received"]) direction?: "sent" | "received";
+  @IsOptional() @IsString() text?: string;
   @IsOptional() @IsDateString() date?: string;
 }
 
@@ -38,6 +44,17 @@ export class TenderClarificationsController {
     @CurrentUser() actor: { sub: string }
   ) {
     return this.service.create(tenderId, actor.sub, dto);
+  }
+
+  @Patch(":id")
+  @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Update a clarification note (direction, text, date)." })
+  update(
+    @Param("tenderId") tenderId: string,
+    @Param("id") id: string,
+    @Body() dto: UpdateClarificationDto
+  ) {
+    return this.service.update(tenderId, id, dto);
   }
 
   @Delete(":id")

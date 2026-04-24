@@ -321,6 +321,14 @@ export class TenderingService {
         changed.push(`estimator: ${existing.estimatorUserId} → —`);
       }
     }
+    if (dto.description !== undefined && (dto.description ?? null) !== (existing.description ?? null)) {
+      data.description = dto.description;
+      changed.push("description");
+    }
+    if (dto.notes !== undefined && (dto.notes ?? null) !== (existing.notes ?? null)) {
+      data.notes = dto.notes;
+      changed.push("notes");
+    }
 
     if (!changed.length) {
       return this.getById(id);

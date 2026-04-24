@@ -89,7 +89,7 @@ function drawHeaderBand(doc: Doc, quoteRef?: string | null) {
   doc.rect(0, 0, PAGE_W, 50).fill(BRAND.teal);
   if (LOGO_BUFFER) {
     try {
-      doc.image(LOGO_BUFFER, MARGIN_L - 4, 5, { fit: [40, 40] });
+      doc.image(LOGO_BUFFER, MARGIN_L - 4, 3, { fit: [44, 44] });
     } catch {
       // fall through to text fallback below
     }
@@ -97,36 +97,30 @@ function drawHeaderBand(doc: Doc, quoteRef?: string | null) {
   const titleX = LOGO_BUFFER ? MARGIN_L + 48 : MARGIN_L;
   doc.fillColor(BRAND.white).font("Helvetica-Bold").fontSize(14)
     .text("INITIAL SERVICES", titleX, 14, { align: "left" });
-  doc.font("Helvetica").fontSize(8)
+  // Licence numbers top-right of the teal band.
+  doc.font("Helvetica").fontSize(8).fillColor(BRAND.white)
     .text(
       "Demolition Licence: 2328018 | Class A Asbestos Licence: 2320431",
       MARGIN_L,
-      quoteRef ? 10 : 18,
+      8,
       { align: "right", width: CONTENT_W }
     );
   if (quoteRef) {
-    doc.font("Helvetica-Bold").fontSize(10)
-      .text(`Quote No. ${quoteRef}`, MARGIN_L, 24, { align: "right", width: CONTENT_W });
+    // Quote reference centred horizontally in the teal band.
+    doc.font("Helvetica-Bold").fontSize(10).fillColor(BRAND.white)
+      .text(`Quote No. ${quoteRef}`, 0, 20, { align: "center", width: PAGE_W });
   }
   // Thin orange rule under the band.
   doc.save().strokeColor(BRAND.orange).lineWidth(2).moveTo(0, 51).lineTo(PAGE_W, 51).stroke().restore();
   doc.fillColor(BRAND.black);
 
-  if (quoteRef) {
-    // Small uncontrolled-print notice below the band.
-    doc.font("Helvetica").fontSize(7).fillColor("#777")
-      .text("Electronic document — uncontrolled when printed", MARGIN_L, 55, {
-        align: "right",
-        width: CONTENT_W
-      });
-    doc.text(
-      `Printed on: ${new Intl.DateTimeFormat("en-AU").format(new Date())}`,
-      MARGIN_L,
-      63,
-      { align: "right", width: CONTENT_W }
-    );
-    doc.fillColor(BRAND.black);
-  }
+  // Electronic-document notice: three stacked lines top-right, below the band.
+  doc.font("Helvetica").fontSize(7).fillColor("#777");
+  doc.text("Electronic document", MARGIN_L, 55, { align: "right", width: CONTENT_W });
+  doc.text("Uncontrolled when printed", MARGIN_L, 62, { align: "right", width: CONTENT_W });
+  const printed = new Intl.DateTimeFormat("en-AU", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date());
+  doc.text(`Printed on: ${printed}`, MARGIN_L, 69, { align: "right", width: CONTENT_W });
+  doc.fillColor(BRAND.black);
 }
 
 function drawFooter(doc: Doc, pageIndex: number, totalPages: number) {
@@ -151,7 +145,7 @@ function drawRule(doc: Doc, colour = BRAND.orange) {
 // ── Page 1 ───────────────────────────────────────────────────────────
 function drawCoverPage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay | null) {
   drawHeaderBand(doc, overlay?.quoteRef ?? null);
-  doc.y = overlay ? MARGIN_TOP + 16 : MARGIN_TOP;
+  doc.y = MARGIN_TOP + 16;
 
   const primaryClient = p.tender.clients[0] ?? null;
   const estimator = p.tender.estimator;
@@ -354,6 +348,23 @@ function drawCoverPage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay | null)
     doc.y = y + rowH + 4;
   }
 
+  // Contact person block (centred, italic).
+  if (estimator) {
+    doc.moveDown(0.8);
+    doc.font("Helvetica-Oblique").fontSize(9).fillColor(BRAND.black);
+    doc.text(
+      "If you have any queries regarding this quotation, please do not hesitate to contact:",
+      MARGIN_L, doc.y, { width: CONTENT_W, align: "center" }
+    );
+    const phonePart = estimator.phone ? ` on ${estimator.phone}` : "";
+    const emailPart = estimator.email ? ` or ${estimator.email}` : "";
+    doc.text(
+      `${estimatorName}${phonePart}${emailPart}.`,
+      MARGIN_L, doc.y, { width: CONTENT_W, align: "center" }
+    );
+    doc.fillColor(BRAND.black);
+  }
+
   // Disclaimers.
   doc.moveDown(0.6);
   doc.font("Helvetica-Oblique").fontSize(8).fillColor("#555");
@@ -384,7 +395,7 @@ type ScopeTableCol = { key: string; label: string; w: number; align?: "left" | "
 function drawScopePage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay | null) {
   doc.addPage();
   drawHeaderBand(doc, overlay?.quoteRef ?? null);
-  doc.y = overlay ? MARGIN_TOP + 16 : MARGIN_TOP;
+  doc.y = MARGIN_TOP + 16;
 
   // Preliminary works (fixed IS standard text).
   doc.font("Helvetica-Bold").fontSize(10).fillColor(BRAND.teal)
@@ -396,6 +407,38 @@ function drawScopePage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay | null)
     doc.moveDown(0.15);
   }
   doc.moveDown(0.5);
+
+  // Referenced Drawings and Documents — only render when the tender has
+  // documents attached. Two-column layout when the list exceeds 8 items.
+  if (p.documents.length > 0) {
+    doc.font("Helvetica-Bold").fontSize(9).fillColor(BRAND.teal)
+      .text("Referenced Drawings and Documents", MARGIN_L, doc.y);
+    doc.moveDown(0.2);
+    doc.font("Helvetica").fontSize(8).fillColor(BRAND.black);
+    if (p.documents.length > 8) {
+      const half = Math.ceil(p.documents.length / 2);
+      const left = p.documents.slice(0, half);
+      const right = p.documents.slice(half);
+      const colW = (CONTENT_W - 16) / 2;
+      const leftX = MARGIN_L;
+      const rightX = MARGIN_L + colW + 16;
+      const startY = doc.y;
+      for (const d of left) {
+        doc.text(`- ${d.name}`, leftX, doc.y, { width: colW });
+      }
+      const endLeftY = doc.y;
+      doc.y = startY;
+      for (const d of right) {
+        doc.text(`- ${d.name}`, rightX, doc.y, { width: colW });
+      }
+      doc.y = Math.max(endLeftY, doc.y);
+    } else {
+      for (const d of p.documents) {
+        doc.text(`- ${d.name}`, MARGIN_L, doc.y, { width: CONTENT_W });
+      }
+    }
+    doc.moveDown(0.6);
+  }
 
   // Scope heading.
   doc.font("Helvetica-Bold").fontSize(11).fillColor(BRAND.teal).text("Scope of Works", MARGIN_L, doc.y);
@@ -426,7 +469,7 @@ function drawScopePage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay | null)
     if (doc.y + need > PAGE_H - MARGIN_BOTTOM - 10) {
       doc.addPage();
       drawHeaderBand(doc, overlay?.quoteRef ?? null);
-      doc.y = overlay ? MARGIN_TOP + 16 : MARGIN_TOP;
+      doc.y = MARGIN_TOP + 16;
       drawHead();
     }
   };
@@ -583,7 +626,7 @@ const ALLOWANCES_BULLETS = [
 function drawAssumptionsPage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay | null) {
   doc.addPage();
   drawHeaderBand(doc, overlay?.quoteRef ?? null);
-  doc.y = overlay ? MARGIN_TOP + 16 : MARGIN_TOP;
+  doc.y = MARGIN_TOP + 16;
 
   // Project Specific Allowances (fixed).
   doc.font("Helvetica-Bold").fontSize(10).fillColor(BRAND.teal)
@@ -705,7 +748,7 @@ function drawAssumptionsPage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay |
       } else {
         doc.addPage();
         drawHeaderBand(doc, overlay?.quoteRef ?? null);
-        doc.y = overlay ? MARGIN_TOP + 16 : MARGIN_TOP;
+        doc.y = MARGIN_TOP + 16;
         doc.font("Helvetica-Bold").fontSize(11).fillColor(BRAND.teal)
           .text("TERMS AND CONDITIONS (continued)", MARGIN_L, doc.y, { width: CONTENT_W, align: "center" });
         drawRule(doc, BRAND.orange);

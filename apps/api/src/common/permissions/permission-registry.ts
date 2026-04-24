@@ -2,7 +2,6 @@ export const permissionRegistry = [
   { code: "users.view", module: "users", description: "View users" },
   { code: "users.create", module: "users", description: "Create users" },
   { code: "users.update", module: "users", description: "Update users" },
-  { code: "users.deactivate", module: "users", description: "Activate or deactivate users" },
   { code: "platform.admin", module: "platform", description: "Administer platform configuration — AI providers, notifications, email, integrations" },
   { code: "finance.view", module: "finance", description: "View contracts, variations, and progress claims" },
   { code: "finance.manage", module: "finance", description: "Create and manage contracts, variations, and progress claims" },

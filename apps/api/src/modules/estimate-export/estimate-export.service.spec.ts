@@ -35,7 +35,13 @@ type FakeTender = {
   dueDate: Date | null;
   estimatedValue: { toString(): string } | null;
   ratesSnapshotAt: Date | null;
-  estimator: { firstName: string; lastName: string; email: string; phone: string | null } | null;
+  estimator: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    workerProfile: { phone: string | null } | null;
+  } | null;
   tenderClients: Array<{
     createdAt: Date;
     client: { id: string; name: string; email: string | null; phone: string | null };
@@ -50,6 +56,7 @@ type FakeTender = {
   } | null;
   scopeItems: Array<Record<string, unknown>>;
   cuttingSheetItems: Array<Record<string, unknown>>;
+  tenderDocuments: Array<{ id: string; title: string; fileLink: { name: string } | null }>;
   assumptions: Array<{ text: string; sortOrder: number }>;
   exclusions: Array<{ text: string; sortOrder: number }>;
   tandC: { clauses: unknown } | null;
@@ -112,7 +119,13 @@ function baseTender(partial: Partial<FakeTender> = {}): FakeTender {
     dueDate: null,
     estimatedValue: null,
     ratesSnapshotAt: null,
-    estimator: { firstName: "Raj", lastName: "Pudasaini", email: "raj@example.com", phone: null },
+    estimator: {
+      id: "user-raj",
+      firstName: "Raj",
+      lastName: "Pudasaini",
+      email: "raj@example.com",
+      workerProfile: null
+    },
     tenderClients: [
       {
         createdAt: new Date(),
@@ -123,6 +136,7 @@ function baseTender(partial: Partial<FakeTender> = {}): FakeTender {
     scopeHeader: null,
     scopeItems: [],
     cuttingSheetItems: [],
+    tenderDocuments: [],
     assumptions: [],
     exclusions: [],
     tandC: null,

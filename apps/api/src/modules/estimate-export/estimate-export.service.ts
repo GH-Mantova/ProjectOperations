@@ -109,6 +109,7 @@ export type ExportPayload = {
       firstName: string;
       lastName: string;
       email: string;
+      phone: string | null;
     } | null;
     clients: Array<{
       id: string;
@@ -131,6 +132,7 @@ export type ExportPayload = {
     coreHoles: CoreHoleRow[];
     otherRates: OtherRateRow[];
   };
+  documents: Array<{ id: string; name: string }>;
   assumptions: Array<{ text: string }>;
   exclusions: Array<{ text: string }>;
   tandc: { clauses: TcClause[] };
@@ -168,7 +170,15 @@ export class EstimateExportService {
     const tender = await this.prisma.tender.findUnique({
       where: { id: tenderId },
       include: {
-        estimator: { select: { firstName: true, lastName: true, email: true } },
+        estimator: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            workerProfile: { select: { phone: true } }
+          }
+        },
         tenderClients: {
           orderBy: { createdAt: "asc" },
           include: {
@@ -184,6 +194,10 @@ export class EstimateExportService {
         cuttingSheetItems: {
           orderBy: [{ wbsRef: "asc" }, { sortOrder: "asc" }],
           include: { otherRate: true }
+        },
+        tenderDocuments: {
+          orderBy: { createdAt: "asc" },
+          include: { fileLink: { select: { name: true } } }
         },
         assumptions: { orderBy: { sortOrder: "asc" } },
         exclusions: { orderBy: { sortOrder: "asc" } },
@@ -338,7 +352,8 @@ export class EstimateExportService {
           ? {
               firstName: tender.estimator.firstName,
               lastName: tender.estimator.lastName,
-              email: tender.estimator.email
+              email: tender.estimator.email,
+              phone: tender.estimator.workerProfile?.phone ?? null
             }
           : null,
         clients,
@@ -354,6 +369,9 @@ export class EstimateExportService {
       },
       scopeItems,
       cuttingItems: { sawCuts, coreHoles, otherRates },
+      documents: tender.tenderDocuments
+        .map((d) => ({ id: d.id, name: d.fileLink?.name ?? d.title }))
+        .filter((d) => Boolean(d.name)),
       assumptions: tender.assumptions.map((a) => ({ text: a.text })),
       exclusions: tender.exclusions.map((e) => ({ text: e.text })),
       tandc: { clauses },

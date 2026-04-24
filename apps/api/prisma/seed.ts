@@ -29,6 +29,32 @@ async function main() {
     create: { name: "foundation" }
   });
 
+  // One-time cleanup: the legacy TEN-2026-### seed tenders were renamed to
+  // IS-T009..IS-T014. On any DB that ran the old seed, those rows still exist
+  // and their JobConversion records block the new seed's upserts. Deleting
+  // them (and letting Prisma cascade their children) restores idempotency
+  // on upgrade. No-op on clean DBs.
+  const legacySeedTenderNumbers = [
+    "TEN-2026-001",
+    "TEN-2026-002",
+    "TEN-2026-003",
+    "TEN-2026-004",
+    "TEN-2026-005",
+    "TEN-2026-006"
+  ];
+  const legacyTenders = await prisma.tender.findMany({
+    where: { tenderNumber: { in: legacySeedTenderNumbers } },
+    select: { id: true }
+  });
+  if (legacyTenders.length > 0) {
+    const legacyTenderIds = legacyTenders.map((t) => t.id);
+    // JobConversion has FKs to tender, tender_client, and job — deleting it
+    // first avoids the unique(job_id) conflict when the job gets re-pointed
+    // at the new tender later in the seed.
+    await prisma.jobConversion.deleteMany({ where: { tenderId: { in: legacyTenderIds } } });
+    await prisma.tender.deleteMany({ where: { id: { in: legacyTenderIds } } });
+  }
+
   await Promise.all(
     permissionRegistry.map((permission) =>
       prisma.permission.upsert({
@@ -717,7 +743,7 @@ async function main() {
     });
 
     const tender = await prisma.tender.upsert({
-      where: { tenderNumber: "TEN-2026-001" },
+      where: { tenderNumber: "IS-T009" },
       update: {
         title: "Gateway civil works package",
         status: "SUBMITTED",
@@ -730,7 +756,7 @@ async function main() {
         notes: "Seed tender with multiple linked clients."
       },
       create: {
-        tenderNumber: "TEN-2026-001",
+        tenderNumber: "IS-T009",
         title: "Gateway civil works package",
         status: "SUBMITTED",
         estimatorUserId: estimatorUser.id,
@@ -823,7 +849,7 @@ async function main() {
       },
       update: {
         name: tender.title,
-        relativePath: "Project Operations/Tendering/TEN-2026-001_gateway-civil-works-package",
+        relativePath: "Project Operations/Tendering/IS-T009_gateway-civil-works-package",
         module: "tendering",
         linkedEntityType: "Tender",
         linkedEntityId: tender.id
@@ -833,7 +859,7 @@ async function main() {
         driveId: "project-operations-library",
         itemId: "mock-folder-tendering-ten-2026-001",
         name: tender.title,
-        relativePath: "Project Operations/Tendering/TEN-2026-001_gateway-civil-works-package",
+        relativePath: "Project Operations/Tendering/IS-T009_gateway-civil-works-package",
         module: "tendering",
         linkedEntityType: "Tender",
         linkedEntityId: tender.id
@@ -913,7 +939,7 @@ async function main() {
     });
 
     const convertedTender = await prisma.tender.upsert({
-      where: { tenderNumber: "TEN-2026-002" },
+      where: { tenderNumber: "IS-T010" },
       update: {
         title: "North precinct services package",
         status: "CONVERTED",
@@ -926,7 +952,7 @@ async function main() {
         notes: "Seed tender that has progressed through award, contract, and job conversion."
       },
       create: {
-        tenderNumber: "TEN-2026-002",
+        tenderNumber: "IS-T010",
         title: "North precinct services package",
         status: "CONVERTED",
         estimatorUserId: estimatorUser.id,
@@ -967,7 +993,7 @@ async function main() {
 
     const extraTenderSeeds = [
       {
-        tenderNumber: "TEN-2026-003",
+        tenderNumber: "IS-T011",
         title: "Riverside drainage remediation",
         status: "DRAFT" as const,
         dueDate: new Date("2026-06-12T00:00:00.000Z"),
@@ -988,7 +1014,7 @@ async function main() {
         }
       },
       {
-        tenderNumber: "TEN-2026-004",
+        tenderNumber: "IS-T012",
         title: "Airport services trenching package",
         status: "IN_PROGRESS" as const,
         dueDate: new Date("2026-05-05T00:00:00.000Z"),
@@ -1013,7 +1039,7 @@ async function main() {
         }
       },
       {
-        tenderNumber: "TEN-2026-005",
+        tenderNumber: "IS-T013",
         title: "Western corridor traffic switch",
         status: "SUBMITTED" as const,
         dueDate: new Date("2026-04-22T00:00:00.000Z"),
@@ -1038,7 +1064,7 @@ async function main() {
         }
       },
       {
-        tenderNumber: "TEN-2026-006",
+        tenderNumber: "IS-T014",
         title: "North yard rehabilitation package",
         status: "SUBMITTED" as const,
         dueDate: new Date("2026-04-20T00:00:00.000Z"),
@@ -1171,7 +1197,7 @@ async function main() {
       },
       update: {
         name: convertedTender.title,
-        relativePath: "Project Operations/Tendering/TEN-2026-002_north-precinct-services-package",
+        relativePath: "Project Operations/Tendering/IS-T010_north-precinct-services-package",
         module: "tendering",
         linkedEntityType: "Tender",
         linkedEntityId: convertedTender.id
@@ -1181,7 +1207,7 @@ async function main() {
         driveId: "project-operations-library",
         itemId: "mock-folder-tendering-ten-2026-002",
         name: convertedTender.title,
-        relativePath: "Project Operations/Tendering/TEN-2026-002_north-precinct-services-package",
+        relativePath: "Project Operations/Tendering/IS-T010_north-precinct-services-package",
         module: "tendering",
         linkedEntityType: "Tender",
         linkedEntityId: convertedTender.id
@@ -2678,8 +2704,8 @@ async function backfillTenderLifecycleTimestamps(prisma: PrismaClient) {
 
   for (const t of tenders) {
     if (t.tenderNumber.startsWith("TEN-COMP-")) continue; // skip smoke test artifacts
-    // Only backdate deterministic seed tenders (IS-T*, TEN-2026-*); leave user-created data alone.
-    if (!t.tenderNumber.startsWith("IS-T") && !t.tenderNumber.startsWith("TEN-2026-")) continue;
+    // Only backdate deterministic IS-T### seed tenders; leave user-created data alone.
+    if (!t.tenderNumber.startsWith("IS-T")) continue;
 
     const seed = stableHash(t.tenderNumber);
     const data: { submittedAt?: Date | null; wonAt?: Date | null; lostAt?: Date | null } = {};

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AppCard } from "@project-ops/ui";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { ClientStarRating } from "../components/ClientStarRating";
 
 type TabKey = "clients" | "contacts" | "sites" | "resource-types" | "competencies" | "workers";
 
@@ -618,6 +619,13 @@ export function MasterDataPage({
                   <p className="muted-text">{getContextCopy(activeTab)}</p>
                 </div>
               </div>
+
+              {activeTab === "clients" ? (
+                <ClientPreferencePanel
+                  item={selectedItem}
+                  onSaved={() => void load(activeTab)}
+                />
+              ) : null}
             </div>
           ) : (
             <div className="crm-empty crm-empty--detail">
@@ -627,6 +635,72 @@ export function MasterDataPage({
           )}
         </AppCard>
       </div>
+    </div>
+  );
+}
+
+function ClientPreferencePanel({
+  item,
+  onSaved
+}: {
+  item: Record<string, unknown>;
+  onSaved: () => void;
+}) {
+  const { authFetch } = useAuth();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const id = typeof item.id === "string" ? item.id : null;
+  const name = typeof item.name === "string" ? item.name : "";
+  const preferenceScore =
+    typeof item.preferenceScore === "number" ? item.preferenceScore : null;
+  const winCount = typeof item.winCount === "number" ? item.winCount : 0;
+  const tenderCount = typeof item.tenderCount === "number" ? item.tenderCount : 0;
+  const winRateRaw = item.winRate;
+  const winRate =
+    typeof winRateRaw === "number"
+      ? winRateRaw
+      : typeof winRateRaw === "string" && winRateRaw !== ""
+        ? Number(winRateRaw)
+        : null;
+
+  const setScore = async (next: number) => {
+    if (!id || !name) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await authFetch(`/master-data/clients/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name, preferenceScore: next })
+      });
+      if (!response.ok) throw new Error(await response.text());
+      onSaved();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="crm-record__panel">
+      <strong>Preference</strong>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
+        <ClientStarRating
+          score={preferenceScore}
+          onChange={saving ? undefined : setScore}
+          ariaLabel={`${name || "Client"} preference score`}
+        />
+        {saving ? <span className="muted-text">Saving…</span> : null}
+      </div>
+      <p className="muted-text" style={{ marginTop: 6 }}>
+        {tenderCount > 0 && winRate !== null && Number.isFinite(winRate)
+          ? `Win rate: ${winRate.toFixed(0)}% (${winCount} won of ${tenderCount} quoted)`
+          : "No tender history"}
+      </p>
+      {error ? (
+        <p style={{ color: "var(--status-danger)", fontSize: 12 }}>{error}</p>
+      ) : null}
     </div>
   );
 }

@@ -461,7 +461,24 @@ type ClientFormState = {
   claimCutoffContactId: string;
 };
 
-type ClientContactOption = { id: string; firstName: string; lastName: string; email: string | null };
+type ClientContactOption = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  position: string | null;
+};
+
+function ordinalSuffix(n: number): string {
+  const v = n % 100;
+  if (v >= 11 && v <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1: return `${n}st`;
+    case 2: return `${n}nd`;
+    case 3: return `${n}rd`;
+    default: return `${n}th`;
+  }
+}
 
 type ClientSlideOverProps = {
   existing: Client | null;
@@ -512,6 +529,13 @@ function ClientSlideOver({ existing, onClose, onSaved }: ClientSlideOverProps) {
     const next: typeof errors = {};
     if (!form.name.trim()) next.name = "Required";
     if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) next.email = "Invalid email";
+    if (form.claimCutoffDay.trim() !== "") {
+      const raw = form.claimCutoffDay.trim();
+      const n = Number(raw);
+      if (!Number.isInteger(n) || n < 1 || n > 28) {
+        next.claimCutoffDay = "Enter a day between 1 and 28";
+      }
+    }
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -618,13 +642,22 @@ function ClientSlideOver({ existing, onClose, onSaved }: ClientSlideOverProps) {
                 type="number"
                 min={1}
                 max={28}
+                step={1}
                 placeholder="Not set"
                 value={form.claimCutoffDay}
                 onChange={(e) => setForm({ ...form, claimCutoffDay: e.target.value })}
                 style={{ maxWidth: 120 }}
               />
+              {errors.claimCutoffDay ? (
+                <span className="mdata-field-error">{errors.claimCutoffDay}</span>
+              ) : null}
               <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                Progress claims for this client are due by this day of each month.
+                {form.claimCutoffDay &&
+                Number.isInteger(Number(form.claimCutoffDay)) &&
+                Number(form.claimCutoffDay) >= 1 &&
+                Number(form.claimCutoffDay) <= 28
+                  ? `Progress claims for this client are due by the ${ordinalSuffix(Number(form.claimCutoffDay))} of each month (enter day 1–28).`
+                  : "Progress claims for this client are due by the Nth of each month (enter day 1–28)."}
               </span>
             </label>
             <label className="tender-form__field">
@@ -636,14 +669,20 @@ function ClientSlideOver({ existing, onClose, onSaved }: ClientSlideOverProps) {
                 disabled={contactOptions.length === 0}
               >
                 <option value="">— none —</option>
-                {contactOptions.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.firstName} {c.lastName}{c.email ? ` · ${c.email}` : ""}
-                  </option>
-                ))}
+                {contactOptions.map((c) => {
+                  const suffix = c.position ? ` · ${c.position}` : c.email ? ` · ${c.email}` : "";
+                  return (
+                    <option key={c.id} value={c.id}>
+                      {c.firstName} {c.lastName}{suffix}
+                    </option>
+                  );
+                })}
               </select>
               <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
                 Receives a 7-day advance email reminder before each cut-off date.
+                {contactOptions.length === 0 && existing
+                  ? " Add a contact under the Contacts tab first."
+                  : ""}
               </span>
             </label>
           </fieldset>

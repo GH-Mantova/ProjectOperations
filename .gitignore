@@ -28,3 +28,6 @@ apps/web/src/**/*.js.map
 # vite.config.ts is authoritative; tsc used to emit a vite.config.js here
 # that clobbered the ESM shim. Keep it out of git.
 apps/web/vite.config.js
+
+# Local scratch directory for generated PDFs during manual verification.
+/tmp-outputs/

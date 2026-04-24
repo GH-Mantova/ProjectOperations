@@ -476,7 +476,8 @@ type ScopeTableCol = { key: string; label: string; w: number; align?: "left" | "
 // a clean drawHeaderBand.
 function drawQuoteScopeItemsTable(
   doc: Doc,
-  rows: NonNullable<QuoteOverlay["scopeItems"]>
+  rows: NonNullable<QuoteOverlay["scopeItems"]>,
+  quoteRef: string
 ) {
   const cols: ScopeTableCol[] = [
     { key: "item", label: "ITEM", w: 50 },
@@ -498,28 +499,45 @@ function drawQuoteScopeItemsTable(
     doc.fillColor(BRAND.black);
     doc.y = y + rowMinH;
   };
+
+  const nextPage = () => {
+    doc.addPage();
+    drawHeaderBand(doc, quoteRef);
+    doc.y = MARGIN_TOP + 16;
+    doc.font("Helvetica-Bold").fontSize(11).fillColor(BRAND.teal)
+      .text("Scope of Works (continued)", MARGIN_L, doc.y, { width: CONTENT_W, align: "center" });
+    drawRule(doc, BRAND.orange);
+    drawHead();
+  };
+
   drawHead();
 
   rows.forEach((row, i) => {
-    const desc = row.description.slice(0, 500);
+    // Truncate both description and notes so a single row can't span a
+    // full page. Row height is the max of the description and notes
+    // rendered heights so both cells fit within the shaded box.
+    const desc = row.description.length > 400 ? row.description.slice(0, 397) + "…" : row.description;
+    const noteText = row.notes ?? "";
+    const note = noteText.length > 140 ? noteText.slice(0, 137) + "…" : noteText;
+    doc.font("Helvetica").fontSize(8);
     const descHeight = doc.heightOfString(desc, { width: cols[1].w - 8 });
-    const rowH = Math.max(rowMinH, descHeight + 8);
+    const noteHeight = note ? doc.heightOfString(note, { width: cols[4].w - 8 }) : 0;
+    const rowH = Math.max(rowMinH, Math.max(descHeight, noteHeight) + 8);
     if (doc.y + rowH > PAGE_H - MARGIN_BOTTOM - 10) {
-      // Let the outer footer/builder handle a new page. We don't force
-      // addPage here — a big scope table will just continue naturally on
-      // the next page with a clean header via the footer-loop's header
-      // redraw. (Matches the legacy table behaviour.)
-      return;
+      nextPage();
     }
     const y = doc.y;
     const bg = i % 2 === 0 ? BRAND.white : BRAND.lightGrey;
     doc.rect(MARGIN_L, y, CONTENT_W, rowH).fill(bg);
     doc.fillColor(BRAND.black).font("Helvetica").fontSize(8);
-    doc.text(row.label ?? "—", colX(0) + 6, y + 5, { width: cols[0].w - 8 });
-    doc.text(desc, colX(1) + 6, y + 5, { width: cols[1].w - 8 });
-    doc.text(row.qty ?? "—", colX(2) + 6, y + 5, { width: cols[2].w - 8, align: "right" });
-    doc.text(row.unit ?? "—", colX(3) + 6, y + 5, { width: cols[3].w - 8 });
-    doc.text(row.notes ?? "", colX(4) + 6, y + 5, { width: cols[4].w - 8 });
+    // `height: rowH - 6` caps the text flow so a miscalculation can't leak
+    // onto the next page and trigger PDFKit's auto-page-break.
+    const textOpts = { height: rowH - 6 };
+    doc.text(row.label ?? "—", colX(0) + 6, y + 5, { width: cols[0].w - 8, ...textOpts });
+    doc.text(desc, colX(1) + 6, y + 5, { width: cols[1].w - 8, ...textOpts });
+    doc.text(row.qty ?? "—", colX(2) + 6, y + 5, { width: cols[2].w - 8, align: "right", ...textOpts });
+    doc.text(row.unit ?? "—", colX(3) + 6, y + 5, { width: cols[3].w - 8, ...textOpts });
+    doc.text(note, colX(4) + 6, y + 5, { width: cols[4].w - 8, ...textOpts });
     doc.y = y + rowH;
   });
 }
@@ -582,7 +600,7 @@ function drawScopePage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay | null)
   if (overlay && overlay.detailLevel === "detailed" && overlay.scopeItems && overlay.scopeItems.length > 0) {
     doc.font("Helvetica-Bold").fontSize(11).fillColor(BRAND.teal).text("Scope of Works", MARGIN_L, doc.y);
     drawRule(doc, BRAND.orange);
-    drawQuoteScopeItemsTable(doc, overlay.scopeItems);
+    drawQuoteScopeItemsTable(doc, overlay.scopeItems, overlay.quoteRef);
     return;
   }
 

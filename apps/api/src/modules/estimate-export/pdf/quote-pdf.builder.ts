@@ -33,11 +33,19 @@ export type QuoteOverlay = {
   exclusions: Array<{ text: string }>;
 };
 
-// Resolve the IS teal square logo from the repo root. Fallback to text if
-// the file isn't present (keeps local dev working without the asset).
+// Resolve the IS teal square logo. We try several paths so the same build
+// works regardless of cwd — repo root at `pnpm dev`, app root from `nest
+// build` dist output, and the legacy /mnt/project staging path. Falls back
+// to text-only header when no PNG is present on disk.
 function loadLogoBuffer(): Buffer | null {
+  // __dirname is stable under Nest's CommonJS build. Walk up from the
+  // compiled file to locate apps/api/assets — works whether cwd is the
+  // repo root (dev) or the packaged app root (prod).
   const candidates = [
+    join(process.cwd(), "assets/teal_sq_logo4x.png"),
     join(process.cwd(), "apps/api/assets/teal_sq_logo4x.png"),
+    join(__dirname, "..", "..", "..", "..", "assets", "teal_sq_logo4x.png"),
+    join(__dirname, "..", "..", "..", "assets", "teal_sq_logo4x.png"),
     join(process.cwd(), "apps/api/src/modules/estimate-export/pdf/teal_sq_logo4x.png"),
     "/mnt/project/teal_sq_logo4x.png"
   ];
@@ -85,7 +93,18 @@ function fmtQty(raw: string | number | null | undefined): string {
   return Number.isInteger(n) ? n.toString() : n.toFixed(2);
 }
 
+// Map internal material codes to the terms the client expects on the quote.
+// Applied only at render time — the underlying scope/cutting item stays as
+// stored so estimator-facing screens still see the full precision.
+function displayMaterial(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  if (raw === "Concrete unreinforced" || raw === "Concrete reinforced") return "Concrete";
+  if (raw === "Brick/Block") return "Masonry";
+  return raw;
+}
+
 function drawHeaderBand(doc: Doc, quoteRef?: string | null) {
+  doc.save();
   doc.rect(0, 0, PAGE_W, 50).fill(BRAND.teal);
   if (LOGO_BUFFER) {
     try {
@@ -95,20 +114,29 @@ function drawHeaderBand(doc: Doc, quoteRef?: string | null) {
     }
   }
   const titleX = LOGO_BUFFER ? MARGIN_L + 48 : MARGIN_L;
-  doc.fillColor(BRAND.white).font("Helvetica-Bold").fontSize(14)
-    .text("INITIAL SERVICES", titleX, 14, { align: "left" });
-  // Licence numbers top-right of the teal band.
-  doc.font("Helvetica").fontSize(8).fillColor(BRAND.white)
+  // Licence numbers render first (top line); centred quote ref under them
+  // on the band. Draw order: title on left, licences on right, quote ref
+  // centred. Save/restore around the whole band prevents the teal fill's
+  // implicit path state from interfering with later text positioning.
+  doc.fillColor(BRAND.white).font("Helvetica").fontSize(8)
     .text(
       "Demolition Licence: 2328018 | Class A Asbestos Licence: 2320431",
       MARGIN_L,
       8,
-      { align: "right", width: CONTENT_W }
+      { align: "right", width: CONTENT_W, lineBreak: false }
     );
+  doc.fillColor(BRAND.white).font("Helvetica-Bold").fontSize(14)
+    .text("INITIAL SERVICES", titleX, 14, { lineBreak: false });
   if (quoteRef) {
-    // Quote reference centred horizontally in the teal band.
-    doc.font("Helvetica-Bold").fontSize(10).fillColor(BRAND.white)
-      .text(`Quote No. ${quoteRef}`, 0, 20, { align: "center", width: PAGE_W });
+    // Quote reference centred in the band. We measure the string and
+    // position it explicitly because PDFKit's `align: "center"` + `width`
+    // options combined with a prior right-aligned text on the same line
+    // group was rendering invisibly.
+    const label = `Quote No. ${quoteRef}`;
+    doc.font("Helvetica-Bold").fontSize(10).fillColor(BRAND.white);
+    const labelW = doc.widthOfString(label);
+    const centerX = (PAGE_W - labelW) / 2;
+    doc.text(label, centerX, 20, { lineBreak: false });
   }
   // Thin orange rule under the band.
   doc.save().strokeColor(BRAND.orange).lineWidth(2).moveTo(0, 51).lineTo(PAGE_W, 51).stroke().restore();
@@ -116,24 +144,42 @@ function drawHeaderBand(doc: Doc, quoteRef?: string | null) {
 
   // Electronic-document notice: three stacked lines top-right, below the band.
   doc.font("Helvetica").fontSize(7).fillColor("#777");
-  doc.text("Electronic document", MARGIN_L, 55, { align: "right", width: CONTENT_W });
-  doc.text("Uncontrolled when printed", MARGIN_L, 62, { align: "right", width: CONTENT_W });
+  doc.text("Electronic document", MARGIN_L, 55, { align: "right", width: CONTENT_W, lineBreak: false });
+  doc.text("Uncontrolled when printed", MARGIN_L, 62, { align: "right", width: CONTENT_W, lineBreak: false });
   const printed = new Intl.DateTimeFormat("en-AU", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date());
-  doc.text(`Printed on: ${printed}`, MARGIN_L, 69, { align: "right", width: CONTENT_W });
+  doc.text(`Printed on: ${printed}`, MARGIN_L, 69, { align: "right", width: CONTENT_W, lineBreak: false });
   doc.fillColor(BRAND.black);
+  doc.restore();
 }
 
 function drawFooter(doc: Doc, pageIndex: number, totalPages: number) {
-  const y = PAGE_H - 40;
-  doc.font("Helvetica").fontSize(8).fillColor("#666");
-  doc.text(
-    "10 Grice St, Clontarf Q 4019 | P: (07) 3888 0539 | E: admin@initialservices.net | A.B.N: 75 631 222 556",
-    MARGIN_L,
-    y,
-    { width: CONTENT_W, align: "left" }
-  );
-  doc.text(`Page ${pageIndex} of ${totalPages}`, MARGIN_L, y + 10, { width: CONTENT_W, align: "right" });
-  doc.fillColor(BRAND.black);
+  // Footer renders inside the 70pt bottom margin. PDFKit's auto-page-break
+  // fires whenever text would extend past the content area (PAGE_H -
+  // bottomMargin), and that fires even with lineBreak:false or explicit
+  // x,y positioning — it's a hard rule baked into _wrap. To sidestep it,
+  // temporarily drop the effective bottom margin while the footer writes,
+  // then restore. Keeps the footer on the correct page without appending
+  // blank continuation pages.
+  const origBottom = doc.page.margins.bottom;
+  doc.page.margins.bottom = 0;
+  try {
+    const y = PAGE_H - 40;
+    doc.font("Helvetica").fontSize(8).fillColor("#666");
+    doc.text(
+      "10 Grice St, Clontarf Q 4019 | P: (07) 3888 0539 | E: admin@initialservices.net | A.B.N: 75 631 222 556",
+      MARGIN_L,
+      y,
+      { width: CONTENT_W, align: "left", lineBreak: false }
+    );
+    doc.text(`Page ${pageIndex} of ${totalPages}`, MARGIN_L, y + 10, {
+      width: CONTENT_W,
+      align: "right",
+      lineBreak: false
+    });
+    doc.fillColor(BRAND.black);
+  } finally {
+    doc.page.margins.bottom = origBottom;
+  }
 }
 
 function drawRule(doc: Doc, colour = BRAND.orange) {
@@ -144,7 +190,7 @@ function drawRule(doc: Doc, colour = BRAND.orange) {
 
 // ── Page 1 ───────────────────────────────────────────────────────────
 function drawCoverPage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay | null) {
-  drawHeaderBand(doc, overlay?.quoteRef ?? null);
+  drawHeaderBand(doc, overlay?.quoteRef ?? p.tender.tenderNumber);
   doc.y = MARGIN_TOP + 16;
 
   const primaryClient = p.tender.clients[0] ?? null;
@@ -356,12 +402,18 @@ function drawCoverPage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay | null)
       "If you have any queries regarding this quotation, please do not hesitate to contact:",
       MARGIN_L, doc.y, { width: CONTENT_W, align: "center" }
     );
-    const phonePart = estimator.phone ? ` on ${estimator.phone}` : "";
-    const emailPart = estimator.email ? ` or ${estimator.email}` : "";
-    doc.text(
-      `${estimatorName}${phonePart}${emailPart}.`,
-      MARGIN_L, doc.y, { width: CONTENT_W, align: "center" }
-    );
+    // No trailing period so the line doesn't end with "…net.au." after an email.
+    let contactLine: string;
+    if (estimator.phone && estimator.email) {
+      contactLine = `${estimatorName} on ${estimator.phone} or ${estimator.email}`;
+    } else if (estimator.email) {
+      contactLine = `${estimatorName} at ${estimator.email}`;
+    } else if (estimator.phone) {
+      contactLine = `${estimatorName} on ${estimator.phone}`;
+    } else {
+      contactLine = estimatorName;
+    }
+    doc.text(contactLine, MARGIN_L, doc.y, { width: CONTENT_W, align: "center" });
     doc.fillColor(BRAND.black);
   }
 
@@ -394,7 +446,7 @@ type ScopeTableCol = { key: string; label: string; w: number; align?: "left" | "
 
 function drawScopePage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay | null) {
   doc.addPage();
-  drawHeaderBand(doc, overlay?.quoteRef ?? null);
+  drawHeaderBand(doc, overlay?.quoteRef ?? p.tender.tenderNumber);
   doc.y = MARGIN_TOP + 16;
 
   // Preliminary works (fixed IS standard text).
@@ -468,7 +520,7 @@ function drawScopePage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay | null)
   const ensureRoom = (need: number) => {
     if (doc.y + need > PAGE_H - MARGIN_BOTTOM - 10) {
       doc.addPage();
-      drawHeaderBand(doc, overlay?.quoteRef ?? null);
+      drawHeaderBand(doc, overlay?.quoteRef ?? p.tender.tenderNumber);
       doc.y = MARGIN_TOP + 16;
       drawHead();
     }
@@ -557,13 +609,29 @@ function drawScopePage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay | null)
     };
 
     let ci = 0;
+    // Per-ref sequence counters so "C1/C2/H1/O1" numbering is stable per
+    // parent scope ref (SO1-C1, SO1-C2, then SO1-H1, SO1-O1, etc.).
+    const cutSeq = new Map<string, number>();
+    const holeSeq = new Map<string, number>();
+    const otherSeq = new Map<string, number>();
+    const nextRef = (map: Map<string, number>, wbs: string, prefix: string): string => {
+      const n = (map.get(wbs) ?? 0) + 1;
+      map.set(wbs, n);
+      return `${wbs}-${prefix}${n}`;
+    };
+
     for (const c of p.cuttingItems.sawCuts) {
-      const desc =
-        c.description ||
-        [c.equipment, c.material, c.depthMm ? `${c.depthMm}mm` : null].filter(Boolean).join(" · ") ||
-        "Saw cut";
+      const material = displayMaterial(c.material);
+      // Human-readable saw-cut description: "Roadsaw cut — Concrete — 100mm"
+      // when we have the detail; fall back to stored description otherwise.
+      const parts: string[] = [];
+      if (c.equipment) parts.push(`${c.equipment} cut`);
+      if (material) parts.push(material);
+      if (c.depthMm) parts.push(`${c.depthMm}mm`);
+      const assembled = parts.join(" — ");
+      const desc = c.description?.trim() || assembled || "Saw cut";
       drawCuttingRow(
-        `${c.wbsRef}-CUT`,
+        nextRef(cutSeq, c.wbsRef, "C"),
         desc,
         fmtQty(c.quantityLm),
         "Lm",
@@ -572,15 +640,22 @@ function drawScopePage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay | null)
       );
     }
     for (const c of p.cuttingItems.coreHoles) {
-      const desc = c.description || `Ø${c.diameterMm ?? "?"}mm core hole`;
+      const desc = c.description?.trim() || `Ø${c.diameterMm ?? "?"}mm core hole`;
       const qty = c.isPOA ? "POA" : fmtQty(c.quantityEach);
-      drawCuttingRow(`${c.wbsRef}-HOLE`, desc, qty, "ea", c.notes?.slice(0, 60) || "", ci++);
+      drawCuttingRow(
+        nextRef(holeSeq, c.wbsRef, "H"),
+        desc,
+        qty,
+        "ea",
+        c.notes?.slice(0, 60) || "",
+        ci++
+      );
     }
     for (const c of p.cuttingItems.otherRates) {
       const desc = c.otherRate?.description || c.description || "Other";
       const unit = c.otherRate?.unit || "ea";
       drawCuttingRow(
-        `${c.wbsRef}-OTH`,
+        nextRef(otherSeq, c.wbsRef, "O"),
         desc,
         fmtQty(c.quantityEach),
         unit,
@@ -625,7 +700,7 @@ const ALLOWANCES_BULLETS = [
 
 function drawAssumptionsPage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay | null) {
   doc.addPage();
-  drawHeaderBand(doc, overlay?.quoteRef ?? null);
+  drawHeaderBand(doc, overlay?.quoteRef ?? p.tender.tenderNumber);
   doc.y = MARGIN_TOP + 16;
 
   // Project Specific Allowances (fixed).
@@ -712,51 +787,65 @@ function drawAssumptionsPage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay |
     doc.moveDown(0.5);
   }
 
-  // Terms & Conditions — centred heading, two-column clause layout.
+  // Terms & Conditions — single-column, explicit per-clause pagination.
+  // Why not two-column: the previous layout let PDFKit's built-in auto
+  // line-wrap cross page boundaries inside long clause bodies, which
+  // triggered implicit addPage() calls. Those pages missed drawHeaderBand
+  // (only the footer was stamped retrospectively) and showed up as
+  // half-blank pages in the final PDF. Single column + explicit fit-check
+  // before every clause means we always call drawHeaderBand on any
+  // continuation page.
   doc.font("Helvetica-Bold").fontSize(11).fillColor(BRAND.teal)
     .text("TERMS AND CONDITIONS", MARGIN_L, doc.y, { width: CONTENT_W, align: "center" });
   drawRule(doc, BRAND.orange);
 
   const clauses = p.tandc.clauses;
-  const colW = (CONTENT_W - 16) / 2;
-  const colLeftX = MARGIN_L;
-  const colRightX = MARGIN_L + colW + 16;
-  const colTop = doc.y;
-  const colBottomLimit = PAGE_H - MARGIN_BOTTOM - 10;
+  const tcBottomLimit = PAGE_H - MARGIN_BOTTOM - 10;
 
-  let inRightColumn = false;
-  let currentX = colLeftX;
-  doc.y = colTop;
+  const measureClause = (clause: TcLike): { headH: number; bodyH: number } => {
+    const headH = doc
+      .font("Helvetica-Bold").fontSize(9)
+      .heightOfString(`${clause.number}. ${clause.heading.toUpperCase()}`, { width: CONTENT_W });
+    const bodyH = doc
+      .font("Helvetica").fontSize(8)
+      .heightOfString(clause.body, { width: CONTENT_W, lineGap: 1 });
+    return { headH, bodyH };
+  };
 
-  const renderClause = (clause: TcLike, x: number) => {
-    doc.font("Helvetica-Bold").fontSize(7).fillColor(BRAND.darkGrey)
-      .text(`${clause.number}. ${clause.heading.toUpperCase()}`, x, doc.y, { width: colW });
-    doc.font("Helvetica").fontSize(7).fillColor("#333")
-      .text(clause.body, x, doc.y, { width: colW, align: "justify" });
-    doc.moveDown(0.35);
+  const renderClause = (clause: TcLike) => {
+    doc.font("Helvetica-Bold").fontSize(9).fillColor(BRAND.teal)
+      .text(`${clause.number}. ${clause.heading.toUpperCase()}`, MARGIN_L, doc.y, {
+        width: CONTENT_W
+      });
+    doc.moveDown(0.15);
+    doc.font("Helvetica").fontSize(8).fillColor("#333")
+      .text(clause.body, MARGIN_L, doc.y, {
+        width: CONTENT_W,
+        align: "justify",
+        lineGap: 1
+      });
+    doc.moveDown(0.45);
+  };
+
+  const startContinuation = () => {
+    doc.addPage();
+    drawHeaderBand(doc, overlay?.quoteRef ?? p.tender.tenderNumber);
+    doc.y = MARGIN_TOP + 16;
+    doc.font("Helvetica-Bold").fontSize(11).fillColor(BRAND.teal)
+      .text("TERMS AND CONDITIONS (continued)", MARGIN_L, doc.y, {
+        width: CONTENT_W,
+        align: "center"
+      });
+    drawRule(doc, BRAND.orange);
   };
 
   for (const clause of clauses) {
-    const headH = doc.heightOfString(`${clause.number}. ${clause.heading.toUpperCase()}`, { width: colW });
-    const bodyH = doc.heightOfString(clause.body, { width: colW });
-    const needed = headH + bodyH + 6;
-    if (doc.y + needed > colBottomLimit) {
-      if (!inRightColumn) {
-        inRightColumn = true;
-        currentX = colRightX;
-        doc.y = colTop;
-      } else {
-        doc.addPage();
-        drawHeaderBand(doc, overlay?.quoteRef ?? null);
-        doc.y = MARGIN_TOP + 16;
-        doc.font("Helvetica-Bold").fontSize(11).fillColor(BRAND.teal)
-          .text("TERMS AND CONDITIONS (continued)", MARGIN_L, doc.y, { width: CONTENT_W, align: "center" });
-        drawRule(doc, BRAND.orange);
-        inRightColumn = false;
-        currentX = colLeftX;
-      }
+    const { headH, bodyH } = measureClause(clause);
+    const needed = headH + bodyH + 14; // +14 for spacers between heading and body
+    if (doc.y + needed > tcBottomLimit) {
+      startContinuation();
     }
-    renderClause(clause, currentX);
+    renderClause(clause);
   }
   doc.fillColor(BRAND.black);
 }

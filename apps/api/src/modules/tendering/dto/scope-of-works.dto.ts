@@ -111,6 +111,20 @@ class ScopeItemFieldsBase {
 
   // Scope item may arrive with a specific wbsCode on redesign create.
   @ApiPropertyOptional() @IsOptional() @IsString() wbsCode?: string | null;
+
+  // PR #71 — multi-plant and multi-measurement per row. Arrays of plain
+  // objects, shapes are documented in schema.prisma above the fields:
+  //   plantItems:   [{ plantRateId?, description, qty, days, unit }]
+  //   measurements: [{ qty, unit }]
+  @ApiPropertyOptional({ type: "array", items: { type: "object" } })
+  @IsOptional()
+  @IsArray()
+  plantItems?: unknown;
+
+  @ApiPropertyOptional({ type: "array", items: { type: "object" } })
+  @IsOptional()
+  @IsArray()
+  measurements?: unknown;
 }
 
 export class CreateScopeItemDto extends ScopeItemFieldsBase {

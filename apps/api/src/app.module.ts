@@ -19,6 +19,7 @@ import { GlobalListsModule } from "./modules/global-lists/global-lists.module";
 import { HealthModule } from "./health/health.module";
 import { JobsModule } from "./modules/jobs/jobs.module";
 import { MaintenanceModule } from "./modules/maintenance/maintenance.module";
+import { DirectoryModule } from "./modules/directory/directory.module";
 import { MasterDataModule } from "./modules/master-data/master-data.module";
 import { PermissionsModule } from "./modules/permissions/permissions.module";
 import { PlatformModule } from "./modules/platform/platform.module";
@@ -70,6 +71,7 @@ import { FieldModule } from "./modules/field/field.module";
     JobsModule,
     MaintenanceModule,
     MasterDataModule,
+    DirectoryModule,
     SchedulerModule,
     ProjectsModule,
     QuoteModule,

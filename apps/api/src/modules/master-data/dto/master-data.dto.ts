@@ -3,11 +3,13 @@ import {
   IsBoolean,
   IsDateString,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   Max,
   Min
 } from "class-validator";
+import { Type } from "class-transformer";
 
 export class UpsertClientDto {
   @IsString()
@@ -20,6 +22,37 @@ export class UpsertClientDto {
   @IsOptional() @IsInt() @Min(1) @Max(28) claimCutoffDay?: number | null;
   @IsOptional() @IsString() claimCutoffContactId?: string | null;
   @IsOptional() @IsInt() @Min(1) @Max(5) preferenceScore?: number | null;
+  // Business directory (PR #73)
+  @IsOptional() @IsString() tradingName?: string | null;
+  @IsOptional() @IsString() businessType?: string;
+  @IsOptional() @IsString() abn?: string | null;
+  @IsOptional() @IsString() acn?: string | null;
+  @IsOptional() @IsBoolean() gstRegistered?: boolean;
+  @IsOptional() @IsString() industry?: string | null;
+  @IsOptional() @IsString() website?: string | null;
+  @IsOptional() @IsString() physicalAddress?: string | null;
+  @IsOptional() @IsString() physicalSuburb?: string | null;
+  @IsOptional() @IsString() physicalState?: string | null;
+  @IsOptional() @IsString() physicalPostcode?: string | null;
+  @IsOptional() @IsString() postalAddress?: string | null;
+  @IsOptional() @IsString() postalSuburb?: string | null;
+  @IsOptional() @IsString() postalState?: string | null;
+  @IsOptional() @IsString() postalPostcode?: string | null;
+  @IsOptional() @IsBoolean() postalSameAs?: boolean;
+  @IsOptional() @Type(() => Number) @IsInt() paymentTermsDays?: number | null;
+  @IsOptional() @Type(() => Number) @IsNumber() creditLimit?: number | null;
+  @IsOptional() @IsBoolean() creditApproved?: boolean;
+  @IsOptional() @IsString() preferredPayment?: string | null;
+  @IsOptional() @IsString() bankName?: string | null;
+  @IsOptional() @IsString() bankAccountName?: string | null;
+  @IsOptional() @IsString() bankBsb?: string | null;
+  @IsOptional() @IsString() bankAccountNumber?: string | null;
+  @IsOptional() @IsString() xeroContactId?: string | null;
+  @IsOptional() @IsString() myobCardId?: string | null;
+  @IsOptional() @IsBoolean() isActive?: boolean;
+  @IsOptional() @IsBoolean() onHold?: boolean;
+  @IsOptional() @IsString() onHoldReason?: string | null;
+  @IsOptional() @IsString() internalNotes?: string | null;
 }
 
 export class UpsertContactDto {
@@ -31,8 +64,10 @@ export class UpsertContactDto {
   lastName!: string;
   @IsOptional() @IsString() email?: string;
   @IsOptional() @IsString() phone?: string;
+  @IsOptional() @IsString() mobile?: string;
   @IsOptional() @IsString() position?: string;
   @IsOptional() @IsBoolean() isPrimary?: boolean;
+  @IsOptional() @IsBoolean() hasPortalAccess?: boolean;
   @IsOptional() @IsString() notes?: string;
 }
 

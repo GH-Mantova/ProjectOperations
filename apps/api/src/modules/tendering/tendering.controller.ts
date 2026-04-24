@@ -1,11 +1,15 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { IsInt, IsOptional, IsString, Max, Min } from "class-validator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
-import { TenderQueryDto } from "./dto/tender-query.dto";
+import { BulkStatusDto, QuickEditDto, TenderQueryDto } from "./dto/tender-query.dto";
+import {
+  CreateTenderFilterPresetDto,
+  UpdateTenderFilterPresetDto
+} from "./dto/tender-filter-preset.dto";
 import {
   CreateTenderActivityDto,
   CreateTenderClarificationDto,
@@ -39,9 +43,61 @@ export class TenderingController {
 
   @Get()
   @RequirePermissions("tenders.view")
-  @ApiOperation({ summary: "List tenders" })
+  @ApiOperation({ summary: "List tenders with filters, search, and sort" })
+  @ApiQuery({ name: "q", required: false, description: "Search across tender number, title, and client names" })
+  @ApiQuery({ name: "status", required: false, description: "Comma-separated list of statuses" })
+  @ApiQuery({ name: "estimatorId", required: false })
+  @ApiQuery({ name: "clientId", required: false })
+  @ApiQuery({ name: "discipline", required: false, description: "SO|Str|Asb|Civ|Prv — filters tenders that have scope items in this discipline" })
+  @ApiQuery({ name: "valueMin", required: false })
+  @ApiQuery({ name: "valueMax", required: false })
+  @ApiQuery({ name: "dueDateFrom", required: false, description: "ISO date" })
+  @ApiQuery({ name: "dueDateTo", required: false, description: "ISO date" })
+  @ApiQuery({ name: "probability", required: false, description: "Hot|Warm|Cold" })
+  @ApiQuery({ name: "sortBy", required: false })
+  @ApiQuery({ name: "sortDir", required: false, enum: ["asc", "desc"] })
   list(@Query() query: TenderQueryDto) {
     return this.service.list(query);
+  }
+
+  @Post("bulk-status")
+  @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Bulk update the status of up to 50 tenders in a single transaction" })
+  @ApiResponse({ status: 200, description: "Updated summary with count and the affected tender rows." })
+  bulkStatus(@Body() dto: BulkStatusDto, @CurrentUser() actor: { sub: string }) {
+    return this.service.bulkUpdateStatus(dto.tenderIds, dto.status, actor.sub);
+  }
+
+  @Get("filter-presets")
+  @RequirePermissions("tenders.view")
+  @ApiOperation({ summary: "List saved filter presets for the current user" })
+  listPresets(@CurrentUser() actor: { sub: string }) {
+    return this.service.listFilterPresets(actor.sub);
+  }
+
+  @Post("filter-presets")
+  @RequirePermissions("tenders.view")
+  @ApiOperation({ summary: "Save a filter preset for the current user" })
+  createPreset(@Body() dto: CreateTenderFilterPresetDto, @CurrentUser() actor: { sub: string }) {
+    return this.service.createFilterPreset(actor.sub, dto);
+  }
+
+  @Patch("filter-presets/:id")
+  @RequirePermissions("tenders.view")
+  @ApiOperation({ summary: "Update a saved filter preset" })
+  updatePreset(
+    @Param("id") id: string,
+    @Body() dto: UpdateTenderFilterPresetDto,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.updateFilterPreset(actor.sub, id, dto);
+  }
+
+  @Delete("filter-presets/:id")
+  @RequirePermissions("tenders.view")
+  @ApiOperation({ summary: "Delete a saved filter preset" })
+  deletePreset(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
+    return this.service.deleteFilterPreset(actor.sub, id);
   }
 
   @Post()
@@ -156,5 +212,17 @@ export class TenderingController {
     @CurrentUser() actor: { sub: string }
   ) {
     return this.service.updateProbability(id, dto.probability ?? null, actor.sub);
+  }
+
+  @Patch(":id/quick-edit")
+  @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Patch a limited set of tender fields in one call and log a single activity entry" })
+  @ApiResponse({ status: 200, description: "Updated tender." })
+  quickEdit(
+    @Param("id") id: string,
+    @Body() dto: QuickEditDto,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.quickEdit(id, dto, actor.sub);
   }
 }

@@ -83,6 +83,7 @@ model User {
   createdQuotes     ClientQuote[]   @relation("QuoteCreatedBy")
   sentQuotes        ClientQuote[]   @relation("QuoteSentBy")
   sentQuoteEmails   QuoteEmail[]    @relation("QuoteEmailSentBy")
+  tenderFilterPresets TenderFilterPreset[]
 
   @@index([isActive])
   @@map("users")
@@ -2558,4 +2559,19 @@ model QuoteEmail {
 
   @@index([quoteId])
   @@map("quote_emails")
+}
+
+model TenderFilterPreset {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  filters   Json
+  isDefault Boolean  @default(false) @map("is_default")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@map("tender_filter_presets")
 }

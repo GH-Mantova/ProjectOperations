@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { EmailService } from "../email/email.service";
-import { TenderQueryDto } from "./dto/tender-query.dto";
+import { QuickEditDto, TenderQueryDto, TenderSortField } from "./dto/tender-query.dto";
 import {
   CreateTenderActivityDto,
   CreateTenderClarificationDto,
@@ -12,6 +12,10 @@ import {
   UpdateTenderActivityDto,
   UpsertTenderDto
 } from "./dto/tender.dto";
+import {
+  CreateTenderFilterPresetDto,
+  UpdateTenderFilterPresetDto
+} from "./dto/tender-filter-preset.dto";
 
 const tenderInclude = {
   estimator: {
@@ -90,21 +94,15 @@ export class TenderingService {
   ) {}
 
   async list(query: TenderQueryDto) {
-    const where: Prisma.TenderWhereInput | undefined = query.q
-      ? {
-          OR: [
-            { tenderNumber: { contains: query.q, mode: "insensitive" } },
-            { title: { contains: query.q, mode: "insensitive" } }
-          ]
-        }
-      : undefined;
-
+    const where = this.buildTenderWhere(query);
+    const orderBy = this.buildTenderOrderBy(query.sortBy, query.sortDir);
     const skip = (query.page - 1) * query.pageSize;
+
     const [items, total] = await this.prisma.$transaction([
       this.prisma.tender.findMany({
         where,
         include: tenderInclude,
-        orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
+        orderBy,
         skip,
         take: query.pageSize
       }),
@@ -117,6 +115,313 @@ export class TenderingService {
       page: query.page,
       pageSize: query.pageSize
     };
+  }
+
+  private buildTenderWhere(query: TenderQueryDto): Prisma.TenderWhereInput | undefined {
+    const clauses: Prisma.TenderWhereInput[] = [];
+
+    if (query.q) {
+      clauses.push({
+        OR: [
+          { tenderNumber: { contains: query.q, mode: "insensitive" } },
+          { title: { contains: query.q, mode: "insensitive" } },
+          { tenderClients: { some: { client: { name: { contains: query.q, mode: "insensitive" } } } } }
+        ]
+      });
+    }
+
+    if (query.status?.length) {
+      clauses.push({ status: { in: query.status } });
+    }
+
+    if (query.estimatorId) {
+      clauses.push({ estimatorUserId: query.estimatorId });
+    }
+
+    if (query.clientId) {
+      clauses.push({ tenderClients: { some: { clientId: query.clientId } } });
+    }
+
+    if (query.discipline) {
+      clauses.push({ scopeItems: { some: { discipline: query.discipline } } });
+    }
+
+    if (query.valueMin || query.valueMax) {
+      const valueFilter: Prisma.DecimalFilter = {};
+      if (query.valueMin) valueFilter.gte = new Prisma.Decimal(query.valueMin);
+      if (query.valueMax) valueFilter.lte = new Prisma.Decimal(query.valueMax);
+      clauses.push({ estimatedValue: valueFilter });
+    }
+
+    if (query.dueDateFrom || query.dueDateTo) {
+      const due: Prisma.DateTimeFilter = {};
+      if (query.dueDateFrom) due.gte = new Date(query.dueDateFrom);
+      if (query.dueDateTo) due.lte = new Date(query.dueDateTo);
+      clauses.push({ dueDate: due });
+    }
+
+    if (query.probability) {
+      const bucket = query.probability.toLowerCase();
+      if (bucket === "hot") clauses.push({ probability: { gte: 70 } });
+      else if (bucket === "warm") clauses.push({ probability: { gte: 30, lt: 70 } });
+      else if (bucket === "cold") clauses.push({ probability: { lt: 30 } });
+    }
+
+    if (!clauses.length) return undefined;
+    return clauses.length === 1 ? clauses[0] : { AND: clauses };
+  }
+
+  private buildTenderOrderBy(
+    sortBy: TenderSortField | undefined,
+    sortDir: "asc" | "desc" | undefined
+  ): Prisma.TenderOrderByWithRelationInput | Prisma.TenderOrderByWithRelationInput[] {
+    const dir = sortDir === "asc" ? "asc" : "desc";
+    switch (sortBy) {
+      case "tenderNumber":
+        return { tenderNumber: dir };
+      case "name":
+      case "title":
+        return { title: dir };
+      case "value":
+      case "estimatedValue":
+        return { estimatedValue: dir };
+      case "dueDate":
+        return { dueDate: dir };
+      case "createdAt":
+        return { createdAt: dir };
+      case "updatedAt":
+        return { updatedAt: dir };
+      case "status":
+        return { status: dir };
+      case "probability":
+        return { probability: dir };
+      default:
+        return [{ dueDate: "asc" }, { createdAt: "desc" }];
+    }
+  }
+
+  async bulkUpdateStatus(tenderIds: string[], status: string, actorId?: string) {
+    if (!tenderIds.length) {
+      throw new BadRequestException("tenderIds must not be empty.");
+    }
+    if (tenderIds.length > 50) {
+      throw new BadRequestException("A maximum of 50 tenders can be updated in one batch.");
+    }
+    const uniqueIds = Array.from(new Set(tenderIds));
+
+    const existing = await this.prisma.tender.findMany({
+      where: { id: { in: uniqueIds } },
+      select: { id: true, status: true, submittedAt: true, ratesSnapshotAt: true, wonAt: true, lostAt: true, tenderScoreCounted: true }
+    });
+    const missing = uniqueIds.filter((id) => !existing.some((tender) => tender.id === id));
+    if (missing.length) {
+      throw new NotFoundException(`Tenders not found: ${missing.join(", ")}`);
+    }
+
+    const now = new Date();
+    const isWon = status === "AWARDED" || status === "CONTRACT_ISSUED" || status === "CONVERTED";
+    const isScorable = isWon || status === "SUBMITTED" || status === "LOST";
+
+    const updated = await this.prisma.$transaction(
+      existing.map((tender) => {
+        const data: Prisma.TenderUpdateInput = { status };
+        if (status === "SUBMITTED" && !tender.submittedAt) {
+          data.submittedAt = now;
+          if (!tender.ratesSnapshotAt) data.ratesSnapshotAt = now;
+        }
+        if (isWon && !tender.wonAt) {
+          data.wonAt = now;
+          if (!tender.submittedAt) {
+            data.submittedAt = now;
+            if (!tender.ratesSnapshotAt) data.ratesSnapshotAt = now;
+          }
+        }
+        if (status === "LOST" && !tender.lostAt) {
+          data.lostAt = now;
+          if (!tender.submittedAt) {
+            data.submittedAt = now;
+            if (!tender.ratesSnapshotAt) data.ratesSnapshotAt = now;
+          }
+        }
+        if (isScorable && !tender.tenderScoreCounted) {
+          data.tenderScoreCounted = true;
+        }
+        return this.prisma.tender.update({
+          where: { id: tender.id },
+          data,
+          select: { id: true, tenderNumber: true, status: true }
+        });
+      })
+    );
+
+    // Client scoring — update outside the main transaction (same pattern as updateStatus).
+    for (const tender of existing) {
+      if (isScorable && !tender.tenderScoreCounted) {
+        await this.updateClientScores(tender.id, isWon);
+      } else if (isWon && tender.tenderScoreCounted) {
+        await this.bumpWinCount(tender.id);
+      }
+    }
+
+    await this.auditService.write({
+      actorId,
+      action: "tenders.bulk-status.update",
+      entityType: "Tender",
+      entityId: uniqueIds.join(","),
+      metadata: { count: updated.length, status }
+    });
+
+    return {
+      updated: updated.length,
+      tenders: updated
+    };
+  }
+
+  async quickEdit(id: string, dto: QuickEditDto, actorId?: string) {
+    const existing = await this.prisma.tender.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException("Tender not found.");
+    }
+
+    const data: Prisma.TenderUpdateInput = {};
+    const changed: string[] = [];
+
+    if (dto.status !== undefined && dto.status !== existing.status) {
+      data.status = dto.status;
+      changed.push(`status: ${existing.status} → ${dto.status}`);
+    }
+    if (dto.probability !== undefined && dto.probability !== existing.probability) {
+      data.probability = dto.probability;
+      changed.push(`probability: ${existing.probability ?? "—"} → ${dto.probability ?? "—"}`);
+    }
+    if (dto.dueDate !== undefined) {
+      const next = dto.dueDate ? new Date(dto.dueDate) : null;
+      const existingIso = existing.dueDate?.toISOString() ?? null;
+      const nextIso = next?.toISOString() ?? null;
+      if (existingIso !== nextIso) {
+        data.dueDate = next;
+        changed.push(`dueDate: ${existingIso ?? "—"} → ${nextIso ?? "—"}`);
+      }
+    }
+    if (dto.value !== undefined) {
+      const next = dto.value ? new Prisma.Decimal(dto.value) : null;
+      const existingNum = existing.estimatedValue ? existing.estimatedValue.toString() : null;
+      const nextNum = next ? next.toString() : null;
+      if (existingNum !== nextNum) {
+        data.estimatedValue = next;
+        changed.push(`value: ${existingNum ?? "—"} → ${nextNum ?? "—"}`);
+      }
+    }
+    if (dto.assignedEstimatorId !== undefined) {
+      if (dto.assignedEstimatorId && dto.assignedEstimatorId !== existing.estimatorUserId) {
+        data.estimator = { connect: { id: dto.assignedEstimatorId } };
+        changed.push(`estimator: ${existing.estimatorUserId ?? "—"} → ${dto.assignedEstimatorId}`);
+      } else if (dto.assignedEstimatorId === null && existing.estimatorUserId) {
+        data.estimator = { disconnect: true };
+        changed.push(`estimator: ${existing.estimatorUserId} → —`);
+      }
+    }
+
+    if (!changed.length) {
+      return this.getById(id);
+    }
+
+    await this.prisma.tender.update({ where: { id }, data });
+
+    let actorLabel = "Someone";
+    if (actorId) {
+      const actor = await this.prisma.user.findUnique({
+        where: { id: actorId },
+        select: { firstName: true, lastName: true }
+      });
+      if (actor) actorLabel = `${actor.firstName} ${actor.lastName}`;
+    }
+
+    await this.prisma.tenderNote.create({
+      data: {
+        tenderId: id,
+        authorUserId: actorId,
+        body: `Quick edit by ${actorLabel}: ${changed.join("; ")}`
+      }
+    });
+
+    await this.auditService.write({
+      actorId,
+      action: "tenders.quick-edit",
+      entityType: "Tender",
+      entityId: id,
+      metadata: { changed }
+    });
+
+    return this.getById(id);
+  }
+
+  async listFilterPresets(userId: string) {
+    return this.prisma.tenderFilterPreset.findMany({
+      where: { userId },
+      orderBy: [{ isDefault: "desc" }, { name: "asc" }]
+    });
+  }
+
+  async createFilterPreset(userId: string, dto: CreateTenderFilterPresetDto) {
+    if (dto.isDefault) {
+      await this.prisma.tenderFilterPreset.updateMany({
+        where: { userId, isDefault: true },
+        data: { isDefault: false }
+      });
+    }
+    try {
+      return await this.prisma.tenderFilterPreset.create({
+        data: {
+          userId,
+          name: dto.name,
+          filters: dto.filters as Prisma.InputJsonValue,
+          isDefault: dto.isDefault ?? false
+        }
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        throw new ConflictException("A preset with this name already exists.");
+      }
+      throw err;
+    }
+  }
+
+  async updateFilterPreset(userId: string, id: string, dto: UpdateTenderFilterPresetDto) {
+    const existing = await this.prisma.tenderFilterPreset.findFirst({ where: { id, userId } });
+    if (!existing) {
+      throw new NotFoundException("Filter preset not found.");
+    }
+    if (dto.isDefault === true && !existing.isDefault) {
+      await this.prisma.tenderFilterPreset.updateMany({
+        where: { userId, isDefault: true, NOT: { id } },
+        data: { isDefault: false }
+      });
+    }
+    try {
+      return await this.prisma.tenderFilterPreset.update({
+        where: { id },
+        data: {
+          name: dto.name ?? undefined,
+          filters: dto.filters !== undefined ? (dto.filters as Prisma.InputJsonValue) : undefined,
+          isDefault: dto.isDefault !== undefined ? dto.isDefault : undefined
+        }
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        throw new ConflictException("A preset with this name already exists.");
+      }
+      throw err;
+    }
+  }
+
+  async deleteFilterPreset(userId: string, id: string) {
+    const existing = await this.prisma.tenderFilterPreset.findFirst({ where: { id, userId } });
+    if (!existing) {
+      throw new NotFoundException("Filter preset not found.");
+    }
+    await this.prisma.tenderFilterPreset.delete({ where: { id } });
+    return { id };
   }
 
   async getById(id: string) {

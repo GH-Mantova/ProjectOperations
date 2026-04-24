@@ -323,6 +323,75 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
     await prisma.userRole.create({ data: { userId: user.id, roleId: seed.roleId } });
   }
 
+  // WorkerProfile records for office staff who appear on client-facing
+  // documents (PDF contact line reads estimator.workerProfile.phone). Only
+  // seeded for users where a phone is known — everyone else stays null.
+  // Marco's number is the real one from the quote template T1965;
+  // placeholders flagged clearly in code comments.
+  type OfficeWorkerProfileSeed = {
+    id: string;
+    internalUserId: string;
+    firstName: string;
+    lastName: string;
+    role: string;
+    email: string;
+    phone: string;
+  };
+  const officeWorkerProfiles: OfficeWorkerProfileSeed[] = [
+    {
+      id: "wp-user-estimator",
+      internalUserId: "user-estimator",
+      firstName: "Raj",
+      lastName: "Pudasaini",
+      role: "Senior Estimator",
+      email: "raj.pudasaini@initialservices.net.au",
+      phone: "0421 000 001" // placeholder — real number unknown
+    },
+    {
+      id: "wp-user-supervisor-001",
+      internalUserId: "user-supervisor-001",
+      firstName: "Marco",
+      lastName: "Mantovaninni",
+      role: "WHS & Commercial Compliance",
+      email: "marco.mantovaninni@initialservices.net.au",
+      phone: "0487 373 415" // from real IS quote template T1965
+    },
+    {
+      id: "wp-user-pm-001",
+      internalUserId: "user-pm-001",
+      firstName: "Beau",
+      lastName: "Murphy",
+      role: "Project Manager",
+      email: "beau.murphy@initialservices.net.au",
+      phone: "0421 000 002" // placeholder — real number unknown
+    }
+  ];
+
+  for (const seed of officeWorkerProfiles) {
+    await prisma.workerProfile.upsert({
+      where: { id: seed.id },
+      update: {
+        firstName: seed.firstName,
+        lastName: seed.lastName,
+        role: seed.role,
+        email: seed.email,
+        phone: seed.phone,
+        internalUserId: seed.internalUserId,
+        isActive: true
+      },
+      create: {
+        id: seed.id,
+        firstName: seed.firstName,
+        lastName: seed.lastName,
+        role: seed.role,
+        email: seed.email,
+        phone: seed.phone,
+        internalUserId: seed.internalUserId,
+        isActive: true
+      }
+    });
+  }
+
   type ClientSeed = {
     id: string;
     name: string;

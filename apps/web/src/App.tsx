@@ -11,9 +11,6 @@ import { AuditLogsPage } from "./pages/AuditLogsPage";
 import { PlatformPage } from "./pages/PlatformPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { DashboardsPage } from "./pages/DashboardsPage";
-import { MasterDataPage } from "./pages/MasterDataPage";
-import { JobsPage } from "./pages/JobsPage";
-import { SchedulerPage } from "./pages/SchedulerPage";
 import { TenderingDashboardPage } from "./pages/tendering/TenderingDashboardPage";
 import { CreateTenderPage } from "./pages/CreateTenderPage";
 import { TenderPipelinePage } from "./pages/TenderPipelinePage";
@@ -22,10 +19,6 @@ import { TenderClientsPage } from "./pages/TenderClientsPage";
 import { TenderContactsPage } from "./pages/TenderContactsPage";
 import { TenderingSettingsPage } from "./pages/TenderingSettingsPage";
 import { ResourcesPage } from "./pages/ResourcesPage";
-import { AssetsPage } from "./pages/AssetsPage";
-import { MaintenancePage } from "./pages/MaintenancePage";
-import { FormsPage } from "./pages/FormsPage";
-import { DocumentsPage } from "./pages/DocumentsPage";
 import { ArchivePage } from "./pages/archive/ArchivePage";
 import { ArchiveDetailPage } from "./pages/archive/ArchiveDetailPage";
 import { TenderingPage } from "./pages/tendering/TenderingPage";
@@ -123,7 +116,6 @@ export function App() {
               }
             />
             <Route path="/scheduler" element={<SchedulerWorkspacePage />} />
-            <Route path="/scheduler/legacy" element={<SchedulerPage />} />
             <Route path="/tenders" element={<TenderingPage />} />
             <Route path="/tenders/dashboard" element={<TenderingDashboardPage />} />
             <Route path="/tenders/pipeline" element={<TenderPipelinePage />} />
@@ -135,7 +127,6 @@ export function App() {
             <Route path="/tenders/reports" element={<TenderingReportsPage />} />
             <Route path="/tenders/:id" element={<TenderDetailPage />} />
             <Route path="/jobs" element={<JobsListPage />} />
-            <Route path="/jobs/workspace" element={<JobsPage />} />
             <Route path="/jobs/:id" element={<JobDetailPage />} />
             <Route path="/projects" element={<ProjectsListPage />} />
             <Route path="/projects/:id" element={<ProjectDetailPage />} />
@@ -143,18 +134,13 @@ export function App() {
             <Route path="/workers" element={<WorkersListPage />} />
             <Route path="/workers/:id" element={<WorkerDetailPage />} />
             <Route path="/resources" element={<ResourcesPage />} />
-            <Route path="/resources/legacy" element={<ResourcesPage />} />
             <Route path="/assets" element={<AssetsListPage />} />
-            <Route path="/assets/legacy" element={<AssetsPage />} />
             <Route path="/assets/:id" element={<AssetDetailPage />} />
             <Route path="/maintenance" element={<MaintenanceDashboardPage />} />
-            <Route path="/maintenance/legacy" element={<MaintenancePage />} />
             <Route path="/forms" element={<FormsListPage />} />
-            <Route path="/forms/legacy" element={<FormsPage />} />
             <Route path="/forms/designer/:templateId" element={<FormDesignerPage />} />
             <Route path="/forms/submit/:templateId" element={<FormSubmitPage />} />
             <Route path="/documents" element={<DocumentsWorkspacePage />} />
-            <Route path="/documents/legacy" element={<DocumentsPage />} />
             <Route path="/admin/users" element={<UsersPage />} />
             <Route path="/admin/roles" element={<RolesPage />} />
             <Route path="/admin/permissions" element={<PermissionsPage />} />
@@ -169,7 +155,6 @@ export function App() {
             <Route path="/dashboards" element={<DashboardsPage />} />
             <Route path="/dashboards/:id" element={<UserDashboardPage />} />
             <Route path="/master-data" element={<MasterDataWorkspacePage />} />
-            <Route path="/master-data/legacy" element={<MasterDataPage />} />
             <Route path="/archive" element={<ArchivePage />} />
             <Route path="/archive/:jobId" element={<ArchiveDetailPage />} />
           </Route>

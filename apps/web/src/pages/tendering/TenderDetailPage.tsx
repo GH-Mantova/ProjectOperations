@@ -13,6 +13,7 @@ import { AiProviderSelector, type AvailableProvider } from "../../components/ai/
 // now land directly in the Scope of Works tab as status="draft" rows.
 import { ConvertToProjectModal } from "./ConvertToProjectModal";
 import { ScopeOfWorksTab } from "./ScopeOfWorksTab";
+import { ClientStarRating } from "../../components/ClientStarRating";
 
 type TenderDetail = {
   id: string;
@@ -32,7 +33,14 @@ type TenderDetail = {
   estimator?: { id: string; firstName: string; lastName: string } | null;
   tenderClients: Array<{
     id: string;
-    client: { id: string; name: string };
+    client: {
+      id: string;
+      name: string;
+      preferenceScore?: number | null;
+      winCount?: number | null;
+      tenderCount?: number | null;
+      winRate?: string | null;
+    };
     contact?: { id: string; firstName: string; lastName: string; email?: string | null } | null;
     isAwarded: boolean;
     contractIssued: boolean;
@@ -637,11 +645,34 @@ export function TenderDetailPage() {
                           tenderId={tender.id}
                           clientId={tc.client.id}
                           clientName={tc.client.name}
+                          preferenceScore={tc.client.preferenceScore ?? null}
+                          winCount={tc.client.winCount ?? 0}
+                          tenderCount={tc.client.tenderCount ?? 0}
+                          winRate={tc.client.winRate ?? null}
                           contact={tc.contact ?? null}
                           relationshipType={tc.relationshipType ?? null}
                           isAwarded={tc.isAwarded}
                           contractIssued={tc.contractIssued}
                           canManage={canManageTenders}
+                          canManageClients={canManageTenders}
+                          onScoreChange={async (next) => {
+                            try {
+                              const response = await authFetch(
+                                `/master-data/clients/${tc.client.id}`,
+                                {
+                                  method: "PATCH",
+                                  body: JSON.stringify({
+                                    name: tc.client.name,
+                                    preferenceScore: next
+                                  })
+                                }
+                              );
+                              if (!response.ok) throw new Error(await response.text());
+                              await reload();
+                            } catch (err) {
+                              setClientMsg((err as Error).message);
+                            }
+                          }}
                           canRemove={canRemove}
                           onRemove={async () => {
                             if (!canRemove) {
@@ -992,26 +1023,39 @@ function ExpandableClientRow({
   tenderId,
   clientId,
   clientName,
+  preferenceScore,
+  winCount,
+  tenderCount,
+  winRate,
   contact,
   relationshipType,
   isAwarded,
   contractIssued,
   canManage,
+  canManageClients,
+  onScoreChange,
   canRemove,
   onRemove
 }: {
   tenderId: string;
   clientId: string;
   clientName: string;
+  preferenceScore: number | null;
+  winCount: number;
+  tenderCount: number;
+  winRate: string | null;
   contact: { id: string; firstName: string; lastName: string; email?: string | null } | null;
   relationshipType: string | null;
   isAwarded: boolean;
   contractIssued: boolean;
   canManage: boolean;
+  canManageClients: boolean;
+  onScoreChange: (score: number) => void;
   canRemove: boolean;
   onRemove: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const winRateDisplay = winRate !== null && winRate !== undefined ? Number(winRate) : null;
   return (
     <li className="tender-detail__client-row" style={{ position: "relative", width: "100%" }}>
       <button
@@ -1027,6 +1071,14 @@ function ExpandableClientRow({
           {relationshipType ? <span className="tender-detail__client-tag" style={{ marginLeft: 6 }}>{relationshipType}</span> : null}
           {isAwarded ? <span className="s7-badge s7-badge--active" style={{ marginLeft: 6 }}>Awarded</span> : null}
           {contractIssued ? <span className="s7-badge s7-badge--info" style={{ marginLeft: 6 }}>Contract</span> : null}
+          <span style={{ marginLeft: 8, display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <ClientStarRating score={preferenceScore} readOnly size="sm" ariaLabel={`${clientName} preference`} />
+            {tenderCount > 0 && winRateDisplay !== null ? (
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                {winRateDisplay.toFixed(0)}% win
+              </span>
+            ) : null}
+          </span>
         </span>
         <span />
       </button>
@@ -1059,6 +1111,22 @@ function ExpandableClientRow({
       ) : null}
       {expanded ? (
         <div style={{ marginTop: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Preference:</span>
+              <ClientStarRating
+                score={preferenceScore}
+                readOnly={!canManageClients}
+                onChange={canManageClients ? onScoreChange : undefined}
+                ariaLabel={`${clientName} preference score`}
+              />
+            </div>
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              {tenderCount > 0 && winRateDisplay !== null
+                ? `${winRateDisplay.toFixed(0)}% win rate (${winCount} won of ${tenderCount} quoted)`
+                : "No tender history yet"}
+            </span>
+          </div>
           {contact ? (
             <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
               <strong style={{ color: "inherit" }}>

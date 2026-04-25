@@ -69,3 +69,47 @@ Type: FIX
 Detail: First CI run on feat/safety-forms hit Prisma P2011 (null on witnesses) because the migration's NOT NULL DEFAULT ARRAY[]::TEXT[] wasn't matched by @default([]) on the Prisma schema field. Added @default([]) to SafetyIncident.witnesses, SafetyIncident.documentPaths, HazardObservation.documentPaths. Verified pnpm seed runs clean locally.
 Status: PUSHED, RE-RUNNING CI
 Commit: 9bde5bf
+
+## 2026-04-25 16:46 AEST — PR #81 MERGED
+Type: PR
+Detail: feat/safety-forms merged via admin squash after CI re-run on the @default([]) fix went 6/6 SUCCESS
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/81
+Total commits on branch: 2 (initial + P2011 fix)
+
+## 2026-04-25 16:48 AEST — AUDIT PASS #1
+Type: AUDIT
+Status: COMPLETE
+Migrations: 56 total, replay clean on fresh shadow DB
+
+### API Health (post PRs #80 + #81)
+  ✅ 200 /tenders?page=1&limit=5
+  ✅ 200 /contracts?page=1&limit=5
+  ✅ 200 /projects?page=1&limit=5
+  ✅ 200 /compliance/dashboard
+  ✅ 200 /safety/dashboard
+  ✅ 200 /safety/incidents?limit=5
+  ✅ 200 /safety/hazards?limit=5
+  ✅ 200 /directory?limit=5
+  ✅ 200 /contacts?limit=5
+  ✅ 200 /workers?limit=5
+  ✅ 200 /master-data/sites?limit=5
+  ✅ 200 /assets?limit=5
+  ✅ 200 /admin/settings/notifications
+  ✅ 200 /user-dashboards
+  ✅ 200 /forms/templates
+  ✅ 200 /maintenance/assets
+  ✅ 200 /sharepoint/test
+
+### Permissions
+  Guards but not in registry: none
+  Registered but unused: directory.finance (low — gated inline via hasPermission, not @RequirePermissions)
+
+### Dead code
+  Codex legacy files (TendersPage.tsx / DashboardsPage.tsx): none — confirmed deleted in PR #78 / #77
+
+### Critical Issues
+  None
+
+### High Priority Issues
+  None

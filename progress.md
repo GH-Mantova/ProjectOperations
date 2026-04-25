@@ -135,3 +135,9 @@ What's queued (next session):
 Bypass actor: REMOVING NOW. Main branch protection fully restored before the session ends.
 
 Resume instructions: Paste the chain spec from "PR #82 — Gantt / Scheduling Visual" onwards. Re-add the bypass actor at session start (`gh api PUT ... rulesets/15532058 --field 'bypass_actors=[{"actor_id":5,"actor_type":"RepositoryRole","bypass_mode":"always"}]'`), continue the chain, restore protection at end. Audit pass #2 is specced after PRs #82 and #83.
+
+## 2026-04-25 17:00 AEST — PR #82 STARTED
+Type: PR
+Branch: feat/gantt-scheduling
+Detail: Gantt chart, project timeline, scheduler weekly calendar
+Status: IN_PROGRESS

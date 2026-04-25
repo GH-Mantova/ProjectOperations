@@ -211,3 +211,12 @@ Major: rate limiting, session revocation, isActive recheck,
   login enumeration, date validation, password complexity,
   activeTimeline scope (7 items)
 Action: Opening PR #83.1 hotfix before resuming chain
+
+## 2026-04-25 06:57 AEST — PR #83.1 MERGED
+Type: FIX
+Branch: fix/portal-auth-security
+GitHub PR: #84 (sequential numbering — chain conceptually PR #83.1)
+Detail: All 3 criticals + 7 majors from audit #2 fixed. C1 token isolation (JwtAuthGuard rejects type=portal; auth.config derives portal secrets via SHA-256 from staff secrets when env vars unset). C2 reset URL no longer in response body, logged server-side only. C3 Gantt requires team membership via requireProjectAccess. M1-M7: rate limiter, session revocation on reset, isActive recheck per request, login enum hardening with dummy hash, endDate≥startDate on update, password complexity (mixed case + digit), activeTimeline team-scoped.
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/84
+Resuming chain at PR #84 GPS clock-on (next GitHub PR will be #85)

@@ -170,6 +170,7 @@ export function TenderDetailPage() {
   const [pendingDraftCorrection, setPendingDraftCorrection] = useState<string | null>(null);
   const [addClientOpen, setAddClientOpen] = useState(false);
   const [clientMsg, setClientMsg] = useState<string | null>(null);
+  const [statusUpdating, setStatusUpdating] = useState(false);
 
   const reload = useCallback(async () => {
     if (!id) return;
@@ -287,6 +288,24 @@ export function TenderDetailPage() {
       setError((err as Error).message);
     } finally {
       setPosting(false);
+    }
+  };
+
+  const changeStatus = async (next: string) => {
+    if (!tender || tender.status === next) return;
+    setStatusUpdating(true);
+    try {
+      const response = await authFetch(`/tenders/${tender.id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: next })
+      });
+      if (!response.ok) throw new Error(await response.text());
+      await reload();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setStatusUpdating(false);
     }
   };
 
@@ -427,6 +446,22 @@ export function TenderDetailPage() {
             >
               {stageLabel}
             </span>
+            {canManageTenders ? (
+              <select
+                aria-label="Change tender status"
+                className="s7-input"
+                value={tender.status}
+                disabled={statusUpdating}
+                onChange={(e) => void changeStatus(e.target.value)}
+                style={{ padding: "4px 8px", fontSize: 13, height: 30 }}
+              >
+                {Object.entries(STAGE_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            ) : null}
             {canManageTenders ? (
               <button
                 type="button"

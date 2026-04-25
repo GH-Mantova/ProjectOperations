@@ -70,6 +70,8 @@ model User {
   rejectedTimesheets         Timesheet[]               @relation("TimesheetRejecter")
   approvedWorkerLeaves       WorkerLeave[]             @relation("WorkerLeaveApprover")
   requestedWorkerLeaves      WorkerLeave[]             @relation("WorkerLeaveRequester")
+  formApprovalAssignments    FormApproval[]            @relation("FormApprovalAssignee")
+  formScheduleAssignments    FormSchedule[]            @relation("FormScheduleAssignee")
   scopeItemsCreated          ScopeOfWorksItem[]        @relation("ScopeOfWorksCreatedBy")
   estimateExports            EstimateExport[]
   personalAiProviders        UserAiProvider[]
@@ -1222,11 +1224,20 @@ model FormTemplate {
   status             String                @default("DRAFT")
   geolocationEnabled Boolean               @default(false) @map("geolocation_enabled")
   associationScopes  Json?                 @map("association_scopes")
+  // PR #97 Forms Engine — category + system flag + settings blob.
+  // category: safety|asbestos|plant|induction|environmental|permits|quality|daily|custom
+  // settings: { requiresApproval, approvalChain[], geofenceEnabled, allowOffline,
+  //             pdfExport, complianceGate{} }
+  category           String                @default("custom")
+  isSystemTemplate   Boolean               @default(false) @map("is_system_template")
+  settings           Json                  @default("{}")
   createdAt          DateTime              @default(now()) @map("created_at")
   updatedAt          DateTime              @updatedAt @map("updated_at")
   versions           FormTemplateVersion[]
+  schedules          FormSchedule[]
 
   @@index([status])
+  @@index([category])
   @@map("form_templates")
 }
 
@@ -1252,6 +1263,11 @@ model FormSection {
   title        String
   description  String?
   sectionOrder Int                 @map("section_order")
+  // PR #97 — repeating sections + section-level visibility conditions
+  isRepeating  Boolean             @default(false) @map("is_repeating")
+  minRepeat    Int?                @map("min_repeat")
+  maxRepeat    Int?                @map("max_repeat")
+  conditions   Json                @default("[]")
   createdAt    DateTime            @default(now()) @map("created_at")
   version      FormTemplateVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
   fields       FormField[]
@@ -1261,19 +1277,30 @@ model FormSection {
 }
 
 model FormField {
-  id          String                @id @default(cuid())
-  sectionId   String                @map("section_id")
-  fieldKey    String                @map("field_key")
-  label       String
-  fieldType   String                @map("field_type")
-  fieldOrder  Int                   @map("field_order")
-  isRequired  Boolean               @default(false) @map("is_required")
-  placeholder String?
-  helpText    String?               @map("help_text")
-  optionsJson Json?                 @map("options_json")
-  createdAt   DateTime              @default(now()) @map("created_at")
-  section     FormSection           @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-  values      FormSubmissionValue[]
+  id           String                @id @default(cuid())
+  sectionId    String                @map("section_id")
+  fieldKey     String                @map("field_key")
+  label        String
+  fieldType    String                @map("field_type")
+  fieldOrder   Int                   @map("field_order")
+  isRequired   Boolean               @default(false) @map("is_required")
+  placeholder  String?
+  helpText     String?               @map("help_text")
+  optionsJson  Json?                 @map("options_json")
+  // PR #97 — generic field config + per-field rule attachments
+  // config: field-type-specific settings (min/max/step, formula, lookup spec, etc.)
+  // conditions: array of FieldRule objects evaluated by RulesEngineService
+  // validations: extra validation rules beyond isRequired
+  // actions: on_change actions (set_value, show, hide, send_notification, create_record)
+  isReadOnly   Boolean               @default(false) @map("is_read_only")
+  defaultValue String?               @map("default_value")
+  config       Json                  @default("{}")
+  conditions   Json                  @default("[]")
+  validations  Json                  @default("[]")
+  actions      Json                  @default("[]")
+  createdAt    DateTime              @default(now()) @map("created_at")
+  section      FormSection           @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  values       FormSubmissionValue[]
 
   @@unique([sectionId, fieldKey])
   @@index([sectionId, fieldOrder])
@@ -1323,6 +1350,13 @@ model FormSubmission {
   values            FormSubmissionValue[]
   attachments       FormAttachment[]
   signatures        FormSignature[]
+  // PR #97 — auto-populated context blob, GPS lat/lng, approval chain rows,
+  // and links back to records auto-created by submit-time actions
+  context           Json                  @default("{}")
+  gpsLat            Decimal?              @map("gps_lat") @db.Decimal(10, 7)
+  gpsLng            Decimal?              @map("gps_lng") @db.Decimal(10, 7)
+  approvals         FormApproval[]
+  triggeredRecords  FormTriggeredRecord[]
 
   @@index([templateVersionId, submittedAt])
   @@index([jobId])
@@ -1330,6 +1364,61 @@ model FormSubmission {
   @@index([workerId])
   @@index([shiftId])
   @@map("form_submissions")
+}
+
+// ─── Forms Engine (PR #97) — approvals, triggered records, schedules ─────
+
+model FormApproval {
+  id             String         @id @default(cuid())
+  submissionId   String         @map("submission_id")
+  submission     FormSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  stepNumber     Int            @map("step_number")
+  assignedToId   String?        @map("assigned_to_id")
+  assignedTo     User?          @relation("FormApprovalAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedToRole String?        @map("assigned_to_role")
+  status         String         @default("pending")
+  comment        String?
+  decidedAt      DateTime?      @map("decided_at")
+  dueAt          DateTime?      @map("due_at")
+  createdAt      DateTime       @default(now()) @map("created_at")
+
+  @@index([submissionId])
+  @@index([assignedToId])
+  @@index([status])
+  @@map("form_approvals")
+}
+
+model FormTriggeredRecord {
+  id           String         @id @default(cuid())
+  submissionId String         @map("submission_id")
+  submission   FormSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  recordType   String         @map("record_type")
+  recordId     String         @map("record_id")
+  createdAt    DateTime       @default(now()) @map("created_at")
+
+  @@index([submissionId])
+  @@index([recordType, recordId])
+  @@map("form_triggered_records")
+}
+
+model FormSchedule {
+  id             String       @id @default(cuid())
+  templateId     String       @map("template_id")
+  template       FormTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  scheduleType   String       @map("schedule_type")
+  cronExpression String?      @map("cron_expression")
+  eventTrigger   String?      @map("event_trigger")
+  assignToRole   String?      @map("assign_to_role")
+  assignToUserId String?      @map("assign_to_user_id")
+  assignToUser   User?        @relation("FormScheduleAssignee", fields: [assignToUserId], references: [id], onDelete: SetNull)
+  isActive       Boolean      @default(true) @map("is_active")
+  lastRunAt      DateTime?    @map("last_run_at")
+  nextRunAt      DateTime?    @map("next_run_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  @@index([templateId])
+  @@index([nextRunAt])
+  @@map("form_schedules")
 }
 
 model FormSubmissionValue {
@@ -1341,6 +1430,11 @@ model FormSubmissionValue {
   valueNumber   Decimal?       @map("value_number") @db.Decimal(14, 2)
   valueDateTime DateTime?      @map("value_date_time")
   valueJson     Json?          @map("value_json")
+  // PR #97 — boolean answer + per-value file pointer (photos, signatures live
+  // on FormAttachment / FormSignature; this lets simple file fields point
+  // straight at a SharePoint or filesystem path without spawning rows there)
+  valueBoolean  Boolean?       @map("value_boolean")
+  filePath      String?        @map("file_path")
   createdAt     DateTime       @default(now()) @map("created_at")
   submission    FormSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
   field         FormField?     @relation(fields: [fieldId], references: [id], onDelete: SetNull)

@@ -49,3 +49,9 @@ What's queued (next session):
 Bypass actor: REMOVED. Main branch protection fully restored before pause.
 
 Resume instructions: Start a fresh session, paste the chain spec from the section "PR #81 — Safety Forms" onwards. Re-add the bypass actor at session start (use the .bypass-patch.json pattern from PR #72 prep), continue the chain, then restore protection at the end. Audit passes after #80-81 should run after #81 lands.
+
+## 2026-04-25 15:35 AEST — PR #81 STARTED
+Type: PR
+Branch: feat/safety-forms
+Detail: Incident reports + hazard observations + field reporting + safety widget
+Status: IN_PROGRESS

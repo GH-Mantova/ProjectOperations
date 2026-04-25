@@ -220,3 +220,11 @@ Detail: All 3 criticals + 7 majors from audit #2 fixed. C1 token isolation (JwtA
 Status: COMPLETE
 PR: https://github.com/GH-Mantova/ProjectOperations/pull/84
 Resuming chain at PR #84 GPS clock-on (next GitHub PR will be #85)
+
+## 2026-04-25 07:05 AEST — PR #84 OPENED (chain)
+Type: PR
+Branch: feat/gps-clock-on
+GitHub PR: #85 (chain #84 GPS clock-on)
+Detail: Opt-in GPS clock-on. Schema: WorkerProfile.locationConsent, Timesheet GPS columns, WorkerLocationLog (migration 20260426_feat_gps_clockon). API: /field/location-consent GET+POST; timesheet create/update silently drop GPS when consent=false. Frontend: consent toggle + pin buttons using navigator.geolocation high-accuracy.
+Status: WAITING_CI
+Pre-PR checks: 7/7 green

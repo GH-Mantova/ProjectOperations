@@ -26,32 +26,36 @@ export class XeroController {
   @Get("connect")
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions("platform.admin")
-  @ApiOperation({ summary: "Get Xero OAuth consent URL (admin opens it in a new tab)." })
-  connect() {
-    return this.service.getConsentUrl();
+  @ApiOperation({
+    summary:
+      "Mint a CSRF-resistant state token and return the Xero consent URL (admin opens it in a new tab)."
+  })
+  connect(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.getConsentUrl(user.sub);
   }
 
   // Xero redirects the browser to this URL with ?code=...&state=...
-  // We don't gate this with a JWT guard because Xero won't carry our token —
-  // the request is authenticated implicitly by possession of the OAuth code,
-  // which Xero only issues to the registered redirect URI. The handler
-  // validates the code via xero-node before persisting tokens.
+  // We can't gate the GET with a JWT guard (Xero strips our cookies/headers),
+  // so the security model is: state token bound to the initiating admin's
+  // user id is verified inside the service before any token is persisted. A
+  // missing or invalid state is rejected with 401, breaking CSRF attempts that
+  // try to bind the singleton connection to an attacker-controlled tenant.
   @Get("callback")
   @ApiOperation({
     summary:
-      "OAuth callback target. Xero hits this with ?code=... after the user consents. Stores tokens against id=1."
+      "OAuth callback target. Validates the state token before exchanging the code, then redirects to /admin/settings."
   })
   @Redirect()
   async callback(@Query("code") code: string, @Query("state") state: string | undefined) {
     if (!code) {
       return { url: "/admin/settings?xero=missing_code", statusCode: 302 };
     }
-    const callbackUrl = `${process.env.XERO_REDIRECT_URI ?? "http://localhost:3000/api/v1/xero/callback"}?code=${encodeURIComponent(code)}${state ? `&state=${encodeURIComponent(state)}` : ""}`;
+    if (!state) {
+      return { url: "/admin/settings?xero=missing_state", statusCode: 302 };
+    }
+    const callbackUrl = `${process.env.XERO_REDIRECT_URI ?? "http://localhost:3000/api/v1/xero/callback"}?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`;
     try {
-      // The connectedBy field is best-effort — by the time Xero redirects we
-      // don't have the original initiating user in scope. Stamp 'oauth_callback'
-      // as a sentinel; the consent flow itself was permission-gated.
-      await this.service.handleCallback(callbackUrl, "oauth_callback");
+      await this.service.handleCallback(callbackUrl, "oauth_callback", state);
       return { url: "/admin/settings?xero=connected", statusCode: 302 };
     } catch {
       return { url: "/admin/settings?xero=error", statusCode: 302 };
@@ -66,7 +70,11 @@ export class XeroController {
       "Programmatic callback handler — finishes the OAuth flow with the full callback URL. Use when the frontend captures the redirect."
   })
   postCallback(@Body() body: XeroCallbackDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.handleCallback(body.callbackUrl, user.sub);
+    // Pull the state out of the callback URL so the service can verify it
+    // even when the admin posts the URL directly from the SPA.
+    const url = new URL(body.callbackUrl);
+    const state = url.searchParams.get("state") ?? undefined;
+    return this.service.handleCallback(body.callbackUrl, user.sub, state);
   }
 
   @Get("status")

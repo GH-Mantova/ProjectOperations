@@ -3,11 +3,26 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-  ServiceUnavailableException
+  ServiceUnavailableException,
+  UnauthorizedException
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 import { Invoice, XeroClient } from "xero-node";
 import { PrismaService } from "../../prisma/prisma.service";
+
+// In-memory state token registry. Each consent request mints a signed token
+// bound to the requesting user; the callback rejects mismatches. Single-instance
+// monolith — for multi-instance, persist to a shared store.
+const stateTokens = new Map<string, { userId: string; expiresAt: number }>();
+const STATE_TTL_MS = 10 * 60_000;
+
+function pruneExpiredStates() {
+  const now = Date.now();
+  for (const [token, info] of stateTokens.entries()) {
+    if (info.expiresAt < now) stateTokens.delete(token);
+  }
+}
 
 // Wrapper around xero-node 15. We instantiate one XeroClient per request that
 // needs it because the SDK keeps a token set on the instance — sharing one
@@ -44,12 +59,68 @@ export class XeroService {
     });
   }
 
-  async getConsentUrl() {
+  async getConsentUrl(userId: string) {
     const client = this.buildClient();
-    return { url: await client.buildConsentUrl() };
+    pruneExpiredStates();
+
+    // Mint a CSRF-resistant state token: server-generated random + HMAC of the
+    // userId, stored in-memory keyed by raw token. The callback verifies the
+    // token exists and is not expired, then deletes it (one-shot).
+    const raw = randomBytes(24).toString("hex");
+    const secret = this.configService.get<string>(
+      "auth.accessSecret",
+      "replace-me-access"
+    );
+    const signature = createHmac("sha256", secret).update(`${raw}:${userId}`).digest("hex");
+    const stateToken = `${raw}.${signature}`;
+
+    stateTokens.set(stateToken, {
+      userId,
+      expiresAt: Date.now() + STATE_TTL_MS
+    });
+
+    const baseUrl = await client.buildConsentUrl();
+    const sep = baseUrl.includes("?") ? "&" : "?";
+    return { url: `${baseUrl}${sep}state=${encodeURIComponent(stateToken)}` };
   }
 
-  async handleCallback(callbackUrl: string, userId: string) {
+  private verifyState(stateToken: string | undefined) {
+    if (!stateToken) {
+      throw new UnauthorizedException("OAuth state is required.");
+    }
+    pruneExpiredStates();
+    const info = stateTokens.get(stateToken);
+    if (!info) {
+      throw new UnauthorizedException("OAuth state is invalid or has expired.");
+    }
+    // Verify HMAC matches — protects against attackers brute-forcing the in-memory
+    // map keys via timing.
+    const [raw, sig] = stateToken.split(".");
+    if (!raw || !sig) {
+      throw new UnauthorizedException("OAuth state format is malformed.");
+    }
+    const secret = this.configService.get<string>(
+      "auth.accessSecret",
+      "replace-me-access"
+    );
+    const expected = createHmac("sha256", secret)
+      .update(`${raw}:${info.userId}`)
+      .digest("hex");
+    const a = Buffer.from(sig, "hex");
+    const b = Buffer.from(expected, "hex");
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {
+      throw new UnauthorizedException("OAuth state signature mismatch.");
+    }
+    stateTokens.delete(stateToken);
+    return info.userId;
+  }
+
+  async handleCallback(callbackUrl: string, _userId: string, stateToken?: string) {
+    // Validate the state before doing ANY Xero work — rejects forged or replayed
+    // callback URLs that would otherwise silently bind the singleton connection
+    // to an attacker's tenant.
+    const verifiedUserId = this.verifyState(stateToken);
+
     const client = this.buildClient();
     const tokenSet = await client.apiCallback(callbackUrl);
     const tenants = await client.updateTenants(false);
@@ -72,7 +143,7 @@ export class XeroService {
         refreshToken: tokenSet.refresh_token ?? "",
         expiresAt,
         scopes: tokenSet.scope?.split(" ") ?? [],
-        connectedBy: userId
+        connectedBy: verifiedUserId
       },
       update: {
         tenantId: primary.tenantId,
@@ -81,7 +152,7 @@ export class XeroService {
         refreshToken: tokenSet.refresh_token ?? "",
         expiresAt,
         scopes: tokenSet.scope?.split(" ") ?? [],
-        connectedBy: userId
+        connectedBy: verifiedUserId
       }
     });
 
@@ -125,23 +196,35 @@ export class XeroService {
     });
 
     if (conn.expiresAt.getTime() - Date.now() < 60_000) {
-      const refreshed = await client.refreshWithRefreshToken(
-        this.configService.get<string>("xero.clientId", ""),
-        this.configService.get<string>("xero.clientSecret", ""),
-        conn.refreshToken
-      );
-      const newExpiry = refreshed.expires_at
-        ? new Date(refreshed.expires_at * 1000)
-        : new Date(Date.now() + 30 * 60_000);
-      await this.prisma.xeroConnection.update({
-        where: { id: 1 },
-        data: {
-          accessToken: refreshed.access_token ?? "",
-          refreshToken: refreshed.refresh_token ?? conn.refreshToken,
-          expiresAt: newExpiry,
-          scopes: refreshed.scope?.split(" ") ?? conn.scopes
-        }
-      });
+      // Xero rotates refresh tokens after 60 days of inactivity. If the refresh
+      // call fails (token expired/revoked) we surface a clear "reconnect"
+      // message instead of a generic 500 — the admin UI prompts for re-consent.
+      try {
+        const refreshed = await client.refreshWithRefreshToken(
+          this.configService.get<string>("xero.clientId", ""),
+          this.configService.get<string>("xero.clientSecret", ""),
+          conn.refreshToken
+        );
+        const newExpiry = refreshed.expires_at
+          ? new Date(refreshed.expires_at * 1000)
+          : new Date(Date.now() + 30 * 60_000);
+        await this.prisma.xeroConnection.update({
+          where: { id: 1 },
+          data: {
+            accessToken: refreshed.access_token ?? "",
+            refreshToken: refreshed.refresh_token ?? conn.refreshToken,
+            expiresAt: newExpiry,
+            scopes: refreshed.scope?.split(" ") ?? conn.scopes
+          }
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`Xero refresh failed — clearing connection: ${message}`);
+        await this.prisma.xeroConnection.deleteMany({});
+        throw new ServiceUnavailableException(
+          "Xero session expired — reconnect via Admin Settings → Platform → Connect Xero."
+        );
+      }
     }
 
     return { client, tenantId: conn.tenantId };

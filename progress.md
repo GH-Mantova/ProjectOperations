@@ -250,3 +250,15 @@ GitHub PR: #86 (chain PR #85 worker availability)
 Detail: feat/worker-availability merged via admin squash (CI 6/6 SUCCESS; auto-merge stalled BEHIND)
 Status: COMPLETE
 PR: https://github.com/GH-Mantova/ProjectOperations/pull/86
+
+## 2026-04-25 07:23 AEST — AUDIT PASS #3 FINDINGS
+Type: AUDIT
+Status: BLOCKED — hotfix required before PR #86
+Critical:
+  C1: Worker availability accepts workerProfileId from body — caller can lodge leave/unavailability for ANY worker (availability.controller.ts:54,89; availability.service.ts:16-37,74-95)
+  C2: Self-approval of leave permitted — setLeaveStatus does not block approverUserId === requester (availability.service.ts:50-63)
+Major:
+  M1: WorkerLeave lacks requestedByUserId audit trail (schema + migration)
+  M2: recordLocationLogs appends on every PATCH — log-row spam by repeated updates (field.service.ts:537)
+  M3: locationConsentAt set to null on revocation — loses audit of when consent was withdrawn (field.service.ts:63)
+Action: Opening PR #85.1 hotfix before resuming chain

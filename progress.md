@@ -228,3 +228,10 @@ GitHub PR: #85 (chain #84 GPS clock-on)
 Detail: Opt-in GPS clock-on. Schema: WorkerProfile.locationConsent, Timesheet GPS columns, WorkerLocationLog (migration 20260426_feat_gps_clockon). API: /field/location-consent GET+POST; timesheet create/update silently drop GPS when consent=false. Frontend: consent toggle + pin buttons using navigator.geolocation high-accuracy.
 Status: WAITING_CI
 Pre-PR checks: 7/7 green
+
+## 2026-04-25 07:10 AEST — PR #84 MERGED (chain)
+Type: PR
+GitHub PR: #85 (chain PR #84 GPS clock-on)
+Detail: feat/gps-clock-on merged via admin squash (CI 6/6 SUCCESS; auto-merge stalled BEHIND, same race pattern)
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/85

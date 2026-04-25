@@ -14,6 +14,8 @@ import { useAuth } from "../auth/AuthContext";
 import { WIDGET_BY_TYPE } from "./widgetRegistry";
 import {
   GRID_ROW_HEIGHT_PX,
+  PERIOD_LABELS,
+  PERIOD_ORDER,
   resolveSpan,
   type UserDashboard,
   type UserDashboardConfig,
@@ -223,9 +225,20 @@ export function DashboardCanvas({
         <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
           <div>
             <p className="s7-type-label">Dashboard</p>
-            <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>
-              {active?.name ?? title ?? "Dashboard"}
-            </h1>
+            {active ? (
+              <InlineDashboardName
+                name={active.name}
+                onSave={(next) => {
+                  if (next.trim() && next !== active.name) {
+                    updateConfig(active.config, next.trim());
+                  }
+                }}
+              />
+            ) : (
+              <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>
+                {title ?? "Dashboard"}
+              </h1>
+            )}
           </div>
           {dashboardSlug && dashboards ? (
             <DashboardSwitcher
@@ -422,6 +435,13 @@ function SortableWidget({
       className={classes.join(" ")}
     >
       <div className="td-canvas__slot-chrome">
+        <PeriodOverridePill
+          override={entry.config.period as WidgetPeriod | null | undefined}
+          globalPeriod={globalPeriod}
+          onChange={(next) =>
+            onConfigChange({ ...(entry.config ?? { period: null, filters: {} }), period: next ?? null })
+          }
+        />
         {hasSchema ? (
           <button
             type="button"
@@ -508,5 +528,108 @@ function SortableWidget({
         onPointerDown={startResize("both")}
       />
     </div>
+  );
+}
+
+// Period override pill — shows the widget's effective period. Orange when the
+// widget overrides the global dashboard period, muted grey when inheriting.
+// Click to pick a period, "Use dashboard" reverts to inherit (period: null).
+function PeriodOverridePill({
+  override,
+  globalPeriod,
+  onChange
+}: {
+  override: WidgetPeriod | null | undefined;
+  globalPeriod: WidgetPeriod;
+  onChange: (next: WidgetPeriod | null) => void;
+}) {
+  const effective = (override ?? globalPeriod) as WidgetPeriod;
+  const isOverride = Boolean(override) && override !== globalPeriod;
+  return (
+    <select
+      aria-label="Widget period"
+      value={override ?? "__inherit__"}
+      onChange={(e) => {
+        const v = e.target.value;
+        onChange(v === "__inherit__" ? null : (v as WidgetPeriod));
+      }}
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        height: 22,
+        padding: "0 8px",
+        fontSize: 11,
+        fontWeight: 600,
+        border: "1px solid",
+        borderRadius: 999,
+        cursor: "pointer",
+        background: isOverride ? "#FEAA6D" : "var(--surface-card, white)",
+        color: isOverride ? "#242424" : "var(--text-muted, #6B7280)",
+        borderColor: isOverride ? "#FEAA6D" : "var(--border-subtle, rgba(0,0,0,0.12))"
+      }}
+    >
+      <option value="__inherit__">{PERIOD_LABELS[effective]} · dashboard</option>
+      {PERIOD_ORDER.map((p) => (
+        <option key={p} value={p}>
+          {PERIOD_LABELS[p]}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+// Click-to-edit dashboard name. Enter saves, Escape cancels, blur saves.
+function InlineDashboardName({
+  name,
+  onSave
+}: {
+  name: string;
+  onSave: (next: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(name);
+  useEffect(() => {
+    setDraft(name);
+  }, [name]);
+
+  if (!editing) {
+    return (
+      <h1
+        className="s7-type-page-title"
+        style={{ margin: "4px 0 0", cursor: "text" }}
+        title="Click to rename"
+        onClick={() => setEditing(true)}
+      >
+        {name}
+      </h1>
+    );
+  }
+
+  return (
+    <input
+      autoFocus
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          onSave(draft);
+          setEditing(false);
+        } else if (e.key === "Escape") {
+          setDraft(name);
+          setEditing(false);
+        }
+      }}
+      onBlur={() => {
+        onSave(draft);
+        setEditing(false);
+      }}
+      className="s7-input"
+      style={{
+        fontSize: "1.5rem",
+        fontWeight: 600,
+        padding: "2px 6px",
+        margin: "4px 0 0",
+        minWidth: 240
+      }}
+    />
   );
 }

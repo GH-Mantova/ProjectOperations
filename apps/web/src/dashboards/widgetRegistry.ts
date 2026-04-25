@@ -87,8 +87,20 @@ import {
 } from "./widgets/jobs";
 import { BreakdownCountKpi, OverdueCountKpi, UpcomingBar } from "./widgets/maintenance";
 import { ByTemplateBar, SubmissionsKpi } from "./widgets/forms";
-import { ComplianceAlertsWidget } from "./widgets/compliance";
-import { SafetySummaryWidget } from "./widgets/safety";
+import {
+  ComplianceAlertsWidget,
+  ComplianceBlockedSubcontractorsKpi,
+  ComplianceExpiredKpi,
+  ComplianceExpiringKpi,
+  ComplianceExpiryListWidget
+} from "./widgets/compliance";
+import {
+  SafetyOpenHazardsKpi,
+  SafetyOpenIncidentsKpi,
+  SafetyOverdueHazardsKpi,
+  SafetyRecentIncidentsList,
+  SafetySummaryWidget
+} from "./widgets/safety";
 import { ProjectTimelineWidget } from "./widgets/projectTimeline";
 
 const TENDER_STAGE_OPTIONS = [
@@ -383,8 +395,42 @@ export const WIDGETS: WidgetMeta[] = [
 
   // ── Compliance ────────────────────────────────────────────
   {
+    type: "compliance_expiring_items",
+    name: "Expiring items",
+    category: "compliance",
+    size: "kpi",
+    description: "Licences, insurance, and qualifications expiring within 30 days.",
+    component: ComplianceExpiringKpi
+  },
+  {
+    type: "compliance_expired_items",
+    name: "Expired items",
+    category: "compliance",
+    size: "kpi",
+    description: "Licences, insurance, and qualifications already expired.",
+    component: ComplianceExpiredKpi
+  },
+  {
+    type: "compliance_blocked_subcontractors",
+    name: "Blocked subcontractors",
+    category: "compliance",
+    size: "kpi",
+    description: "Subcontractors blocked due to expired critical compliance.",
+    component: ComplianceBlockedSubcontractorsKpi
+  },
+  {
+    type: "compliance_expiry_list",
+    name: "Expiry alerts",
+    category: "compliance",
+    size: "full",
+    description: "All licence, insurance, and qualification items expiring or expired, sorted by urgency.",
+    defaultColSpan: 4,
+    defaultRowSpan: 2,
+    component: ComplianceExpiryListWidget
+  },
+  {
     type: "compliance_expiry_alerts",
-    name: "Compliance alerts",
+    name: "Compliance alerts (compact)",
     category: "compliance",
     size: "half",
     description: "Top 8 licences, insurances, and qualifications expiring within 30 days.",
@@ -394,6 +440,40 @@ export const WIDGETS: WidgetMeta[] = [
   },
 
   // ── Safety ────────────────────────────────────────────────
+  {
+    type: "safety_incidents_open",
+    name: "Open incidents",
+    category: "safety",
+    size: "kpi",
+    description: "Count of open safety incidents.",
+    component: SafetyOpenIncidentsKpi
+  },
+  {
+    type: "safety_hazards_open",
+    name: "Open hazards",
+    category: "safety",
+    size: "kpi",
+    description: "Count of open hazard observations.",
+    component: SafetyOpenHazardsKpi
+  },
+  {
+    type: "safety_overdue_hazards",
+    name: "Overdue hazards",
+    category: "safety",
+    size: "kpi",
+    description: "Hazards past due date still open.",
+    component: SafetyOverdueHazardsKpi
+  },
+  {
+    type: "safety_recent_incidents",
+    name: "Recent incidents",
+    category: "safety",
+    size: "half",
+    description: "Most recent 5 safety incidents with severity.",
+    defaultColSpan: 2,
+    defaultRowSpan: 2,
+    component: SafetyRecentIncidentsList
+  },
   {
     type: "safety_dashboard_summary",
     name: "Safety summary",

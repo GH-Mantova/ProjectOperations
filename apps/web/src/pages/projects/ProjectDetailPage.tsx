@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { AdvanceStatusModal } from "./AdvanceStatusModal";
+import { GanttChart, type GanttTask } from "./GanttChart";
 
 type Person = { id: string; firstName: string; lastName: string; email?: string } | null;
 
@@ -345,13 +346,132 @@ function ScopeTab({ project }: { project: ProjectDetail }) {
 }
 
 function ScheduleTab({ project }: { project: ProjectDetail }) {
+  const { authFetch, user } = useAuth();
+  const canManage = user?.permissions?.includes("projects.manage") ?? false;
+  const [tasks, setTasks] = useState<GanttTask[]>([]);
+  const [view, setView] = useState<"gantt" | "list">("gantt");
+  const [zoom, setZoom] = useState<"week" | "month" | "quarter">("week");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const r = await authFetch(`/projects/${project.id}/gantt`);
+      if (!r.ok) throw new Error(await r.text());
+      setTasks((await r.json()) as GanttTask[]);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }, [authFetch, project.id]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const generate = async () => {
+    if (!window.confirm("Generate Gantt tasks from the source tender's scope disciplines?")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await authFetch(`/projects/${project.id}/gantt/generate`, { method: "POST" });
+      if (!r.ok) throw new Error(await r.text());
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div style={{ display: "grid", gap: 16 }}>
-      <section className="s7-card" style={{ padding: 32, textAlign: "center" }}>
-        <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>📅 Gantt view coming in PR #41</h3>
-        <p style={{ color: "var(--text-muted)" }}>
-          Milestone-level scheduling and activity planning are on the next delivery PR.
-        </p>
+      <section className="s7-card">
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 12 }}>
+          <h3 className="s7-type-section-heading" style={{ margin: 0 }}>Schedule</h3>
+          <div role="tablist" style={{ display: "inline-flex", gap: 4, marginLeft: 8 }}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === "gantt"}
+              className={view === "gantt" ? "s7-btn s7-btn--secondary s7-btn--sm" : "s7-btn s7-btn--ghost s7-btn--sm"}
+              onClick={() => setView("gantt")}
+            >
+              Gantt
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === "list"}
+              className={view === "list" ? "s7-btn s7-btn--secondary s7-btn--sm" : "s7-btn s7-btn--ghost s7-btn--sm"}
+              onClick={() => setView("list")}
+            >
+              List
+            </button>
+          </div>
+          {view === "gantt" ? (
+            <div style={{ display: "inline-flex", gap: 4, marginLeft: 8 }}>
+              {(["week", "month", "quarter"] as const).map((z) => (
+                <button
+                  key={z}
+                  type="button"
+                  className={zoom === z ? "s7-btn s7-btn--secondary s7-btn--sm" : "s7-btn s7-btn--ghost s7-btn--sm"}
+                  onClick={() => setZoom(z)}
+                >
+                  {z[0].toUpperCase() + z.slice(1)}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+            {canManage ? (
+              <>
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--ghost s7-btn--sm"
+                  onClick={() => void generate()}
+                  disabled={busy}
+                >
+                  {busy ? "Generating…" : "Generate from scope"}
+                </button>
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--primary s7-btn--sm"
+                  onClick={() => setCreating(true)}
+                >
+                  + Add task
+                </button>
+              </>
+            ) : null}
+          </div>
+        </div>
+
+        {error ? <p style={{ color: "var(--status-danger)", fontSize: 13 }}>{error}</p> : null}
+
+        {view === "gantt" ? (
+          <GanttChart
+            projectId={project.id}
+            tasks={tasks}
+            zoom={zoom}
+            canManage={canManage}
+            onChanged={() => void load()}
+          />
+        ) : (
+          <GanttListView projectId={project.id} tasks={tasks} canManage={canManage} onChanged={() => void load()} />
+        )}
+
+        {creating ? (
+          <AddGanttTaskModal
+            projectId={project.id}
+            existingCount={tasks.length}
+            onClose={() => setCreating(false)}
+            onCreated={() => {
+              setCreating(false);
+              void load();
+            }}
+          />
+        ) : null}
       </section>
       <section className="s7-card">
         <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>Milestones</h3>
@@ -1174,5 +1294,221 @@ function ActivityTab({
         </div>
       ) : null}
     </section>
+  );
+}
+
+function GanttListView({
+  projectId,
+  tasks,
+  canManage,
+  onChanged
+}: {
+  projectId: string;
+  tasks: GanttTask[];
+  canManage: boolean;
+  onChanged: () => void;
+}) {
+  const { authFetch } = useAuth();
+  if (tasks.length === 0) {
+    return <p style={{ color: "var(--text-muted)" }}>No tasks yet.</p>;
+  }
+  const setProgress = async (id: string, value: number) => {
+    if (!canManage) return;
+    const r = await authFetch(`/projects/${projectId}/gantt/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ progress: value })
+    });
+    if (r.ok) onChanged();
+  };
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <thead style={{ background: "var(--surface-muted, #f6f6f6)" }}>
+          <tr>
+            {["Task", "Discipline", "Start", "End", "Progress", "Assignee"].map((h) => (
+              <th
+                key={h}
+                style={{
+                  padding: "6px 8px",
+                  textAlign: "left",
+                  fontSize: 10,
+                  textTransform: "uppercase",
+                  color: "var(--text-muted)"
+                }}
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {tasks.map((t) => (
+            <tr key={t.id} style={{ borderTop: "1px solid var(--border, #e5e7eb)" }}>
+              <td style={{ padding: "6px 8px" }}>
+                <strong>{t.title}</strong>
+              </td>
+              <td style={{ padding: "6px 8px", fontSize: 12 }}>{t.discipline ?? "—"}</td>
+              <td style={{ padding: "6px 8px", fontSize: 12 }}>{formatDate(t.startDate)}</td>
+              <td style={{ padding: "6px 8px", fontSize: 12 }}>{formatDate(t.endDate)}</td>
+              <td style={{ padding: "6px 8px", fontSize: 12 }}>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={t.progress}
+                  onChange={(e) => void setProgress(t.id, Number(e.target.value))}
+                  disabled={!canManage}
+                  style={{ width: 100 }}
+                />
+                <span style={{ marginLeft: 6, color: "var(--text-muted)" }}>{t.progress}%</span>
+              </td>
+              <td style={{ padding: "6px 8px", fontSize: 12 }}>
+                {t.assignedTo ? `${t.assignedTo.firstName} ${t.assignedTo.lastName}` : "—"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function AddGanttTaskModal({
+  projectId,
+  existingCount,
+  onClose,
+  onCreated
+}: {
+  projectId: string;
+  existingCount: number;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const { authFetch } = useAuth();
+  const today = new Date().toISOString().slice(0, 10);
+  const [form, setForm] = useState({
+    title: "",
+    discipline: "" as string,
+    startDate: today,
+    endDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+    colour: "#005B61"
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.title.trim()) {
+      setErr("Title required");
+      return;
+    }
+    setSubmitting(true);
+    setErr(null);
+    try {
+      const r = await authFetch(`/projects/${projectId}/gantt`, {
+        method: "POST",
+        body: JSON.stringify({
+          title: form.title.trim(),
+          discipline: form.discipline || null,
+          startDate: new Date(form.startDate).toISOString(),
+          endDate: new Date(form.endDate).toISOString(),
+          colour: form.colour,
+          sortOrder: existingCount
+        })
+      });
+      if (!r.ok) throw new Error(await r.text());
+      onCreated();
+    } catch (e2) {
+      setErr((e2 as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.5)",
+        zIndex: 1100,
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center"
+      }}
+    >
+      <form
+        onSubmit={submit}
+        onClick={(e) => e.stopPropagation()}
+        className="s7-card"
+        style={{ padding: 20, width: "min(480px, 90vw)" }}
+      >
+        <h3 className="s7-type-section-heading" style={{ margin: "0 0 12px" }}>New task</h3>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <label style={{ fontSize: 12, gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: 2 }}>
+            <span>Title *</span>
+            <input
+              className="s7-input"
+              value={form.title}
+              onChange={(e) => setForm({ ...form, title: e.target.value })}
+              required
+            />
+          </label>
+          <label style={{ fontSize: 12, display: "flex", flexDirection: "column", gap: 2 }}>
+            <span>Discipline</span>
+            <select
+              className="s7-select"
+              value={form.discipline}
+              onChange={(e) => setForm({ ...form, discipline: e.target.value })}
+            >
+              <option value="">— none —</option>
+              <option value="SO">Soft Strip</option>
+              <option value="Str">Structural</option>
+              <option value="Asb">Asbestos</option>
+              <option value="Civ">Civil</option>
+              <option value="Prv">Provisional</option>
+            </select>
+          </label>
+          <label style={{ fontSize: 12, display: "flex", flexDirection: "column", gap: 2 }}>
+            <span>Colour</span>
+            <input
+              type="color"
+              value={form.colour}
+              onChange={(e) => setForm({ ...form, colour: e.target.value })}
+            />
+          </label>
+          <label style={{ fontSize: 12, display: "flex", flexDirection: "column", gap: 2 }}>
+            <span>Start *</span>
+            <input
+              type="date"
+              className="s7-input"
+              value={form.startDate}
+              onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+              required
+            />
+          </label>
+          <label style={{ fontSize: 12, display: "flex", flexDirection: "column", gap: 2 }}>
+            <span>End *</span>
+            <input
+              type="date"
+              className="s7-input"
+              value={form.endDate}
+              onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+              required
+            />
+          </label>
+        </div>
+        {err ? <p style={{ color: "var(--status-danger)", marginTop: 8 }}>{err}</p> : null}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
+          <button type="button" className="s7-btn s7-btn--ghost" onClick={onClose}>Cancel</button>
+          <button type="submit" className="s7-btn s7-btn--primary" disabled={submitting}>
+            {submitting ? "Saving…" : "Add task"}
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }

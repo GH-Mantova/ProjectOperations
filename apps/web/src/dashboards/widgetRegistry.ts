@@ -89,6 +89,7 @@ import { BreakdownCountKpi, OverdueCountKpi, UpcomingBar } from "./widgets/maint
 import { ByTemplateBar, SubmissionsKpi } from "./widgets/forms";
 import { ComplianceAlertsWidget } from "./widgets/compliance";
 import { SafetySummaryWidget } from "./widgets/safety";
+import { ProjectTimelineWidget } from "./widgets/projectTimeline";
 
 const TENDER_STAGE_OPTIONS = [
   { value: "DRAFT", label: "Identified" },
@@ -402,6 +403,18 @@ export const WIDGETS: WidgetMeta[] = [
     defaultColSpan: 2,
     defaultRowSpan: 1,
     component: SafetySummaryWidget
+  },
+
+  // ── Project timeline ──────────────────────────────────────
+  {
+    type: "ops_project_timeline",
+    name: "Project timeline",
+    category: "operations",
+    size: "full",
+    description: "Active projects rendered as bars over the next 90 days, coloured by status.",
+    defaultColSpan: 3,
+    defaultRowSpan: 2,
+    component: ProjectTimelineWidget
   }
 ];
 

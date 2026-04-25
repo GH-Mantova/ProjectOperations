@@ -305,3 +305,16 @@ GitHub PR: #89 (chain PR #87 PWA / offline)
 Detail: feat/pwa-offline merged via admin squash (CI 6/6 SUCCESS; auto-merge stalled BEHIND, same race)
 Status: COMPLETE
 PR: https://github.com/GH-Mantova/ProjectOperations/pull/89
+
+## 2026-04-25 08:03 AEST — AUDIT PASS #4 FINDINGS
+Type: AUDIT
+Status: BLOCKED — 3 criticals require hotfix before chain close
+Critical:
+  C1: PWA manifest icons /pwa-192.png /pwa-512.png missing from apps/web/public — install fails
+  C2: Xero OAuth callback does not validate state param — CSRF can bind connection to attacker tenant (xero.controller.ts)
+  C3: .env.example missing XERO_*, PORTAL_JWT_*, PORTAL_PUBLIC_URL (CLAUDE.md mandates env documentation)
+Major (bundled into hotfix where cheap):
+  M4: Xero refresh-token expiry path throws raw 500 instead of clear reconnect prompt
+  M14: NetworkFirst caches Authorized GETs 24h — cross-user stale-data risk on shared devices
+Other majors (#5 OfflineProvider boundary, #6 SW autoUpdate race, #7 dead-letter UX) deferred to follow-ups
+Action: Opening PR #87.1 (final hotfix) before chain cleanup

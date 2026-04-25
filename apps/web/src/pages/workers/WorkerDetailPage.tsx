@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { QualificationsSection } from "./QualificationsSection";
 
 type Allocation = {
   id: string;
@@ -203,6 +204,11 @@ export function WorkerDetailPage() {
           </table>
         )}
       </section>
+
+      <QualificationsSection
+        workerProfileId={worker.id}
+        canManage={Boolean(user?.permissions?.includes("compliance.manage")) || Boolean(user?.isSuperUser)}
+      />
 
       <MobileAccessSection worker={worker} canManage={canManage} onProvisioned={() => void load()} />
 

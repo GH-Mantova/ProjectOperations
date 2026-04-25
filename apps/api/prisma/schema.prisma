@@ -91,6 +91,8 @@ model User {
   creditAppsReviewed      CreditApplication[]     @relation("CreditAppReviewer")
   contactsCreated         Contact[]                @relation("ContactCreatedBy")
   clientsAsClaimReminder  Client[]                 @relation("ClaimReminderUser")
+  qualificationsCreated   WorkerQualification[]    @relation("QualificationCreatedBy")
+  complianceAlertsSent    ComplianceAlert[]        @relation("ComplianceAlertRecipient")
 
   @@index([isActive])
   @@map("users")
@@ -1861,6 +1863,7 @@ model WorkerProfile {
   allocations           ProjectAllocation[]
   preStartChecklists    PreStartChecklist[]
   timesheets            Timesheet[]
+  qualifications        WorkerQualification[]
   createdAt             DateTime            @default(now()) @map("created_at")
   updatedAt             DateTime            @updatedAt @map("updated_at")
 
@@ -2739,6 +2742,9 @@ model SubcontractorSupplier {
   onHoldReason     String?   @map("on_hold_reason")
   internalNotes    String?   @map("internal_notes")
   performanceRating Int?     @map("performance_rating")
+  complianceBlocked     Boolean   @default(false) @map("compliance_blocked")
+  complianceBlockReason String?   @map("compliance_block_reason")
+  complianceBlockedAt   DateTime? @map("compliance_blocked_at")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
   createdById      String    @map("created_by_id")
@@ -2849,4 +2855,46 @@ model SubcontractorDocument {
 
   @@index([subcontractorId])
   @@map("subcontractor_documents")
+}
+
+// ─── Compliance tracking (PR #79) ────────────────────────────────────────────
+
+model WorkerQualification {
+  id               String        @id @default(cuid())
+  workerProfileId  String        @map("worker_profile_id")
+  workerProfile    WorkerProfile @relation(fields: [workerProfileId], references: [id], onDelete: Cascade)
+  qualType         String        @map("qual_type")
+  licenceNumber    String?       @map("licence_number")
+  issuingAuthority String?       @map("issuing_authority")
+  issueDate        DateTime?     @map("issue_date")
+  expiryDate       DateTime?     @map("expiry_date")
+  documentPath     String?       @map("document_path")
+  notes            String?
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+  createdById      String?       @map("created_by_id")
+  createdBy        User?         @relation("QualificationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([workerProfileId])
+  @@index([expiryDate])
+  @@map("worker_qualifications")
+}
+
+// Tracks alerts already sent for an item so the daily cron doesn't spam users.
+// `@@unique([itemId, alertType])` is the dedup guard — one record per item +
+// alert tier (expiring_30 / expiring_7 / expired).
+model ComplianceAlert {
+  id           String   @id @default(cuid())
+  entityType   String   @map("entity_type")
+  entityId     String   @map("entity_id")
+  itemType     String   @map("item_type")
+  itemId       String   @map("item_id")
+  alertType    String   @map("alert_type")
+  sentAt       DateTime @default(now()) @map("sent_at")
+  sentToUserId String   @map("sent_to_user_id")
+  sentToUser   User     @relation("ComplianceAlertRecipient", fields: [sentToUserId], references: [id])
+
+  @@unique([itemId, alertType])
+  @@index([entityId])
+  @@map("compliance_alerts")
 }

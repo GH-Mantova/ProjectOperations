@@ -123,7 +123,8 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       "documents.manage",
       "field.manage",
       "finance.view",
-      "directory.view"
+      "directory.view",
+      "compliance.view"
     ]
   );
 
@@ -161,7 +162,10 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       "jobs.view",
       "projects.view",
       "resources.view",
-      "field.manage"
+      "field.manage",
+      "compliance.view",
+      "compliance.manage",
+      "compliance.admin"
     ]
   );
 
@@ -181,7 +185,8 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       "finance.manage",
       "directory.view",
       "directory.manage",
-      "directory.finance"
+      "directory.finance",
+      "compliance.view"
     ]
   );
 
@@ -3333,6 +3338,136 @@ export async function seedBusinessDirectoryDemos(prisma: PrismaClient): Promise<
         phone: c.phone ?? null,
         email: c.email ?? null,
         isPrimary: true,
+        createdById: admin.id
+      }
+    });
+  }
+
+  // ─── Demo compliance data (PR #79) ────────────────────────────────────
+  // Relative dates so the demo always looks current. All upserts → idempotent.
+  const today = new Date();
+  const inDays = (n: number): Date => new Date(today.getTime() + n * 24 * 60 * 60 * 1000);
+
+  const licenceSeeds: Array<{
+    id: string;
+    subcontractorId: string;
+    licenceType: string;
+    licenceNumber: string;
+    issuingAuthority: string;
+    expiryDate: Date;
+  }> = [
+    {
+      id: "lic-cutrite-qbcc",
+      subcontractorId: "sub-cutrite",
+      licenceType: "qbcc",
+      licenceNumber: "QBCC-12345",
+      issuingAuthority: "QBCC",
+      expiryDate: inDays(45)
+    },
+    {
+      id: "lic-swanbank-waste",
+      subcontractorId: "sub-swanbank-waste",
+      licenceType: "waste_transport",
+      licenceNumber: "EPA-WT-5678",
+      issuingAuthority: "QLD EPA",
+      expiryDate: inDays(-5) // already expired — drives auto-block demo
+    }
+  ];
+  for (const l of licenceSeeds) {
+    await prisma.entityLicence.upsert({
+      where: { id: l.id },
+      update: {
+        licenceType: l.licenceType,
+        licenceNumber: l.licenceNumber,
+        issuingAuthority: l.issuingAuthority,
+        expiryDate: l.expiryDate,
+        subcontractorId: l.subcontractorId
+      },
+      create: {
+        id: l.id,
+        licenceType: l.licenceType,
+        licenceNumber: l.licenceNumber,
+        issuingAuthority: l.issuingAuthority,
+        expiryDate: l.expiryDate,
+        subcontractorId: l.subcontractorId
+      }
+    });
+  }
+
+  await prisma.entityInsurance.upsert({
+    where: { id: "ins-cutrite-pl" },
+    update: {
+      insuranceType: "public_liability",
+      insurerName: "QBE Insurance",
+      policyNumber: "QBE-2026-001",
+      coverageAmount: 20000000,
+      expiryDate: inDays(15),
+      subcontractorId: "sub-cutrite"
+    },
+    create: {
+      id: "ins-cutrite-pl",
+      insuranceType: "public_liability",
+      insurerName: "QBE Insurance",
+      policyNumber: "QBE-2026-001",
+      coverageAmount: 20000000,
+      expiryDate: inDays(15),
+      subcontractorId: "sub-cutrite"
+    }
+  });
+
+  // Worker qualifications keyed off the stable WorkerProfile IDs seeded
+  // earlier in this file. Raj = wp-user-estimator, Marco = wp-user-supervisor-001.
+  const qualSeeds: Array<{
+    id: string;
+    workerProfileId: string;
+    qualType: string;
+    licenceNumber: string;
+    expiryDate: Date | null;
+  }> = [
+    {
+      id: "qual-raj-whitecard",
+      workerProfileId: "wp-user-estimator",
+      qualType: "white_card",
+      licenceNumber: "QLD-WC-001",
+      expiryDate: null
+    },
+    {
+      id: "qual-raj-asbestos-b",
+      workerProfileId: "wp-user-estimator",
+      qualType: "asbestos_b",
+      licenceNumber: "ASB-B-2024-001",
+      expiryDate: inDays(20)
+    },
+    {
+      id: "qual-marco-asbestos-a",
+      workerProfileId: "wp-user-supervisor-001",
+      qualType: "asbestos_a",
+      licenceNumber: "ASB-A-2024-001",
+      expiryDate: inDays(180)
+    },
+    {
+      id: "qual-marco-firstaid",
+      workerProfileId: "wp-user-supervisor-001",
+      qualType: "first_aid",
+      licenceNumber: "FA-2024-001",
+      expiryDate: inDays(10)
+    }
+  ];
+  for (const q of qualSeeds) {
+    await prisma.workerQualification.upsert({
+      where: { id: q.id },
+      update: {
+        qualType: q.qualType,
+        licenceNumber: q.licenceNumber,
+        expiryDate: q.expiryDate,
+        workerProfileId: q.workerProfileId
+      },
+      create: {
+        id: q.id,
+        qualType: q.qualType,
+        licenceNumber: q.licenceNumber,
+        expiryDate: q.expiryDate,
+        workerProfileId: q.workerProfileId,
         createdById: admin.id
       }
     });

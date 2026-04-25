@@ -221,6 +221,12 @@ const NAV_GROUPS: NavGroup[] = [
         match: (path) => path === "/" || path.startsWith("/dashboards/")
       },
       { to: "/documents", label: "Documents", icon: ICON_DOCUMENTS },
+      {
+        to: "/compliance",
+        label: "Compliance",
+        icon: ICON_AUDIT,
+        match: (path) => path.startsWith("/compliance")
+      },
       { to: "/archive", label: "Archive", icon: ICON_ARCHIVE, match: (path) => path.startsWith("/archive") }
     ]
   },

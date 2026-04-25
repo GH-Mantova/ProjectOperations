@@ -2756,8 +2756,9 @@ model SubcontractorSupplier {
 }
 
 // NOTE: SubcontractorContact was unified into the polymorphic Contact model in
-// PR #75. The underlying `subcontractor_contacts` table is retained (rows
-// copied into `contacts`) and will be dropped in a follow-up tech-debt PR.
+// PR #75 — rows were copied into `contacts` then. The legacy
+// `subcontractor_contacts` table was dropped in PR #78
+// (migration 20260426_feat_drop_deprecated_tables).
 
 model EntityLicence {
   id               String    @id @default(cuid())

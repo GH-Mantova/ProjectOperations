@@ -52,7 +52,7 @@ export function SitesListPage() {
 
   useEffect(() => {
     let cancelled = false;
-    void authFetch("/master-data/clients?pageSize=200").then(async (r) => {
+    void authFetch("/master-data/clients?limit=100").then(async (r) => {
       if (!r.ok || cancelled) return;
       const body = (await r.json()) as { items: ClientOption[] };
       if (!cancelled) setClients(body.items);

@@ -86,7 +86,7 @@ export function ContactsPage() {
   useEffect(() => {
     let cancelled = false;
     void Promise.all([
-      authFetch("/master-data/clients?page=1&pageSize=200").then((r) => (r.ok ? r.json() : null)),
+      authFetch("/master-data/clients?page=1&limit=100").then((r) => (r.ok ? r.json() : null)),
       authFetch("/directory?status=").then((r) => (r.ok ? r.json() : null))
     ]).then(([cResp, sResp]) => {
       if (cancelled) return;

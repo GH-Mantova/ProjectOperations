@@ -318,3 +318,45 @@ Major (bundled into hotfix where cheap):
   M14: NetworkFirst caches Authorized GETs 24h — cross-user stale-data risk on shared devices
 Other majors (#5 OfflineProvider boundary, #6 SW autoUpdate race, #7 dead-letter UX) deferred to follow-ups
 Action: Opening PR #87.1 (final hotfix) before chain cleanup
+
+## 2026-04-25 08:14 AEST — PR #87.1 MERGED
+Type: FIX
+Branch: fix/audit-4-criticals
+GitHub PR: #90
+Detail: Audit-#4 criticals fixed. C1 PWA icons (pwa-192/512.png + favicon.ico generated as solid teal placeholders). C2 Xero OAuth state CSRF protection (HMAC-signed token, 10min TTL, timing-safe verify, one-shot delete). C3 .env.example documents XERO_*, PORTAL_JWT_*, PORTAL_PUBLIC_URL. M4 refresh-token expiry now clears connection + throws clear 503 instead of raw 500.
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/90
+
+## 2026-04-25 08:14 AEST — AUDIT PASS #4 COMPLETE
+Type: AUDIT
+Status: CLOSED — all findings resolved via PR #87.1
+Detail: Final audit covered chain PRs #86 (Xero) + #87 (PWA) + chain-wide regression. 3 criticals + 1 major bundled in hotfix. Remaining majors (OfflineProvider boundary, SW autoUpdate race, dead-letter UX) are tracked as follow-ups, not chain-blocking. Chain-wide regression check confirmed: JwtAuthGuard portal-token rejection still active, all permissions registered, all 8 chain PRs + 3 hotfixes landed cleanly.
+
+## 2026-04-25 08:14 AEST — CHAIN COMPLETE
+Type: CHAIN
+Status: SHIPPED
+Bypass actor: REMOVED from ruleset 15532058 (verified bypass_actors=[])
+Main protection: RESTORED — direct pushes to main now blocked
+
+Chain PRs shipped:
+  #80 SharePoint Live (GitHub #80) — merged
+  #81 Safety Forms (GitHub #81) — merged
+  #82 Gantt scheduling (GitHub #82) — merged
+  #83 Client Portal (GitHub #83) — merged
+  #84 GPS clock-on (GitHub #85) — merged
+  #85 Worker availability (GitHub #86) — merged
+  #86 Xero integration (GitHub #88) — merged
+  #87 PWA / offline (GitHub #89) — merged
+
+Hotfixes shipped (from audit findings):
+  #83.1 Portal auth security (GitHub #84) — JwtAuthGuard portal isolation, reset URL leak, gantt scope, 7 majors
+  #85.1 Availability + GPS hardening (GitHub #87) — actor scope, self-approval block, audit trail, 3 majors
+  #87.1 PWA + Xero hardening (GitHub #90) — PWA icons, Xero OAuth state CSRF, env docs, refresh expiry handling
+
+Audit passes:
+  #1 (after #80 + #81) — clean
+  #2 (after #82 + #83) — 3 criticals + 7 majors → fixed via #83.1
+  #3 (after #84 + #85) — 2 criticals + 3 majors → fixed via #85.1
+  #4 (after #86 + #87, chain-wide) — 3 criticals + 1 major → fixed via #87.1
+
+11 PRs total, 4 audit passes, all 7-check pre-PR gates green, all CI 6/6 SUCCESS.

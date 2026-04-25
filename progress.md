@@ -262,3 +262,16 @@ Major:
   M2: recordLocationLogs appends on every PATCH — log-row spam by repeated updates (field.service.ts:537)
   M3: locationConsentAt set to null on revocation — loses audit of when consent was withdrawn (field.service.ts:63)
 Action: Opening PR #85.1 hotfix before resuming chain
+
+## 2026-04-25 07:35 AEST — PR #85.1 MERGED
+Type: FIX
+Branch: fix/availability-actor-scope
+GitHub PR: #87
+Detail: 2 criticals + 3 majors from audit #3 fixed. C1 actor scope (workerProfile.internalUserId === actor.sub OR isSuperUser). C2 self-approval blocked. M1 WorkerLeave.requestedById added (migration 20260426_fix_availability_audit). M2 location-log 60s dedupe. M3 locationConsentRevokedAt preserves audit trail.
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/87
+
+## 2026-04-25 07:35 AEST — AUDIT PASS #3 COMPLETE
+Type: AUDIT
+Status: CLOSED
+Detail: All findings addressed via PR #85.1. Resuming chain at PR #86 (Xero integration).

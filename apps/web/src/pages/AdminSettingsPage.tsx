@@ -97,11 +97,14 @@ export function AdminSettingsPage() {
             />
           )}
           {tab === "platform" && (
-            <IntegrationTab
-              href="/admin/platform"
-              label="Platform integrations — SharePoint"
-              body="SharePoint tenant, site, and library bindings plus the root folder tree used by Project Operations. SHAREPOINT_MODE is set by environment."
-            />
+            <>
+              <IntegrationTab
+                href="/admin/platform"
+                label="Platform integrations — SharePoint"
+                body="SharePoint tenant, site, and library bindings plus the root folder tree used by Project Operations. SHAREPOINT_MODE is set by environment."
+              />
+              <SharePointTestPanel />
+            </>
           )}
           {tab === "permissions" && (
             <StubCard title="Role & permission management" body="Coming soon." />
@@ -550,6 +553,59 @@ function EmailTab() {
       <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
         Last updated: {new Date(config.updatedAt).toLocaleString("en-AU")}
       </div>
+    </section>
+  );
+}
+
+function SharePointTestPanel() {
+  const { authFetch } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ connected: boolean; mode: string; message?: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = async () => {
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    try {
+      const response = await authFetch("/sharepoint/test");
+      if (!response.ok) throw new Error(await response.text());
+      setResult(await response.json());
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="s7-card" style={{ marginTop: 12 }}>
+      <h2 className="s7-type-section-heading" style={{ marginTop: 0 }}>SharePoint connection</h2>
+      <p style={{ color: "var(--text-muted)", margin: "0 0 10px" }}>
+        Probes the configured adapter. Mock mode always returns OK. Live mode performs a benign
+        ensureFolder call against the configured root.
+      </p>
+      <button type="button" className="s7-btn s7-btn--secondary" onClick={() => void run()} disabled={busy}>
+        {busy ? "Testing…" : "Test connection"}
+      </button>
+      {error ? (
+        <p style={{ color: "var(--status-danger)", marginTop: 10 }}>{error}</p>
+      ) : null}
+      {result ? (
+        <div
+          style={{
+            marginTop: 10,
+            padding: 10,
+            borderRadius: 6,
+            background: result.connected ? "rgba(22, 163, 74, 0.10)" : "rgba(245, 158, 11, 0.10)",
+            borderLeft: `4px solid ${result.connected ? "#16a34a" : "#f59e0b"}`,
+            fontSize: 13
+          }}
+        >
+          <strong>{result.connected ? "Connected" : "Unavailable"}</strong> — mode: <code>{result.mode}</code>
+          {result.message ? <div style={{ marginTop: 4 }}>{result.message}</div> : null}
+        </div>
+      ) : null}
     </section>
   );
 }

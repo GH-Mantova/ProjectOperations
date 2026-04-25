@@ -121,13 +121,21 @@ export class GraphSharePointAdapter implements SharePointAdapter {
   private getClient(): Client {
     if (this.client) return this.client;
 
-    const tenantId = this.configService.get<string>("SHAREPOINT_TENANT_ID");
-    const clientId = this.configService.get<string>("SHAREPOINT_CLIENT_ID");
-    const clientSecret = this.configService.get<string>("SHAREPOINT_CLIENT_SECRET");
+    // Both legacy SHAREPOINT_* and the spec-aligned AZURE_* env names are
+    // accepted. AZURE_* wins when both are set.
+    const tenantId =
+      this.configService.get<string>("AZURE_TENANT_ID") ??
+      this.configService.get<string>("SHAREPOINT_TENANT_ID");
+    const clientId =
+      this.configService.get<string>("AZURE_CLIENT_ID") ??
+      this.configService.get<string>("SHAREPOINT_CLIENT_ID");
+    const clientSecret =
+      this.configService.get<string>("AZURE_CLIENT_SECRET") ??
+      this.configService.get<string>("SHAREPOINT_CLIENT_SECRET");
 
     if (!tenantId || !clientId || !clientSecret) {
       throw new ServiceUnavailableException(
-        "SharePoint Graph adapter requires SHAREPOINT_TENANT_ID, SHAREPOINT_CLIENT_ID, and SHAREPOINT_CLIENT_SECRET."
+        "SharePoint Graph adapter requires AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET (or the legacy SHAREPOINT_* equivalents)."
       );
     }
 

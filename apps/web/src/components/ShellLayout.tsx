@@ -214,12 +214,6 @@ const NAV_GROUPS: NavGroup[] = [
     id: "platform",
     label: "Platform",
     items: [
-      {
-        to: "/",
-        label: "Dashboard",
-        icon: ICON_DASHBOARD,
-        match: (path) => path === "/" || path.startsWith("/dashboards/")
-      },
       { to: "/documents", label: "Documents", icon: ICON_DOCUMENTS },
       {
         to: "/compliance",

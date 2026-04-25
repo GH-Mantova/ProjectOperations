@@ -149,3 +149,33 @@ PR: https://github.com/GH-Mantova/ProjectOperations/pull/82
 Status: WAITING_CI
 Detail: GanttTask model, /projects/:id/gantt CRUD + /generate from scope, GanttChart (CSS-grid hand-rolled), Schedule tab rebuilt with Gantt/List + Week/Month/Quarter zoom, project timeline widget (3×2, ops_project_timeline). Drag-to-reschedule + scheduler weekly grid deferred.
 Files: schema.prisma + migration, gantt.{service,controller}.ts, projects-timeline.controller.ts, projects.module.ts, ProjectDetailPage.tsx, GanttChart.tsx, widgets/projectTimeline.tsx, widgetRegistry.ts
+
+## 2026-04-25 17:39 AEST — PR #82 MERGED
+Type: PR
+Detail: feat/gantt-scheduling merged via admin squash (CI 6/6 SUCCESS; auto-merge stalled on head-not-up-to-date race, same as PR #80/#81)
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/82
+
+## 2026-04-25 17:40 AEST — CHAIN PAUSED FOR TOKEN RESET (after PR #82)
+Type: PAUSE
+Status: PAUSED
+Detail: One PR shipped this session — PR #82 (Gantt scheduling). Audit pass #2 was specced after PRs #82 and #83 together; running it now would only cover #82 so deferring until #83 lands.
+
+Honest budget note: PR #83 (Client portal — separate JWT auth subsystem, ~7 portal API endpoints, full new layout, 6 portal pages, invite flow with email) is the largest remaining PR in the chain. PR #86 (Xero — OAuth flow, callback, contact sync, invoice creation) is next-largest. Continuing now would risk the bypass actor sitting active on a half-finished feature branch.
+
+What shipped this session (resumed):
+  - PR #82 Gantt scheduling — merged
+
+What's queued:
+  - PR #83 Client portal
+  - Audit pass #2 (after #83)
+  - PR #84 GPS clock-on
+  - PR #85 Worker availability
+  - Audit pass #3 (after #85)
+  - PR #86 Xero integration
+  - PR #87 PWA / offline
+  - Audit pass #4 (final)
+
+Bypass actor: REMOVING NOW.
+
+Resume: re-add bypass actor, paste chain spec from "PR #83 — Client Portal" onwards.

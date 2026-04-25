@@ -141,3 +141,11 @@ Type: PR
 Branch: feat/gantt-scheduling
 Detail: Gantt chart, project timeline, scheduler weekly calendar
 Status: IN_PROGRESS
+
+## 2026-04-25 17:30 AEST — PR #82 OPENED
+Type: PR
+Branch: feat/gantt-scheduling
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/82
+Status: WAITING_CI
+Detail: GanttTask model, /projects/:id/gantt CRUD + /generate from scope, GanttChart (CSS-grid hand-rolled), Schedule tab rebuilt with Gantt/List + Week/Month/Quarter zoom, project timeline widget (3×2, ops_project_timeline). Drag-to-reschedule + scheduler weekly grid deferred.
+Files: schema.prisma + migration, gantt.{service,controller}.ts, projects-timeline.controller.ts, projects.module.ts, ProjectDetailPage.tsx, GanttChart.tsx, widgets/projectTimeline.tsx, widgetRegistry.ts

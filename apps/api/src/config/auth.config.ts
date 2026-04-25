@@ -6,6 +6,10 @@ export const authConfig = registerAs("auth", () => ({
   refreshSecret: process.env.JWT_REFRESH_SECRET ?? "replace-me-refresh",
   accessTtl: process.env.JWT_ACCESS_TTL ?? "15m",
   refreshTtl: process.env.JWT_REFRESH_TTL ?? "7d",
+  portalAccessSecret: process.env.PORTAL_JWT_ACCESS_SECRET ?? process.env.JWT_ACCESS_SECRET ?? "replace-me-access",
+  portalRefreshSecret: process.env.PORTAL_JWT_REFRESH_SECRET ?? process.env.JWT_REFRESH_SECRET ?? "replace-me-refresh",
+  portalResetSecret: process.env.PORTAL_JWT_RESET_SECRET ?? process.env.JWT_ACCESS_SECRET ?? "replace-me-access",
+  portalAccessTtl: process.env.PORTAL_JWT_ACCESS_TTL ?? "30m",
   entra: {
     tenantId: process.env.ENTRA_TENANT_ID ?? "",
     clientId: process.env.ENTRA_CLIENT_ID ?? "",

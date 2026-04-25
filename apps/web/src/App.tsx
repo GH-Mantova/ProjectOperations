@@ -54,6 +54,17 @@ import { UserProfilePage } from "./pages/account/UserProfilePage";
 import { AdminSettingsPage } from "./pages/AdminSettingsPage";
 import { ContractsListPage } from "./pages/contracts/ContractsListPage";
 import { ContractDetailPage } from "./pages/contracts/ContractDetailPage";
+import { PortalAuthProvider } from "./portal/PortalAuthContext";
+import { PortalLayout } from "./portal/PortalLayout";
+import { PortalProtectedRoute } from "./portal/PortalProtectedRoute";
+import { PortalLoginPage } from "./portal/pages/PortalLoginPage";
+import { PortalAcceptInvitePage } from "./portal/pages/PortalAcceptInvitePage";
+import { PortalDashboardPage } from "./portal/pages/PortalDashboardPage";
+import { PortalProjectsPage } from "./portal/pages/PortalProjectsPage";
+import { PortalJobsPage } from "./portal/pages/PortalJobsPage";
+import { PortalQuotesPage } from "./portal/pages/PortalQuotesPage";
+import { PortalDocumentsPage } from "./portal/pages/PortalDocumentsPage";
+import { PortalAccountPage } from "./portal/pages/PortalAccountPage";
 
 function ProtectedRoute() {
   const { isAuthenticated } = useAuth();
@@ -90,8 +101,21 @@ function RootRedirect({ children }: { children: ReactElement }) {
 export function App() {
   return (
     <AuthProvider>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
+      <PortalAuthProvider>
+        <Routes>
+          <Route path="/portal/login" element={<PortalLoginPage />} />
+          <Route path="/portal/accept-invite" element={<PortalAcceptInvitePage />} />
+          <Route element={<PortalProtectedRoute />}>
+            <Route path="/portal" element={<PortalLayout />}>
+              <Route index element={<PortalDashboardPage />} />
+              <Route path="projects" element={<PortalProjectsPage />} />
+              <Route path="jobs" element={<PortalJobsPage />} />
+              <Route path="quotes" element={<PortalQuotesPage />} />
+              <Route path="documents" element={<PortalDocumentsPage />} />
+              <Route path="account" element={<PortalAccountPage />} />
+            </Route>
+          </Route>
+          <Route path="/login" element={<LoginPage />} />
         <Route element={<ProtectedRoute />}>
           <Route
             path="/field"
@@ -173,8 +197,9 @@ export function App() {
             <Route path="/archive/:jobId" element={<ArchiveDetailPage />} />
           </Route>
         </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </PortalAuthProvider>
     </AuthProvider>
   );
 }

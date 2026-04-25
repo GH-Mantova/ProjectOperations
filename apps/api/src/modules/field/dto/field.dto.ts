@@ -64,6 +64,12 @@ export class CreateTimesheetDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(1000) description?: string;
   @ApiPropertyOptional() @IsOptional() @IsDateString() clockOnTime?: string;
   @ApiPropertyOptional() @IsOptional() @IsDateString() clockOffTime?: string;
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() @Min(-90) @Max(90) clockOnLat?: number;
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() @Min(-180) @Max(180) clockOnLng?: number;
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() @Min(0) clockOnAccuracy?: number;
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() @Min(-90) @Max(90) clockOffLat?: number;
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() @Min(-180) @Max(180) clockOffLng?: number;
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() @Min(0) clockOffAccuracy?: number;
 }
 
 export class UpdateTimesheetDto {
@@ -84,6 +90,18 @@ export class UpdateTimesheetDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(1000) description?: string;
   @ApiPropertyOptional() @IsOptional() @IsDateString() clockOnTime?: string;
   @ApiPropertyOptional() @IsOptional() @IsDateString() clockOffTime?: string;
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() @Min(-90) @Max(90) clockOnLat?: number;
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() @Min(-180) @Max(180) clockOnLng?: number;
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() @Min(0) clockOnAccuracy?: number;
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() @Min(-90) @Max(90) clockOffLat?: number;
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() @Min(-180) @Max(180) clockOffLng?: number;
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() @Min(0) clockOffAccuracy?: number;
+}
+
+export class WorkerLocationConsentDto {
+  @ApiProperty()
+  @IsBoolean()
+  consent!: boolean;
 }
 
 export class FieldListQueryDto {

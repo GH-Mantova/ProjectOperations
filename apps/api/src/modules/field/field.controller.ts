@@ -22,7 +22,8 @@ import {
   RejectTimesheetDto,
   TimesheetSummaryQueryDto,
   UpdatePreStartDto,
-  UpdateTimesheetDto
+  UpdateTimesheetDto,
+  WorkerLocationConsentDto
 } from "./dto/field.dto";
 import { FieldService } from "./field.service";
 
@@ -151,6 +152,23 @@ export class FieldController {
   })
   bulkApproveTimesheets(@Body() dto: BulkApproveTimesheetsDto, @CurrentUser() user: RequestUser) {
     return this.service.bulkApproveTimesheets(dto, ctx(user));
+  }
+
+  @Get("location-consent")
+  @RequirePermissions("field.view")
+  @ApiOperation({ summary: "Get the current worker's GPS clock-on consent status." })
+  getLocationConsent(@CurrentUser() user: RequestUser) {
+    return this.service.getLocationConsent(ctx(user));
+  }
+
+  @Post("location-consent")
+  @RequirePermissions("field.view")
+  @ApiOperation({
+    summary:
+      "Set the worker's GPS clock-on consent. consent=false stops new captures immediately."
+  })
+  setLocationConsent(@Body() dto: WorkerLocationConsentDto, @CurrentUser() user: RequestUser) {
+    return this.service.setLocationConsent(ctx(user), dto.consent);
   }
 
   @Post("timesheets")

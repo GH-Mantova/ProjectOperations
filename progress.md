@@ -63,3 +63,9 @@ PR: https://github.com/GH-Mantova/ProjectOperations/pull/81
 Status: WAITING_CI
 Detail: SafetyIncident + HazardObservation models with IS-INC/IS-HAZ auto-numbering, 9 API endpoints, mobile field forms, desktop register, dashboard widget, demo seed (2 incidents + 3 hazards)
 Files: schema.prisma + migration, seed-initial-services.ts (seedSafetyDemos), seed.ts, app.module.ts, permission-registry.ts, safety/{module,service,controller}.ts, App.tsx, ShellLayout.tsx, dashboards/{types,widgetRegistry,widgets/safety}.ts, pages/safety/SafetyPage.tsx, pages/field/FieldSafetyPage.tsx (rebuilt)
+
+## 2026-04-25 16:38 AEST — PR #81 CI failure + fix
+Type: FIX
+Detail: First CI run on feat/safety-forms hit Prisma P2011 (null on witnesses) because the migration's NOT NULL DEFAULT ARRAY[]::TEXT[] wasn't matched by @default([]) on the Prisma schema field. Added @default([]) to SafetyIncident.witnesses, SafetyIncident.documentPaths, HazardObservation.documentPaths. Verified pnpm seed runs clean locally.
+Status: PUSHED, RE-RUNNING CI
+Commit: 9bde5bf

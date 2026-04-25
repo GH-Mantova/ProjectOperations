@@ -235,3 +235,11 @@ GitHub PR: #85 (chain PR #84 GPS clock-on)
 Detail: feat/gps-clock-on merged via admin squash (CI 6/6 SUCCESS; auto-merge stalled BEHIND, same race pattern)
 Status: COMPLETE
 PR: https://github.com/GH-Mantova/ProjectOperations/pull/85
+
+## 2026-04-25 07:16 AEST — PR #85 OPENED (chain)
+Type: PR
+Branch: feat/worker-availability
+GitHub PR: #86 (chain PR #85 worker availability)
+Detail: WorkerLeave + WorkerUnavailability + /workers/availability/overlay (recurring days expanded). AvailabilitySection on WorkerDetailPage with approve/decline. Migration 20260426_feat_worker_availability.
+Status: WAITING_CI
+Pre-PR checks: 7/7 green

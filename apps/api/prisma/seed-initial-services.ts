@@ -505,22 +505,24 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
     await prisma.contact.upsert({
       where: { id: seed.id },
       update: {
-        clientId: seed.clientId,
+        organisationType: "CLIENT",
+        organisationId: seed.clientId,
         firstName: seed.firstName,
         lastName: seed.lastName,
         email,
         phone: seed.phone,
-        position: seed.position,
+        role: seed.position,
         isPrimary: seed.isPrimary
       },
       create: {
         id: seed.id,
-        clientId: seed.clientId,
+        organisationType: "CLIENT",
+        organisationId: seed.clientId,
         firstName: seed.firstName,
         lastName: seed.lastName,
         email,
         phone: seed.phone,
-        position: seed.position,
+        role: seed.position,
         isPrimary: seed.isPrimary
       }
     });

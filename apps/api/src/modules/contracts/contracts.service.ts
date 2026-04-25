@@ -403,7 +403,17 @@ export class ContractsService {
     // Find contracts with active projects whose client has a configured cut-off.
     const contracts = await this.prisma.contract.findMany({
       where: { status: ContractStatus.ACTIVE },
-      include: { project: { include: { client: { include: { claimCutoffContact: true } } } } }
+      include: {
+        project: {
+          include: {
+            client: {
+              include: {
+                claimReminderUser: { select: { id: true, email: true, firstName: true, lastName: true } }
+              }
+            }
+          }
+        }
+      }
     });
 
     const amy = await this.prisma.user.findUnique({ where: { id: "user-supervisor-002" }, select: { id: true } });
@@ -416,9 +426,11 @@ export class ContractsService {
       const daysAway = Math.round((adjusted.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
       if (daysAway !== 7) continue;
 
-      const recipients: string[] = [];
-      if (amy) recipients.push(amy.id);
-      const cutoffContactEmail = c.project.client.claimCutoffContact?.email ?? null;
+      // Reminder goes to the assigned IS staff member; falls back to Amy (the
+      // default Accounts owner) when no per-client override is set.
+      const reminderUserId = c.project.client.claimReminderUserId ?? amy?.id ?? null;
+      const recipients: string[] = reminderUserId ? [reminderUserId] : [];
+      const cutoffContactEmail = c.project.client.claimReminderUser?.email ?? null;
       for (const userId of recipients) {
         await this.notifications.create({
           userId,

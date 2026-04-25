@@ -205,8 +205,12 @@ export class DirectoryController {
   // ─── Subcontractor contacts ─────────────────────────────────────────────
   @Post("directory/:id/contacts")
   @RequirePermissions("directory.manage")
-  addContact(@Param("id") id: string, @Body() dto: UpsertContactDto) {
-    return this.service.addContact(id, dto as never);
+  addContact(
+    @Param("id") id: string,
+    @Body() dto: UpsertContactDto,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.addContact(id, dto as never, actor.sub);
   }
 
   @Patch("directory/:id/contacts/:contactId")

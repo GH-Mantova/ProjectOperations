@@ -53,24 +53,35 @@ export class TenderClientsService {
         status: "ACTIVE",
         name: { contains: term, mode: "insensitive" }
       },
-      include: {
-        contacts: {
-          take: 1,
-          orderBy: { createdAt: "asc" },
-          select: { firstName: true, lastName: true, email: true }
-        }
-      },
       take: 10,
       orderBy: { name: "asc" }
     });
-    return rows.map((c) => ({
-      id: c.id,
-      name: c.name,
-      email: c.email,
-      contactName: c.contacts[0]
-        ? `${c.contacts[0].firstName} ${c.contacts[0].lastName}`.trim()
-        : null
-    }));
+    // Contacts are now polymorphic — fetch the first per matched client in a
+    // single batched query.
+    const clientIds = rows.map((c) => c.id);
+    const primaryContacts = clientIds.length
+      ? await this.prisma.contact.findMany({
+          where: {
+            organisationType: "CLIENT",
+            organisationId: { in: clientIds },
+            isActive: true
+          },
+          orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }]
+        })
+      : [];
+    const byClient = new Map<string, (typeof primaryContacts)[number]>();
+    for (const c of primaryContacts) {
+      if (!byClient.has(c.organisationId)) byClient.set(c.organisationId, c);
+    }
+    return rows.map((c) => {
+      const contact = byClient.get(c.id);
+      return {
+        id: c.id,
+        name: c.name,
+        email: c.email,
+        contactName: contact ? `${contact.firstName} ${contact.lastName}`.trim() : null
+      };
+    });
   }
 
   private async requireTender(tenderId: string) {

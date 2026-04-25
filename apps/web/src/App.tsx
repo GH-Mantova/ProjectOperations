@@ -11,9 +11,6 @@ import { AuditLogsPage } from "./pages/AuditLogsPage";
 import { PlatformPage } from "./pages/PlatformPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { TenderingDashboardPage } from "./pages/tendering/TenderingDashboardPage";
-import { CreateTenderPage } from "./pages/CreateTenderPage";
-import { TenderPipelinePage } from "./pages/TenderPipelinePage";
-import { TenderWorkspacePage } from "./pages/TenderWorkspacePage";
 import { TenderClientsPage } from "./pages/TenderClientsPage";
 import { TenderContactsPage } from "./pages/TenderContactsPage";
 import { TenderingSettingsPage } from "./pages/TenderingSettingsPage";
@@ -43,6 +40,7 @@ import { ContactsPage } from "./pages/directory/ContactsPage";
 import { SitesListPage } from "./pages/sites/SitesListPage";
 import { EstimateRatesAdminPage } from "./pages/EstimateRatesAdminPage";
 import { UserDashboardPage } from "./pages/dashboards/UserDashboardPage";
+import { DashboardRedirectPage } from "./pages/dashboards/DashboardRedirectPage";
 import { FieldLayout } from "./layouts/FieldLayout";
 import { FieldAllocationsPage } from "./pages/field/FieldAllocationsPage";
 import { FieldPreStartPage } from "./pages/field/FieldPreStartPage";
@@ -120,15 +118,13 @@ export function App() {
             <Route path="/scheduler" element={<SchedulerWorkspacePage />} />
             <Route path="/tenders" element={<TenderingPage />} />
             <Route path="/tenders/dashboard" element={<TenderingDashboardPage />} />
-            {/* Legacy Codex-era pipeline / workspace / create routes are still
-                wired here because the Playwright tendering spec exercises them.
-                The sidebar now points at /tenders (the redesigned register), so
-                end users no longer see the legacy UI by default. The legacy
-                pages will be removed once the spec is rewritten against the
-                new register. */}
-            <Route path="/tenders/pipeline" element={<TenderPipelinePage />} />
-            <Route path="/tenders/create" element={<CreateTenderPage />} />
-            <Route path="/tenders/workspace" element={<TenderWorkspacePage />} />
+            {/* Codex-era /pipeline + /workspace + /create wrappers were
+                retired in PR #78 alongside the Playwright spec rewrite. The
+                routes redirect to the redesigned register so older bookmarks
+                keep working. */}
+            <Route path="/tenders/pipeline" element={<Navigate to="/tenders" replace />} />
+            <Route path="/tenders/create" element={<Navigate to="/tenders" replace />} />
+            <Route path="/tenders/workspace" element={<Navigate to="/tenders" replace />} />
             <Route path="/tenders/clients" element={<TenderClientsPage />} />
             <Route path="/tenders/contacts" element={<TenderContactsPage />} />
             <Route path="/tenders/settings" element={<TenderingSettingsPage />} />
@@ -160,10 +156,10 @@ export function App() {
             <Route path="/admin/estimate-rates" element={<EstimateRatesAdminPage />} />
             <Route path="/account" element={<UserProfilePage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
-            {/* /dashboards (Codex admin index) retired in PR #77 — redirect to
-                the new dashboard canvas at /. /dashboards/:id still serves the
+            {/* /dashboards now redirects to the user's first custom dashboard
+                (or to / if they have none). /dashboards/:id still serves the
                 user-owned dashboard system built on DashboardCanvas. */}
-            <Route path="/dashboards" element={<Navigate to="/" replace />} />
+            <Route path="/dashboards" element={<DashboardRedirectPage />} />
             <Route path="/dashboards/:id" element={<UserDashboardPage />} />
             <Route path="/master-data" element={<MasterDataWorkspacePage />} />
             <Route path="/sites" element={<SitesListPage />} />

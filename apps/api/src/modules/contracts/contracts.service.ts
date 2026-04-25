@@ -29,22 +29,32 @@ export class ContractsService {
   ) {}
 
   // ── Contracts ────────────────────────────────────────────────────────
-  async listContracts(filter: { status?: ContractStatus; projectId?: string }) {
+  async listContracts(filter: {
+    status?: ContractStatus;
+    projectId?: string;
+    page?: number;
+    pageSize?: number;
+    limit?: number;
+  }) {
     const where = {
       status: filter.status,
       projectId: filter.projectId
     };
+    const page = Math.max(1, filter.page ?? 1);
+    const pageSize = Math.min(100, Math.max(1, filter.limit ?? filter.pageSize ?? 20));
     const [items, total] = await this.prisma.$transaction([
       this.prisma.contract.findMany({
         where,
         include: {
           project: { select: { id: true, projectNumber: true, name: true, client: { select: { id: true, name: true } } } }
         },
-        orderBy: { createdAt: "desc" }
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize
       }),
       this.prisma.contract.count({ where })
     ]);
-    return { items, total, page: 1, limit: items.length };
+    return { items, total, page, pageSize, limit: pageSize };
   }
 
   async getContract(id: string) {

@@ -8,6 +8,7 @@ import type { AuthenticatedUser } from "../../common/auth/authenticated-request.
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
+import { PaginationQueryDto } from "../../common/dto/pagination-query.dto";
 import { ContractsService } from "./contracts.service";
 
 class CreateContractDto {
@@ -66,10 +67,9 @@ class PayClaimDto {
   @IsDateString() paidDate!: string;
 }
 
-class ListContractsQuery {
+class ListContractsQuery extends PaginationQueryDto {
   @IsOptional() @IsIn(Object.values(ContractStatus)) status?: ContractStatus;
   @IsOptional() @IsString() projectId?: string;
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number;
 }
 
 function actor(user: AuthenticatedUser) {
@@ -87,7 +87,13 @@ export class ContractsController {
   @RequirePermissions("finance.view")
   @ApiOperation({ summary: "List contracts with project + client info, filterable by status / projectId." })
   list(@Query() q: ListContractsQuery) {
-    return this.service.listContracts({ status: q.status, projectId: q.projectId });
+    return this.service.listContracts({
+      status: q.status,
+      projectId: q.projectId,
+      page: q.page,
+      pageSize: q.pageSize,
+      limit: q.limit
+    });
   }
 
   @Get(":id")

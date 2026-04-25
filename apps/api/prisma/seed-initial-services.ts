@@ -3263,4 +3263,78 @@ export async function seedBusinessDirectoryDemos(prisma: PrismaClient): Promise<
       }
     });
   }
+
+  // Demo primary contacts so the polymorphic /contacts list has SUBCONTRACTOR
+  // rows out of the box. Fields match the spec from PR #78.
+  const contactSeeds: Array<{
+    id: string;
+    subId: string;
+    firstName: string;
+    lastName: string;
+    role: string;
+    phone?: string;
+    email?: string;
+  }> = [
+    {
+      id: "sub-contact-cutrite-001",
+      subId: "sub-cutrite",
+      firstName: "Sales",
+      lastName: "Team",
+      role: "Sales & Estimating",
+      email: "sales@cutrite.net.au",
+      phone: "07 3390 2155"
+    },
+    {
+      id: "sub-contact-swanbank-001",
+      subId: "sub-swanbank-waste",
+      firstName: "Dispatch",
+      lastName: "Team",
+      role: "Waste disposal booking",
+      phone: "07 3464 3700"
+    },
+    {
+      id: "sub-contact-bmi-001",
+      subId: "sub-bmi-waste",
+      firstName: "BMI",
+      lastName: "Acacia Ridge",
+      role: "Waste disposal booking",
+      phone: "07 3272 1122"
+    },
+    {
+      id: "sub-contact-labour-001",
+      subId: "sub-generic-labour-hire",
+      firstName: "Account",
+      lastName: "Manager",
+      role: "Labour hire coordinator"
+    }
+  ];
+
+  for (const c of contactSeeds) {
+    await prisma.contact.upsert({
+      where: { id: c.id },
+      update: {
+        organisationType: "SUBCONTRACTOR",
+        organisationId: c.subId,
+        firstName: c.firstName,
+        lastName: c.lastName,
+        role: c.role,
+        phone: c.phone ?? null,
+        email: c.email ?? null,
+        isPrimary: true,
+        isActive: true
+      },
+      create: {
+        id: c.id,
+        organisationType: "SUBCONTRACTOR",
+        organisationId: c.subId,
+        firstName: c.firstName,
+        lastName: c.lastName,
+        role: c.role,
+        phone: c.phone ?? null,
+        email: c.email ?? null,
+        isPrimary: true,
+        createdById: admin.id
+      }
+    });
+  }
 }

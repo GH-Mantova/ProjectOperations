@@ -53,5 +53,8 @@ export const permissionRegistry = [
   { code: "directory.finance", module: "directory", description: "View and edit bank details on directory entries" },
   { code: "compliance.view", module: "compliance", description: "View compliance records and expiry alerts" },
   { code: "compliance.manage", module: "compliance", description: "Add and edit licences, insurance, qualifications" },
-  { code: "compliance.admin", module: "compliance", description: "Override compliance blocks, send manual alerts" }
+  { code: "compliance.admin", module: "compliance", description: "Override compliance blocks, send manual alerts" },
+  { code: "safety.view", module: "safety", description: "View safety incidents and hazard observations" },
+  { code: "safety.manage", module: "safety", description: "Report and update incidents and hazard observations" },
+  { code: "safety.admin", module: "safety", description: "Close incidents/hazards, manage corrective actions" }
 ] as const;

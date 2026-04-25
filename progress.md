@@ -275,3 +275,11 @@ PR: https://github.com/GH-Mantova/ProjectOperations/pull/87
 Type: AUDIT
 Status: CLOSED
 Detail: All findings addressed via PR #85.1. Resuming chain at PR #86 (Xero integration).
+
+## 2026-04-25 07:44 AEST — PR #86 OPENED (chain)
+Type: PR
+Branch: feat/xero-integration
+GitHub PR: #88 (chain PR #86 Xero integration)
+Detail: xero-node 15 OAuth2. XeroConnection (singleton) + XeroSyncLog. /xero/connect|callback|status|disconnect; /xero/contacts/:id/sync + sync-all; /xero/invoices/from-progress-claim/:claimId. Token auto-refresh within 60s of expiry. XeroPanel on Admin Settings. New env: XERO_CLIENT_ID/SECRET/REDIRECT_URI/SCOPES.
+Status: WAITING_CI
+Pre-PR checks: 7/7 green

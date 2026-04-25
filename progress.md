@@ -179,3 +179,17 @@ What's queued:
 Bypass actor: REMOVING NOW.
 
 Resume: re-add bypass actor, paste chain spec from "PR #83 — Client Portal" onwards.
+
+## 2026-04-25 16:30 AEST — PR #83 STARTED (chain resumed)
+Type: PR
+Branch: feat/client-portal
+Detail: Client portal — separate JWT auth subsystem + scoped data API + invite flow + 6 portal pages
+Status: IN_PROGRESS
+
+## 2026-04-25 16:35 AEST — PR #83 OPENED
+Type: PR
+Branch: feat/client-portal
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/83
+Status: WAITING_CI
+Files: schema.prisma + migration 20260426_feat_client_portal (3 models); apps/api/src/modules/portal/* (11 files: auth service, client service, controllers, JWT guard, DTOs, types, decorator, module); auth.config.ts (4 portal secrets); portal.config.ts (publicUrl); permission-registry.ts (portal.invite); apps/web/src/portal/* (10 files: PortalAuthContext, PortalLayout, PortalProtectedRoute, 7 pages); ContactsTab.tsx (invite button + portal badge); App.tsx (portal routes)
+Pre-PR checks: 7/7 green (api lint, web lint, api test 55/55, web test 28/28, api+web build, compliance:smoke, tendering e2e 15/15)

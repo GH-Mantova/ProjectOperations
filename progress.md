@@ -199,3 +199,15 @@ Type: PR
 Detail: feat/client-portal merged via admin squash (CI 6/6 SUCCESS; auto-merge stalled on BEHIND head, same race as PR #80/#81/#82)
 Status: COMPLETE
 PR: https://github.com/GH-Mantova/ProjectOperations/pull/83
+
+## 2026-04-25 06:43 AEST — AUDIT PASS #2 FINDINGS
+Type: AUDIT
+Status: BLOCKED — hotfix required before PR #84
+Critical:
+  C1: Portal tokens accepted on staff endpoints (auth.config.ts:9-11)
+  C2: Reset URL returned in response body (portal-auth.service.ts:243)
+  C3: Gantt not scoped to user's accessible projects
+Major: rate limiting, session revocation, isActive recheck,
+  login enumeration, date validation, password complexity,
+  activeTimeline scope (7 items)
+Action: Opening PR #83.1 hotfix before resuming chain

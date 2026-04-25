@@ -55,3 +55,11 @@ Type: PR
 Branch: feat/safety-forms
 Detail: Incident reports + hazard observations + field reporting + safety widget
 Status: IN_PROGRESS
+
+## 2026-04-25 16:25 AEST — PR #81 OPENED
+Type: PR
+Branch: feat/safety-forms
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/81
+Status: WAITING_CI
+Detail: SafetyIncident + HazardObservation models with IS-INC/IS-HAZ auto-numbering, 9 API endpoints, mobile field forms, desktop register, dashboard widget, demo seed (2 incidents + 3 hazards)
+Files: schema.prisma + migration, seed-initial-services.ts (seedSafetyDemos), seed.ts, app.module.ts, permission-registry.ts, safety/{module,service,controller}.ts, App.tsx, ShellLayout.tsx, dashboards/{types,widgetRegistry,widgets/safety}.ts, pages/safety/SafetyPage.tsx, pages/field/FieldSafetyPage.tsx (rebuilt)

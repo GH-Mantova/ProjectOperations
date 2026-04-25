@@ -146,7 +146,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Commercial",
     items: [
       {
-        to: "/tenders/pipeline",
+        to: "/tenders",
         label: "Tendering",
         icon: ICON_TENDERING,
         match: (path) =>
@@ -215,10 +215,10 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Platform",
     items: [
       {
-        to: "/dashboards",
+        to: "/",
         label: "Dashboard",
         icon: ICON_DASHBOARD,
-        match: (path) => path === "/dashboards" || path.startsWith("/dashboards/")
+        match: (path) => path === "/" || path.startsWith("/dashboards/")
       },
       { to: "/documents", label: "Documents", icon: ICON_DOCUMENTS },
       { to: "/archive", label: "Archive", icon: ICON_ARCHIVE, match: (path) => path.startsWith("/archive") }

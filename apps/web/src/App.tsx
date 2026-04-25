@@ -10,7 +10,6 @@ import { PermissionsPage } from "./pages/PermissionsPage";
 import { AuditLogsPage } from "./pages/AuditLogsPage";
 import { PlatformPage } from "./pages/PlatformPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
-import { DashboardsPage } from "./pages/DashboardsPage";
 import { TenderingDashboardPage } from "./pages/tendering/TenderingDashboardPage";
 import { CreateTenderPage } from "./pages/CreateTenderPage";
 import { TenderPipelinePage } from "./pages/TenderPipelinePage";
@@ -121,6 +120,12 @@ export function App() {
             <Route path="/scheduler" element={<SchedulerWorkspacePage />} />
             <Route path="/tenders" element={<TenderingPage />} />
             <Route path="/tenders/dashboard" element={<TenderingDashboardPage />} />
+            {/* Legacy Codex-era pipeline / workspace / create routes are still
+                wired here because the Playwright tendering spec exercises them.
+                The sidebar now points at /tenders (the redesigned register), so
+                end users no longer see the legacy UI by default. The legacy
+                pages will be removed once the spec is rewritten against the
+                new register. */}
             <Route path="/tenders/pipeline" element={<TenderPipelinePage />} />
             <Route path="/tenders/create" element={<CreateTenderPage />} />
             <Route path="/tenders/workspace" element={<TenderWorkspacePage />} />
@@ -155,7 +160,10 @@ export function App() {
             <Route path="/admin/estimate-rates" element={<EstimateRatesAdminPage />} />
             <Route path="/account" element={<UserProfilePage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
-            <Route path="/dashboards" element={<DashboardsPage />} />
+            {/* /dashboards (Codex admin index) retired in PR #77 — redirect to
+                the new dashboard canvas at /. /dashboards/:id still serves the
+                user-owned dashboard system built on DashboardCanvas. */}
+            <Route path="/dashboards" element={<Navigate to="/" replace />} />
             <Route path="/dashboards/:id" element={<UserDashboardPage />} />
             <Route path="/master-data" element={<MasterDataWorkspacePage />} />
             <Route path="/sites" element={<SitesListPage />} />

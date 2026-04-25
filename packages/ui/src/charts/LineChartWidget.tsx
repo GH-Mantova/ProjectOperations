@@ -12,7 +12,8 @@ type LineChartWidgetProps = {
 };
 
 export function LineChartWidget({ title, data, color, unit, yAxisFormatter, tooltipFormatter }: LineChartWidgetProps) {
-  const stroke = color ?? "var(--brand-primary, #1f4bff)";
+  // Initial Services brand teal — see BarChartWidget for context.
+  const stroke = color ?? "#005B61";
   const chartData = data.map((point) => ({ label: point.label, value: point.value }));
 
   return (
@@ -36,7 +37,7 @@ export function LineChartWidget({ title, data, color, unit, yAxisFormatter, tool
       ) : (
         <div style={{ width: "100%", height: 240 }}>
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
+            <LineChart data={chartData} margin={{ top: 8, right: 8, bottom: 8, left: 16 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--surface-border, #e5e7eb)" />
               <XAxis dataKey="label" tick={{ fontSize: 12, fill: "var(--text-muted, #6b7280)" }} />
               <YAxis

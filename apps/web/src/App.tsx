@@ -65,6 +65,9 @@ import { PortalJobsPage } from "./portal/pages/PortalJobsPage";
 import { PortalQuotesPage } from "./portal/pages/PortalQuotesPage";
 import { PortalDocumentsPage } from "./portal/pages/PortalDocumentsPage";
 import { PortalAccountPage } from "./portal/pages/PortalAccountPage";
+import { OfflineProvider } from "./offline/OfflineContext";
+import { OfflineIndicator } from "./offline/OfflineIndicator";
+import { InstallPrompt } from "./offline/InstallPrompt";
 
 function ProtectedRoute() {
   const { isAuthenticated } = useAuth();
@@ -101,8 +104,11 @@ function RootRedirect({ children }: { children: ReactElement }) {
 export function App() {
   return (
     <AuthProvider>
-      <PortalAuthProvider>
-        <Routes>
+      <OfflineProvider>
+        <PortalAuthProvider>
+          <OfflineIndicator />
+          <InstallPrompt />
+          <Routes>
           <Route path="/portal/login" element={<PortalLoginPage />} />
           <Route path="/portal/accept-invite" element={<PortalAcceptInvitePage />} />
           <Route element={<PortalProtectedRoute />}>
@@ -200,6 +206,7 @@ export function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </PortalAuthProvider>
+      </OfflineProvider>
     </AuthProvider>
   );
 }

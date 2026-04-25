@@ -2926,9 +2926,9 @@ model SafetyIncident {
   immediateAction String?   @map("immediate_action")
   rootCause       String?   @map("root_cause")
   corrective      String?
-  witnesses       String[]
+  witnesses       String[]  @default([])
   status          String    @default("open")
-  documentPaths   String[]  @map("document_paths")
+  documentPaths   String[]  @default([]) @map("document_paths")
   closedAt        DateTime? @map("closed_at")
   closedById      String?   @map("closed_by_id")
   closedBy        User?     @relation("SafetyIncidentCloser", fields: [closedById], references: [id])
@@ -2959,7 +2959,7 @@ model HazardObservation {
   assignedTo      User?     @relation("HazardAssignee", fields: [assignedToId], references: [id])
   dueDate         DateTime? @map("due_date")
   status          String    @default("open")
-  documentPaths   String[]  @map("document_paths")
+  documentPaths   String[]  @default([]) @map("document_paths")
   closedAt        DateTime? @map("closed_at")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")

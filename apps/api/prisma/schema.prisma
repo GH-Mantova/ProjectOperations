@@ -16,87 +16,87 @@ model HealthcheckSeedMarker {
 }
 
 model User {
-  id                 String             @id @default(cuid())
-  email              String             @unique
-  firstName          String             @map("first_name")
-  lastName           String             @map("last_name")
-  passwordHash       String             @map("password_hash")
-  isActive           Boolean            @default(true) @map("is_active")
-  isSuperUser        Boolean            @default(false) @map("is_super_user")
-  ssoOnly            Boolean            @default(false) @map("sso_only")
-  forcePasswordReset Boolean            @default(false) @map("force_password_reset")
-  lastLoginAt        DateTime?          @map("last_login_at")
-  createdAt          DateTime           @default(now()) @map("created_at")
-  updatedAt          DateTime           @updatedAt @map("updated_at")
-  createdById        String?            @map("created_by_id")
-  updatedById        String?            @map("updated_by_id")
-  createdBy          User?              @relation("UserCreatedBy", fields: [createdById], references: [id])
-  updatedBy          User?              @relation("UserUpdatedBy", fields: [updatedById], references: [id])
-  createdUsers       User[]             @relation("UserCreatedBy")
-  updatedUsers       User[]             @relation("UserUpdatedBy")
-  userRoles          UserRole[]
-  refreshTokens      RefreshToken[]
-  auditLogs          AuditLog[]         @relation("AuditActor")
-  notifications      Notification[]
-  dashboards         Dashboard[]        @relation("DashboardOwner")
-  userDashboards     UserDashboard[]
-  worker             Worker?
-  workerProfile      WorkerProfile?
-  estimatedTenders   Tender[]           @relation("TenderEstimator")
-  tenderNotes        TenderNote[]       @relation("TenderNoteAuthor")
-  tenderFollowUps    TenderFollowUp[]   @relation("TenderFollowUpAssignee")
-  managedJobs        Job[]              @relation("JobProjectManager")
-  supervisedJobs     Job[]              @relation("JobSupervisor")
-  ownedActivities    JobActivity[]      @relation("JobActivityOwner")
-  ledShifts          Shift[]            @relation("ShiftLead")
-  reportedJobIssues  JobIssue[]         @relation("JobIssueReporter")
-  approvedVariations JobVariation[]     @relation("JobVariationApprover")
-  progressEntries    JobProgressEntry[] @relation("JobProgressEntryAuthor")
-  statusChanges      JobStatusHistory[] @relation("JobStatusHistoryActor")
-  formSubmissions    FormSubmission[]
-  createdDocuments   DocumentLink[]     @relation("DocumentCreatedBy")
-  updatedDocuments   DocumentLink[]     @relation("DocumentUpdatedBy")
-  archivedCloseouts  JobCloseout[]      @relation("JobCloseoutArchivedBy")
-  tenderClientNotes  TenderClientNote[] @relation("TenderClientNoteAuthor")
-  tenderScopeRevisions TenderScopeRevision[] @relation("TenderScopeRevisionAuthor")
-  projectsManaged    Project[]          @relation("ProjectManager")
-  projectsSupervised Project[]          @relation("ProjectSupervisor")
-  projectsEstimated  Project[]          @relation("ProjectEstimator")
-  projectsWhs        Project[]          @relation("ProjectWHS")
-  projectsCreated    Project[]          @relation("ProjectCreatedBy")
-  projectActivityLogs ProjectActivityLog[]
-  projectAllocationsCreated ProjectAllocation[] @relation("ProjectAllocationCreatedBy")
-  approvedTimesheets Timesheet[]        @relation("TimesheetApprover")
-  rejectedTimesheets Timesheet[]        @relation("TimesheetRejecter")
-  scopeItemsCreated  ScopeOfWorksItem[] @relation("ScopeOfWorksCreatedBy")
-  estimateExports    EstimateExport[]
-  personalAiProviders UserAiProvider[]
-  aiPreference       UserAiPreference?
-  globalListsCreated GlobalList[]       @relation("GlobalListCreatedBy")
-  listItemsCreated   GlobalListItem[]   @relation("GlobalListItemCreatedBy")
-  clarificationNotesCreated TenderClarificationNote[] @relation("TenderClarificationNoteAuthor")
-  cuttingSheetItemsCreated  CuttingSheetItem[]        @relation("CuttingSheetItemCreatedBy")
+  id                         String                    @id @default(cuid())
+  email                      String                    @unique
+  firstName                  String                    @map("first_name")
+  lastName                   String                    @map("last_name")
+  passwordHash               String                    @map("password_hash")
+  isActive                   Boolean                   @default(true) @map("is_active")
+  isSuperUser                Boolean                   @default(false) @map("is_super_user")
+  ssoOnly                    Boolean                   @default(false) @map("sso_only")
+  forcePasswordReset         Boolean                   @default(false) @map("force_password_reset")
+  lastLoginAt                DateTime?                 @map("last_login_at")
+  createdAt                  DateTime                  @default(now()) @map("created_at")
+  updatedAt                  DateTime                  @updatedAt @map("updated_at")
+  createdById                String?                   @map("created_by_id")
+  updatedById                String?                   @map("updated_by_id")
+  createdBy                  User?                     @relation("UserCreatedBy", fields: [createdById], references: [id])
+  updatedBy                  User?                     @relation("UserUpdatedBy", fields: [updatedById], references: [id])
+  createdUsers               User[]                    @relation("UserCreatedBy")
+  updatedUsers               User[]                    @relation("UserUpdatedBy")
+  userRoles                  UserRole[]
+  refreshTokens              RefreshToken[]
+  auditLogs                  AuditLog[]                @relation("AuditActor")
+  notifications              Notification[]
+  dashboards                 Dashboard[]               @relation("DashboardOwner")
+  userDashboards             UserDashboard[]
+  worker                     Worker?
+  workerProfile              WorkerProfile?
+  estimatedTenders           Tender[]                  @relation("TenderEstimator")
+  tenderNotes                TenderNote[]              @relation("TenderNoteAuthor")
+  tenderFollowUps            TenderFollowUp[]          @relation("TenderFollowUpAssignee")
+  managedJobs                Job[]                     @relation("JobProjectManager")
+  supervisedJobs             Job[]                     @relation("JobSupervisor")
+  ownedActivities            JobActivity[]             @relation("JobActivityOwner")
+  ledShifts                  Shift[]                   @relation("ShiftLead")
+  reportedJobIssues          JobIssue[]                @relation("JobIssueReporter")
+  approvedVariations         JobVariation[]            @relation("JobVariationApprover")
+  progressEntries            JobProgressEntry[]        @relation("JobProgressEntryAuthor")
+  statusChanges              JobStatusHistory[]        @relation("JobStatusHistoryActor")
+  formSubmissions            FormSubmission[]
+  createdDocuments           DocumentLink[]            @relation("DocumentCreatedBy")
+  updatedDocuments           DocumentLink[]            @relation("DocumentUpdatedBy")
+  archivedCloseouts          JobCloseout[]             @relation("JobCloseoutArchivedBy")
+  tenderClientNotes          TenderClientNote[]        @relation("TenderClientNoteAuthor")
+  tenderScopeRevisions       TenderScopeRevision[]     @relation("TenderScopeRevisionAuthor")
+  projectsManaged            Project[]                 @relation("ProjectManager")
+  projectsSupervised         Project[]                 @relation("ProjectSupervisor")
+  projectsEstimated          Project[]                 @relation("ProjectEstimator")
+  projectsWhs                Project[]                 @relation("ProjectWHS")
+  projectsCreated            Project[]                 @relation("ProjectCreatedBy")
+  projectActivityLogs        ProjectActivityLog[]
+  projectAllocationsCreated  ProjectAllocation[]       @relation("ProjectAllocationCreatedBy")
+  approvedTimesheets         Timesheet[]               @relation("TimesheetApprover")
+  rejectedTimesheets         Timesheet[]               @relation("TimesheetRejecter")
+  scopeItemsCreated          ScopeOfWorksItem[]        @relation("ScopeOfWorksCreatedBy")
+  estimateExports            EstimateExport[]
+  personalAiProviders        UserAiProvider[]
+  aiPreference               UserAiPreference?
+  globalListsCreated         GlobalList[]              @relation("GlobalListCreatedBy")
+  listItemsCreated           GlobalListItem[]          @relation("GlobalListItemCreatedBy")
+  clarificationNotesCreated  TenderClarificationNote[] @relation("TenderClarificationNoteAuthor")
+  cuttingSheetItemsCreated   CuttingSheetItem[]        @relation("CuttingSheetItemCreatedBy")
   emailProviderConfigUpdates EmailProviderConfig[]
-  contractsCreated  Contract[]      @relation("ContractCreatedBy")
-  variationsCreated Variation[]     @relation("VariationCreatedBy")
-  progressClaimsCreated ProgressClaim[] @relation("ProgressClaimCreatedBy")
-  createdQuotes     ClientQuote[]   @relation("QuoteCreatedBy")
-  sentQuotes        ClientQuote[]   @relation("QuoteSentBy")
-  sentQuoteEmails   QuoteEmail[]    @relation("QuoteEmailSentBy")
-  tenderFilterPresets TenderFilterPreset[]
-  scopeWasteItemsCreated ScopeWasteItem[] @relation("ScopeWasteItemCreatedBy")
-  subcontractorsCreated   SubcontractorSupplier[] @relation("SubcontractorCreatedBy")
-  subcontractorDocsUploaded SubcontractorDocument[] @relation("SubDocUploadedBy")
-  creditAppsCreated       CreditApplication[]     @relation("CreditAppCreator")
-  creditAppsReviewed      CreditApplication[]     @relation("CreditAppReviewer")
-  contactsCreated         Contact[]                @relation("ContactCreatedBy")
-  clientsAsClaimReminder  Client[]                 @relation("ClaimReminderUser")
-  qualificationsCreated   WorkerQualification[]    @relation("QualificationCreatedBy")
-  complianceAlertsSent    ComplianceAlert[]        @relation("ComplianceAlertRecipient")
-  safetyIncidentsReported SafetyIncident[]         @relation("SafetyIncidentReporter")
-  safetyIncidentsClosed   SafetyIncident[]         @relation("SafetyIncidentCloser")
-  hazardsReported         HazardObservation[]      @relation("HazardReporter")
-  hazardsAssigned         HazardObservation[]      @relation("HazardAssignee")
+  contractsCreated           Contract[]                @relation("ContractCreatedBy")
+  variationsCreated          Variation[]               @relation("VariationCreatedBy")
+  progressClaimsCreated      ProgressClaim[]           @relation("ProgressClaimCreatedBy")
+  createdQuotes              ClientQuote[]             @relation("QuoteCreatedBy")
+  sentQuotes                 ClientQuote[]             @relation("QuoteSentBy")
+  sentQuoteEmails            QuoteEmail[]              @relation("QuoteEmailSentBy")
+  tenderFilterPresets        TenderFilterPreset[]
+  scopeWasteItemsCreated     ScopeWasteItem[]          @relation("ScopeWasteItemCreatedBy")
+  subcontractorsCreated      SubcontractorSupplier[]   @relation("SubcontractorCreatedBy")
+  subcontractorDocsUploaded  SubcontractorDocument[]   @relation("SubDocUploadedBy")
+  creditAppsCreated          CreditApplication[]       @relation("CreditAppCreator")
+  creditAppsReviewed         CreditApplication[]       @relation("CreditAppReviewer")
+  contactsCreated            Contact[]                 @relation("ContactCreatedBy")
+  clientsAsClaimReminder     Client[]                  @relation("ClaimReminderUser")
+  qualificationsCreated      WorkerQualification[]     @relation("QualificationCreatedBy")
+  complianceAlertsSent       ComplianceAlert[]         @relation("ComplianceAlertRecipient")
+  safetyIncidentsReported    SafetyIncident[]          @relation("SafetyIncidentReporter")
+  safetyIncidentsClosed      SafetyIncident[]          @relation("SafetyIncidentCloser")
+  hazardsReported            HazardObservation[]       @relation("HazardReporter")
+  hazardsAssigned            HazardObservation[]       @relation("HazardAssignee")
 
   @@index([isActive])
   @@map("users")
@@ -376,64 +376,66 @@ model DashboardWidget {
 }
 
 model Client {
-  id              String           @id @default(cuid())
-  name            String
-  code            String?          @unique
-  status          String           @default("ACTIVE")
-  email           String?
-  phone           String?
-  notes           String?
-  tradingName     String?          @map("trading_name")
-  businessType    String?          @default("company") @map("business_type")
-  abn             String?
-  acn             String?
-  gstRegistered   Boolean          @default(true) @map("gst_registered")
-  industry        String?
-  website         String?
-  physicalAddress  String?         @map("physical_address")
-  physicalSuburb   String?         @map("physical_suburb")
-  physicalState    String?         @default("QLD") @map("physical_state")
-  physicalPostcode String?         @map("physical_postcode")
-  postalAddress    String?         @map("postal_address")
-  postalSuburb     String?         @map("postal_suburb")
-  postalState      String?         @map("postal_state")
-  postalPostcode   String?         @map("postal_postcode")
-  postalSameAs     Boolean         @default(true) @map("postal_same_as")
-  paymentTermsDays Int?            @default(30) @map("payment_terms_days")
-  creditLimit      Decimal?        @db.Decimal(12, 2) @map("credit_limit")
-  creditApproved   Boolean         @default(false) @map("credit_approved")
-  preferredPayment String?         @map("preferred_payment")
-  bankName         String?         @map("bank_name")
-  bankAccountName  String?         @map("bank_account_name")
-  bankBsb          String?         @map("bank_bsb")
-  bankAccountNumber String?        @map("bank_account_number")
-  xeroContactId    String?         @map("xero_contact_id")
-  myobCardId       String?         @map("myob_card_id")
-  isActive         Boolean         @default(true) @map("is_active")
-  onHold           Boolean         @default(false) @map("on_hold")
-  onHoldReason     String?         @map("on_hold_reason")
-  internalNotes    String?         @map("internal_notes")
-  claimCutoffDay  Int?             @map("claim_cutoff_day")
-  claimReminderUserId String?      @map("claim_reminder_user_id")
-  claimReminderUser User?          @relation("ClaimReminderUser", fields: [claimReminderUserId], references: [id], onDelete: SetNull)
-  preferenceScore  Int?             @map("preference_score")
-  winCount         Int              @default(0) @map("win_count")
-  tenderCount      Int              @default(0) @map("tender_count")
-  winRate          Decimal?         @db.Decimal(5, 2) @map("win_rate")
-  lastTenderAt     DateTime?        @map("last_tender_at")
-  lastWonAt        DateTime?        @map("last_won_at")
-  createdAt       DateTime         @default(now()) @map("created_at")
-  updatedAt       DateTime         @updatedAt @map("updated_at")
-  sites           Site[]
-  tenderClients   TenderClient[]
-  jobs            Job[]
-  projects        Project[]
-  formSubmissions FormSubmission[]
-  tenderClientNotes TenderClientNote[]
-  clientQuotes    ClientQuote[]
-  licences        EntityLicence[]     @relation("ClientLicences")
-  insurances      EntityInsurance[]   @relation("ClientInsurances")
-  creditApplications CreditApplication[] @relation("ClientCreditApps")
+  id                  String              @id @default(cuid())
+  name                String
+  code                String?             @unique
+  status              String              @default("ACTIVE")
+  email               String?
+  phone               String?
+  notes               String?
+  tradingName         String?             @map("trading_name")
+  businessType        String?             @default("company") @map("business_type")
+  abn                 String?
+  acn                 String?
+  gstRegistered       Boolean             @default(true) @map("gst_registered")
+  industry            String?
+  website             String?
+  physicalAddress     String?             @map("physical_address")
+  physicalSuburb      String?             @map("physical_suburb")
+  physicalState       String?             @default("QLD") @map("physical_state")
+  physicalPostcode    String?             @map("physical_postcode")
+  postalAddress       String?             @map("postal_address")
+  postalSuburb        String?             @map("postal_suburb")
+  postalState         String?             @map("postal_state")
+  postalPostcode      String?             @map("postal_postcode")
+  postalSameAs        Boolean             @default(true) @map("postal_same_as")
+  paymentTermsDays    Int?                @default(30) @map("payment_terms_days")
+  creditLimit         Decimal?            @map("credit_limit") @db.Decimal(12, 2)
+  creditApproved      Boolean             @default(false) @map("credit_approved")
+  preferredPayment    String?             @map("preferred_payment")
+  bankName            String?             @map("bank_name")
+  bankAccountName     String?             @map("bank_account_name")
+  bankBsb             String?             @map("bank_bsb")
+  bankAccountNumber   String?             @map("bank_account_number")
+  xeroContactId       String?             @map("xero_contact_id")
+  myobCardId          String?             @map("myob_card_id")
+  isActive            Boolean             @default(true) @map("is_active")
+  onHold              Boolean             @default(false) @map("on_hold")
+  onHoldReason        String?             @map("on_hold_reason")
+  internalNotes       String?             @map("internal_notes")
+  claimCutoffDay      Int?                @map("claim_cutoff_day")
+  claimReminderUserId String?             @map("claim_reminder_user_id")
+  claimReminderUser   User?               @relation("ClaimReminderUser", fields: [claimReminderUserId], references: [id], onDelete: SetNull)
+  preferenceScore     Int?                @map("preference_score")
+  winCount            Int                 @default(0) @map("win_count")
+  tenderCount         Int                 @default(0) @map("tender_count")
+  winRate             Decimal?            @map("win_rate") @db.Decimal(5, 2)
+  lastTenderAt        DateTime?           @map("last_tender_at")
+  lastWonAt           DateTime?           @map("last_won_at")
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+  sites               Site[]
+  tenderClients       TenderClient[]
+  jobs                Job[]
+  projects            Project[]
+  formSubmissions     FormSubmission[]
+  tenderClientNotes   TenderClientNote[]
+  clientQuotes        ClientQuote[]
+  licences            EntityLicence[]     @relation("ClientLicences")
+  insurances          EntityInsurance[]   @relation("ClientInsurances")
+  creditApplications  CreditApplication[] @relation("ClientCreditApps")
+  portalUsers         ClientPortalUser[]
+  portalInvites       PortalInvite[]
 
   @@unique([name])
   @@index([status])
@@ -443,24 +445,24 @@ model Client {
 }
 
 model Contact {
-  id                String   @id @default(cuid())
-  organisationType  String   @map("organisation_type")
-  organisationId    String   @map("organisation_id")
-  firstName         String   @map("first_name")
-  lastName          String   @map("last_name")
+  id                String         @id @default(cuid())
+  organisationType  String         @map("organisation_type")
+  organisationId    String         @map("organisation_id")
+  firstName         String         @map("first_name")
+  lastName          String         @map("last_name")
   role              String?
   email             String?
   phone             String?
   mobile            String?
-  isPrimary         Boolean  @default(false) @map("is_primary")
-  isAccountsContact Boolean  @default(false) @map("is_accounts_contact")
-  isActive          Boolean  @default(true) @map("is_active")
-  hasPortalAccess   Boolean  @default(false) @map("has_portal_access")
+  isPrimary         Boolean        @default(false) @map("is_primary")
+  isAccountsContact Boolean        @default(false) @map("is_accounts_contact")
+  isActive          Boolean        @default(true) @map("is_active")
+  hasPortalAccess   Boolean        @default(false) @map("has_portal_access")
   notes             String?
-  createdById       String?  @map("created_by_id")
-  createdBy         User?    @relation("ContactCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  createdById       String?        @map("created_by_id")
+  createdBy         User?          @relation("ContactCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
   tenderClients     TenderClient[]
 
   @@index([organisationType, organisationId])
@@ -654,51 +656,51 @@ model LookupValue {
 }
 
 model Tender {
-  id                String                  @id @default(cuid())
-  tenderNumber      String                  @unique @map("tender_number")
-  title             String
-  description       String?
-  estimatorUserId   String?                 @map("estimator_user_id")
-  status            String                  @default("DRAFT")
-  dueDate           DateTime?               @map("due_date")
-  proposedStartDate DateTime?               @map("proposed_start_date")
-  leadTimeDays      Int?                    @map("lead_time_days")
-  probability       Int?
-  estimatedValue    Decimal?                @map("estimated_value") @db.Decimal(14, 2)
-  notes             String?
-  submittedAt       DateTime?               @map("submitted_at")
-  ratesSnapshotAt   DateTime?               @map("rates_snapshot_at")
-  tenderScoreCounted Boolean                @default(false) @map("tender_score_counted")
-  wonAt             DateTime?               @map("won_at")
-  lostAt            DateTime?               @map("lost_at")
-  createdAt         DateTime                @default(now()) @map("created_at")
-  updatedAt         DateTime                @updatedAt @map("updated_at")
-  estimator         User?                   @relation("TenderEstimator", fields: [estimatorUserId], references: [id], onDelete: SetNull)
-  tenderClients     TenderClient[]
-  tenderNotes       TenderNote[]
-  clarifications    TenderClarification[]
-  pricingSnapshots  TenderPricingSnapshot[]
-  followUps         TenderFollowUp[]
-  outcomes          TenderOutcome[]
-  tenderDocuments   TenderDocumentLink[]
-  sourceJob         Job?
-  jobConversion     JobConversion?
-  estimate          TenderEstimate?
-  clientNotes       TenderClientNote[]
-  scopeRevisions    TenderScopeRevision[]
-  scopeItems        ScopeOfWorksItem[]
-  scopeHeader       ScopeOfWorksHeader?
-  estimateExports   EstimateExport[]
-  projects          Project[]
+  id                 String                    @id @default(cuid())
+  tenderNumber       String                    @unique @map("tender_number")
+  title              String
+  description        String?
+  estimatorUserId    String?                   @map("estimator_user_id")
+  status             String                    @default("DRAFT")
+  dueDate            DateTime?                 @map("due_date")
+  proposedStartDate  DateTime?                 @map("proposed_start_date")
+  leadTimeDays       Int?                      @map("lead_time_days")
+  probability        Int?
+  estimatedValue     Decimal?                  @map("estimated_value") @db.Decimal(14, 2)
+  notes              String?
+  submittedAt        DateTime?                 @map("submitted_at")
+  ratesSnapshotAt    DateTime?                 @map("rates_snapshot_at")
+  tenderScoreCounted Boolean                   @default(false) @map("tender_score_counted")
+  wonAt              DateTime?                 @map("won_at")
+  lostAt             DateTime?                 @map("lost_at")
+  createdAt          DateTime                  @default(now()) @map("created_at")
+  updatedAt          DateTime                  @updatedAt @map("updated_at")
+  estimator          User?                     @relation("TenderEstimator", fields: [estimatorUserId], references: [id], onDelete: SetNull)
+  tenderClients      TenderClient[]
+  tenderNotes        TenderNote[]
+  clarifications     TenderClarification[]
+  pricingSnapshots   TenderPricingSnapshot[]
+  followUps          TenderFollowUp[]
+  outcomes           TenderOutcome[]
+  tenderDocuments    TenderDocumentLink[]
+  sourceJob          Job?
+  jobConversion      JobConversion?
+  estimate           TenderEstimate?
+  clientNotes        TenderClientNote[]
+  scopeRevisions     TenderScopeRevision[]
+  scopeItems         ScopeOfWorksItem[]
+  scopeHeader        ScopeOfWorksHeader?
+  estimateExports    EstimateExport[]
+  projects           Project[]
   clarificationNotes TenderClarificationNote[]
-  cuttingSheetItems CuttingSheetItem[]
-  scopeViewConfigs  ScopeViewConfig[]
-  tandC             TenderTandC?
-  assumptions       TenderAssumption[]
-  exclusions        TenderExclusion[]
-  clientQuotes      ClientQuote[]
-  wasteItems        ScopeWasteItem[]
-  safetyIncidents   SafetyIncident[]
+  cuttingSheetItems  CuttingSheetItem[]
+  scopeViewConfigs   ScopeViewConfig[]
+  tandC              TenderTandC?
+  assumptions        TenderAssumption[]
+  exclusions         TenderExclusion[]
+  clientQuotes       ClientQuote[]
+  wasteItems         ScopeWasteItem[]
+  safetyIncidents    SafetyIncident[]
   hazardObservations HazardObservation[]
 
   @@index([status])
@@ -989,18 +991,18 @@ model JobStatusHistory {
 }
 
 model JobCloseout {
-  id                   String   @id @default(cuid())
-  jobId                String   @unique @map("job_id")
-  status               String   @default("DRAFT")
-  checklistJson        Json?    @map("checklist_json")
-  summary              String?
-  archivedAt           DateTime? @map("archived_at")
-  archivedById         String?  @map("archived_by_id")
-  readOnlyFrom         DateTime? @map("read_only_from")
-  createdAt            DateTime @default(now()) @map("created_at")
-  updatedAt            DateTime @updatedAt @map("updated_at")
-  job                  Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  archivedBy           User?    @relation("JobCloseoutArchivedBy", fields: [archivedById], references: [id], onDelete: SetNull)
+  id            String    @id @default(cuid())
+  jobId         String    @unique @map("job_id")
+  status        String    @default("DRAFT")
+  checklistJson Json?     @map("checklist_json")
+  summary       String?
+  archivedAt    DateTime? @map("archived_at")
+  archivedById  String?   @map("archived_by_id")
+  readOnlyFrom  DateTime? @map("read_only_from")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  job           Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  archivedBy    User?     @relation("JobCloseoutArchivedBy", fields: [archivedById], references: [id], onDelete: SetNull)
 
   @@index([status])
   @@index([archivedAt])
@@ -1024,7 +1026,7 @@ model Shift {
   job               Job                     @relation(fields: [jobId], references: [id], onDelete: Cascade)
   stage             JobStage?               @relation(fields: [jobStageId], references: [id], onDelete: SetNull)
   activity          JobActivity             @relation(fields: [jobActivityId], references: [id], onDelete: Cascade)
-  lead             User?                    @relation("ShiftLead", fields: [leadUserId], references: [id], onDelete: SetNull)
+  lead              User?                   @relation("ShiftLead", fields: [leadUserId], references: [id], onDelete: SetNull)
   workerAssignments ShiftWorkerAssignment[]
   assetAssignments  ShiftAssetAssignment[]
   roleRequirements  ShiftRoleRequirement[]
@@ -1375,9 +1377,9 @@ model FormSignature {
 model EstimateLabourRate {
   id          String   @id @default(uuid())
   role        String   @unique
-  dayRate     Decimal  @db.Decimal(10, 2) @map("day_rate")
-  nightRate   Decimal  @db.Decimal(10, 2) @map("night_rate")
-  weekendRate Decimal  @db.Decimal(10, 2) @map("weekend_rate")
+  dayRate     Decimal  @map("day_rate") @db.Decimal(10, 2)
+  nightRate   Decimal  @map("night_rate") @db.Decimal(10, 2)
+  weekendRate Decimal  @map("weekend_rate") @db.Decimal(10, 2)
   isActive    Boolean  @default(true) @map("is_active")
   sortOrder   Int      @default(0) @map("sort_order")
   createdAt   DateTime @default(now()) @map("created_at")
@@ -1391,7 +1393,7 @@ model EstimatePlantRate {
   item      String   @unique
   unit      String   @default("day")
   rate      Decimal  @db.Decimal(10, 2)
-  fuelRate  Decimal  @db.Decimal(10, 2) @default(0) @map("fuel_rate")
+  fuelRate  Decimal  @default(0) @map("fuel_rate") @db.Decimal(10, 2)
   isActive  Boolean  @default(true) @map("is_active")
   sortOrder Int      @default(0) @map("sort_order")
   createdAt DateTime @default(now()) @map("created_at")
@@ -1401,33 +1403,33 @@ model EstimatePlantRate {
 }
 
 model EstimateWasteRate {
-  id        String   @id @default(uuid())
-  wasteType String   @map("waste_type")
-  facility  String
-  wasteGroup String? @map("waste_group")
-  unit      String   @default("tonne")
-  tonRate   Decimal  @db.Decimal(10, 2) @map("ton_rate")
-  loadRate  Decimal  @db.Decimal(10, 2) @default(0) @map("load_rate")
-  isActive  Boolean  @default(true) @map("is_active")
-  sortOrder Int      @default(0) @map("sort_order")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id         String   @id @default(uuid())
+  wasteType  String   @map("waste_type")
+  facility   String
+  wasteGroup String?  @map("waste_group")
+  unit       String   @default("tonne")
+  tonRate    Decimal  @map("ton_rate") @db.Decimal(10, 2)
+  loadRate   Decimal  @default(0) @map("load_rate") @db.Decimal(10, 2)
+  isActive   Boolean  @default(true) @map("is_active")
+  sortOrder  Int      @default(0) @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
   @@unique([wasteType, facility])
   @@map("estimate_waste_rates")
 }
 
 model EstimateCuttingRate {
-  id         String   @id @default(uuid())
-  equipment  String
-  elevation  String
-  material   String
-  depthMm    Int      @map("depth_mm")
-  ratePerM   Decimal  @db.Decimal(10, 4) @map("rate_per_m")
-  isActive   Boolean  @default(true) @map("is_active")
-  sortOrder  Int      @default(0) @map("sort_order")
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  id        String   @id @default(uuid())
+  equipment String
+  elevation String
+  material  String
+  depthMm   Int      @map("depth_mm")
+  ratePerM  Decimal  @map("rate_per_m") @db.Decimal(10, 4)
+  isActive  Boolean  @default(true) @map("is_active")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@unique([equipment, elevation, material, depthMm])
   @@map("estimate_cutting_rates")
@@ -1436,7 +1438,7 @@ model EstimateCuttingRate {
 model EstimateCoreHoleRate {
   id          String   @id @default(uuid())
   diameterMm  Int      @unique @map("diameter_mm")
-  ratePerHole Decimal  @db.Decimal(10, 4) @map("rate_per_hole")
+  ratePerHole Decimal  @map("rate_per_hole") @db.Decimal(10, 4)
   isActive    Boolean  @default(true) @map("is_active")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
@@ -1471,34 +1473,34 @@ model EstimateEnclosureRate {
 }
 
 model TenderEstimate {
-  id         String    @id @default(uuid())
-  tenderId   String    @unique @map("tender_id")
-  tender     Tender    @relation(fields: [tenderId], references: [id], onDelete: Cascade)
-  markup     Decimal   @db.Decimal(5, 2) @default(30)
+  id         String         @id @default(uuid())
+  tenderId   String         @unique @map("tender_id")
+  tender     Tender         @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  markup     Decimal        @default(30) @db.Decimal(5, 2)
   notes      String?
-  lockedAt   DateTime? @map("locked_at")
-  lockedById String?   @map("locked_by_id")
-  createdAt  DateTime  @default(now()) @map("created_at")
-  updatedAt  DateTime  @updatedAt @map("updated_at")
+  lockedAt   DateTime?      @map("locked_at")
+  lockedById String?        @map("locked_by_id")
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
   items      EstimateItem[]
 
   @@map("tender_estimates")
 }
 
 model EstimateItem {
-  id                String   @id @default(uuid())
-  estimateId        String   @map("estimate_id")
+  id                String         @id @default(uuid())
+  estimateId        String         @map("estimate_id")
   estimate          TenderEstimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
   code              String
-  itemNumber        Int      @default(1) @map("item_number")
+  itemNumber        Int            @default(1) @map("item_number")
   title             String
   description       String?
-  markup            Decimal  @db.Decimal(5, 2) @default(30)
-  isProvisional     Boolean  @default(false) @map("is_provisional")
-  provisionalAmount Decimal? @db.Decimal(12, 2) @map("provisional_amount")
-  sortOrder         Int      @default(0) @map("sort_order")
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  markup            Decimal        @default(30) @db.Decimal(5, 2)
+  isProvisional     Boolean        @default(false) @map("is_provisional")
+  provisionalAmount Decimal?       @map("provisional_amount") @db.Decimal(12, 2)
+  sortOrder         Int            @default(0) @map("sort_order")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
 
   labourLines  EstimateLabourLine[]
   equipLines   EstimateEquipLine[]
@@ -1512,93 +1514,93 @@ model EstimateItem {
 }
 
 model EstimateEquipLine {
-  id          String   @id @default(uuid())
-  itemId      String   @map("item_id")
+  id          String       @id @default(uuid())
+  itemId      String       @map("item_id")
   item        EstimateItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
   description String
-  qty         Decimal  @db.Decimal(8, 2)
-  duration    Decimal  @db.Decimal(8, 2)
-  period      String   @default("Day")
-  rate        Decimal  @db.Decimal(10, 2)
-  sortOrder   Int      @default(0) @map("sort_order")
+  qty         Decimal      @db.Decimal(8, 2)
+  duration    Decimal      @db.Decimal(8, 2)
+  period      String       @default("Day")
+  rate        Decimal      @db.Decimal(10, 2)
+  sortOrder   Int          @default(0) @map("sort_order")
 
   @@index([itemId])
   @@map("estimate_equip_lines")
 }
 
 model EstimateLabourLine {
-  id        String   @id @default(uuid())
-  itemId    String   @map("item_id")
+  id        String       @id @default(uuid())
+  itemId    String       @map("item_id")
   item      EstimateItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
   role      String
-  qty       Decimal  @db.Decimal(8, 2)
-  days      Decimal  @db.Decimal(8, 2)
-  shift     String   @default("Day")
-  rate      Decimal  @db.Decimal(10, 2)
-  sortOrder Int      @default(0) @map("sort_order")
+  qty       Decimal      @db.Decimal(8, 2)
+  days      Decimal      @db.Decimal(8, 2)
+  shift     String       @default("Day")
+  rate      Decimal      @db.Decimal(10, 2)
+  sortOrder Int          @default(0) @map("sort_order")
 
   @@index([itemId])
   @@map("estimate_labour_lines")
 }
 
 model EstimatePlantLine {
-  id        String   @id @default(uuid())
-  itemId    String   @map("item_id")
+  id        String       @id @default(uuid())
+  itemId    String       @map("item_id")
   item      EstimateItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  plantItem String   @map("plant_item")
-  qty       Decimal  @db.Decimal(8, 2)
-  days      Decimal  @db.Decimal(8, 2)
+  plantItem String       @map("plant_item")
+  qty       Decimal      @db.Decimal(8, 2)
+  days      Decimal      @db.Decimal(8, 2)
   comment   String?
-  rate      Decimal  @db.Decimal(10, 2)
-  sortOrder Int      @default(0) @map("sort_order")
+  rate      Decimal      @db.Decimal(10, 2)
+  sortOrder Int          @default(0) @map("sort_order")
 
   @@index([itemId])
   @@map("estimate_plant_lines")
 }
 
 model EstimateWasteLine {
-  id         String   @id @default(uuid())
-  itemId     String   @map("item_id")
+  id         String       @id @default(uuid())
+  itemId     String       @map("item_id")
   item       EstimateItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  wasteGroup String?  @map("waste_group")
-  wasteType  String   @map("waste_type")
+  wasteGroup String?      @map("waste_group")
+  wasteType  String       @map("waste_type")
   facility   String
-  qtyTonnes  Decimal  @db.Decimal(10, 3) @map("qty_tonnes")
-  tonRate    Decimal  @db.Decimal(10, 2) @map("ton_rate")
-  loads      Int      @default(0)
-  loadRate   Decimal  @db.Decimal(10, 2) @default(0) @map("load_rate")
-  sortOrder  Int      @default(0) @map("sort_order")
+  qtyTonnes  Decimal      @map("qty_tonnes") @db.Decimal(10, 3)
+  tonRate    Decimal      @map("ton_rate") @db.Decimal(10, 2)
+  loads      Int          @default(0)
+  loadRate   Decimal      @default(0) @map("load_rate") @db.Decimal(10, 2)
+  sortOrder  Int          @default(0) @map("sort_order")
 
   @@index([itemId])
   @@map("estimate_waste_lines")
 }
 
 model EstimateCuttingLine {
-  id          String   @id @default(uuid())
-  itemId      String   @map("item_id")
+  id          String       @id @default(uuid())
+  itemId      String       @map("item_id")
   item        EstimateItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  cuttingType String   @map("cutting_type")
+  cuttingType String       @map("cutting_type")
   equipment   String?
   elevation   String?
   material    String?
-  depthMm     Int?     @map("depth_mm")
-  diameterMm  Int?     @map("diameter_mm")
-  qty         Decimal  @db.Decimal(10, 2)
+  depthMm     Int?         @map("depth_mm")
+  diameterMm  Int?         @map("diameter_mm")
+  qty         Decimal      @db.Decimal(10, 2)
   unit        String
   comment     String?
-  rate        Decimal  @db.Decimal(10, 4)
-  sortOrder   Int      @default(0) @map("sort_order")
+  rate        Decimal      @db.Decimal(10, 4)
+  sortOrder   Int          @default(0) @map("sort_order")
 
   @@index([itemId])
   @@map("estimate_cutting_lines")
 }
 
 model EstimateAssumption {
-  id        String   @id @default(uuid())
-  itemId    String   @map("item_id")
+  id        String       @id @default(uuid())
+  itemId    String       @map("item_id")
   item      EstimateItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
   text      String
-  sortOrder Int      @default(0) @map("sort_order")
+  sortOrder Int          @default(0) @map("sort_order")
 
   @@index([itemId])
   @@map("estimate_assumptions")
@@ -1680,16 +1682,16 @@ model PlatformConfig {
 // sit in plaintext at rest. `isActive=false` lets a user keep a key on file
 // without it appearing in the at-use picker.
 model UserAiProvider {
-  id             String   @id @default(cuid())
-  userId         String   @map("user_id")
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  provider       String
-  label          String?
-  apiKey         String   @map("api_key")
-  model          String?
-  isActive       Boolean  @default(true) @map("is_active")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider  String
+  label     String?
+  apiKey    String   @map("api_key")
+  model     String?
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([userId])
   @@index([userId, provider])
@@ -1699,11 +1701,11 @@ model UserAiProvider {
 // Per-user recall of the last provider they picked, so the selector can
 // skip the modal on repeat use when the user has chosen "remember my choice".
 model UserAiPreference {
-  id                  String   @id @default(cuid())
-  userId              String   @unique @map("user_id")
-  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  lastUsedProviderId  String?  @map("last_used_provider_id")
-  updatedAt           DateTime @updatedAt @map("updated_at")
+  id                 String   @id @default(cuid())
+  userId             String   @unique @map("user_id")
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastUsedProviderId String?  @map("last_used_provider_id")
+  updatedAt          DateTime @updatedAt @map("updated_at")
 
   @@map("user_ai_preferences")
 }
@@ -1749,37 +1751,37 @@ model ProjectNumberSequence {
 }
 
 model Project {
-  id                      String         @id @default(cuid())
-  projectNumber           String         @unique @map("project_number")
+  id                      String               @id @default(cuid())
+  projectNumber           String               @unique @map("project_number")
   name                    String
-  status                  ProjectStatus  @default(MOBILISING)
-  sourceTenderId          String?        @map("source_tender_id")
-  sourceTender            Tender?        @relation(fields: [sourceTenderId], references: [id], onDelete: SetNull)
-  clientId                String         @map("client_id")
-  client                  Client         @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  siteAddressLine1        String         @map("site_address_line1")
-  siteAddressLine2        String?        @map("site_address_line2")
-  siteAddressSuburb       String         @map("site_address_suburb")
-  siteAddressState        String         @map("site_address_state")
-  siteAddressPostcode     String         @map("site_address_postcode")
-  contractValue           Decimal        @default(0) @db.Decimal(12, 2) @map("contract_value")
-  budget                  Decimal        @default(0) @db.Decimal(12, 2)
-  actualCost              Decimal        @default(0) @db.Decimal(12, 2) @map("actual_cost")
-  proposedStartDate       DateTime?      @map("proposed_start_date")
-  actualStartDate         DateTime?      @map("actual_start_date")
-  practicalCompletionDate DateTime?      @map("practical_completion_date")
-  closedDate              DateTime?      @map("closed_date")
-  projectManagerId        String?        @map("project_manager_id")
-  projectManager          User?          @relation("ProjectManager", fields: [projectManagerId], references: [id], onDelete: SetNull)
-  supervisorId            String?        @map("supervisor_id")
-  supervisor              User?          @relation("ProjectSupervisor", fields: [supervisorId], references: [id], onDelete: SetNull)
-  estimatorId             String?        @map("estimator_id")
-  estimator               User?          @relation("ProjectEstimator", fields: [estimatorId], references: [id], onDelete: SetNull)
-  whsOfficerId            String?        @map("whs_officer_id")
-  whsOfficer              User?          @relation("ProjectWHS", fields: [whsOfficerId], references: [id], onDelete: SetNull)
-  estimateSnapshot        Json           @map("estimate_snapshot")
-  createdById             String         @map("created_by_id")
-  createdBy               User           @relation("ProjectCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  status                  ProjectStatus        @default(MOBILISING)
+  sourceTenderId          String?              @map("source_tender_id")
+  sourceTender            Tender?              @relation(fields: [sourceTenderId], references: [id], onDelete: SetNull)
+  clientId                String               @map("client_id")
+  client                  Client               @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  siteAddressLine1        String               @map("site_address_line1")
+  siteAddressLine2        String?              @map("site_address_line2")
+  siteAddressSuburb       String               @map("site_address_suburb")
+  siteAddressState        String               @map("site_address_state")
+  siteAddressPostcode     String               @map("site_address_postcode")
+  contractValue           Decimal              @default(0) @map("contract_value") @db.Decimal(12, 2)
+  budget                  Decimal              @default(0) @db.Decimal(12, 2)
+  actualCost              Decimal              @default(0) @map("actual_cost") @db.Decimal(12, 2)
+  proposedStartDate       DateTime?            @map("proposed_start_date")
+  actualStartDate         DateTime?            @map("actual_start_date")
+  practicalCompletionDate DateTime?            @map("practical_completion_date")
+  closedDate              DateTime?            @map("closed_date")
+  projectManagerId        String?              @map("project_manager_id")
+  projectManager          User?                @relation("ProjectManager", fields: [projectManagerId], references: [id], onDelete: SetNull)
+  supervisorId            String?              @map("supervisor_id")
+  supervisor              User?                @relation("ProjectSupervisor", fields: [supervisorId], references: [id], onDelete: SetNull)
+  estimatorId             String?              @map("estimator_id")
+  estimator               User?                @relation("ProjectEstimator", fields: [estimatorId], references: [id], onDelete: SetNull)
+  whsOfficerId            String?              @map("whs_officer_id")
+  whsOfficer              User?                @relation("ProjectWHS", fields: [whsOfficerId], references: [id], onDelete: SetNull)
+  estimateSnapshot        Json                 @map("estimate_snapshot")
+  createdById             String               @map("created_by_id")
+  createdBy               User                 @relation("ProjectCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   scopeItems              ProjectScopeItem[]
   milestones              ProjectMilestone[]
   activityLog             ProjectActivityLog[]
@@ -1791,10 +1793,10 @@ model Project {
   safetyIncidents         SafetyIncident[]
   hazardObservations      HazardObservation[]
   ganttTasks              GanttTask[]
-  plannedStartDate        DateTime?      @map("planned_start_date")
-  plannedEndDate          DateTime?      @map("planned_end_date")
-  createdAt               DateTime       @default(now()) @map("created_at")
-  updatedAt               DateTime       @updatedAt @map("updated_at")
+  plannedStartDate        DateTime?            @map("planned_start_date")
+  plannedEndDate          DateTime?            @map("planned_end_date")
+  createdAt               DateTime             @default(now()) @map("created_at")
+  updatedAt               DateTime             @updatedAt @map("updated_at")
 
   @@index([status])
   @@index([clientId])
@@ -1855,29 +1857,29 @@ model ProjectActivityLog {
 // the table stays a flat join.
 
 model WorkerProfile {
-  id                    String              @id @default(cuid())
-  firstName             String              @map("first_name")
-  lastName              String              @map("last_name")
-  preferredName         String?             @map("preferred_name")
+  id                    String                @id @default(cuid())
+  firstName             String                @map("first_name")
+  lastName              String                @map("last_name")
+  preferredName         String?               @map("preferred_name")
   role                  String
   phone                 String?
-  email                 String?             @unique
-  emergencyContactName  String?             @map("emergency_contact_name")
-  emergencyContactPhone String?             @map("emergency_contact_phone")
-  licenceNumber         String?             @map("licence_number")
-  licenceClass          String?             @map("licence_class")
-  ticketNumbers         String?             @map("ticket_numbers")
-  hasMobileAccess       Boolean             @default(false) @map("has_mobile_access")
-  internalUserId        String?             @unique @map("internal_user_id")
-  internalUser          User?               @relation(fields: [internalUserId], references: [id], onDelete: SetNull)
-  isActive              Boolean             @default(true) @map("is_active")
+  email                 String?               @unique
+  emergencyContactName  String?               @map("emergency_contact_name")
+  emergencyContactPhone String?               @map("emergency_contact_phone")
+  licenceNumber         String?               @map("licence_number")
+  licenceClass          String?               @map("licence_class")
+  ticketNumbers         String?               @map("ticket_numbers")
+  hasMobileAccess       Boolean               @default(false) @map("has_mobile_access")
+  internalUserId        String?               @unique @map("internal_user_id")
+  internalUser          User?                 @relation(fields: [internalUserId], references: [id], onDelete: SetNull)
+  isActive              Boolean               @default(true) @map("is_active")
   allocations           ProjectAllocation[]
   preStartChecklists    PreStartChecklist[]
   timesheets            Timesheet[]
   qualifications        WorkerQualification[]
   ganttTasks            GanttTask[]
-  createdAt             DateTime            @default(now()) @map("created_at")
-  updatedAt             DateTime            @updatedAt @map("updated_at")
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
 
   @@index([isActive])
   @@index([lastName, firstName])
@@ -1885,24 +1887,24 @@ model WorkerProfile {
 }
 
 model ProjectAllocation {
-  id              String               @id @default(cuid())
-  projectId       String               @map("project_id")
-  project         Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  type            AllocationTargetType
-  workerProfileId String?              @map("worker_profile_id")
-  workerProfile   WorkerProfile?       @relation(fields: [workerProfileId], references: [id], onDelete: Cascade)
-  assetId         String?              @map("asset_id")
-  asset           Asset?               @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  roleOnProject   String?              @map("role_on_project")
-  startDate       DateTime             @map("start_date")
-  endDate         DateTime?            @map("end_date")
-  notes           String?
-  createdById     String               @map("created_by_id")
-  createdBy       User                 @relation("ProjectAllocationCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  id                 String               @id @default(cuid())
+  projectId          String               @map("project_id")
+  project            Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type               AllocationTargetType
+  workerProfileId    String?              @map("worker_profile_id")
+  workerProfile      WorkerProfile?       @relation(fields: [workerProfileId], references: [id], onDelete: Cascade)
+  assetId            String?              @map("asset_id")
+  asset              Asset?               @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  roleOnProject      String?              @map("role_on_project")
+  startDate          DateTime             @map("start_date")
+  endDate            DateTime?            @map("end_date")
+  notes              String?
+  createdById        String               @map("created_by_id")
+  createdBy          User                 @relation("ProjectAllocationCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   preStartChecklists PreStartChecklist[]
-  timesheets      Timesheet[]
-  createdAt       DateTime             @default(now()) @map("created_at")
-  updatedAt       DateTime             @updatedAt @map("updated_at")
+  timesheets         Timesheet[]
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
 
   @@index([projectId, type])
   @@index([workerProfileId, startDate])
@@ -1929,46 +1931,46 @@ enum TimesheetStatus {
 }
 
 model PreStartChecklist {
-  id                    String          @id @default(cuid())
-  projectId             String          @map("project_id")
-  project               Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  workerProfileId       String          @map("worker_profile_id")
-  workerProfile         WorkerProfile   @relation(fields: [workerProfileId], references: [id], onDelete: Cascade)
-  allocationId          String          @map("allocation_id")
-  allocation            ProjectAllocation @relation(fields: [allocationId], references: [id], onDelete: Cascade)
-  date                  DateTime
-  status                PreStartStatus  @default(DRAFT)
-  supervisorName        String?         @map("supervisor_name")
-  supervisorSignedAt    DateTime?       @map("supervisor_signed_at")
+  id                 String            @id @default(cuid())
+  projectId          String            @map("project_id")
+  project            Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workerProfileId    String            @map("worker_profile_id")
+  workerProfile      WorkerProfile     @relation(fields: [workerProfileId], references: [id], onDelete: Cascade)
+  allocationId       String            @map("allocation_id")
+  allocation         ProjectAllocation @relation(fields: [allocationId], references: [id], onDelete: Cascade)
+  date               DateTime
+  status             PreStartStatus    @default(DRAFT)
+  supervisorName     String?           @map("supervisor_name")
+  supervisorSignedAt DateTime?         @map("supervisor_signed_at")
 
-  siteHazardsAcknowledged   Boolean   @default(false) @map("site_hazards_acknowledged")
-  hazardNotes               String?   @map("hazard_notes")
+  siteHazardsAcknowledged Boolean @default(false) @map("site_hazards_acknowledged")
+  hazardNotes             String? @map("hazard_notes")
 
-  ppeHelmet                 Boolean   @default(false) @map("ppe_helmet")
-  ppeGloves                 Boolean   @default(false) @map("ppe_gloves")
-  ppeBoots                  Boolean   @default(false) @map("ppe_boots")
-  ppeHighVis                Boolean   @default(false) @map("ppe_high_vis")
-  ppeRespirator             Boolean   @default(false) @map("ppe_respirator")
-  ppeOther                  String?   @map("ppe_other")
+  ppeHelmet     Boolean @default(false) @map("ppe_helmet")
+  ppeGloves     Boolean @default(false) @map("ppe_gloves")
+  ppeBoots      Boolean @default(false) @map("ppe_boots")
+  ppeHighVis    Boolean @default(false) @map("ppe_high_vis")
+  ppeRespirator Boolean @default(false) @map("ppe_respirator")
+  ppeOther      String? @map("ppe_other")
 
-  plantChecksCompleted      Boolean   @default(false) @map("plant_checks_completed")
-  plantCheckNotes           String?   @map("plant_check_notes")
+  plantChecksCompleted Boolean @default(false) @map("plant_checks_completed")
+  plantCheckNotes      String? @map("plant_check_notes")
 
-  fitForWork                Boolean   @default(false) @map("fit_for_work")
-  fitForWorkDeclaration     String?   @map("fit_for_work_declaration")
-  workerSignature           String?   @map("worker_signature")
-  workerSignedAt            DateTime? @map("worker_signed_at")
+  fitForWork            Boolean   @default(false) @map("fit_for_work")
+  fitForWorkDeclaration String?   @map("fit_for_work_declaration")
+  workerSignature       String?   @map("worker_signature")
+  workerSignedAt        DateTime? @map("worker_signed_at")
 
-  asbEnclosureInspection    Boolean?  @map("asb_enclosure_inspection")
-  asbAirMonitoring          Boolean?  @map("asb_air_monitoring")
-  asbDeconOperational       Boolean?  @map("asb_decon_operational")
+  asbEnclosureInspection Boolean? @map("asb_enclosure_inspection")
+  asbAirMonitoring       Boolean? @map("asb_air_monitoring")
+  asbDeconOperational    Boolean? @map("asb_decon_operational")
 
-  civExcavationPermit       Boolean?  @map("civ_excavation_permit")
-  civUndergroundClearance   Boolean?  @map("civ_underground_clearance")
+  civExcavationPermit     Boolean? @map("civ_excavation_permit")
+  civUndergroundClearance Boolean? @map("civ_underground_clearance")
 
-  submittedAt               DateTime? @map("submitted_at")
-  createdAt                 DateTime  @default(now()) @map("created_at")
-  updatedAt                 DateTime  @updatedAt @map("updated_at")
+  submittedAt DateTime? @map("submitted_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
 
   @@unique([workerProfileId, allocationId, date])
   @@index([projectId, date])
@@ -1978,30 +1980,30 @@ model PreStartChecklist {
 }
 
 model Timesheet {
-  id                String            @id @default(cuid())
-  projectId         String            @map("project_id")
-  project           Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  workerProfileId   String            @map("worker_profile_id")
-  workerProfile     WorkerProfile     @relation(fields: [workerProfileId], references: [id], onDelete: Cascade)
-  allocationId      String            @map("allocation_id")
-  allocation        ProjectAllocation @relation(fields: [allocationId], references: [id], onDelete: Cascade)
-  date              DateTime
-  hoursWorked       Decimal           @db.Decimal(4, 2) @map("hours_worked")
-  breakMinutes      Int               @default(0) @map("break_minutes")
-  description       String?
-  clockOnTime       DateTime?         @map("clock_on_time")
-  clockOffTime      DateTime?         @map("clock_off_time")
-  status            TimesheetStatus   @default(DRAFT)
-  submittedAt       DateTime?         @map("submitted_at")
-  approvedById      String?           @map("approved_by_id")
-  approvedBy        User?             @relation("TimesheetApprover", fields: [approvedById], references: [id], onDelete: SetNull)
-  approvedAt        DateTime?         @map("approved_at")
-  rejectedReason    String?           @map("rejected_reason")
-  rejectedById      String?           @map("rejected_by_id")
-  rejectedBy        User?             @relation("TimesheetRejecter", fields: [rejectedById], references: [id], onDelete: SetNull)
-  rejectedAt        DateTime?         @map("rejected_at")
-  createdAt         DateTime          @default(now()) @map("created_at")
-  updatedAt         DateTime          @updatedAt @map("updated_at")
+  id              String            @id @default(cuid())
+  projectId       String            @map("project_id")
+  project         Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workerProfileId String            @map("worker_profile_id")
+  workerProfile   WorkerProfile     @relation(fields: [workerProfileId], references: [id], onDelete: Cascade)
+  allocationId    String            @map("allocation_id")
+  allocation      ProjectAllocation @relation(fields: [allocationId], references: [id], onDelete: Cascade)
+  date            DateTime
+  hoursWorked     Decimal           @map("hours_worked") @db.Decimal(4, 2)
+  breakMinutes    Int               @default(0) @map("break_minutes")
+  description     String?
+  clockOnTime     DateTime?         @map("clock_on_time")
+  clockOffTime    DateTime?         @map("clock_off_time")
+  status          TimesheetStatus   @default(DRAFT)
+  submittedAt     DateTime?         @map("submitted_at")
+  approvedById    String?           @map("approved_by_id")
+  approvedBy      User?             @relation("TimesheetApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt      DateTime?         @map("approved_at")
+  rejectedReason  String?           @map("rejected_reason")
+  rejectedById    String?           @map("rejected_by_id")
+  rejectedBy      User?             @relation("TimesheetRejecter", fields: [rejectedById], references: [id], onDelete: SetNull)
+  rejectedAt      DateTime?         @map("rejected_at")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
 
   @@unique([workerProfileId, allocationId, date])
   @@index([projectId, date])
@@ -2017,20 +2019,20 @@ model Timesheet {
 // plant days). AI-drafted rows start as status="draft", aiProposed=true;
 // confirming a row triggers auto-creation of the matching EstimateItem.
 model ScopeOfWorksItem {
-  id            String   @id @default(uuid())
-  tenderId      String   @map("tender_id")
-  tender        Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
-  wbsCode       String   @map("wbs_code")
-  discipline    String
-  itemNumber    Int      @map("item_number")
-  rowType       String   @map("row_type")
-  description   String
-  status        String   @default("confirmed")
-  aiProposed    Boolean  @default(false) @map("ai_proposed")
-  aiConfidence  String?  @map("ai_confidence")
-  aiSourceRef   String?  @map("ai_source_ref")
-  sortOrder     Int      @default(0) @map("sort_order")
-  notes         String?
+  id           String  @id @default(uuid())
+  tenderId     String  @map("tender_id")
+  tender       Tender  @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  wbsCode      String  @map("wbs_code")
+  discipline   String
+  itemNumber   Int     @map("item_number")
+  rowType      String  @map("row_type")
+  description  String
+  status       String  @default("confirmed")
+  aiProposed   Boolean @default(false) @map("ai_proposed")
+  aiConfidence String? @map("ai_confidence")
+  aiSourceRef  String? @map("ai_source_ref")
+  sortOrder    Int     @default(0) @map("sort_order")
+  notes        String?
 
   // General (all rows)
   men   Decimal? @db.Decimal(8, 2)
@@ -2048,7 +2050,7 @@ model ScopeOfWorksItem {
   depthMm            Int?     @map("depth_mm")
   lm                 Decimal? @db.Decimal(10, 2)
   coreHoleDiameterMm Int?     @map("core_hole_diameter_mm")
-  coreHoleQty        Decimal? @db.Decimal(10, 2) @map("core_hole_qty")
+  coreHoleQty        Decimal? @map("core_hole_qty") @db.Decimal(10, 2)
 
   // Asbestos
   acmType           String?  @map("acm_type")
@@ -2057,7 +2059,7 @@ model ScopeOfWorksItem {
   airMonitoring     Boolean? @map("air_monitoring")
 
   // Excavation / civil
-  excavationDepthM   Decimal? @db.Decimal(8, 2) @map("excavation_depth_m")
+  excavationDepthM   Decimal? @map("excavation_depth_m") @db.Decimal(8, 2)
   excavationMaterial String?  @map("excavation_material")
   machineSize        String?  @map("machine_size")
 
@@ -2065,14 +2067,14 @@ model ScopeOfWorksItem {
   wasteGroup    String?  @map("waste_group")
   wasteType     String?  @map("waste_type")
   wasteFacility String?  @map("waste_facility")
-  wasteTonnes   Decimal? @db.Decimal(10, 3) @map("waste_tonnes")
+  wasteTonnes   Decimal? @map("waste_tonnes") @db.Decimal(10, 3)
   wasteLoads    Int?     @map("waste_loads")
-  wasteM3       Decimal? @db.Decimal(10, 2) @map("waste_m3")
+  wasteM3       Decimal? @map("waste_m3") @db.Decimal(10, 2)
 
   // Redesign additions — generic measurement + material + plant FK.
   // The legacy sqm/m3/materialType/assetId columns are kept so old rows
   // render unchanged; new UI writes to these.
-  measurementQty  Decimal? @db.Decimal(12, 3) @map("measurement_qty")
+  measurementQty  Decimal? @map("measurement_qty") @db.Decimal(12, 3)
   measurementUnit String?  @map("measurement_unit")
   material        String?
   plantAssetId    String?  @map("plant_asset_id")
@@ -2087,19 +2089,19 @@ model ScopeOfWorksItem {
 
   // Provisional sum amount (discipline=Prv only). Final price = this value,
   // no markup applied. Ignored for non-Prv rows.
-  provisionalAmount Decimal? @db.Decimal(12, 2) @map("provisional_amount")
+  provisionalAmount Decimal? @map("provisional_amount") @db.Decimal(12, 2)
 
   // Plant days
-  excavatorDays  Decimal? @db.Decimal(8, 2) @map("excavator_days")
-  bobcatDays     Decimal? @db.Decimal(8, 2) @map("bobcat_days")
-  ewpDays        Decimal? @db.Decimal(8, 2) @map("ewp_days")
-  hookTruckDays  Decimal? @db.Decimal(8, 2) @map("hook_truck_days")
-  semiTipperDays Decimal? @db.Decimal(8, 2) @map("semi_tipper_days")
+  excavatorDays  Decimal? @map("excavator_days") @db.Decimal(8, 2)
+  bobcatDays     Decimal? @map("bobcat_days") @db.Decimal(8, 2)
+  ewpDays        Decimal? @map("ewp_days") @db.Decimal(8, 2)
+  hookTruckDays  Decimal? @map("hook_truck_days") @db.Decimal(8, 2)
+  semiTipperDays Decimal? @map("semi_tipper_days") @db.Decimal(8, 2)
   assetId        String?  @map("asset_id")
 
-  estimateItemId String?  @map("estimate_item_id")
-  createdById    String   @map("created_by_id")
-  createdBy      User     @relation("ScopeOfWorksCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  estimateItemId String? @map("estimate_item_id")
+  createdById    String  @map("created_by_id")
+  createdBy      User    @relation("ScopeOfWorksCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -2124,12 +2126,12 @@ model ScopeWasteItem {
   wasteGroup    String?  @map("waste_group")
   wasteType     String?  @map("waste_type")
   wasteFacility String?  @map("waste_facility")
-  wasteTonnes   Decimal? @db.Decimal(10, 3) @map("waste_tonnes")
+  wasteTonnes   Decimal? @map("waste_tonnes") @db.Decimal(10, 3)
   wasteLoads    Int?     @map("waste_loads")
-  truckDays     Decimal? @db.Decimal(5, 1) @map("truck_days")
-  ratePerTonne  Decimal? @db.Decimal(10, 2) @map("rate_per_tonne")
-  ratePerLoad   Decimal? @db.Decimal(10, 2) @map("rate_per_load")
-  lineTotal     Decimal? @db.Decimal(12, 2) @map("line_total")
+  truckDays     Decimal? @map("truck_days") @db.Decimal(5, 1)
+  ratePerTonne  Decimal? @map("rate_per_tonne") @db.Decimal(10, 2)
+  ratePerLoad   Decimal? @map("rate_per_load") @db.Decimal(10, 2)
+  lineTotal     Decimal? @map("line_total") @db.Decimal(12, 2)
   notes         String?
   sortOrder     Int      @default(0) @map("sort_order")
   createdById   String   @map("created_by_id")
@@ -2295,35 +2297,35 @@ model ScopeViewConfig {
 // can be edited independently of estimate lines. Rate lookups and
 // lineTotal calculations are performed server-side at write time.
 model CuttingSheetItem {
-  id            String   @id @default(cuid())
-  tenderId      String   @map("tender_id")
-  tender        Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
-  wbsRef        String   @map("wbs_ref")
-  description   String?
-  itemType      String   @map("item_type") // saw-cut | core-hole
-  equipment     String?
-  elevation     String?                      // Floor | Wall | Inverted
-  material      String?
-  depthMm       Int?     @map("depth_mm")
-  diameterMm    Int?     @map("diameter_mm")
-  quantityLm    Decimal? @db.Decimal(10, 2) @map("quantity_lm")
-  quantityEach  Int?     @map("quantity_each")
-  ratePerM      Decimal? @db.Decimal(10, 4) @map("rate_per_m")
-  ratePerHole   Decimal? @db.Decimal(10, 4) @map("rate_per_hole")
-  lineTotal     Decimal? @db.Decimal(12, 2) @map("line_total")
-  shift         String?
-  shiftLoading  Decimal? @db.Decimal(10, 2) @map("shift_loading")
-  method        String?  // High-Freq | Low-emission | Fuel | N/A — applied as ×1.25 for High-Freq / Low-emission
+  id           String            @id @default(cuid())
+  tenderId     String            @map("tender_id")
+  tender       Tender            @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  wbsRef       String            @map("wbs_ref")
+  description  String?
+  itemType     String            @map("item_type") // saw-cut | core-hole
+  equipment    String?
+  elevation    String? // Floor | Wall | Inverted
+  material     String?
+  depthMm      Int?              @map("depth_mm")
+  diameterMm   Int?              @map("diameter_mm")
+  quantityLm   Decimal?          @map("quantity_lm") @db.Decimal(10, 2)
+  quantityEach Int?              @map("quantity_each")
+  ratePerM     Decimal?          @map("rate_per_m") @db.Decimal(10, 4)
+  ratePerHole  Decimal?          @map("rate_per_hole") @db.Decimal(10, 4)
+  lineTotal    Decimal?          @map("line_total") @db.Decimal(12, 2)
+  shift        String?
+  shiftLoading Decimal?          @map("shift_loading") @db.Decimal(10, 2)
+  method       String? // High-Freq | Low-emission | Fuel | N/A — applied as ×1.25 for High-Freq / Low-emission
   // Other-rate line items reference the CuttingOtherRate row so the rate
   // stays live — admin edits propagate to all tenders on next load.
-  otherRateId   String?           @map("other_rate_id")
-  otherRate     CuttingOtherRate? @relation(fields: [otherRateId], references: [id], onDelete: SetNull)
-  notes         String?
-  sortOrder     Int      @default(0) @map("sort_order")
-  createdById   String   @map("created_by_id")
-  createdBy     User     @relation("CuttingSheetItemCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  otherRateId  String?           @map("other_rate_id")
+  otherRate    CuttingOtherRate? @relation(fields: [otherRateId], references: [id], onDelete: SetNull)
+  notes        String?
+  sortOrder    Int               @default(0) @map("sort_order")
+  createdById  String            @map("created_by_id")
+  createdBy    User              @relation("CuttingSheetItemCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
 
   @@index([tenderId, itemType, sortOrder])
   @@map("cutting_sheet_items")
@@ -2453,23 +2455,23 @@ enum ClaimStatus {
 }
 
 model Contract {
-  id              String         @id @default(cuid())
-  projectId       String         @unique @map("project_id")
-  project         Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  contractNumber  String         @unique @map("contract_number")
-  contractValue   Decimal        @db.Decimal(12, 2) @map("contract_value")
-  retentionPct    Decimal        @default(0) @db.Decimal(5, 2) @map("retention_pct")
-  retentionAmount Decimal        @default(0) @db.Decimal(12, 2) @map("retention_amount")
-  startDate       DateTime?      @map("start_date")
-  endDate         DateTime?      @map("end_date")
-  status          ContractStatus @default(ACTIVE)
+  id              String          @id @default(cuid())
+  projectId       String          @unique @map("project_id")
+  project         Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contractNumber  String          @unique @map("contract_number")
+  contractValue   Decimal         @map("contract_value") @db.Decimal(12, 2)
+  retentionPct    Decimal         @default(0) @map("retention_pct") @db.Decimal(5, 2)
+  retentionAmount Decimal         @default(0) @map("retention_amount") @db.Decimal(12, 2)
+  startDate       DateTime?       @map("start_date")
+  endDate         DateTime?       @map("end_date")
+  status          ContractStatus  @default(ACTIVE)
   notes           String?
-  createdById     String         @map("created_by_id")
-  createdBy       User           @relation("ContractCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdById     String          @map("created_by_id")
+  createdBy       User            @relation("ContractCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   variations      Variation[]
   progressClaims  ProgressClaim[]
-  createdAt       DateTime       @default(now()) @map("created_at")
-  updatedAt       DateTime       @updatedAt @map("updated_at")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
 
   @@index([status])
   @@map("contracts")
@@ -2483,8 +2485,8 @@ model Variation {
   description     String
   status          VariationStatus @default(RECEIVED)
   requestedBy     String?         @map("requested_by")
-  pricedAmount    Decimal?        @db.Decimal(12, 2) @map("priced_amount")
-  approvedAmount  Decimal?        @db.Decimal(12, 2) @map("approved_amount")
+  pricedAmount    Decimal?        @map("priced_amount") @db.Decimal(12, 2)
+  approvedAmount  Decimal?        @map("approved_amount") @db.Decimal(12, 2)
   receivedDate    DateTime        @default(now()) @map("received_date")
   pricedDate      DateTime?       @map("priced_date")
   submittedDate   DateTime?       @map("submitted_date")
@@ -2508,11 +2510,11 @@ model ProgressClaim {
   claimMonth     DateTime        @map("claim_month")
   submissionDate DateTime?       @map("submission_date")
   status         ClaimStatus     @default(DRAFT)
-  totalClaimed   Decimal         @default(0) @db.Decimal(12, 2) @map("total_claimed")
-  totalApproved  Decimal?        @db.Decimal(12, 2) @map("total_approved")
-  totalPaid      Decimal?        @db.Decimal(12, 2) @map("total_paid")
+  totalClaimed   Decimal         @default(0) @map("total_claimed") @db.Decimal(12, 2)
+  totalApproved  Decimal?        @map("total_approved") @db.Decimal(12, 2)
+  totalPaid      Decimal?        @map("total_paid") @db.Decimal(12, 2)
   paidDate       DateTime?       @map("paid_date")
-  retentionHeld  Decimal         @default(0) @db.Decimal(12, 2) @map("retention_held")
+  retentionHeld  Decimal         @default(0) @map("retention_held") @db.Decimal(12, 2)
   notes          String?
   lineItems      ClaimLineItem[]
   createdById    String          @map("created_by_id")
@@ -2526,18 +2528,18 @@ model ProgressClaim {
 }
 
 model ClaimLineItem {
-  id                String         @id @default(cuid())
-  claimId           String         @map("claim_id")
-  claim             ProgressClaim  @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  id                String        @id @default(cuid())
+  claimId           String        @map("claim_id")
+  claim             ProgressClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
   discipline        String?
   description       String
-  contractValue     Decimal        @db.Decimal(12, 2) @map("contract_value")
-  previouslyClaimed Decimal        @default(0) @db.Decimal(12, 2) @map("previously_claimed")
-  thisClaimPct      Decimal?       @db.Decimal(5, 2) @map("this_claim_pct")
-  thisClaimAmount   Decimal        @default(0) @db.Decimal(12, 2) @map("this_claim_amount")
-  variationId       String?        @map("variation_id")
-  variation         Variation?     @relation(fields: [variationId], references: [id], onDelete: SetNull)
-  sortOrder         Int            @default(0) @map("sort_order")
+  contractValue     Decimal       @map("contract_value") @db.Decimal(12, 2)
+  previouslyClaimed Decimal       @default(0) @map("previously_claimed") @db.Decimal(12, 2)
+  thisClaimPct      Decimal?      @map("this_claim_pct") @db.Decimal(5, 2)
+  thisClaimAmount   Decimal       @default(0) @map("this_claim_amount") @db.Decimal(12, 2)
+  variationId       String?       @map("variation_id")
+  variation         Variation?    @relation(fields: [variationId], references: [id], onDelete: SetNull)
+  sortOrder         Int           @default(0) @map("sort_order")
 
   @@index([claimId])
   @@map("claim_line_items")
@@ -2576,36 +2578,36 @@ enum ClientQuoteStatus {
 }
 
 model ClientQuote {
-  id              String            @id @default(cuid())
-  tenderId        String            @map("tender_id")
-  tender          Tender            @relation(fields: [tenderId], references: [id], onDelete: Cascade)
-  clientId        String            @map("client_id")
-  client          Client            @relation(fields: [clientId], references: [id])
-  revision        Int               @default(1)
-  quoteRef        String            @unique @map("quote_ref")
-  status          ClientQuoteStatus @default(DRAFT)
-  adjustmentPct   Decimal?          @db.Decimal(5, 2) @map("adjustment_pct")
-  adjustmentAmt   Decimal?          @db.Decimal(12, 2) @map("adjustment_amt")
-  adjustmentNote  String?           @map("adjustment_note")
-  assumptionMode  String            @default("free") @map("assumption_mode")
-  showProvisional Boolean           @default(false) @map("show_provisional")
-  showCostOptions Boolean           @default(false) @map("show_cost_options")
-  sentAt          DateTime?         @map("sent_at")
-  sentById        String?           @map("sent_by_id")
-  sentBy          User?             @relation("QuoteSentBy", fields: [sentById], references: [id])
-  generatedPdfPath String?          @map("generated_pdf_path")
-  createdById     String            @map("created_by_id")
-  createdBy       User              @relation("QuoteCreatedBy", fields: [createdById], references: [id])
-  createdAt       DateTime          @default(now()) @map("created_at")
-  updatedAt       DateTime          @updatedAt @map("updated_at")
-  costLines       QuoteCostLine[]
+  id               String                 @id @default(cuid())
+  tenderId         String                 @map("tender_id")
+  tender           Tender                 @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  clientId         String                 @map("client_id")
+  client           Client                 @relation(fields: [clientId], references: [id])
+  revision         Int                    @default(1)
+  quoteRef         String                 @unique @map("quote_ref")
+  status           ClientQuoteStatus      @default(DRAFT)
+  adjustmentPct    Decimal?               @map("adjustment_pct") @db.Decimal(5, 2)
+  adjustmentAmt    Decimal?               @map("adjustment_amt") @db.Decimal(12, 2)
+  adjustmentNote   String?                @map("adjustment_note")
+  assumptionMode   String                 @default("free") @map("assumption_mode")
+  showProvisional  Boolean                @default(false) @map("show_provisional")
+  showCostOptions  Boolean                @default(false) @map("show_cost_options")
+  sentAt           DateTime?              @map("sent_at")
+  sentById         String?                @map("sent_by_id")
+  sentBy           User?                  @relation("QuoteSentBy", fields: [sentById], references: [id])
+  generatedPdfPath String?                @map("generated_pdf_path")
+  createdById      String                 @map("created_by_id")
+  createdBy        User                   @relation("QuoteCreatedBy", fields: [createdById], references: [id])
+  createdAt        DateTime               @default(now()) @map("created_at")
+  updatedAt        DateTime               @updatedAt @map("updated_at")
+  costLines        QuoteCostLine[]
   provisionalLines QuoteProvisionalLine[]
-  costOptions     QuoteCostOption[]
-  assumptions     QuoteAssumption[]
-  exclusions      QuoteExclusion[]
-  emails          QuoteEmail[]
-  scopeItems      QuoteScopeItem[]
-  detailLevel     String           @default("simple") @map("detail_level")
+  costOptions      QuoteCostOption[]
+  assumptions      QuoteAssumption[]
+  exclusions       QuoteExclusion[]
+  emails           QuoteEmail[]
+  scopeItems       QuoteScopeItem[]
+  detailLevel      String                 @default("simple") @map("detail_level")
 
   @@unique([tenderId, clientId, revision])
   @@index([tenderId])
@@ -2712,60 +2714,60 @@ model TenderFilterPreset {
 // ─── Business Directory (PR #73) ─────────────────────────────────────────────
 
 model SubcontractorSupplier {
-  id               String    @id @default(cuid())
-  name             String
-  tradingName      String?   @map("trading_name")
-  businessType     String    @default("company") @map("business_type")
-  abn              String?
-  acn              String?
-  gstRegistered    Boolean   @default(true) @map("gst_registered")
-  website          String?
-  entityType       String    @default("subcontractor") @map("entity_type")
-  categories       String[]
-  prequalStatus    String    @default("pending") @map("prequal_status")
-  prequalNotes     String?   @map("prequal_notes")
-  prequalReviewedAt DateTime? @map("prequal_reviewed_at")
-  prequalReviewedBy String?   @map("prequal_reviewed_by")
-  swmsOnFile       Boolean   @default(false) @map("swms_on_file")
-  swmsReviewedAt   DateTime? @map("swms_reviewed_at")
-  email            String?
-  phone            String?
-  physicalAddress  String?   @map("physical_address")
-  physicalSuburb   String?   @map("physical_suburb")
-  physicalState    String?   @default("QLD") @map("physical_state")
-  physicalPostcode String?   @map("physical_postcode")
-  postalAddress    String?   @map("postal_address")
-  postalSuburb     String?   @map("postal_suburb")
-  postalState      String?   @map("postal_state")
-  postalPostcode   String?   @map("postal_postcode")
-  postalSameAs     Boolean   @default(true) @map("postal_same_as")
-  paymentTermsDays Int?      @default(30) @map("payment_terms_days")
-  creditLimit      Decimal?  @db.Decimal(12, 2) @map("credit_limit")
-  creditApproved   Boolean   @default(false) @map("credit_approved")
-  preferredPayment String?   @map("preferred_payment")
-  bankName         String?   @map("bank_name")
-  bankAccountName  String?   @map("bank_account_name")
-  bankBsb          String?   @map("bank_bsb")
-  bankAccountNumber String?  @map("bank_account_number")
-  xeroContactId    String?   @map("xero_contact_id")
-  myobCardId       String?   @map("myob_card_id")
-  isActive         Boolean   @default(true) @map("is_active")
-  onHold           Boolean   @default(false) @map("on_hold")
-  onHoldReason     String?   @map("on_hold_reason")
-  internalNotes    String?   @map("internal_notes")
-  performanceRating Int?     @map("performance_rating")
+  id                    String    @id @default(cuid())
+  name                  String
+  tradingName           String?   @map("trading_name")
+  businessType          String    @default("company") @map("business_type")
+  abn                   String?
+  acn                   String?
+  gstRegistered         Boolean   @default(true) @map("gst_registered")
+  website               String?
+  entityType            String    @default("subcontractor") @map("entity_type")
+  categories            String[]
+  prequalStatus         String    @default("pending") @map("prequal_status")
+  prequalNotes          String?   @map("prequal_notes")
+  prequalReviewedAt     DateTime? @map("prequal_reviewed_at")
+  prequalReviewedBy     String?   @map("prequal_reviewed_by")
+  swmsOnFile            Boolean   @default(false) @map("swms_on_file")
+  swmsReviewedAt        DateTime? @map("swms_reviewed_at")
+  email                 String?
+  phone                 String?
+  physicalAddress       String?   @map("physical_address")
+  physicalSuburb        String?   @map("physical_suburb")
+  physicalState         String?   @default("QLD") @map("physical_state")
+  physicalPostcode      String?   @map("physical_postcode")
+  postalAddress         String?   @map("postal_address")
+  postalSuburb          String?   @map("postal_suburb")
+  postalState           String?   @map("postal_state")
+  postalPostcode        String?   @map("postal_postcode")
+  postalSameAs          Boolean   @default(true) @map("postal_same_as")
+  paymentTermsDays      Int?      @default(30) @map("payment_terms_days")
+  creditLimit           Decimal?  @map("credit_limit") @db.Decimal(12, 2)
+  creditApproved        Boolean   @default(false) @map("credit_approved")
+  preferredPayment      String?   @map("preferred_payment")
+  bankName              String?   @map("bank_name")
+  bankAccountName       String?   @map("bank_account_name")
+  bankBsb               String?   @map("bank_bsb")
+  bankAccountNumber     String?   @map("bank_account_number")
+  xeroContactId         String?   @map("xero_contact_id")
+  myobCardId            String?   @map("myob_card_id")
+  isActive              Boolean   @default(true) @map("is_active")
+  onHold                Boolean   @default(false) @map("on_hold")
+  onHoldReason          String?   @map("on_hold_reason")
+  internalNotes         String?   @map("internal_notes")
+  performanceRating     Int?      @map("performance_rating")
   complianceBlocked     Boolean   @default(false) @map("compliance_blocked")
   complianceBlockReason String?   @map("compliance_block_reason")
   complianceBlockedAt   DateTime? @map("compliance_blocked_at")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
-  createdById      String    @map("created_by_id")
-  createdBy        User      @relation("SubcontractorCreatedBy", fields: [createdById], references: [id])
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  createdById           String    @map("created_by_id")
+  createdBy             User      @relation("SubcontractorCreatedBy", fields: [createdById], references: [id])
 
-  documents        SubcontractorDocument[]
-  licences         EntityLicence[]         @relation("SubLicences")
-  insurances       EntityInsurance[]       @relation("SubInsurances")
-  creditApplications CreditApplication[]   @relation("SubCreditApps")
+  documents          SubcontractorDocument[]
+  licences           EntityLicence[]         @relation("SubLicences")
+  insurances         EntityInsurance[]       @relation("SubInsurances")
+  creditApplications CreditApplication[]     @relation("SubCreditApps")
 
   @@index([entityType])
   @@index([prequalStatus])
@@ -2779,21 +2781,21 @@ model SubcontractorSupplier {
 // (migration 20260426_feat_drop_deprecated_tables).
 
 model EntityLicence {
-  id               String    @id @default(cuid())
-  licenceType      String    @map("licence_type")
-  licenceNumber    String?   @map("licence_number")
-  issuingAuthority String?   @map("issuing_authority")
-  issueDate        DateTime? @map("issue_date")
-  expiryDate       DateTime? @map("expiry_date")
-  documentPath     String?   @map("document_path")
+  id               String                 @id @default(cuid())
+  licenceType      String                 @map("licence_type")
+  licenceNumber    String?                @map("licence_number")
+  issuingAuthority String?                @map("issuing_authority")
+  issueDate        DateTime?              @map("issue_date")
+  expiryDate       DateTime?              @map("expiry_date")
+  documentPath     String?                @map("document_path")
   notes            String?
-  status           String    @default("active")
-  clientId         String?   @map("client_id")
-  client           Client?   @relation("ClientLicences", fields: [clientId], references: [id], onDelete: Cascade)
-  subcontractorId  String?   @map("subcontractor_id")
+  status           String                 @default("active")
+  clientId         String?                @map("client_id")
+  client           Client?                @relation("ClientLicences", fields: [clientId], references: [id], onDelete: Cascade)
+  subcontractorId  String?                @map("subcontractor_id")
   subcontractor    SubcontractorSupplier? @relation("SubLicences", fields: [subcontractorId], references: [id], onDelete: Cascade)
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
+  createdAt        DateTime               @default(now()) @map("created_at")
+  updatedAt        DateTime               @updatedAt @map("updated_at")
 
   @@index([expiryDate])
   @@index([clientId])
@@ -2802,21 +2804,21 @@ model EntityLicence {
 }
 
 model EntityInsurance {
-  id              String    @id @default(cuid())
-  insuranceType   String    @map("insurance_type")
-  insurerName     String?   @map("insurer_name")
-  policyNumber    String?   @map("policy_number")
-  coverageAmount  Decimal?  @db.Decimal(14, 2) @map("coverage_amount")
-  expiryDate      DateTime? @map("expiry_date")
-  documentPath    String?   @map("document_path")
+  id              String                 @id @default(cuid())
+  insuranceType   String                 @map("insurance_type")
+  insurerName     String?                @map("insurer_name")
+  policyNumber    String?                @map("policy_number")
+  coverageAmount  Decimal?               @map("coverage_amount") @db.Decimal(14, 2)
+  expiryDate      DateTime?              @map("expiry_date")
+  documentPath    String?                @map("document_path")
   notes           String?
-  status          String    @default("active")
-  clientId        String?   @map("client_id")
-  client          Client?   @relation("ClientInsurances", fields: [clientId], references: [id], onDelete: Cascade)
-  subcontractorId String?   @map("subcontractor_id")
+  status          String                 @default("active")
+  clientId        String?                @map("client_id")
+  client          Client?                @relation("ClientInsurances", fields: [clientId], references: [id], onDelete: Cascade)
+  subcontractorId String?                @map("subcontractor_id")
   subcontractor   SubcontractorSupplier? @relation("SubInsurances", fields: [subcontractorId], references: [id], onDelete: Cascade)
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
 
   @@index([expiryDate])
   @@index([clientId])
@@ -2825,27 +2827,27 @@ model EntityInsurance {
 }
 
 model CreditApplication {
-  id              String    @id @default(cuid())
+  id              String                 @id @default(cuid())
   direction       String
-  status          String    @default("draft")
-  creditLimit     Decimal?  @db.Decimal(12, 2) @map("credit_limit")
-  paymentTerms    Int?      @map("payment_terms")
-  applicationDate DateTime? @map("application_date")
-  approvedDate    DateTime? @map("approved_date")
-  rejectedDate    DateTime? @map("rejected_date")
-  reviewedById    String?   @map("reviewed_by_id")
-  reviewedBy      User?     @relation("CreditAppReviewer", fields: [reviewedById], references: [id])
+  status          String                 @default("draft")
+  creditLimit     Decimal?               @map("credit_limit") @db.Decimal(12, 2)
+  paymentTerms    Int?                   @map("payment_terms")
+  applicationDate DateTime?              @map("application_date")
+  approvedDate    DateTime?              @map("approved_date")
+  rejectedDate    DateTime?              @map("rejected_date")
+  reviewedById    String?                @map("reviewed_by_id")
+  reviewedBy      User?                  @relation("CreditAppReviewer", fields: [reviewedById], references: [id])
   notes           String?
-  documentPath    String?   @map("document_path")
-  accountNumber   String?   @map("account_number")
-  clientId        String?   @map("client_id")
-  client          Client?   @relation("ClientCreditApps", fields: [clientId], references: [id], onDelete: Cascade)
-  subcontractorId String?   @map("subcontractor_id")
+  documentPath    String?                @map("document_path")
+  accountNumber   String?                @map("account_number")
+  clientId        String?                @map("client_id")
+  client          Client?                @relation("ClientCreditApps", fields: [clientId], references: [id], onDelete: Cascade)
+  subcontractorId String?                @map("subcontractor_id")
   subcontractor   SubcontractorSupplier? @relation("SubCreditApps", fields: [subcontractorId], references: [id], onDelete: Cascade)
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
-  createdById     String    @map("created_by_id")
-  createdBy       User      @relation("CreditAppCreator", fields: [createdById], references: [id])
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+  createdById     String                 @map("created_by_id")
+  createdBy       User                   @relation("CreditAppCreator", fields: [createdById], references: [id])
 
   @@index([status])
   @@index([clientId])
@@ -2854,15 +2856,15 @@ model CreditApplication {
 }
 
 model SubcontractorDocument {
-  id              String               @id @default(cuid())
-  subcontractorId String               @map("subcontractor_id")
+  id              String                @id @default(cuid())
+  subcontractorId String                @map("subcontractor_id")
   subcontractor   SubcontractorSupplier @relation(fields: [subcontractorId], references: [id], onDelete: Cascade)
-  documentType    String               @map("document_type")
+  documentType    String                @map("document_type")
   name            String
-  filePath        String?              @map("file_path")
-  uploadedAt      DateTime             @default(now()) @map("uploaded_at")
-  uploadedById    String               @map("uploaded_by_id")
-  uploadedBy      User                 @relation("SubDocUploadedBy", fields: [uploadedById], references: [id])
+  filePath        String?               @map("file_path")
+  uploadedAt      DateTime              @default(now()) @map("uploaded_at")
+  uploadedById    String                @map("uploaded_by_id")
+  uploadedBy      User                  @relation("SubDocUploadedBy", fields: [uploadedById], references: [id])
   notes           String?
 
   @@index([subcontractorId])
@@ -2987,24 +2989,81 @@ model HazardNumberSequence {
   @@map("hazard_number_sequences")
 }
 
+// ─── Client Portal (PR #83) ───────────────────────────────────────────────
+
+model ClientPortalUser {
+  id                 String          @id @default(cuid())
+  clientId           String          @map("client_id")
+  client             Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  email              String          @unique
+  passwordHash       String          @map("password_hash")
+  firstName          String          @map("first_name")
+  lastName           String          @map("last_name")
+  phone              String?
+  isActive           Boolean         @default(true) @map("is_active")
+  forcePasswordReset Boolean         @default(false) @map("force_password_reset")
+  lastLoginAt        DateTime?       @map("last_login_at")
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
+  sessions           PortalSession[]
+
+  @@index([clientId])
+  @@index([email])
+  @@map("client_portal_users")
+}
+
+model PortalSession {
+  id           String           @id @default(cuid())
+  portalUserId String           @map("portal_user_id")
+  portalUser   ClientPortalUser @relation(fields: [portalUserId], references: [id], onDelete: Cascade)
+  tokenHash    String           @map("token_hash")
+  expiresAt    DateTime         @map("expires_at")
+  revokedAt    DateTime?        @map("revoked_at")
+  createdAt    DateTime         @default(now()) @map("created_at")
+
+  @@index([portalUserId])
+  @@index([tokenHash])
+  @@map("portal_sessions")
+}
+
+model PortalInvite {
+  id          String    @id @default(cuid())
+  clientId    String    @map("client_id")
+  client      Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  contactId   String?   @map("contact_id")
+  email       String
+  firstName   String    @map("first_name")
+  lastName    String    @map("last_name")
+  tokenHash   String    @map("token_hash")
+  expiresAt   DateTime  @map("expires_at")
+  acceptedAt  DateTime? @map("accepted_at")
+  invitedById String?   @map("invited_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([clientId])
+  @@index([email])
+  @@index([tokenHash])
+  @@map("portal_invites")
+}
+
 // ─── Gantt scheduling (PR #82) ────────────────────────────────────────────
 
 model GanttTask {
-  id            String         @id @default(cuid())
-  projectId     String         @map("project_id")
-  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  title         String
-  discipline    String?
-  startDate     DateTime       @map("start_date")
-  endDate       DateTime       @map("end_date")
-  progress      Int            @default(0)
-  colour        String?
-  dependencies  String[]       @default([])
-  assignedToId  String?        @map("assigned_to_id")
-  assignedTo    WorkerProfile? @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
-  sortOrder     Int            @default(0) @map("sort_order")
-  createdAt     DateTime       @default(now()) @map("created_at")
-  updatedAt     DateTime       @updatedAt @map("updated_at")
+  id           String         @id @default(cuid())
+  projectId    String         @map("project_id")
+  project      Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title        String
+  discipline   String?
+  startDate    DateTime       @map("start_date")
+  endDate      DateTime       @map("end_date")
+  progress     Int            @default(0)
+  colour       String?
+  dependencies String[]       @default([])
+  assignedToId String?        @map("assigned_to_id")
+  assignedTo   WorkerProfile? @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+  sortOrder    Int            @default(0) @map("sort_order")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
 
   @@index([projectId])
   @@index([startDate])

@@ -82,6 +82,8 @@ export function ContactsTab({
   const [editing, setEditing] = useState<ContactRecord | null>(null);
   const [creating, setCreating] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [inviting, setInviting] = useState<ContactRecord | null>(null);
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!organisationId) return;
@@ -108,6 +110,35 @@ export function ContactsTab({
   const flashToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 2500);
+  };
+
+  const sendInvite = async (row: ContactRecord) => {
+    if (!row.email) {
+      setError("Contact must have an email address before inviting.");
+      return;
+    }
+    if (!window.confirm(`Send a portal invitation to ${row.firstName} ${row.lastName} at ${row.email}?`)) return;
+    try {
+      const response = await authFetch(`/portal/invites`, {
+        method: "POST",
+        body: JSON.stringify({
+          clientId: organisationId,
+          contactId: row.id,
+          email: row.email,
+          firstName: row.firstName,
+          lastName: row.lastName
+        })
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const body = (await response.json()) as { inviteUrl: string };
+      setInviteUrl(body.inviteUrl);
+      setInviting(row);
+      flashToast("Invitation created");
+      await load();
+      onChanged?.();
+    } catch (err) {
+      setError((err as Error).message);
+    }
   };
 
   const remove = async (row: ContactRecord) => {
@@ -220,10 +251,34 @@ export function ContactsTab({
                         Accounts
                       </span>
                     ) : null}
+                    {c.hasPortalAccess ? (
+                      <span
+                        style={{
+                          fontSize: 10,
+                          padding: "1px 6px",
+                          background: "#005B61",
+                          color: "#fff",
+                          borderRadius: 999,
+                          textTransform: "uppercase"
+                        }}
+                      >
+                        Portal
+                      </span>
+                    ) : null}
                   </td>
                   <td style={{ padding: "6px 8px", textAlign: "right" }}>
                     {canManage ? (
                       <>
+                        {organisationType === "CLIENT" && c.email && !c.hasPortalAccess ? (
+                          <button
+                            type="button"
+                            className="s7-btn s7-btn--ghost s7-btn--sm"
+                            onClick={() => void sendInvite(c)}
+                            title="Invite to client portal"
+                          >
+                            Invite
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           className="s7-btn s7-btn--ghost s7-btn--sm"
@@ -251,6 +306,64 @@ export function ContactsTab({
           </table>
         </div>
       )}
+
+      {inviting && inviteUrl ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => {
+            setInviting(null);
+            setInviteUrl(null);
+          }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            zIndex: 1100,
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center"
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="s7-card"
+            style={{ padding: 20, width: "min(560px, 92vw)" }}
+          >
+            <h3 className="s7-type-section-heading" style={{ margin: "0 0 8px" }}>
+              Portal invitation created
+            </h3>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 12px" }}>
+              Share this link with {inviting.firstName} {inviting.lastName} ({inviting.email}). It expires in 14 days.
+            </p>
+            <div style={{ display: "flex", gap: 6 }}>
+              <input className="s7-input" readOnly value={inviteUrl} style={{ flex: 1 }} />
+              <button
+                type="button"
+                className="s7-btn s7-btn--primary"
+                onClick={() => {
+                  void navigator.clipboard.writeText(inviteUrl);
+                  flashToast("Link copied");
+                }}
+              >
+                Copy
+              </button>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+              <button
+                type="button"
+                className="s7-btn s7-btn--ghost"
+                onClick={() => {
+                  setInviting(null);
+                  setInviteUrl(null);
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {creating || editing ? (
         <ContactFormModal

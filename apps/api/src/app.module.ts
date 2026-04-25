@@ -26,6 +26,7 @@ import { SafetyModule } from "./modules/safety/safety.module";
 import { MasterDataModule } from "./modules/master-data/master-data.module";
 import { PermissionsModule } from "./modules/permissions/permissions.module";
 import { PlatformModule } from "./modules/platform/platform.module";
+import { PortalModule } from "./modules/portal/portal.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { ProjectsModule } from "./modules/projects/projects.module";
 import { QuoteModule } from "./modules/quote/quote.module";
@@ -90,7 +91,8 @@ import { FieldModule } from "./modules/field/field.module";
     RolesModule,
     WorkersModule,
     AllocationsModule,
-    FieldModule
+    FieldModule,
+    PortalModule
   ]
 })
 export class AppModule {}

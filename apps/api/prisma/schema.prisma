@@ -1873,11 +1873,14 @@ model WorkerProfile {
   internalUserId        String?               @unique @map("internal_user_id")
   internalUser          User?                 @relation(fields: [internalUserId], references: [id], onDelete: SetNull)
   isActive              Boolean               @default(true) @map("is_active")
+  locationConsent       Boolean               @default(false) @map("location_consent")
+  locationConsentAt     DateTime?             @map("location_consent_at")
   allocations           ProjectAllocation[]
   preStartChecklists    PreStartChecklist[]
   timesheets            Timesheet[]
   qualifications        WorkerQualification[]
   ganttTasks            GanttTask[]
+  locationLogs          WorkerLocationLog[]
   createdAt             DateTime              @default(now()) @map("created_at")
   updatedAt             DateTime              @updatedAt @map("updated_at")
 
@@ -1980,30 +1983,36 @@ model PreStartChecklist {
 }
 
 model Timesheet {
-  id              String            @id @default(cuid())
-  projectId       String            @map("project_id")
-  project         Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  workerProfileId String            @map("worker_profile_id")
-  workerProfile   WorkerProfile     @relation(fields: [workerProfileId], references: [id], onDelete: Cascade)
-  allocationId    String            @map("allocation_id")
-  allocation      ProjectAllocation @relation(fields: [allocationId], references: [id], onDelete: Cascade)
-  date            DateTime
-  hoursWorked     Decimal           @map("hours_worked") @db.Decimal(4, 2)
-  breakMinutes    Int               @default(0) @map("break_minutes")
-  description     String?
-  clockOnTime     DateTime?         @map("clock_on_time")
-  clockOffTime    DateTime?         @map("clock_off_time")
-  status          TimesheetStatus   @default(DRAFT)
-  submittedAt     DateTime?         @map("submitted_at")
-  approvedById    String?           @map("approved_by_id")
-  approvedBy      User?             @relation("TimesheetApprover", fields: [approvedById], references: [id], onDelete: SetNull)
-  approvedAt      DateTime?         @map("approved_at")
-  rejectedReason  String?           @map("rejected_reason")
-  rejectedById    String?           @map("rejected_by_id")
-  rejectedBy      User?             @relation("TimesheetRejecter", fields: [rejectedById], references: [id], onDelete: SetNull)
-  rejectedAt      DateTime?         @map("rejected_at")
-  createdAt       DateTime          @default(now()) @map("created_at")
-  updatedAt       DateTime          @updatedAt @map("updated_at")
+  id               String            @id @default(cuid())
+  projectId        String            @map("project_id")
+  project          Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workerProfileId  String            @map("worker_profile_id")
+  workerProfile    WorkerProfile     @relation(fields: [workerProfileId], references: [id], onDelete: Cascade)
+  allocationId     String            @map("allocation_id")
+  allocation       ProjectAllocation @relation(fields: [allocationId], references: [id], onDelete: Cascade)
+  date             DateTime
+  hoursWorked      Decimal           @map("hours_worked") @db.Decimal(4, 2)
+  breakMinutes     Int               @default(0) @map("break_minutes")
+  description      String?
+  clockOnTime      DateTime?         @map("clock_on_time")
+  clockOffTime     DateTime?         @map("clock_off_time")
+  clockOnLat       Decimal?          @map("clock_on_lat") @db.Decimal(9, 6)
+  clockOnLng       Decimal?          @map("clock_on_lng") @db.Decimal(9, 6)
+  clockOnAccuracy  Decimal?          @map("clock_on_accuracy") @db.Decimal(8, 2)
+  clockOffLat      Decimal?          @map("clock_off_lat") @db.Decimal(9, 6)
+  clockOffLng      Decimal?          @map("clock_off_lng") @db.Decimal(9, 6)
+  clockOffAccuracy Decimal?          @map("clock_off_accuracy") @db.Decimal(8, 2)
+  status           TimesheetStatus   @default(DRAFT)
+  submittedAt      DateTime?         @map("submitted_at")
+  approvedById     String?           @map("approved_by_id")
+  approvedBy       User?             @relation("TimesheetApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt       DateTime?         @map("approved_at")
+  rejectedReason   String?           @map("rejected_reason")
+  rejectedById     String?           @map("rejected_by_id")
+  rejectedBy       User?             @relation("TimesheetRejecter", fields: [rejectedById], references: [id], onDelete: SetNull)
+  rejectedAt       DateTime?         @map("rejected_at")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
 
   @@unique([workerProfileId, allocationId, date])
   @@index([projectId, date])
@@ -2987,6 +2996,27 @@ model HazardNumberSequence {
   lastNumber Int @default(0) @map("last_number")
 
   @@map("hazard_number_sequences")
+}
+
+// ─── GPS clock-on (PR #84) ────────────────────────────────────────────────
+// One row per geolocation reading associated with a clock-on or clock-off
+// event. We log raw points (separate from the timesheet snapshot) so audits
+// can show how location was sampled — e.g. multiple reads for accuracy.
+
+model WorkerLocationLog {
+  id              String        @id @default(cuid())
+  workerProfileId String        @map("worker_profile_id")
+  workerProfile   WorkerProfile @relation(fields: [workerProfileId], references: [id], onDelete: Cascade)
+  timesheetId     String?       @map("timesheet_id")
+  eventType       String        @map("event_type")
+  latitude        Decimal       @db.Decimal(9, 6)
+  longitude       Decimal       @db.Decimal(9, 6)
+  accuracy        Decimal?      @db.Decimal(8, 2)
+  recordedAt      DateTime      @default(now()) @map("recorded_at")
+
+  @@index([workerProfileId, recordedAt])
+  @@index([timesheetId])
+  @@map("worker_location_logs")
 }
 
 // ─── Client Portal (PR #83) ───────────────────────────────────────────────

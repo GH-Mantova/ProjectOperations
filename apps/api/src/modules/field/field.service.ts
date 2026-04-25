@@ -51,6 +51,69 @@ export class FieldService {
     return worker;
   }
 
+  // Worker self-service: opt in/out of GPS clock-on. Setting consent=false on
+  // an existing profile does not delete prior location data — that's a
+  // separate admin action — but stops new GPS captures immediately.
+  async setLocationConsent(actor: ActorContext, consent: boolean) {
+    const worker = await this.resolveWorkerProfile(actor.userId);
+    return this.prisma.workerProfile.update({
+      where: { id: worker.id },
+      data: {
+        locationConsent: consent,
+        locationConsentAt: consent ? new Date() : null
+      },
+      select: { id: true, locationConsent: true, locationConsentAt: true }
+    });
+  }
+
+  async getLocationConsent(actor: ActorContext) {
+    const worker = await this.resolveWorkerProfile(actor.userId);
+    return {
+      workerProfileId: worker.id,
+      locationConsent: worker.locationConsent,
+      locationConsentAt: worker.locationConsentAt
+    };
+  }
+
+  private async recordLocationLogs(
+    workerProfileId: string,
+    timesheetId: string,
+    dto: {
+      clockOnLat?: number;
+      clockOnLng?: number;
+      clockOnAccuracy?: number;
+      clockOffLat?: number;
+      clockOffLng?: number;
+      clockOffAccuracy?: number;
+    }
+  ) {
+    const rows: Prisma.WorkerLocationLogCreateManyInput[] = [];
+    if (dto.clockOnLat !== undefined && dto.clockOnLng !== undefined) {
+      rows.push({
+        workerProfileId,
+        timesheetId,
+        eventType: "clock_on",
+        latitude: new Prisma.Decimal(dto.clockOnLat),
+        longitude: new Prisma.Decimal(dto.clockOnLng),
+        accuracy: dto.clockOnAccuracy !== undefined ? new Prisma.Decimal(dto.clockOnAccuracy) : null
+      });
+    }
+    if (dto.clockOffLat !== undefined && dto.clockOffLng !== undefined) {
+      rows.push({
+        workerProfileId,
+        timesheetId,
+        eventType: "clock_off",
+        latitude: new Prisma.Decimal(dto.clockOffLat),
+        longitude: new Prisma.Decimal(dto.clockOffLng),
+        accuracy:
+          dto.clockOffAccuracy !== undefined ? new Prisma.Decimal(dto.clockOffAccuracy) : null
+      });
+    }
+    if (rows.length > 0) {
+      await this.prisma.workerLocationLog.createMany({ data: rows });
+    }
+  }
+
   async myAllocations(actor: ActorContext) {
     const worker = await this.resolveWorkerProfile(actor.userId);
     const today = startOfDay(new Date());
@@ -391,7 +454,11 @@ export class FieldService {
       });
     }
 
-    return this.prisma.timesheet.create({
+    // Privacy rule: GPS columns are only persisted when the worker has
+    // recorded explicit location consent on their profile. If consent is
+    // absent, the lat/lng silently drops — the timesheet still saves.
+    const includeGps = worker.locationConsent;
+    const created = await this.prisma.timesheet.create({
       data: {
         projectId: allocation.projectId,
         workerProfileId: worker.id,
@@ -402,9 +469,29 @@ export class FieldService {
         description: dto.description ?? null,
         clockOnTime: dto.clockOnTime ? new Date(dto.clockOnTime) : null,
         clockOffTime: dto.clockOffTime ? new Date(dto.clockOffTime) : null,
+        clockOnLat: includeGps && dto.clockOnLat !== undefined ? new Prisma.Decimal(dto.clockOnLat) : null,
+        clockOnLng: includeGps && dto.clockOnLng !== undefined ? new Prisma.Decimal(dto.clockOnLng) : null,
+        clockOnAccuracy:
+          includeGps && dto.clockOnAccuracy !== undefined
+            ? new Prisma.Decimal(dto.clockOnAccuracy)
+            : null,
+        clockOffLat:
+          includeGps && dto.clockOffLat !== undefined ? new Prisma.Decimal(dto.clockOffLat) : null,
+        clockOffLng:
+          includeGps && dto.clockOffLng !== undefined ? new Prisma.Decimal(dto.clockOffLng) : null,
+        clockOffAccuracy:
+          includeGps && dto.clockOffAccuracy !== undefined
+            ? new Prisma.Decimal(dto.clockOffAccuracy)
+            : null,
         status: "DRAFT"
       }
     });
+
+    if (includeGps) {
+      await this.recordLocationLogs(worker.id, created.id, dto);
+    }
+
+    return created;
   }
 
   async updateTimesheet(id: string, dto: UpdateTimesheetDto, actor: ActorContext) {
@@ -418,16 +505,39 @@ export class FieldService {
       throw new BadRequestException("Submitted timesheets cannot be edited.");
     }
 
-    return this.prisma.timesheet.update({
+    const includeGps = worker.locationConsent;
+    const updated = await this.prisma.timesheet.update({
       where: { id },
       data: {
         hoursWorked: dto.hoursWorked !== undefined ? new Prisma.Decimal(dto.hoursWorked) : undefined,
         breakMinutes: dto.breakMinutes,
         description: dto.description,
         clockOnTime: dto.clockOnTime ? new Date(dto.clockOnTime) : undefined,
-        clockOffTime: dto.clockOffTime ? new Date(dto.clockOffTime) : undefined
+        clockOffTime: dto.clockOffTime ? new Date(dto.clockOffTime) : undefined,
+        clockOnLat:
+          includeGps && dto.clockOnLat !== undefined ? new Prisma.Decimal(dto.clockOnLat) : undefined,
+        clockOnLng:
+          includeGps && dto.clockOnLng !== undefined ? new Prisma.Decimal(dto.clockOnLng) : undefined,
+        clockOnAccuracy:
+          includeGps && dto.clockOnAccuracy !== undefined
+            ? new Prisma.Decimal(dto.clockOnAccuracy)
+            : undefined,
+        clockOffLat:
+          includeGps && dto.clockOffLat !== undefined ? new Prisma.Decimal(dto.clockOffLat) : undefined,
+        clockOffLng:
+          includeGps && dto.clockOffLng !== undefined ? new Prisma.Decimal(dto.clockOffLng) : undefined,
+        clockOffAccuracy:
+          includeGps && dto.clockOffAccuracy !== undefined
+            ? new Prisma.Decimal(dto.clockOffAccuracy)
+            : undefined
       }
     });
+
+    if (includeGps) {
+      await this.recordLocationLogs(worker.id, updated.id, dto);
+    }
+
+    return updated;
   }
 
   async submitTimesheet(id: string, actor: ActorContext) {

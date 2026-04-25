@@ -200,19 +200,73 @@ function NewTimesheet({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [duplicate, setDuplicate] = useState(false);
+  const [locationConsent, setLocationConsent] = useState<boolean | null>(null);
+  const [gpsStatus, setGpsStatus] = useState<string | null>(null);
+  const [clockOnGps, setClockOnGps] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
+  const [clockOffGps, setClockOffGps] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const response = await authFetch("/field/my-allocations");
-      if (!response.ok) return;
-      const data = (await response.json()) as Allocation[];
-      if (!cancelled) setAllocations(data);
+      const [allocsRes, consentRes] = await Promise.all([
+        authFetch("/field/my-allocations"),
+        authFetch("/field/location-consent")
+      ]);
+      if (allocsRes.ok && !cancelled) {
+        setAllocations((await allocsRes.json()) as Allocation[]);
+      }
+      if (consentRes.ok && !cancelled) {
+        const c = await consentRes.json();
+        setLocationConsent(Boolean(c.locationConsent));
+      }
     })();
     return () => {
       cancelled = true;
     };
   }, [authFetch]);
+
+  async function captureGps(slot: "on" | "off") {
+    if (!navigator.geolocation) {
+      setGpsStatus("Geolocation not supported on this device.");
+      return;
+    }
+    if (!locationConsent) {
+      setGpsStatus("Enable GPS clock-on consent first.");
+      return;
+    }
+    setGpsStatus(`Getting ${slot === "on" ? "clock-on" : "clock-off"} location…`);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const reading = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy
+        };
+        if (slot === "on") setClockOnGps(reading);
+        else setClockOffGps(reading);
+        setGpsStatus(`${slot === "on" ? "Clock-on" : "Clock-off"} pinned (±${Math.round(reading.accuracy)}m)`);
+      },
+      (err) => setGpsStatus(`Could not get location: ${err.message}`),
+      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 0 }
+    );
+  }
+
+  async function toggleConsent() {
+    const next = !locationConsent;
+    const response = await authFetch("/field/location-consent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ consent: next })
+    });
+    if (response.ok) {
+      const body = await response.json();
+      setLocationConsent(Boolean(body.locationConsent));
+      if (!body.locationConsent) {
+        setClockOnGps(null);
+        setClockOffGps(null);
+      }
+    }
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -242,7 +296,21 @@ function NewTimesheet({
           breakMinutes: Number(breakMinutes),
           description: description.trim() || undefined,
           clockOnTime: clockOnIso,
-          clockOffTime: clockOffIso
+          clockOffTime: clockOffIso,
+          ...(locationConsent && clockOnGps
+            ? {
+                clockOnLat: clockOnGps.lat,
+                clockOnLng: clockOnGps.lng,
+                clockOnAccuracy: clockOnGps.accuracy
+              }
+            : {}),
+          ...(locationConsent && clockOffGps
+            ? {
+                clockOffLat: clockOffGps.lat,
+                clockOffLng: clockOffGps.lng,
+                clockOffAccuracy: clockOffGps.accuracy
+              }
+            : {})
         })
       });
       if (createResponse.status === 409) {
@@ -318,9 +386,69 @@ function NewTimesheet({
             <input type="time" className="field-input" value={clockOff} onChange={(e) => setClockOff(e.target.value)} />
           </div>
         </div>
-        <p style={{ color: "#6B7280", fontSize: 12, marginTop: 6 }}>
-          Clock on/off with GPS verification coming in a future update.
-        </p>
+
+        <div
+          style={{
+            background: "#F4F4F4",
+            border: "1px solid #E5E5E5",
+            borderRadius: 6,
+            padding: 12,
+            marginTop: 12,
+            fontSize: 13
+          }}
+        >
+          <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input
+              type="checkbox"
+              checked={Boolean(locationConsent)}
+              onChange={() => void toggleConsent()}
+            />
+            <span>
+              <strong>GPS clock-on</strong> — pin location to your timesheet
+              <br />
+              <span style={{ color: "#6B7280", fontSize: 11 }}>
+                Stored only if you opt in. You can toggle this anytime.
+              </span>
+            </span>
+          </label>
+          {locationConsent ? (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
+              <button
+                type="button"
+                className="field-btn"
+                onClick={() => void captureGps("on")}
+                style={{
+                  fontSize: 12,
+                  padding: "6px 10px",
+                  background: clockOnGps ? "#005B61" : "#fff",
+                  color: clockOnGps ? "#fff" : "#005B61",
+                  border: "1px solid #005B61",
+                  borderRadius: 4
+                }}
+              >
+                {clockOnGps ? `Clock-on pinned ±${Math.round(clockOnGps.accuracy)}m` : "Pin clock-on"}
+              </button>
+              <button
+                type="button"
+                className="field-btn"
+                onClick={() => void captureGps("off")}
+                style={{
+                  fontSize: 12,
+                  padding: "6px 10px",
+                  background: clockOffGps ? "#005B61" : "#fff",
+                  color: clockOffGps ? "#fff" : "#005B61",
+                  border: "1px solid #005B61",
+                  borderRadius: 4
+                }}
+              >
+                {clockOffGps ? `Clock-off pinned ±${Math.round(clockOffGps.accuracy)}m` : "Pin clock-off"}
+              </button>
+            </div>
+          ) : null}
+          {gpsStatus ? (
+            <p style={{ color: "#6B7280", fontSize: 11, margin: "8px 0 0" }}>{gpsStatus}</p>
+          ) : null}
+        </div>
 
         {error ? (
           <div style={{ background: "#FCEBEB", color: "#A32D2D", padding: 10, borderRadius: 6, marginTop: 12, fontSize: 13 }}>

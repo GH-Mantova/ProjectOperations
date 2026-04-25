@@ -98,7 +98,6 @@ export class DirectoryService {
     const entity = await this.prisma.subcontractorSupplier.findUnique({
       where: { id },
       include: {
-        contacts: { orderBy: [{ isPrimary: "desc" }, { lastName: "asc" }] },
         licences: { orderBy: { expiryDate: "asc" } },
         insurances: { orderBy: { expiryDate: "asc" } },
         documents: { orderBy: { uploadedAt: "desc" }, include: { uploadedBy: { select: { firstName: true, lastName: true } } } },
@@ -106,9 +105,16 @@ export class DirectoryService {
       }
     });
     if (!entity) throw new NotFoundException("Directory entry not found.");
+    // Contacts live in the polymorphic Contact model — look them up by
+    // organisationType + organisationId rather than via a Prisma relation.
+    const contacts = await this.prisma.contact.findMany({
+      where: { organisationType: "SUBCONTRACTOR", organisationId: id },
+      orderBy: [{ isPrimary: "desc" }, { lastName: "asc" }]
+    });
     const masked = maskBank(entity, canSeeBank);
     return {
       ...masked,
+      contacts,
       licences: entity.licences.map(computeStatus),
       insurances: entity.insurances.map(computeStatus)
     };
@@ -132,15 +138,17 @@ export class DirectoryService {
     // Auto-create primary contact for private_person entities
     if (dto.businessType === "private_person") {
       const [firstName, ...rest] = String(dto.name).split(" ");
-      await this.prisma.subcontractorContact.create({
+      await this.prisma.contact.create({
         data: {
-          subcontractorId: entity.id,
+          organisationType: "SUBCONTRACTOR",
+          organisationId: entity.id,
           firstName: firstName ?? String(dto.name),
           lastName: rest.join(" ") || "—",
           phone: (dto.phone as string | undefined) ?? null,
           mobile: null,
           email: (dto.email as string | undefined) ?? null,
-          isPrimary: true
+          isPrimary: true,
+          createdById: actorId
         }
       });
     }
@@ -175,41 +183,55 @@ export class DirectoryService {
     });
   }
 
-  // ─── Contacts ───────────────────────────────────────────────────────────
-  async addContact(subId: string, dto: Record<string, unknown>) {
+  // ─── Contacts (thin wrappers over the polymorphic Contact model) ────────
+  async addContact(subId: string, dto: Record<string, unknown>, actorId?: string) {
     await this.requireEntity(subId);
     if (!dto.firstName || !dto.lastName) throw new BadRequestException("firstName and lastName required.");
-    if (dto.isPrimary) {
-      await this.prisma.subcontractorContact.updateMany({
-        where: { subcontractorId: subId, isPrimary: true },
-        data: { isPrimary: false }
+    return this.prisma.$transaction(async (tx) => {
+      if (dto.isPrimary) {
+        await tx.contact.updateMany({
+          where: { organisationType: "SUBCONTRACTOR", organisationId: subId, isPrimary: true },
+          data: { isPrimary: false }
+        });
+      }
+      return tx.contact.create({
+        data: {
+          ...(dto as Record<string, unknown>),
+          organisationType: "SUBCONTRACTOR",
+          organisationId: subId,
+          createdById: actorId ?? null
+        } as never
       });
-    }
-    return this.prisma.subcontractorContact.create({
-      data: { ...(dto as Record<string, unknown>), subcontractorId: subId } as never
     });
   }
 
   async updateContact(subId: string, contactId: string, dto: Record<string, unknown>) {
-    const existing = await this.prisma.subcontractorContact.findFirst({
-      where: { id: contactId, subcontractorId: subId }
+    const existing = await this.prisma.contact.findFirst({
+      where: { id: contactId, organisationType: "SUBCONTRACTOR", organisationId: subId }
     });
     if (!existing) throw new NotFoundException("Contact not found on this entity.");
-    if (dto.isPrimary) {
-      await this.prisma.subcontractorContact.updateMany({
-        where: { subcontractorId: subId, isPrimary: true, id: { not: contactId } },
-        data: { isPrimary: false }
-      });
-    }
-    return this.prisma.subcontractorContact.update({ where: { id: contactId }, data: dto as never });
+    return this.prisma.$transaction(async (tx) => {
+      if (dto.isPrimary) {
+        await tx.contact.updateMany({
+          where: {
+            organisationType: "SUBCONTRACTOR",
+            organisationId: subId,
+            isPrimary: true,
+            id: { not: contactId }
+          },
+          data: { isPrimary: false }
+        });
+      }
+      return tx.contact.update({ where: { id: contactId }, data: dto as never });
+    });
   }
 
   async deleteContact(subId: string, contactId: string) {
-    const existing = await this.prisma.subcontractorContact.findFirst({
-      where: { id: contactId, subcontractorId: subId }
+    const existing = await this.prisma.contact.findFirst({
+      where: { id: contactId, organisationType: "SUBCONTRACTOR", organisationId: subId }
     });
     if (!existing) throw new NotFoundException("Contact not found on this entity.");
-    await this.prisma.subcontractorContact.delete({ where: { id: contactId } });
+    await this.prisma.contact.delete({ where: { id: contactId } });
     return { id: contactId };
   }
 

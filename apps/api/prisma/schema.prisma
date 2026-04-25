@@ -89,6 +89,8 @@ model User {
   subcontractorDocsUploaded SubcontractorDocument[] @relation("SubDocUploadedBy")
   creditAppsCreated       CreditApplication[]     @relation("CreditAppCreator")
   creditAppsReviewed      CreditApplication[]     @relation("CreditAppReviewer")
+  contactsCreated         Contact[]                @relation("ContactCreatedBy")
+  clientsAsClaimReminder  Client[]                 @relation("ClaimReminderUser")
 
   @@index([isActive])
   @@map("users")
@@ -406,8 +408,8 @@ model Client {
   onHoldReason     String?         @map("on_hold_reason")
   internalNotes    String?         @map("internal_notes")
   claimCutoffDay  Int?             @map("claim_cutoff_day")
-  claimCutoffContactId String?     @map("claim_cutoff_contact_id")
-  claimCutoffContact Contact?      @relation("ClaimCutoffContact", fields: [claimCutoffContactId], references: [id], onDelete: SetNull)
+  claimReminderUserId String?      @map("claim_reminder_user_id")
+  claimReminderUser User?          @relation("ClaimReminderUser", fields: [claimReminderUserId], references: [id], onDelete: SetNull)
   preferenceScore  Int?             @map("preference_score")
   winCount         Int              @default(0) @map("win_count")
   tenderCount      Int              @default(0) @map("tender_count")
@@ -416,7 +418,6 @@ model Client {
   lastWonAt        DateTime?        @map("last_won_at")
   createdAt       DateTime         @default(now()) @map("created_at")
   updatedAt       DateTime         @updatedAt @map("updated_at")
-  contacts        Contact[]
   sites           Site[]
   tenderClients   TenderClient[]
   jobs            Job[]
@@ -436,24 +437,29 @@ model Client {
 }
 
 model Contact {
-  id            String         @id @default(cuid())
-  clientId      String         @map("client_id")
-  firstName     String         @map("first_name")
-  lastName      String         @map("last_name")
-  email         String?
-  phone         String?
-  mobile        String?
-  position      String?
-  isPrimary     Boolean        @default(false) @map("is_primary")
-  hasPortalAccess Boolean      @default(false) @map("has_portal_access")
-  notes         String?
-  createdAt     DateTime       @default(now()) @map("created_at")
-  updatedAt     DateTime       @updatedAt @map("updated_at")
-  client        Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenderClients TenderClient[]
-  clientClaimCutoffs Client[]  @relation("ClaimCutoffContact")
+  id                String   @id @default(cuid())
+  organisationType  String   @map("organisation_type")
+  organisationId    String   @map("organisation_id")
+  firstName         String   @map("first_name")
+  lastName          String   @map("last_name")
+  role              String?
+  email             String?
+  phone             String?
+  mobile            String?
+  isPrimary         Boolean  @default(false) @map("is_primary")
+  isAccountsContact Boolean  @default(false) @map("is_accounts_contact")
+  isActive          Boolean  @default(true) @map("is_active")
+  hasPortalAccess   Boolean  @default(false) @map("has_portal_access")
+  notes             String?
+  createdById       String?  @map("created_by_id")
+  createdBy         User?    @relation("ContactCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  tenderClients     TenderClient[]
 
-  @@index([clientId])
+  @@index([organisationType, organisationId])
+  @@index([email])
+  @@index([isActive])
   @@index([lastName, firstName])
   @@map("contacts")
 }
@@ -2738,7 +2744,6 @@ model SubcontractorSupplier {
   createdById      String    @map("created_by_id")
   createdBy        User      @relation("SubcontractorCreatedBy", fields: [createdById], references: [id])
 
-  contacts         SubcontractorContact[]
   documents        SubcontractorDocument[]
   licences         EntityLicence[]         @relation("SubLicences")
   insurances       EntityInsurance[]       @relation("SubInsurances")
@@ -2750,25 +2755,9 @@ model SubcontractorSupplier {
   @@map("subcontractor_suppliers")
 }
 
-model SubcontractorContact {
-  id              String               @id @default(cuid())
-  subcontractorId String               @map("subcontractor_id")
-  subcontractor   SubcontractorSupplier @relation(fields: [subcontractorId], references: [id], onDelete: Cascade)
-  firstName       String               @map("first_name")
-  lastName        String               @map("last_name")
-  role            String?
-  phone           String?
-  mobile          String?
-  email           String?
-  isPrimary       Boolean              @default(false) @map("is_primary")
-  hasPortalAccess Boolean              @default(false) @map("has_portal_access")
-  notes           String?
-  createdAt       DateTime             @default(now()) @map("created_at")
-  updatedAt       DateTime             @updatedAt @map("updated_at")
-
-  @@index([subcontractorId])
-  @@map("subcontractor_contacts")
-}
+// NOTE: SubcontractorContact was unified into the polymorphic Contact model in
+// PR #75. The underlying `subcontractor_contacts` table is retained (rows
+// copied into `contacts`) and will be dropped in a follow-up tech-debt PR.
 
 model EntityLicence {
   id               String    @id @default(cuid())

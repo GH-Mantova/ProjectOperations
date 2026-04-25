@@ -544,7 +544,8 @@ async function main() {
   await prisma.contact.upsert({
     where: { id: "seed-contact-acme" },
     update: {
-      clientId: clientA.id,
+      organisationType: "CLIENT",
+      organisationId: clientA.id,
       firstName: "Cameron",
       lastName: "Blake",
       email: "cameron.blake@acme.local",
@@ -552,7 +553,8 @@ async function main() {
     },
     create: {
       id: "seed-contact-acme",
-      clientId: clientA.id,
+      organisationType: "CLIENT",
+      organisationId: clientA.id,
       firstName: "Cameron",
       lastName: "Blake",
       email: "cameron.blake@acme.local",
@@ -755,7 +757,7 @@ async function main() {
 
   if (estimatorUser) {
     const primaryContact = await prisma.contact.findFirst({
-      where: { clientId: clientA.id }
+      where: { organisationType: "CLIENT", organisationId: clientA.id }
     });
 
     const tender = await prisma.tender.upsert({

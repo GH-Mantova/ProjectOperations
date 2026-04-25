@@ -20,7 +20,7 @@ export class UpsertClientDto {
   @IsOptional() @IsString() phone?: string;
   @IsOptional() @IsString() notes?: string;
   @IsOptional() @IsInt() @Min(1) @Max(28) claimCutoffDay?: number | null;
-  @IsOptional() @IsString() claimCutoffContactId?: string | null;
+  @IsOptional() @IsString() claimReminderUserId?: string | null;
   @IsOptional() @IsInt() @Min(1) @Max(5) preferenceScore?: number | null;
   // Business directory (PR #73)
   @IsOptional() @IsString() tradingName?: string | null;
@@ -65,9 +65,12 @@ export class UpsertContactDto {
   @IsOptional() @IsString() email?: string;
   @IsOptional() @IsString() phone?: string;
   @IsOptional() @IsString() mobile?: string;
+  /** @deprecated — use `role` instead. Retained for backward compat with existing callers. */
   @IsOptional() @IsString() position?: string;
+  @IsOptional() @IsString() role?: string;
   @IsOptional() @IsBoolean() isPrimary?: boolean;
   @IsOptional() @IsBoolean() hasPortalAccess?: boolean;
+  @IsOptional() @IsBoolean() isAccountsContact?: boolean;
   @IsOptional() @IsString() notes?: string;
 }
 

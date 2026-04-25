@@ -142,44 +142,11 @@ const ICON_EXPAND = (
 
 const NAV_GROUPS: NavGroup[] = [
   {
-    id: "operations",
-    label: "Operations",
-    items: [
-      {
-        to: "/projects",
-        label: "Projects",
-        icon: ICON_CONTRACTS,
-        match: (path) => path === "/projects" || path.startsWith("/projects/")
-      },
-      {
-        to: "/timesheets/approval",
-        label: "Timesheets",
-        icon: ICON_FORMS,
-        match: (path) => path.startsWith("/timesheets")
-      },
-      { to: "/jobs", label: "Jobs", icon: ICON_JOBS },
-      { to: "/scheduler", label: "Scheduler", icon: ICON_SCHEDULER },
-      { to: "/forms", label: "Forms", icon: ICON_FORMS }
-    ]
-  },
-  {
-    id: "workforce",
-    label: "Workforce",
-    items: [
-      {
-        to: "/workers",
-        label: "Workers",
-        icon: ICON_WORKERS,
-        match: (path) => path === "/workers" || path.startsWith("/workers/")
-      }
-    ]
-  },
-  {
     id: "commercial",
     label: "Commercial",
     items: [
       {
-        to: "/tenders",
+        to: "/tenders/pipeline",
         label: "Tendering",
         icon: ICON_TENDERING,
         match: (path) =>
@@ -188,7 +155,6 @@ const NAV_GROUPS: NavGroup[] = [
             !path.startsWith("/tenders/dashboard") &&
             !path.startsWith("/tenders/reports"))
       },
-      { to: "/tenders/reports", label: "Reports", icon: ICON_AUDIT, match: (path) => path.startsWith("/tenders/reports") },
       {
         to: "/contracts",
         label: "Contracts",
@@ -198,11 +164,26 @@ const NAV_GROUPS: NavGroup[] = [
     ]
   },
   {
-    id: "resources",
-    label: "Resources",
+    id: "operations",
+    label: "Operations",
     items: [
+      {
+        to: "/projects",
+        label: "Projects",
+        icon: ICON_CONTRACTS,
+        match: (path) => path === "/projects" || path.startsWith("/projects/")
+      },
+      { to: "/jobs", label: "Jobs", icon: ICON_JOBS },
+      { to: "/scheduler", label: "Scheduler", icon: ICON_SCHEDULER },
+      {
+        to: "/sites",
+        label: "Sites",
+        icon: ICON_SITES,
+        match: (path) => path.startsWith("/sites") || path.startsWith("/master-data?tab=sites")
+      },
       { to: "/assets", label: "Assets", icon: ICON_ASSETS },
-      { to: "/maintenance", label: "Maintenance", icon: ICON_MAINTENANCE }
+      { to: "/maintenance", label: "Maintenance", icon: ICON_MAINTENANCE },
+      { to: "/forms", label: "Forms", icon: ICON_FORMS }
     ]
   },
   {
@@ -213,27 +194,32 @@ const NAV_GROUPS: NavGroup[] = [
         to: "/master-data?tab=clients",
         label: "Clients",
         icon: ICON_CLIENTS,
-        match: () => false
+        match: (path) => path.startsWith("/master-data")
       },
       {
         to: "/directory/subcontractors",
         label: "Subcontractors & Suppliers",
         icon: ICON_CLIENTS,
-        match: (path) => path.startsWith("/directory")
+        match: (path) => path.startsWith("/directory/subcontractors")
+      },
+      {
+        to: "/directory/contacts",
+        label: "Contacts",
+        icon: ICON_WORKERS,
+        match: (path) => path.startsWith("/directory/contacts")
       }
     ]
   },
   {
-    id: "data",
-    label: "Data",
+    id: "platform",
+    label: "Platform",
     items: [
       {
-        to: "/master-data?tab=clients",
-        label: "Clients",
-        icon: ICON_CLIENTS,
-        match: (path) => path.startsWith("/master-data")
+        to: "/dashboards",
+        label: "Dashboard",
+        icon: ICON_DASHBOARD,
+        match: (path) => path === "/dashboards" || path.startsWith("/dashboards/")
       },
-      { to: "/master-data?tab=sites", label: "Sites", icon: ICON_SITES, match: () => false },
       { to: "/documents", label: "Documents", icon: ICON_DOCUMENTS },
       { to: "/archive", label: "Archive", icon: ICON_ARCHIVE, match: (path) => path.startsWith("/archive") }
     ]
@@ -243,11 +229,8 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Admin",
     adminOnly: true,
     items: [
-      { to: "/admin/users", label: "Users", icon: ICON_USERS },
-      { to: "/admin/roles", label: "Roles", icon: ICON_ROLES },
-      { to: "/admin/estimate-rates", label: "Estimate Rates", icon: ICON_TENDERING },
-      { to: "/admin/settings", label: "Settings", icon: ICON_AUDIT },
-      { to: "/admin/audit", label: "Audit", icon: ICON_AUDIT }
+      { to: "/admin/settings", label: "Admin Settings", icon: ICON_AUDIT },
+      { to: "/admin/estimate-rates", label: "Rates & Lists", icon: ICON_TENDERING }
     ]
   }
 ];

@@ -23,10 +23,10 @@ export class MasterDataService {
   ) {}
 
   async listClients(query: MasterDataQueryDto) {
-    return this.paginate(query, () =>
+    const result = await this.paginate(query, () =>
       this.prisma.client.findMany({
         where: query.q ? { name: { contains: query.q, mode: "insensitive" } } : undefined,
-        include: { contacts: true, sites: true },
+        include: { sites: true, claimReminderUser: { select: { id: true, firstName: true, lastName: true, email: true } } },
         orderBy: { name: "asc" }
       }),
       () =>
@@ -34,6 +34,23 @@ export class MasterDataService {
           where: query.q ? { name: { contains: query.q, mode: "insensitive" } } : undefined
         })
     );
+    // Hydrate polymorphic contacts in a single query so callers that relied on
+    // the old Client.contacts reverse relation keep working.
+    const clientIds = result.items.map((c) => c.id);
+    const contacts = clientIds.length
+      ? await this.prisma.contact.findMany({
+          where: { organisationType: "CLIENT", organisationId: { in: clientIds } },
+          orderBy: [{ isPrimary: "desc" }, { lastName: "asc" }]
+        })
+      : [];
+    const byOrg = new Map<string, typeof contacts>();
+    for (const c of contacts) {
+      const list = byOrg.get(c.organisationId) ?? [];
+      list.push(c);
+      byOrg.set(c.organisationId, list);
+    }
+    result.items = result.items.map((c) => ({ ...c, contacts: byOrg.get(c.id) ?? [] })) as never;
+    return result;
   }
 
   async upsertClient(id: string | undefined, dto: UpsertClientDto, actorId?: string) {
@@ -45,39 +62,72 @@ export class MasterDataService {
     return record;
   }
 
-  async listContacts(query: MasterDataQueryDto) {
-    return this.paginate(query, () =>
+  async listContacts(query: MasterDataQueryDto & { clientId?: string }) {
+    const searchClause = query.q
+      ? [
+          { firstName: { contains: query.q, mode: "insensitive" as const } },
+          { lastName: { contains: query.q, mode: "insensitive" as const } }
+        ]
+      : null;
+    const where: Record<string, unknown> = { organisationType: "CLIENT" };
+    if (query.clientId) where.organisationId = query.clientId;
+    if (searchClause) where.OR = searchClause;
+
+    const result = await this.paginate(query, () =>
       this.prisma.contact.findMany({
-        where: query.q
-          ? {
-              OR: [
-                { firstName: { contains: query.q, mode: "insensitive" } },
-                { lastName: { contains: query.q, mode: "insensitive" } }
-              ]
-            }
-          : undefined,
-        include: { client: true },
+        where,
         orderBy: [{ lastName: "asc" }, { firstName: "asc" }]
       }),
-      () =>
-        this.prisma.contact.count({
-          where: query.q
-            ? {
-                OR: [
-                  { firstName: { contains: query.q, mode: "insensitive" } },
-                  { lastName: { contains: query.q, mode: "insensitive" } }
-                ]
-              }
-            : undefined
-        })
+      () => this.prisma.contact.count({ where })
     );
+    // Hydrate client summaries so callers keep the `contact.client` shape.
+    const clientIds = Array.from(new Set(result.items.map((c) => c.organisationId)));
+    const clients = clientIds.length
+      ? await this.prisma.client.findMany({
+          where: { id: { in: clientIds } },
+          select: { id: true, name: true, code: true, status: true }
+        })
+      : [];
+    const byId = new Map(clients.map((c) => [c.id, c]));
+    result.items = result.items.map((c) => ({
+      ...c,
+      clientId: c.organisationId,
+      client: byId.get(c.organisationId) ?? null
+    })) as never;
+    return result;
   }
 
   async upsertContact(id: string | undefined, dto: UpsertContactDto, actorId?: string) {
-    const record = id
-      ? await this.prisma.contact.update({ where: { id }, data: dto })
-      : await this.prisma.contact.create({ data: dto });
-    await this.audit(actorId, id ? "masterdata.contact.update" : "masterdata.contact.create", "Contact", record.id);
+    const baseData = {
+      firstName: dto.firstName,
+      lastName: dto.lastName,
+      role: dto.position ?? dto.role ?? null,
+      email: dto.email ?? null,
+      phone: dto.phone ?? null,
+      mobile: dto.mobile ?? null,
+      isPrimary: dto.isPrimary ?? false,
+      hasPortalAccess: dto.hasPortalAccess ?? false,
+      notes: dto.notes ?? null
+    };
+
+    if (!id) {
+      const record = await this.prisma.contact.create({
+        data: {
+          ...baseData,
+          organisationType: "CLIENT",
+          organisationId: dto.clientId,
+          createdById: actorId ?? null
+        }
+      });
+      await this.audit(actorId, "masterdata.contact.create", "Contact", record.id);
+      return record;
+    }
+
+    const record = await this.prisma.contact.update({
+      where: { id },
+      data: baseData
+    });
+    await this.audit(actorId, "masterdata.contact.update", "Contact", record.id);
     return record;
   }
 

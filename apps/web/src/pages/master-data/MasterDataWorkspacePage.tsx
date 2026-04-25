@@ -458,15 +458,15 @@ type ClientFormState = {
   phone: string;
   notes: string;
   claimCutoffDay: string;
-  claimCutoffContactId: string;
+  claimReminderUserId: string;
 };
 
-type ClientContactOption = {
+type ReminderUserOption = {
   id: string;
   firstName: string;
   lastName: string;
   email: string | null;
-  position: string | null;
+  roles?: Array<{ name: string }>;
 };
 
 function ordinalSuffix(n: number): string {
@@ -497,22 +497,21 @@ function ClientSlideOver({ existing, onClose, onSaved }: ClientSlideOverProps) {
     notes: existing?.notes ?? "",
     claimCutoffDay:
       (existing as unknown as { claimCutoffDay?: number | null } | null)?.claimCutoffDay?.toString() ?? "",
-    claimCutoffContactId:
-      (existing as unknown as { claimCutoffContactId?: string | null } | null)?.claimCutoffContactId ?? ""
+    claimReminderUserId:
+      (existing as unknown as { claimReminderUserId?: string | null } | null)?.claimReminderUserId ?? ""
   });
-  const [contactOptions, setContactOptions] = useState<ClientContactOption[]>([]);
+  const [reminderUsers, setReminderUsers] = useState<ReminderUserOption[]>([]);
   useEffect(() => {
-    if (!existing?.id) return;
     let cancelled = false;
-    void authFetch(`/master-data/contacts?clientId=${existing.id}&pageSize=50`).then(async (r) => {
+    void authFetch("/users?page=1&pageSize=100").then(async (r) => {
       if (!r.ok || cancelled) return;
-      const body = (await r.json()) as { items?: ClientContactOption[] };
-      if (!cancelled) setContactOptions(body.items ?? []);
+      const body = (await r.json()) as { items?: ReminderUserOption[] };
+      if (!cancelled) setReminderUsers(body.items ?? []);
     });
     return () => {
       cancelled = true;
     };
-  }, [authFetch, existing?.id]);
+  }, [authFetch]);
   const [errors, setErrors] = useState<Partial<Record<keyof ClientFormState | "form", string>>>({});
   const [submitting, setSubmitting] = useState(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -554,7 +553,7 @@ function ClientSlideOver({ existing, onClose, onSaved }: ClientSlideOverProps) {
         phone: form.phone.trim() || undefined,
         notes: form.notes.trim() || undefined,
         claimCutoffDay: Number.isNaN(cutoffDay as number) ? null : cutoffDay,
-        claimCutoffContactId: form.claimCutoffContactId || null
+        claimReminderUserId: form.claimReminderUserId || null
       };
       const response = await authFetch(existing ? `/master-data/clients/${existing.id}` : "/master-data/clients", {
         method: existing ? "PATCH" : "POST",
@@ -661,28 +660,26 @@ function ClientSlideOver({ existing, onClose, onSaved }: ClientSlideOverProps) {
               </span>
             </label>
             <label className="tender-form__field">
-              <span className="s7-type-label">Reminder contact</span>
+              <span className="s7-type-label">Progress claim reminder — assigned to</span>
               <select
                 className="s7-input"
-                value={form.claimCutoffContactId}
-                onChange={(e) => setForm({ ...form, claimCutoffContactId: e.target.value })}
-                disabled={contactOptions.length === 0}
+                value={form.claimReminderUserId}
+                onChange={(e) => setForm({ ...form, claimReminderUserId: e.target.value })}
+                disabled={reminderUsers.length === 0}
               >
                 <option value="">— none —</option>
-                {contactOptions.map((c) => {
-                  const suffix = c.position ? ` · ${c.position}` : c.email ? ` · ${c.email}` : "";
+                {reminderUsers.map((u) => {
+                  const role = u.roles?.[0]?.name;
+                  const suffix = role ? ` · ${role}` : u.email ? ` · ${u.email}` : "";
                   return (
-                    <option key={c.id} value={c.id}>
-                      {c.firstName} {c.lastName}{suffix}
+                    <option key={u.id} value={u.id}>
+                      {u.firstName} {u.lastName}{suffix}
                     </option>
                   );
                 })}
               </select>
               <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                Receives a 7-day advance email reminder before each cut-off date.
-                {contactOptions.length === 0 && existing
-                  ? " Add a contact under the Contacts tab first."
-                  : ""}
+                This IS staff member receives a 7-day reminder before each claim cut-off.
               </span>
             </label>
           </fieldset>

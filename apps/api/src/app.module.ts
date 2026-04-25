@@ -28,6 +28,7 @@ import { PermissionsModule } from "./modules/permissions/permissions.module";
 import { PlatformModule } from "./modules/platform/platform.module";
 import { PortalModule } from "./modules/portal/portal.module";
 import { PrismaModule } from "./prisma/prisma.module";
+import { XeroModule } from "./modules/xero/xero.module";
 import { ProjectsModule } from "./modules/projects/projects.module";
 import { QuoteModule } from "./modules/quote/quote.module";
 import { ResourcesModule } from "./modules/resources/resources.module";
@@ -92,7 +93,8 @@ import { FieldModule } from "./modules/field/field.module";
     WorkersModule,
     AllocationsModule,
     FieldModule,
-    PortalModule
+    PortalModule,
+    XeroModule
   ]
 })
 export class AppModule {}

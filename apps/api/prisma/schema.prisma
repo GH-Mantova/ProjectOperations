@@ -3149,3 +3149,39 @@ model GanttTask {
   @@index([startDate])
   @@map("gantt_tasks")
 }
+
+// ─── Xero integration (PR #86) ────────────────────────────────────────────
+// Singleton connection record holds the active OAuth token set. xeroSyncLog
+// records each push/pull for audit. Client.xeroContactId already existed in
+// the schema and is now actively populated by the contact-sync service.
+
+model XeroConnection {
+  id           Int      @id @default(1)
+  tenantId     String   @map("tenant_id")
+  tenantName   String?  @map("tenant_name")
+  accessToken  String   @map("access_token")
+  refreshToken String   @map("refresh_token")
+  expiresAt    DateTime @map("expires_at")
+  scopes       String[] @default([])
+  connectedAt  DateTime @default(now()) @map("connected_at")
+  connectedBy  String?  @map("connected_by")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("xero_connections")
+}
+
+model XeroSyncLog {
+  id          String   @id @default(cuid())
+  direction   String
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id")
+  xeroId      String?  @map("xero_id")
+  status      String
+  errorText   String?  @map("error_text")
+  triggeredBy String?  @map("triggered_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([entityType, entityId])
+  @@index([direction, createdAt])
+  @@map("xero_sync_logs")
+}

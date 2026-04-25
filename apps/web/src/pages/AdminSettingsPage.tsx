@@ -104,6 +104,7 @@ export function AdminSettingsPage() {
                 body="SharePoint tenant, site, and library bindings plus the root folder tree used by Project Operations. SHAREPOINT_MODE is set by environment."
               />
               <SharePointTestPanel />
+              <XeroPanel />
             </>
           )}
           {tab === "permissions" && (
@@ -606,6 +607,143 @@ function SharePointTestPanel() {
           {result.message ? <div style={{ marginTop: 4 }}>{result.message}</div> : null}
         </div>
       ) : null}
+    </section>
+  );
+}
+
+function XeroPanel() {
+  const { authFetch } = useAuth();
+  const [status, setStatus] = useState<{
+    connected: boolean;
+    tenantName?: string | null;
+    expiresAt?: string;
+  } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+
+  const refresh = async () => {
+    try {
+      const r = await authFetch("/xero/status");
+      if (r.ok) setStatus(await r.json());
+    } catch {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  const connect = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await authFetch("/xero/connect");
+      if (!r.ok) throw new Error(await r.text());
+      const body = (await r.json()) as { url: string };
+      window.open(body.url, "_blank", "noopener");
+      setInfo("Consent window opened — finish the flow in the new tab.");
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const disconnect = async () => {
+    if (!window.confirm("Disconnect Xero? You'll need to re-consent next time.")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await authFetch("/xero/disconnect", { method: "POST" });
+      if (!r.ok) throw new Error(await r.text());
+      setInfo("Disconnected.");
+      await refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const syncAll = async () => {
+    if (!window.confirm("Push all active clients to Xero now?")) return;
+    setBusy(true);
+    setError(null);
+    setInfo(null);
+    try {
+      const r = await authFetch("/xero/contacts/sync-all", { method: "POST" });
+      if (!r.ok) throw new Error(await r.text());
+      const body = (await r.json()) as {
+        total: number;
+        results: Array<{ clientId: string; status: string }>;
+      };
+      const ok = body.results.filter((x) => x.status === "success").length;
+      setInfo(`Synced ${ok}/${body.total} clients.`);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="s7-card" style={{ marginTop: 16, padding: 16 }}>
+      <h3 className="s7-type-section-heading" style={{ margin: "0 0 8px" }}>
+        Xero integration
+      </h3>
+      <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "0 0 12px" }}>
+        Push clients into Xero as contacts, and create draft invoices from approved progress claims.
+        Set <code>XERO_CLIENT_ID</code>, <code>XERO_CLIENT_SECRET</code>, <code>XERO_REDIRECT_URI</code> in
+        the API environment first.
+      </p>
+
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        {status?.connected ? (
+          <>
+            <span
+              style={{
+                fontSize: 12,
+                padding: "4px 10px",
+                borderRadius: 999,
+                background: "rgba(22, 163, 74, 0.15)",
+                color: "#16a34a"
+              }}
+            >
+              Connected{status.tenantName ? ` — ${status.tenantName}` : ""}
+            </span>
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost"
+              onClick={() => void syncAll()}
+              disabled={busy}
+            >
+              Sync all clients
+            </button>
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost"
+              onClick={() => void disconnect()}
+              disabled={busy}
+            >
+              Disconnect
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            className="s7-btn s7-btn--primary"
+            onClick={() => void connect()}
+            disabled={busy}
+          >
+            {busy ? "Working…" : "Connect Xero"}
+          </button>
+        )}
+      </div>
+
+      {info ? <p style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 10 }}>{info}</p> : null}
+      {error ? <p style={{ color: "var(--status-danger)", marginTop: 10 }}>{error}</p> : null}
     </section>
   );
 }

@@ -7,6 +7,7 @@ import {
   seedInitialServicesDataset,
   seedSafetyDemos
 } from "./seed-initial-services";
+import { seedFormTemplates } from "./seed-form-templates";
 
 const databaseUrl =
   process.env.DATABASE_URL ??
@@ -2727,6 +2728,7 @@ async function main() {
   if (adminUser) await seedGlobalLists(prisma, adminUser.id);
   await seedBusinessDirectoryDemos(prisma);
   await seedSafetyDemos(prisma);
+  await seedFormTemplates(prisma);
   await seedNotificationTriggerConfigs(prisma);
 }
 

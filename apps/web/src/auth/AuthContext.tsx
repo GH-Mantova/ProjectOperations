@@ -15,6 +15,7 @@ type SafeUser = {
   firstName: string;
   lastName: string;
   isActive: boolean;
+  isSuperUser?: boolean;
   roles: Array<{ id: string; name: string; description?: string | null }>;
   permissions: string[];
 };

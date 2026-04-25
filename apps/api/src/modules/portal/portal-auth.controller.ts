@@ -7,6 +7,7 @@ import { CurrentUser } from "../../common/auth/current-user.decorator";
 import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
 import { PortalAuthService } from "./portal-auth.service";
 import { PortalJwtGuard } from "./portal-jwt.guard";
+import { PortalRateLimitGuard } from "./portal-rate-limit.guard";
 import { PortalUser } from "./portal-user.decorator";
 import type { PortalUserPayload } from "./portal-auth.types";
 import {
@@ -24,12 +25,14 @@ export class PortalAuthController {
   constructor(private readonly authService: PortalAuthService) {}
 
   @ApiOperation({ summary: "Portal user login" })
+  @UseGuards(PortalRateLimitGuard)
   @Post("auth/login")
   login(@Body() body: PortalLoginDto) {
     return this.authService.login(body);
   }
 
   @ApiOperation({ summary: "Refresh portal access token" })
+  @UseGuards(PortalRateLimitGuard)
   @Post("auth/refresh")
   refresh(@Body() body: PortalRefreshDto) {
     return this.authService.refresh(body);
@@ -42,18 +45,21 @@ export class PortalAuthController {
   }
 
   @ApiOperation({ summary: "Accept portal invitation" })
+  @UseGuards(PortalRateLimitGuard)
   @Post("auth/accept-invite")
   acceptInvite(@Body() body: PortalAcceptInviteDto) {
     return this.authService.acceptInvite(body);
   }
 
   @ApiOperation({ summary: "Request portal password reset" })
+  @UseGuards(PortalRateLimitGuard)
   @Post("auth/request-reset")
   requestReset(@Body() body: PortalRequestResetDto) {
     return this.authService.requestPasswordReset(body.email);
   }
 
   @ApiOperation({ summary: "Reset portal password" })
+  @UseGuards(PortalRateLimitGuard)
   @Post("auth/reset-password")
   resetPassword(@Body() body: PortalResetPasswordDto) {
     return this.authService.resetPassword(body);

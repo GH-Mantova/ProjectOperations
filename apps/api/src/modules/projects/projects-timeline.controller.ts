@@ -3,6 +3,8 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
+import { CurrentUser } from "../../common/auth/current-user.decorator";
+import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
 import { GanttService } from "./gantt.service";
 
 // Standalone controller so the dashboard widget can hit a non-:id path. The
@@ -17,8 +19,10 @@ export class ProjectsTimelineController {
 
   @Get()
   @RequirePermissions("projects.view")
-  @ApiOperation({ summary: "Active projects with planned start/end for the timeline widget." })
-  list() {
-    return this.gantt.activeTimeline();
+  @ApiOperation({
+    summary: "Active projects with planned start/end for the timeline widget (team-scoped)."
+  })
+  list(@CurrentUser() user: AuthenticatedUser) {
+    return this.gantt.activeTimeline(user);
   }
 }

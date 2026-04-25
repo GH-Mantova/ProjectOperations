@@ -8,6 +8,7 @@ import { PortalAuthService } from "./portal-auth.service";
 import { PortalClientController } from "./portal-client.controller";
 import { PortalClientService } from "./portal-client.service";
 import { PortalJwtGuard } from "./portal-jwt.guard";
+import { PortalRateLimitGuard } from "./portal-rate-limit.guard";
 
 @Module({
   imports: [
@@ -23,7 +24,13 @@ import { PortalJwtGuard } from "./portal-jwt.guard";
     AuditModule
   ],
   controllers: [PortalAuthController, PortalClientController],
-  providers: [PortalAuthService, PortalClientService, PortalJwtGuard, PasswordService],
+  providers: [
+    PortalAuthService,
+    PortalClientService,
+    PortalJwtGuard,
+    PortalRateLimitGuard,
+    PasswordService
+  ],
   exports: [PortalAuthService]
 })
 export class PortalModule {}

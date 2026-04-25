@@ -290,3 +290,11 @@ GitHub PR: #88 (chain PR #86 Xero integration)
 Detail: feat/xero-integration merged via admin squash (CI 6/6 SUCCESS; auto-merge stalled BEHIND, same race)
 Status: COMPLETE
 PR: https://github.com/GH-Mantova/ProjectOperations/pull/88
+
+## 2026-04-25 07:55 AEST — PR #87 OPENED (chain)
+Type: PR
+Branch: feat/pwa-offline
+GitHub PR: #89 (chain PR #87 PWA / offline)
+Detail: vite-plugin-pwa + idb. Service worker (NetworkFirst /api with 5s timeout, precache shell), IndexedDB outbox (4 kinds), sync manager (createdAt-ordered, 5xx-stops, MAX_ATTEMPTS=5), OfflineProvider context with auto-flush on online event, OfflineIndicator pill, InstallPrompt. No schema changes.
+Status: WAITING_CI
+Pre-PR checks: 7/7 green

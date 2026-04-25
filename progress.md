@@ -113,3 +113,25 @@ Migrations: 56 total, replay clean on fresh shadow DB
 
 ### High Priority Issues
   None
+
+## 2026-04-25 16:50 AEST — CHAIN PAUSED FOR TOKEN RESET (after PR #81 + audit #1)
+Type: PAUSE
+Status: PAUSED
+Detail: Two PRs shipped this session (#80 SharePoint live, #81 Safety forms) plus audit pass #1 — all green. Honest budget assessment: PR #82 (Gantt scheduling — new schema, drag-to-reschedule via @dnd-kit, scheduler weekly calendar, dashboard widget) is comparable in scope to #81 itself, and PRs #83 (Client portal, separate auth subsystem) + #86 (Xero OAuth + sync) each meaningfully larger. Pushing on now risks half-finished work with bypass actor still active.
+
+What shipped this session (resumed):
+  - PR #81 Safety forms — merged
+  - Audit pass #1 — clean (no critical, no high)
+
+What's queued (next session):
+  - PR #82 Gantt scheduling
+  - PR #83 Client portal
+  - PR #84 GPS clock-on
+  - PR #85 Worker availability
+  - PR #86 Xero integration
+  - PR #87 PWA / offline
+  - Audit passes #2, #3, #4
+
+Bypass actor: REMOVING NOW. Main branch protection fully restored before the session ends.
+
+Resume instructions: Paste the chain spec from "PR #82 — Gantt / Scheduling Visual" onwards. Re-add the bypass actor at session start (`gh api PUT ... rulesets/15532058 --field 'bypass_actors=[{"actor_id":5,"actor_type":"RepositoryRole","bypass_mode":"always"}]'`), continue the chain, restore protection at end. Audit pass #2 is specced after PRs #82 and #83.

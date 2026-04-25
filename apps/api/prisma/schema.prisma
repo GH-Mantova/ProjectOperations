@@ -69,6 +69,7 @@ model User {
   approvedTimesheets         Timesheet[]               @relation("TimesheetApprover")
   rejectedTimesheets         Timesheet[]               @relation("TimesheetRejecter")
   approvedWorkerLeaves       WorkerLeave[]             @relation("WorkerLeaveApprover")
+  requestedWorkerLeaves      WorkerLeave[]             @relation("WorkerLeaveRequester")
   scopeItemsCreated          ScopeOfWorksItem[]        @relation("ScopeOfWorksCreatedBy")
   estimateExports            EstimateExport[]
   personalAiProviders        UserAiProvider[]
@@ -1858,34 +1859,35 @@ model ProjectActivityLog {
 // the table stays a flat join.
 
 model WorkerProfile {
-  id                    String                 @id @default(cuid())
-  firstName             String                 @map("first_name")
-  lastName              String                 @map("last_name")
-  preferredName         String?                @map("preferred_name")
-  role                  String
-  phone                 String?
-  email                 String?                @unique
-  emergencyContactName  String?                @map("emergency_contact_name")
-  emergencyContactPhone String?                @map("emergency_contact_phone")
-  licenceNumber         String?                @map("licence_number")
-  licenceClass          String?                @map("licence_class")
-  ticketNumbers         String?                @map("ticket_numbers")
-  hasMobileAccess       Boolean                @default(false) @map("has_mobile_access")
-  internalUserId        String?                @unique @map("internal_user_id")
-  internalUser          User?                  @relation(fields: [internalUserId], references: [id], onDelete: SetNull)
-  isActive              Boolean                @default(true) @map("is_active")
-  locationConsent       Boolean                @default(false) @map("location_consent")
-  locationConsentAt     DateTime?              @map("location_consent_at")
-  allocations           ProjectAllocation[]
-  preStartChecklists    PreStartChecklist[]
-  timesheets            Timesheet[]
-  qualifications        WorkerQualification[]
-  ganttTasks            GanttTask[]
-  locationLogs          WorkerLocationLog[]
-  leaves                WorkerLeave[]
-  unavailabilities      WorkerUnavailability[]
-  createdAt             DateTime               @default(now()) @map("created_at")
-  updatedAt             DateTime               @updatedAt @map("updated_at")
+  id                       String                 @id @default(cuid())
+  firstName                String                 @map("first_name")
+  lastName                 String                 @map("last_name")
+  preferredName            String?                @map("preferred_name")
+  role                     String
+  phone                    String?
+  email                    String?                @unique
+  emergencyContactName     String?                @map("emergency_contact_name")
+  emergencyContactPhone    String?                @map("emergency_contact_phone")
+  licenceNumber            String?                @map("licence_number")
+  licenceClass             String?                @map("licence_class")
+  ticketNumbers            String?                @map("ticket_numbers")
+  hasMobileAccess          Boolean                @default(false) @map("has_mobile_access")
+  internalUserId           String?                @unique @map("internal_user_id")
+  internalUser             User?                  @relation(fields: [internalUserId], references: [id], onDelete: SetNull)
+  isActive                 Boolean                @default(true) @map("is_active")
+  locationConsent          Boolean                @default(false) @map("location_consent")
+  locationConsentAt        DateTime?              @map("location_consent_at")
+  locationConsentRevokedAt DateTime?              @map("location_consent_revoked_at")
+  allocations              ProjectAllocation[]
+  preStartChecklists       PreStartChecklist[]
+  timesheets               Timesheet[]
+  qualifications           WorkerQualification[]
+  ganttTasks               GanttTask[]
+  locationLogs             WorkerLocationLog[]
+  leaves                   WorkerLeave[]
+  unavailabilities         WorkerUnavailability[]
+  createdAt                DateTime               @default(now()) @map("created_at")
+  updatedAt                DateTime               @updatedAt @map("updated_at")
 
   @@index([isActive])
   @@index([lastName, firstName])
@@ -3018,6 +3020,8 @@ model WorkerLeave {
   endDate         DateTime      @map("end_date")
   status          String        @default("PENDING")
   notes           String?
+  requestedById   String?       @map("requested_by_id")
+  requestedBy     User?         @relation("WorkerLeaveRequester", fields: [requestedById], references: [id], onDelete: SetNull)
   approvedById    String?       @map("approved_by_id")
   approvedBy      User?         @relation("WorkerLeaveApprover", fields: [approvedById], references: [id], onDelete: SetNull)
   approvedAt      DateTime?     @map("approved_at")

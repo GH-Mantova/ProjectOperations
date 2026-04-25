@@ -49,21 +49,26 @@ export class WorkerAvailabilityController {
   }
 
   @Post("leaves")
-  @RequirePermissions("resources.manage")
-  @ApiOperation({ summary: "Create a worker leave request (status defaults to PENDING)." })
-  createLeave(@Body() dto: CreateWorkerLeaveDto) {
-    return this.service.createLeave(dto);
+  @RequirePermissions("resources.view")
+  @ApiOperation({
+    summary:
+      "Create a worker leave request (status defaults to PENDING). Workers self-serve for their own profile; super-users may lodge for any worker."
+  })
+  createLeave(@Body() dto: CreateWorkerLeaveDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.createLeave(dto, user);
   }
 
   @Patch("leaves/:id/status")
   @RequirePermissions("resources.manage")
-  @ApiOperation({ summary: "Approve, decline, or cancel a leave request." })
+  @ApiOperation({
+    summary: "Approve, decline, or cancel a leave request. Self-approval is rejected."
+  })
   setLeaveStatus(
     @Param("id") id: string,
     @Body() dto: UpdateWorkerLeaveStatusDto,
     @CurrentUser() user: AuthenticatedUser
   ) {
-    return this.service.setLeaveStatus(id, dto, user.sub);
+    return this.service.setLeaveStatus(id, dto, user);
   }
 
   @Delete("leaves/:id")
@@ -82,12 +87,16 @@ export class WorkerAvailabilityController {
   }
 
   @Post("unavailability")
-  @RequirePermissions("resources.manage")
+  @RequirePermissions("resources.view")
   @ApiOperation({
-    summary: "Create a worker unavailability block. recurringDay (0–6) for weekly recurrence."
+    summary:
+      "Create a worker unavailability block. recurringDay (0–6) for weekly recurrence. Workers self-serve; super-users may lodge for any worker."
   })
-  createUnavailability(@Body() dto: CreateWorkerUnavailabilityDto) {
-    return this.service.createUnavailability(dto);
+  createUnavailability(
+    @Body() dto: CreateWorkerUnavailabilityDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.service.createUnavailability(dto, user);
   }
 
   @Delete("unavailability/:id")

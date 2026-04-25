@@ -56,13 +56,23 @@ export class FieldService {
   // separate admin action — but stops new GPS captures immediately.
   async setLocationConsent(actor: ActorContext, consent: boolean) {
     const worker = await this.resolveWorkerProfile(actor.userId);
+    const now = new Date();
     return this.prisma.workerProfile.update({
       where: { id: worker.id },
       data: {
         locationConsent: consent,
-        locationConsentAt: consent ? new Date() : null
+        // Preserve the most recent grant + most recent revocation separately
+        // so the audit trail survives toggling. We only update the side that
+        // matches the new state.
+        locationConsentAt: consent ? now : worker.locationConsentAt,
+        locationConsentRevokedAt: consent ? worker.locationConsentRevokedAt : now
       },
-      select: { id: true, locationConsent: true, locationConsentAt: true }
+      select: {
+        id: true,
+        locationConsent: true,
+        locationConsentAt: true,
+        locationConsentRevokedAt: true
+      }
     });
   }
 
@@ -71,7 +81,8 @@ export class FieldService {
     return {
       workerProfileId: worker.id,
       locationConsent: worker.locationConsent,
-      locationConsentAt: worker.locationConsentAt
+      locationConsentAt: worker.locationConsentAt,
+      locationConsentRevokedAt: worker.locationConsentRevokedAt
     };
   }
 
@@ -88,7 +99,25 @@ export class FieldService {
     }
   ) {
     const rows: Prisma.WorkerLocationLogCreateManyInput[] = [];
-    if (dto.clockOnLat !== undefined && dto.clockOnLng !== undefined) {
+
+    // Dedupe: skip writing if a row of the same eventType for this timesheet
+    // was already written in the last 60s. Stops repeated PATCHes from
+    // spamming the location_logs table.
+    const cutoff = new Date(Date.now() - 60_000);
+    const recent = await this.prisma.workerLocationLog.findMany({
+      where: {
+        timesheetId,
+        recordedAt: { gte: cutoff }
+      },
+      select: { eventType: true }
+    });
+    const recentEvents = new Set(recent.map((r) => r.eventType));
+
+    if (
+      dto.clockOnLat !== undefined &&
+      dto.clockOnLng !== undefined &&
+      !recentEvents.has("clock_on")
+    ) {
       rows.push({
         workerProfileId,
         timesheetId,
@@ -98,7 +127,11 @@ export class FieldService {
         accuracy: dto.clockOnAccuracy !== undefined ? new Prisma.Decimal(dto.clockOnAccuracy) : null
       });
     }
-    if (dto.clockOffLat !== undefined && dto.clockOffLng !== undefined) {
+    if (
+      dto.clockOffLat !== undefined &&
+      dto.clockOffLng !== undefined &&
+      !recentEvents.has("clock_off")
+    ) {
       rows.push({
         workerProfileId,
         timesheetId,

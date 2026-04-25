@@ -12,7 +12,9 @@ type BarChartWidgetProps = {
 };
 
 export function BarChartWidget({ title, data, color, unit, yAxisFormatter, tooltipFormatter }: BarChartWidgetProps) {
-  const fill = color ?? "var(--brand-primary, #1f4bff)";
+  // Initial Services brand teal — Recharts can't read CSS variables directly,
+  // so we hard-code the brand value and let callers override with `color`.
+  const fill = color ?? "#005B61";
   const chartData = data.map((point) => ({ label: point.label, value: point.value }));
 
   return (
@@ -36,7 +38,7 @@ export function BarChartWidget({ title, data, color, unit, yAxisFormatter, toolt
       ) : (
         <div style={{ width: "100%", height: 240 }}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
+            <BarChart data={chartData} margin={{ top: 8, right: 8, bottom: 8, left: 16 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--surface-border, #e5e7eb)" />
               <XAxis dataKey="label" tick={{ fontSize: 12, fill: "var(--text-muted, #6b7280)" }} />
               <YAxis

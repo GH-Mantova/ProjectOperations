@@ -23,7 +23,8 @@ const TREND_COLOR: Record<KpiTrend, string> = {
 };
 
 export function KpiCard({ label, value, trend, trendValue, color }: KpiCardProps) {
-  const accent = color ?? "var(--brand-primary, #1D9E75)";
+  // Initial Services brand teal as the default left-border accent.
+  const accent = color ?? "#005B61";
   return (
     <div
       className="kpi-card"

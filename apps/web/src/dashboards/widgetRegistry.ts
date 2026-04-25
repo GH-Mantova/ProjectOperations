@@ -87,6 +87,7 @@ import {
 } from "./widgets/jobs";
 import { BreakdownCountKpi, OverdueCountKpi, UpcomingBar } from "./widgets/maintenance";
 import { ByTemplateBar, SubmissionsKpi } from "./widgets/forms";
+import { ComplianceAlertsWidget } from "./widgets/compliance";
 
 const TENDER_STAGE_OPTIONS = [
   { value: "DRAFT", label: "Identified" },
@@ -376,7 +377,19 @@ export const WIDGETS: WidgetMeta[] = [
 
   // ── Forms ─────────────────────────────────────────────────
   { type: "forms_submissions_kpi", name: "Form submissions", category: "forms", size: "kpi", description: "Count of form submissions in the selected period.", component: SubmissionsKpi },
-  { type: "forms_by_template_bar", name: "Submissions by template", category: "forms", size: "half", description: "Bar chart of submissions grouped by template.", component: ByTemplateBar }
+  { type: "forms_by_template_bar", name: "Submissions by template", category: "forms", size: "half", description: "Bar chart of submissions grouped by template.", component: ByTemplateBar },
+
+  // ── Compliance ────────────────────────────────────────────
+  {
+    type: "compliance_expiry_alerts",
+    name: "Compliance alerts",
+    category: "compliance",
+    size: "half",
+    description: "Top 8 licences, insurances, and qualifications expiring within 30 days.",
+    defaultColSpan: 2,
+    defaultRowSpan: 2,
+    component: ComplianceAlertsWidget
+  }
 ];
 
 export const WIDGET_BY_TYPE: Record<string, WidgetMeta> = Object.fromEntries(

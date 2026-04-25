@@ -124,7 +124,9 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       "field.manage",
       "finance.view",
       "directory.view",
-      "compliance.view"
+      "compliance.view",
+      "safety.view",
+      "safety.manage"
     ]
   );
 
@@ -165,7 +167,10 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       "field.manage",
       "compliance.view",
       "compliance.manage",
-      "compliance.admin"
+      "compliance.admin",
+      "safety.view",
+      "safety.manage",
+      "safety.admin"
     ]
   );
 
@@ -213,7 +218,7 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
   await seedRoleWithPermissions(
     "Field Worker",
     "Mobile field access — own allocations, pre-starts, timesheets, documents.",
-    ["field.view", "notifications.view"]
+    ["field.view", "notifications.view", "safety.view", "safety.manage"]
   );
 
   type UserSeed = {
@@ -3472,4 +3477,173 @@ export async function seedBusinessDirectoryDemos(prisma: PrismaClient): Promise<
       }
     });
   }
+}
+
+export async function seedSafetyDemos(prisma: PrismaClient): Promise<void> {
+  const admin = await prisma.user.findUnique({ where: { email: "admin@projectops.local" } });
+  if (!admin) return;
+  const marco = await prisma.user.findUnique({ where: { email: "marco@initialservices.net" } });
+
+  const today = new Date();
+  const inDays = (n: number): Date => new Date(today.getTime() + n * 24 * 60 * 60 * 1000);
+
+  const incidents: Array<{
+    id: string;
+    incidentNumber: string;
+    incidentDate: Date;
+    location: string;
+    incidentType: string;
+    severity: string;
+    description: string;
+    status: string;
+    closedAt?: Date | null;
+  }> = [
+    {
+      id: "demo-incident-001",
+      incidentNumber: "IS-INC001",
+      incidentDate: inDays(-30),
+      location: "Yatala precast yard",
+      incidentType: "first_aid",
+      severity: "low",
+      description: "Operator nicked finger on metal swarf during cleanup. First aid kit applied on site.",
+      status: "closed",
+      closedAt: inDays(-29)
+    },
+    {
+      id: "demo-incident-002",
+      incidentNumber: "IS-INC002",
+      incidentDate: inDays(-7),
+      location: "Riverside demolition site",
+      incidentType: "near_miss",
+      severity: "medium",
+      description: "Loose scaffold board shifted underfoot — no fall, but board secured immediately and toolbox briefing run.",
+      status: "open"
+    }
+  ];
+
+  for (const i of incidents) {
+    await prisma.safetyIncident.upsert({
+      where: { id: i.id },
+      update: {
+        incidentNumber: i.incidentNumber,
+        incidentDate: i.incidentDate,
+        location: i.location,
+        incidentType: i.incidentType,
+        severity: i.severity,
+        description: i.description,
+        status: i.status,
+        closedAt: i.closedAt ?? null,
+        closedById: i.closedAt ? admin.id : null,
+        reportedById: admin.id
+      },
+      create: {
+        id: i.id,
+        incidentNumber: i.incidentNumber,
+        incidentDate: i.incidentDate,
+        location: i.location,
+        incidentType: i.incidentType,
+        severity: i.severity,
+        description: i.description,
+        status: i.status,
+        closedAt: i.closedAt ?? null,
+        closedById: i.closedAt ? admin.id : null,
+        reportedById: admin.id
+      }
+    });
+  }
+
+  // Bump the sequence so the next created incident is IS-INC003.
+  await prisma.safetyIncidentNumberSequence.upsert({
+    where: { id: 1 },
+    update: { lastNumber: 2 },
+    create: { id: 1, lastNumber: 2 }
+  });
+
+  const hazards: Array<{
+    id: string;
+    hazardNumber: string;
+    observationDate: Date;
+    location: string;
+    hazardType: string;
+    riskLevel: string;
+    description: string;
+    status: string;
+    dueDate?: Date | null;
+    closedAt?: Date | null;
+    assignedToId?: string | null;
+  }> = [
+    {
+      id: "demo-hazard-001",
+      hazardNumber: "IS-HAZ001",
+      observationDate: inDays(-21),
+      location: "Yard storage area",
+      hazardType: "physical",
+      riskLevel: "low",
+      description: "Cable trip hazard near power tool bench — rerouted overhead and zip-tied.",
+      status: "closed",
+      closedAt: inDays(-20)
+    },
+    {
+      id: "demo-hazard-002",
+      hazardNumber: "IS-HAZ002",
+      observationDate: inDays(-2),
+      location: "Riverside demolition site",
+      hazardType: "physical",
+      riskLevel: "high",
+      description: "Unstable retaining wall section next to scaffold — needs structural assessment before demolition continues.",
+      status: "open",
+      dueDate: inDays(3),
+      assignedToId: marco?.id ?? null
+    },
+    {
+      id: "demo-hazard-003",
+      hazardNumber: "IS-HAZ003",
+      observationDate: inDays(-10),
+      location: "Greenfield civil works",
+      hazardType: "environmental",
+      riskLevel: "medium",
+      description: "Run-off entering stormwater drain after heavy rain — silt fence needs reinforcement.",
+      status: "open",
+      dueDate: inDays(-5) // overdue for demo
+    }
+  ];
+
+  for (const h of hazards) {
+    await prisma.hazardObservation.upsert({
+      where: { id: h.id },
+      update: {
+        hazardNumber: h.hazardNumber,
+        observationDate: h.observationDate,
+        location: h.location,
+        hazardType: h.hazardType,
+        riskLevel: h.riskLevel,
+        description: h.description,
+        status: h.status,
+        dueDate: h.dueDate ?? null,
+        closedAt: h.closedAt ?? null,
+        assignedToId: h.assignedToId ?? null,
+        reportedById: admin.id
+      },
+      create: {
+        id: h.id,
+        hazardNumber: h.hazardNumber,
+        observationDate: h.observationDate,
+        location: h.location,
+        hazardType: h.hazardType,
+        riskLevel: h.riskLevel,
+        description: h.description,
+        status: h.status,
+        dueDate: h.dueDate ?? null,
+        closedAt: h.closedAt ?? null,
+        assignedToId: h.assignedToId ?? null,
+        reportedById: admin.id
+      }
+    });
+  }
+
+  await prisma.hazardNumberSequence.upsert({
+    where: { id: 1 },
+    update: { lastNumber: 3 },
+    create: { id: 1, lastNumber: 3 }
+  });
 }

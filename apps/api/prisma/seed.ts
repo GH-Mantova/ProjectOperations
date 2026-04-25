@@ -4,7 +4,8 @@ import { permissionRegistry } from "../src/common/permissions/permission-registr
 import {
   seedBusinessDirectoryDemos,
   seedEstimateRates,
-  seedInitialServicesDataset
+  seedInitialServicesDataset,
+  seedSafetyDemos
 } from "./seed-initial-services";
 
 const databaseUrl =
@@ -2383,6 +2384,7 @@ async function main() {
   await seedUserDashboards(prisma);
   if (adminUser) await seedGlobalLists(prisma, adminUser.id);
   await seedBusinessDirectoryDemos(prisma);
+  await seedSafetyDemos(prisma);
   await seedNotificationTriggerConfigs(prisma);
 }
 

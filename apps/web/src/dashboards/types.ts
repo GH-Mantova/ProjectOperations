@@ -51,7 +51,14 @@ export type UserDashboard = {
   updatedAt: string;
 };
 
-export type WidgetCategory = "operations" | "tendering" | "jobs" | "maintenance" | "forms" | "compliance";
+export type WidgetCategory =
+  | "operations"
+  | "tendering"
+  | "jobs"
+  | "maintenance"
+  | "forms"
+  | "compliance"
+  | "safety";
 
 export type WidgetProps = {
   config: WidgetSubConfig;

@@ -88,6 +88,7 @@ import {
 import { BreakdownCountKpi, OverdueCountKpi, UpcomingBar } from "./widgets/maintenance";
 import { ByTemplateBar, SubmissionsKpi } from "./widgets/forms";
 import { ComplianceAlertsWidget } from "./widgets/compliance";
+import { SafetySummaryWidget } from "./widgets/safety";
 
 const TENDER_STAGE_OPTIONS = [
   { value: "DRAFT", label: "Identified" },
@@ -389,6 +390,18 @@ export const WIDGETS: WidgetMeta[] = [
     defaultColSpan: 2,
     defaultRowSpan: 2,
     component: ComplianceAlertsWidget
+  },
+
+  // ── Safety ────────────────────────────────────────────────
+  {
+    type: "safety_dashboard_summary",
+    name: "Safety summary",
+    category: "safety",
+    size: "half",
+    description: "Open incidents (by severity) and open hazards (by risk level), plus overdue count.",
+    defaultColSpan: 2,
+    defaultRowSpan: 1,
+    component: SafetySummaryWidget
   }
 ];
 

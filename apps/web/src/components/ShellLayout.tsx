@@ -227,6 +227,12 @@ const NAV_GROUPS: NavGroup[] = [
         icon: ICON_AUDIT,
         match: (path) => path.startsWith("/compliance")
       },
+      {
+        to: "/safety",
+        label: "Safety",
+        icon: ICON_AUDIT,
+        match: (path) => path.startsWith("/safety")
+      },
       { to: "/archive", label: "Archive", icon: ICON_ARCHIVE, match: (path) => path.startsWith("/archive") }
     ]
   },

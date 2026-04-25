@@ -22,6 +22,7 @@ import { MaintenanceModule } from "./modules/maintenance/maintenance.module";
 import { ComplianceModule } from "./modules/compliance/compliance.module";
 import { ContactsModule } from "./modules/contacts/contacts.module";
 import { DirectoryModule } from "./modules/directory/directory.module";
+import { SafetyModule } from "./modules/safety/safety.module";
 import { MasterDataModule } from "./modules/master-data/master-data.module";
 import { PermissionsModule } from "./modules/permissions/permissions.module";
 import { PlatformModule } from "./modules/platform/platform.module";
@@ -76,6 +77,7 @@ import { FieldModule } from "./modules/field/field.module";
     DirectoryModule,
     ContactsModule,
     ComplianceModule,
+    SafetyModule,
     SchedulerModule,
     ProjectsModule,
     QuoteModule,

@@ -71,7 +71,49 @@
 
 ---
 
-## PHASE 5 — IMMEDIATE FIXES (next sprint)
+## PHASE 5A — TENDERING MODULE SIGN-OFF (current priority — do this first)
+
+This phase must be completed and signed off by Raj and Sean before
+any other development proceeds. The tendering module is the foundation
+of the entire ERP — everything else depends on it being correct.
+
+🔲 Structured end-to-end tendering workflow review
+   Raj walks through the complete workflow:
+   - Create tender → build scope → run estimate → generate quote → send PDF
+   - Screenshot chat captures every issue, confusion, or missing feature
+   - Main development chat analyses and writes fix PRs
+   - Repeat until Raj signs off the full workflow
+
+🔲 Fix all issues identified during workflow review (PR per issue group)
+
+🔲 Quote scope grouped-by-discipline drag reorder
+   (grouped mode is Raj's primary view — currently static sortOrder.
+    Flat mode reorder works. Both modes must support drag reorder.
+    API exists, frontend @dnd-kit work only — deferred from PR #72)
+
+🔲 Clarification types — add Call/Email/Meeting/Note as first-class types
+   (TenderClarificationNote.noteType column exists from PR #72 migration.
+    Full type set deferred from PR #70 — now needs UI completion)
+
+🔲 Tender bulk status update — production validation
+   (bulk status update built but needs live test with real tender data.
+    Raj is currently blocked on this — prioritised as immediate fix)
+
+🔲 Sites module detail page + hard siteId FK to Tender/Project
+   (sites list works, detail page is stub — deferred from PR #76)
+
+🔲 Quote PDF enhancements (post Raj/Marco sign-off):
+   - IS licence/certification logos on PDF header
+   - IS watermark on pages
+   - T&C clause review — Marco to review and approve all 21 clauses
+     (blocks PDF being legally valid for client distribution)
+
+🔲 Tendering module signed off by Raj + Sean
+   → Gate: nothing in Phase 6+ starts until this sign-off is received
+
+---
+
+## PHASE 5B — DASHBOARD + UI FIXES (parallel with 5A)
 
 🔲 Remove duplicate dashboard page under Platform sidebar
 🔲 Add Safety widget category to dashboard widget picker
@@ -82,6 +124,9 @@
     - Widget picker "Select all / Deselect all" per category
     - Per-widget period override pill (orange when overridden)
     - Drag handle visible on widget cards
+🔲 subcontractor_contacts table drop
+   (table retained in PR #75 migration, marked deprecated — never dropped.
+    Migration risk — move to completed state)
 
 ---
 
@@ -97,10 +142,36 @@
     (ResourcesPage still calls /resources/workers — different model)
 ⏸️  directory.finance inline permission → guard decorator
     (currently inline hasPermission check, not @RequirePermissions)
+⏸️  PWA NetworkFirst 24h cache — cross-user stale data on shared devices
+    (audit #4 major M14 — deferred, risk on shared field devices)
+⏸️  Subcontractor performance rating UI
+    (performanceRating 1-5 field exists in schema, no UI or history tracking)
+⏸️  Azure Mail.Send permission — production email sending
+    (company not ready for Azure integration yet — deferred until tendering
+     module is signed off and production launch is planned)
 
 ---
 
 ## PHASE 7 — NEXT FEATURE PRIORITIES
+
+🔲 Field worker competency gate on job allocation — COMPLIANCE CRITICAL
+    (before worker can be allocated to a job, check WorkerQualification
+     against job requirements. Block allocation if critical quals missing
+     or expired — e.g. cannot allocate worker without asbestos_b licence
+     to an asbestos removal job. IS legal obligation.)
+
+🔲 Automated timesheet → payroll export
+    (approved timesheets → CSV export for payroll system.
+     Amy currently processing manually. High operational impact.)
+
+🔲 Plant/equipment utilisation reporting
+    (track hours per asset, utilisation rate, cost per job.
+     Matthew needs for warehouse/asset management.)
+
+🔲 Supplier credit account management
+    (incoming CreditApplication workflow exists but no UI for tracking
+     supplier account numbers, credit limits, statement dates.
+     Activate when commercial modules go live — after tendering sign-off.)
 
 🔲 Subcontractor portal (/portal/sub)
     - Separate JWT auth (type: subcontractor_portal)
@@ -141,6 +212,11 @@
     - Live safety incident feed for Marco
     - Live timesheet status for supervisors
 
+🔲 Ghost cut / block weight calculation
+    (Cutrite-specific — calculate ghost cuts for complex shapes,
+     block weight from density × volume for lifting/demolition planning.
+     Lower priority within Phase 7.)
+
 ---
 
 ## PHASE 8 — FUTURE / UNSCOPED
@@ -156,6 +232,23 @@
 🔲 Form builder enhancements (conditional logic, signatures, GPS stamp)
 🔲 Maintenance scheduling automation (based on asset usage hours)
 
+🔲 Structured asbestos register per site
+    (sites have knownHazards text field — replace with structured register:
+     material type, location, quantity, friability rating, removal records,
+     air monitoring results, clearance certificates)
+
+🔲 Tender win/loss debrief module
+    (capture why tenders were won/lost, competitor pricing, lessons learned.
+     Feeds into AI scope drafting improvement over time.)
+
+🔲 Automated progress claim generation
+    (approved timesheets + scope data → draft progress claim.
+     Reduces Amy's manual work on billing.)
+
+🔲 Plant/equipment GPS tracking
+    (asset location tracking — distinct from worker GPS.
+     Requires hardware integration.)
+
 ---
 
 ## CHANGELOG
@@ -165,3 +258,22 @@ Phases 1-4 marked complete based on PR chain #80-#91.
 Phase 5 immediate fixes identified from post-chain review.
 Phase 6 deferred items carried over from audit findings and PR notes.
 Phases 7-8 sourced from original vision spec and roadmap discussions.
+
+### 2026-04-25 — Roadmap gap analysis + reprioritisation
+Full cross-reference of roadmap against all PRs (#1-#93), audit findings,
+deferred items from PR bodies, and session conversation history.
+
+New Phase 5A added: Tendering module sign-off (must complete before
+anything else proceeds). Phase 5 renamed to 5B.
+
+Items added: 15 new items across phases 5A, 5B, 6, 7, 8.
+Items reprioritised:
+  - Field worker competency gate → Phase 7 top priority (compliance risk)
+  - Timesheet payroll export → Phase 7 (Amy operational impact)
+  - Plant utilisation reporting → Phase 7 (Matthew operational impact)
+  - Supplier credit management → Phase 7 (activate post tendering launch)
+  - Ghost cut / block weight → Phase 7 lower priority
+  - Azure Mail.Send → deferred (company not ready for Azure yet)
+  - Bulk status update → Phase 5A (Raj currently blocked)
+  - Quote grouped drag reorder → Phase 5A (Raj primary workflow)
+  - Asbestos register → Phase 8 (structured, not just text field)

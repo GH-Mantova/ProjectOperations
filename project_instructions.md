@@ -522,6 +522,28 @@ Similar to Excel pivot tables / Power BI — scoped to IS's own data.
 - PWA — offline field worker support, install prompt, IndexedDB outbox,
   auto-sync on reconnect, 5-attempt retry with dead-letter handling
 
+**FORMS ENGINE (PR #97)**
+- FormTemplate model with 8 category types (safety/asbestos/plant/induction/
+  environmental/permits/quality/daily/custom)
+- FormSection + FormField with 30+ field types
+- Rules engine: 11 operators, AND/OR nested condition groups
+- 3-layer rules: field visibility/required, section conditions, form on_submit
+- FormSubmission pipeline: validate → compliance gates → server actions →
+  approval chain
+- 8 IS system templates seeded: Daily Pre-Start, Take 5, Plant Pre-Start,
+  Site Induction, Near Miss Report, Incident Report, Asbestos Work Plan,
+  Environmental Incident
+- Auto-record creation: IS-INC from Incident Report, IS-HAZ from Near Miss,
+  AssetBreakdown from Plant Pre-Start (safe_to_operate=No)
+- Compliance gate: Asbestos Work Plan blocked if worker lacks current
+  asbestos_a or asbestos_b qualification
+- Approval chains: configurable per template (PM → Marco for safety forms)
+- Permissions: forms.view | forms.submit | forms.manage | forms.approve |
+  forms.admin
+- PDF export: stub (full PDF with photos/signatures in follow-up PR)
+- Builder UI: deferred to follow-up PR D
+- Submission fill UI: deferred to follow-up PR D
+
 **INTEGRATIONS**
 - SharePoint — Microsoft Graph API (SHAREPOINT_MODE=live|mock)
   Endpoints: ensureFolder, uploadFile, getFileUrl, deleteFile, listFolder
@@ -540,10 +562,24 @@ Similar to Excel pivot tables / Power BI — scoped to IS's own data.
     data scoped to contactId's client only — NEVER exposes internal rates,
     adjustments, scope details, or cutting rates
 
+### ✅ RECENTLY RESOLVED
+- Duplicate dashboard page under Platform sidebar — removed (PR #92)
+- Safety widget category — added (PR #96)
+- Compliance widget category — added (PR #96)
+
 ### 🔲 KNOWN ISSUES / IMMEDIATE FIXES NEEDED
-- Duplicate dashboard page under Platform sidebar — must be deleted
-- Safety widget category missing from dashboard widget picker
-- Compliance widget category missing from dashboard widget picker
+- Scheduler month view — events not rendering (critical)
+- Dashboard widget period selector overlaps widget title
+- Dashboard widget content overflow on small resize
+- Scheduler week view — calendar panel too narrow
+- Tender Dashboard follow-up queue — dollar values truncated
+- Tender Dashboard avg lead time shows "—" (data or calc bug)
+- Subcontractors — no document upload affordance in detail panel
+- Subcontractor prequalification — can be set "approved" without docs
+- Contacts — no organisation reassignment in edit modal
+- Compliance/Safety — sidebar navigation needs prominence + badges
+- Safety page — no quick-action button for incident/hazard reporting
+- Maintenance calendar — does not scale to viewport
 
 ### 🔲 NEXT PRIORITIES
 See roadmap.md for full prioritised list.

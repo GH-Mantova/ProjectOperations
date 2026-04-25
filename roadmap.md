@@ -115,18 +115,55 @@ of the entire ERP — everything else depends on it being correct.
 
 ## PHASE 5B — DASHBOARD + UI FIXES (parallel with 5A)
 
-🔲 Remove duplicate dashboard page under Platform sidebar
-🔲 Add Safety widget category to dashboard widget picker
-🔲 Add Compliance widget category to dashboard widget picker
-🔲 Dashboard builder polish:
-    - 4-column KPI grid layout
-    - Sidebar live-update after dashboard creation
+✅ Remove duplicate dashboard page under Platform sidebar (PR #92)
+✅ Add Safety widget category to dashboard widget picker (PR #96)
+✅ Add Compliance widget category to dashboard widget picker (PR #96)
+✅ Dashboard builder polish (PR #96):
+    - 4-column KPI grid layout (responsive 4 → 2 → 1)
+    - Sidebar live-update after dashboard creation (invalidate query cache)
     - Widget picker "Select all / Deselect all" per category
     - Per-widget period override pill (orange when overridden)
-    - Drag handle visible on widget cards
+    - Drag handle visible on widget cards (baseline opacity 0.5)
+    - Inline-editable dashboard name (click → Enter)
 🔲 subcontractor_contacts table drop
    (table retained in PR #75 migration, marked deprecated — never dropped.
     Migration risk — move to completed state)
+
+---
+
+## PHASE 5C — FORMS ENGINE UI (follow-up to PR #97)
+
+🔲 Form builder UI
+   - Drag-and-drop field canvas (3-panel: palette / canvas / settings)
+   - Field palette: all 30+ field types organised by category
+   - Field settings panel: config, rules editor, actions editor
+   - Condition builder: AND/OR nested groups, all 11 operators
+   - Preview mode: live rule evaluation, desktop + mobile view
+   - Publish flow: version increment, change summary
+
+🔲 Form submission fill UI
+   - Mobile-first layout (FieldLayout pattern)
+   - All 30+ field types rendered correctly
+   - GPS auto-capture on form load
+   - Photo fields: camera capture, thumbnail grid
+   - Signature field: canvas draw area
+   - Offline fill: IndexedDB save every 30s, sync on reconnect
+   - Progress indicator: section N of M
+   - Conditional field show/hide in real-time
+
+🔲 PDF export (full)
+   - Photos embedded inline
+   - Signatures rendered as images
+   - IS branding (logo, ABN, colours)
+   - Approval chain timeline at bottom
+   - QR code linking to digital submission
+
+🔲 Analytics page
+   - Submission trend chart (line)
+   - Status breakdown (bar)
+   - By category (donut)
+   - Field completion rates per template
+   - Answer distribution for choice fields
 
 ---
 
@@ -277,3 +314,18 @@ Items reprioritised:
   - Bulk status update → Phase 5A (Raj currently blocked)
   - Quote grouped drag reorder → Phase 5A (Raj primary workflow)
   - Asbestos register → Phase 8 (structured, not just text field)
+
+### 2026-04-26 — Forms Engine shipped (PR #97); Phase 5B complete
+PR #97 shipped the Forms Engine backend: schema extensions to FormTemplate
+/Section/Field/Submission/Value, 3 new tables (FormApproval / FormTriggeredRecord
+/ FormSchedule), full RulesEngineService (11 operators, AND/OR nested condition
+groups, validation, asbestos compliance gate) with 17 unit tests, FormsEngineService
+submission pipeline (validate → gates → on_submit actions → triggered records →
+approval chain), 8 IS system templates seeded idempotently. Builder UI, full
+submission UI, PDF export, and analytics dashboard moved to Phase 5C as a
+follow-up PR.
+
+PR #92 / #96 cleared all four Phase 5B dashboard items: duplicate sidebar
+entry removed, Safety + Compliance widget categories added (4 widgets each),
+KPI grid responsive 4-col layout, period override pill, drag handle visibility,
+inline name editing, sidebar live-update.

@@ -243,3 +243,10 @@ GitHub PR: #86 (chain PR #85 worker availability)
 Detail: WorkerLeave + WorkerUnavailability + /workers/availability/overlay (recurring days expanded). AvailabilitySection on WorkerDetailPage with approve/decline. Migration 20260426_feat_worker_availability.
 Status: WAITING_CI
 Pre-PR checks: 7/7 green
+
+## 2026-04-25 07:21 AEST — PR #85 MERGED (chain)
+Type: PR
+GitHub PR: #86 (chain PR #85 worker availability)
+Detail: feat/worker-availability merged via admin squash (CI 6/6 SUCCESS; auto-merge stalled BEHIND)
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/86

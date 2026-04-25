@@ -6,3 +6,9 @@
 # Bypass actor: RepositoryRole=Admin (actor_id=5) on ruleset 15532058
 # progress.md: https://raw.githubusercontent.com/GH-Mantova/ProjectOperations/main/progress.md
 
+
+## 2026-04-25 11:09 AEST — PR #80 STARTED
+Type: PR
+Branch: feat/sharepoint-live
+Detail: SharePoint live Microsoft Graph API integration
+Status: IN_PROGRESS

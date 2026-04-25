@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { QualificationsSection } from "./QualificationsSection";
+import { AvailabilitySection } from "./AvailabilitySection";
 
 type Allocation = {
   id: string;
@@ -208,6 +209,11 @@ export function WorkerDetailPage() {
       <QualificationsSection
         workerProfileId={worker.id}
         canManage={Boolean(user?.permissions?.includes("compliance.manage")) || Boolean(user?.isSuperUser)}
+      />
+
+      <AvailabilitySection
+        workerProfileId={worker.id}
+        canManage={Boolean(user?.permissions?.includes("resources.manage")) || Boolean(user?.isSuperUser)}
       />
 
       <MobileAccessSection worker={worker} canManage={canManage} onProvisioned={() => void load()} />

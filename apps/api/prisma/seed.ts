@@ -753,7 +753,7 @@ async function main() {
   // the IS dataset hasn't been seeded yet.
   const estimatorUser =
     (await prisma.user.findUnique({ where: { id: "user-estimator" } })) ??
-    (await prisma.user.findUnique({ where: { email: "raj.pudasaini@initialservices.net.au" } }));
+    (await prisma.user.findUnique({ where: { email: "estimating@initialservices.net" } }));
 
   if (estimatorUser) {
     const primaryContact = await prisma.contact.findFirst({
@@ -1199,11 +1199,11 @@ async function main() {
     // current roster — also Beau for supervisor assignments.
     const pmUser =
       (await prisma.user.findUnique({ where: { id: "user-pm-001" } })) ??
-      (await prisma.user.findUnique({ where: { email: "beau.murphy@initialservices.net.au" } }));
+      (await prisma.user.findUnique({ where: { email: "beau.m@initialservices.net" } }));
 
     const supervisorUser =
       (await prisma.user.findUnique({ where: { id: "user-pm-001" } })) ??
-      (await prisma.user.findUnique({ where: { email: "beau.murphy@initialservices.net.au" } }));
+      (await prisma.user.findUnique({ where: { email: "beau.m@initialservices.net" } }));
 
     const convertedTenderFolder = await prisma.sharePointFolderLink.upsert({
       where: {

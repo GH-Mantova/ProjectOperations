@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { ContactsTab } from "../../components/contacts/ContactsTab";
 
 type Subcontractor = {
   id: string;
@@ -368,6 +369,7 @@ function SubcontractorDetail({
   const [detail, setDetail] = useState<SubcontractorDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<"overview" | "contacts">("overview");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -446,6 +448,44 @@ function SubcontractorDetail({
 
       <PrequalBanner status={detail.prequalStatus} notes={detail.prequalNotes} />
 
+      <nav
+        role="tablist"
+        style={{ display: "flex", gap: 4, marginTop: 12, borderBottom: "1px solid var(--border, #e5e7eb)" }}
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "overview"}
+          className={tab === "overview" ? "tender-detail__tab tender-detail__tab--active" : "tender-detail__tab"}
+          onClick={() => setTab("overview")}
+        >
+          Overview
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "contacts"}
+          className={tab === "contacts" ? "tender-detail__tab tender-detail__tab--active" : "tender-detail__tab"}
+          onClick={() => setTab("contacts")}
+        >
+          Contacts ({detail.contacts.length})
+        </button>
+      </nav>
+
+      {tab === "contacts" ? (
+        <div style={{ marginTop: 12 }}>
+          <ContactsTab
+            organisationType={detail.entityType === "supplier" ? "SUPPLIER" : "SUBCONTRACTOR"}
+            organisationId={detail.id}
+            canManage={canManage}
+            onChanged={() => {
+              void load();
+              onChanged();
+            }}
+          />
+        </div>
+      ) : (
+        <>
       <Section title="Contact">
         <dl style={{ margin: 0, fontSize: 13 }}>
           {detail.email ? <DRow label="Email" value={detail.email} /> : null}
@@ -458,21 +498,6 @@ function SubcontractorDetail({
           ) : null}
         </dl>
       </Section>
-
-      {detail.contacts.length > 0 ? (
-        <Section title={`People (${detail.contacts.length})`}>
-          {detail.contacts.map((c) => (
-            <div key={c.id} style={{ fontSize: 13, marginBottom: 4 }}>
-              <strong>{c.firstName} {c.lastName}</strong>
-              {c.isPrimary ? <span style={{ marginLeft: 6, fontSize: 11, color: "#16a34a" }}>(primary)</span> : null}
-              {c.role ? <div style={{ color: "var(--text-muted)", fontSize: 12 }}>{c.role}</div> : null}
-              <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
-                {[c.email, c.phone, c.mobile].filter(Boolean).join(" · ") || "—"}
-              </div>
-            </div>
-          ))}
-        </Section>
-      ) : null}
 
       {detail.categories.length > 0 ? (
         <Section title="Categories">
@@ -553,6 +578,8 @@ function SubcontractorDetail({
           <p style={{ whiteSpace: "pre-wrap", fontSize: 13, margin: 0 }}>{detail.internalNotes}</p>
         </Section>
       ) : null}
+        </>
+      )}
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 16 }}>
         {canAdmin ? (

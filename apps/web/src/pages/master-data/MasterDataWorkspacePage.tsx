@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { ContactsTab } from "../../components/contacts/ContactsTab";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 
@@ -501,6 +502,7 @@ function ClientSlideOver({ existing, onClose, onSaved }: ClientSlideOverProps) {
       (existing as unknown as { claimReminderUserId?: string | null } | null)?.claimReminderUserId ?? ""
   });
   const [reminderUsers, setReminderUsers] = useState<ReminderUserOption[]>([]);
+  const [tab, setTab] = useState<"details" | "contacts">("details");
   useEffect(() => {
     let cancelled = false;
     void authFetch("/users?page=1&pageSize=100").then(async (r) => {
@@ -587,6 +589,42 @@ function ClientSlideOver({ existing, onClose, onSaved }: ClientSlideOverProps) {
             </svg>
           </button>
         </header>
+        {existing ? (
+          <nav
+            className="tender-detail__tabs"
+            role="tablist"
+            style={{ display: "flex", gap: 4, padding: "8px 16px 0", borderBottom: "1px solid var(--border, #e5e7eb)" }}
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "details"}
+              className={tab === "details" ? "tender-detail__tab tender-detail__tab--active" : "tender-detail__tab"}
+              onClick={() => setTab("details")}
+            >
+              Details
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "contacts"}
+              className={tab === "contacts" ? "tender-detail__tab tender-detail__tab--active" : "tender-detail__tab"}
+              onClick={() => setTab("contacts")}
+            >
+              Contacts
+            </button>
+          </nav>
+        ) : null}
+        {tab === "contacts" && existing ? (
+          <div className="slide-over__body" style={{ padding: 16 }}>
+            <ContactsTab
+              organisationType="CLIENT"
+              organisationId={existing.id}
+              canManage
+              onChanged={onSaved}
+            />
+          </div>
+        ) : (
         <form onSubmit={submit} className="slide-over__body mdata-form">
           {errors.form ? <div className="login-card__error" role="alert">{errors.form}</div> : null}
 
@@ -691,6 +729,7 @@ function ClientSlideOver({ existing, onClose, onSaved }: ClientSlideOverProps) {
             </button>
           </footer>
         </form>
+        )}
       </div>
     </div>
   );

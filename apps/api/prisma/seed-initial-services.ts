@@ -227,7 +227,7 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       // Sean is the only Super User. Super Users can manage Admins and other
       // Super Users — the User Management UI + API enforce that tier rule.
       id: "user-admin",
-      email: "sean.lattin@initialservices.net.au",
+      email: "sean@initialservices.net",
       firstName: "Sean",
       lastName: "Lattin",
       roleId: adminRole.id,
@@ -236,7 +236,7 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
     },
     {
       id: "user-pm-002",
-      email: "colin.hanlon@initialservices.net.au",
+      email: "colin@initialservices.net",
       firstName: "Colin",
       lastName: "Hanlon",
       roleId: adminRole.id,
@@ -244,7 +244,7 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
     },
     {
       id: "user-pm-001",
-      email: "beau.murphy@initialservices.net.au",
+      email: "beau.m@initialservices.net",
       firstName: "Beau",
       lastName: "Murphy",
       roleId: projectManagerRole.id,
@@ -254,7 +254,7 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       // Marco has Admin for system configuration access; WHS permissions
       // inherited via Admin role (which includes all baseView + manage verbs).
       id: "user-supervisor-001",
-      email: "marco.mantovaninni@initialservices.net.au",
+      email: "marco@initialservices.net",
       firstName: "Marco",
       lastName: "Mantovaninni",
       roleId: adminRole.id,
@@ -262,7 +262,7 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
     },
     {
       id: "user-estimator",
-      email: "raj.pudasaini@initialservices.net.au",
+      email: "estimating@initialservices.net",
       firstName: "Raj",
       lastName: "Pudasaini",
       roleId: seniorEstimatorRole.id,
@@ -270,7 +270,7 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
     },
     {
       id: "user-supervisor-002",
-      email: "amy.russian@initialservices.net.au",
+      email: "admin@initialservices.net",
       firstName: "Amy",
       lastName: "Russian",
       roleId: accountsRole.id,
@@ -278,7 +278,7 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
     },
     {
       id: "user-scheduler",
-      email: "matthew.knox@initialservices.net.au",
+      email: "warehouse@initialservices.net",
       firstName: "Matthew",
       lastName: "Knox",
       roleId: warehouseManagerRole.id,
@@ -346,22 +346,22 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
   };
   const officeWorkerProfiles: OfficeWorkerProfileSeed[] = [
     {
-      id: "wp-user-estimator",
-      internalUserId: "user-estimator",
-      firstName: "Raj",
-      lastName: "Pudasaini",
-      role: "Senior Estimator",
-      email: "raj.pudasaini@initialservices.net.au",
-      phone: "0421 000 001" // placeholder — real number unknown
+      id: "wp-user-admin",
+      internalUserId: "user-admin",
+      firstName: "Sean",
+      lastName: "Lattin",
+      role: "Company Director",
+      email: "sean@initialservices.net",
+      phone: "0400 850 723"
     },
     {
-      id: "wp-user-supervisor-001",
-      internalUserId: "user-supervisor-001",
-      firstName: "Marco",
-      lastName: "Mantovaninni",
-      role: "WHS & Commercial Compliance",
-      email: "marco.mantovaninni@initialservices.net.au",
-      phone: "0487 373 415" // from real IS quote template T1965
+      id: "wp-user-pm-002",
+      internalUserId: "user-pm-002",
+      firstName: "Colin",
+      lastName: "Hanlon",
+      role: "Operations Manager",
+      email: "colin@initialservices.net",
+      phone: "0447 803 617"
     },
     {
       id: "wp-user-pm-001",
@@ -369,8 +369,44 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       firstName: "Beau",
       lastName: "Murphy",
       role: "Project Manager",
-      email: "beau.murphy@initialservices.net.au",
-      phone: "0421 000 002" // placeholder — real number unknown
+      email: "beau.m@initialservices.net",
+      phone: "0400 083 565"
+    },
+    {
+      id: "wp-user-supervisor-001",
+      internalUserId: "user-supervisor-001",
+      firstName: "Marco",
+      lastName: "Mantovaninni",
+      role: "WHS & Commercial Compliance",
+      email: "marco@initialservices.net",
+      phone: "0487 373 415"
+    },
+    {
+      id: "wp-user-estimator",
+      internalUserId: "user-estimator",
+      firstName: "Raj",
+      lastName: "Pudasaini",
+      role: "Senior Estimator",
+      email: "estimating@initialservices.net",
+      phone: "0421 140 248"
+    },
+    {
+      id: "wp-user-supervisor-002",
+      internalUserId: "user-supervisor-002",
+      firstName: "Amy",
+      lastName: "Russian",
+      role: "Accounts Payable/Receivable",
+      email: "admin@initialservices.net",
+      phone: "(07) 3888 0539"
+    },
+    {
+      id: "wp-user-scheduler",
+      internalUserId: "user-scheduler",
+      firstName: "Matthew",
+      lastName: "Knox",
+      role: "Warehouse Manager",
+      email: "warehouse@initialservices.net",
+      phone: "0407 923 006"
     }
   ];
 

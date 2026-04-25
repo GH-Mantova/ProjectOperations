@@ -26,13 +26,21 @@ export class JwtAuthGuard implements CanActivate {
     const token = authorization.slice("Bearer ".length);
 
     try {
-      const payload = await this.jwtService.verifyAsync<AuthenticatedUser>(token, {
-        secret: this.configService.get<string>("auth.accessSecret", "replace-me-access")
-      });
+      const payload = await this.jwtService.verifyAsync<AuthenticatedUser & { type?: string }>(
+        token,
+        {
+          secret: this.configService.get<string>("auth.accessSecret", "replace-me-access")
+        }
+      );
+
+      if (payload.type === "portal" || payload.type === "portal-refresh") {
+        throw new UnauthorizedException("Portal tokens are not valid for staff endpoints.");
+      }
 
       request.user = payload;
       return true;
-    } catch {
+    } catch (err) {
+      if (err instanceof UnauthorizedException) throw err;
       throw new UnauthorizedException("Invalid or expired access token.");
     }
   }

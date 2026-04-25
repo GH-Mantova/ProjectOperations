@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException
 } from "@nestjs/common";
@@ -22,6 +23,15 @@ const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const RESET_TTL_MS = 60 * 60 * 1000;
 
+// A precomputed scrypt hash used to keep login response timing constant when
+// the looked-up email does not exist. Comparing against this on missing users
+// burns the same CPU as a real verify — without it, attackers could enumerate
+// valid emails by response-time delta.
+const DUMMY_PASSWORD_HASH =
+  "00000000000000000000000000000000:" +
+  "0000000000000000000000000000000000000000000000000000000000000000" +
+  "0000000000000000000000000000000000000000000000000000000000000000";
+
 type IssuedTokens = {
   accessToken: string;
   refreshToken: string;
@@ -30,6 +40,8 @@ type IssuedTokens = {
 
 @Injectable()
 export class PortalAuthService {
+  private readonly logger = new Logger(PortalAuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
@@ -43,17 +55,15 @@ export class PortalAuthService {
       where: { email: input.email.toLowerCase() }
     });
 
-    if (!user || !user.isActive) {
-      throw new UnauthorizedException("Invalid credentials.");
-    }
+    // Always perform a password comparison even on missing/inactive users so
+    // response timing is constant — verifyPassword is scrypt-based, so skipping
+    // it would let attackers enumerate valid emails by timing alone.
+    const passwordOk = user
+      ? this.passwordService.verifyPassword(input.password, user.passwordHash)
+      : (this.passwordService.verifyPassword(input.password, DUMMY_PASSWORD_HASH), false);
 
-    const ok = this.passwordService.verifyPassword(input.password, user.passwordHash);
-    if (!ok) {
+    if (!user || !user.isActive || !passwordOk || user.forcePasswordReset) {
       throw new UnauthorizedException("Invalid credentials.");
-    }
-
-    if (user.forcePasswordReset) {
-      throw new UnauthorizedException("Password reset is required. Use the reset link.");
     }
 
     return this.finishLogin(user.id, user.email, user.clientId);
@@ -223,12 +233,16 @@ export class PortalAuthService {
   }
 
   async requestPasswordReset(email: string) {
+    const generic = {
+      success: true,
+      message: "If that email is registered, a password reset link has been sent."
+    };
+
     const user = await this.prisma.clientPortalUser.findUnique({
       where: { email: email.toLowerCase() }
     });
 
-    // Always return ok to avoid user enumeration
-    if (!user) return { ok: true };
+    if (!user || !user.isActive) return generic;
 
     const secret = this.configService.get<string>(
       "auth.portalResetSecret",
@@ -240,7 +254,22 @@ export class PortalAuthService {
     );
 
     const baseUrl = this.configService.get<string>("portal.publicUrl", "http://localhost:5173");
-    return { ok: true, resetUrl: `${baseUrl}/portal/reset-password?token=${token}` };
+    const resetUrl = `${baseUrl}/portal/reset-password?token=${token}`;
+
+    // Until the email service is wired, log the URL server-side only. Never
+    // return it in the response — that would let an unauthenticated caller
+    // take over any account by submitting an email.
+    this.logger.log(`Portal password reset link generated for ${user.email}: ${resetUrl}`);
+
+    await this.auditService.write({
+      actorId: user.id,
+      action: "portal.password.reset-requested",
+      entityType: "ClientPortalUser",
+      entityId: user.id,
+      metadata: { email: user.email }
+    });
+
+    return generic;
   }
 
   async resetPassword(input: PortalResetPasswordDto) {
@@ -264,12 +293,28 @@ export class PortalAuthService {
       throw new UnauthorizedException("Account is not available.");
     }
 
-    await this.prisma.clientPortalUser.update({
-      where: { id: user.id },
-      data: {
-        passwordHash: this.passwordService.hashPassword(input.newPassword),
-        forcePasswordReset: false
-      }
+    await this.prisma.$transaction([
+      this.prisma.clientPortalUser.update({
+        where: { id: user.id },
+        data: {
+          passwordHash: this.passwordService.hashPassword(input.newPassword),
+          forcePasswordReset: false
+        }
+      }),
+      // Revoke every outstanding refresh token for this user — a pre-compromise
+      // session must not survive the reset.
+      this.prisma.portalSession.updateMany({
+        where: { portalUserId: user.id, revokedAt: null },
+        data: { revokedAt: new Date() }
+      })
+    ]);
+
+    await this.auditService.write({
+      actorId: user.id,
+      action: "portal.password.reset-completed",
+      entityType: "ClientPortalUser",
+      entityId: user.id,
+      metadata: { email: user.email }
     });
 
     return this.finishLogin(user.id, user.email, user.clientId);

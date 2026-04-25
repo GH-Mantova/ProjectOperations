@@ -19,8 +19,8 @@ export function PortalAcceptInvitePage() {
       setError("Passwords do not match.");
       return;
     }
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(password)) {
+      setError("Password must be at least 8 characters and include lowercase, uppercase, and a number.");
       return;
     }
     setSubmitting(true);

@@ -25,8 +25,8 @@ type UpsertTaskInput = {
 export class GanttService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async list(projectId: string) {
-    await this.requireProject(projectId);
+  async list(projectId: string, user: { sub: string; isSuperUser?: boolean }) {
+    await this.requireProjectAccess(projectId, user);
     return this.prisma.ganttTask.findMany({
       where: { projectId },
       include: { assignedTo: { select: { id: true, firstName: true, lastName: true } } },
@@ -34,8 +34,12 @@ export class GanttService {
     });
   }
 
-  async create(projectId: string, input: UpsertTaskInput) {
-    await this.requireProject(projectId);
+  async create(
+    projectId: string,
+    input: UpsertTaskInput,
+    user: { sub: string; isSuperUser?: boolean }
+  ) {
+    await this.requireProjectAccess(projectId, user);
     if (!input.title?.trim()) throw new BadRequestException("title is required.");
     if (!input.startDate || !input.endDate) {
       throw new BadRequestException("startDate and endDate are required.");
@@ -63,7 +67,13 @@ export class GanttService {
     });
   }
 
-  async update(projectId: string, taskId: string, input: UpsertTaskInput) {
+  async update(
+    projectId: string,
+    taskId: string,
+    input: UpsertTaskInput,
+    user: { sub: string; isSuperUser?: boolean }
+  ) {
+    await this.requireProjectAccess(projectId, user);
     const existing = await this.prisma.ganttTask.findFirst({ where: { id: taskId, projectId } });
     if (!existing) throw new NotFoundException("Task not found on this project.");
     const data: Record<string, unknown> = {};
@@ -80,10 +90,26 @@ export class GanttService {
     if (input.assignedToId !== undefined) data.assignedToId = input.assignedToId;
     if (input.sortOrder !== undefined) data.sortOrder = input.sortOrder;
 
+    // Resolve effective start/end for ordering check — incoming if set, else the
+    // existing values — so a partial update can't invert the bar.
+    const effectiveStart = (data.startDate as Date | undefined) ?? existing.startDate;
+    const effectiveEnd = (data.endDate as Date | undefined) ?? existing.endDate;
+    if (Number.isNaN(effectiveStart.getTime()) || Number.isNaN(effectiveEnd.getTime())) {
+      throw new BadRequestException("Invalid date format.");
+    }
+    if (effectiveEnd < effectiveStart) {
+      throw new BadRequestException("endDate must be on or after startDate.");
+    }
+
     return this.prisma.ganttTask.update({ where: { id: taskId }, data });
   }
 
-  async remove(projectId: string, taskId: string) {
+  async remove(
+    projectId: string,
+    taskId: string,
+    user: { sub: string; isSuperUser?: boolean }
+  ) {
+    await this.requireProjectAccess(projectId, user);
     const existing = await this.prisma.ganttTask.findFirst({ where: { id: taskId, projectId } });
     if (!existing) throw new NotFoundException("Task not found on this project.");
     await this.prisma.ganttTask.delete({ where: { id: taskId } });
@@ -96,7 +122,8 @@ export class GanttService {
   // Tasks are stacked sequentially starting from project.plannedStartDate
   // (or today) so the timeline is non-overlapping out of the box — the user
   // is expected to drag bars after generation to reflect actual sequencing.
-  async generateFromScope(projectId: string) {
+  async generateFromScope(projectId: string, user: { sub: string; isSuperUser?: boolean }) {
+    await this.requireProjectAccess(projectId, user);
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
       select: { id: true, plannedStartDate: true, sourceTenderId: true }
@@ -156,9 +183,12 @@ export class GanttService {
   }
 
   // Active-projects timeline used by the dashboard widget. Returns one bar per
-  // active project with planned start/end (or fallback to actual dates if
-  // planned aren't set yet).
-  async activeTimeline(): Promise<
+  // active project the requesting user can see — super-users see all; others
+  // see only projects where they're on the team (PM, supervisor, estimator,
+  // WHS officer). This matches the team-scoping the rest of the app applies.
+  async activeTimeline(
+    requestingUser: { sub: string; isSuperUser?: boolean }
+  ): Promise<
     Array<{
       id: string;
       name: string;
@@ -168,9 +198,21 @@ export class GanttService {
       endDate: Date | null;
     }>
   > {
+    const teamFilter = requestingUser.isSuperUser
+      ? {}
+      : {
+          OR: [
+            { projectManagerId: requestingUser.sub },
+            { supervisorId: requestingUser.sub },
+            { estimatorId: requestingUser.sub },
+            { whsOfficerId: requestingUser.sub }
+          ]
+        };
+
     const rows = await this.prisma.project.findMany({
       where: {
-        status: { in: ["MOBILISING", "ACTIVE", "PRACTICAL_COMPLETION", "DEFECTS"] }
+        status: { in: ["MOBILISING", "ACTIVE", "PRACTICAL_COMPLETION", "DEFECTS"] },
+        ...teamFilter
       },
       select: {
         id: true,
@@ -194,6 +236,38 @@ export class GanttService {
       // practical completion date (which the project records on PC sign-off).
       endDate: r.plannedEndDate ?? r.practicalCompletionDate
     }));
+  }
+
+  // Project access check used before reading or writing Gantt tasks. Super-users
+  // have global access; everyone else must be on the project team. Throws 404
+  // (not 403) when the user can't see the project, to avoid leaking existence.
+  async requireProjectAccess(
+    projectId: string,
+    requestingUser: { sub: string; isSuperUser?: boolean }
+  ) {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: {
+        id: true,
+        projectManagerId: true,
+        supervisorId: true,
+        estimatorId: true,
+        whsOfficerId: true,
+        createdById: true
+      }
+    });
+    if (!project) throw new NotFoundException("Project not found.");
+    if (requestingUser.isSuperUser) return project;
+
+    const onTeam =
+      project.projectManagerId === requestingUser.sub ||
+      project.supervisorId === requestingUser.sub ||
+      project.estimatorId === requestingUser.sub ||
+      project.whsOfficerId === requestingUser.sub ||
+      project.createdById === requestingUser.sub;
+
+    if (!onTeam) throw new NotFoundException("Project not found.");
+    return project;
   }
 
   private async requireProject(id: string) {

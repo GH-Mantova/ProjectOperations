@@ -14,6 +14,8 @@ import { IsArray, IsInt, IsNumber, IsOptional, IsString, Max, Min } from "class-
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
+import { CurrentUser } from "../../common/auth/current-user.decorator";
+import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
 import { GanttService } from "./gantt.service";
 
 class UpsertGanttTaskDto {
@@ -37,32 +39,47 @@ export class GanttController {
 
   @Get()
   @RequirePermissions("projects.view")
-  list(@Param("projectId") projectId: string) {
-    return this.service.list(projectId);
+  @ApiOperation({ summary: "List Gantt tasks for the project (team-scoped)." })
+  @ApiResponse({ status: 200, description: "Tasks listed." })
+  list(@Param("projectId") projectId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.list(projectId, user);
   }
 
   @Post()
   @RequirePermissions("projects.manage")
   @ApiOperation({ summary: "Create a Gantt task on the project." })
   @ApiResponse({ status: 201, description: "Task created." })
-  create(@Param("projectId") projectId: string, @Body() dto: UpsertGanttTaskDto) {
-    return this.service.create(projectId, dto as never);
+  create(
+    @Param("projectId") projectId: string,
+    @Body() dto: UpsertGanttTaskDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.service.create(projectId, dto as never, user);
   }
 
   @Patch(":taskId")
   @RequirePermissions("projects.manage")
+  @ApiOperation({ summary: "Update a Gantt task." })
+  @ApiResponse({ status: 200, description: "Task updated." })
   patch(
     @Param("projectId") projectId: string,
     @Param("taskId") taskId: string,
-    @Body() dto: UpsertGanttTaskDto
+    @Body() dto: UpsertGanttTaskDto,
+    @CurrentUser() user: AuthenticatedUser
   ) {
-    return this.service.update(projectId, taskId, dto as never);
+    return this.service.update(projectId, taskId, dto as never, user);
   }
 
   @Delete(":taskId")
   @RequirePermissions("projects.manage")
-  remove(@Param("projectId") projectId: string, @Param("taskId") taskId: string) {
-    return this.service.remove(projectId, taskId);
+  @ApiOperation({ summary: "Delete a Gantt task." })
+  @ApiResponse({ status: 200, description: "Task deleted." })
+  remove(
+    @Param("projectId") projectId: string,
+    @Param("taskId") taskId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.service.remove(projectId, taskId, user);
   }
 
   @Post("generate")
@@ -70,7 +87,7 @@ export class GanttController {
   @ApiOperation({
     summary: "Generate Gantt tasks from the project's source-tender scope. One task per discipline."
   })
-  generate(@Param("projectId") projectId: string) {
-    return this.service.generateFromScope(projectId);
+  generate(@Param("projectId") projectId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.generateFromScope(projectId, user);
   }
 }

@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
@@ -26,5 +26,15 @@ export class SharePointController {
   @ApiOperation({ summary: "Ensure a SharePoint folder exists through the configured adapter" })
   ensureFolder(@Body() dto: EnsureSharePointFolderDto, @CurrentUser() actor: { sub: string }) {
     return this.sharePointService.ensureFolder(dto, actor.sub);
+  }
+
+  @Get("test")
+  @RequirePermissions("sharepoint.manage")
+  @ApiOperation({
+    summary: "Probe the configured SharePoint adapter — returns connection status."
+  })
+  @ApiResponse({ status: 200, description: "Connection probe result." })
+  testConnection() {
+    return this.sharePointService.testConnection();
   }
 }

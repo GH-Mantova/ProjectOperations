@@ -90,4 +90,31 @@ export class SharePointService {
   async getDownloadUrl(input: { siteId: string; driveId: string; fileId: string }) {
     return this.adapter.getDownloadUrl(input);
   }
+
+  // Probe the configured adapter so the Admin Settings → Platform UI can
+  // verify SharePoint credentials before any real upload happens. Mock mode
+  // returns a synthetic OK; live mode performs a benign ensureFolder against
+  // the configured root and surfaces any auth/network failure.
+  async testConnection(): Promise<{ connected: boolean; mode: string; message?: string }> {
+    const config = this.getConfiguration();
+    if (config.mode === "mock") {
+      return { connected: true, mode: "mock", message: "Mock SharePoint adapter — no live API call performed." };
+    }
+    try {
+      const probePath = `${config.rootFolder}/__connection_probe__`;
+      await this.adapter.ensureFolder({
+        siteId: config.siteId,
+        driveId: config.driveId,
+        name: "__connection_probe__",
+        relativePath: probePath
+      });
+      return { connected: true, mode: config.mode };
+    } catch (err) {
+      return {
+        connected: false,
+        mode: config.mode,
+        message: err instanceof Error ? err.message : "SharePoint connection failed."
+      };
+    }
+  }
 }

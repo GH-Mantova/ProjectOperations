@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException
+} from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import {
   AvailabilityRangeQueryDto,
@@ -7,23 +12,43 @@ import {
   UpdateWorkerLeaveStatusDto
 } from "./dto/availability.dto";
 
+type Actor = { sub: string; permissions: string[]; isSuperUser?: boolean };
+
 @Injectable()
 export class WorkerAvailabilityService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // Actor either owns the worker profile (via internalUserId) OR is a
+  // super-user. resources.manage on its own is no longer enough to lodge for
+  // another worker — this stops a worker who happens to hold the role from
+  // spoofing leave/unavailability for someone else. Workers admin via super-
+  // user accounts; can be relaxed to a dedicated HR role later.
+  private async assertCanActOnWorker(actor: Actor, workerProfileId: string) {
+    const worker = await this.prisma.workerProfile.findUnique({
+      where: { id: workerProfileId },
+      select: { id: true, internalUserId: true }
+    });
+    if (!worker) throw new NotFoundException("Worker not found.");
+
+    const isSelf = worker.internalUserId === actor.sub;
+    const isAdmin = Boolean(actor.isSuperUser);
+    if (!isSelf && !isAdmin) {
+      throw new ForbiddenException(
+        "You can only lodge availability records for yourself unless you are an admin."
+      );
+    }
+    return worker;
+  }
+
   // ── Leaves ───────────────────────────────────────────────────────────────
 
-  async createLeave(dto: CreateWorkerLeaveDto) {
+  async createLeave(dto: CreateWorkerLeaveDto, actor: Actor) {
     const start = new Date(dto.startDate);
     const end = new Date(dto.endDate);
     if (end < start) {
       throw new BadRequestException("endDate must be on or after startDate.");
     }
-    const worker = await this.prisma.workerProfile.findUnique({
-      where: { id: dto.workerProfileId },
-      select: { id: true }
-    });
-    if (!worker) throw new NotFoundException("Worker not found.");
+    await this.assertCanActOnWorker(actor, dto.workerProfileId);
 
     return this.prisma.workerLeave.create({
       data: {
@@ -31,7 +56,8 @@ export class WorkerAvailabilityService {
         leaveType: dto.leaveType,
         startDate: start,
         endDate: end,
-        notes: dto.notes ?? null
+        notes: dto.notes ?? null,
+        requestedById: actor.sub
       }
     });
   }
@@ -42,21 +68,35 @@ export class WorkerAvailabilityService {
       orderBy: { startDate: "desc" },
       include: {
         workerProfile: { select: { id: true, firstName: true, lastName: true } },
-        approvedBy: { select: { id: true, firstName: true, lastName: true } }
+        approvedBy: { select: { id: true, firstName: true, lastName: true } },
+        requestedBy: { select: { id: true, firstName: true, lastName: true } }
       }
     });
   }
 
-  async setLeaveStatus(id: string, dto: UpdateWorkerLeaveStatusDto, approverUserId: string) {
-    const existing = await this.prisma.workerLeave.findUnique({ where: { id } });
+  async setLeaveStatus(id: string, dto: UpdateWorkerLeaveStatusDto, actor: Actor) {
+    const existing = await this.prisma.workerLeave.findUnique({
+      where: { id },
+      include: { workerProfile: { select: { internalUserId: true } } }
+    });
     if (!existing) throw new NotFoundException("Leave request not found.");
+
+    // Block self-approval — even an admin must not approve their own leave.
+    // (CANCELLED is allowed self-serve so a worker can cancel their own
+    // request without admin help.)
+    if (
+      dto.status === "APPROVED" &&
+      existing.workerProfile.internalUserId === actor.sub
+    ) {
+      throw new ForbiddenException("You cannot approve your own leave request.");
+    }
 
     return this.prisma.workerLeave.update({
       where: { id },
       data: {
         status: dto.status,
         notes: dto.notes ?? existing.notes,
-        approvedById: dto.status === "APPROVED" ? approverUserId : null,
+        approvedById: dto.status === "APPROVED" ? actor.sub : null,
         approvedAt: dto.status === "APPROVED" ? new Date() : null
       }
     });
@@ -71,17 +111,13 @@ export class WorkerAvailabilityService {
 
   // ── Unavailability ───────────────────────────────────────────────────────
 
-  async createUnavailability(dto: CreateWorkerUnavailabilityDto) {
+  async createUnavailability(dto: CreateWorkerUnavailabilityDto, actor: Actor) {
     const start = new Date(dto.startDate);
     const end = new Date(dto.endDate);
     if (end < start) {
       throw new BadRequestException("endDate must be on or after startDate.");
     }
-    const worker = await this.prisma.workerProfile.findUnique({
-      where: { id: dto.workerProfileId },
-      select: { id: true }
-    });
-    if (!worker) throw new NotFoundException("Worker not found.");
+    await this.assertCanActOnWorker(actor, dto.workerProfileId);
 
     return this.prisma.workerUnavailability.create({
       data: {

@@ -1191,6 +1191,348 @@ async function main() {
       });
     }
 
+    // ── IS-T020 — Brisbane Grammar School demo tender ──────────────────────
+    // Walk-through tender for the Monday presentation. Has scope across all
+    // five disciplines (SO/Str/Asb/Civ/Prv), a ClientQuote with cost lines,
+    // multiple clarifications using the new typed log, and a follow-up.
+    const bgsClient = await prisma.client.upsert({
+      where: { name: "Brisbane Grammar School" },
+      update: {
+        email: "facilities@brisbanegrammar.qld.edu.au",
+        phone: "(07) 3834 5200",
+        physicalAddress: "Gregory Terrace",
+        physicalSuburb: "Spring Hill",
+        physicalState: "QLD",
+        physicalPostcode: "4000",
+        abn: "11 123 456 789"
+      },
+      create: {
+        name: "Brisbane Grammar School",
+        code: "BGS",
+        status: "ACTIVE",
+        email: "facilities@brisbanegrammar.qld.edu.au",
+        phone: "(07) 3834 5200",
+        businessType: "company",
+        physicalAddress: "Gregory Terrace",
+        physicalSuburb: "Spring Hill",
+        physicalState: "QLD",
+        physicalPostcode: "4000",
+        postalSameAs: true,
+        abn: "11 123 456 789",
+        gstRegistered: true,
+        paymentTermsDays: 25
+      }
+    });
+
+    // Contact has no composite unique key — use findFirst + create-or-update.
+    const bgsContact = await (async () => {
+      const existing = await prisma.contact.findFirst({
+        where: {
+          organisationType: "CLIENT",
+          organisationId: bgsClient.id,
+          lastName: "Whitfield",
+          firstName: "Patricia"
+        }
+      });
+      if (existing) {
+        return prisma.contact.update({
+          where: { id: existing.id },
+          data: { email: "p.whitfield@brisbanegrammar.qld.edu.au", isPrimary: true }
+        });
+      }
+      return prisma.contact.create({
+        data: {
+          organisationType: "CLIENT",
+          organisationId: bgsClient.id,
+          firstName: "Patricia",
+          lastName: "Whitfield",
+          role: "Facilities Manager",
+          email: "p.whitfield@brisbanegrammar.qld.edu.au",
+          phone: "(07) 3834 5210",
+          isPrimary: true
+        }
+      });
+    })();
+
+    const bgsTender = await prisma.tender.upsert({
+      where: { tenderNumber: "IS-T020" },
+      update: {
+        title: "Brisbane Grammar School — Science Block refurbishment",
+        status: "IN_PROGRESS",
+        estimatorUserId: estimatorUser.id,
+        dueDate: new Date("2026-05-12T00:00:00.000Z"),
+        proposedStartDate: new Date("2026-06-15T00:00:00.000Z"),
+        leadTimeDays: 28,
+        probability: 65,
+        estimatedValue: new Prisma.Decimal("428000.00"),
+        notes: "Internal strip-out + asbestos removal + civil works for new science wing. Demo tender for Raj walk-through."
+      },
+      create: {
+        tenderNumber: "IS-T020",
+        title: "Brisbane Grammar School — Science Block refurbishment",
+        status: "IN_PROGRESS",
+        estimatorUserId: estimatorUser.id,
+        dueDate: new Date("2026-05-12T00:00:00.000Z"),
+        proposedStartDate: new Date("2026-06-15T00:00:00.000Z"),
+        leadTimeDays: 28,
+        probability: 65,
+        estimatedValue: new Prisma.Decimal("428000.00"),
+        notes: "Internal strip-out + asbestos removal + civil works for new science wing. Demo tender for Raj walk-through."
+      }
+    });
+
+    await prisma.tenderClient.deleteMany({ where: { tenderId: bgsTender.id } });
+    await prisma.tenderClient.create({
+      data: {
+        tenderId: bgsTender.id,
+        clientId: bgsClient.id,
+        contactId: bgsContact.id,
+        isAwarded: false,
+        relationshipType: "PRIMARY"
+      }
+    });
+
+    // Scope items across all 5 disciplines — tight rows that demonstrate
+    // each discipline's row-type fields without flooding the table.
+    await prisma.scopeOfWorksItem.deleteMany({ where: { tenderId: bgsTender.id } });
+    await prisma.scopeOfWorksItem.createMany({
+      data: [
+        {
+          tenderId: bgsTender.id,
+          createdById: estimatorUser.id,
+          wbsCode:"SO1",
+          discipline: "SO",
+          itemNumber: 1,
+          rowType: "demolition",
+          description: "Strip-out internal partitions, ceilings, and joinery to Level 1",
+          status: "confirmed",
+          men: new Prisma.Decimal("4"),
+          days: new Prisma.Decimal("5"),
+          shift: "DAY",
+          sqm: new Prisma.Decimal("680"),
+          measurements: [{ qty: 680, unit: "sqm" }],
+          sortOrder: 0
+        },
+        {
+          tenderId: bgsTender.id,
+          createdById: estimatorUser.id,
+          wbsCode:"SO2",
+          discipline: "SO",
+          itemNumber: 2,
+          rowType: "demolition",
+          description: "Carpet uplift + skirting removal — corridors and offices",
+          status: "confirmed",
+          men: new Prisma.Decimal("2"),
+          days: new Prisma.Decimal("2"),
+          shift: "DAY",
+          sqm: new Prisma.Decimal("420"),
+          measurements: [{ qty: 420, unit: "sqm" }],
+          sortOrder: 1
+        },
+        {
+          tenderId: bgsTender.id,
+          createdById: estimatorUser.id,
+          wbsCode:"Str1",
+          discipline: "Str",
+          itemNumber: 1,
+          rowType: "demolition",
+          description: "Demolish internal masonry walls — non-load-bearing",
+          status: "confirmed",
+          men: new Prisma.Decimal("3"),
+          days: new Prisma.Decimal("4"),
+          shift: "DAY",
+          sqm: new Prisma.Decimal("85"),
+          materialType: "masonry",
+          measurements: [{ qty: 85, unit: "sqm" }],
+          sortOrder: 0
+        },
+        {
+          tenderId: bgsTender.id,
+          createdById: estimatorUser.id,
+          wbsCode:"Asb1",
+          discipline: "Asb",
+          itemNumber: 1,
+          rowType: "asbestos",
+          description: "Friable ACM removal — pipe insulation, plant room (Class A)",
+          status: "confirmed",
+          men: new Prisma.Decimal("3"),
+          days: new Prisma.Decimal("3"),
+          shift: "DAY",
+          acmType: "friable",
+          acmMaterial: "pipe_insulation",
+          enclosureRequired: true,
+          airMonitoring: true,
+          measurements: [{ qty: 45, unit: "lm" }],
+          sortOrder: 0
+        },
+        {
+          tenderId: bgsTender.id,
+          createdById: estimatorUser.id,
+          wbsCode:"Asb2",
+          discipline: "Asb",
+          itemNumber: 2,
+          rowType: "asbestos",
+          description: "Bonded ACM removal — vinyl floor tiles and adhesive (Class B)",
+          status: "confirmed",
+          men: new Prisma.Decimal("2"),
+          days: new Prisma.Decimal("2"),
+          shift: "DAY",
+          acmType: "bonded",
+          acmMaterial: "vinyl_tile",
+          enclosureRequired: false,
+          airMonitoring: false,
+          measurements: [{ qty: 320, unit: "sqm" }],
+          sortOrder: 1
+        },
+        {
+          tenderId: bgsTender.id,
+          createdById: estimatorUser.id,
+          wbsCode:"Civ1",
+          discipline: "Civ",
+          itemNumber: 1,
+          rowType: "excavation",
+          description: "Trench excavation for new services — eastern corridor",
+          status: "confirmed",
+          men: new Prisma.Decimal("2"),
+          days: new Prisma.Decimal("3"),
+          shift: "DAY",
+          excavationDepthM: new Prisma.Decimal("1.20"),
+          excavationMaterial: "soil",
+          machineSize: "5T",
+          measurements: [{ qty: 35, unit: "lm" }],
+          sortOrder: 0
+        },
+        {
+          tenderId: bgsTender.id,
+          createdById: estimatorUser.id,
+          wbsCode:"Prv1",
+          discipline: "Prv",
+          itemNumber: 1,
+          rowType: "provisional",
+          description: "Provisional sum — unknown ACM discovery during strip-out",
+          status: "confirmed",
+          provisionalAmount: new Prisma.Decimal("18000.00"),
+          sortOrder: 0
+        }
+      ]
+    });
+
+    // Clarifications — one RFI + four typed notes covering the full PR #72 set
+    await prisma.tenderClarification.deleteMany({ where: { tenderId: bgsTender.id } });
+    await prisma.tenderClarification.create({
+      data: {
+        tenderId: bgsTender.id,
+        subject: "Confirm hours of work — school holidays vs term time",
+        status: "OPEN",
+        dueDate: new Date("2026-05-05T00:00:00.000Z")
+      }
+    });
+
+    await prisma.tenderClarificationNote.deleteMany({ where: { tenderId: bgsTender.id } });
+    await prisma.tenderClarificationNote.createMany({
+      data: [
+        {
+          tenderId: bgsTender.id,
+          direction: "outgoing",
+          noteType: "email",
+          text: "Sent revised SOW asking school to confirm asbestos register access for site walk.",
+          occurredAt: new Date("2026-04-22T01:30:00.000Z"),
+          createdById: estimatorUser.id
+        },
+        {
+          tenderId: bgsTender.id,
+          direction: "incoming",
+          noteType: "call",
+          text: "Patricia called — confirmed register available, walk booked Friday 26 April 8am.",
+          occurredAt: new Date("2026-04-23T04:15:00.000Z"),
+          createdById: estimatorUser.id
+        },
+        {
+          tenderId: bgsTender.id,
+          direction: "outgoing",
+          noteType: "meeting",
+          text: "Site walk completed with Patricia + facilities team. Photos uploaded to SharePoint.",
+          occurredAt: new Date("2026-04-26T22:00:00.000Z"),
+          createdById: estimatorUser.id
+        },
+        {
+          tenderId: bgsTender.id,
+          direction: "outgoing",
+          noteType: "note",
+          text: "Internal: Marco to review Class A enclosure spec before pricing freeze.",
+          occurredAt: new Date("2026-04-27T01:00:00.000Z"),
+          createdById: estimatorUser.id
+        }
+      ]
+    });
+
+    await prisma.tenderFollowUp.deleteMany({ where: { tenderId: bgsTender.id } });
+    await prisma.tenderFollowUp.create({
+      data: {
+        tenderId: bgsTender.id,
+        dueAt: new Date("2026-05-08T00:00:00.000Z"),
+        status: "OPEN",
+        details: "Phone Patricia to confirm submission lodged + answer any pre-award queries.",
+        assignedUserId: estimatorUser.id
+      }
+    });
+
+    // ClientQuote with cost lines A/B/C
+    const bgsQuoteRef = `${bgsTender.tenderNumber}-R1`;
+    await prisma.clientQuote.deleteMany({ where: { tenderId: bgsTender.id } });
+    const bgsQuote = await prisma.clientQuote.create({
+      data: {
+        tenderId: bgsTender.id,
+        clientId: bgsClient.id,
+        revision: 1,
+        quoteRef: bgsQuoteRef,
+        status: "DRAFT",
+        assumptionMode: "free",
+        showProvisional: true,
+        showCostOptions: false,
+        detailLevel: "detailed",
+        createdById: estimatorUser.id
+      }
+    });
+
+    await prisma.quoteCostLine.createMany({
+      data: [
+        {
+          quoteId: bgsQuote.id,
+          label: "Strip-out + structural demolition",
+          description: "Internal strip-out, partition demolition, carpet uplift",
+          price: new Prisma.Decimal("182000.00"),
+          sortOrder: 0
+        },
+        {
+          quoteId: bgsQuote.id,
+          label: "Asbestos removal (Class A + B)",
+          description: "Friable + bonded ACM removal with enclosure and air monitoring",
+          price: new Prisma.Decimal("168000.00"),
+          sortOrder: 1
+        },
+        {
+          quoteId: bgsQuote.id,
+          label: "Civil works",
+          description: "Trench excavation for new services and reinstatement",
+          price: new Prisma.Decimal("60000.00"),
+          sortOrder: 2
+        }
+      ]
+    });
+
+    await prisma.quoteProvisionalLine.createMany({
+      data: [
+        {
+          quoteId: bgsQuote.id,
+          description: "PS — unknown ACM uncovered during strip-out",
+          price: new Prisma.Decimal("18000.00"),
+          notes: "Provisional sum carried for unknown asbestos discovered after demolition opens.",
+          sortOrder: 0
+        }
+      ]
+    });
+
     const gatewaySite = await prisma.site.findFirst({
       where: { code: "GATEWAY" }
     });

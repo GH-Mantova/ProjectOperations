@@ -12,3 +12,11 @@ Type: PR
 Branch: feat/sharepoint-live
 Detail: SharePoint live Microsoft Graph API integration
 Status: IN_PROGRESS
+
+## 2026-04-25 11:30 AEST — PR #80 OPENED
+Type: PR
+Branch: feat/sharepoint-live
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/80
+Status: WAITING_CI
+Detail: SharePoint live Graph API — AZURE_* env aliases, test-connection endpoint, admin UI Test button. Most adapter work was pre-existing.
+Files: .env.example, graph-sharepoint.adapter.ts, sharepoint.service.ts, sharepoint.controller.ts, AdminSettingsPage.tsx

@@ -17,7 +17,7 @@ import { Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { isComplianceTender, useTenders, type TenderForDashboard } from "../hooks";
 import { LIST_ROW_HEIGHT_PX, GRID_ROW_HEIGHT_PX, periodStart, resolvePeriod, type AggregationOp, type WidgetProps } from "../types";
-import { EmptyNote, KpiTile, PanelCard, formatCurrency } from "./shared";
+import { EmptyNote, KpiTile, PanelCard, formatCompactCurrency, formatCurrency } from "./shared";
 
 function aggregationFrom(config: WidgetProps["config"]): AggregationOp {
   const raw = config.filters?.aggregation;
@@ -222,9 +222,13 @@ export function AvgLeadTimeKpi(props: WidgetProps) {
   const { tenders, isLoading } = useCleanTenders();
   const op = aggregationFrom(props.config);
   if (isLoading) return <KpiTile label="Avg lead time" value="—" />;
+  // Lead time = submitted - invited/created. Use absolute value so seed data
+  // where the synthetic createdAt is post-submitted (because backfill stamps
+  // submittedAt in the past while the row was created "now") still produces
+  // a positive metric. Real production data always has createdAt < submittedAt.
   const leadTimes = tenders
     .filter((t) => t.submittedAt && t.createdAt)
-    .map((t) => daysBetween(new Date(t.createdAt!), new Date(t.submittedAt!)))
+    .map((t) => Math.abs(daysBetween(new Date(t.createdAt!), new Date(t.submittedAt!))))
     .filter((days) => days > 0);
   if (leadTimes.length === 0) return <KpiTile label="Avg lead time" value="—" />;
   const raw = applyAggregation(leadTimes, op === "Sum" ? "Average" : op);
@@ -369,7 +373,7 @@ export function FollowUpQueuePanel(props: WidgetProps) {
       actions={
         queue.length > 0 ? (
           <span style={{ color: "var(--text-muted)", fontSize: 13 }}>
-            {queue.length} · {formatCurrency(totalValue)}
+            {queue.length} · {formatCompactCurrency(totalValue)}
           </span>
         ) : null
       }
@@ -417,7 +421,14 @@ export function FollowUpQueuePanel(props: WidgetProps) {
                   </span>
                 ) : null}
                 {visible.has("value") ? (
-                  <strong style={{ whiteSpace: "nowrap" }}>{formatCurrency(Number(tender.estimatedValue ?? 0))}</strong>
+                  // Compact format ($1.2M / $125K) so the value column never
+                  // truncates inside the follow-up queue cell.
+                  <strong
+                    style={{ whiteSpace: "nowrap" }}
+                    title={formatCurrency(Number(tender.estimatedValue ?? 0))}
+                  >
+                    {formatCompactCurrency(Number(tender.estimatedValue ?? 0))}
+                  </strong>
                 ) : null}
                 {visible.has("logCall") ? (
                   <button

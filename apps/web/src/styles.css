@@ -8251,8 +8251,31 @@ textarea {
 .td-canvas__slot {
   min-width: 0;
   position: relative;
+  /* Hide overflow so a tight resize doesn't leak content past the slot. The
+     direct child widget is height:100% (next rule) and runs its own internal
+     scroll/truncation. */
+  overflow: hidden;
 }
-.td-canvas__slot > * { height: 100%; min-width: 0; }
+.td-canvas__slot > * {
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+/* Reserve space at the top-right for the chrome pills (period override +
+   drag handle + settings) so widget titles never run under them. The chrome
+   sits at top:10/right:10 with up to ~140px of pills, hence 160px right pad
+   on the immediate widget child header. Widgets can override per-class. */
+.td-canvas__slot > * > :first-child,
+.td-canvas__slot .s7-card > :first-child {
+  padding-right: 56px;
+}
+/* Per-widget-size minimum heights so resized widgets stop collapsing under
+   their content. Resize handles can grow them larger but never below these. */
+.td-canvas__slot--kpi { min-height: 80px; }
+.td-canvas__slot--half,
+.td-canvas__slot--chart { min-height: 200px; }
+.td-canvas__slot--list { min-height: 120px; }
+.td-canvas__slot--table { min-height: 150px; }
 @media (max-width: 1024px) {
   .td-canvas__widgets { grid-template-columns: repeat(2, 1fr); }
 }

@@ -3165,12 +3165,19 @@ async function backfillTenderLifecycleTimestamps(prisma: PrismaClient) {
     const seed = stableHash(t.tenderNumber);
     const data: { submittedAt?: Date | null; wonAt?: Date | null; lostAt?: Date | null } = {};
 
+    // createdAt is stamped well BEFORE submittedAt so the lead-time metric
+    // (avg of submittedAt - createdAt) renders positive values for the
+    // dashboard. Pick a 14–35 day invited-to-submitted gap, deterministic
+    // per tenderNumber.
+    const invitedGap = 14 + (seed % 22);
+    let createdAtOverride: Date | null = null;
+
     if (t.status === "SUBMITTED") {
-      // 3–21 days ago; ensures some are >7 days for the follow-up queue
       const offset = 3 + (seed % 19);
       data.submittedAt = new Date(now - offset * DAY);
       data.wonAt = null;
       data.lostAt = null;
+      createdAtOverride = new Date(data.submittedAt.getTime() - invitedGap * DAY);
     } else if (t.status === "AWARDED" || t.status === "CONTRACT_ISSUED" || t.status === "CONVERTED") {
       const wonOffset = 5 + (seed % 80);
       const won = new Date(now - wonOffset * DAY);
@@ -3178,6 +3185,7 @@ async function backfillTenderLifecycleTimestamps(prisma: PrismaClient) {
       data.wonAt = won;
       data.submittedAt = new Date(won.getTime() - submitGap * DAY);
       data.lostAt = null;
+      createdAtOverride = new Date(data.submittedAt.getTime() - invitedGap * DAY);
     } else if (t.status === "LOST") {
       const lostOffset = 10 + (seed % 70);
       const lost = new Date(now - lostOffset * DAY);
@@ -3185,13 +3193,20 @@ async function backfillTenderLifecycleTimestamps(prisma: PrismaClient) {
       data.lostAt = lost;
       data.submittedAt = new Date(lost.getTime() - submitGap * DAY);
       data.wonAt = null;
+      createdAtOverride = new Date(data.submittedAt.getTime() - invitedGap * DAY);
     } else {
       data.submittedAt = null;
       data.wonAt = null;
       data.lostAt = null;
     }
 
-    await prisma.tender.update({ where: { id: t.id }, data });
+    await prisma.tender.update({
+      where: { id: t.id },
+      data: {
+        ...data,
+        ...(createdAtOverride ? { createdAt: createdAtOverride } : {})
+      }
+    });
   }
 }
 

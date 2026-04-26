@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   PointerSensor,
@@ -1657,6 +1657,22 @@ function QuoteScopeTab({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Transient banner that appears when detailLevel flips between simple and
+  // detailed so the estimator knows scope data is preserved across the
+  // toggle. Auto-dismisses after 3 seconds.
+  const [modeToast, setModeToast] = useState<string | null>(null);
+  const previousDetailRef = useRef(detailLevel);
+  useEffect(() => {
+    if (previousDetailRef.current === detailLevel) return;
+    const message =
+      detailLevel === "simple"
+        ? "Simple mode — scope items are preserved. Switch back to Detailed to restore the full scope view."
+        : "Detailed mode — showing full scope table.";
+    setModeToast(message);
+    previousDetailRef.current = detailLevel;
+    const timer = window.setTimeout(() => setModeToast(null), 3000);
+    return () => window.clearTimeout(timer);
+  }, [detailLevel]);
   const [grouped, setGrouped] = useState(true);
 
   const dndSensors = useSensors(
@@ -1870,6 +1886,23 @@ function QuoteScopeTab({
             <option value="detailed">Detailed (scope table on PDF page 2)</option>
           </select>
         </label>
+        {modeToast ? (
+          <div
+            role="status"
+            aria-live="polite"
+            style={{
+              marginTop: 6,
+              padding: "6px 10px",
+              fontSize: 12,
+              borderRadius: 6,
+              background: "color-mix(in srgb, #FEAA6D 18%, transparent)",
+              color: "#7C3A0F",
+              flexBasis: "100%"
+            }}
+          >
+            {modeToast}
+          </div>
+        ) : null}
         <label style={{ fontSize: 13, display: "inline-flex", alignItems: "center", gap: 4 }}>
           <input
             type="checkbox"

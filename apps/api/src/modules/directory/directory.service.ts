@@ -37,6 +37,25 @@ function maskBank<T extends Record<string, unknown>>(entity: T, canSeeBank: bool
   return cloned as T;
 }
 
+/**
+ * Bank fields are gated by `directory.finance`. We deliberately strip the
+ * fields from the PATCH body when the caller lacks the permission rather
+ * than throwing 403 — for two reasons:
+ *
+ *  1. The PATCH body is a partial update of the full subcontractor record.
+ *     Frontends often resend everything they read (including masked bank
+ *     fields) without intending a write. Silently dropping bank fields is
+ *     forgiving and avoids whack-a-mole 403s during normal edit flows.
+ *
+ *  2. Bank fields have a separate visibility gate on GET (mask if no
+ *     directory.finance). Strip-on-write keeps the field-level model
+ *     symmetric with the field-level read masking — neither escapes the
+ *     gate, neither blows up the surrounding update.
+ *
+ * Therefore this stays as an inline subset filter rather than a
+ * `@RequirePermissions("directory.finance")` decorator at the route level.
+ * Field-level checks are the right tool for field-level permissions.
+ */
 function stripBankFromInput<T extends Record<string, unknown>>(data: T, canEditBank: boolean): T {
   if (canEditBank) return data;
   const clean = { ...data };

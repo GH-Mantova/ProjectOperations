@@ -89,11 +89,31 @@ export function SafetyPage() {
 
   return (
     <div style={{ padding: 20 }}>
-      <header style={{ marginBottom: 16 }}>
-        <h1 className="s7-type-page-heading" style={{ margin: 0 }}>Safety</h1>
-        <p style={{ color: "var(--text-muted)", margin: "4px 0 0", fontSize: 13 }}>
-          Incident reports and hazard observations.
-        </p>
+      <header style={{ marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <h1 className="s7-type-page-heading" style={{ margin: 0 }}>Safety</h1>
+          <p style={{ color: "var(--text-muted)", margin: "4px 0 0", fontSize: 13 }}>
+            Incident reports and hazard observations.
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {/* Quick-action buttons. Field workers can also reach these via the
+              FieldLayout safety page. The forms route opens the structured
+              IS-INC / IS-HAZ submission flow. */}
+          <a
+            href="/forms?category=safety&template=IS-FORM-INCIDENT"
+            className="s7-btn s7-btn--primary"
+            style={{ background: "#FEAA6D", color: "#242424", borderColor: "#FEAA6D" }}
+          >
+            + Report Incident
+          </a>
+          <a
+            href="/forms?category=safety&template=IS-FORM-NEAR-MISS"
+            className="s7-btn s7-btn--secondary"
+          >
+            + Log Hazard
+          </a>
+        </div>
       </header>
 
       {dashboard ? (

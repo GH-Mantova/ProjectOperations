@@ -11,6 +11,7 @@ type NavItem = {
   label: string;
   icon: ReactNode;
   match?: (pathname: string) => boolean;
+  badge?: "safety" | "compliance";
 };
 
 type NavGroup = {
@@ -183,7 +184,16 @@ const NAV_GROUPS: NavGroup[] = [
       },
       { to: "/assets", label: "Assets", icon: ICON_ASSETS },
       { to: "/maintenance", label: "Maintenance", icon: ICON_MAINTENANCE },
-      { to: "/forms", label: "Forms", icon: ICON_FORMS }
+      { to: "/forms", label: "Forms", icon: ICON_FORMS },
+      {
+        // Safety lives under OPERATIONS per project_instructions §9. Badge
+        // surfaces open incidents — see SafetyBadge below.
+        to: "/safety",
+        label: "Safety",
+        icon: ICON_AUDIT,
+        match: (path) => path.startsWith("/safety"),
+        badge: "safety"
+      }
     ]
   },
   {
@@ -216,16 +226,13 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: "/documents", label: "Documents", icon: ICON_DOCUMENTS },
       {
+        // Compliance kept under PLATFORM per spec; badge surfaces expiring +
+        // expired counts so Marco sees alerts at a glance.
         to: "/compliance",
         label: "Compliance",
         icon: ICON_AUDIT,
-        match: (path) => path.startsWith("/compliance")
-      },
-      {
-        to: "/safety",
-        label: "Safety",
-        icon: ICON_AUDIT,
-        match: (path) => path.startsWith("/safety")
+        match: (path) => path.startsWith("/compliance"),
+        badge: "compliance"
       },
       { to: "/archive", label: "Archive", icon: ICON_ARCHIVE, match: (path) => path.startsWith("/archive") }
     ]
@@ -475,6 +482,7 @@ export function ShellLayout() {
               <p className="shell__nav-group-label">{group.label}</p>
               {group.items.map((item) => {
                 const isActive = item.match ? item.match(location.pathname) : location.pathname === item.to || location.pathname.startsWith(item.to + "/");
+                const badgeKind = (item as { badge?: "safety" | "compliance" }).badge;
                 return (
                   <NavLink
                     key={`${group.id}-${item.to}-${item.label}`}
@@ -485,6 +493,8 @@ export function ShellLayout() {
                   >
                     <span className="shell__nav-icon">{item.icon}</span>
                     <span className="shell__nav-label">{item.label}</span>
+                    {badgeKind === "safety" ? <SidebarSafetyBadge /> : null}
+                    {badgeKind === "compliance" ? <SidebarComplianceBadge /> : null}
                   </NavLink>
                 );
               })}
@@ -593,4 +603,92 @@ export function ShellLayout() {
       ) : null}
     </div>
   );
+}
+
+// Sidebar count badges. Each badge polls its dashboard endpoint every 5 min
+// and renders a coloured pill next to the nav label. Renders nothing when the
+// underlying value is zero so the sidebar stays clean.
+
+function SidebarPill({ count, tone }: { count: number; tone: "danger" | "warning" }) {
+  if (count <= 0) return null;
+  const bg = tone === "danger" ? "#dc2626" : "#f97316";
+  return (
+    <span
+      aria-label={`${count} alerts`}
+      style={{
+        marginLeft: "auto",
+        background: bg,
+        color: "#fff",
+        fontSize: 10,
+        fontWeight: 600,
+        padding: "1px 6px",
+        borderRadius: 999,
+        minWidth: 18,
+        textAlign: "center"
+      }}
+    >
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
+
+function SidebarSafetyBadge() {
+  const { authFetch, isAuthenticated } = useAuth();
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await authFetch("/safety/dashboard");
+        if (!res.ok || cancelled) return;
+        const body = await res.json();
+        const open = (body.openIncidents?.total ?? 0) + (body.overdueHazards ?? 0);
+        if (!cancelled) setCount(Number.isFinite(open) ? open : 0);
+      } catch {
+        // best-effort polling — sidebar should not surface fetch errors
+      }
+    };
+    void load();
+    const id = window.setInterval(load, 5 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [authFetch, isAuthenticated]);
+  return <SidebarPill count={count} tone="danger" />;
+}
+
+function SidebarComplianceBadge() {
+  const { authFetch, isAuthenticated } = useAuth();
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await authFetch("/compliance/dashboard");
+        if (!res.ok || cancelled) return;
+        const body = await res.json();
+        const all = [
+          ...(body.licences ?? []),
+          ...(body.insurances ?? []),
+          ...(body.qualifications ?? [])
+        ];
+        const alerts = all.filter(
+          (r: { status: string }) => r.status === "expired" || r.status === "expiring_7" || r.status === "expiring_30"
+        ).length;
+        if (!cancelled) setCount(alerts);
+      } catch {
+        // best-effort polling
+      }
+    };
+    void load();
+    const id = window.setInterval(load, 5 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [authFetch, isAuthenticated]);
+  return <SidebarPill count={count} tone="warning" />;
 }

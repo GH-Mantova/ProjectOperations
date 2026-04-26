@@ -2331,10 +2331,13 @@ textarea {
 .sched-week {
   flex: 1;
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  /* Min column width 120px so the week grid doesn't compress to unreadable
+     widths on narrow viewports — horizontal scroll kicks in below ~840px */
+  grid-template-columns: repeat(7, minmax(120px, 1fr));
   gap: 1px;
   background: var(--border-default, #E5E7EB);
   overflow: auto;
+  min-width: 0;
 }
 
 .sched-week__col {
@@ -2996,9 +2999,15 @@ textarea {
 .maint-calendar {
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 180px);
-  overflow: hidden;
+  /* Fill the available viewport so the month grid uses every available row.
+     overflow:auto here lets the calendar scroll internally on short viewports
+     without forcing the whole page to scroll. */
+  flex: 1;
+  min-height: 480px;
+  max-height: calc(100vh - 140px);
+  overflow: auto;
   padding: 0;
+  width: 100%;
 }
 
 .maint-upcoming__head,

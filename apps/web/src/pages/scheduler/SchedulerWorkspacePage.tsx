@@ -212,13 +212,24 @@ export function SchedulerWorkspacePage() {
     return ids;
   }, [shifts, selectedResource]);
 
+  // Local-time YYYY-MM-DD keys. Using toISOString here drops the local zone
+  // (AEST is +10), so a Monday cell can index as Sunday and the month view
+  // pills render to wrong cells / disappear. Use the cell's own local date
+  // for both insertion and lookup to keep them aligned.
+  const dayKey = (date: Date) => {
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
   const shiftsByDay = useMemo(() => {
     const map = new Map<string, SchedulerShift[]>();
     for (const day of days) {
-      map.set(day.toISOString().slice(0, 10), []);
+      map.set(dayKey(day), []);
     }
     for (const shift of filteredShifts) {
-      const key = new Date(shift.startAt).toISOString().slice(0, 10);
+      const key = dayKey(new Date(shift.startAt));
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(shift);
     }
@@ -387,7 +398,7 @@ export function SchedulerWorkspacePage() {
         {view === "week" ? (
           <div className="sched-week">
             {days.map((day) => {
-              const key = day.toISOString().slice(0, 10);
+              const key = dayKey(day);
               const daySh = shiftsByDay.get(key) ?? [];
               const isToday = sameDay(day, new Date());
               return (
@@ -428,7 +439,7 @@ export function SchedulerWorkspacePage() {
             </div>
             <div className="sched-month__grid">
               {days.map((day) => {
-                const key = day.toISOString().slice(0, 10);
+                const key = dayKey(day);
                 const daySh = shiftsByDay.get(key) ?? [];
                 const isToday = sameDay(day, new Date());
                 const inMonth = day.getMonth() === cursor.getMonth();

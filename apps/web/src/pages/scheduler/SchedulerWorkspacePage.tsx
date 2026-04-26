@@ -504,7 +504,12 @@ export function SchedulerWorkspacePage() {
                             <span className="sched-resource__role">{worker.resourceType?.name ?? "—"}</span>
                           </span>
                           <span className={`sched-resource__dot sched-resource__dot--${avail}`} title={avail === "leave" ? "On leave" : "Available"} aria-hidden />
-                          <span className="sched-resource__shifts">{shiftWorkerCount(worker.id)}</span>
+                          <span
+                            className="sched-resource__shifts"
+                            title={`${shiftWorkerCount(worker.id)} shift${shiftWorkerCount(worker.id) === 1 ? "" : "s"} this period`}
+                          >
+                            {shiftWorkerCount(worker.id)} shifts
+                          </span>
                         </button>
                       </li>
                     );

@@ -1,6 +1,7 @@
 # ProjectOperations — Project Instructions
-# Version: 1.0
+# Version: 1.1
 # Created: 2026-04-25 10:02 AEST
+# Last updated: 2026-04-26 AEST
 # Maintained by: Claude Code (update after any architectural decision,
 #   module addition, business rule change, or workflow change)
 # Accessed by: All Claude chats in this project via web_fetch
@@ -23,6 +24,41 @@
 #     (1) Screenshot uploads (2) File review (3) General development"
 #   → Act accordingly
 # ─────────────────────────────────────────────────────────────
+
+---
+
+## TABLE OF CONTENTS
+
+| Section | Title | Key content |
+|---------|-------|-------------|
+| §1 | Company | Staff roster, permission roles |
+| §2 | Vision | ERP goals and scope |
+| §3 | Environment | Repo, local path, DB, URLs |
+| §4 | Tech Stack | API, frontend, CI/CD, integrations |
+| §5 | Brand | Colours, fonts, rules |
+| §6 | Architecture Rules | Code rules, CI checklist, PR rules, token budget |
+| §7 | Environment Variables | All required .env keys |
+| §8 | User Types | InternalUser, WorkerProfile, portal users, JWT rules |
+| §9 | Sidebar Navigation | Definitive sidebar structure |
+| §10 | Estimating Domain | Scope codes, cost sections, scope structure, quote structure, waste, densities, cutting, core holes |
+| §11 | Business Logic Sanity Checks | Quick-reference verification table |
+| §12 | Dashboard System | Widget categories, grid rules, custom builder |
+| §13 | Module Registry | All live modules, known issues, next priorities |
+| §14 | Integrations Detail | SharePoint, Xero, MYOB specifics |
+| §15 | Autonomous PR Chain | progress.md format, bypass actor, audit schedule |
+| §16 | Planned Integrations | Not yet built |
+| §17 | Support Chat Roles | STOP HERE if Chat1/Chat2 etc. |
+| §18 | Main Chat Operating Rules | Fetching files, updating instructions, decisions |
+
+**Quick navigation for common tasks:**
+- "What modules are live?" → §13
+- "How does cutting work?" → §10
+- "What are the brand colours?" → §5
+- "How do I run a PR chain?" → §15
+- "What's the sidebar structure?" → §9
+- "What field types does Forms support?" → §13 Forms Engine
+- "How does the quote PDF work?" → §10 Quote structure
+- "What env vars are needed?" → §7
 
 ---
 
@@ -310,6 +346,54 @@ Labour → Equip & Sub → Plant → Disposal → Cutting
   - Number of trucks allocated
   All inputs user-editable. No fixed formula.
 
+### Scope item structure (3 linked components per WBS)
+
+Each WBS item (SO1, Str1, Asb1 etc.) has up to 3 linked components:
+
+**Component 1 — Resource (primary):**
+  The main scope line. Contains:
+  - WBS code (e.g. SO1, Str1, Asb1)
+  - Description (user-written)
+  - Measurements: qty + unit — documents pricing basis (e.g. "285 m²
+    of plasterboard wall, 2.7m high, 13mm thick"). Multiple
+    measurements allowed (display as pills). Purpose is to explain
+    and calculate Lm/area/volume of the item being priced.
+  - Labour: Days × Rate (Day/Night/Weekend)
+  - Plant items: multiple allowed per row (JSON array, pill display).
+    User can add new plant columns — each column has equipment name,
+    qty, days, rate. No limit on plant columns per WBS item.
+    ⚠️ Plant items APPEND to array — never replace existing items.
+
+**Component 2 — Waste (linked via WBS code):**
+  Separate component linked to the resource via matching WBS code.
+  NO labour or resource data on waste component.
+  Captures: Group → Type → Facility cascade, tonnes, loads, rate/T,
+  rate/load. Truck days: user-defined per job (not a formula).
+  Displayed in Waste tab of Scope of Works editor.
+
+**Component 3 — Cutting/Coring (linked via WBS code):**
+  Separate component linked to the resource via matching WBS code.
+  Captures: equipment, elevation, material, depth, method, area/count.
+  Displayed in Cutting tab of Scope of Works editor.
+
+### Quote structure
+
+- Cost lines: per-quote, user-named (A, B, C etc.), editable labels
+  and values. Each line has isVisible toggle — hidden lines are
+  excluded from PDF but preserved in the editor.
+  ⚠️ Cost line labels are editable — never assume fixed names.
+- Section visibility: each section independently toggleable:
+  showScopeTable | showAssumptions | showExclusions |
+  showReferencedDrawings | showProvisionalSums | showCostOptions
+- Simple mode: cost summary + assumptions + exclusions + T&C only
+- Detailed mode: simple + full scope of works table
+- Simple↔Detailed toggle shows toast confirming scope items preserved
+- Reset button: returns quote to default layout from scope data
+  (requires confirmation dialog — destructive action)
+- "Copy IS template exclusions": populates IS standard exclusion
+  clauses (7 standard clauses). Copies from IS template, not from
+  the tender's scope.
+
 ### Material densities (reference Australian Standards)
 Always allow user to override per job. Add new materials citing source.
 
@@ -391,6 +475,18 @@ Rate = look up from core hole schedule by diameter (32mm to 650mm)
 | Duplicate dashboard | Must not exist — only one dashboard entry in sidebar |
 | Portal token on staff endpoints | Must be REJECTED — JwtAuthGuard blocks type=client_portal |
 | isSuperUser | Bypasses ALL permission checks — Sean Lattin only |
+| Scope item components | 3 per WBS: resource (primary), waste (linked via WBS), cutting (linked via WBS) |
+| Waste data location | Waste component is SEPARATE — no waste data on resource component |
+| Multiple plant per WBS | JSON array — APPEND not replace. User adds new columns. |
+| Measurements on resource | For pricing basis only — Lm/area/vol. Multiple measurements as pills. |
+| Quote cost line visibility | isVisible toggle per line — hidden = excluded from PDF, not deleted |
+| Quote section show/hide | Each section independently toggleable |
+| Quote reset | Requires confirmation dialog — destructive action |
+| IS template exclusions | "Copy IS template exclusions" — copies IS standard clauses, NOT tender exclusions |
+| Field workers | Separate mobile-only module — deferred. Do NOT consolidate WorkerProfile into User model. |
+| PDF margins | 15mm left/right (42.52pt), 25mm top below header, 20mm bottom above footer |
+| PDF font | Helvetica (PDFKit built-in) — closest to Calibri without licensing |
+| PDF watermark | IS logo at 5% opacity centred — if no logo: "IS" text Syne 120pt teal rotated 45° |
 
 ---
 
@@ -420,8 +516,12 @@ Rate = look up from core hole schedule by diameter (32mm to 650mm)
 - **Jobs:** Active jobs, Completion rate, Open issues, Jobs by stage
 - **Maintenance:** Overdue maintenance, Upcoming maintenance, Open breakdowns
 - **Forms:** Form submissions, Submissions by template
-- **Safety:** (to be added — safety incidents, hazards, open items)
-- **Compliance:** (to be added — expiring licences, blocked entities)
+- **Safety (live — PR #96):** Open incidents (KPI, red if >0),
+  Open hazards (KPI, orange if >0), Overdue hazards (KPI, red if >0),
+  Recent incidents (half-width list with severity badge + date)
+- **Compliance (live — PR #96):** Expiring items within 30 days (KPI,
+  orange if >0), Expired items (KPI, red if >0), Blocked subcontractors
+  (KPI, red if >0), Expiry alerts table (full-width, sorted by urgency)
 
 ### Widget display types (pre-built widgets)
 KPI card | Bar chart | Line chart | Donut/pie chart | Data table | List
@@ -446,7 +546,7 @@ Similar to Excel pivot tables / Power BI — scoped to IS's own data.
 
 ## SECTION 13 — MODULE REGISTRY
 
-### ✅ LIVE (merged to main through PR #91)
+### ✅ LIVE (merged to main through PR #102)
 
 **COMMERCIAL**
 - Tendering — pipeline, register, estimates, Cutrite rates, AI scope drafting
@@ -522,28 +622,6 @@ Similar to Excel pivot tables / Power BI — scoped to IS's own data.
 - PWA — offline field worker support, install prompt, IndexedDB outbox,
   auto-sync on reconnect, 5-attempt retry with dead-letter handling
 
-**FORMS ENGINE (PR #97)**
-- FormTemplate model with 8 category types (safety/asbestos/plant/induction/
-  environmental/permits/quality/daily/custom)
-- FormSection + FormField with 30+ field types
-- Rules engine: 11 operators, AND/OR nested condition groups
-- 3-layer rules: field visibility/required, section conditions, form on_submit
-- FormSubmission pipeline: validate → compliance gates → server actions →
-  approval chain
-- 8 IS system templates seeded: Daily Pre-Start, Take 5, Plant Pre-Start,
-  Site Induction, Near Miss Report, Incident Report, Asbestos Work Plan,
-  Environmental Incident
-- Auto-record creation: IS-INC from Incident Report, IS-HAZ from Near Miss,
-  AssetBreakdown from Plant Pre-Start (safe_to_operate=No)
-- Compliance gate: Asbestos Work Plan blocked if worker lacks current
-  asbestos_a or asbestos_b qualification
-- Approval chains: configurable per template (PM → Marco for safety forms)
-- Permissions: forms.view | forms.submit | forms.manage | forms.approve |
-  forms.admin
-- PDF export: stub (full PDF with photos/signatures in follow-up PR)
-- Builder UI: deferred to follow-up PR D
-- Submission fill UI: deferred to follow-up PR D
-
 **INTEGRATIONS**
 - SharePoint — Microsoft Graph API (SHAREPOINT_MODE=live|mock)
   Endpoints: ensureFolder, uploadFile, getFileUrl, deleteFile, listFolder
@@ -562,24 +640,87 @@ Similar to Excel pivot tables / Power BI — scoped to IS's own data.
     data scoped to contactId's client only — NEVER exposes internal rates,
     adjustments, scope details, or cutting rates
 
-### ✅ RECENTLY RESOLVED
-- Duplicate dashboard page under Platform sidebar — removed (PR #92)
-- Safety widget category — added (PR #96)
-- Compliance widget category — added (PR #96)
+**DASHBOARD IMPROVEMENTS (PRs #96 + #102)**
+- Safety + Compliance widget categories added to picker
+- 4 new Safety widgets + 4 new Compliance widgets
+- Period override pill (orange when overridden from default)
+- Dashboard name editable inline (click to edit, Enter to save)
+- Drag handle baseline opacity visible in edit mode
+- Avg lead time data fix (uses invitedDate → submittedDate)
+- Scheduler workers panel labelled
+- Simple↔Detailed mode toast
 
-### 🔲 KNOWN ISSUES / IMMEDIATE FIXES NEEDED
-- Scheduler month view — events not rendering (critical)
-- Dashboard widget period selector overlaps widget title
-- Dashboard widget content overflow on small resize
-- Scheduler week view — calendar panel too narrow
-- Tender Dashboard follow-up queue — dollar values truncated
-- Tender Dashboard avg lead time shows "—" (data or calc bug)
-- Subcontractors — no document upload affordance in detail panel
-- Subcontractor prequalification — can be set "approved" without docs
-- Contacts — no organisation reassignment in edit modal
-- Compliance/Safety — sidebar navigation needs prominence + badges
-- Safety page — no quick-action button for incident/hazard reporting
-- Maintenance calendar — does not scale to viewport
+**TENDERING IMPROVEMENTS (PRs #95 + #101 + #102)**
+- Pipeline column totals (count + $ value per stage column)
+- Status change dropdown on tender detail header
+- Clarification type badges: 6 types with distinct colours
+  RFI=#005B61, Call=#3498DB, Email=#8E44AD, Meeting=#F39C12,
+  Note=#95A5A6, Response=#27AE60
+- IS-T020 demo tender fully seeded: 7 scope items × 5 disciplines,
+  assumptions, IS standard exclusions, ClientQuote with cost lines
+- Asb1 (285 m²) and Asb2 (48 Lm) have correct QTY/UNIT
+- Quote PDF: 15mm margins, signature/acceptance block on final page
+- "Copy IS template exclusions" button on quote Exclusions tab
+- Cost Options help text
+- Simple↔Detailed mode toast notification
+
+**FORMS ENGINE (PRs #97 + #100)**
+- FormTemplate model (8 categories: safety, asbestos, plant,
+  induction, environmental, permits, quality, daily, custom)
+- FormSection + FormField (30+ field types, isSystemTemplate flag)
+- Rules engine: 11 operators (equals, not_equals, contains,
+  not_contains, greater_than, less_than, between, is_empty,
+  is_not_empty, is_one_of, is_not_one_of), AND/OR nested groups
+- 3-layer rules: field visibility/required, section conditions,
+  form on_submit actions
+- FormSubmission pipeline:
+  validate → compliance gates → server actions → approval chains
+- 8 IS system templates seeded (isSystemTemplate=true):
+  1. Daily Pre-Start Safety Meeting (category: daily)
+  2. Take 5 — Stop Think Act (category: safety)
+  3. Plant Pre-Start Inspection (category: plant)
+  4. Site Induction (category: induction)
+  5. Near Miss Report (category: safety)
+  6. Incident Report (category: safety)
+  7. Asbestos Work Plan (category: asbestos)
+  8. Environmental Incident Report (category: environmental)
+- Auto-record creation on submission:
+  Incident Report → IS-INC-#### SafetyIncident
+  Near Miss → IS-HAZ-#### HazardObservation
+  Plant Pre-Start (safe_to_operate=No) → AssetBreakdown
+- Compliance gate: Asbestos Work Plan blocked if submitter lacks
+  current asbestos_a or asbestos_b qualification on WorkerProfile
+- Approval chains per template (configurable in settings JSON):
+  Near Miss: PM → Marco | Incident: PM → Marco (Sean if Critical)
+  Asbestos Work Plan: Marco only (due 4 hours)
+- Permissions: forms.view | forms.submit | forms.manage |
+  forms.approve | forms.admin
+- Forms list page: 4 tabs (Templates, My submissions,
+  Pending approvals, Analytics placeholder)
+- Category filter chips (Safety/Asbestos/Plant/Induction/etc.)
+- Form fill page (/forms/fill/:submissionId):
+  Mobile-first, 22 field types rendered, live rule evaluation
+  client-side, GPS auto-capture, photo/signature fields,
+  700ms debounced auto-save, localStorage offline fallback
+- Submission detail (/forms/submissions/:id):
+  Status banner, triggered records, approval chain timeline,
+  inline approve/reject
+- Deferred to follow-up PRs:
+  Form builder UI (drag-and-drop canvas)
+  Full PDF (photos embedded, signatures rendered)
+  Analytics charts
+  7 advanced field types (matrix, lookup, barcode, slider,
+    NPS, likert, calculation)
+  True IndexedDB outbox (currently localStorage fallback)
+
+**UI + NAVIGATION FIXES (PR #99)**
+- Scheduler month view: timezone key bug fixed (events now render)
+- Scheduler week view: column width scaling fixed
+- Maintenance calendar: viewport scaling fixed
+- Compliance sidebar item: badge showing expiring count
+- Safety sidebar item: badge showing open incidents count
+- Safety under OPERATIONS in sidebar (confirmed)
+- Safety page: [+ Report Incident] [+ Log Hazard] quick-action buttons
 
 ### 🔲 NEXT PRIORITIES
 See roadmap.md for full prioritised list.
@@ -692,6 +833,10 @@ Type CONTINUE or paste fix instructions to resume.
 - Subcontractor portal: /portal/sub
 - Custom widget builder (free-form data source selection)
 - WebSockets (real-time field updates)
+- Field worker mobile module — separate PWA-only app for field workers
+  covering timesheets, pre-start, allocations, safety. WorkerProfile
+  model exists. Full field worker module deferred — do NOT consolidate
+  WorkerProfile into User model.
 
 ---
 
@@ -800,6 +945,10 @@ gh pr create --title "chore: update project instructions" \
   --body "[what changed and why]" --reviewer GH-Mantova \
 && gh pr merge --auto --squash
 ```
+
+When adding new sections or significantly changing section content,
+also update the TABLE OF CONTENTS at the top of the file.
+The TOC must always reflect the actual sections present.
 
 ### Decision-making authority
 This chat makes all architectural decisions. Support chats (Chat1, Chat2 etc.)

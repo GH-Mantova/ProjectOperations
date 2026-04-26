@@ -380,3 +380,11 @@ Branch: feat/pdf-mettle-rewrite
 Detail: PDF — watermark + pageAdded header registration on top of
   existing Mettle layout (PR #62 + PR #101). Closes spec gap.
 Status: COMPLETE
+
+## 2026-04-26 11:30 AEST — PR #106 MERGED
+Type: PR
+Branch: feat/directory-features
+Detail: Subcontractor document upload tab, prequal validation
+  warning when promoting to approved, contact organisation
+  reassignment with confirm dialog
+Status: COMPLETE

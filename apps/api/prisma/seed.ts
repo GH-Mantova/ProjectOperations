@@ -1350,11 +1350,38 @@ async function main() {
         {
           tenderId: bgsTender.id,
           createdById: estimatorUser.id,
-          wbsCode:"Asb1",
+          wbsCode: "Asb1",
           discipline: "Asb",
           itemNumber: 1,
           rowType: "asbestos",
-          description: "Friable ACM removal — pipe insulation, plant room (Class A)",
+          description:
+            "Remove and dispose of asbestos-containing floor tiles — Class B works",
+          status: "confirmed",
+          men: new Prisma.Decimal("3"),
+          days: new Prisma.Decimal("4"),
+          shift: "DAY",
+          acmType: "bonded",
+          acmMaterial: "vinyl_tile",
+          enclosureRequired: false,
+          airMonitoring: false,
+          // Populate the legacy sqm column AND the JSON measurements payload
+          // so both the new pills UI and the legacy QTY/UNIT scope columns
+          // render values for this row (the previous seed left them empty).
+          sqm: new Prisma.Decimal("285"),
+          measurementQty: new Prisma.Decimal("285"),
+          measurementUnit: "m²",
+          measurements: [{ qty: 285, unit: "m²" }],
+          sortOrder: 0
+        },
+        {
+          tenderId: bgsTender.id,
+          createdById: estimatorUser.id,
+          wbsCode: "Asb2",
+          discipline: "Asb",
+          itemNumber: 2,
+          rowType: "asbestos",
+          description:
+            "Remove and dispose of asbestos-containing pipe lagging — Class A works",
           status: "confirmed",
           men: new Prisma.Decimal("3"),
           days: new Prisma.Decimal("3"),
@@ -1363,26 +1390,10 @@ async function main() {
           acmMaterial: "pipe_insulation",
           enclosureRequired: true,
           airMonitoring: true,
-          measurements: [{ qty: 45, unit: "lm" }],
-          sortOrder: 0
-        },
-        {
-          tenderId: bgsTender.id,
-          createdById: estimatorUser.id,
-          wbsCode:"Asb2",
-          discipline: "Asb",
-          itemNumber: 2,
-          rowType: "asbestos",
-          description: "Bonded ACM removal — vinyl floor tiles and adhesive (Class B)",
-          status: "confirmed",
-          men: new Prisma.Decimal("2"),
-          days: new Prisma.Decimal("2"),
-          shift: "DAY",
-          acmType: "bonded",
-          acmMaterial: "vinyl_tile",
-          enclosureRequired: false,
-          airMonitoring: false,
-          measurements: [{ qty: 320, unit: "sqm" }],
+          lm: new Prisma.Decimal("48"),
+          measurementQty: new Prisma.Decimal("48"),
+          measurementUnit: "Lm",
+          measurements: [{ qty: 48, unit: "Lm" }],
           sortOrder: 1
         },
         {
@@ -1530,6 +1541,60 @@ async function main() {
           price: new Prisma.Decimal("18000.00"),
           notes: "Provisional sum carried for unknown asbestos discovered after demolition opens.",
           sortOrder: 0
+        }
+      ]
+    });
+
+    // Assumptions and exclusions on the IS-T020 quote — populates the demo
+    // tender so Raj can walk through both tabs without seeing empty state.
+    await prisma.quoteAssumption.deleteMany({ where: { quoteId: bgsQuote.id } });
+    await prisma.quoteAssumption.createMany({
+      data: [
+        {
+          quoteId: bgsQuote.id,
+          text: "Works to be carried out during school holiday periods only.",
+          sortOrder: 0
+        },
+        {
+          quoteId: bgsQuote.id,
+          text: "Client to provide suitable vehicle access to all work areas.",
+          sortOrder: 1
+        },
+        {
+          quoteId: bgsQuote.id,
+          text: "Slab thickness assumed 150mm maximum — refer drawings if otherwise.",
+          sortOrder: 2
+        },
+        {
+          quoteId: bgsQuote.id,
+          text: "All services to be isolated and capped by others prior to commencement.",
+          sortOrder: 3
+        }
+      ]
+    });
+
+    await prisma.quoteExclusion.deleteMany({ where: { quoteId: bgsQuote.id } });
+    await prisma.quoteExclusion.createMany({
+      data: [
+        { quoteId: bgsQuote.id, text: "Asbestos testing and/or air monitoring.", sortOrder: 0 },
+        { quoteId: bgsQuote.id, text: "Engineering or structural design.", sortOrder: 1 },
+        { quoteId: bgsQuote.id, text: "Traffic management.", sortOrder: 2 },
+        { quoteId: bgsQuote.id, text: "Building permits and council fees.", sortOrder: 3 },
+        {
+          quoteId: bgsQuote.id,
+          text:
+            "Hydraulic, electrical, mechanical and fire services works.",
+          sortOrder: 4
+        },
+        {
+          quoteId: bgsQuote.id,
+          text: "Any works not specifically mentioned in this quotation.",
+          sortOrder: 5
+        },
+        {
+          quoteId: bgsQuote.id,
+          text: "After-hours or weekend works unless specifically stated.",
+          sortOrder: 6
         }
       ]
     });

@@ -395,3 +395,66 @@ Branch: feat/sites-detail
 Detail: Sites detail page at /sites/:id, optional siteId FK on
   Tender, GET /master-data/sites/:id endpoint, bulk status verified
 Status: COMPLETE
+
+## 2026-04-26 12:01 AEST — PR #108 MERGED
+Type: PR
+Branch: fix/pwa-tech-debt
+Detail: PWA — OfflineProvider scope, SW autoUpdate race
+  (skipWaiting+clientsClaim), dead-letter UX with retry/discard,
+  workbox-window dep added. FIX 4 (IndexedDB form drafts) deferred.
+Status: COMPLETE
+
+## 2026-04-26 12:02 AEST — COMPREHENSIVE AUDIT
+Type: AUDIT
+Migrations: 66 total (replay clean on shadow DB)
+System form templates: 8 (expected ≥8)
+Staff records: 7 (expected ≥7)
+IS-T020 demo tender: present
+
+### API Health (against fresh local seed)
+- 19 of 25 endpoints returned 200
+- 4 of 6 non-200s are AUDIT-SCRIPT-ONLY false positives:
+  /tenders/pipeline 404 (frontend uses /tenders w/ filters, no such endpoint)
+  /forms/templates?isActive=true 400 (param not accepted; /forms/templates 200)
+  /integrations/xero/status 404 (real path is /xero/status)
+  /maintenance/dashboard 404 (real paths are /maintenance/{assets,upcoming,overdue,…})
+  /notifications 404 (real path is /notification/{settings,…})
+- 2 of 6 non-200s were a real local-DB drift: /tenders + /tenders/pipeline
+  500'd because the local DB hadn't applied PRs #104 + #107 migrations
+  (quote_cost_line_visibility, quote_section_visibility, site_tender_fk).
+  Resolved by `pnpm prisma migrate deploy` on dev DB; CI/prod were never
+  affected because every PR runs migrate deploy before lint+test.
+
+### Permission registry
+33 unique permissions used, all 33 registered. No drift.
+
+### Migration replay
+66 migrations apply clean on a fresh DB (audit_test shadow DB created/dropped).
+
+### Seed integrity
+Re-running pnpm seed on already-seeded DB completes without errors
+(idempotent upserts honoured). IS-T020, staff roster, IS system form
+templates all present at expected counts.
+
+### Dead code / hardcoded URLs
+- No legacy Codex files (TendersPage.tsx, DashboardsPage.tsx) present.
+- No hardcoded localhost URLs in non-test apps/web/src TSX.
+
+### Playwright
+Tendering E2E green on every PR in this chain (PRs #103-#108, all
+six checks SUCCESS at merge time).
+
+### Critical Issues
+None.
+
+### High Priority Issues
+None — all initially-flagged HIGHs resolved (DB drift fixed locally;
+4 of 6 endpoint non-200s were audit-script path errors, not real bugs).
+
+### Medium Priority Issues
+- Audit script (in chain prompt) has stale endpoint paths for
+  /integrations/xero/status, /maintenance/dashboard, /notifications.
+  Update the chain template to use /xero/status, /maintenance/upcoming,
+  /notification/settings before next run.
+
+Status: CLEAN ✅

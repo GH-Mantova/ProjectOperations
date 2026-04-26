@@ -388,3 +388,10 @@ Detail: Subcontractor document upload tab, prequal validation
   warning when promoting to approved, contact organisation
   reassignment with confirm dialog
 Status: COMPLETE
+
+## 2026-04-26 11:41 AEST — PR #107 MERGED
+Type: PR
+Branch: feat/sites-detail
+Detail: Sites detail page at /sites/:id, optional siteId FK on
+  Tender, GET /master-data/sites/:id endpoint, bulk status verified
+Status: COMPLETE

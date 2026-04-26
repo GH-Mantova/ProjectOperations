@@ -2686,36 +2686,40 @@ enum ClientQuoteStatus {
 }
 
 model ClientQuote {
-  id               String                 @id @default(cuid())
-  tenderId         String                 @map("tender_id")
-  tender           Tender                 @relation(fields: [tenderId], references: [id], onDelete: Cascade)
-  clientId         String                 @map("client_id")
-  client           Client                 @relation(fields: [clientId], references: [id])
-  revision         Int                    @default(1)
-  quoteRef         String                 @unique @map("quote_ref")
-  status           ClientQuoteStatus      @default(DRAFT)
-  adjustmentPct    Decimal?               @map("adjustment_pct") @db.Decimal(5, 2)
-  adjustmentAmt    Decimal?               @map("adjustment_amt") @db.Decimal(12, 2)
-  adjustmentNote   String?                @map("adjustment_note")
-  assumptionMode   String                 @default("free") @map("assumption_mode")
-  showProvisional  Boolean                @default(false) @map("show_provisional")
-  showCostOptions  Boolean                @default(false) @map("show_cost_options")
-  sentAt           DateTime?              @map("sent_at")
-  sentById         String?                @map("sent_by_id")
-  sentBy           User?                  @relation("QuoteSentBy", fields: [sentById], references: [id])
-  generatedPdfPath String?                @map("generated_pdf_path")
-  createdById      String                 @map("created_by_id")
-  createdBy        User                   @relation("QuoteCreatedBy", fields: [createdById], references: [id])
-  createdAt        DateTime               @default(now()) @map("created_at")
-  updatedAt        DateTime               @updatedAt @map("updated_at")
-  costLines        QuoteCostLine[]
-  provisionalLines QuoteProvisionalLine[]
-  costOptions      QuoteCostOption[]
-  assumptions      QuoteAssumption[]
-  exclusions       QuoteExclusion[]
-  emails           QuoteEmail[]
-  scopeItems       QuoteScopeItem[]
-  detailLevel      String                 @default("simple") @map("detail_level")
+  id                     String                 @id @default(cuid())
+  tenderId               String                 @map("tender_id")
+  tender                 Tender                 @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  clientId               String                 @map("client_id")
+  client                 Client                 @relation(fields: [clientId], references: [id])
+  revision               Int                    @default(1)
+  quoteRef               String                 @unique @map("quote_ref")
+  status                 ClientQuoteStatus      @default(DRAFT)
+  adjustmentPct          Decimal?               @map("adjustment_pct") @db.Decimal(5, 2)
+  adjustmentAmt          Decimal?               @map("adjustment_amt") @db.Decimal(12, 2)
+  adjustmentNote         String?                @map("adjustment_note")
+  assumptionMode         String                 @default("free") @map("assumption_mode")
+  showProvisional        Boolean                @default(false) @map("show_provisional")
+  showCostOptions        Boolean                @default(false) @map("show_cost_options")
+  showScopeTable         Boolean                @default(true) @map("show_scope_table")
+  showAssumptions        Boolean                @default(true) @map("show_assumptions")
+  showExclusions         Boolean                @default(true) @map("show_exclusions")
+  showReferencedDrawings Boolean                @default(true) @map("show_referenced_drawings")
+  sentAt                 DateTime?              @map("sent_at")
+  sentById               String?                @map("sent_by_id")
+  sentBy                 User?                  @relation("QuoteSentBy", fields: [sentById], references: [id])
+  generatedPdfPath       String?                @map("generated_pdf_path")
+  createdById            String                 @map("created_by_id")
+  createdBy              User                   @relation("QuoteCreatedBy", fields: [createdById], references: [id])
+  createdAt              DateTime               @default(now()) @map("created_at")
+  updatedAt              DateTime               @updatedAt @map("updated_at")
+  costLines              QuoteCostLine[]
+  provisionalLines       QuoteProvisionalLine[]
+  costOptions            QuoteCostOption[]
+  assumptions            QuoteAssumption[]
+  exclusions             QuoteExclusion[]
+  emails                 QuoteEmail[]
+  scopeItems             QuoteScopeItem[]
+  detailLevel            String                 @default("simple") @map("detail_level")
 
   @@unique([tenderId, clientId, revision])
   @@index([tenderId])
@@ -2731,6 +2735,7 @@ model QuoteCostLine {
   description String
   price       Decimal           @db.Decimal(12, 2)
   sortOrder   Int               @default(0) @map("sort_order")
+  isVisible   Boolean           @default(true) @map("is_visible")
   assumptions QuoteAssumption[] @relation("CostLineAssumptions")
 
   @@index([quoteId])

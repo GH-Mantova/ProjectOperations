@@ -67,6 +67,10 @@ export class QuotePdfService {
       assumptionMode: (quote.assumptionMode === "linked" ? "linked" : "free") as "linked" | "free",
       showProvisional: quote.showProvisional,
       showCostOptions: quote.showCostOptions,
+      showScopeTable: quote.showScopeTable,
+      showAssumptions: quote.showAssumptions,
+      showExclusions: quote.showExclusions,
+      showReferencedDrawings: quote.showReferencedDrawings,
       clientFacingTotal: summary.clientFacingTotal,
       detailLevel: quote.detailLevel === "detailed" ? "detailed" : "simple",
       scopeItems: quote.scopeItems
@@ -78,13 +82,16 @@ export class QuotePdfService {
           unit: r.unit,
           notes: r.notes
         })),
-      costLines: quote.costLines.map((l) => ({
-        id: l.id,
-        label: l.label,
-        description: l.description,
-        price: toNum(l.price),
-        sortOrder: l.sortOrder
-      })),
+      // Hidden cost lines stay in the editor but never reach the PDF.
+      costLines: quote.costLines
+        .filter((l) => l.isVisible)
+        .map((l) => ({
+          id: l.id,
+          label: l.label,
+          description: l.description,
+          price: toNum(l.price),
+          sortOrder: l.sortOrder
+        })),
       provisionalLines: quote.provisionalLines.map((l) => ({
         description: l.description,
         price: toNum(l.price),

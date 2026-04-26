@@ -23,6 +23,10 @@ export class UpdateClientQuoteDto {
   @IsOptional() @IsString() assumptionMode?: "free" | "linked";
   @IsOptional() @IsBoolean() showProvisional?: boolean;
   @IsOptional() @IsBoolean() showCostOptions?: boolean;
+  @IsOptional() @IsBoolean() showScopeTable?: boolean;
+  @IsOptional() @IsBoolean() showAssumptions?: boolean;
+  @IsOptional() @IsBoolean() showExclusions?: boolean;
+  @IsOptional() @IsBoolean() showReferencedDrawings?: boolean;
   @IsOptional() @IsEnum(ClientQuoteStatus) status?: ClientQuoteStatus;
   @IsOptional() @IsString() detailLevel?: "simple" | "detailed";
 }
@@ -31,6 +35,7 @@ export class UpsertCostLineDto {
   @IsString() label!: string;
   @IsString() description!: string;
   @IsNumber() price!: number;
+  @IsOptional() @IsBoolean() isVisible?: boolean;
   @IsOptional() @Type(() => Number) @IsInt() sortOrder?: number;
 }
 

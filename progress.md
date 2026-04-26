@@ -366,3 +366,10 @@ Type: FIX
 Detail: TOC added, modules through PR #102, scope/quote structure,
   sanity checks extended, stale known issues removed
 Status: COMPLETE
+
+## 2026-04-26 11:08 AEST — PR #104 MERGED
+Type: PR
+Branch: fix/quote-scope-fixes
+Detail: Quote cost line visibility toggles, section show/hide,
+  grouped drag reorder, clarification types, bulk status, multi-plant
+Status: COMPLETE

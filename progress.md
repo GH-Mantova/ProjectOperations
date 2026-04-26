@@ -373,3 +373,10 @@ Branch: fix/quote-scope-fixes
 Detail: Quote cost line visibility toggles, section show/hide,
   grouped drag reorder, clarification types, bulk status, multi-plant
 Status: COMPLETE
+
+## 2026-04-26 11:18 AEST — PR #105 MERGED
+Type: PR
+Branch: feat/pdf-mettle-rewrite
+Detail: PDF — watermark + pageAdded header registration on top of
+  existing Mettle layout (PR #62 + PR #101). Closes spec gap.
+Status: COMPLETE

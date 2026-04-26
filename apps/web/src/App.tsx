@@ -107,11 +107,11 @@ function RootRedirect({ children }: { children: ReactElement }) {
 export function App() {
   return (
     <AuthProvider>
-      <OfflineProvider>
-        <PortalAuthProvider>
-          <OfflineIndicator />
-          <InstallPrompt />
-          <Routes>
+      {/* PR F FIX 1 — OfflineProvider scoped to /field/* only. Desktop and
+          portal routes are online-only, so they don't need the IndexedDB
+          outbox / online-state listeners running for every navigation. */}
+      <PortalAuthProvider>
+        <Routes>
           <Route path="/portal/login" element={<PortalLoginPage />} />
           <Route path="/portal/accept-invite" element={<PortalAcceptInvitePage />} />
           <Route element={<PortalProtectedRoute />}>
@@ -130,7 +130,11 @@ export function App() {
             path="/field"
             element={
               <FieldOnlyGuard>
-                <FieldLayout />
+                <OfflineProvider>
+                  <OfflineIndicator />
+                  <InstallPrompt />
+                  <FieldLayout />
+                </OfflineProvider>
               </FieldOnlyGuard>
             }
           >
@@ -212,7 +216,6 @@ export function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </PortalAuthProvider>
-      </OfflineProvider>
     </AuthProvider>
   );
 }

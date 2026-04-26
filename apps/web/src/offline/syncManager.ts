@@ -4,6 +4,7 @@ import {
   deletePending,
   enqueueMutation,
   listPending,
+  moveToDeadLetter,
   type PendingKind
 } from "./db";
 
@@ -28,7 +29,13 @@ export async function flushQueue(authFetch: AuthFetch): Promise<SyncResult> {
   let failed = 0;
 
   for (const row of pending) {
-    if (row.attempts >= MAX_ATTEMPTS) continue;
+    // PR F FIX 3 — anything still in the outbox at MAX_ATTEMPTS gets
+    // promoted to the dead-letter store on next flush so the queue
+    // stops blocking healthy mutations behind a stuck row.
+    if (row.attempts >= MAX_ATTEMPTS) {
+      await moveToDeadLetter(row);
+      continue;
+    }
     try {
       const response = await authFetch(row.url, {
         method: row.method,
@@ -41,6 +48,11 @@ export async function flushQueue(authFetch: AuthFetch): Promise<SyncResult> {
         const text = await response.text().catch(() => `HTTP ${response.status}`);
         await bumpAttempt(row.id, text.slice(0, 200));
         failed += 1;
+        // 4xx is permanent — bumping past MAX_ATTEMPTS sweeps to dead
+        // letter on next pass without re-trying every flush.
+        if (row.attempts + 1 >= MAX_ATTEMPTS) {
+          await moveToDeadLetter({ ...row, attempts: row.attempts + 1, lastError: text.slice(0, 200) });
+        }
       } else {
         await bumpAttempt(row.id, `HTTP ${response.status}`);
         failed += 1;

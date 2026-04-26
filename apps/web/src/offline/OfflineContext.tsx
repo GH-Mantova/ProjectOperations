@@ -9,12 +9,14 @@ import {
   type PropsWithChildren
 } from "react";
 import { useAuth } from "../auth/AuthContext";
-import { countPending } from "./db";
+import { countDeadLetter, countPending } from "./db";
 import { buildOfflineFetch, flushQueue, type OfflineCapableFetch, type SyncResult } from "./syncManager";
 
 type OfflineValue = {
   online: boolean;
   pendingCount: number;
+  deadLetterCount: number;
+  refreshDeadLetterCount: () => Promise<void>;
   lastSyncAt: number | null;
   syncing: boolean;
   flush: () => Promise<SyncResult | null>;
@@ -29,6 +31,7 @@ export function OfflineProvider({ children }: PropsWithChildren) {
     typeof navigator !== "undefined" ? navigator.onLine : true
   );
   const [pendingCount, setPendingCount] = useState(0);
+  const [deadLetterCount, setDeadLetterCount] = useState(0);
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
   const [syncing, setSyncing] = useState(false);
   const inflightRef = useRef(false);
@@ -36,6 +39,14 @@ export function OfflineProvider({ children }: PropsWithChildren) {
   const refreshPendingCount = useCallback(async () => {
     try {
       setPendingCount(await countPending());
+    } catch {
+      // ignore — IndexedDB may not be available in private mode
+    }
+  }, []);
+
+  const refreshDeadLetterCount = useCallback(async () => {
+    try {
+      setDeadLetterCount(await countDeadLetter());
     } catch {
       // ignore — IndexedDB may not be available in private mode
     }
@@ -49,16 +60,18 @@ export function OfflineProvider({ children }: PropsWithChildren) {
       const result = await flushQueue(authFetch);
       setLastSyncAt(Date.now());
       await refreshPendingCount();
+      await refreshDeadLetterCount();
       return result;
     } finally {
       inflightRef.current = false;
       setSyncing(false);
     }
-  }, [authFetch, isAuthenticated, refreshPendingCount]);
+  }, [authFetch, isAuthenticated, refreshPendingCount, refreshDeadLetterCount]);
 
   useEffect(() => {
     void refreshPendingCount();
-  }, [refreshPendingCount]);
+    void refreshDeadLetterCount();
+  }, [refreshPendingCount, refreshDeadLetterCount]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -91,8 +104,26 @@ export function OfflineProvider({ children }: PropsWithChildren) {
   }, [authFetch, refreshPendingCount]);
 
   const value = useMemo<OfflineValue>(
-    () => ({ online, pendingCount, lastSyncAt, syncing, flush, offlineFetch }),
-    [online, pendingCount, lastSyncAt, syncing, flush, offlineFetch]
+    () => ({
+      online,
+      pendingCount,
+      deadLetterCount,
+      refreshDeadLetterCount,
+      lastSyncAt,
+      syncing,
+      flush,
+      offlineFetch
+    }),
+    [
+      online,
+      pendingCount,
+      deadLetterCount,
+      refreshDeadLetterCount,
+      lastSyncAt,
+      syncing,
+      flush,
+      offlineFetch
+    ]
   );
 
   return <OfflineContext.Provider value={value}>{children}</OfflineContext.Provider>;

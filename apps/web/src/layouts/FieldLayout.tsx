@@ -1,7 +1,10 @@
 // FieldLayout is optimised for slow mobile connections. Keep components in this layout
 // lightweight. True offline/PWA support is a separate PR.
+import { useEffect } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { DeadLetterBanner } from "../offline/DeadLetterBanner";
+import { useOffline } from "../offline/OfflineContext";
 
 const BG = "#F6F6F6";
 const BOTTOM_NAV_BG = "#000000";
@@ -27,10 +30,20 @@ const PAGE_TITLES: Record<string, string> = {
 export function FieldLayout() {
   const location = useLocation();
   const { logout } = useAuth();
+  const { refreshDeadLetterCount } = useOffline();
   const title =
     PAGE_TITLES[location.pathname] ??
     Object.entries(PAGE_TITLES).find(([prefix]) => location.pathname.startsWith(prefix))?.[1] ??
     "Field";
+
+  // PR F FIX 3 — keep the dead-letter count fresh on focus so the banner
+  // shows up the moment the user returns to the tab after a sync attempt
+  // pushed something into the failed bucket.
+  useEffect(() => {
+    const onFocus = () => void refreshDeadLetterCount();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refreshDeadLetterCount]);
 
   return (
     <div
@@ -115,6 +128,7 @@ export function FieldLayout() {
       </header>
 
       <main style={{ padding: 16 }}>
+        <DeadLetterBanner />
         <Outlet />
       </main>
 

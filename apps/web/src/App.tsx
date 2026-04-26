@@ -40,6 +40,7 @@ import { MasterDataWorkspacePage } from "./pages/master-data/MasterDataWorkspace
 import { SubcontractorsPage } from "./pages/directory/SubcontractorsPage";
 import { ContactsPage } from "./pages/directory/ContactsPage";
 import { SitesListPage } from "./pages/sites/SitesListPage";
+import { SiteDetailPage } from "./pages/sites/SiteDetailPage";
 import { CompliancePage } from "./pages/compliance/CompliancePage";
 import { SafetyPage } from "./pages/safety/SafetyPage";
 import { EstimateRatesAdminPage } from "./pages/EstimateRatesAdminPage";
@@ -199,6 +200,7 @@ export function App() {
             <Route path="/dashboards/:id" element={<UserDashboardPage />} />
             <Route path="/master-data" element={<MasterDataWorkspacePage />} />
             <Route path="/sites" element={<SitesListPage />} />
+            <Route path="/sites/:id" element={<SiteDetailPage />} />
             <Route path="/compliance" element={<CompliancePage />} />
             <Route path="/safety" element={<SafetyPage />} />
             <Route path="/directory/subcontractors" element={<SubcontractorsPage />} />

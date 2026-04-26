@@ -491,6 +491,7 @@ model Site {
   client          Client?          @relation(fields: [clientId], references: [id], onDelete: SetNull)
   jobs            Job[]
   formSubmissions FormSubmission[]
+  tenders         Tender[]
 
   @@unique([name])
   @@index([clientId])
@@ -665,6 +666,7 @@ model Tender {
   title              String
   description        String?
   estimatorUserId    String?                   @map("estimator_user_id")
+  siteId             String?                   @map("site_id")
   status             String                    @default("DRAFT")
   dueDate            DateTime?                 @map("due_date")
   proposedStartDate  DateTime?                 @map("proposed_start_date")
@@ -680,6 +682,7 @@ model Tender {
   createdAt          DateTime                  @default(now()) @map("created_at")
   updatedAt          DateTime                  @updatedAt @map("updated_at")
   estimator          User?                     @relation("TenderEstimator", fields: [estimatorUserId], references: [id], onDelete: SetNull)
+  site               Site?                     @relation(fields: [siteId], references: [id], onDelete: SetNull)
   tenderClients      TenderClient[]
   tenderNotes        TenderNote[]
   clarifications     TenderClarification[]
@@ -709,6 +712,7 @@ model Tender {
 
   @@index([status])
   @@index([estimatorUserId])
+  @@index([siteId])
   @@map("tenders")
 }
 

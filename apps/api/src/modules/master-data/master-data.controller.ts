@@ -35,6 +35,7 @@ export class MasterDataController {
   @Patch("contacts/:id") @RequirePermissions("masterdata.manage") updateContact(@Param("id") id: string, @Body() dto: UpsertContactDto, @CurrentUser() actor: { sub: string }) { return this.service.upsertContact(id, dto, actor.sub); }
 
   @Get("sites") @RequirePermissions("masterdata.view") listSites(@Query() q: MasterDataQueryDto) { return this.service.listSites(q); }
+  @Get("sites/:id") @RequirePermissions("masterdata.view") @ApiOperation({ summary: "Get a site with its linked tenders and projects." }) getSite(@Param("id") id: string) { return this.service.getSite(id); }
   @Post("sites") @RequirePermissions("masterdata.manage") createSite(@Body() dto: UpsertSiteDto, @CurrentUser() actor: { sub: string }) { return this.service.upsertSite(undefined, dto, actor.sub); }
   @Patch("sites/:id") @RequirePermissions("masterdata.manage") updateSite(@Param("id") id: string, @Body() dto: UpsertSiteDto, @CurrentUser() actor: { sub: string }) { return this.service.upsertSite(id, dto, actor.sub); }
 

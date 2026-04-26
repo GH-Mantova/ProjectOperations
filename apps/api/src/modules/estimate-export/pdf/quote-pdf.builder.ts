@@ -216,6 +216,41 @@ function drawRule(doc: Doc, colour = BRAND.orange) {
   doc.moveDown(0.4);
 }
 
+// PR C — IS watermark, 5% opacity, centred on every page. The Mettle layout
+// spec calls for a faded brand mark behind the page body. We render the IS
+// logo when available and fall back to the "IS" text mark rotated -45° when
+// the logo file is missing — this keeps the watermark stable across the
+// dev/prod path resolution that loadLogoBuffer() handles.
+function drawWatermark(doc: Doc) {
+  doc.save();
+  doc.opacity(0.05);
+  if (LOGO_BUFFER) {
+    try {
+      const w = 220;
+      const x = (PAGE_W - w) / 2;
+      const y = (PAGE_H - w) / 2;
+      doc.image(LOGO_BUFFER, x, y, { fit: [w, w] });
+    } catch {
+      drawTextWatermark(doc);
+    }
+  } else {
+    drawTextWatermark(doc);
+  }
+  doc.restore();
+}
+
+function drawTextWatermark(doc: Doc) {
+  const cx = PAGE_W / 2;
+  const cy = PAGE_H / 2;
+  doc.save();
+  doc.translate(cx, cy).rotate(-45);
+  doc.font("Helvetica-Bold").fontSize(120).fillColor(BRAND.teal);
+  const label = "IS";
+  const w = doc.widthOfString(label);
+  doc.text(label, -w / 2, -60, { lineBreak: false });
+  doc.restore();
+}
+
 // ── Page 1 ───────────────────────────────────────────────────────────
 function drawCoverPage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay | null) {
   drawHeaderBand(doc, overlay?.quoteRef ?? p.tender.tenderNumber);
@@ -1096,8 +1131,12 @@ export async function buildQuotePdf(
   return new Promise<Buffer>((resolve, reject) => {
     const doc = new PDFDocument({
       size: "A4",
+      // PR C — autoFirstPage off so we can register the pageAdded listener
+      // first, then add the cover page ourselves. That way the watermark
+      // and header band are guaranteed to render on EVERY page, including
+      // any auto-break pages PDFKit creates inside the scope/T&C flows.
       margins: { top: MARGIN_TOP, bottom: MARGIN_BOTTOM, left: MARGIN_L, right: MARGIN_R },
-      autoFirstPage: true,
+      autoFirstPage: false,
       bufferPages: true
     });
     const chunks: Buffer[] = [];
@@ -1105,7 +1144,17 @@ export async function buildQuotePdf(
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
+    const quoteRef = overlay?.quoteRef ?? payload.tender.tenderNumber;
+    doc.on("pageAdded", () => {
+      drawWatermark(doc);
+      drawHeaderBand(doc, quoteRef);
+      doc.y = MARGIN_TOP + 16;
+    });
+
     try {
+      // First page kicks off the chain — addPage fires pageAdded which
+      // paints watermark + header before any body content.
+      doc.addPage();
       drawCoverPage(doc, payload, overlay);
       drawScopePage(doc, payload, overlay);
       drawAssumptionsPage(doc, payload, overlay);

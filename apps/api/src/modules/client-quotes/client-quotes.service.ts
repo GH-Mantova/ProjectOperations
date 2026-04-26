@@ -25,7 +25,13 @@ export type SummaryResult = {
   clientFacingTotal: number;
 };
 
-type CostLineInput = { label: string; description: string; price: number; sortOrder?: number };
+type CostLineInput = {
+  label: string;
+  description: string;
+  price: number;
+  isVisible?: boolean;
+  sortOrder?: number;
+};
 
 type PrismaDecimal = Prisma.Decimal;
 
@@ -136,6 +142,10 @@ export class ClientQuotesService {
       assumptionMode: "free" | "linked";
       showProvisional: boolean;
       showCostOptions: boolean;
+      showScopeTable: boolean;
+      showAssumptions: boolean;
+      showExclusions: boolean;
+      showReferencedDrawings: boolean;
       status: ClientQuoteStatus;
       detailLevel: "simple" | "detailed";
     }>
@@ -150,6 +160,11 @@ export class ClientQuotesService {
     if (dto.assumptionMode !== undefined) data.assumptionMode = dto.assumptionMode;
     if (dto.showProvisional !== undefined) data.showProvisional = dto.showProvisional;
     if (dto.showCostOptions !== undefined) data.showCostOptions = dto.showCostOptions;
+    if (dto.showScopeTable !== undefined) data.showScopeTable = dto.showScopeTable;
+    if (dto.showAssumptions !== undefined) data.showAssumptions = dto.showAssumptions;
+    if (dto.showExclusions !== undefined) data.showExclusions = dto.showExclusions;
+    if (dto.showReferencedDrawings !== undefined)
+      data.showReferencedDrawings = dto.showReferencedDrawings;
     if (dto.status !== undefined) data.status = dto.status;
     if (dto.detailLevel !== undefined) data.detailLevel = dto.detailLevel;
     await this.prisma.clientQuote.update({ where: { id: quoteId }, data });
@@ -176,7 +191,12 @@ export class ClientQuotesService {
       }
     });
     if (!q || q.tenderId !== tenderId) throw new NotFoundException("Quote not found.");
-    const baseTotalCostLines = q.costLines.reduce((s, l) => s + toNum(l.price), 0);
+    // Only visible cost lines contribute to the client-facing total — hidden
+    // lines stay in the editor for reference but are not what the client sees
+    // or pays for. Keeps the summary in sync with what the PDF renders.
+    const baseTotalCostLines = q.costLines
+      .filter((l) => l.isVisible)
+      .reduce((s, l) => s + toNum(l.price), 0);
     // Dollar adjustment wins over percentage when both are set — the UI
     // shouldn't really set both but we pick a deterministic order.
     let adjustmentAmount = 0;
@@ -215,6 +235,7 @@ export class ClientQuotesService {
         label: dto.label,
         description: dto.description,
         price: toDec(dto.price),
+        isVisible: dto.isVisible ?? true,
         sortOrder
       }
     });
@@ -231,6 +252,7 @@ export class ClientQuotesService {
     if (dto.label !== undefined) data.label = dto.label;
     if (dto.description !== undefined) data.description = dto.description;
     if (dto.price !== undefined) data.price = toDec(dto.price);
+    if (dto.isVisible !== undefined) data.isVisible = dto.isVisible;
     if (dto.sortOrder !== undefined) data.sortOrder = dto.sortOrder;
     return this.prisma.quoteCostLine.update({ where: { id: lineId }, data });
   }

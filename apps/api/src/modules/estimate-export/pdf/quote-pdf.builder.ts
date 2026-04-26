@@ -25,6 +25,13 @@ export type QuoteOverlay = {
   assumptionMode: "free" | "linked";
   showProvisional: boolean;
   showCostOptions: boolean;
+  // PR B FIX 2 — per-section visibility flags. Each block of the PDF can be
+  // toggled independently from the quote editor. Default true on the model
+  // so quotes created before this PR keep rendering every section.
+  showScopeTable?: boolean;
+  showAssumptions?: boolean;
+  showExclusions?: boolean;
+  showReferencedDrawings?: boolean;
   clientFacingTotal: number;
   // PR #71 — client-facing scope control. "simple" suppresses the scope
   // table on page 2 entirely; "detailed" renders the per-quote scope rows
@@ -563,8 +570,10 @@ function drawScopePage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay | null)
   doc.moveDown(0.5);
 
   // Referenced Drawings and Documents — only render when the tender has
-  // documents attached. Two-column layout when the list exceeds 8 items.
-  if (p.documents.length > 0) {
+  // documents attached AND the quote has the section toggled on. Default
+  // for legacy quotes (no overlay flag) is to show the section.
+  const showReferencedDrawings = !overlay || overlay.showReferencedDrawings !== false;
+  if (showReferencedDrawings && p.documents.length > 0) {
     doc.font("Helvetica-Bold").fontSize(9).fillColor(BRAND.teal)
       .text("Referenced Drawings and Documents", MARGIN_L, doc.y);
     doc.moveDown(0.2);
@@ -598,6 +607,10 @@ function drawScopePage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay | null)
   //   "simple"   → no scope table (skip straight to site details block)
   //   "detailed" → render QuoteScopeItem rows (client-facing, overlay source)
   //   default    → fall through to the tender-level scope + cutting renderer
+  // PR B FIX 2 — additionally honour the per-quote showScopeTable toggle.
+  if (overlay && overlay.showScopeTable === false) {
+    return;
+  }
   if (overlay && overlay.detailLevel === "simple") {
     return;
   }
@@ -834,9 +847,12 @@ function drawAssumptionsPage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay |
 
   // Project Specific Assumptions — overlay takes priority (per-quote),
   // then per-tender TenderAssumption. Linked mode groups by cost line.
+  // PR B FIX 2 — honour per-quote showAssumptions toggle (default true).
+  const assumptionsToggleOn = !overlay || overlay.showAssumptions !== false;
   const quoteAssumptions = overlay?.assumptions ?? [];
   const hasOverlayAssumptions = quoteAssumptions.length > 0;
-  const showAssumptions = hasOverlayAssumptions || (!overlay && p.assumptions.length > 0);
+  const showAssumptions =
+    assumptionsToggleOn && (hasOverlayAssumptions || (!overlay && p.assumptions.length > 0));
   if (showAssumptions) {
     doc.font("Helvetica-Bold").fontSize(10).fillColor(BRAND.teal)
       .text("PROJECT SPECIFIC ASSUMPTIONS", MARGIN_L, doc.y);
@@ -886,12 +902,14 @@ function drawAssumptionsPage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay |
   }
 
   // Project Specific Exclusions — overlay overrides tender list.
+  // PR B FIX 2 — honour per-quote showExclusions toggle (default true).
+  const exclusionsToggleOn = !overlay || overlay.showExclusions !== false;
   const exclusions = overlay && overlay.exclusions.length > 0
     ? overlay.exclusions.map((e) => e.text)
     : !overlay
     ? p.exclusions.map((e) => e.text)
     : [];
-  if (exclusions.length > 0) {
+  if (exclusionsToggleOn && exclusions.length > 0) {
     doc.font("Helvetica-Bold").fontSize(10).fillColor(BRAND.teal)
       .text("PROJECT SPECIFIC EXCLUSIONS", MARGIN_L, doc.y);
     drawRule(doc, BRAND.orange);

@@ -32,12 +32,23 @@ type QuoteSummary = {
   assumptionMode: string;
   showProvisional: boolean;
   showCostOptions: boolean;
+  showScopeTable: boolean;
+  showAssumptions: boolean;
+  showExclusions: boolean;
+  showReferencedDrawings: boolean;
   sentAt: string | null;
   client: { id: string; name: string };
   _count?: { costLines: number; provisionalLines: number; costOptions: number };
 };
 
-type CostLine = { id: string; label: string; description: string; price: string; sortOrder: number };
+type CostLine = {
+  id: string;
+  label: string;
+  description: string;
+  price: string;
+  sortOrder: number;
+  isVisible: boolean;
+};
 type ProvisionalLine = {
   id: string;
   description: string;
@@ -446,6 +457,64 @@ function ClientRow({
   );
 }
 
+// PR B FIX 2 — per-section visibility panel. Each toggle PATCHes the quote
+// with a single boolean change so renders stay snappy. All sections default
+// to visible; hiding a section excludes it from the PDF without touching the
+// underlying data, so toggling back restores everything immediately.
+function QuoteContentsPanel({
+  quote,
+  canManage,
+  onPatchQuote
+}: {
+  quote: FullQuote;
+  canManage: boolean;
+  onPatchQuote: (body: Record<string, unknown>) => void;
+}) {
+  const sections: Array<{ key: keyof FullQuote; label: string; current: boolean }> = [
+    { key: "showScopeTable", label: "Scope of works table", current: quote.showScopeTable },
+    { key: "showAssumptions", label: "Assumptions", current: quote.showAssumptions },
+    { key: "showExclusions", label: "Exclusions", current: quote.showExclusions },
+    {
+      key: "showReferencedDrawings",
+      label: "Referenced drawings",
+      current: quote.showReferencedDrawings
+    },
+    { key: "showProvisional", label: "Provisional sums", current: quote.showProvisional },
+    { key: "showCostOptions", label: "Cost options", current: quote.showCostOptions }
+  ];
+  return (
+    <div
+      style={{
+        marginBottom: 12,
+        padding: "8px 10px",
+        background: "var(--surface-subtle, rgba(0,0,0,0.02))",
+        borderRadius: 6,
+        border: "1px solid var(--border, #e5e7eb)"
+      }}
+    >
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6, fontWeight: 600 }}>
+        QUOTE CONTENTS — VISIBLE IN QUOTE
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px" }}>
+        {sections.map((s) => (
+          <label
+            key={s.key as string}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12 }}
+          >
+            <input
+              type="checkbox"
+              checked={s.current}
+              disabled={!canManage}
+              onChange={(e) => onPatchQuote({ [s.key]: e.target.checked })}
+            />
+            {s.label}
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function QuoteEditor({
   tenderId,
   quote,
@@ -518,6 +587,9 @@ function QuoteEditor({
         </strong>
         <span style={statusPillStyle(quote.status)}>{quote.status}</span>
       </div>
+
+      <QuoteContentsPanel quote={quote} canManage={canManage} onPatchQuote={onPatchQuote} />
+
       <div
         style={{
           display: "flex",
@@ -663,6 +735,7 @@ function CostTab({
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 12 }}>
         <thead style={{ background: "var(--surface-muted, #F6F6F6)" }}>
           <tr>
+            <th style={{ textAlign: "center", padding: "6px 4px", width: 36 }} title="Visible on PDF">👁</th>
             <th style={{ textAlign: "left", padding: "6px 4px", width: 60 }}>Label</th>
             <th style={{ textAlign: "left", padding: "6px 4px" }}>Description</th>
             <th style={{ textAlign: "right", padding: "6px 4px", width: 140 }}>Price</th>
@@ -671,7 +744,29 @@ function CostTab({
         </thead>
         <tbody>
           {quote.costLines.map((l) => (
-            <tr key={l.id} style={{ borderTop: "1px solid var(--border, #e5e7eb)" }}>
+            <tr
+              key={l.id}
+              style={{
+                borderTop: "1px solid var(--border, #e5e7eb)",
+                opacity: l.isVisible ? 1 : 0.4
+              }}
+            >
+              <td style={{ padding: 4, textAlign: "center" }}>
+                <input
+                  type="checkbox"
+                  aria-label="Visible on PDF"
+                  checked={l.isVisible}
+                  disabled={!canManage}
+                  onChange={(e) =>
+                    void onPatch(l.id, {
+                      label: l.label,
+                      description: l.description,
+                      price: Number(l.price),
+                      isVisible: e.target.checked
+                    })
+                  }
+                />
+              </td>
               <td style={{ padding: 4 }}>
                 <input
                   className="s7-input"
@@ -1796,6 +1891,24 @@ function QuoteScopeTab({
     void reorderRows(arrayMove(source, oldIndex, newIndex));
   };
 
+  // PR B FIX 3 — grouped drag reorder. Each discipline group is its own
+  // sortable scope, so a drag inside SO can never bleed into Asb rows. We
+  // splice the reordered group back into the master rows array at the
+  // positions the group originally occupied to keep the global sortOrder
+  // contiguous before PATCHing the server.
+  const handleGroupDragEnd = (event: DragEndEvent, group: QuoteScopeItem[]) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = group.findIndex((r) => r.id === active.id);
+    const newIndex = group.findIndex((r) => r.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const reorderedGroup = arrayMove(group, oldIndex, newIndex);
+    const groupIds = new Set(group.map((r) => r.id));
+    let cursor = 0;
+    const merged = rows.map((r) => (groupIds.has(r.id) ? reorderedGroup[cursor++]! : r));
+    void reorderRows(merged);
+  };
+
   const renderRow = (row: QuoteScopeItem, draggable: boolean) =>
     draggable && canManage ? (
       <SortableQuoteRow
@@ -1966,12 +2079,23 @@ function QuoteScopeTab({
                 ({groupRows.length})
               </span>
             </h4>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                {renderHeader(false)}
-                <tbody>{groupRows.map((r) => renderRow(r, false))}</tbody>
-              </table>
-            </div>
+            <DndContext
+              sensors={dndSensors}
+              collisionDetection={closestCenter}
+              onDragEnd={(e) => handleGroupDragEnd(e, groupRows)}
+            >
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  {renderHeader(true)}
+                  <SortableContext
+                    items={groupRows.map((r) => r.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <tbody>{groupRows.map((r) => renderRow(r, true))}</tbody>
+                  </SortableContext>
+                </table>
+              </div>
+            </DndContext>
           </section>
         ))
       ) : (

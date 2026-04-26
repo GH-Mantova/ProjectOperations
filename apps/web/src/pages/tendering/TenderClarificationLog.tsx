@@ -59,13 +59,14 @@ const NOTE_TYPE_OPTIONS: Array<{ value: NoteType; label: string }> = [
   { value: "response", label: "Response" }
 ];
 
+// PR B FIX 4 — colour palette matched to project_instructions §13 spec.
 const BADGE_PALETTE: Record<UnifiedEntry["badge"], string> = {
-  RFI: "#0D9488",       // teal
-  Call: "#F97316",      // orange
-  Email: "#3B82F6",     // blue
-  Meeting: "#8B5CF6",   // purple
-  Note: "#6B7280",      // grey
-  Response: "#22C55E"   // green
+  RFI: "#005B61",       // IS teal (brand primary)
+  Call: "#3498DB",      // blue
+  Email: "#8E44AD",     // purple
+  Meeting: "#F39C12",   // amber
+  Note: "#95A5A6",      // grey
+  Response: "#27AE60"   // green
 };
 
 type NoteBadge = "Call" | "Email" | "Meeting" | "Note" | "Response";
@@ -288,17 +289,22 @@ export function TenderClarificationLog({
                     ))}
                   </select>
                 </label>
-                <label style={{ fontSize: 12, display: "inline-flex", flexDirection: "column", gap: 2 }}>
-                  <span>Direction</span>
-                  <select
-                    className="s7-select s7-input--sm"
-                    value={direction}
-                    onChange={(e) => setDirection(e.target.value as "sent" | "received")}
-                  >
-                    <option value="received">Received from client</option>
-                    <option value="sent">Sent by IS</option>
-                  </select>
-                </label>
+                {/* PR B FIX 4 — Note is an internal log entry; it has no
+                    direction. Response is always inbound (the client
+                    answering an RFI). All other types keep the toggle. */}
+                {noteType !== "note" && noteType !== "response" ? (
+                  <label style={{ fontSize: 12, display: "inline-flex", flexDirection: "column", gap: 2 }}>
+                    <span>Direction</span>
+                    <select
+                      className="s7-select s7-input--sm"
+                      value={direction}
+                      onChange={(e) => setDirection(e.target.value as "sent" | "received")}
+                    >
+                      <option value="received">Received from client</option>
+                      <option value="sent">Sent by IS</option>
+                    </select>
+                  </label>
+                ) : null}
               </>
             ) : null}
             {entryKind === "rfi" ? (
@@ -492,7 +498,7 @@ function ClarificationEntryRow({
         <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
           {formatDate(entry.timestamp)}
         </span>
-        {entry.kind === "note" ? (
+        {entry.kind === "note" && entry.noteType !== "note" && entry.noteType !== "response" ? (
           <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
             · {entry.direction === "sent" ? "Sent" : "Received"}
           </span>

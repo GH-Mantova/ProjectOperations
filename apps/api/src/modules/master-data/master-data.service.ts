@@ -154,6 +154,46 @@ export class MasterDataService {
     return record;
   }
 
+  // PR E FIX 1 — return a site with its linked tenders + projects so the
+  // detail page can render both lists. Linked tenders use the new siteId
+  // FK plus a soft suburb match for legacy tenders that pre-date the FK.
+  // Projects are reached via tender.projects so we get both sources in
+  // a single query and de-dup downstream.
+  async getSite(id: string) {
+    const site = await this.prisma.site.findUnique({
+      where: { id },
+      include: { client: { select: { id: true, name: true } } }
+    });
+    if (!site) return null;
+    const tenders = await this.prisma.tender.findMany({
+      where: {
+        OR: [
+          { siteId: id },
+          ...(site.suburb ? [{ notes: { contains: site.suburb, mode: "insensitive" as const } }] : [])
+        ]
+      },
+      select: {
+        id: true,
+        tenderNumber: true,
+        title: true,
+        status: true,
+        dueDate: true,
+        projects: { select: { id: true, projectNumber: true, name: true, status: true, plannedStartDate: true } }
+      },
+      orderBy: { createdAt: "desc" },
+      take: 50
+    });
+    const projectsMap = new Map<string, { id: string; projectNumber: string; name: string; status: string; plannedStartDate: Date | null }>();
+    for (const t of tenders) {
+      for (const p of t.projects) projectsMap.set(p.id, p);
+    }
+    return {
+      ...site,
+      tenders: tenders.map((t) => ({ ...t, projects: undefined })),
+      projects: Array.from(projectsMap.values())
+    };
+  }
+
   async listResourceTypes(query: MasterDataQueryDto) {
     return this.paginate(query, () =>
       this.prisma.resourceType.findMany({

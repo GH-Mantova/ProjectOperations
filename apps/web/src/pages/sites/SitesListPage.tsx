@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 
 type Site = {
@@ -19,6 +20,7 @@ type ClientOption = { id: string; name: string };
 
 export function SitesListPage() {
   const { authFetch } = useAuth();
+  const navigate = useNavigate();
   const [items, setItems] = useState<Site[]>([]);
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -149,7 +151,7 @@ export function SitesListPage() {
               {filtered.map((s) => (
                 <tr
                   key={s.id}
-                  onClick={() => setEditing(s)}
+                  onClick={() => navigate(`/sites/${s.id}`)}
                   style={{ borderTop: "1px solid var(--border, #e5e7eb)", cursor: "pointer" }}
                 >
                   <td style={{ padding: "6px 8px" }}>
@@ -161,8 +163,19 @@ export function SitesListPage() {
                   <td style={{ padding: "6px 8px", fontSize: 12 }}>{s.client?.name ?? "—"}</td>
                   <td style={{ padding: "6px 8px", fontSize: 12 }}>{s.code ?? "—"}</td>
                   <td style={{ padding: "6px 8px", fontSize: 12 }}>{s.jobs?.length ?? 0}</td>
-                  <td style={{ padding: "6px 8px", textAlign: "right", color: "var(--text-muted)", fontSize: 11 }}>
-                    ✎
+                  <td
+                    style={{ padding: "6px 8px", textAlign: "right" }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      className="s7-btn s7-btn--ghost s7-btn--sm"
+                      onClick={() => setEditing(s)}
+                      aria-label="Quick edit"
+                      title="Quick edit"
+                    >
+                      ✎
+                    </button>
                   </td>
                 </tr>
               ))}

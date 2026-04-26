@@ -115,12 +115,29 @@ export class ContactsService {
     const existing = await this.prisma.contact.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException("Contact not found.");
 
+    // PR D FIX 3 — contact reassignment. Either both org fields or neither.
+    // When the destination org type/id is supplied, validate the target
+    // exists and apply the move atomically with the rest of the update.
+    const movingOrg =
+      input.organisationType !== undefined && input.organisationId !== undefined &&
+      (input.organisationType !== existing.organisationType ||
+        input.organisationId !== existing.organisationId);
+    if (movingOrg) {
+      this.assertOrgType(input.organisationType!);
+      await this.requireOrganisation(input.organisationType!, input.organisationId!);
+    }
+
     return this.prisma.$transaction(async (tx) => {
+      // After-move org used for primary uniqueness — primary is per-org so
+      // moving a contact to a new org needs the new org's primary cleared,
+      // not the source org's.
+      const orgType = movingOrg ? input.organisationType! : existing.organisationType;
+      const orgId = movingOrg ? input.organisationId! : existing.organisationId;
       if (input.isPrimary) {
         await tx.contact.updateMany({
           where: {
-            organisationType: existing.organisationType,
-            organisationId: existing.organisationId,
+            organisationType: orgType,
+            organisationId: orgId,
             isPrimary: true,
             id: { not: id }
           },
@@ -142,6 +159,10 @@ export class ContactsService {
         "notes"
       ] as const) {
         if (input[key] !== undefined) data[key] = input[key];
+      }
+      if (movingOrg) {
+        data.organisationType = input.organisationType;
+        data.organisationId = input.organisationId;
       }
       return tx.contact.update({ where: { id }, data });
     });

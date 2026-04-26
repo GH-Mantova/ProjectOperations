@@ -33,6 +33,8 @@ import { MaintenancePage as MaintenanceDashboardPage } from "./pages/maintenance
 import { FormsListPage } from "./pages/forms/FormsListPage";
 import { FormDesignerPage } from "./pages/forms/FormDesignerPage";
 import { FormSubmitPage } from "./pages/forms/FormSubmitPage";
+import { FormFillPage } from "./pages/forms/FormFillPage";
+import { FormSubmissionDetailPage } from "./pages/forms/FormSubmissionDetailPage";
 import { DocumentsWorkspacePage } from "./pages/documents/DocumentsWorkspacePage";
 import { MasterDataWorkspacePage } from "./pages/master-data/MasterDataWorkspacePage";
 import { SubcontractorsPage } from "./pages/directory/SubcontractorsPage";
@@ -176,6 +178,8 @@ export function App() {
             <Route path="/forms" element={<FormsListPage />} />
             <Route path="/forms/designer/:templateId" element={<FormDesignerPage />} />
             <Route path="/forms/submit/:templateId" element={<FormSubmitPage />} />
+            <Route path="/forms/fill/:submissionId" element={<FormFillPage />} />
+            <Route path="/forms/submissions/:id" element={<FormSubmissionDetailPage />} />
             <Route path="/documents" element={<DocumentsWorkspacePage />} />
             <Route path="/admin/users" element={<UsersPage />} />
             <Route path="/admin/roles" element={<RolesPage />} />

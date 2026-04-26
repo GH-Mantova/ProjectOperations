@@ -360,3 +360,9 @@ Audit passes:
   #4 (after #86 + #87, chain-wide) — 3 criticals + 1 major → fixed via #87.1
 
 11 PRs total, 4 audit passes, all 7-check pre-PR gates green, all CI 6/6 SUCCESS.
+
+## 2026-04-26 10:51 AEST — project_instructions.md v1.1 MERGED
+Type: FIX
+Detail: TOC added, modules through PR #102, scope/quote structure,
+  sanity checks extended, stale known issues removed
+Status: COMPLETE

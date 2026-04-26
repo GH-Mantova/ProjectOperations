@@ -20,6 +20,11 @@ export default defineConfig({
       // the shell aggressively, but always go-network-first for /api so they
       // see fresh data when they do have signal.
       workbox: {
+        // PR F FIX 2 — skipWaiting + clientsClaim eliminate the "stale tab
+        // serves the old shell" race during autoUpdate. New SW activates
+        // immediately on install; main.tsx prompts the user to refresh.
+        skipWaiting: true,
+        clientsClaim: true,
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         navigateFallback: "/index.html",

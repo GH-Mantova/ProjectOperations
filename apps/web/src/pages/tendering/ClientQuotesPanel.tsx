@@ -966,6 +966,11 @@ function OptionsTab({
   const nextLabel = String(quote.costOptions.length + 1);
   return (
     <div>
+      <p style={{ color: "var(--text-muted)", fontSize: 12, margin: "0 0 8px" }}>
+        Cost options are alternative pricing scenarios that appear separately from the
+        main quote total. Use these for scope variations, optional extras, or alternative
+        approaches.
+      </p>
       <label style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10, fontSize: 13 }}>
         <input
           type="checkbox"
@@ -1296,6 +1301,20 @@ function LinkedAssumptionList({
 }
 
 // ── Exclusions tab ─────────────────────────────────────────────────
+// IS standard exclusion templates — Marco-approved boilerplate that gets
+// copied into the quote when the estimator clicks "Copy IS template
+// exclusions". Editable per quote afterwards. Order matches the standard
+// IS quote pack so the resulting list reads predictably.
+const IS_STANDARD_EXCLUSIONS: string[] = [
+  "Asbestos testing and/or air monitoring.",
+  "Engineering or structural design.",
+  "Traffic management.",
+  "Building permits and council fees.",
+  "Hydraulic, electrical, mechanical and fire services works.",
+  "Any works not specifically mentioned in this quotation.",
+  "After-hours or weekend works unless specifically stated."
+];
+
 function ExclusionsTab({
   quote,
   canManage,
@@ -1311,13 +1330,40 @@ function ExclusionsTab({
   onDelete: (id: string) => Promise<void>;
   onCopyFromTender: () => Promise<void>;
 }) {
+  const [busy, setBusy] = useState(false);
+
+  const copyTemplate = async () => {
+    setBusy(true);
+    try {
+      // Sequential creates so sortOrder is preserved without needing a
+      // new bulk endpoint — the per-row sortOrder defaults to the time the
+      // exclusion was added.
+      for (const text of IS_STANDARD_EXCLUSIONS) {
+        await onCreate({ text });
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div>
-      <div style={{ marginBottom: 10 }}>
+      <div style={{ marginBottom: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
         {canManage ? (
-          <button type="button" className="s7-btn s7-btn--ghost s7-btn--sm" onClick={() => void onCopyFromTender()}>
-            Copy from tender exclusions
-          </button>
+          <>
+            <button
+              type="button"
+              className="s7-btn s7-btn--secondary s7-btn--sm"
+              onClick={() => void copyTemplate()}
+              disabled={busy}
+              title="Add IS standard exclusion clauses (Marco-approved boilerplate)."
+            >
+              {busy ? "Adding…" : "Copy IS template exclusions"}
+            </button>
+            <button type="button" className="s7-btn s7-btn--ghost s7-btn--sm" onClick={() => void onCopyFromTender()}>
+              Copy from tender exclusions
+            </button>
+          </>
         ) : null}
       </div>
       <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>

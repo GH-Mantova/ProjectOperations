@@ -75,8 +75,12 @@ const PAGE_W = 595.28; // A4 width in points (72dpi)
 const PAGE_H = 841.89;
 const MARGIN_TOP = 70;
 const MARGIN_BOTTOM = 70;
-const MARGIN_L = 57;
-const MARGIN_R = 57;
+// Mettle spec calls for 15–18mm L/R margins. 42pt ≈ 15mm gives ~30pt extra
+// content width per row vs the previous 57pt setting — that's the difference
+// between "Asbestos removal (Class A)" wrapping mid-bracket and fitting on
+// one line in the cost-summary table.
+const MARGIN_L = 42;
+const MARGIN_R = 42;
 const CONTENT_W = PAGE_W - MARGIN_L - MARGIN_R;
 const LIGHT_TEAL = "#E8F4F5";
 
@@ -984,6 +988,87 @@ function drawAssumptionsPage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay |
   doc.fillColor(BRAND.black);
 }
 
+// ── Signature / Acceptance block (final page) ───────────────────────────
+// Draws a full-width acceptance block with two signature columns. Fires after
+// the T&C section so the client signs only after they've seen the clauses.
+// If there's not enough room on the current page the block bumps to its own
+// fresh page so the signature lines never split.
+
+function drawAcceptancePage(doc: Doc, p: ExportPayload) {
+  const block = {
+    headerH: 22,
+    introH: 28,
+    rowsH: 6 * 22 + 12, // company + signature/name/date/PO/extra
+    bottomGap: 30
+  };
+  const totalH = block.headerH + 8 + block.introH + 12 + block.rowsH + block.bottomGap;
+  const usableBottom = PAGE_H - MARGIN_BOTTOM;
+  if (doc.y + totalH > usableBottom) {
+    doc.addPage();
+  }
+
+  // Section header — teal band consistent with other section titles
+  const headerY = doc.y;
+  doc.save();
+  doc.rect(MARGIN_L, headerY, CONTENT_W, block.headerH).fill(BRAND.teal);
+  doc.fillColor("#fff").font("Helvetica-Bold").fontSize(11);
+  doc.text("ACCEPTANCE", MARGIN_L + 8, headerY + 6, {
+    width: CONTENT_W - 16,
+    align: "left",
+    lineBreak: false
+  });
+  doc.restore();
+  doc.y = headerY + block.headerH + 8;
+  doc.fillColor(BRAND.black);
+
+  doc.font("Helvetica").fontSize(9).fillColor(BRAND.black);
+  doc.text(
+    "By signing below, the client acknowledges they have read, understood and agree to the Terms and Conditions of this quotation.",
+    MARGIN_L,
+    doc.y,
+    { width: CONTENT_W, align: "left", lineGap: 1 }
+  );
+  doc.moveDown(0.6);
+
+  const colGap = 16;
+  const colW = (CONTENT_W - colGap) / 2;
+  const baseY = doc.y;
+  const clientName = p.tender.clients[0]?.name ?? "[CLIENT COMPANY NAME]";
+
+  doc.font("Helvetica-Bold").fontSize(9).fillColor(BRAND.teal);
+  doc.text("FOR AND ON BEHALF OF:", MARGIN_L, baseY, { width: colW, lineBreak: false });
+  doc.fillColor(BRAND.black).font("Helvetica-Bold").fontSize(10);
+  doc.text(clientName.toUpperCase(), MARGIN_L, baseY + 12, { width: colW, lineBreak: false });
+
+  // Signature lines — left column. Right column intentionally blank for
+  // counter-signature or internal use.
+  const fieldRowH = 28;
+  const signFields: Array<{ label: string }> = [
+    { label: "Signature" },
+    { label: "Full name" },
+    { label: "Date" },
+    { label: "Purchase order / Reference number" }
+  ];
+
+  let rowY = baseY + 38;
+  doc.font("Helvetica").fontSize(8).fillColor("#666");
+  for (const f of signFields) {
+    // Left column — line + label
+    doc
+      .save()
+      .strokeColor("#999")
+      .lineWidth(0.6)
+      .moveTo(MARGIN_L, rowY)
+      .lineTo(MARGIN_L + colW, rowY)
+      .stroke()
+      .restore();
+    doc.text(f.label, MARGIN_L, rowY + 3, { width: colW, lineBreak: false });
+    rowY += fieldRowH;
+  }
+  doc.fillColor(BRAND.black);
+  doc.y = rowY + 4;
+}
+
 type TcLike = { number: string; heading: string; body: string };
 
 export async function buildQuotePdf(
@@ -1006,6 +1091,7 @@ export async function buildQuotePdf(
       drawCoverPage(doc, payload, overlay);
       drawScopePage(doc, payload, overlay);
       drawAssumptionsPage(doc, payload, overlay);
+      drawAcceptancePage(doc, payload);
 
       const range = doc.bufferedPageRange();
       for (let i = 0; i < range.count; i += 1) {

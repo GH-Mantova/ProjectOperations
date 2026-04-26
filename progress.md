@@ -458,3 +458,89 @@ None — all initially-flagged HIGHs resolved (DB drift fixed locally;
   /notification/settings before next run.
 
 Status: CLEAN ✅
+
+## 2026-04-26 12:05 AEST — BACKFILL: PRs #92-#102 historical entries
+Type: BACKFILL
+Status: COMPLETE
+Detail: Adding chronological log entries for PRs that merged
+  before progress.md was being maintained (chain started at PR #103).
+
+### 2026-04-25 09:35 AEST — PR #92 MERGED
+Branch: fix/remove-duplicate-platform-dashboard
+Title: fix: remove duplicate dashboard entry from Platform sidebar
+
+### 2026-04-25 10:10 AEST — PR #93 MERGED
+Branch: chore/add-project-instructions-roadmap
+Title: chore: add project_instructions.md and roadmap.md
+
+### 2026-04-25 10:27 AEST — PR #94 MERGED
+Branch: chore/roadmap-gap-analysis
+Title: chore: roadmap gap analysis and reprioritisation
+
+### 2026-04-25 11:55 AEST — PR #95 MERGED
+Branch: feat/tendering-presentation-polish
+Title: feat: tendering presentation polish — pipeline, scope, quotes, PDF, clarifications, demo data
+
+### 2026-04-25 12:09 AEST — PR #96 MERGED
+Branch: feat/dashboard-presentation-polish
+Title: feat: dashboard cleanup — remove duplicate, add Safety + Compliance widgets, UX polish
+
+### 2026-04-25 23:19 AEST — PR #97 MERGED
+Branch: feat/forms-engine
+Title: feat: Forms Engine — rules engine, IS system templates, submission pipeline
+
+### 2026-04-25 23:52 AEST — PR #98 MERGED
+Branch: chore/docs-update-forms-engine
+Title: chore: update project_instructions and roadmap for Forms Engine (PR #97)
+
+### 2026-04-26 00:03 AEST — PR #99 MERGED
+Branch: fix/ui-glitches-chat1
+Title: fix: scheduler month view + sidebar badges + safety quick-actions (Chat1 partial)
+
+### 2026-04-26 01:43 AEST — PR #100 MERGED
+Branch: feat/forms-fill-ui
+Title: feat: Forms fill UI — submission fill page, forms list, submission detail, offline support
+
+### 2026-04-26 08:43 AEST — PR #101 MERGED
+Branch: feat/quote-pdf-rebuild
+Title: fix: Quote PDF margins + signature block + IS-T020 demo data + IS template exclusions
+
+### 2026-04-26 09:19 AEST — PR #102 MERGED
+Branch: fix/ui-quick-fixes
+Title: fix: UI quick fixes — widget overlap, overflow, follow-up truncation, avg lead time, scheduler label, mode toast
+
+
+## 2026-04-26 12:06 AEST — FULL UPDATE CHAIN COMPLETE
+Type: CHAIN
+Status: COMPLETE
+Steps completed:
+  1. project_instructions.md v1.1 (PR #103) — TOC, scope/quote
+     structure, sanity checks extended, modules through PR #102,
+     stale known issues removed, field worker note in §16, TOC
+     update instruction in §18.
+  2. PR B (PR #104) — Quote/scope: cost line visibility toggles
+     (migration), section show/hide toggles (migration), grouped
+     drag reorder per discipline, clarification badge palette + per-
+     type field handling, bulk status verified, multi-plant verified.
+  3. PR C (PR #105) — PDF: drawWatermark (5% opacity logo, text
+     fallback) + pageAdded listener so watermark + header render on
+     every page including auto-break pages. Existing Mettle layout
+     from PRs #62/#101 preserved.
+  4. PR D (PR #106) — Directory: Documents tab on subcontractor
+     detail (no schema change — model existed), prequal validation
+     warning when promoting to approved, contact organisation
+     reassignment with target validation + confirm dialog.
+  5. PR E (PR #107) — Sites: SiteDetailPage at /sites/:id, optional
+     siteId FK on Tender (migration), GET /master-data/sites/:id
+     with linked tenders + projects, bulk status re-verified.
+  6. PR F (PR #108) — PWA: OfflineProvider scoped to /field/* only,
+     skipWaiting + clientsClaim + registerSW prompt, dead-letter
+     store + DeadLetterBanner with retry/discard. FIX 4 (IndexedDB
+     form drafts) explicitly deferred to a follow-up PR.
+  7. Comprehensive audit — clean. All initially-flagged issues
+     resolved (DB-out-of-sync on local, plus 4 audit-script-only
+     wrong endpoint paths). 33/33 permissions registered, 66
+     migrations replay clean on shadow DB, seed idempotent, IS-T020
+     present, 7 staff, 8 system form templates.
+  8. progress.md backfilled with PRs #92-#102 historical entries.
+Bypass actor: REMOVING NOW.

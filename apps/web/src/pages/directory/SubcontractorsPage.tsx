@@ -49,14 +49,34 @@ type Insurance = {
   status: string;
 };
 
+type SubDocument = {
+  id: string;
+  documentType: string;
+  name: string;
+  filePath: string | null;
+  uploadedAt: string;
+  notes: string | null;
+  uploadedBy: { firstName: string; lastName: string } | null;
+};
+
 type SubcontractorDetail = Subcontractor & {
   contacts: Contact[];
   licences: Licence[];
   insurances: Insurance[];
+  documents: SubDocument[];
   prequalNotes: string | null;
   swmsOnFile: boolean;
   internalNotes: string | null;
 };
+
+const DOCUMENT_TYPES: Array<{ value: string; label: string }> = [
+  { value: "swms", label: "SWMS" },
+  { value: "insurance_certificate", label: "Insurance certificate" },
+  { value: "licence", label: "Licence" },
+  { value: "rate_card", label: "Rate card" },
+  { value: "credit_application", label: "Credit application" },
+  { value: "other", label: "Other" }
+];
 
 const BUSINESS_TYPES = [
   { value: "company", label: "Company" },
@@ -369,7 +389,8 @@ function SubcontractorDetail({
   const [detail, setDetail] = useState<SubcontractorDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<"overview" | "contacts">("overview");
+  const [tab, setTab] = useState<"overview" | "contacts" | "documents">("overview");
+  const [docModalOpen, setDocModalOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -389,7 +410,23 @@ function SubcontractorDetail({
     void load();
   }, [load]);
 
+  // PR D FIX 2 — when promoting to "approved", surface a warning if any of
+  // the compliance pillars (documents, active licences, active insurances)
+  // are missing. Not a hard block — the admin can still approve, but they
+  // do so consciously rather than by accident.
   const updatePrequal = async (status: string) => {
+    if (status === "approved" && detail) {
+      const missing: string[] = [];
+      if (detail.documents.length === 0) missing.push("documents (e.g. SWMS, insurance cert)");
+      if (!detail.licences.some((l) => l.status === "active")) missing.push("an active licence");
+      if (!detail.insurances.some((i) => i.status === "active")) missing.push("an active insurance");
+      if (missing.length > 0) {
+        const proceed = window.confirm(
+          `Incomplete compliance records — missing: ${missing.join(", ")}.\n\nApprove anyway?`
+        );
+        if (!proceed) return;
+      }
+    }
     const notes = window.prompt("Prequalification notes (optional):", detail?.prequalNotes ?? "");
     if (notes === null) return;
     const response = await authFetch(`/directory/${id}/prequal`, {
@@ -402,6 +439,29 @@ function SubcontractorDetail({
     }
     await load();
     onChanged();
+  };
+
+  const addDocument = async (body: { documentType: string; name: string; notes: string | null }) => {
+    const response = await authFetch(`/directory/${id}/documents`, {
+      method: "POST",
+      body: JSON.stringify(body)
+    });
+    if (!response.ok) {
+      setError(await response.text());
+      return false;
+    }
+    await load();
+    return true;
+  };
+
+  const deleteDocument = async (docId: string) => {
+    if (!window.confirm("Delete this document record?")) return;
+    const response = await authFetch(`/directory/${id}/documents/${docId}`, { method: "DELETE" });
+    if (!response.ok) {
+      setError(await response.text());
+      return;
+    }
+    await load();
   };
 
   const softDelete = async () => {
@@ -470,6 +530,15 @@ function SubcontractorDetail({
         >
           Contacts ({detail.contacts.length})
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "documents"}
+          className={tab === "documents" ? "tender-detail__tab tender-detail__tab--active" : "tender-detail__tab"}
+          onClick={() => setTab("documents")}
+        >
+          Documents ({detail.documents.length})
+        </button>
       </nav>
 
       {tab === "contacts" ? (
@@ -484,6 +553,13 @@ function SubcontractorDetail({
             }}
           />
         </div>
+      ) : tab === "documents" ? (
+        <DocumentsTab
+          documents={detail.documents}
+          canManage={canManage}
+          onAddClick={() => setDocModalOpen(true)}
+          onDelete={deleteDocument}
+        />
       ) : (
         <>
       <Section title="Contact">
@@ -611,6 +687,181 @@ function SubcontractorDetail({
           </>
         ) : null}
       </div>
+
+      {docModalOpen ? (
+        <DocumentUploadModal
+          onClose={() => setDocModalOpen(false)}
+          onSubmit={async (body) => {
+            const ok = await addDocument(body);
+            if (ok) setDocModalOpen(false);
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function DocumentsTab({
+  documents,
+  canManage,
+  onAddClick,
+  onDelete
+}: {
+  documents: SubDocument[];
+  canManage: boolean;
+  onAddClick: () => void;
+  onDelete: (id: string) => Promise<void>;
+}) {
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
+          {documents.length} document{documents.length === 1 ? "" : "s"}
+        </div>
+        {canManage ? (
+          <button type="button" className="s7-btn s7-btn--primary s7-btn--sm" onClick={onAddClick}>
+            + Upload document
+          </button>
+        ) : null}
+      </div>
+      {documents.length === 0 ? (
+        <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>
+          No documents — upload SWMS, insurance certs, licences, rate cards.
+        </p>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead style={{ background: "var(--surface-muted, #f6f6f6)" }}>
+              <tr>
+                {["Type", "Name", "Uploaded", "By", ""].map((h) => (
+                  <th key={h} style={{ padding: "6px 8px", textAlign: "left", fontSize: 10, textTransform: "uppercase", color: "var(--text-muted)" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {documents.map((d) => (
+                <tr key={d.id} style={{ borderTop: "1px solid var(--border, #e5e7eb)" }}>
+                  <td style={{ padding: "6px 8px", fontSize: 12, textTransform: "capitalize" }}>
+                    {(DOCUMENT_TYPES.find((t) => t.value === d.documentType)?.label) ?? d.documentType.replace(/_/g, " ")}
+                  </td>
+                  <td style={{ padding: "6px 8px", fontSize: 13 }}>
+                    <strong>{d.name}</strong>
+                    {d.notes ? (
+                      <p style={{ margin: "2px 0 0", fontSize: 11, color: "var(--text-muted)" }}>{d.notes}</p>
+                    ) : null}
+                  </td>
+                  <td style={{ padding: "6px 8px", fontSize: 12, color: "var(--text-muted)" }}>{fmtDate(d.uploadedAt)}</td>
+                  <td style={{ padding: "6px 8px", fontSize: 12, color: "var(--text-muted)" }}>
+                    {d.uploadedBy ? `${d.uploadedBy.firstName} ${d.uploadedBy.lastName}` : "—"}
+                  </td>
+                  <td style={{ padding: "6px 8px", textAlign: "right" }}>
+                    {canManage ? (
+                      <button
+                        type="button"
+                        className="s7-btn s7-btn--ghost s7-btn--sm"
+                        onClick={() => void onDelete(d.id)}
+                        aria-label="Delete"
+                        title="Delete"
+                      >×</button>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DocumentUploadModal({
+  onClose,
+  onSubmit
+}: {
+  onClose: () => void;
+  onSubmit: (body: { documentType: string; name: string; notes: string | null }) => Promise<void>;
+}) {
+  const [documentType, setDocumentType] = useState<string>(DOCUMENT_TYPES[0].value);
+  const [name, setName] = useState("");
+  const [notes, setNotes] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) {
+      setErr("File name is required.");
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    try {
+      await onSubmit({ documentType, name: name.trim(), notes: notes.trim() || null });
+    } catch (e2) {
+      setErr((e2 as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1100, display: "flex", justifyContent: "center", alignItems: "center" }}
+    >
+      <form
+        onSubmit={submit}
+        onClick={(e) => e.stopPropagation()}
+        className="s7-card"
+        style={{ padding: 20, width: "min(440px, 90vw)" }}
+      >
+        <h3 className="s7-type-section-heading" style={{ margin: "0 0 12px" }}>Upload document</h3>
+        <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 12px" }}>
+          Records the document metadata. The actual file lives in SharePoint and
+          is uploaded separately for now.
+        </p>
+        <label style={{ fontSize: 12, display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 }}>
+          <span>Type *</span>
+          <select
+            className="s7-select"
+            value={documentType}
+            onChange={(e) => setDocumentType(e.target.value)}
+            required
+          >
+            {DOCUMENT_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>{t.label}</option>
+            ))}
+          </select>
+        </label>
+        <label style={{ fontSize: 12, display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 }}>
+          <span>File name *</span>
+          <input
+            className="s7-input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. SWMS_concrete_cutting_2026.pdf"
+            required
+          />
+        </label>
+        <label style={{ fontSize: 12, display: "flex", flexDirection: "column", gap: 4, marginBottom: 12 }}>
+          <span>Notes (optional)</span>
+          <textarea
+            className="s7-textarea"
+            rows={3}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            style={{ resize: "vertical" }}
+          />
+        </label>
+        {err ? <p style={{ color: "var(--status-danger)", fontSize: 12 }}>{err}</p> : null}
+        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+          <button type="button" className="s7-btn s7-btn--ghost" onClick={onClose} disabled={busy}>Cancel</button>
+          <button type="submit" className="s7-btn s7-btn--primary" disabled={busy}>{busy ? "Saving…" : "Save"}</button>
+        </div>
+      </form>
     </div>
   );
 }

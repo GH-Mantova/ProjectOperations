@@ -55,6 +55,10 @@ class UpdateContactDto {
   @IsOptional() @IsBoolean() isActive?: boolean;
   @IsOptional() @IsBoolean() hasPortalAccess?: boolean;
   @IsOptional() @IsString() notes?: string | null;
+  // PR D FIX 3 — reassign a contact between organisations. Both fields
+  // must be supplied together for the move to take effect.
+  @IsOptional() @IsString() @IsIn(ORG_TYPES as unknown as string[]) organisationType?: string;
+  @IsOptional() @IsString() organisationId?: string;
 }
 
 @ApiTags("Contacts")

@@ -388,6 +388,8 @@ export function ContactsTab({
   );
 }
 
+type OrgOption = { id: string; name: string };
+
 export function ContactFormModal({
   organisationType,
   organisationId,
@@ -408,11 +410,64 @@ export function ContactFormModal({
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // PR D FIX 3 — only allow reassignment when editing an existing contact.
+  // Adding from a parent screen always inherits the parent's organisation.
+  const [moveOrgType, setMoveOrgType] = useState<"CLIENT" | "SUBCONTRACTOR" | "SUPPLIER">(
+    organisationType
+  );
+  const [moveOrgId, setMoveOrgId] = useState<string>(organisationId);
+  const [moveOrgQuery, setMoveOrgQuery] = useState("");
+  const [moveOrgOptions, setMoveOrgOptions] = useState<OrgOption[]>([]);
+
+  // Live-search the directory/clients list when the user types ≥2 chars.
+  // Empty query keeps the current selection's name visible without firing
+  // a request, so opening the modal doesn't immediately spam the server.
+  useEffect(() => {
+    if (!existing) return;
+    if (moveOrgQuery.trim().length < 2) {
+      setMoveOrgOptions([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const url =
+          moveOrgType === "CLIENT"
+            ? `/master-data/clients?search=${encodeURIComponent(moveOrgQuery.trim())}&limit=15`
+            : `/directory?q=${encodeURIComponent(moveOrgQuery.trim())}&type=${moveOrgType === "SUPPLIER" ? "supplier" : "subcontractor"}`;
+        const res = await authFetch(url);
+        if (!res.ok || cancelled) return;
+        const body = await res.json();
+        const items: OrgOption[] = Array.isArray(body)
+          ? body.map((r: { id: string; name: string }) => ({ id: r.id, name: r.name }))
+          : Array.isArray(body.items)
+          ? body.items.map((r: { id: string; name: string }) => ({ id: r.id, name: r.name }))
+          : [];
+        setMoveOrgOptions(items);
+      } catch {
+        if (!cancelled) setMoveOrgOptions([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch, moveOrgType, moveOrgQuery, existing]);
+
+  const orgChanged =
+    Boolean(existing) && (moveOrgType !== organisationType || moveOrgId !== organisationId);
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.firstName.trim() || !form.lastName.trim()) {
       setErr("First name and last name are required.");
       return;
+    }
+    if (orgChanged) {
+      const target = moveOrgOptions.find((o) => o.id === moveOrgId)?.name ?? moveOrgId;
+      const proceed = window.confirm(
+        `Move ${form.firstName} ${form.lastName} to ${target}? This will remove the contact from the current organisation.`
+      );
+      if (!proceed) return;
     }
     setSubmitting(true);
     setErr(null);
@@ -430,15 +485,21 @@ export function ContactFormModal({
       };
       const url = existing ? `/contacts/${existing.id}` : "/contacts";
       const method = existing ? "PATCH" : "POST";
-      const payload = existing
-        ? body
+      const payload: Record<string, unknown> = existing
+        ? { ...body }
         : { ...body, organisationType, organisationId };
+      if (orgChanged) {
+        payload.organisationType = moveOrgType;
+        payload.organisationId = moveOrgId;
+      }
       const response = await authFetch(url, {
         method,
         body: JSON.stringify(payload)
       });
       if (!response.ok) throw new Error(await response.text());
-      onSaved(existing ? "Contact updated" : "Contact added");
+      onSaved(
+        orgChanged ? "Contact moved" : existing ? "Contact updated" : "Contact added"
+      );
     } catch (e2) {
       setErr((e2 as Error).message);
     } finally {
@@ -470,6 +531,73 @@ export function ContactFormModal({
         <h3 className="s7-type-section-heading" style={{ margin: "0 0 12px" }}>
           {existing ? "Edit contact" : "Add contact"}
         </h3>
+
+        {existing ? (
+          <fieldset
+            style={{
+              border: "1px solid var(--border, #e5e7eb)",
+              borderRadius: 6,
+              padding: 10,
+              margin: "0 0 12px",
+              display: "grid",
+              gridTemplateColumns: "1fr 2fr",
+              gap: 8
+            }}
+          >
+            <legend style={{ fontSize: 11, color: "var(--text-muted)", padding: "0 4px" }}>
+              Organisation
+            </legend>
+            <label style={{ fontSize: 12, display: "flex", flexDirection: "column", gap: 2 }}>
+              <span>Type</span>
+              <select
+                className="s7-select"
+                value={moveOrgType}
+                onChange={(e) => {
+                  setMoveOrgType(e.target.value as "CLIENT" | "SUBCONTRACTOR" | "SUPPLIER");
+                  setMoveOrgId("");
+                  setMoveOrgQuery("");
+                }}
+              >
+                <option value="CLIENT">Client</option>
+                <option value="SUBCONTRACTOR">Subcontractor</option>
+                <option value="SUPPLIER">Supplier</option>
+              </select>
+            </label>
+            <label style={{ fontSize: 12, display: "flex", flexDirection: "column", gap: 2 }}>
+              <span>Organisation</span>
+              <input
+                className="s7-input"
+                placeholder="Type 2+ letters to search…"
+                value={moveOrgQuery}
+                onChange={(e) => setMoveOrgQuery(e.target.value)}
+                list={`org-options-${existing.id}`}
+              />
+              <datalist id={`org-options-${existing.id}`}>
+                {moveOrgOptions.map((o) => (
+                  <option key={o.id} value={o.name} />
+                ))}
+              </datalist>
+              {moveOrgOptions.length > 0 ? (
+                <select
+                  className="s7-select"
+                  value={moveOrgId}
+                  onChange={(e) => setMoveOrgId(e.target.value)}
+                  size={Math.min(5, moveOrgOptions.length)}
+                  style={{ marginTop: 4 }}
+                >
+                  {moveOrgOptions.map((o) => (
+                    <option key={o.id} value={o.id}>{o.name}</option>
+                  ))}
+                </select>
+              ) : null}
+              {orgChanged ? (
+                <span style={{ fontSize: 11, color: "#D97706" }}>
+                  ⚠ Saving will move this contact to the selected organisation.
+                </span>
+              ) : null}
+            </label>
+          </fieldset>
+        ) : null}
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <label style={{ fontSize: 12, display: "flex", flexDirection: "column", gap: 2 }}>

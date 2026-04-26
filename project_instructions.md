@@ -756,7 +756,10 @@ https://github.com/GH-Mantova/ProjectOperations/blob/main/roadmap.md
 
 ### progress.md
 Maintained at repo root. Append-only. Never delete entries.
-Fetch: https://github.com/GH-Mantova/ProjectOperations/blob/main/progress.md
+Fetch (full file): https://raw.githubusercontent.com/GH-Mantova/ProjectOperations/main/progress.md
+Fetch (navigation): https://github.com/GH-Mantova/ProjectOperations/blob/main/progress.md
+Note: always use the raw URL for reading file contents — the blob URL
+serves a truncated HTML page that cuts off long files.
 
 Format:
 ```
@@ -809,7 +812,7 @@ gh pr create --title "chore: chain complete log" \
 Pause message format:
 ```
 ⏸️  CHAIN PAUSED
-URL: https://github.com/GH-Mantova/ProjectOperations/blob/main/progress.md
+URL: https://raw.githubusercontent.com/GH-Mantova/ProjectOperations/main/progress.md
 Reason: [why]
 Waiting for: [what's needed]
 Type CONTINUE or paste fix instructions to resume.

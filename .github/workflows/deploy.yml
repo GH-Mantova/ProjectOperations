@@ -1,8 +1,14 @@
 name: Deploy
 
+# DISABLED — manual trigger only. See on: block below.
+# Re-enable on: push when production deployment is ready.
+
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
+    # Manual-only until production deployment is wired up.
+    # Re-enable push trigger after Azure secrets are configured
+    # and tendering module is signed off (roadmap §5A).
+    # See progress.md 2026-04-27 for context.
 
 jobs:
   deploy:

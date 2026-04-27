@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-04-27 20:40 AEST
+Last updated: 2026-04-27 20:54 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -592,3 +592,20 @@ findings: none. Merged via squash. project_instructions.md §13
 PLATFORM updated with Form drafts entry. roadmap.md PHASE 6 updated
 with admin CRUD wiring + timesheet/pre-start decision + FormSubmitPage
 dead-code follow-ups.
+
+## 2026-04-27 20:52 AEST — PR #114 MERGED — disable noisy deploy workflow
+
+Type: PR
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/114
+Branch: chore/disable-deploy-workflow
+Detail: .github/workflows/deploy.yml changed from on:push:main to
+on:workflow_dispatch (manual-only). Was firing on every push to main
+and failing because Azure secrets (AZURE_API_APP_NAME, AZURE_API_PUBLISH_PROFILE,
+AZURE_STATIC_WEB_APPS_TOKEN, PROD_DATABASE_URL, PROD_API_BASE_URL)
+aren't configured yet. Generated email noise on every PR merge.
+Production deployment gated on tendering sign-off (roadmap §5A).
+Re-enable on:push when secrets are configured and §5A signed off.
+Files: .github/workflows/deploy.yml, progress.md, roadmap.md.
+Audit findings: none. The merge of this PR is itself the test —
+no "deploy.yml failed" email expected after merge.

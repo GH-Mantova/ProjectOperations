@@ -641,6 +641,14 @@ Similar to Excel pivot tables / Power BI — scoped to IS's own data.
 - Global Lists system
 - PWA — offline field worker support, install prompt, IndexedDB outbox,
   auto-sync on reconnect, 5-attempt retry with dead-letter handling
+- Form drafts — IndexedDB-backed (separate DB from PWA outbox), manual
+  Save draft button + auto-save on visibilitychange, one draft per
+  (userId, formType), 30-day purge, scoped by userId so other users on
+  the same device can't see drafts. Hardcoded denylist guards
+  password/secret/token/otp/cvv/card-number fields. Foundation +
+  6 forms wired (FormFillPage migrated from localStorage; field safety
+  incident/hazard; contact create; tender clarifications; worker
+  leave/unavailability). Admin CRUD wiring deferred to follow-up.
 
 **INTEGRATIONS**
 - SharePoint — Microsoft Graph API (SHAREPOINT_MODE=live|mock)

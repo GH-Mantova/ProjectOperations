@@ -116,41 +116,68 @@ filters, inline-autosave) likely become SKIP.
 
 ---
 
-## Open questions for the user
+## Resolutions (locked 2026-04-27)
 
-1. **Admin CRUD scope**: do you want every YES-defaulted admin form
-   wired in this PR, or limit Phase 1 to the **17 confirmed forms**
-   (FormFillPage + field workers + safety + contacts + tender
-   clarifications + worker availability) and leave admin CRUD for a
-   follow-up PR?
-   - Recommendation: **limit to 17 confirmed forms** for this PR.
-     Admin CRUD forms are lower-traffic and the foundation can prove
-     itself on the higher-value mobile/field path first.
+User confirmed all five recommendations with adjustments:
 
-2. **FormFillPage migration**: replace its existing localStorage logic
-   wholesale with `useFormDraft`, or keep localStorage as a fallback
-   when IndexedDB is unavailable (private mode)?
-   - Recommendation: **wholesale replace**. The new store should
-     handle the unavailable case gracefully (try/catch + console warn).
+1. **Scope locked to the 15 confirmed forms.** Admin CRUD (~20 pages)
+   deferred to a follow-up PR. Reasons recorded:
+   (a) keeps this PR's surface knowable rather than open-ended,
+   (b) admin CRUD is mostly low-stakes short forms with lower draft value,
+   (c) avoids token-budget risk wiring forms whose context isn't fully known.
+   A roadmap.md entry will be added in Phase 3 so the follow-up isn't lost.
 
-3. **TenderingSettingsPage**: settings forms — wire or skip?
-   - Recommendation: **skip**. Settings are usually completed in one
-     sitting; adding draft state confuses the "did I save?" question.
+2. **FormFillPage = wholesale replace** of localStorage with
+   `useFormDraft` + try/catch IDB-unavailable fallback. **Plus**:
+   - Read existing localStorage shape before replacing; preserve any
+     downstream-readable fields.
+   - One-shot migration: on first load post-deploy, scan localStorage
+     for existing draft keys, copy into IndexedDB, then clear the
+     localStorage key. Gated by an IDB meta flag so it runs once.
 
-4. **ScopeOfWorksTab inline autosave**: confirm the existing
-   per-row backend autosave is genuinely an autosave (not just a
-   submit-on-blur). If autosave: skip. If submit-on-blur: wire.
-   - Will verify before Phase 1 starts.
+3. **TenderingSettingsPage = SKIP.** Settings are short, intentional,
+   rarely abandoned mid-flight; drafts add UX clutter (banner on every
+   visit) for negligible benefit.
 
-5. **FormFillPage ↔ FormSubmitPage**: confirm FormSubmitPage is truly
-   superseded and unused, or whether it still serves some subset of
-   templates.
+4. **ScopeOfWorksTab = SKIP.** Verified: the tab uses submit-on-blur
+   to backend (`onBlur={() => void onSave({ siteAddress: form.siteAddress })}`
+   pattern at lines 547, 555, 563, 572, 585, 595, 606, 1172, 1195, 1218
+   in `apps/web/src/pages/tendering/ScopeOfWorksTab.tsx`). Per rule
+   "submit-on-blur to backend → SKIP (backend is already source of
+   truth)". The single inner `<form onSubmit>` at line 1054 is a
+   short-lived "add scope row" inline form — too transient to benefit
+   from drafts.
+
+5. **FormSubmitPage = SKIP + dead-code candidate.** Verified: route
+   `/forms/submit/:templateId` mounted in `apps/web/src/App.tsx:185`
+   but `grep -rn "to=\"/forms/submit\|navigate.*forms/submit"` finds
+   zero links/navigates anywhere in the codebase. The file also has no
+   `localStorage` usage. **Action**: skip drafts here; open a separate
+   dead-code PR to delete the route + page (NOT in this PR).
+
+## Defence-in-depth on denylist
+
+Per user instruction: the field-name regex guard inside
+`FormDraftStore.save()` is the second line of defence. The first is
+that denylisted forms (LoginPage, PortalLoginPage,
+PortalAcceptInvitePage) simply never call `useFormDraft`. Phase 1
+must NOT introduce any shared form util that could write into
+IndexedDB by default — opt-in only via the hook.
+
+## Admin CRUD deferral (formal record)
+
+~20 admin CRUD pages (UsersPage, RolesPage, SubcontractorsPage create/
+edit modals, SitesListPage modal, WorkersListPage, ContractDetailPage,
+JobsListPage, ProjectDetailPage edit, MaintenancePage event logging,
+AssetsPage create/edit, etc.) — **deferred to a follow-up PR per scope
+decision 2026-04-27**. To be inventoried in detail at follow-up start.
+Roadmap entry to be added under "Form drafts — Phase 2 (admin CRUD)".
 
 ---
 
 ## Next step
 
-Per the chain spec, **STOP after this commit**. User reviews,
-confirms or adjusts the inventory, then says GO to start Phase 1
-(foundation: FormDraftStore, useFormDraft hook, components, purge job,
-tests).
+User said GO. Proceeding straight through Phase 1 (foundation) → Phase 2
+(15 form integrations) → Phase 3 (project_instructions update + roadmap
+follow-up entry) → pre-PR checks → open PR. WIP commit only if token
+budget actually forces it.

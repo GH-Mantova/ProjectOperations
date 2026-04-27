@@ -1,6 +1,7 @@
-import type { ReactElement } from "react";
+import { useEffect, type ReactElement } from "react";
 import { Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
+import { runDraftPurgeJob } from "./drafts";
 import { LoginPage } from "./pages/LoginPage";
 import { ShellLayout } from "./components/ShellLayout";
 import { DashboardPlaceholderPage } from "./pages/DashboardPlaceholderPage";
@@ -104,9 +105,22 @@ function RootRedirect({ children }: { children: ReactElement }) {
   return children;
 }
 
+// PR #111 — once-per-session purge sweep + legacy localStorage migration.
+// Runs after the auth context resolves so we have a userId for the
+// migration step. Desktop, portal, and field routes all benefit from
+// the daily purge regardless of which surface the user logs into.
+function DraftPurgeRunner() {
+  const { user } = useAuth();
+  useEffect(() => {
+    void runDraftPurgeJob(user?.id ?? null);
+  }, [user?.id]);
+  return null;
+}
+
 export function App() {
   return (
     <AuthProvider>
+      <DraftPurgeRunner />
       {/* PR F FIX 1 — OfflineProvider scoped to /field/* only. Desktop and
           portal routes are online-only, so they don't need the IndexedDB
           outbox / online-state listeners running for every navigation. */}

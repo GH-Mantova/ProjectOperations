@@ -181,3 +181,41 @@ User said GO. Proceeding straight through Phase 1 (foundation) → Phase 2
 (15 form integrations) → Phase 3 (project_instructions update + roadmap
 follow-up entry) → pre-PR checks → open PR. WIP commit only if token
 budget actually forces it.
+
+---
+
+## Implementation deltas vs the original 15-form plan
+
+During wiring I confirmed two more forms belong on the SKIP list and
+consolidated two forms into one draft. Final wire count: **6 distinct
+draft slots**, covering **7 conceptual form variants** across **5
+files**. Documented here so the PR body matches reality.
+
+| Original plan | Actual outcome | Reason |
+|---|---|---|
+| SafetyPage incident + hazard | SKIP | These are LINKS to `/forms?...` — drafts already covered by FormFillPage migration |
+| FieldTimesheetPage create + edit | SKIP | Existing "Save draft" button is a backend save (PATCH server-side draft state). Per "already has backend autosave: SKIP" rule. |
+| FieldPreStartPage create + edit | SKIP | Same — existing backend draft. |
+| TenderClarificationLog RFI + note | Consolidated into one draft | Same UI form toggles between RFI / note via state. One `tender_clarification_entry_create` draft per tender that captures `entryKind` so restore is faithful. |
+| ContactsTab create + edit | Create only | Edits load from server; re-edit is cheap. Drafts add friction without value for edits. |
+
+### Final wire list
+
+| File | formType | contextKey | Notes |
+|---|---|---|---|
+| pages/forms/FormFillPage.tsx | form_submission_fill | submissionId | Wholesale localStorage→IDB migration; one-shot legacy import in draftPurgeJob |
+| pages/field/FieldSafetyPage.tsx (IncidentForm) | field_safety_incident_create | null | manual button + visibilitychange auto-save |
+| pages/field/FieldSafetyPage.tsx (HazardForm) | field_safety_hazard_create | null | manual button + visibilitychange auto-save |
+| components/contacts/ContactsTab.tsx (create mode) | contact_create | organisationId | hook is no-op in edit mode (empty formType) |
+| pages/tendering/TenderClarificationLog.tsx | tender_clarification_entry_create | tenderId | Single draft covers RFI and note kinds |
+| pages/workers/AvailabilitySection.tsx (leave) | worker_leave_create | workerProfileId | |
+| pages/workers/AvailabilitySection.tsx (unavail) | worker_unavailability_create | workerProfileId | |
+
+7 draft slots, 5 files, 1 wholesale migration.
+
+### Deferred to follow-up (separate "Form drafts — Phase 2" PR per scope decision)
+
+- All ~20 admin CRUD pages from "Pending review" section above.
+- Field timesheet + pre-start (need their existing backend-draft logic
+  rationalised against the new local-draft layer — separate concern).
+- FormSubmitPage dead-code deletion (separate cleanup PR).

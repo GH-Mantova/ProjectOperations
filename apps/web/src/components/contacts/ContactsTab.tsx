@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { DraftBanner, SaveDraftButton, useFormDraft } from "../../drafts";
 
 export type ContactRecord = {
   id: string;
@@ -405,10 +406,23 @@ export function ContactFormModal({
   onClose: () => void;
   onSaved: (msg: string) => void;
 }) {
-  const { authFetch } = useAuth();
+  const { authFetch, user } = useAuth();
   const [form, setForm] = useState<FormState>(existing ? fromRecord(existing) : EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // PR #111 — drafts only for create mode. Edits already have the
+  // server-side record as source of truth; re-editing is cheap so a
+  // local draft adds friction without value. Empty formType makes the
+  // hook a no-op (early-returns inside the hook).
+  const draftFormType = existing ? "" : "contact_create";
+  const draft = useFormDraft({
+    formType: draftFormType,
+    contextKey: organisationId,
+    schemaVersion: 1,
+    getValues: () => form,
+    setValues: (d) => setForm(d as FormState)
+  });
 
   // PR D FIX 3 — only allow reassignment when editing an existing contact.
   // Adding from a parent screen always inherits the parent's organisation.
@@ -497,6 +511,7 @@ export function ContactFormModal({
         body: JSON.stringify(payload)
       });
       if (!response.ok) throw new Error(await response.text());
+      if (!existing) await draft.discardDraft();
       onSaved(
         orgChanged ? "Contact moved" : existing ? "Contact updated" : "Contact added"
       );
@@ -531,6 +546,15 @@ export function ContactFormModal({
         <h3 className="s7-type-section-heading" style={{ margin: "0 0 12px" }}>
           {existing ? "Edit contact" : "Add contact"}
         </h3>
+
+        {!existing && draft.hasDraft ? (
+          <DraftBanner
+            userId={user?.id ?? null}
+            formType={draftFormType}
+            onRestore={draft.restoreDraft}
+            onDiscard={draft.discardDraft}
+          />
+        ) : null}
 
         {existing ? (
           <fieldset
@@ -685,13 +709,22 @@ export function ContactFormModal({
 
         {err ? <p style={{ color: "var(--status-danger)", marginTop: 8 }}>{err}</p> : null}
 
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
-          <button type="button" className="s7-btn s7-btn--ghost" onClick={onClose}>
-            Cancel
-          </button>
-          <button type="submit" className="s7-btn s7-btn--primary" disabled={submitting}>
-            {submitting ? "Saving…" : existing ? "Save changes" : "Add contact"}
-          </button>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+          {!existing ? (
+            <SaveDraftButton
+              onSave={draft.saveDraft}
+              lastSavedAt={draft.lastSavedAt}
+              disabled={submitting}
+            />
+          ) : <span />}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" className="s7-btn s7-btn--ghost" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" className="s7-btn s7-btn--primary" disabled={submitting}>
+              {submitting ? "Saving…" : existing ? "Save changes" : "Add contact"}
+            </button>
+          </div>
         </div>
       </form>
     </div>

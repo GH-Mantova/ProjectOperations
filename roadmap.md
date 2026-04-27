@@ -186,6 +186,26 @@ of the entire ERP — everything else depends on it being correct.
 ⏸️  Azure Mail.Send permission — production email sending
     (company not ready for Azure integration yet — deferred until tendering
      module is signed off and production launch is planned)
+⏸️  Form drafts — Phase 2 (admin CRUD wiring)
+    (Phase 1 shipped foundation + 6 user-facing forms in PR #111. ~20
+     admin CRUD pages — UsersPage, RolesPage, SubcontractorsPage modals,
+     SitesListPage modal, WorkersListPage, ContractDetailPage,
+     JobsListPage, ProjectDetailPage edit, MaintenancePage event
+     logging, AssetsPage create/edit, master-data CRUD, etc. — were
+     deferred per scope decision 2026-04-27 to keep PR #111's surface
+     knowable. Each needs the useFormDraft hook + DraftBanner +
+     SaveDraftButton wired with appropriate formType / contextKey.
+     See docs/form-drafts-inventory.md "Pending review" section.)
+⏸️  Form drafts — field timesheet + pre-start integration
+    (Existing "Save draft" buttons on FieldTimesheetPage and
+     FieldPreStartPage are backend saves to a server-side draft state.
+     Need product decision on whether to layer local IDB drafts on top
+     or keep backend-only. Deferred from PR #111 inventory pass.)
+⏸️  FormSubmitPage dead code removal
+    (Route /forms/submit/:templateId is mounted in App.tsx but no
+     navigates/links anywhere in the codebase point to it. Superseded
+     by FormFillPage. Verified during PR #111 inventory. Separate
+     dead-code cleanup PR.)
 
 ---
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { EmptyState } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { DraftBanner, SaveDraftButton, useFormDraft } from "../../drafts";
 
 // Unified "Clarifications & Communications" section.
 // Merges two data sources into one chronological list:
@@ -104,7 +105,7 @@ export function TenderClarificationLog({
   rfiItems: RfiItem[];
   onRfiChanged: () => void;
 }) {
-  const { authFetch } = useAuth();
+  const { authFetch, user } = useAuth();
   const [notes, setNotes] = useState<NoteItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -117,6 +118,37 @@ export function TenderClarificationLog({
   const [dueDate, setDueDate] = useState("");
   const [occurredAt, setOccurredAt] = useState("");
   const [posting, setPosting] = useState(false);
+
+  // PR #111 — one draft per (user, tender) covering whichever entry
+  // kind the user is mid-flight on. The draft includes entryKind so
+  // restore is faithful regardless of which radio they last chose.
+  const draftFormType = "tender_clarification_entry_create";
+  const draft = useFormDraft({
+    formType: draftFormType,
+    contextKey: tenderId,
+    schemaVersion: 1,
+    getValues: () => ({ entryKind, direction, noteType, subject, text, dueDate, occurredAt }),
+    setValues: (d) => {
+      const data = d as {
+        entryKind: "rfi" | "note";
+        direction: "sent" | "received";
+        noteType: NoteType;
+        subject: string;
+        text: string;
+        dueDate: string;
+        occurredAt: string;
+      };
+      setEntryKind(data.entryKind);
+      setDirection(data.direction);
+      setNoteType(data.noteType);
+      setSubject(data.subject);
+      setText(data.text);
+      setDueDate(data.dueDate);
+      setOccurredAt(data.occurredAt);
+      // Open the form so the user sees their restored values.
+      setAdding(true);
+    }
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -204,6 +236,7 @@ export function TenderClarificationLog({
         if (!response.ok) throw new Error(await response.text());
         await load();
       }
+      await draft.discardDraft();
       resetForm();
     } catch (err) {
       setError((err as Error).message);
@@ -254,6 +287,17 @@ export function TenderClarificationLog({
           </button>
         ) : null}
       </div>
+
+      {!adding && draft.hasDraft ? (
+        <DraftBanner
+          userId={user?.id ?? null}
+          formType={draftFormType}
+          onRestore={async () => {
+            await draft.restoreDraft();
+          }}
+          onDiscard={draft.discardDraft}
+        />
+      ) : null}
 
       {adding ? (
         <form
@@ -355,17 +399,24 @@ export function TenderClarificationLog({
               required
             />
           )}
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <button type="button" className="s7-btn s7-btn--ghost" onClick={resetForm}>
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="s7-btn s7-btn--primary"
-              disabled={posting || (entryKind === "rfi" ? !subject.trim() : !text.trim())}
-            >
-              {posting ? "Saving…" : "Save"}
-            </button>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <SaveDraftButton
+              onSave={draft.saveDraft}
+              lastSavedAt={draft.lastSavedAt}
+              disabled={posting}
+            />
+            <div style={{ display: "flex", gap: 8 }}>
+              <button type="button" className="s7-btn s7-btn--ghost" onClick={resetForm}>
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="s7-btn s7-btn--primary"
+                disabled={posting || (entryKind === "rfi" ? !subject.trim() : !text.trim())}
+              >
+                {posting ? "Saving…" : "Save"}
+              </button>
+            </div>
           </div>
         </form>
       ) : null}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { FormDraftStore } from "../../drafts";
 
 // ── Types matching the engine response shape ─────────────────────────────
 
@@ -176,13 +177,20 @@ function buildInitialValues(submission: Submission): ValueMap {
   return out;
 }
 
-const DRAFT_KEY = (id: string) => `forms.draft.${id}`;
+// PR #111 — FormFillPage uses continuous 700ms-debounced autosave to BOTH
+// the server (PATCH /values) and a local cache. Pre-#111 the local cache
+// was localStorage; we now write to IndexedDB via FormDraftStore so private
+// mode + cross-tab safety improve, and so we share the 30-day purge with
+// every other draft in the system. The localStorage→IDB one-shot migration
+// runs from draftPurgeJob on app boot — see DraftPurgeRunner in App.tsx.
+const FORM_FILL_FORM_TYPE = "form_submission_fill";
+const FORM_FILL_SCHEMA_VERSION = 1;
 
 // ── Component ────────────────────────────────────────────────────────────
 
 export function FormFillPage() {
   const { submissionId } = useParams<{ submissionId: string }>();
-  const { authFetch } = useAuth();
+  const { authFetch, user } = useAuth();
   const navigate = useNavigate();
 
   const [submission, setSubmission] = useState<Submission | null>(null);
@@ -222,14 +230,18 @@ export function FormFillPage() {
         if (cancelled) return;
         setSubmission(body);
         // Merge any locally-saved offline draft on top of server-side values so
-        // the worker's in-flight edits aren't lost when they reconnect.
+        // the worker's in-flight edits aren't lost when they reconnect. Source
+        // is IndexedDB (PR #111) — see FormDraftStore. Pre-#111 localStorage
+        // drafts were migrated by the one-shot draftPurgeJob on app boot.
         const initial = buildInitialValues(body);
         try {
-          const draftRaw = localStorage.getItem(DRAFT_KEY(body.id));
-          if (draftRaw) {
-            const draft = JSON.parse(draftRaw) as { values: ValueMap; sectionIndex?: number };
-            setValues({ ...initial, ...(draft.values ?? {}) });
-            if (typeof draft.sectionIndex === "number") setSectionIndex(draft.sectionIndex);
+          const draft = user?.id
+            ? await FormDraftStore.get(user.id, FORM_FILL_FORM_TYPE)
+            : null;
+          if (draft && draft.contextKey === body.id) {
+            const payload = draft.data as { values: ValueMap; sectionIndex?: number };
+            setValues({ ...initial, ...(payload.values ?? {}) });
+            if (typeof payload.sectionIndex === "number") setSectionIndex(payload.sectionIndex);
           } else {
             setValues(initial);
           }
@@ -252,14 +264,27 @@ export function FormFillPage() {
 
   const currentSection = sections[sectionIndex];
 
-  // Auto-save (debounced) — local first, server when online
+  // Auto-save (debounced) — local IndexedDB first, server when online.
+  // PR #111: FormDraftStore replaces the previous localStorage cache.
+  // Sensitive-field guard inside save() means a forms engine template
+  // that accidentally includes a "password" field would surface a
+  // SensitiveFieldError instead of silently caching it.
   const persistDraft = useCallback(
     async (next: ValueMap, idx: number) => {
       if (!submission) return;
-      try {
-        localStorage.setItem(DRAFT_KEY(submission.id), JSON.stringify({ values: next, sectionIndex: idx }));
-      } catch {
-        // localStorage may be full / disabled — silent
+      if (user?.id) {
+        try {
+          await FormDraftStore.save(
+            user.id,
+            FORM_FILL_FORM_TYPE,
+            submission.id,
+            { values: next, sectionIndex: idx },
+            FORM_FILL_SCHEMA_VERSION
+          );
+        } catch {
+          // IDB unavailable / quota / sensitive-field — silent so the
+          // form continues to function. Server save below is still tried.
+        }
       }
       if (!online) {
         setSaveStatus("saved");
@@ -277,7 +302,7 @@ export function FormFillPage() {
         setSaveStatus("error");
       }
     },
-    [authFetch, online, submission]
+    [authFetch, online, submission, user?.id]
   );
 
   const scheduleSave = useCallback(
@@ -409,10 +434,12 @@ export function FormFillPage() {
       }
       if (!res.ok) throw new Error(await res.text());
       const body = (await res.json()) as { id: string; triggeredRecords?: Array<{ recordType: string; recordId: string }> };
-      try {
-        localStorage.removeItem(DRAFT_KEY(submission.id));
-      } catch {
-        // ignore
+      if (user?.id) {
+        try {
+          await FormDraftStore.delete(user.id, FORM_FILL_FORM_TYPE);
+        } catch {
+          // ignore — draft would be purged within 30 days anyway
+        }
       }
       setSubmitted({
         ref: body.id,

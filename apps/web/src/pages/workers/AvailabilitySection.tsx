@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { DraftBanner, SaveDraftButton, useFormDraft } from "../../drafts";
 
 type Leave = {
   id: string;
@@ -203,7 +204,7 @@ function AddModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const { authFetch } = useAuth();
+  const { authFetch, user } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -214,6 +215,32 @@ function AddModal({
   const [reason, setReason] = useState("");
   const [recurringDay, setRecurringDay] = useState<string>("");
   const [notes, setNotes] = useState("");
+
+  // PR #111 — separate draft per mode (leave / unavailability) so the
+  // user can have one of each in flight at the same time.
+  const formType = mode === "leave" ? "worker_leave_create" : "worker_unavailability_create";
+  const { hasDraft, lastSavedAt, saveDraft, restoreDraft, discardDraft } = useFormDraft({
+    formType,
+    contextKey: workerProfileId,
+    schemaVersion: 1,
+    getValues: () => ({ startDate, endDate, leaveType, reason, recurringDay, notes }),
+    setValues: (d) => {
+      const data = d as {
+        startDate: string;
+        endDate: string;
+        leaveType: (typeof LEAVE_TYPES)[number];
+        reason: string;
+        recurringDay: string;
+        notes: string;
+      };
+      setStartDate(data.startDate);
+      setEndDate(data.endDate);
+      setLeaveType(data.leaveType);
+      setReason(data.reason);
+      setRecurringDay(data.recurringDay);
+      setNotes(data.notes);
+    }
+  });
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -241,6 +268,7 @@ function AddModal({
         body: JSON.stringify(body)
       });
       if (!r.ok) throw new Error(await r.text());
+      await discardDraft();
       onSaved();
     } catch (e2) {
       setErr((e2 as Error).message);
@@ -273,6 +301,15 @@ function AddModal({
         <h3 className="s7-type-section-heading" style={{ margin: "0 0 12px" }}>
           {mode === "leave" ? "Add leave" : "Add unavailability"}
         </h3>
+
+        {hasDraft ? (
+          <DraftBanner
+            userId={user?.id ?? null}
+            formType={formType}
+            onRestore={restoreDraft}
+            onDiscard={discardDraft}
+          />
+        ) : null}
 
         {mode === "leave" ? (
           <label style={{ display: "block", marginBottom: 10, fontSize: 13 }}>
@@ -356,13 +393,16 @@ function AddModal({
 
         {err ? <p style={{ color: "var(--status-danger)", marginTop: 8 }}>{err}</p> : null}
 
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
-          <button type="button" className="s7-btn s7-btn--ghost" onClick={onClose}>
-            Cancel
-          </button>
-          <button type="submit" className="s7-btn s7-btn--primary" disabled={submitting}>
-            {submitting ? "Saving…" : "Save"}
-          </button>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+          <SaveDraftButton onSave={saveDraft} lastSavedAt={lastSavedAt} disabled={submitting} />
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" className="s7-btn s7-btn--ghost" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" className="s7-btn s7-btn--primary" disabled={submitting}>
+              {submitting ? "Saving…" : "Save"}
+            </button>
+          </div>
         </div>
       </form>
     </div>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { DraftBanner, SaveDraftButton, useFormDraft } from "../../drafts";
 
 type IncidentType =
   | "near_miss"
@@ -246,7 +247,7 @@ function IncidentForm({
   onSaved: (incidentNumber: string) => void;
   onCancel: () => void;
 }) {
-  const { authFetch } = useAuth();
+  const { authFetch, user } = useAuth();
   const [form, setForm] = useState({
     incidentDate: new Date().toISOString().slice(0, 16),
     location: "",
@@ -258,6 +259,15 @@ function IncidentForm({
   });
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // PR #111 — drafts persist across tab-switches and full app reloads.
+  const { hasDraft, lastSavedAt, saveDraft, restoreDraft, discardDraft } = useFormDraft({
+    formType: "field_safety_incident_create",
+    contextKey: null,
+    schemaVersion: 1,
+    getValues: () => form,
+    setValues: (d) => setForm(d as typeof form)
+  });
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -284,6 +294,7 @@ function IncidentForm({
       });
       if (!response.ok) throw new Error(await response.text());
       const created = (await response.json()) as { incidentNumber: string };
+      await discardDraft();
       onSaved(created.incidentNumber);
     } catch (e2) {
       setErr((e2 as Error).message);
@@ -295,6 +306,14 @@ function IncidentForm({
   return (
     <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <h2 style={{ margin: "0 0 8px", fontSize: 20 }}>Report incident</h2>
+      {hasDraft ? (
+        <DraftBanner
+          userId={user?.id ?? null}
+          formType="field_safety_incident_create"
+          onRestore={restoreDraft}
+          onDiscard={discardDraft}
+        />
+      ) : null}
       <FieldInput
         label="When"
         type="datetime-local"
@@ -335,6 +354,7 @@ function IncidentForm({
         onChange={(v) => setForm({ ...form, witnesses: v })}
       />
       {err ? <p style={{ color: "#dc2626", margin: 0 }}>{err}</p> : null}
+      <SaveDraftButton onSave={saveDraft} lastSavedAt={lastSavedAt} disabled={submitting} />
       <div style={{ display: "flex", gap: 8 }}>
         <button type="button" className="field-btn" onClick={onCancel} style={{ flex: 1 }}>
           Cancel
@@ -359,7 +379,7 @@ function HazardForm({
   onSaved: (hazardNumber: string) => void;
   onCancel: () => void;
 }) {
-  const { authFetch } = useAuth();
+  const { authFetch, user } = useAuth();
   const [form, setForm] = useState({
     observationDate: new Date().toISOString().slice(0, 16),
     location: "",
@@ -371,6 +391,14 @@ function HazardForm({
   });
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  const { hasDraft, lastSavedAt, saveDraft, restoreDraft, discardDraft } = useFormDraft({
+    formType: "field_safety_hazard_create",
+    contextKey: null,
+    schemaVersion: 1,
+    getValues: () => form,
+    setValues: (d) => setForm(d as typeof form)
+  });
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -395,6 +423,7 @@ function HazardForm({
       });
       if (!response.ok) throw new Error(await response.text());
       const created = (await response.json()) as { hazardNumber: string };
+      await discardDraft();
       onSaved(created.hazardNumber);
     } catch (e2) {
       setErr((e2 as Error).message);
@@ -406,6 +435,14 @@ function HazardForm({
   return (
     <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <h2 style={{ margin: "0 0 8px", fontSize: 20 }}>Report hazard</h2>
+      {hasDraft ? (
+        <DraftBanner
+          userId={user?.id ?? null}
+          formType="field_safety_hazard_create"
+          onRestore={restoreDraft}
+          onDiscard={discardDraft}
+        />
+      ) : null}
       <FieldInput
         label="When"
         type="datetime-local"
@@ -446,6 +483,7 @@ function HazardForm({
         onChange={(v) => setForm({ ...form, dueDate: v })}
       />
       {err ? <p style={{ color: "#dc2626", margin: 0 }}>{err}</p> : null}
+      <SaveDraftButton onSave={saveDraft} lastSavedAt={lastSavedAt} disabled={submitting} />
       <div style={{ display: "flex", gap: 8 }}>
         <button type="button" className="field-btn" onClick={onCancel} style={{ flex: 1 }}>
           Cancel

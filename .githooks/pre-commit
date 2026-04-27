@@ -1,0 +1,46 @@
+#!/usr/bin/env sh
+# Auto-stamps "Last updated:" on documentation files when they're staged.
+# Triggered by pre-commit. Idempotent (safe to run on every commit).
+
+set -e
+
+# AEST = UTC+10 fixed (Brisbane has no DST). Use TZ=Australia/Brisbane.
+NOW=$(TZ=Australia/Brisbane date '+%Y-%m-%d %H:%M AEST')
+
+DOCS="progress.md roadmap.md project_instructions.md"
+
+for f in $DOCS; do
+  # Only act if this file is staged for commit
+  if git diff --cached --name-only | grep -q "^${f}$"; then
+    if [ ! -f "$f" ]; then
+      continue
+    fi
+
+    # Replace the "Last updated:" line. Two formats supported:
+    #   Markdown:   "Last updated: ..."
+    #   Comment:    "# Last updated: ..."
+    # If neither exists, insert "Last updated: ..." after the first H1
+    # or comment-header block.
+
+    if grep -qE "^# Last updated:" "$f"; then
+      # Comment-style stamp (matches project_instructions.md current format)
+      sed -i.bak -E "s|^# Last updated:.*|# Last updated: ${NOW}|" "$f"
+      rm -f "${f}.bak"
+    elif grep -qE "^Last updated:" "$f"; then
+      sed -i.bak -E "s|^Last updated:.*|Last updated: ${NOW}|" "$f"
+      rm -f "${f}.bak"
+    else
+      # Insert a "Last updated:" line after the first H1 heading
+      # (the "# Title" line). awk gives us atomic insert.
+      awk -v stamp="Last updated: ${NOW}" '
+        BEGIN { inserted=0 }
+        /^# / && !inserted { print; print ""; print stamp; inserted=1; next }
+        { print }
+      ' "$f" > "${f}.tmp" && mv "${f}.tmp" "$f"
+    fi
+
+    git add "$f"
+  fi
+done
+
+exit 0

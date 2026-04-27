@@ -1,4 +1,7 @@
 # ProjectOperations — Autonomous PR Chain
+
+Last updated: 2026-04-27 20:40 AEST
+
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
 # Audit passes: after #80-#81, after #82-#83, after #84-#85, after #86-#87
@@ -6,6 +9,24 @@
 # Bypass actor: RepositoryRole=Admin (actor_id=5) on ruleset 15532058
 # progress.md: https://raw.githubusercontent.com/GH-Mantova/ProjectOperations/main/progress.md
 
+## TABLE OF CONTENTS
+
+Progress is append-only — most recent entries are at the end.
+
+| Section | Coverage | Date range |
+|---------|----------|-----------|
+| Original chain (PRs #80–#90 + 3 hotfixes + 4 audits) | SharePoint, Safety, Gantt, Portal, GPS, Availability, Xero, PWA | 2026-04-25 |
+| Full update chain (PRs #103–#108 + comprehensive audit) | Quote/scope, PDF, Directory, Sites, PWA tech-debt | 2026-04-26 |
+| Backfill PRs #92–#102 | Historical chronological log added 2026-04-26 12:05 AEST | 2026-04-25 to 2026-04-26 |
+| PR #111 (FIX 4) | Form drafts (IndexedDB) | 2026-04-27 |
+| PR #112 | Doc cleanup (this PR's predecessor) | 2026-04-27 |
+| (this PR) | Doc hygiene infrastructure | 2026-04-27 |
+
+**Quick navigation:**
+- Latest entry → scroll to bottom of file
+- Find a specific PR → Ctrl+F "PR #<number> MERGED"
+- Find an audit → Ctrl+F "AUDIT PASS"
+- Find a chain pause → Ctrl+F "CHAIN PAUSED"
 
 ## 2026-04-25 11:09 AEST — PR #80 STARTED
 Type: PR

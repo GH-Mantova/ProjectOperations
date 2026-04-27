@@ -544,3 +544,30 @@ Steps completed:
      present, 7 staff, 8 system form templates.
   8. progress.md backfilled with PRs #92-#102 historical entries.
 Bypass actor: REMOVING NOW.
+
+## 2026-04-27 06:40 AEST — PR #111 MERGED — FIX 4 form drafts
+Type: PR
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/111
+Branch: feat/form-drafts-indexeddb
+Detail: IndexedDB form drafts shipped (deferred FIX 4 from FULL UPDATE
+CHAIN). Foundation (FormDraftStore + useFormDraft hook + SaveDraftButton
++ DraftBanner + OverwriteConfirmDialog + runDraftPurgeJob) under
+apps/web/src/drafts. 6 draft slots wired across 5 files: FormFillPage
+(wholesale localStorage→IDB migration with one-shot import), FieldSafetyPage
+incident, FieldSafetyPage hazard, ContactsTab create-only,
+TenderClarificationLog (RFI+note consolidated), AvailabilitySection
+leave+unavail. Skipped from original 15-form plan (evidence in
+docs/form-drafts-inventory.md): FieldTimesheetPage + FieldPreStartPage
+(backend PATCH already exists), ScopeOfWorksTab (submit-on-blur),
+TenderingSettingsPage, SafetyPage links, AdvanceStatusModal,
+FormDesignerPage, FormSubmitPage (orphaned). Defence in depth on denylist:
+opt-in hook + sensitive-field regex guard inside FormDraftStore.save
+(password|secret|token|otp|cvv|card.?number). 30-day purge runs on
+app load via DraftPurgeRunner after auth resolves. Local CI: lint x2,
+test x2 (72 api + 48 web incl. 20 new draft tests via fake-indexeddb),
+build incl. PWA, compliance:smoke. CI on PR: 6/6 SUCCESS. Audit
+findings: none. Merged via squash. project_instructions.md §13
+PLATFORM updated with Form drafts entry. roadmap.md PHASE 6 updated
+with admin CRUD wiring + timesheet/pre-start decision + FormSubmitPage
+dead-code follow-ups.

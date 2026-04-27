@@ -172,9 +172,6 @@ of the entire ERP — everything else depends on it being correct.
 ⏸️  Drag-to-reschedule Gantt UI
     (API supports it — purely frontend @dnd-kit work)
 ⏸️  Scheduler weekly grid view
-⏸️  OfflineProvider boundary (PWA — audit #4 major)
-⏸️  SW autoUpdate race condition (PWA — audit #4 major)
-⏸️  Dead-letter UX for failed syncs (PWA — audit #4 major)
 ⏸️  Worker/WorkerProfile dual model consolidation
     (ResourcesPage still calls /resources/workers — different model)
 ⏸️  directory.finance inline permission → guard decorator
@@ -186,6 +183,13 @@ of the entire ERP — everything else depends on it being correct.
 ⏸️  Azure Mail.Send permission — production email sending
     (company not ready for Azure integration yet — deferred until tendering
      module is signed off and production launch is planned)
+⏸️  Audit script endpoint path corrections
+    (Comprehensive audit 2026-04-26 12:02 flagged stale paths in the
+     chain audit script: /integrations/xero/status should be /xero/status,
+     /maintenance/dashboard should be /maintenance/upcoming,
+     /notifications should be /notification/settings. Causes false-
+     positive 404s on every chain audit. Update the audit script
+     template before next chain run.)
 ⏸️  Form drafts — Phase 2 (admin CRUD wiring)
     (Phase 1 shipped foundation + 6 user-facing forms in PR #111. ~20
      admin CRUD pages — UsersPage, RolesPage, SubcontractorsPage modals,
@@ -349,3 +353,10 @@ PR #92 / #96 cleared all four Phase 5B dashboard items: duplicate sidebar
 entry removed, Safety + Compliance widget categories added (4 widgets each),
 KPI grid responsive 4-col layout, period override pill, drag handle visibility,
 inline name editing, sidebar live-update.
+
+### 2026-04-27 — Post-PR-111 doc cleanup
+PR #111 (FIX 4 form drafts) logged in progress.md.
+PHASE 6 PWA entries (OfflineProvider boundary, SW autoUpdate race,
+Dead-letter UX) removed — shipped by PR #108 on 2026-04-26.
+Audit script endpoint path corrections added to PHASE 6 from the
+2026-04-26 comprehensive audit medium-priority finding.

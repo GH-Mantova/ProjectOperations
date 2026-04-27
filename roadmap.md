@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-04-27 20:40 AEST
+Last updated: 2026-04-27 20:54 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -214,6 +214,11 @@ of the entire ERP — everything else depends on it being correct.
      /notifications should be /notification/settings. Causes false-
      positive 404s on every chain audit. Update the audit script
      template before next chain run.)
+⏸️  Re-enable deploy.yml automatic trigger
+    (Workflow disabled to manual-only on 2026-04-27 — was generating
+     email noise on every PR because Azure secrets weren't configured.
+     Re-enable on:push when production deployment is ready, after
+     tendering sign-off (§5A) and Azure secret configuration.)
 ⏸️  Form drafts — Phase 2 (admin CRUD wiring)
     (Phase 1 shipped foundation + 6 user-facing forms in PR #111. ~20
      admin CRUD pages — UsersPage, RolesPage, SubcontractorsPage modals,
@@ -384,3 +389,10 @@ PHASE 6 PWA entries (OfflineProvider boundary, SW autoUpdate race,
 Dead-letter UX) removed — shipped by PR #108 on 2026-04-26.
 Audit script endpoint path corrections added to PHASE 6 from the
 2026-04-26 comprehensive audit medium-priority finding.
+
+### 2026-04-27 — Deploy workflow disabled
+.github/workflows/deploy.yml changed from on:push:main to
+on:workflow_dispatch (manual-only). Was failing on every push because
+Azure secrets aren't configured yet — generating email noise. Re-enable
+the push trigger when production deployment is wired up post §5A
+sign-off. Tracked in PHASE 6.

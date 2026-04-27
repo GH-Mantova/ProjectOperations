@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Shell scripts and git hooks must use LF (POSIX sh chokes on CRLF)
+.githooks/** text eol=lf
+*.sh text eol=lf

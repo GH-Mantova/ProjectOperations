@@ -1,7 +1,7 @@
 # ProjectOperations — Project Instructions
 # Version: 1.1
 # Created: 2026-04-25 10:02 AEST
-# Last updated: 2026-04-26 AEST
+# Last updated: 2026-04-27 20:40 AEST
 # Maintained by: Claude Code (update after any architectural decision,
 #   module addition, business rule change, or workflow change)
 # Accessed by: All Claude chats in this project via web_fetch
@@ -194,6 +194,7 @@ Rules:
 - Drag and drop: `@dnd-kit` only, `PointerSensor` with `distance: 8`
 - Notifications: always go through `NotificationsService` — never send directly
 - GPS/location: always capture with user consent, store with timestamp + accuracy
+- Documentation updates are part of the PR's own commits, never a follow-up: progress.md gets a merge entry on every PR; roadmap.md gets edited if phases shift or items complete; project_instructions.md gets edited if modules, rules, or architecture change. Pre-commit hook auto-stamps "Last updated:" — never edit that line manually.
 
 ### Pre-PR CI checklist (mandatory — fix ALL before pushing)
 1. `pnpm --filter @project-ops/api lint` — zero warnings, zero errors
@@ -203,6 +204,7 @@ Rules:
 5. `pnpm build` — both packages must succeed
 6. `pnpm compliance:smoke` — must pass
 7. `npx playwright test tests/e2e/tendering.spec.ts --project=chromium` — all pass
+8. progress.md merge entry appended for this PR (and roadmap.md / project_instructions.md updated if applicable per the same-PR doc rule). Hook stamps "Last updated:" automatically on commit — no manual stamp needed.
 Never open a PR with known CI failures. Fix locally first, then push.
 
 ### PR rules
@@ -799,6 +801,17 @@ Status: COMPLETE | FAILED | PAUSED
 ```
 
 Update after: PR opens, PR merges, audit completes, fix applied, chain pauses.
+
+### Doc updates within a PR
+
+Every PR includes its documentation updates as part of the PR itself, not as a follow-up. This is non-negotiable — follow-up doc PRs have historically been forgotten (see PR #111 → PR #112 cleanup), causing stale-doc drift that breaks the routing-instructions trust model.
+
+Per-file rules:
+- progress.md — append a merge entry on EVERY PR. Format matches existing entries: ## YYYY-MM-DD HH:MM AEST — PR #N MERGED — <title>, followed by Type / Status / Detail / files changed / CI summary.
+- roadmap.md — edit when phases shift, items complete, items added, or items deferred. Use the changelog at the bottom to record the change. No edit needed for PRs that don't move roadmap state.
+- project_instructions.md — edit when modules go live, business rules change, sidebar changes, env vars change, architecture patterns change. §13 module registry should always reflect what's on main.
+
+The pre-commit hook stamps "Last updated:" on any of these three files when they're staged. Never edit that line by hand — the hook will overwrite it.
 
 ### Bypass actor pattern
 Ruleset ID: 15532058

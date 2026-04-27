@@ -1,4 +1,7 @@
 # ProjectOperations — Roadmap
+
+Last updated: 2026-04-27 20:40 AEST
+
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
 # Maintained by: Claude Code + main development chat
@@ -11,6 +14,27 @@
 #   🔲 QUEUED — next in line
 #   ⏸️  DEFERRED — agreed to skip for now, revisit later
 #   ❌ CANCELLED — will not build
+
+## TABLE OF CONTENTS
+
+| Phase | Title | Status |
+|-------|-------|--------|
+| §1 | Commercial Foundation | ✅ Complete |
+| §2 | Operations + Field | ✅ Complete |
+| §3 | Directory + Compliance | ✅ Complete |
+| §4 | Integrations | ✅ Complete |
+| §5A | Tendering Module Sign-off | 🔲 Current priority — gate for everything else |
+| §5B | Dashboard + UI fixes | ✅ Complete (PR #92 + #96) |
+| §5C | Forms Engine UI | 🔲 Follow-up to PR #97 |
+| §6 | Deferred / tech debt | ⏸️ Tracked items |
+| §7 | Next feature priorities | 🔲 Queued |
+| §8 | Future / unscoped | 🔲 Future |
+| Changelog | Roadmap-change history | append-only |
+
+**Quick navigation:**
+- "What should I work on next?" → §5A (gate) → §7 (post-gate)
+- "Is this on the roadmap?" → Ctrl+F the keyword
+- "Why was X deferred?" → §6 (notes attached to each item)
 
 ---
 

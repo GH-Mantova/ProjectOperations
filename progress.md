@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-02 02:01 AEST
+Last updated: 2026-05-02 02:30 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -728,4 +728,58 @@ explicit null, empty DTO, create path). Existing partial-update
 assertion updated to match new behavior. 39/39 persona tests pass.
 Pre-PR 7/7 green: lint x2 (clean), test x2 (111 api + 68 web), build,
 compliance:smoke, playwright tendering (5/5).
+Audit findings: none.
+
+## 2026-05-02 02:30 AEST — PR #119 MERGED — §5A.1 PR 2: Floating window shell + route detection
+
+Type: PR
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/119
+Branch: feat/persona-floating-window
+Detail: Second §5A.1 PR. Frontend floating window mounted in
+ShellLayout, only renders when active persona matches current route.
+Backend findPersonaForRoute extended to accept URLs with query
+strings; ?detail=<value> is treated as the next path segment so
+Tendering's tab-based sub-modes (TenderDetailPage uses
+?detail=scope etc.) match without per-persona query-param awareness.
+Falls back to base sub-mode when ?detail= names an unknown value.
+New endpoint GET /api/v1/personas/active-for-route?url=<encoded>
+returns {persona, subMode} summary or null. Permission-aware:
+returns null (not 403) when user lacks the persona's permission so
+the floating window gracefully doesn't render rather than showing
+"access denied". Authentication required.
+Frontend (apps/web/src/personas/): PersonaContext provider fetches
+active persona on every navigation via authFetch; PersonaWindow
+renders nothing when no persona, otherwise a teal floating button
+bottom-right that expands to a panel with placeholder "Tendering
+Assistant — coming soon" body. Brand colours via CSS variables in
+styles.css (var(--brand-primary), var(--brand-accent), Outfit/Syne
+fonts). Cog icon links to /admin/ai-settings stub (route doesn't
+exist yet — landing in a later §5A.1 PR). Each navigation to a
+different sub-mode resets the panel to closed.
+Tests: 24 new (8 registry query-param scenarios + 6 controller
+endpoint cases + 11 frontend helper cases — incl. activePersonaKey
+stability, panel content shape, URL builder). 53/53 backend persona
+tests, 79/79 web tests, 125/125 API tests overall.
+Manual smoke (API-driven): verified via curl with live dev API:
+- Sean (Super User) on /tenders/pipeline → returns persona ✓
+- Sean on /tenders/123?detail=scope → returns scope sub-mode ✓
+- Sean on /dashboards → returns null (button won't render) ✓
+- Raj (Senior Estimator, has tendering) on /tenders → returns
+  register sub-mode ✓
+- Beau (Project Manager, no tendering perm) on /tenders/pipeline →
+  returns null (button won't render) ✓
+- No auth → 401 ✓
+Visual smoke (button position, click expand/collapse, cog navigation,
+brand colour rendering) NOT verified locally — cannot launch a
+browser from the autonomous session. Marco to spot-check post-merge.
+Deviations: (1) Frontend tests use the existing logic-helper pattern
+(extract pure functions, test those) rather than React Testing
+Library + DOM tests — RTL is not installed and no other web tests
+use it. Adding RTL would be a separate dep + setup PR. (2)
+PersonaProvider is mounted inside ShellLayout (not at App.tsx
+top-level) so it doesn't activate on /portal or /field routes,
+which have their own auth flows.
+Pre-PR 7/7 green: lint x2 (clean), test x2 (125 api + 79 web),
+build, compliance:smoke, playwright tendering (5/5).
 Audit findings: none.

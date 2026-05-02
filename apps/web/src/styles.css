@@ -8746,3 +8746,126 @@ textarea {
   border-bottom: 1px solid var(--border-subtle, rgba(0,0,0,0.04));
   vertical-align: middle;
 }
+
+/* Persona floating window — §5A.1 PR 2.
+   Mounts inside .shell, floats above content via fixed positioning.
+   Brand: teal background, orange hover border, Outfit font. */
+.persona-window {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 60;
+  pointer-events: none;
+}
+.persona-window__button,
+.persona-window__panel {
+  pointer-events: auto;
+  font-family: 'Outfit', system-ui, sans-serif;
+}
+.persona-window__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--brand-primary);
+  color: var(--surface-card, #FFFFFF);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.18);
+  transition: border-color 200ms ease-out, transform 200ms ease-out;
+}
+.persona-window__button:hover,
+.persona-window__button:focus-visible {
+  border-color: var(--brand-accent);
+  outline: none;
+  transform: translateY(-1px);
+}
+.persona-window__button-label {
+  white-space: nowrap;
+}
+.persona-window__panel {
+  width: min(400px, calc(100vw - 32px));
+  max-height: min(600px, calc(100vh - 48px));
+  background: var(--surface-card, #FFFFFF);
+  color: var(--text-primary, #000000);
+  border: 1px solid var(--border-subtle, rgba(0,0,0,0.08));
+  border-radius: var(--radius-md, 8px);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.18);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: persona-window-expand 200ms ease-out;
+}
+@keyframes persona-window-expand {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.persona-window__panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--brand-primary);
+  color: var(--surface-card, #FFFFFF);
+}
+.persona-window__panel-title {
+  font-family: 'Syne', 'Outfit', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.persona-window__panel-subtitle {
+  font-size: 12px;
+  opacity: 0.85;
+  margin-top: 2px;
+}
+.persona-window__panel-body {
+  flex: 1;
+  padding: 24px 16px;
+  font-size: 14px;
+  color: var(--text-muted, #6B7280);
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.persona-window__panel-footer {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border-subtle, rgba(0,0,0,0.08));
+  background: var(--surface-page, #F6F6F6);
+}
+.persona-window__icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md, 8px);
+  color: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+.persona-window__panel-header .persona-window__icon-button {
+  color: var(--surface-card, #FFFFFF);
+}
+.persona-window__icon-button:hover,
+.persona-window__icon-button:focus-visible {
+  border-color: var(--brand-accent);
+  outline: none;
+}

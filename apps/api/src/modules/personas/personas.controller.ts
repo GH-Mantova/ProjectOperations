@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   Put,
+  Query,
   UseGuards
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
@@ -69,6 +70,21 @@ export class PersonasController {
     if (actor?.isSuperUser) return all;
     const granted = new Set(actor?.permissions ?? []);
     return all.filter((p) => granted.has(p.permissionRequired));
+  }
+
+  @Get("active-for-route")
+  @ApiOperation({
+    summary: "Get the persona active for the supplied URL (caller-aware)",
+    description:
+      "Resolves the persona+sub-mode for the given `url` query param (path + optional ?detail= search). Returns 200 + null when no persona matches, when the URL is missing, or when the caller lacks the persona's required permission — so the floating window can gracefully not render. Authentication required."
+  })
+  @ApiResponse({ status: 200, description: "Active persona + subMode summary, or null." })
+  async activeForRoute(
+    @Query("url") url: string | undefined,
+    @CurrentUser() actor: AuthenticatedUser | undefined
+  ) {
+    if (!url || typeof url !== "string") return null;
+    return this.service.resolveActivePersonaForRoute(url, actor);
   }
 
   @Get(":slug")

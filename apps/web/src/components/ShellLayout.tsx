@@ -5,6 +5,8 @@ import { NotificationsDropdown } from "./NotificationsDropdown";
 import { CommandPalette } from "./CommandPalette";
 import { NewDashboardModal } from "../dashboards/NewDashboardModal";
 import { useUserDashboards, useUserDashboardsActions } from "../dashboards/userDashboards";
+import { PersonaProvider } from "../personas/PersonaContext";
+import { PersonaWindow } from "../personas/PersonaWindow";
 
 type NavItem = {
   to: string;
@@ -398,6 +400,7 @@ export function ShellLayout() {
   const filteredGroups = NAV_GROUPS.filter((group) => !group.adminOnly || isAdmin);
 
   return (
+    <PersonaProvider>
     <div className={`shell${collapsed ? " shell--collapsed" : ""}`}>
       <aside className="shell__sidebar" aria-label="Primary">
         <div className="shell__brand">
@@ -601,7 +604,9 @@ export function ShellLayout() {
           onCreated={() => setNewDashboardOpen(false)}
         />
       ) : null}
+      <PersonaWindow />
     </div>
+    </PersonaProvider>
   );
 }
 

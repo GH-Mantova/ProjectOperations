@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-02 10:22 AEST
+Last updated: 2026-05-02 11:29 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -1275,6 +1275,25 @@ All three PRs merged successfully. Marco's morning review items:
   as a PHASE 6 entry for follow-up.
 - All other deviations documented inline in each PR's progress entry.
 
+## 2026-05-02 09:23 AEST — PR #130 MERGED — chore: track Prisma migration_lock.toml and dev-start.bat
+
+Type: PR (CHORE)
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/130
+Branch: chore/track-helper-files
+Detail: Two helper files that should have been tracked from the start.
+apps/api/prisma/migrations/migration_lock.toml is the standard Prisma
+file recording which database provider migrations were created against
+(auto-generated, should be in version control — was untracked).
+dev-start.bat is a convenience script for local dev environment
+startup (git-pulls latest main, verifies postgres, checks for orphan
+processes, runs pnpm dev). Plain file additions, no code changes,
+no behavioural impact. CI 5/5 SUCCESS. Back-filled into progress.md
+in PR #133 (chronological gap discovered during the end-of-day
+audit cleanup bundle's Piece A doc audit — the original PR #130
+shipped without its own merge entry).
+Audit findings: none.
+
 ## 2026-05-02 09:37 AEST — PR #131 MERGED — fix: SSE error sanitisation + CodeQL false-positive suppression
 
 Type: PR (FIX)
@@ -1429,3 +1448,32 @@ Deviations:
 Audit findings: none. The investigation report from PR #122
 (docs/legacy-ai-providers-investigation.md) is now a closed-issue
 historical artefact — left in place as the migration's audit trail.
+
+## 2026-05-02 11:24 AEST — PR #133 MERGED — chore: end-of-day audit cleanup bundle
+
+Type: PR (CHORE)
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/133
+Branch: chore/end-of-day-audit-cleanup-bundle
+Detail: End-of-day bundle consolidating four small items from the
+2026-05-02 system audit and Piece A doc audit. (1) Merged the audit
+report from branch audit/2026-05-02-system-snapshot into main (now
+at docs/audits/2026-05-02-system-audit.md). (2) Deleted dead
+provider classes (gemini.provider.ts, groq.provider.ts) per audit
+finding m2 — both were unimported in any module post-§5A.1.
+(3) Added "reserved — Forms Engine Phase 2" comment to forms.admin
+permission (audit finding m1) — declared but not yet enforced,
+intentional. (4) Doc gaps: roadmap.md PHASE 6 gained two entries
+(Provider implementation consolidation ⏸️, Migrate AI scope
+drafting ✅ COMPLETE — PR #132); progress.md gained the missing
+PR #130 merge entry. Audit Major M1 (Xero error sanitisation)
+deferred to tomorrow's first PR — same pattern as PR #131 with
+sanitiseProviderError applied to Xero catch blocks.
+
+Pre-PR 7/7 green: lint x2 (clean), test x2 (209/209 API,
+192/192 web), build, compliance:smoke, playwright tendering (5/5).
+
+Audit findings: none — this PR is itself the audit-cleanup
+deliverable. PHASE 6 entries in roadmap.md updated to reflect
+m2 (dead providers) resolved and m1 (forms.admin) consciously
+deferred with inline rationale.

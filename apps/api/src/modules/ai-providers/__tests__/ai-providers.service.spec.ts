@@ -14,6 +14,10 @@ function buildPrismaMock(overrides: {
     enabledProviders: string[];
     allowBringYourOwnKey: boolean;
   } | null;
+  userRow?: {
+    anthropicKeyEncrypted?: string | null;
+    openaiKeyEncrypted?: string | null;
+  } | null;
 }) {
   const personaFindUnique = jest.fn(async () =>
     overrides.personaRow === null ? null : overrides.personaRow ?? TENDERING_ROW
@@ -29,11 +33,22 @@ function buildPrismaMock(overrides: {
       ? { allowUserInstructionOverrides: false, enabledProviders: ["anthropic"], allowBringYourOwnKey: false }
       : overrides.globalSettings
   );
+  const userFindUnique = jest.fn(async () => {
+    if (overrides.userRow === undefined) {
+      return { anthropicKeyEncrypted: null, openaiKeyEncrypted: null };
+    }
+    if (overrides.userRow === null) return null;
+    return {
+      anthropicKeyEncrypted: overrides.userRow.anthropicKeyEncrypted ?? null,
+      openaiKeyEncrypted: overrides.userRow.openaiKeyEncrypted ?? null
+    };
+  });
   const prisma = {
     persona: { findUnique: personaFindUnique },
     personaCompanyInstruction: { findUnique: personaCompanyInstructionFindUnique },
     userPersonaSettings: { findUnique: userPersonaSettingsFindUnique },
-    globalAISettings: { findUnique: globalAISettingsFindUnique }
+    globalAISettings: { findUnique: globalAISettingsFindUnique },
+    user: { findUnique: userFindUnique }
   } as never;
   return prisma;
 }
@@ -57,25 +72,48 @@ function buildPlatformConfig(
   } as never;
 }
 
+function buildEncryption(overrides: { decrypt?: (s: string) => string } = {}) {
+  return {
+    decrypt: overrides.decrypt ?? ((s: string) => `decrypted:${s}`),
+    encrypt: (s: string) => `encrypted:${s}`,
+    tryDecrypt: (s: string | null | undefined) => {
+      if (!s) return null;
+      try {
+        return overrides.decrypt ? overrides.decrypt(s) : `decrypted:${s}`;
+      } catch {
+        return null;
+      }
+    }
+  } as never;
+}
+
 describe("AiProvidersService.resolveProviderConfig", () => {
   it("returns Anthropic config from PlatformConfig + global default when no override", async () => {
-    const service = new AiProvidersService(buildPrismaMock({}), buildPlatformConfig());
+    const service = new AiProvidersService(
+      buildPrismaMock({}),
+      buildPlatformConfig(),
+      buildEncryption()
+    );
     const cfg = await service.resolveProviderConfig("user-1", "tendering");
-    expect(cfg).toEqual({ providerId: "anthropic", apiKey: "sk-test", model: "claude-sonnet-4-6" });
+    expect(cfg).toEqual({
+      providerId: "anthropic",
+      apiKey: "sk-test",
+      model: "claude-sonnet-4-6",
+      source: "company"
+    });
   });
 
   it("respects user providerOverride when supported", async () => {
     const service = new AiProvidersService(
       buildPrismaMock({ userSettings: { providerOverride: "anthropic" } }),
-      buildPlatformConfig()
+      buildPlatformConfig(),
+      buildEncryption()
     );
     const cfg = await service.resolveProviderConfig("user-1", "tendering");
     expect(cfg.providerId).toBe("anthropic");
   });
 
   it("falls back to global enabled providers when user override names a not-yet-implemented provider", async () => {
-    // 'gemini' has a UserPersonaSettings DTO entry but no provider implementation yet —
-    // exercises the SUPPORTED_PROVIDERS gate.
     const service = new AiProvidersService(
       buildPrismaMock({
         userSettings: { providerOverride: "gemini" },
@@ -85,16 +123,18 @@ describe("AiProvidersService.resolveProviderConfig", () => {
           allowBringYourOwnKey: false
         }
       }),
-      buildPlatformConfig()
+      buildPlatformConfig(),
+      buildEncryption()
     );
     const cfg = await service.resolveProviderConfig("user-1", "tendering");
     expect(cfg.providerId).toBe("anthropic");
   });
 
-  it("throws 503 when ANTHROPIC_API_KEY missing", async () => {
+  it("throws 503 when neither user nor company key is configured", async () => {
     const service = new AiProvidersService(
       buildPrismaMock({}),
-      buildPlatformConfig({ apiKey: null })
+      buildPlatformConfig({ apiKey: null }),
+      buildEncryption()
     );
     await expect(service.resolveProviderConfig("user-1", "tendering")).rejects.toBeInstanceOf(
       ServiceUnavailableException
@@ -102,7 +142,11 @@ describe("AiProvidersService.resolveProviderConfig", () => {
   });
 
   it("throws when persona slug is unknown", async () => {
-    const service = new AiProvidersService(buildPrismaMock({}), buildPlatformConfig());
+    const service = new AiProvidersService(
+      buildPrismaMock({}),
+      buildPlatformConfig(),
+      buildEncryption()
+    );
     await expect(service.resolveProviderConfig("user-1", "nonexistent")).rejects.toBeInstanceOf(
       ServiceUnavailableException
     );
@@ -111,10 +155,74 @@ describe("AiProvidersService.resolveProviderConfig", () => {
   it("uses model from PlatformConfig when present, else default", async () => {
     const service = new AiProvidersService(
       buildPrismaMock({}),
-      buildPlatformConfig({ model: "claude-opus-4-7" })
+      buildPlatformConfig({ model: "claude-opus-4-7" }),
+      buildEncryption()
     );
     const cfg = await service.resolveProviderConfig("user-1", "tendering");
     expect(cfg.model).toBe("claude-opus-4-7");
+  });
+
+  describe("BYOK precedence", () => {
+    it("prefers per-user key over company key when both are set", async () => {
+      const service = new AiProvidersService(
+        buildPrismaMock({ userRow: { anthropicKeyEncrypted: "enc-user-anthro" } }),
+        buildPlatformConfig(),
+        buildEncryption()
+      );
+      const cfg = await service.resolveProviderConfig("user-1", "tendering");
+      expect(cfg.source).toBe("user");
+      expect(cfg.apiKey).toBe("decrypted:enc-user-anthro");
+    });
+
+    it("falls back to company key when user has no key", async () => {
+      const service = new AiProvidersService(
+        buildPrismaMock({ userRow: { anthropicKeyEncrypted: null } }),
+        buildPlatformConfig(),
+        buildEncryption()
+      );
+      const cfg = await service.resolveProviderConfig("user-1", "tendering");
+      expect(cfg.source).toBe("company");
+      expect(cfg.apiKey).toBe("sk-test");
+    });
+
+    it("throws 503 when user key absent and company key absent", async () => {
+      const service = new AiProvidersService(
+        buildPrismaMock({ userRow: { anthropicKeyEncrypted: null } }),
+        buildPlatformConfig({ apiKey: null }),
+        buildEncryption()
+      );
+      await expect(service.resolveProviderConfig("user-1", "tendering")).rejects.toBeInstanceOf(
+        ServiceUnavailableException
+      );
+    });
+
+    it("falls through to company key when user key fails to decrypt (does NOT throw)", async () => {
+      const service = new AiProvidersService(
+        buildPrismaMock({ userRow: { anthropicKeyEncrypted: "corrupt" } }),
+        buildPlatformConfig(),
+        buildEncryption({
+          decrypt: () => {
+            throw new Error("auth tag mismatch");
+          }
+        })
+      );
+      const cfg = await service.resolveProviderConfig("user-1", "tendering");
+      expect(cfg.source).toBe("company");
+      expect(cfg.apiKey).toBe("sk-test");
+    });
+
+    it("scoped per provider: user has openai key only, anthropic selection still falls back to company", async () => {
+      const service = new AiProvidersService(
+        buildPrismaMock({
+          userRow: { anthropicKeyEncrypted: null, openaiKeyEncrypted: "enc-user-openai" }
+        }),
+        buildPlatformConfig(),
+        buildEncryption()
+      );
+      const cfg = await service.resolveProviderConfig("user-1", "tendering");
+      expect(cfg.providerId).toBe("anthropic");
+      expect(cfg.source).toBe("company");
+    });
   });
 
   describe("OpenAI provider", () => {
@@ -133,7 +241,8 @@ describe("AiProvidersService.resolveProviderConfig", () => {
             allowBringYourOwnKey: false
           }
         }),
-        buildPlatformConfig()
+        buildPlatformConfig(),
+        buildEncryption()
       );
       const cfg = await service.resolveProviderConfig("user-1", "tendering");
       expect(cfg.providerId).toBe("openai");
@@ -150,13 +259,14 @@ describe("AiProvidersService.resolveProviderConfig", () => {
             allowBringYourOwnKey: false
           }
         }),
-        buildPlatformConfig()
+        buildPlatformConfig(),
+        buildEncryption()
       );
       const cfg = await service.resolveProviderConfig("user-1", "tendering");
       expect(cfg.providerId).toBe("openai");
     });
 
-    it("throws 503 when OPENAI_API_KEY missing for an OpenAI selection", async () => {
+    it("throws 503 when no key (user nor company) for an OpenAI selection", async () => {
       const service = new AiProvidersService(
         buildPrismaMock({
           userSettings: { providerOverride: "openai" },
@@ -166,7 +276,8 @@ describe("AiProvidersService.resolveProviderConfig", () => {
             allowBringYourOwnKey: false
           }
         }),
-        buildPlatformConfig({ openaiKey: null })
+        buildPlatformConfig({ openaiKey: null }),
+        buildEncryption()
       );
       await expect(service.resolveProviderConfig("user-1", "tendering")).rejects.toBeInstanceOf(
         ServiceUnavailableException
@@ -183,7 +294,8 @@ describe("AiProvidersService.resolveProviderConfig", () => {
             allowBringYourOwnKey: false
           }
         }),
-        buildPlatformConfig()
+        buildPlatformConfig(),
+        buildEncryption()
       );
       const cfg = await service.resolveProviderConfig("user-1", "tendering");
       expect(cfg.model).toBe("gpt-9-omega");
@@ -191,29 +303,34 @@ describe("AiProvidersService.resolveProviderConfig", () => {
 
     it("ANTHROPIC_MODEL env var overrides PlatformConfig + default", async () => {
       process.env.ANTHROPIC_MODEL = "claude-future";
-      const service = new AiProvidersService(buildPrismaMock({}), buildPlatformConfig());
+      const service = new AiProvidersService(
+        buildPrismaMock({}),
+        buildPlatformConfig(),
+        buildEncryption()
+      );
       const cfg = await service.resolveProviderConfig("user-1", "tendering");
       expect(cfg.model).toBe("claude-future");
     });
 
     it("falls back to PlatformConfig.DEFAULT_MODELS when env unset and getModel returns empty", async () => {
-      // Belt-and-braces case: getModel returns "" rather than the DEFAULT_MODELS
-      // value. Service must still resolve via the imported DEFAULT_MODELS.
-      // Confirms the single-source-of-truth post-PR #129: no per-provider
-      // *_DEFAULT_MODEL constants exist anywhere outside DEFAULT_MODELS.
       const service = new AiProvidersService(
         buildPrismaMock({}),
-        buildPlatformConfig({ model: "" })
+        buildPlatformConfig({ model: "" }),
+        buildEncryption()
       );
       const cfg = await service.resolveProviderConfig("user-1", "tendering");
-      expect(cfg.model).toBe("claude-sonnet-4-6"); // DEFAULT_MODELS.anthropic
+      expect(cfg.model).toBe("claude-sonnet-4-6");
     });
   });
 });
 
 describe("AiProvidersService.resolveSystemPrompt", () => {
   it("includes only the persona's intrinsic prompt when no other layers exist", async () => {
-    const service = new AiProvidersService(buildPrismaMock({}), buildPlatformConfig());
+    const service = new AiProvidersService(
+      buildPrismaMock({}),
+      buildPlatformConfig(),
+      buildEncryption()
+    );
     const prompt = await service.resolveSystemPrompt("tendering", "user-1");
     expect(prompt).toContain("Tendering Assistant");
     expect(prompt).toContain("Initial Services");
@@ -222,7 +339,11 @@ describe("AiProvidersService.resolveSystemPrompt", () => {
   });
 
   it("includes the sub-mode description when an active sub-mode is supplied", async () => {
-    const service = new AiProvidersService(buildPrismaMock({}), buildPlatformConfig());
+    const service = new AiProvidersService(
+      buildPrismaMock({}),
+      buildPlatformConfig(),
+      buildEncryption()
+    );
     const prompt = await service.resolveSystemPrompt("tendering", "user-1", "scope");
     expect(prompt).toContain("scope");
     expect(prompt).toContain("Scope drafting mode");
@@ -231,7 +352,8 @@ describe("AiProvidersService.resolveSystemPrompt", () => {
   it("appends the company instruction when set", async () => {
     const service = new AiProvidersService(
       buildPrismaMock({ companyInstruction: { instruction: "Use IS terminology." } }),
-      buildPlatformConfig()
+      buildPlatformConfig(),
+      buildEncryption()
     );
     const prompt = await service.resolveSystemPrompt("tendering", "user-1");
     expect(prompt).toContain("Company instruction:");
@@ -248,7 +370,8 @@ describe("AiProvidersService.resolveSystemPrompt", () => {
           allowBringYourOwnKey: false
         }
       }),
-      buildPlatformConfig()
+      buildPlatformConfig(),
+      buildEncryption()
     );
     const allowedPrompt = await allowed.resolveSystemPrompt("tendering", "user-1");
     expect(allowedPrompt).toContain("User instruction:");
@@ -263,7 +386,8 @@ describe("AiProvidersService.resolveSystemPrompt", () => {
           allowBringYourOwnKey: false
         }
       }),
-      buildPlatformConfig()
+      buildPlatformConfig(),
+      buildEncryption()
     );
     const deniedPrompt = await denied.resolveSystemPrompt("tendering", "user-1");
     expect(deniedPrompt).not.toContain("User instruction:");
@@ -281,7 +405,8 @@ describe("AiProvidersService.resolveSystemPrompt", () => {
           allowBringYourOwnKey: false
         }
       }),
-      buildPlatformConfig()
+      buildPlatformConfig(),
+      buildEncryption()
     );
     const prompt = await service.resolveSystemPrompt("tendering", "user-1");
     expect(prompt).not.toContain("Company instruction:");
@@ -289,7 +414,11 @@ describe("AiProvidersService.resolveSystemPrompt", () => {
   });
 
   it("throws when the persona slug is unknown", async () => {
-    const service = new AiProvidersService(buildPrismaMock({}), buildPlatformConfig());
+    const service = new AiProvidersService(
+      buildPrismaMock({}),
+      buildPlatformConfig(),
+      buildEncryption()
+    );
     await expect(service.resolveSystemPrompt("nonexistent", "user-1")).rejects.toBeInstanceOf(
       ServiceUnavailableException
     );
@@ -298,23 +427,39 @@ describe("AiProvidersService.resolveSystemPrompt", () => {
 
 describe("AiProvidersService.streamChat", () => {
   it("dispatches Anthropic config to the Anthropic provider implementation (smoke)", async () => {
-    // We don't mock fetch here — just confirm dispatch returns an async iterable.
-    // Detailed behaviour is covered by anthropic.provider.spec.ts.
-    const service = new AiProvidersService(buildPrismaMock({}), buildPlatformConfig());
+    const service = new AiProvidersService(
+      buildPrismaMock({}),
+      buildPlatformConfig(),
+      buildEncryption()
+    );
     const iter = service.streamChat({
       systemPrompt: "x",
       messages: [{ role: "user", content: "hi" }],
-      config: { providerId: "anthropic", apiKey: "sk-test", model: "claude-sonnet-4-6" }
+      config: {
+        providerId: "anthropic",
+        apiKey: "sk-test",
+        model: "claude-sonnet-4-6",
+        source: "company"
+      }
     });
     expect(typeof iter[Symbol.asyncIterator]).toBe("function");
   });
 
   it("dispatches OpenAI config to the OpenAI provider implementation (smoke)", async () => {
-    const service = new AiProvidersService(buildPrismaMock({}), buildPlatformConfig());
+    const service = new AiProvidersService(
+      buildPrismaMock({}),
+      buildPlatformConfig(),
+      buildEncryption()
+    );
     const iter = service.streamChat({
       systemPrompt: "x",
       messages: [{ role: "user", content: "hi" }],
-      config: { providerId: "openai", apiKey: "sk-test", model: "gpt-5.4-mini" }
+      config: {
+        providerId: "openai",
+        apiKey: "sk-test",
+        model: "gpt-5.4-mini",
+        source: "company"
+      }
     });
     expect(typeof iter[Symbol.asyncIterator]).toBe("function");
   });

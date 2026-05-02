@@ -9,6 +9,10 @@ export interface ProviderConfig {
   providerId: ProviderId;
   apiKey: string;
   model: string;
+  // §5A.1 PR 9: where the apiKey came from. "user" = personal BYOK key on
+  // the User row; "company" = the platform-wide key on PlatformConfig.
+  // Used in audit logs only — not in provider request construction.
+  source: "user" | "company";
 }
 
 export interface ChatMessage {

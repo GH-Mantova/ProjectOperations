@@ -49,7 +49,7 @@ describe("streamOpenAIChat", () => {
   const baseRequest: ChatRequest = {
     systemPrompt: "test system",
     messages: [{ role: "user", content: "hi" }],
-    config: { providerId: "openai", apiKey: "sk-test", model: "gpt-5.4-mini" }
+    config: { providerId: "openai", apiKey: "sk-test", model: "gpt-5.4-mini", source: "company" }
   };
 
   function withFetch(impl: (input: RequestInfo, init?: RequestInit) => Promise<Response>) {

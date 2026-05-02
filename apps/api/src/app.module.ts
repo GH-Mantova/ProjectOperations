@@ -3,6 +3,7 @@ import { ConfigModule } from "@nestjs/config";
 import { ScheduleModule } from "@nestjs/schedule";
 import { AdminSettingsModule } from "./modules/admin-settings/admin-settings.module";
 import { AdminUsersModule } from "./modules/admin-users/admin-users.module";
+import { AiSettingsModule } from "./modules/ai-settings/ai-settings.module";
 import { ContractsModule } from "./modules/contracts/contracts.module";
 import { AppConfigModule } from "./config/app-config.module";
 import { ArchiveModule } from "./modules/archive/archive.module";
@@ -59,6 +60,7 @@ import { FieldModule } from "./modules/field/field.module";
     EmailModule,
     AdminSettingsModule,
     AdminUsersModule,
+    AiSettingsModule,
     ContractsModule,
     ArchiveModule,
     AssetsModule,

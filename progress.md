@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-02 11:29 AEST
+Last updated: 2026-05-02 23:04 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -1477,3 +1477,130 @@ Audit findings: none — this PR is itself the audit-cleanup
 deliverable. PHASE 6 entries in roadmap.md updated to reflect
 m2 (dead providers) resolved and m1 (forms.admin) consciously
 deferred with inline rationale.
+
+## 2026-05-03 09:01 AEST — PR #134 MERGED — §5A.1 PR 9: BYOK encryption infrastructure + company key UI
+
+Type: PR
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/134
+Branch: feat/byok-encryption-and-key-management
+Detail: Ninth PR in §5A.1. Implements the actual BYOK encryption
+infrastructure that PR #121 only scaffolded. Migrates company key
+storage from env-only to DB-only via the /admin/ai-settings UI, and
+adds the per-user BYOK path that gates on
+GlobalAISettings.allowBringYourOwnKey.
+
+Phase 1 — KeyEncryptionService: AES-256-GCM via node:crypto, master
+key from BYOK_ENCRYPTION_KEY (32-byte hex, REQUIRED for app start),
+storage format "<iv-base64>:<authTag-base64>:<ciphertext-base64>"
+(colon separator). Distinct from the legacy
+PLATFORM_CONFIG_SECRET-based encryption inside PlatformConfigService
+(dot separator) — the new service is now the single point for AI
+key encryption. 8 unit tests cover roundtrip, random IV, tamper
+detection, format validation, missing/malformed master key.
+
+Phase 2 — Schema: added *KeyEncrypted + *KeyValidatedAt columns to
+both PlatformConfig and User (8 columns each, nullable). Legacy
+PlatformConfig.*ApiKey + *KeyUpdatedAt columns kept in schema for
+backward compatibility but no longer read or written; cleanup PR
+will drop them once verified safe. Migration
+20260502224351_feat_byok_encrypted_keys applied via
+`prisma db execute` + `prisma migrate resolve --applied` to skip
+the recurring drift bundle (workers.employmentType compat column,
+FK reshapes, default removals — all pre-existing per PR #117
+protocol).
+
+Phase 3 — KeyValidationService: live validation via small test call
+per provider with 5s timeout (AbortController). Anthropic: POST
+v1/messages with max_tokens=1. OpenAI: GET v1/models. Errors
+categorised via sanitiseProviderError (PR #131) — auth/rate-limit/
+quota/server/network/config. Gemini and Groq throw "not yet
+implemented" until those providers ship. 12 unit tests.
+
+Phase 4 — PlatformConfigService refactor: getXxxApiKey now reads
+DB only via the new *KeyEncrypted columns; env fallback REMOVED.
+setXxxApiKey now goes through KeyValidationService →
+KeyEncryptionService → new column with validatedAt timestamp.
+status() returns the new shape (validatedAt instead of
+keyUpdatedAt; source = "database" or null). AiProvidersService.
+resolveProviderConfig now consults user.*KeyEncrypted first
+(source: "user"), falls back to company key (source: "company"),
+throws ServiceUnavailableException when neither is set. User-key
+decrypt failures fall through to company silently (logged) so a
+corrupted user blob doesn't break chat for that user. The
+ProviderConfig type gained `source: "user" | "company"`; the chat
+endpoint logs source on every request (never the key itself).
+
+Phase 5 — 8 endpoints under /api/v1/ai-settings:
+  - GET    /company/keys           → status (super-user only)
+  - POST   /company/keys/:provider → save (super-user only)
+  - DELETE /company/keys/:provider → clear (super-user only)
+  - GET    /me/keys                → status (persona-permitted user)
+  - POST   /me/keys/:provider      → save (persona-permitted, gated
+                                     on allowBringYourOwnKey global toggle)
+  - DELETE /me/keys/:provider      → clear (same gate)
+All save endpoints validate live before persisting. Returns
+{ok: true, validatedAt} on success or {ok: false, error,
+category} on validation failure. GETs return only
+{hasKey, validatedAt} — never plaintext. Audit logs record the
+action with userId+provider+result; never the key value.
+Gemini/Groq save endpoints throw 501 NotImplemented.
+
+Phase 6 + 7 — UI: shared ProviderKeyManager component used by
+both Company tab (scope=company) and My Settings tab (scope=me).
+Per-provider rows show status with [Configure]/[Update]/[Remove]
+buttons; modal opens on configure with password input + "Test
+and save" button. Errors surface the categorised message from
+the service. The legacy "BYOK in development" placeholder on
+PersonaSettingsCard is replaced with the real ProviderKeyManager
+at the user level (not per-persona). Admin tab gating unchanged
+(super-user-only on Company tab; persona-permission gates page
+access).
+
+Phase 10 — env.example: ANTHROPIC_API_KEY/OPENAI_API_KEY now
+commented "NO LONGER READ — set via UI". BYOK_ENCRYPTION_KEY
+documented as REQUIRED with `openssl rand -hex 32` instruction.
+
+Counts: 246/246 API tests (was 209; +37 across 3 new spec files —
+key-encryption 8, key-validation 12, ai-settings 12, plus 5 new
+tests in ai-providers BYOK precedence). 192/192 web (unchanged —
+the new ProviderKeyManager is exercised at build/lint level
+only). Pre-PR 7/7 green: lint x2 (clean), test x2, build,
+compliance:smoke, playwright tendering (5/5).
+
+Deviations:
+(1) Migration applied via `db execute` + `migrate resolve --applied`
+    rather than `migrate dev` — recurring main-vs-DB drift would
+    have required a destructive reset. Migration file contains
+    ONLY the BYOK columns per PR #117 protocol.
+(2) Old PlatformConfig.*ApiKey columns kept in schema rather than
+    dropped — minimises blast radius for this PR. Cleanup PR will
+    drop them after a deploy cycle.
+(3) Legacy admin/platform-config PATCH endpoints (PlatformPage)
+    continue to work but now write to NEW columns via the
+    refactored setXxxApiKey methods — they go through live
+    validation just like the new endpoints. Behaviour change:
+    invalid keys posted via the legacy endpoint are now rejected
+    with a categorised error rather than silently stored.
+
+Manual smoke pending Marco:
+- Pull main, generate BYOK_ENCRYPTION_KEY (`openssl rand -hex 32`),
+  add to apps/api/.env, restart `pnpm dev`
+- Login as Sean → /admin/ai-settings → Company tab → API Keys
+- Initially: no keys configured; chat fails with "AI provider not
+  configured"
+- Configure Anthropic via modal → live validation → row updates to
+  Configured (just now); chat now works
+- Wrong key in modal → categorised auth error surfaced; row stays
+  "Not configured"
+- Remove Anthropic → chat fails again
+- Re-enter, switch to My Settings tab → Personal API Keys section
+  visible (since allowBringYourOwnKey toggle is on)
+- Configure personal Anthropic key → server log records source:
+  "user" on next chat
+- Set Provider Override to OpenAI → chat fails (no openai key);
+  configure personal OpenAI → works
+
+Audit findings: none. The audit M1 item (Xero error sanitisation)
+deferred from PR #133 is still outstanding — its own PR will
+follow.

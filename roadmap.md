@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-02 11:29 AEST
+Last updated: 2026-05-02 23:04 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -131,13 +131,28 @@ route (scope mode = drafting tools; quote mode = advisory; etc.).
     User: provider preference, persona settings showing company
     instruction read-only + personal override field if Sean enables.)
 
-🔲 Bring-your-own-key infrastructure
+✅ Bring-your-own-key infrastructure — PR #134 (encryption + UI layer COMPLETE)
    (User-provided AI provider keys with proper encryption at rest,
     key validation on save, provider isolation per request,
     graceful fallback when user keys fail or expire, full audit
     trail. Storage: encrypted column, key from environment,
     rotation policy. No payment details — users supply their own
-    already-billed keys.)
+    already-billed keys.
+
+    PR #134 delivered: AES-256-GCM encryption (KeyEncryptionService,
+    BYOK_ENCRYPTION_KEY master); live key validation with 5s timeout
+    + sanitiseProviderError categorisation; new *KeyEncrypted columns
+    on PlatformConfig + User; resolveProviderConfig prefers user key
+    then company key (no env fallback); 8 endpoints under
+    /api/v1/ai-settings (company + user, save/delete/list); UI on
+    Company tab and My Settings tab with modal validate-on-save flow.
+    Audit logs record key save/delete/use with userId+provider+source
+    only — never the key itself.
+
+    Outstanding (deferred): key rotation policy; dedicated audit log
+    dashboard (logs go to structured logging today); Gemini/Groq
+    validation methods (throw "not yet implemented" until those
+    providers ship).)
 
 🔲 Tendering Assistant persona — sub-mode tooling
    (Pipeline mode, Register mode, Tender Detail mode: read-only

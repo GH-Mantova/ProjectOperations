@@ -1,22 +1,19 @@
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
+import { KeyEncryptionService } from "../security/key-encryption.service";
+import { KeyValidationService } from "../security/key-validation.service";
 
 const SINGLETON_ID = "singleton";
-const IV_BYTES = 12;
-const ALGO = "aes-256-gcm";
 
 export type AiProviderName = "anthropic" | "gemini" | "groq" | "openai";
 
 export const PROVIDER_PRIORITY: AiProviderName[] = ["anthropic", "gemini", "groq", "openai"];
 
 // Single source of truth for AI provider model defaults across the codebase.
-// Both legacy AI scope drafting (apps/api/src/modules/tendering/ai-providers)
-// and the §5A.1 persona chat (apps/api/src/modules/ai-providers) consult
-// this constant via PlatformConfigService.getModel(). Env vars
-// (ANTHROPIC_MODEL, OPENAI_MODEL) override these at runtime.
+// PlatformConfigService.getModel() consults this constant; env vars
+// (ANTHROPIC_MODEL, OPENAI_MODEL) override at runtime.
 export const DEFAULT_MODELS: Record<AiProviderName, string> = {
   anthropic: "claude-sonnet-4-6",
   gemini: "gemini-1.5-flash",
@@ -24,12 +21,19 @@ export const DEFAULT_MODELS: Record<AiProviderName, string> = {
   openai: "gpt-5.4-mini"
 };
 
+// §5A.1 PR 9: company keys read/written via the *_key_encrypted columns
+// (KeyEncryptionService, BYOK_ENCRYPTION_KEY master). The legacy
+// *_api_key columns + ANTHROPIC_API_KEY/etc env fallback are no longer
+// consulted. Sean enters the key once via the UI (POST /ai-settings/
+// company/keys/:provider).
 @Injectable()
 export class PlatformConfigService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly config: ConfigService
+    private readonly config: ConfigService,
+    private readonly encryption: KeyEncryptionService,
+    private readonly validator: KeyValidationService
   ) {}
 
   async getAnthropicApiKey(): Promise<string | null> {
@@ -56,28 +60,28 @@ export class PlatformConfigService {
 
   async status() {
     const record = await this.prisma.platformConfig.findUnique({ where: { id: SINGLETON_ID } });
-    const anthropic = await this.providerStatus(
+    const anthropic = this.providerStatus(
       "anthropic",
-      record?.anthropicApiKey ?? null,
-      record?.anthropicKeyUpdatedAt ?? null,
+      record?.anthropicKeyEncrypted ?? null,
+      record?.anthropicKeyValidatedAt ?? null,
       record?.anthropicModel ?? null
     );
-    const gemini = await this.providerStatus(
+    const gemini = this.providerStatus(
       "gemini",
-      record?.geminiApiKey ?? null,
-      record?.geminiKeyUpdatedAt ?? null,
+      record?.geminiKeyEncrypted ?? null,
+      record?.geminiKeyValidatedAt ?? null,
       record?.geminiModel ?? null
     );
-    const groq = await this.providerStatus(
+    const groq = this.providerStatus(
       "groq",
-      record?.groqApiKey ?? null,
-      record?.groqKeyUpdatedAt ?? null,
+      record?.groqKeyEncrypted ?? null,
+      record?.groqKeyValidatedAt ?? null,
       record?.groqModel ?? null
     );
-    const openai = await this.providerStatus(
+    const openai = this.providerStatus(
       "openai",
-      record?.openaiApiKey ?? null,
-      record?.openaiKeyUpdatedAt ?? null,
+      record?.openaiKeyEncrypted ?? null,
+      record?.openaiKeyValidatedAt ?? null,
       record?.openaiModel ?? null
     );
     const preferred = (record?.preferredProvider as AiProviderName | null | undefined) ?? null;
@@ -92,48 +96,32 @@ export class PlatformConfigService {
     };
   }
 
+  // Validates → encrypts → stores. Used by both the legacy
+  // /admin/platform-config PATCH endpoint and the new /ai-settings/company/
+  // keys/:provider endpoint. Throws on validation failure (categorised
+  // message via KeyValidationService).
   async setAnthropicApiKey(rawKey: string, actorId?: string) {
-    const clean = this.validateKey("anthropic", rawKey);
-    await this.persistKey({ anthropicApiKey: this.encrypt(clean), anthropicKeyUpdatedAt: new Date() }, actorId);
-    await this.audit.write({
-      actorId,
-      action: "platformConfig.anthropicKey.update",
-      entityType: "PlatformConfig",
-      entityId: SINGLETON_ID
-    });
-    return this.status();
+    return this.persistCompanyKey("anthropic", rawKey, actorId);
   }
 
   async setGeminiApiKey(rawKey: string, actorId?: string) {
-    const clean = this.validateKey("gemini", rawKey);
-    await this.persistKey({ geminiApiKey: this.encrypt(clean), geminiKeyUpdatedAt: new Date() }, actorId);
-    await this.audit.write({
-      actorId,
-      action: "platformConfig.geminiKey.update",
-      entityType: "PlatformConfig",
-      entityId: SINGLETON_ID
-    });
-    return this.status();
+    return this.persistCompanyKey("gemini", rawKey, actorId);
   }
 
   async setGroqApiKey(rawKey: string, actorId?: string) {
-    const clean = this.validateKey("groq", rawKey);
-    await this.persistKey({ groqApiKey: this.encrypt(clean), groqKeyUpdatedAt: new Date() }, actorId);
-    await this.audit.write({
-      actorId,
-      action: "platformConfig.groqKey.update",
-      entityType: "PlatformConfig",
-      entityId: SINGLETON_ID
-    });
-    return this.status();
+    return this.persistCompanyKey("groq", rawKey, actorId);
   }
 
   async setOpenAiApiKey(rawKey: string, actorId?: string) {
-    const clean = this.validateKey("openai", rawKey);
-    await this.persistKey({ openaiApiKey: this.encrypt(clean), openaiKeyUpdatedAt: new Date() }, actorId);
+    return this.persistCompanyKey("openai", rawKey, actorId);
+  }
+
+  async clearCompanyKey(provider: AiProviderName, actorId?: string) {
+    const patch = this.keyPatch(provider, null, null);
+    await this.persistKey(patch, actorId);
     await this.audit.write({
       actorId,
-      action: "platformConfig.openaiKey.update",
+      action: `platformConfig.${provider}Key.delete`,
       entityType: "PlatformConfig",
       entityId: SINGLETON_ID
     });
@@ -174,91 +162,23 @@ export class PlatformConfigService {
   }
 
   async testAnthropicKey(): Promise<{ ok: boolean; message: string }> {
-    const key = await this.getAnthropicApiKey();
-    if (!key) return { ok: false, message: "No Anthropic API key configured." };
-    try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": key,
-          "anthropic-version": "2023-06-01",
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          model: "claude-haiku-4-5-20251001",
-          max_tokens: 16,
-          messages: [{ role: "user", content: "ping" }]
-        })
-      });
-      if (response.ok) return { ok: true, message: "Connection successful." };
-      const text = await response.text();
-      return { ok: false, message: `Anthropic API ${response.status}: ${text.slice(0, 240)}` };
-    } catch (err) {
-      return { ok: false, message: (err as Error).message };
-    }
+    return this.testConfiguredKey("anthropic");
   }
 
   async testGeminiKey(): Promise<{ ok: boolean; message: string }> {
     const key = await this.getGeminiApiKey();
     if (!key) return { ok: false, message: "No Gemini API key configured." };
-    try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(key)}`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ role: "user", parts: [{ text: "ping" }] }],
-            generationConfig: { maxOutputTokens: 8 }
-          })
-        }
-      );
-      if (response.ok) return { ok: true, message: "Connection successful." };
-      const text = await response.text();
-      return { ok: false, message: `Gemini API ${response.status}: ${text.slice(0, 240)}` };
-    } catch (err) {
-      return { ok: false, message: (err as Error).message };
-    }
+    return { ok: false, message: "Gemini key validation not yet implemented." };
   }
 
   async testGroqKey(): Promise<{ ok: boolean; message: string }> {
     const key = await this.getGroqApiKey();
     if (!key) return { ok: false, message: "No Groq API key configured." };
-    try {
-      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${key}`,
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          model: "llama3-8b-8192",
-          max_tokens: 8,
-          messages: [{ role: "user", content: "ping" }]
-        })
-      });
-      if (response.ok) return { ok: true, message: "Connection successful." };
-      const text = await response.text();
-      return { ok: false, message: `Groq API ${response.status}: ${text.slice(0, 240)}` };
-    } catch (err) {
-      return { ok: false, message: (err as Error).message };
-    }
+    return { ok: false, message: "Groq key validation not yet implemented." };
   }
 
   async testOpenAiKey(): Promise<{ ok: boolean; message: string }> {
-    const key = await this.getOpenAiApiKey();
-    if (!key) return { ok: false, message: "No OpenAI API key configured." };
-    try {
-      const response = await fetch("https://api.openai.com/v1/models", {
-        method: "GET",
-        headers: { authorization: `Bearer ${key}` }
-      });
-      if (response.ok) return { ok: true, message: "Connection successful." };
-      const text = await response.text();
-      return { ok: false, message: `OpenAI API ${response.status}: ${text.slice(0, 240)}` };
-    } catch (err) {
-      return { ok: false, message: (err as Error).message };
-    }
+    return this.testConfiguredKey("openai");
   }
 
   async listModels(provider: AiProviderName): Promise<{ provider: AiProviderName; models: string[] }> {
@@ -321,41 +241,77 @@ export class PlatformConfigService {
   // ── Helpers ─────────────────────────────────────────────────────────
   private async resolveKey(provider: AiProviderName): Promise<string | null> {
     const record = await this.prisma.platformConfig.findUnique({ where: { id: SINGLETON_ID } });
-    const stored = this.storedFieldFor(record, provider);
-    if (stored) {
-      const decrypted = this.tryDecrypt(stored);
-      if (decrypted) return decrypted;
-    }
-    return this.config.get<string>(this.envNameFor(provider)) ?? null;
+    const stored = this.encryptedFieldFor(record, provider);
+    if (!stored) return null;
+    return this.encryption.tryDecrypt(stored);
   }
 
-  private envNameFor(provider: AiProviderName): string {
-    switch (provider) {
-      case "anthropic":
-        return "ANTHROPIC_API_KEY";
-      case "gemini":
-        return "GEMINI_API_KEY";
-      case "groq":
-        return "GROQ_API_KEY";
-      case "openai":
-        return "OPENAI_API_KEY";
+  private async persistCompanyKey(
+    provider: AiProviderName,
+    rawKey: string,
+    actorId?: string
+  ): Promise<{ ok: true; validatedAt: string } | never> {
+    const clean = rawKey.trim();
+    if (!clean) throw new Error("API key cannot be empty.");
+    const result = await this.validator.validate(provider, clean);
+    if (!result.valid) {
+      await this.audit.write({
+        actorId,
+        action: `platformConfig.${provider}Key.validation_failed`,
+        entityType: "PlatformConfig",
+        entityId: SINGLETON_ID,
+        metadata: { category: result.category }
+      });
+      throw new Error(result.reason);
     }
+    const validatedAt = new Date();
+    const patch = this.keyPatch(provider, this.encryption.encrypt(clean), validatedAt);
+    await this.persistKey(patch, actorId);
+    await this.audit.write({
+      actorId,
+      action: `platformConfig.${provider}Key.update`,
+      entityType: "PlatformConfig",
+      entityId: SINGLETON_ID
+    });
+    return { ok: true, validatedAt: validatedAt.toISOString() };
   }
 
-  private storedFieldFor(
+  private keyPatch(
+    provider: AiProviderName,
+    encrypted: string | null,
+    validatedAt: Date | null
+  ) {
+    const patch: Parameters<PlatformConfigService["persistKey"]>[0] = {};
+    if (provider === "anthropic") {
+      patch.anthropicKeyEncrypted = encrypted;
+      patch.anthropicKeyValidatedAt = validatedAt;
+    } else if (provider === "openai") {
+      patch.openaiKeyEncrypted = encrypted;
+      patch.openaiKeyValidatedAt = validatedAt;
+    } else if (provider === "gemini") {
+      patch.geminiKeyEncrypted = encrypted;
+      patch.geminiKeyValidatedAt = validatedAt;
+    } else if (provider === "groq") {
+      patch.groqKeyEncrypted = encrypted;
+      patch.groqKeyValidatedAt = validatedAt;
+    }
+    return patch;
+  }
+
+  private encryptedFieldFor(
     record: {
-      anthropicApiKey: string | null;
-      geminiApiKey: string | null;
-      groqApiKey: string | null;
-      openaiApiKey: string | null;
+      anthropicKeyEncrypted: string | null;
+      geminiKeyEncrypted: string | null;
+      groqKeyEncrypted: string | null;
+      openaiKeyEncrypted: string | null;
     } | null,
     provider: AiProviderName
   ): string | null {
     if (!record) return null;
-    if (provider === "anthropic") return record.anthropicApiKey;
-    if (provider === "gemini") return record.geminiApiKey;
-    if (provider === "groq") return record.groqApiKey;
-    return record.openaiApiKey;
+    if (provider === "anthropic") return record.anthropicKeyEncrypted;
+    if (provider === "gemini") return record.geminiKeyEncrypted;
+    if (provider === "groq") return record.groqKeyEncrypted;
+    return record.openaiKeyEncrypted;
   }
 
   private modelFieldFor(
@@ -374,20 +330,18 @@ export class PlatformConfigService {
     return record.openaiModel;
   }
 
-  private async providerStatus(
+  private providerStatus(
     provider: AiProviderName,
-    storedEncrypted: string | null,
-    updatedAt: Date | null,
+    encrypted: string | null,
+    validatedAt: Date | null,
     storedModel: string | null
   ) {
-    const storedKey = storedEncrypted ? this.tryDecrypt(storedEncrypted) : null;
-    const envKey = this.config.get<string>(this.envNameFor(provider)) ?? null;
-    const effective = storedKey ?? envKey;
+    const decrypted = encrypted ? this.encryption.tryDecrypt(encrypted) : null;
     return {
-      configured: Boolean(effective),
-      source: storedKey ? ("database" as const) : envKey ? ("env" as const) : null,
-      maskedKey: effective ? this.mask(effective) : null,
-      updatedAt,
+      configured: Boolean(decrypted),
+      source: decrypted ? ("database" as const) : null,
+      maskedKey: decrypted ? this.mask(decrypted) : null,
+      validatedAt,
       model: storedModel && storedModel.trim() ? storedModel.trim() : DEFAULT_MODELS[provider]
     };
   }
@@ -410,35 +364,31 @@ export class PlatformConfigService {
     return null;
   }
 
-  private validateKey(provider: AiProviderName, raw: string): string {
-    const clean = raw.trim();
-    if (!clean) throw new Error("API key cannot be empty.");
-    if (provider === "anthropic" && !clean.startsWith("sk-ant-")) {
-      throw new Error('Anthropic API keys start with "sk-ant-". Double-check the value.');
+  private async testConfiguredKey(
+    provider: "anthropic" | "openai"
+  ): Promise<{ ok: boolean; message: string }> {
+    const key = await this.resolveKey(provider);
+    if (!key) {
+      return { ok: false, message: `No ${provider} API key configured.` };
     }
-    if (provider === "groq" && !clean.startsWith("gsk_")) {
-      throw new Error('Groq API keys start with "gsk_". Double-check the value.');
-    }
-    if (provider === "openai" && !clean.startsWith("sk-")) {
-      throw new Error('OpenAI API keys start with "sk-". Double-check the value.');
-    }
-    // Gemini keys are arbitrary — no prefix check.
-    return clean;
+    const result = await this.validator.validate(provider, key);
+    if (result.valid) return { ok: true, message: "Connection successful." };
+    return { ok: false, message: result.reason };
   }
 
   private async persistKey(
     patch: {
-      anthropicApiKey?: string;
-      anthropicKeyUpdatedAt?: Date;
+      anthropicKeyEncrypted?: string | null;
+      anthropicKeyValidatedAt?: Date | null;
       anthropicModel?: string | null;
-      geminiApiKey?: string;
-      geminiKeyUpdatedAt?: Date;
+      geminiKeyEncrypted?: string | null;
+      geminiKeyValidatedAt?: Date | null;
       geminiModel?: string | null;
-      groqApiKey?: string;
-      groqKeyUpdatedAt?: Date;
+      groqKeyEncrypted?: string | null;
+      groqKeyValidatedAt?: Date | null;
       groqModel?: string | null;
-      openaiApiKey?: string;
-      openaiKeyUpdatedAt?: Date;
+      openaiKeyEncrypted?: string | null;
+      openaiKeyValidatedAt?: Date | null;
       openaiModel?: string | null;
       preferredProvider?: string | null;
     },
@@ -449,39 +399,6 @@ export class PlatformConfigService {
       create: { id: SINGLETON_ID, ...patch, updatedById: actorId ?? null },
       update: { ...patch, updatedById: actorId ?? null }
     });
-  }
-
-  private encryptionKey(): Buffer {
-    const secret = this.config.get<string>("PLATFORM_CONFIG_SECRET") ?? "change-me-in-production";
-    return createHash("sha256").update(secret, "utf8").digest();
-  }
-
-  private encrypt(plain: string): string {
-    const iv = randomBytes(IV_BYTES);
-    const cipher = createCipheriv(ALGO, this.encryptionKey(), iv);
-    const encrypted = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
-    const tag = cipher.getAuthTag();
-    return `${iv.toString("base64")}.${tag.toString("base64")}.${encrypted.toString("base64")}`;
-  }
-
-  private decrypt(payload: string): string {
-    const [ivB64, tagB64, dataB64] = payload.split(".");
-    if (!ivB64 || !tagB64 || !dataB64) throw new Error("Malformed encrypted payload.");
-    const iv = Buffer.from(ivB64, "base64");
-    const tag = Buffer.from(tagB64, "base64");
-    const data = Buffer.from(dataB64, "base64");
-    const decipher = createDecipheriv(ALGO, this.encryptionKey(), iv);
-    decipher.setAuthTag(tag);
-    const decrypted = Buffer.concat([decipher.update(data), decipher.final()]);
-    return decrypted.toString("utf8");
-  }
-
-  private tryDecrypt(payload: string): string | null {
-    try {
-      return this.decrypt(payload);
-    } catch {
-      return null;
-    }
   }
 
   private mask(key: string): string {

@@ -1,8 +1,9 @@
-import { Injectable, ServiceUnavailableException } from "@nestjs/common";
+import { Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { DEFAULT_MODELS, PlatformConfigService } from "../platform/platform-config.service";
 import { getPersonaBySlug } from "../personas/persona-registry";
 import type { PersonaDefinition, PersonaSubMode } from "../personas/personas.types";
+import { KeyEncryptionService } from "../security/key-encryption.service";
 import type {
   ChatRequest,
   ChatStreamChunk,
@@ -16,16 +17,29 @@ const SUPPORTED_PROVIDERS: ProviderId[] = ["anthropic", "openai"];
 
 @Injectable()
 export class AiProvidersService {
+  private readonly logger = new Logger(AiProvidersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
-    private readonly platformConfig: PlatformConfigService
+    private readonly platformConfig: PlatformConfigService,
+    private readonly encryption: KeyEncryptionService
   ) {}
 
   // Resolves which provider+key+model to use for a given user+persona.
-  // Order: UserPersonaSettings.providerOverride → GlobalAISettings.enabledProviders[0]
-  // → Anthropic (the only supported provider in this PR). API key comes from
-  // PlatformConfig (encrypted DB column) with env var fallback — same logic
-  // the legacy AI scope drafting uses, so admins configure the key in one place.
+  //
+  // Provider selection order:
+  //   1. UserPersonaSettings.providerOverride (if supported)
+  //   2. GlobalAISettings.enabledProviders[0] (if supported)
+  //   3. Anthropic default
+  //
+  // Key source order (§5A.1 PR 9):
+  //   1. Per-user encrypted key on User row (BYOK) — source: "user"
+  //   2. Company encrypted key on PlatformConfig — source: "company"
+  //   3. Throw ServiceUnavailableException (config category)
+  //
+  // No env-var fallback. Keys live in DB only. The `source` field on
+  // ProviderConfig is for audit purposes — every chat call logs which key
+  // source was used.
   async resolveProviderConfig(userId: string, personaSlug: string): Promise<ProviderConfig> {
     const persona = getPersonaBySlug(personaSlug);
     if (!persona) {
@@ -59,20 +73,47 @@ export class AiProvidersService {
       );
     }
 
-    const apiKey = await this.resolveApiKey(chosenProvider);
+    const userKey = await this.getUserKey(userId, chosenProvider);
+    let apiKey: string | null = userKey;
+    let source: "user" | "company" = "user";
+    if (!apiKey) {
+      apiKey = await this.resolveCompanyKey(chosenProvider);
+      source = "company";
+    }
     if (!apiKey) {
       throw new ServiceUnavailableException(
         "AI provider not configured. Contact your administrator."
       );
     }
     const model = await this.resolveModel(chosenProvider);
-    return { providerId: chosenProvider, apiKey, model };
+    return { providerId: chosenProvider, apiKey, model, source };
   }
 
-  // Per-provider key resolution. PlatformConfigService already handles the
-  // encrypted-DB-then-env fallback for both providers — admins configure keys
-  // in one place regardless of which provider the persona uses.
-  private async resolveApiKey(provider: ProviderId): Promise<string | null> {
+  // Per-user BYOK lookup. Returns null when the user has no key for the
+  // provider, OR when the encrypted blob fails to decrypt (logged, falls
+  // through to company key — does NOT throw, so a corrupted user key blob
+  // doesn't take down chat for that user).
+  private async getUserKey(userId: string, provider: ProviderId): Promise<string | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        anthropicKeyEncrypted: true,
+        openaiKeyEncrypted: true
+      }
+    });
+    if (!user) return null;
+    const encrypted =
+      provider === "anthropic" ? user.anthropicKeyEncrypted : user.openaiKeyEncrypted;
+    if (!encrypted) return null;
+    try {
+      return this.encryption.decrypt(encrypted);
+    } catch {
+      this.logger.error(`Failed to decrypt user ${provider} key [userId=${userId}]`);
+      return null;
+    }
+  }
+
+  private async resolveCompanyKey(provider: ProviderId): Promise<string | null> {
     if (provider === "anthropic") return this.platformConfig.getAnthropicApiKey();
     return this.platformConfig.getOpenAiApiKey();
   }

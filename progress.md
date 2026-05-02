@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-02 08:12 AEST
+Last updated: 2026-05-02 09:38 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -1274,3 +1274,66 @@ All three PRs merged successfully. Marco's morning review items:
   §5A.1" rule. False positive (SSE responses, not HTML). Tracked
   as a PHASE 6 entry for follow-up.
 - All other deviations documented inline in each PR's progress entry.
+
+## 2026-05-02 09:37 AEST — PR #131 MERGED — fix: SSE error sanitisation + CodeQL false-positive suppression
+
+Type: PR (FIX)
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/131
+Branch: fix/sse-error-sanitisation-and-codeql-suppression
+Detail: Closes CodeQL alerts #9 and #10.
+
+Alert #9 (js/xss-through-exception on personas.controller.ts) —
+defence-in-depth fix. New
+apps/api/src/modules/ai-providers/error-sanitiser.ts with a
+sanitiseProviderError(error) helper that maps provider, network, and
+exception text into 7 categorised user-facing messages: auth,
+rate-limit, quota, server, network, config, unknown. The chat
+endpoint's catch block AND provider-error-chunk handler both route
+through the sanitiser before emitting SSE error events. Raw error
+text goes to a Logger at the controller (with persona slug, user sub,
+category for ops debugging) — never reaches the client. The "config"
+category exists specifically to preserve the "AI provider not
+configured" message we throw ourselves from resolveProviderConfig
+(we control that string; sanitising it would have been a UX
+regression).
+
+Frontend rendering verdict (Phase A1, informational): ChatPanel.tsx
+renders errors via <span>{error}</span> — React JSX text
+interpolation, auto-escaped. Currently safe. The defence-in-depth
+fix is structural rather than addressing an exploitable issue.
+
+Alert #10 (js/xss-through-dom on FormSubmitPage.tsx:459) — re-raised
+version of dismissed alert #6. PR #128's comment was on the wrong
+line and wasn't a machine-readable suppression. Replaced with a
+proper codeql[js/xss-through-dom] JSX-comment directive positioned
+directly above the flagged JSX block, plus dismissed via gh API for
+belt-and-braces. Alert was at line 459 col 19-26 (the {preview}
+blob-URL src interpolation), not the {currentName} text I previously
+commented. Both expressions are covered by the new directive —
+preview is a blob: URL string set as an img src attribute (React
+doesn't HTML-interpret attribute values), currentName is JSX text
+auto-escaped.
+
+CodeQL suppression syntax: codeql[…] (current format). No existing
+codeql[…] or legacy lgtm[…] annotations elsewhere in the codebase —
+this is the first.
+
+Tests: 26 new sanitiser tests covering all 7 categories + HTML
+metacharacter input safety + SSE separator scrubbing + log message
+preservation. Updated 2 existing controller tests (sanitised user
+message, full original error in log) + added 1 new controller test
+asserting raw provider strings never reach the client.
+
+209/209 API tests + 192/192 web tests. Pre-PR 7/7 green: lint x2
+(clean), test x2, build, compliance:smoke, playwright tendering
+(5/5).
+
+Verification post-merge: alerts #9 and #10 should auto-resolve when
+GitHub re-scans. #9 is structurally fixed (the sanitiser is the
+defence). #10 has both the source-code suppression directive and an
+explicit gh-API dismissal. If either re-raises, the suppression
+syntax may need adjustment — flag for follow-up.
+
+Audit findings: none. PHASE 6 "CodeQL alert #9" entry marked ✅
+COMPLETE in roadmap.md.

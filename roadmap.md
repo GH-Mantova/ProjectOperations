@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-02 08:12 AEST
+Last updated: 2026-05-02 09:38 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -337,17 +337,19 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     HTML-rendered) but deferred per chain rule "DO NOT touch §5A.1
     code". Tracked separately below.
 
-⏸️  CodeQL alert #9 — js/xss-through-exception on personas.controller chat endpoint
-    (Discovered during PR #128 alert audit. Flagged at
-     personas.controller.ts:193 where `res.write(\`data: ${JSON.stringify(event)}\n\n\`)`
-     emits SSE events including error messages. False positive: the
-     endpoint sets Content-Type: text/event-stream, browsers don't
-     render SSE as HTML, frontend parses via fetch + JSON.parse and
-     renders error strings via React text interpolation (auto-escaped).
-     Deferred from PR #128 per chain rule "do not touch §5A.1 code".
-     Resolution: dismiss as false positive (with explanatory comment in
-     personas.controller.ts) in a follow-up PR after the §5A.1 chain
-     stabilises.)
+✅  CodeQL alert #9 — js/xss-through-exception on personas.controller chat endpoint
+    Closed by PR #131 with a defence-in-depth fix rather than a pure
+    suppression. New error-sanitiser.ts maps provider/network/exception
+    text into 7 categorised user-facing messages (auth, rate-limit,
+    quota, server, network, config, unknown). Raw error text is logged
+    server-side for ops debugging but never reaches the client. Closes
+    the rule's actual concern (exception text reinterpreted as HTML)
+    structurally — even if a future frontend renderer were unsafe, the
+    user message is now a hardcoded string from our list, not provider
+    output. Also closed re-raised CodeQL alert #10
+    (js/xss-through-dom on FormSubmitPage.tsx:459, the same false
+    positive as previously-dismissed #6) — proper inline `codeql[…]`
+    suppression directive applied + dismissed via gh API.
 ⏸️  Form drafts — Phase 2 (admin CRUD wiring)
     (Phase 1 shipped foundation + 6 user-facing forms in PR #111. ~20
      admin CRUD pages — UsersPage, RolesPage, SubcontractorsPage modals,

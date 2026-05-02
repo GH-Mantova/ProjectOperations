@@ -2795,6 +2795,32 @@ async function main() {
   await seedSafetyDemos(prisma);
   await seedFormTemplates(prisma);
   await seedNotificationTriggerConfigs(prisma);
+  await seedPersonaRegistry(prisma);
+}
+
+async function seedPersonaRegistry(prisma: PrismaClient) {
+  const tendering = await prisma.persona.upsert({
+    where: { slug: "tendering" },
+    update: { displayName: "Tendering Assistant", isActive: true },
+    create: { slug: "tendering", displayName: "Tendering Assistant", isActive: true }
+  });
+
+  await prisma.personaCompanyInstruction.upsert({
+    where: { personaId: tendering.id },
+    update: {},
+    create: { personaId: tendering.id, instruction: "" }
+  });
+
+  await prisma.globalAISettings.upsert({
+    where: { id: 1 },
+    update: {},
+    create: {
+      id: 1,
+      allowUserInstructionOverrides: false,
+      enabledProviders: ["anthropic"],
+      allowBringYourOwnKey: false
+    }
+  });
 }
 
 async function seedNotificationTriggerConfigs(prisma: PrismaClient) {

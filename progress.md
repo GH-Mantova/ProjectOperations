@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-02 01:00 AEST
+Last updated: 2026-05-02 01:48 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -649,4 +649,46 @@ Roadmap CHANGELOG entry added with full reasoning.
 Next: verify GitHub has the updated versions, then begin sequenced
 sub-PRs starting with 5A.1 persona registry foundation.
 Files: roadmap.md, project_instructions.md, progress.md.
+Audit findings: none.
+
+## 2026-05-02 01:47 AEST — PR #117 MERGED — §5A.1 PR 1: Persona registry foundation
+
+Type: PR
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/117
+Branch: feat/persona-registry-foundation
+Detail: First PR in §5A.1 sub-phase. Establishes hybrid persona model:
+structure in code (PersonaDefinition + persona-registry + tendering
+definition with 7 sub-modes), instructions and user settings in DB
+(4 new tables: Persona, PersonaCompanyInstruction, UserPersonaSettings,
+GlobalAISettings). 7 admin-gated API endpoints with Swagger
+(GET /personas, GET /personas/:slug, PUT /personas/:slug/company-instruction,
+GET/PUT /personas/:slug/my-settings, GET/PUT /personas/global-settings).
+Permission ai.persona.tendering registered in permission-registry.ts.
+Tendering Assistant persona row seeded with empty company instruction
+(idempotent upsert). Global AI settings singleton seeded with
+Anthropic-only enabledProviders, BYOK off, user instruction overrides
+off (Sean enables via settings UI later). Permission grants verified
+in DB: Sean (Admin + Super User), Colin (Admin), Marco (Admin),
+admin@projectops.local (Admin) — all via Admin role's
+"all permissions" grant — plus Raj (Senior Estimator) via explicit
+addition to that role's permission list in seed-initial-services.ts.
+Migration: 20260502011757_feat_persona_registry_foundation. Migration
+was hand-trimmed after generation: prisma migrate dev bundled
+unrelated drift between main's schema.prisma and the migrations folder
+(stray workers.employmentType compat column + FK/default cleanups);
+those are pre-existing on main and out of scope here. Local DB reset
+with user consent to validate the trimmed migration applies cleanly.
+Tests: 25 new (12 registry + 13 service) — all pass via mocked Prisma.
+Pre-PR CI green: lint x2, test x2 (97 api + 68 web), build, compliance:smoke,
+playwright tendering (5/5).
+Route patterns deviation: tendering sub-modes scope/estimate/quote/
+clarifications use notional sub-routes (/tenders/:id/scope, etc.) that
+don't currently exist in App.tsx — TenderDetailPage handles these as
+internal tabs (?detail=scope query). The persona registry matcher
+works correctly with whatever route is passed in; a future PR will
+adapt the floating window's call site to translate active tab into
+the appropriate sub-mode route. Documented in PR body.
+No UI, no floating window, no AI integration — pure foundation.
+Next §5A.1 PR: floating window shell + tab-aware persona route detection.
 Audit findings: none.

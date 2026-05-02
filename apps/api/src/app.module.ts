@@ -25,6 +25,7 @@ import { DirectoryModule } from "./modules/directory/directory.module";
 import { SafetyModule } from "./modules/safety/safety.module";
 import { MasterDataModule } from "./modules/master-data/master-data.module";
 import { PermissionsModule } from "./modules/permissions/permissions.module";
+import { PersonasModule } from "./modules/personas/personas.module";
 import { PlatformModule } from "./modules/platform/platform.module";
 import { PortalModule } from "./modules/portal/portal.module";
 import { PrismaModule } from "./prisma/prisma.module";
@@ -68,6 +69,7 @@ import { FieldModule } from "./modules/field/field.module";
     EstimateExportModule,
     EstimatesModule,
     PermissionsModule,
+    PersonasModule,
     PlatformModule,
     ResourcesModule,
     AuthModule,

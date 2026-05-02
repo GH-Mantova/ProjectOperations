@@ -60,5 +60,6 @@ export const permissionRegistry = [
   { code: "safety.view", module: "safety", description: "View safety incidents and hazard observations" },
   { code: "safety.manage", module: "safety", description: "Report and update incidents and hazard observations" },
   { code: "safety.admin", module: "safety", description: "Close incidents/hazards, manage corrective actions" },
-  { code: "portal.invite", module: "portal", description: "Invite client contacts to the client portal" }
+  { code: "portal.invite", module: "portal", description: "Invite client contacts to the client portal" },
+  { code: "ai.persona.tendering", module: "ai", description: "Use the Tendering Assistant AI persona — chat, settings, instruction overrides" }
 ] as const;

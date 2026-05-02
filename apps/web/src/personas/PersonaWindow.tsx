@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { ChatPanel } from "./ChatPanel";
 import { useActivePersona } from "./PersonaContext";
 import { activePersonaKey, panelContent } from "./persona-window-helpers";
 
@@ -90,7 +91,9 @@ export function PersonaWindow() {
               {ICON_CLOSE}
             </button>
           </header>
-          <div className="persona-window__panel-body">{content.body}</div>
+          <div className="persona-window__panel-body">
+            <ChatPanel />
+          </div>
           <footer className="persona-window__panel-footer">
             <Link
               to="/admin/ai-settings"

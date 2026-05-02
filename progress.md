@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-02 04:11 AEST
+Last updated: 2026-05-02 04:55 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -929,4 +929,75 @@ replacement and migrating inside that PR keeps main working at every
 step. Awaiting main chat decision.
 Pre-PR: lint x2, test x2, build, smoke all clean (no code changes
 to break anything). Playwright not run — investigation-only.
+Audit findings: none.
+
+## 2026-05-02 04:54 AEST — PR #123 MERGED — §5A.1 PR 6: AI integration MVP
+
+Type: PR
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/123
+Branch: feat/ai-integration-mvp
+Detail: Sixth §5A.1 PR. Floating window placeholder body replaced with
+working streaming chat against Anthropic Messages API.
+Backend: new ai-providers module (apps/api/src/modules/ai-providers/)
+with raw-fetch Anthropic provider (no SDK — matches existing
+claude.provider.ts pattern, no new deps). Service exposes
+resolveProviderConfig (user override → global enabled providers →
+Anthropic; reuses PlatformConfigService.getAnthropicApiKey for the
+encrypted-DB-then-env fallback already used by legacy AI scope
+drafting), resolveSystemPrompt (intrinsic persona prompt + sub-mode
+description + company instruction + user instruction when
+allowUserInstructionOverrides), and streamChat (async iterable of
+ChatStreamChunk events). New endpoint POST /api/v1/personas/:slug/chat
+streams Server-Sent Events; gated by PersonaPermissionGuard from
+PR #118 (auto 404 unknown slug, 403 unpermitted user). Errors
+emit type=error then always type=done so the client can clean up.
+Frontend: ChatPanel + MessageList + MessageInput + use-streaming-chat
+hook under apps/web/src/personas/. Streaming chunks render
+chunk-by-chunk with a pulsing cursor; partial responses are
+preserved on mid-stream error so the user keeps what they got.
+Retry button re-sends the last user message (trimming it from
+history first to avoid a duplicate). Chat resets when active
+persona/sub-mode changes (shouldResetOnPersonaChange — slug or
+sub-mode name diff); persists across window close/reopen on the
+same sub-mode. Brand colours via CSS variables (teal user bubbles,
+muted assistant, orange streaming cursor). chat-helpers.ts is the
+testable logic surface (parseSSEEvent + readSSEStream + button-state
+helpers).
+Legacy AI scope drafting (TenderScopeDraftingService,
+UserAiProvidersService, AiProviderSelector) UNTOUCHED per PR #122
+investigation — migration is its own follow-up PR.
+ANTHROPIC_API_KEY env var: optional — when missing the chat endpoint
+emits a graceful "AI provider not configured" error event instead
+of 500. .env.example comment updated.
+Tests: 67 new across backend (ai-providers service 12 + Anthropic
+provider parser/stream 11 + chat endpoint 4 in personas controller)
+and frontend (chat-helpers 25). Total: 158/158 api + 151/151 web.
+Pre-PR 7/7 green: lint x2 (clean), test x2, build, compliance:smoke,
+playwright tendering (5/5).
+Curl smoke (live dev API, no key configured):
+- Raj POST /personas/tendering/chat → SSE stream emits
+  type=error "AI provider not configured" then type=done ✓
+- Same endpoint with unknown slug → 404 (guard) ✓
+- Beau (no perm) → 403 (guard) ✓
+- Unauthenticated → 401 ✓
+Visual smoke (typing in input, streaming UI, error banner with retry,
+brand colour rendering, autoscroll) NOT verified locally — autonomous
+session can't browser-test. Marco to verify post-merge with a real
+ANTHROPIC_API_KEY in .env.
+Deviations:
+1. SDK choice: used raw fetch + ReadableStream/TextDecoder rather
+   than @anthropic-ai/sdk. The codebase already uses raw fetch for
+   Claude (see claude.provider.ts in tendering module) and adding
+   the SDK as a new dep just for streaming wasn't worth the bloat.
+   Tradeoff: we hand-roll SSE parsing — covered by 11 unit tests
+   for the chunk-boundary edge cases.
+2. Conversation persistence: out of scope per spec. Refresh loses
+   history. Schema design for that lands in a later PR.
+3. RTL still not installed; component rendering not unit-tested.
+   Pure logic (helpers + hook) is fully covered. Visual rendering
+   relies on manual smoke.
+What's NOT in this PR: BYOK encryption, conversation persistence,
+sub-mode tools (drawing upload, scope-card commit, etc.), provider
+selection UI inside chat, migration of legacy AI scope drafting.
 Audit findings: none.

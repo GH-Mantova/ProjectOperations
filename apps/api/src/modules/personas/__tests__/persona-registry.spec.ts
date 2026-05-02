@@ -75,9 +75,47 @@ describe("persona-registry", () => {
       expect(findPersonaForRoute("/tenders/123/scope/")?.subMode.name).toBe("scope");
     });
 
-    it("ignores query strings and hash fragments", () => {
+    it("ignores unrelated query strings and hash fragments", () => {
       expect(findPersonaForRoute("/tenders/123/scope?foo=bar")?.subMode.name).toBe("scope");
       expect(findPersonaForRoute("/tenders/123/estimate#section")?.subMode.name).toBe("estimate");
+    });
+
+    describe("?detail= query param (Tendering tab-based sub-modes)", () => {
+      it("treats /tenders/:id?detail=scope as equivalent to /tenders/:id/scope", () => {
+        expect(findPersonaForRoute("/tenders/123?detail=scope")?.subMode.name).toBe("scope");
+      });
+
+      it("treats ?detail=quote as equivalent to /quote", () => {
+        expect(findPersonaForRoute("/tenders/abc-001?detail=quote")?.subMode.name).toBe("quote");
+      });
+
+      it("treats ?detail=estimate as equivalent to /estimate", () => {
+        expect(findPersonaForRoute("/tenders/123?detail=estimate")?.subMode.name).toBe("estimate");
+      });
+
+      it("treats ?detail=clarifications as equivalent to /clarifications", () => {
+        expect(findPersonaForRoute("/tenders/123?detail=clarifications")?.subMode.name).toBe(
+          "clarifications"
+        );
+      });
+
+      it("falls back to tender-detail when ?detail= names an unknown sub-mode", () => {
+        expect(findPersonaForRoute("/tenders/123?detail=unknown")?.subMode.name).toBe("tender-detail");
+      });
+
+      it("ignores unrelated query params and matches base sub-mode", () => {
+        expect(findPersonaForRoute("/tenders/pipeline?someOther=foo")?.subMode.name).toBe(
+          "pipeline"
+        );
+      });
+
+      it("returns null for unrelated routes regardless of detail param", () => {
+        expect(findPersonaForRoute("/dashboards?detail=scope")).toBeNull();
+      });
+
+      it("matches /tenders/:id with no detail to tender-detail sub-mode", () => {
+        expect(findPersonaForRoute("/tenders/123")?.subMode.name).toBe("tender-detail");
+      });
     });
   });
 });

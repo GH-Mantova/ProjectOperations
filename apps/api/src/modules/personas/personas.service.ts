@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import type { PersonaDefinition } from "./personas.types";
-import { getAllPersonas, getPersonaBySlug } from "./persona-registry";
+import { findPersonaForRoute, getAllPersonas, getPersonaBySlug } from "./persona-registry";
 
 const GLOBAL_SETTINGS_ID = 1;
 
@@ -133,6 +133,35 @@ export class PersonasService {
         ...(dto.allowBringYourOwnKey !== undefined ? { allowBringYourOwnKey: dto.allowBringYourOwnKey } : {})
       }
     });
+  }
+
+  // Returns the persona+subMode active for a URL, filtered by the caller's
+  // permissions. Returns null (not 403) when the user lacks access — so the
+  // floating window can gracefully decline to render rather than show an
+  // error to users on tendering routes who don't have ai.persona.tendering.
+  resolveActivePersonaForRoute(
+    url: string,
+    user: { permissions?: string[]; isSuperUser?: boolean } | undefined
+  ) {
+    if (!url) return null;
+    const match = findPersonaForRoute(url);
+    if (!match) return null;
+
+    const granted = new Set(user?.permissions ?? []);
+    const allowed = user?.isSuperUser === true || granted.has(match.persona.permissionRequired);
+    if (!allowed) return null;
+
+    return {
+      persona: {
+        slug: match.persona.slug,
+        displayName: match.persona.displayName,
+        description: match.persona.description
+      },
+      subMode: {
+        name: match.subMode.name,
+        description: match.subMode.description
+      }
+    };
   }
 
   async listPersonas() {

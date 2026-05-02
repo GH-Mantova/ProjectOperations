@@ -58,30 +58,66 @@ function rootMatches(pattern: string, path: string): boolean {
   return normalisedPath.startsWith(normalisedPattern + "/");
 }
 
+// Treat the `detail` query param as if it were the next path segment when
+// matching. This is how Tendering's tab-based sub-modes are represented in the
+// URL: TenderDetailPage uses `/tenders/:id?detail=scope` rather than a real
+// nested route. The matcher itself stays path-based; we just rewrite the input
+// here so `?detail=scope` looks like `/scope` to the existing logic.
+function buildMatchablePath(url: string): { path: string; queryDetail: string | null } {
+  const queryStart = url.indexOf("?");
+  if (queryStart === -1) {
+    return { path: url, queryDetail: null };
+  }
+  const path = url.slice(0, queryStart);
+  const queryString = url.slice(queryStart + 1);
+  const params = new URLSearchParams(queryString);
+  const detail = params.get("detail");
+  if (!detail) {
+    return { path, queryDetail: null };
+  }
+  const trimmed = path.replace(/\/$/, "");
+  return { path: `${trimmed}/${detail}`, queryDetail: detail };
+}
+
 export function findPersonaForRoute(currentRoute: string): PersonaRouteMatch | null {
-  let best: { match: PersonaRouteMatch; score: number } | null = null;
+  const { path: matchPath, queryDetail } = buildMatchablePath(currentRoute);
 
-  for (const persona of PERSONAS) {
-    if (!rootMatches(persona.rootRoutePattern, currentRoute)) continue;
+  const tryMatch = (candidate: string): PersonaRouteMatch | null => {
+    let best: { match: PersonaRouteMatch; score: number } | null = null;
+    for (const persona of PERSONAS) {
+      if (!rootMatches(persona.rootRoutePattern, candidate)) continue;
 
-    let bestSubMode: PersonaSubMode | null = null;
-    let bestScore = -1;
-    for (const subMode of persona.subModes) {
-      if (!patternMatches(subMode.routePattern, currentRoute)) continue;
-      const score = specificity(subMode.routePattern);
-      if (score > bestScore) {
-        bestScore = score;
-        bestSubMode = subMode;
+      let bestSubMode: PersonaSubMode | null = null;
+      let bestScore = -1;
+      for (const subMode of persona.subModes) {
+        if (!patternMatches(subMode.routePattern, candidate)) continue;
+        const score = specificity(subMode.routePattern);
+        if (score > bestScore) {
+          bestScore = score;
+          bestSubMode = subMode;
+        }
+      }
+
+      if (bestSubMode) {
+        if (best === null || bestScore > best.score) {
+          best = { match: { persona, subMode: bestSubMode }, score: bestScore };
+        }
       }
     }
+    return best ? best.match : null;
+  };
 
-    if (bestSubMode) {
-      const score = bestScore;
-      if (best === null || score > best.score) {
-        best = { match: { persona, subMode: bestSubMode }, score };
-      }
-    }
+  const primary = tryMatch(matchPath);
+  if (primary) return primary;
+
+  // Fallback: when the detail param doesn't map to any sub-mode (e.g. a
+  // future tab name not yet registered, or a typo), fall back to matching
+  // the bare path so the persona still activates with its base sub-mode.
+  if (queryDetail !== null) {
+    const queryStart = currentRoute.indexOf("?");
+    const barePath = queryStart === -1 ? currentRoute : currentRoute.slice(0, queryStart);
+    return tryMatch(barePath);
   }
 
-  return best ? best.match : null;
+  return null;
 }

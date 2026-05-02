@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-02 07:13 AEST
+Last updated: 2026-05-02 07:40 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -1159,4 +1159,27 @@ separate sub-modes via existing ?detail=-style query-param matching.
 Manual smoke pending Marco: navigate /tenders → panel reads "Tender
 overview mode — register list... and pipeline kanban...". Browser
 URL bar should NOT briefly show /tenders/pipeline as a persona route.
+Audit findings: none.
+
+## 2026-05-02 07:39 AEST — PR #127 MERGED — chore: doc sanity check + PHASE 6 updates
+
+Type: PR (CHORE)
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/127
+Branch: chore/doc-sanity-and-phase-6-updates
+Detail: First PR in the overnight 3-PR hygiene chain (Marco asleep).
+Doc-only consolidation of tech debt entries accumulated during the
+May 2 §5A.1 build session. 9 new entries added to roadmap.md PHASE 6:
+RTL adoption for component tests; dev:api orphan process propagation;
+catch-all redirect → 404 page; refine Tendering persona utility-route
+coverage; user-level default AI provider; reconcile AI model defaults
+(addressed by PR C in this same chain); migration history audit;
+consolidate root vs apps/api/.env files; tender detail tab sub-modes
+use internal state not URL. Doc sanity check confirmed progress.md
+has all PR #117–#126 merge entries (20 mentions across the 10 PRs +
+the PR #122 investigation entry); roadmap.md PHASE 5A is correctly
+split into 5A.1/5A.2/5A.3 (per PR #116); project_instructions.md §13
+has the PLANNED — PHASE 5A.1 and 5A.2 sub-sections (per PR #116). No
+divergence found — no fix-up required.
+Pre-PR: lint x2 (clean). No tests required (doc-only).
 Audit findings: none.

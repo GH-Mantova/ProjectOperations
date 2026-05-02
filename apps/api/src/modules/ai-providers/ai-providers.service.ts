@@ -1,6 +1,6 @@
 import { Injectable, ServiceUnavailableException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
-import { PlatformConfigService } from "../platform/platform-config.service";
+import { DEFAULT_MODELS, PlatformConfigService } from "../platform/platform-config.service";
 import { getPersonaBySlug } from "../personas/persona-registry";
 import type { PersonaDefinition, PersonaSubMode } from "../personas/personas.types";
 import type {
@@ -9,8 +9,8 @@ import type {
   ProviderConfig,
   ProviderId
 } from "./ai-providers.types";
-import { ANTHROPIC_DEFAULT_MODEL, streamAnthropicChat } from "./providers/anthropic.provider";
-import { OPENAI_DEFAULT_MODEL, streamOpenAIChat } from "./providers/openai.provider";
+import { streamAnthropicChat } from "./providers/anthropic.provider";
+import { streamOpenAIChat } from "./providers/openai.provider";
 
 const SUPPORTED_PROVIDERS: ProviderId[] = ["anthropic", "openai"];
 
@@ -81,14 +81,13 @@ export class AiProvidersService {
   // (admin-configured) → hardcoded fallback. Env var wins so a single
   // deployment-time switch flips the model without touching the DB.
   private async resolveModel(provider: ProviderId): Promise<string> {
-    if (provider === "anthropic") {
-      const envOverride = process.env.ANTHROPIC_MODEL?.trim();
-      if (envOverride) return envOverride;
-      return (await this.platformConfig.getModel("anthropic")) || ANTHROPIC_DEFAULT_MODEL;
-    }
-    const envOverride = process.env.OPENAI_MODEL?.trim();
+    const envName = provider === "anthropic" ? "ANTHROPIC_MODEL" : "OPENAI_MODEL";
+    const envOverride = process.env[envName]?.trim();
     if (envOverride) return envOverride;
-    return (await this.platformConfig.getModel("openai")) || OPENAI_DEFAULT_MODEL;
+    // PlatformConfigService.getModel already falls back to DEFAULT_MODELS
+    // when no DB-saved value exists; the OR here is a belt-and-braces guard
+    // for the (impossible-in-practice) empty-string case.
+    return (await this.platformConfig.getModel(provider)) || DEFAULT_MODELS[provider];
   }
 
   // Builds the system prompt sent to the AI. Three layers, concatenated with

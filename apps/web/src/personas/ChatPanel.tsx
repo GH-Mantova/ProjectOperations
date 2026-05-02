@@ -3,7 +3,7 @@ import { useActivePersona } from "./PersonaContext";
 import { MessageInput } from "./MessageInput";
 import { MessageList } from "./MessageList";
 import { useStreamingChat } from "./use-streaming-chat";
-import { shouldResetOnPersonaChange } from "./chat-helpers";
+import { chatPanelEmptyHint, shouldResetOnPersonaChange } from "./chat-helpers";
 import type { ActivePersona } from "./types";
 
 export function ChatPanel() {
@@ -27,7 +27,7 @@ export function ChatPanel() {
 
   if (!activePersona) return null;
 
-  const emptyHint = `Ask the ${activePersona.persona.displayName} about this ${activePersona.subMode.name} view.`;
+  const emptyHint = chatPanelEmptyHint(activePersona);
 
   return (
     <div className="persona-window__chat">

@@ -1,6 +1,7 @@
 import type { ChatRequest, ChatStreamChunk } from "../ai-providers.types";
 
-export const ANTHROPIC_DEFAULT_MODEL = "claude-sonnet-4-6";
+// Model is supplied via ChatRequest.config.model; the default lives in
+// PlatformConfigService.DEFAULT_MODELS.anthropic. Don't duplicate it here.
 const MAX_TOKENS = 2048;
 const ANTHROPIC_VERSION = "2023-06-01";
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";

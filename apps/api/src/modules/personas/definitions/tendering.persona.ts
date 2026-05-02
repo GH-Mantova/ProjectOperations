@@ -7,6 +7,12 @@ export const tenderingPersona: PersonaDefinition = {
     "Conversational AI assistant for IS tendering workflow. Helps with scope drafting, estimate guidance, quote review, and clarifications. IS disciplines only (demolition, asbestos, civil) — never MEP, fit-out, painting, or new construction.",
   rootRoutePattern: "/tenders",
   permissionRequired: "ai.persona.tendering",
+  // /tenders/dashboard is the operations Tendering dashboard (KPIs across the
+  // pipeline). Without this exclusion the matcher captures it as
+  // /tenders/:id with id="dashboard" → tender-detail sub-mode. That route
+  // belongs to the future Dashboard Master persona; Tendering Assistant
+  // should not render there.
+  excludedRoutes: ["/tenders/dashboard"],
   subModes: [
     {
       name: "pipeline",

@@ -10,8 +10,9 @@ import type {
   ProviderId
 } from "./ai-providers.types";
 import { ANTHROPIC_DEFAULT_MODEL, streamAnthropicChat } from "./providers/anthropic.provider";
+import { OPENAI_DEFAULT_MODEL, streamOpenAIChat } from "./providers/openai.provider";
 
-const SUPPORTED_PROVIDERS: ProviderId[] = ["anthropic"];
+const SUPPORTED_PROVIDERS: ProviderId[] = ["anthropic", "openai"];
 
 @Injectable()
 export class AiProvidersService {
@@ -50,22 +51,44 @@ export class AiProvidersService {
       }
     }
 
-    if (chosenProvider !== "anthropic") {
-      // Defensive: SUPPORTED_PROVIDERS gates this, but make the failure mode
-      // explicit if a future enabledProvider value sneaks through.
+    if (!SUPPORTED_PROVIDERS.includes(chosenProvider)) {
+      // Defensive: SUPPORTED_PROVIDERS gates this above, but make the failure
+      // mode explicit if a future enabledProvider value sneaks through.
       throw new ServiceUnavailableException(
-        `Provider ${chosenProvider} is not implemented yet. Only Anthropic is supported in §5A.1 PR 6.`
+        `Provider ${chosenProvider} is not implemented yet.`
       );
     }
 
-    const apiKey = await this.platformConfig.getAnthropicApiKey();
+    const apiKey = await this.resolveApiKey(chosenProvider);
     if (!apiKey) {
       throw new ServiceUnavailableException(
         "AI provider not configured. Contact your administrator."
       );
     }
-    const model = (await this.platformConfig.getModel("anthropic")) || ANTHROPIC_DEFAULT_MODEL;
-    return { providerId: "anthropic", apiKey, model };
+    const model = await this.resolveModel(chosenProvider);
+    return { providerId: chosenProvider, apiKey, model };
+  }
+
+  // Per-provider key resolution. PlatformConfigService already handles the
+  // encrypted-DB-then-env fallback for both providers — admins configure keys
+  // in one place regardless of which provider the persona uses.
+  private async resolveApiKey(provider: ProviderId): Promise<string | null> {
+    if (provider === "anthropic") return this.platformConfig.getAnthropicApiKey();
+    return this.platformConfig.getOpenAiApiKey();
+  }
+
+  // Model precedence: env var (deployment override) → PlatformConfig
+  // (admin-configured) → hardcoded fallback. Env var wins so a single
+  // deployment-time switch flips the model without touching the DB.
+  private async resolveModel(provider: ProviderId): Promise<string> {
+    if (provider === "anthropic") {
+      const envOverride = process.env.ANTHROPIC_MODEL?.trim();
+      if (envOverride) return envOverride;
+      return (await this.platformConfig.getModel("anthropic")) || ANTHROPIC_DEFAULT_MODEL;
+    }
+    const envOverride = process.env.OPENAI_MODEL?.trim();
+    if (envOverride) return envOverride;
+    return (await this.platformConfig.getModel("openai")) || OPENAI_DEFAULT_MODEL;
   }
 
   // Builds the system prompt sent to the AI. Three layers, concatenated with
@@ -114,13 +137,16 @@ export class AiProvidersService {
     return layers.join("\n\n");
   }
 
-  // Dispatches to the correct provider implementation. Today only Anthropic.
+  // Dispatches to the correct provider implementation.
   streamChat(request: ChatRequest): AsyncIterable<ChatStreamChunk> {
     if (request.config.providerId === "anthropic") {
       return streamAnthropicChat(request);
     }
-    // The type system narrows providerId to "anthropic" only, but keep a
-    // runtime guard for future providers added to ProviderId.
+    if (request.config.providerId === "openai") {
+      return streamOpenAIChat(request);
+    }
+    // Runtime guard for future providers added to ProviderId before their
+    // implementation lands.
     return errorStream(`Provider ${request.config.providerId} not implemented.`);
   }
 }

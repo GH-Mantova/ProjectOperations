@@ -1,8 +1,9 @@
 // Persona AI integration — provider-agnostic types.
-// Only Anthropic is implemented in §5A.1 PR 6. Other providers register
-// here as new files in providers/ and a new branch in dispatchProvider().
+// Anthropic (§5A.1 PR 6) and OpenAI (§5A.1 PR 7) are implemented. Other
+// providers register here as new files in providers/ and a new case in
+// AiProvidersService.streamChat().
 
-export type ProviderId = "anthropic";
+export type ProviderId = "anthropic" | "openai";
 
 export interface ProviderConfig {
   providerId: ProviderId;

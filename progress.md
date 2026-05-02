@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-02 04:55 AEST
+Last updated: 2026-05-02 05:35 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -1000,4 +1000,64 @@ Deviations:
 What's NOT in this PR: BYOK encryption, conversation persistence,
 sub-mode tools (drawing upload, scope-card commit, etc.), provider
 selection UI inside chat, migration of legacy AI scope drafting.
+Audit findings: none.
+
+## 2026-05-02 05:34 AEST — PR #124 MERGED — §5A.1 PR 7: OpenAI provider implementation
+
+Type: PR
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/124
+Branch: feat/openai-provider
+Detail: Seventh §5A.1 PR. Adds OpenAI as a second AI provider alongside
+Anthropic. New apps/api/src/modules/ai-providers/providers/openai.provider.ts
+mirrors anthropic.provider.ts shape — raw fetch (no SDK), targets
+https://api.openai.com/v1/chat/completions with the standard Chat
+Completions API. SSE parsing handles OpenAI-specific format: the
+literal `data: [DONE]` end marker (vs Anthropic's `message_stop` event),
+content at choices[0].delta.content (vs delta.text), top-level error
+field (vs error event type). Same chunk-boundary buffering as Anthropic.
+ProviderId type extended to "anthropic" | "openai". SUPPORTED_PROVIDERS
+updated. resolveProviderConfig now picks the right key+model per
+provider via two new private helpers (resolveApiKey, resolveModel).
+streamChat dispatch grew an OpenAI branch.
+Key resolution: PlatformConfigService already had getOpenAiApiKey()
+from Phase 4 (Anthropic + Gemini + Groq + OpenAI all wired up since
+PR #80-era). NO new DB column needed; no migration. Just wired in
+ai-providers.service.ts.
+Model env-var override: ANTHROPIC_MODEL and OPENAI_MODEL both honoured.
+Precedence: env var > PlatformConfig.getModel() > hardcoded fallback
+(claude-sonnet-4-6 / gpt-5.4-mini). Lets a deployment-time switch
+flip the model without touching the DB.
+.env.example updated with both keys + both model overrides; root file
+is canonical (no apps/api/.env.example exists — confirmed).
+Tests: 14 new (10 in openai.provider.spec.ts mirroring Anthropic +
+4 in ai-providers.service.spec.ts: OpenAI override, OpenAI fallback,
+missing key, ANTHROPIC_MODEL/OPENAI_MODEL env override). One existing
+test renamed from "openai unsupported" to "gemini not-yet-implemented"
+since openai is now implemented. Pre-PR 7/7 green: lint x2 (clean),
+test x2 (178 api + 170 web), build, compliance:smoke, playwright
+tendering (5/5).
+Existing 158/158 API + 151/151 web tests still pass — no regression.
+PR #123's Anthropic functionality untouched (only the model came
+from request.config.model anyway, so the env-var override is purely
+additive on the resolveModel side).
+Manual smoke pending Marco: set OPENAI_API_KEY in apps/api/.env,
+restart, /admin/ai-settings → Company tab → enable OpenAI provider →
+My Settings → Provider Override = OpenAI → /tenders/pipeline open
+chat → confirm streaming response from GPT (style noticeably
+different from Claude).
+Deviations:
+1. Default model "gpt-5.4-mini" used as the hardcoded last-resort
+   fallback per spec, even though PlatformConfig DEFAULT_MODELS has
+   "gpt-4o-mini". The fallback only applies when both env and DB
+   are unset, which is rare; admins/devs override via env or admin
+   UI. If "gpt-5.4-mini" turns out to be wrong, set OPENAI_MODEL.
+2. Same prompt sent to both providers per spec — no per-provider
+   prompt customisation.
+3. Component rendering not RTL-tested (matches PR #119–#123
+   pattern). Pure logic (provider parsers + service dispatch +
+   helpers) fully covered.
+What's NOT in this PR: provider selection UI inside chat (settings
+already cover it), BYOK encryption, Gemini/Groq implementations,
+migration of legacy AI scope drafting.
 Audit findings: none.

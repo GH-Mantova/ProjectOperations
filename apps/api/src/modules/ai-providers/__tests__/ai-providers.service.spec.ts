@@ -38,12 +38,22 @@ function buildPrismaMock(overrides: {
   return prisma;
 }
 
-function buildPlatformConfig(overrides: { apiKey?: string | null; model?: string | null } = {}) {
+function buildPlatformConfig(
+  overrides: {
+    apiKey?: string | null;
+    openaiKey?: string | null;
+    model?: string | null;
+  } = {}
+) {
   // `apiKey: null` means "explicitly missing"; not setting the key means "use default"
   const apiKey = "apiKey" in overrides ? overrides.apiKey : "sk-test";
+  const openaiKey = "openaiKey" in overrides ? overrides.openaiKey : "sk-openai-test";
   return {
     getAnthropicApiKey: jest.fn(async () => apiKey),
-    getModel: jest.fn(async () => overrides.model ?? "claude-sonnet-4-6")
+    getOpenAiApiKey: jest.fn(async () => openaiKey),
+    getModel: jest.fn(async (provider: "anthropic" | "openai") =>
+      overrides.model ?? (provider === "anthropic" ? "claude-sonnet-4-6" : "gpt-5.4-mini")
+    )
   } as never;
 }
 
@@ -63,10 +73,12 @@ describe("AiProvidersService.resolveProviderConfig", () => {
     expect(cfg.providerId).toBe("anthropic");
   });
 
-  it("falls back to global enabled providers when user override is unsupported", async () => {
+  it("falls back to global enabled providers when user override names a not-yet-implemented provider", async () => {
+    // 'gemini' has a UserPersonaSettings DTO entry but no provider implementation yet —
+    // exercises the SUPPORTED_PROVIDERS gate.
     const service = new AiProvidersService(
       buildPrismaMock({
-        userSettings: { providerOverride: "openai" },
+        userSettings: { providerOverride: "gemini" },
         globalSettings: {
           allowUserInstructionOverrides: false,
           enabledProviders: ["anthropic"],
@@ -103,6 +115,86 @@ describe("AiProvidersService.resolveProviderConfig", () => {
     );
     const cfg = await service.resolveProviderConfig("user-1", "tendering");
     expect(cfg.model).toBe("claude-opus-4-7");
+  });
+
+  describe("OpenAI provider", () => {
+    afterEach(() => {
+      delete process.env.OPENAI_MODEL;
+      delete process.env.ANTHROPIC_MODEL;
+    });
+
+    it("returns OpenAI config when user override is 'openai'", async () => {
+      const service = new AiProvidersService(
+        buildPrismaMock({
+          userSettings: { providerOverride: "openai" },
+          globalSettings: {
+            allowUserInstructionOverrides: false,
+            enabledProviders: ["anthropic", "openai"],
+            allowBringYourOwnKey: false
+          }
+        }),
+        buildPlatformConfig()
+      );
+      const cfg = await service.resolveProviderConfig("user-1", "tendering");
+      expect(cfg.providerId).toBe("openai");
+      expect(cfg.apiKey).toBe("sk-openai-test");
+      expect(cfg.model).toBe("gpt-5.4-mini");
+    });
+
+    it("falls back to OpenAI when global enabled list starts with it", async () => {
+      const service = new AiProvidersService(
+        buildPrismaMock({
+          globalSettings: {
+            allowUserInstructionOverrides: false,
+            enabledProviders: ["openai"],
+            allowBringYourOwnKey: false
+          }
+        }),
+        buildPlatformConfig()
+      );
+      const cfg = await service.resolveProviderConfig("user-1", "tendering");
+      expect(cfg.providerId).toBe("openai");
+    });
+
+    it("throws 503 when OPENAI_API_KEY missing for an OpenAI selection", async () => {
+      const service = new AiProvidersService(
+        buildPrismaMock({
+          userSettings: { providerOverride: "openai" },
+          globalSettings: {
+            allowUserInstructionOverrides: false,
+            enabledProviders: ["anthropic", "openai"],
+            allowBringYourOwnKey: false
+          }
+        }),
+        buildPlatformConfig({ openaiKey: null })
+      );
+      await expect(service.resolveProviderConfig("user-1", "tendering")).rejects.toBeInstanceOf(
+        ServiceUnavailableException
+      );
+    });
+
+    it("OPENAI_MODEL env var overrides PlatformConfig + default", async () => {
+      process.env.OPENAI_MODEL = "gpt-9-omega";
+      const service = new AiProvidersService(
+        buildPrismaMock({
+          globalSettings: {
+            allowUserInstructionOverrides: false,
+            enabledProviders: ["openai"],
+            allowBringYourOwnKey: false
+          }
+        }),
+        buildPlatformConfig()
+      );
+      const cfg = await service.resolveProviderConfig("user-1", "tendering");
+      expect(cfg.model).toBe("gpt-9-omega");
+    });
+
+    it("ANTHROPIC_MODEL env var overrides PlatformConfig + default", async () => {
+      process.env.ANTHROPIC_MODEL = "claude-future";
+      const service = new AiProvidersService(buildPrismaMock({}), buildPlatformConfig());
+      const cfg = await service.resolveProviderConfig("user-1", "tendering");
+      expect(cfg.model).toBe("claude-future");
+    });
   });
 });
 
@@ -200,6 +292,16 @@ describe("AiProvidersService.streamChat", () => {
       systemPrompt: "x",
       messages: [{ role: "user", content: "hi" }],
       config: { providerId: "anthropic", apiKey: "sk-test", model: "claude-sonnet-4-6" }
+    });
+    expect(typeof iter[Symbol.asyncIterator]).toBe("function");
+  });
+
+  it("dispatches OpenAI config to the OpenAI provider implementation (smoke)", async () => {
+    const service = new AiProvidersService(buildPrismaMock({}), buildPlatformConfig());
+    const iter = service.streamChat({
+      systemPrompt: "x",
+      messages: [{ role: "user", content: "hi" }],
+      config: { providerId: "openai", apiKey: "sk-test", model: "gpt-5.4-mini" }
     });
     expect(typeof iter[Symbol.asyncIterator]).toBe("function");
   });

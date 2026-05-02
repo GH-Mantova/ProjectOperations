@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-02 07:58 AEST
+Last updated: 2026-05-02 08:12 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -403,14 +403,17 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
      Preference" couldn't be implemented as originally specced
      because the schema doesn't support it. May or may not be
      needed; investigate when more personas exist post-§5A.1.)
-⏸️  Reconcile AI provider model defaults across codebase
-    (PlatformConfig.DEFAULT_MODELS.openai is 'gpt-4o-mini' while
-     openai.provider.ts last-resort fallback is 'gpt-5.4-mini'.
-     Pick one. Same audit needed for Anthropic, Gemini, Groq —
-     verify whether multiple defaults exist in different places.
-     Note: this entry is partially addressed by PR C in this same
-     overnight chain — if PR C lands, update this entry to "any
-     remaining mismatches not caught by PR C".)
+✅  Reconcile AI provider model defaults across codebase
+    Closed by PR #129 (overnight chain PR C). PlatformConfig.DEFAULT_MODELS
+    is now the single source of truth — DEFAULT_MODELS.openai bumped
+    from 'gpt-4o-mini' to 'gpt-5.4-mini'. The §5A.1 ai-providers
+    service imports DEFAULT_MODELS directly; the redundant
+    ANTHROPIC_DEFAULT_MODEL / OPENAI_DEFAULT_MODEL constants in the
+    new providers were removed. Legacy tendering AI scope drafting
+    (apps/api/src/modules/tendering/ai-providers/) still has its
+    own per-file constants — not touched per legacy-migration deferral
+    from PR #122. Will be addressed when AI scope drafting migrates
+    to the persona system.
 ⏸️  Audit migration history vs current schema
     (Pre-existing drift noted during PR #117: stray
      workers.employmentType compat column from migration

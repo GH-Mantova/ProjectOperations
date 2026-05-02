@@ -195,6 +195,19 @@ describe("AiProvidersService.resolveProviderConfig", () => {
       const cfg = await service.resolveProviderConfig("user-1", "tendering");
       expect(cfg.model).toBe("claude-future");
     });
+
+    it("falls back to PlatformConfig.DEFAULT_MODELS when env unset and getModel returns empty", async () => {
+      // Belt-and-braces case: getModel returns "" rather than the DEFAULT_MODELS
+      // value. Service must still resolve via the imported DEFAULT_MODELS.
+      // Confirms the single-source-of-truth post-PR #129: no per-provider
+      // *_DEFAULT_MODEL constants exist anywhere outside DEFAULT_MODELS.
+      const service = new AiProvidersService(
+        buildPrismaMock({}),
+        buildPlatformConfig({ model: "" })
+      );
+      const cfg = await service.resolveProviderConfig("user-1", "tendering");
+      expect(cfg.model).toBe("claude-sonnet-4-6"); // DEFAULT_MODELS.anthropic
+    });
   });
 });
 

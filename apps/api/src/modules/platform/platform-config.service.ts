@@ -12,11 +12,16 @@ export type AiProviderName = "anthropic" | "gemini" | "groq" | "openai";
 
 export const PROVIDER_PRIORITY: AiProviderName[] = ["anthropic", "gemini", "groq", "openai"];
 
+// Single source of truth for AI provider model defaults across the codebase.
+// Both legacy AI scope drafting (apps/api/src/modules/tendering/ai-providers)
+// and the §5A.1 persona chat (apps/api/src/modules/ai-providers) consult
+// this constant via PlatformConfigService.getModel(). Env vars
+// (ANTHROPIC_MODEL, OPENAI_MODEL) override these at runtime.
 export const DEFAULT_MODELS: Record<AiProviderName, string> = {
   anthropic: "claude-sonnet-4-6",
   gemini: "gemini-1.5-flash",
   groq: "llama3-8b-8192",
-  openai: "gpt-4o-mini"
+  openai: "gpt-5.4-mini"
 };
 
 @Injectable()

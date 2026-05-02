@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-02 07:58 AEST
+Last updated: 2026-05-02 08:12 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -1221,3 +1221,56 @@ Pre-PR 7/7 green: lint x2 (clean), test x2 (181 api + 182 web),
 build, compliance:smoke, playwright tendering (5/5).
 Audit findings: none. PHASE 6 "Security hygiene cleanup" marked ✅
 COMPLETE in roadmap.md.
+
+## 2026-05-02 08:10 AEST — PR #129 MERGED — fix: model defaults reconcile + chat panel empty state
+
+Type: PR (FIX)
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/129
+Branch: fix/model-defaults-and-chat-panel-empty-state
+Detail: PR C (final) of the overnight 3-PR hygiene chain. Two small
+fixes bundled.
+
+(1) AI provider model defaults reconciled. PlatformConfig.DEFAULT_MODELS
+is now the single source of truth. DEFAULT_MODELS.openai bumped from
+'gpt-4o-mini' to 'gpt-5.4-mini' to match the intended fallback. The
+§5A.1 ai-providers service imports DEFAULT_MODELS directly. Removed
+the redundant ANTHROPIC_DEFAULT_MODEL and OPENAI_DEFAULT_MODEL
+constants from the new providers — they were never used internally,
+only exported for the service to import as fallbacks. The
+resolveModel() helper now reads env -> platformConfig.getModel ->
+DEFAULT_MODELS — clear three-tier precedence with env winning.
+Legacy tendering AI scope drafting (apps/api/src/modules/tendering/
+ai-providers/) still has its own per-file constants — not touched per
+legacy-migration deferral from PR #122. Will be reconciled when AI
+scope drafting migrates to the persona system. New regression test
+confirms the single-source contract.
+
+(2) Chat panel empty-state hint text now sub-mode-aware. Was "Ask
+the Tendering Assistant about this register view." after PR #126
+collapsed register/pipeline — read confusingly because "register"
+is the sub-mode name but the page actually shows both views. Fixed
+via chatPanelEmptyHint(activePersona) helper in chat-helpers.ts that
+maps sub-mode internal names to friendly clauses: register -> "this
+view", tender-detail -> "this tender", scope -> "scope drafting",
+estimate -> "estimating", quote -> "the quote", clarifications ->
+"clarifications". Falls back to "this view" for unknown sub-modes
+(defensive). 5 new tests cover each mapping plus a regression that
+internal sub-mode names never appear in user-facing copy.
+
+Tests: 6 new (1 backend regression + 5 frontend hint cases).
+182/182 API + 187/187 web. Pre-PR 7/7 green.
+Audit findings: none. PHASE 6 "Reconcile AI provider model defaults"
+marked COMPLETE in roadmap.md (legacy tendering ai-providers/ still
+pending — flagged in the entry).
+
+=== Overnight chain summary (PRs #127, #128, #129) ===
+All three PRs merged successfully. Marco's morning review items:
+- PR #128 deviation: uuid pinned to 10.x (last CJS major) instead
+  of spec'd >=14.0.0 because v11+ break Jest. May or may not close
+  the Dependabot alert (mitigated — no direct uuid usage in our code).
+- PR #128 discovered new CodeQL alert #9 (xss-through-exception in
+  personas chat endpoint). Deferred from chain per "DO NOT touch
+  §5A.1" rule. False positive (SSE responses, not HTML). Tracked
+  as a PHASE 6 entry for follow-up.
+- All other deviations documented inline in each PR's progress entry.

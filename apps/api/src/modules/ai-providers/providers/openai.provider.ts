@@ -1,6 +1,7 @@
 import type { ChatRequest, ChatStreamChunk } from "../ai-providers.types";
 
-export const OPENAI_DEFAULT_MODEL = "gpt-5.4-mini";
+// Model is supplied via ChatRequest.config.model; the default lives in
+// PlatformConfigService.DEFAULT_MODELS.openai. Don't duplicate it here.
 const MAX_TOKENS = 2048;
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 

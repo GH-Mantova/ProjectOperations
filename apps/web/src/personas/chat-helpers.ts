@@ -1,5 +1,22 @@
 import type { ActivePersona } from "./types";
 
+// Sub-mode names map to short, natural-reading clauses for the chat panel
+// empty-state hint. Falls back to a generic "this view" for unknown values
+// so the hint never reads as a stub or sub-mode internal name.
+const SUB_MODE_FRIENDLY_LABELS: Record<string, string> = {
+  register: "this view",
+  "tender-detail": "this tender",
+  scope: "scope drafting",
+  estimate: "estimating",
+  quote: "the quote",
+  clarifications: "clarifications"
+};
+
+export function chatPanelEmptyHint(active: ActivePersona): string {
+  const friendly = SUB_MODE_FRIENDLY_LABELS[active.subMode.name] ?? "this view";
+  return `Ask the ${active.persona.displayName} about ${friendly}.`;
+}
+
 export type ChatMessage = {
   role: "user" | "assistant";
   content: string;

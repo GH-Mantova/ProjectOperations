@@ -3,6 +3,7 @@ import {
   appendAssistantMessage,
   appendUserMessage,
   buildRetryHistory,
+  chatPanelEmptyHint,
   parseSSEEvent,
   readSSEStream,
   shouldDisableSendButton,
@@ -25,6 +26,47 @@ describe("shouldDisableSendButton", () => {
   it("enables when idle/error and input is non-empty", () => {
     expect(shouldDisableSendButton("idle", "Hello")).toBe(false);
     expect(shouldDisableSendButton("error", "retry")).toBe(false);
+  });
+});
+
+describe("chatPanelEmptyHint", () => {
+  const tendering = (subModeName: string): ActivePersona => ({
+    persona: { slug: "tendering", displayName: "Tendering Assistant", description: "" },
+    subMode: { name: subModeName, description: "" }
+  });
+
+  it("uses 'this view' for the register/overview sub-mode", () => {
+    // Regression: PR #126 collapsed register+pipeline into one sub-mode that
+    // covers the kanban+list views. The hint must not read "register view".
+    expect(chatPanelEmptyHint(tendering("register"))).toBe(
+      "Ask the Tendering Assistant about this view."
+    );
+  });
+
+  it("uses 'this tender' for the tender-detail sub-mode", () => {
+    expect(chatPanelEmptyHint(tendering("tender-detail"))).toBe(
+      "Ask the Tendering Assistant about this tender."
+    );
+  });
+
+  it("maps each named sub-mode to a friendly clause", () => {
+    expect(chatPanelEmptyHint(tendering("scope"))).toContain("scope drafting");
+    expect(chatPanelEmptyHint(tendering("estimate"))).toContain("estimating");
+    expect(chatPanelEmptyHint(tendering("quote"))).toContain("the quote");
+    expect(chatPanelEmptyHint(tendering("clarifications"))).toContain("clarifications");
+  });
+
+  it("falls back to 'this view' for unknown sub-modes (defensive)", () => {
+    expect(chatPanelEmptyHint(tendering("future-submode-name"))).toBe(
+      "Ask the Tendering Assistant about this view."
+    );
+  });
+
+  it("never includes the raw sub-mode internal name", () => {
+    // The literal string 'tender-detail' must never appear — that's a
+    // developer-facing identifier, not user-facing copy.
+    const hint = chatPanelEmptyHint(tendering("tender-detail"));
+    expect(hint).not.toContain("tender-detail");
   });
 });
 

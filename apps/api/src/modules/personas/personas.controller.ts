@@ -3,6 +3,7 @@ import {
   Controller,
   ForbiddenException,
   Get,
+  Logger,
   Param,
   Post,
   Put,
@@ -13,6 +14,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import type { Response } from "express";
 import { AiProvidersService } from "../ai-providers/ai-providers.service";
+import { sanitiseProviderError } from "../ai-providers/error-sanitiser";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
@@ -29,6 +31,8 @@ import { UpdateGlobalAISettingsDto } from "./dto/update-global-ai-settings.dto";
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller("personas")
 export class PersonasController {
+  private readonly logger = new Logger(PersonasController.name);
+
   constructor(
     private readonly service: PersonasService,
     private readonly aiProviders: AiProvidersService
@@ -193,6 +197,18 @@ export class PersonasController {
       res.write(`data: ${JSON.stringify(event)}\n\n`);
     };
 
+    // Defence-in-depth: every error path goes through sanitiseProviderError.
+    // The user gets one of six categorised, hardcoded user-facing messages —
+    // never raw provider strings. The full original error text is logged
+    // server-side for ops debugging. Closes CodeQL alert #9.
+    const sendSanitisedError = (err: unknown) => {
+      const sanitised = sanitiseProviderError(err);
+      this.logger.error(
+        `Chat endpoint error [persona=${slug}, user=${actor.sub}, category=${sanitised.category}]: ${sanitised.logMessage}`
+      );
+      send({ type: "error", error: sanitised.userMessage });
+    };
+
     try {
       const config = await this.aiProviders.resolveProviderConfig(actor.sub, slug);
       const systemPrompt = await this.aiProviders.resolveSystemPrompt(slug, actor.sub, dto.subMode);
@@ -203,15 +219,17 @@ export class PersonasController {
       });
 
       for await (const chunk of stream) {
-        send(chunk);
         if (chunk.type === "error") {
+          // Provider-level error chunk — sanitise its text rather than
+          // forwarding raw provider output.
+          sendSanitisedError(chunk.error);
           break;
         }
+        send(chunk);
       }
       send({ type: "done" });
     } catch (err) {
-      const message = (err as Error).message ?? "AI request failed.";
-      send({ type: "error", error: message });
+      sendSanitisedError(err);
       send({ type: "done" });
     } finally {
       res.end();

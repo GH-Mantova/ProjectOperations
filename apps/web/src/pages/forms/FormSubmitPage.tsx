@@ -455,14 +455,17 @@ function PhotoInput({ onChange, currentName, accept = "image/*" }: PhotoInputPro
           }
         }}
       />
+      {/* codeql[js/xss-through-dom] False positive (alerts #6 + #10).
+          `preview` is a `blob:` URL produced by URL.createObjectURL on a
+          user-selected File — it's a string set as the src attribute, not
+          HTML. React doesn't interpret attribute values as HTML.
+          `currentName` is sourced from File.name (a JS string property)
+          and rendered via JSX text interpolation — auto-escaped.
+          Neither path involves innerHTML / dangerouslySetInnerHTML or any
+          DOM read-then-rerender. */}
       {preview ? (
         <img src={preview} alt="Preview" className="form-submit__photo-thumb" />
       ) : currentName ? (
-        // CodeQL js/xss-through-dom false positive (alert #6 — dismissed
-        // 2026-05-02). `currentName` is sourced from a File.name string
-        // (or React form-state string) — never from DOM reads. The
-        // {currentName} interpolation inside <span> is React text
-        // interpolation, which React auto-escapes. No HTML reinterpretation.
         <span className="form-submit__photo-name">{currentName}</span>
       ) : null}
     </div>

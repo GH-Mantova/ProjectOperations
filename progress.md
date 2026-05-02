@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-02 00:01 AEST
+Last updated: 2026-05-02 01:00 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -626,4 +626,27 @@ C:\ProjectOperations-Reference\ before pushing. No code changes — pure
 (this entry); roadmap.md unchanged (no phase shift); project_instructions.md
 unchanged (no module/rule change). Pre-commit hook stamped "Last updated:".
 Files: .gitignore, progress.md.
+Audit findings: none.
+
+## 2026-05-02 00:59 AEST — PR #116 MERGED — Phase 5A scope expansion (planning)
+
+Type: PR
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/116
+Branch: chore/phase-5a-scope-expansion
+Detail: Doc-only PR capturing product decisions from 2026-05-02
+evening session. Phase 5A expanded with 5A.1 (AI persona infrastructure
++ Tendering Assistant) and 5A.2 (HTML→PDF renderer migration). Existing
+5A items renumbered as 5A.3 (workflow review and dependent items —
+cannot meaningfully run until 5A.1 + 5A.2 land). Two deferred items
+(auto folder creation, estimating window restructure) added to PHASE 6.
+Same session captured 9 GitHub security alerts as a PHASE 6 cleanup
+chore (3 npm transitive vulns, 3 workflow permissions warnings, 1 React
+XSS likely false positive — none exploitable in current architecture).
+project_instructions.md §13 expanded with planned modules. §6 code
+rules updated: HTML→PDF for new PDFs, AI features via persona registry.
+Roadmap CHANGELOG entry added with full reasoning.
+Next: verify GitHub has the updated versions, then begin sequenced
+sub-PRs starting with 5A.1 persona registry foundation.
+Files: roadmap.md, project_instructions.md, progress.md.
 Audit findings: none.

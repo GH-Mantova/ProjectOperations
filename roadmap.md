@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-04-27 20:54 AEST
+Last updated: 2026-05-02 01:00 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -100,6 +100,89 @@ Last updated: 2026-04-27 20:54 AEST
 This phase must be completed and signed off by Raj and Sean before
 any other development proceeds. The tendering module is the foundation
 of the entire ERP — everything else depends on it being correct.
+
+Phase 5A is structured into three sub-phases. 5A.1 + 5A.2 ship first;
+5A.3 (workflow review and dependent items) cannot meaningfully run
+until the AI persona is available for Raj to test, and the rendered
+quote PDFs match Sean's reference templates.
+
+### 5A.1 — AI Infrastructure + Tendering Assistant Persona
+
+This is the conversational AI assistant Raj will use during tendering
+workflow review. One persona ("Tendering Assistant" — Sean to confirm
+name) active across the whole tendering module, with sub-modes per
+route (scope mode = drafting tools; quote mode = advisory; etc.).
+
+🔲 Persona registry architecture
+   (Database tables: Persona, PersonaCompanyInstruction,
+    UserPersonaSettings. Code registry pattern allowing new personas
+    to be added without touching the shell. Conversation persistence
+    per persona per user. Permission model: ai.persona.<name> from
+    day one.)
+
+🔲 Floating window shell
+   (Bottom-right floating button, expand/collapse, available only
+    on routes where a persona matches. No fallback persona. Cog
+    icon deep-links to AI Settings tab.)
+
+🔲 AI Settings tab — Sean view + user view
+   (Sean: company-wide provider access toggles, per-persona
+    configuration, global "allow user instruction overrides" toggle.
+    User: provider preference, persona settings showing company
+    instruction read-only + personal override field if Sean enables.)
+
+🔲 Bring-your-own-key infrastructure
+   (User-provided AI provider keys with proper encryption at rest,
+    key validation on save, provider isolation per request,
+    graceful fallback when user keys fail or expire, full audit
+    trail. Storage: encrypted column, key from environment,
+    rotation policy. No payment details — users supply their own
+    already-billed keys.)
+
+🔲 Tendering Assistant persona — sub-mode tooling
+   (Pipeline mode, Register mode, Tender Detail mode: read-only
+    knowledge / advisory.
+    Scope mode: drawing upload, AI scope-item proposal cards with
+    user-confirmed commit, Cutrite rate lookup, IS discipline
+    constraint enforcement, conversation history per tender.
+    Estimate mode: rate lookup, value suggestions, advisory only —
+    user clicks to apply.
+    Quote mode: cost line structure suggestions, exclusion / assumption
+    suggestions, advisory only.
+    Clarifications mode: summarisation, response suggestions.)
+
+### 5A.2 — HTML→PDF renderer migration
+
+Replace the PDFKit-based PDF generator with HTML→PDF rendering using
+Puppeteer (or @sparticuz/chromium for serverless). Fixes the
+rendering bug class Sean is currently experiencing (header/footer
+drift, logo borders, font changes mid-paragraph, text overlapping,
+T&C two-column layout broken). Unlocks future template-editor work.
+
+🔲 HTML→PDF renderer infrastructure
+   (Puppeteer or equivalent in Docker, rendering pipeline,
+    template loading from filesystem or database, font handling,
+    page margin/header/footer handling.)
+
+🔲 Quote PDF — HTML template + migration
+   (Build HTML/CSS template matching Sean's reference letterhead +
+    layout. Sean signs off visual fidelity. Migrate quote PDF
+    generation through the new renderer. Existing PDFKit code
+    retired only after sign-off. Reference templates at
+    C:\ProjectOperations-Reference\ — outside the repo, sensitive
+    client data.)
+
+🔲 Variation PDF — HTML template + migration
+   (Same approach as quote. Sean's reference template required.)
+
+🔲 Schedule of Rates PDF — HTML template + migration
+   (Same approach. Sean's reference template required.)
+
+### 5A.3 — Existing 5A items (workflow review + dependent items)
+
+5A.3 begins after 5A.1 + 5A.2 land. The workflow review (first item
+below) cannot meaningfully run until the AI persona is available for
+Raj to test, and the rendered quote PDFs match Sean's templates.
 
 🔲 Structured end-to-end tendering workflow review
    Raj walks through the complete workflow:
@@ -219,6 +302,36 @@ of the entire ERP — everything else depends on it being correct.
      email noise on every PR because Azure secrets weren't configured.
      Re-enable on:push when production deployment is ready, after
      tendering sign-off (§5A) and Azure secret configuration.)
+⏸️  Auto folder creation (SharePoint, Tender → Jobs Won → Lost → Archived
+    with T/A-YYMMDD-## naming)
+    (Discussed 2026-05-02, deferred until 5A.1 + 5A.2 complete.
+     Status-driven SharePoint folder reorganisation.)
+⏸️  Estimating window restructure (scope item card → "Add new" group
+    population, persistent expandable scope frame, per-grouping filter)
+    (Discussed 2026-05-02, deferred until 5A.1 + 5A.2 complete.
+     Needs Sean's xls reference + current estimate UI inspection
+     before design can be finalised.)
+⏸️  Other module personas (Dashboard Master, Captain Operations, etc.)
+    (Once Tendering Assistant is signed off, additional personas roll
+     out incrementally per module. Architecture from 5A.1 supports
+     this without rework.)
+⏸️  Module-specific AI tools
+    (Per-module action tooling expands as new personas come online.
+     Each persona gets its own tool registry.)
+⏸️  Security hygiene cleanup — 9 GitHub alerts surfaced 2026-05-02
+    (3 transitive npm dep version bumps: serialize-javascript ≥7.0.5
+     (closes 2 alerts), postcss ≥8.5.10, uuid ≥14.0.0 (major bump,
+     verify tests pass). 3 workflow files missing permissions blocks:
+     ci.yml, playwright.yml, deploy.yml — add `permissions: contents: read`
+     at workflow level (one block on ci.yml closes 2 alerts). 1 React
+     XSS alert on apps/web/src/pages/forms/FormSubmitPage.tsx:459 —
+     likely false positive on standard React JSX interpolation, but
+     requires reading the file to confirm. None exploitable in current
+     architecture: npm vulns are all build-time transitive deps with
+     controlled inputs; workflow tokens not actually elevated;
+     FormSubmitPage uses standard React text interpolation that auto-
+     escapes. Batch into single cleanup PR. Estimated 1–2 hours total.
+     Schedule between 5A.1 sub-PRs as a token-budget filler.)
 ⏸️  Form drafts — Phase 2 (admin CRUD wiring)
     (Phase 1 shipped foundation + 6 user-facing forms in PR #111. ~20
      admin CRUD pages — UsersPage, RolesPage, SubcontractorsPage modals,
@@ -396,3 +509,21 @@ on:workflow_dispatch (manual-only). Was failing on every push because
 Azure secrets aren't configured yet — generating email noise. Re-enable
 the push trigger when production deployment is wired up post §5A
 sign-off. Tracked in PHASE 6.
+
+### 2026-05-02 evening — Phase 5A scope expansion
+Product session worked through 7 tendering enhancement ideas. Five
+expand 5A scope (now ~15 sub-PRs before sign-off): AI persona
+infrastructure, AI settings, bring-your-own-key, Tendering Assistant
+persona with sub-mode tooling, HTML→PDF renderer migration. Two
+ideas (auto folder creation, estimating window restructure) deferred
+to Phase 6. Architectural decisions documented in
+project_instructions.md §13. Critical reasoning captured: HTML→PDF
+chosen over template-editor approaches because Sean's "persistent
+formatting issues" are mostly rendering bugs in PDFKit code, not
+design preferences. Replacing the renderer fixes the bug class and
+unlocks future editor work. AI persona built with one persona at a
+time approach — Tendering first, others post-sign-off — to keep
+scope manageable while preserving the "personas everywhere" vision.
+Same session captured 9 GitHub security alerts (3 npm transitive
+dep vulns + 3 workflow files missing permissions blocks + 1 React
+XSS likely false positive) as a PHASE 6 cleanup chore.

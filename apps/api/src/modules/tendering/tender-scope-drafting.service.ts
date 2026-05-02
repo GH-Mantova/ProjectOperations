@@ -1,12 +1,11 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
+import { AiProvidersService } from "../ai-providers/ai-providers.service";
+import { sanitiseProviderError } from "../ai-providers/error-sanitiser";
 import { AuditService } from "../audit/audit.service";
-import { PlatformConfigService, type AiProviderName } from "../platform/platform-config.service";
-import { UserAiProvidersService } from "../user-ai-providers/user-ai-providers.service";
+import { type AiProviderName } from "../platform/platform-config.service";
 import { ScopeOfWorksService } from "./scope-of-works.service";
 import { ClaudeProvider } from "./ai-providers/claude.provider";
-import { GeminiProvider } from "./ai-providers/gemini.provider";
-import { GroqProvider } from "./ai-providers/groq.provider";
 import { MockAiProvider, OpenAiProvider } from "./ai-providers/openai.provider";
 import type { AiProvider } from "./ai-providers/ai-provider.interface";
 
@@ -17,10 +16,15 @@ const PROVIDER_LABELS: Record<AiProviderName, string> = {
   openai: "ChatGPT (OpenAI)"
 };
 
+// Post-§5A.1-PR-8 (this PR): provider source is always "company" or "mock".
+// The legacy "personal" source was tied to UserAiProvidersService — which is
+// deleted in this PR. Provider selection is now centralised in persona
+// settings (see AI Settings page). The userId is still recorded in audit
+// metadata so we keep "company" vs "mock" distinguishable per request.
 export type ProviderMeta = {
   id: string;
   type: AiProviderName | "mock";
-  source: "company" | "personal" | "mock";
+  source: "company" | "mock";
   label: string;
 };
 
@@ -52,19 +56,6 @@ export type DraftScopeResult = {
   itemsCreated: number;
   items: Array<{ id: string; wbsCode: string; discipline: string; description: string }>;
 };
-
-/**
- * Retained for backward-compatible controller behaviour — the HTTP layer maps
- * this to a 412 "api_key_required" response.
- */
-export class AnthropicKeyMissingError extends Error {
-  constructor(
-    message = "No AI provider is configured. Go to Admin → Platform settings and add an Anthropic, Gemini, or Groq API key."
-  ) {
-    super(message);
-    this.name = "AnthropicKeyMissingError";
-  }
-}
 
 const SYSTEM_PROMPT = `You are an expert estimator for Initial Services Pty Ltd, a Brisbane-based contractor specialising in three core disciplines:
 
@@ -123,19 +114,19 @@ Respond ONLY with a valid JSON array of scope items. No preamble, no explanation
 
 @Injectable()
 export class TenderScopeDraftingService {
+  private readonly logger = new Logger(TenderScopeDraftingService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly platformConfig: PlatformConfigService,
-    private readonly userAiProviders: UserAiProvidersService,
+    private readonly aiProviders: AiProvidersService,
     private readonly scopeOfWorks: ScopeOfWorksService
   ) {}
 
   async draft(
     tenderId: string,
     correction: string | null,
-    actorId?: string,
-    selectedProviderId?: string | null
+    actorId?: string
   ): Promise<DraftScopeResult> {
     const tender = await this.prisma.tender.findUnique({
       where: { id: tenderId },
@@ -207,14 +198,21 @@ export class TenderScopeDraftingService {
     );
 
     const userMessage = userMessageParts.join("\n");
-    const { provider, providerMeta } = await this.resolveProviderForUser(actorId, selectedProviderId ?? null);
-    const proposals = await provider.draftScope(SYSTEM_PROMPT, userMessage);
+    const { provider, providerMeta } = await this.resolveProviderForUser(actorId);
 
-    // Remember the provider the user just used so the next at-use trigger can
-    // skip the picker. Only applies when the user has multiple available and
-    // we have a resolved id (the mock fallback is not rememberable).
-    if (actorId && providerMeta.source !== "mock") {
-      await this.userAiProviders.setPreference(actorId, providerMeta.id).catch(() => undefined);
+    // §5A.1 PR 8: error sanitisation on the scope-drafting boundary mirrors
+    // the chat endpoint pattern from PR #131. Raw provider errors are logged
+    // server-side; the user gets a categorised user-facing string via the
+    // re-thrown exception (or the route handler's error filter).
+    let proposals: ProposedScopeItem[];
+    try {
+      proposals = await provider.draftScope(SYSTEM_PROMPT, userMessage);
+    } catch (err) {
+      const sanitised = sanitiseProviderError(err);
+      this.logger.error(
+        `Scope draft error [tenderId=${tenderId}, user=${actorId ?? "anonymous"}, category=${sanitised.category}]: ${sanitised.logMessage}`
+      );
+      throw new ServiceUnavailableException(sanitised.userMessage);
     }
 
     let revisionId: string | undefined;
@@ -291,100 +289,58 @@ export class TenderScopeDraftingService {
   }
 
   /**
-   * Resolve the AI provider to use for a given user. Priority:
-   *   1. Explicit override passed from the UI (a company-<name> id or a
-   *      personal provider cuid).
-   *   2. The user's stored lastUsedProviderId preference.
-   *   3. Fall back to the existing company priority chain
-   *      (Claude → Gemini → Groq → OpenAI → Mock).
+   * Resolve the AI provider to use for scope drafting. Delegates provider
+   * selection to AiProvidersService — same resolver the §5A.1 chat endpoint
+   * uses, so admin-configured persona settings (provider, model, key) apply
+   * uniformly to chat AND scope drafting.
+   *
+   * Falls back to MockAiProvider when no key is configured (preserves the
+   * legacy "no key → mock" UX so devs can still trigger scope drafting on
+   * a fresh DB without billing).
    */
   async resolveProviderForUser(
-    userId: string | undefined,
-    overrideProviderId: string | null
+    userId: string | undefined
   ): Promise<{ provider: AiProvider; providerMeta: ProviderMeta }> {
-    const candidateIds: string[] = [];
-    if (overrideProviderId) candidateIds.push(overrideProviderId);
-    if (userId) {
-      const pref = await this.prisma.userAiPreference.findUnique({ where: { userId } });
-      if (pref?.lastUsedProviderId && !candidateIds.includes(pref.lastUsedProviderId)) {
-        candidateIds.push(pref.lastUsedProviderId);
-      }
+    if (!userId) {
+      // Anonymous callers (e.g. seed scripts) can't have persona settings —
+      // fall through to the mock.
+      return this.mockFallback();
     }
-
-    for (const id of candidateIds) {
-      const resolved = await this.tryResolveById(userId, id);
-      if (resolved) return resolved;
-    }
-
-    return this.pickCompanyProvider();
-  }
-
-  private async tryResolveById(
-    userId: string | undefined,
-    id: string
-  ): Promise<{ provider: AiProvider; providerMeta: ProviderMeta } | null> {
-    if (id.startsWith("company-")) {
-      const name = id.slice("company-".length) as AiProviderName;
-      const company = await this.buildCompanyProvider(name);
-      if (!company) return null;
-      return company;
-    }
-    if (!userId) return null;
     try {
-      const personal = await this.userAiProviders.getPersonalKey(userId, id);
-      const inst = this.instantiate(personal.provider, personal.apiKey, personal.model ?? null);
+      const config = await this.aiProviders.resolveProviderConfig(userId, "tendering");
+      const provider = this.instantiate(config.providerId, config.apiKey, config.model);
       return {
-        provider: inst,
+        provider,
         providerMeta: {
-          id,
-          type: personal.provider,
-          source: "personal",
-          label: `${PROVIDER_LABELS[personal.provider]} (personal)`
+          id: `company-${config.providerId}`,
+          type: config.providerId,
+          source: "company",
+          label: `${PROVIDER_LABELS[config.providerId]} (company)`
         }
       };
-    } catch {
-      return null;
-    }
-  }
-
-  private async buildCompanyProvider(
-    name: AiProviderName
-  ): Promise<{ provider: AiProvider; providerMeta: ProviderMeta } | null> {
-    const status = await this.platformConfig.status();
-    if (!status[name].configured) return null;
-    let key: string | null = null;
-    if (name === "anthropic") key = await this.platformConfig.getAnthropicApiKey();
-    else if (name === "gemini") key = await this.platformConfig.getGeminiApiKey();
-    else if (name === "groq") key = await this.platformConfig.getGroqApiKey();
-    else if (name === "openai") key = await this.platformConfig.getOpenAiApiKey();
-    if (!key) return null;
-    return {
-      provider: this.instantiate(name, key, status[name].model),
-      providerMeta: {
-        id: `company-${name}`,
-        type: name,
-        source: "company",
-        label: `${PROVIDER_LABELS[name]} (company)`
+    } catch (err) {
+      // resolveProviderConfig throws ServiceUnavailableException when no key
+      // is configured — preserve the legacy "fall back to mock" UX rather
+      // than failing the whole draft request. Other error categories are
+      // genuinely fatal and propagate.
+      const sanitised = sanitiseProviderError(err);
+      if (sanitised.category === "config") {
+        return this.mockFallback();
       }
-    };
+      throw err;
+    }
   }
 
   private instantiate(name: AiProviderName, key: string, model: string | null): AiProvider {
+    // The new ai-providers module supports anthropic + openai (PR #124).
+    // Gemini and Groq legacy classes are kept for now in case a future
+    // PR re-enables them — but the resolver won't currently return those
+    // providerIds (SUPPORTED_PROVIDERS in ai-providers.service.ts).
     if (name === "anthropic") return new ClaudeProvider(key, model);
-    if (name === "gemini") return new GeminiProvider(key, model);
-    if (name === "groq") return new GroqProvider(key, model);
     return new OpenAiProvider(key, model);
   }
 
-  private async pickCompanyProvider(): Promise<{ provider: AiProvider; providerMeta: ProviderMeta }> {
-    const order: AiProviderName[] = ["anthropic", "gemini", "groq", "openai"];
-    const status = await this.platformConfig.status();
-    const preferred: AiProviderName | null = (status.preferredProvider as AiProviderName | null) ?? null;
-    const configuredOrder = preferred ? [preferred, ...order.filter((p) => p !== preferred)] : order;
-    for (const p of configuredOrder) {
-      const built = await this.buildCompanyProvider(p);
-      if (built) return built;
-    }
+  private mockFallback(): { provider: AiProvider; providerMeta: ProviderMeta } {
     return {
       provider: new MockAiProvider(),
       providerMeta: {
@@ -395,5 +351,4 @@ export class TenderScopeDraftingService {
       }
     };
   }
-
 }

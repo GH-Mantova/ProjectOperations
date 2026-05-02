@@ -40,7 +40,6 @@ import { TenderClarificationsModule } from "./modules/tender-clarifications/tend
 import { TenderClientsModule } from "./modules/tender-clients/tender-clients.module";
 import { TenderingModule } from "./modules/tendering/tendering.module";
 import { TenderDocumentsModule } from "./modules/tender-documents/tender-documents.module";
-import { UserAiProvidersModule } from "./modules/user-ai-providers/user-ai-providers.module";
 import { UsersModule } from "./modules/users/users.module";
 import { WorkersModule } from "./modules/workers/workers.module";
 import { AllocationsModule } from "./modules/allocations/allocations.module";
@@ -89,7 +88,6 @@ import { FieldModule } from "./modules/field/field.module";
     TenderClientsModule,
     TenderingModule,
     TenderDocumentsModule,
-    UserAiProvidersModule,
     UsersModule,
     RolesModule,
     WorkersModule,

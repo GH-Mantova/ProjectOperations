@@ -102,6 +102,20 @@ model User {
   personaInstructionUpdates  PersonaCompanyInstruction[] @relation("PersonaInstructionUpdater")
   personaSettings            UserPersonaSettings[]
 
+  // §5A.1 PR 9 — per-user encrypted AI provider keys (BYOK). Storage format
+  // is "<iv-base64>:<authTag-base64>:<ciphertext-base64>" produced by
+  // KeyEncryptionService (AES-256-GCM, BYOK_ENCRYPTION_KEY master). Presence
+  // of an encrypted column is the source of truth for "this user has a key
+  // for this provider"; validatedAt records the last successful live test.
+  anthropicKeyEncrypted   String?   @map("anthropic_key_encrypted")
+  anthropicKeyValidatedAt DateTime? @map("anthropic_key_validated_at")
+  openaiKeyEncrypted      String?   @map("openai_key_encrypted")
+  openaiKeyValidatedAt    DateTime? @map("openai_key_validated_at")
+  geminiKeyEncrypted      String?   @map("gemini_key_encrypted")
+  geminiKeyValidatedAt    DateTime? @map("gemini_key_validated_at")
+  groqKeyEncrypted        String?   @map("groq_key_encrypted")
+  groqKeyValidatedAt      DateTime? @map("groq_key_validated_at")
+
   @@index([isActive])
   @@map("users")
 }
@@ -1758,6 +1772,11 @@ model TenderClientNote {
 
 model PlatformConfig {
   id                    String    @id
+  // Legacy company-key columns (PLATFORM_CONFIG_SECRET-based encryption,
+  // dot-separated format). §5A.1 PR 9 superseded these with the
+  // *KeyEncrypted / *KeyValidatedAt columns below. Kept in schema for
+  // backward compatibility but no longer read or written. Drop in a future
+  // cleanup PR once dev/prod has fully migrated.
   anthropicApiKey       String?   @map("anthropic_api_key")
   anthropicKeyUpdatedAt DateTime? @map("anthropic_key_updated_at")
   anthropicModel        String?   @map("anthropic_model")
@@ -1773,6 +1792,19 @@ model PlatformConfig {
   preferredProvider     String?   @map("preferred_provider")
   updatedAt             DateTime  @updatedAt @map("updated_at")
   updatedById           String?   @map("updated_by_id")
+
+  // §5A.1 PR 9 — BYOK encrypted company keys. AES-256-GCM via
+  // KeyEncryptionService, BYOK_ENCRYPTION_KEY master, format
+  // "<iv-base64>:<authTag-base64>:<ciphertext-base64>". validatedAt is set
+  // by KeyValidationService on successful live test against the provider.
+  anthropicKeyEncrypted   String?   @map("anthropic_key_encrypted")
+  anthropicKeyValidatedAt DateTime? @map("anthropic_key_validated_at")
+  openaiKeyEncrypted      String?   @map("openai_key_encrypted")
+  openaiKeyValidatedAt    DateTime? @map("openai_key_validated_at")
+  geminiKeyEncrypted      String?   @map("gemini_key_encrypted")
+  geminiKeyValidatedAt    DateTime? @map("gemini_key_validated_at")
+  groqKeyEncrypted        String?   @map("groq_key_encrypted")
+  groqKeyValidatedAt      DateTime? @map("groq_key_validated_at")
 
   @@map("platform_config")
 }

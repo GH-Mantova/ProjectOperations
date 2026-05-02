@@ -50,7 +50,7 @@ describe("streamAnthropicChat — error paths", () => {
   const baseRequest: ChatRequest = {
     systemPrompt: "test",
     messages: [{ role: "user", content: "hi" }],
-    config: { providerId: "anthropic", apiKey: "sk-test", model: "claude-sonnet-4-6" }
+    config: { providerId: "anthropic", apiKey: "sk-test", model: "claude-sonnet-4-6", source: "company" }
   };
 
   function withFetch(impl: (input: RequestInfo, init?: RequestInit) => Promise<Response>) {

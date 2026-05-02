@@ -211,6 +211,11 @@ export class PersonasController {
 
     try {
       const config = await this.aiProviders.resolveProviderConfig(actor.sub, slug);
+      // Audit log entry: which key source served this chat. Never logs the
+      // key itself, only the source label ("user" or "company").
+      this.logger.log(
+        `Chat key source [persona=${slug}, user=${actor.sub}, provider=${config.providerId}, source=${config.source}]`
+      );
       const systemPrompt = await this.aiProviders.resolveSystemPrompt(slug, actor.sub, dto.subMode);
       const stream = this.aiProviders.streamChat({
         systemPrompt,

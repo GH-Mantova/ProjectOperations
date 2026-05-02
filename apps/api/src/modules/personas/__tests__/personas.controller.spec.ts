@@ -12,7 +12,8 @@ function buildController(aiOverrides: Partial<AiProvidersService> = {}): Persona
     resolveProviderConfig: jest.fn(async () => ({
       providerId: "anthropic" as const,
       apiKey: "sk-test",
-      model: "claude-sonnet-4-6"
+      model: "claude-sonnet-4-6",
+      source: "company" as const
     })),
     resolveSystemPrompt: jest.fn(async () => "system"),
     streamChat: jest.fn(),

@@ -17,14 +17,14 @@ const PROVIDER_LABELS: Record<AiProviderName, string> = {
 };
 
 // Post-§5A.1-PR-8 (this PR): provider source is always "company" or "mock".
-// The legacy "personal" source was tied to UserAiProvidersService — which is
-// deleted in this PR. Provider selection is now centralised in persona
-// settings (see AI Settings page). The userId is still recorded in audit
-// metadata so we keep "company" vs "mock" distinguishable per request.
+// Provider selection is centralised in persona settings (see AI Settings
+// page). The userId is recorded in audit metadata so we keep "company" vs
+// "user" vs "mock" distinguishable per request — "user" added in §5A.1
+// PR 9 with per-user BYOK on the User row.
 export type ProviderMeta = {
   id: string;
   type: AiProviderName | "mock";
-  source: "company" | "mock";
+  source: "company" | "user" | "mock";
   label: string;
 };
 
@@ -312,10 +312,10 @@ export class TenderScopeDraftingService {
       return {
         provider,
         providerMeta: {
-          id: `company-${config.providerId}`,
+          id: `${config.source}-${config.providerId}`,
           type: config.providerId,
-          source: "company",
-          label: `${PROVIDER_LABELS[config.providerId]} (company)`
+          source: config.source,
+          label: `${PROVIDER_LABELS[config.providerId]} (${config.source})`
         }
       };
     } catch (err) {

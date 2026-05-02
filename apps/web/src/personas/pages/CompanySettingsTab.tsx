@@ -5,6 +5,7 @@ import {
   type GlobalSettings,
   type ProviderKey
 } from "./ai-settings-helpers";
+import { ProviderKeyManager } from "./ProviderKeyManager";
 
 const PROVIDER_LIST: { key: ProviderKey; label: string; isLocked?: boolean }[] = [
   { key: "anthropic", label: "Anthropic Claude", isLocked: true },
@@ -185,6 +186,12 @@ export function CompanySettingsTab() {
           ))}
         </div>
       </Section>
+
+      <ProviderKeyManager
+        scope="company"
+        title="API Keys"
+        description="Company-wide API keys for each AI provider. Keys are validated live against the provider before being stored, and are encrypted at rest (AES-256-GCM)."
+      />
 
       {toast ? <Toast text={toast} /> : null}
     </div>

@@ -1,7 +1,7 @@
 # ProjectOperations — Project Instructions
 # Version: 1.1
 # Created: 2026-04-25 10:02 AEST
-# Last updated: 2026-04-27 20:40 AEST
+# Last updated: 2026-05-02 01:00 AEST
 # Maintained by: Claude Code (update after any architectural decision,
 #   module addition, business rule change, or workflow change)
 # Accessed by: All Claude chats in this project via web_fetch
@@ -195,6 +195,8 @@ Rules:
 - Notifications: always go through `NotificationsService` — never send directly
 - GPS/location: always capture with user consent, store with timestamp + accuracy
 - Documentation updates are part of the PR's own commits, never a follow-up: progress.md gets a merge entry on every PR; roadmap.md gets edited if phases shift or items complete; project_instructions.md gets edited if modules, rules, or architecture change. Pre-commit hook auto-stamps "Last updated:" — never edit that line manually.
+- PDF generation uses HTML→PDF renderer (Phase 5A.2 onwards). New PDF outputs are HTML templates, rendered via the shared renderer service. Do not add new PDFKit code — that engine is being retired.
+- AI features integrate via the persona registry (Phase 5A.1 onwards). Do not add ad-hoc AI calls in modules. New AI capabilities belong inside a persona's sub-mode tool list. New personas register in the persona module, not in the consuming module.
 
 ### Pre-PR CI checklist (mandatory — fix ALL before pushing)
 1. `pnpm --filter @project-ops/api lint` — zero warnings, zero errors
@@ -752,7 +754,52 @@ Similar to Excel pivot tables / Power BI — scoped to IS's own data.
 - Safety under OPERATIONS in sidebar (confirmed)
 - Safety page: [+ Report Incident] [+ Log Hazard] quick-action buttons
 
+### 🔲 PLANNED — PHASE 5A.1 (AI Persona System)
+
+AI Persona System (planned — Phase 5A.1)
+- Persona registry architecture: Persona, PersonaCompanyInstruction,
+  UserPersonaSettings tables. Each persona has: name, system prompt,
+  route patterns where active, sub-modes with tool lists per sub-mode.
+- Floating window shell: bottom-right, expand/collapse, only present
+  on routes where a persona matches. Cog icon deep-links to AI Settings.
+- Permission model: ai.persona.<name> per persona from day one.
+  Future personas register their own permissions.
+- Global "allow user instruction overrides" toggle: Sean controls
+  whether users can append personal instructions to any persona's
+  system prompt.
+- Conversation persistence: per persona per user (or per persona per
+  tender for tender-scoped personas like Tendering Assistant).
+- Provider abstraction: Anthropic default. User-changeable per
+  persona. Bring-your-own-key supported with encrypted storage.
+- First persona: Tendering Assistant (Phase 5A.1, before sign-off).
+- Future personas: Dashboard Master, Captain Operations, Captain
+  Scheduler, etc. Added one at a time post-sign-off as each module
+  stabilises.
+
+### 🔲 PLANNED — PHASE 5A.2 (HTML→PDF Renderer)
+
+PDF Generation — HTML→PDF Renderer (planned — Phase 5A.2)
+- Replaces PDFKit-based generator. PDFKit code retired post-migration.
+- Engine: Puppeteer (or @sparticuz/chromium for serverless contexts).
+- Templates: HTML/CSS files in repo, designed to match Sean's
+  reference templates (stored outside repo at
+  C:\ProjectOperations-Reference\ for sensitivity reasons —
+  real client data).
+- Three documents migrated: quote, variation, schedule of rates.
+  Sean signs off visual fidelity per document.
+- Bug class addressed: header/footer drift, logo borders, font
+  mid-paragraph changes, text overlapping, T&C column flow breakage.
+  All are PDFKit layout-engine bugs that disappear with browser-engine
+  rendering.
+- Forward-compatible with future rich-text-editor / template-editor
+  work — editors output HTML, renderer consumes HTML, no impedance
+  mismatch.
+
 ### 🔲 NEXT PRIORITIES
+See roadmap.md §5A.1 + 5A.2 for the expanded Phase 5A scope. AI
+persona infrastructure and HTML→PDF renderer migration are now
+critical-path before tendering sign-off.
+
 See roadmap.md for full prioritised list.
 https://github.com/GH-Mantova/ProjectOperations/blob/main/roadmap.md
 

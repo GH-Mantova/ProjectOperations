@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-02 01:00 AEST
+Last updated: 2026-05-02 07:40 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -352,6 +352,76 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
      navigates/links anywhere in the codebase point to it. Superseded
      by FormFillPage. Verified during PR #111 inventory. Separate
      dead-code cleanup PR.)
+⏸️  RTL adoption for frontend component tests
+    (Currently using a logic-helper pattern only — pure functions
+     tested in isolation. RTL not installed; component rendering
+     and interaction not tested. Surfaced repeatedly during §5A.1
+     PRs #119, #120, #121, #123, #124, #125 as a recurring deviation.
+     When RTL is added, retrofit existing persona components for
+     proper rendering tests.)
+⏸️  Background dev:api orphan processes — TaskStop on parent shell
+    doesn't propagate to Nest child
+    (Observed in PR #120, PR #121, PR #123 where the agent had to
+     manually kill PIDs (e.g. 25320, 46996, 57512) on port 3000 left
+     from previous pnpm dev:api background tasks. Worth investigating
+     whether pnpm dev:api should set up proper signal handling, or
+     whether the run script should use a process manager that
+     propagates SIGTERM correctly.)
+⏸️  Replace catch-all redirect with explicit 404 page in App.tsx
+    (App.tsx currently has <Route path="*" element={<Navigate to="/"
+     replace />} /> which silently bounces unknown URLs to operations
+     overview. Better: render a proper "Page not found" component
+     that tells users they hit an unknown route. Caught during PR
+     #120 visual smoke when /admin/ai-settings 404 was masked as a
+     navigate-to-/ bug. Project-wide UX issue, not §5A.1-specific.)
+⏸️  Refine Tendering persona sub-mode coverage for utility routes
+    (/tenders/clients, /tenders/contacts, /tenders/settings,
+     /tenders/reports currently match as 'tender-detail' sub-mode.
+     Acceptable while sub-modes have empty toolSlots, but when tools
+     are wired in §5A.1 PRs 11+ these routes need their own sub-modes
+     or a 'utility' fallback. Discovered during PR #120 audit.
+     PR #126's register/pipeline collapse pattern is the template.)
+⏸️  Investigate user-level default AI provider
+    (Currently provider override is per-persona only — no user-wide
+     default. Discovered during PR #121 review when "My Provider
+     Preference" couldn't be implemented as originally specced
+     because the schema doesn't support it. May or may not be
+     needed; investigate when more personas exist post-§5A.1.)
+⏸️  Reconcile AI provider model defaults across codebase
+    (PlatformConfig.DEFAULT_MODELS.openai is 'gpt-4o-mini' while
+     openai.provider.ts last-resort fallback is 'gpt-5.4-mini'.
+     Pick one. Same audit needed for Anthropic, Gemini, Groq —
+     verify whether multiple defaults exist in different places.
+     Note: this entry is partially addressed by PR C in this same
+     overnight chain — if PR C lands, update this entry to "any
+     remaining mismatches not caught by PR C".)
+⏸️  Audit migration history vs current schema
+    (Pre-existing drift noted during PR #117: stray
+     workers.employmentType compat column from migration
+     202604020004_worker_employmenttype_compat, plus FK/default
+     normalisations. Trimmed out of PR #117's migration. Bundled
+     again in PR #126 attempts. Worth a focused cleanup PR that
+     audits all migration files vs current schema.prisma and either
+     adds a clean-up migration or formalises the drift as
+     intentional.)
+⏸️  Consolidate .env files — root vs apps/api/.env duplication
+    (Both root .env and apps/api/.env exist. The API server reads
+     from apps/api/.env (per investigation in May 2 session).
+     Determine canonical location, document in setup guide, remove
+     or symlink the redundant copy. Caused real confusion during
+     PR #123 manual smoke when ANTHROPIC_API_KEY was added to root
+     but not apps/api/.env.)
+⏸️  Tender detail tab sub-modes use internal state, not URL
+    (TenderDetailPage tabs (Overview, Scope, Estimate, Quote,
+     Clarifications) use internal React state rather than syncing
+     to ?detail= query param. Persona sub-modes for scope/estimate/
+     quote/clarifications were defined assuming ?detail= but never
+     activate because URL never changes. Same architectural mismatch
+     as register/pipeline (fixed in PR #126). Decision needed when
+     wiring per-tab tools in §5A.1 PRs 11+: either sync tabs to
+     ?detail= URL OR collapse sub-modes to match the URL space.
+     Currently functional — chat works, just frames itself as
+     "tender-detail mode" for all tabs.)
 
 ---
 

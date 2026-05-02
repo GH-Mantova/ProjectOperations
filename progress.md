@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-02 06:01 AEST
+Last updated: 2026-05-02 07:13 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -1101,4 +1101,62 @@ status transitions. No risk of the two paths drifting.
 End-to-end visual smoke deferred until working AI key available.
 The fix is fully unit-test-verifiable.
 No backend changes. No deviations from spec.
+Audit findings: none.
+
+## 2026-05-02 07:12 AEST — PR #126 MERGED — fix: persona panel header on /tenders + defunct redirect routes excluded
+
+Type: PR (FIX)
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/126
+Branch: fix/persona-matcher-longest-prefix
+Detail: Manual visual smoke after PR #125 confirmed chat works end-to-end.
+But the panel header on /tenders read "Tender register mode —
+search/filter assistance" while the user was looking at the kanban
+pipeline view. Reported as a matcher specificity bug — but
+investigation showed the matcher already does longest-prefix matching
+correctly (the existing test "/tenders/pipeline → pipeline (more
+specific than register)" was passing). Pivoted per the prompt's
+addendum guidance.
+Real root cause: TenderingPage at /tenders renders BOTH register list
+AND pipeline kanban as toggleable views (component state, not URL);
+view defaults to "pipeline". The persona registry split them as
+SEPARATE sub-modes targeting different URLs (register at /tenders,
+pipeline at /tenders/pipeline). The /tenders/pipeline URL doesn't
+actually load the pipeline view — App.tsx redirects it to /tenders
+(retired in PR #78 alongside the Codex-era /create and /workspace
+wrappers). So PersonaContext fetched against /tenders, the matcher
+correctly returned register, but the UI was on the pipeline tab —
+mismatch.
+Fix: collapsed register + pipeline into a single "register" sub-mode
+that owns /tenders. Updated description to explicitly acknowledge
+both views: "Tender overview mode — register list (search/filter/sort)
+and pipeline kanban share this URL; pipeline is the default view".
+Added /tenders/pipeline, /tenders/create, /tenders/workspace to
+excludedRoutes so the matcher doesn't briefly resolve them as
+/tenders/:id (treating "pipeline"/"create"/"workspace" as tender IDs)
+during the redirect flash. /tenders/dashboard exclusion from PR #120
+preserved.
+Tests updated:
+- Removed "/tenders/pipeline → pipeline" assertion (sub-mode no
+  longer exists)
+- Added "/tenders/pipeline → null" (excluded — defunct redirect)
+- Added "/tenders/create → null" + "/tenders/workspace → null"
+- Added regression: register sub-mode description must mention
+  "pipeline" so the panel subtitle is accurate when on the default
+  view
+- Updated "ignores unrelated query params" assertion to use
+  /tenders/123?someOther=foo (was /tenders/pipeline)
+- Updated personas.service.spec subModes count from 7 → 6
+- Updated personas.controller.spec to use /tenders (was /tenders/pipeline)
+64/64 persona tests pass. 181/181 API + 182/182 web. Pre-PR 7/7
+green: lint x2 (clean), test x2, build, compliance:smoke, playwright
+tendering (5/5).
+Pivoted from spec — root cause was NOT in the matcher (which already
+sorts by specificity). Documented in PR body. Future enhancement noted
+in code comments: if TenderingPage starts syncing the view toggle to
+a ?view= query param, register and pipeline can be re-split as
+separate sub-modes via existing ?detail=-style query-param matching.
+Manual smoke pending Marco: navigate /tenders → panel reads "Tender
+overview mode — register list... and pipeline kanban...". Browser
+URL bar should NOT briefly show /tenders/pipeline as a persona route.
 Audit findings: none.

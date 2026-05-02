@@ -326,7 +326,8 @@ describe("PersonasService", () => {
       expect(tendering.hasDbRow).toBe(true);
       expect(tendering.displayName).toBe("Tendering Assistant");
       expect(tendering.permissionRequired).toBe("ai.persona.tendering");
-      expect(tendering.subModes.length).toBe(7);
+      // 6 sub-modes after the pipeline sub-mode collapse in this PR.
+      expect(tendering.subModes.length).toBe(6);
     });
   });
 });

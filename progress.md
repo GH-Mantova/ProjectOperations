@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-02 02:52 AEST
+Last updated: 2026-05-02 03:37 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -828,3 +828,75 @@ Audit findings: none. Manual smoke (Marco to verify post-merge):
 clicking the cog should land on a "AI Settings — coming soon"
 placeholder page; floating button should NOT appear on
 /tenders/dashboard.
+
+## 2026-05-02 03:36 AEST — PR #121 MERGED — §5A.1 PR 5: AI Settings page (replaces stub)
+
+Type: PR
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/121
+Branch: feat/ai-settings-page
+Detail: AI Settings page replaces the AiSettingsStubPage from PR #120.
+Single page at /admin/ai-settings with internal-state tab pattern
+matching AdminSettingsPage (no URL ?tab= — internal useState).
+Three new files: AiSettingsPage.tsx (shell with permission gate +
+tab bar), CompanySettingsTab.tsx (Sean's view: provider toggles +
+user-customisation toggles + per-persona company instruction
+editors), MySettingsTab.tsx (everyone's view: per-persona provider
+override + company instruction read-only + personal instruction +
+BYOK placeholder). Deleted AiSettingsStubPage.tsx.
+Page-level visibility:
+- Super User → both tabs (Company default)
+- Persona-permitted non-Super-User → My Settings only, no tab bar
+- No persona permissions → "AI features not enabled for your
+  account — contact your administrator"
+Wires to all 7 existing persona endpoints:
+- GET/PUT /personas/global-settings
+- GET /personas (list, server filters by permission)
+- GET /personas/:slug
+- PUT /personas/:slug/company-instruction
+- GET/PUT /personas/:slug/my-settings
+No new endpoints. Anthropic checkbox locked-checked (per spec —
+only enabled provider for now). BYOK toggle visible to Sean; per-user
+key field hidden behind "🔒 BYOK is currently in development"
+placeholder when toggle is on (encryption PR will ship the input).
+Personal instruction textarea hidden entirely when global override
+flag is off (not greyed out — actually hidden). MySettingsTab
+sends only fields that should be touched, leveraging PR #118's
+undefined-vs-null distinction so partial updates don't clobber
+unset fields. Toast pattern matches AdminUsersTab (fixed
+bottom-right, 2.4s auto-dismiss). Sidebar entry added to ADMIN
+section in ShellLayout.
+Smoke (curl-driven, all green):
+- Sean GET global-settings → returns row
+- Raj GET global-settings → 403 (Super User only)
+- Beau (no persona perm) GET /personas → returns []
+- Sean PUT global-settings (toggle openai) → enabledProviders updates
+- Raj GET /personas/tendering → returns def + companyInstruction
+- Raj PUT /personas/tendering/my-settings partial → providerOverride
+  saved, other fields untouched
+Tests: 21 new pure-helper cases covering provider dropdown derivation,
+visibility flag predicates, hasUnsavedChanges, getInitialTab,
+canViewCompanyTab, hasAnyPersonaPermission, canViewAiSettingsPage.
+Pre-PR 7/7 green: lint x2 (clean), test x2 (129 api + 111 web),
+build, compliance:smoke, playwright tendering (5/5).
+Deviations:
+1. The spec mentioned a top-level "My Provider Preference"
+   (user-default provider) on the My Settings tab, separate from
+   per-persona overrides. The current schema doesn't have a
+   user-level default-provider field — UserPersonaSettings is
+   per-persona. I implemented per-persona overrides only, with
+   "Use system default (Anthropic)" as the unset state. A
+   user-level default would require a new column and a separate PR.
+2. Component-level rendering tests not added — RTL still not
+   installed. Deviation matches PR #119/#120 pattern: pure-logic
+   helpers fully tested, visual rendering relies on manual smoke
+   (Marco to verify).
+Manual smoke pending Marco:
+- /admin/ai-settings as Sean → both tabs, Company default, save
+  toggles + instruction
+- as Raj → My Settings only, save provider override, save personal
+  instruction (after Sean enables it globally)
+- as Beau → "not enabled" message
+- BYOK toggle on as Sean → log in as Raj, see in-development
+  placeholder (not a key input)
+Audit findings: none.

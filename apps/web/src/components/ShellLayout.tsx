@@ -245,7 +245,8 @@ const NAV_GROUPS: NavGroup[] = [
     adminOnly: true,
     items: [
       { to: "/admin/settings", label: "Admin Settings", icon: ICON_AUDIT },
-      { to: "/admin/estimate-rates", label: "Rates & Lists", icon: ICON_TENDERING }
+      { to: "/admin/estimate-rates", label: "Rates & Lists", icon: ICON_TENDERING },
+      { to: "/admin/ai-settings", label: "AI Settings", icon: ICON_AUDIT }
     ]
   }
 ];

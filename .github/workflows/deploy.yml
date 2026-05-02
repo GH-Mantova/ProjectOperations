@@ -1,5 +1,8 @@
 name: Deploy
 
+permissions:
+  contents: read
+
 # DISABLED — manual trigger only. See on: block below.
 # Re-enable on: push when production deployment is ready.
 

@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-02 07:40 AEST
+Last updated: 2026-05-02 07:58 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -318,20 +318,36 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
 ⏸️  Module-specific AI tools
     (Per-module action tooling expands as new personas come online.
      Each persona gets its own tool registry.)
-⏸️  Security hygiene cleanup — 9 GitHub alerts surfaced 2026-05-02
-    (3 transitive npm dep version bumps: serialize-javascript ≥7.0.5
-     (closes 2 alerts), postcss ≥8.5.10, uuid ≥14.0.0 (major bump,
-     verify tests pass). 3 workflow files missing permissions blocks:
-     ci.yml, playwright.yml, deploy.yml — add `permissions: contents: read`
-     at workflow level (one block on ci.yml closes 2 alerts). 1 React
-     XSS alert on apps/web/src/pages/forms/FormSubmitPage.tsx:459 —
-     likely false positive on standard React JSX interpolation, but
-     requires reading the file to confirm. None exploitable in current
-     architecture: npm vulns are all build-time transitive deps with
-     controlled inputs; workflow tokens not actually elevated;
-     FormSubmitPage uses standard React text interpolation that auto-
-     escapes. Batch into single cleanup PR. Estimated 1–2 hours total.
-     Schedule between 5A.1 sub-PRs as a token-budget filler.)
+✅  Security hygiene cleanup — 9 GitHub alerts surfaced 2026-05-02
+    Closed by PR #128 (overnight chain PR B). 3 npm overrides
+    (serialize-javascript ≥7.0.5, postcss ≥8.5.10, uuid ≥10.0.0
+     <11.0.0). 3 workflow files (ci.yml, playwright.yml, deploy.yml)
+    gained `permissions: contents: read` blocks. 1 React XSS CodeQL
+    alert (#6 FormSubmitPage) dismissed as false positive — React
+    text interpolation auto-escapes. uuid couldn't go to ≥14.0.0 as
+    originally specced (v11+ are ESM-only and break Jest in our
+    CommonJS setup). Pinned to last CJS-compatible major (10.x).
+    Risk note: if the buffer-bounds CVE was patched only in v11+,
+    Dependabot may keep the alert open; mitigated by the fact that
+    no direct uuid imports exist in our code (purely transitive via
+    @azure/msal-node and exceljs, both v4-only callers). One new
+    CodeQL alert (#9, js/xss-through-exception on
+    personas.controller.ts chat endpoint) discovered during
+    investigation — also a false positive (SSE responses aren't
+    HTML-rendered) but deferred per chain rule "DO NOT touch §5A.1
+    code". Tracked separately below.
+
+⏸️  CodeQL alert #9 — js/xss-through-exception on personas.controller chat endpoint
+    (Discovered during PR #128 alert audit. Flagged at
+     personas.controller.ts:193 where `res.write(\`data: ${JSON.stringify(event)}\n\n\`)`
+     emits SSE events including error messages. False positive: the
+     endpoint sets Content-Type: text/event-stream, browsers don't
+     render SSE as HTML, frontend parses via fetch + JSON.parse and
+     renders error strings via React text interpolation (auto-escaped).
+     Deferred from PR #128 per chain rule "do not touch §5A.1 code".
+     Resolution: dismiss as false positive (with explanatory comment in
+     personas.controller.ts) in a follow-up PR after the §5A.1 chain
+     stabilises.)
 ⏸️  Form drafts — Phase 2 (admin CRUD wiring)
     (Phase 1 shipped foundation + 6 user-facing forms in PR #111. ~20
      admin CRUD pages — UsersPage, RolesPage, SubcontractorsPage modals,

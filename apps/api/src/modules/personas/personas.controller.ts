@@ -4,17 +4,22 @@ import {
   ForbiddenException,
   Get,
   Param,
+  Post,
   Put,
   Query,
+  Res,
   UseGuards
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import type { Response } from "express";
+import { AiProvidersService } from "../ai-providers/ai-providers.service";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { PersonaPermissionGuard } from "./persona-permission.guard";
 import { PersonasService } from "./personas.service";
+import { ChatRequestDto } from "./dto/chat.dto";
 import { UpdateCompanyInstructionDto } from "./dto/update-company-instruction.dto";
 import { UpdateUserPersonaSettingsDto } from "./dto/update-user-persona-settings.dto";
 import { UpdateGlobalAISettingsDto } from "./dto/update-global-ai-settings.dto";
@@ -24,7 +29,10 @@ import { UpdateGlobalAISettingsDto } from "./dto/update-global-ai-settings.dto";
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller("personas")
 export class PersonasController {
-  constructor(private readonly service: PersonasService) {}
+  constructor(
+    private readonly service: PersonasService,
+    private readonly aiProviders: AiProvidersService
+  ) {}
 
   @Get("global-settings")
   @ApiOperation({
@@ -151,5 +159,62 @@ export class PersonasController {
     @CurrentUser() actor: AuthenticatedUser
   ) {
     return this.service.updateUserSettings(actor.sub, slug, dto);
+  }
+
+  @Post(":slug/chat")
+  @UseGuards(PersonaPermissionGuard)
+  @ApiOperation({
+    summary: "Stream a chat response from the persona",
+    description:
+      "Sends the message history to the configured AI provider and streams chunks back as Server-Sent Events. Each event has shape `data: {\"type\":\"content\",\"text\":\"...\"}` for text deltas, `data: {\"type\":\"error\",\"error\":\"...\"}` on failure, and `data: {\"type\":\"done\"}` when the stream completes. Persona permission required (PersonaPermissionGuard)."
+  })
+  @ApiResponse({
+    status: 200,
+    description: "text/event-stream with type=content|error|done events.",
+    content: { "text/event-stream": { schema: { type: "string" } } }
+  })
+  @ApiResponse({ status: 400, description: "Malformed messages array." })
+  @ApiResponse({ status: 403, description: "Missing required permission for this persona." })
+  @ApiResponse({ status: 404, description: "Persona not found." })
+  @ApiResponse({ status: 503, description: "AI provider not configured (missing API key)." })
+  async chat(
+    @Param("slug") slug: string,
+    @Body() dto: ChatRequestDto,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Res() res: Response
+  ): Promise<void> {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+
+    const send = (event: { type: "content" | "error" | "done"; [k: string]: unknown }) => {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+
+    try {
+      const config = await this.aiProviders.resolveProviderConfig(actor.sub, slug);
+      const systemPrompt = await this.aiProviders.resolveSystemPrompt(slug, actor.sub, dto.subMode);
+      const stream = this.aiProviders.streamChat({
+        systemPrompt,
+        messages: dto.messages,
+        config
+      });
+
+      for await (const chunk of stream) {
+        send(chunk);
+        if (chunk.type === "error") {
+          break;
+        }
+      }
+      send({ type: "done" });
+    } catch (err) {
+      const message = (err as Error).message ?? "AI request failed.";
+      send({ type: "error", error: message });
+      send({ type: "done" });
+    } finally {
+      res.end();
+    }
   }
 }

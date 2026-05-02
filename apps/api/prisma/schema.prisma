@@ -101,6 +101,8 @@ model User {
   safetyIncidentsClosed      SafetyIncident[]          @relation("SafetyIncidentCloser")
   hazardsReported            HazardObservation[]       @relation("HazardReporter")
   hazardsAssigned            HazardObservation[]       @relation("HazardAssignee")
+  personaInstructionUpdates  PersonaCompanyInstruction[] @relation("PersonaInstructionUpdater")
+  personaSettings            UserPersonaSettings[]
 
   @@index([isActive])
   @@map("users")
@@ -3287,4 +3289,57 @@ model XeroSyncLog {
   @@index([entityType, entityId])
   @@index([direction, createdAt])
   @@map("xero_sync_logs")
+}
+
+model Persona {
+  id                  String                       @id @default(cuid())
+  slug                String                       @unique
+  displayName         String                       @map("display_name")
+  isActive            Boolean                      @default(true) @map("is_active")
+  createdAt           DateTime                     @default(now()) @map("created_at")
+  updatedAt           DateTime                     @updatedAt @map("updated_at")
+  companyInstruction  PersonaCompanyInstruction?
+  userSettings        UserPersonaSettings[]
+
+  @@map("personas")
+}
+
+model PersonaCompanyInstruction {
+  id           String   @id @default(cuid())
+  personaId    String   @unique @map("persona_id")
+  persona      Persona  @relation(fields: [personaId], references: [id], onDelete: Cascade)
+  instruction  String
+  updatedById  String?  @map("updated_by_id")
+  updatedBy    User?    @relation("PersonaInstructionUpdater", fields: [updatedById], references: [id])
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("persona_company_instructions")
+}
+
+model UserPersonaSettings {
+  id                  String   @id @default(cuid())
+  userId              String   @map("user_id")
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  personaId           String   @map("persona_id")
+  persona             Persona  @relation(fields: [personaId], references: [id], onDelete: Cascade)
+  providerOverride    String?  @map("provider_override")
+  instructionOverride String?  @map("instruction_override")
+  bringYourOwnKey     String?  @map("bring_your_own_key")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, personaId])
+  @@map("user_persona_settings")
+}
+
+model GlobalAISettings {
+  id                            Int      @id @default(1)
+  allowUserInstructionOverrides Boolean  @default(false) @map("allow_user_instruction_overrides")
+  enabledProviders              String[] @default(["anthropic"]) @map("enabled_providers")
+  allowBringYourOwnKey          Boolean  @default(false) @map("allow_bring_your_own_key")
+  createdAt                     DateTime @default(now()) @map("created_at")
+  updatedAt                     DateTime @updatedAt @map("updated_at")
+
+  @@map("global_ai_settings")
 }

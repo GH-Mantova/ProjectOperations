@@ -146,7 +146,8 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       "resources.view",
       "documents.view",
       "directory.view",
-      "directory.manage"
+      "directory.manage",
+      "ai.persona.tendering"
     ]
   );
 

@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-02 09:38 AEST
+Last updated: 2026-05-02 11:29 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -443,6 +443,29 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
      ?detail= URL OR collapse sub-modes to match the URL space.
      Currently functional — chat works, just frames itself as
      "tender-detail mode" for all tabs.)
+⏸️  Provider implementation consolidation
+    (apps/api/src/modules/tendering/ai-providers/ holds ClaudeProvider,
+     OpenAiProvider, MockAiProvider for one-shot scope drafting.
+     apps/api/src/modules/ai-providers/providers/ holds AnthropicProvider,
+     OpenAiProvider for streaming chat. Different APIs (one-shot JSON
+     vs streaming SSE), different use cases — not bug-level duplication,
+     but future refactor candidate. Could collapse to a single provider
+     abstraction supporting both modes. Surfaced as PR #132 deviation
+     3 and audit 2026-05-02 finding o4. Estimated 2-4 hours when
+     prioritised.)
+✅  Migrate AI scope drafting to persona system — PR #132
+    Originally PHASE 6 entry implied by PR #122 investigation
+    (docs/legacy-ai-providers-investigation.md). tender-scope-drafting
+    .service.ts migrated from UserAiProvidersService to the new
+    persona-based AiProvidersService.resolveProviderConfig (slug
+    "tendering"). Legacy infrastructure deleted: UserAiProvidersService
+    (apps/api/src/modules/user-ai-providers/), AiProviderSelector
+    (apps/web/src/components/ai/), the My Account "AI providers"
+    section, AnthropicKeyModal, AddPersonalProviderModal,
+    user_ai_providers and user_ai_preferences tables. Net -1,456 LOC.
+    Audit 2026-05-02 confirmed clean cleanup — only one comment-only
+    mention remains in tender-scope-drafting.service.ts:20 as the
+    historical audit trail.
 
 ---
 

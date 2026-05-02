@@ -30,7 +30,7 @@ export const permissionRegistry = [
   { code: "forms.submit", module: "forms", description: "Submit forms — fill and lodge submissions" },
   { code: "forms.manage", module: "forms", description: "Create and edit form templates" },
   { code: "forms.approve", module: "forms", description: "Approve or reject form submissions in approval chains" },
-  { code: "forms.admin", module: "forms", description: "Delete templates, view all submissions, manage schedules" },
+  { code: "forms.admin", module: "forms", description: "Delete templates, view all submissions, manage schedules" }, // reserved — Forms Engine Phase 2; declared but not yet enforced (see audit 2026-05-02 finding m1)
   { code: "documents.view", module: "documents", description: "View SharePoint-backed document records and filtered document lists" },
   { code: "documents.manage", module: "documents", description: "Create document links, versions, and document access rules" },
   { code: "tenders.view", module: "tendering", description: "View tenders" },

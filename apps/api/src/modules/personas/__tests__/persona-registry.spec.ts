@@ -117,5 +117,26 @@ describe("persona-registry", () => {
         expect(findPersonaForRoute("/tenders/123")?.subMode.name).toBe("tender-detail");
       });
     });
+
+    describe("excludedRoutes", () => {
+      it("/tenders/dashboard is excluded — operations dashboard, not a tender", () => {
+        expect(findPersonaForRoute("/tenders/dashboard")).toBeNull();
+      });
+
+      it("/tenders/dashboard/ (trailing slash) is excluded too", () => {
+        expect(findPersonaForRoute("/tenders/dashboard/")).toBeNull();
+      });
+
+      it("/tenders/dashboard?detail=anything stays excluded — query string can't bypass", () => {
+        expect(findPersonaForRoute("/tenders/dashboard?detail=anything")).toBeNull();
+      });
+
+      it("real tender IDs that look like the excluded value still match", () => {
+        // Sanity: exclusion is exact-match, not substring.
+        expect(findPersonaForRoute("/tenders/IS-T020")?.subMode.name).toBe("tender-detail");
+        expect(findPersonaForRoute("/tenders/dashboardx")?.subMode.name).toBe("tender-detail");
+        expect(findPersonaForRoute("/tenders/dashboard-2026")?.subMode.name).toBe("tender-detail");
+      });
+    });
   });
 });

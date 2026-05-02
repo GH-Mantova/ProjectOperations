@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-02 02:30 AEST
+Last updated: 2026-05-02 02:52 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -783,3 +783,48 @@ which have their own auth flows.
 Pre-PR 7/7 green: lint x2 (clean), test x2 (125 api + 79 web),
 build, compliance:smoke, playwright tendering (5/5).
 Audit findings: none.
+
+## 2026-05-02 02:52 AEST — PR #120 MERGED — fix: persona window cog link + tender dashboard exclusion
+
+Type: PR (FIX)
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/120
+Branch: fix/persona-window-cog-link-and-tender-dashboard-exclusion
+Detail: Two visual-smoke bugs from PR #119.
+Bug 1 (cog link): cog icon was rendering with absolute href
+"/admin/ai-settings" but clicking landed users on the Operations
+overview page, not a 404. Root cause was App.tsx's catch-all
+`<Route path="*" element={<Navigate to="/" replace />} />` which
+silently redirects any unknown route to `/` (DashboardPlaceholderPage,
+the operations dashboard). The cog link itself was already correct.
+Fix: added a stub route `/admin/ai-settings` rendered by a new
+AiSettingsStubPage ("AI Settings — coming soon") under
+apps/web/src/personas/pages. Replaced by the real settings page in
+§5A.1 PR 3.
+Bug 2 (tender dashboard): the floating button was rendering on
+/tenders/dashboard (operations Tendering KPI dashboard) because the
+matcher captured it as /tenders/:id with id="dashboard" → tender-detail
+sub-mode. That route conceptually belongs to the future Dashboard
+Master persona.
+Fix: added an optional `excludedRoutes: string[]` field to
+PersonaDefinition. Tendering's list contains ["/tenders/dashboard"].
+Matcher checks exclusions first (against the bare pathname so a
+?detail=foo can't bypass), exact-match with trailing-slash tolerance.
+Future personas use the same field.
+Other "looks like a tender ID but isn't" routes considered but NOT
+excluded (no user-reported bug, and the persona showing on those
+tendering admin pages is arguably correct behavior): /tenders/clients,
+/tenders/contacts, /tenders/settings, /tenders/reports. Redirect routes
+(/tenders/create, /tenders/workspace) similarly left alone — they
+redirect to /tenders before the persona window has time to fetch.
+Tracked as a follow-up if it becomes a real complaint.
+Tests: 4 new (excluded routes, trailing slash, query-param resilience,
+exact-match anti-substring sanity check). Existing 53 persona tests
+still pass; 57/57 total. Pre-PR 7/7 green: lint x2 (clean), test x2
+(129 api + 90 web — web count grew because persona-window-helpers
+.js sibling now picked up alongside .ts), build, compliance:smoke,
+playwright tendering (5/5).
+Audit findings: none. Manual smoke (Marco to verify post-merge):
+clicking the cog should land on a "AI Settings — coming soon"
+placeholder page; floating button should NOT appear on
+/tenders/dashboard.

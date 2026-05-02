@@ -58,6 +58,15 @@ function rootMatches(pattern: string, path: string): boolean {
   return normalisedPath.startsWith(normalisedPattern + "/");
 }
 
+// Exact-match check (trailing-slash tolerant) for excluded routes. Operates
+// on the bare pathname — query string is stripped before this is called —
+// so adding `?detail=...` cannot bypass the exclusion.
+function isExcludedRoute(routes: string[] | undefined, barePath: string): boolean {
+  if (!routes || routes.length === 0) return false;
+  const normalised = normaliseRoute(barePath);
+  return routes.some((excluded) => normaliseRoute(excluded) === normalised);
+}
+
 // Treat the `detail` query param as if it were the next path segment when
 // matching. This is how Tendering's tab-based sub-modes are represented in the
 // URL: TenderDetailPage uses `/tenders/:id?detail=scope` rather than a real
@@ -81,10 +90,15 @@ function buildMatchablePath(url: string): { path: string; queryDetail: string | 
 
 export function findPersonaForRoute(currentRoute: string): PersonaRouteMatch | null {
   const { path: matchPath, queryDetail } = buildMatchablePath(currentRoute);
+  const queryStart = currentRoute.indexOf("?");
+  const barePath = queryStart === -1 ? currentRoute : currentRoute.slice(0, queryStart);
 
   const tryMatch = (candidate: string): PersonaRouteMatch | null => {
     let best: { match: PersonaRouteMatch; score: number } | null = null;
     for (const persona of PERSONAS) {
+      // Exclusions are checked against the bare pathname so a query string
+      // (e.g. ?detail=foo) cannot bypass them.
+      if (isExcludedRoute(persona.excludedRoutes, barePath)) continue;
       if (!rootMatches(persona.rootRoutePattern, candidate)) continue;
 
       let bestSubMode: PersonaSubMode | null = null;
@@ -114,8 +128,6 @@ export function findPersonaForRoute(currentRoute: string): PersonaRouteMatch | n
   // future tab name not yet registered, or a typo), fall back to matching
   // the bare path so the persona still activates with its base sub-mode.
   if (queryDetail !== null) {
-    const queryStart = currentRoute.indexOf("?");
-    const barePath = queryStart === -1 ? currentRoute : currentRoute.slice(0, queryStart);
     return tryMatch(barePath);
   }
 

@@ -56,6 +56,7 @@ import { FieldSafetyPage } from "./pages/field/FieldSafetyPage";
 import { TimesheetApprovalPage } from "./pages/timesheets/TimesheetApprovalPage";
 import { UserProfilePage } from "./pages/account/UserProfilePage";
 import { AdminSettingsPage } from "./pages/AdminSettingsPage";
+import { AiSettingsStubPage } from "./personas/pages/AiSettingsStubPage";
 import { ContractsListPage } from "./pages/contracts/ContractsListPage";
 import { ContractDetailPage } from "./pages/contracts/ContractDetailPage";
 import { PortalAuthProvider } from "./portal/PortalAuthContext";
@@ -206,6 +207,7 @@ export function App() {
             <Route path="/admin/audit" element={<AuditLogsPage />} />
             <Route path="/admin/platform" element={<PlatformPage />} />
             <Route path="/admin/settings" element={<AdminSettingsPage />} />
+            <Route path="/admin/ai-settings" element={<AiSettingsStubPage />} />
             <Route path="/contracts" element={<ContractsListPage />} />
             <Route path="/contracts/:id" element={<ContractDetailPage />} />
             <Route path="/admin/estimate-rates" element={<EstimateRatesAdminPage />} />

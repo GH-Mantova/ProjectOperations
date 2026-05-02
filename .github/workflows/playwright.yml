@@ -42,6 +42,9 @@ jobs:
       SHAREPOINT_SITE_ID: project-operations-site
       SHAREPOINT_LIBRARY_ID: project-operations-library
       SHAREPOINT_ROOT_FOLDER: Project Operations
+      # Deterministic 32-byte hex key used solely for CI tests. Real
+      # production keys live in Azure Key Vault and are never committed.
+      BYOK_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 
     steps:
       - uses: actions/checkout@v4

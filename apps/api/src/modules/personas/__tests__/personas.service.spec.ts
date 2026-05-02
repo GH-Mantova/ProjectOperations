@@ -194,7 +194,7 @@ describe("PersonasService", () => {
       });
       expect(mocks.userPersonaSettingsUpsert).toHaveBeenCalledWith({
         where: { userId_personaId: { userId: "user-1", personaId: TENDERING_ID } },
-        update: { providerOverride: "groq", instructionOverride: "Be brief.", bringYourOwnKey: null },
+        update: { providerOverride: "groq", instructionOverride: "Be brief." },
         create: {
           userId: "user-1",
           personaId: TENDERING_ID,
@@ -202,6 +202,72 @@ describe("PersonasService", () => {
           instructionOverride: "Be brief.",
           bringYourOwnKey: null
         }
+      });
+    });
+
+    it("partial update with only providerOverride leaves other fields untouched", async () => {
+      const { prisma, mocks } = buildPrismaMock();
+      const service = new PersonasService(prisma);
+      await service.updateUserSettings("user-1", "tendering", { providerOverride: "openai" });
+      const call = mocks.userPersonaSettingsUpsert.mock.calls[0]![0] as { update: Record<string, unknown> };
+      expect(call.update).toEqual({ providerOverride: "openai" });
+      expect("instructionOverride" in call.update).toBe(false);
+      expect("bringYourOwnKey" in call.update).toBe(false);
+    });
+
+    it("partial update with only instructionOverride leaves other fields untouched", async () => {
+      const { prisma, mocks } = buildPrismaMock();
+      const service = new PersonasService(prisma);
+      await service.updateUserSettings("user-1", "tendering", { instructionOverride: "Be brief." });
+      const call = mocks.userPersonaSettingsUpsert.mock.calls[0]![0] as { update: Record<string, unknown> };
+      expect(call.update).toEqual({ instructionOverride: "Be brief." });
+      expect("providerOverride" in call.update).toBe(false);
+      expect("bringYourOwnKey" in call.update).toBe(false);
+    });
+
+    it("explicit null clears the field (distinct from undefined which means 'don't touch')", async () => {
+      const { prisma, mocks } = buildPrismaMock();
+      const service = new PersonasService(prisma);
+      await service.updateUserSettings("user-1", "tendering", { providerOverride: null });
+      const call = mocks.userPersonaSettingsUpsert.mock.calls[0]![0] as { update: Record<string, unknown> };
+      expect(call.update).toEqual({ providerOverride: null });
+      expect("instructionOverride" in call.update).toBe(false);
+      expect("bringYourOwnKey" in call.update).toBe(false);
+    });
+
+    it("empty DTO sends an empty update payload (noop) but still upserts a create row", async () => {
+      const { prisma, mocks } = buildPrismaMock();
+      const service = new PersonasService(prisma);
+      await service.updateUserSettings("user-1", "tendering", {});
+      const call = mocks.userPersonaSettingsUpsert.mock.calls[0]![0] as {
+        update: Record<string, unknown>;
+        create: Record<string, unknown>;
+      };
+      expect(call.update).toEqual({});
+      // Create path always sets all three to null when establishing the row from scratch
+      expect(call.create).toEqual({
+        userId: "user-1",
+        personaId: TENDERING_ID,
+        providerOverride: null,
+        instructionOverride: null,
+        bringYourOwnKey: null
+      });
+    });
+
+    it("create path (no existing row) populates all fields from DTO with null fallback", async () => {
+      const { prisma, mocks } = buildPrismaMock({ userPersonaSettingsRow: null });
+      const service = new PersonasService(prisma);
+      await service.updateUserSettings("user-1", "tendering", {
+        providerOverride: "anthropic",
+        bringYourOwnKey: "sk-test"
+      });
+      const call = mocks.userPersonaSettingsUpsert.mock.calls[0]![0] as { create: Record<string, unknown> };
+      expect(call.create).toEqual({
+        userId: "user-1",
+        personaId: TENDERING_ID,
+        providerOverride: "anthropic",
+        instructionOverride: null,
+        bringYourOwnKey: "sk-test"
       });
     });
   });

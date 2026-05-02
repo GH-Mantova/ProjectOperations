@@ -78,13 +78,27 @@ export class PersonasService {
 
   async updateUserSettings(userId: string, slug: string, dto: UserPersonaSettingsUpdate) {
     const persona = await this.getPersonaRow(slug);
+
+    // Distinguish `undefined` (don't touch) from explicit `null` (clear override).
+    // Required for partial updates — DTO marks all fields optional.
+    const updateData: {
+      providerOverride?: string | null;
+      instructionOverride?: string | null;
+      bringYourOwnKey?: string | null;
+    } = {};
+    if (dto.providerOverride !== undefined) {
+      updateData.providerOverride = dto.providerOverride;
+    }
+    if (dto.instructionOverride !== undefined) {
+      updateData.instructionOverride = dto.instructionOverride;
+    }
+    if (dto.bringYourOwnKey !== undefined) {
+      updateData.bringYourOwnKey = dto.bringYourOwnKey;
+    }
+
     return this.prisma.userPersonaSettings.upsert({
       where: { userId_personaId: { userId, personaId: persona.id } },
-      update: {
-        providerOverride: dto.providerOverride ?? null,
-        instructionOverride: dto.instructionOverride ?? null,
-        bringYourOwnKey: dto.bringYourOwnKey ?? null
-      },
+      update: updateData,
       create: {
         userId,
         personaId: persona.id,

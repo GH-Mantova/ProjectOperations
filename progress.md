@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-02 01:48 AEST
+Last updated: 2026-05-02 02:01 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -691,4 +691,41 @@ adapt the floating window's call site to translate active tab into
 the appropriate sub-mode route. Documented in PR body.
 No UI, no floating window, no AI integration — pure foundation.
 Next §5A.1 PR: floating window shell + tab-aware persona route detection.
+Audit findings: none.
+
+## 2026-05-02 02:00 AEST — PR #118 MERGED — fix: persona controller slug-permission + partial update
+
+Type: PR (FIX)
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/118
+Branch: fix/persona-permission-and-partial-update
+Detail: Two bugs identified by Codex automated review on PR #117.
+P1 (high): hard-coded @RequirePermissions("ai.persona.tendering") on
+slug-routed endpoints replaced with PersonaPermissionGuard
+(apps/api/src/modules/personas/persona-permission.guard.ts) that reads
+persona.permissionRequired from the registry per-request. Prevents
+privilege escalation when a second persona lands — users with the
+tendering permission would otherwise be able to read/mutate
+ai.persona.dashboard settings as soon as that persona registered.
+Returns 404 (not 403) for unknown slugs so the auth path doesn't leak
+persona existence. Affects 4 slug-routed endpoints; non-slug endpoints
+(list, global-settings) keep their existing guards. The list endpoint
+also lost its hard-coded @RequirePermissions(TENDERING_PERMISSION) —
+the in-method permission filter already filters per-persona, so the
+decorator was over-restrictive and would have blocked future personas
+from being listed by non-tendering users. Approach A (guard) was
+chosen — matches the portal-jwt.guard.ts pattern in
+apps/api/src/modules/portal.
+P2 (medium): updateUserSettings partial updates clobbered unset fields
+by coercing every undefined DTO field to null. Fixed by building the
+update payload conditionally — `dto.field !== undefined` distinguishes
+"don't touch" from explicit null ("clear override"). Same audit run on
+updateCompanyInstruction (no partial-update issue — instruction is a
+required DTO field) and updateGlobalSettings (already correctly using
+the `!== undefined` pattern). Only updateUserSettings needed the fix.
+Tests: 14 new (9 guard + 5 service partial-update edge cases including
+explicit null, empty DTO, create path). Existing partial-update
+assertion updated to match new behavior. 39/39 persona tests pass.
+Pre-PR 7/7 green: lint x2 (clean), test x2 (111 api + 68 web), build,
+compliance:smoke, playwright tendering (5/5).
 Audit findings: none.

@@ -12,13 +12,11 @@ import { CurrentUser } from "../../common/auth/current-user.decorator";
 import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
-import { RequirePermissions } from "../../common/auth/permissions.decorator";
+import { PersonaPermissionGuard } from "./persona-permission.guard";
 import { PersonasService } from "./personas.service";
 import { UpdateCompanyInstructionDto } from "./dto/update-company-instruction.dto";
 import { UpdateUserPersonaSettingsDto } from "./dto/update-user-persona-settings.dto";
 import { UpdateGlobalAISettingsDto } from "./dto/update-global-ai-settings.dto";
-
-const TENDERING_PERMISSION = "ai.persona.tendering";
 
 @ApiTags("personas")
 @ApiBearerAuth()
@@ -60,11 +58,10 @@ export class PersonasController {
   }
 
   @Get()
-  @RequirePermissions(TENDERING_PERMISSION)
   @ApiOperation({
     summary: "List all personas the caller can access",
     description:
-      "Combines code-defined PersonaDefinition entries with their DB rows (displayName, isActive). Filters to personas the caller has permission for."
+      "Combines code-defined PersonaDefinition entries with their DB rows (displayName, isActive). Filters to personas the caller has permission for. Super Users see all."
   })
   @ApiResponse({ status: 200, description: "Array of persona summaries." })
   async list(@CurrentUser() actor: AuthenticatedUser | undefined) {
@@ -75,13 +72,14 @@ export class PersonasController {
   }
 
   @Get(":slug")
-  @RequirePermissions(TENDERING_PERMISSION)
+  @UseGuards(PersonaPermissionGuard)
   @ApiOperation({
     summary: "Get one persona's full state (definition + company instruction)",
     description:
-      "Returns the PersonaDefinition (structure) merged with the DB row (displayName, isActive) and the current company instruction."
+      "Returns the PersonaDefinition (structure) merged with the DB row (displayName, isActive) and the current company instruction. Permission required: persona.permissionRequired (resolved from the slug)."
   })
   @ApiResponse({ status: 200, description: "Persona detail." })
+  @ApiResponse({ status: 403, description: "Missing required permission for this persona." })
   @ApiResponse({ status: 404, description: "Persona not found." })
   async getOne(@Param("slug") slug: string) {
     const definition = this.service.getDefinitionBySlug(slug);
@@ -90,14 +88,14 @@ export class PersonasController {
   }
 
   @Put(":slug/company-instruction")
-  @RequirePermissions(TENDERING_PERMISSION)
+  @UseGuards(PersonaPermissionGuard)
   @ApiOperation({
     summary: "Update the persona's company-wide instruction",
     description:
-      "Updates PersonaCompanyInstruction.instruction. Caller's user ID is recorded in updatedById. Permission required: ai.persona.<slug> (Super User bypasses)."
+      "Updates PersonaCompanyInstruction.instruction. Caller's user ID is recorded in updatedById. Permission required: persona.permissionRequired (resolved from the slug). Super User bypasses."
   })
   @ApiResponse({ status: 200, description: "Updated company instruction row." })
-  @ApiResponse({ status: 403, description: "Missing permission." })
+  @ApiResponse({ status: 403, description: "Missing required permission for this persona." })
   @ApiResponse({ status: 404, description: "Persona not found." })
   async updateCompanyInstruction(
     @Param("slug") slug: string,
@@ -108,26 +106,28 @@ export class PersonasController {
   }
 
   @Get(":slug/my-settings")
-  @RequirePermissions(TENDERING_PERMISSION)
+  @UseGuards(PersonaPermissionGuard)
   @ApiOperation({
     summary: "Get the caller's settings for this persona",
     description:
-      "Returns UserPersonaSettings for (req.user.sub, persona). Creates a default row on first call so callers always get a stable shape."
+      "Returns UserPersonaSettings for (req.user.sub, persona). Creates a default row on first call so callers always get a stable shape. Permission required: persona.permissionRequired (resolved from the slug)."
   })
   @ApiResponse({ status: 200, description: "User persona settings." })
+  @ApiResponse({ status: 403, description: "Missing required permission for this persona." })
   @ApiResponse({ status: 404, description: "Persona not found." })
   async getMySettings(@Param("slug") slug: string, @CurrentUser() actor: AuthenticatedUser) {
     return this.service.getUserSettings(actor.sub, slug);
   }
 
   @Put(":slug/my-settings")
-  @RequirePermissions(TENDERING_PERMISSION)
+  @UseGuards(PersonaPermissionGuard)
   @ApiOperation({
     summary: "Update the caller's settings for this persona",
     description:
-      "Upserts UserPersonaSettings. userId is taken from the JWT — body cannot specify userId. Honoring of providerOverride / instructionOverride / bringYourOwnKey is gated by Sean's GlobalAISettings toggles."
+      "Upserts UserPersonaSettings. userId is taken from the JWT — body cannot specify userId. Partial updates are honored: omitted fields are left unchanged; explicit null clears the override. Honoring of providerOverride / instructionOverride / bringYourOwnKey is gated by Sean's GlobalAISettings toggles."
   })
   @ApiResponse({ status: 200, description: "Updated user persona settings." })
+  @ApiResponse({ status: 403, description: "Missing required permission for this persona." })
   @ApiResponse({ status: 404, description: "Persona not found." })
   async updateMySettings(
     @Param("slug") slug: string,

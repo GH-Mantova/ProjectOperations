@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-02 03:37 AEST
+Last updated: 2026-05-02 04:11 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -899,4 +899,34 @@ Manual smoke pending Marco:
 - as Beau → "not enabled" message
 - BYOK toggle on as Sean → log in as Raj, see in-development
   placeholder (not a key input)
+Audit findings: none.
+
+## 2026-05-02 04:10 AEST — Investigation: legacy My Account AI providers section
+
+Type: INVESTIGATION
+Status: PAUSED for decision
+Branch: chore/remove-legacy-ai-providers-section (draft PR #122 open)
+Detail: Verdict C — the legacy "My AI providers" section on
+UserProfilePage (/account) is fully wired to AI scope drafting, an
+already-shipped Phase 1 feature. UI calls
+GET/POST/PATCH/DELETE /user/ai-providers + /list-models + /preference
++ /available. Backend (UserAiProvidersController + Service) stores
+encrypted personal keys in user_ai_providers and last-used preference
+in user_ai_preferences. TenderScopeDraftingService.resolveProviderForUser
+imports UserAiProvidersService and reads userAiPreference for
+last-used recall + getPersonalKey for personal-key decryption. The
+point-of-use AiProviderSelector component (mounted in TenderDetailPage
+and ScopeQuantitiesTable) also depends on /user/ai-providers/available
++ /preference. Removing the section blindly would break AI scope
+drafting end-to-end.
+No code deleted. Investigation report committed at
+docs/legacy-ai-providers-investigation.md with file paths, surface
+area, three options for proceeding (migrate first via persona
+system / accept breakage / defer to §5A.1 AI integration PR).
+Recommendation noted in report: defer to the AI integration PR
+(§5A.1 PR 6) since the persona-system resolver is the natural
+replacement and migrating inside that PR keeps main working at every
+step. Awaiting main chat decision.
+Pre-PR: lint x2, test x2, build, smoke all clean (no code changes
+to break anything). Playwright not run — investigation-only.
 Audit findings: none.

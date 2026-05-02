@@ -31,3 +31,8 @@ apps/web/vite.config.js
 
 # Local scratch directory for generated PDFs during manual verification.
 /tmp-outputs/
+
+# Sensitive: real client/pricing data — never commit
+Company Templates/
+company-templates/
+reference-templates/

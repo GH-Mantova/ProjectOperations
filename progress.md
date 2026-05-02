@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-04-27 20:54 AEST
+Last updated: 2026-05-02 00:01 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -609,3 +609,21 @@ Re-enable on:push when secrets are configured and §5A signed off.
 Files: .github/workflows/deploy.yml, progress.md, roadmap.md.
 Audit findings: none. The merge of this PR is itself the test —
 no "deploy.yml failed" email expected after merge.
+
+## 2026-05-02 00:01 AEST — PR #115 MERGED — gitignore sensitive client templates
+
+Type: PR
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/115
+Branch: chore/gitignore-sensitive-templates
+Detail: Added .gitignore entries for "Company Templates/", "company-templates/",
+and "reference-templates/" so real client letterhead/quote/SOR/variation
+templates (containing pricing + branding) cannot be accidentally committed.
+A "Company templates/" folder containing 5 Office files (3 .docx, 2 .xlsx)
+appeared as untracked locally; folder was relocated out of the repo to
+C:\ProjectOperations-Reference\ before pushing. No code changes — pure
+.gitignore patch. Doc updates per same-PR rule: progress.md only
+(this entry); roadmap.md unchanged (no phase shift); project_instructions.md
+unchanged (no module/rule change). Pre-commit hook stamped "Last updated:".
+Files: .gitignore, progress.md.
+Audit findings: none.

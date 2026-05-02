@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-02 05:35 AEST
+Last updated: 2026-05-02 06:01 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -1060,4 +1060,45 @@ Deviations:
 What's NOT in this PR: provider selection UI inside chat (settings
 already cover it), BYOK encryption, Gemini/Groq implementations,
 migration of legacy AI scope drafting.
+Audit findings: none.
+
+## 2026-05-02 06:00 AEST — PR #125 MERGED — fix: persona chat retry button replays empty message
+
+Type: PR (FIX)
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/125
+Branch: fix/persona-chat-retry-empty-message
+Detail: Manual smoke after PR #123/#124 caught the Retry button on the
+chat error banner sending a request with messages: []. Backend
+correctly rejected with 400 "messages must contain at least 1 elements".
+Root cause: in apps/web/src/personas/use-streaming-chat.ts, sendMessage
+built the request body via a closure variable
+(`let nextHistory: ChatMessage[] = []`) that was assigned inside a
+setMessages updater. JSON.stringify evaluated the body argument
+synchronously, but in React 19's batching the updater ran during the
+flush phase — by which time fetch had already started. On the regular
+send path it sometimes worked (timing-dependent), but retry's
+two-setMessages-then-sendMessage chain reliably evaluated the body
+before any flush, so nextHistory stayed [] and the array was sent empty.
+Fix: refactored the hook so the request body never depends on a
+closure-captured-from-inside-updater variable. Extracted a private
+sendChatRequest(history, options) helper that takes history as an
+explicit argument; sendMessage and retry both call it. Added a
+messagesRef that mirrors the latest messages state synchronously.
+Added a buildRetryHistory(messages) pure helper to chat-helpers.ts —
+returns the slice up to and including the last user message; drops
+any partial assistant response that came after (from a mid-stream
+error). Returns [] when there's nothing to retry.
+Tests: 6 new helper tests in chat-helpers.test.ts covering: empty
+input, no user message present, clean turn replay, partial-assistant
+response dropped, single-message original-bug case, fresh-array
+return semantics. 176/176 web (was 170/170; +6). 178/178 API tests
+unchanged. Pre-PR 7/7 green: lint x2 (clean), test x2, build,
+compliance:smoke, playwright tendering (5/5).
+Side benefit of refactor: send and retry now share the actual API
+call code path — single source of truth for fetch, SSE parsing,
+status transitions. No risk of the two paths drifting.
+End-to-end visual smoke deferred until working AI key available.
+The fix is fully unit-test-verifiable.
+No backend changes. No deviations from spec.
 Audit findings: none.

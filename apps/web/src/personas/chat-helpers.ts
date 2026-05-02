@@ -27,6 +27,21 @@ export function appendAssistantMessage(history: ChatMessage[], content: string):
   return [...history, { role: "assistant", content }];
 }
 
+// Build the message history to replay when the user clicks Retry on an
+// errored chat. Returns everything up to and INCLUDING the last user message;
+// any partial assistant response that came after the last user turn (e.g. a
+// few words that streamed before the error) is dropped — re-sending those
+// would just confuse the model. Returns [] when there is no user message
+// to replay.
+export function buildRetryHistory(messages: ChatMessage[]): ChatMessage[] {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]!.role === "user") {
+      return messages.slice(0, i + 1);
+    }
+  }
+  return [];
+}
+
 // Reset the chat when the active persona+sub-mode changes (different page).
 // Window close/reopen on the same sub-mode does NOT trigger a reset — the
 // caller should keep the message list across that transition.

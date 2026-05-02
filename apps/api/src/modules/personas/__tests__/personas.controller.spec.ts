@@ -62,8 +62,10 @@ describe("PersonasController.activeForRoute", () => {
   it("returns persona for matching route + permitted user", async () => {
     const controller = buildController();
     const actor: AuthLike = { sub: "user-1", permissions: ["ai.persona.tendering"] };
-    const result = await controller.activeForRoute("/tenders/pipeline", actor as never);
-    expect(result).toEqual(tendering("pipeline"));
+    // /tenders is the canonical Tendering Assistant route post-collapse —
+    // it covers both register and pipeline views (toggleable in the UI).
+    const result = await controller.activeForRoute("/tenders", actor as never);
+    expect(result).toEqual(tendering("register"));
   });
 
   it("returns persona for matching route + Super User (permission bypassed)", async () => {
@@ -76,7 +78,7 @@ describe("PersonasController.activeForRoute", () => {
   it("returns null for matching route + unpermitted user (graceful, not 403)", async () => {
     const controller = buildController();
     const actor: AuthLike = { sub: "user-amy", permissions: ["finance.view"] };
-    const result = await controller.activeForRoute("/tenders/pipeline", actor as never);
+    const result = await controller.activeForRoute("/tenders", actor as never);
     expect(result).toBeNull();
   });
 

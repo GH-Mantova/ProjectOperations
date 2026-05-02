@@ -45,9 +45,20 @@ describe("persona-registry", () => {
       expect(match?.subMode.name).toBe("clarifications");
     });
 
-    it("returns tendering + pipeline sub-mode for /tenders/pipeline (more specific than register)", () => {
-      const match = findPersonaForRoute("/tenders/pipeline");
-      expect(match?.subMode.name).toBe("pipeline");
+    it("returns null for /tenders/pipeline — defunct redirect, persona shouldn't briefly attach as tender-detail", () => {
+      // /tenders/pipeline is a Codex-era redirect to /tenders (App.tsx). The
+      // persona definition excludes it explicitly so the matcher doesn't
+      // resolve the URL as /tenders/:id with id="pipeline" before the
+      // redirect lands. Same for /tenders/create and /tenders/workspace.
+      expect(findPersonaForRoute("/tenders/pipeline")).toBeNull();
+    });
+
+    it("returns null for /tenders/create — defunct redirect", () => {
+      expect(findPersonaForRoute("/tenders/create")).toBeNull();
+    });
+
+    it("returns null for /tenders/workspace — defunct redirect", () => {
+      expect(findPersonaForRoute("/tenders/workspace")).toBeNull();
     });
 
     it("returns tendering + tender-detail sub-mode for /tenders/:id (no inner segment)", () => {
@@ -58,6 +69,16 @@ describe("persona-registry", () => {
     it("returns tendering + register sub-mode for exact /tenders", () => {
       const match = findPersonaForRoute("/tenders");
       expect(match?.subMode.name).toBe("register");
+    });
+
+    it("register sub-mode description acknowledges both register and pipeline views (post-collapse)", () => {
+      // Regression for the visual-smoke bug fixed in this PR: TenderingPage
+      // at /tenders defaults to the pipeline (kanban) view, but the persona
+      // sub-mode used to read "Tender register mode — search/filter
+      // assistance" only. Now the description must mention pipeline too so
+      // users on the default view don't see a misleading subtitle.
+      const match = findPersonaForRoute("/tenders");
+      expect(match?.subMode.description.toLowerCase()).toContain("pipeline");
     });
 
     it("returns null for unrelated routes", () => {
@@ -104,8 +125,10 @@ describe("persona-registry", () => {
       });
 
       it("ignores unrelated query params and matches base sub-mode", () => {
-        expect(findPersonaForRoute("/tenders/pipeline?someOther=foo")?.subMode.name).toBe(
-          "pipeline"
+        // Use /tenders/123?someOther=foo — matches tender-detail. Original
+        // assertion used /tenders/pipeline which is now an excluded route.
+        expect(findPersonaForRoute("/tenders/123?someOther=foo")?.subMode.name).toBe(
+          "tender-detail"
         );
       });
 

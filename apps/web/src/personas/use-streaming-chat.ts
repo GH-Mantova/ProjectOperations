@@ -3,6 +3,7 @@ import { useAuth } from "../auth/AuthContext";
 import {
   appendAssistantMessage,
   appendUserMessage,
+  buildRetryHistory,
   readSSEStream,
   type ChatMessage,
   type ChatStatus
@@ -18,8 +19,14 @@ export function useStreamingChat(personaSlug: string | null) {
   const [currentResponse, setCurrentResponse] = useState("");
   const [status, setStatus] = useState<ChatStatus>("idle");
   const [error, setError] = useState<string | null>(null);
-  const lastUserMessageRef = useRef<{ content: string; options: SendOptions } | null>(null);
+  const lastOptionsRef = useRef<SendOptions>({});
   const abortRef = useRef<AbortController | null>(null);
+  // Mirror the latest messages so retry / send can build the request body
+  // synchronously without relying on a setState updater having flushed.
+  // The updater-closure pattern was the bug fixed in this PR — see
+  // https://github.com/GH-Mantova/ProjectOperations/pull/<this-pr> for why.
+  const messagesRef = useRef<ChatMessage[]>([]);
+  messagesRef.current = messages;
 
   const reset = useCallback(() => {
     abortRef.current?.abort();
@@ -28,23 +35,17 @@ export function useStreamingChat(personaSlug: string | null) {
     setCurrentResponse("");
     setStatus("idle");
     setError(null);
-    lastUserMessageRef.current = null;
+    lastOptionsRef.current = {};
   }, []);
 
-  const sendMessage = useCallback(
-    async (content: string, options: SendOptions = {}) => {
-      if (!personaSlug) return;
-      const trimmed = content.trim();
-      if (trimmed.length === 0) return;
+  // Single source of truth for the actual API call. Both sendMessage and
+  // retry call this with an explicit history, so the request body never
+  // depends on a closure variable mutated inside a React state updater.
+  const sendChatRequest = useCallback(
+    async (history: ChatMessage[], options: SendOptions) => {
+      if (!personaSlug || history.length === 0) return;
 
-      // Capture history BEFORE adding the user message so we can post the
-      // exact conversation that produced this turn (immutable view).
-      let nextHistory: ChatMessage[] = [];
-      setMessages((prev) => {
-        nextHistory = appendUserMessage(prev, trimmed);
-        return nextHistory;
-      });
-      lastUserMessageRef.current = { content: trimmed, options };
+      lastOptionsRef.current = options;
       setCurrentResponse("");
       setError(null);
       setStatus("streaming");
@@ -58,7 +59,7 @@ export function useStreamingChat(personaSlug: string | null) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            messages: nextHistory,
+            messages: history,
             subMode: options.subMode
           }),
           signal: controller.signal
@@ -97,7 +98,8 @@ export function useStreamingChat(personaSlug: string | null) {
           return;
         }
         // Persist whatever we managed to receive so the user sees the partial
-        // answer alongside the error rather than losing it.
+        // answer alongside the error rather than losing it. Retry will
+        // discard this partial via buildRetryHistory.
         if (accumulated.length > 0) {
           setMessages((prev) => appendAssistantMessage(prev, accumulated));
           setCurrentResponse("");
@@ -111,18 +113,25 @@ export function useStreamingChat(personaSlug: string | null) {
     [authFetch, personaSlug]
   );
 
+  const sendMessage = useCallback(
+    async (content: string, options: SendOptions = {}) => {
+      if (!personaSlug) return;
+      const trimmed = content.trim();
+      if (trimmed.length === 0) return;
+      const history = appendUserMessage(messagesRef.current, trimmed);
+      setMessages(history);
+      await sendChatRequest(history, options);
+    },
+    [personaSlug, sendChatRequest]
+  );
+
   const retry = useCallback(() => {
-    const last = lastUserMessageRef.current;
-    if (!last) return;
-    // Trim the previous user message off the history; sendMessage will re-append.
-    setMessages((prev) => {
-      const lastUserIndex = [...prev].reverse().findIndex((m) => m.role === "user");
-      if (lastUserIndex === -1) return prev;
-      const cutAt = prev.length - 1 - lastUserIndex;
-      return prev.slice(0, cutAt);
-    });
-    void sendMessage(last.content, last.options);
-  }, [sendMessage]);
+    const replay = buildRetryHistory(messagesRef.current);
+    if (replay.length === 0) return;
+    // Drop any partial assistant response that was rendered before the error.
+    setMessages(replay);
+    void sendChatRequest(replay, lastOptionsRef.current);
+  }, [sendChatRequest]);
 
   return {
     messages,

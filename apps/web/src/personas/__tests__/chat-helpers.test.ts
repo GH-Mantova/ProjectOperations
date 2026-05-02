@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   appendAssistantMessage,
   appendUserMessage,
+  buildRetryHistory,
   parseSSEEvent,
   readSSEStream,
   shouldDisableSendButton,
-  shouldResetOnPersonaChange
+  shouldResetOnPersonaChange,
+  type ChatMessage
 } from "../chat-helpers";
 import type { ActivePersona } from "../types";
 
@@ -23,6 +25,56 @@ describe("shouldDisableSendButton", () => {
   it("enables when idle/error and input is non-empty", () => {
     expect(shouldDisableSendButton("idle", "Hello")).toBe(false);
     expect(shouldDisableSendButton("error", "retry")).toBe(false);
+  });
+});
+
+describe("buildRetryHistory", () => {
+  it("returns empty array when there is nothing to retry", () => {
+    expect(buildRetryHistory([])).toEqual([]);
+  });
+
+  it("returns empty array when no user message is present (defensive)", () => {
+    const messages: ChatMessage[] = [{ role: "assistant", content: "orphan" }];
+    expect(buildRetryHistory(messages)).toEqual([]);
+  });
+
+  it("returns the slice up to and including the last user message on a clean turn", () => {
+    const messages: ChatMessage[] = [
+      { role: "user", content: "Hello" },
+      { role: "assistant", content: "Hi there!" },
+      { role: "user", content: "Tell me about scope drafting" }
+    ];
+    expect(buildRetryHistory(messages)).toEqual(messages);
+  });
+
+  it("drops a partial assistant response that came after the last user message", () => {
+    // This is the bug-class the helper exists to handle: error mid-stream
+    // leaves a partial assistant message in history. Retry must NOT replay
+    // that partial — only the user turn that prompted it.
+    const messages: ChatMessage[] = [
+      { role: "user", content: "Hello" },
+      { role: "assistant", content: "Hi there!" },
+      { role: "user", content: "Tell me about scope drafting" },
+      { role: "assistant", content: "Sure, the IS scope" } // partial, errored mid-stream
+    ];
+    expect(buildRetryHistory(messages)).toEqual([
+      { role: "user", content: "Hello" },
+      { role: "assistant", content: "Hi there!" },
+      { role: "user", content: "Tell me about scope drafting" }
+    ]);
+  });
+
+  it("handles a single-message conversation (the original bug case)", () => {
+    // The exact scenario Marco reported: user sends one message, error fires
+    // mid-stream, retry must replay that user message — not send [].
+    const messages: ChatMessage[] = [{ role: "user", content: "Hello" }];
+    expect(buildRetryHistory(messages)).toEqual([{ role: "user", content: "Hello" }]);
+  });
+
+  it("returns a fresh array (not the input reference)", () => {
+    const messages: ChatMessage[] = [{ role: "user", content: "Hello" }];
+    const replay = buildRetryHistory(messages);
+    expect(replay).not.toBe(messages);
   });
 });
 

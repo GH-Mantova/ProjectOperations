@@ -7,8 +7,6 @@ import { AddClientModal } from "./AddClientModal";
 import { TenderDocumentsPanel } from "./TenderDocumentsPanel";
 import { TenderClientNotesSection } from "./TenderClientNotesSection";
 import { TenderClarificationLog } from "./TenderClarificationLog";
-import { AnthropicKeyModal } from "./AnthropicKeyModal";
-import { AiProviderSelector, type AvailableProvider } from "../../components/ai/AiProviderSelector";
 // NOTE: the Drafted Scope tab + panel are retired in PR #44 — AI draft items
 // now land directly in the Scope of Works tab as status="draft" rows.
 import { ConvertToProjectModal } from "./ConvertToProjectModal";
@@ -164,10 +162,6 @@ export function TenderDetailPage() {
   const [newFollowUp, setNewFollowUp] = useState({ details: "", dueAt: "" });
   const [drafting, setDrafting] = useState(false);
   const [draftToast, setDraftToast] = useState<string | null>(null);
-  const [keyModalOpen, setKeyModalOpen] = useState(false);
-  const [pendingCorrection, setPendingCorrection] = useState<string | null>(null);
-  const [providerPickerOpen, setProviderPickerOpen] = useState(false);
-  const [pendingDraftCorrection, setPendingDraftCorrection] = useState<string | null>(null);
   const [addClientOpen, setAddClientOpen] = useState(false);
   const [clientMsg, setClientMsg] = useState<string | null>(null);
   const [statusUpdating, setStatusUpdating] = useState(false);
@@ -221,24 +215,16 @@ export function TenderDetailPage() {
   }, []);
 
   const runDraft = useCallback(
-    async (correction: string | null, selectedProviderId: string | null) => {
+    async (correction: string | null) => {
       if (!tender) return;
       setDrafting(true);
       setError(null);
       try {
         const response = await authFetch(`/tenders/${tender.id}/draft-scope`, {
           method: "POST",
-          body: JSON.stringify({
-            ...(correction ? { correction } : {}),
-            ...(selectedProviderId ? { selectedProviderId } : {})
-          })
+          body: JSON.stringify(correction ? { correction } : {})
         });
         if (!response.ok) {
-          if (response.status === 412) {
-            setPendingCorrection(correction);
-            setKeyModalOpen(true);
-            return;
-          }
           throw new Error(await response.text());
         }
         const body = (await response.json()) as {
@@ -264,12 +250,11 @@ export function TenderDetailPage() {
 
   const requestDraft = useCallback(
     (correction: string | null) => {
-      // Open the provider selector; it auto-picks when 0/1 providers are
-      // available and shows the modal only when 2+ are configured.
-      setPendingDraftCorrection(correction);
-      setProviderPickerOpen(true);
+      // Provider is now resolved server-side from persona settings —
+      // no per-call picker (see PR #132 / §5A.1 PR 8).
+      void runDraft(correction);
     },
-    []
+    [runDraft]
   );
 
   const probabilityBucket = bucketForProbability(tender?.probability);
@@ -936,18 +921,6 @@ export function TenderDetailPage() {
       ) : null}
 
 
-      <AnthropicKeyModal
-        open={keyModalOpen}
-        onClose={() => setKeyModalOpen(false)}
-        onSaved={() => {
-          setKeyModalOpen(false);
-          // After the admin-side key is saved, re-run with no override so the
-          // resolver falls back through the company chain.
-          void runDraft(pendingCorrection, null);
-          setPendingCorrection(null);
-        }}
-      />
-
       {addClientOpen ? (
         <AddClientModal
           tenderId={tender.id}
@@ -957,22 +930,6 @@ export function TenderDetailPage() {
             setAddClientOpen(false);
             setClientMsg(null);
             void reload();
-          }}
-        />
-      ) : null}
-
-      {providerPickerOpen ? (
-        <AiProviderSelector
-          actionLabel="Draft scope"
-          onCancel={() => {
-            setProviderPickerOpen(false);
-            setPendingDraftCorrection(null);
-          }}
-          onProviderSelected={(providerId: string | null, _meta?: AvailableProvider) => {
-            setProviderPickerOpen(false);
-            const correction = pendingDraftCorrection;
-            setPendingDraftCorrection(null);
-            void runDraft(correction, providerId);
           }}
         />
       ) : null}

@@ -74,8 +74,6 @@ model User {
   formScheduleAssignments    FormSchedule[]            @relation("FormScheduleAssignee")
   scopeItemsCreated          ScopeOfWorksItem[]        @relation("ScopeOfWorksCreatedBy")
   estimateExports            EstimateExport[]
-  personalAiProviders        UserAiProvider[]
-  aiPreference               UserAiPreference?
   globalListsCreated         GlobalList[]              @relation("GlobalListCreatedBy")
   listItemsCreated           GlobalListItem[]          @relation("GlobalListItemCreatedBy")
   clarificationNotesCreated  TenderClarificationNote[] @relation("TenderClarificationNoteAuthor")
@@ -1779,38 +1777,9 @@ model PlatformConfig {
   @@map("platform_config")
 }
 
-// Per-user personal AI provider keys. The key column is encrypted with the
-// same aes-256-gcm/iv.tag.data envelope as PlatformConfig so secrets never
-// sit in plaintext at rest. `isActive=false` lets a user keep a key on file
-// without it appearing in the at-use picker.
-model UserAiProvider {
-  id        String   @id @default(cuid())
-  userId    String   @map("user_id")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  provider  String
-  label     String?
-  apiKey    String   @map("api_key")
-  model     String?
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  @@index([userId])
-  @@index([userId, provider])
-  @@map("user_ai_providers")
-}
-
-// Per-user recall of the last provider they picked, so the selector can
-// skip the modal on repeat use when the user has chosen "remember my choice".
-model UserAiPreference {
-  id                 String   @id @default(cuid())
-  userId             String   @unique @map("user_id")
-  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  lastUsedProviderId String?  @map("last_used_provider_id")
-  updatedAt          DateTime @updatedAt @map("updated_at")
-
-  @@map("user_ai_preferences")
-}
+// UserAiProvider and UserAiPreference models were removed in §5A.1 PR 8
+// (PR #132) — provider selection moved to persona settings. Tables dropped
+// via migration 20260502_chore_remove_legacy_ai_provider_tables.
 
 // ── Projects module (PR #39) ─────────────────────────────────────────────
 // Project records live alongside Job (delivery-side) and are produced by the

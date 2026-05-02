@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-02 09:38 AEST
+Last updated: 2026-05-02 10:22 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -1337,3 +1337,95 @@ syntax may need adjustment — flag for follow-up.
 
 Audit findings: none. PHASE 6 "CodeQL alert #9" entry marked ✅
 COMPLETE in roadmap.md.
+
+## 2026-05-02 10:19 AEST — PR #132 MERGED — §5A.1 PR 8: migrate AI scope drafting to persona system + delete legacy
+
+Type: PR
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/132
+Branch: feat/migrate-ai-scope-drafting-to-persona-system
+Detail: Migrates the legacy AI scope drafting feature to use the new
+persona-based provider resolver (PR #117/#123/#129 infrastructure),
+then deletes the legacy infrastructure. Single PR by design — main
+is never in a half-migrated state.
+
+Phase 0 baseline: tendering.service.spec.ts passing on main (5
+tests). No direct tests for tender-scope-drafting.service.ts or
+user-ai-providers — those modules were tested indirectly. Baseline
+verdict: structurally sound.
+
+Phase 1 — backend migration:
+tender-scope-drafting.service.ts now calls
+AiProvidersService.resolveProviderConfig(userId, "tendering") instead
+of UserAiProvidersService.getPersonalKey + prisma.userAiPreference.
+Provider/model/key resolution centralised in persona settings. Falls
+back to MockAiProvider when resolveProviderConfig throws
+ServiceUnavailableException with category=config — preserves the
+legacy "no key configured → mock" UX. Other error categories
+propagate. Errors from provider.draftScope() routed through
+sanitiseProviderError (PR #131 helper) — categorised user message
+via ServiceUnavailableException, full original error logged with
+tenderId/userId/category. ProviderMeta.source narrowed from
+"company" | "personal" | "mock" to just "company" | "mock".
+Controller DTO lost selectedProviderId field. AnthropicKeyMissingError
+class removed (mock fallback replaces the 412 path).
+
+Phase 2 — frontend mount removal: AiProviderSelector mount removed
+from TenderDetailPage.tsx and ScopeQuantitiesTable.tsx. State
+pendingDraftCorrection, providerPickerOpen, pendingCorrection,
+keyModalOpen, pickerOpen all dropped. AnthropicKeyModal mount also
+removed.
+
+Phase 3 — frontend deletion: AiProviderSelector.tsx,
+AnthropicKeyModal.tsx, AddPersonalProviderModal.tsx all deleted.
+"My AI providers" section stripped from UserProfilePage.tsx (page
+preserved — Lists + Notification Preferences remain).
+
+Phase 4 — backend deletion + Prisma migration:
+apps/api/src/modules/user-ai-providers/ deleted.
+UserAiProvidersModule removed from app.module.ts. schema.prisma:
+UserAiProvider and UserAiPreference models removed plus the
+personalAiProviders + aiPreference relations on User. Migration
+20260502101544_chore_remove_legacy_ai_provider_tables drops both
+tables (FK constraints first, then DROP TABLE). Same drift bundling
+as PR #117 — Prisma auto-generated migration bundled pre-existing
+main-vs-DB drift (workers.employmentType compat column, FK reshapes,
+default removals). Trimmed migration to only the legacy table drops
+per PR #117 protocol. pnpm seed re-runs idempotently after.
+
+Phases 5-6: 8 verification checks all pass. No tests deleted
+(user-ai-providers had no spec; tender-scope-drafting had no direct
+spec — both indirectly covered via tendering.service.spec.ts). No
+new tests added for the migration boundary itself — exercised
+compile-time via the new constructor signature (AiProvidersService
+instead of UserAiProvidersService) plus existing 5 tendering.service
+tests.
+
+Counts: 209/209 API + 192/192 web (unchanged). Pre-PR 7/7 green:
+lint x2 (clean), test x2, build, compliance:smoke, playwright
+tendering (5/5).
+
+Frontend search: no leftover references to UserAiProvidersService,
+AiProviderSelector, AnthropicKeyModal, or AddPersonalProviderModal
+in .ts/.tsx — one comment-only mention in
+tender-scope-drafting.service.ts documenting the historical
+"personal" source.
+
+Manual smoke pending Marco:
+- "Draft scope from documents" — no picker; provider auto-resolved
+- User account page — "My AI providers" gone; other sections render
+- /admin/ai-settings + floating chat unchanged
+
+Deviations:
+(1) Drift bundling on the migration (pre-existing tech debt; trimmed
+    per PR #117 protocol). Local DB diverges slightly from CI's
+    fresh DB. Pre-existing PHASE 6 entry "Audit migration history
+    vs current schema" tracks this.
+(2) No new spec-level tests added — migration boundary is
+    compile-time-enforced (new constructor signature) and existing
+    indirect coverage suffices. Resolution-path tests already exist
+    in ai-providers.service.spec.ts (PR #117/#129).
+
+Audit findings: none. The investigation report from PR #122
+(docs/legacy-ai-providers-investigation.md) is now a closed-issue
+historical artefact — left in place as the migration's audit trail.

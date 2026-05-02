@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
-import { AiProviderSelector, type AvailableProvider } from "../../components/ai/AiProviderSelector";
 import { ScopeColumnManager, labelFor } from "./ScopeColumnManager";
 import { ScopeListDropdown } from "./ScopeListDropdown";
 
@@ -105,7 +104,6 @@ export function ScopeQuantitiesTable({
   const [columnsByRowType, setColumnsByRowType] = useState<Record<string, string[]>>({});
   const [error, setError] = useState<string | null>(null);
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
-  const [pickerOpen, setPickerOpen] = useState(false);
   const [deleteWarning, setDeleteWarning] = useState<ScopeItem | null>(null);
 
   // Load row-types (filtered by discipline) + view config + available cols.
@@ -287,12 +285,14 @@ export function ScopeQuantitiesTable({
     await onItemsChanged();
   };
 
-  const requestDraft = () => setPickerOpen(true);
-  const runDraft = async (providerId: string | null) => {
+  // Provider is resolved server-side from persona settings — no per-call
+  // picker (see PR #132 / §5A.1 PR 8). Configuring providers happens in
+  // /admin/ai-settings.
+  const requestDraft = async () => {
     try {
       const response = await authFetch(`/tenders/${tenderId}/draft-scope`, {
         method: "POST",
-        body: JSON.stringify(providerId ? { selectedProviderId: providerId } : {})
+        body: JSON.stringify({})
       });
       if (!response.ok) throw new Error(await response.text());
       await onItemsChanged();
@@ -406,17 +406,6 @@ export function ScopeQuantitiesTable({
             ))}
           </ul>
         </details>
-      ) : null}
-
-      {pickerOpen ? (
-        <AiProviderSelector
-          actionLabel="Draft scope"
-          onCancel={() => setPickerOpen(false)}
-          onProviderSelected={(providerId: string | null, _meta?: AvailableProvider) => {
-            setPickerOpen(false);
-            void runDraft(providerId);
-          }}
-        />
       ) : null}
 
       {deleteWarning ? (

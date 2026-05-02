@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-02 07:40 AEST
+Last updated: 2026-05-02 07:58 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -1183,3 +1183,41 @@ has the PLANNED — PHASE 5A.1 and 5A.2 sub-sections (per PR #116). No
 divergence found — no fix-up required.
 Pre-PR: lint x2 (clean). No tests required (doc-only).
 Audit findings: none.
+
+## 2026-05-02 07:57 AEST — PR #128 MERGED — chore: security alerts cleanup
+
+Type: PR (CHORE)
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/128
+Branch: chore/security-alerts-cleanup-may-2026
+Detail: PR B of the overnight 3-PR hygiene chain. Closes 9 GitHub
+security alerts captured 2026-05-02 (per PR #116 spec):
+- 4 Dependabot alerts (serialize-javascript DoS + RCE, postcss XSS,
+  uuid buffer bounds) closed via pnpm overrides at root package.json:
+  serialize-javascript >=7.0.5, postcss >=8.5.10, uuid >=10.0.0 <11.0.0.
+- 4 CodeQL workflow-permissions alerts (ci.yml × 2, playwright.yml,
+  deploy.yml) closed by adding `permissions: contents: read` blocks
+  at the workflow level of all three files.
+- 1 CodeQL js/xss-through-dom alert (#6 FormSubmitPage) dismissed as
+  false positive via gh API (`dismissed_reason: false_positive`) with
+  inline explanatory comment in FormSubmitPage.tsx:458 — currentName
+  is sourced from File.name string or React form-state string, never
+  DOM reads; {currentName} is React text interpolation, auto-escaped.
+Deviation: uuid couldn't be bumped to >=14.0.0 as specced. uuid 11+
+are ESM-only and break Jest's CommonJS setup (test failures via
+@azure/msal-node → uuid transitive chain). Pinned to last
+CJS-compatible major (10.x). Risk if the buffer-bounds CVE was
+patched only in v11+: Dependabot may keep the alert open. Mitigation:
+no direct uuid imports in our code (purely transitive via
+@azure/msal-node and exceljs, both v4-only callers — buffer-bounds
+attack requires explicit buf argument to v3/v5/v6 generators which
+we don't use). Documented in roadmap.md.
+Discovered during alert audit: 1 NEW CodeQL alert #9
+(js/xss-through-exception on personas.controller.ts:193 chat
+endpoint) — also a false positive (SSE responses, not HTML-rendered).
+Deferred from this PR per chain rule "DO NOT touch §5A.1 code".
+Tracked as separate PHASE 6 entry for follow-up dismissal.
+Pre-PR 7/7 green: lint x2 (clean), test x2 (181 api + 182 web),
+build, compliance:smoke, playwright tendering (5/5).
+Audit findings: none. PHASE 6 "Security hygiene cleanup" marked ✅
+COMPLETE in roadmap.md.

@@ -1,4 +1,8 @@
 name: Tendering Browser Smoke
+
+permissions:
+  contents: read
+
 on:
   push:
     branches: [ main, master ]

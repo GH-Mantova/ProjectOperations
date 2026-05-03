@@ -1,0 +1,291 @@
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException
+} from "@nestjs/common";
+import type { ConversationMessage } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import { PrismaService } from "../../../prisma/prisma.service";
+import type { ProposeScopeItemsArgs } from "../../ai-providers/tools/propose-scope-items.tool";
+
+// AI-facing discipline → internal scope-of-works discipline code.
+// IS works in three disciplines exposed to the AI as friendly names; the
+// existing scope_of_works_items.discipline column uses the short codes.
+const AI_TO_INTERNAL_DISCIPLINE: Record<string, "SO" | "Asb" | "Civ"> = {
+  demolition: "SO",
+  asbestos: "Asb",
+  civil: "Civ"
+};
+
+const DEFAULT_ROW_TYPE_BY_DISCIPLINE: Record<"SO" | "Asb" | "Civ", string> = {
+  SO: "demolition",
+  Asb: "asbestos-removal",
+  Civ: "general-labour"
+};
+
+export type ProposalStatus = "pending" | "accepted" | "rejected";
+
+export type StoredProposal = {
+  index: number;
+  discipline: "demolition" | "asbestos" | "civil";
+  title: string;
+  description: string;
+  quantity: number;
+  unit: string;
+  notes?: string;
+  status: ProposalStatus;
+  acceptedScopeItemId?: string;
+  decidedAt?: string;
+};
+
+export type ProposalsMetadata = {
+  toolUseId: string;
+  proposals: StoredProposal[];
+};
+
+export type ProposalEdits = Partial<{
+  discipline: "demolition" | "asbestos" | "civil";
+  title: string;
+  description: string;
+  quantity: number;
+  unit: string;
+  notes: string;
+}>;
+
+@Injectable()
+export class ProposalsService {
+  private readonly logger = new Logger(ProposalsService.name);
+
+  constructor(private readonly prisma: PrismaService) {}
+
+  // Persist an AI tool_use invocation as a tool_result conversation message.
+  // The AI's tool call (with arguments) becomes a tool_call row; this method
+  // creates the matching tool_result row that the UI renders as proposal
+  // cards. Status starts at "pending" for every proposal.
+  async storeProposals(
+    conversationId: string,
+    toolUseId: string,
+    args: ProposeScopeItemsArgs
+  ): Promise<{ message: ConversationMessage; proposals: StoredProposal[] }> {
+    const proposals: StoredProposal[] = args.proposals.map((p, index) => ({
+      index,
+      discipline: p.discipline,
+      title: p.title,
+      description: p.description,
+      quantity: p.quantity,
+      unit: p.unit,
+      notes: p.notes,
+      status: "pending" as const
+    }));
+    const metadata: ProposalsMetadata = { toolUseId, proposals };
+    // Two writes in a transaction: the assistant tool_call row (provenance)
+    // and the tool_result row (renderable). Storing both lets a future
+    // re-render show the AI's reasoning if needed.
+    const [, message] = await this.prisma.$transaction([
+      this.prisma.conversationMessage.create({
+        data: {
+          conversationId,
+          role: "tool_call",
+          content: `Proposed ${proposals.length} scope item${proposals.length === 1 ? "" : "s"}.`,
+          metadata: {
+            toolUseId,
+            name: "propose_scope_items",
+            arguments: args as unknown as Prisma.InputJsonValue
+          } as Prisma.InputJsonValue
+        }
+      }),
+      this.prisma.conversationMessage.create({
+        data: {
+          conversationId,
+          role: "tool_result",
+          content: `${proposals.length} scope item${proposals.length === 1 ? "" : "s"} pending review.`,
+          metadata: metadata as unknown as Prisma.InputJsonValue
+        }
+      }),
+      this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: { updatedAt: new Date() }
+      })
+    ]);
+    return { message, proposals };
+  }
+
+  async acceptProposal(
+    userId: string,
+    messageId: string,
+    proposalIndex: number,
+    edits: ProposalEdits = {}
+  ): Promise<{ scopeItemId: string }> {
+    const { conversation, message, metadata } = await this.loadProposalMessage(userId, messageId);
+    const proposal = metadata.proposals[proposalIndex];
+    if (!proposal) {
+      throw new NotFoundException(`Proposal index ${proposalIndex} not found.`);
+    }
+    if (proposal.status !== "pending") {
+      throw new BadRequestException(`Proposal already ${proposal.status}.`);
+    }
+    const tenderId = conversation.contextKey;
+    if (!tenderId) {
+      throw new BadRequestException(
+        "Proposal cannot be accepted — conversation has no tender context."
+      );
+    }
+
+    const merged: StoredProposal = {
+      ...proposal,
+      ...edits,
+      index: proposal.index,
+      status: "pending"
+    };
+    const internalDiscipline = AI_TO_INTERNAL_DISCIPLINE[merged.discipline];
+    if (!internalDiscipline) {
+      throw new BadRequestException(`Unknown discipline "${merged.discipline}".`);
+    }
+
+    const itemNumber = await this.nextItemNumber(tenderId, internalDiscipline);
+    const wbsCode = `${internalDiscipline}${itemNumber}`;
+    const description = merged.title === merged.description
+      ? merged.description
+      : `${merged.title} — ${merged.description}`;
+    const scopeItem = await this.prisma.scopeOfWorksItem.create({
+      data: {
+        tenderId,
+        wbsCode,
+        discipline: internalDiscipline,
+        itemNumber,
+        rowType: DEFAULT_ROW_TYPE_BY_DISCIPLINE[internalDiscipline],
+        description,
+        notes: merged.notes ?? null,
+        measurementQty: new Prisma.Decimal(merged.quantity),
+        measurementUnit: merged.unit,
+        status: "confirmed",
+        aiProposed: true,
+        createdById: userId
+      }
+    });
+
+    const updatedProposals = metadata.proposals.map((p) =>
+      p.index === proposalIndex
+        ? {
+            ...merged,
+            status: "accepted" as const,
+            acceptedScopeItemId: scopeItem.id,
+            decidedAt: new Date().toISOString()
+          }
+        : p
+    );
+    await this.prisma.conversationMessage.update({
+      where: { id: message.id },
+      data: {
+        metadata: {
+          ...metadata,
+          proposals: updatedProposals
+        } as unknown as Prisma.InputJsonValue
+      }
+    });
+
+    this.logger.log(
+      `Proposal accepted [conversation=${conversation.id}, message=${message.id}, index=${proposalIndex}, scopeItem=${scopeItem.id}, tender=${tenderId}]`
+    );
+
+    return { scopeItemId: scopeItem.id };
+  }
+
+  async rejectProposal(
+    userId: string,
+    messageId: string,
+    proposalIndex: number
+  ): Promise<void> {
+    const { message, metadata } = await this.loadProposalMessage(userId, messageId);
+    const proposal = metadata.proposals[proposalIndex];
+    if (!proposal) {
+      throw new NotFoundException(`Proposal index ${proposalIndex} not found.`);
+    }
+    if (proposal.status !== "pending") {
+      throw new BadRequestException(`Proposal already ${proposal.status}.`);
+    }
+    const updatedProposals = metadata.proposals.map((p) =>
+      p.index === proposalIndex
+        ? { ...p, status: "rejected" as const, decidedAt: new Date().toISOString() }
+        : p
+    );
+    await this.prisma.conversationMessage.update({
+      where: { id: message.id },
+      data: {
+        metadata: { ...metadata, proposals: updatedProposals } as unknown as Prisma.InputJsonValue
+      }
+    });
+  }
+
+  async acceptAllPending(
+    userId: string,
+    messageId: string
+  ): Promise<{ accepted: number; failed: number }> {
+    const { metadata } = await this.loadProposalMessage(userId, messageId);
+    let accepted = 0;
+    let failed = 0;
+    for (const p of metadata.proposals) {
+      if (p.status !== "pending") continue;
+      try {
+        await this.acceptProposal(userId, messageId, p.index);
+        accepted += 1;
+      } catch (err) {
+        this.logger.warn(
+          `Bulk accept failed for proposal ${p.index} on message ${messageId}: ${(err as Error).message}`
+        );
+        failed += 1;
+      }
+    }
+    return { accepted, failed };
+  }
+
+  async rejectAllPending(userId: string, messageId: string): Promise<{ rejected: number }> {
+    const { message, metadata } = await this.loadProposalMessage(userId, messageId);
+    let rejected = 0;
+    const now = new Date().toISOString();
+    const updatedProposals = metadata.proposals.map((p) => {
+      if (p.status !== "pending") return p;
+      rejected += 1;
+      return { ...p, status: "rejected" as const, decidedAt: now };
+    });
+    if (rejected > 0) {
+      await this.prisma.conversationMessage.update({
+        where: { id: message.id },
+        data: {
+          metadata: { ...metadata, proposals: updatedProposals } as unknown as Prisma.InputJsonValue
+        }
+      });
+    }
+    return { rejected };
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────
+  private async loadProposalMessage(userId: string, messageId: string) {
+    const message = await this.prisma.conversationMessage.findUnique({
+      where: { id: messageId },
+      include: { conversation: true }
+    });
+    if (!message || message.role !== "tool_result") {
+      throw new NotFoundException("Proposal message not found.");
+    }
+    if (message.conversation.userId !== userId) {
+      throw new NotFoundException("Proposal message not found.");
+    }
+    const metadata = message.metadata as unknown as ProposalsMetadata | null;
+    if (!metadata || !Array.isArray(metadata.proposals)) {
+      throw new BadRequestException("Proposal message has no proposals to act on.");
+    }
+    return { conversation: message.conversation, message, metadata };
+  }
+
+  private async nextItemNumber(
+    tenderId: string,
+    discipline: "SO" | "Asb" | "Civ"
+  ): Promise<number> {
+    const count = await this.prisma.scopeOfWorksItem.count({
+      where: { tenderId, discipline }
+    });
+    return count + 1;
+  }
+}

@@ -2,10 +2,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import {
   appendAssistantMessage,
+  appendProposalsMessage,
   appendUserMessage,
   buildRetryHistory,
   readSSEStream,
+  toApiMessages,
+  updateProposalsMessage,
   type ChatMessage,
+  type ChatProposal,
   type ChatStatus
 } from "./chat-helpers";
 
@@ -110,10 +114,15 @@ export function useStreamingChat(
         }
         const detail = (await detailRes.json()) as {
           conversation: { id: string };
-          messages: Array<{ role: "user" | "assistant"; content: string }>;
+          messages: Array<{
+            id: string;
+            role: string;
+            content: string;
+            metadata?: { toolUseId?: string; proposals?: ChatProposal[] } | null;
+          }>;
         };
         if (cancelled) return;
-        setMessages(detail.messages.map((m) => ({ role: m.role, content: m.content })));
+        setMessages(rebuildMessagesFromHistory(detail.messages));
         setConversationId(detail.conversation.id);
       })
       .catch(() => {
@@ -158,7 +167,10 @@ export function useStreamingChat(
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            messages: history,
+            // Filter to text messages only — proposals rows aren't sent
+            // to the provider in this round (server already has them via
+            // the conversation row).
+            messages: toApiMessages(history),
             subMode: options.subMode,
             contextKey: scopeRef.current.contextKey,
             conversationId: conversationIdRef.current
@@ -186,6 +198,20 @@ export function useStreamingChat(
           } else if (chunk.type === "content") {
             accumulated += chunk.text;
             setCurrentResponse(accumulated);
+          } else if (chunk.type === "proposals") {
+            // §5A.1 PR 11: tool_result row arrived. Insert it into the
+            // visible message history so ProposalCardList renders inline.
+            // Flush any in-flight assistant text first so it lands above
+            // the cards in chronological order.
+            if (accumulated.length > 0) {
+              setMessages((prev) => appendAssistantMessage(prev, accumulated));
+              accumulated = "";
+              setCurrentResponse("");
+            }
+            const event = chunk;
+            setMessages((prev) =>
+              appendProposalsMessage(prev, event.messageId, event.proposals)
+            );
           } else if (chunk.type === "error") {
             throw new Error(chunk.error);
           } else if (chunk.type === "done") {
@@ -294,15 +320,132 @@ export function useStreamingChat(
       }
       const detail = (await res.json()) as {
         conversation: { id: string };
-        messages: Array<{ role: "user" | "assistant"; content: string }>;
+        messages: Array<{
+          id: string;
+          role: string;
+          content: string;
+          metadata?: { toolUseId?: string; proposals?: ChatProposal[] } | null;
+        }>;
       };
-      setMessages(detail.messages.map((m) => ({ role: m.role, content: m.content })));
+      setMessages(rebuildMessagesFromHistory(detail.messages));
       setConversationId(detail.conversation.id);
       setCurrentResponse("");
       setStatus("idle");
       setError(null);
     },
     [authFetch, personaSlug]
+  );
+
+  // §5A.1 PR 11 — proposal accept/reject helpers wired to the backend.
+  // After server success, mutate the local proposals array so the card
+  // re-renders without a round-trip refresh.
+  const acceptProposal = useCallback(
+    async (
+      messageId: string,
+      proposalIndex: number,
+      edits?: Partial<ChatProposal>
+    ): Promise<{ ok: boolean; scopeItemId?: string; error?: string }> => {
+      const res = await authFetch(
+        `/personas/tendering/proposals/${messageId}/accept`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ proposalIndex, ...(edits ?? {}) })
+        }
+      );
+      if (!res.ok) {
+        let detail = `${res.status}`;
+        try {
+          const text = await res.text();
+          if (text) detail = text;
+        } catch {
+          // ignore
+        }
+        return { ok: false, error: detail };
+      }
+      const body = (await res.json()) as { ok: boolean; scopeItemId?: string };
+      const decidedAt = new Date().toISOString();
+      setMessages((prev) =>
+        updateProposalsMessage(prev, messageId, (proposals) =>
+          proposals.map((p) =>
+            p.index === proposalIndex
+              ? {
+                  ...p,
+                  ...(edits ?? {}),
+                  status: "accepted",
+                  acceptedScopeItemId: body.scopeItemId,
+                  decidedAt
+                }
+              : p
+          )
+        )
+      );
+      return { ok: true, scopeItemId: body.scopeItemId };
+    },
+    [authFetch]
+  );
+
+  const rejectProposal = useCallback(
+    async (messageId: string, proposalIndex: number): Promise<boolean> => {
+      const res = await authFetch(
+        `/personas/tendering/proposals/${messageId}/reject`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ proposalIndex })
+        }
+      );
+      if (!res.ok) return false;
+      const decidedAt = new Date().toISOString();
+      setMessages((prev) =>
+        updateProposalsMessage(prev, messageId, (proposals) =>
+          proposals.map((p) =>
+            p.index === proposalIndex ? { ...p, status: "rejected", decidedAt } : p
+          )
+        )
+      );
+      return true;
+    },
+    [authFetch]
+  );
+
+  const acceptAllPending = useCallback(
+    async (messageId: string): Promise<{ accepted: number; failed: number }> => {
+      const res = await authFetch(
+        `/personas/tendering/proposals/${messageId}/accept-all`,
+        { method: "POST" }
+      );
+      if (!res.ok) return { accepted: 0, failed: 0 };
+      const body = (await res.json()) as { accepted: number; failed: number };
+      // Reload the conversation to refresh canonical proposal status —
+      // simpler than reconstructing the partial-success state client-side.
+      if (conversationIdRef.current) {
+        await loadConversation(conversationIdRef.current);
+      }
+      return { accepted: body.accepted, failed: body.failed };
+    },
+    [authFetch, loadConversation]
+  );
+
+  const rejectAllPending = useCallback(
+    async (messageId: string): Promise<number> => {
+      const res = await authFetch(
+        `/personas/tendering/proposals/${messageId}/reject-all`,
+        { method: "POST" }
+      );
+      if (!res.ok) return 0;
+      const body = (await res.json()) as { rejected: number };
+      const decidedAt = new Date().toISOString();
+      setMessages((prev) =>
+        updateProposalsMessage(prev, messageId, (proposals) =>
+          proposals.map((p) =>
+            p.status === "pending" ? { ...p, status: "rejected", decidedAt } : p
+          )
+        )
+      );
+      return body.rejected;
+    },
+    [authFetch]
   );
 
   const deleteConversation = useCallback(
@@ -334,6 +477,35 @@ export function useStreamingChat(
     startNewConversation,
     listConversations,
     loadConversation,
-    deleteConversation
+    deleteConversation,
+    acceptProposal,
+    rejectProposal,
+    acceptAllPending,
+    rejectAllPending
   };
+}
+
+// §5A.1 PR 11 — server returns ALL conversation rows including tool_call,
+// tool_result, and assistant text. Client renders only the user/assistant
+// text and the tool_result-as-proposals; tool_call rows are filtered out
+// (no UI surface for them). Out-of-order or malformed metadata falls back
+// to skip rather than crash.
+export function rebuildMessagesFromHistory(
+  rows: Array<{
+    id: string;
+    role: string;
+    content: string;
+    metadata?: { toolUseId?: string; proposals?: ChatProposal[] } | null;
+  }>
+): ChatMessage[] {
+  const out: ChatMessage[] = [];
+  for (const row of rows) {
+    if (row.role === "user" || row.role === "assistant") {
+      out.push({ role: row.role, content: row.content });
+    } else if (row.role === "tool_result" && Array.isArray(row.metadata?.proposals)) {
+      out.push({ role: "proposals", messageId: row.id, proposals: row.metadata!.proposals! });
+    }
+    // tool_call rows: dropped intentionally — no client-side UI.
+  }
+  return out;
 }

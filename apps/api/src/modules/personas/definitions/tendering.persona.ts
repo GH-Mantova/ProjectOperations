@@ -48,8 +48,26 @@ export const tenderingPersona: PersonaDefinition = {
     {
       name: "scope",
       routePattern: "/tenders/:id/scope",
-      description:
-        "Scope drafting mode — drawing upload, AI scope-item proposal cards, user-confirmed commit, Cutrite rate lookup",
+      description: [
+        "Scope drafting mode for the current tender. Initial Services works",
+        "in three disciplines only: demolition, asbestos removal, and civil",
+        "works. Do not propose scope items outside these disciplines —",
+        "never MEP, fit-out, painting, or new construction.",
+        "",
+        "When you have enough context (project type, location, scale, key",
+        "features, materials), use the propose_scope_items tool to suggest",
+        "concrete scope items. Each proposal must include discipline,",
+        "title, description, quantity, unit, and any relevant notes.",
+        "",
+        "If the user has not given you enough information, ask clarifying",
+        "questions BEFORE proposing — never guess at quantities or",
+        "fabricate items to fill the response. Quality over quantity.",
+        "",
+        "Proposals you make are reviewed by the user before being committed",
+        "to the tender's scope of works. The user can accept, edit, or",
+        "reject each proposal individually, or accept/reject all pending",
+        "proposals in bulk."
+      ].join("\n"),
       toolSlots: []
     },
     {

@@ -1777,10 +1777,30 @@ model TenderClientNote {
 model PlatformConfig {
   id                    String    @id
   // Legacy company-key columns (PLATFORM_CONFIG_SECRET-based encryption,
-  // dot-separated format). §5A.1 PR 9 superseded these with the
-  // *KeyEncrypted / *KeyValidatedAt columns below. Kept in schema for
-  // backward compatibility but no longer read or written. Drop in a future
-  // cleanup PR once dev/prod has fully migrated.
+  // dot-separated format). §5A.1 PR 9 superseded the *ApiKey columns
+  // with the *KeyEncrypted / *KeyValidatedAt columns below.
+  //
+  // Cleanup status (verified 2026-05-03 — see BLOCKED PR investigation):
+  //   - *ApiKey (4 columns): dead. No reader or writer accesses these
+  //     columns. The PATCH /admin/platform-config DTO still has fields
+  //     named *ApiKey and the platform-config service exposes
+  //     setAnthropicApiKey()/etc methods, but those write to the
+  //     corresponding *KeyEncrypted column via persistCompanyKey, not
+  //     to the legacy *ApiKey column. Safe to drop the column; the DTO
+  //     field name persists as a public API contract.
+  //   - *KeyUpdatedAt (4 columns): dead. Zero references anywhere in
+  //     the codebase. Safe to drop.
+  //   - *Model (4 columns): LIVE. Read by getModel/providerStatus/
+  //     modelFieldFor and written by setModel in
+  //     platform-config.service.ts. Stores admin-set per-provider model
+  //     overrides (e.g. "claude-opus-4-7"). Currently null in dev DB
+  //     because no override has been set. NOT safe to drop without first
+  //     refactoring the service (or migrating to *ModelEncrypted /
+  //     similar).
+  //
+  // Original assumption "no longer read or written" was wrong for the
+  // *Model family. Updated this comment so future spec authors see the
+  // accurate split.
   anthropicApiKey       String?   @map("anthropic_api_key")
   anthropicKeyUpdatedAt DateTime? @map("anthropic_key_updated_at")
   anthropicModel        String?   @map("anthropic_model")

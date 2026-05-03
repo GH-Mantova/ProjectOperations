@@ -265,6 +265,20 @@ export class PersonasController {
       const systemPrompt = await this.aiProviders.resolveSystemPrompt(slug, actor.sub, dto.subMode);
       // §5A.1 PR 11: tool calling. Sub-mode-specific tool registry; both
       // Anthropic and OpenAI providers translate to native format.
+      //
+      // ARCHITECTURE LIMITATION (verified during BLOCKED PR for §5A.1
+      // Item 5 drawing tools): this is a SINGLE-TURN dispatch. The
+      // model emits one assistant turn (text + optional tool_use blocks),
+      // we surface tool_use_stop chunks as side-effects (e.g.
+      // propose_scope_items writes proposals + emits SSE), but we do
+      // NOT feed tool results back to the model in a follow-up call.
+      //
+      // Tools that require the model to SEE the result (e.g. vision-based
+      // drawing analysis) need a multi-turn agent loop on top of this:
+      // dispatch tool, build tool_result block, call streamChat again
+      // with [...originalMessages, assistantTurn, toolResult], splice
+      // the new stream into this SSE response, repeat until stop_reason
+      // is "end_turn". Not built yet.
       const tools = getToolsForSubMode(buildSubModeKey(slug, dto.subMode));
       const stream = this.aiProviders.streamChat({
         systemPrompt,

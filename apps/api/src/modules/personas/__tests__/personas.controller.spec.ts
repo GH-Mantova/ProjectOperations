@@ -3,15 +3,14 @@ import { PersonasController } from "../personas.controller";
 import { PersonasService } from "../personas.service";
 import { AiProvidersService } from "../../ai-providers/ai-providers.service";
 import { ConversationsService } from "../conversations.service";
-import { ProposalsService } from "../../tendering/scope/proposals.service";
-import type { ChatStreamChunk } from "../../ai-providers/ai-providers.types";
+import { PersonaDispatcherService, type DispatcherEvent } from "../dispatcher/persona-dispatcher.service";
 
 type AuthLike = { sub?: string; permissions?: string[]; isSuperUser?: boolean };
 
 function buildController(
   aiOverrides: Partial<AiProvidersService> = {},
   conversationsOverrides: Partial<ConversationsService> = {},
-  proposalsOverrides: Partial<ProposalsService> = {}
+  dispatcherOverrides: Partial<PersonaDispatcherService> = {}
 ): PersonasController {
   const service = new PersonasService({} as never);
   const ai = {
@@ -34,15 +33,18 @@ function buildController(
     deleteConversation: jest.fn(async () => undefined),
     ...conversationsOverrides
   } as unknown as ConversationsService;
-  const proposals = {
-    storeProposals: jest.fn(async () => ({ message: { id: "msg-result" }, proposals: [] })),
-    acceptProposal: jest.fn(async () => ({ scopeItemId: "scope-1" })),
-    rejectProposal: jest.fn(async () => undefined),
-    acceptAllPending: jest.fn(async () => ({ accepted: 0, failed: 0 })),
-    rejectAllPending: jest.fn(async () => ({ rejected: 0 })),
-    ...proposalsOverrides
-  } as unknown as ProposalsService;
-  return new PersonasController(service, ai, conversations, proposals);
+  // Default dispatcher mock yields a single conversation + done event.
+  // Tests that need richer streams pass `dispatch` in dispatcherOverrides.
+  const dispatcher = {
+    dispatch: jest.fn(() =>
+      fakeDispatchStream([
+        { type: "conversation", conversationId: "conv-1" },
+        { type: "done" }
+      ])
+    ),
+    ...dispatcherOverrides
+  } as unknown as PersonaDispatcherService;
+  return new PersonasController(service, ai, conversations, dispatcher);
 }
 
 function buildResponse() {
@@ -70,8 +72,8 @@ function buildResponse() {
   };
 }
 
-async function* fakeStream(chunks: ChatStreamChunk[]): AsyncIterable<ChatStreamChunk> {
-  for (const c of chunks) yield c;
+async function* fakeDispatchStream(events: DispatcherEvent[]): AsyncIterable<DispatcherEvent> {
+  for (const e of events) yield e;
 }
 
 describe("PersonasController.activeForRoute", () => {
@@ -87,8 +89,6 @@ describe("PersonasController.activeForRoute", () => {
   it("returns persona for matching route + permitted user", async () => {
     const controller = buildController();
     const actor: AuthLike = { sub: "user-1", permissions: ["ai.persona.tendering"] };
-    // /tenders is the canonical Tendering Assistant route post-collapse —
-    // it covers both register and pipeline views (toggleable in the UI).
     const result = await controller.activeForRoute("/tenders", actor as never);
     expect(result).toEqual(tendering("register"));
   });
@@ -133,12 +133,14 @@ describe("PersonasController.chat", () => {
   const actor = { sub: "user-1", email: "raj@x.test", permissions: ["ai.persona.tendering"] };
   const dto = { messages: [{ role: "user" as const, content: "hi" }] };
 
-  it("sets SSE headers and streams content + done events", async () => {
-    const controller = buildController({
-      streamChat: jest.fn(() =>
-        fakeStream([
-          { type: "content", text: "Hello" },
-          { type: "content", text: ", world" }
+  it("sets SSE headers and translates dispatcher text_delta → content events", async () => {
+    const controller = buildController({}, {}, {
+      dispatch: jest.fn(() =>
+        fakeDispatchStream([
+          { type: "conversation", conversationId: "conv-1" },
+          { type: "text_delta", text: "Hello" },
+          { type: "text_delta", text: ", world" },
+          { type: "done" }
         ])
       ) as never
     });
@@ -156,10 +158,7 @@ describe("PersonasController.chat", () => {
 
   it("forwards subMode + caller userId through to resolveSystemPrompt", async () => {
     const resolveSystemPrompt = jest.fn(async () => "system");
-    const controller = buildController({
-      resolveSystemPrompt,
-      streamChat: jest.fn(() => fakeStream([])) as never
-    });
+    const controller = buildController({ resolveSystemPrompt });
     const { res } = buildResponse();
     await controller.chat(
       "tendering",
@@ -178,64 +177,64 @@ describe("PersonasController.chat", () => {
     });
     const { res, written, isEnded } = buildResponse();
     await controller.chat("tendering", dto as never, actor as never, res as never);
-    // The "AI provider not configured" phrase is a signal that triggers the
-    // sanitiser's "config" category — its hardcoded user message contains
-    // the same phrase, so the assertion still passes after sanitisation.
     expect(written.some((w) => w.includes('"type":"error"'))).toBe(true);
     expect(written.some((w) => w.includes("AI provider not configured"))).toBe(true);
     expect(written.at(-1)).toBe('data: {"type":"done"}\n\n');
     expect(isEnded()).toBe(true);
   });
 
-  it("sanitises raw provider error chunks — never forwards raw provider text to the client", async () => {
-    const controller = buildController({
-      streamChat: jest.fn(() =>
-        fakeStream([
-          { type: "content", text: "partial" },
+  it("forwards tool_side_effect events with their original event name (proposals wire-shape preserved)", async () => {
+    // Multi-turn loop refactor moved propose_scope_items to the
+    // tool-handler registry; the side-effect SSE event must still hit
+    // the wire as `type: "proposals"` so the frontend ProposalCardList
+    // continues to work without change.
+    const controller = buildController({}, {}, {
+      dispatch: jest.fn(() =>
+        fakeDispatchStream([
+          { type: "conversation", conversationId: "conv-1" },
           {
-            type: "error",
-            error:
-              "Anthropic API 429: <script>alert(1)</script> rate limit, also credit balance is too low"
+            type: "tool_side_effect",
+            event: "proposals",
+            data: { messageId: "m-1", proposals: [{ index: 0, title: "x" }] }
           },
-          { type: "content", text: "should not appear" }
+          { type: "done" }
         ])
       ) as never
     });
     const { res, written } = buildResponse();
     await controller.chat("tendering", dto as never, actor as never, res as never);
-
-    // Content before the error is delivered as-is.
-    expect(written.some((w) => w.includes("partial"))).toBe(true);
-    // Content AFTER the error chunk is dropped — error stops the stream.
-    expect(written.some((w) => w.includes("should not appear"))).toBe(false);
-
-    // Raw provider text MUST NOT reach the client. This is the security
-    // contract the sanitiser enforces — closes CodeQL alert #9.
-    expect(written.some((w) => w.includes("<script>"))).toBe(false);
-    expect(written.some((w) => w.includes("alert(1)"))).toBe(false);
-    expect(written.some((w) => w.includes("Anthropic API"))).toBe(false);
-
-    // The user gets the sanitised "quota" message (credit balance keyword
-    // wins over the 429 status — quota is checked first per the sanitiser).
-    expect(written.some((w) => w.includes("quota exhausted"))).toBe(true);
-
-    // 'done' is always the final write so the client knows the stream is finished.
-    expect(written.at(-1)).toBe('data: {"type":"done"}\n\n');
+    expect(written.some((w) => w.includes('"type":"proposals"'))).toBe(true);
+    expect(written.some((w) => w.includes('"messageId":"m-1"'))).toBe(true);
   });
 
-  it("logs the full original error text server-side for ops debugging", async () => {
-    const errorSpy = jest.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
-    const controller = buildController({
-      streamChat: jest.fn(() =>
-        fakeStream([
-          { type: "error", error: "Anthropic API 401: invalid_api_key" }
+  it("forwards dispatcher error events", async () => {
+    const controller = buildController({}, {}, {
+      dispatch: jest.fn(() =>
+        fakeDispatchStream([
+          { type: "conversation", conversationId: "conv-1" },
+          { type: "text_delta", text: "partial" },
+          { type: "error", error: "Maximum tool turns (10) reached." },
+          { type: "done" }
         ])
       ) as never
     });
+    const { res, written } = buildResponse();
+    await controller.chat("tendering", dto as never, actor as never, res as never);
+    expect(written.some((w) => w.includes("partial"))).toBe(true);
+    expect(written.some((w) => w.includes('"type":"error"'))).toBe(true);
+    expect(written.some((w) => w.includes("Maximum tool turns"))).toBe(true);
+    expect(written.at(-1)).toBe('data: {"type":"done"}\n\n');
+  });
+
+  it("logs the full original error text server-side when resolveProviderConfig throws", async () => {
+    const errorSpy = jest.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+    const controller = buildController({
+      resolveProviderConfig: jest.fn(async () => {
+        throw new Error("Anthropic API 401: invalid_api_key");
+      }) as never
+    });
     const { res } = buildResponse();
     await controller.chat("tendering", dto as never, actor as never, res as never);
-    // The full original text appears in the log line, even though it doesn't
-    // appear in the SSE event written to the client.
     expect(errorSpy.mock.calls.some((call) => String(call[0]).includes("Anthropic API 401"))).toBe(
       true
     );

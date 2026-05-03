@@ -1,7 +1,7 @@
 # ProjectOperations — Project Instructions
 # Version: 1.1
 # Created: 2026-04-25 10:02 AEST
-# Last updated: 2026-05-03 07:16 AEST
+# Last updated: 2026-05-03 10:28 AEST
 # Maintained by: Claude Code (update after any architectural decision,
 #   module addition, business rule change, or workflow change)
 # Accessed by: All Claude chats in this project via web_fetch
@@ -198,6 +198,7 @@ Rules:
 - PDF generation uses HTML→PDF renderer (Phase 5A.2 onwards). New PDF outputs are HTML templates, rendered via the shared renderer service. Do not add new PDFKit code — that engine is being retired.
 - AI features integrate via the persona registry (Phase 5A.1 onwards). Do not add ad-hoc AI calls in modules. New AI capabilities belong inside a persona's sub-mode tool list. New personas register in the persona module, not in the consuming module.
 - AI provider resolution always uses the three-tier fallback in `AiProvidersService.resolveChosenProvider`: explicit user persona choice → `PlatformConfig.preferredProvider` → first provider with a saved company `*KeyEncrypted` column. Never call provider clients with a null/undefined provider; never default to a hardcoded provider literal in new code paths. When no key is available throw `ProviderNotConfiguredError(provider)` so the user-facing message names which provider failed.
+- Persona tools register via `ToolHandlerRegistry`. New tool handlers implement `ToolHandler` from `apps/api/src/modules/personas/tools/tool-handler.types.ts`, are registered as NestJS providers in their owning module, and call `registry.register(...)` + `registry.bindToSubMode(...)` in `onModuleInit`. The multi-turn dispatcher (`PersonaDispatcherService`) handles the call-model → run-tools → feed-results-back loop with a 10-turn cap and 8-parallel-call cap. Do not add ad-hoc tool dispatch in controllers or services — every tool flows through the registry so behaviour stays consistent (parallel execution, error-as-tool-result, persistence with USER/INTERNAL visibility, side-effect SSE forwarding).
 
 ### Pre-PR CI checklist (mandatory — fix ALL before pushing)
 1. `pnpm --filter @project-ops/api lint` — zero warnings, zero errors

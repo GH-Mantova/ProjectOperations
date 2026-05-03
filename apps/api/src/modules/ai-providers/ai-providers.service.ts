@@ -4,11 +4,12 @@ import { DEFAULT_MODELS, PlatformConfigService } from "../platform/platform-conf
 import { getPersonaBySlug } from "../personas/persona-registry";
 import type { PersonaDefinition, PersonaSubMode } from "../personas/personas.types";
 import { KeyEncryptionService } from "../security/key-encryption.service";
-import type {
-  ChatRequest,
-  ChatStreamChunk,
-  ProviderConfig,
-  ProviderId
+import {
+  ToolingNotSupportedError,
+  type ChatRequest,
+  type ChatStreamChunk,
+  type ProviderConfig,
+  type ProviderId
 } from "./ai-providers.types";
 import { ProviderNotConfiguredError } from "./errors";
 import { streamAnthropicChat } from "./providers/anthropic.provider";
@@ -216,7 +217,19 @@ export class AiProvidersService {
   }
 
   // Dispatches to the correct provider implementation.
+  // §5A.1 multi-turn loop: when tools are requested, the provider must
+  // support tool calling. Anthropic + OpenAI do; Gemini + Groq don't yet
+  // (see PR #138 PHASE 6 deferred entry). Throws ToolingNotSupportedError
+  // synchronously rather than returning an error chunk, because the
+  // dispatcher's loop entry can map that to a clear user-facing message
+  // before the SSE stream opens.
   streamChat(request: ChatRequest): AsyncIterable<ChatStreamChunk> {
+    const provider = request.config.providerId as string;
+    const requestedTools = request.tools && request.tools.length > 0;
+    const supportsTools = provider === "anthropic" || provider === "openai";
+    if (requestedTools && !supportsTools) {
+      throw new ToolingNotSupportedError(provider);
+    }
     if (request.config.providerId === "anthropic") {
       return streamAnthropicChat(request);
     }

@@ -93,6 +93,12 @@ export class ConversationsService {
     }));
   }
 
+  // UI replay loader: hides INTERNAL turns (assistant tool_use turns +
+  // synthesised user tool_result turns from the multi-turn loop). The
+  // user only sees their own messages and the model's final
+  // human-facing responses. PR #137's tool_call/tool_result rows have
+  // visibility=USER (default) so they continue to appear as proposal
+  // cards via existing UI parsing on metadata.
   async loadConversation(
     userId: string,
     conversationId: string
@@ -104,17 +110,32 @@ export class ConversationsService {
       throw new NotFoundException("Conversation not found.");
     }
     const messages = await this.prisma.conversationMessage.findMany({
-      where: { conversationId },
+      where: { conversationId, visibility: "USER" },
       orderBy: { createdAt: "asc" }
     });
     return { conversation, messages };
   }
 
+  // Multi-turn loop loader: returns ALL turns including INTERNAL ones
+  // so the dispatcher can rebuild the model's context for a follow-up
+  // call. Caller filters / shapes for the provider adapter as needed.
+  async loadAllMessages(conversationId: string): Promise<ConversationMessage[]> {
+    return this.prisma.conversationMessage.findMany({
+      where: { conversationId },
+      orderBy: { createdAt: "asc" }
+    });
+  }
+
   async appendMessage(
     conversationId: string,
-    role: "user" | "assistant",
+    role: "user" | "assistant" | "tool_call" | "tool_result",
     content: string,
-    metadata: { model?: string | null; providerSource?: string | null } = {}
+    metadata: {
+      model?: string | null;
+      providerSource?: string | null;
+      visibility?: "USER" | "INTERNAL";
+      payload?: Record<string, unknown> | null;
+    } = {}
   ): Promise<ConversationMessage> {
     const message = await this.prisma.conversationMessage.create({
       data: {
@@ -122,7 +143,9 @@ export class ConversationsService {
         role,
         content,
         model: metadata.model ?? null,
-        providerSource: metadata.providerSource ?? null
+        providerSource: metadata.providerSource ?? null,
+        visibility: metadata.visibility ?? "USER",
+        metadata: (metadata.payload ?? null) as never
       }
     });
     // Bump the parent's updatedAt so listRecentConversations orders by

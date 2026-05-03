@@ -21,9 +21,9 @@ describe("parseOpenAIEvent", () => {
     expect(parseOpenAIEvent(raw)).toEqual([]);
   });
 
-  it("ignores final stop deltas with finish_reason and no content", () => {
+  it("emits stop_reason chunk on finish_reason='stop' (multi-turn loop signal)", () => {
     const raw = 'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}';
-    expect(parseOpenAIEvent(raw)).toEqual([]);
+    expect(parseOpenAIEvent(raw)).toEqual([{ type: "stop_reason", reason: "end_turn" }]);
   });
 
   it("ignores malformed JSON gracefully", () => {

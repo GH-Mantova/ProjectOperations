@@ -1,4 +1,9 @@
-import type { ChatRequest, ChatStreamChunk } from "../ai-providers.types";
+import type {
+  ChatMessage,
+  ChatMessageBlock,
+  ChatRequest,
+  ChatStreamChunk
+} from "../ai-providers.types";
 import { toolsToAnthropicFormat } from "../tools/translation";
 
 // Model is supplied via ChatRequest.config.model; the default lives in
@@ -6,6 +11,64 @@ import { toolsToAnthropicFormat } from "../tools/translation";
 const MAX_TOKENS = 2048;
 const ANTHROPIC_VERSION = "2023-06-01";
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
+
+const VALID_IMAGE_MEDIA_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif"
+]);
+
+// Translate the provider-agnostic ChatMessage[] to Anthropic's wire
+// shape. A ChatMessage with string content is sent as-is; one with
+// block content is mapped block-by-block to Anthropic's content array
+// shapes (text, tool_use, tool_result with text+image inner content).
+// Multi-turn loop in §5A.1 Item 5 added the block path; legacy callers
+// that pass plain strings continue to work.
+export function serializeMessagesForAnthropic(messages: ChatMessage[]): Array<{
+  role: "user" | "assistant";
+  content: string | Record<string, unknown>[];
+}> {
+  return messages.map((m) => {
+    if (typeof m.content === "string") {
+      return { role: m.role, content: m.content };
+    }
+    return { role: m.role, content: m.content.map(serializeBlockForAnthropic) };
+  });
+}
+
+function serializeBlockForAnthropic(block: ChatMessageBlock): Record<string, unknown> {
+  if (block.type === "text") {
+    return { type: "text", text: block.text };
+  }
+  if (block.type === "tool_use") {
+    return { type: "tool_use", id: block.id, name: block.name, input: block.input };
+  }
+  // tool_result — inner content array can mix text + image. Anthropic
+  // expects { type: 'image', source: { type: 'base64', media_type, data }}.
+  const innerContent = block.content.map((c) => {
+    if (c.type === "text") {
+      return { type: "text", text: c.text };
+    }
+    if (!VALID_IMAGE_MEDIA_TYPES.has(c.mediaType)) {
+      throw new Error(
+        `Invalid image media type for Anthropic tool_result: ${c.mediaType}. ` +
+          "Must be one of image/png, image/jpeg, image/webp, image/gif."
+      );
+    }
+    return {
+      type: "image",
+      source: { type: "base64", media_type: c.mediaType, data: c.data }
+    };
+  });
+  const result: Record<string, unknown> = {
+    type: "tool_result",
+    tool_use_id: block.toolUseId,
+    content: innerContent
+  };
+  if (block.isError) result.is_error = true;
+  return result;
+}
 
 // Streams chunks from Anthropic's Messages API SSE response.
 // Yields { type: 'content', text } per content_block_delta text_delta,
@@ -24,7 +87,7 @@ export async function* streamAnthropicChat(request: ChatRequest): AsyncIterable<
     model: request.config.model,
     max_tokens: MAX_TOKENS,
     system: request.systemPrompt,
-    messages: request.messages.map((m) => ({ role: m.role, content: m.content })),
+    messages: serializeMessagesForAnthropic(request.messages),
     stream: true
   };
   if (request.tools && request.tools.length > 0) {
@@ -125,9 +188,29 @@ export function parseAnthropicEvent(
     type?: string;
     index?: number;
     content_block?: { type?: string; id?: string; name?: string };
-    delta?: { type?: string; text?: string; partial_json?: string };
+    delta?: { type?: string; text?: string; partial_json?: string; stop_reason?: string };
     error?: { message?: string };
   };
+
+  // Multi-turn loop: stop_reason is on message_delta. The dispatcher
+  // reads this to decide whether to start another turn (tool_use → run
+  // tools, build tool_result, call provider again) or end the loop
+  // (end_turn / max_tokens / etc.).
+  if (obj.type === "message_delta" && typeof obj.delta?.stop_reason === "string") {
+    const reason = obj.delta.stop_reason;
+    return [
+      {
+        type: "stop_reason",
+        reason:
+          reason === "end_turn" ||
+          reason === "tool_use" ||
+          reason === "max_tokens" ||
+          reason === "stop_sequence"
+            ? reason
+            : "other"
+      }
+    ];
+  }
 
   // Text content delta — most common event during a non-tool response.
   if (obj.type === "content_block_delta" && obj.delta?.type === "text_delta") {

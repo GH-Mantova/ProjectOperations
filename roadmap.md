@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-03 08:04 AEST
+Last updated: 2026-05-03 10:28 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -581,6 +581,61 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     column write. Rename for clarity. Touches DTOs, controllers,
     service methods, frontend service callers, OpenAPI client.
 
+⏸️  Frontend handling of intermediate tool events
+    (Server emits tool_use_started / tool_use_completed /
+     tool_side_effect SSE events as of multi-turn loop PR #141.
+     Persona window UI currently ignores them. Add visual
+     indicators: "Reading drawing...", "Looking up rate...", etc.
+     Cosmetic but improves UX during multi-second tool runs.)
+
+⏸️  Conversation history pagination / context window management
+    (Multi-turn loop PR #141 persists every assistant turn, tool
+     call, and tool result. Long conversations will eventually
+     exceed the model's context window. Need a strategy:
+     summarisation, sliding window, or both. Defer until first user
+     actually hits the limit.)
+
+⏸️  Full structured drawing extraction
+    (Dimension parsing, area calculation, hatching/symbol detection,
+     AS legend recognition, drawing-type classification — floor
+     plan vs elevation vs site plan. Originally proposed for
+     drawing tools but deferred — the simple pass-through approach
+     covers conversational use; structured extraction is heavy work
+     justified only if Raj actually needs it.)
+
+⏸️  DWG / Revit file support
+    (Out of scope for the persona drawing tools — would require
+     a third-party CAD converter. Deferred until clear demand.)
+
+⏸️  Drawing rasterisation cache
+    (In-memory LRU or disk cache for PDF page rasterisation. Not
+     built in the drawing tools PR — premature optimisation given
+     Raj uploads one drawing set at a time. Add if profiling shows
+     it's a real bottleneck.)
+
+⏸️  Migration history vs dev-DB drift reconciliation
+    (Drift accumulated across PRs #117/#134/#136/#137/#139/#141.
+     Each migration PR has needed manual SQL + migrate resolve
+     --applied to work around the divergence. Production migrate
+     deploy will fail or worse against drifted state. Work: dump
+     current dev schema, replay _prisma_migrations from clean,
+     generate reconciliation migration, validate clean replay
+     produces identical schema. Do BEFORE any production deploy.)
+
+⏸️  Document Prisma .dll harmless-stale cases in troubleshooting doc
+    (docs/troubleshooting/prisma-windows-engine-lock.md created in
+     PR #138. PRs #139 and #141 both confirmed that ADD/DROP COLUMN
+     migrations work correctly with a stale .dll because the failure
+     mode is loud — query against missing column errors, doesn't
+     silently corrupt. Add a "When stale .dll is harmless" section
+     so future agents don't run the recovery sequence unnecessarily.)
+
+⏸️  register-stats-bar Firefox flake
+    (Failed first run, passed on retry, in PRs #137/#138/#139.
+     Did NOT recur in PR #141. Pattern still likely real —
+     timing/race in stats bar render under parallel runners.
+     Investigate next time it surfaces.)
+
 ---
 
 ## PHASE 7 — NEXT FEATURE PRIORITIES
@@ -780,3 +835,23 @@ per-provider model-override feature. Scope reduced to the
 verified-dead 8. Three follow-up PHASE 6 items added: decide fate
 of model override, rename misleading set*ApiKey() methods, and the
 completion record itself.
+
+### 2026-05-03 evening — Multi-turn agent loop (foundation for §5A.1 Item 5)
+Built the conversational agent loop infrastructure that all
+remaining §5A.1 Item 5 tools depend on. Discovered as a hard
+prerequisite during PR #140 BLOCKED review — the dispatcher was
+one-shot, no tool result ever flowed back to the model. Loop has
+parallel tool execution, 10-turn cap, error-as-tool-result policy,
+per-turn streaming with intermediate events. Anthropic and OpenAI
+providers fully support tools including image content; Gemini and
+Groq throw a clear ToolingNotSupportedError until tool calling is
+implemented for them (existing PHASE 6 deferral). Schema gained
+a message visibility field so internal turns (tool calls/results)
+are preserved for context but hidden from UI replay.
+propose_scope_items migrated from PR #137's one-shot path to the
+new registry without behavioural change. Eight new PHASE 6 items
+added: frontend handling of intermediate tool events, conversation
+context-window management, full structured drawing extraction,
+DWG/Revit support, drawing rasterisation cache, migration drift
+reconciliation, Prisma .dll harmless-stale doc extension,
+register-stats-bar flake follow-up.

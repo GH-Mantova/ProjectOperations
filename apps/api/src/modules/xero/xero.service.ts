@@ -10,6 +10,7 @@ import { ConfigService } from "@nestjs/config";
 import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 import { Invoice, XeroClient } from "xero-node";
 import { PrismaService } from "../../prisma/prisma.service";
+import { sanitiseProviderError } from "../ai-providers/error-sanitiser";
 
 // In-memory state token registry. Each consent request mints a signed token
 // bound to the requesting user; the callback rejects mismatches. Single-instance
@@ -280,19 +281,21 @@ export class XeroService {
 
       return { ok: true, xeroContactId };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Xero contact sync failed for client ${clientId}: ${message}`);
+      const sanitised = sanitiseProviderError(err);
+      this.logger.error(
+        `Xero contact sync error [client=${clientId}, category=${sanitised.category}]: ${sanitised.logMessage}`
+      );
       await this.prisma.xeroSyncLog.create({
         data: {
           direction: "push",
           entityType: "Client",
           entityId: clientId,
           status: "failed",
-          errorText: message.slice(0, 1000),
+          errorText: sanitised.logMessage.slice(0, 1000),
           triggeredBy: userId
         }
       });
-      throw new BadRequestException(`Xero sync failed: ${message}`);
+      throw new BadRequestException(`Xero sync: ${sanitised.userMessage}`);
     }
   }
 
@@ -307,10 +310,14 @@ export class XeroService {
         await this.syncContact(c.id, userId);
         results.push({ clientId: c.id, status: "success" });
       } catch (err) {
+        const sanitised = sanitiseProviderError(err);
+        this.logger.warn(
+          `Xero contact sync (bulk) error [client=${c.id}, category=${sanitised.category}]: ${sanitised.logMessage}`
+        );
         results.push({
           clientId: c.id,
           status: "failed",
-          error: err instanceof Error ? err.message : String(err)
+          error: sanitised.userMessage
         });
       }
     }
@@ -376,19 +383,21 @@ export class XeroService {
 
       return { ok: true, invoiceId };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Xero invoice push failed for claim ${progressClaimId}: ${message}`);
+      const sanitised = sanitiseProviderError(err);
+      this.logger.error(
+        `Xero invoice push error [claim=${progressClaimId}, category=${sanitised.category}]: ${sanitised.logMessage}`
+      );
       await this.prisma.xeroSyncLog.create({
         data: {
           direction: "push",
           entityType: "ProgressClaim",
           entityId: progressClaimId,
           status: "failed",
-          errorText: message.slice(0, 1000),
+          errorText: sanitised.logMessage.slice(0, 1000),
           triggeredBy: userId
         }
       });
-      throw new BadRequestException(`Xero invoice push failed: ${message}`);
+      throw new BadRequestException(`Xero invoice push: ${sanitised.userMessage}`);
     }
   }
 

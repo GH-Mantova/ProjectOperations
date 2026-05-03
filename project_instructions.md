@@ -1,7 +1,7 @@
 # ProjectOperations — Project Instructions
 # Version: 1.1
 # Created: 2026-04-25 10:02 AEST
-# Last updated: 2026-05-03 12:11 AEST
+# Last updated: 2026-05-03 13:00 AEST
 # Maintained by: Claude Code (update after any architectural decision,
 #   module addition, business rule change, or workflow change)
 # Accessed by: All Claude chats in this project via web_fetch
@@ -774,14 +774,20 @@ AI Persona System (planned — Phase 5A.1)
 - Provider abstraction: Anthropic default. User-changeable per
   persona. Bring-your-own-key supported with encrypted storage.
 - First persona: Tendering Assistant (Phase 5A.1, before sign-off).
-  Live tools on the scope sub-mode (PR #137 + #141 + #142):
-  list_tender_drawings, extract_drawing_titleblock,
-  read_tender_drawing, propose_scope_items. System prompt enumerates
-  the five IS scope codes (SO/Str/Asb/Civ/Prv) with strip-out vs
-  fit-out / civil drainage vs MEP / civil concrete demolition vs
-  new construction disambiguations, plus drawing-reading conventions
-  (legend → notes → keyword annotations → hatching → options/stages
-  → schedules → asbestos register cross-reference). Asbestos line
+  Live tools (PR #137 + #141 + #142 + #143):
+  - Drawing tools — list_tender_drawings,
+    extract_drawing_titleblock, read_tender_drawing — bound to ALL
+    six sub-modes (register, tender-detail, scope, estimate, quote,
+    clarifications). Drawings are reference material; useful from
+    any context.
+  - propose_scope_items — bound to the scope sub-mode only.
+    Scope creation is sub-mode-specific work.
+  System prompt enumerates the five IS scope codes
+  (SO/Str/Asb/Civ/Prv) with strip-out vs fit-out / civil drainage
+  vs MEP / civil concrete demolition vs new construction
+  disambiguations, plus drawing-reading conventions (legend →
+  notes → keyword annotations → hatching → options/stages →
+  schedules → asbestos register cross-reference). Asbestos line
   items require asbestos register cross-reference before being
   proposed.
 - Future personas: Dashboard Master, Captain Operations, Captain

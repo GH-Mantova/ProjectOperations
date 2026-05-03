@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-03 12:11 AEST
+Last updated: 2026-05-03 13:00 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -2362,5 +2362,60 @@ Deviations from spec:
   (5) Spec target was ~25 new tests; actual is 20. Each described
       behaviour hit; no per-permutation explosion.
   (6) Register-stats-bar Firefox flake from prior PRs did NOT recur.
+
+Audit findings: none.
+
+## 2026-05-03 22:35 AEST — PR #143 PENDING — fix: bind drawing tools to all Tendering Assistant sub-modes
+
+Type: PR
+Status: PENDING (auto-merge requested)
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/143
+Branch: fix/drawing-tools-sub-mode-binding
+Detail:
+  Drawing tools (list_tender_drawings, extract_drawing_titleblock,
+  read_tender_drawing) now bound to all six Tendering Assistant
+  sub-modes (register, tender-detail, scope, estimate, quote,
+  clarifications). PR #142 bound them to scope only, which caused
+  the smoke (steps 1-4) to fail: controller defaults dto.subMode
+  to "register" when the frontend doesn't specify
+  (personas.controller.ts:~190), so the registry returned zero
+  tools and the model asked the user to paste drawing data
+  manually.
+
+  propose_scope_items remains scope-only — scope-creation is
+  sub-mode-specific work.
+
+  Hoisted TENDERING_SUB_MODES to a module-level constant so the
+  production binding loop and the test-fixture binding loop share
+  one source of truth.
+
+Counts:
+  - API jest --runInBand: 361/361 (was 348 baseline; +13 binding
+    assertions: 6 drawing-tool availability per sub-mode + 5
+    propose_scope_items absence per non-scope sub-mode + 1 scope
+    contains-all-four + 1 scope proposes-scope-items presence;
+    2 regression skipped without API key).
+  - Lint: clean.
+  - Build: clean.
+  - No web changes; no migration; no other API code changes.
+
+Manual smoke pending Marco — re-run PR #142's 7-step smoke. Steps
+1-4 should now fire tool calls. Marco to also inspect
+Network → POST /personas/tendering/chat → request body for the
+subMode value on each step. If subMode is "register" regardless
+of route, the PR #143 PHASE 6 deferral (frontend sub-mode
+awareness audit) is the right follow-up; if it varies by route,
+that's new info.
+
+Deviations from spec:
+  (1) Used the unit-test approach (test the registry directly with
+      stub handlers mirroring personas.module.ts logic) rather
+      than a full NestJS TestingModule spin-up. Spec explicitly
+      allowed either; unit-test approach is faster, has zero DI
+      overhead, lands 13 assertions in one short spec file.
+      Trade-off documented in the test file's header comment.
+  (2) Included the optional DRY refactor — hoisted
+      TENDERING_SUB_MODES to a module-level constant so production
+      and test-fixture loops share one source of truth.
 
 Audit findings: none.

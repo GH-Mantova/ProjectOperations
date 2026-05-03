@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
@@ -10,6 +10,10 @@ const SINGLETON_ID = "singleton";
 export type AiProviderName = "anthropic" | "gemini" | "groq" | "openai";
 
 export const PROVIDER_PRIORITY: AiProviderName[] = ["anthropic", "gemini", "groq", "openai"];
+
+export function isValidProvider(value: string): value is AiProviderName {
+  return (PROVIDER_PRIORITY as readonly string[]).includes(value);
+}
 
 // Single source of truth for AI provider model defaults across the codebase.
 // PlatformConfigService.getModel() consults this constant; env vars
@@ -28,6 +32,8 @@ export const DEFAULT_MODELS: Record<AiProviderName, string> = {
 // company/keys/:provider).
 @Injectable()
 export class PlatformConfigService {
+  private readonly logger = new Logger(PlatformConfigService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -38,6 +44,48 @@ export class PlatformConfigService {
 
   async getAnthropicApiKey(): Promise<string | null> {
     return this.resolveKey("anthropic");
+  }
+
+  // Admin-set platform default. Used by AiProvidersService.resolveChosenProvider
+  // as Tier 2 (between explicit user choice and the first-configured-key
+  // safety net). Returns null when unset or when the stored value is not
+  // one of the four valid provider names (logged as a warn so the config
+  // drift is visible).
+  async getPreferredProvider(): Promise<AiProviderName | null> {
+    const record = await this.prisma.platformConfig.findUnique({
+      where: { id: SINGLETON_ID },
+      select: { preferredProvider: true }
+    });
+    if (!record?.preferredProvider) return null;
+    if (!isValidProvider(record.preferredProvider)) {
+      this.logger.warn(
+        `PlatformConfig.preferredProvider has invalid value: ${record.preferredProvider}`
+      );
+      return null;
+    }
+    return record.preferredProvider;
+  }
+
+  // Tier-3 safety net for resolveChosenProvider. Returns the first provider
+  // (in the canonical priority order) that has a saved company key. Used
+  // when the user picked "Use system default" AND no preferredProvider is
+  // configured — picks something useful instead of throwing.
+  async getFirstConfiguredProvider(): Promise<AiProviderName | null> {
+    const record = await this.prisma.platformConfig.findUnique({
+      where: { id: SINGLETON_ID },
+      select: {
+        anthropicKeyEncrypted: true,
+        openaiKeyEncrypted: true,
+        geminiKeyEncrypted: true,
+        groqKeyEncrypted: true
+      }
+    });
+    if (!record) return null;
+    if (record.anthropicKeyEncrypted) return "anthropic";
+    if (record.openaiKeyEncrypted) return "openai";
+    if (record.geminiKeyEncrypted) return "gemini";
+    if (record.groqKeyEncrypted) return "groq";
+    return null;
   }
 
   async getGeminiApiKey(): Promise<string | null> {
@@ -243,7 +291,7 @@ export class PlatformConfigService {
     const record = await this.prisma.platformConfig.findUnique({ where: { id: SINGLETON_ID } });
     const stored = this.encryptedFieldFor(record, provider);
     if (!stored) return null;
-    return this.encryption.tryDecrypt(stored);
+    return this.encryption.tryDecrypt(stored, { provider, scope: "company" });
   }
 
   private async persistCompanyKey(
@@ -336,7 +384,9 @@ export class PlatformConfigService {
     validatedAt: Date | null,
     storedModel: string | null
   ) {
-    const decrypted = encrypted ? this.encryption.tryDecrypt(encrypted) : null;
+    const decrypted = encrypted
+      ? this.encryption.tryDecrypt(encrypted, { provider, scope: "company" })
+      : null;
     return {
       configured: Boolean(decrypted),
       source: decrypted ? ("database" as const) : null,

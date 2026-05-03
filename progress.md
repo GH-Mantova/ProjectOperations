@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-03 05:50 AEST
+Last updated: 2026-05-03 07:16 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -1956,3 +1956,121 @@ What's NOT in this PR (deferred to subsequent series PRs):
   scope-of-works draft.
 
 Audit findings: none new.
+
+## 2026-05-03 17:15 AEST — PR #138 PENDING — fix: AI provider system default fallback
+
+Type: PR
+Status: PENDING (auto-merge requested)
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/138
+Branch: fix/ai-provider-system-default-fallback
+Detail:
+  - Symptom (surfaced during PR #137 manual smoke, diagnosis crossed
+    the OldMain2 → MAIN chat handover): with BYOK toggle disabled,
+    company Anthropic key saved+valid, and "Use system default"
+    selected in My Settings, chat returned "AI provider not
+    configured. Contact your administrator." Workaround was to
+    explicitly pick Anthropic in My Settings each time — defeats
+    the design intent of "system default".
+  - Root cause: AiProvidersService.resolveProviderConfig defaulted
+    chosenProvider to the literal "anthropic" without consulting
+    PlatformConfig.preferredProvider (the admin-set platform
+    default). When GlobalAISettings.enabledProviders was empty or
+    didn't list Anthropic, the resolver fell into the "no key"
+    branch and threw the literal-string error — even though a
+    perfectly good Anthropic company key sat one query away.
+  - Fix: AiProvidersService.resolveProviderConfig now resolves
+    chosenProvider via three tiers in order:
+      Tier 1 — explicit user persona choice (providerOverride),
+        treating null/'system'/'default' as "skip me".
+      Tier 2 — PlatformConfig.preferredProvider (admin default).
+      Tier 3 — first provider with a saved company *KeyEncrypted
+        column (Anthropic → OpenAI → Gemini → Groq).
+    Plus a legacy fallback to GlobalAISettings.enabledProviders[0]
+    between tiers 2 and 3 to preserve any deployment that set that
+    toggle before preferredProvider existed.
+  - tryDecrypt in key-encryption.service.ts now logs on catch
+    (warn level, never the encrypted blob, decrypted plaintext, or
+    master key — only errClass + errMsg + opaque caller context).
+    Was silent — directly responsible for ~30 minutes of extra
+    diagnosis time today because we couldn't tell whether decrypt
+    was even being attempted. Two existing call sites updated to
+    pass context: platform-config.resolveKey + providerStatus
+    (scope: 'company'), and ai-providers.getUserKey (scope: 'user',
+    subjectId: userId). Refactored getUserKey to use tryDecrypt
+    rather than its own try/catch around decrypt — single logging
+    path now.
+  - ProviderNotConfiguredError class with named-provider message
+    replaces the generic ServiceUnavailableException literal-string
+    throw. The "not configured" keyword is preserved in the message
+    so the existing error-sanitiser still routes to the "config"
+    category. Three pre-existing tests that asserted
+    ServiceUnavailableException for the no-key case updated to
+    ProviderNotConfiguredError.
+  - Three new unit tests in ai-providers.service.spec.ts under a
+    dedicated "three-tier provider resolution (fix 2026-05-03)"
+    describe block: (a) falls back to preferredProvider when user
+    is system-default; (b) falls back to first configured company
+    provider when both user setting and preferredProvider are null;
+    (c) throws ProviderNotConfiguredError(provider) with provider
+    name in the message when user explicitly picks a provider with
+    no key available.
+  - docs/troubleshooting/prisma-windows-engine-lock.md added —
+    records today's recovery sequence for the Windows .dll lock
+    pattern that hid the BYOK runtime client/engine mismatch for
+    ~30 minutes during diagnosis. Symptoms, cause, 9-step
+    PowerShell recovery, and the schema-vs-runtime detection
+    one-liner.
+  - roadmap.md PHASE 6 expanded with 9 new deferred items: 6 from
+    the Chat1 dashboard screenshot batch 2026-05-03 (KPI card
+    layout collision, Job ID naming inconsistency, tender title
+    truncation, scheduler weekend clipping, sidebar Tendering
+    label duplication, "Due this week" label/content mismatch),
+    plus Xero sanitiser extension (PR #135 follow-up), Playwright
+    e2e for proposal cards (PR #137 follow-up), Gemini/Groq tool-
+    calling extension (PR #137 follow-up), and the legacy
+    *ApiKey column drop cleanup. .env consolidation already
+    deferred at line 480 from PR #123 — not duplicated.
+  - project_instructions.md §6 Code rules gained a new bullet
+    codifying the three-tier resolution as project rule: "AI
+    provider resolution always uses the three-tier fallback in
+    AiProvidersService.resolveChosenProvider...". Prevents future
+    regressions to a hardcoded provider literal.
+
+Counts:
+  - API jest --runInBand: 307/307 (was 304 in PR #137; +3 new
+    fallback tests).
+  - Web vitest: 264/264 (no change, no web code touched).
+  - Lint api + web: clean.
+  - Build: clean.
+  - compliance:smoke: passed.
+  - Playwright tendering: 15/15 across chromium + firefox + webkit.
+  - Migration: none in this PR (server logic only).
+
+Manual smoke (3 scenarios, all passed):
+  1. BYOK off, no user keys, only Anthropic company key,
+     preferredProvider null, user persona = "Use system default"
+     → chat works (resolves via tier 3 / first configured).
+  2. Same setup but admin sets preferredProvider='anthropic'
+     → chat works (resolves via tier 2).
+  3. User picks explicit OpenAI in My Settings, no openai key
+     anywhere → chat fails with ProviderNotConfiguredError where
+     message contains "openai" and "not configured".
+
+Deviations from spec:
+  (1) Spec said add 10 deferred items to roadmap PHASE 6; the
+      .env consolidation item was already there (line 480 from PR
+      #123 deferral), so 9 new + the existing one = the 10 total.
+      Did not duplicate.
+  (2) Spec mentioned isValidProvider may not exist; it didn't, so
+      I added it as a top-level export from
+      platform-config.service.ts alongside PROVIDER_PRIORITY (the
+      pre-existing constant). Used by getPreferredProvider for
+      defence-in-depth on stored value validation.
+  (3) Pre-existing test "Anthropic default + no override" had to
+      be re-cast in three-tier terms via the new
+      buildPlatformConfig.firstConfiguredProvider mock. Default
+      mock now derives firstConfigured from which keys are present,
+      so existing call sites continue to pass without touching
+      every test.
+
+Audit findings: none.

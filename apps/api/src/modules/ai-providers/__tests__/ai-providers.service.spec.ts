@@ -1,5 +1,6 @@
 import { ServiceUnavailableException } from "@nestjs/common";
 import { AiProvidersService } from "../ai-providers.service";
+import { ProviderNotConfiguredError } from "../errors";
 
 const TENDERING_ROW = { id: "persona-tendering-id", slug: "tendering" };
 
@@ -58,16 +59,33 @@ function buildPlatformConfig(
     apiKey?: string | null;
     openaiKey?: string | null;
     model?: string | null;
+    preferredProvider?: "anthropic" | "openai" | "gemini" | "groq" | null;
+    firstConfiguredProvider?: "anthropic" | "openai" | "gemini" | "groq" | null;
   } = {}
 ) {
   // `apiKey: null` means "explicitly missing"; not setting the key means "use default"
   const apiKey = "apiKey" in overrides ? overrides.apiKey : "sk-test";
   const openaiKey = "openaiKey" in overrides ? overrides.openaiKey : "sk-openai-test";
+  // Default firstConfigured derives from which keys are present so existing
+  // tests continue to pass without touching every call site.
+  const firstConfiguredDefault = apiKey
+    ? ("anthropic" as const)
+    : openaiKey
+      ? ("openai" as const)
+      : null;
   return {
     getAnthropicApiKey: jest.fn(async () => apiKey),
     getOpenAiApiKey: jest.fn(async () => openaiKey),
     getModel: jest.fn(async (provider: "anthropic" | "openai") =>
       overrides.model ?? (provider === "anthropic" ? "claude-sonnet-4-6" : "gpt-5.4-mini")
+    ),
+    getPreferredProvider: jest.fn(async () =>
+      "preferredProvider" in overrides ? overrides.preferredProvider ?? null : null
+    ),
+    getFirstConfiguredProvider: jest.fn(async () =>
+      "firstConfiguredProvider" in overrides
+        ? overrides.firstConfiguredProvider ?? null
+        : firstConfiguredDefault
     )
   } as never;
 }
@@ -130,14 +148,14 @@ describe("AiProvidersService.resolveProviderConfig", () => {
     expect(cfg.providerId).toBe("anthropic");
   });
 
-  it("throws 503 when neither user nor company key is configured", async () => {
+  it("throws ProviderNotConfiguredError when neither user nor company key is configured", async () => {
     const service = new AiProvidersService(
       buildPrismaMock({}),
-      buildPlatformConfig({ apiKey: null }),
+      buildPlatformConfig({ apiKey: null, openaiKey: null, firstConfiguredProvider: null }),
       buildEncryption()
     );
     await expect(service.resolveProviderConfig("user-1", "tendering")).rejects.toBeInstanceOf(
-      ServiceUnavailableException
+      ProviderNotConfiguredError
     );
   });
 
@@ -160,6 +178,96 @@ describe("AiProvidersService.resolveProviderConfig", () => {
     );
     const cfg = await service.resolveProviderConfig("user-1", "tendering");
     expect(cfg.model).toBe("claude-opus-4-7");
+  });
+
+  describe("three-tier provider resolution (fix 2026-05-03)", () => {
+    it("falls back to platform preferredProvider when user setting is system default", async () => {
+      // Bug repro: user persona = "Use system default" (null), only company
+      // Anthropic key saved, admin set preferredProvider='anthropic'.
+      // Pre-fix this would have stayed at the literal "anthropic" default
+      // and worked by coincidence; this test pins down that we resolve via
+      // preferredProvider explicitly.
+      const service = new AiProvidersService(
+        buildPrismaMock({
+          userSettings: { providerOverride: null },
+          globalSettings: {
+            allowUserInstructionOverrides: false,
+            // empty enabledProviders — must NOT short-circuit the chain
+            enabledProviders: [],
+            allowBringYourOwnKey: false
+          }
+        }),
+        buildPlatformConfig({ preferredProvider: "anthropic" }),
+        buildEncryption()
+      );
+      const cfg = await service.resolveProviderConfig("user-1", "tendering");
+      expect(cfg.providerId).toBe("anthropic");
+      expect(cfg.source).toBe("company");
+      expect(cfg.apiKey).toBe("sk-test");
+    });
+
+    it("falls back to first configured company provider when both user setting AND preferredProvider are null", async () => {
+      // The actual user-facing bug: BYOK off, user persona = system default,
+      // no preferredProvider, no global enabledProviders, only Anthropic
+      // company key saved. Pre-fix this threw "AI provider not configured".
+      const service = new AiProvidersService(
+        buildPrismaMock({
+          userSettings: { providerOverride: null },
+          globalSettings: {
+            allowUserInstructionOverrides: false,
+            enabledProviders: [],
+            allowBringYourOwnKey: false
+          }
+        }),
+        buildPlatformConfig({
+          preferredProvider: null,
+          firstConfiguredProvider: "anthropic"
+        }),
+        buildEncryption()
+      );
+      const cfg = await service.resolveProviderConfig("user-1", "tendering");
+      expect(cfg.providerId).toBe("anthropic");
+      expect(cfg.source).toBe("company");
+    });
+
+    it("throws ProviderNotConfiguredError(provider) when user explicitly chooses provider with no key available", async () => {
+      // User picks OpenAI in My Settings but only Anthropic company key
+      // exists and BYOK is off. Pre-fix the error said only "AI provider
+      // not configured" — no clue which provider failed. After the fix
+      // the message names openai.
+      const service = new AiProvidersService(
+        buildPrismaMock({
+          userSettings: { providerOverride: "openai" },
+          globalSettings: {
+            allowUserInstructionOverrides: false,
+            enabledProviders: ["anthropic", "openai"],
+            allowBringYourOwnKey: false
+          },
+          userRow: { anthropicKeyEncrypted: null, openaiKeyEncrypted: null }
+        }),
+        buildPlatformConfig({
+          openaiKey: null,
+          preferredProvider: "anthropic",
+          firstConfiguredProvider: "anthropic"
+        }),
+        buildEncryption()
+      );
+      await expect(
+        service.resolveProviderConfig("user-1", "tendering")
+      ).rejects.toBeInstanceOf(ProviderNotConfiguredError);
+      // Substring match — do NOT match the full string verbatim per spec.
+      await expect(
+        service.resolveProviderConfig("user-1", "tendering")
+      ).rejects.toMatchObject({
+        message: expect.stringContaining("openai"),
+        provider: "openai"
+      });
+      await expect(
+        service.resolveProviderConfig("user-1", "tendering")
+      ).rejects.toMatchObject({
+        message: expect.stringContaining("not configured")
+      });
+    });
   });
 
   describe("BYOK precedence", () => {
@@ -185,14 +293,14 @@ describe("AiProvidersService.resolveProviderConfig", () => {
       expect(cfg.apiKey).toBe("sk-test");
     });
 
-    it("throws 503 when user key absent and company key absent", async () => {
+    it("throws ProviderNotConfiguredError when user key absent and company key absent", async () => {
       const service = new AiProvidersService(
         buildPrismaMock({ userRow: { anthropicKeyEncrypted: null } }),
-        buildPlatformConfig({ apiKey: null }),
+        buildPlatformConfig({ apiKey: null, openaiKey: null, firstConfiguredProvider: null }),
         buildEncryption()
       );
       await expect(service.resolveProviderConfig("user-1", "tendering")).rejects.toBeInstanceOf(
-        ServiceUnavailableException
+        ProviderNotConfiguredError
       );
     });
 
@@ -280,7 +388,7 @@ describe("AiProvidersService.resolveProviderConfig", () => {
         buildEncryption()
       );
       await expect(service.resolveProviderConfig("user-1", "tendering")).rejects.toBeInstanceOf(
-        ServiceUnavailableException
+        ProviderNotConfiguredError
       );
     });
 

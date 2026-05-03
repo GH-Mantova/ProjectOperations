@@ -1,7 +1,7 @@
 # ProjectOperations — Project Instructions
 # Version: 1.1
 # Created: 2026-04-25 10:02 AEST
-# Last updated: 2026-05-02 01:00 AEST
+# Last updated: 2026-05-03 07:16 AEST
 # Maintained by: Claude Code (update after any architectural decision,
 #   module addition, business rule change, or workflow change)
 # Accessed by: All Claude chats in this project via web_fetch
@@ -197,6 +197,7 @@ Rules:
 - Documentation updates are part of the PR's own commits, never a follow-up: progress.md gets a merge entry on every PR; roadmap.md gets edited if phases shift or items complete; project_instructions.md gets edited if modules, rules, or architecture change. Pre-commit hook auto-stamps "Last updated:" — never edit that line manually.
 - PDF generation uses HTML→PDF renderer (Phase 5A.2 onwards). New PDF outputs are HTML templates, rendered via the shared renderer service. Do not add new PDFKit code — that engine is being retired.
 - AI features integrate via the persona registry (Phase 5A.1 onwards). Do not add ad-hoc AI calls in modules. New AI capabilities belong inside a persona's sub-mode tool list. New personas register in the persona module, not in the consuming module.
+- AI provider resolution always uses the three-tier fallback in `AiProvidersService.resolveChosenProvider`: explicit user persona choice → `PlatformConfig.preferredProvider` → first provider with a saved company `*KeyEncrypted` column. Never call provider clients with a null/undefined provider; never default to a hardcoded provider literal in new code paths. When no key is available throw `ProviderNotConfiguredError(provider)` so the user-facing message names which provider failed.
 
 ### Pre-PR CI checklist (mandatory — fix ALL before pushing)
 1. `pnpm --filter @project-ops/api lint` — zero warnings, zero errors

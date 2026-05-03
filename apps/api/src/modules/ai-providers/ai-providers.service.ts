@@ -10,10 +10,17 @@ import type {
   ProviderConfig,
   ProviderId
 } from "./ai-providers.types";
+import { ProviderNotConfiguredError } from "./errors";
 import { streamAnthropicChat } from "./providers/anthropic.provider";
 import { streamOpenAIChat } from "./providers/openai.provider";
 
 const SUPPORTED_PROVIDERS: ProviderId[] = ["anthropic", "openai"];
+
+// Sentinel values the user-persona settings UI may store to mean "use the
+// system default" — empty select option round-trips as null today, but
+// 'system' / 'default' are accepted defensively in case future UI changes
+// pick a string sentinel.
+const SYSTEM_DEFAULT_SENTINELS = new Set(["system", "default", ""]);
 
 @Injectable()
 export class AiProvidersService {
@@ -27,15 +34,27 @@ export class AiProvidersService {
 
   // Resolves which provider+key+model to use for a given user+persona.
   //
-  // Provider selection order:
-  //   1. UserPersonaSettings.providerOverride (if supported)
-  //   2. GlobalAISettings.enabledProviders[0] (if supported)
-  //   3. Anthropic default
+  // Provider selection — three-tier fallback (fix 2026-05-03, replaces the
+  // previous "Anthropic literal default" that produced ProviderNotConfigured
+  // errors when "Use system default" was selected and only a company key
+  // was saved):
   //
-  // Key source order (§5A.1 PR 9):
+  //   1. Explicit user persona choice — UserPersonaSettings.providerOverride
+  //      when it names a supported provider (not null/'system'/'default').
+  //   2. PlatformConfig.preferredProvider — admin-set platform default.
+  //   3. First provider with a saved company *KeyEncrypted column —
+  //      Anthropic → OpenAI → Gemini → Groq, first match wins.
+  //
+  // Plus a legacy fallback to GlobalAISettings.enabledProviders[0] between
+  // tiers 2 and 3 — preserves behaviour for any deployment that set that
+  // toggle before preferredProvider existed.
+  //
+  // Key source order (§5A.1 PR 9, unchanged):
   //   1. Per-user encrypted key on User row (BYOK) — source: "user"
   //   2. Company encrypted key on PlatformConfig — source: "company"
-  //   3. Throw ServiceUnavailableException (config category)
+  //   3. Throw ProviderNotConfiguredError(provider) — clearer DX than the
+  //      previous generic "AI provider not configured" because the message
+  //      names the provider that has no key.
   //
   // No env-var fallback. Keys live in DB only. The `source` field on
   // ProviderConfig is for audit purposes — every chat call logs which key
@@ -46,32 +65,7 @@ export class AiProvidersService {
       throw new ServiceUnavailableException(`Unknown persona: ${personaSlug}`);
     }
 
-    const personaRow = await this.prisma.persona.findUnique({ where: { slug: personaSlug } });
-    let chosenProvider: ProviderId = "anthropic";
-
-    if (personaRow) {
-      const userSettings = await this.prisma.userPersonaSettings.findUnique({
-        where: { userId_personaId: { userId, personaId: personaRow.id } }
-      });
-      const candidate = userSettings?.providerOverride ?? null;
-      if (candidate && SUPPORTED_PROVIDERS.includes(candidate as ProviderId)) {
-        chosenProvider = candidate as ProviderId;
-      } else {
-        const global = await this.prisma.globalAISettings.findUnique({ where: { id: 1 } });
-        const firstEnabled = global?.enabledProviders.find((p) =>
-          SUPPORTED_PROVIDERS.includes(p as ProviderId)
-        );
-        if (firstEnabled) chosenProvider = firstEnabled as ProviderId;
-      }
-    }
-
-    if (!SUPPORTED_PROVIDERS.includes(chosenProvider)) {
-      // Defensive: SUPPORTED_PROVIDERS gates this above, but make the failure
-      // mode explicit if a future enabledProvider value sneaks through.
-      throw new ServiceUnavailableException(
-        `Provider ${chosenProvider} is not implemented yet.`
-      );
-    }
+    const chosenProvider = await this.resolveChosenProvider(userId, personaSlug);
 
     const userKey = await this.getUserKey(userId, chosenProvider);
     let apiKey: string | null = userKey;
@@ -81,18 +75,64 @@ export class AiProvidersService {
       source = "company";
     }
     if (!apiKey) {
-      throw new ServiceUnavailableException(
-        "AI provider not configured. Contact your administrator."
-      );
+      throw new ProviderNotConfiguredError(chosenProvider);
     }
     const model = await this.resolveModel(chosenProvider);
     return { providerId: chosenProvider, apiKey, model, source };
   }
 
+  // See the three-tier doc-comment above resolveProviderConfig.
+  private async resolveChosenProvider(
+    userId: string,
+    personaSlug: string
+  ): Promise<ProviderId> {
+    // Tier 1 — explicit user choice from the persona settings UI.
+    const personaRow = await this.prisma.persona.findUnique({ where: { slug: personaSlug } });
+    if (personaRow) {
+      const userSettings = await this.prisma.userPersonaSettings.findUnique({
+        where: { userId_personaId: { userId, personaId: personaRow.id } }
+      });
+      const candidate = userSettings?.providerOverride ?? null;
+      if (
+        candidate &&
+        !SYSTEM_DEFAULT_SENTINELS.has(candidate) &&
+        SUPPORTED_PROVIDERS.includes(candidate as ProviderId)
+      ) {
+        return candidate as ProviderId;
+      }
+    }
+
+    // Tier 2 — admin-set platform default.
+    const preferred = await this.platformConfig.getPreferredProvider();
+    if (preferred && SUPPORTED_PROVIDERS.includes(preferred as ProviderId)) {
+      return preferred as ProviderId;
+    }
+
+    // Legacy compatibility — GlobalAISettings.enabledProviders[0]. Older
+    // deployments may have set this toggle before preferredProvider existed.
+    const global = await this.prisma.globalAISettings.findUnique({ where: { id: 1 } });
+    const firstEnabled = global?.enabledProviders.find((p) =>
+      SUPPORTED_PROVIDERS.includes(p as ProviderId)
+    );
+    if (firstEnabled) return firstEnabled as ProviderId;
+
+    // Tier 3 — first provider with a saved company key. Only useful for
+    // the supported providers; if all configured providers are not-yet-
+    // implemented (gemini/groq), fall through to the explicit error rather
+    // than silently picking one we can't dispatch.
+    const firstConfigured = await this.platformConfig.getFirstConfiguredProvider();
+    if (firstConfigured && SUPPORTED_PROVIDERS.includes(firstConfigured as ProviderId)) {
+      return firstConfigured as ProviderId;
+    }
+
+    throw new ProviderNotConfiguredError(null);
+  }
+
   // Per-user BYOK lookup. Returns null when the user has no key for the
-  // provider, OR when the encrypted blob fails to decrypt (logged, falls
-  // through to company key — does NOT throw, so a corrupted user key blob
-  // doesn't take down chat for that user).
+  // provider, OR when the encrypted blob fails to decrypt (logged via
+  // KeyEncryptionService.tryDecrypt with context, falls through to company
+  // key — does NOT throw, so a corrupted user key blob doesn't take down
+  // chat for that user).
   private async getUserKey(userId: string, provider: ProviderId): Promise<string | null> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -104,13 +144,11 @@ export class AiProvidersService {
     if (!user) return null;
     const encrypted =
       provider === "anthropic" ? user.anthropicKeyEncrypted : user.openaiKeyEncrypted;
-    if (!encrypted) return null;
-    try {
-      return this.encryption.decrypt(encrypted);
-    } catch {
-      this.logger.error(`Failed to decrypt user ${provider} key [userId=${userId}]`);
-      return null;
-    }
+    return this.encryption.tryDecrypt(encrypted, {
+      provider,
+      scope: "user",
+      subjectId: userId
+    });
   }
 
   private async resolveCompanyKey(provider: ProviderId): Promise<string | null> {

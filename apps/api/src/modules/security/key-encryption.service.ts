@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
 const ALGO = "aes-256-gcm";
@@ -15,6 +15,7 @@ const KEY_BYTES = 32;
 // via the UI. Generate one with: openssl rand -hex 32
 @Injectable()
 export class KeyEncryptionService {
+  private readonly logger = new Logger(KeyEncryptionService.name);
   private readonly key: Buffer;
 
   constructor() {
@@ -54,11 +55,28 @@ export class KeyEncryptionService {
     return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
   }
 
-  tryDecrypt(encrypted: string | null | undefined): string | null {
+  // §5A.1 fix — was silent on catch, which hid 30+ minutes of diagnosis
+  // when a runtime client/engine mismatch (Windows .dll lock — see
+  // docs/troubleshooting/prisma-windows-engine-lock.md) made decrypt
+  // fail without a single log line. Context is opaque to the encryption
+  // service; callers pass scope/provider/subjectId so the warn line
+  // points straight at the failing key. Never logs the encrypted blob,
+  // any decrypted plaintext, or the master key.
+  tryDecrypt(
+    encrypted: string | null | undefined,
+    context?: { provider?: string; scope?: string; subjectId?: string }
+  ): string | null {
     if (!encrypted) return null;
     try {
       return this.decrypt(encrypted);
-    } catch {
+    } catch (error) {
+      const errClass = error instanceof Error ? error.constructor.name : typeof error;
+      const errMsg = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `tryDecrypt failed [provider=${context?.provider ?? "unknown"}, ` +
+          `scope=${context?.scope ?? "unknown"}, subjectId=${context?.subjectId ?? "unknown"}, ` +
+          `errClass=${errClass}, msg=${errMsg}]`
+      );
       return null;
     }
   }

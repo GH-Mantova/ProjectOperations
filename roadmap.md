@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-03 05:50 AEST
+Last updated: 2026-05-03 07:16 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -519,6 +519,54 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     mention remains in tender-scope-drafting.service.ts:20 as the
     historical audit trail.
 
+⏸️  Dashboard KPI card title/period-selector layout collision (CRITICAL)
+    (Chat1 dashboard screenshot batch 2026-05-03 — visible overlap
+     at narrow viewports.)
+
+⏸️  Job ID naming inconsistency (JOB-COMP-{epoch} vs JOB-2026-001)
+    (Chat1 dashboard 2026-05-03 — two patterns coexist; pick one
+     and migrate.)
+
+⏸️  Tender title truncation in dashboard lists (~12-15 char ellipsis)
+    (Chat1 dashboard 2026-05-03 — truncation point too aggressive.)
+
+⏸️  Scheduler week view weekend clipping at narrow viewports
+    (Chat1 dashboard 2026-05-03 — Sat/Sun columns clip below 1280px.)
+
+⏸️  Sidebar "Tendering" label duplication (DASHBOARDS vs COMMERCIAL)
+    (Chat1 dashboard 2026-05-03 — sidebar shows the label in two
+     sections.)
+
+⏸️  "Due this week" card label vs content mismatch (only overdue items)
+    (Chat1 dashboard 2026-05-03 — card title says "Due this week"
+     but rows show overdue-only.)
+
+⏸️  sanitiseProviderError — extend with Xero-specific status extraction
+    (Deferred from PR #135 audit M1. The defence-in-depth wrapper
+     applied in PR #135 routes Xero errors through the same generic
+     categoriser; a Xero-aware extractor could pull the auth/rate-limit
+     status code out of the wire response for crisper user messages.)
+
+⏸️  Playwright e2e for scope proposal cards (§5A.1 PR 11 follow-up)
+    (Deferred from PR #137. Mock the AI SSE response, accept a card,
+     verify scope_of_works_items row gets written. Currently the
+     existing tendering.spec.ts only covers tender create / detail
+     navigation.)
+
+⏸️  Provider-agnostic tool calling — extend to Gemini and Groq
+    (Deferred from PR #137. Currently Anthropic + OpenAI have native
+     tool_use streaming; Gemini and Groq providers exist as key-only
+     today and would need streaming + tool translation if added to
+     SUPPORTED_PROVIDERS.)
+
+⏸️  Drop legacy *ApiKey company-key columns from PlatformConfig
+    (Schema flagged 2026-04 during BYOK PR #134 — the *ApiKey,
+     *KeyUpdatedAt columns on PlatformConfig were superseded by
+     *KeyEncrypted / *KeyValidatedAt and are no longer read or written.
+     Confirm zero readers/writers across codebase + DB, then drop
+     columns + migration. Do AFTER prod migration of *KeyEncrypted is
+     fully verified.)
+
 ---
 
 ## PHASE 7 — NEXT FEATURE PRIORITIES
@@ -693,3 +741,18 @@ scope manageable while preserving the "personas everywhere" vision.
 Same session captured 9 GitHub security alerts (3 npm transitive
 dep vulns + 3 workflow files missing permissions blocks + 1 React
 XSS likely false positive) as a PHASE 6 cleanup chore.
+
+### 2026-05-03 evening — AI provider system default fix
+Bug: chat returned "AI provider not configured" when user persona
+setting was "Use system default" and only a company key existed.
+Root cause: chosenProvider was never resolved from null/'system'
+before key lookups. Fix: three-tier resolution (user → platform
+preferred → first configured). Same PR added warn-on-catch logging
+to tryDecrypt (was silent — hid 30 min of diagnosis), a named
+ProviderNotConfiguredError class for clearer DX, and a
+troubleshooting doc capturing the Windows Prisma .dll lock
+recovery sequence that surfaced during diagnosis. PHASE 6 expanded
+with 9 new deferred items (6 Chat1 dashboard issues, Xero
+sanitiser extension, proposal-cards e2e, Gemini/Groq tool calling,
+legacy *ApiKey column drop). project_instructions.md §6 Code
+rules gained an explicit "always use the three-tier fallback" rule.

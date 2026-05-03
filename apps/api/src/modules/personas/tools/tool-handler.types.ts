@@ -37,6 +37,13 @@ export type ToolHandlerContext = {
   // the tender id via the chat request's contextKey field; the dispatcher
   // forwards it here so handlers don't need to plumb it through inputs.
   contextKey: string | null;
+  // The model-emitted id for this tool call. Threaded through so handlers
+  // that persist call provenance (e.g. propose_scope_items writing
+  // tool_call/tool_result rows under the same toolUseId) can use the
+  // real id rather than synthesising one. PR #142 fix — PR #141 left
+  // ProposeScopeItemsHandler synthesising the id because the dispatcher
+  // didn't expose it.
+  toolUseId: string;
 };
 
 export type ToolHandlerExecuteResult = {

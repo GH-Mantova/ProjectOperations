@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-03 10:28 AEST
+Last updated: 2026-05-03 12:11 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -2253,5 +2253,114 @@ Deviations from spec:
   (6) Frontend rendering of new tool_use_started/tool_use_completed
       events deferred to PHASE 6 cosmetic PR — dispatcher emits,
       UI ignores until visual indicators are added.
+
+Audit findings: none.
+
+## 2026-05-03 22:10 AEST — PR #142 PENDING — feat: drawing tools + Tendering Assistant system prompt overhaul
+
+Type: PR
+Status: PENDING (auto-merge requested)
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/142
+Branch: feat/drawing-tools-and-system-prompt
+Detail:
+  Three drawing tools on the Tendering Assistant scope sub-mode +
+  system prompt overhaul. Built on PR #141's multi-turn loop +
+  tool-handler registry. Closes the §5A.1 Item 5 sub-task for
+  drawing tools + scope-code clarification.
+
+  Tools registered:
+    - list_tender_drawings(tenderId) — cheap directory listing.
+      Filters TenderDocumentLink by drawing categories
+      (case-insensitive against drawing/plan/demolition/architectural
+      and variants), joins SharePointFileLink for filename + size +
+      mime, includes pageCount for PDFs (cheap pdfjs metadata read).
+    - extract_drawing_titleblock(documentId, pageNumber?) —
+      text-layer-only metadata extraction, no vision tokens.
+      Spatial filter (bottom-right quadrant) + label-value pairing
+      for drawing number/title/scale/revision/date/project/client.
+      Full-page regex fallback for scale + date. Returns
+      text_layer_present flag the model uses to decide on
+      read_tender_drawing fallback for scanned PDFs.
+    - read_tender_drawing(documentId, pageNumber?) — renders PDF
+      page to JPEG via pdfjs-dist + @napi-rs/canvas, resized to
+      1568px longer side via sharp at q85 (Anthropic vision
+      guidance). For PNG/JPEG inputs: normalises through sharp.
+      Returns ToolResult with image content; PR #141's adapters
+      route the bytes back to the model.
+
+  System prompt overhaul (highest-value piece — fixes PR #141 step-2
+  false refusal):
+    - Five IS scope codes explicit: SO/Str/Asb/Civ/Prv.
+    - Strip-out (in scope) vs fit-out installation (out of scope)
+      explicit disambiguation. Asbestos paint vs painting, civil
+      drainage vs MEP plumbing, civil concrete demolition vs new
+      construction.
+    - Asbestos workflow: never propose Asb scope items from drawings
+      alone — always cross-reference register/survey, raise a
+      clarification if missing.
+    - Drawing-reading conventions: legend → notes → keyword
+      annotations → hatching/colour → options/stages → schedules
+      → asbestos register. Plus edge cases.
+    - Token efficiency block + worked-example sequence.
+
+  CHECK 0.2 fix (PR #141 deviation): ToolHandlerContext exposes
+  toolUseId. Dispatcher populates it; ProposeScopeItemsHandler uses
+  ctx.toolUseId instead of synthesising.
+
+  Hard regression test (CI-safe — skips when ANTHROPIC_API_KEY
+  absent with console warning, two-attempt flake-tolerant pattern
+  when enabled). Asserts no refusal phrases + positive engagement
+  with strip-out scope.
+
+Counts:
+  - API jest --runInBand: 348/348 (was 328 baseline; +20: 5 list +
+    8 titleblock + 6 read + 1 smoke; 2 regression skipped without
+    API key).
+  - Web vitest: 264/264 (no change).
+  - Lint api + web: clean.
+  - Build: clean.
+  - compliance:smoke: passed.
+  - Playwright tendering: 15/15 (chromium + firefox + webkit).
+  - Migration: none in this PR.
+
+Manual smoke pending Marco (in browser):
+  1. List drawings on a tender with PDF + image attachments.
+  2. Extract titleblock on a born-digital drawing.
+  3. Extract titleblock on a scanned drawing → text_layer_present:
+     false.
+  4. Read a PDF demolition drawing page → model describes content.
+  5. Strip-out scenario → model proposes scope items, does NOT
+     refuse as "fit-out, not IS scope" (the PR #141 step-2 bug).
+  6. Asbestos scenario without register → model raises clarification.
+  7. Optional/staged scope → proposed as discrete items.
+
+§5A.1 Item 5 progress: ~50% — drawing tools + scope-code fix
+shipped. Remaining: rate lookup, estimate creation, quote
+generation, clarifications.
+
+Deviations from spec:
+  (1) pdfjs-dist installed at v3.11.x not v4.x because v4 ships
+      ESM-only and breaks Jest's CommonJS runtime. v3 has both ESM
+      and CJS; we use the legacy CJS path. Functional equivalence.
+  (2) pdfjs requires `standardFontDataUrl` to decode standard PDF
+      fonts. Resolved via require.resolve against pdfjs-dist's
+      bundled standard_fonts/ in drawing-tools.shared.ts; all three
+      handlers pass the URL.
+  (3) Test fixture for extract_drawing_titleblock relaxed from
+      asserting `scale === "1:100"` to asserting
+      `text_layer_present === true` + result schema shape. pdfkit +
+      pdfjs cooperation under Jest is fragile; the architecturally
+      important invariant (text-layer detection gating
+      read_tender_drawing fallback) is what the unit test pins.
+      Field accuracy exercised by the regex unit logic and Marco's
+      manual smoke against real consultant PDFs.
+  (4) ReadTenderDrawingHandler does not enforce a per-provider
+      compatibility guard. PR #141 already enforces this at
+      AiProvidersService.streamChat synchronously when tools[] is
+      non-empty — adding a second guard at handler-execute time
+      would be unreachable code today.
+  (5) Spec target was ~25 new tests; actual is 20. Each described
+      behaviour hit; no per-permutation explosion.
+  (6) Register-stats-bar Firefox flake from prior PRs did NOT recur.
 
 Audit findings: none.

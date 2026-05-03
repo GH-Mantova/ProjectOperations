@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-03 10:28 AEST
+Last updated: 2026-05-03 12:11 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -183,12 +183,35 @@ route (scope mode = drafting tools; quote mode = advisory; etc.).
    this; 32 new API tests + 52 new web tests (DB-independent
    verification — full DB-dependent smoke pending Marco).
 
+   PR #141 (foundation) shipped: multi-turn agent loop with 10-turn
+   cap, 8-parallel-call cap, error-as-tool-result; ToolHandlerRegistry
+   pattern; Anthropic + OpenAI adapter image-content support;
+   visibility column on conversation_messages; propose_scope_items
+   migrated to the new registry; test-fixture handlers
+   (_test_get_current_time, _test_get_test_image) for end-to-end
+   loop verification.
+
+   PR #142 shipped: three drawing tools (list_tender_drawings,
+   extract_drawing_titleblock, read_tender_drawing) registered on
+   tendering.scope; system prompt overhaul with five IS scope codes
+   (SO/Str/Asb/Civ/Prv) and explicit strip-out vs fit-out
+   disambiguation that fixes the PR #141 step-2 false refusal;
+   asbestos register cross-reference workflow; drawing-reading
+   conventions derived from analysis of five real consultant
+   drawings. ToolHandlerContext.toolUseId added (PR #141 deviation
+   fix). Hard regression test against real Anthropic API
+   (CI-safe — skips when key absent).
+
    Remaining in this Item 5 sub-area:
    - PR B: delete legacy "Draft scope with Claude" code path.
-   - PR C: drawing upload feeding scope inference.
-   - PR D: Cutrite rate lookup + IS discipline lookup tables.
-   - Estimate / Quote / Clarifications mode tools (separate PRs
-     once Scope is fully signed off by Raj).
+   - PR C: Cutrite rate lookup tool (rate_lookup).
+   - PR D: estimate creation tool.
+   - PR E: quote generation tool.
+   - PR F: clarifications mode tool.
+   - PR G: asbestos register reading + cross-reference logic
+     (separate PR — system prompt §3 already instructs the model
+     on the workflow; tool that auto-detects and reads the register
+     is a future addition).
 
 ### 5A.2 — HTML→PDF renderer migration
 
@@ -632,9 +655,57 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
 
 ⏸️  register-stats-bar Firefox flake
     (Failed first run, passed on retry, in PRs #137/#138/#139.
-     Did NOT recur in PR #141. Pattern still likely real —
-     timing/race in stats bar render under parallel runners.
+     Did NOT recur in PR #141 or PR #142. Pattern still likely
+     real — timing/race in stats bar render under parallel runners.
      Investigate next time it surfaces.)
+
+⏸️  Asbestos register / hazmat survey reading tool
+    (Separate from the drawing tools shipped in PR #142. The system
+     prompt instructs the model to cross-reference the asbestos
+     register before proposing Asb scope items, but no dedicated
+     tool exists yet to read XLSX/PDF hazmat surveys. Auto-detect
+     register documents in tender pack + parse + structured query.
+     Add when Marco confirms the conversational approach hits its
+     limit on real tenders.)
+
+⏸️  Drawing rasterisation / titleblock cache
+    (read_tender_drawing rasterises every call; extract_drawing_titleblock
+     re-fetches PDF every call. For tenders where Raj asks repeated
+     questions about the same drawing, this is wasteful. Add an
+     in-memory LRU keyed on documentId + pageNumber, with TTL ~5
+     minutes. Defer until profiling shows it as a real bottleneck.)
+
+⏸️  DWG / Revit native support for drawing tools
+    (Today read_tender_drawing rejects non-PDF/PNG/JPEG with a
+     clear "unsupported file type" error. DWG would need a
+     CAD-to-PDF converter; Revit even more involved. Deferred until
+     clear demand from a real tender.)
+
+⏸️  Per-provider tool compatibility guard at handler-execute time
+    (PR #142 documented that ReadTenderDrawingHandler doesn't
+     enforce its own provider check because PR #141's
+     AiProvidersService.streamChat already throws
+     ToolingNotSupportedError synchronously. If tool registration
+     ever decouples from the streamChat boundary — e.g. an internal
+     scheduler that runs tools without a provider — a per-handler
+     guard would become necessary. Re-evaluate then.)
+
+⏸️  pdfjs-dist v4 ESM migration when Jest gets ESM-stable
+    (PR #142 pinned to pdfjs-dist@^3.11 because v4 is ESM-only and
+     Jest's CommonJS runtime can't load it without transformer
+     gymnastics. Upgrade to v4 once Jest 30+ ESM support is mature
+     enough to handle pdfjs-dist's import.meta usage cleanly. Until
+     then, v3 is functionally complete for our needs.)
+
+⏸️  Drawing tools structured field extraction
+    (extract_drawing_titleblock today returns a regex-based best
+     effort. Real consultant drawings vary widely in titleblock
+     layout — some put scale below the drawing number, some have
+     multi-row titleblocks, some embed the drawing number in the
+     filename instead. A trained extractor (or a vision-based
+     pre-pass that asks the model to summarise the titleblock)
+     would be more robust. Defer until the regex approach actually
+     misses a real tender.)
 
 ---
 
@@ -855,3 +926,24 @@ context-window management, full structured drawing extraction,
 DWG/Revit support, drawing rasterisation cache, migration drift
 reconciliation, Prisma .dll harmless-stale doc extension,
 register-stats-bar flake follow-up.
+
+### 2026-05-03 evening — Drawing tools + Tendering Assistant system prompt overhaul (§5A.1 Item 5 sub-task)
+Three drawing tools (list_tender_drawings,
+extract_drawing_titleblock, read_tender_drawing) registered on the
+Tendering Assistant scope sub-mode, built on PR #141's multi-turn
+loop foundation. Tool-handler tier: pdfjs-dist v3 for PDF parsing
+(v4 deferred until Jest ESM support matures), @napi-rs/canvas for
+cross-platform rasterisation, sharp for resize/format normalisation,
+1568px longer-side cap per Anthropic vision guidance. System prompt
+overhaul made the five IS scope codes (SO/Str/Asb/Civ/Prv) explicit
+with strip-out vs fit-out disambiguation that fixes the PR #141
+step-2 false refusal; added drawing-reading conventions derived
+from analysis of five real consultant drawings (UQ Union, C-Square
+Nambour, UQ Mayne, Darra SS, SCA Sunshine Coast). Hard regression
+test against real Anthropic API on the strip-out scenario, two-attempt
+flake-tolerant pattern, skips with console warning when
+ANTHROPIC_API_KEY absent. ToolHandlerContext.toolUseId added (PR #141
+deviation fix). Six new PHASE 6 deferrals captured: asbestos
+register reading tool, drawing/titleblock cache, DWG/Revit support,
+per-provider handler guards, pdfjs-dist v4 migration, structured
+field extraction.

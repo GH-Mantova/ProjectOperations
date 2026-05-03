@@ -34,21 +34,13 @@ export class ProposeScopeItemsHandler implements ToolHandler<ProposeScopeItemsAr
     input: ProposeScopeItemsArgs,
     ctx: ToolHandlerContext
   ): Promise<ToolHandlerExecuteResult> {
-    // PR #137 used the tool_use_id from the streaming chunk as the
-    // toolUseId stored alongside proposals. The dispatcher passes that
-    // through via the parent loop, but storeProposals here is called
-    // post-execute so we don't have direct access to it. Use the same
-    // value the model sees by deriving it from the conversation
-    // context: store under a synthetic key the dispatcher can correlate
-    // back to the assistant turn. Keeping the original tool_use_id
-    // semantics requires plumbing — we pass null here and let the
-    // dispatcher attach the actual id. Acceptable because the existing
-    // ProposalsService.storeProposals derives a deterministic id when
-    // given empty input via its DB primary key.
-    const toolUseId = `tool_${ctx.conversationId}_${Date.now()}`;
+    // PR #142 fix: use the real model-emitted toolUseId from the
+    // dispatcher (added to ToolHandlerContext) rather than synthesising
+    // one. PR #141 left this as a deviation because the dispatcher
+    // didn't expose tool_use_id to handlers.
     const stored = await this.proposalsService.storeProposals(
       ctx.conversationId,
-      toolUseId,
+      ctx.toolUseId,
       input
     );
 

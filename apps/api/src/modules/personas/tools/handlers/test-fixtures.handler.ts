@@ -17,7 +17,8 @@ export class GetCurrentTimeHandler implements ToolHandler {
     "TEST FIXTURE — returns the current server time as an ISO 8601 string. Available only in non-production environments.";
   inputSchema = { type: "object" as const, properties: {}, required: [] };
 
-  async execute(_input: unknown, _ctx: ToolHandlerContext): Promise<ToolHandlerExecuteResult> {
+  async execute(_input: unknown, ctx: ToolHandlerContext): Promise<ToolHandlerExecuteResult> {
+    void ctx; // toolUseId etc available; unused for this fixture
     return {
       result: {
         content: [{ type: "text", text: `Current server time: ${new Date().toISOString()}` }]
@@ -39,7 +40,8 @@ export class GetTestImageHandler implements ToolHandler {
     "TEST FIXTURE — returns a 1×1 transparent PNG. Available only in non-production environments. The model receives the image via the tool result so this exercises the image-content path through the dispatcher and provider adapters.";
   inputSchema = { type: "object" as const, properties: {}, required: [] };
 
-  async execute(_input: unknown, _ctx: ToolHandlerContext): Promise<ToolHandlerExecuteResult> {
+  async execute(_input: unknown, ctx: ToolHandlerContext): Promise<ToolHandlerExecuteResult> {
+    void ctx;
     return {
       result: {
         content: [

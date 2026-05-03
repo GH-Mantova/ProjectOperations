@@ -1,7 +1,7 @@
 # ProjectOperations — Project Instructions
 # Version: 1.1
 # Created: 2026-04-25 10:02 AEST
-# Last updated: 2026-05-03 13:00 AEST
+# Last updated: 2026-05-03 22:40 AEST
 # Maintained by: Claude Code (update after any architectural decision,
 #   module addition, business rule change, or workflow change)
 # Accessed by: All Claude chats in this project via web_fetch
@@ -790,6 +790,12 @@ AI Persona System (planned — Phase 5A.1)
   schedules → asbestos register cross-reference). Asbestos line
   items require asbestos register cross-reference before being
   proposed.
+  PR #144 added tender-context injection: when the sub-mode is
+  tender-scoped (tender-detail / scope / estimate / quote /
+  clarifications) and the chat request has a contextKey, the
+  prompt is prefixed with the tender's display code (tenderNumber)
+  + database CUID + an explicit instruction to pass the CUID
+  (not the display code) to tools that take a tenderId parameter.
 - Future personas: Dashboard Master, Captain Operations, Captain
   Scheduler, etc. Added one at a time post-sign-off as each module
   stabilises.

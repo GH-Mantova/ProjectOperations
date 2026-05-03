@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-03 13:00 AEST
+Last updated: 2026-05-03 22:40 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -2417,5 +2417,75 @@ Deviations from spec:
   (2) Included the optional DRY refactor — hoisted
       TENDERING_SUB_MODES to a module-level constant so production
       and test-fixture loops share one source of truth.
+
+Audit findings: none.
+
+## 2026-05-04 09:00 AEST — PR #144 PENDING — feat: inject tender context into Tendering Assistant system prompt
+
+Type: PR
+Status: PENDING (auto-merge requested)
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/144
+Branch: feat/tender-context-system-prompt
+Detail:
+  PR #142 shipped drawing tools; PR #143 bound them across all
+  Tendering Assistant sub-modes; PR #144 closes the human-readable
+  vs CUID gap that surfaced in PR #143's manual smoke step 1. When
+  the user asks "drawings for tender IS-T020", the model used to
+  call list_tender_drawings with `tenderId: "IS-T020"` and the
+  handler rejected as malformed CUID. The model had no way to know
+  "IS-T020" was the display code and the database id was the CUID
+  — that information lived in the chat request payload (contextKey)
+  but never reached the system prompt.
+
+  Built:
+  - resolveSystemPrompt extended with `contextKey: string | null`
+    fourth parameter.
+  - When personaSlug === "tendering" AND subMode is in
+    {tender-detail, scope, estimate, quote, clarifications} AND
+    contextKey is non-null, the prompt is prefixed with a "Current
+    tender context" block that surfaces the tender's display code
+    (tenderNumber, e.g. "IS-T020"), CUID, optional title, and an
+    explicit instruction: pass the CUID to tools, not the code.
+  - The "register" sub-mode is the list view, not tender-scoped —
+    no injection.
+  - Tender lookup is a single indexed `findUnique` on the tenders
+    table. Sub-millisecond. No caching today; revisit if profiling
+    shows a bottleneck.
+  - Failed lookups (contextKey doesn't resolve, DB error) fall
+    through silently. Model still gets tools; just no tender
+    context. Warn-logged for ops debugging.
+
+Counts:
+  - API jest --runInBand: 373/373 (was 361 baseline; +12: 7 in the
+    new "tender context injection (PR #144)" describe block, 5
+    from the parameterised it.each over the five tender-scoped
+    sub-modes; 2 regression skipped without API key).
+  - Lint: clean.
+  - Build: clean.
+  - personas.controller.spec.ts updated for the new 4-arg
+    resolveSystemPrompt call shape.
+
+Manual smoke pending Marco: re-run PR #142's seven-step smoke from
+a FRESH conversation. Pre-PR-143 conversation history is polluted
+with "no tools available" responses; a clean conversation gives
+PR #144 a clean test. Step 1 should now succeed end-to-end: model
+calls list_tender_drawings with the CUID, handler returns drawing
+list, model summarises.
+
+Deviations from spec:
+  (1) Spec test 5 said "non-tendering persona slug". Today only the
+      tendering persona is registered, so an unknown slug throws via
+      the personaRegistry guard before injection logic runs.
+      Re-cast that assertion as: same tendering persona but with
+      sub-mode "register" (non-tender-scoped), which exercises the
+      same gate and proves no injection reaches non-tender-scoped
+      contexts. Documented inline in the test.
+  (2) Spec mentioned an optional integration test for the chat
+      controller — skipped. Unit coverage at the resolveSystemPrompt
+      boundary is comprehensive (7 tests covering all gating
+      conditions plus two graceful-failure modes plus the
+      title-null edge case), and the controller test updated to
+      assert the new 4-arg call shape verifies the
+      controller→service contract end-to-end.
 
 Audit findings: none.

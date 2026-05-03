@@ -248,7 +248,12 @@ export class PersonasController {
       this.logger.log(
         `Chat key source [persona=${slug}, user=${actor.sub}, provider=${config.providerId}, source=${config.source}, conversation=${conversationId}]`
       );
-      const systemPrompt = await this.aiProviders.resolveSystemPrompt(slug, actor.sub, dto.subMode);
+      const systemPrompt = await this.aiProviders.resolveSystemPrompt(
+        slug,
+        actor.sub,
+        dto.subMode,
+        contextKey
+      );
 
       // Multi-turn loop. Dispatcher handles the read-history → call-model
       // → run-tools → write-results cycle up to MAX_TURNS. Side effects

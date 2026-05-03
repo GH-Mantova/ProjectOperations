@@ -18,6 +18,18 @@ import {
 } from "./tools/handlers/test-fixtures.handler";
 import { ToolHandlerRegistry } from "./tools/tool-handler.registry";
 
+// Canonical Tendering Assistant sub-mode list. Mirrors
+// definitions/tendering.persona.ts. Used for tool-binding loops below
+// — keep in sync if the persona definition adds or removes sub-modes.
+const TENDERING_SUB_MODES = [
+  "register",
+  "tender-detail",
+  "scope",
+  "estimate",
+  "quote",
+  "clarifications"
+] as const;
+
 // §5A.1 multi-turn loop: PersonasModule owns the tool-handler registry
 // and registers all production + dev-only handlers in onModuleInit.
 // Each handler implements ToolHandler from tool-handler.types.ts;
@@ -54,20 +66,42 @@ export class PersonasModule implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    // Production handlers — Tendering Assistant scope sub-mode tool list.
-    // Order matches the system prompt's reading-conventions block:
-    //   1. list_tender_drawings (cheap directory)
-    //   2. extract_drawing_titleblock (cheap text-layer)
-    //   3. read_tender_drawing (vision tokens)
-    //   4. propose_scope_items (existing — PR #137 / #141)
+    // Production handlers — register all four globally. Per-sub-mode
+    // exposure is decided by the bindToSubMode calls below.
     this.registry.register(this.listTenderDrawings);
     this.registry.register(this.extractDrawingTitleblock);
     this.registry.register(this.readTenderDrawing);
     this.registry.register(this.proposeScopeItems);
-    this.registry.bindToSubMode("tendering.scope", [
+
+    // Drawing tools are reference material — useful from any Tendering
+    // Assistant sub-mode. A user drafting a quote, clarification, or
+    // estimate may legitimately need to consult a drawing. Bind to all
+    // six sub-modes.
+    //
+    // PR #143 fix: PR #142 bound drawing tools to scope only. The
+    // controller defaults dto.subMode to "register" when the frontend
+    // doesn't specify, so the model received zero tools and asked the
+    // user to paste drawing data manually. Multi-sub-mode binding
+    // restores the intended UX while keeping propose_scope_items
+    // scope-restricted.
+    //
+    // propose_scope_items, by contrast, is scope-creation work. Restrict
+    // it to the scope sub-mode where it belongs. Loose binding would let
+    // the model propose scope items from inside the quote sub-mode,
+    // which is the wrong UX.
+    const drawingTools = [
       this.listTenderDrawings.name,
       this.extractDrawingTitleblock.name,
-      this.readTenderDrawing.name,
+      this.readTenderDrawing.name
+    ];
+    for (const sm of TENDERING_SUB_MODES) {
+      this.registry.bindToSubMode(`tendering.${sm}`, drawingTools);
+    }
+    // propose_scope_items lands only on the scope sub-mode.
+    // bindToSubMode is idempotent (dedups), so this safely extends the
+    // scope binding established by the loop above.
+    this.registry.bindToSubMode("tendering.scope", [
+      ...drawingTools,
       this.proposeScopeItems.name
     ]);
 
@@ -80,8 +114,7 @@ export class PersonasModule implements OnModuleInit {
       this.registry.register(this.getTestImage);
       // Bind to every tendering sub-mode so devs can exercise the loop
       // from any persona route.
-      const tenderingSubModes = ["register", "tender-detail", "scope", "estimate", "quote", "clarifications"];
-      for (const sm of tenderingSubModes) {
+      for (const sm of TENDERING_SUB_MODES) {
         this.registry.bindToSubMode(`tendering.${sm}`, [
           this.getCurrentTime.name,
           this.getTestImage.name

@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-03 12:11 AEST
+Last updated: 2026-05-03 13:00 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -706,6 +706,20 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
      pre-pass that asks the model to summarise the titleblock)
      would be more robust. Defer until the regex approach actually
      misses a real tender.)
+
+⏸️  Frontend sub-mode awareness audit
+    (PR #143 surfaced that the Tendering Assistant chat panel may be
+     sending subMode: "register" regardless of which page the user
+     is on. The personas.controller.ts default at line ~190
+     (`dto.subMode ?? "register"`) handled the missing field by
+     falling through to register, which is why PR #142's drawing
+     tools were never reached: they were scope-bound only. PR #143
+     fixes the binding side; if the frontend is also stuck on
+     "register", that's a separate UX issue (chat panel context
+     mismatch) for PHASE 6 to investigate. Marco to confirm via
+     Network tab during PR #143 smoke retry. Backend fix is
+     independent and sufficient for tools to work; the frontend
+     issue is about UX precision, not functionality.)
 
 ---
 

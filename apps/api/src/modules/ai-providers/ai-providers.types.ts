@@ -17,9 +17,40 @@ export interface ProviderConfig {
   source: "user" | "company";
 }
 
+// §5A.1 multi-turn loop: tool_use blocks accompany text in an assistant
+// turn; tool_result blocks accompany text in a user turn (the synthesised
+// turn the dispatcher inserts after running tools).
+export type ChatToolUseBlock = {
+  type: "tool_use";
+  id: string;
+  name: string;
+  input: unknown;
+};
+
+export type ChatToolResultContent =
+  | { type: "text"; text: string }
+  | {
+      type: "image";
+      mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+      data: string; // base64
+    };
+
+export type ChatToolResultBlock = {
+  type: "tool_result";
+  toolUseId: string;
+  content: ChatToolResultContent[];
+  isError?: boolean;
+};
+
+export type ChatTextBlock = { type: "text"; text: string };
+
+export type ChatMessageBlock = ChatTextBlock | ChatToolUseBlock | ChatToolResultBlock;
+
+// Backward compatible: pre-loop callers pass `content: string`. New
+// loop callers pass `content: ChatMessageBlock[]`. Adapters accept both.
 export interface ChatMessage {
   role: "user" | "assistant";
-  content: string;
+  content: string | ChatMessageBlock[];
 }
 
 export interface ChatRequest {
@@ -38,10 +69,27 @@ export interface ChatRequest {
 // Each chunk is one SSE event on the wire. `done` always arrives last.
 // §5A.1 PR 11 added tool_use_* chunks — both Anthropic and OpenAI providers
 // emit this unified shape so the chat endpoint doesn't branch on provider.
+// Multi-turn loop adds `stop_reason` so the dispatcher knows whether the
+// turn ended naturally or because the model wants to call tools.
 export type ChatStreamChunk =
   | { type: "content"; text: string }
   | { type: "tool_use_start"; id: string; name: string }
   | { type: "tool_use_delta"; id: string; partialJson: string }
   | { type: "tool_use_stop"; id: string; name: string; finalArgs: unknown }
+  | { type: "stop_reason"; reason: "end_turn" | "tool_use" | "max_tokens" | "stop_sequence" | "other" }
   | { type: "error"; error: string }
   | { type: "done" };
+
+// Thrown by streamChat when the requested provider does not support
+// tool calling and the caller passed a non-empty tools array.
+// Personas dispatcher catches this at the loop entry and surfaces a
+// categorised user-facing error.
+export class ToolingNotSupportedError extends Error {
+  constructor(public readonly provider: string) {
+    super(
+      `Tool calling is not yet available for ${provider}. ` +
+        "Switch to Anthropic or OpenAI in your AI Settings."
+    );
+    this.name = "ToolingNotSupportedError";
+  }
+}

@@ -17,14 +17,12 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagg
 import type { Response } from "express";
 import { AiProvidersService } from "../ai-providers/ai-providers.service";
 import { sanitiseProviderError } from "../ai-providers/error-sanitiser";
-import { buildSubModeKey, getToolsForSubMode } from "../ai-providers/tools/tool-registry";
-import type { ProposeScopeItemsArgs } from "../ai-providers/tools/propose-scope-items.tool";
-import { ProposalsService } from "../tendering/scope/proposals.service";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { ConversationsService } from "./conversations.service";
+import { PersonaDispatcherService } from "./dispatcher/persona-dispatcher.service";
 import { PersonaPermissionGuard } from "./persona-permission.guard";
 import { PersonasService } from "./personas.service";
 import { ChatRequestDto, StartConversationDto } from "./dto/chat.dto";
@@ -43,7 +41,7 @@ export class PersonasController {
     private readonly service: PersonasService,
     private readonly aiProviders: AiProvidersService,
     private readonly conversations: ConversationsService,
-    private readonly proposals: ProposalsService
+    private readonly dispatcher: PersonaDispatcherService
   ) {}
 
   @Get("global-settings")
@@ -201,17 +199,15 @@ export class PersonasController {
     res.setHeader("X-Accel-Buffering", "no");
     res.flushHeaders();
 
-    const send = (event: {
-      type: "content" | "error" | "done" | "conversation" | "proposals";
-      [k: string]: unknown;
-    }) => {
+    // Wire SSE event types — kept stable across §5A.1 multi-turn refactor:
+    //   conversation, content (text_delta from dispatcher), proposals
+    //   (side-effect from propose_scope_items handler), error, done.
+    // Multi-turn loop adds tool_use_started + tool_use_completed +
+    // turn_complete for UX hooks (cosmetic frontend work in PHASE 6).
+    const send = (event: { type: string; [k: string]: unknown }) => {
       res.write(`data: ${JSON.stringify(event)}\n\n`);
     };
 
-    // Defence-in-depth: every error path goes through sanitiseProviderError.
-    // The user gets one of six categorised, hardcoded user-facing messages —
-    // never raw provider strings. The full original error text is logged
-    // server-side for ops debugging. Closes CodeQL alert #9.
     const sendSanitisedError = (err: unknown) => {
       const sanitised = sanitiseProviderError(err);
       this.logger.error(
@@ -220,12 +216,9 @@ export class PersonasController {
       send({ type: "error", error: sanitised.userMessage });
     };
 
-    // §5A.1 PR 10: persistence. Resolve or create the conversation BEFORE
-    // streaming, append the latest user message synchronously, and emit
-    // the conversation id as the first SSE event so the client can track
-    // which thread this exchange landed in. Assistant message is appended
-    // only on stream success — failed/interrupted streams don't pollute
-    // history.
+    // §5A.1 PR 10 persistence + multi-turn loop: resolve/create
+    // conversation, append the latest user message, then hand off to
+    // the dispatcher which manages all subsequent turns.
     const subMode = dto.subMode ?? "register";
     const contextKey = dto.contextKey ?? null;
     const lastUser = dto.messages[dto.messages.length - 1];
@@ -243,84 +236,55 @@ export class PersonasController {
       if (lastUser && lastUser.role === "user" && lastUser.content.trim().length > 0) {
         await this.conversations.appendMessage(conversation.id, "user", lastUser.content);
       }
-      send({ type: "conversation", conversationId });
     } catch (err) {
-      // Persistence failure — surface as the categorised "config" or
-      // generic error and stop. We do NOT proceed with the stream because
-      // a successful response we can't save would leave history orphaned.
       sendSanitisedError(err);
       send({ type: "done" });
       res.end();
       return;
     }
 
-    let accumulatedAssistant = "";
     try {
       const config = await this.aiProviders.resolveProviderConfig(actor.sub, slug);
-      // Audit log entry: which key source served this chat. Never logs the
-      // key itself, only the source label ("user" or "company").
       this.logger.log(
         `Chat key source [persona=${slug}, user=${actor.sub}, provider=${config.providerId}, source=${config.source}, conversation=${conversationId}]`
       );
       const systemPrompt = await this.aiProviders.resolveSystemPrompt(slug, actor.sub, dto.subMode);
-      // §5A.1 PR 11: tool calling. Sub-mode-specific tool registry; both
-      // Anthropic and OpenAI providers translate to native format.
-      const tools = getToolsForSubMode(buildSubModeKey(slug, dto.subMode));
-      const stream = this.aiProviders.streamChat({
-        systemPrompt,
-        messages: dto.messages,
-        config,
-        tools: tools.length > 0 ? tools : undefined
-      });
 
-      let streamFailed = false;
-      for await (const chunk of stream) {
-        if (chunk.type === "error") {
-          // Provider-level error chunk — sanitise its text rather than
-          // forwarding raw provider output.
-          sendSanitisedError(chunk.error);
-          streamFailed = true;
-          break;
+      // Multi-turn loop. Dispatcher handles the read-history → call-model
+      // → run-tools → write-results cycle up to MAX_TURNS. Side effects
+      // (e.g. propose_scope_items SSE) come back as tool_side_effect
+      // events that we forward verbatim to preserve the PR #137 wire
+      // shape that the frontend ProposalCardList depends on.
+      for await (const event of this.dispatcher.dispatch({
+        conversationId: conversationId!,
+        personaSlug: slug,
+        subMode,
+        contextKey,
+        systemPrompt,
+        config,
+        actor
+      })) {
+        if (event.type === "text_delta") {
+          send({ type: "content", text: event.text });
+        } else if (event.type === "tool_side_effect") {
+          // Side-effect SSE events flow with their original event name
+          // (e.g. propose_scope_items handler emits event="proposals" so
+          // the wire shape matches PR #137 exactly).
+          send({ type: event.event, ...event.data });
+        } else if (event.type === "conversation") {
+          send({ type: "conversation", conversationId: event.conversationId });
+        } else if (event.type === "tool_use_started") {
+          send({ type: "tool_use_started", toolUseId: event.toolUseId, name: event.name });
+        } else if (event.type === "tool_use_completed") {
+          send({ type: "tool_use_completed", toolUseId: event.toolUseId, name: event.name });
+        } else if (event.type === "error") {
+          send({ type: "error", error: event.error });
+        } else if (event.type === "done") {
+          send({ type: "done" });
         }
-        if (chunk.type === "content") {
-          accumulatedAssistant += chunk.text;
-          send({ type: "content", text: chunk.text });
-        } else if (chunk.type === "tool_use_start" || chunk.type === "tool_use_delta") {
-          // No client-facing UI for partial tool args today — swallow.
-          continue;
-        } else if (chunk.type === "tool_use_stop") {
-          if (chunk.name === "propose_scope_items" && conversationId) {
-            try {
-              const args = chunk.finalArgs as ProposeScopeItemsArgs;
-              const stored = await this.proposals.storeProposals(conversationId, chunk.id, args);
-              send({
-                type: "proposals",
-                messageId: stored.message.id,
-                proposals: stored.proposals
-              });
-            } catch (err) {
-              this.logger.error(
-                `Proposal store failed [conversation=${conversationId}, tool=${chunk.id}]: ${(err as Error).message}`
-              );
-              send({ type: "error", error: "Could not save the AI's proposals — please try again." });
-              streamFailed = true;
-              break;
-            }
-          }
-        } else if (chunk.type === "done") {
-          // ai-providers.service yields a final done; we emit our own below.
-          continue;
-        }
+        // turn_complete is internal to the dispatcher; not surfaced to
+        // the client today.
       }
-      if (!streamFailed && accumulatedAssistant.length > 0 && conversationId) {
-        await this.conversations.appendMessage(
-          conversationId,
-          "assistant",
-          accumulatedAssistant,
-          { model: config.model, providerSource: config.source }
-        );
-      }
-      send({ type: "done" });
     } catch (err) {
       sendSanitisedError(err);
       send({ type: "done" });

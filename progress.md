@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-03 08:04 AEST
+Last updated: 2026-05-03 10:28 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -2158,5 +2158,100 @@ Deviations from spec:
       comment served its purpose as the BLOCKED-PR investigation
       record but is no longer needed once the BLOCKED columns are
       dropped.
+
+Audit findings: none.
+
+## 2026-05-03 20:25 AEST — PR #141 PENDING — feat(§5A.1 Item 5): multi-turn agent loop foundation
+
+Type: PR
+Status: PENDING (auto-merge requested)
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/141
+Branch: feat/persona-multiturn-loop
+Detail:
+  Foundation work for §5A.1 Item 5 second-half tools. Discovered
+  via PR #140 BLOCKED finding that the dispatcher had no multi-turn
+  loop. Closes PR #140.
+
+  Built per locked decisions from MAIN chat 2026-05-03 evening:
+    - ToolHandlerRegistry — DI singleton, register() +
+      bindToSubMode() pattern, schemasForSubMode() for the model API.
+    - tool-handler.types.ts — provider-agnostic ToolHandler
+      interface, ToolResult with text+image content, ToolSideEffect
+      for SSE events alongside the result going back to the model.
+    - PersonaDispatcherService — the multi-turn loop. 10-turn cap,
+      8-parallel-call cap, error-as-tool-result policy. Yields
+      DispatcherEvent stream the controller pipes to SSE response.
+    - Anthropic provider: serializeMessagesForAnthropic handles
+      assistant tool_use blocks + user tool_result blocks (text +
+      image base64 source). Stop_reason chunk emitted from
+      message_delta events.
+    - OpenAI provider: serializeMessagesForOpenAI handles assistant
+      tool_calls + tool-role messages + synthesised follow-up user
+      image_url messages for image content (OpenAI's tool messages
+      are text-only). Stop_reason chunk emitted from finish_reason.
+    - ToolingNotSupportedError thrown by streamChat when a
+      non-Anthropic/OpenAI provider is asked to use tools.
+    - Schema migration:
+      20260503201222_feat_persona_message_visibility — visibility
+      column on conversation_messages (default USER, INTERNAL for
+      tool_use-bearing assistant turns and tool_result rows so they
+      stay out of UI replay but remain available for model context).
+    - ConversationsService extended: loadConversation filters to
+      USER, loadAllMessages returns all rows for the loop's history
+      rebuild, appendMessage takes richer metadata.
+    - propose_scope_items migrated to the registry. SSE event
+      preserved verbatim (event="proposals" wire shape per PR #137).
+      Persistence preserved verbatim. Model now also receives a
+      textual confirmation as the tool result.
+    - Test fixture handlers in non-prod only:
+      _test_get_current_time, _test_get_test_image. Bound to every
+      tendering sub-mode for dev/CI exercise.
+    - PersonasController.chat refactored: persistence + lifecycle
+      stays in the controller; turn-by-turn loop logic moved to
+      the dispatcher. SSE wire shape preserved.
+
+Counts:
+  - API jest --runInBand: 328/328 (was 308 baseline; +20 across
+    8 dispatcher + 6 anthropic-tool-result + 6 openai-tool-result).
+  - Web vitest: 264/264 (no change).
+  - Lint api + web: clean.
+  - Build: clean.
+  - compliance:smoke: passed.
+  - Playwright tendering: 15/15 (chromium + firefox + webkit).
+  - Migration: applied via db-execute + migrate-resolve protocol per
+    PR #117/#134/#136/#137/#139.
+
+Manual smoke pending Marco:
+  1. "What time is it on the server right now?" →
+     _test_get_current_time tool call → server time reported.
+     DevTools shows tool_use_started/tool_use_completed SSE events.
+  2. Existing scope drafting flow → propose_scope_items still emits
+     SSE proposals event → cards still render via PR #137 UI.
+  3. "Get the test image and tell me what you see" →
+     _test_get_test_image returns 1×1 PNG → model describes it.
+  4. Multi-tool turn ("what time is it AND get the test image") →
+     dispatcher executes both in parallel → results in turn 2.
+
+PR #140 closed by this PR. §5A.1 Item 5 progress: ~35% — loop
+shipped, drawing tools (PR-β) and 4 more tools remaining.
+
+Deviations from spec:
+  (1) prisma migrate dev rejected (recurring drift). Wrote SQL
+      manually + db-execute + migrate-resolve protocol.
+  (2) Prisma engine .dll did not refresh on `prisma generate`
+      (Windows file-lock from PR #138 doc). Harmless for ADD
+      COLUMN — verified runtime queries succeed.
+  (3) Live in-browser smoke pending Marco (matches PR #137/#138/#139).
+  (4) ProposeScopeItemsHandler synthesises a tool_use_id rather than
+      threading the streaming-chunk id (handlers don't see chunk ids
+      today). Functionally identical; can be added to
+      ToolHandlerContext later without breaking handlers.
+  (5) Playwright first-run port conflict — killed lingering
+      compliance-smoke API process via PowerShell, re-ran 15/15.
+      Register-stats-bar Firefox flake from prior PRs did not
+      recur.
+  (6) Frontend rendering of new tool_use_started/tool_use_completed
+      events deferred to PHASE 6 cosmetic PR — dispatcher emits,
+      UI ignores until visual indicators are added.
 
 Audit findings: none.

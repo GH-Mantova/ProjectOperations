@@ -3375,7 +3375,18 @@ model ConversationMessage {
   // §5A.1 PR 11 — structured payload for tool-related messages. Null for
   // plain text messages. For tool_call: { toolUseId, name, arguments }.
   // For tool_result: { toolUseId, proposals: [{...status, acceptedScopeItemId?...}] }.
+  // Multi-turn loop also stores tool_use_id + tool name + result content
+  // here so an assistant turn with tool_use blocks and a synthesised user
+  // turn with tool_result blocks can be replayed accurately.
   metadata       Json?    @db.JsonB
+  // §5A.1 multi-turn loop: USER messages are visible in the UI replay;
+  // INTERNAL messages (assistant turns whose only purpose was emitting
+  // tool_use blocks, plus synthesised user turns carrying tool_result
+  // blocks) are kept for model context but hidden from UI replay so the
+  // user only sees their own messages and the model's final
+  // human-facing responses. Default USER preserves PR #136 + #137 row
+  // semantics for any pre-existing rows.
+  visibility     String   @default("USER")
   createdAt      DateTime @default(now()) @map("created_at")
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)

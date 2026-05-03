@@ -1,5 +1,128 @@
-import type { ChatRequest, ChatStreamChunk } from "../ai-providers.types";
+import type {
+  ChatMessage,
+  ChatMessageBlock,
+  ChatRequest,
+  ChatStreamChunk
+} from "../ai-providers.types";
 import { toolsToOpenAIFormat } from "../tools/translation";
+
+const VALID_IMAGE_MEDIA_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif"
+]);
+
+// Translate provider-agnostic ChatMessage[] to OpenAI's wire shape.
+// OpenAI is more constrained than Anthropic: tool results live on a
+// `tool` role message with text-only content. Image content from a
+// tool_result block has to be split out into a synthesised follow-up
+// `user` role message with an image_url block, because OpenAI's tool
+// message does not accept image content. The follow-up message is
+// inserted immediately after the tool message so the model sees them
+// as a contiguous unit.
+//
+// Legacy callers passing string content continue to work — pass-through.
+export function serializeMessagesForOpenAI(
+  systemPrompt: string | null,
+  messages: ChatMessage[]
+): Array<Record<string, unknown>> {
+  const out: Array<Record<string, unknown>> = [];
+  if (systemPrompt) {
+    out.push({ role: "system", content: systemPrompt });
+  }
+  for (const m of messages) {
+    if (typeof m.content === "string") {
+      out.push({ role: m.role, content: m.content });
+      continue;
+    }
+    // Block content: split per OpenAI's role rules.
+    const toolUseBlocks = m.content.filter(
+      (b): b is Extract<ChatMessageBlock, { type: "tool_use" }> => b.type === "tool_use"
+    );
+    const textBlocks = m.content.filter(
+      (b): b is Extract<ChatMessageBlock, { type: "text" }> => b.type === "text"
+    );
+    const toolResultBlocks = m.content.filter(
+      (b): b is Extract<ChatMessageBlock, { type: "tool_result" }> => b.type === "tool_result"
+    );
+
+    if (m.role === "assistant" && toolUseBlocks.length > 0) {
+      // Assistant turn with tool_use blocks → assistant message with
+      // tool_calls array (function calling format) plus optional content.
+      out.push({
+        role: "assistant",
+        content: textBlocks.map((b) => b.text).join("") || null,
+        tool_calls: toolUseBlocks.map((b) => ({
+          id: b.id,
+          type: "function",
+          function: { name: b.name, arguments: JSON.stringify(b.input ?? {}) }
+        }))
+      });
+      continue;
+    }
+
+    if (m.role === "user" && toolResultBlocks.length > 0) {
+      // User-role synthesised turn with tool results → emit one `tool`
+      // message per tool_result, plus follow-up user image_url messages
+      // for any image content. Text from tool_result text content goes
+      // into the tool message's content field; images go into the
+      // follow-up.
+      const followUpImages: Array<Record<string, unknown>> = [];
+      for (const tr of toolResultBlocks) {
+        const textParts: string[] = [];
+        for (const c of tr.content) {
+          if (c.type === "text") {
+            textParts.push(c.text);
+          } else {
+            // image
+            if (!VALID_IMAGE_MEDIA_TYPES.has(c.mediaType)) {
+              throw new Error(
+                `Invalid image media type for OpenAI tool_result: ${c.mediaType}. ` +
+                  "Must be one of image/png, image/jpeg, image/webp, image/gif."
+              );
+            }
+            followUpImages.push({
+              type: "image_url",
+              image_url: { url: `data:${c.mediaType};base64,${c.data}` }
+            });
+          }
+        }
+        const toolMessage: Record<string, unknown> = {
+          role: "tool",
+          tool_call_id: tr.toolUseId,
+          content: textParts.join("\n") || "(no text content)"
+        };
+        if (tr.isError) {
+          // OpenAI tool messages have no native is_error flag — prepend
+          // a marker so the model sees something distinct.
+          toolMessage.content = `[tool error] ${toolMessage.content as string}`;
+        }
+        out.push(toolMessage);
+        if (followUpImages.length > 0) {
+          out.push({
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Image attachment(s) from the previous tool call(s):"
+              },
+              ...followUpImages
+            ]
+          });
+          followUpImages.length = 0;
+        }
+      }
+      continue;
+    }
+
+    // Mixed/text-only block message — flatten to plain content.
+    if (textBlocks.length > 0) {
+      out.push({ role: m.role, content: textBlocks.map((b) => b.text).join("") });
+    }
+  }
+  return out;
+}
 
 // Model is supplied via ChatRequest.config.model; the default lives in
 // PlatformConfigService.DEFAULT_MODELS.openai. Don't duplicate it here.
@@ -22,13 +145,7 @@ const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 // stream as JSON-string fragments; we accumulate per call index and emit
 // tool_use_stop when the stream finishes with finish_reason 'tool_calls'.
 export async function* streamOpenAIChat(request: ChatRequest): AsyncIterable<ChatStreamChunk> {
-  const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [];
-  if (request.systemPrompt) {
-    messages.push({ role: "system", content: request.systemPrompt });
-  }
-  for (const m of request.messages) {
-    messages.push({ role: m.role, content: m.content });
-  }
+  const messages = serializeMessagesForOpenAI(request.systemPrompt ?? null, request.messages);
 
   const body: Record<string, unknown> = {
     model: request.config.model,
@@ -223,6 +340,25 @@ export function parseOpenAIEvent(
       out.push({ type: "tool_use_stop", id: state.id, name: state.name, finalArgs });
     }
     toolCallState.clear();
+  }
+
+  // Multi-turn loop: emit a stop_reason chunk when the assistant turn
+  // closes. OpenAI's finish_reason values: 'stop' | 'length' |
+  // 'tool_calls' | 'content_filter' | 'function_call' (legacy).
+  // Map to the unified stop_reason union.
+  if (typeof choice.finish_reason === "string" && choice.finish_reason.length > 0) {
+    const reason = choice.finish_reason;
+    out.push({
+      type: "stop_reason",
+      reason:
+        reason === "stop"
+          ? "end_turn"
+          : reason === "tool_calls"
+            ? "tool_use"
+            : reason === "length"
+              ? "max_tokens"
+              : "other"
+    });
   }
 
   return out;

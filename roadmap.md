@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-03 13:00 AEST
+Last updated: 2026-05-03 22:40 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -201,6 +201,26 @@ route (scope mode = drafting tools; quote mode = advisory; etc.).
    drawings. ToolHandlerContext.toolUseId added (PR #141 deviation
    fix). Hard regression test against real Anthropic API
    (CI-safe — skips when key absent).
+
+   PR #143 shipped: drawing tools bound to all six Tendering
+   Assistant sub-modes (drawings are reference material, useful
+   from any context); propose_scope_items remained scope-only.
+   Hoisted TENDERING_SUB_MODES constant. 13 binding assertions.
+   Closed the PR #142 step-1 smoke failure (tools not reaching
+   the model when subMode defaulted to "register").
+
+   PR #144 shipped: tender-context injection in the system prompt.
+   When a tender-scoped sub-mode (tender-detail / scope / estimate
+   / quote / clarifications) has a contextKey, the prompt is
+   prefixed with the tender's display code (tenderNumber) + CUID
+   + an explicit instruction to pass the CUID to tools, not the
+   code. Fixes the PR #143 follow-up where the model called
+   list_tender_drawings with "IS-T020" (display code) and was
+   rejected as malformed CUID.
+
+   Drawing-tools sub-task gates (PR #142 + #143 + #144) are now
+   all complete on the backend; pending Marco's manual smoke from
+   a fresh conversation to confirm end-to-end.
 
    Remaining in this Item 5 sub-area:
    - PR B: delete legacy "Draft scope with Claude" code path.
@@ -707,19 +727,15 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
      would be more robust. Defer until the regex approach actually
      misses a real tender.)
 
-⏸️  Frontend sub-mode awareness audit
-    (PR #143 surfaced that the Tendering Assistant chat panel may be
-     sending subMode: "register" regardless of which page the user
-     is on. The personas.controller.ts default at line ~190
-     (`dto.subMode ?? "register"`) handled the missing field by
-     falling through to register, which is why PR #142's drawing
-     tools were never reached: they were scope-bound only. PR #143
-     fixes the binding side; if the frontend is also stuck on
-     "register", that's a separate UX issue (chat panel context
-     mismatch) for PHASE 6 to investigate. Marco to confirm via
-     Network tab during PR #143 smoke retry. Backend fix is
-     independent and sufficient for tools to work; the frontend
-     issue is about UX precision, not functionality.)
+✅  Frontend sub-mode awareness audit (resolved 2026-05-04)
+    Network trace from PR #143 manual smoke confirmed the frontend
+    chat panel correctly inherits sub-mode from route context
+    (tender-detail, scope, etc.). The "register" default at
+    personas.controller.ts only fires when subMode is genuinely
+    omitted, which is the correct behaviour. No frontend audit
+    needed — hypothesis from PR #143 was wrong. PR #144 closed the
+    next layer (model receives tools but couldn't resolve
+    tender-number → CUID).
 
 ---
 
@@ -961,3 +977,21 @@ deviation fix). Six new PHASE 6 deferrals captured: asbestos
 register reading tool, drawing/titleblock cache, DWG/Revit support,
 per-provider handler guards, pdfjs-dist v4 migration, structured
 field extraction.
+
+### 2026-05-04 morning — Tender-context system prompt injection (§5A.1 Item 5)
+PR #144 closed the human-readable code vs database CUID gap that
+PR #143 exposed during manual smoke. Model used to call
+list_tender_drawings with "IS-T020" and get rejected as malformed
+CUID; the fix prefixes the system prompt with a "Current tender
+context" block when the user is in a tender-scoped sub-mode and
+the chat request has a contextKey. Block surfaces the tender's
+tenderNumber (display code), CUID, optional title, and an
+explicit instruction to pass the CUID to tools. Five tender-scoped
+sub-modes inject (tender-detail / scope / estimate / quote /
+clarifications); register does not (it's the list view). Twelve
+new tests covering injection conditions and graceful failure
+modes. Drawing-tools sub-task gates (PR #142 + #143 + #144) now
+complete pending Marco's fresh-conversation smoke. The PR #143
+PHASE 6 carry-forward "frontend sub-mode awareness audit" closed
+as resolved — network trace confirmed the frontend is sub-mode-
+aware after all.

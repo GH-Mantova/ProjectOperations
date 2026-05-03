@@ -19,6 +19,8 @@ function buildPrismaMock(overrides: {
     anthropicKeyEncrypted?: string | null;
     openaiKeyEncrypted?: string | null;
   } | null;
+  tenderRow?: { id: string; tenderNumber: string; title: string | null } | null;
+  tenderLookupError?: Error;
 }) {
   const personaFindUnique = jest.fn(async () =>
     overrides.personaRow === null ? null : overrides.personaRow ?? TENDERING_ROW
@@ -44,12 +46,17 @@ function buildPrismaMock(overrides: {
       openaiKeyEncrypted: overrides.userRow.openaiKeyEncrypted ?? null
     };
   });
+  const tenderFindUnique = jest.fn(async () => {
+    if (overrides.tenderLookupError) throw overrides.tenderLookupError;
+    return overrides.tenderRow === undefined ? null : overrides.tenderRow;
+  });
   const prisma = {
     persona: { findUnique: personaFindUnique },
     personaCompanyInstruction: { findUnique: personaCompanyInstructionFindUnique },
     userPersonaSettings: { findUnique: userPersonaSettingsFindUnique },
     globalAISettings: { findUnique: globalAISettingsFindUnique },
-    user: { findUnique: userFindUnique }
+    user: { findUnique: userFindUnique },
+    tender: { findUnique: tenderFindUnique }
   } as never;
   return prisma;
 }
@@ -530,6 +537,150 @@ describe("AiProvidersService.resolveSystemPrompt", () => {
     await expect(service.resolveSystemPrompt("nonexistent", "user-1")).rejects.toBeInstanceOf(
       ServiceUnavailableException
     );
+  });
+
+  // PR #144 — tender context injection.
+  describe("tender context injection (PR #144)", () => {
+    const tender = { id: "cuid-xyz", tenderNumber: "IS-T020", title: "School Refurb" };
+
+    it("injects tender context when sub-mode is tender-detail and contextKey resolves", async () => {
+      const service = new AiProvidersService(
+        buildPrismaMock({ tenderRow: tender }),
+        buildPlatformConfig(),
+        buildEncryption()
+      );
+      const prompt = await service.resolveSystemPrompt(
+        "tendering",
+        "user-1",
+        "tender-detail",
+        "cuid-xyz"
+      );
+      expect(prompt).toContain("Current tender context");
+      expect(prompt).toContain("IS-T020");
+      expect(prompt).toContain("cuid-xyz");
+      expect(prompt).toContain("School Refurb");
+      expect(prompt).toContain("pass the **CUID**");
+    });
+
+    it.each(["tender-detail", "scope", "estimate", "quote", "clarifications"])(
+      "injects tender context for tender-scoped sub-mode %s",
+      async (subMode) => {
+        const service = new AiProvidersService(
+          buildPrismaMock({ tenderRow: tender }),
+          buildPlatformConfig(),
+          buildEncryption()
+        );
+        const prompt = await service.resolveSystemPrompt(
+          "tendering",
+          "user-1",
+          subMode,
+          "cuid-xyz"
+        );
+        expect(prompt).toContain("IS-T020");
+        expect(prompt).toContain("cuid-xyz");
+      }
+    );
+
+    it("does NOT inject tender context when sub-mode is 'register'", async () => {
+      const service = new AiProvidersService(
+        buildPrismaMock({ tenderRow: tender }),
+        buildPlatformConfig(),
+        buildEncryption()
+      );
+      const prompt = await service.resolveSystemPrompt(
+        "tendering",
+        "user-1",
+        "register",
+        "cuid-xyz"
+      );
+      expect(prompt).not.toContain("Current tender context");
+      expect(prompt).not.toContain("IS-T020");
+    });
+
+    it("does NOT inject tender context when contextKey is null", async () => {
+      const service = new AiProvidersService(
+        buildPrismaMock({ tenderRow: tender }),
+        buildPlatformConfig(),
+        buildEncryption()
+      );
+      const prompt = await service.resolveSystemPrompt(
+        "tendering",
+        "user-1",
+        "tender-detail",
+        null
+      );
+      expect(prompt).not.toContain("Current tender context");
+    });
+
+    it("does NOT inject tender context when persona slug is not 'tendering'", async () => {
+      // No "safety" persona is registered today, so we expect throw on
+      // the slug lookup. The injection guard wouldn't even be reached.
+      // Pin the broader invariant: any non-tendering persona slug that
+      // somehow does have a tender contextKey passed in must NOT get
+      // tender context. Use the registered "tendering" slug + a sub-mode
+      // not in the tender-scoped set as the cleanest equivalent assertion.
+      const service = new AiProvidersService(
+        buildPrismaMock({ tenderRow: tender }),
+        buildPlatformConfig(),
+        buildEncryption()
+      );
+      const prompt = await service.resolveSystemPrompt(
+        "tendering",
+        "user-1",
+        "register", // non-tender-scoped — same effect as wrong persona
+        "cuid-xyz"
+      );
+      expect(prompt).not.toContain("Current tender context");
+    });
+
+    it("falls back gracefully when tender lookup returns null (contextKey doesn't resolve)", async () => {
+      const service = new AiProvidersService(
+        buildPrismaMock({ tenderRow: null }),
+        buildPlatformConfig(),
+        buildEncryption()
+      );
+      const prompt = await service.resolveSystemPrompt(
+        "tendering",
+        "user-1",
+        "tender-detail",
+        "cuid-not-real"
+      );
+      expect(prompt).not.toContain("Current tender context");
+      // Base prompt still composed — no throw.
+      expect(prompt).toContain("Tendering Assistant");
+    });
+
+    it("falls back gracefully when tender lookup throws", async () => {
+      const service = new AiProvidersService(
+        buildPrismaMock({ tenderLookupError: new Error("DB down") }),
+        buildPlatformConfig(),
+        buildEncryption()
+      );
+      const prompt = await service.resolveSystemPrompt(
+        "tendering",
+        "user-1",
+        "tender-detail",
+        "cuid-xyz"
+      );
+      expect(prompt).not.toContain("Current tender context");
+      expect(prompt).toContain("Tendering Assistant");
+    });
+
+    it("handles tender with null title (omits the dash-quote suffix)", async () => {
+      const service = new AiProvidersService(
+        buildPrismaMock({ tenderRow: { id: "cuid-xyz", tenderNumber: "IS-T020", title: null } }),
+        buildPlatformConfig(),
+        buildEncryption()
+      );
+      const prompt = await service.resolveSystemPrompt(
+        "tendering",
+        "user-1",
+        "tender-detail",
+        "cuid-xyz"
+      );
+      expect(prompt).toContain("**IS-T020**.");
+      expect(prompt).not.toContain('"null"');
+    });
   });
 });
 

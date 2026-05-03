@@ -166,7 +166,7 @@ describe("PersonasController.chat", () => {
       actor as never,
       res as never
     );
-    expect(resolveSystemPrompt).toHaveBeenCalledWith("tendering", "user-1", "scope");
+    expect(resolveSystemPrompt).toHaveBeenCalledWith("tendering", "user-1", "scope", null);
   });
 
   it("emits a sanitised error event when resolveProviderConfig throws (e.g. missing key)", async () => {

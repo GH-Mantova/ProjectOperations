@@ -170,8 +170,26 @@ export class AiProvidersService {
     return (await this.platformConfig.getModel(provider)) || DEFAULT_MODELS[provider];
   }
 
-  // Builds the system prompt sent to the AI. Three layers, concatenated with
+  // PR #144 — sub-modes that operate on a single specific tender. When
+  // the user is in one of these AND a contextKey is present, the system
+  // prompt is prefixed with a "Current tender context" block so the
+  // model knows the tender's display code (what the user calls it,
+  // e.g. "IS-T020") AND its database CUID (what tools require as
+  // tenderId). The "register" sub-mode is the list view, not
+  // tender-scoped — no injection.
+  private static readonly TENDER_SCOPED_SUB_MODES: ReadonlySet<string> = new Set([
+    "tender-detail",
+    "scope",
+    "estimate",
+    "quote",
+    "clarifications"
+  ]);
+
+  // Builds the system prompt sent to the AI. Layers, concatenated with
   // double newlines, in order:
+  //   0. Tender context block (PR #144) — prepended only when
+  //      personaSlug === "tendering", subMode is tender-scoped, and
+  //      contextKey resolves to a real tender.
   //   1. Persona's intrinsic prompt (definition + sub-mode description)
   //   2. Sean's company instruction (PersonaCompanyInstruction.instruction)
   //   3. User's personal instruction (UserPersonaSettings.instructionOverride),
@@ -179,7 +197,8 @@ export class AiProvidersService {
   async resolveSystemPrompt(
     personaSlug: string,
     userId: string,
-    activeSubMode?: string | null
+    activeSubMode?: string | null,
+    contextKey?: string | null
   ): Promise<string> {
     const persona = getPersonaBySlug(personaSlug);
     if (!persona) {
@@ -213,7 +232,46 @@ export class AiProvidersService {
       }
     }
 
-    return layers.join("\n\n");
+    let composed = layers.join("\n\n");
+
+    // Tender context injection — gated on tendering persona +
+    // tender-scoped sub-mode + contextKey present. Failed lookups
+    // fall through silently (model still gets tools; just no
+    // tender context). See class doc comment above for rationale.
+    if (
+      personaSlug === "tendering" &&
+      activeSubMode &&
+      AiProvidersService.TENDER_SCOPED_SUB_MODES.has(activeSubMode) &&
+      contextKey
+    ) {
+      const tender = await this.lookupTenderForContext(contextKey);
+      if (tender) {
+        composed = `${buildTenderContextBlock(tender)}\n\n${composed}`;
+      }
+    }
+
+    return composed;
+  }
+
+  // Single indexed findUnique on the tenders table — sub-millisecond.
+  // Runs once per chat message in the tender-scoped flow. No caching
+  // today; revisit if profiling shows it as a bottleneck.
+  private async lookupTenderForContext(
+    contextKey: string
+  ): Promise<{ id: string; tenderNumber: string; title: string | null } | null> {
+    try {
+      return await this.prisma.tender.findUnique({
+        where: { id: contextKey },
+        select: { id: true, tenderNumber: true, title: true }
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Failed to look up tender by contextKey=${contextKey}: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+      return null;
+    }
   }
 
   // Dispatches to the correct provider implementation.
@@ -240,6 +298,33 @@ export class AiProvidersService {
     // implementation lands.
     return errorStream(`Provider ${request.config.providerId} not implemented.`);
   }
+}
+
+// PR #144 — see resolveSystemPrompt's tender context injection.
+function buildTenderContextBlock(tender: {
+  id: string;
+  tenderNumber: string;
+  title: string | null;
+}): string {
+  const titlePart = tender.title ? ` — "${tender.title}"` : "";
+  return [
+    "## Current tender context",
+    "",
+    `You are currently working on tender **${tender.tenderNumber}**${titlePart}.`,
+    "",
+    `The database identifier (CUID) for this tender is: \`${tender.id}\``,
+    "",
+    "When you use tools that require a `tenderId` parameter (such as",
+    `\`list_tender_drawings\`), pass the **CUID** (\`${tender.id}\`), NOT the`,
+    `human-readable code (\`${tender.tenderNumber}\`). The user will refer to this`,
+    "tender by its code in conversation, but tool parameters must use the",
+    "CUID.",
+    "",
+    "If the user asks about a different tender by code (e.g. another",
+    "IS-T### number), explain that you can only see the currently-loaded",
+    "tender context. They would need to navigate to the other tender to",
+    "discuss it."
+  ].join("\n");
 }
 
 function intrinsicPrompt(persona: PersonaDefinition, subMode: PersonaSubMode | null): string {

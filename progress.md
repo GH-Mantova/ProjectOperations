@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-02 23:04 AEST
+Last updated: 2026-05-03 00:04 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -1604,3 +1604,66 @@ Manual smoke pending Marco:
 Audit findings: none. The audit M1 item (Xero error sanitisation)
 deferred from PR #133 is still outstanding — its own PR will
 follow.
+
+## 2026-05-03 10:03 AEST — PR #135 MERGED — fix: M1 — sanitise Xero service errors
+
+Type: PR (FIX)
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/135
+Branch: fix/xero-error-sanitisation
+Detail: Closes audit Major M1 (2026-05-02 system audit). Three
+catch blocks in apps/api/src/modules/xero/xero.service.ts now
+route upstream Xero errors through sanitiseProviderError (PR #131
+helper) — categorised user message in the BadRequestException,
+full original error logged server-side with category prefix and
+stored in xeroSyncLog.errorText for ops debugging. Same defence-
+in-depth pattern as PR #131 (chat endpoint) and PR #134 (BYOK
+key validation). Frontend rendering remains JSX (auto-escaped)
+so this was not exploitable today; the fix is structural defence-
+in-depth at the API boundary.
+
+Audit said 4 reflection sites (lines 220, 282, 309, 378). On
+inspection, line 220 was already safe (throws hardcoded
+ServiceUnavailableException, no upstream text reflected). Three
+sites actually needed the fix:
+  - syncContact catch (was: `Xero sync failed: ${message}`)
+  - syncAllContacts catch (was: `error: err.message` in results)
+  - createInvoiceFromProgressClaim catch
+    (was: `Xero invoice push failed: ${message}`)
+
+Each now uses the sanitised user message with feature prefix
+preserved ("Xero sync:", "Xero invoice push:"). Logger was already
+injected on the service (no constructor change needed).
+
+12 new tests in xero.service.spec.ts (new file, no prior xero
+coverage):
+- Defence-in-depth contract: no <script>, no HTML attribute
+  injection, prefix preservation across shapes
+- Category mapping for shapes sanitiseProviderError recognises:
+  rate-limit (keyword), network (ECONNREFUSED), auth
+  (unauthorized keyword), unknown (fallthrough)
+- Server-side observability: full original logged with category
+  prefix; full original stored in xeroSyncLog.errorText
+- Bulk sync results aggregation also sanitised
+
+Counts: 258/258 API (was 246; +12 xero tests). 192/192 web
+(unchanged). Pre-PR 7/7 green: lint x2 (clean), test x2, build,
+compliance:smoke, playwright tendering (5/5).
+
+Deviations:
+(1) Audit listed 4 reflection lines; in practice only 3 needed
+    changes (line 220 was already safe — hardcoded
+    ServiceUnavailableException, no upstream text). Updated audit
+    expectation in PR body.
+(2) Tests verify the defence-in-depth contract (no raw text
+    reaches the thrown message) rather than presuming specific
+    category mapping for every error shape. The helper's
+    `extractStatusCode` regex is hardcoded to Anthropic/OpenAI,
+    so Xero status-only errors fall through to "unknown" — the
+    audit explicitly notes fallthrough to unknown is acceptable.
+    Helper not modified per spec ADDENDUM.
+
+Audit findings: none new. M1 closed. The audit's other
+observations (SharePoint o5, Email o6) remain acceptable as-is
+per the audit verdict — admin-only debugging endpoints with
+upstream-supplied error text from Microsoft/SMTP libraries.

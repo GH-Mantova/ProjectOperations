@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-02 23:04 AEST
+Last updated: 2026-05-03 00:04 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -365,6 +365,19 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     (js/xss-through-dom on FormSubmitPage.tsx:459, the same false
     positive as previously-dismissed #6) — proper inline `codeql[…]`
     suppression directive applied + dismissed via gh API.
+✅  Audit M1 — Xero error sanitisation (2026-05-02 system audit)
+    Closed by PR #135. Same defence-in-depth pattern as PR #131
+    extended to xero.service.ts catch blocks. Three reflection
+    sites (syncContact, syncAllContacts results aggregation,
+    createInvoiceFromProgressClaim) now route upstream errors
+    through sanitiseProviderError. BadRequestException carries the
+    categorised user message with "Xero sync:" / "Xero invoice
+    push:" prefix; full original error logged server-side with
+    category prefix and stored in xeroSyncLog.errorText. Frontend
+    rendering remains JSX (auto-escaped) so this was not exploitable
+    today — the fix is structural defence-in-depth at the API
+    boundary. 12 new tests verify no raw text reaches the thrown
+    message across script/HTML/keyword/network/unknown shapes.
 ⏸️  Form drafts — Phase 2 (admin CRUD wiring)
     (Phase 1 shipped foundation + 6 user-facing forms in PR #111. ~20
      admin CRUD pages — UsersPage, RolesPage, SubcontractorsPage modals,

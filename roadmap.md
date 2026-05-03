@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-03 00:43 AEST
+Last updated: 2026-05-03 05:50 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -162,7 +162,7 @@ route (scope mode = drafting tools; quote mode = advisory; etc.).
     validation methods (throw "not yet implemented" until those
     providers ship).)
 
-🔲 Tendering Assistant persona — sub-mode tooling
+◐ Tendering Assistant persona — sub-mode tooling (PARTIAL — PR #137)
    (Pipeline mode, Register mode, Tender Detail mode: read-only
     knowledge / advisory.
     Scope mode: drawing upload, AI scope-item proposal cards with
@@ -173,6 +173,22 @@ route (scope mode = drafting tools; quote mode = advisory; etc.).
     Quote mode: cost line structure suggestions, exclusion / assumption
     suggestions, advisory only.
     Clarifications mode: summarisation, response suggestions.)
+
+   PR #137 (PR A in series) shipped: provider-agnostic tool calling
+   for both Anthropic (tool_use) and OpenAI (function/tool calls);
+   propose_scope_items tool with IS-discipline constraint at the
+   schema level; ConversationMessage.metadata JSONB column +
+   tool_call/tool_result roles; ProposalCardList UI with
+   Accept/Edit/Reject + bulk actions; chat dispatch wires all of
+   this; 32 new API tests + 52 new web tests (DB-independent
+   verification — full DB-dependent smoke pending Marco).
+
+   Remaining in this Item 5 sub-area:
+   - PR B: delete legacy "Draft scope with Claude" code path.
+   - PR C: drawing upload feeding scope inference.
+   - PR D: Cutrite rate lookup + IS discipline lookup tables.
+   - Estimate / Quote / Clarifications mode tools (separate PRs
+     once Scope is fully signed off by Raj).
 
 ### 5A.2 — HTML→PDF renderer migration
 

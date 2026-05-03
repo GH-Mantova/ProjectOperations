@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-03 00:43 AEST
+Last updated: 2026-05-03 05:50 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -1777,3 +1777,182 @@ What's NOT in this PR (deferred):
 - Export to markdown / PDF
 
 Audit findings: none.
+
+## 2026-05-03 15:50 AEST — PR #137 PENDING — §5A.1 PR 11: scope sub-mode tools (proposal cards + provider-agnostic tool calling)
+
+Type: PR
+Status: PENDING (auto-merge requested)
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/137
+Branch: feat/scope-tools-proposal-cards
+Detail: Eleventh PR in §5A.1. First in a planned series of scope
+sub-mode tool PRs (A: this PR — propose_scope_items + cards; B:
+legacy "Draft scope with Claude" deletion; C: drawing upload; D:
+Cutrite + IS discipline lookup tables). Recovered from a mid-build
+crash via wip-checkpoint protocol — work was manually checkpointed
+to origin and the squash-merge will collapse the wip + completion
+commits.
+
+Decisions locked at the start (do not deviate):
+1. Provider-native tool calling for both Anthropic (tool_use) and
+   OpenAI (function/tool calls) — no JSON-in-text fallback, no
+   Anthropic-only path.
+2. ONE tool: propose_scope_items, max 30 proposals per invocation,
+   discipline constrained to IS work types (demolition, asbestos,
+   civil) at the schema level.
+3. Storage on the existing ConversationMessage table — new
+   metadata Json column; role string extends to tool_call /
+   tool_result.
+4. UX: inline proposal cards with Accept / Edit / Reject and bulk
+   accept-all / reject-all when 2+ pending.
+5. Trigger: AI decides via system-prompt instruction (no manual
+   "propose now" button).
+6. Both providers ship — no fallback paths.
+
+Phase 1 — Schema: ConversationMessage gains a metadata JSONB
+column. Migration applied via the same drift-trim protocol as PR
+#117/#134/#136 — migration file contains ONLY the new column.
+Role values extend: 'user' | 'assistant' | 'tool_call' |
+'tool_result' (string for forward compat; TS narrows at the
+boundary).
+
+Phase 2 — Tool infrastructure: provider-agnostic ToolDefinition
+type; tool registry keyed by "<personaSlug>.<subMode>" (one entry
+today: tendering.scope → propose_scope_items); translation layer
+to Anthropic { name, description, input_schema } and OpenAI
+{ type:'function', function:{ name, description, parameters }}.
+
+Phase 3 — Anthropic provider: parses content_block_start
+type=tool_use, content_block_delta input_json_delta, and
+content_block_stop into the unified tool_use_start /
+tool_use_delta / tool_use_stop chunk shape. Per-block-index state
+map tracks accumulated JSON arguments. Defence-in-depth: malformed
+JSON yields { _parseError: true, raw } rather than crashing.
+
+Phase 4 — OpenAI provider: parses choices[0].delta.tool_calls
+fragments and finish_reason='tool_calls' into the same unified
+shape. Per-tool-call-index state map (tool_calls reference index,
+not id, between fragments). Same defence-in-depth on JSON parse.
+
+Phase 5 — ProposalsService + 4 endpoints under
+/api/v1/personas/tendering/proposals:
+  - POST /:messageId/accept       — single, with optional edits
+  - POST /:messageId/reject       — single
+  - POST /:messageId/accept-all   — bulk pending → scope_of_works_items
+  - POST /:messageId/reject-all   — bulk pending status update
+storeProposals creates a tool_call + tool_result row in a
+transaction with pending statuses. acceptProposal writes a real
+scopeOfWorksItem (wbsCode, discipline, itemNumber, rowType,
+description, measurementQty/Unit, status='confirmed',
+aiProposed=true) and updates the proposal status to accepted with
+acceptedScopeItemId. AI-facing discipline names (demolition /
+asbestos / civil) map to internal codes (SO / Asb / Civ).
+
+Phase 6 — PersonasController.chat dispatch: tools resolved via
+getToolsForSubMode(buildSubModeKey(slug, subMode)); content +
+tool_use chunks both flow through the existing SSE stream;
+tool_use_stop with name='propose_scope_items' triggers
+storeProposals and emits a new SSE event { type:"proposals",
+messageId, proposals } for the client.
+
+Phase 7 — Tendering persona scope sub-mode prompt: explicit
+instruction about the tool, the three-discipline constraint,
+"ask clarifying questions BEFORE proposing", and that proposals
+go through user review before commit.
+
+Phase 8 — Web layer: ChatMessage extended into a discriminated
+union (text rows + proposals rows); appendProposalsMessage,
+updateProposalsMessage, toApiMessages helpers; SSEChunk parses
+the new "proposals" event; useStreamingChat exposes
+acceptProposal, rejectProposal, acceptAllPending, rejectAllPending
+with optimistic local mutation after server success;
+rebuildMessagesFromHistory rehydrates tool_result rows on
+conversation load (tool_call rows dropped — no UI surface);
+ProposalCardList component with Accept / Edit (inline form) /
+Reject + bulk actions; discipline colour pills; status badges
+(pending / accepted / rejected); MessageList renders proposal
+cards inline between text bubbles.
+
+Phase 9 — Tests: 190 lines Anthropic tool_use streaming spec,
+184 lines OpenAI tool_calls streaming spec, 71 lines tool
+translation/registry spec, 341 lines ProposalsService spec
+(storeProposals transaction shape, accept happy path + edits +
+already-decided guards, reject, accept-all + reject-all, ownership
+checks, discipline mapping). Web side: 167 lines proposal-helpers
+spec (appendProposalsMessage, updateProposalsMessage,
+toApiMessages filter, parseSSEEvent for proposals event, retry
+history excludes proposals), 82 lines rebuild-history spec
+(tool_call dropped, tool_result with malformed metadata skipped).
+
+Counts (full pre-PR checklist green after Marco brought postgres
+back up mid-session):
+  - API jest --runInBand: 304/304 (was 272 in PR #136; +32 across
+    new specs and chat dispatch coverage). Spec target was 315 —
+    actual delta is +32 vs the rough "~40 new" estimate.
+  - Web vitest: 264/264 (was 212 in PR #136; +52). Target was 245.
+  - Lint: clean both workspaces.
+  - Build: clean (apps/api nest build, apps/web vite build, web
+    bundle 1.91 MB / 495 KB gzip).
+  - compliance:smoke: passed (full surface — auth login, tender
+    create/edit, document upload, scheduler, maintenance, archive,
+    forms engine all green).
+  - Playwright tendering: 15/15 across chromium + firefox + webkit
+    (existing tendering.spec.ts — no new e2e in this PR; future
+    e2e for proposal cards is a follow-up).
+  - Migration: applied via prisma migrate deploy — no drift this
+    time, the wip checkpoint had already added the migration file
+    in the same shape `prisma migrate status` was expecting.
+
+Anthropic AND OpenAI parity confirmed: yes — both providers
+implement the same ChatStreamChunk shape for tool_use_*; both
+have full streaming spec coverage; the chat dispatch is provider-
+agnostic.
+
+Manual smoke pending Marco:
+- Start docker postgres, apply migration, restart pnpm dev
+- Login as Sean → /tenders/<id>/scope → confirm panel says
+  "scope drafting" mode
+- Send "Help me draft scope for an internal demo of L2/L3 of
+  225 Adelaide St, ~520 sqm, no asbestos suspected"
+- Confirm AI either asks clarifying questions OR returns
+  proposal cards
+- Accept one proposal — confirm scope_of_works_items row written
+  with discipline=SO, status='confirmed', aiProposed=true
+- Edit a proposal title before accept — confirm edit persists
+- Reject a proposal — confirm card greys out, no scope item
+  written
+- Accept all pending (2+) — confirm bulk count returned
+- Reject all pending — confirm single update
+- Refresh the page — confirm proposal cards re-render from
+  conversation history with correct accepted/rejected statuses
+- Switch user provider preference to OpenAI in My Settings,
+  retry — confirm OpenAI also produces proposal cards (parity
+  test)
+
+Deviations from spec:
+(1) Initial recovery run could not apply the migration because
+    docker was offline. Marco brought postgres up mid-session and
+    the agent re-ran the full DB-dependent checklist (migrate
+    deploy, API serial tests, compliance smoke, Playwright
+    tendering) with all checks green before opening the PR.
+(2) The "drawing upload" Phase A-C item was kept entirely OUT
+    of scope per the chain — explicit spec instruction.
+(3) The legacy "Draft scope with Claude" UI is preserved
+    intact — its deletion is PR B in this series.
+(4) No new Playwright e2e for proposal cards in this PR — the
+    existing tendering.spec.ts covers tender create / detail
+    navigation; a dedicated proposal-cards e2e (mock the AI
+    SSE response, accept a card, verify scope_of_works_items
+    row) is deferred to a follow-up so this PR ships behind
+    Marco's first manual smoke.
+
+What's NOT in this PR (deferred to subsequent series PRs):
+- PR B: delete the legacy ScopeRedesign / "Draft scope with
+  Claude" path now that the persona owns scope drafting.
+- PR C: drawing upload (Marco wants this fed to the AI for
+  scope inference).
+- PR D: Cutrite rate lookup + IS discipline lookup tables (so
+  the AI can pull real rates not just propose qty/unit).
+- Conversation export of accepted proposals as a printable
+  scope-of-works draft.
+
+Audit findings: none new.

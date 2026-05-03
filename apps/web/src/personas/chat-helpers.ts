@@ -27,7 +27,8 @@ export type ChatStatus = "idle" | "streaming" | "error";
 export type SSEChunk =
   | { type: "content"; text: string }
   | { type: "error"; error: string }
-  | { type: "done" };
+  | { type: "done" }
+  | { type: "conversation"; conversationId: string };
 
 // Send button is active only when the user has typed something AND we're not
 // currently streaming a response back.
@@ -90,7 +91,7 @@ export function parseSSEEvent(rawEvent: string): SSEChunk[] {
     return [];
   }
   if (typeof parsed !== "object" || parsed === null) return [];
-  const obj = parsed as { type?: string; text?: string; error?: string };
+  const obj = parsed as { type?: string; text?: string; error?: string; conversationId?: string };
   if (obj.type === "content" && typeof obj.text === "string") {
     return [{ type: "content", text: obj.text }];
   }
@@ -99,6 +100,9 @@ export function parseSSEEvent(rawEvent: string): SSEChunk[] {
   }
   if (obj.type === "done") {
     return [{ type: "done" }];
+  }
+  if (obj.type === "conversation" && typeof obj.conversationId === "string") {
+    return [{ type: "conversation", conversationId: obj.conversationId }];
   }
   return [];
 }

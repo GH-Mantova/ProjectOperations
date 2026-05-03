@@ -1,51 +1,273 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useActivePersona } from "./PersonaContext";
 import { MessageInput } from "./MessageInput";
 import { MessageList } from "./MessageList";
-import { useStreamingChat } from "./use-streaming-chat";
-import { chatPanelEmptyHint, shouldResetOnPersonaChange } from "./chat-helpers";
-import type { ActivePersona } from "./types";
+import { useStreamingChat, type ConversationSummary } from "./use-streaming-chat";
+import { chatPanelEmptyHint } from "./chat-helpers";
+import { formatRelativeDate, truncatePreview } from "./date-helpers";
+
+const ICON_NEW = (
+  <svg
+    width="14"
+    height="14"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+  >
+    <path d="M12 5v14M5 12h14" />
+  </svg>
+);
+
+const ICON_HISTORY = (
+  <svg
+    width="14"
+    height="14"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+  >
+    <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+    <path d="M3 3v5h5" />
+    <path d="M12 7v5l3 2" />
+  </svg>
+);
+
+const ICON_TRASH = (
+  <svg
+    width="12"
+    height="12"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+  >
+    <path d="M3 6h18" />
+    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+  </svg>
+);
+
+const ICON_BACK = (
+  <svg
+    width="14"
+    height="14"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+  >
+    <path d="M19 12H5" />
+    <path d="M12 19l-7-7 7-7" />
+  </svg>
+);
+
+type View = "chat" | "history";
 
 export function ChatPanel() {
-  const { activePersona } = useActivePersona();
+  const { activePersona, contextKey } = useActivePersona();
   const slug = activePersona?.persona.slug ?? null;
   const subMode = activePersona?.subMode.name;
-  const { messages, currentResponse, status, error, sendMessage, retry, reset } =
-    useStreamingChat(slug);
+  const {
+    messages,
+    currentResponse,
+    status,
+    error,
+    sendMessage,
+    retry,
+    startNewConversation,
+    listConversations,
+    loadConversation,
+    deleteConversation
+  } = useStreamingChat(slug, subMode, contextKey);
 
-  // Reset chat state whenever the active persona+sub-mode actually changes
-  // (different page or different tab). Window close/reopen on the same
-  // sub-mode does NOT trigger this — useActivePersona returns a stable value
-  // for the same route.
-  const prevPersonaRef = useRef<ActivePersona | null>(null);
-  useEffect(() => {
-    if (shouldResetOnPersonaChange(prevPersonaRef.current, activePersona)) {
-      reset();
-    }
-    prevPersonaRef.current = activePersona;
-  }, [activePersona, reset]);
+  const [view, setView] = useState<View>("chat");
 
   if (!activePersona) return null;
 
   const emptyHint = chatPanelEmptyHint(activePersona);
 
+  const handleNewConversation = async () => {
+    if (
+      messages.length > 0 &&
+      !window.confirm("Start a new conversation? Current chat will be saved to History.")
+    ) {
+      return;
+    }
+    await startNewConversation();
+    setView("chat");
+  };
+
   return (
     <div className="persona-window__chat">
-      <MessageList
-        messages={messages}
-        streamingResponse={currentResponse}
-        isStreaming={status === "streaming"}
-        emptyHint={emptyHint}
-      />
-      {status === "error" && error ? (
-        <div className="persona-window__error" role="alert">
-          <span>{error}</span>
-          <button type="button" className="persona-window__retry" onClick={retry}>
-            Retry
+      <div className="persona-window__chat-toolbar">
+        {view === "chat" ? (
+          <>
+            <button
+              type="button"
+              className="persona-window__chat-toolbar-btn"
+              onClick={() => void handleNewConversation()}
+              title="Start new conversation"
+            >
+              {ICON_NEW}
+              <span>New</span>
+            </button>
+            <button
+              type="button"
+              className="persona-window__chat-toolbar-btn"
+              onClick={() => setView("history")}
+              title="Show conversation history"
+            >
+              {ICON_HISTORY}
+              <span>History</span>
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            className="persona-window__chat-toolbar-btn"
+            onClick={() => setView("chat")}
+            title="Back to chat"
+          >
+            {ICON_BACK}
+            <span>Back to chat</span>
           </button>
+        )}
+      </div>
+
+      {view === "chat" ? (
+        <>
+          <MessageList
+            messages={messages}
+            streamingResponse={currentResponse}
+            isStreaming={status === "streaming"}
+            emptyHint={emptyHint}
+          />
+          {status === "error" && error ? (
+            <div className="persona-window__error" role="alert">
+              <span>{error}</span>
+              <button type="button" className="persona-window__retry" onClick={retry}>
+                Retry
+              </button>
+            </div>
+          ) : null}
+          <MessageInput status={status} onSend={(text) => void sendMessage(text, { subMode })} />
+        </>
+      ) : (
+        <ConversationHistoryList
+          listConversations={listConversations}
+          loadConversation={async (id) => {
+            await loadConversation(id);
+            setView("chat");
+          }}
+          deleteConversation={deleteConversation}
+        />
+      )}
+    </div>
+  );
+}
+
+function ConversationHistoryList({
+  listConversations,
+  loadConversation,
+  deleteConversation
+}: {
+  listConversations: (limit?: number) => Promise<ConversationSummary[]>;
+  loadConversation: (id: string) => Promise<void>;
+  deleteConversation: (id: string) => Promise<boolean>;
+}) {
+  const [items, setItems] = useState<ConversationSummary[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoadError(null);
+    try {
+      const list = await listConversations(20);
+      setItems(list);
+    } catch (err) {
+      setLoadError((err as Error).message);
+    }
+  }, [listConversations]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Delete this conversation? This cannot be undone.")) return;
+    const ok = await deleteConversation(id);
+    if (ok && items) {
+      setItems(items.filter((it) => it.id !== id));
+    }
+  };
+
+  if (loadError) {
+    return (
+      <div className="persona-window__history">
+        <div className="persona-window__history-empty">
+          Failed to load history: {loadError}
         </div>
-      ) : null}
-      <MessageInput status={status} onSend={(text) => void sendMessage(text, { subMode })} />
+      </div>
+    );
+  }
+  if (items === null) {
+    return (
+      <div className="persona-window__history">
+        <div className="persona-window__history-empty">Loading…</div>
+      </div>
+    );
+  }
+  if (items.length === 0) {
+    return (
+      <div className="persona-window__history">
+        <div className="persona-window__history-empty">
+          No previous conversations for this view yet.
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="persona-window__history">
+      <ul className="persona-window__history-list">
+        {items.map((item) => (
+          <li key={item.id} className="persona-window__history-row">
+            <button
+              type="button"
+              className="persona-window__history-row-main"
+              onClick={() => void loadConversation(item.id)}
+            >
+              <div className="persona-window__history-row-time">
+                {formatRelativeDate(item.updatedAt)}
+              </div>
+              <div className="persona-window__history-row-preview">
+                {truncatePreview(item.preview)}
+              </div>
+            </button>
+            <button
+              type="button"
+              className="persona-window__history-row-delete"
+              onClick={() => void handleDelete(item.id)}
+              aria-label="Delete conversation"
+              title="Delete conversation"
+            >
+              {ICON_TRASH}
+            </button>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

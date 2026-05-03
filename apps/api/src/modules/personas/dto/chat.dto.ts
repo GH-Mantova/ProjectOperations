@@ -34,4 +34,37 @@ export class ChatRequestDto {
   @IsString()
   @IsIn(["pipeline", "register", "tender-detail", "scope", "estimate", "quote", "clarifications"])
   subMode?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "§5A.1 PR 10 — context-scope key for conversation persistence. Tender id for tender-detail/scope/estimate/quote/clarifications; null/omitted for pipeline/register. Server pairs this with subMode to find or create the active conversation."
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  contextKey?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      "§5A.1 PR 10 — explicit conversation id to append messages to. When omitted, the server resolves the active conversation for the (user, personaSlug, subMode, contextKey) scope, creating one if needed."
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  conversationId?: string;
+}
+
+export class StartConversationDto {
+  @ApiProperty({
+    enum: ["pipeline", "register", "tender-detail", "scope", "estimate", "quote", "clarifications"]
+  })
+  @IsString()
+  @IsIn(["pipeline", "register", "tender-detail", "scope", "estimate", "quote", "clarifications"])
+  subMode!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  contextKey?: string | null;
 }

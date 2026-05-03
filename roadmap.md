@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-03 00:04 AEST
+Last updated: 2026-05-03 00:43 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -113,12 +113,20 @@ workflow review. One persona ("Tendering Assistant" — Sean to confirm
 name) active across the whole tendering module, with sub-modes per
 route (scope mode = drafting tools; quote mode = advisory; etc.).
 
-🔲 Persona registry architecture
+✅ Persona registry architecture — PRs #117 + #136 (COMPLETE)
    (Database tables: Persona, PersonaCompanyInstruction,
     UserPersonaSettings. Code registry pattern allowing new personas
     to be added without touching the shell. Conversation persistence
     per persona per user. Permission model: ai.persona.<name> from
-    day one.)
+    day one.
+
+    PR #117 delivered the registry foundation. PR #136 closes the
+    last 20% — conversation persistence per (user, personaSlug,
+    subMode, contextKey) via the new Conversation +
+    ConversationMessage tables. Auto-resume of the most recent
+    thread on panel open; New conversation button; History list with
+    delete; failed/interrupted streams don't pollute history.
+    Retention is forever — deletion is user-initiated only.)
 
 🔲 Floating window shell
    (Bottom-right floating button, expand/collapse, available only

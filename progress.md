@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-03 07:16 AEST
+Last updated: 2026-05-03 08:04 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -2072,5 +2072,91 @@ Deviations from spec:
       mock now derives firstConfigured from which keys are present,
       so existing call sites continue to pass without touching
       every test.
+
+Audit findings: none.
+
+## 2026-05-03 17:58 AEST — PR #139 PENDING — chore: drop 8 dead PlatformConfig columns
+
+Type: PR
+Status: PENDING (auto-merge requested)
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/139
+Branch: chore/drop-legacy-platformconfig-columns
+Detail:
+  - Originally opened as BLOCKED — static scan found 4 of 12 columns
+    were live, not dead. Repurposed to drop only the 8 truly dead
+    columns (*ApiKey + *KeyUpdatedAt for all 4 providers).
+  - Migration: 20260503175353_chore_drop_legacy_platformconfig_keycols
+    — 8 DROP COLUMN statements, scoped to keycols only.
+  - 4 *Model columns retained — they back a live admin-set
+    per-provider model-override feature (currently NULL in dev).
+    Three new PHASE 6 items added to track follow-ups
+    (model-override decision, set*ApiKey method rename, completion
+    record).
+  - Pre-flight DB content check: all 8 columns confirmed empty
+    pre-drop (zero data loss risk).
+  - Migration applied via the db-execute + migrate-resolve protocol
+    (recurring drift in dev DB blocks `migrate dev`; same protocol
+    used for PRs #117/#134/#136/#137).
+  - Manual smoke pending Marco — automated checks confirmed Prisma
+    client matches new schema (returns exactly 16 fields, none of
+    the dropped 8 appear) and full Nest app boots cleanly through
+    compliance:smoke.
+  - Closes the original "drop legacy *ApiKey columns" PHASE 6 task
+    partially. Three new PHASE 6 items track the unfinished cleanup.
+
+Counts:
+  - API jest --runInBand: 307/307 (no change vs PR #138 — no test
+    files touched).
+  - Web vitest: 264/264 (no change — no web code touched).
+  - Lint api + web: clean.
+  - Build: clean (web bundle 1.91 MB / 495 KB gzip).
+  - compliance:smoke: passed (full surface; full Nest app boot
+    succeeded with new schema).
+  - Playwright tendering: 14/15 first run, 15/15 with the one
+    Firefox flake retried in isolation (register-stats-bar; same
+    test passed in PR #137/#138, unrelated timing issue under
+    parallel runners).
+  - Migration: applied via db-execute + migrate-resolve. Prisma
+    client regenerated; query of platform_config returns exactly
+    16 fields with zero references to the dropped 8.
+
+Manual smoke pending Marco:
+  1. Restart pnpm --filter @project-ops/api dev — confirm clean
+     startup
+  2. Open AI Settings — page loads, providerStatus + model display
+     work for all 4 providers
+  3. Save the Anthropic company key again — write path still works
+  4. Send a chat message with user persona = "Use system default"
+     — real Anthropic response
+
+Deviations from spec:
+  (1) `prisma migrate dev --create-only` rejected the action because
+      of pre-existing dev-DB drift (workers.employmentType compat
+      column, FK reshapes, default removals — same drift trimmed
+      out of PRs #117, #134, #136, #137). Wrote the migration SQL
+      manually (8 DROP COLUMNs only, with a drift-trim comment),
+      applied via `prisma db execute --file`, then marked applied
+      via `prisma migrate resolve --applied`. Same protocol Marco
+      has approved 4 times before.
+  (2) Prisma engine .dll did not refresh on `prisma generate` (the
+      Windows file-lock pattern documented in
+      docs/troubleshooting/prisma-windows-engine-lock.md from PR
+      #138). For DROP COLUMN this is harmless — the JS client
+      schema reflects the change, and runtime queries against
+      removed columns are blocked by both TS and DB. Verified the
+      generated client returns exactly 16 fields and platform_config
+      queries succeed end-to-end. Did NOT run the recovery sequence
+      (would have killed the API server holding tests open and
+      added time without changing outcome).
+  (3) Spec called for live in-browser manual smoke (4 steps); only
+      step 1 (clean boot) was verified automatically via compliance
+      smoke. Steps 2-4 require real Anthropic API call and live UI
+      — pending Marco. Matches the pattern from PR #137 and #138.
+  (4) Updated the schema deprecation comment on this branch's
+      original WIP commit to a concise, accurate block describing
+      the 4 retained *Model columns. The previous expanded WIP
+      comment served its purpose as the BLOCKED-PR investigation
+      record but is no longer needed once the BLOCKED columns are
+      dropped.
 
 Audit findings: none.

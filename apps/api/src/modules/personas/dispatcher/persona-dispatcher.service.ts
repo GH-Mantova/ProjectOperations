@@ -275,7 +275,8 @@ export class PersonaDispatcherService {
       const out = await handler.execute(tu.input, {
         actor: ctx.actor as never,
         conversationId: ctx.conversationId,
-        contextKey: ctx.contextKey
+        contextKey: ctx.contextKey,
+        toolUseId: tu.id
       });
       return {
         toolUseId: tu.id,

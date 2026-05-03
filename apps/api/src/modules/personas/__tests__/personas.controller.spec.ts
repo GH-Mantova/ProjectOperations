@@ -2,11 +2,15 @@ import { Logger } from "@nestjs/common";
 import { PersonasController } from "../personas.controller";
 import { PersonasService } from "../personas.service";
 import { AiProvidersService } from "../../ai-providers/ai-providers.service";
+import { ConversationsService } from "../conversations.service";
 import type { ChatStreamChunk } from "../../ai-providers/ai-providers.types";
 
 type AuthLike = { sub?: string; permissions?: string[]; isSuperUser?: boolean };
 
-function buildController(aiOverrides: Partial<AiProvidersService> = {}): PersonasController {
+function buildController(
+  aiOverrides: Partial<AiProvidersService> = {},
+  conversationsOverrides: Partial<ConversationsService> = {}
+): PersonasController {
   const service = new PersonasService({} as never);
   const ai = {
     resolveProviderConfig: jest.fn(async () => ({
@@ -19,7 +23,16 @@ function buildController(aiOverrides: Partial<AiProvidersService> = {}): Persona
     streamChat: jest.fn(),
     ...aiOverrides
   } as unknown as AiProvidersService;
-  return new PersonasController(service, ai);
+  const conversations = {
+    findOrCreateActiveConversation: jest.fn(async () => ({ id: "conv-1" })),
+    startNewConversation: jest.fn(async () => ({ id: "conv-new" })),
+    listRecentConversations: jest.fn(async () => []),
+    loadConversation: jest.fn(async () => ({ conversation: { id: "conv-1" }, messages: [] })),
+    appendMessage: jest.fn(async () => ({ id: "msg-1" })),
+    deleteConversation: jest.fn(async () => undefined),
+    ...conversationsOverrides
+  } as unknown as ConversationsService;
+  return new PersonasController(service, ai, conversations);
 }
 
 function buildResponse() {

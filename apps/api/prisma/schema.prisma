@@ -116,6 +116,10 @@ model User {
   groqKeyEncrypted        String?   @map("groq_key_encrypted")
   groqKeyValidatedAt      DateTime? @map("groq_key_validated_at")
 
+  // §5A.1 PR 10 — persona conversation history. Cascade delete on user
+  // removal so we don't leave orphan chats behind.
+  conversations           Conversation[]
+
   @@index([isActive])
   @@map("users")
 }
@@ -3343,4 +3347,41 @@ model GlobalAISettings {
   updatedAt                     DateTime @updatedAt @map("updated_at")
 
   @@map("global_ai_settings")
+}
+
+// §5A.1 PR 10 — persona chat history. One Conversation = one continuous
+// thread within a (user, personaSlug, subMode, contextKey) scope.
+// contextKey is null for global sub-modes (pipeline/register) and the
+// tender id for tender-detail/scope/estimate/quote/clarifications. The
+// "active" conversation for a scope is the most recent by updatedAt;
+// the user can branch with the New conversation button on the panel.
+model Conversation {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  personaSlug String   @map("persona_slug")
+  subMode     String   @map("sub_mode")
+  contextKey  String?  @map("context_key")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user     User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages ConversationMessage[]
+
+  @@index([userId, personaSlug, subMode, contextKey, updatedAt(sort: Desc)])
+  @@map("conversations")
+}
+
+model ConversationMessage {
+  id             String   @id @default(cuid())
+  conversationId String   @map("conversation_id")
+  role           String
+  content        String
+  model          String?
+  providerSource String?  @map("provider_source")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("conversation_messages")
 }

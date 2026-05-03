@@ -2,21 +2,27 @@ import {
   createContext,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type PropsWithChildren
 } from "react";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { deriveContextKey } from "./context-key-helpers";
 import type { ActivePersona } from "./types";
 
 type PersonaContextValue = {
   activePersona: ActivePersona | null;
   isLoading: boolean;
+  // §5A.1 PR 10: scope key for conversation persistence. Tender id when
+  // the active sub-mode is tender-scoped; null otherwise.
+  contextKey: string | null;
 };
 
 const PersonaContext = createContext<PersonaContextValue>({
   activePersona: null,
-  isLoading: false
+  isLoading: false,
+  contextKey: null
 });
 
 export function PersonaProvider({ children }: PropsWithChildren) {
@@ -62,8 +68,13 @@ export function PersonaProvider({ children }: PropsWithChildren) {
     };
   }, [authFetch, isAuthenticated, location.pathname, location.search]);
 
+  const contextKey = useMemo(
+    () => deriveContextKey(location.pathname, activePersona?.subMode.name),
+    [location.pathname, activePersona?.subMode.name]
+  );
+
   return (
-    <PersonaContext.Provider value={{ activePersona, isLoading }}>{children}</PersonaContext.Provider>
+    <PersonaContext.Provider value={{ activePersona, isLoading, contextKey }}>{children}</PersonaContext.Provider>
   );
 }
 

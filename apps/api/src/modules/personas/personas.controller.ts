@@ -1,8 +1,10 @@
 import {
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
+  HttpCode,
   Logger,
   Param,
   Post,
@@ -19,9 +21,10 @@ import { CurrentUser } from "../../common/auth/current-user.decorator";
 import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
+import { ConversationsService } from "./conversations.service";
 import { PersonaPermissionGuard } from "./persona-permission.guard";
 import { PersonasService } from "./personas.service";
-import { ChatRequestDto } from "./dto/chat.dto";
+import { ChatRequestDto, StartConversationDto } from "./dto/chat.dto";
 import { UpdateCompanyInstructionDto } from "./dto/update-company-instruction.dto";
 import { UpdateUserPersonaSettingsDto } from "./dto/update-user-persona-settings.dto";
 import { UpdateGlobalAISettingsDto } from "./dto/update-global-ai-settings.dto";
@@ -35,7 +38,8 @@ export class PersonasController {
 
   constructor(
     private readonly service: PersonasService,
-    private readonly aiProviders: AiProvidersService
+    private readonly aiProviders: AiProvidersService,
+    private readonly conversations: ConversationsService
   ) {}
 
   @Get("global-settings")
@@ -193,7 +197,10 @@ export class PersonasController {
     res.setHeader("X-Accel-Buffering", "no");
     res.flushHeaders();
 
-    const send = (event: { type: "content" | "error" | "done"; [k: string]: unknown }) => {
+    const send = (event: {
+      type: "content" | "error" | "done" | "conversation";
+      [k: string]: unknown;
+    }) => {
       res.write(`data: ${JSON.stringify(event)}\n\n`);
     };
 
@@ -209,12 +216,47 @@ export class PersonasController {
       send({ type: "error", error: sanitised.userMessage });
     };
 
+    // §5A.1 PR 10: persistence. Resolve or create the conversation BEFORE
+    // streaming, append the latest user message synchronously, and emit
+    // the conversation id as the first SSE event so the client can track
+    // which thread this exchange landed in. Assistant message is appended
+    // only on stream success — failed/interrupted streams don't pollute
+    // history.
+    const subMode = dto.subMode ?? "register";
+    const contextKey = dto.contextKey ?? null;
+    const lastUser = dto.messages[dto.messages.length - 1];
+    let conversationId: string | null = null;
+    try {
+      const conversation = dto.conversationId
+        ? (await this.conversations.loadConversation(actor.sub, dto.conversationId)).conversation
+        : await this.conversations.findOrCreateActiveConversation({
+            userId: actor.sub,
+            personaSlug: slug,
+            subMode,
+            contextKey
+          });
+      conversationId = conversation.id;
+      if (lastUser && lastUser.role === "user" && lastUser.content.trim().length > 0) {
+        await this.conversations.appendMessage(conversation.id, "user", lastUser.content);
+      }
+      send({ type: "conversation", conversationId });
+    } catch (err) {
+      // Persistence failure — surface as the categorised "config" or
+      // generic error and stop. We do NOT proceed with the stream because
+      // a successful response we can't save would leave history orphaned.
+      sendSanitisedError(err);
+      send({ type: "done" });
+      res.end();
+      return;
+    }
+
+    let accumulatedAssistant = "";
     try {
       const config = await this.aiProviders.resolveProviderConfig(actor.sub, slug);
       // Audit log entry: which key source served this chat. Never logs the
       // key itself, only the source label ("user" or "company").
       this.logger.log(
-        `Chat key source [persona=${slug}, user=${actor.sub}, provider=${config.providerId}, source=${config.source}]`
+        `Chat key source [persona=${slug}, user=${actor.sub}, provider=${config.providerId}, source=${config.source}, conversation=${conversationId}]`
       );
       const systemPrompt = await this.aiProviders.resolveSystemPrompt(slug, actor.sub, dto.subMode);
       const stream = this.aiProviders.streamChat({
@@ -223,14 +265,27 @@ export class PersonasController {
         config
       });
 
+      let streamFailed = false;
       for await (const chunk of stream) {
         if (chunk.type === "error") {
           // Provider-level error chunk — sanitise its text rather than
           // forwarding raw provider output.
           sendSanitisedError(chunk.error);
+          streamFailed = true;
           break;
         }
+        if (chunk.type === "content") {
+          accumulatedAssistant += chunk.text;
+        }
         send(chunk);
+      }
+      if (!streamFailed && accumulatedAssistant.length > 0 && conversationId) {
+        await this.conversations.appendMessage(
+          conversationId,
+          "assistant",
+          accumulatedAssistant,
+          { model: config.model, providerSource: config.source }
+        );
       }
       send({ type: "done" });
     } catch (err) {
@@ -239,5 +294,89 @@ export class PersonasController {
     } finally {
       res.end();
     }
+  }
+
+  // ── Conversation history (§5A.1 PR 10) ─────────────────────────────────
+
+  @Get(":slug/conversations")
+  @UseGuards(PersonaPermissionGuard)
+  @ApiOperation({
+    summary: "List recent conversations for the current user in the given persona scope",
+    description:
+      "Returns up to `limit` conversations matching (user, personaSlug, subMode, contextKey), ordered by updatedAt desc. Each row includes a 200-char preview of the user's first message."
+  })
+  @ApiResponse({ status: 200, description: "Array of conversation summaries." })
+  async listConversations(
+    @Param("slug") slug: string,
+    @Query("subMode") subMode: string | undefined,
+    @Query("contextKey") contextKey: string | undefined,
+    @Query("limit") limit: string | undefined,
+    @CurrentUser() actor: AuthenticatedUser
+  ) {
+    const parsedLimit = limit ? Number.parseInt(limit, 10) : 20;
+    return this.conversations.listRecentConversations(
+      {
+        userId: actor.sub,
+        personaSlug: slug,
+        subMode: subMode ?? "register",
+        contextKey: contextKey ?? null
+      },
+      Number.isFinite(parsedLimit) ? parsedLimit : 20
+    );
+  }
+
+  @Get(":slug/conversations/:id")
+  @UseGuards(PersonaPermissionGuard)
+  @ApiOperation({
+    summary: "Load a conversation with its full ordered message history",
+    description: "404s if the conversation belongs to another user."
+  })
+  @ApiResponse({ status: 200, description: "Conversation + messages." })
+  @ApiResponse({ status: 404, description: "Not found or not owner." })
+  async loadConversation(
+    @Param("slug") _slug: string,
+    @Param("id") id: string,
+    @CurrentUser() actor: AuthenticatedUser
+  ) {
+    return this.conversations.loadConversation(actor.sub, id);
+  }
+
+  @Post(":slug/conversations/new")
+  @UseGuards(PersonaPermissionGuard)
+  @ApiOperation({
+    summary: "Start a fresh conversation, even when a recent one exists for this scope",
+    description:
+      "Used by the 'New conversation' button on the chat panel header. The previous conversation is preserved — the user can find it under History."
+  })
+  @ApiResponse({ status: 201, description: "The newly created conversation." })
+  async startNewConversation(
+    @Param("slug") slug: string,
+    @Body() dto: StartConversationDto,
+    @CurrentUser() actor: AuthenticatedUser
+  ) {
+    return this.conversations.startNewConversation({
+      userId: actor.sub,
+      personaSlug: slug,
+      subMode: dto.subMode,
+      contextKey: dto.contextKey ?? null
+    });
+  }
+
+  @Delete(":slug/conversations/:id")
+  @HttpCode(200)
+  @UseGuards(PersonaPermissionGuard)
+  @ApiOperation({
+    summary: "Delete a conversation and all its messages (cascade)",
+    description: "404s if the conversation belongs to another user."
+  })
+  @ApiResponse({ status: 200, description: "{ ok: true }." })
+  @ApiResponse({ status: 404, description: "Not found or not owner." })
+  async deleteConversation(
+    @Param("slug") _slug: string,
+    @Param("id") id: string,
+    @CurrentUser() actor: AuthenticatedUser
+  ) {
+    await this.conversations.deleteConversation(actor.sub, id);
+    return { ok: true };
   }
 }

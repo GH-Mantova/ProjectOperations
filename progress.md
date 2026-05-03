@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-03 00:04 AEST
+Last updated: 2026-05-03 00:43 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -1667,3 +1667,113 @@ Audit findings: none new. M1 closed. The audit's other
 observations (SharePoint o5, Email o6) remain acceptable as-is
 per the audit verdict — admin-only debugging endpoints with
 upstream-supplied error text from Microsoft/SMTP libraries.
+
+## 2026-05-03 10:42 AEST — PR #136 MERGED — §5A.1 PR 10: conversation persistence (closes Item 1)
+
+Type: PR
+Status: COMPLETE
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/136
+Branch: feat/conversation-persistence
+Detail: Tenth PR in §5A.1. Closes the last 20% of Item 1 (persona
+registry — conversation persistence per persona per user). Until
+this PR, chat was in-memory only; refresh or navigation lost
+history. After this PR, conversations persist to the database,
+scoped per (userId, personaSlug, subMode, contextKey).
+
+Phase 1 — Schema: two new tables, conversations and
+conversation_messages. Cascade-delete from User → Conversation →
+ConversationMessage so user removal cleans up automatically.
+Composite index on (userId, personaSlug, subMode, contextKey,
+updatedAt DESC) — exact match for the active-conversation lookup
+and recent-list query. Migration applied via `db execute` +
+`migrate resolve --applied` to skip recurring drift bundle (PR
+#117/#134 protocol). Migration file contains ONLY the new tables.
+
+Phase 2 — ConversationsService (6 methods) + 4 new endpoints
+under /api/v1/personas/:slug/conversations:
+  - GET /                — list recent for caller's scope
+  - GET /:id             — load full conversation
+  - POST /new            — start fresh (preserves prior)
+  - DELETE /:id          — cascade delete
+Plus chat endpoint update: takes optional conversationId +
+contextKey in the body; resolves or creates the active
+conversation; appends user message synchronously BEFORE the AI
+call; emits a new SSE event `{ type: "conversation",
+conversationId }` as the first chunk so the client tracks which
+thread the exchange landed in; appends assistant message ONLY on
+stream success (failed/interrupted streams don't pollute history).
+
+Phase 3 — Hook (use-streaming-chat.ts) extended:
+  - Now takes (personaSlug, subMode, contextKey)
+  - On scope change, fetches the most recent conversation via
+    GET /conversations?limit=1 and auto-resumes by loading
+    messages from GET /:id
+  - Passes conversationId + contextKey through every chat request
+  - Reads the new "conversation" SSE event and updates state
+  - Exposes startNewConversation, listConversations,
+    loadConversation, deleteConversation for the History UI
+  - Retry logic from PR #125 untouched — buildRetryHistory still
+    works on the in-memory array
+
+Phase 4 — ChatPanel UI: toolbar above the message list with
+"New" and "History" buttons. New button confirms before
+abandoning current chat (reset on confirm; conversation is
+preserved server-side). History view replaces the chat view in
+the same panel — list of recent conversations (last 20) with
+relative timestamp + first-user-message preview + delete icon.
+Click a row to load that thread. Inline confirm on delete. New
+date-helpers.ts (formatRelativeDate + truncatePreview) and
+context-key-helpers.ts (deriveContextKey from URL pattern;
+tender-scoped sub-modes return the tender id, global sub-modes
+null).
+
+Phase 5 — Tests: 14 new ConversationsService specs (find-or-
+create, isolation by userId, listing order/limit-clamp, ownership
+checks, append metadata, cascade delete). 12 new web logic tests
+for context-key derivation across tender-scoped vs global
+sub-modes plus edge cases (/tenders/create|workspace|pipeline are
+not tender ids). 8 new web logic tests for formatRelativeDate
+(today/yesterday/days/weeks/older, locale-tolerant) and
+truncatePreview.
+
+Counts: 272/272 API (was 258; +14). 212/212 web (was 192; +20).
+Pre-PR 7/7 green: lint x2 (clean), test x2, build, compliance:
+smoke, playwright tendering (5/5).
+
+Manual smoke pending Marco:
+- Pull main, restart pnpm dev (no env-var change needed; existing
+  BYOK_ENCRYPTION_KEY still required)
+- Login as Sean → /tenders → send message → refresh → confirm
+  history persists
+- Click New → confirm clears, refresh persists empty
+- Send messages → click History → confirm list shows current
+- Click into older thread → confirm loads
+- Navigate to /tenders/<id>/scope → confirm fresh chat for that
+  tender (different contextKey)
+- Navigate back to /tenders → confirm pipeline conversation
+  resumes
+- Delete a conversation from History → confirm gone
+- Login as different user → confirm only own history visible
+
+Deviations:
+(1) Migration applied via `db execute` + `migrate resolve
+    --applied` rather than `migrate dev` — recurring drift would
+    have required a destructive reset.
+(2) contextKey derivation lives client-side (PersonaContext +
+    deriveContextKey helper) rather than server-side — avoids an
+    extra roundtrip on every navigation. Server still validates
+    via DTO + ownership checks; the client hint is just used to
+    select the active conversation.
+(3) ChatPanel previously had a `shouldResetOnPersonaChange` reset
+    effect; removed, since the hook's scope-change useEffect now
+    handles all state transitions for free.
+
+What's NOT in this PR (deferred):
+- Conversation search
+- Rename / pin / star
+- Auto-archive / retention policy (currently retained forever)
+- Encrypted-at-rest message content
+- Cross-context history viewer
+- Export to markdown / PDF
+
+Audit findings: none.

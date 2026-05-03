@@ -17,6 +17,9 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagg
 import type { Response } from "express";
 import { AiProvidersService } from "../ai-providers/ai-providers.service";
 import { sanitiseProviderError } from "../ai-providers/error-sanitiser";
+import { buildSubModeKey, getToolsForSubMode } from "../ai-providers/tools/tool-registry";
+import type { ProposeScopeItemsArgs } from "../ai-providers/tools/propose-scope-items.tool";
+import { ProposalsService } from "../tendering/scope/proposals.service";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
@@ -39,7 +42,8 @@ export class PersonasController {
   constructor(
     private readonly service: PersonasService,
     private readonly aiProviders: AiProvidersService,
-    private readonly conversations: ConversationsService
+    private readonly conversations: ConversationsService,
+    private readonly proposals: ProposalsService
   ) {}
 
   @Get("global-settings")
@@ -198,7 +202,7 @@ export class PersonasController {
     res.flushHeaders();
 
     const send = (event: {
-      type: "content" | "error" | "done" | "conversation";
+      type: "content" | "error" | "done" | "conversation" | "proposals";
       [k: string]: unknown;
     }) => {
       res.write(`data: ${JSON.stringify(event)}\n\n`);
@@ -259,10 +263,14 @@ export class PersonasController {
         `Chat key source [persona=${slug}, user=${actor.sub}, provider=${config.providerId}, source=${config.source}, conversation=${conversationId}]`
       );
       const systemPrompt = await this.aiProviders.resolveSystemPrompt(slug, actor.sub, dto.subMode);
+      // §5A.1 PR 11: tool calling. Sub-mode-specific tool registry; both
+      // Anthropic and OpenAI providers translate to native format.
+      const tools = getToolsForSubMode(buildSubModeKey(slug, dto.subMode));
       const stream = this.aiProviders.streamChat({
         systemPrompt,
         messages: dto.messages,
-        config
+        config,
+        tools: tools.length > 0 ? tools : undefined
       });
 
       let streamFailed = false;
@@ -276,8 +284,33 @@ export class PersonasController {
         }
         if (chunk.type === "content") {
           accumulatedAssistant += chunk.text;
+          send({ type: "content", text: chunk.text });
+        } else if (chunk.type === "tool_use_start" || chunk.type === "tool_use_delta") {
+          // No client-facing UI for partial tool args today — swallow.
+          continue;
+        } else if (chunk.type === "tool_use_stop") {
+          if (chunk.name === "propose_scope_items" && conversationId) {
+            try {
+              const args = chunk.finalArgs as ProposeScopeItemsArgs;
+              const stored = await this.proposals.storeProposals(conversationId, chunk.id, args);
+              send({
+                type: "proposals",
+                messageId: stored.message.id,
+                proposals: stored.proposals
+              });
+            } catch (err) {
+              this.logger.error(
+                `Proposal store failed [conversation=${conversationId}, tool=${chunk.id}]: ${(err as Error).message}`
+              );
+              send({ type: "error", error: "Could not save the AI's proposals — please try again." });
+              streamFailed = true;
+              break;
+            }
+          }
+        } else if (chunk.type === "done") {
+          // ai-providers.service yields a final done; we emit our own below.
+          continue;
         }
-        send(chunk);
       }
       if (!streamFailed && accumulatedAssistant.length > 0 && conversationId) {
         await this.conversations.appendMessage(

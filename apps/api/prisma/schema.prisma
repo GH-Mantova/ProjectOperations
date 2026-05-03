@@ -3374,10 +3374,16 @@ model Conversation {
 model ConversationMessage {
   id             String   @id @default(cuid())
   conversationId String   @map("conversation_id")
+  // role: 'user' | 'assistant' | 'tool_call' | 'tool_result' (string for
+  // forward compat — TS types narrow at the application boundary).
   role           String
   content        String
   model          String?
   providerSource String?  @map("provider_source")
+  // §5A.1 PR 11 — structured payload for tool-related messages. Null for
+  // plain text messages. For tool_call: { toolUseId, name, arguments }.
+  // For tool_result: { toolUseId, proposals: [{...status, acceptedScopeItemId?...}] }.
+  metadata       Json?    @db.JsonB
   createdAt      DateTime @default(now()) @map("created_at")
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)

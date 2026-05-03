@@ -3,13 +3,15 @@ import { PersonasController } from "../personas.controller";
 import { PersonasService } from "../personas.service";
 import { AiProvidersService } from "../../ai-providers/ai-providers.service";
 import { ConversationsService } from "../conversations.service";
+import { ProposalsService } from "../../tendering/scope/proposals.service";
 import type { ChatStreamChunk } from "../../ai-providers/ai-providers.types";
 
 type AuthLike = { sub?: string; permissions?: string[]; isSuperUser?: boolean };
 
 function buildController(
   aiOverrides: Partial<AiProvidersService> = {},
-  conversationsOverrides: Partial<ConversationsService> = {}
+  conversationsOverrides: Partial<ConversationsService> = {},
+  proposalsOverrides: Partial<ProposalsService> = {}
 ): PersonasController {
   const service = new PersonasService({} as never);
   const ai = {
@@ -32,7 +34,15 @@ function buildController(
     deleteConversation: jest.fn(async () => undefined),
     ...conversationsOverrides
   } as unknown as ConversationsService;
-  return new PersonasController(service, ai, conversations);
+  const proposals = {
+    storeProposals: jest.fn(async () => ({ message: { id: "msg-result" }, proposals: [] })),
+    acceptProposal: jest.fn(async () => ({ scopeItemId: "scope-1" })),
+    rejectProposal: jest.fn(async () => undefined),
+    acceptAllPending: jest.fn(async () => ({ accepted: 0, failed: 0 })),
+    rejectAllPending: jest.fn(async () => ({ rejected: 0 })),
+    ...proposalsOverrides
+  } as unknown as ProposalsService;
+  return new PersonasController(service, ai, conversations, proposals);
 }
 
 function buildResponse() {

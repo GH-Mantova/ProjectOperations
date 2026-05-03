@@ -17,10 +17,37 @@ export function chatPanelEmptyHint(active: ActivePersona): string {
   return `Ask the ${active.persona.displayName} about ${friendly}.`;
 }
 
-export type ChatMessage = {
+// §5A.1 PR 11 — ChatMessage is now a discriminated union. Text messages
+// (user/assistant) carry content. Proposal messages carry the tool_result
+// messageId + the array of proposals so ProposalCardList can render
+// inline. tool_call rows are filtered out by the hook (no UI).
+export type ChatTextMessage = {
   role: "user" | "assistant";
   content: string;
 };
+
+export type ProposalStatus = "pending" | "accepted" | "rejected";
+
+export type ChatProposal = {
+  index: number;
+  discipline: "demolition" | "asbestos" | "civil";
+  title: string;
+  description: string;
+  quantity: number;
+  unit: string;
+  notes?: string;
+  status: ProposalStatus;
+  acceptedScopeItemId?: string;
+  decidedAt?: string;
+};
+
+export type ChatProposalsMessage = {
+  role: "proposals";
+  messageId: string;
+  proposals: ChatProposal[];
+};
+
+export type ChatMessage = ChatTextMessage | ChatProposalsMessage;
 
 export type ChatStatus = "idle" | "streaming" | "error";
 
@@ -28,7 +55,8 @@ export type SSEChunk =
   | { type: "content"; text: string }
   | { type: "error"; error: string }
   | { type: "done" }
-  | { type: "conversation"; conversationId: string };
+  | { type: "conversation"; conversationId: string }
+  | { type: "proposals"; messageId: string; proposals: ChatProposal[] };
 
 // Send button is active only when the user has typed something AND we're not
 // currently streaming a response back.
@@ -45,12 +73,37 @@ export function appendAssistantMessage(history: ChatMessage[], content: string):
   return [...history, { role: "assistant", content }];
 }
 
+export function appendProposalsMessage(
+  history: ChatMessage[],
+  messageId: string,
+  proposals: ChatProposal[]
+): ChatMessage[] {
+  return [...history, { role: "proposals", messageId, proposals }];
+}
+
+// Update the proposals payload for a tool_result message in the local
+// history (after accept/reject API success). Returns a new array (immutable).
+export function updateProposalsMessage(
+  history: ChatMessage[],
+  messageId: string,
+  updater: (proposals: ChatProposal[]) => ChatProposal[]
+): ChatMessage[] {
+  return history.map((m) => {
+    if (m.role !== "proposals" || m.messageId !== messageId) return m;
+    return { ...m, proposals: updater(m.proposals) };
+  });
+}
+
 // Build the message history to replay when the user clicks Retry on an
 // errored chat. Returns everything up to and INCLUDING the last user message;
 // any partial assistant response that came after the last user turn (e.g. a
 // few words that streamed before the error) is dropped — re-sending those
 // would just confuse the model. Returns [] when there is no user message
-// to replay.
+// to replay. Tool_result rows are also dropped (the AI must re-propose if
+// the user retries).
+//
+// For chat API calls we send only text messages to the provider — tool_use
+// rounds were already encoded in the prior conversation server-side.
 export function buildRetryHistory(messages: ChatMessage[]): ChatMessage[] {
   for (let i = messages.length - 1; i >= 0; i--) {
     if (messages[i]!.role === "user") {
@@ -58,6 +111,13 @@ export function buildRetryHistory(messages: ChatMessage[]): ChatMessage[] {
     }
   }
   return [];
+}
+
+// Filter to text messages only — proposals rows don't go to the AI provider
+// directly (they're stored as tool_result on the server side and re-included
+// in the conversation history when the next chat request resolves).
+export function toApiMessages(history: ChatMessage[]): ChatTextMessage[] {
+  return history.filter((m): m is ChatTextMessage => m.role === "user" || m.role === "assistant");
 }
 
 // Reset the chat when the active persona+sub-mode changes (different page).
@@ -91,7 +151,14 @@ export function parseSSEEvent(rawEvent: string): SSEChunk[] {
     return [];
   }
   if (typeof parsed !== "object" || parsed === null) return [];
-  const obj = parsed as { type?: string; text?: string; error?: string; conversationId?: string };
+  const obj = parsed as {
+    type?: string;
+    text?: string;
+    error?: string;
+    conversationId?: string;
+    messageId?: string;
+    proposals?: ChatProposal[];
+  };
   if (obj.type === "content" && typeof obj.text === "string") {
     return [{ type: "content", text: obj.text }];
   }
@@ -103,6 +170,13 @@ export function parseSSEEvent(rawEvent: string): SSEChunk[] {
   }
   if (obj.type === "conversation" && typeof obj.conversationId === "string") {
     return [{ type: "conversation", conversationId: obj.conversationId }];
+  }
+  if (
+    obj.type === "proposals" &&
+    typeof obj.messageId === "string" &&
+    Array.isArray(obj.proposals)
+  ) {
+    return [{ type: "proposals", messageId: obj.messageId, proposals: obj.proposals }];
   }
   return [];
 }

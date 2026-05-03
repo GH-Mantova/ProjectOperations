@@ -8930,6 +8930,166 @@ textarea {
 .persona-window__history-row-delete:hover {
   color: #B91C1C;
 }
+/* §5A.1 PR 11 — scope proposal cards inline in chat */
+.persona-window__proposals {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0;
+}
+.persona-window__proposals-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted, #6B7280);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0 4px;
+}
+.persona-window__proposals-bulk {
+  display: flex;
+  gap: 6px;
+  padding: 4px 0;
+}
+.persona-window__proposal {
+  background: var(--surface-card, #FFFFFF);
+  border: 1px solid var(--border-subtle, rgba(0,0,0,0.08));
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.persona-window__proposal--accepted {
+  border-color: rgba(22, 163, 74, 0.4);
+  background: rgba(22, 163, 74, 0.04);
+}
+.persona-window__proposal--rejected {
+  border-color: var(--border-subtle, rgba(0,0,0,0.08));
+  background: var(--surface-page, #F6F6F6);
+  opacity: 0.65;
+}
+.persona-window__proposal-row1 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.persona-window__proposal-discipline {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.persona-window__proposal-status {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.persona-window__proposal-status--pending {
+  background: rgba(234, 179, 8, 0.16);
+  color: #A16207;
+}
+.persona-window__proposal-status--accepted {
+  background: rgba(22, 163, 74, 0.16);
+  color: #15803D;
+}
+.persona-window__proposal-status--rejected {
+  background: rgba(120, 113, 108, 0.16);
+  color: #57534E;
+}
+.persona-window__proposal-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #1F2937);
+}
+.persona-window__proposal-description {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-primary, #1F2937);
+}
+.persona-window__proposal-quantity {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted, #6B7280);
+}
+.persona-window__proposal-notes {
+  font-size: 12px;
+  color: var(--text-muted, #6B7280);
+  font-style: italic;
+}
+.persona-window__proposal-actions {
+  display: flex;
+  gap: 6px;
+}
+.persona-window__proposal-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.persona-window__proposal-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.persona-window__proposal-btn--primary {
+  background: var(--brand-primary, #005B61);
+  color: #FFFFFF;
+}
+.persona-window__proposal-btn--ghost {
+  background: transparent;
+  color: var(--brand-primary, #005B61);
+  border-color: var(--brand-primary, #005B61);
+}
+.persona-window__proposal-btn--danger {
+  background: transparent;
+  color: #B91C1C;
+  border-color: rgba(185, 28, 28, 0.4);
+}
+.persona-window__proposal-error {
+  font-size: 12px;
+  color: #B91C1C;
+  padding: 4px 0;
+}
+.persona-window__proposal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.persona-window__proposal-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted, #6B7280);
+}
+.persona-window__proposal-form label > span {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 10px;
+}
+.persona-window__proposal-form input,
+.persona-window__proposal-form textarea {
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-primary, #1F2937);
+  background: #FFFFFF;
+  border: 1px solid var(--border-subtle, rgba(0,0,0,0.16));
+  border-radius: 4px;
+  resize: vertical;
+}
+.persona-window__proposal-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
 .persona-window__messages {
   flex: 1;
   overflow-y: auto;

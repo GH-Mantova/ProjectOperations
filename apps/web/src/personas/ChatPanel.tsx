@@ -91,7 +91,11 @@ export function ChatPanel() {
     startNewConversation,
     listConversations,
     loadConversation,
-    deleteConversation
+    deleteConversation,
+    acceptProposal,
+    rejectProposal,
+    acceptAllPending,
+    rejectAllPending
   } = useStreamingChat(slug, subMode, contextKey);
 
   const [view, setView] = useState<View>("chat");
@@ -155,6 +159,10 @@ export function ChatPanel() {
             streamingResponse={currentResponse}
             isStreaming={status === "streaming"}
             emptyHint={emptyHint}
+            onAcceptProposal={acceptProposal}
+            onRejectProposal={rejectProposal}
+            onAcceptAllProposals={acceptAllPending}
+            onRejectAllProposals={rejectAllPending}
           />
           {status === "error" && error ? (
             <div className="persona-window__error" role="alert">

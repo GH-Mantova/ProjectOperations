@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-03 07:16 AEST
+Last updated: 2026-05-03 08:04 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -559,13 +559,27 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
      today and would need streaming + tool translation if added to
      SUPPORTED_PROVIDERS.)
 
-⏸️  Drop legacy *ApiKey company-key columns from PlatformConfig
-    (Schema flagged 2026-04 during BYOK PR #134 — the *ApiKey,
-     *KeyUpdatedAt columns on PlatformConfig were superseded by
-     *KeyEncrypted / *KeyValidatedAt and are no longer read or written.
-     Confirm zero readers/writers across codebase + DB, then drop
-     columns + migration. Do AFTER prod migration of *KeyEncrypted is
-     fully verified.)
+✅  Drop dead *ApiKey + *KeyUpdatedAt PlatformConfig columns
+    (completed PR #139 — 8 of 12 originally-listed columns dropped.
+     *Model columns retained; tracked in the items below.)
+
+⏸️  Decide fate of per-provider model override (*_model columns)
+    Discovered live in PR #139 static scan — read by
+    PlatformConfigService.getModel/providerStatus, written by
+    setModel. Currently NULL across all 4 providers; nobody has
+    used the feature. Three options:
+      (a) Keep on PlatformConfig as singleton override
+      (b) Migrate to UserPersonaSettings for per-user choice
+      (c) Drop entirely — model selection happens via persona spec
+    Product decision required before implementation.
+
+⏸️  Rename set*ApiKey() methods/DTOs to set*Key()
+    Cosmetic-only follow-up to PR #139. The 4 methods named
+    setAnthropicApiKey/setOpenaiApiKey/setGeminiApiKey/setGroqApiKey
+    and their DTO fields write to *_key_encrypted columns under the
+    hood — name implies legacy column write, reality is current
+    column write. Rename for clarity. Touches DTOs, controllers,
+    service methods, frontend service callers, OpenAPI client.
 
 ---
 
@@ -756,3 +770,13 @@ with 9 new deferred items (6 Chat1 dashboard issues, Xero
 sanitiser extension, proposal-cards e2e, Gemini/Groq tool calling,
 legacy *ApiKey column drop). project_instructions.md §6 Code
 rules gained an explicit "always use the three-tier fallback" rule.
+
+### 2026-05-03 evening — Drop 8 dead PlatformConfig columns
+Removed the 8 truly-dead columns (*_api_key + *_key_updated_at for
+anthropic, openai, gemini, groq) from PlatformConfig. Originally
+scoped as 12 columns in PR #139 spec; static scan caught that the
+4 *_model columns are live, not dead — they back an admin-set
+per-provider model-override feature. Scope reduced to the
+verified-dead 8. Three follow-up PHASE 6 items added: decide fate
+of model override, rename misleading set*ApiKey() methods, and the
+completion record itself.

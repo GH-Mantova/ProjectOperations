@@ -1776,22 +1776,14 @@ model TenderClientNote {
 
 model PlatformConfig {
   id                    String    @id
-  // Legacy company-key columns (PLATFORM_CONFIG_SECRET-based encryption,
-  // dot-separated format). §5A.1 PR 9 superseded these with the
-  // *KeyEncrypted / *KeyValidatedAt columns below. Kept in schema for
-  // backward compatibility but no longer read or written. Drop in a future
-  // cleanup PR once dev/prod has fully migrated.
-  anthropicApiKey       String?   @map("anthropic_api_key")
-  anthropicKeyUpdatedAt DateTime? @map("anthropic_key_updated_at")
+  // Per-provider model overrides — live feature.
+  // Read by PlatformConfigService.getModel / providerStatus, written
+  // by setModel. Currently NULL across all providers in dev.
+  // Decision pending in PHASE 6: keep, replace with per-user setting
+  // on UserPersonaSettings, or drop entirely.
   anthropicModel        String?   @map("anthropic_model")
-  geminiApiKey          String?   @map("gemini_api_key")
-  geminiKeyUpdatedAt    DateTime? @map("gemini_key_updated_at")
   geminiModel           String?   @map("gemini_model")
-  groqApiKey            String?   @map("groq_api_key")
-  groqKeyUpdatedAt      DateTime? @map("groq_key_updated_at")
   groqModel             String?   @map("groq_model")
-  openaiApiKey          String?   @map("openai_api_key")
-  openaiKeyUpdatedAt    DateTime? @map("openai_key_updated_at")
   openaiModel           String?   @map("openai_model")
   preferredProvider     String?   @map("preferred_provider")
   updatedAt             DateTime  @updatedAt @map("updated_at")

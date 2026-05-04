@@ -1,8 +1,6 @@
 import { Injectable } from "@nestjs/common";
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.js";
 import {
   DrawingToolsAccessService,
-  PDFJS_STANDARD_FONT_DATA_URL,
   isLikelyValidId,
   type DrawingDocumentRow
 } from "./drawing-tools.shared";
@@ -15,14 +13,21 @@ import type {
 type Input = { tenderId?: unknown };
 
 // list_tender_drawings — cheap directory call. No vision tokens. Returns
-// drawing IDs, filenames, page counts (when cheaply extractable), file
-// sizes, mime types, and upload dates. Always call this first when
-// starting work on a tender — see system prompt §3.
+// drawing IDs, filenames, file sizes, mime types, and upload dates.
+// Always call this first when starting work on a tender — see system
+// prompt §3.
+//
+// pageCount is always null. PR #142 computed it via a per-listing PDF
+// parse (download + pdfjs metadata read), which defeated the
+// cheap-listing design goal — listing 10 drawings = 10 SharePoint
+// downloads + 10 PDF parses. PR #145 dropped that path. PHASE 6 carry-
+// forward: cache pageCount on TenderDocumentLink at upload time so
+// it can ship in the listing without runtime work.
 @Injectable()
 export class ListTenderDrawingsHandler implements ToolHandler<Input> {
   name = "list_tender_drawings";
   description =
-    "List all drawings attached to a tender. Returns drawing IDs, filenames, page counts, and file sizes. Use this first to discover what drawings are available before reading them. Cheap — no vision tokens consumed.";
+    "List all drawings attached to a tender. Returns drawing IDs, filenames, mime types, and file sizes. Use this first to discover what drawings are available before reading them. Cheap — no vision tokens consumed.";
   inputSchema = {
     type: "object" as const,
     properties: {
@@ -58,22 +63,17 @@ export class ListTenderDrawingsHandler implements ToolHandler<Input> {
       };
     }
 
-    // Page count for PDFs is metadata-only — pdfjs.getDocument().numPages
-    // doesn't rasterise. For non-PDFs, return null (image files are
-    // single-page by convention).
-    const enriched = await Promise.all(
-      rows.map(async (r) => {
-        const pageCount = await safeGetPageCount(this.access, r);
-        return {
-          id: r.id,
-          filename: r.fileLink?.name ?? r.title,
-          fileSize: r.fileLink?.sizeBytes ?? null,
-          pageCount,
-          uploadedAt: r.createdAt.toISOString(),
-          mimeType: r.fileLink?.mimeType ?? null
-        };
-      })
-    );
+    const enriched = rows.map((r) => ({
+      id: r.id,
+      filename: r.fileLink?.name ?? r.title,
+      fileSize: r.fileLink?.sizeBytes ?? null,
+      // pageCount: see file header comment. Always null today;
+      // extract_drawing_titleblock can return per-page metadata when
+      // the model needs it for a specific drawing.
+      pageCount: null,
+      uploadedAt: r.createdAt.toISOString(),
+      mimeType: r.fileLink?.mimeType ?? null
+    }));
 
     return {
       result: {
@@ -85,30 +85,6 @@ export class ListTenderDrawingsHandler implements ToolHandler<Input> {
         ]
       }
     };
-  }
-}
-
-async function safeGetPageCount(
-  access: DrawingToolsAccessService,
-  row: DrawingDocumentRow
-): Promise<number | null> {
-  if (!row.fileLink || row.fileLink.mimeType !== "application/pdf") return null;
-  try {
-    const bytes = await access.downloadFileBytes(row.fileLink);
-    // Disable worker — Node-side parse only needs the main thread.
-    const loadingTask = pdfjsLib.getDocument({
-      data: new Uint8Array(bytes),
-      isEvalSupported: false,
-      useSystemFonts: false,
-      standardFontDataUrl: PDFJS_STANDARD_FONT_DATA_URL
-    });
-    const pdf = await loadingTask.promise;
-    const n = pdf.numPages;
-    await pdf.destroy();
-    return n;
-  } catch {
-    // Page count is best-effort — never block the listing.
-    return null;
   }
 }
 

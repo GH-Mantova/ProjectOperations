@@ -1,7 +1,7 @@
 # ProjectOperations — Project Instructions
 # Version: 1.1
 # Created: 2026-04-25 10:02 AEST
-# Last updated: 2026-05-04 04:44 AEST
+# Last updated: 2026-05-04 23:08 AEST
 # Maintained by: Claude Code (update after any architectural decision,
 #   module addition, business rule change, or workflow change)
 # Accessed by: All Claude chats in this project via web_fetch
@@ -806,6 +806,20 @@ AI Persona System (planned — Phase 5A.1)
   IS-T020 demo PDF to that path. SHAREPOINT_MODE env var picks
   the adapter at module init (mock vs live/graph). Production
   Graph adapter implementation is a separate PHASE 6 task.
+  PR #147 finished the multi-turn image round-trip. The
+  PersonaDispatcherService persists tool_result rows with image
+  content stripped (DB stays lean — base64 image bytes are
+  massive); the rebuild path on every subsequent turn substitutes
+  a "[image not replayed — call the tool again to refresh]" text
+  marker. To make the just-executed image actually reach the
+  model on the immediate next turn, the dispatcher captures
+  full-content tool_result blocks in memory after tool execution
+  and splices them into the next turn's messages array, replacing
+  the DB-rebuilt versions for matching toolUseIds. Cleared after
+  the API call — older turns from then on use DB rebuild with
+  the marker (correct: the model already saw the image when new).
+  If a tool needs to RE-SEE an older image, the documented
+  escape hatch is to call the tool again.
 - Future personas: Dashboard Master, Captain Operations, Captain
   Scheduler, etc. Added one at a time post-sign-off as each module
   stabilises.

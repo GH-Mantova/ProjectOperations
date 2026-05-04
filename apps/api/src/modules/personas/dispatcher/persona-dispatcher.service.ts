@@ -4,6 +4,7 @@ import { AiProvidersService } from "../../ai-providers/ai-providers.service";
 import type {
   ChatMessage,
   ChatMessageBlock,
+  ChatToolResultBlock,
   ChatToolUseBlock,
   ProviderConfig
 } from "../../ai-providers/ai-providers.types";
@@ -80,10 +81,30 @@ export class PersonaDispatcherService {
     yield { type: "conversation", conversationId };
 
     let lastError: string | null = null;
+    // Tool_result blocks from the immediately-prior turn, with full
+    // image bytes intact. PR #141 strips images from DB-persisted
+    // tool_result rows (DB stays lean), so the rebuild path produces a
+    // text "[image not replayed — call the tool again to refresh]"
+    // marker. That marker is correct for OLDER turns (the model already
+    // saw the image when new) but wrong for the JUST-EXECUTED batch:
+    // the model has never seen those images yet. We splice the
+    // full-content versions in for one turn, then clear — older turns
+    // fall through DB rebuild as designed.
+    let pendingFullToolResults: ChatToolResultBlock[] = [];
     for (let turn = 0; turn < MAX_TURNS; turn++) {
       // 1. Reload history (filtered to the rows providers can serialise)
       const allMessages = await this.conversations.loadAllMessages(conversationId);
-      const messages = this.rebuildMessagesForProvider(allMessages);
+      let messages = this.rebuildMessagesForProvider(allMessages);
+
+      // 1b. Splice in full-content tool_result blocks for the immediate
+      //     prior turn's tool calls, replacing the image-stripped
+      //     DB-rebuilt versions for the matching toolUseIds. Cleared
+      //     after the API call so they only flow on the immediate next
+      //     turn.
+      if (pendingFullToolResults.length > 0) {
+        messages = this.spliceFullToolResults(messages, pendingFullToolResults);
+        pendingFullToolResults = [];
+      }
 
       // 2. Call provider
       let stream: AsyncIterable<unknown>;
@@ -197,6 +218,13 @@ export class PersonaDispatcherService {
           yield { type: "tool_side_effect", event: sfx.event, data: sfx.data };
         }
       }
+
+      // 8a. Capture full-content tool_result blocks (with image bytes)
+      //     for the immediate next turn. The DB-persisted rows below
+      //     omit images; this in-memory mirror keeps them.
+      pendingFullToolResults = executed.map((ex) =>
+        this.buildFullContentToolResultBlock(ex.toolUseId, ex.result)
+      );
 
       // 8. Persist tool_result rows (INTERNAL — model sees them on next
       //    iteration via loadAllMessages, UI does not)
@@ -374,5 +402,52 @@ export class PersonaDispatcherService {
       // and the legacy rows existed only as provenance.
     }
     return out;
+  }
+
+  // Construct a tool_result block carrying the original ToolResult
+  // content verbatim (text + image bytes). Mirrors what gets persisted
+  // to DB minus the image-omission step. Used to splice into the next
+  // turn's messages so the model sees actual image data instead of the
+  // "not replayed" marker on its first encounter with the result.
+  private buildFullContentToolResultBlock(
+    toolUseId: string,
+    result: ToolResult
+  ): ChatToolResultBlock {
+    return {
+      type: "tool_result",
+      toolUseId,
+      content: result.content.map((c) =>
+        c.type === "text"
+          ? { type: "text", text: c.text }
+          : { type: "image", mediaType: c.mediaType, data: c.data }
+      ),
+      isError: result.isError ?? false
+    };
+  }
+
+  // Walk the rebuilt messages array; for any user-message tool_result
+  // block whose toolUseId matches a pending full-content block, swap it
+  // in. Other blocks (text, older tool_results, tool_uses) untouched.
+  // Avoids the model seeing the same toolUseId twice with conflicting
+  // content (image bytes vs "not replayed" marker).
+  private spliceFullToolResults(
+    messages: ChatMessage[],
+    pendingFullBlocks: ChatToolResultBlock[]
+  ): ChatMessage[] {
+    const pendingByToolUseId = new Map<string, ChatToolResultBlock>();
+    for (const block of pendingFullBlocks) {
+      pendingByToolUseId.set(block.toolUseId, block);
+    }
+    return messages.map((msg) => {
+      if (msg.role !== "user") return msg;
+      if (typeof msg.content === "string") return msg;
+      const replaced = msg.content.map((block) => {
+        if (block.type === "tool_result" && pendingByToolUseId.has(block.toolUseId)) {
+          return pendingByToolUseId.get(block.toolUseId)!;
+        }
+        return block;
+      });
+      return { ...msg, content: replaced };
+    });
   }
 }

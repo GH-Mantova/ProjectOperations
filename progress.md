@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-04 04:44 AEST
+Last updated: 2026-05-04 23:08 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -2698,5 +2698,105 @@ Deviations from spec:
       code passed across all three browsers in PR #137/#138/#139/
       #141/#142/#143. No code touched here that affects tendering
       page rendering.
+
+Audit findings: none.
+
+## 2026-05-05 09:00 AEST — PR #147 PENDING — fix: pass image content on current turn instead of via DB replay (+ seed size_bytes)
+
+Type: PR
+Branch: fix/image-content-current-turn-and-seed-size-bytes
+Status: IN_PROGRESS
+Builds on: PR #146, PR #145, PR #144, PR #143, PR #142, PR #141.
+
+Closes:
+  - PR #142/#146 smoke step 4 — read_tender_drawing returned image
+    bytes via tool_result, but the model received "[image not
+    replayed — call the tool again to refresh]" instead of the actual
+    image, making vision-token-based drawing reading impossible.
+  - Seed cosmetic — IS-T020's seeded synthetic drawing had null
+    size_bytes because the seed created the file_link row before
+    writing bytes.
+
+Root cause:
+  PR #141's multi-turn loop intentionally omits image content from
+  DB-persisted tool_result rows (DB stays lean — base64 image bytes
+  are massive). The substitution marker "[image not replayed — call
+  the tool again to refresh]" is correct behaviour for OLDER turns:
+  the model already saw the image when it was new and older-turn
+  replays just need text-level reference. But the dispatcher applied
+  the same substitution to the JUST-EXECUTED tool results on the
+  IMMEDIATE next turn, before the model had ever seen the image.
+
+  read_tender_drawing rendered drawings successfully (verified by
+  inspecting the synthetic PDF locally) but the model saw the marker
+  instead of the image. Verbatim from manual smoke: "both pages are
+  returning a 'not replayed' error, which means the image content
+  isn't being delivered to me".
+
+Fix:
+  Dispatcher captures full tool-result content (including image
+  bytes) in memory after tool execution. On the immediate next turn,
+  it splices those full-content blocks into the messages array,
+  replacing the DB-rebuilt versions for the matching toolUseIds.
+  After the API call, pendingFullToolResults is cleared — older
+  turns from then on use DB rebuild with the "not replayed" markers.
+
+  Two new helpers on PersonaDispatcherService:
+    - buildFullContentToolResultBlock(toolUseId, result):
+      ChatToolResultBlock — mirrors what gets persisted minus the
+      image-omission step.
+    - spliceFullToolResults(messages, pendingFullBlocks): walks
+      messages; for any user-message tool_result block whose
+      toolUseId matches a pending full-content block, swap it in.
+      Other blocks untouched. Avoids the model seeing the same
+      toolUseId twice with conflicting content.
+
+  Loop integration: pendingFullToolResults declared once outside the
+  for-loop; populated at step 8a (after parallel tool exec, before
+  persistence); spliced at step 1b on the next iteration; cleared
+  after splice. Edge cases covered:
+    - First turn: pending is empty, no splice.
+    - Final turn (no tool calls): pending doesn't get populated.
+    - MAX_TURNS hit: pending may have content at exit; harmless.
+    - Parallel image tools: all captured, all spliced.
+    - Text-only tools: spliced (text → text, no-op).
+    - Tool errors: isError flag preserved.
+
+  Seed: bytes generated FIRST, then sharepoint_file_link upserted
+  with sizeBytes = bgsDrawingBytes.byteLength on both create and
+  update paths, then bytes written to disk. Order: bytes → size →
+  DB upsert → disk write. size_bytes is now always accurate to
+  what's on disk.
+
+Files:
+  - apps/api/src/modules/personas/dispatcher/persona-dispatcher.service.ts
+  - apps/api/src/modules/personas/dispatcher/__tests__/persona-dispatcher.service.spec.ts (+4 tests)
+  - apps/api/prisma/seed.ts (size_bytes population)
+  - progress.md, roadmap.md, project_instructions.md
+
+Counts:
+  - API jest --runInBand: 405/405 (was 401 baseline at PR #146; +4
+    image round-trip tests in dispatcher spec).
+  - Lint: clean.
+  - Build: clean.
+  - Dispatcher tests: 12/12 — pre-existing 8 + 4 new (immediate-next
+    -turn full image, older-turn-stripped marker, parallel toolUseId
+    mapping, text-only no-op).
+
+Manual smoke pending Marco: re-seed (verify size_bytes populates on
+IS-T020 demo drawing row), then re-run PR #142's seven-step smoke
+from a fresh conversation. Step 4 (read_tender_drawing) should now
+succeed — model should describe the drawing's content rather than
+report "not replayed". Steps 1-3 and 5-7 already passed in prior
+smoke.
+
+Architectural note: this completes the §5A.1 Item 5 drawing-tools
+sub-task. Drawing tools are end-to-end functional: list, titleblock
+extract, visual render with vision tokens. The six-PR cumulative arc
+(#142, #143, #144, #145, #146, #147) covers the full path from
+implementation through every smoke-discovered issue. PR #141's
+DB-omission design for image content is preserved — it's the right
+call for older turns; PR #147 only changes immediate-next-turn
+behaviour where the model needs to see the image for the first time.
 
 Audit findings: none.

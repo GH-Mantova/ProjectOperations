@@ -14,29 +14,51 @@ const PDFJS_PKG_DIR = path.dirname(require.resolve("pdfjs-dist/package.json"));
 export const PDFJS_STANDARD_FONT_DATA_URL =
   "file://" + path.join(PDFJS_PKG_DIR, "standard_fonts").replace(/\\/g, "/") + "/";
 
-// Document categories conventionally used for drawings on
-// TenderDocumentLink. The seed and historical uploads have been
-// inconsistent (some 'drawing', some 'plan', some 'demolition'),
-// so we filter case-insensitively against this set rather than a
-// strict equality check.
-export const DRAWING_CATEGORIES = new Set([
-  "drawing",
-  "drawings",
-  "plan",
-  "plans",
-  "demolition",
-  "demolition-plan",
-  "demolition-plans",
-  "architectural"
-]);
-
-// MIME types we can render. Anything else returns the
-// "unsupported file type" error from read_tender_drawing.
-export const RENDERABLE_MIME_TYPES = new Set([
+// Renderable drawing mime-types — what list_tender_drawings considers
+// a "drawing" AND what read_tender_drawing can pass through to vision
+// (PDF rasterised via pdfjs-dist + sharp; PNG/JPEG normalised through
+// sharp). Single source of truth across both handlers.
+//
+// PR #145 pivoted from filtering by tender_document_links.category to
+// filtering by mime-type. PR #142's CHECK 0.3 misread the category
+// field semantics: it describes what the document is LINKED TO
+// (tender / project / job), not what TYPE of document it is. Real
+// uploaded drawings have category="tender" and were silently excluded
+// by the old allowlist. Filtering by mime-type aligns the listing tool
+// with what read_tender_drawing can actually render and decouples
+// from upload-time category tagging.
+export const DRAWING_MIME_TYPES = new Set([
   "application/pdf",
   "image/png",
   "image/jpeg"
 ]);
+
+// Extension fallback for documents missing a mime_type. Some upload
+// paths leave the column null (older browsers, drag-and-drop from
+// non-standard sources, paths that don't sniff content-type). Excluding
+// these would silently drop legitimate drawings due to upstream data
+// hygiene issues. Matched case-insensitively.
+export const DRAWING_EXTENSIONS = new Set([".pdf", ".png", ".jpg", ".jpeg"]);
+
+// MIME types read_tender_drawing can render. Same set as
+// DRAWING_MIME_TYPES today; kept as a separate export for
+// read_tender_drawing's per-handler check (PR #142 contract: "this
+// document type cannot be rendered" surfacing the detected mime back
+// to the model).
+export const RENDERABLE_MIME_TYPES = DRAWING_MIME_TYPES;
+
+export function looksLikeDrawingFile(file: {
+  mimeType: string | null;
+  name: string;
+}): boolean {
+  const mime = file.mimeType?.toLowerCase() ?? null;
+  if (mime && DRAWING_MIME_TYPES.has(mime)) return true;
+  const lowerName = file.name.toLowerCase();
+  for (const ext of DRAWING_EXTENSIONS) {
+    if (lowerName.endsWith(ext)) return true;
+  }
+  return false;
+}
 
 export type DrawingDocumentRow = {
   id: string;
@@ -73,19 +95,29 @@ export class DrawingToolsAccessService {
     private readonly sharepoint: SharePointService
   ) {}
 
-  // Load all drawing-category TenderDocumentLink rows for a tender,
-  // joined with their SharePointFileLink. Filters out non-drawing
-  // categories case-insensitively. Permission check stays at the
-  // controller level for HTTP requests; tool handlers re-check via
-  // assertActorCanViewTenderDocuments below.
+  // Load all drawing-mime-type TenderDocumentLink rows for a tender,
+  // joined with their SharePointFileLink. Filters by mime-type
+  // (PDF/PNG/JPEG) with extension fallback for null-mime cases.
+  // Excludes folder-only links (no fileLink) — drawings are always
+  // file-backed.
+  //
+  // PR #145 — see DRAWING_MIME_TYPES doc for why this used to be a
+  // category filter and isn't any more.
   async listDrawingsForTender(tenderId: string): Promise<DrawingDocumentRow[]> {
     const rows = await this.prisma.tenderDocumentLink.findMany({
-      where: { tenderId },
+      where: { tenderId, fileLink: { isNot: null } },
       include: { fileLink: true },
       orderBy: { createdAt: "desc" }
     });
     return rows
-      .filter((r) => DRAWING_CATEGORIES.has(r.category.toLowerCase()))
+      .filter(
+        (r) =>
+          r.fileLink !== null &&
+          looksLikeDrawingFile({
+            mimeType: r.fileLink.mimeType,
+            name: r.fileLink.name
+          })
+      )
       .map((r) => ({
         id: r.id,
         tenderId: r.tenderId,

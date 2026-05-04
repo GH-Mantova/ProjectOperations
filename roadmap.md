@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-03 22:40 AEST
+Last updated: 2026-05-04 03:28 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -218,9 +218,19 @@ route (scope mode = drafting tools; quote mode = advisory; etc.).
    list_tender_drawings with "IS-T020" (display code) and was
    rejected as malformed CUID.
 
-   Drawing-tools sub-task gates (PR #142 + #143 + #144) are now
-   all complete on the backend; pending Marco's manual smoke from
-   a fresh conversation to confirm end-to-end.
+   PR #145 shipped: list_tender_drawings filter pivoted from
+   tender_document_links.category (PR #142 misread the field —
+   it describes what the document is LINKED TO, not what TYPE it
+   is) to mime-type (PDF/PNG/JPEG) plus filename extension
+   fallback. Real demo drawings have category="tender" and were
+   silently excluded by the PR #142 allowlist; the new filter
+   includes them. pageCount dropped from per-listing PDF parse
+   path (defeated the cheap-listing design goal); PHASE 6
+   carry-forward captures the upload-time caching idea.
+
+   Drawing-tools sub-task gates (PR #142 + #143 + #144 + #145)
+   are now all complete on the backend; pending Marco's manual
+   smoke from a fresh conversation to confirm end-to-end.
 
    Remaining in this Item 5 sub-area:
    - PR B: delete legacy "Draft scope with Claude" code path.
@@ -737,6 +747,19 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     next layer (model receives tools but couldn't resolve
     tender-number → CUID).
 
+⏸️  Cache page count on TenderDocumentLink at upload time
+    (list_tender_drawings returns pageCount: null for every entry
+     because computing it requires loading the PDF, which defeats
+     the cheap-listing design goal — listing 10 drawings would mean
+     10 SharePoint downloads + 10 PDF parses on every call. PR
+     #142 introduced the per-listing parse; PR #145 dropped it.
+     A future optimisation: cache page count on
+     TenderDocumentLink at upload time (or as a one-shot
+     post-upload background job). Low priority — the model can
+     still call extract_drawing_titleblock if it needs page count
+     for a specific drawing, and a per-tender listing doesn't
+     usually depend on it.)
+
 ---
 
 ## PHASE 7 — NEXT FEATURE PRIORITIES
@@ -995,3 +1018,20 @@ complete pending Marco's fresh-conversation smoke. The PR #143
 PHASE 6 carry-forward "frontend sub-mode awareness audit" closed
 as resolved — network trace confirmed the frontend is sub-mode-
 aware after all.
+
+### 2026-05-04 morning — list_tender_drawings filter pivot to mime-type (§5A.1 Item 5)
+PR #145 fixed the third layer of failure exposed by PR #144's
+manual smoke. PR #142's category allowlist
+([drawing, plan, demolition, architectural, ...]) misread the
+tender_document_links.category field semantics — that field
+describes what the document is LINKED TO (tender / project /
+job), not what TYPE it is. Real demo drawings have
+category="tender" and were silently excluded. PR #145 pivots to
+mime-type filtering (PDF/PNG/JPEG) plus filename extension
+fallback for null-mime cases via a new looksLikeDrawingFile
+helper. Aligns the listing tool with what read_tender_drawing
+can actually render. pageCount dropped from per-listing PDF
+parse path; PHASE 6 carry-forward captures the upload-time
+caching idea. Drawing-tools sub-task gates (PR #142 + #143 +
+#144 + #145) now all complete pending Marco's fresh-conversation
+smoke retry.

@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-03 22:40 AEST
+Last updated: 2026-05-04 03:28 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -2487,5 +2487,98 @@ Deviations from spec:
       title-null edge case), and the controller test updated to
       assert the new 4-arg call shape verifies the
       controller→service contract end-to-end.
+
+Audit findings: none.
+
+## 2026-05-04 09:30 AEST — PR #145 PENDING — fix: filter drawings by mime-type instead of category in list_tender_drawings
+
+Type: PR
+Status: PENDING (auto-merge requested)
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/145
+Branch: fix/list-tender-drawings-mime-type-filter
+Detail:
+  Fixes the PR #142/#143/#144 manual smoke step 1 failure.
+  list_tender_drawings now filters by mime-type
+  (application/pdf, image/png, image/jpeg) plus filename extension
+  fallback for null-mime cases, instead of by the category
+  allowlist PR #142 introduced.
+
+  Why: PR #142 CHECK 0.3 misread the
+  tender_document_links.category field semantics. The field
+  describes what the document is LINKED TO (tender / project /
+  job), not what TYPE of document it is. Real uploaded drawings
+  have category="tender" and were silently excluded by PR #142's
+  allowlist of [drawing, plan, demolition, architectural, ...].
+  PR #144 manual smoke confirmed: handler returned "No drawings
+  found" while the IS-T020 demo drawing (category="tender",
+  mime_type="application/pdf") sat visibly in the Documents panel.
+
+  Implementation:
+  - DRAWING_CATEGORIES removed from drawing-tools.shared.ts.
+  - DRAWING_MIME_TYPES + DRAWING_EXTENSIONS added; new
+    looksLikeDrawingFile helper.
+  - listDrawingsForTender query now filters by
+    fileLink: { isNot: null } (excludes folder-only links —
+    drawings are always file-backed) and post-filters on
+    looksLikeDrawingFile (mime-type + extension fallback).
+  - RENDERABLE_MIME_TYPES re-exported as alias of
+    DRAWING_MIME_TYPES so read_tender_drawing's per-handler check
+    stays a single source of truth alignment with the listing
+    tool.
+  - pageCount dropped from per-listing PDF parse path. PR #142's
+    safeGetPageCount downloaded + parsed every PDF in the
+    listing, defeating the cheap-listing design goal. pageCount
+    now always null. PHASE 6 carry-forward: cache pageCount on
+    TenderDocumentLink at upload time.
+    extract_drawing_titleblock can return per-page metadata when
+    the model needs it for a specific drawing.
+
+  Other handlers (extract_drawing_titleblock,
+  read_tender_drawing) unchanged — they accept documentId
+  directly and never filtered by category.
+
+Counts:
+  - API jest --runInBand: 388/388 (was 373 baseline; +15: 1
+    explicit PR #145 regression test + 14 looksLikeDrawingFile
+    matrix cases covering mime/extension/case-insensitivity/null
+    permutations; 2 regression skipped without API key).
+  - Lint: clean.
+  - Build: clean.
+  - No web changes; no migration; no system-prompt changes.
+
+Manual smoke pending Marco: re-run PR #142's seven-step smoke
+from a FRESH conversation. Step 1 should now succeed: model
+receives the IS-T020 demo drawing (category="tender",
+mime_type=PDF) in the listing, then can read/extract metadata
+as needed.
+
+Lessons learned (PR #142 retrospective):
+  When a PR spec references an unfamiliar field with non-
+  standardised values (CHECK 0.3 from PR #142 explicitly flagged
+  category as inconsistent), inspect actual production-like data
+  before assuming field semantics. PR #142's defensive allowlist
+  was based on a wrong model of the field's purpose. PR #145
+  pivots to mime-type — a property of the file content itself,
+  not of how it's tagged at upload time — which is the more
+  honest signal for "is this a drawing".
+
+Deviations from spec:
+  (1) Spec §2.2 suggested mocking prisma directly in tests. The
+      existing handler test scaffolding mocks the access service
+      (DrawingToolsAccessService), and the access service's
+      listDrawingsForTender is exactly where the new mime-type
+      filter applies. So the matrix tests target
+      looksLikeDrawingFile directly (faster, exhaustive, no DB
+      plumbing) and the handler-level regression test stubs the
+      access service to return the failure-mode row. Same
+      coverage with cleaner separation. Test counts: spec
+      estimated 5 new; actual is 15 (1 regression + 14 matrix).
+  (2) Spec §2.4 said "If the existing handler returned pageCount
+      from a non-load path, preserve that. Don't introduce a
+      per-listing PDF parse." PR #142's existing path WAS a
+      per-listing parse (downloaded each PDF and read pdfjs
+      metadata). Per spec direction, dropped it. pageCount is
+      always null now; PHASE 6 carry-forward captures the
+      upload-time caching idea.
 
 Audit findings: none.

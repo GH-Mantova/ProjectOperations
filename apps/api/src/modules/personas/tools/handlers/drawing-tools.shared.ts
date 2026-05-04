@@ -173,24 +173,22 @@ export class DrawingToolsAccessService {
   }
 
   // Fetch raw file bytes from SharePoint via the configured adapter.
-  // Mock adapter doesn't have real bytes — handler tests mock this
-  // method. Live adapter resolves the SharePoint download URL and
-  // streams it into a Buffer.
+  // PR #146 — routed through SharePointService.downloadFileBytes
+  // (added in #146) instead of the previous getDownloadUrl + fetch
+  // round-trip. The previous path failed silently against the mock
+  // adapter (which returned a fake unreachable URL) and against any
+  // adapter that doesn't pre-sign download URLs. Bubbles
+  // SharePointFileNotFoundError up so handlers can produce a
+  // specific user-facing message.
   async downloadFileBytes(file: {
     siteId: string;
     driveId: string;
     itemId: string;
   }): Promise<Buffer> {
-    const url = await this.sharepoint.getDownloadUrl({
+    return this.sharepoint.downloadFileBytes({
       siteId: file.siteId,
       driveId: file.driveId,
       fileId: file.itemId
     });
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(`SharePoint download failed: HTTP ${res.status}`);
-    }
-    const arrayBuffer = await res.arrayBuffer();
-    return Buffer.from(arrayBuffer);
   }
 }

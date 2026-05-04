@@ -4,9 +4,11 @@ import { ClientSecretCredential, TokenCredential } from "@azure/identity";
 import { Client } from "@microsoft/microsoft-graph-client";
 import { TokenCredentialAuthenticationProvider } from "@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials";
 import {
+  DownloadFileBytesInput,
   EnsureFolderInput,
   EnsureFolderResult,
   SharePointAdapter,
+  SharePointFileNotFoundError,
   UploadFileInput,
   UploadFileResult
 } from "./sharepoint.adapter";
@@ -116,6 +118,35 @@ export class GraphSharePointAdapter implements SharePointAdapter {
         fileId: input.fileId
       });
     }
+  }
+
+  // PR #146 — implements the new interface method against Graph.
+  // Resolves the short-lived download URL via Graph metadata, then
+  // streams the bytes back into a Buffer. 404 from Graph maps to
+  // SharePointFileNotFoundError so callers (drawing tools handlers,
+  // future asbestos register reader) can surface a specific message.
+  async downloadFileBytes(input: DownloadFileBytesInput): Promise<Buffer> {
+    let url: string;
+    try {
+      url = await this.getDownloadUrl(input);
+    } catch (err) {
+      // getDownloadUrl wraps a Graph 404 in ServiceUnavailableException;
+      // sniff the message to detect the not-found case and re-cast.
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("itemNotFound") || msg.includes("404")) {
+        throw new SharePointFileNotFoundError(input.fileId, input.siteId, input.driveId);
+      }
+      throw err;
+    }
+    const res = await fetch(url);
+    if (res.status === 404) {
+      throw new SharePointFileNotFoundError(input.fileId, input.siteId, input.driveId);
+    }
+    if (!res.ok) {
+      throw new Error(`Graph downloadFileBytes failed: HTTP ${res.status}`);
+    }
+    const arrayBuffer = await res.arrayBuffer();
+    return Buffer.from(arrayBuffer);
   }
 
   private getClient(): Client {

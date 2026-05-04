@@ -91,6 +91,31 @@ export class SharePointService {
     return this.adapter.getDownloadUrl(input);
   }
 
+  // PR #146 — read raw file bytes via the configured adapter. Audits
+  // every read because file content can be sensitive (drawings, hazmat
+  // reports, contracts), and the AI model now reads on behalf of users
+  // — having an audit trail of what the assistant accessed matters for
+  // compliance. Audit metadata records sizeBytes only; never the
+  // content itself.
+  async downloadFileBytes(
+    input: { siteId: string; driveId: string; fileId: string },
+    actorId?: string
+  ): Promise<Buffer> {
+    const result = await this.adapter.downloadFileBytes(input);
+    await this.auditService.write({
+      actorId,
+      action: "sharepoint.file.download",
+      entityType: "SharePointFileLink",
+      entityId: input.fileId,
+      metadata: {
+        siteId: input.siteId,
+        driveId: input.driveId,
+        sizeBytes: result.length
+      }
+    });
+    return result;
+  }
+
   // Probe the configured adapter so the Admin Settings → Platform UI can
   // verify SharePoint credentials before any real upload happens. Mock mode
   // returns a synthetic OK; live mode performs a benign ensureFolder against

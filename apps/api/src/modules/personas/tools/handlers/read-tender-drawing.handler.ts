@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { createCanvas } from "@napi-rs/canvas";
 import sharp from "sharp";
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.js";
+import { SharePointFileNotFoundError } from "../../../platform/sharepoint.adapter";
 import {
   DrawingToolsAccessService,
   PDFJS_STANDARD_FONT_DATA_URL,
@@ -76,7 +77,14 @@ export class ReadTenderDrawingHandler implements ToolHandler<Input> {
     let bytes: Buffer;
     try {
       bytes = await this.access.downloadFileBytes(doc.fileLink);
-    } catch {
+    } catch (err) {
+      if (err instanceof SharePointFileNotFoundError) {
+        return errorResult(
+          "Drawing file is missing from storage. The document record exists " +
+            "but the file content was not found. This may indicate the upload " +
+            "did not complete or the file was removed externally."
+        );
+      }
       return errorResult("Failed to fetch drawing from storage.");
     }
 

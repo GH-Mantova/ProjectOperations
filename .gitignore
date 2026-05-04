@@ -9,6 +9,11 @@ coverage
 apps/api/generated
 apps/api/dist/
 apps/web/dist/
+# PR #146 — local mock storage for SharePoint adapter (dev-only file persistence).
+# Pattern matches wherever the storage dir lands (default is
+# apps/api/.local-storage/ since both `pnpm dev` and `pnpm seed` run from there,
+# but cover any cwd a future caller picks).
+**/.local-storage/
 *.js.map
 *.log
 Desktop.ini

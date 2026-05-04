@@ -1,7 +1,7 @@
 # ProjectOperations — Project Instructions
 # Version: 1.1
 # Created: 2026-04-25 10:02 AEST
-# Last updated: 2026-05-03 22:40 AEST
+# Last updated: 2026-05-04 04:44 AEST
 # Maintained by: Claude Code (update after any architectural decision,
 #   module addition, business rule change, or workflow change)
 # Accessed by: All Claude chats in this project via web_fetch
@@ -796,6 +796,16 @@ AI Persona System (planned — Phase 5A.1)
   prompt is prefixed with the tender's display code (tenderNumber)
   + database CUID + an explicit instruction to pass the CUID
   (not the display code) to tools that take a tenderId parameter.
+  PR #146 completed the SharePoint adapter abstraction so drawing
+  tools can actually retrieve uploaded file bytes. The
+  SharePointAdapter interface (Mock + Graph implementations) has
+  uploadFile/downloadFileBytes/getDownloadUrl/ensureFolder. The
+  mock adapter persists bytes to apps/api/.local-storage/
+  sharepoint-mock/ (gitignored, configurable via
+  SHAREPOINT_MOCK_STORAGE_PATH); the seed writes a synthetic
+  IS-T020 demo PDF to that path. SHAREPOINT_MODE env var picks
+  the adapter at module init (mock vs live/graph). Production
+  Graph adapter implementation is a separate PHASE 6 task.
 - Future personas: Dashboard Master, Captain Operations, Captain
   Scheduler, etc. Added one at a time post-sign-off as each module
   stabilises.

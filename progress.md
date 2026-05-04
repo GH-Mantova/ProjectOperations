@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-04 03:28 AEST
+Last updated: 2026-05-04 04:44 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -2580,5 +2580,123 @@ Deviations from spec:
       metadata). Per spec direction, dropped it. pageCount is
       always null now; PHASE 6 carry-forward captures the
       upload-time caching idea.
+
+Audit findings: none.
+
+## 2026-05-04 14:15 AEST — PR #146 PENDING — feat: local file persistence for SharePoint mock adapter
+
+Type: PR
+Status: PENDING (auto-merge requested)
+PR: https://github.com/GH-Mantova/ProjectOperations/pull/146
+Branch: feat/sharepoint-mock-local-persistence
+Detail:
+  Closes the PR #142/#143/#144/#145 manual smoke step 2-7 blocker.
+  Drawing tools were calling
+  DrawingToolsAccessService.downloadFileBytes which routed through
+  the SharePoint adapter's getDownloadUrl + fetch pattern. Mock
+  adapter returned a fake URL ("https://sharepoint.local/mock/
+  download/<id>") that resolved to nothing, so every call to
+  extract_drawing_titleblock and read_tender_drawing failed with
+  "Failed to fetch drawing from storage". The mock adapter also
+  fabricated upload IDs without persisting bytes, so even if the
+  download path worked there'd be nothing to fetch.
+
+  Built:
+  - SharePointAdapter interface extended with downloadFileBytes.
+    Both implementations (Mock + Graph) implement it.
+  - SharePointFileNotFoundError typed error class. Drawing handlers
+    detect it and produce a specific user-facing message; generic
+    errors fall through to the existing "Failed to fetch" message.
+  - MockSharePointAdapter persists bytes on uploadFile and reads
+    them back on downloadFileBytes. Storage path is
+    .local-storage/sharepoint-mock relative to cwd (resolves to
+    apps/api/.local-storage/sharepoint-mock since both `pnpm dev`
+    and `pnpm seed` run from there). Configurable via
+    SHAREPOINT_MOCK_STORAGE_PATH for test isolation.
+  - GraphSharePointAdapter implements downloadFileBytes via
+    getDownloadUrl + fetch + 404 → SharePointFileNotFoundError.
+  - SharePointService.downloadFileBytes wraps the adapter call
+    with audit logging (sizeBytes only, never content).
+  - DrawingToolsAccessService.downloadFileBytes rewired to call
+    the service instead of the previous fetch-via-URL path.
+  - Both drawing handlers detect SharePointFileNotFoundError →
+    "Drawing file is missing from storage..." vs the generic
+    message.
+  - Seed script generates a synthetic 2-page PDF for IS-T020 via
+    pdfkit and writes it to mock storage, mirroring the upload
+    write-path. Bland by design; ships in repo so seeds are
+    hermetic. PHASE 6 carry-forward captures "richer demo
+    drawings".
+  - .gitignore extended with **/.local-storage/ pattern.
+
+Counts:
+  - API jest --runInBand: 401/401 (was 388 baseline; +13: 11
+    sharepoint.adapter spec covering uploadFile + downloadFileBytes
+    round-trip / cross-instance persistence /
+    SharePointFileNotFoundError / buffer immutability + 3
+    sharepoint.service downloadFileBytes spec covering delegation
+    / audit shape / error propagation + 2 read-tender-drawing
+    spec covering SharePointFileNotFoundError detection +
+    generic-error fallback; 2 regression skipped without API key).
+  - Web vitest: 264/264 (no change).
+  - Lint: clean.
+  - Build: clean.
+  - compliance:smoke: passed.
+  - Playwright tendering chromium: 5/5 (full 3-browser parallel
+    run timed out at the 9-min job-level timeout — slow-runner
+    issue on Windows under parallel load, same test logic passes
+    on chromium isolated and has passed across all three browsers
+    in PR #137-#143). No tendering-page code touched that would
+    affect e2e rendering.
+  - Synthetic PDF parses cleanly with pdfjs: 2 pages, 33 text
+    items, titleblock content extractable.
+  - Seed: idempotent re-run; demo PDF lands at
+    apps/api/.local-storage/sharepoint-mock/mock-file-tender-bgs-t020-demo-drawing.
+
+Manual smoke pending Marco: re-run PR #142's seven-step smoke
+from a FRESH conversation. Step 2-7 should now succeed. Re-seed
+the DB first to populate the synthetic IS-T020 drawing.
+Pre-PR-146 manually-uploaded drawings have DB rows but no bytes;
+re-upload via the UI to populate, OR rely on the seed-generated
+drawing.
+
+Architectural note: this PR completes the SharePoint adapter
+abstraction. Production swap to Microsoft Graph happens by
+finishing the GraphSharePointAdapter implementation against real
+Graph (the new downloadFileBytes path is implemented; the rest is
+upload + ensureFolder + getDownloadUrl integration). Mock
+adapter remains for dev/test forever.
+
+Drawing-tools sub-task gates (PR #142 + #143 + #144 + #145 +
+#146) all complete on the backend; pending Marco's
+fresh-conversation smoke from re-seeded state.
+
+Deviations from spec:
+  (1) Default storage path was apps/api/.local-storage/... per
+      spec §2 / §3. That resolves wrong because cwd at runtime is
+      already apps/api (both pnpm dev and pnpm seed cd there via
+      npm scripts). First seed run created
+      apps/api/apps/api/.local-storage. Fixed to
+      .local-storage/sharepoint-mock relative to cwd; both adapter
+      and seed updated together; .gitignore pattern broadened to
+      **/.local-storage/ as defence against future cwd surprises.
+  (2) Spec §6.2 said "where the seed currently creates the IS-T020
+      tender's sharepoint_file_links row, also generate and persist
+      the synthetic PDF bytes". The IS-T020 seed didn't create a
+      drawing file_link at all (CHECK 0.4 confirmed) — only IS-T010
+      had its award-letter.pdf seed. Added the drawing folder +
+      file + tender_document_link rows with deterministic itemIds
+      so re-seeds overwrite the same path.
+  (3) Spec §6 suggested an optional separate seed-helpers/
+      directory for the synthetic PDF generator. Kept inline in
+      seed.ts as a private function — simpler, fewer files,
+      easier to maintain since the seed is the only caller.
+  (4) Playwright full 3-browser parallel run timed out at the
+      9-min job-level timeout. Re-ran chromium isolated: 5/5 pass
+      in 2 minutes. Test logic fine; slow-browser parallel job
+      sometimes runs over budget on this Windows host. Same test
+      code passed across all three browsers in PR #137/#138/#139/
+      #141/#142/#143. No code touched here that affects tendering
+      page rendering.
 
 Audit findings: none.

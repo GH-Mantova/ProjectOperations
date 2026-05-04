@@ -1,5 +1,8 @@
 import { Prisma, PrismaClient } from "@prisma/client";
 import { randomBytes, scryptSync } from "crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import PDFDocument from "pdfkit";
 import { permissionRegistry } from "../src/common/permissions/permission-registry";
 import {
   seedBusinessDirectoryDemos,
@@ -26,6 +29,90 @@ function hashPassword(password: string) {
   const derivedKey = scryptSync(password, salt, 64).toString("hex");
 
   return `${salt}:${derivedKey}`;
+}
+
+// PR #146 — synthetic 2-page demolition drawing PDF for IS-T020 demo
+// tender. Output is bland by design; ships in repo so the seed is
+// hermetic. For richer demo material see roadmap.md PHASE 6 entry.
+// Pdfkit's stream-to-buffer flow uses event listeners, so wrap in
+// a Promise.
+function generateSyntheticDrawing(opts: {
+  drawingNumber: string;
+  title: string;
+  scale: string;
+  revision: string;
+  date: string;
+  project: string;
+  client: string;
+}): Promise<Buffer> {
+  return new Promise<Buffer>((resolveBuf, rejectBuf) => {
+    const doc = new PDFDocument({ size: "A3", layout: "landscape", margin: 30 });
+    const chunks: Buffer[] = [];
+    doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+    doc.on("end", () => resolveBuf(Buffer.concat(chunks)));
+    doc.on("error", rejectBuf);
+
+    // Page 1 — header + faux drawing area + titleblock (bottom-right per
+    // real-world convention).
+    doc.fontSize(14).text(opts.project, 30, 30);
+    doc.fontSize(10).text(opts.title, 30, 50);
+    doc.rect(30, 80, 800, 400).stroke();
+    doc.fontSize(9).text("(Synthetic drawing content area)", 400, 280);
+
+    const tbX = 660;
+    const tbY = 500;
+    doc.fontSize(8);
+    doc.text("DRAWING NO.", tbX, tbY);
+    doc.text(opts.drawingNumber, tbX + 100, tbY);
+    doc.text("TITLE", tbX, tbY + 15);
+    doc.text(opts.title, tbX + 100, tbY + 15);
+    doc.text("SCALE", tbX, tbY + 30);
+    doc.text(opts.scale, tbX + 100, tbY + 30);
+    doc.text("REVISION", tbX, tbY + 45);
+    doc.text(opts.revision, tbX + 100, tbY + 45);
+    doc.text("DATE", tbX, tbY + 60);
+    doc.text(opts.date, tbX + 100, tbY + 60);
+    doc.text("PROJECT", tbX, tbY + 75);
+    doc.text(opts.project, tbX + 100, tbY + 75);
+    doc.text("CLIENT", tbX, tbY + 90);
+    doc.text(opts.client, tbX + 100, tbY + 90);
+
+    // Page 2 — gives drawing tools a multi-page surface to exercise
+    // pageNumber parameters.
+    doc.addPage();
+    doc.fontSize(14).text(`${opts.project} - Page 2`, 30, 30);
+    doc.fontSize(10).text("Notes", 30, 60);
+    doc.fontSize(8).text(
+      "1. Contractor to verify all dimensions on site.\n" +
+        "2. Refer to demolition specification for full scope.\n" +
+        "3. All asbestos materials to be removed in accordance with AS 2601.",
+      30,
+      80
+    );
+
+    doc.end();
+  });
+}
+
+// Mirror of MockSharePointAdapter.resolveMockStoragePath. Kept inline
+// to avoid pulling Nest DI into the seed script. If the mock storage
+// path layout ever changes (e.g. partitioning by site/drive), update
+// both this function and the adapter together.
+//
+// Path is `.local-storage/sharepoint-mock` relative to cwd. The seed
+// runs from apps/api, so resolves to apps/api/.local-storage/...,
+// matching the adapter at runtime.
+function resolveSeedMockStoragePath(): string {
+  return (
+    process.env.SHAREPOINT_MOCK_STORAGE_PATH ??
+    resolve(process.cwd(), ".local-storage/sharepoint-mock")
+  );
+}
+
+async function persistMockFileBytes(itemId: string, content: Buffer): Promise<void> {
+  const dir = resolveSeedMockStoragePath();
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, itemId), content);
 }
 
 async function main() {
@@ -1292,6 +1379,100 @@ async function main() {
         relationshipType: "PRIMARY"
       }
     });
+
+    // PR #146 — IS-T020 demo drawing for Tendering Assistant smoke
+    // testing. The mock SharePoint adapter persists bytes locally; this
+    // seed mirrors the upload write-path so smoke tests have something
+    // to read regardless of whether anyone has uploaded via the UI.
+    // itemId is deterministic so re-seeds overwrite the same file.
+    const bgsDrawingFolderItemId = "mock-folder-tendering-bgs-t020-drawings";
+    const bgsDrawingFileItemId = "mock-file-tender-bgs-t020-demo-drawing";
+    const bgsDrawingFolder = await prisma.sharePointFolderLink.upsert({
+      where: {
+        siteId_driveId_itemId: {
+          siteId: "project-operations-site",
+          driveId: "project-operations-library",
+          itemId: bgsDrawingFolderItemId
+        }
+      },
+      update: {
+        name: "Drawings",
+        relativePath: "Project Operations/Tendering/IS-T020_brisbane-grammar-school/Drawings",
+        module: "tendering",
+        linkedEntityType: "Tender",
+        linkedEntityId: bgsTender.id
+      },
+      create: {
+        siteId: "project-operations-site",
+        driveId: "project-operations-library",
+        itemId: bgsDrawingFolderItemId,
+        name: "Drawings",
+        relativePath: "Project Operations/Tendering/IS-T020_brisbane-grammar-school/Drawings",
+        module: "tendering",
+        linkedEntityType: "Tender",
+        linkedEntityId: bgsTender.id
+      }
+    });
+
+    const bgsDrawingFile = await prisma.sharePointFileLink.upsert({
+      where: {
+        siteId_driveId_itemId: {
+          siteId: "project-operations-site",
+          driveId: "project-operations-library",
+          itemId: bgsDrawingFileItemId
+        }
+      },
+      update: {
+        folderLinkId: bgsDrawingFolder.id,
+        name: "IS-DEMO-001 - Demolition Plan Level 1.pdf",
+        relativePath: `${bgsDrawingFolder.relativePath}/IS-DEMO-001 - Demolition Plan Level 1.pdf`,
+        webUrl: `https://sharepoint.local/${bgsDrawingFolder.relativePath}/IS-DEMO-001 - Demolition Plan Level 1.pdf`,
+        linkedEntityType: "Tender",
+        linkedEntityId: bgsTender.id
+      },
+      create: {
+        folderLinkId: bgsDrawingFolder.id,
+        siteId: "project-operations-site",
+        driveId: "project-operations-library",
+        itemId: bgsDrawingFileItemId,
+        name: "IS-DEMO-001 - Demolition Plan Level 1.pdf",
+        relativePath: `${bgsDrawingFolder.relativePath}/IS-DEMO-001 - Demolition Plan Level 1.pdf`,
+        webUrl: `https://sharepoint.local/${bgsDrawingFolder.relativePath}/IS-DEMO-001 - Demolition Plan Level 1.pdf`,
+        mimeType: "application/pdf",
+        linkedEntityType: "Tender",
+        linkedEntityId: bgsTender.id
+      }
+    });
+
+    await prisma.tenderDocumentLink.upsert({
+      where: { id: "seed-tender-document-bgs-drawing-1" },
+      update: {
+        tenderId: bgsTender.id,
+        category: "tender",
+        title: "Demolition Plan — Level 1",
+        folderLinkId: bgsDrawingFolder.id,
+        fileLinkId: bgsDrawingFile.id
+      },
+      create: {
+        id: "seed-tender-document-bgs-drawing-1",
+        tenderId: bgsTender.id,
+        category: "tender",
+        title: "Demolition Plan — Level 1",
+        folderLinkId: bgsDrawingFolder.id,
+        fileLinkId: bgsDrawingFile.id
+      }
+    });
+
+    const bgsDrawingBytes = await generateSyntheticDrawing({
+      drawingNumber: "IS-DEMO-001",
+      title: "Demolition Plan - Level 1",
+      scale: "1:100",
+      revision: "A",
+      date: "20.05.2026",
+      project: "IS-T020 Brisbane Grammar School Science Block",
+      client: "Brisbane Grammar School"
+    });
+    await persistMockFileBytes(bgsDrawingFileItemId, bgsDrawingBytes);
 
     // Scope items across all 5 disciplines — tight rows that demonstrate
     // each discipline's row-type fields without flooding the table.

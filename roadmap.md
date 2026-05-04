@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-04 03:28 AEST
+Last updated: 2026-05-04 04:44 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -228,9 +228,21 @@ route (scope mode = drafting tools; quote mode = advisory; etc.).
    path (defeated the cheap-listing design goal); PHASE 6
    carry-forward captures the upload-time caching idea.
 
-   Drawing-tools sub-task gates (PR #142 + #143 + #144 + #145)
-   are now all complete on the backend; pending Marco's manual
-   smoke from a fresh conversation to confirm end-to-end.
+   PR #146 shipped: SharePointAdapter interface extended with
+   downloadFileBytes; MockSharePointAdapter persists bytes to
+   local disk on uploadFile and reads them back; SharePointService
+   adds audit-logged downloadFileBytes; DrawingToolsAccessService
+   rewired through the service (was using a fetch-against-fake-URL
+   path that always failed); SharePointFileNotFoundError typed
+   error so handlers produce a specific user-facing message for
+   missing-content vs generic storage failures; seed script
+   generates a synthetic 2-page demo PDF for IS-T020. Closes the
+   PR #142/#143/#144/#145 manual smoke step 2-7 blocker.
+
+   Drawing-tools sub-task gates (PR #142 + #143 + #144 + #145 +
+   #146) are now all complete on the backend; pending Marco's
+   fresh-conversation smoke from re-seeded state to confirm
+   end-to-end.
 
    Remaining in this Item 5 sub-area:
    - PR B: delete legacy "Draft scope with Claude" code path.
@@ -760,6 +772,31 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
      for a specific drawing, and a per-tender listing doesn't
      usually depend on it.)
 
+⏸️  Microsoft Graph SharePoint adapter implementation
+    (PR #146 completed the SharePointAdapter abstraction —
+     interface extended with downloadFileBytes, mock adapter
+     persists/reads locally, GraphSharePointAdapter shell already
+     exists with downloadFileBytes implemented via getDownloadUrl
+     + fetch + 404→SharePointFileNotFoundError. Remaining work for
+     production: finish ensureFolder/uploadFile/getDownloadUrl
+     against real Graph (Azure App Registration, MSAL auth,
+     environment-aware config). SHAREPOINT_MODE env var already
+     selects adapter at module init; flipping to "live" picks up
+     the Graph adapter. Mock adapter stays for dev/test forever.)
+
+⏸️  Richer demo drawings for tender register
+    (PR #146 ships a synthetic 2-page PDF as the IS-T020 demo
+     drawing — bland by design, single titleblock + placeholder
+     content area + boilerplate notes. For demos with Sean and
+     Raj, real consultant drawings (UQ Union, C-Square Nambour,
+     etc.) would be more compelling. Two paths: (a) upload via
+     UI after seeding to override the synthetic file at the same
+     itemId, or (b) future seed-fixtures/optional/ directory
+     pattern where reference drawings can be dropped in without
+     committing to repo, with the seed script picking them up if
+     present. Defer until first live demo where the synthetic
+     drawing's blandness becomes a problem.)
+
 ---
 
 ## PHASE 7 — NEXT FEATURE PRIORITIES
@@ -1035,3 +1072,30 @@ parse path; PHASE 6 carry-forward captures the upload-time
 caching idea. Drawing-tools sub-task gates (PR #142 + #143 +
 #144 + #145) now all complete pending Marco's fresh-conversation
 smoke retry.
+
+### 2026-05-04 afternoon — SharePoint mock adapter persists bytes locally (§5A.1 Item 5)
+PR #146 closed the fifth and final layer of failure exposed by
+the manual smoke trail starting at PR #142: drawing tools could
+call list_tender_drawings successfully (after PR #145 fixed the
+filter), but extract_drawing_titleblock and read_tender_drawing
+failed because the mock SharePoint adapter fabricated upload IDs
+without persisting bytes AND there was no downloadFileBytes
+method on the adapter at all. Fix: extended SharePointAdapter
+interface with downloadFileBytes; mock adapter now persists to
+local disk on uploadFile and reads back on downloadFileBytes
+(storage path .local-storage/sharepoint-mock relative to cwd, so
+apps/api/.local-storage/sharepoint-mock since both `pnpm dev`
+and `pnpm seed` run from there); GraphSharePointAdapter
+implements downloadFileBytes via getDownloadUrl + fetch + 404
+detection; SharePointService adds audit-logged downloadFileBytes;
+DrawingToolsAccessService rewired through the service;
+SharePointFileNotFoundError typed error so handlers produce a
+specific user-facing message; seed script generates a synthetic
+2-page demo PDF for IS-T020 via pdfkit. Two new PHASE 6
+deferrals: Microsoft Graph adapter implementation (the rest of
+the production adapter on top of the new downloadFileBytes path);
+richer demo drawings (synthetic is bland by design — real
+consultant drawings would land via UI upload or a future
+seed-fixtures/optional/ directory). Drawing-tools sub-task gates
+(PR #142 + #143 + #144 + #145 + #146) now all complete pending
+Marco's fresh-conversation smoke from re-seeded state.

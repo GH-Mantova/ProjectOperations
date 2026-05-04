@@ -1,4 +1,5 @@
 import { ReadTenderDrawingHandler } from "../read-tender-drawing.handler";
+import { SharePointFileNotFoundError } from "../../../../platform/sharepoint.adapter";
 import type { DrawingToolsAccessService } from "../drawing-tools.shared";
 import type { ToolHandlerContext } from "../../tool-handler.types";
 import PDFDocument from "pdfkit";
@@ -212,4 +213,65 @@ describe("ReadTenderDrawingHandler", () => {
     expect(out.result.isError).toBe(true);
     expect((out.result.content[0] as { text: string }).text).toMatch(/only one page/);
   }, 15_000);
+
+  // PR #146 — handler distinguishes SharePointFileNotFoundError
+  // (specific user-facing message about missing file content) from
+  // generic storage failures (the original "Failed to fetch" message).
+  it("returns the specific 'missing from storage' message on SharePointFileNotFoundError", async () => {
+    const h = new ReadTenderDrawingHandler(
+      buildAccess({
+        loadDocument: jest.fn(async () => ({
+          id: VALID_DOC_ID,
+          tenderId: "t1",
+          category: "tender",
+          title: "Test",
+          fileLink: {
+            siteId: "s",
+            driveId: "d",
+            itemId: "i",
+            name: "test.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 100
+          },
+          createdAt: new Date()
+        })) as never,
+        downloadFileBytes: jest.fn(async () => {
+          throw new SharePointFileNotFoundError("i", "s", "d");
+        }) as never
+      })
+    );
+    const out = await h.execute({ documentId: VALID_DOC_ID }, ctx);
+    expect(out.result.isError).toBe(true);
+    expect((out.result.content[0] as { text: string }).text).toMatch(/missing from storage/);
+  });
+
+  it("returns the generic 'Failed to fetch' message on unexpected errors", async () => {
+    const h = new ReadTenderDrawingHandler(
+      buildAccess({
+        loadDocument: jest.fn(async () => ({
+          id: VALID_DOC_ID,
+          tenderId: "t1",
+          category: "tender",
+          title: "Test",
+          fileLink: {
+            siteId: "s",
+            driveId: "d",
+            itemId: "i",
+            name: "test.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 100
+          },
+          createdAt: new Date()
+        })) as never,
+        downloadFileBytes: jest.fn(async () => {
+          throw new Error("transient connection failure");
+        }) as never
+      })
+    );
+    const out = await h.execute({ documentId: VALID_DOC_ID }, ctx);
+    expect(out.result.isError).toBe(true);
+    expect((out.result.content[0] as { text: string }).text).toBe(
+      "Failed to fetch drawing from storage."
+    );
+  });
 });

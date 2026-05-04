@@ -10,7 +10,9 @@ import type {
   ToolHandlerExecuteResult
 } from "../../tools/tool-handler.types";
 import type {
+  ChatMessage,
   ChatStreamChunk,
+  ChatToolResultBlock,
   ProviderConfig
 } from "../../../ai-providers/ai-providers.types";
 import type { AiProvidersService } from "../../../ai-providers/ai-providers.service";
@@ -406,6 +408,259 @@ describe("PersonaDispatcherService", () => {
       const errors = events.filter((e) => e.type === "error");
       expect(errors.length).toBeGreaterThan(0);
       expect((errors[0] as { error: string }).error).toMatch(/9 tool calls in one turn/);
+    });
+  });
+
+  describe("image content round-trip across turns (PR #147)", () => {
+    // Helper: pull tool_result blocks out of a captured streamChat
+    // messages array regardless of whether content is a string or block array.
+    function extractToolResultBlocks(messages: ChatMessage[]): ChatToolResultBlock[] {
+      return messages.flatMap((m) =>
+        typeof m.content === "string"
+          ? []
+          : m.content.filter((b): b is ChatToolResultBlock => b.type === "tool_result")
+      );
+    }
+
+    it("passes full image content on the turn immediately after tool execution", async () => {
+      const imageData = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4XmNgYGD4DwABBAEAfbLI3wAAAABJRU5ErkJggg==";
+      const handler = new StubHandler("render_drawing", async () => ({
+        result: {
+          content: [
+            { type: "image", mediaType: "image/jpeg", data: imageData },
+            { type: "text", text: "Drawing rendered." }
+          ]
+        }
+      }));
+      const { dispatcher, aiProviders } = buildDispatcher(
+        [handler],
+        [[SUBMODE_KEY, ["render_drawing"]]],
+        [
+          [
+            { type: "tool_use_start", id: "tu-1", name: "render_drawing" },
+            { type: "tool_use_stop", id: "tu-1", name: "render_drawing", finalArgs: {} },
+            { type: "stop_reason", reason: "tool_use" },
+            { type: "done" }
+          ],
+          [
+            { type: "content", text: "I can see the drawing." },
+            { type: "stop_reason", reason: "end_turn" },
+            { type: "done" }
+          ]
+        ]
+      );
+
+      await collect(
+        dispatcher.dispatch({
+          conversationId: "conv-1",
+          personaSlug: "tendering",
+          subMode: "scope",
+          contextKey: "tender-1",
+          systemPrompt: "sys",
+          config: CONFIG,
+          actor: ACTOR
+        })
+      );
+
+      // Second streamChat call (turn 2) carries the full-content
+      // tool_result with the actual image bytes — not a "not replayed"
+      // marker. This is the PR #147 fix.
+      const calls = (aiProviders.streamChat as jest.Mock).mock.calls;
+      expect(calls).toHaveLength(2);
+      const secondCallMessages = calls[1][0].messages as ChatMessage[];
+      const toolResultBlocks = extractToolResultBlocks(secondCallMessages);
+      expect(toolResultBlocks).toHaveLength(1);
+      const toolResult = toolResultBlocks[0]!;
+      expect(toolResult.toolUseId).toBe("tu-1");
+
+      const imageBlocks = toolResult.content.filter(
+        (c): c is Extract<ChatToolResultBlock["content"][number], { type: "image" }> =>
+          c.type === "image"
+      );
+      expect(imageBlocks).toHaveLength(1);
+      expect(imageBlocks[0]!.mediaType).toBe("image/jpeg");
+      expect(imageBlocks[0]!.data).toBe(imageData);
+
+      for (const tb of toolResult.content.filter(
+        (c): c is Extract<ChatToolResultBlock["content"][number], { type: "text" }> =>
+          c.type === "text"
+      )) {
+        expect(tb.text).not.toContain("not replayed");
+      }
+    });
+
+    it("does NOT pass image content for tool results from older turns", async () => {
+      // Turn 1: image tool fires. Turn 2: text-only tool fires. Turn 3:
+      // model finishes. On turn 3, the turn-1 tool_result should be
+      // image-stripped (DB rebuild path with "not replayed" marker)
+      // because pendingFullToolResults was cleared after turn 2.
+      const imageHandler = new StubHandler("render_drawing", async () => ({
+        result: {
+          content: [
+            { type: "image", mediaType: "image/jpeg", data: "abc" }
+          ]
+        }
+      }));
+      const textHandler = new StubHandler("clock", async () => ({
+        result: { content: [{ type: "text", text: "now" }] }
+      }));
+      const { dispatcher, aiProviders } = buildDispatcher(
+        [imageHandler, textHandler],
+        [[SUBMODE_KEY, ["render_drawing", "clock"]]],
+        [
+          [
+            { type: "tool_use_start", id: "tu-1", name: "render_drawing" },
+            { type: "tool_use_stop", id: "tu-1", name: "render_drawing", finalArgs: {} },
+            { type: "stop_reason", reason: "tool_use" },
+            { type: "done" }
+          ],
+          [
+            { type: "tool_use_start", id: "tu-2", name: "clock" },
+            { type: "tool_use_stop", id: "tu-2", name: "clock", finalArgs: {} },
+            { type: "stop_reason", reason: "tool_use" },
+            { type: "done" }
+          ],
+          [
+            { type: "content", text: "Done." },
+            { type: "stop_reason", reason: "end_turn" },
+            { type: "done" }
+          ]
+        ]
+      );
+
+      await collect(
+        dispatcher.dispatch({
+          conversationId: "conv-1",
+          personaSlug: "tendering",
+          subMode: "scope",
+          contextKey: "tender-1",
+          systemPrompt: "sys",
+          config: CONFIG,
+          actor: ACTOR
+        })
+      );
+
+      const calls = (aiProviders.streamChat as jest.Mock).mock.calls;
+      expect(calls).toHaveLength(3);
+      const turn3Messages = calls[2][0].messages as ChatMessage[];
+      const turn3ToolResults = extractToolResultBlocks(turn3Messages);
+      // Both tool_results present in history; the older (image) one
+      // must be image-stripped, the most recent (text) one is unchanged.
+      const imgResult = turn3ToolResults.find((b) => b.toolUseId === "tu-1");
+      expect(imgResult).toBeDefined();
+      const imgBlocks = imgResult!.content.filter((c) => c.type === "image");
+      expect(imgBlocks).toHaveLength(0);
+      const textBlocks = imgResult!.content.filter(
+        (c): c is Extract<ChatToolResultBlock["content"][number], { type: "text" }> =>
+          c.type === "text"
+      );
+      expect(textBlocks.some((tb) => tb.text.includes("not replayed"))).toBe(true);
+    });
+
+    it("preserves toolUseId mapping when splicing parallel image tool calls", async () => {
+      const handlerA = new StubHandler("render_a", async () => ({
+        result: { content: [{ type: "image", mediaType: "image/png", data: "AAA" }] }
+      }));
+      const handlerB = new StubHandler("render_b", async () => ({
+        result: { content: [{ type: "image", mediaType: "image/png", data: "BBB" }] }
+      }));
+      const { dispatcher, aiProviders } = buildDispatcher(
+        [handlerA, handlerB],
+        [[SUBMODE_KEY, ["render_a", "render_b"]]],
+        [
+          [
+            { type: "tool_use_start", id: "tu-A", name: "render_a" },
+            { type: "tool_use_stop", id: "tu-A", name: "render_a", finalArgs: {} },
+            { type: "tool_use_start", id: "tu-B", name: "render_b" },
+            { type: "tool_use_stop", id: "tu-B", name: "render_b", finalArgs: {} },
+            { type: "stop_reason", reason: "tool_use" },
+            { type: "done" }
+          ],
+          [
+            { type: "content", text: "Got both." },
+            { type: "stop_reason", reason: "end_turn" },
+            { type: "done" }
+          ]
+        ]
+      );
+
+      await collect(
+        dispatcher.dispatch({
+          conversationId: "conv-1",
+          personaSlug: "tendering",
+          subMode: "scope",
+          contextKey: "tender-1",
+          systemPrompt: "sys",
+          config: CONFIG,
+          actor: ACTOR
+        })
+      );
+
+      const calls = (aiProviders.streamChat as jest.Mock).mock.calls;
+      const turn2Messages = calls[1][0].messages as ChatMessage[];
+      const blocks = extractToolResultBlocks(turn2Messages);
+      const a = blocks.find((b) => b.toolUseId === "tu-A");
+      const bb = blocks.find((b) => b.toolUseId === "tu-B");
+      expect(a).toBeDefined();
+      expect(bb).toBeDefined();
+      const aImg = a!.content.find(
+        (c): c is Extract<ChatToolResultBlock["content"][number], { type: "image" }> =>
+          c.type === "image"
+      );
+      const bImg = bb!.content.find(
+        (c): c is Extract<ChatToolResultBlock["content"][number], { type: "image" }> =>
+          c.type === "image"
+      );
+      expect(aImg!.data).toBe("AAA");
+      expect(bImg!.data).toBe("BBB");
+    });
+
+    it("is a no-op for tool results that returned only text", async () => {
+      const handler = new StubHandler("clock", async () => ({
+        result: { content: [{ type: "text", text: "2026-05-05" }] }
+      }));
+      const { dispatcher, aiProviders } = buildDispatcher(
+        [handler],
+        [[SUBMODE_KEY, ["clock"]]],
+        [
+          [
+            { type: "tool_use_start", id: "tu-1", name: "clock" },
+            { type: "tool_use_stop", id: "tu-1", name: "clock", finalArgs: {} },
+            { type: "stop_reason", reason: "tool_use" },
+            { type: "done" }
+          ],
+          [
+            { type: "content", text: "Now is 2026-05-05." },
+            { type: "stop_reason", reason: "end_turn" },
+            { type: "done" }
+          ]
+        ]
+      );
+
+      await collect(
+        dispatcher.dispatch({
+          conversationId: "conv-1",
+          personaSlug: "tendering",
+          subMode: "scope",
+          contextKey: null,
+          systemPrompt: "sys",
+          config: CONFIG,
+          actor: ACTOR
+        })
+      );
+
+      const calls = (aiProviders.streamChat as jest.Mock).mock.calls;
+      const turn2Messages = calls[1][0].messages as ChatMessage[];
+      const blocks = extractToolResultBlocks(turn2Messages);
+      expect(blocks).toHaveLength(1);
+      const textBlocks = blocks[0]!.content.filter(
+        (c): c is Extract<ChatToolResultBlock["content"][number], { type: "text" }> =>
+          c.type === "text"
+      );
+      expect(textBlocks.some((tb) => tb.text === "2026-05-05")).toBe(true);
+      // No accidental image substitution.
+      const imgBlocks = blocks[0]!.content.filter((c) => c.type === "image");
+      expect(imgBlocks).toHaveLength(0);
     });
   });
 

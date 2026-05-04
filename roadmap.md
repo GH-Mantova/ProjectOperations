@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-04 04:44 AEST
+Last updated: 2026-05-04 23:08 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -239,9 +239,22 @@ route (scope mode = drafting tools; quote mode = advisory; etc.).
    generates a synthetic 2-page demo PDF for IS-T020. Closes the
    PR #142/#143/#144/#145 manual smoke step 2-7 blocker.
 
+   PR #147 shipped: dispatcher captures full tool-result content
+   (including image bytes) in memory after tool execution; on the
+   immediate next turn it splices those full-content blocks into
+   the messages array, replacing the DB-rebuilt versions for the
+   matching toolUseIds. Older turns continue to use DB rebuild
+   with the "[image not replayed — call the tool again to refresh]"
+   marker — correct for those turns since the model already saw
+   the image when it was new. Seed gains size_bytes population on
+   the IS-T020 demo drawing's file_link row by computing
+   Buffer.byteLength before the upsert (was null prior — cosmetic).
+   Closes the PR #142/#146 smoke step 4 blocker where the model
+   reported "not replayed" instead of describing the drawing.
+
    Drawing-tools sub-task gates (PR #142 + #143 + #144 + #145 +
-   #146) are now all complete on the backend; pending Marco's
-   fresh-conversation smoke from re-seeded state to confirm
+   #146 + #147) are now all complete on the backend; pending
+   Marco's fresh-conversation smoke from re-seeded state to confirm
    end-to-end.
 
    Remaining in this Item 5 sub-area:
@@ -716,6 +729,20 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
      questions about the same drawing, this is wasteful. Add an
      in-memory LRU keyed on documentId + pageNumber, with TTL ~5
      minutes. Defer until profiling shows it as a real bottleneck.)
+
+⏸️  Multi-turn image content — multi-turn re-vision
+    (PR #147 passes full image bytes only on the immediate next turn
+     after tool execution; older turns get the
+     "[image not replayed — call the tool again to refresh]" text
+     marker. Works correctly for typical use — model interprets the
+     image once and references it via summaries downstream. If a use
+     case emerges where the model needs to RE-SEE the same image many
+     turns later, the simplest path is to call the relevant tool
+     again rather than persist images in DB. Document this clearly
+     if such a use case arises; an alternative would be a small
+     ttl-bounded in-memory cache of per-conversation image blocks
+     keyed by toolUseId. Defer until profiling or a real workflow
+     surfaces the need.)
 
 ⏸️  DWG / Revit native support for drawing tools
     (Today read_tender_drawing rejects non-PDF/PNG/JPEG with a

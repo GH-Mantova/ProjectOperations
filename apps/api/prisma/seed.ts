@@ -1414,6 +1414,20 @@ async function main() {
       }
     });
 
+    // Generate bytes first so we can populate size_bytes accurately on
+    // the file_link row (PR #147 fix — was null prior, because the row
+    // got created before bytes existed).
+    const bgsDrawingBytes = await generateSyntheticDrawing({
+      drawingNumber: "IS-DEMO-001",
+      title: "Demolition Plan - Level 1",
+      scale: "1:100",
+      revision: "A",
+      date: "20.05.2026",
+      project: "IS-T020 Brisbane Grammar School Science Block",
+      client: "Brisbane Grammar School"
+    });
+    const bgsDrawingSizeBytes = bgsDrawingBytes.byteLength;
+
     const bgsDrawingFile = await prisma.sharePointFileLink.upsert({
       where: {
         siteId_driveId_itemId: {
@@ -1427,6 +1441,7 @@ async function main() {
         name: "IS-DEMO-001 - Demolition Plan Level 1.pdf",
         relativePath: `${bgsDrawingFolder.relativePath}/IS-DEMO-001 - Demolition Plan Level 1.pdf`,
         webUrl: `https://sharepoint.local/${bgsDrawingFolder.relativePath}/IS-DEMO-001 - Demolition Plan Level 1.pdf`,
+        sizeBytes: bgsDrawingSizeBytes,
         linkedEntityType: "Tender",
         linkedEntityId: bgsTender.id
       },
@@ -1439,6 +1454,7 @@ async function main() {
         relativePath: `${bgsDrawingFolder.relativePath}/IS-DEMO-001 - Demolition Plan Level 1.pdf`,
         webUrl: `https://sharepoint.local/${bgsDrawingFolder.relativePath}/IS-DEMO-001 - Demolition Plan Level 1.pdf`,
         mimeType: "application/pdf",
+        sizeBytes: bgsDrawingSizeBytes,
         linkedEntityType: "Tender",
         linkedEntityId: bgsTender.id
       }
@@ -1463,15 +1479,6 @@ async function main() {
       }
     });
 
-    const bgsDrawingBytes = await generateSyntheticDrawing({
-      drawingNumber: "IS-DEMO-001",
-      title: "Demolition Plan - Level 1",
-      scale: "1:100",
-      revision: "A",
-      date: "20.05.2026",
-      project: "IS-T020 Brisbane Grammar School Science Block",
-      client: "Brisbane Grammar School"
-    });
     await persistMockFileBytes(bgsDrawingFileItemId, bgsDrawingBytes);
 
     // Scope items across all 5 disciplines — tight rows that demonstrate

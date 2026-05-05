@@ -1,7 +1,7 @@
 # ProjectOperations — Project Instructions
 # Version: 1.1
 # Created: 2026-04-25 10:02 AEST
-# Last updated: 2026-05-04 23:08 AEST
+# Last updated: 2026-05-05 01:17 AEST
 # Maintained by: Claude Code (update after any architectural decision,
 #   module addition, business rule change, or workflow change)
 # Accessed by: All Claude chats in this project via web_fetch
@@ -774,7 +774,7 @@ AI Persona System (planned — Phase 5A.1)
 - Provider abstraction: Anthropic default. User-changeable per
   persona. Bring-your-own-key supported with encrypted storage.
 - First persona: Tendering Assistant (Phase 5A.1, before sign-off).
-  Live tools (PR #137 + #141 + #142 + #143):
+  Live tools (PR #137 + #141 + #142 + #143 + #148):
   - Drawing tools — list_tender_drawings,
     extract_drawing_titleblock, read_tender_drawing — bound to ALL
     six sub-modes (register, tender-detail, scope, estimate, quote,
@@ -782,6 +782,16 @@ AI Persona System (planned — Phase 5A.1)
     any context.
   - propose_scope_items — bound to the scope sub-mode only.
     Scope creation is sub-mode-specific work.
+  - lookup_rate — bound to scope and estimate sub-modes only.
+    Live schedule rate lookup for cutting and core holes today;
+    other rate types (labour/plant/fuel/waste/enclosure/other)
+    deferred to subsequent PRs. Cutting uses exact-schedule
+    lookup (equipment / elevation / material / depthMm); core
+    holes apply IS elevation multiplier (Floor=1.0×, Wall=1.1×,
+    Inverted=2.0×) to the per-diameter base rate. Read-only —
+    returns rate as JSON in chat output, does not write to
+    estimate items or scope items (estimate-creation tool is the
+    next sub-task).
   System prompt enumerates the five IS scope codes
   (SO/Str/Asb/Civ/Prv) with strip-out vs fit-out / civil drainage
   vs MEP / civil concrete demolition vs new construction

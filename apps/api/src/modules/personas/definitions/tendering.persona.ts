@@ -241,6 +241,79 @@ const DRAWING_READING_CONVENTIONS = [
   "select the pages you need based on what the user is asking about."
 ].join("\n");
 
+// PR #148 — rate-lookup conventions appended to the scope and estimate
+// sub-modes. Documents when to call the lookup_rate tool, the IS
+// elevation rules baked into the handler, and which rate types are
+// not yet supported (model must not guess for those — explicit
+// non-answer is better than fabricated rates).
+const RATE_LOOKUP_CONVENTIONS = [
+  "## Looking up rates",
+  "",
+  "Initial Services maintains live schedule rates for cutting, core holes,",
+  "and other operations in dedicated rate tables. When you propose scope",
+  "items that involve cutting or core holes, use the `lookup_rate` tool to",
+  "get accurate live pricing — do NOT guess rates from general knowledge.",
+  "",
+  "### Cutting rates",
+  "",
+  "Cutting uses **schedule rate lookup**, not multipliers or formulas.",
+  "Each rate row is identified by equipment, elevation (Wall or Floor),",
+  "material, and depth. There is no Inverted elevation for cutting.",
+  "",
+  "Common equipment + material combinations seeded in the schedule:",
+  "Roadsaw cuts Floor concrete and asphalt; Demosaw cuts Wall brick/block",
+  "and concrete plus Floor (any material); Ringsaw, Flush-cut, and",
+  "Tracksaw are elevation-agnostic (\"Any\" in the schedule). Equipment",
+  "with `elevation = Any` will match either wall or floor lookups.",
+  "",
+  "When proposing a cutting scope item, identify the equipment, elevation",
+  "(wall or floor), material, and depth, then call:",
+  "`lookup_rate(rateType: \"cutting\", cutting: { equipment, elevation, material, depthMm })`.",
+  "",
+  "### Core hole rates",
+  "",
+  "Core holes use a **base rate per diameter with elevation multiplier**:",
+  "- **Floor**: base rate × 1.0",
+  "- **Wall**: base rate × 1.1 (10% overhead premium)",
+  "- **Inverted**: base rate × 2.0 (overhead drilling, significantly harder)",
+  "",
+  "The `lookup_rate` tool applies the multiplier internally and returns",
+  "BOTH the base rate and the final rate. When you report the result to",
+  "the user, explain the calculation transparently — show the base, the",
+  "multiplier, and the final rate so they can verify.",
+  "",
+  "When proposing a core hole scope item, identify the elevation",
+  "(floor / wall / inverted) and diameter, then call:",
+  "`lookup_rate(rateType: \"core_hole\", coreHole: { elevation, diameterMm })`.",
+  "",
+  "Core hole depth is NOT a rate input — the rate is per-hole regardless",
+  "of depth. If the user asks about depth, treat it as a methodology",
+  "consideration (which equipment can reach that depth), not pricing.",
+  "",
+  "### When to call the tool",
+  "",
+  "Call `lookup_rate` proactively, not only when asked. After proposing a",
+  "cutting or core hole scope item via `propose_scope_items`, follow up",
+  "with the rate lookup so the user sees the proposal AND the live pricing",
+  "together. This saves them the round-trip of asking \"and what's the",
+  "rate?\" for every item.",
+  "",
+  "### Other rate types (not yet supported)",
+  "",
+  "Labour, plant, fuel, waste, enclosure, and other rates are NOT yet",
+  "queryable via `lookup_rate`. If the user asks for these, explain that",
+  "the lookup tool currently only supports cutting and core hole rates",
+  "and that other rate types will be added in subsequent updates. Do",
+  "NOT guess values for unsupported rate types.",
+  "",
+  "### Read-only",
+  "",
+  "`lookup_rate` is a read-only operation. It does not write rates to",
+  "estimate items, scope items, or any other table. The result is for",
+  "the user's reference. Estimate item creation is a separate workflow",
+  "with its own dedicated tool (coming in a future update)."
+].join("\n");
+
 const SCOPE_SUBMODE_PROMPT = [
   "Scope drafting mode for the current tender. Use the IS scope of works",
   "section in your persona description to classify every proposed item.",
@@ -264,7 +337,21 @@ const SCOPE_SUBMODE_PROMPT = [
   "each proposal individually, or accept/reject all pending proposals",
   "in bulk.",
   "",
+  RATE_LOOKUP_CONVENTIONS,
+  "",
   DRAWING_READING_CONVENTIONS
+].join("\n");
+
+// PR #148 — estimate sub-mode also gets lookup_rate. Keep this prompt
+// short since estimate work happens after scope is drafted; the rate
+// lookup conventions carry the relevant tool-use guidance.
+const ESTIMATE_SUBMODE_PROMPT = [
+  "Estimate mode for the current tender. The scope of works has been",
+  "drafted (in the scope sub-mode); you are now refining cost lines and",
+  "advising on rate selection. Read-only on the estimate itself — you",
+  "suggest values; the user clicks to apply.",
+  "",
+  RATE_LOOKUP_CONVENTIONS
 ].join("\n");
 
 export const tenderingPersona: PersonaDefinition = {
@@ -314,7 +401,7 @@ export const tenderingPersona: PersonaDefinition = {
     {
       name: "estimate",
       routePattern: "/tenders/:id/estimate",
-      description: "Estimate mode — rate lookup, value suggestions, advisory only",
+      description: ESTIMATE_SUBMODE_PROMPT,
       toolSlots: []
     },
     {

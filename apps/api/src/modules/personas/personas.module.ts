@@ -10,6 +10,7 @@ import { PersonaPermissionGuard } from "./persona-permission.guard";
 import { DrawingToolsAccessService } from "./tools/handlers/drawing-tools.shared";
 import { ExtractDrawingTitleblockHandler } from "./tools/handlers/extract-drawing-titleblock.handler";
 import { ListTenderDrawingsHandler } from "./tools/handlers/list-tender-drawings.handler";
+import { LookupRateHandler } from "./tools/handlers/lookup-rate.handler";
 import { ProposeScopeItemsHandler } from "./tools/handlers/propose-scope-items.handler";
 import { ReadTenderDrawingHandler } from "./tools/handlers/read-tender-drawing.handler";
 import {
@@ -49,6 +50,7 @@ const TENDERING_SUB_MODES = [
     ListTenderDrawingsHandler,
     ExtractDrawingTitleblockHandler,
     ReadTenderDrawingHandler,
+    LookupRateHandler,
     GetCurrentTimeHandler,
     GetTestImageHandler
   ],
@@ -61,6 +63,7 @@ export class PersonasModule implements OnModuleInit {
     private readonly listTenderDrawings: ListTenderDrawingsHandler,
     private readonly extractDrawingTitleblock: ExtractDrawingTitleblockHandler,
     private readonly readTenderDrawing: ReadTenderDrawingHandler,
+    private readonly lookupRate: LookupRateHandler,
     private readonly getCurrentTime: GetCurrentTimeHandler,
     private readonly getTestImage: GetTestImageHandler
   ) {}
@@ -72,6 +75,7 @@ export class PersonasModule implements OnModuleInit {
     this.registry.register(this.extractDrawingTitleblock);
     this.registry.register(this.readTenderDrawing);
     this.registry.register(this.proposeScopeItems);
+    this.registry.register(this.lookupRate);
 
     // Drawing tools are reference material — useful from any Tendering
     // Assistant sub-mode. A user drafting a quote, clarification, or
@@ -104,6 +108,17 @@ export class PersonasModule implements OnModuleInit {
       ...drawingTools,
       this.proposeScopeItems.name
     ]);
+
+    // PR #148 — lookup_rate is bound to scope and estimate sub-modes
+    // only. Scope: needed when proposing cutting / core hole items so
+    // the model can attach live pricing to the proposal. Estimate:
+    // needed when reviewing / refining cost lines. Other sub-modes
+    // (register, tender-detail, quote, clarifications) don't need it
+    // — quotes are derived downstream from estimates and shouldn't
+    // re-query the rate library.
+    const rateTools = [this.lookupRate.name];
+    this.registry.bindToSubMode("tendering.scope", rateTools);
+    this.registry.bindToSubMode("tendering.estimate", rateTools);
 
     // Test fixture handlers — non-production only. NODE_ENV=test +
     // development pick them up so unit + e2e + manual smoke can

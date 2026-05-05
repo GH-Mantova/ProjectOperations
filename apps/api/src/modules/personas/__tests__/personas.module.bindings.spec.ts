@@ -35,6 +35,7 @@ describe("PersonasModule — sub-mode bindings (PR #143)", () => {
     registry.register(stubHandler("extract_drawing_titleblock"));
     registry.register(stubHandler("read_tender_drawing"));
     registry.register(stubHandler("propose_scope_items"));
+    registry.register(stubHandler("lookup_rate"));
 
     const drawingTools = [
       "list_tender_drawings",
@@ -45,6 +46,10 @@ describe("PersonasModule — sub-mode bindings (PR #143)", () => {
       registry.bindToSubMode(`tendering.${sm}`, drawingTools);
     }
     registry.bindToSubMode("tendering.scope", [...drawingTools, "propose_scope_items"]);
+    // PR #148 — lookup_rate on scope + estimate.
+    const rateTools = ["lookup_rate"];
+    registry.bindToSubMode("tendering.scope", rateTools);
+    registry.bindToSubMode("tendering.estimate", rateTools);
   });
 
   describe("drawing tools availability", () => {
@@ -84,17 +89,38 @@ describe("PersonasModule — sub-mode bindings (PR #143)", () => {
   });
 
   describe("scope sub-mode bindings", () => {
-    it("contains all four production tools (drawing tools + propose_scope_items)", () => {
+    it("contains all five production tools (drawing tools + propose_scope_items + lookup_rate)", () => {
       const tools = registry.getToolsForSubMode("tendering.scope");
       const names = tools.map((t) => t.name).sort();
       expect(names).toEqual(
         [
           "extract_drawing_titleblock",
           "list_tender_drawings",
+          "lookup_rate",
           "propose_scope_items",
           "read_tender_drawing"
         ].sort()
       );
     });
+  });
+
+  describe("lookup_rate binding (PR #148)", () => {
+    it("is exposed in tendering.scope sub-mode", () => {
+      const tools = registry.getToolsForSubMode("tendering.scope");
+      expect(tools.map((t) => t.name)).toContain("lookup_rate");
+    });
+
+    it("is exposed in tendering.estimate sub-mode", () => {
+      const tools = registry.getToolsForSubMode("tendering.estimate");
+      expect(tools.map((t) => t.name)).toContain("lookup_rate");
+    });
+
+    it.each(["register", "tender-detail", "quote", "clarifications"])(
+      "is NOT exposed in tendering.%s sub-mode",
+      (subMode) => {
+        const tools = registry.getToolsForSubMode(`tendering.${subMode}`);
+        expect(tools.map((t) => t.name)).not.toContain("lookup_rate");
+      }
+    );
   });
 });

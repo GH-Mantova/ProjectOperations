@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-04 23:08 AEST
+Last updated: 2026-05-05 01:17 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -257,16 +257,33 @@ route (scope mode = drafting tools; quote mode = advisory; etc.).
    Marco's fresh-conversation smoke from re-seeded state to confirm
    end-to-end.
 
+   PR #148 shipped: `lookup_rate` tool for cutting + core hole
+   rate types. Read-only — returns live schedule rates as chat
+   output, does not write to estimate items. Bound to
+   tendering.scope and tendering.estimate sub-modes. Cutting uses
+   exact-schedule lookup (equipment / elevation / material /
+   depthMm); core holes use base rate per diameter with IS
+   elevation multiplier applied (Floor=1.0×, Wall=1.1×,
+   Inverted=2.0×). System prompt extended with
+   RATE_LOOKUP_CONVENTIONS. Two hard regression tests gate against
+   prompt regression (skip without ANTHROPIC_API_KEY). 14 handler
+   unit tests + 6 binding tests.
+
    Remaining in this Item 5 sub-area:
    - PR B: delete legacy "Draft scope with Claude" code path.
-   - PR C: Cutrite rate lookup tool (rate_lookup).
-   - PR D: estimate creation tool.
+   - PR D: estimate creation tool (uses lookup_rate to populate
+     estimate item rates from live schedule values).
    - PR E: quote generation tool.
    - PR F: clarifications mode tool.
    - PR G: asbestos register reading + cross-reference logic
      (separate PR — system prompt §3 already instructs the model
      on the workflow; tool that auto-detects and reads the register
      is a future addition).
+   - PR H: extend lookup_rate to remaining rate types (labour,
+     plant, fuel, waste, enclosure, other). Same handler pattern,
+     additive to the rateType enum + dispatch branch + system
+     prompt section. Each is a small extension once the foundation
+     pattern from PR #148 is validated.
 
 ### 5A.2 — HTML→PDF renderer migration
 
@@ -749,6 +766,38 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
      clear "unsupported file type" error. DWG would need a
      CAD-to-PDF converter; Revit even more involved. Deferred until
      clear demand from a real tender.)
+
+⏸️  Other rate types for lookup_rate (PR #148 follow-up)
+    (PR #148 covered cutting + core holes — most distinctive IS
+     rate types with their elevation rules. Subsequent PRs add
+     labour, plant, fuel, waste, enclosure, and other rate types
+     using the same handler pattern. Each is a small extension to
+     the rateType enum + dispatch branch + system prompt section.
+     Defer until cutting + core hole tool is validated through
+     manual smoke and Marco signs off the lookup pattern.)
+
+⏸️  Estimate-writing tool (next §5A.1 Item 5 sub-task)
+    (Once lookup_rate is validated through smoke, the estimate
+     creation tool lets the agent populate estimate items directly.
+     Will reference lookup_rate in its system prompt so the model
+     follows the standard pattern: lookup_rate → use result to
+     populate estimate item fields. Provisional cost lines first;
+     full cost-line CRUD second.)
+
+⏸️  Snapshot / revision rate-locking semantics
+    (CHECK 0.5 from PR #148 established: no recalculate endpoint
+     exists; quote send does not snapshot rates; ClientQuote has
+     a revision column with deepCopy support; Tender tracks
+     ratesSnapshotAt at submission time as informational only.
+     Quote pricing is line-item owned, not rate-table owned, so
+     rate library changes don't affect existing quotes — there's
+     no immediate correctness risk. Future work: decide whether
+     rate-locking should be enforced at quote send or quote
+     revision, what the estimator UX should look like for
+     "lock current rates", and whether the lookup_rate tool
+     should operate on snapshot rates when chatting on a
+     locked quote. Design discussion deferred to post-demo with
+     Raj.)
 
 ⏸️  Per-provider tool compatibility guard at handler-execute time
     (PR #142 documented that ReadTenderDrawingHandler doesn't

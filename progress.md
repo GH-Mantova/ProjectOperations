@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-04 23:08 AEST
+Last updated: 2026-05-05 01:17 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -2798,5 +2798,124 @@ implementation through every smoke-discovered issue. PR #141's
 DB-omission design for image content is preserved — it's the right
 call for older turns; PR #147 only changes immediate-next-turn
 behaviour where the model needs to see the image for the first time.
+
+Audit findings: none.
+
+## 2026-05-05 11:15 AEST — PR #148 PENDING — feat: lookup_rate tool for cutting + core holes (Tendering Assistant)
+
+Type: PR
+Branch: feat/lookup-rate-tool-cutting-core-holes
+Status: IN_PROGRESS
+Builds on: PR #142–147 (drawing tools chain complete).
+
+Shipped:
+  - New `lookup_rate` ToolHandler registered in PersonasModule;
+    bound to tendering.scope and tendering.estimate sub-modes.
+  - Two rate types supported: `cutting` (schedule lookup by
+    equipment/elevation/material/depthMm against
+    estimate_cutting_rates) and `core_hole` (base rate by
+    diameterMm against estimate_core_hole_rates with IS elevation
+    multiplier applied: Floor=1.0×, Wall=1.1×, Inverted=2.0×).
+  - Read-only — returns rates as JSON in chat output, does not
+    write to estimate items or scope items (deferred to next
+    sub-task: estimate-creation tool).
+  - System prompt extended: new RATE_LOOKUP_CONVENTIONS section
+    appended to scope and estimate sub-modes. Documents when to
+    call (proactively after proposing cutting/core hole scope
+    items), how to interpret results, and which rate types are
+    NOT yet supported (model must explain non-support, not guess).
+  - Estimate sub-mode prompt rewritten — was the one-line stub
+    "Estimate mode — rate lookup, value suggestions, advisory only";
+    now a proper prompt that includes RATE_LOOKUP_CONVENTIONS.
+
+Schema reality check (escalation per spec §"Escalation triggers"):
+  - The actual `estimate_cutting_rates` table does NOT have the
+    thickness/depth-range columns the spec assumed. Real columns:
+    equipment, elevation, material, depthMm (exact match). Spec
+    "we adjust the tool spec rather than fight the schema" applied
+    — tool inputs are equipment/elevation/material/depthMm, lookup
+    is exact.
+  - The actual `estimate_core_hole_rates` table does NOT have a
+    depth column. Real columns: diameterMm (unique), ratePerHole.
+    Tool inputs are elevation/diameterMm only — depth is a
+    methodology consideration (which equipment can reach), not a
+    pricing input. Documented in the system prompt explicitly so
+    the model doesn't try to pass depthMm.
+  - elevation values stored in cutting table: "Wall", "Floor",
+    "Any" (title-case). "Any" is a wildcard for elevation-agnostic
+    equipment (Flush-cut, Ringsaw, Tracksaw). Lookup matches the
+    requested elevation OR "Any" so wildcard rows still hit;
+    pickMostSpecificCuttingRow prefers exact matches over wildcards
+    when both exist.
+
+Files:
+  - apps/api/src/modules/personas/tools/handlers/lookup-rate.handler.ts (new)
+  - apps/api/src/modules/personas/tools/handlers/__tests__/lookup-rate.handler.spec.ts (new — 14 tests)
+  - apps/api/src/modules/personas/personas.module.ts (register + bind)
+  - apps/api/src/modules/personas/__tests__/personas.module.bindings.spec.ts (+6 binding tests)
+  - apps/api/src/modules/personas/definitions/tendering.persona.ts (RATE_LOOKUP_CONVENTIONS + ESTIMATE_SUBMODE_PROMPT)
+  - apps/api/src/modules/personas/__tests__/tendering-assistant.system-prompt.regression.spec.ts (+2 hard regression tests, skip without ANTHROPIC_API_KEY)
+  - progress.md, roadmap.md, project_instructions.md
+
+Counts:
+  - API jest --runInBand: 425/425 (was 405 baseline at PR #147; +20
+    new tests across handler unit, binding, regression).
+  - Lint: clean.
+  - Build: clean.
+  - Hard regression tests (real Anthropic calls) skip cleanly when
+    ANTHROPIC_API_KEY is unset; both attempt the model selecting
+    lookup_rate proactively on (1) cutting prompt with floor
+    elevation expectation, (2) wall core hole prompt with wall
+    multiplier expectation. ~$0.02 combined per CI run.
+
+Snapshot/revision investigation findings (CHECK 0.5):
+  - No "Recalculate" endpoint exists. Quote totals computed
+    on-demand by ClientQuotesService.summary() (lines 184-216
+    of client-quotes.service.ts). Reads visible cost lines + cost
+    options + provisional lines, applies adjustment, returns
+    ephemeral totals. No snapshot table.
+  - POST /tenders/:id/quotes/:qid/send (line 323 of
+    client-quotes.controller.ts) → QuoteSendService.send():
+    sends PDF/email, sets status=SENT, sentAt timestamp. Does
+    NOT snapshot rates at send time. Cost lines stay mutable.
+  - Tender entity tracks ratesSnapshotAt (tendering.service.ts
+    line 545) — set when Tender → SUBMITTED. Records when the
+    rate library was frozen for reference; not enforced.
+  - ClientQuote has revision column (Prisma line 2705, unique
+    [tenderId, clientId, revision]). New revision endpoint exists:
+    POST /tenders/:id/quotes increments revision, marks prior
+    SUPERSEDED, optionally deepCopies cost lines + assumptions +
+    exclusions + adjustment from a source quote (lines 568-649).
+    Revision support is fully implemented.
+  - Implication for lookup_rate: none. Read-only tool; rates aren't
+    snapshotted; quote cost lines own their prices. PHASE 6
+    snapshot/revision rate-locking work is independent of this PR.
+
+Manual smoke pending Marco:
+  1. Cutting scope drafted via Tendering Assistant on IS-T020 →
+     agent calls lookup_rate with cutting block, reports rate.
+  2. Core hole scope drafted → agent calls lookup_rate with
+     coreHole block, applies elevation multiplier transparently
+     (shows base, multiplier, final).
+  3. Agent does NOT guess for unsupported rate types (labour,
+     plant, fuel, waste, enclosure, other) — explicit non-answer
+     pointing to future updates.
+  4. Agent does NOT write rates to estimate items (read-only).
+
+Out of scope (deferred to subsequent PRs):
+  - Other rate types (PHASE 6 — same handler pattern, add to the
+    rateType enum + dispatch branch + system prompt section).
+  - Estimate-writing tool (next sub-task in §5A.1 Item 5).
+  - Snapshot / revision rate-locking semantics (investigation
+    findings above; design discussion deferred to post-demo).
+  - Material density (Australian Standards) lookups.
+
+Architectural note: this is the foundation rate-lookup tool. The
+estimate-writing tool to follow will reference lookup_rate in its
+system prompt so the model knows the standard pattern: lookup_rate
+to read live pricing → use the result to populate estimate item
+fields. Snapshot semantics will land later — current quote pricing
+is line-item owned, not rate-table owned, so there's no immediate
+correctness risk from rate library changes.
 
 Audit findings: none.

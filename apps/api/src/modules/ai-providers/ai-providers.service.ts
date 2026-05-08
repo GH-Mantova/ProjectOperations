@@ -2,6 +2,7 @@ import { Injectable, Logger, ServiceUnavailableException } from "@nestjs/common"
 import { PrismaService } from "../../prisma/prisma.service";
 import { DEFAULT_MODELS, PlatformConfigService } from "../platform/platform-config.service";
 import { getPersonaBySlug } from "../personas/persona-registry";
+import { GLOBAL_RATE_FABRICATION_PROHIBITION } from "../personas/definitions/shared-prompts";
 import type { PersonaDefinition, PersonaSubMode } from "../personas/personas.types";
 import { KeyEncryptionService } from "../security/key-encryption.service";
 import {
@@ -327,8 +328,14 @@ function buildTenderContextBlock(tender: {
   ].join("\n");
 }
 
-function intrinsicPrompt(persona: PersonaDefinition, subMode: PersonaSubMode | null): string {
+// PR #152 — global prefix is concatenated FIRST so persona/sub-mode
+// instructions can override it by appearing later. The tendering
+// persona's RATE_LOOKUP_CONVENTIONS appears in sub-mode descriptions
+// and overrides this baseline on the five tender-scoped sub-modes.
+export function intrinsicPrompt(persona: PersonaDefinition, subMode: PersonaSubMode | null): string {
   const lines = [
+    GLOBAL_RATE_FABRICATION_PROHIBITION,
+    "",
     `You are the ${persona.displayName} for Initial Services, a South East Queensland construction company.`,
     persona.description
   ];

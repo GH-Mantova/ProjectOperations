@@ -1,5 +1,13 @@
+/**
+ * label   — short human-readable UI label (rendered in persona window
+ *           subtitle, dropdowns, badges). One line, no markdown.
+ * description — system prompt block sent to the model. May contain
+ *           markdown headers, multi-line prose, policy directives.
+ *           NEVER render directly in the UI.
+ */
 export interface PersonaSubMode {
   name: string;
+  label: string;
   routePattern: string;
   description: string;
   toolSlots: string[];

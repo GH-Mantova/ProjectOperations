@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-08 05:16 AEST
+Last updated: 2026-05-08 05:42 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -2979,5 +2979,103 @@ underneath the policy block (header changed to "Looking up rates
 — mechanics") so the model continues to know elevation rules,
 multipliers, and unsupported rate types. The policy block itself
 is verbatim from spec. Tested via the prompt distribution tests.
+
+Audit findings: none.
+
+## 2026-05-08 — PR #150 — Split subMode label from description (system prompt)
+Type: PR (UI regression fix-forward on PR #149)
+Branch: fix/submode-label-split
+Status: OPENED
+
+PR #149 broadened `subMode.description` on five tender-scoped
+sub-modes (tender-detail, scope, estimate, quote, clarifications)
+from a UI-facing one-liner into a full system prompt block —
+correctly, for the model. Frontend regression: the persona window
+subtitle in the teal Tendering Assistant card was reading that
+field and rendering the entire RATE LOOKUP — MANDATORY POLICY
+block in the panel header.
+
+Diagnostic confirmed the leak path was a single frontend reader
+(`apps/web/src/personas/persona-window-helpers.ts:25`) consuming
+a single backend field
+(`apps/api/src/modules/personas/personas.service.ts:162` —
+`resolveActivePersonaForRoute`'s response).
+
+Fix: split the field on `PersonaSubMode`. `label` is the
+UI-facing one-liner (rendered in the panel subtitle, dropdowns,
+badges). `description` stays as the system prompt block — used
+server-side only by `intrinsicPrompt` in `ai-providers.service.ts`
+to assemble the model's system prompt. The
+`GET /api/v1/personas/active-for-route` response now returns
+`subMode.label` and intentionally omits `subMode.description`
+so the prompt block can never reach the wire again.
+
+Files changed:
+  - apps/api/src/modules/personas/personas.types.ts
+    (added required `label: string` to `PersonaSubMode`, with
+    docblock distinguishing UI label from system prompt; field
+    positioned immediately after `name`)
+  - apps/api/src/modules/personas/definitions/tendering.persona.ts
+    (added `label` to all 6 sub-modes per PR #150 spec table:
+    register, tender-detail, scope, estimate, quote,
+    clarifications; existing `description` values unchanged)
+  - apps/api/src/modules/personas/personas.service.ts
+    (`resolveActivePersonaForRoute` now returns `label` in
+    place of `description` on subMode — Implementation A from
+    spec; description omitted from the wire response)
+  - apps/api/src/modules/personas/__tests__/persona-definitions.shape.spec.ts
+    (new file — Test 1 + Test 2: every sub-mode has both fields,
+    label is single-line + markdown-free, tendering label values
+    match the spec table verbatim)
+  - apps/api/src/modules/personas/__tests__/personas.service.spec.ts
+    (Test 3 added — `resolveActivePersonaForRoute` response shape
+    contract: returns label, does NOT include description)
+  - apps/api/src/modules/personas/__tests__/personas.controller.spec.ts
+    (existing `activeForRoute` shape assertions updated from
+    `description: expect.any(String)` to `label: expect.any(String)`)
+  - apps/web/src/personas/types.ts
+    (`ActivePersona.subMode` shape — `description` → `label`)
+  - apps/web/src/personas/persona-window-helpers.ts
+    (line 25 — subtitle now reads `active.subMode.label`)
+  - apps/web/src/personas/__tests__/persona-window-helpers.test.ts
+    (existing fixture updated to new shape; one assertion
+    renamed from "subtitle from sub-mode description" to
+    "subtitle from sub-mode label")
+  - progress.md / project_instructions.md
+
+Out of scope (deferred):
+  - Renaming `description` to `systemPrompt` (would touch every
+    persona definition; adds noise; defer)
+  - Auditing other endpoints (`listPersonas`, conversation
+    endpoints) — diagnostic confirmed only `active-for-route` was
+    consumed by a frontend reader of `description`. Conversations
+    endpoints don't expose `description` at all.
+
+Tests: +10. 442 passing total (432 baseline + 10).
+  - 8 from persona-definitions.shape.spec.ts (2 shape × 1 persona
+    + 6 tendering label value tests)
+  - 2 from personas.service.spec.ts (response shape contract +
+    label correctness for tender-detail)
+No new dependencies. No new env vars. No migration files.
+
+Note on extra `subMode.description` references found during
+CHECK 4 outside the spec's expected two:
+  - `persona-registry.spec.ts:81` — register sub-mode description
+    contains "pipeline". Register's description is unchanged in
+    this PR; test still passes.
+  - `tendering-assistant.system-prompt.regression.spec.ts:50` —
+    builds expected string from `subMode.description` to verify
+    the assembled system prompt format. Description unchanged;
+    test still passes.
+  Both are tests asserting backend behaviour, not frontend
+  consumers. Spec author flagged "if any other read site exists
+  outside these two, STOP and surface" — surfacing here for
+  transparency; no scope change required.
+
+Smoke procedure (post-merge): see PR #150 spec — visual fix on
+all 5 tender-scoped tabs, network response shape check, plus
+the deferred PR #149 rate-fabrication smoke (model must call
+lookup_rate from tender-detail and report $23.60/m for Demosaw
+75 mm wall cutting, no fabricated ranges).
 
 Audit findings: none.

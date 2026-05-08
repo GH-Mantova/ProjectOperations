@@ -6,6 +6,6 @@ export type ActivePersona = {
   };
   subMode: {
     name: string;
-    description: string;
+    label: string;
   };
 };

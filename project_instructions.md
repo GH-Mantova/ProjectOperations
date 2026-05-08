@@ -1,7 +1,7 @@
 # ProjectOperations — Project Instructions
 # Version: 1.1
 # Created: 2026-04-25 10:02 AEST
-# Last updated: 2026-05-08 05:16 AEST
+# Last updated: 2026-05-08 05:42 AEST
 # Maintained by: Claude Code (update after any architectural decision,
 #   module addition, business rule change, or workflow change)
 # Accessed by: All Claude chats in this project via web_fetch
@@ -814,6 +814,20 @@ AI Persona System (planned — Phase 5A.1)
     bound sub-mode's description. The PR #149 RATE_LOOKUP_
     CONVENTIONS block is the canonical shape — mirror it for
     future rate types and other lookup tools.
+
+    Sub-mode field separation (PR #150). `PersonaSubMode.description`
+    is the system prompt block sent to the model — may be
+    multi-line, contain markdown headers, contain policy
+    directives (e.g. RATE_LOOKUP_CONVENTIONS). NEVER render it in
+    the UI. `PersonaSubMode.label` is the UI-facing string — one
+    line, no markdown, suitable for subtitles, dropdowns, badges.
+    The `GET /api/v1/personas/active-for-route` endpoint exposes
+    `label` only; `description` is intentionally server-side. When
+    adding new persona sub-modes or strengthening existing
+    prompts, both fields are required. Discovered via PR #150
+    after PR #149 widened `description` into a prompt block and
+    the persona-window subtitle leaked the entire RATE LOOKUP —
+    MANDATORY POLICY block into the teal panel header.
   System prompt enumerates the five IS scope codes
   (SO/Str/Asb/Civ/Prv) with strip-out vs fit-out / civil drainage
   vs MEP / civil concrete demolition vs new construction

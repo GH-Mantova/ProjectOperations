@@ -159,7 +159,7 @@ export class PersonasService {
       },
       subMode: {
         name: match.subMode.name,
-        description: match.subMode.description
+        label: match.subMode.label
       }
     };
   }

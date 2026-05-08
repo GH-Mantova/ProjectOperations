@@ -425,6 +425,7 @@ export const tenderingPersona: PersonaDefinition = {
   subModes: [
     {
       name: "register",
+      label: "Tender register — pipeline view",
       routePattern: "/tenders",
       description:
         "Tender overview mode — register list (search/filter/sort) and pipeline kanban share this URL; pipeline is the default view",
@@ -432,30 +433,35 @@ export const tenderingPersona: PersonaDefinition = {
     },
     {
       name: "tender-detail",
+      label: "Tender detail — answer questions about the tender",
       routePattern: "/tenders/:id",
       description: TENDER_DETAIL_SUBMODE_PROMPT,
       toolSlots: []
     },
     {
       name: "scope",
+      label: "Scope — propose and refine scope items",
       routePattern: "/tenders/:id/scope",
       description: SCOPE_SUBMODE_PROMPT,
       toolSlots: []
     },
     {
       name: "estimate",
+      label: "Estimate — review and refine cost lines",
       routePattern: "/tenders/:id/estimate",
       description: ESTIMATE_SUBMODE_PROMPT,
       toolSlots: []
     },
     {
       name: "quote",
+      label: "Quote — cost line structure and exclusions",
       routePattern: "/tenders/:id/quote",
       description: QUOTE_SUBMODE_PROMPT,
       toolSlots: []
     },
     {
       name: "clarifications",
+      label: "Clarifications — summarisation and response drafts",
       routePattern: "/tenders/:id/clarifications",
       description: CLARIFICATIONS_SUBMODE_PROMPT,
       toolSlots: []

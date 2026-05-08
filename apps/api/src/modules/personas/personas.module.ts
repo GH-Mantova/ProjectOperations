@@ -31,6 +31,18 @@ const TENDERING_SUB_MODES = [
   "clarifications"
 ] as const;
 
+// Tender-scoped sub-modes — every Tendering sub-mode EXCEPT register.
+// register is the tender list / pipeline view (not scoped to a single
+// tender); rate lookups don't apply there. PR #149 binds lookup_rate
+// to this set so all five tender-scoped sub-modes have rate access.
+const TENDERING_RATE_SUB_MODES = [
+  "tender-detail",
+  "scope",
+  "estimate",
+  "quote",
+  "clarifications"
+] as const;
+
 // §5A.1 multi-turn loop: PersonasModule owns the tool-handler registry
 // and registers all production + dev-only handlers in onModuleInit.
 // Each handler implements ToolHandler from tool-handler.types.ts;
@@ -109,16 +121,21 @@ export class PersonasModule implements OnModuleInit {
       this.proposeScopeItems.name
     ]);
 
-    // PR #148 — lookup_rate is bound to scope and estimate sub-modes
-    // only. Scope: needed when proposing cutting / core hole items so
-    // the model can attach live pricing to the proposal. Estimate:
-    // needed when reviewing / refining cost lines. Other sub-modes
-    // (register, tender-detail, quote, clarifications) don't need it
-    // — quotes are derived downstream from estimates and shouldn't
-    // re-query the rate library.
+    // PR #149 — lookup_rate is bound to ALL tender-scoped tendering
+    // sub-modes (tender-detail, scope, estimate, quote, clarifications).
+    // PR #148 narrowly bound it to scope + estimate; smoke testing
+    // surfaced two failure modes: (1) from the natural tender-detail
+    // landing tab the tool wasn't bound, so the model had no awareness
+    // it existed, and (2) when asked for a rate without the tool the
+    // model fabricated market ranges with fake citations. Broadening
+    // matches the drawing-tools pattern — rate lookup is reference
+    // material useful from any tender-scoped sub-mode. The register
+    // sub-mode (tender list / pipeline) is intentionally excluded —
+    // there is no specific tender from which to ask for rates there.
     const rateTools = [this.lookupRate.name];
-    this.registry.bindToSubMode("tendering.scope", rateTools);
-    this.registry.bindToSubMode("tendering.estimate", rateTools);
+    for (const sm of TENDERING_RATE_SUB_MODES) {
+      this.registry.bindToSubMode(`tendering.${sm}`, rateTools);
+    }
 
     // Test fixture handlers — non-production only. NODE_ENV=test +
     // development pick them up so unit + e2e + manual smoke can

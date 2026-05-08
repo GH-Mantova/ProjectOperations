@@ -46,10 +46,12 @@ describe("PersonasModule — sub-mode bindings (PR #143)", () => {
       registry.bindToSubMode(`tendering.${sm}`, drawingTools);
     }
     registry.bindToSubMode("tendering.scope", [...drawingTools, "propose_scope_items"]);
-    // PR #148 — lookup_rate on scope + estimate.
+    // PR #149 — lookup_rate on all tender-scoped sub-modes
+    // (everything except register).
     const rateTools = ["lookup_rate"];
-    registry.bindToSubMode("tendering.scope", rateTools);
-    registry.bindToSubMode("tendering.estimate", rateTools);
+    for (const sm of ["tender-detail", "scope", "estimate", "quote", "clarifications"] as const) {
+      registry.bindToSubMode(`tendering.${sm}`, rateTools);
+    }
   });
 
   describe("drawing tools availability", () => {
@@ -104,23 +106,32 @@ describe("PersonasModule — sub-mode bindings (PR #143)", () => {
     });
   });
 
-  describe("lookup_rate binding (PR #148)", () => {
-    it("is exposed in tendering.scope sub-mode", () => {
-      const tools = registry.getToolsForSubMode("tendering.scope");
-      expect(tools.map((t) => t.name)).toContain("lookup_rate");
-    });
+  // PR #149 broadened the binding from scope+estimate to ALL
+  // tender-scoped sub-modes (everything except register, the tender
+  // list / pipeline view). Smoke testing of PR #148 caught the model
+  // fabricating market rates from tender-detail because the tool
+  // wasn't bound there. Register stays excluded — there's no specific
+  // tender from which to ask for rates.
+  describe("lookup_rate binding (PR #149)", () => {
+    const tenderingRateSubModes = [
+      "tender-detail",
+      "scope",
+      "estimate",
+      "quote",
+      "clarifications"
+    ] as const;
 
-    it("is exposed in tendering.estimate sub-mode", () => {
-      const tools = registry.getToolsForSubMode("tendering.estimate");
-      expect(tools.map((t) => t.name)).toContain("lookup_rate");
-    });
-
-    it.each(["register", "tender-detail", "quote", "clarifications"])(
-      "is NOT exposed in tendering.%s sub-mode",
+    it.each(tenderingRateSubModes)(
+      "is exposed in tendering.%s sub-mode",
       (subMode) => {
         const tools = registry.getToolsForSubMode(`tendering.${subMode}`);
-        expect(tools.map((t) => t.name)).not.toContain("lookup_rate");
+        expect(tools.map((t) => t.name)).toContain("lookup_rate");
       }
     );
+
+    it("is NOT exposed in tendering.register sub-mode (tender list view, no specific tender context)", () => {
+      const tools = registry.getToolsForSubMode("tendering.register");
+      expect(tools.map((t) => t.name)).not.toContain("lookup_rate");
+    });
   });
 });

@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-05 01:17 AEST
+Last updated: 2026-05-08 05:16 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -2917,5 +2917,67 @@ to read live pricing → use the result to populate estimate item
 fields. Snapshot semantics will land later — current quote pricing
 is line-item owned, not rate-table owned, so there's no immediate
 correctness risk from rate library changes.
+
+Audit findings: none.
+
+## 2026-05-08 — PR #149 — Broaden lookup_rate binding + strengthen rate-fabrication prohibition
+Type: PR (fix-forward on PR #148)
+Branch: feat/lookup-rate-broaden-binding
+Status: OPENED
+
+PR #148 smoke surfaced two failure modes:
+  1. Tab-dependency surprise — from tendering.tender-detail (the
+     natural landing tab when a user opens a tender), lookup_rate
+     wasn't bound. The model had no awareness it existed.
+  2. Worst-case fabrication — when asked for a cutting rate from
+     tender-detail, the model invented a market range
+     ("Demosaw wall cutting is generally priced at $35-$65 per
+     linear metre") with a fake "SEQ, 2024-25" citation. Twice in
+     two consecutive smoke runs, identical fabricated numbers.
+
+PR #149 closes both gaps:
+  - Broadened binding: lookup_rate now bound to ALL FIVE
+    tender-scoped Tendering sub-modes (tender-detail, scope,
+    estimate, quote, clarifications). Register sub-mode (tender
+    list / pipeline view) intentionally excluded — no specific
+    tender there from which to ask for rates.
+  - Strengthened RATE_LOOKUP_CONVENTIONS: replaced the soft "use
+    the lookup_rate tool" guidance with an explicit "RATE LOOKUP
+    — MANDATORY POLICY" block that forbids ranges, year-stamped
+    market references, market-knowledge estimates, and
+    pre-emptive figures. Mandates calling lookup_rate for any
+    rate-related query and specifies fallback behaviour when no
+    schedule match is found.
+  - Distributed the policy block to all five tender-scoped
+    sub-mode descriptions (was: scope + estimate only).
+
+Files changed:
+  - apps/api/src/modules/personas/personas.module.ts
+    (added TENDERING_RATE_SUB_MODES constant; replaced narrow
+    bind block with for-loop over all 5 tender-scoped sub-modes)
+  - apps/api/src/modules/personas/definitions/tendering.persona.ts
+    (replaced RATE_LOOKUP_CONVENTIONS body; added three new
+    *_SUBMODE_PROMPT constants for tender-detail, quote,
+    clarifications; wired them into the subModes array)
+  - apps/api/src/modules/personas/__tests__/personas.module.bindings.spec.ts
+    (binding tests updated — broadened expected exposure
+    list; register exclusion preserved)
+  - apps/api/src/modules/personas/__tests__/rate-lookup-policy.prompt.spec.ts
+    (new file — 7 tests asserting policy block reaches all 5
+    tender-scoped sub-modes and is absent from register)
+  - progress.md / roadmap.md / project_instructions.md
+
+Tests: +7 (5 sub-mode policy distribution + 1 register exclusion
+       + 1 explicit forbidden-pattern check). 432 passing total
+       (425 baseline + 7).
+No new dependencies. No new env vars. No migration files.
+
+Spec deviation noted: the spec's "Replacement text" for
+RATE_LOOKUP_CONVENTIONS gave only the policy block. Implementation
+retains the cutting-mechanics + core-hole-mechanics subsections
+underneath the policy block (header changed to "Looking up rates
+— mechanics") so the model continues to know elevation rules,
+multipliers, and unsupported rate types. The policy block itself
+is verbatim from spec. Tested via the prompt distribution tests.
 
 Audit findings: none.

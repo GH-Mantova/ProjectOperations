@@ -1,7 +1,7 @@
 # ProjectOperations — Project Instructions
 # Version: 1.1
 # Created: 2026-04-25 10:02 AEST
-# Last updated: 2026-05-05 01:17 AEST
+# Last updated: 2026-05-08 05:16 AEST
 # Maintained by: Claude Code (update after any architectural decision,
 #   module addition, business rule change, or workflow change)
 # Accessed by: All Claude chats in this project via web_fetch
@@ -782,16 +782,38 @@ AI Persona System (planned — Phase 5A.1)
     any context.
   - propose_scope_items — bound to the scope sub-mode only.
     Scope creation is sub-mode-specific work.
-  - lookup_rate — bound to scope and estimate sub-modes only.
-    Live schedule rate lookup for cutting and core holes today;
-    other rate types (labour/plant/fuel/waste/enclosure/other)
-    deferred to subsequent PRs. Cutting uses exact-schedule
-    lookup (equipment / elevation / material / depthMm); core
-    holes apply IS elevation multiplier (Floor=1.0×, Wall=1.1×,
+  - lookup_rate — bound to ALL FIVE tender-scoped Tendering
+    sub-modes (tender-detail, scope, estimate, quote,
+    clarifications) since PR #149. Register sub-mode (tender
+    list / pipeline view) is excluded — no specific tender from
+    which to ask for rates. Live schedule rate lookup for
+    cutting and core holes today; other rate types
+    (labour/plant/fuel/waste/enclosure/other) deferred to
+    subsequent PRs. Cutting uses exact-schedule lookup
+    (equipment / elevation / material / depthMm); core holes
+    apply IS elevation multiplier (Floor=1.0×, Wall=1.1×,
     Inverted=2.0×) to the per-diameter base rate. Read-only —
     returns rate as JSON in chat output, does not write to
     estimate items or scope items (estimate-creation tool is the
     next sub-task).
+
+    Rate fabrication risk (discovered via PR #149 smoke testing
+    of PR #148): models will invent plausible market rates with
+    fake citations (e.g. "$35-$65 per linear metre, SEQ
+    2024-25") when a rate-lookup tool exists but isn't bound to
+    the active sub-mode, or when the system prompt's prohibition
+    against market-knowledge estimates is implicit rather than
+    explicit. Two safeguards are mandatory for any future
+    rate-lookup-style tool: (1) bind the tool to ALL sub-modes
+    within a relevant persona where a rate question can
+    plausibly arise — not just the obvious estimate-builder
+    sub-modes; (2) include explicit "MUST NOT estimate from
+    market knowledge / MUST NOT quote ranges / MUST NOT
+    reference year-stamped market figures" prohibitions in the
+    system prompt, with the policy block carried into every
+    bound sub-mode's description. The PR #149 RATE_LOOKUP_
+    CONVENTIONS block is the canonical shape — mirror it for
+    future rate types and other lookup tools.
   System prompt enumerates the five IS scope codes
   (SO/Str/Asb/Civ/Prv) with strip-out vs fit-out / civil drainage
   vs MEP / civil concrete demolition vs new construction

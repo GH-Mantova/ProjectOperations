@@ -330,4 +330,36 @@ describe("PersonasService", () => {
       expect(tendering.subModes.length).toBe(6);
     });
   });
+
+  // PR #150 — response shape contract for the floating persona window.
+  // After PR #149 widened `subMode.description` into a system prompt block,
+  // the frontend was rendering the prompt in the panel subtitle. The fix
+  // splits `label` (UI) from `description` (system prompt) and removes
+  // `description` from the wire response so it can never leak again.
+  describe("resolveActivePersonaForRoute response shape (PR #150)", () => {
+    it("returns subMode.label and does NOT return subMode.description", () => {
+      const { prisma } = buildPrismaMock();
+      const service = new PersonasService(prisma);
+      const result = service.resolveActivePersonaForRoute("/tenders/some-id", {
+        permissions: ["ai.persona.tendering"]
+      });
+      expect(result).not.toBeNull();
+      expect(result!.subMode).toBeDefined();
+      expect(typeof result!.subMode.label).toBe("string");
+      expect(result!.subMode.label.length).toBeGreaterThan(0);
+      expect(result!.subMode).not.toHaveProperty("description");
+    });
+
+    it("label is the short tender-detail one-liner, not the system prompt block", () => {
+      const { prisma } = buildPrismaMock();
+      const service = new PersonasService(prisma);
+      const result = service.resolveActivePersonaForRoute("/tenders/some-id", {
+        permissions: ["ai.persona.tendering"]
+      });
+      expect(result!.subMode.name).toBe("tender-detail");
+      expect(result!.subMode.label).toBe("Tender detail — answer questions about the tender");
+      expect(result!.subMode.label).not.toContain("##");
+      expect(result!.subMode.label).not.toContain("\n");
+    });
+  });
 });

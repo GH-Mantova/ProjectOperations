@@ -22,7 +22,7 @@ export function panelContent(active: ActivePersona | null): PanelContent | null 
   if (!active) return null;
   return {
     title: active.persona.displayName,
-    subtitle: active.subMode.description,
+    subtitle: active.subMode.label,
     body: `${active.persona.displayName} — coming soon. AI integration in next PR.`
   };
 }

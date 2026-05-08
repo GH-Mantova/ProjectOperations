@@ -83,7 +83,7 @@ describe("PersonasController.activeForRoute", () => {
       displayName: "Tendering Assistant",
       description: expect.any(String) as unknown as string
     },
-    subMode: { name: sub, description: expect.any(String) as unknown as string }
+    subMode: { name: sub, label: expect.any(String) as unknown as string }
   });
 
   it("returns persona for matching route + permitted user", async () => {

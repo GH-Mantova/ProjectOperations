@@ -9,7 +9,7 @@ import type { ActivePersona } from "../types";
 
 const tendering: ActivePersona = {
   persona: { slug: "tendering", displayName: "Tendering Assistant", description: "desc" },
-  subMode: { name: "scope", description: "Scope drafting mode" }
+  subMode: { name: "scope", label: "Scope — propose and refine scope items" }
 };
 
 describe("activePersonaKey", () => {
@@ -21,7 +21,7 @@ describe("activePersonaKey", () => {
     const scopeKey = activePersonaKey(tendering);
     const quoteKey = activePersonaKey({
       ...tendering,
-      subMode: { name: "quote", description: "Quote mode" }
+      subMode: { name: "quote", label: "Quote — cost line structure and exclusions" }
     });
     expect(scopeKey).toBe("tendering:scope");
     expect(quoteKey).toBe("tendering:quote");
@@ -50,10 +50,10 @@ describe("panelContent", () => {
     expect(panelContent(null)).toBeNull();
   });
 
-  it("renders title from persona, subtitle from sub-mode description", () => {
+  it("renders title from persona, subtitle from sub-mode label", () => {
     const c = panelContent(tendering)!;
     expect(c.title).toBe("Tendering Assistant");
-    expect(c.subtitle).toBe("Scope drafting mode");
+    expect(c.subtitle).toBe("Scope — propose and refine scope items");
   });
 
   it("body contains a coming-soon placeholder", () => {

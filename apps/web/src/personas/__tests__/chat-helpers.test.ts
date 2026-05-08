@@ -32,7 +32,7 @@ describe("shouldDisableSendButton", () => {
 describe("chatPanelEmptyHint", () => {
   const tendering = (subModeName: string): ActivePersona => ({
     persona: { slug: "tendering", displayName: "Tendering Assistant", description: "" },
-    subMode: { name: subModeName, description: "" }
+    subMode: { name: subModeName, label: "" }
   });
 
   it("uses 'this view' for the register/overview sub-mode", () => {
@@ -139,7 +139,7 @@ describe("appendUserMessage / appendAssistantMessage", () => {
 describe("shouldResetOnPersonaChange", () => {
   const tendering = (subModeName: string): ActivePersona => ({
     persona: { slug: "tendering", displayName: "Tendering Assistant", description: "" },
-    subMode: { name: subModeName, description: "" }
+    subMode: { name: subModeName, label: "" }
   });
 
   it("does not reset when both are null", () => {

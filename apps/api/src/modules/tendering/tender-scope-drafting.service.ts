@@ -8,6 +8,7 @@ import { ScopeOfWorksService } from "./scope-of-works.service";
 import { ClaudeProvider } from "./ai-providers/claude.provider";
 import { MockAiProvider, OpenAiProvider } from "./ai-providers/openai.provider";
 import type { AiProvider } from "./ai-providers/ai-provider.interface";
+import { GLOBAL_RATE_FABRICATION_PROHIBITION } from "../personas/definitions/shared-prompts";
 
 const PROVIDER_LABELS: Record<AiProviderName, string> = {
   anthropic: "Claude (Anthropic)",
@@ -57,7 +58,17 @@ export type DraftScopeResult = {
   items: Array<{ id: string; wbsCode: string; discipline: string; description: string }>;
 };
 
-const SYSTEM_PROMPT = `You are an expert estimator for Initial Services Pty Ltd, a Brisbane-based contractor specialising in three core disciplines:
+// PR #152 — second runtime system-prompt assembly site (the first is
+// AiProvidersService.intrinsicPrompt for the persona chat path).
+// GLOBAL_RATE_FABRICATION_PROHIBITION is prepended here too so the
+// scope-drafting model receives the same baseline rate rules. The
+// scope-drafting JSON schema has no rate field, but the prefix
+// guards against rate figures leaking into description text.
+// Exported so the cross-site prefix-distribution test can assert
+// without duplicating the constant.
+export const SYSTEM_PROMPT = `${GLOBAL_RATE_FABRICATION_PROHIBITION}
+
+You are an expert estimator for Initial Services Pty Ltd, a Brisbane-based contractor specialising in three core disciplines:
 
 1. DEMOLITION — structural and non-structural demolition, internal strip-outs, fitout removal, concrete breaking, mechanical demolition, hand demolition
 2. ASBESTOS REMOVAL — Class A (friable ACM, full enclosure, negative pressure) and Class B (non-friable ACM, bonded materials, super-6 sheeting, vinyl floor tiles, textured ceilings) removal, air monitoring, clearance certificates

@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-08 05:42 AEST
+Last updated: 2026-05-08 06:29 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -3077,5 +3077,104 @@ all 5 tender-scoped tabs, network response shape check, plus
 the deferred PR #149 rate-fabrication smoke (model must call
 lookup_rate from tender-detail and report $23.60/m for Demosaw
 75 mm wall cutting, no fabricated ranges).
+
+Audit findings: none.
+
+## 2026-05-08 — PR #152 — Global rate-fabrication prefix at intrinsicPrompt assembly layer
+Type: PR (regression fix-forward on PR #151 smoke)
+Branch: feat/global-rate-fabrication-prohibition
+Status: OPENED
+
+PR #151 smoke caught a fabrication on the tender register screen:
+"day/half-day hire rates for a Demosaw-style floor saw with operator
+are in the ballpark of $1,200–$2,500/day in SEQ, depending on blade
+size and mobilisation." Range + region stamp + speculative pricing
+— the same failure mode PR #149 fixed for tender-detail/scope/
+estimate/quote/clarifications, surfacing on register because PR #149
+intentionally excluded register from RATE_LOOKUP_CONVENTIONS
+distribution ("no specific tender, no rate lookup").
+
+PR #152 v1 attempted to inject the prohibition into every
+non-tendering persona's description. CHECK 1 found there ARE no
+non-tendering personas — only tendering exists today. The smoke
+surface was the tendering register sub-mode, not a separate
+persona. Stopped, surfaced, re-spec'd as v2.
+
+PR #152 v2 lands the prohibition at the system-prompt assembly
+layer instead. One constant prepended to every assembled prompt.
+Applies to every persona × every sub-mode automatically — including
+the register sub-mode and any future personas not yet built.
+
+CHECK 3 of v2 found a second runtime system-prompt assembly site:
+tender-scope-drafting.service.ts:60 has its own file-local
+SYSTEM_PROMPT used by the document-extraction draftScope flow,
+which bypasses intrinsicPrompt entirely. Marco directed (option A)
+to patch BOTH sites. The scope-drafting JSON output schema has no
+rate field, so the immediate risk there is low — but description
+text is free-form and could leak fabricated $/unit figures from
+hallucinated source citations. Belt-and-braces.
+
+Files changed:
+  - apps/api/src/modules/personas/definitions/shared-prompts.ts
+    (new file) — exports GLOBAL_RATE_FABRICATION_PROHIBITION. Will
+    house future cross-cutting prompt blocks (safety, IP
+    confidentiality, etc.) as the system grows.
+  - apps/api/src/modules/ai-providers/ai-providers.service.ts
+    — intrinsicPrompt() now prepends the global prefix as its
+    first layer (followed by header line, persona.description, and
+    optional sub-mode line). Function exported so it can be tested
+    as a pure function. PR #149's RATE_LOOKUP_CONVENTIONS still
+    overrides on the five tender-scoped sub-modes because it
+    appears later in the assembled prompt.
+  - apps/api/src/modules/tendering/tender-scope-drafting.service.ts
+    — SYSTEM_PROMPT prepended with the global prefix. Const
+    promoted from file-local to exported so the cross-site
+    distribution test asserts without duplication. No other
+    refactor — template literal, controller, schema, draftScope
+    call all unchanged.
+  - apps/api/src/modules/ai-providers/__tests__/intrinsic-prompt.spec.ts
+    (new file) — 8 tests:
+      Site 1: prefix present in every tendering sub-mode (6 cases),
+      prefix present with no sub-mode, prefix BEFORE persona
+      description, RATE_LOOKUP_CONVENTIONS AFTER prefix on
+      tender-scoped sub-modes (override ordering), forbidden-pattern
+      regression guard naming SEQ/ballpark/indicative/
+      $1,200-$2,500/day, register negative assertion (gets prefix,
+      doesn't get tool block).
+      Site 2: scope-drafting SYSTEM_PROMPT contains the prefix and
+      MUST NOT, prefix appears BEFORE the estimator persona text.
+  - progress.md / project_instructions.md
+
+Architectural decision (from spec): assembly order is
+  (1) GLOBAL_RATE_FABRICATION_PROHIBITION
+  (2) persona.description
+  (3) sub-mode.description (if active)
+Globals appear FIRST so more specific persona/sub-mode rules can
+override by appearing later. Critically: tendering's
+RATE_LOOKUP_CONVENTIONS mandates calling lookup_rate; the global
+prefix only declines to quote. The mandate must win on tender-
+scoped sub-modes — tested explicitly via index-ordering assertions.
+
+Tests: +8. 450 passing total (442 baseline + 8).
+No new dependencies. No new env vars. No migration files.
+
+Pattern note for future PRs: shared-prompts.ts is the new home for
+cross-cutting prompt blocks. Two runtime assembly sites currently
+exist (intrinsicPrompt for the persona chat path; SYSTEM_PROMPT in
+tender-scope-drafting for the document-extraction path) and both
+must receive any future global prompt block. Consolidating to a
+single assembly site would simplify this — out of scope for PR #152.
+
+Smoke procedure (post-merge):
+  Test A — tender register, vague rate question → model declines,
+    no SEQ/ballpark/indicative/$X-$Y figures.
+  Test B — tender-detail Demosaw 75mm wall question → unchanged
+    from PR #151 smoke; lookup_rate called, $23.60/m returned.
+  Test C — repeat Test B on scope/estimate/quote/clarifications.
+  Test D — POST /api/v1/tenders/:id/draft-scope on a tender with
+    rate-bearing source docs → no scope item description contains
+    a fabricated $/unit figure; source-cited figures from the
+    document acceptable if labeled as such. DEFERRED if no test
+    tender with rate-bearing docs is available.
 
 Audit findings: none.

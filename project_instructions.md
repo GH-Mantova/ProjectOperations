@@ -1,7 +1,7 @@
 # ProjectOperations — Project Instructions
 # Version: 1.1
 # Created: 2026-04-25 10:02 AEST
-# Last updated: 2026-05-08 05:42 AEST
+# Last updated: 2026-05-08 06:29 AEST
 # Maintained by: Claude Code (update after any architectural decision,
 #   module addition, business rule change, or workflow change)
 # Accessed by: All Claude chats in this project via web_fetch
@@ -828,6 +828,32 @@ AI Persona System (planned — Phase 5A.1)
     after PR #149 widened `description` into a prompt block and
     the persona-window subtitle leaked the entire RATE LOOKUP —
     MANDATORY POLICY block into the teal panel header.
+
+    Global rate-fabrication prefix (PR #152). The PR #149
+    prohibition was scoped to five tender-scoped sub-modes via
+    RATE_LOOKUP_CONVENTIONS. The register sub-mode was excluded
+    and leaked a fabricated SEQ-region range during PR #151 smoke.
+    The fix lifts a baseline prohibition to the persona-system
+    assembly layer: GLOBAL_RATE_FABRICATION_PROHIBITION in
+    apps/api/src/modules/personas/definitions/shared-prompts.ts is
+    prepended to every system prompt. Two scope levels: (1)
+    baseline — every persona × every sub-mode forbids
+    market-knowledge rates, ranges, region/year stamps. (2) Strong
+    override — tendering's tender-scoped sub-modes additionally
+    mandate lookup_rate tool calls via RATE_LOOKUP_CONVENTIONS.
+    The override appears later in the assembled prompt so it wins
+    over the baseline naturally. Two runtime assembly sites
+    currently exist: intrinsicPrompt() in
+    ai-providers.service.ts (the persona chat path) and the
+    file-local SYSTEM_PROMPT in tender-scope-drafting.service.ts
+    (the document-extraction path used by POST
+    /api/v1/tenders/:id/draft-scope). Both receive
+    GLOBAL_RATE_FABRICATION_PROHIBITION as a prefix. Future
+    cross-cutting prompt rules must land at BOTH sites — or
+    consolidate the second site to route through intrinsicPrompt
+    (out of scope for PR #152). shared-prompts.ts is the canonical
+    home for new cross-cutting blocks (safety, IP confidentiality,
+    etc.) — define there, prepend at every assembly site.
   System prompt enumerates the five IS scope codes
   (SO/Str/Asb/Civ/Prv) with strip-out vs fit-out / civil drainage
   vs MEP / civil concrete demolition vs new construction

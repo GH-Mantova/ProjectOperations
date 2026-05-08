@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-05 01:17 AEST
+Last updated: 2026-05-08 05:16 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -268,6 +268,25 @@ route (scope mode = drafting tools; quote mode = advisory; etc.).
    RATE_LOOKUP_CONVENTIONS. Two hard regression tests gate against
    prompt regression (skip without ANTHROPIC_API_KEY). 14 handler
    unit tests + 6 binding tests.
+
+   PR #149 (fix-forward on PR #148) shipped: broadened
+   lookup_rate binding to ALL FIVE tender-scoped Tendering
+   sub-modes (tender-detail, scope, estimate, quote,
+   clarifications) and strengthened RATE_LOOKUP_CONVENTIONS into
+   an explicit "RATE LOOKUP — MANDATORY POLICY" block that
+   forbids ranges, year-stamped market references
+   ("SEQ 2024-25"), market-knowledge estimates, and pre-emptive
+   figures. Discovery: PR #148 smoke caught the model fabricating
+   "$35-$65 per linear metre" with fake "SEQ, 2024-25" citations
+   from the tender-detail tab where lookup_rate was unbound —
+   identical fabricated numbers two runs in a row. Two safeguards
+   were needed: (1) bind the tool wherever a rate question can
+   plausibly arise, not just where rates are obviously the topic;
+   (2) make the prompt prohibitions unambiguous about market
+   knowledge being off-limits. Register sub-mode stays unbound
+   (tender list view, no specific tender from which to ask).
+   +7 tests (5 sub-mode policy distribution + register exclusion
+   + forbidden-pattern check); 432 passing total.
 
    Remaining in this Item 5 sub-area:
    - PR B: delete legacy "Draft scope with Claude" code path.

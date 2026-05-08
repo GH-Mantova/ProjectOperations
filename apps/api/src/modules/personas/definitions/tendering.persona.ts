@@ -241,18 +241,47 @@ const DRAWING_READING_CONVENTIONS = [
   "select the pages you need based on what the user is asking about."
 ].join("\n");
 
-// PR #148 — rate-lookup conventions appended to the scope and estimate
-// sub-modes. Documents when to call the lookup_rate tool, the IS
-// elevation rules baked into the handler, and which rate types are
-// not yet supported (model must not guess for those — explicit
-// non-answer is better than fabricated rates).
+// PR #149 — rate-lookup mandatory policy appended to all five
+// tender-scoped tendering sub-modes (tender-detail, scope, estimate,
+// quote, clarifications). PR #148 introduced this constant for scope +
+// estimate only; smoke testing of PR #148 caught the model fabricating
+// market rate ranges with fake "SEQ 2024-25" citations when asked from
+// the tender-detail tab where lookup_rate wasn't bound. The strengthened
+// text below explicitly forbids estimating from market knowledge,
+// forbids ranges and year-stamped market references, and mandates
+// calling lookup_rate for any rate-related query.
 const RATE_LOOKUP_CONVENTIONS = [
-  "## Looking up rates",
+  "## RATE LOOKUP — MANDATORY POLICY",
   "",
-  "Initial Services maintains live schedule rates for cutting, core holes,",
-  "and other operations in dedicated rate tables. When you propose scope",
-  "items that involve cutting or core holes, use the `lookup_rate` tool to",
-  "get accurate live pricing — do NOT guess rates from general knowledge.",
+  "When the user asks for, mentions, or implies a rate, price, cost,",
+  "or $/unit figure for any of the following:",
+  "  - Concrete or asphalt cutting (any equipment, material, depth, elevation)",
+  "  - Core holes (any diameter, any elevation)",
+  "",
+  "You MUST:",
+  "",
+  "  1. Call the `lookup_rate` tool. Always. No exceptions, no shortcuts.",
+  "  2. If the lookup returns a match, quote the rate verbatim and",
+  "     attribute it to \"the IS rate schedule\" (or \"IS schedule rate\").",
+  "  3. If the lookup returns NO match, tell the user the rate is not",
+  "     in the IS schedule and ask how they want to proceed",
+  "     (e.g. manual quote, subcontractor quote, provisional sum).",
+  "",
+  "You MUST NOT:",
+  "",
+  "  - Estimate or quote rates from general market knowledge.",
+  "  - Quote rate ranges (e.g. \"$35-$65 per linear metre\").",
+  "  - Reference external market sources, industry benchmarks, or",
+  "    year-stamped rates (e.g. \"SEQ 2024-25\", \"typical industry pricing\").",
+  "  - Suggest a likely figure before calling the tool.",
+  "  - Suggest the user \"check historical rates\" instead of calling the tool —",
+  "    the tool IS the historical rate lookup.",
+  "",
+  "This rule exists because fabricated rates damage IS's tendering",
+  "credibility with clients. The lookup tool is the single source",
+  "of truth for cutting and core hole rates. Use it.",
+  "",
+  "## Looking up rates — mechanics",
   "",
   "### Cutting rates",
   "",
@@ -289,14 +318,6 @@ const RATE_LOOKUP_CONVENTIONS = [
   "Core hole depth is NOT a rate input — the rate is per-hole regardless",
   "of depth. If the user asks about depth, treat it as a methodology",
   "consideration (which equipment can reach that depth), not pricing.",
-  "",
-  "### When to call the tool",
-  "",
-  "Call `lookup_rate` proactively, not only when asked. After proposing a",
-  "cutting or core hole scope item via `propose_scope_items`, follow up",
-  "with the rate lookup so the user sees the proposal AND the live pricing",
-  "together. This saves them the round-trip of asking \"and what's the",
-  "rate?\" for every item.",
   "",
   "### Other rate types (not yet supported)",
   "",
@@ -354,6 +375,29 @@ const ESTIMATE_SUBMODE_PROMPT = [
   RATE_LOOKUP_CONVENTIONS
 ].join("\n");
 
+// PR #149 — three additional tender-scoped sub-modes get the rate
+// lookup conventions so the model never falls back to fabricating
+// market rates. Each sub-mode keeps its existing one-line description
+// as the lead, with the policy block appended.
+const TENDER_DETAIL_SUBMODE_PROMPT = [
+  "Tender detail mode — answer questions about the tender.",
+  "",
+  RATE_LOOKUP_CONVENTIONS
+].join("\n");
+
+const QUOTE_SUBMODE_PROMPT = [
+  "Quote mode — cost line structure suggestions, exclusion/assumption",
+  "suggestions, advisory only.",
+  "",
+  RATE_LOOKUP_CONVENTIONS
+].join("\n");
+
+const CLARIFICATIONS_SUBMODE_PROMPT = [
+  "Clarifications mode — summarisation, response suggestions.",
+  "",
+  RATE_LOOKUP_CONVENTIONS
+].join("\n");
+
 export const tenderingPersona: PersonaDefinition = {
   slug: "tendering",
   displayName: "Tendering Assistant",
@@ -389,7 +433,7 @@ export const tenderingPersona: PersonaDefinition = {
     {
       name: "tender-detail",
       routePattern: "/tenders/:id",
-      description: "Tender detail mode — answer questions about the tender",
+      description: TENDER_DETAIL_SUBMODE_PROMPT,
       toolSlots: []
     },
     {
@@ -407,14 +451,13 @@ export const tenderingPersona: PersonaDefinition = {
     {
       name: "quote",
       routePattern: "/tenders/:id/quote",
-      description:
-        "Quote mode — cost line structure suggestions, exclusion/assumption suggestions, advisory only",
+      description: QUOTE_SUBMODE_PROMPT,
       toolSlots: []
     },
     {
       name: "clarifications",
       routePattern: "/tenders/:id/clarifications",
-      description: "Clarifications mode — summarisation, response suggestions",
+      description: CLARIFICATIONS_SUBMODE_PROMPT,
       toolSlots: []
     }
   ]

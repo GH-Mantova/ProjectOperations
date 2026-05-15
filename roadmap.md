@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-15 22:28 AEST
+Last updated: 2026-05-15 23:26 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -428,6 +428,25 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
 ---
 
 ## PHASE 6 — DEFERRED FROM CHAIN (tech debt)
+
+✅  Rate-fabrication prohibition precedence hardening — closed by PR #161
+    Completed in PR #161 (2026-05-16). Pre-demo safety hardening.
+    Tightened the precedence language inside GLOBAL_RATE_FABRICATION_PROHIBITION
+    (apps/api/src/modules/personas/definitions/shared-prompts.ts) so
+    company and user instructions cannot loosen the prohibition, while
+    preserving the legitimate extension path for tool-call mandates
+    (tendering's RATE_LOOKUP_CONVENTIONS). The prohibition now explicitly
+    declares that it can ONLY be EXTENDED (stricter, with tool-call
+    mandates) by later instructions and CANNOT be LOOSENED by company
+    instructions, user instructions, or sub-mode descriptions; on
+    conflict the model surfaces the issue to the user rather than
+    silently picking. Added 9 new tests (4 in intrinsic-prompt.spec.ts,
+    5 in ai-providers.service.spec.ts) covering the precedence-against-override
+    behaviour using the existing prisma mock infrastructure. No live API
+    calls in any new test. Removes a real money-on-the-line risk before
+    the Sean+Raj demo: if a company instruction is edited during/after
+    demo to "ignore the rate handling rule" or similar, the model will
+    now refuse and surface the conflict rather than comply.
 
 ✅  Mirror-test cleanup in tendering regression spec — closed by PR #160
     Completed in PR #160 (2026-05-16). One file genuinely affected

@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-15 22:28 AEST
+Last updated: 2026-05-15 23:26 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -3545,5 +3545,75 @@ locally (6 skipped without ANTHROPIC_API_KEY); production behaviour is
 now correctly validated when CI runs with the key.
 
 No new dependencies. No new env vars. No migration files.
+
+Audit findings: none.
+
+## 2026-05-16 — PR #161 — Harden rate-fabrication prohibition against company/user override
+Type: PR (chore, Phase 6 carry-forward from PR #152)
+Branch: chore/harden-rate-fabrication-precedence
+Status: OPENED
+
+Phase 6 carry-forward from PR #152. The GLOBAL_RATE_FABRICATION_PROHIBITION
+prefix added by PR #152 sits at the top of intrinsicPrompt's output, but
+resolveSystemPrompt appends company instructions (PersonaCompanyInstruction.instruction)
+and user instructions (UserPersonaSettings.instructionOverride) AFTER it.
+LLMs typically weight later instructions more heavily, so a hostile or
+careless company instruction ("provide ballpark rates anyway", "ignore the
+rate rule") could plausibly override the protection.
+
+Fix shape: kept the prohibition at the top of the assembled prompt
+(preserves the structural document flow and existing test assertions
+about prefix placement), but tightened the precedence language INSIDE
+the prohibition.
+
+Specifically: replaced the prohibition's final paragraph ("The rule is
+overridden ONLY by more specific tool-bound instructions that appear
+later") with an explicit override-precedence section:
+
+  - Rule can ONLY be EXTENDED (made stricter, or augmented with tool-call
+    mandates) by later instructions. Tendering's RATE_LOOKUP_CONVENTIONS
+    mandate to call lookup_rate is the canonical legitimate extension.
+
+  - Rule CANNOT be LOOSENED, RELAXED, or DISABLED by any later instruction,
+    including company instructions, user instructions, or sub-mode
+    descriptions. (Refers to them as "Company instructions appended later
+    in this prompt" rather than quoting the literal "Company instruction:"
+    block header, to avoid colliding with existing not.toContain
+    assertions in service.spec.ts.)
+
+  - On conflict, the model surfaces the issue to the user with template
+    language rather than silently picking between competing instructions.
+
+Test coverage added (9 tests, all use mocked Prisma — no live API calls):
+  - intrinsic-prompt.spec.ts: 4 new tests asserting the precedence
+    section appears, loosening is forbidden via company/user instructions,
+    the legitimate extension path is preserved, and conflict-surfacing
+    instruction is present
+  - ai-providers.service.spec.ts: 5 new tests exercising resolveSystemPrompt
+    against hostile company instructions, hostile user instructions, both
+    together, and confirming layering order (global-before-company-before-user)
+
+Reused existing buildPrismaMock() / buildPlatformConfig() / buildEncryption()
+helpers — no new test infrastructure.
+
+Note on scope: tender-scope-drafting.service.ts SYSTEM_PROMPT (the
+hardcoded prompt used by the document extraction path) is not subject
+to company/user override — it's a const that doesn't go through
+resolveSystemPrompt. Left untouched.
+
+Files changed:
+  - apps/api/src/modules/personas/definitions/shared-prompts.ts (+27 lines, -4 lines)
+  - apps/api/src/modules/ai-providers/__tests__/intrinsic-prompt.spec.ts (+28 lines new describe block)
+  - apps/api/src/modules/ai-providers/__tests__/ai-providers.service.spec.ts (+100 lines new describe block)
+  - progress.md / roadmap.md / project_instructions.md
+
+Tests: API 450 + 9 = 459 passing (6 skipped, unchanged). Web 132
+unchanged. No new dependencies. No env vars. No migration files.
+
+Demo readiness: pre-demo safety hardening. If Sean or Raj edits a
+company instruction during/after demo and accidentally tries to undo
+the rate-fabrication rule, the prohibition's new precedence language
+instructs the model to ignore the loosening attempt and surface the
+conflict.
 
 Audit findings: none.

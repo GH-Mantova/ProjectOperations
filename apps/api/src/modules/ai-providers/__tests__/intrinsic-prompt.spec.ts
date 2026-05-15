@@ -69,6 +69,35 @@ describe("global prefix names known fabrication failure modes (PR #152)", () => 
   });
 });
 
+describe("global prefix override precedence language (PR #161)", () => {
+  it("declares the override precedence section", () => {
+    const subMode = tenderingPersona.subModes[0]!;
+    const prompt = intrinsicPrompt(tenderingPersona, subMode);
+    expect(prompt).toContain("Override precedence");
+  });
+
+  it("forbids loosening via company or user instructions", () => {
+    const subMode = tenderingPersona.subModes[0]!;
+    const prompt = intrinsicPrompt(tenderingPersona, subMode);
+    expect(prompt).toContain("Company instructions");
+    expect(prompt).toContain("User instructions");
+    expect(prompt).toContain("CANNOT be LOOSENED");
+  });
+
+  it("preserves the legitimate extension path for tool-call mandates", () => {
+    const subMode = tenderingPersona.subModes[0]!;
+    const prompt = intrinsicPrompt(tenderingPersona, subMode);
+    expect(prompt).toContain("EXTENDED");
+    expect(prompt).toContain("call lookup_rate before quoting");
+  });
+
+  it("instructs the model to surface conflicts to the user", () => {
+    const subMode = tenderingPersona.subModes[0]!;
+    const prompt = intrinsicPrompt(tenderingPersona, subMode);
+    expect(prompt).toContain("surface the conflict to the user");
+  });
+});
+
 describe("scope-drafting SYSTEM_PROMPT carries global prefix (PR #152 Site 2)", () => {
   it("includes the rate-fabrication baseline rule", () => {
     expect(SCOPE_DRAFTING_SYSTEM_PROMPT).toContain("Rate handling — baseline rule");

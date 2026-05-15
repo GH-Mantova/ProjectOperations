@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-08 05:16 AEST
+Last updated: 2026-05-15 10:49 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -832,7 +832,24 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
      Jest's CommonJS runtime can't load it without transformer
      gymnastics. Upgrade to v4 once Jest 30+ ESM support is mature
      enough to handle pdfjs-dist's import.meta usage cleanly. Until
-     then, v3 is functionally complete for our needs.)
+     then, v3 is functionally complete for our needs.
+
+     CVE carry-forward (Dependabot alerts #14 + #15, HIGH).
+     pdfjs-dist 3.11.174 is vulnerable to arbitrary JavaScript
+     execution upon opening a malicious PDF; patched in 4.2.67.
+     PR #154 mitigated via `isEvalSupported: false` at every
+     runtime `pdfjs.getDocument()` call site (the two API drawing
+     handlers — read-tender-drawing.handler.ts and
+     extract-drawing-titleblock.handler.ts). This is Mozilla's
+     recommended mitigation per the pdf.js CVE advisory when the
+     package version cannot be upgraded. The eval-based execution
+     path is closed for all PDFs loaded by this application.
+     Once the v4 upgrade lands, remove the `isEvalSupported`
+     option and the inline security comments at both sites — the
+     option is documented as redundant on v4+. Dependabot will not
+     auto-close alerts #14/#15 on this PR because the package
+     version is unchanged; manual dismissal with "Tolerable risk"
+     and a pointer to PR #154 is the post-merge step.)
 
 ⏸️  Drawing tools structured field extraction
     (extract_drawing_titleblock today returns a regex-based best

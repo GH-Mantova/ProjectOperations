@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-08 06:29 AEST
+Last updated: 2026-05-15 10:49 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -3178,3 +3178,110 @@ Smoke procedure (post-merge):
     tender with rate-bearing docs is available.
 
 Audit findings: none.
+
+## 2026-05-15 — PR #154 STARTED
+Type: PR
+Branch: fix/pdfjs-disable-eval
+Detail: pdfjs-dist isEvalSupported: false mitigation — Dependabot
+alerts #14 + #15 (HIGH-severity arbitrary JavaScript execution upon
+opening a malicious PDF). Patched upstream in pdfjs-dist 4.2.67.
+Repo is pinned to ^3.11.0 because Jest CommonJS runtime cannot load
+pdfjs-dist v4 (ESM-only with import.meta) without transformer
+gymnastics — see roadmap.md §6 pdfjs-dist v4 ESM migration entry.
+Mozilla's recommended mitigation when the package cannot be
+upgraded is to set `isEvalSupported: false` at every
+`pdfjs.getDocument()` call site, which defangs the eval-based
+execution path.
+Status: IN_PROGRESS
+
+CHECK 1 (getDocument call-site enumeration):
+  Two runtime call sites identified — both in the API drawing
+  tool handlers shipped by PR #142:
+    1. apps/api/src/modules/personas/tools/handlers/
+       read-tender-drawing.handler.ts:153
+    2. apps/api/src/modules/personas/tools/handlers/
+       extract-drawing-titleblock.handler.ts:114
+  Both already pass `isEvalSupported: false` (added inline in PR
+  #142 at the same time the option was introduced). No test code
+  imports pdfjs-dist as a real module — the handler specs mock the
+  pdfjs surface; the option does not apply to mocks. No web-tier
+  call sites — pdfjs-dist is an API-only dependency. No other PDF
+  parser libraries (pdfkit is generation-only, not parsing).
+  False-positive: apps/web/src/pages/DocumentsPage.tsx:163 matched
+  on the variable name `targetDocument`, not the function call.
+
+CHECK 2 (import shape):
+  Both runtime sites use
+    import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.js";
+  invoked as `pdfjsLib.getDocument(...)`. The legacy subpath is the
+  CommonJS-friendly bundle pdfjs-dist v3 ships for Node consumers
+  — unchanged by this PR.
+
+CHECK 3 (baseline): not run as a discrete batch (test/build state
+  is unchanged on main as of f81dd93 → 3db4926; 450 tests post-PR
+  #152, web build clean post-PR #151). The full 7-item CI checklist
+  runs at the end of this PR.
+
+## 2026-05-15 — PR #154 OPENED
+Type: PR
+Branch: fix/pdfjs-disable-eval
+Detail: Mitigation work for Dependabot alerts #14 + #15. The
+runtime call sites already had `isEvalSupported: false` from PR
+#142; this PR adds explanatory inline comments at each site (CVE
+reference + Phase 6 reminder to remove the option once pdfjs-dist
+is bumped past 4.2.67) so the protection cannot be accidentally
+removed by a future "code cleanliness" pass, and documents the
+mitigation in progress.md / roadmap.md / project_instructions.md.
+No new tests required — the eval path is only triggered by
+malicious PDFs containing crafted JavaScript expressions, and
+`getDocument` returns the same PageProxy/PDFDocumentProxy whether
+eval is supported or not.
+
+Files changed:
+  - apps/api/src/modules/personas/tools/handlers/
+    read-tender-drawing.handler.ts
+      — inline security comment above the `pdfjsLib.getDocument`
+        call in `renderPdfPageToJpeg`.
+  - apps/api/src/modules/personas/tools/handlers/
+    extract-drawing-titleblock.handler.ts
+      — inline security comment above the `pdfjsLib.getDocument`
+        call in the extract path.
+  - progress.md / roadmap.md / project_instructions.md
+
+Tests: unchanged. 450 passing (same as PR #152 baseline). No new
+dependencies. No new env vars. No migration files.
+
+Test files left unchanged (Deliverable 2 decision):
+  - apps/api/src/modules/personas/tools/handlers/__tests__/
+    extract-drawing-titleblock.handler.spec.ts — does not import
+    pdfjs-dist; pdf bytes built via pdfkit and parsed via the
+    handler-under-test, not via a direct `getDocument` call from
+    the spec.
+  - apps/api/src/modules/personas/tools/handlers/__tests__/
+    read-tender-drawing.handler.spec.ts — same pattern. No direct
+    pdfjs invocation from the spec.
+  - apps/api/src/modules/personas/tools/handlers/__tests__/
+    list-tender-drawings.handler.spec.ts — does not exercise
+    pdfjs at all (lists drawings by metadata only).
+
+Phase 6 carry-forward: remove `isEvalSupported: false` and its
+inline comment at both call sites once pdfjs-dist is upgraded past
+4.2.67. Upgrade tracked in roadmap.md §6 "pdfjs-dist v4 ESM
+migration when Jest gets ESM-stable".
+
+Post-merge manual step (NOT auto-closed by Dependabot — package
+version unchanged): dismiss alerts #14 and #15 via GH web UI with
+reason "Tolerable risk" citing this PR + the Mozilla mitigation
+advisory.
+
+Smoke procedure (post-merge):
+  Test A — upload a real tender PDF to IS-T020 → Overview, draft
+    scope. Expected: extraction unchanged vs PR #152 behaviour.
+  Test B — drawing extraction on a tender PDF containing
+    drawings. Expected: drawings extracted; titleblock parsing
+    works (partial-success on synthetic PDFs is the known baseline
+    per project memory).
+  Either failure mode is unexpected — `isEvalSupported: false`
+  should be invisible to legitimate (non-eval) parsing.
+
+Status: WAITING_CI

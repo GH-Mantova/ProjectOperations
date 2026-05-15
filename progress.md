@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-15 10:49 AEST
+Last updated: 2026-05-15 20:36 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -3285,3 +3285,63 @@ Smoke procedure (post-merge):
   should be invisible to legitimate (non-eval) parsing.
 
 Status: WAITING_CI
+
+## 2026-05-15 — PR #155 — Lockfile orphan cleanup (ABANDONED)
+Type: PR (chore, abandoned before push)
+Branch: chore/lockfile-orphan-cleanup (deleted, never pushed)
+Status: ABANDONED
+
+Yesterday's Dependabot triage identified four packages (tar, fast-uri,
+ajv, @babel/plugin-transform-modules-systemjs) as appearing in
+pnpm-lock.yaml but not in the resolved dependency tree, based on
+`pnpm why <pkg>` returning empty for each. PR #155 was specced to
+refresh the lockfile and prune the orphan entries.
+
+Pre-flight CHECK 1 (test baseline) and CHECK 2 (lockfile snapshot)
+passed cleanly. `pnpm install --no-frozen-lockfile` produced a
+zero-diff result ("Already up to date"), triggering the spec's
+Outcome B surface event.
+
+Diagnostic with `pnpm why -r <pkg>` (note the recursive flag for
+workspaces) confirmed all four packages are legitimate transitive
+dependencies:
+
+  - tar@6.2.1: apps/api → pdfjs-dist → canvas → @mapbox/node-pre-gyp → tar
+  - fast-uri@3.1.0: apps/api → @nestjs/cli (dev) → @angular-devkit/core
+    → ajv → fast-uri (also reachable via @nestjs/schematics,
+    @angular-devkit/schematics, @angular-devkit/schematics-cli)
+  - ajv@8.18.0: same chain as fast-uri's parent
+  - @babel/plugin-transform-modules-systemjs@7.29.0: apps/web →
+    vite-plugin-pwa → workbox-build → @babel/preset-env →
+    @babel/plugin-transform-modules-systemjs
+
+The spec premise was wrong. Bare `pnpm why <pkg>` only checks the
+current working directory's package.json, not the workspace tree.
+In a pnpm monorepo, `pnpm why -r <pkg>` is required to recursively
+inspect all workspaces. The empty outputs from bare `pnpm why` led
+to the false-orphan diagnosis.
+
+Outcome: PR abandoned, branch deleted, no remote action taken. No
+lockfile change needed — pnpm correctly reports the lockfile as
+in-sync with the actual resolved dependency tree.
+
+Side note on yesterday's Dependabot dismissals: the 9 alerts
+dismissed yesterday (#16-#21 tar, #22-#23 fast-uri, #24 babel-systemjs)
+used dismissal rationale that incorrectly claimed the packages were
+orphans. The security conclusions (no runtime exposure to extraction,
+URL parsing, or module-transform vulnerabilities) remain correct
+because tar runs only during pnpm install, fast-uri lives in
+@nestjs/cli build tooling, and babel-systemjs runs at PWA build
+time on known-good source. The imprecise rationale was not corrected
+in the alert audit trail — deemed not worth the ~20 min reopen-redismiss
+cycle given the conclusions are sound.
+
+Files changed: none.
+Tests: 450 passing, unchanged from baseline.
+
+Lesson banked: in a pnpm workspace, always use `pnpm why -r <pkg>`
+for dependency-tree investigation. Bare `pnpm why` returns
+false-empty for transitive deps that don't resolve through the
+root package.json.
+
+Audit findings: none.

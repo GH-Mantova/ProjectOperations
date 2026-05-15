@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-15 21:45 AEST
+Last updated: 2026-05-15 22:28 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -428,6 +428,18 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
 ---
 
 ## PHASE 6 — DEFERRED FROM CHAIN (tech debt)
+
+✅  Mirror-test cleanup in tendering regression spec — closed by PR #160
+    Completed in PR #160 (2026-05-16). One file genuinely affected
+    (tendering-assistant.system-prompt.regression.spec.ts) — the
+    buildScopeSubModeSystemPrompt() helper was reconstructing the
+    prompt in-test and had diverged from production after PR #152
+    added the GLOBAL_RATE_FABRICATION_PROHIBITION prefix to
+    intrinsicPrompt(). Replaced with a direct delegation. The other
+    file flagged in PR #152's note (rate-lookup-policy.prompt.spec.ts)
+    was found NOT to be a mirror test — it's a structural test
+    inspecting sub-mode descriptions directly, which is the correct
+    unit for its assertions. Left untouched.
 
 ⏸️  Drag-to-reschedule Gantt UI
     (API supports it — purely frontend @dnd-kit work)

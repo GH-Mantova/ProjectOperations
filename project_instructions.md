@@ -1,7 +1,7 @@
 # ProjectOperations — Project Instructions
 # Version: 1.1
 # Created: 2026-04-25 10:02 AEST
-# Last updated: 2026-05-15 10:49 AEST
+# Last updated: 2026-05-15 20:58 AEST
 # Maintained by: Claude Code (update after any architectural decision,
 #   module addition, business rule change, or workflow change)
 # Accessed by: All Claude chats in this project via web_fetch
@@ -199,6 +199,7 @@ Rules:
 - AI features integrate via the persona registry (Phase 5A.1 onwards). Do not add ad-hoc AI calls in modules. New AI capabilities belong inside a persona's sub-mode tool list. New personas register in the persona module, not in the consuming module.
 - AI provider resolution always uses the three-tier fallback in `AiProvidersService.resolveChosenProvider`: explicit user persona choice → `PlatformConfig.preferredProvider` → first provider with a saved company `*KeyEncrypted` column. Never call provider clients with a null/undefined provider; never default to a hardcoded provider literal in new code paths. When no key is available throw `ProviderNotConfiguredError(provider)` so the user-facing message names which provider failed.
 - Persona tools register via `ToolHandlerRegistry`. New tool handlers implement `ToolHandler` from `apps/api/src/modules/personas/tools/tool-handler.types.ts`, are registered as NestJS providers in their owning module, and call `registry.register(...)` + `registry.bindToSubMode(...)` in `onModuleInit`. The multi-turn dispatcher (`PersonaDispatcherService`) handles the call-model → run-tools → feed-results-back loop with a 10-turn cap and 8-parallel-call cap. Do not add ad-hoc tool dispatch in controllers or services — every tool flows through the registry so behaviour stays consistent (parallel execution, error-as-tool-result, persistence with USER/INTERNAL visibility, side-effect SSE forwarding).
+- **No compiled output in source directories** (PR #156). `apps/web/src/` contains TypeScript sources (`.tsx`, `.ts`) only. Vite is responsible for compilation; `.js` files alongside `.tsx`/`.ts` sources are stale tsc output and must not be tracked. The `.gitignore` lines `apps/web/src/**/*.js` and `apps/web/src/**/*.js.map` enforce this. `apps/web/tsconfig.tsbuildinfo` is also gitignored — TypeScript's incremental build cache is machine-specific. If `.js` files reappear in `apps/web/src/` locally (e.g., from a stray `tsc --build`), they're safe to delete with `find apps/web/src -name "*.js" -type f -delete`; the existing `.gitignore` keeps them out of commits. The Vite resolver in `apps/web/vite.config.ts` lists `.tsx` before `.js` in `resolve.extensions`, so `.tsx` is unambiguously authoritative — `.js` siblings are never bundled.
 
 ### Pre-PR CI checklist (mandatory — fix ALL before pushing)
 1. `pnpm --filter @project-ops/api lint` — zero warnings, zero errors

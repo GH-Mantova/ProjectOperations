@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-15 20:36 AEST
+Last updated: 2026-05-15 20:58 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -3345,3 +3345,104 @@ false-empty for transitive deps that don't resolve through the
 root package.json.
 
 Audit findings: none.
+
+## 2026-05-16 — PR #156 STARTED (scaled-down from spec)
+Type: PR
+Branch: chore/remove-stale-js-compilation-output
+Detail: Cowork's 2026-05-15 structural inspection flagged ~84 `.js`
+files in `apps/web/src/pages/` paired with `.tsx` siblings as
+"stale compilation output committed alongside their sources". PR
+#156 was spec'd to delete them all via `git rm` and add `.gitignore`
+rules to prevent recurrence.
+
+CHECK 1-5 results invalidated the core premise:
+
+  CHECK 1 (Vite resolver): `apps/web/vite.config.ts:74` explicitly
+    sets `resolve.extensions = [".tsx", ".ts", ".jsx", ".js",
+    ".mjs", ".json"]` — `.tsx` is first, so any `.js` sibling is
+    dead weight in the bundler. Confirmed `.tsx` authoritative
+    without needing the rename-test fallback.
+
+  CHECK 2/3 (classification): 165 `.js` files exist on disk under
+    `apps/web/src/` (135 with `.tsx` siblings + `react/jsx-runtime`
+    import = clearly tsc/swc output of TSX; 30 with `.ts` siblings
+    = clearly compiled output of plain TS — types stripped, body
+    identical). 0 unpaired, 0 NOT_COMPILED (no divergent files).
+
+  CHECK 4 (broader scope): no surprise locations. The `.tmp-smoke/`
+    directory at `apps/web/.tmp-smoke/pages/` holds 2 `.js` files
+    that are smoke-test output — both tracked in git, both
+    perpetually showing as modified in `git status`.
+
+  CHECK 5 (baseline): API 450 passing; web tests 264 across 18 test
+    files **BUT** each test file pair (.test.ts + .test.js)
+    discovered separately by vitest — so every web test was
+    running TWICE locally. CI sees 132 (correct count) because
+    fresh clone has no `.js` files. The doubling was a local-only
+    side effect of leftover tsc artifacts on the dev machine.
+
+  Most importantly: **none of the 165 `.js` files are tracked by
+  git.** `.gitignore` lines 30-31 (`apps/web/src/**/*.js` and
+  `apps/web/src/**/*.js.map`) have been preventing them from being
+  staged for some time. The spec's premise that they were
+  committed alongside their sources is wrong — they exist only as
+  local-disk artifacts of past `tsc --build` runs.
+
+Actionable scope after CHECKs: 3 tracked stale artifacts (1
+tsbuildinfo + 2 .tmp-smoke files) to untrack via `git rm --cached`,
+plus 2 new `.gitignore` rules to prevent recurrence. The 165 local
+`.js` files are still useful to delete locally (fixes the vitest
+doubling on Marco's machine) but the cleanup is not a git change.
+
+## 2026-05-16 — PR #156 OPENED (scaled-down)
+Type: PR
+Branch: chore/remove-stale-js-compilation-output
+Detail: Spec premise was wrong; PR scope reduced to three real
+changes plus a local-disk cleanup.
+
+Changes shipped in this PR:
+  - `git rm --cached apps/web/tsconfig.tsbuildinfo` — stops
+    perpetual `git status` modification of TS incremental build
+    cache.
+  - `git rm --cached apps/web/.tmp-smoke/pages/tendering-page-helpers.js`
+    and `.smoke.js` — stops perpetual modification of smoke-test
+    output that lives in a non-source location.
+  - `.gitignore` additions:
+      * `apps/web/tsconfig.tsbuildinfo` (also `apps/api/tsconfig.tsbuildinfo`
+        as preventative, even though that one isn't currently tracked).
+      * `apps/web/.tmp-smoke/` — covers the entire smoke-output
+        directory.
+    The existing `apps/web/src/**/*.js` rule (lines 30-31, dating
+    from a previous PR) was kept as-is; it was already doing the
+    work the spec assumed it needed to do.
+
+Cleanup done outside git tracking:
+  - `find apps/web/src -name "*.js" -type f -delete` ran on
+    Marco's local machine. This removed 165 local-disk `.js`
+    files (untracked) so vitest stops double-running every web
+    test. Post-cleanup web tests: 132 passing across 9 test files
+    (matches CI's clean-tree count). Test functions are unchanged
+    — the doubling was discovery, not duplication.
+
+Files changed:
+  - .gitignore (+11 lines, no removals)
+  - 3 file untracks (no on-disk deletions for tsbuildinfo; .tmp-smoke
+    files remain on disk too — they're just no longer staged)
+  - progress.md / roadmap.md / project_instructions.md
+
+Tests: API 450 passing (unchanged). Web 132 passing (down from
+locally-doubled 264; CI was always 132). No new dependencies. No
+new env vars. No migration files.
+
+Phase 6 carry-forward: root-cause investigation of which build
+step emits `.js` files into `apps/web/src/` in the first place is
+deferred. The `.gitignore` rules + Vite resolver order currently
+mask the symptom; identifying the source of the leak (likely a
+stray `tsc --build` invocation or a vitest config setting that
+emits) would prevent recurrence on every developer machine.
+Logged in roadmap.md §6.
+
+Status: WAITING_HUMAN_REVIEW (not auto-merged — small PR but
+Marco eyeballs the gitignore diff and the file untrack list
+before merge).
+

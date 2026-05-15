@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-15 20:58 AEST
+Last updated: 2026-05-15 21:45 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -472,21 +472,13 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     (Per-module action tooling expands as new personas come online.
      Each persona gets its own tool registry.)
 
-⏸️  Root-cause investigation: which build step emits `.js` into
+✅ Root-cause investigation: which build step emits `.js` into
     `apps/web/src/`
-    (PR #156 cleaned up the symptom: 165 `.js` files on Marco's
-     local disk in `apps/web/src/` paired with their `.tsx`/`.ts`
-     sources, causing vitest to double-discover every test file
-     locally (264 tests vs CI's correct 132). Existing `.gitignore`
-     line 30 (`apps/web/src/**/*.js`) was already preventing them
-     from being tracked, but they kept re-appearing. Likely sources:
-     a stray `tsc --build` invocation in a dev workflow, a vitest
-     config setting that emits, or one of the `*.test.ts` files
-     getting compiled by something on the side. Fix is to find the
-     leak and stop it at source, not just delete artifacts post-hoc.
-     Low priority — `.gitignore` + Vite resolver `.tsx`-first order
-     mask the symptom; the only operational pain was vitest
-     test-discovery doubling locally, which is now resolved.)
+    Completed in PR #157 (2026-05-16). Root cause was
+    apps/web/package.json `build` script using `tsc -b` (build mode)
+    which inherently emits regardless of --noEmit flag. Fixed by
+    replacing with explicit `tsc --noEmit -p <config>` invocations.
+    Vite still handles all compilation/bundling.
 ✅  Security hygiene cleanup — 9 GitHub alerts surfaced 2026-05-02
     Closed by PR #128 (overnight chain PR B). 3 npm overrides
     (serialize-javascript ≥7.0.5, postcss ≥8.5.10, uuid ≥10.0.0

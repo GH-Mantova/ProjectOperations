@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:e2e": "vite --configLoader native --host 127.0.0.1 --port 4173",
-    "build": "tsc -b && vite build",
+    "build": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && vite build",
     "preview": "vite preview",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
     "test": "vitest run",

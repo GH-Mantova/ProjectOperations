@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-15 21:45 AEST
+Last updated: 2026-05-15 22:28 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -3504,6 +3504,45 @@ this follow-up).
 Tests: API 450 passing (unchanged). Web 132 passing (unchanged from
 PR #156 corrected baseline). Web build produces dist/ correctly. Web
 tsc --noEmit clean. Web lint clean.
+
+No new dependencies. No new env vars. No migration files.
+
+Audit findings: none.
+## 2026-05-16 — PR #160 — Replace mirror-test reconstruction in tendering regression spec
+Type: PR (chore, Phase 6 carry-forward from PR #152)
+Branch: chore/fix-regression-spec-mirror-test
+Status: OPENED
+
+PR #152's Phase 6 carry-forward flagged two test files as potential
+mirror tests. Investigation confirmed only one was a real mirror test:
+
+  - tendering-assistant.system-prompt.regression.spec.ts: line 43
+    helper buildScopeSubModeSystemPrompt() reconstructed the system
+    prompt in-test using its own concatenation logic. After PR #152
+    added GLOBAL_RATE_FABRICATION_PROHIBITION to intrinsicPrompt(),
+    the test's reconstruction diverged from production — the
+    regression tests have been firing against a prompt missing the
+    global prefix.
+
+  - rate-lookup-policy.prompt.spec.ts: NOT a mirror test. Inspects
+    sub-mode descriptions directly to assert a structural property
+    (the policy block reaches the description). That's the correct
+    unit for the assertion; intentionally narrower than intrinsicPrompt's
+    output. Left untouched.
+
+Fix in the regression spec: deleted the mirror function body, replaced
+with a one-line delegation to intrinsicPrompt(tenderingPersona, subMode).
+Function name preserved so call sites in the strip-out (line 160) and
+lookup_rate (line 226) describe blocks don't need to change. Added
+explanatory comment noting the test does NOT call resolveSystemPrompt()
+(which would add company/user instruction + tender context layers) —
+those are explicitly out of scope for this regression suite.
+
+Files changed: apps/api/src/modules/personas/__tests__/tendering-assistant.system-prompt.regression.spec.ts (1 file, +1 import / +13 lines new helper-with-comment / -12 lines old helper body).
+
+Tests: API 450 passing (unchanged). Regression spec behaviour unchanged
+locally (6 skipped without ANTHROPIC_API_KEY); production behaviour is
+now correctly validated when CI runs with the key.
 
 No new dependencies. No new env vars. No migration files.
 

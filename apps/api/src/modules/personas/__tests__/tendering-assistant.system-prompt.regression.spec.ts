@@ -1,5 +1,6 @@
 import { LookupRateHandler } from "../tools/handlers/lookup-rate.handler";
 import { tenderingPersona } from "../definitions/tendering.persona";
+import { intrinsicPrompt } from "../../ai-providers/ai-providers.service";
 
 // Hard regression test for §5A.1 Item 5 system prompt overhaul.
 // PR #141 step-2 manual smoke surfaced a real bug: agent refused
@@ -37,18 +38,22 @@ const STRIP_OUT_PROMPT =
   "Carpet, vinyl, ceiling tiles, internal partitions to remove. " +
   "Help me draft scope items.";
 
-// Build the system prompt the dispatcher would assemble at runtime.
-// Mirrors ai-providers.service.ts intrinsicPrompt() shape — combine
-// persona description + the active sub-mode (scope) description.
+// Build the system prompt the dispatcher would assemble at runtime
+// for the scope sub-mode. Delegates to production's intrinsicPrompt()
+// so this test validates the REAL prompt shape — if intrinsicPrompt()
+// changes (e.g. PR #152's GLOBAL_RATE_FABRICATION_PROHIBITION prefix),
+// the regression suite sees the change automatically. Previous
+// implementation reconstructed the prompt in-test, which was a false-
+// confidence mirror test — fixed in PR #160.
+//
+// Note: this helper does NOT invoke resolveSystemPrompt() (which would
+// add company/user instruction layers + tender context). Those layers
+// are out of scope for this regression suite, which focuses on
+// persona+sub-mode behaviour.
 function buildScopeSubModeSystemPrompt(): string {
   const subMode = tenderingPersona.subModes.find((s) => s.name === "scope");
   if (!subMode) throw new Error("scope sub-mode not found on tenderingPersona");
-  return [
-    `You are the ${tenderingPersona.displayName} for Initial Services, a South East Queensland construction company.`,
-    tenderingPersona.description,
-    "",
-    `The user is currently in sub-mode "scope": ${subMode.description}`
-  ].join("\n");
+  return intrinsicPrompt(tenderingPersona, subMode);
 }
 
 // Minimal Anthropic Messages API call — no SDK, no streaming — for a

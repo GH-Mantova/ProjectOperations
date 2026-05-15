@@ -1,7 +1,7 @@
 # ProjectOperations — Project Instructions
 # Version: 1.1
 # Created: 2026-04-25 10:02 AEST
-# Last updated: 2026-05-08 06:29 AEST
+# Last updated: 2026-05-15 10:49 AEST
 # Maintained by: Claude Code (update after any architectural decision,
 #   module addition, business rule change, or workflow change)
 # Accessed by: All Claude chats in this project via web_fetch
@@ -878,6 +878,26 @@ AI Persona System (planned — Phase 5A.1)
   IS-T020 demo PDF to that path. SHAREPOINT_MODE env var picks
   the adapter at module init (mock vs live/graph). Production
   Graph adapter implementation is a separate PHASE 6 task.
+  PDF parsing security (PR #154 — Dependabot alerts #14 + #15).
+  `isEvalSupported: false` is REQUIRED at every
+  `pdfjs.getDocument()` call site. pdfjs-dist 3.11.174 is vulnerable
+  to arbitrary JavaScript execution upon opening a malicious PDF
+  (HIGH severity). Patched upstream in 4.2.67; the repo is pinned
+  to ^3.11 because Jest's CommonJS runtime can't load v4 ESM
+  without transformer gymnastics (see roadmap.md §6). Setting
+  `isEvalSupported: false` is Mozilla's recommended mitigation
+  when the version can't be upgraded — it defangs the eval-based
+  execution path. Two runtime call sites today: the
+  `pdfjsLib.getDocument(...)` invocations in
+  apps/api/src/modules/personas/tools/handlers/read-tender-drawing.handler.ts
+  (`renderPdfPageToJpeg`) and
+  apps/api/src/modules/personas/tools/handlers/extract-drawing-titleblock.handler.ts.
+  Any new code that calls `pdfjs.getDocument` MUST pass
+  `isEvalSupported: false` in the options object. Removing the
+  option from an existing call site is a security regression — the
+  inline comment at each site documents the CVE and the Phase 6
+  removal trigger (pdfjs-dist past 4.2.67). The option becomes
+  redundant once that upgrade lands.
   PR #147 finished the multi-turn image round-trip. The
   PersonaDispatcherService persists tool_result rows with image
   content stripped (DB stays lean — base64 image bytes are

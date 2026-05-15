@@ -150,6 +150,13 @@ async function renderPdfPageToJpeg(
 ): Promise<{ jpeg: Buffer; totalPages: number } | string> {
   let pdf: Awaited<ReturnType<typeof pdfjsLib.getDocument>["promise"]>;
   try {
+    // isEvalSupported: false — disables eval-based JS execution path in
+    // pdfjs-dist 3.x. Mitigates Dependabot alerts #14/#15 (CVE: PDF.js
+    // arbitrary JavaScript execution upon opening a malicious PDF).
+    // Mozilla's recommended mitigation when the version cannot be
+    // upgraded. Phase 6: remove this option once pdfjs-dist is bumped
+    // past 4.2.67 — blocked on the canvas Windows native build issue
+    // (see PR #146 and roadmap.md).
     pdf = await pdfjsLib.getDocument({
       data: new Uint8Array(bytes),
       isEvalSupported: false,

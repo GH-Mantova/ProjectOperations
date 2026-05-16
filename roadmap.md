@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-16 09:22 AEST
+Last updated: 2026-05-16 11:05 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -447,6 +447,22 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     fine as plain strings in the existing table. No user-visible change
     beyond the dotted codes.
 
+✅  PR B1.7 — Collapsible items + shared subtable notes + tooltip dropdowns (2026-05-16)
+    Each scope item becomes a collapsible card: header bar (chevron / WBS /
+    description / per-row $ / delete) when collapsed; full multi-section
+    layout when expanded (Men/Days + Plant N flex-wrap clusters, waste grid,
+    full-width notes). Cutting and Waste subtables drop their per-row notes
+    inputs and gain a single shared notes block at the bottom, persisted to
+    ScopeCard.cuttingNotes / ScopeCard.wasteNotes (new nullable columns).
+    Two reusable components introduced in apps/web/src/components: TooltipSelect
+    (native browser title-tooltip on long option labels) and NotesField
+    (4-row textarea + expand-to-modal with Esc/backdrop/⌘+Enter handling).
+    Fixes two B1.6 regressions: empty Plant dropdown (PlantRate field was
+    `item`, not `name`) and "Add row" 400 (new CreateScopeItemInCardDto
+    makes discipline server-derived and rowType optional, defaulting to
+    "general-labour"). Tests: 498 → 505. Follow-up B1.7.1 will surface
+    per-row $ totals (header currently shows "—").
+
 ✅  PR B1.6 — Items table redesign per design doc (2026-05-16)
     Canonical 12-column fixed layout per docs/Designs/scope-of-works-redesign.md
     lines 269-309. Replaces the dynamic-column-by-row-type mechanism with
@@ -478,6 +494,16 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     deep-linking. Cutting + waste subtables still render page-level
     filtered by active card's wbsRefs (B2/B3 move them per-card).
     Tests: 132 → 138 (6 new utility tests). API tests unchanged at 493.
+
+⏸️  PR B1.7.1 — Per-row $ total surfacing on the item header bar
+    Currently the collapsed item card shows "—" in the per-row $ position.
+    Two approaches: (a) surface priceByItemId on each item in GET /scope/items
+    (today it is computed internally for summaryByDiscipline but discarded
+    per-row), or (b) compute client-side from the canonical fields
+    (men×days×labour_rate + Σ plant.qty×plant.days×rate + value +
+    waste_rate×qty when wasteIncluded). Option (b) is self-contained but
+    duplicates rate-engine logic. Note: canonical B1.6 rows don't create
+    EstimateItems so today's priceByItemId is $0 for new rows regardless.
 
 ⏸️  PR B2 — Per-card concrete cutting subtable
     Currently page-level under the tendering Scope tab. Moves to a

@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-16 09:22 AEST
+Last updated: 2026-05-16 11:05 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -4316,6 +4316,136 @@ Follow-up items (not blocking):
     always null since UI doesn't write them). Waste-line auto-creation
     is effectively disabled. PR B3 (waste summary subtable) rewires
     this calc to read wasteIncluded/unit/value/wasteGroup/wasteItem.
+
+No new dependencies. No env vars. Rollback is git revert + the
+additive migration is no-op-safe to keep (data nullable).
+
+Audit findings: none.
+
+## 2026-05-16 — PR B1.7 — Collapsible items + shared subtable notes + tooltip dropdowns
+
+Branch: feat/scope-items-collapse-notes-b1-7
+Section: Tendering scope-of-works UI redesign (continuation of B1.6)
+
+Goal: convert each scope item into a collapsible card, replace
+per-row notes inputs on the cutting + waste subtables with a single
+shared notes block on each, and introduce two reusable components
+(TooltipSelect, NotesField) used across the scope UI and adoptable
+elsewhere over time. Also fixes two bugs introduced by PR B1.6:
+the empty Plant dropdown (PlantRate.item field was being read as
+PlantRate.name — a type-vs-schema mismatch) and the "Add row" 400
+(CreateScopeItemDto required `discipline` even though the service
+ignores it for card-scoped creates).
+
+Schema migration (additive, no backfill):
+  ScopeCard.cuttingNotes  String? @map("cutting_notes")
+  ScopeCard.wasteNotes    String? @map("waste_notes")
+  Migration: 20260516230000_card_subtable_notes
+  Applied manually via docker exec (dev-DB drift workaround pattern
+  from PR A1) then recorded in _prisma_migrations.
+
+API changes:
+  - UpdateScopeCardDto: + optional cuttingNotes / wasteNotes
+    (MaxLength 8000, both independent).
+  - NEW CreateScopeItemInCardDto: { description?, rowType? }. Both
+    optional. Replaces CreateScopeItemDto for the card-scoped POST
+    endpoint. Discipline derived server-side from card record.
+  - ScopeOfWorksService.setCardNotes(tenderId, cardId, patch): new
+    method; updates either or both notes fields in a single call;
+    empty string clears (-> null); 404 if card not in tender.
+  - ScopeOfWorksService.createItemInCard signature updated to
+    CreateScopeItemInCardDto; defaults rowType to "general-labour"
+    and description to "" when omitted.
+  - listCards response: + cuttingNotes + wasteNotes alongside the
+    existing plantColumnCount surfaced in B1.6.
+  - PATCH /scope/cards/:cardId controller routes on
+    cuttingNotes/wasteNotes (independently of name / discipline /
+    plantColumnCount) and 400 message updated to reflect the new
+    accepted fields.
+
+Frontend changes:
+  - NEW apps/web/src/components/TooltipSelect.tsx (~80 LOC). Native
+    <select> drop-in replacement that sets `title` to the currently-
+    selected option label. For long option lists in fixed-width
+    dropdowns hovering the closed control reveals the full text via
+    the browser's native tooltip. Each <option> also gets a title.
+  - NEW apps/web/src/components/NotesField.tsx (~210 LOC). 4-row
+    textarea + bottom-right "expand" button (28px square,
+    ti-arrows-diagonal SVG icon, inline). Modal supports Esc to
+    cancel, backdrop click to cancel, ⌘/Ctrl+Enter to save, returns
+    focus to the inline textarea on close. Reusable for item notes,
+    cutting subtable notes, waste subtable notes, and future ERP
+    screens.
+  - NEW apps/web/src/components/index.ts barrel.
+  - ScopeQuantitiesTable rewritten (812 → 729 LOC). Stack of
+    <article> item cards. Header bar (chevron / WBS / desc /
+    confidence / "—" placeholder $ / delete) is always visible.
+    Expanded body: Section A flex-wrap (Men 80px, Days 80px, Plant
+    N 280px clusters of [TooltipSelect rate / 44px qty / 44px
+    days]), trailing "+ Plant" and per-cluster "×" on Plant 2+.
+    Section B grid (1fr 1fr 80px 100px auto) for waste fields.
+    Section C full-width NotesField. Dashed separators between
+    sections. Newly-created items auto-expanded via an internal
+    ref (autoExpandedRef) so the user can type the description
+    immediately.
+  - PlantRate type rewritten to match the actual API response
+    shape (item, unit, rate, fuelRate, isActive). The previous
+    type used fictional fields (name, category, ratePerDay) which
+    made every option blank.
+  - addItem() POSTs the minimal { description: "" } body; the new
+    DTO accepts it.
+  - ScopeWasteTab: dropped the per-row Notes column from both the
+    header array and the row <td>; added a footer NotesField bound
+    to ScopeCard.wasteNotes via PATCH /scope/cards/:cardId.
+  - ScopeCuttingSheet: removed the 3× <NotesRow /> renders inside
+    each tab's <Fragment>; deleted the NotesRow function; added a
+    single shared <NotesField /> AFTER the 3-tab section so it's
+    visible on Cutting / Coring / Other regardless of active tab.
+    Bound to ScopeCard.cuttingNotes.
+  - useScopeCards: ScopeCard type + cuttingNotes / wasteNotes
+    (both nullable strings); new setCardNotes(cardId, patch)
+    callback exported from the hook.
+  - ScopeCardsTab: passes cuttingNotes / wasteNotes + their
+    setters down to both subtables.
+
+Tests:
+  - 7 new specs in scope-cards.service.spec.ts:
+    - setCardNotes updates cuttingNotes alone
+    - setCardNotes updates wasteNotes alone
+    - setCardNotes updates both fields in one PATCH
+    - setCardNotes clears notes when empty string supplied
+    - setCardNotes 404s for missing card
+    - createItemInCard accepts empty body (defaults rowType +
+      description)
+    - createItemInCard respects an explicit rowType when provided
+
+Verification:
+  - pnpm --filter api test: 505 passing (498 baseline + 7 new); 6 skipped
+  - pnpm --filter api exec tsc --noEmit: clean
+  - pnpm --filter api lint: clean
+  - pnpm --filter web test --run: 138 passing (unchanged)
+  - pnpm --filter web exec tsc --noEmit: clean
+  - pnpm --filter web build: clean (no new warnings beyond the
+    pre-existing 1.9MB chunk size warning)
+  - pnpm --filter web lint: clean
+
+Follow-up items (carried into B1.7.1 / B3):
+  - B1.7.1: per-row $ total surfacing. Currently the collapsed
+    header bar shows "—". The API summary endpoint computes
+    priceByItemId internally but doesn't attach it per-item, and
+    canonical B1.6 rows don't create EstimateItems anyway. Two
+    approaches under consideration: (a) surface the price in the
+    items list response, (b) compute client-side from existing
+    fields (men×days×labour_rate + Σ plant.qty×plant.days×rate +
+    value + waste_rate×qty if checked). Option (b) is more
+    self-contained but duplicates rate-engine logic. Decide in
+    B1.7.1.
+  - B3 (waste summary): rewire scope-of-works.service.ts auto-
+    waste-summary calc (lines 428-446) to read the new
+    wasteIncluded/unit/value/wasteGroup/wasteItem columns instead
+    of the legacy wasteTonnes/wasteType/wasteFacility. Currently
+    auto-creation of waste lines from scope rows is effectively
+    disabled.
 
 No new dependencies. No env vars. Rollback is git revert + the
 additive migration is no-op-safe to keep (data nullable).

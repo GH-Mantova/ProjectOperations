@@ -196,6 +196,29 @@ export class UpdateScopeCardDto {
     description: "Number of Plant columns visible on this card's items table. Minimum 1 (Plant 1 always present)."
   })
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) plantColumnCount?: number;
+
+  // PR B1.7 — shared notes blocks for the Cutting and Waste subtables.
+  // Pass null to clear. Both are independent and either can be set in
+  // the same PATCH without affecting the other.
+  @ApiPropertyOptional({ nullable: true, description: "Shared notes for the Cutting subtable (replaces per-row NotesRow)." })
+  @IsOptional() @IsString() @MaxLength(8000) cuttingNotes?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, description: "Shared notes for the Waste subtable (replaces per-row notes column)." })
+  @IsOptional() @IsString() @MaxLength(8000) wasteNotes?: string | null;
+}
+
+// PR B1.7 — Card-scoped create DTO. Discipline is derived server-side
+// from the parent card (the legacy CreateScopeItemDto required it as a
+// non-nullable validator, which was causing 400s on the redesigned
+// "+ Add row" button after B1.6). rowType is optional and defaults to
+// "general-labour" when omitted because the canonical 12-column table
+// no longer surfaces a row-type concept.
+export class CreateScopeItemInCardDto {
+  @ApiPropertyOptional({ description: "Initial description (defaults to empty string)." })
+  @IsOptional() @IsString() @MaxLength(500) description?: string;
+
+  @ApiPropertyOptional({ enum: ROW_TYPES, description: "Legacy row type (defaults to general-labour)." })
+  @IsOptional() @IsIn(ROW_TYPES as unknown as string[]) rowType?: RowType;
 }
 
 export class ReorderScopeCardsDto {

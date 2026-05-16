@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-16 06:04 AEST
+Last updated: 2026-05-16 06:53 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -456,6 +456,10 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     apps/api/src/modules/tendering/scope/card-defaults.ts exports the
     discipline → card-name + sortOrder mapping used by both the seed and
     the data migration's CASE block.
+
+✅  Design doc committed — docs/Designs/scope-of-works-redesign.md (2026-05-16)
+    Living architectural reference for the scope-of-works rebuild.
+    Drove A1/A1.5/A2/A2.5; will drive B1/B2/B3 (MVP) and C1-D1 (post-demo).
 
 ✅  PR A2.5 — Service-layer migration to card.discipline + column drop (2026-05-16)
     Migrated all service reads from ScopeOfWorksItem.discipline to

@@ -7,11 +7,14 @@ import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { ScopeWasteService } from "./scope-waste.service";
+import { IS_DISCIPLINE_CODES } from "../personas/definitions/disciplines";
 
-const DISCIPLINES = ["SO", "Str", "Asb", "Civ", "Prv"] as const;
-
+// PR B1.5.1 — DTO validator uses the canonical 4-code list. The legacy
+// 5-code constant ["SO", "Str", "Asb", "Civ", "Prv"] was a leftover that
+// PR A1 missed; any waste-item POST/PATCH carrying a current discipline
+// (DEM/CIV/ASB/Other) was rejected with a validation error.
 class UpsertWasteDto {
-  @IsOptional() @IsIn(DISCIPLINES as unknown as string[]) discipline?: string;
+  @IsOptional() @IsIn(IS_DISCIPLINE_CODES as readonly string[]) discipline?: string;
   @IsOptional() @IsString() wbsRef?: string | null;
   @IsOptional() @IsString() description?: string;
   @IsOptional() @IsString() wasteGroup?: string | null;

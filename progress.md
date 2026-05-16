@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-16 06:04 AEST
+Last updated: 2026-05-16 06:53 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -3920,3 +3920,13 @@ Database verification:
   - Seed produces 7 scope items, all linked to their parent cards (DEM3/ASB2/CIV1/OTH1 against 4 cards)
 
 Audit findings: none.
+
+## 2026-05-16 — DOCS: commit scope-of-works redesign design doc
+
+Type: DOCS
+Branch: docs/scope-of-works-redesign-design-doc
+Detail: Committed docs/Designs/scope-of-works-redesign.md as the canonical
+architectural reference for the scope-of-works rebuild chain. This is the
+design that drove PRs A1, A1.5, A2, and A2.5, and will drive PR B1/B2/B3
+(MVP UI rebuild) and C1-D1 (post-demo arrangement screen + PDF render).
+Status: COMPLETE

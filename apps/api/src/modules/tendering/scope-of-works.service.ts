@@ -74,7 +74,15 @@ function numericFieldsFrom(dto: Partial<UpdateScopeItemDto & CreateScopeItemDto>
     plantItems:
       dto.plantItems !== undefined ? (dto.plantItems as unknown as Prisma.InputJsonValue) : undefined,
     measurements:
-      dto.measurements !== undefined ? (dto.measurements as unknown as Prisma.InputJsonValue) : undefined
+      dto.measurements !== undefined ? (dto.measurements as unknown as Prisma.InputJsonValue) : undefined,
+    // PR B1.6 — canonical items table columns. unit + value drive the
+    // waste summary calc (B3); wasteItem completes the group/item pair;
+    // wasteIncluded flags whether this row contributes to the auto
+    // waste summary rows.
+    unit: dto.unit,
+    value: dto.value !== undefined ? toDecimal(dto.value) : undefined,
+    wasteItem: dto.wasteItem,
+    wasteIncluded: dto.wasteIncluded
   };
 }
 
@@ -545,6 +553,7 @@ export class ScopeOfWorksService {
       name: c.name,
       discipline: c.discipline,
       cardNumber: c.cardNumber,
+      plantColumnCount: c.plantColumnCount,
       sortOrder: c.sortOrder,
       itemCount: c._count.scopeItems,
       createdAt: c.createdAt,
@@ -582,6 +591,26 @@ export class ScopeOfWorksService {
         sortOrder,
         createdById: actorId
       }
+    });
+  }
+
+  /**
+   * PR B1.6 — Set plant column count for a card. Minimum 1 (Plant 1 is
+   * always visible). Frontend is responsible for confirming with the user
+   * before shrinking past columns that have data populated.
+   */
+  async setPlantColumnCount(tenderId: string, cardId: string, plantColumnCount: number) {
+    await this.requireTender(tenderId);
+    if (plantColumnCount < 1) {
+      throw new BadRequestException("plantColumnCount must be at least 1 (Plant 1 is always visible).");
+    }
+    const card = await this.prisma.scopeCard.findFirst({
+      where: { id: cardId, tenderId }
+    });
+    if (!card) throw new NotFoundException("Card not found.");
+    return this.prisma.scopeCard.update({
+      where: { id: cardId },
+      data: { plantColumnCount }
     });
   }
 

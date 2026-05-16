@@ -7,6 +7,7 @@ import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import {
   CreateScopeCardDto,
   CreateScopeItemDto,
+  CreateScopeItemInCardDto,
   ReorderScopeCardsDto,
   ReorderScopeItemsDto,
   UpdateScopeCardDto,
@@ -168,10 +169,17 @@ export class ScopeOfWorksController {
     if (dto.plantColumnCount !== undefined) {
       return this.service.setPlantColumnCount(tenderId, cardId, dto.plantColumnCount);
     }
+    // PR B1.7 — accept either or both notes fields in a single PATCH.
+    if (dto.cuttingNotes !== undefined || dto.wasteNotes !== undefined) {
+      return this.service.setCardNotes(tenderId, cardId, {
+        cuttingNotes: dto.cuttingNotes,
+        wasteNotes: dto.wasteNotes
+      });
+    }
     if (dto.name !== undefined) {
       return this.service.renameCard(tenderId, cardId, dto.name);
     }
-    throw new BadRequestException("Provide name, discipline, or plantColumnCount.");
+    throw new BadRequestException("Provide name, discipline, plantColumnCount, cuttingNotes, or wasteNotes.");
   }
 
   @Delete("cards/:cardId")
@@ -210,7 +218,7 @@ export class ScopeOfWorksController {
   createItemInCard(
     @Param("tenderId") tenderId: string,
     @Param("cardId") cardId: string,
-    @Body() dto: CreateScopeItemDto,
+    @Body() dto: CreateScopeItemInCardDto,
     @CurrentUser() actor: RequestUser
   ) {
     return this.service.createItemInCard(tenderId, actor.sub, cardId, dto);

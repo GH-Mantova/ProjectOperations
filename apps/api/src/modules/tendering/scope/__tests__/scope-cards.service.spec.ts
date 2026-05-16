@@ -339,3 +339,71 @@ describe("ScopeOfWorksService.listCards (PR B1)", () => {
     expect(result[0]?.cardNumber).toBe(1);
   });
 });
+
+describe("ScopeOfWorksService.setPlantColumnCount (PR B1.6)", () => {
+  it("updates plantColumnCount when card exists and count >= 1", async () => {
+    const { prisma, mocks } = buildPrismaMock({
+      scopeCardFindFirst: { id: "card-1", tenderId: "tender-1", plantColumnCount: 1 }
+    });
+    const svc = new ScopeOfWorksService(prisma as never);
+    await svc.setPlantColumnCount("tender-1", "card-1", 3);
+    const args = (mocks.scopeCardUpdate.mock.calls[0]?.[0] ?? {}) as {
+      data?: { plantColumnCount?: number };
+    };
+    expect(args.data?.plantColumnCount).toBe(3);
+  });
+
+  it("rejects plantColumnCount < 1", async () => {
+    const { prisma } = buildPrismaMock({
+      scopeCardFindFirst: { id: "card-1", tenderId: "tender-1" }
+    });
+    const svc = new ScopeOfWorksService(prisma as never);
+    await expect(svc.setPlantColumnCount("tender-1", "card-1", 0)).rejects.toBeInstanceOf(
+      BadRequestException
+    );
+  });
+
+  it("throws NotFoundException when card not in tender", async () => {
+    const { prisma } = buildPrismaMock({ scopeCardFindFirst: null });
+    const svc = new ScopeOfWorksService(prisma as never);
+    await expect(svc.setPlantColumnCount("tender-1", "missing", 2)).rejects.toBeInstanceOf(
+      NotFoundException
+    );
+  });
+
+  it("can shrink plantColumnCount back to 1 (caller is responsible for data cleanup)", async () => {
+    const { prisma, mocks } = buildPrismaMock({
+      scopeCardFindFirst: { id: "card-1", tenderId: "tender-1", plantColumnCount: 3 }
+    });
+    const svc = new ScopeOfWorksService(prisma as never);
+    await svc.setPlantColumnCount("tender-1", "card-1", 1);
+    const args = (mocks.scopeCardUpdate.mock.calls[0]?.[0] ?? {}) as {
+      data?: { plantColumnCount?: number };
+    };
+    expect(args.data?.plantColumnCount).toBe(1);
+  });
+});
+
+describe("listCards exposes plantColumnCount (PR B1.6)", () => {
+  it("returns plantColumnCount alongside cardNumber + itemCount", async () => {
+    const { prisma } = buildPrismaMock({
+      scopeCardFindMany: [
+        {
+          id: "c1",
+          tenderId: "tender-1",
+          name: "Demo",
+          discipline: "DEM",
+          cardNumber: 1,
+          plantColumnCount: 4,
+          sortOrder: 0,
+          _count: { scopeItems: 2 },
+          createdAt: new Date(),
+          updatedAt: new Date()
+        }
+      ]
+    });
+    const svc = new ScopeOfWorksService(prisma as never);
+    const result = await svc.listCards("tender-1");
+    expect(result[0]?.plantColumnCount).toBe(4);
+  });
+});

@@ -155,7 +155,7 @@ export class ScopeOfWorksController {
   @RequirePermissions("estimates.manage")
   @ApiOperation({
     summary:
-      "Update a scope card. Pass `name` to rename, or `discipline` to change discipline (cascades item wbsCode + cutting/waste wbsRef updates)."
+      "Update a scope card. Pass `name` to rename, `discipline` to change discipline (cascades item wbsCode + cutting/waste wbsRef updates), or `plantColumnCount` to grow/shrink the Plant column count (PR B1.6)."
   })
   updateCard(
     @Param("tenderId") tenderId: string,
@@ -165,10 +165,13 @@ export class ScopeOfWorksController {
     if (dto.discipline) {
       return this.service.changeCardDiscipline(tenderId, cardId, dto.discipline);
     }
+    if (dto.plantColumnCount !== undefined) {
+      return this.service.setPlantColumnCount(tenderId, cardId, dto.plantColumnCount);
+    }
     if (dto.name !== undefined) {
       return this.service.renameCard(tenderId, cardId, dto.name);
     }
-    throw new BadRequestException("Provide name or discipline.");
+    throw new BadRequestException("Provide name, discipline, or plantColumnCount.");
   }
 
   @Delete("cards/:cardId")

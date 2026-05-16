@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-16 08:09 AEST
+Last updated: 2026-05-16 09:22 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -4225,5 +4225,99 @@ Manual smoke required (in PR body):
 
 No backend changes. No new dependencies. No env vars. Rollback is git
 revert (the change is one file's render block).
+
+Audit findings: none.
+
+## 2026-05-16 — PR B1.6 — Items table redesign per design doc
+Type: PR (feat — schema additive + UI rewrite of items table)
+Branch: feat/items-table-redesign-b1-6
+Status: OPENED
+
+Implements the canonical 12-column scope items table per docs/Designs/
+scope-of-works-redesign.md lines 269-309. Removes legacy dynamic-column
+mechanics. Builds on the cards-as-tabs UI from B1.5.
+
+Investigation phase (pre-implementation) resolved 6 design questions
+via AskUserQuestion. Decisions Marco locked:
+  1. Plant arrays = dense with explicit `columnIndex` per entry (Plant 1 = 1)
+  2. Auto-waste-summary rewire deferred to PR B3
+  3. ScopeViewConfig: deprecated (frontend calls removed; DB table + endpoints stay orphaned for future cleanup)
+  4. Plant source = /estimate-rates/plant (rate-card with ratePerDay), not /lists/plant/items
+  5. Waste source = derived from /estimate-rates/waste via DISTINCT wasteGroup + filtered wasteType
+  6. Schema: 4 NEW columns on ScopeOfWorksItem (unit / value / wasteItem / wasteIncluded); legacy columns untouched
+
+Schema additions (purely additive migration 20260516220000_items_table_redesign_b1_6):
+  - scope_of_works_items.unit TEXT — values from hardcoded list ["m²","m³","t","ea"]
+  - scope_of_works_items.value DECIMAL(12,3) — quantity in chosen unit
+  - scope_of_works_items.waste_item TEXT — completes wasteGroup/wasteItem pair
+  - scope_of_works_items.waste_included BOOLEAN NOT NULL DEFAULT FALSE — auto-summary flag
+  - scope_cards.plant_column_count INTEGER NOT NULL DEFAULT 1 — per-card Plant column count
+
+Service layer:
+  - numericFieldsFrom() in scope-of-works.service.ts passes through the
+    4 new ScopeOfWorksItem fields on PATCH
+  - New private method setPlantColumnCount(tenderId, cardId, count) —
+    Min 1; throws BadRequestException for <1, NotFoundException for
+    missing card
+  - listCards() now returns plantColumnCount in each card row
+  - PATCH /tenders/:tenderId/scope/cards/:cardId now accepts
+    plantColumnCount field on UpdateScopeCardDto
+
+Frontend redesign — ScopeQuantitiesTable.tsx rewritten (840 lines → 612 lines):
+  - Canonical 12-column fixed layout: WBS / Description / Men / Days /
+    Plant 1...N / Waste group / Waste item / Unit / Value / Waste? /
+    Notes / Delete
+  - All last 6 columns inline-editable (previously read-only in the
+    legacy ViewConfig model)
+  - Plant N+1 added via "+" button on rightmost Plant header; Plant 2+
+    removable via "×" with window.confirm if any row in the card has
+    data populated at that columnIndex (data stripped via PATCH before
+    column shrink)
+  - Items created via the card-scoped POST /scope/cards/:cardId/items
+    endpoint (B1 backend)
+  - REMOVED: ScopeColumnManager import + render, view-config GET/PATCH
+    calls, /scope/columns?rowType fetch, Row Type column + dropdown,
+    Shift / Material / Measurement column pair, Waste tonnes/loads/
+    facility columns, ScopeRowPills second-row Fragment (un-wired)
+  - ScopeRowPills.tsx file LEFT ORPHANED (not deleted; can be re-wired
+    in a future PR if useful)
+  - useScopeCards.ts: ScopeCard type gains plantColumnCount field;
+    new setPlantColumnCount(cardId, n) callback
+
+ScopeCardsTab.tsx integration:
+  - Always renders the items table (new empty-state lives inside the
+    table itself as a "No items yet" row)
+  - Passes cardId + plantColumnCount + onPlantColumnCountChange down
+
+Tests:
+  - 5 new tests in scope-cards.service.spec.ts: setPlantColumnCount
+    happy path, <1 rejection, 404 missing card, shrink-to-1, and
+    listCards returning plantColumnCount
+  - Existing 493 API tests + 138 web tests all still pass
+
+Verification:
+  - pnpm --filter api test: 498 passing (493 baseline + 5 new); 6 skipped
+  - pnpm --filter api exec tsc --noEmit: clean
+  - pnpm --filter api lint: clean
+  - pnpm --filter web test --run: 138 passing (unchanged)
+  - pnpm --filter web exec tsc --noEmit: clean
+  - pnpm --filter web build: clean
+  - pnpm --filter web lint: clean
+
+Follow-up items (not blocking):
+  - scope-redesign.service.ts COLUMNS_BY_ROW_TYPE matrix (lines 15-30)
+    is now dead code after Row Type removal. Future cleanup PR.
+  - ScopeViewConfig table + GET/PATCH /scope/view-config endpoints +
+    scope-redesign.controller.ts:72-84 are orphaned (frontend no longer
+    calls them). Future cleanup PR can drop column on schema and table
+    in DB.
+  - Auto-waste-summary calc in scope-of-works.service.ts:428-446 still
+    reads legacy wasteTonnes/wasteType/wasteFacility (which are now
+    always null since UI doesn't write them). Waste-line auto-creation
+    is effectively disabled. PR B3 (waste summary subtable) rewires
+    this calc to read wasteIncluded/unit/value/wasteGroup/wasteItem.
+
+No new dependencies. No env vars. Rollback is git revert + the
+additive migration is no-op-safe to keep (data nullable).
 
 Audit findings: none.

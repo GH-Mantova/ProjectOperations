@@ -51,6 +51,7 @@ export function ScopeCardsTab({
     reload: reloadCards,
     createCard,
     renameCard,
+    setPlantColumnCount,
     changeDiscipline,
     deleteCard,
     reorderCards
@@ -271,16 +272,11 @@ export function ScopeCardsTab({
 
           {loadingItems && cardItems.length === 0 ? (
             <Skeleton width="100%" height={140} />
-          ) : cardItems.length === 0 ? (
-            <div className="s7-card" style={{ padding: 40, textAlign: "center" }}>
-              <EmptyState
-                heading="No items in this card"
-                subtext="Add scope items manually or ask Claude to propose scope from your uploaded documents."
-              />
-            </div>
           ) : (
             <ScopeQuantitiesTable
               tenderId={tenderId}
+              cardId={activeCard.id}
+              plantColumnCount={activeCard.plantColumnCount}
               discipline={activeCard.discipline as TableDiscipline}
               items={cardItems}
               subtotal={summary ? summary[activeCard.discipline as TableDiscipline]?.subtotal ?? 0 : 0}
@@ -288,6 +284,9 @@ export function ScopeCardsTab({
                 summary ? summary[activeCard.discipline as TableDiscipline]?.withMarkup ?? 0 : 0
               }
               onItemsChanged={reloadEverything}
+              onPlantColumnCountChange={async (next) => {
+                await setPlantColumnCount(activeCard.id, next);
+              }}
             />
           )}
 

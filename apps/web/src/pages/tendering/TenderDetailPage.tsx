@@ -10,7 +10,7 @@ import { TenderClarificationLog } from "./TenderClarificationLog";
 // NOTE: the Drafted Scope tab + panel are retired in PR #44 — AI draft items
 // now land directly in the Scope of Works tab as status="draft" rows.
 import { ConvertToProjectModal } from "./ConvertToProjectModal";
-import { ScopeOfWorksTab } from "./ScopeOfWorksTab";
+import { ScopeCardsTab } from "./scope-cards/ScopeCardsTab";
 import { ClientStarRating } from "../../components/ClientStarRating";
 
 type TenderDetail = {
@@ -877,7 +877,7 @@ export function TenderDetailPage() {
         )}
 
         {tab === "scope" && (
-          <ScopeOfWorksTab tenderId={tender.id} tenderTitle={tender.title} />
+          <ScopeCardsTab tenderId={tender.id} tenderTitle={tender.title} />
         )}
 
         {tab === "estimate" && (

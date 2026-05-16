@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-16 07:23 AEST
+Last updated: 2026-05-16 07:44 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -4044,3 +4044,97 @@ ChangeDisciplineModal with renumber preview, empty-state quick-starts.
 Reverse SQL kept in PR body, not committed.
 
 Audit findings: none.
+
+## 2026-05-16 — PR B1.5 — Cards-as-tabs frontend
+Type: PR (feat — frontend rewrite + monolith deletion)
+Branch: feat/scope-cards-frontend
+Status: OPENED
+
+Frontend half of PR B1 (split per session-budget decision). All 6 card-CRUD
+endpoints from B1 backend are now consumed.
+
+Scope adjustment from spec: rather than porting ScopeQuantitiesTable.tsx
+(848 lines) into a new ScopeCardItemsTable, the rewrite REUSES the existing
+items table inside the new cards-as-tabs shell. Same for ScopeWasteTab and
+ScopeCuttingSheet. Only the monolithic container files are deleted:
+ScopeOfWorksTab.tsx (1321 lines) and ScopeDisciplineBar.tsx (132 lines).
+The well-tested support files (ScopeQuantitiesTable, ScopeColumnManager,
+ScopeListDropdown, ScopeRowPills) stay alive and continue to work.
+
+Net effect: cards-as-tabs UX with the existing battle-tested table inside.
+Faster to ship; lower regression risk; matches the spec's "Don't try to
+port every feature of the old table in one go" guidance.
+
+Files created (8 new under apps/web/src/pages/tendering/scope-cards/):
+  - useScopeCards.ts (hook: GET/POST/PATCH/DELETE/reorder + optimistic
+    reorder with rollback on error)
+  - utils/card-display.ts (DISCIPLINE_LABELS + DISCIPLINE_COLORS +
+    formatCardCode + formatItemCode + disciplineColor)
+  - ScopeCardTab.tsx (single tab; inline-rename on double-click; X
+    delete only on hover when itemCount===0)
+  - ScopeCardCreateTab.tsx ("+ Add card" tab; Enter creates "Other"
+    by default, user picks discipline via card body dropdown)
+  - ScopeCardEmptyState.tsx (4 quick-start buttons, one per discipline)
+  - ScopeCardTabsRow.tsx (@dnd-kit horizontalListSortingStrategy;
+    PointerSensor distance:8 keeps click-to-select working alongside
+    drag)
+  - ChangeDisciplineModal.tsx (renumber-preview confirmation; "?"
+    placeholder for the new cardNumber since the server computes it)
+  - ScopeCardsTab.tsx (main container; replaces ScopeOfWorksTab)
+  - __tests__/card-display.test.ts (6 utility tests)
+
+Files modified (1):
+  - apps/web/src/pages/tendering/TenderDetailPage.tsx (2 lines: import
+    swap + JSX swap)
+
+Files deleted (2):
+  - apps/web/src/pages/tendering/ScopeOfWorksTab.tsx (1321 lines)
+  - apps/web/src/pages/tendering/ScopeDisciplineBar.tsx (132 lines)
+
+Files explicitly NOT deleted (kept alive for reuse inside the new shell):
+  - ScopeQuantitiesTable.tsx, ScopeColumnManager.tsx,
+    ScopeListDropdown.tsx, ScopeRowPills.tsx — pre-existing supporting
+    components; the new ScopeCardsTab feeds them filtered items via
+    cardId. If they need eventual replacement, that's a future PR.
+
+User-visible changes:
+  - Discipline bar gone. Replaced by horizontal card tabs at the top of
+    the Scope tab.
+  - Each card tab shows: discipline-color stripe (left), monospace code
+    badge (DEM1), card name, (itemCount).
+  - Click tab → switch active card. URL search param `?card=<id>` keeps
+    deep-link state.
+  - Double-click card name → inline rename. Enter saves, Escape cancels.
+  - Hover empty card → X appears. Click → DELETE (204 success, 409 with
+    toast if items exist).
+  - Drag tab horizontally → reorder. Optimistic update; reload-on-error
+    rollback.
+  - "+ Add card" tab at end → inline input, Enter creates Other-discipline
+    card with that name.
+  - Empty tender (no cards) → 4 quick-start buttons, one per discipline.
+    Click creates a card seeded with the default discipline label.
+  - Discipline dropdown above card body → change discipline opens
+    ChangeDisciplineModal with renumber preview. Confirm triggers the
+    A2.5-era atomic cascade (item wbsCode + cutting/waste wbsRef
+    renumbered in a $transaction). Toast reports the cascade counts.
+
+Backend-touched: none. All 6 endpoints from PR B1 backend (#167) are
+called as documented. AI proposal flow unchanged (still uses legacy
+acceptProposal → getOrCreateCardForDiscipline path).
+
+Verification:
+  - pnpm --filter web test --run: 138 passing (132 baseline + 6 new); 0 skipped
+  - pnpm --filter web exec tsc --noEmit: clean
+  - pnpm --filter web build: clean
+  - pnpm --filter web lint: clean
+  - pnpm --filter api test: 493 passing (unchanged — no API changes)
+
+No new dependencies. No env vars. No migrations.
+
+Sibling chain: PR B2 (per-card cutting subtable) and PR B3 (per-card
+waste subtable) — currently the cutting + waste subsections still render
+page-level inside ScopeCardBody, filtered by the active card's
+wbsRefs. B2/B3 will move them into per-card scoped subtables with their
+own creation flows.
+
+Audit findings: none. Rollback is `git revert` of the merge commit.

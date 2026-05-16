@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-16 07:23 AEST
+Last updated: 2026-05-16 07:44 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -447,18 +447,21 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     fine as plain strings in the existing table. No user-visible change
     beyond the dotted codes.
 
-⏸️  PR B1.5 — Frontend rewrite for cards-as-tabs UI
-    The major user-facing piece deferred from B1. Build the new ScopeCardsTab
-    + ~12 component tree replacing ScopeOfWorksTab + ScopeDisciplineBar +
-    ScopeQuantitiesTable. @dnd-kit horizontal (tab reorder) + vertical (item
-    reorder within card) sortable. Inline rename on tabs (click → input,
-    blur/Enter saves, Escape cancels). ChangeDisciplineModal with renumber
-    preview before triggering changeCardDiscipline endpoint. Empty-state
-    with 4 quick-start buttons (one per IS discipline). Files to delete:
-    ScopeOfWorksTab.tsx, ScopeDisciplineBar.tsx, ScopeQuantitiesTable.tsx,
-    ScopeListDropdown.tsx, ScopeRowPills.tsx, ScopeColumnManager.tsx (audit
-    confirms no cross-folder consumers). All 6 new endpoints already exist;
-    UI just calls them.
+✅  PR B1.5 — Cards-as-tabs frontend (2026-05-16)
+    Cards-as-tabs UX shipped. New scope-cards/ component tree (8 files +
+    utils + tests) replaces ScopeOfWorksTab.tsx (1321 lines) and
+    ScopeDisciplineBar.tsx (132 lines) — both deleted. The existing
+    ScopeQuantitiesTable + ScopeColumnManager + ScopeListDropdown +
+    ScopeRowPills are kept alive and reused inside the new tabs shell,
+    scoped by active card via cardId filter. @dnd-kit
+    horizontalListSortingStrategy drives tab reorder (PointerSensor
+    distance:8 to preserve click-to-select). Inline rename on
+    double-click; "+ Add card" trailing tab; 4 quick-start buttons on
+    empty-state; ChangeDisciplineModal with renumber preview triggers
+    the A2.5 atomic cascade. URL search param `?card=<id>` for
+    deep-linking. Cutting + waste subtables still render page-level
+    filtered by active card's wbsRefs (B2/B3 move them per-card).
+    Tests: 132 → 138 (6 new utility tests). API tests unchanged at 493.
 
 ⏸️  PR B2 — Per-card concrete cutting subtable
     Currently page-level under the tendering Scope tab. Moves to a

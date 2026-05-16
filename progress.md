@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-16 05:28 AEST
+Last updated: 2026-05-16 06:04 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -3838,5 +3838,85 @@ Sibling chain reference:
   - PR A2.5 (deferred): migrate services to read card.discipline + drop
     ScopeOfWorksItem.discipline. ~25-30 sites across ~6 services.
     Scheduled after PR B1/B2/B3 so UI smoke validates the schema first.
+
+Audit findings: none.
+
+## 2026-05-16 — PR A2.5 — Service-layer migration to card.discipline + drop column
+Type: PR (feat — service-layer refactor + breaking schema migration)
+Branch: feat/scope-card-discipline-authoritative
+Status: OPENED
+
+Sibling to PR A2 (per Path 3 split). PR A2 added scope_cards and the
+card_id FK as schema-additive only — services kept reading
+ScopeOfWorksItem.discipline. PR A2.5 closes the gap: migrates every
+service read to use card.discipline via the cardId FK, then drops the
+column from ScopeOfWorksItem.
+
+Pre-flight CHECK 0 results:
+  - HEAD at 9de7325 (PR A2 merged)
+  - API 476 / web 132 baselines confirmed
+  - 3 card_id columns present (scope_of_works_items, scope_waste_items, cutting_sheet_items)
+  - 0 NULL card_ids in scope_of_works_items (A2 backfill worked)
+  - 17 files / 38 non-test discipline references — matches spec scope
+
+Phase 1 (test infrastructure):
+  - New apps/api/src/modules/tendering/scope/__tests__/test-utils/build-scope-item-with-card.ts — paired { card, item } mock helper for tests that need the card relation post-A2.5.
+  - 2 new smoke tests in scope-card-schema.spec.ts validating the helper.
+
+Phase 2 (service migrations, Steps 3-9):
+  - scope-of-works.service.ts: 5 read sites — orderBy, sort, filter, summary group, count. All migrated to `where: { card: { discipline } }` / `orderBy: { card: { discipline: ... } }` / `i.card?.discipline`. Added `include: { card: true }` to every findMany/findUnique/update that needs discipline downstream. Changed `createEstimateItemFromScope` signature from `Prisma.ScopeOfWorksItemGetPayload<Record<string, never>>` to `Prisma.ScopeOfWorksItemGetPayload<{ include: { card: true } }>`.
+  - scope-redesign.service.ts: 1 read site in `summary()`. Migrated to read card via `select: { card: { select: { discipline: true } } }`. Fixed leftover "Prv" literals (from incomplete PR A1 sweep) — now consistently "Other".
+  - tendering.service.ts: 1 search filter clause. `scopeItems: { some: { card: { discipline: ... } } }`.
+  - proposals.service.ts: 1 count query. Migrated to nested `where`.
+  - contracts.service.ts: 1 findMany + 2 filter/group sites. Same select-with-card pattern.
+  - estimate-export.service.ts: 1 findMany inside the deep tender fetch. Per Step 9-A, kept the builders' ScopeRow shape flat (`discipline: string`) — service flattens `i.card?.discipline ?? "Other"` when building the payload. Builders unchanged.
+  - quote-scope-items.service.ts: 1 orderBy.
+  - gantt.service.ts (Projects-side, surfaced after column drop): 1 select + 2 reads in tasks-from-tender. Migrated to nested select + `item.card?.discipline`.
+  - tender-scope-drafting.service.ts: 1 map call now reads `i.card?.discipline` (after extending `createDraftItemsFromAi` to return items with card included).
+
+Phase 3 (column drop, Step 11):
+  - Added private helper `ScopeOfWorksService.getOrCreateCardForDiscipline()` for the 2 write sites in that service. proposals.service.ts uses inline upsert (same pattern, 1 site).
+  - 3 write paths converted: scope-of-works.service.ts (createItem + createDraftItemsFromAi) and proposals.service.ts (acceptProposal) now look up or create the parent card and write `cardId` instead of `discipline`.
+  - Migration 20260516180000_drop_scope_of_works_items_discipline: drops the composite index `scope_of_works_items_tender_id_discipline_item_number_idx`, adds replacement `scope_of_works_items_tender_id_item_number_idx`, drops the `discipline` column. Idempotent.
+  - Schema: removed `discipline String` and the legacy composite index.
+  - Seed: removed `discipline:` from 7 scope item createMany entries (the cards are created first; cardId is the link).
+
+Test fixture migration (Step 10):
+  - estimate-export.service.spec.ts: scopeItem() factory adds `card: { discipline }` alongside the legacy column for transitional support.
+  - proposals.service.spec.ts: buildPrismaMock extended with `scopeCard: { findFirst, create }` mocks. Two existing tests rewritten to assert `cardId` on the create call instead of the now-dropped `discipline`. The 4-discipline lookup verification refactored to also assert the card-lookup happens with the right discipline arg.
+  - scope-card-schema.spec.ts: type-level fixtures had `discipline: "DEM"` removed (column no longer in Prisma types).
+
+Scope decisions (per spec):
+  - ScopeWasteItem.discipline column survives this PR (separate model, future cleanup PR).
+  - ScopeViewConfig.discipline + @@unique([tenderId, discipline]) survives (separate, deliberately untouched).
+  - gantt_tasks.discipline (Projects-side) survives — its color map keys off this column, unrelated to ScopeOfWorksItem.
+  - ClaimLineItem.discipline survives (contracts service uses it but as its own column).
+
+Files changed: 17
+  - apps/api/prisma/schema.prisma (model field + index update)
+  - apps/api/prisma/migrations/20260516180000_drop_scope_of_works_items_discipline/migration.sql (new)
+  - apps/api/prisma/seed.ts (7 createMany entries lose `discipline:` field)
+  - apps/api/src/modules/tendering/scope-of-works.service.ts (5 reads + 2 writes + helper + return type)
+  - apps/api/src/modules/tendering/scope-redesign.service.ts (1 read site, Prv→Other cleanup)
+  - apps/api/src/modules/tendering/tendering.service.ts (1 search clause)
+  - apps/api/src/modules/tendering/scope/proposals.service.ts (1 read + 1 write + card upsert)
+  - apps/api/src/modules/tendering/tender-scope-drafting.service.ts (1 map)
+  - apps/api/src/modules/contracts/contracts.service.ts (1 read site)
+  - apps/api/src/modules/estimate-export/estimate-export.service.ts (1 fetch + 2 maps)
+  - apps/api/src/modules/client-quotes/quote-scope-items.service.ts (1 orderBy)
+  - apps/api/src/modules/projects/gantt.service.ts (1 read site)
+  - apps/api/src/modules/tendering/scope/__tests__/test-utils/build-scope-item-with-card.ts (new)
+  - apps/api/src/modules/tendering/scope/__tests__/proposals.service.spec.ts (mock + 2 test fixtures)
+  - apps/api/src/modules/tendering/scope/__tests__/scope-card-schema.spec.ts (type-level fixtures + 2 new helper tests)
+  - apps/api/src/modules/estimate-export/estimate-export.service.spec.ts (scopeItem factory)
+  - progress.md / roadmap.md / project_instructions.md
+
+Tests: API 476 baseline + 2 new helper tests = 478 passing (6 skipped, unchanged).
+Web 132 passing (unchanged). tsc + lint + web build + compliance:smoke
++ seed all clean. No new dependencies, env vars.
+
+Database verification:
+  - SELECT column_name FROM information_schema.columns WHERE table_name = 'scope_of_works_items' AND column_name = 'discipline' → 0 rows
+  - Seed produces 7 scope items, all linked to their parent cards (DEM3/ASB2/CIV1/OTH1 against 4 cards)
 
 Audit findings: none.

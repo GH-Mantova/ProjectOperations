@@ -5,6 +5,7 @@ import {
   type ScopeCardDefault
 } from "../card-defaults";
 import { IS_DISCIPLINE_CODES } from "../../../personas/definitions/disciplines";
+import { buildScopeItemWithCard } from "./test-utils/build-scope-item-with-card";
 
 // PR A2 — ScopeCard schema foundation tests. Schema-only PR; these tests
 // validate the new Prisma types compile, the SCOPE_CARD_DEFAULTS helper
@@ -79,13 +80,12 @@ describe("Prisma types — ScopeCard create shape (PR A2)", () => {
     expect(input.sortOrder).toBe(1);
   });
 
-  it("accepts a ScopeOfWorksItem with nullable cardId", () => {
+  it("accepts a ScopeOfWorksItem with nullable cardId (post-A2.5: discipline column dropped)", () => {
     const withCard: Prisma.ScopeOfWorksItemCreateManyInput = {
       tenderId: "tender-123",
       cardId: "card-abc",
       createdById: "user-456",
       wbsCode: "DEM1",
-      discipline: "DEM",
       itemNumber: 1,
       rowType: "demolition",
       description: "test"
@@ -95,13 +95,34 @@ describe("Prisma types — ScopeCard create shape (PR A2)", () => {
       // cardId omitted — should compile because the field is optional
       createdById: "user-456",
       wbsCode: "DEM1",
-      discipline: "DEM",
       itemNumber: 1,
       rowType: "demolition",
       description: "test"
     };
     expect(withCard.cardId).toBe("card-abc");
     expect(withoutCard.cardId).toBeUndefined();
+  });
+});
+
+describe("buildScopeItemWithCard helper (PR A2.5)", () => {
+  it("produces deep-linked card and item", () => {
+    const { card, item } = buildScopeItemWithCard({ discipline: "DEM" });
+    expect(item.cardId).toBe(card.id);
+    expect(item.card).toBe(card);
+    expect(item.card.discipline).toBe("DEM");
+    expect(card.name).toBe("Demolition");
+  });
+
+  it("respects overrides", () => {
+    const { card, item } = buildScopeItemWithCard({
+      discipline: "ASB",
+      tenderId: "t-99",
+      wbsCode: "ASB-CUSTOM-7"
+    });
+    expect(card.tenderId).toBe("t-99");
+    expect(item.wbsCode).toBe("ASB-CUSTOM-7");
+    expect(card.discipline).toBe("ASB");
+    expect(card.name).toBe("Asbestos removal");
   });
 });
 

@@ -296,7 +296,7 @@ export class TenderScopeDraftingService {
       items: createdItems.map((i) => ({
         id: i.id,
         wbsCode: i.wbsCode,
-        discipline: i.discipline,
+        discipline: i.card?.discipline ?? "",
         description: i.description
       }))
     };

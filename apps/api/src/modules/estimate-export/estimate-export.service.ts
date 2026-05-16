@@ -188,7 +188,9 @@ export class EstimateExportService {
         scopeHeader: true,
         scopeItems: {
           where: { status: { not: "excluded" } },
-          orderBy: [{ sortOrder: "asc" }, { itemNumber: "asc" }]
+          orderBy: [{ sortOrder: "asc" }, { itemNumber: "asc" }],
+          // PR A2.5 — discipline now read from card relation
+          include: { card: { select: { discipline: true } } }
         },
         cuttingSheetItems: {
           orderBy: [{ wbsRef: "asc" }, { sortOrder: "asc" }],
@@ -239,8 +241,8 @@ export class EstimateExportService {
     const scopeItems: ScopeRow[] = tender.scopeItems
       .slice()
       .sort((a, b) => {
-        const ai = disciplineIndex[a.discipline] ?? 99;
-        const bi = disciplineIndex[b.discipline] ?? 99;
+        const ai = disciplineIndex[a.card?.discipline ?? ""] ?? 99;
+        const bi = disciplineIndex[b.card?.discipline ?? ""] ?? 99;
         if (ai !== bi) return ai - bi;
         if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
         return a.itemNumber - b.itemNumber;
@@ -248,7 +250,7 @@ export class EstimateExportService {
       .map((i) => ({
         id: i.id,
         wbsCode: i.wbsCode,
-        discipline: i.discipline,
+        discipline: i.card?.discipline ?? "Other",
         rowType: i.rowType,
         description: i.description ?? "",
         men: toStr(i.men),

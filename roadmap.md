@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-16 05:28 AEST
+Last updated: 2026-05-16 06:04 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -457,14 +457,21 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     discipline → card-name + sortOrder mapping used by both the seed and
     the data migration's CASE block.
 
-⏸️  PR A2.5 — Migrate services to card.discipline + drop ScopeOfWorksItem.discipline
-    Service-layer refactor: ~6 services (scope-redesign, scope-of-works,
-    proposals, tendering, scope-waste, quote-scope-items) currently read
-    `i.discipline` on scope items and use `where: { tenderId, discipline }`
-    Prisma queries. Migrate each to read `i.card.discipline` (or join
-    through cardId). After all reads migrated, drop the discipline column
-    from ScopeOfWorksItem. ~25-30 sites. Moderate risk. Schedule after
-    PR B1/B2/B3 land so UI smoke validates the schema first.
+✅  PR A2.5 — Service-layer migration to card.discipline + column drop (2026-05-16)
+    Migrated all service reads from ScopeOfWorksItem.discipline to
+    card.discipline via the cardId FK established by PR A2. Touched 8
+    services (scope-of-works, scope-redesign, tendering, proposals,
+    tender-scope-drafting, contracts, estimate-export, quote-scope-items)
+    + 1 Projects-side (gantt). Builders (estimate-excel, quote-pdf)
+    unchanged — service flattens i.card?.discipline into the ScopeRow
+    payload. Write paths (createItem, createDraftItemsFromAi,
+    acceptProposal) now look up or create the parent ScopeCard and write
+    cardId instead of discipline. Dropped the discipline column from
+    scope_of_works_items via migration 20260516180000_drop_scope_of_works_items_discipline,
+    replaced the composite index. ScopeWasteItem.discipline,
+    ScopeViewConfig.discipline, ClaimLineItem.discipline, and
+    gantt_tasks.discipline columns all retained (separate models;
+    future cleanup). Tests: 476 → 478 passing (2 new helper tests).
 
 ✅  PR A1.5 — Projects-side discipline dropdown migration (2026-05-16)
     Migrated apps/web/src/pages/projects/ProjectDetailPage.tsx:1468-1472

@@ -84,10 +84,15 @@ function scopeItem(partial: Partial<{
   provisionalAmount: { toString(): string } | null;
   notes: string | null;
 }> = {}) {
+  // PR A2.5 — discipline now read from i.card.discipline; legacy
+  // i.discipline column still present until the schema drop. We populate
+  // both so tests pre- and post-drop work without rewriting fixtures.
+  const discipline = partial.discipline ?? "DEM";
   return {
     id: partial.id ?? "s-1",
     wbsCode: partial.wbsCode ?? "DEM1",
-    discipline: partial.discipline ?? "DEM",
+    discipline,
+    card: { discipline },
     rowType: partial.rowType ?? "demolition",
     description: partial.description ?? "Strip out level 1",
     itemNumber: partial.itemNumber ?? 1,

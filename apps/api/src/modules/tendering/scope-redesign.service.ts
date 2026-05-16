@@ -472,14 +472,19 @@ export class ScopeRedesignService {
     await this.requireTender(tenderId);
     // Discipline subtotals come from the same resolver the existing list
     // endpoint uses: sum of linked estimate-item prices per discipline.
-    // Prv is special-cased — its final price is the provisionalAmount field
+    // "Other" is special-cased — its final price is the provisionalAmount field
     // with no markup, not a sum of calculated line-items.
+    // PR A2.5 — discipline now read from card relation.
     const items = await this.prisma.scopeOfWorksItem.findMany({
       where: { tenderId, status: { not: "excluded" } },
-      select: { discipline: true, estimateItemId: true, provisionalAmount: true }
+      select: {
+        card: { select: { discipline: true } },
+        estimateItemId: true,
+        provisionalAmount: true
+      }
     });
     const estimateItemIds = items
-      .filter((i) => i.discipline !== "Prv")
+      .filter((i) => i.card?.discipline !== "Other")
       .map((i) => i.estimateItemId)
       .filter((id): id is string => !!id);
     const priceByItemId = await this.computeEstimateItemPrices(estimateItemIds);
@@ -490,17 +495,18 @@ export class ScopeRedesignService {
     const perDiscipline: Record<string, { itemCount: number; subtotal: number; withMarkup: number }> = {};
     for (const d of DISCIPLINES) perDiscipline[d] = { itemCount: 0, subtotal: 0, withMarkup: 0 };
     for (const item of items) {
-      const bucket = perDiscipline[item.discipline];
+      const itemDiscipline = item.card?.discipline ?? "";
+      const bucket = perDiscipline[itemDiscipline];
       if (!bucket) continue;
       bucket.itemCount += 1;
-      if (item.discipline === "Prv") {
+      if (itemDiscipline === "Other") {
         bucket.subtotal += item.provisionalAmount ? Number(item.provisionalAmount) : 0;
       } else if (item.estimateItemId) {
         bucket.subtotal += priceByItemId.get(item.estimateItemId) ?? 0;
       }
     }
-    // Markup applies to cost-based disciplines only. Prv is a fixed
-    // provisional sum by definition.
+    // Markup applies to cost-based disciplines only. Other is a fixed
+    // provisional/option sum by definition.
     for (const d of DISCIPLINES) {
       perDiscipline[d].withMarkup =
         d === "Other" ? perDiscipline[d].subtotal : perDiscipline[d].subtotal * (1 + markup / 100);

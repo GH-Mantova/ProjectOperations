@@ -9,6 +9,7 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../../prisma/prisma.service";
 import type { ProposeScopeItemsArgs } from "../../ai-providers/tools/propose-scope-items.tool";
 import { type IsDisciplineCode } from "../../personas/definitions/disciplines";
+import { getScopeCardDefault } from "./card-defaults";
 
 // PR A1 (2026-05-16) — the AI-facing discipline vocabulary now matches the
 // internal scope-of-works discipline column (4-code system: DEM/CIV/ASB/Other).
@@ -143,11 +144,31 @@ export class ProposalsService {
     const description = merged.title === merged.description
       ? merged.description
       : `${merged.title} — ${merged.description}`;
+    // PR A2.5 — every scope item must link to a card. Look up or create.
+    const card = await this.prisma.scopeCard.findFirst({
+      where: { tenderId, discipline },
+      select: { id: true }
+    });
+    let cardId = card?.id;
+    if (!cardId) {
+      const defaults = getScopeCardDefault(discipline);
+      const created = await this.prisma.scopeCard.create({
+        data: {
+          tenderId,
+          name: defaults.name,
+          discipline,
+          sortOrder: defaults.sortOrder,
+          createdById: userId
+        },
+        select: { id: true }
+      });
+      cardId = created.id;
+    }
     const scopeItem = await this.prisma.scopeOfWorksItem.create({
       data: {
         tenderId,
+        cardId,
         wbsCode,
-        discipline,
         itemNumber,
         rowType: DEFAULT_ROW_TYPE_BY_DISCIPLINE[discipline],
         description,
@@ -279,7 +300,7 @@ export class ProposalsService {
     discipline: IsDisciplineCode
   ): Promise<number> {
     const count = await this.prisma.scopeOfWorksItem.count({
-      where: { tenderId, discipline }
+      where: { tenderId, card: { discipline } }
     });
     return count + 1;
   }

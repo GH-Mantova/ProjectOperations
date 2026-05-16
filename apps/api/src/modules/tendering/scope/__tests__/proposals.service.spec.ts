@@ -23,6 +23,12 @@ function buildPrismaMock() {
     }
   );
   const scopeOfWorksItemCount: AsyncMock = jest.fn(async () => 0);
+  // PR A2.5 — accepting a proposal now looks up (or creates) the parent
+  // ScopeCard for (tenderId, discipline). Mock both reads so the test
+  // can exercise both branches by returning a card when the fixture
+  // expects "card exists" and null when the fixture expects "card created".
+  const scopeCardFindFirst: AsyncMock = jest.fn(async () => ({ id: "card-1" }));
+  const scopeCardCreate: AsyncMock = jest.fn(async () => ({ id: "card-1" }));
   const $transaction: AsyncMock = jest.fn(async (ops: unknown) => {
     if (Array.isArray(ops)) {
       return Promise.all(ops);
@@ -38,6 +44,7 @@ function buildPrismaMock() {
     },
     conversation: { update: conversationUpdate },
     scopeOfWorksItem: { create: scopeOfWorksItemCreate, count: scopeOfWorksItemCount },
+    scopeCard: { findFirst: scopeCardFindFirst, create: scopeCardCreate },
     $transaction
   };
   return {
@@ -49,6 +56,8 @@ function buildPrismaMock() {
       conversationUpdate,
       scopeOfWorksItemCreate,
       scopeOfWorksItemCount,
+      scopeCardFindFirst,
+      scopeCardCreate,
       $transaction
     }
   };
@@ -132,7 +141,9 @@ describe("ProposalsService.acceptProposal", () => {
       data?: Record<string, unknown>;
     };
     expect(data.data?.tenderId).toBe("tender-1");
-    expect(data.data?.discipline).toBe("DEM");
+    // PR A2.5 — discipline column dropped. The scope item is now linked
+    // via cardId; the ScopeCard.findFirst mock returns { id: "card-1" }.
+    expect(data.data?.cardId).toBe("card-1");
     expect(data.data?.aiProposed).toBe(true);
     expect(data.data?.measurementUnit).toBe("sqm");
 
@@ -157,13 +168,8 @@ describe("ProposalsService.acceptProposal", () => {
     expect(data.data?.measurementUnit).toBe("m2");
   });
 
-  it("persists discipline verbatim (DEM/CIV/ASB/Other) — no translation needed post-PR-A1", async () => {
-    for (const [aiDisc, internal] of [
-      ["DEM", "DEM"],
-      ["ASB", "ASB"],
-      ["CIV", "CIV"],
-      ["Other", "Other"]
-    ] as const) {
+  it("looks up the parent ScopeCard for each discipline (DEM/CIV/ASB/Other) when accepting (PR A2.5)", async () => {
+    for (const aiDisc of ["DEM", "ASB", "CIV", "Other"] as const) {
       const { prisma, mocks } = buildPrismaMock();
       mocks.conversationMessageFindUnique.mockResolvedValueOnce(
         existingMessage({
@@ -182,10 +188,18 @@ describe("ProposalsService.acceptProposal", () => {
       );
       const service = new ProposalsService(prisma as never);
       await service.acceptProposal("u-1", "msg-1", 0);
-      const data = (mocks.scopeOfWorksItemCreate.mock.calls[0]?.[0] ?? {}) as {
-        data?: { discipline?: string };
+      // PR A2.5 — discipline column dropped; the service now queries
+      // ScopeCard for the matching (tenderId, discipline) before creating
+      // the scope item. Assert that the lookup happens with the right
+      // discipline and that cardId is passed through to the create call.
+      const cardLookupArgs = (mocks.scopeCardFindFirst.mock.calls[0]?.[0] ?? {}) as {
+        where?: { tenderId?: string; discipline?: string };
       };
-      expect(data.data?.discipline).toBe(internal);
+      expect(cardLookupArgs.where?.discipline).toBe(aiDisc);
+      const data = (mocks.scopeOfWorksItemCreate.mock.calls[0]?.[0] ?? {}) as {
+        data?: { cardId?: string };
+      };
+      expect(data.data?.cardId).toBe("card-1");
     }
   });
 

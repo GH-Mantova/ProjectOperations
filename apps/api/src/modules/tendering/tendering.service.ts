@@ -143,7 +143,7 @@ export class TenderingService {
     }
 
     if (query.discipline) {
-      clauses.push({ scopeItems: { some: { discipline: query.discipline } } });
+      clauses.push({ scopeItems: { some: { card: { discipline: query.discipline } } } });
     }
 
     if (query.valueMin || query.valueMax) {

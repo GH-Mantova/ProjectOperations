@@ -11,6 +11,7 @@ import {
   UpdateScopeItemDto
 } from "./dto/scope-of-works.dto";
 import { assertRowTypeForDiscipline } from "./scope-redesign.service";
+import { getScopeCardDefault } from "./scope/card-defaults";
 
 const DEFAULT_ROLE_BY_DISCIPLINE: Record<Discipline, string> = {
   DEM: "Demolition labourer",
@@ -115,14 +116,17 @@ export class ScopeOfWorksService {
   // ── Items: list ───────────────────────────────────────────────────────
   async listItems(tenderId: string) {
     await this.requireTender(tenderId);
+    // PR A2.5 — card.discipline is now authoritative. Include the card on
+    // every read that needs to filter/order/group by discipline.
     const items = await this.prisma.scopeOfWorksItem.findMany({
       where: { tenderId },
-      orderBy: [{ discipline: "asc" }, { itemNumber: "asc" }, { sortOrder: "asc" }]
+      orderBy: [{ card: { discipline: "asc" } }, { itemNumber: "asc" }, { sortOrder: "asc" }],
+      include: { card: true }
     });
 
     const sorted = items.slice().sort((a, b) => {
-      const ai = DISCIPLINE_ORDER.indexOf(a.discipline as Discipline);
-      const bi = DISCIPLINE_ORDER.indexOf(b.discipline as Discipline);
+      const ai = DISCIPLINE_ORDER.indexOf((a.card?.discipline ?? "Other") as Discipline);
+      const bi = DISCIPLINE_ORDER.indexOf((b.card?.discipline ?? "Other") as Discipline);
       if (ai !== bi) return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
       if (a.itemNumber !== b.itemNumber) return a.itemNumber - b.itemNumber;
       return a.sortOrder - b.sortOrder;
@@ -133,7 +137,7 @@ export class ScopeOfWorksService {
     const priceByItemId = await this.computeEstimateItemPrices(estimateItemIds);
 
     const summaryByDiscipline = DISCIPLINE_ORDER.map((d) => {
-      const group = sorted.filter((i) => i.discipline === d && i.status !== "excluded");
+      const group = sorted.filter((i) => i.card?.discipline === d && i.status !== "excluded");
       const total = group.reduce(
         (sum, i) => sum + (i.estimateItemId ? Number(priceByItemId.get(i.estimateItemId) ?? 0) : 0),
         0
@@ -159,11 +163,12 @@ export class ScopeOfWorksService {
     const providedWbs = dto.wbsCode?.trim();
     const flatPattern = new RegExp(`^${discipline}\\d+$`);
     const wbsCode = providedWbs && flatPattern.test(providedWbs) ? providedWbs : `${discipline}${itemNumber}`;
+    const cardId = await this.getOrCreateCardForDiscipline(tenderId, discipline, actorId);
     return this.prisma.scopeOfWorksItem.create({
       data: {
         tenderId,
+        cardId,
         wbsCode,
-        discipline,
         itemNumber,
         rowType: dto.rowType,
         description: dto.description,
@@ -180,11 +185,14 @@ export class ScopeOfWorksService {
     if (dto.rowType) {
       const existing = await this.prisma.scopeOfWorksItem.findUnique({
         where: { id: itemId },
-        select: { discipline: true, tenderId: true }
+        select: { tenderId: true, card: { select: { discipline: true } } }
       });
-      if (existing) assertRowTypeForDiscipline(existing.discipline as Discipline, dto.rowType);
+      if (existing?.card) assertRowTypeForDiscipline(existing.card.discipline as Discipline, dto.rowType);
     }
-    const existing = await this.prisma.scopeOfWorksItem.findUnique({ where: { id: itemId } });
+    const existing = await this.prisma.scopeOfWorksItem.findUnique({
+      where: { id: itemId },
+      include: { card: true }
+    });
     if (!existing || existing.tenderId !== tenderId) {
       throw new NotFoundException("Scope item not found.");
     }
@@ -200,14 +208,15 @@ export class ScopeOfWorksService {
         status: dto.status,
         sortOrder: dto.sortOrder,
         ...numericFieldsFrom(dto)
-      }
+      },
+      include: { card: true }
     });
 
-    let estimateItem = null as Awaited<ReturnType<typeof this.createEstimateItemFromScope>> | null;
+    let estimateItem: Awaited<ReturnType<ScopeOfWorksService["createEstimateItemFromScope"]>> | null = null;
     if (prevStatus === "draft" && nextStatus === "confirmed") {
       estimateItem = await this.createEstimateItemFromScope(updated, tenderId, actorId);
     }
-    return { scopeItem: estimateItem ? await this.prisma.scopeOfWorksItem.findUnique({ where: { id: itemId } }) : updated, estimateItem };
+    return { scopeItem: estimateItem ? await this.prisma.scopeOfWorksItem.findUnique({ where: { id: itemId }, include: { card: true } }) : updated, estimateItem };
   }
 
   async deleteItem(tenderId: string, itemId: string) {
@@ -258,7 +267,8 @@ export class ScopeOfWorksService {
     }
     const updated = await this.prisma.scopeOfWorksItem.update({
       where: { id: itemId },
-      data: { status: "confirmed" }
+      data: { status: "confirmed" },
+      include: { card: true }
     });
     const estimateItem = await this.createEstimateItemFromScope(updated, tenderId, actorId);
     const reloaded = await this.prisma.scopeOfWorksItem.findUnique({ where: { id: itemId } });
@@ -280,13 +290,14 @@ export class ScopeOfWorksService {
     await this.requireTender(tenderId);
     const drafts = await this.prisma.scopeOfWorksItem.findMany({
       where: { tenderId, status: "draft" },
-      orderBy: [{ discipline: "asc" }, { itemNumber: "asc" }]
+      orderBy: [{ card: { discipline: "asc" } }, { itemNumber: "asc" }]
     });
     const createdEstimates: Array<{ scopeItemId: string; estimateItemId: string }> = [];
     for (const draft of drafts) {
       const updated = await this.prisma.scopeOfWorksItem.update({
         where: { id: draft.id },
-        data: { status: "confirmed" }
+        data: { status: "confirmed" },
+        include: { card: true }
       });
       const estimateItem = await this.createEstimateItemFromScope(updated, tenderId, actorId);
       if (estimateItem) {
@@ -298,13 +309,13 @@ export class ScopeOfWorksService {
 
   // ── Estimate item auto-create ────────────────────────────────────────
   async createEstimateItemFromScope(
-    scopeItem: Prisma.ScopeOfWorksItemGetPayload<Record<string, never>>,
+    scopeItem: Prisma.ScopeOfWorksItemGetPayload<{ include: { card: true } }>,
     tenderId: string,
     _actorId: string
   ) {
     // Only confirmed rows should map into the estimate.
     if (scopeItem.status !== "confirmed") return null;
-    const discipline = scopeItem.discipline as Discipline;
+    const discipline = (scopeItem.card?.discipline ?? "Other") as Discipline;
 
     // 1. Find or create the TenderEstimate for this tender.
     let estimate = await this.prisma.tenderEstimate.findUnique({ where: { tenderId } });
@@ -472,9 +483,39 @@ export class ScopeOfWorksService {
 
   private async nextItemNumber(tenderId: string, discipline: Discipline): Promise<number> {
     const count = await this.prisma.scopeOfWorksItem.count({
-      where: { tenderId, discipline }
+      where: { tenderId, card: { discipline } }
     });
     return count + 1;
+  }
+
+  /**
+   * PR A2.5 — every ScopeOfWorksItem must be linked to a ScopeCard.
+   * Look up the card for (tenderId, discipline); create it on demand with
+   * defaults (name + sortOrder) if absent. Idempotent — repeated calls
+   * for the same pair return the same card.
+   */
+  private async getOrCreateCardForDiscipline(
+    tenderId: string,
+    discipline: Discipline,
+    actorId: string
+  ): Promise<string> {
+    const existing = await this.prisma.scopeCard.findFirst({
+      where: { tenderId, discipline },
+      select: { id: true }
+    });
+    if (existing) return existing.id;
+    const defaults = getScopeCardDefault(discipline);
+    const created = await this.prisma.scopeCard.create({
+      data: {
+        tenderId,
+        name: defaults.name,
+        discipline,
+        sortOrder: defaults.sortOrder,
+        createdById: actorId
+      },
+      select: { id: true }
+    });
+    return created.id;
   }
 
   async createDraftItemsFromAi(
@@ -493,7 +534,7 @@ export class ScopeOfWorksService {
     }>
   ) {
     await this.requireTender(tenderId);
-    const created: Array<Awaited<ReturnType<typeof this.prisma.scopeOfWorksItem.create>>> = [];
+    const created: Array<Prisma.ScopeOfWorksItemGetPayload<{ include: { card: true } }>> = [];
     for (const proposal of items) {
       const discipline = DISCIPLINE_ORDER.includes(proposal.code) ? proposal.code : ("DEM" as Discipline);
       const itemNumber = await this.nextItemNumber(tenderId, discipline);
@@ -513,12 +554,14 @@ export class ScopeOfWorksService {
       }
 
       const rowType = inferRowType(discipline, proposal);
+      const cardId = await this.getOrCreateCardForDiscipline(tenderId, discipline, actorId);
 
       const record = await this.prisma.scopeOfWorksItem.create({
+        include: { card: true },
         data: {
           tenderId,
+          cardId,
           wbsCode,
-          discipline,
           itemNumber,
           rowType,
           description: `${proposal.title}${proposal.description ? `\n${proposal.description}` : ""}`.trim().slice(0, 2000),

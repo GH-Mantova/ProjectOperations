@@ -104,7 +104,7 @@ export class QuoteScopeItemsService {
     const [scopeItems, wasteItems, cuttingItems, existing] = await Promise.all([
       this.prisma.scopeOfWorksItem.findMany({
         where: { tenderId, status: { not: "excluded" } },
-        orderBy: [{ discipline: "asc" }, { sortOrder: "asc" }, { itemNumber: "asc" }]
+        orderBy: [{ card: { discipline: "asc" } }, { sortOrder: "asc" }, { itemNumber: "asc" }]
       }),
       this.prisma.scopeWasteItem.findMany({
         where: { tenderId },

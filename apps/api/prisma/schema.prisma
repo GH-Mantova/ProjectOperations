@@ -2157,6 +2157,11 @@ model ScopeCard {
   // subtables. Replace the previous per-row notes column / NotesRow.
   cuttingNotes String? @map("cutting_notes")
   wasteNotes   String? @map("waste_notes")
+  // PR B2 — per-card markup override. null = inherit TenderEstimate.markup;
+  // any non-null value overrides for this card only. Percent expressed as
+  // a decimal (e.g. 30.00 means 30%). Reset via × button on the input or
+  // bulk POST /scope/markup/reset-all.
+  markupOverride Decimal? @db.Decimal(5, 2) @map("markup_override")
   sortOrder   Int      @default(0) @map("sort_order")
   createdById String   @map("created_by_id")
   createdBy   User     @relation("ScopeCardCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)

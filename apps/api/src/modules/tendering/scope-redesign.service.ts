@@ -3,6 +3,11 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import type { Discipline } from "./dto/scope-of-works.dto";
 import { DISCIPLINES } from "./dto/scope-of-works.dto";
+import {
+  buildRateMaps,
+  computeScopeItemTotal,
+  toPricingInput
+} from "./scope-item-pricing";
 
 // ── Column availability map ─────────────────────────────────────────────
 // Required columns are always rendered. Optional columns are opt-in via
@@ -470,46 +475,38 @@ export class ScopeRedesignService {
   // ── Summary ──────────────────────────────────────────────────────────
   async summary(tenderId: string) {
     await this.requireTender(tenderId);
-    // Discipline subtotals come from the same resolver the existing list
-    // endpoint uses: sum of linked estimate-item prices per discipline.
-    // "Other" is special-cased — its final price is the provisionalAmount field
-    // with no markup, not a sum of calculated line-items.
-    // PR A2.5 — discipline now read from card relation.
+    // PR B1.7.2 — per-discipline subtotals now go through the same
+    // computeScopeItemTotal helper that listItems() uses, so the table
+    // footer's "Subtotal" / "With markup" exactly matches the sum of
+    // visible row totals. The legacy priceByItemId path silently
+    // returned $0 for canonical (B1.6+) rows because they don't link
+    // to an EstimateItem.
     const items = await this.prisma.scopeOfWorksItem.findMany({
       where: { tenderId, status: { not: "excluded" } },
-      select: {
-        card: { select: { discipline: true } },
-        estimateItemId: true,
-        provisionalAmount: true
-      }
+      include: { card: true }
     });
-    const estimateItemIds = items
-      .filter((i) => i.card?.discipline !== "Other")
-      .map((i) => i.estimateItemId)
-      .filter((id): id is string => !!id);
-    const priceByItemId = await this.computeEstimateItemPrices(estimateItemIds);
-    const markup = await this.prisma.tenderEstimate
-      .findUnique({ where: { tenderId }, select: { markup: true } })
-      .then((e) => (e ? Number(e.markup) : 30));
+    const [labourRates, plantRates, tenderEstimate] = await Promise.all([
+      this.prisma.estimateLabourRate.findMany({ where: { isActive: true } }),
+      this.prisma.estimatePlantRate.findMany({ where: { isActive: true } }),
+      this.prisma.tenderEstimate.findUnique({ where: { tenderId }, select: { markup: true } })
+    ]);
+    const rateMaps = buildRateMaps(labourRates, plantRates);
+    const markupPercent = tenderEstimate ? Number(tenderEstimate.markup) : 30;
 
     const perDiscipline: Record<string, { itemCount: number; subtotal: number; withMarkup: number }> = {};
     for (const d of DISCIPLINES) perDiscipline[d] = { itemCount: 0, subtotal: 0, withMarkup: 0 };
     for (const item of items) {
-      const itemDiscipline = item.card?.discipline ?? "";
+      const itemDiscipline = (item.card?.discipline ?? "") as Discipline;
       const bucket = perDiscipline[itemDiscipline];
       if (!bucket) continue;
       bucket.itemCount += 1;
-      if (itemDiscipline === "Other") {
-        bucket.subtotal += item.provisionalAmount ? Number(item.provisionalAmount) : 0;
-      } else if (item.estimateItemId) {
-        bucket.subtotal += priceByItemId.get(item.estimateItemId) ?? 0;
-      }
-    }
-    // Markup applies to cost-based disciplines only. Other is a fixed
-    // provisional/option sum by definition.
-    for (const d of DISCIPLINES) {
-      perDiscipline[d].withMarkup =
-        d === "Other" ? perDiscipline[d].subtotal : perDiscipline[d].subtotal * (1 + markup / 100);
+      const totals = computeScopeItemTotal(
+        toPricingInput(item, itemDiscipline),
+        rateMaps,
+        markupPercent
+      );
+      bucket.subtotal += totals.lineTotal;
+      bucket.withMarkup += totals.lineTotalWithMarkup;
     }
 
     const cuttingItems = await this.prisma.cuttingSheetItem.findMany({
@@ -649,6 +646,13 @@ export class ScopeRedesignService {
     };
   }
 
+  /**
+   * @deprecated PR B1.7.2 — legacy EstimateItem-based per-row pricing.
+   * Canonical (B1.6+) rows never create EstimateItem so this path
+   * silently returned $0 for them. summary() now uses the pure
+   * computeScopeItemTotal helper directly. Method kept for safety
+   * until a separate cleanup PR confirms there are no callers.
+   */
   private async computeEstimateItemPrices(itemIds: string[]): Promise<Map<string, number>> {
     const map = new Map<string, number>();
     if (itemIds.length === 0) return map;

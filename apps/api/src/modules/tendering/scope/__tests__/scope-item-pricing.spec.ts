@@ -1,14 +1,22 @@
 import {
   computeScopeItemTotal,
-  wasteRateKey,
   type RateMaps,
   type ScopeItemPricingInput
 } from "../../scope-item-pricing";
 import type { Discipline } from "../../dto/scope-of-works.dto";
 
-// PR B1.7.1 — pure unit tests for the canonical-row pricing helper.
-// No Prisma, no DB — every branch is exercised against the formula
-// locked in the B1.7.1 investigation.
+// PR B1.7.1 / B1.7.2 — pure unit tests for the canonical-row pricing
+// helper. No Prisma, no DB. Every branch exercised against the formula:
+//   labour = (men ?? 0) × (days ?? 0) × labourRate
+//   plant  = Σ over plantItems where plantRateId set:
+//             (qty ?? 1) × (days ?? 0) × plant.rate
+//   lineTotal = labour + plant
+//   Other discipline → lineTotal = provisionalAmount (never marked up).
+//
+// B1.7.2 removed the waste leg — it lived here briefly in B1.7.1 but
+// per the design doc waste belongs to the auto-generated waste summary
+// subtable, NOT the scope item total. The regression guard at the
+// bottom locks the new contract.
 
 const baseRates = (): RateMaps => ({
   labourRateByDiscipline: new Map<Discipline, number>([
@@ -20,10 +28,6 @@ const baseRates = (): RateMaps => ({
   plantRateById: new Map<string, number>([
     ["plant-excavator", 650],
     ["plant-bobcat", 450]
-  ]),
-  wasteTonRateByGroupAndType: new Map<string, number>([
-    [wasteRateKey("Concrete", "Clean concrete"), 80],
-    [wasteRateKey("Mixed", "General"), 120]
   ])
 });
 
@@ -32,21 +36,15 @@ const emptyItem = (overrides: Partial<ScopeItemPricingInput> = {}): ScopeItemPri
   men: null,
   days: null,
   plantItems: null,
-  unit: null,
-  value: null,
-  wasteIncluded: false,
-  wasteGroup: null,
-  wasteItem: null,
   provisionalAmount: null,
   ...overrides
 });
 
-describe("computeScopeItemTotal (PR B1.7.1)", () => {
+describe("computeScopeItemTotal (PR B1.7.1 / B1.7.2)", () => {
   it("returns all zeros for an entirely empty item", () => {
     const result = computeScopeItemTotal(emptyItem(), baseRates(), 30);
     expect(result.labour).toBe(0);
     expect(result.plant).toBe(0);
-    expect(result.waste).toBe(0);
     expect(result.lineTotal).toBe(0);
     expect(result.lineTotalWithMarkup).toBe(0);
   });
@@ -115,85 +113,6 @@ describe("computeScopeItemTotal (PR B1.7.1)", () => {
     expect(result.plant).toBe(650);
   });
 
-  it("waste — happy path: unit=t, wasteIncluded, value × tonRate", () => {
-    // 12 tonnes × $80/t = $960
-    const result = computeScopeItemTotal(
-      emptyItem({
-        unit: "t",
-        value: 12,
-        wasteIncluded: true,
-        wasteGroup: "Concrete",
-        wasteItem: "Clean concrete"
-      }),
-      baseRates(),
-      0
-    );
-    expect(result.waste).toBe(960);
-    expect(result.lineTotal).toBe(960);
-  });
-
-  it("waste — non-t unit contributes 0 (B1.7.1 limitation, B3 revisit)", () => {
-    for (const unit of ["m²", "m³", "ea"]) {
-      const result = computeScopeItemTotal(
-        emptyItem({
-          unit,
-          value: 50,
-          wasteIncluded: true,
-          wasteGroup: "Concrete",
-          wasteItem: "Clean concrete"
-        }),
-        baseRates(),
-        0
-      );
-      expect(result.waste).toBe(0);
-    }
-  });
-
-  it("waste — wasteIncluded=false contributes 0 even with unit=t and rate match", () => {
-    const result = computeScopeItemTotal(
-      emptyItem({
-        unit: "t",
-        value: 100,
-        wasteIncluded: false,
-        wasteGroup: "Concrete",
-        wasteItem: "Clean concrete"
-      }),
-      baseRates(),
-      0
-    );
-    expect(result.waste).toBe(0);
-  });
-
-  it("waste — missing wasteGroup or wasteItem contributes 0", () => {
-    const noGroup = computeScopeItemTotal(
-      emptyItem({ unit: "t", value: 10, wasteIncluded: true, wasteItem: "Clean concrete" }),
-      baseRates(),
-      0
-    );
-    const noItem = computeScopeItemTotal(
-      emptyItem({ unit: "t", value: 10, wasteIncluded: true, wasteGroup: "Concrete" }),
-      baseRates(),
-      0
-    );
-    expect(noGroup.waste).toBe(0);
-    expect(noItem.waste).toBe(0);
-  });
-
-  it("waste — unknown (group, item) pair contributes 0", () => {
-    const result = computeScopeItemTotal(
-      emptyItem({
-        unit: "t",
-        value: 10,
-        wasteIncluded: true,
-        wasteGroup: "Unknown",
-        wasteItem: "Unmapped"
-      }),
-      baseRates(),
-      0
-    );
-    expect(result.waste).toBe(0);
-  });
-
   it("Other discipline → lineTotal is provisionalAmount; never marked up", () => {
     const result = computeScopeItemTotal(
       emptyItem({
@@ -202,19 +121,13 @@ describe("computeScopeItemTotal (PR B1.7.1)", () => {
         // These should all be ignored for Other.
         men: 99,
         days: 99,
-        plantItems: [{ columnIndex: 1, plantRateId: "plant-excavator", qty: 99, days: 99 }],
-        unit: "t",
-        value: 99,
-        wasteIncluded: true,
-        wasteGroup: "Concrete",
-        wasteItem: "Clean concrete"
+        plantItems: [{ columnIndex: 1, plantRateId: "plant-excavator", qty: 99, days: 99 }]
       }),
       baseRates(),
       30
     );
     expect(result.labour).toBe(0);
     expect(result.plant).toBe(0);
-    expect(result.waste).toBe(0);
     expect(result.lineTotal).toBe(12345);
     expect(result.lineTotalWithMarkup).toBe(12345);
   });
@@ -234,26 +147,32 @@ describe("computeScopeItemTotal (PR B1.7.1)", () => {
     expect(result.lineTotalWithMarkup).toBeCloseTo(5005, 6);
   });
 
-  it("mixed — labour + plant + waste sums correctly with markup", () => {
-    // labour 200 + plant 650 + waste 960 = 1810; 30% markup = 2353.
+  it("mixed — labour + plant sums correctly with markup (no waste leg, B1.7.2)", () => {
+    // labour 200 + plant 650 = 850; 30% markup = 1105.
     const result = computeScopeItemTotal(
       emptyItem({
         men: 1,
         days: 2,
-        plantItems: [{ columnIndex: 1, plantRateId: "plant-excavator", qty: 1, days: 1 }],
-        unit: "t",
-        value: 12,
-        wasteIncluded: true,
-        wasteGroup: "Concrete",
-        wasteItem: "Clean concrete"
+        plantItems: [{ columnIndex: 1, plantRateId: "plant-excavator", qty: 1, days: 1 }]
       }),
       baseRates(),
       30
     );
     expect(result.labour).toBe(200);
     expect(result.plant).toBe(650);
-    expect(result.waste).toBe(960);
-    expect(result.lineTotal).toBe(1810);
-    expect(result.lineTotalWithMarkup).toBeCloseTo(2353, 6);
+    expect(result.lineTotal).toBe(850);
+    expect(result.lineTotalWithMarkup).toBeCloseTo(1105, 6);
+  });
+
+  it("regression guard (B1.7.2): result has no `waste` field; only labour + plant + lineTotal", () => {
+    const result = computeScopeItemTotal(
+      emptyItem({ men: 1, days: 1 }),
+      baseRates(),
+      0
+    );
+    expect("waste" in result).toBe(false);
+    expect(result.labour).toBe(100);
+    expect(result.plant).toBe(0);
+    expect(result.lineTotal).toBe(100);
   });
 });

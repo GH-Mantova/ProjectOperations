@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-16 02:37 AEST
+Last updated: 2026-05-16 04:05 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -3723,5 +3723,44 @@ Demo readiness: the discipline vocabulary is now consistent across the
 entire codebase (persona prompts, AI tool enum, scope drafting service,
 DB schema/seed, frontend UI, contracts, quote/estimate exports, Gantt
 colour map). The Sean+Raj demo will see DEM/CIV/ASB/Other consistently.
+
+Audit findings: none.
+
+## 2026-05-16 — PR A1.5 — Projects-side discipline migration (Jobs dropdown)
+Type: PR (chore, follow-up to PR A1)
+Branch: chore/discipline-migration-projects-dropdown-a1-5
+Status: OPENED
+
+Closes the Phase 6 carry-forward from PR A1 (#162). PR A1's Option B
+explicitly excluded the Projects-side `<select>` at
+apps/web/src/pages/projects/ProjectDetailPage.tsx:1468-1472, which still
+emitted legacy SO/Str/Asb/Civ/Prv option values. PR A1.5 migrates it to
+the 4-code system (DEM/CIV/ASB/Other) using the same labelling style as
+PR A1's tendering surfaces ("Demolition", "Civil works", "Asbestos
+removal", "Other"). See PR A1 progress.md entry for the full migration
+narrative.
+
+Spec-vs-reality note: the spec described a Step 2 to remove a "duplicate
+Other key" in apps/api/src/modules/projects/gantt.service.ts. Pre-flight
+inspection confirmed the file is already in the desired shape (4 canonical
+DEM/CIV/ASB/Other + 5 legacy SO/Str/Asb/Civ/Prv = 9 keys, no duplicate
+Other). Step 2 was a no-op. The PR A1 diff did not introduce the
+duplicate the spec premise assumed.
+
+Pre-flight grep across apps/web/src/pages/projects/ + apps/api/src/modules/projects/
+surfaced exactly the 5 expected lines in ProjectDetailPage.tsx and nothing
+else — no additional Projects-side discipline surfaces hiding.
+
+Files changed:
+  - apps/web/src/pages/projects/ProjectDetailPage.tsx (5 <option> values)
+  - progress.md, roadmap.md
+
+Tests: API 467 passing (unchanged from post-A1 baseline). Web 132 passing
+(unchanged). tsc + lint + web build clean. No new dependencies, env vars,
+or migrations.
+
+Demo readiness: the Projects-side discipline dropdown now uses the same
+DEM/CIV/ASB/Other vocabulary as Tendering. The full migration is now
+complete across both surfaces.
 
 Audit findings: none.

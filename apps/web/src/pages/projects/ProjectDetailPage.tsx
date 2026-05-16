@@ -1465,11 +1465,10 @@ function AddGanttTaskModal({
               onChange={(e) => setForm({ ...form, discipline: e.target.value })}
             >
               <option value="">— none —</option>
-              <option value="SO">Soft Strip</option>
-              <option value="Str">Structural</option>
-              <option value="Asb">Asbestos</option>
-              <option value="Civ">Civil</option>
-              <option value="Prv">Provisional</option>
+              <option value="DEM">Demolition</option>
+              <option value="CIV">Civil works</option>
+              <option value="ASB">Asbestos removal</option>
+              <option value="Other">Other</option>
             </select>
           </label>
           <label style={{ fontSize: 12, display: "flex", flexDirection: "column", gap: 2 }}>

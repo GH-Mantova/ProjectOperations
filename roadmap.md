@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-16 02:37 AEST
+Last updated: 2026-05-16 04:05 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -446,12 +446,18 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     Projects-side ProjectDetailPage.tsx Jobs dropdown deferred to a
     follow-up A1.5.
 
-⏸️  PR A1.5 — Migrate ProjectDetailPage Jobs-side discipline dropdown
-    apps/web/src/pages/projects/ProjectDetailPage.tsx:1468-1472 still
-    contains a `<select>` with legacy values "SO" / "Str" / "Asb" / "Civ"
-    / "Prv". This is the Projects-side discipline surface, separate from
-    the Tendering surfaces covered by PR A1. Migrate to DEM/CIV/ASB/Other
-    immediately after PR A1 lands. Single-file PR.
+✅  PR A1.5 — Projects-side discipline dropdown migration (2026-05-16)
+    Migrated apps/web/src/pages/projects/ProjectDetailPage.tsx:1468-1472
+    from legacy 5-code values (SO/Str/Asb/Civ/Prv) to canonical 4-code
+    values (DEM/CIV/ASB/Other), matching the labelling style PR A1
+    established on the Tendering surfaces. Pre-flight grep across
+    apps/web/src/pages/projects/ + apps/api/src/modules/projects/
+    surfaced no additional legacy-code surfaces beyond this one
+    `<select>`. The spec's secondary item — removing a supposed
+    duplicate `Other` key in apps/api/src/modules/projects/gantt.service.ts
+    — was a no-op; pre-flight inspection confirmed PR A1 had already left
+    that file in the desired shape (4 canonical keys + 5 legacy aliases,
+    no duplicates). API 467 / web 132 tests unchanged.
 
 ✅  Rate-fabrication prohibition precedence hardening — closed by PR #161
     Completed in PR #161 (2026-05-16). Pre-demo safety hardening.

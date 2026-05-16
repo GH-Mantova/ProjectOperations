@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-16 08:01 AEST
+Last updated: 2026-05-16 08:09 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -4173,3 +4173,57 @@ currently maintain).
 Files changed:
   - apps/api/src/modules/tendering/scope-waste.controller.ts (5-line swap)
   - progress.md
+
+## 2026-05-16 — PR B1.5.2 — Wire ScopeRowPills into items table for multi-plant
+Type: PR (feat — single-component integration)
+Branch: feat/scope-row-pills-multi-plant
+Status: OPENED
+
+`ScopeRowPills.tsx` was built in the PR #72 era but never integrated into
+ScopeQuantitiesTable — orphaned in the codebase. This PR wires it in.
+
+Investigation findings:
+  - ScopeRowPills props: `{ item, onPatch }`. The item shape requires
+    plantItems + measurements + measurementQty + measurementUnit + days
+    + id. onPatch receives `Record<string, unknown>` and is expected to
+    PATCH back to the server.
+  - ScopeQuantitiesTable already has a `patchItem(id, body)` helper that
+    sends PATCH /tenders/:tenderId/scope/items/:id with the body
+    verbatim. ScopeRowPills' onPatch shape is compatible.
+  - Backend supports plantItems + measurements on PATCH already, via
+    UpdateScopeItemDto (line 123 / 128) → numericFieldsFrom() in
+    scope-of-works.service.ts (lines 74-77) → Prisma as InputJsonValue.
+    No backend change needed.
+
+Implementation:
+  - apps/web/src/pages/tendering/ScopeQuantitiesTable.tsx:
+    * Added Fragment + ScopeRowPills imports
+    * Extended ScopeItem type with plantItems + measurements fields
+    * Wrapped each QuantityRow in a Fragment, with a second `<tr>`
+      beneath it containing `<ScopeRowPills item={item}
+      onPatch={async (body) => await patchItem(item.id, body)} />` in
+      a `<td colSpan={headerColumns.length + 4}>` (WBS + Description +
+      Row type + headerColumns + actions column).
+    * Pill row uses a slightly muted background (`#FBFAF7`) and a
+      bottom border so it visually groups with its parent item but
+      doesn't fight the main table styling.
+
+Verification:
+  - pnpm --filter web test --run: 138 passing (unchanged)
+  - pnpm --filter web exec tsc --noEmit: clean
+  - pnpm --filter web build: clean
+  - pnpm --filter web lint: clean
+
+Manual smoke required (in PR body):
+  1. Open IS-T020 → DEM card → see pills row under each item
+  2. Click "+ Plant" → pick a plant rate from /estimate-rates/plant →
+     Save. Pill appears.
+  3. Add a second plant → both pills visible.
+  4. Reload → both persist.
+  5. Click X on a pill → row updates without that plant.
+  6. Same flow for Measure pills.
+
+No backend changes. No new dependencies. No env vars. Rollback is git
+revert (the change is one file's render block).
+
+Audit findings: none.

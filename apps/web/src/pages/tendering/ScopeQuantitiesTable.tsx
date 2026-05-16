@@ -39,6 +39,11 @@ export type ScopeItem = {
   plantItems: ScopePlantEntry[] | null;
   estimateItemId: string | null;
   provisionalAmount: string | null;
+  // PR B1.7.1 — per-row totals computed server-side in listItems.
+  // Both fields are optional so older API responses don't break the
+  // type; the header renders "—" when either is null/undefined.
+  lineTotal?: number | string | null;
+  lineTotalWithMarkup?: number | string | null;
 };
 
 // Per the redesign doc the unit dropdown is hard-coded (no rate-card source).
@@ -617,18 +622,23 @@ function ItemCard({
           </span>
         ) : null}
         {isPending ? <span style={{ color: "var(--text-muted)", fontSize: 10 }}>···</span> : null}
-        {/* PR B1.7 — per-row $ surfacing deferred to follow-up B1.7.1.
-            For now we display "—" so the header has a stable column. */}
+        {/* PR B1.7.1 — per-row total wired from the items API. Displays
+            the with-markup value to match the table footer's "with
+            markup" subtotal; "—" only when the API didn't surface a
+            value (older responses, or compute failure). */}
         <span
           style={{
             minWidth: 80,
             textAlign: "right",
             fontSize: 13,
-            color: "var(--text-muted, #6b7280)"
+            color: "var(--text)",
+            fontVariantNumeric: "tabular-nums"
           }}
-          title="Per-row total (follow-up B1.7.1)"
+          title="Line total (with markup)"
         >
-          —
+          {item.lineTotalWithMarkup == null
+            ? "—"
+            : fmtCurrency(Number(item.lineTotalWithMarkup))}
         </span>
         {isAi ? (
           <div style={{ display: "inline-flex", gap: 4 }}>

@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-16 11:05 AEST
+Last updated: 2026-05-16 21:57 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -446,6 +446,20 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     legacy ScopeOfWorksTab against pre-B1 contract — dotted wbsCodes render
     fine as plain strings in the existing table. No user-visible change
     beyond the dotted codes.
+
+✅  PR B1.8 — Plant qty/days width + draggable/minimisable Tendering Assistant (2026-05-17)
+    Two small fixes in one PR. (1) ScopeQuantitiesTable PlantCluster qty +
+    days input widths bumped 44px → 64px so two- and three-digit values
+    aren't clipped (cluster still 280px; rate dropdown's flex: 1 absorbs
+    the change). (2) PersonaWindow ("Tendering Assistant" floating bubble)
+    is now draggable from its header bar (when open) or from the entire
+    pill button (when minimised); a new minimise affordance collapses the
+    panel to the pill while keeping the saved position, and × resets the
+    bubble to the default bottom-right corner. Position + minimised state
+    persisted to localStorage per persona+sub-mode key. Viewport clamp
+    runs on drag, on resize, and on minimise/open swap. Pointer events
+    handle mouse + touch + pen. 10 new helper tests
+    (clampWindowPosition + personaWindowStorageKeys). Tests: 138 → 148.
 
 ✅  PR B1.7 — Collapsible items + shared subtable notes + tooltip dropdowns (2026-05-16)
     Each scope item becomes a collapsible card: header bar (chevron / WBS /

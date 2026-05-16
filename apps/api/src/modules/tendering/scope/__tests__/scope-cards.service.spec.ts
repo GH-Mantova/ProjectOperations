@@ -407,3 +407,94 @@ describe("listCards exposes plantColumnCount (PR B1.6)", () => {
     expect(result[0]?.plantColumnCount).toBe(4);
   });
 });
+
+describe("ScopeOfWorksService.setCardNotes (PR B1.7)", () => {
+  it("updates cuttingNotes when supplied alone", async () => {
+    const { prisma, mocks } = buildPrismaMock({
+      scopeCardFindFirst: { id: "c1", tenderId: "tender-1" }
+    });
+    const svc = new ScopeOfWorksService(prisma as never);
+    await svc.setCardNotes("tender-1", "c1", { cuttingNotes: "Cut at 7am" });
+    const args = (mocks.scopeCardUpdate.mock.calls[0]?.[0] ?? {}) as {
+      data?: { cuttingNotes?: string | null; wasteNotes?: string | null };
+    };
+    expect(args.data?.cuttingNotes).toBe("Cut at 7am");
+    expect(args.data?.wasteNotes).toBeUndefined();
+  });
+
+  it("updates wasteNotes when supplied alone", async () => {
+    const { prisma, mocks } = buildPrismaMock({
+      scopeCardFindFirst: { id: "c1", tenderId: "tender-1" }
+    });
+    const svc = new ScopeOfWorksService(prisma as never);
+    await svc.setCardNotes("tender-1", "c1", { wasteNotes: "Sort spoil onsite" });
+    const args = (mocks.scopeCardUpdate.mock.calls[0]?.[0] ?? {}) as {
+      data?: { cuttingNotes?: string | null; wasteNotes?: string | null };
+    };
+    expect(args.data?.wasteNotes).toBe("Sort spoil onsite");
+    expect(args.data?.cuttingNotes).toBeUndefined();
+  });
+
+  it("updates both fields in a single PATCH", async () => {
+    const { prisma, mocks } = buildPrismaMock({
+      scopeCardFindFirst: { id: "c1", tenderId: "tender-1" }
+    });
+    const svc = new ScopeOfWorksService(prisma as never);
+    await svc.setCardNotes("tender-1", "c1", { cuttingNotes: "A", wasteNotes: "B" });
+    const args = (mocks.scopeCardUpdate.mock.calls[0]?.[0] ?? {}) as {
+      data?: { cuttingNotes?: string | null; wasteNotes?: string | null };
+    };
+    expect(args.data?.cuttingNotes).toBe("A");
+    expect(args.data?.wasteNotes).toBe("B");
+  });
+
+  it("clears notes when empty string is supplied", async () => {
+    const { prisma, mocks } = buildPrismaMock({
+      scopeCardFindFirst: { id: "c1", tenderId: "tender-1" }
+    });
+    const svc = new ScopeOfWorksService(prisma as never);
+    await svc.setCardNotes("tender-1", "c1", { cuttingNotes: "" });
+    const args = (mocks.scopeCardUpdate.mock.calls[0]?.[0] ?? {}) as {
+      data?: { cuttingNotes?: string | null };
+    };
+    expect(args.data?.cuttingNotes).toBeNull();
+  });
+
+  it("throws NotFoundException when card is not in the tender", async () => {
+    const { prisma } = buildPrismaMock({ scopeCardFindFirst: null });
+    const svc = new ScopeOfWorksService(prisma as never);
+    await expect(
+      svc.setCardNotes("tender-1", "missing", { cuttingNotes: "x" })
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe("ScopeOfWorksService.createItemInCard relaxed DTO (PR B1.7)", () => {
+  it("accepts empty body — defaults rowType to general-labour and description to empty string", async () => {
+    const { prisma, mocks } = buildPrismaMock({
+      scopeCardFindFirst: { id: "c1", discipline: "DEM", cardNumber: 1 },
+      scopeItemAggregateMaxItemNumber: 0
+    });
+    const svc = new ScopeOfWorksService(prisma as never);
+    await svc.createItemInCard("tender-1", "user-1", "c1", {});
+    const args = (mocks.scopeOfWorksItemCreate.mock.calls[0]?.[0] ?? {}) as {
+      data?: { rowType?: string; description?: string; wbsCode?: string };
+    };
+    expect(args.data?.rowType).toBe("general-labour");
+    expect(args.data?.description).toBe("");
+    expect(args.data?.wbsCode).toBe("DEM1.1");
+  });
+
+  it("respects an explicit rowType when provided", async () => {
+    const { prisma, mocks } = buildPrismaMock({
+      scopeCardFindFirst: { id: "c1", discipline: "DEM", cardNumber: 1 },
+      scopeItemAggregateMaxItemNumber: 0
+    });
+    const svc = new ScopeOfWorksService(prisma as never);
+    await svc.createItemInCard("tender-1", "user-1", "c1", { rowType: "demolition" });
+    const args = (mocks.scopeOfWorksItemCreate.mock.calls[0]?.[0] ?? {}) as {
+      data?: { rowType?: string };
+    };
+    expect(args.data?.rowType).toBe("demolition");
+  });
+});

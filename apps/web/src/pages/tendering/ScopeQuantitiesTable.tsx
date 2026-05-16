@@ -1,18 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { NotesField, TooltipSelect, type TooltipSelectOption } from "../../components";
 
 // PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
 export type Discipline = "DEM" | "CIV" | "ASB" | "Other";
 
-// PR B1.6 — canonical items table per docs/Designs/scope-of-works-redesign.md.
-// Fixed column set; no row-type, no per-discipline column toggle, no
-// view-config endpoint. Each row has: WBS / Description / Men / Days /
-// Plant 1...N / Waste group / Waste item / Unit / Value / Waste? /
-// Notes / Delete.
-
-// PR B1.6 — Plant cells are stored on ScopeOfWorksItem.plantItems as
-// a dense array with explicit columnIndex. Plant 1 has columnIndex 1.
-// Plant N reads plantItems.find(p => p.columnIndex === N).
+// PR B1.6 — Plant cells live on ScopeOfWorksItem.plantItems as a dense
+// array with explicit columnIndex. Plant N reads
+// plantItems.find(p => p.columnIndex === N).
 export type ScopePlantEntry = {
   columnIndex: number;
   plantRateId?: string;
@@ -36,38 +31,39 @@ export type ScopeItem = {
   notes: string | null;
   men: string | null;
   days: string | null;
-  // B1.6 — new canonical columns
   unit: string | null;
   value: string | null;
   wasteGroup: string | null;
   wasteItem: string | null;
   wasteIncluded: boolean;
-  // B1.5.2 — multi-plant JSON array
   plantItems: ScopePlantEntry[] | null;
-  // Legacy fields still in the API response (hidden in B1.6 UI)
   estimateItemId: string | null;
   provisionalAmount: string | null;
 };
 
-// PR B1.6 — Unit dropdown values are hardcoded per design doc line 309.
-const UNIT_OPTIONS = ["m²", "m³", "t", "ea"] as const;
+// Per the redesign doc the unit dropdown is hard-coded (no rate-card source).
+const UNIT_OPTIONS: ReadonlyArray<TooltipSelectOption<string>> = [
+  { value: "m²", label: "m²" },
+  { value: "m³", label: "m³" },
+  { value: "t", label: "t" },
+  { value: "ea", label: "ea" }
+];
 
-// PlantRate shape from /estimate-rates/plant (decision #4 in B1.6
-// investigation: use rate-card source, not the Asset GlobalList).
+// PR B1.7 — actual shape from GET /estimate-rates/plant matches the
+// EstimatePlantRate model. The previous PR B1.6 type used fictional
+// field names (name/category/ratePerDay) which caused empty options.
 type PlantRate = {
   id: string;
-  name: string;
-  category: string | null;
-  ratePerDay: string | number | null;
-  unit: string | null;
+  item: string;
+  unit: string;
+  rate: string;
+  fuelRate: string;
   isActive: boolean;
 };
 
-// WasteRate shape from /estimate-rates/waste. Distinct values of
-// wasteGroup / wasteType drive the two dropdowns (decision #5).
 type WasteRate = {
   id: string;
-  wasteGroup: string;
+  wasteGroup: string | null;
   wasteType: string;
   facility: string;
   unit: string;
@@ -81,20 +77,22 @@ const CONFIDENCE_STYLE: Record<string, { bg: string; fg: string; label: string }
 };
 
 function fmtCurrency(n: number): string {
-  return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 0 }).format(n);
+  return new Intl.NumberFormat("en-AU", {
+    style: "currency",
+    currency: "AUD",
+    maximumFractionDigits: 0
+  }).format(n);
 }
 
 type Props = {
   tenderId: string;
   cardId: string;
-  /** PR B1.6 — Plant column count from parent ScopeCard. Min 1. */
   plantColumnCount: number;
   discipline: Discipline;
   items: ScopeItem[];
   subtotal: number;
   subtotalWithMarkup: number;
   onItemsChanged: () => Promise<void> | void;
-  /** PR B1.6 — invoked when user clicks "+" or "×" on a Plant column. */
   onPlantColumnCountChange: (next: number) => Promise<void>;
 };
 
@@ -102,7 +100,7 @@ export function ScopeQuantitiesTable({
   tenderId,
   cardId,
   plantColumnCount,
-  discipline,
+  discipline: _discipline,
   items,
   subtotal,
   subtotalWithMarkup,
@@ -115,8 +113,10 @@ export function ScopeQuantitiesTable({
   const [deleteWarning, setDeleteWarning] = useState<ScopeItem | null>(null);
   const [plantRates, setPlantRates] = useState<PlantRate[]>([]);
   const [wasteRates, setWasteRates] = useState<WasteRate[]>([]);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  // Items created in the current session — auto-expand them on first render.
+  const autoExpandedRef = useRef<Set<string>>(new Set());
 
-  // Load plant + waste rate cards once. Both feed dropdown options.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -125,18 +125,17 @@ export function ScopeQuantitiesTable({
           authFetch("/estimate-rates/plant"),
           authFetch("/estimate-rates/waste")
         ]);
-        if (!cancelled) {
-          if (plantRes.ok) {
-            const body = (await plantRes.json()) as PlantRate[];
-            setPlantRates(body.filter((p) => p.isActive));
-          }
-          if (wasteRes.ok) {
-            const body = (await wasteRes.json()) as WasteRate[];
-            setWasteRates(body.filter((w) => w.isActive));
-          }
+        if (cancelled) return;
+        if (plantRes.ok) {
+          const body = (await plantRes.json()) as PlantRate[];
+          setPlantRates(body.filter((p) => p.isActive));
+        }
+        if (wasteRes.ok) {
+          const body = (await wasteRes.json()) as WasteRate[];
+          setWasteRates(body.filter((w) => w.isActive));
         }
       } catch {
-        // Non-fatal — dropdowns render empty if endpoints fail.
+        // Non-fatal — dropdowns just render empty.
       }
     })();
     return () => {
@@ -144,14 +143,18 @@ export function ScopeQuantitiesTable({
     };
   }, [authFetch]);
 
-  // Derived: distinct waste groups and a group → items lookup.
-  const wasteGroups = useMemo(
-    () => Array.from(new Set(wasteRates.map((w) => w.wasteGroup))).sort(),
+  // Distinct waste groups + group → items lookup.
+  const wasteGroupOptions = useMemo<TooltipSelectOption<string>[]>(
+    () =>
+      Array.from(new Set(wasteRates.map((w) => w.wasteGroup).filter((g): g is string => !!g)))
+        .sort()
+        .map((g) => ({ value: g, label: g })),
     [wasteRates]
   );
   const wasteItemsByGroup = useMemo(() => {
     const map = new Map<string, string[]>();
     for (const r of wasteRates) {
+      if (!r.wasteGroup) continue;
       const arr = map.get(r.wasteGroup) ?? [];
       if (!arr.includes(r.wasteType)) arr.push(r.wasteType);
       map.set(r.wasteGroup, arr);
@@ -159,6 +162,11 @@ export function ScopeQuantitiesTable({
     for (const [k, v] of map) map.set(k, v.sort());
     return map;
   }, [wasteRates]);
+
+  const plantOptions = useMemo<TooltipSelectOption<string>[]>(
+    () => plantRates.map((p) => ({ value: p.id, label: p.item })),
+    [plantRates]
+  );
 
   const patchItem = useCallback(
     async (id: string, body: Record<string, unknown>) => {
@@ -220,26 +228,28 @@ export function ScopeQuantitiesTable({
   };
 
   const addItem = async () => {
-    // PR B1.6 — items are created via the card-scoped endpoint.
-    // rowType is required by the legacy DTO; default to "general-labour"
-    // for now (B1.6 doesn't surface rowType in the UI; A future PR can
-    // drop the field entirely).
+    // PR B1.7 — new CreateScopeItemInCardDto accepts an empty body.
+    // Server derives discipline from the parent card and defaults
+    // rowType to "general-labour".
     const response = await authFetch(`/tenders/${tenderId}/scope/cards/${cardId}/items`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        rowType: "general-labour",
-        description: ""
-      })
+      body: JSON.stringify({ description: "" })
     });
     if (!response.ok) {
       setError(await response.text());
       return;
     }
+    // Best-effort grab of the new id so we can auto-expand it on next render.
+    try {
+      const created = (await response.json()) as { id?: string } | null;
+      if (created?.id) autoExpandedRef.current.add(created.id);
+    } catch {
+      // Ignore body-parse failure — auto-expand is a nice-to-have.
+    }
     await onItemsChanged();
   };
 
-  // PR B1.6 — Plant column add/remove handlers.
   const addPlantColumn = async () => {
     try {
       await onPlantColumnCountChange(plantColumnCount + 1);
@@ -250,9 +260,8 @@ export function ScopeQuantitiesTable({
 
   const removePlantColumn = async (columnIndex: number) => {
     if (columnIndex < 2) return; // Plant 1 is never removable.
-    // Confirm if ANY row in the card has data populated at this columnIndex.
-    const rowsWithData = items.filter((i) =>
-      Array.isArray(i.plantItems) && i.plantItems.some((p) => p.columnIndex === columnIndex)
+    const rowsWithData = items.filter(
+      (i) => Array.isArray(i.plantItems) && i.plantItems.some((p) => p.columnIndex === columnIndex)
     );
     if (rowsWithData.length > 0) {
       const ok = window.confirm(
@@ -261,7 +270,6 @@ export function ScopeQuantitiesTable({
           `That data will be deleted.`
       );
       if (!ok) return;
-      // Strip the column's data from every row.
       for (const row of rowsWithData) {
         const stripped = (row.plantItems ?? []).filter((p) => p.columnIndex !== columnIndex);
         await patchItem(row.id, { plantItems: stripped });
@@ -280,6 +288,29 @@ export function ScopeQuantitiesTable({
     () => [...visible].sort((a, b) => a.itemNumber - b.itemNumber || a.sortOrder - b.sortOrder),
     [visible]
   );
+
+  // Apply auto-expand on next render after addItem.
+  useEffect(() => {
+    if (autoExpandedRef.current.size === 0) return;
+    const next = new Set(expandedIds);
+    let changed = false;
+    for (const id of autoExpandedRef.current) {
+      if (visible.some((i) => i.id === id) && !next.has(id)) {
+        next.add(id);
+        changed = true;
+      }
+    }
+    if (changed) setExpandedIds(next);
+  }, [visible, expandedIds]);
+
+  const toggleExpanded = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const plantColumns = Array.from({ length: Math.max(1, plantColumnCount) }, (_, i) => i + 1);
 
@@ -308,102 +339,58 @@ export function ScopeQuantitiesTable({
         </div>
       ) : null}
 
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-          <thead style={{ background: "var(--surface-muted, #F6F6F6)", position: "sticky", top: 0 }}>
-            <tr>
-              <th style={thStyle}>WBS</th>
-              <th style={{ ...thStyle, minWidth: 200 }}>Description</th>
-              <th style={thStyle}>Men</th>
-              <th style={thStyle}>Days</th>
-              {plantColumns.map((n) => (
-                <th key={`plant-${n}`} style={{ ...thStyle, minWidth: 180 }}>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                    Plant {n}
-                    {n >= 2 ? (
-                      <button
-                        type="button"
-                        aria-label={`Remove Plant ${n} column`}
-                        title={`Remove Plant ${n} column`}
-                        onClick={() => void removePlantColumn(n)}
-                        style={removePlantBtnStyle}
-                      >
-                        ×
-                      </button>
-                    ) : null}
-                    {n === plantColumns[plantColumns.length - 1] ? (
-                      <button
-                        type="button"
-                        aria-label="Add Plant column"
-                        title="Add Plant column"
-                        onClick={() => void addPlantColumn()}
-                        style={addPlantBtnStyle}
-                      >
-                        +
-                      </button>
-                    ) : null}
-                  </span>
-                </th>
-              ))}
-              <th style={thStyle}>Waste group</th>
-              <th style={thStyle}>Waste item</th>
-              <th style={thStyle}>Unit</th>
-              <th style={thStyle}>Value</th>
-              <th style={thStyle}>Waste?</th>
-              <th style={{ ...thStyle, minWidth: 160 }}>Notes</th>
-              <th style={thStyle} />
-            </tr>
-          </thead>
-          <tbody>
-            {wbsSortedVisible.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={9 + plantColumns.length}
-                  style={{
-                    padding: 24,
-                    textAlign: "center",
-                    color: "var(--text-muted)"
-                  }}
-                >
-                  No items yet. Click <strong>+ Add row</strong> below to start.
-                </td>
-              </tr>
-            ) : (
-              wbsSortedVisible.map((item) => (
-                <QuantityRow
-                  key={item.id}
-                  item={item}
-                  plantColumns={plantColumns}
-                  plantRates={plantRates}
-                  wasteGroups={wasteGroups}
-                  wasteItemsByGroup={wasteItemsByGroup}
-                  isPending={pendingIds.has(item.id)}
-                  onPatch={(body) => void patchItem(item.id, body)}
-                  onConfirm={() => void confirmItem(item.id)}
-                  onExclude={() => void excludeItem(item.id)}
-                  onDelete={() => deleteItem(item)}
-                />
-              ))
-            )}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colSpan={9 + plantColumns.length} style={{ padding: "8px 4px" }}>
-                <button
-                  type="button"
-                  className="s7-btn s7-btn--ghost s7-btn--sm"
-                  onClick={() => void addItem()}
-                  style={{ width: "100%", textAlign: "left", padding: "8px 12px", border: "1px dashed var(--border, #e5e7eb)" }}
-                >
-                  + Add row
-                </button>
-              </td>
-            </tr>
-          </tfoot>
-        </table>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {wbsSortedVisible.length === 0 ? (
+          <div
+            style={{
+              padding: 32,
+              textAlign: "center",
+              color: "var(--text-muted)",
+              border: "1px dashed var(--border-default, #e5e7eb)",
+              borderRadius: 8
+            }}
+          >
+            No items yet. Click <strong>+ Add row</strong> below to start.
+          </div>
+        ) : (
+          wbsSortedVisible.map((item) => (
+            <ItemCard
+              key={item.id}
+              item={item}
+              expanded={expandedIds.has(item.id)}
+              onToggle={() => toggleExpanded(item.id)}
+              plantColumns={plantColumns}
+              plantOptions={plantOptions}
+              plantRates={plantRates}
+              wasteGroupOptions={wasteGroupOptions}
+              wasteItemsByGroup={wasteItemsByGroup}
+              isPending={pendingIds.has(item.id)}
+              onPatch={(body) => void patchItem(item.id, body)}
+              onConfirm={() => void confirmItem(item.id)}
+              onExclude={() => void excludeItem(item.id)}
+              onDelete={() => deleteItem(item)}
+              onAddPlantColumn={addPlantColumn}
+              onRemovePlantColumn={removePlantColumn}
+            />
+          ))
+        )}
+
+        <button
+          type="button"
+          className="s7-btn s7-btn--ghost s7-btn--sm"
+          onClick={() => void addItem()}
+          style={{
+            width: "100%",
+            textAlign: "left",
+            padding: "10px 12px",
+            border: "1px dashed var(--border-default, #e5e7eb)"
+          }}
+        >
+          + Add row
+        </button>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", marginTop: 12 }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", marginTop: 16 }}>
         <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
           Subtotal: <strong style={{ color: "var(--text)" }}>{fmtCurrency(subtotal)}</strong>
           {" · "}with markup: <strong style={{ color: "var(--text)" }}>{fmtCurrency(subtotalWithMarkup)}</strong>
@@ -436,7 +423,9 @@ export function ScopeQuantitiesTable({
               This item has a linked estimate entry. The scope item will be deleted but the estimate line will remain.
             </p>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
-              <button type="button" className="s7-btn s7-btn--ghost" onClick={() => setDeleteWarning(null)}>Cancel</button>
+              <button type="button" className="s7-btn s7-btn--ghost" onClick={() => setDeleteWarning(null)}>
+                Cancel
+              </button>
               <button type="button" className="s7-btn s7-btn--primary" onClick={() => void finalDelete(deleteWarning)}>
                 Delete scope item only
               </button>
@@ -448,76 +437,49 @@ export function ScopeQuantitiesTable({
   );
 }
 
-const thStyle: React.CSSProperties = {
-  padding: "8px 6px",
-  textAlign: "left",
-  fontWeight: 600,
-  fontSize: 11,
-  textTransform: "uppercase",
-  color: "var(--text-muted)",
-  letterSpacing: "0.05em"
-};
+// ── ItemCard ────────────────────────────────────────────────────────────
 
-const addPlantBtnStyle: React.CSSProperties = {
-  background: "var(--brand-primary, #005B61)",
-  color: "#fff",
-  border: "none",
-  borderRadius: 999,
-  width: 18,
-  height: 18,
-  fontSize: 12,
-  lineHeight: 1,
-  cursor: "pointer",
-  padding: 0
-};
-
-const removePlantBtnStyle: React.CSSProperties = {
-  background: "transparent",
-  color: "var(--text-muted)",
-  border: "1px solid var(--border, #e5e7eb)",
-  borderRadius: 999,
-  width: 16,
-  height: 16,
-  fontSize: 11,
-  lineHeight: 1,
-  cursor: "pointer",
-  padding: 0
-};
-
-type RowProps = {
+type ItemCardProps = {
   item: ScopeItem;
+  expanded: boolean;
+  onToggle: () => void;
   plantColumns: number[];
+  plantOptions: TooltipSelectOption<string>[];
   plantRates: PlantRate[];
-  wasteGroups: string[];
+  wasteGroupOptions: TooltipSelectOption<string>[];
   wasteItemsByGroup: Map<string, string[]>;
   isPending: boolean;
   onPatch: (body: Record<string, unknown>) => void;
   onConfirm: () => void;
   onExclude: () => void;
   onDelete: () => void;
+  onAddPlantColumn: () => void;
+  onRemovePlantColumn: (columnIndex: number) => void;
 };
 
-function QuantityRow({
+function ItemCard({
   item,
+  expanded,
+  onToggle,
   plantColumns,
+  plantOptions,
   plantRates,
-  wasteGroups,
+  wasteGroupOptions,
   wasteItemsByGroup,
   isPending,
   onPatch,
   onConfirm,
   onExclude,
-  onDelete
-}: RowProps) {
+  onDelete,
+  onAddPlantColumn,
+  onRemovePlantColumn
+}: ItemCardProps) {
   const isAi = item.aiProposed && item.status !== "confirmed";
   const confidence = item.aiConfidence ? CONFIDENCE_STYLE[item.aiConfidence] : null;
-  const baseBg = isAi ? "#FEF3C7" : undefined;
+  const baseBg = isAi ? "#FEF3C7" : "var(--surface-card, #fff)";
 
-  // Lookup helper for plant cell at columnIndex.
   const plantAt = (columnIndex: number): ScopePlantEntry | undefined =>
-    Array.isArray(item.plantItems)
-      ? item.plantItems.find((p) => p.columnIndex === columnIndex)
-      : undefined;
+    Array.isArray(item.plantItems) ? item.plantItems.find((p) => p.columnIndex === columnIndex) : undefined;
 
   const updatePlant = (columnIndex: number, patch: Partial<ScopePlantEntry> | null) => {
     const current = Array.isArray(item.plantItems) ? item.plantItems : [];
@@ -526,249 +488,148 @@ function QuantityRow({
       next = current.filter((p) => p.columnIndex !== columnIndex);
     } else {
       const existing = current.find((p) => p.columnIndex === columnIndex);
-      if (existing) {
-        next = current.map((p) => (p.columnIndex === columnIndex ? { ...p, ...patch } : p));
-      } else {
-        next = [...current, { columnIndex, ...patch }];
-      }
+      next = existing
+        ? current.map((p) => (p.columnIndex === columnIndex ? { ...p, ...patch } : p))
+        : [...current, { columnIndex, ...patch }];
     }
     onPatch({ plantItems: next });
   };
 
-  const wasteItemOptions = item.wasteGroup ? wasteItemsByGroup.get(item.wasteGroup) ?? [] : [];
+  const wasteItemOptions: TooltipSelectOption<string>[] = item.wasteGroup
+    ? (wasteItemsByGroup.get(item.wasteGroup) ?? []).map((w) => ({ value: w, label: w }))
+    : [];
 
   return (
-    <tr style={{ borderTop: "1px solid var(--border, #e5e7eb)", background: baseBg }}>
-      <td style={tdStyle}>
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          {isAi ? (
-            <span
-              title="AI-proposed"
-              style={{
-                fontSize: 9,
-                padding: "1px 5px",
-                background: "#FEAA6D",
-                color: "#fff",
-                borderRadius: 999,
-                fontWeight: 700
-              }}
-            >
-              AI
-            </span>
-          ) : null}
-          <span style={{ color: "#005B61", fontWeight: 500, fontFamily: "ui-monospace, monospace", fontSize: 12 }}>
-            {item.wbsCode}
+    <article
+      style={{
+        border: "1px solid var(--border-default, #e5e7eb)",
+        borderRadius: 8,
+        background: baseBg,
+        overflow: "hidden"
+      }}
+    >
+      {/* ── Header bar (always visible) ────────────────────────────── */}
+      <header
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "8px 10px",
+          background: expanded ? "var(--surface-muted, #F6F6F6)" : "transparent",
+          borderBottom: expanded ? "1px solid var(--border-default, #e5e7eb)" : "none"
+        }}
+      >
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label={expanded ? "Collapse item" : "Expand item"}
+          title={expanded ? "Collapse" : "Expand"}
+          style={{
+            width: 24,
+            height: 24,
+            border: "none",
+            background: "transparent",
+            cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "var(--text-muted, #6b7280)",
+            padding: 0
+          }}
+        >
+          <svg
+            aria-hidden
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ transform: expanded ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 120ms ease" }}
+          >
+            <path d="M9 6l6 6l-6 6" />
+          </svg>
+        </button>
+        {isAi ? (
+          <span
+            title="AI-proposed"
+            style={{
+              fontSize: 9,
+              padding: "1px 5px",
+              background: "#FEAA6D",
+              color: "#fff",
+              borderRadius: 999,
+              fontWeight: 700
+            }}
+          >
+            AI
           </span>
-          {isPending ? <span style={{ color: "var(--text-muted)", fontSize: 10 }}>···</span> : null}
-        </div>
-      </td>
-      <td style={tdStyle}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        ) : null}
+        <span
+          style={{
+            color: "#005B61",
+            fontWeight: 500,
+            fontFamily: "ui-monospace, monospace",
+            fontSize: 12,
+            minWidth: 66
+          }}
+        >
+          {item.wbsCode}
+        </span>
+        {expanded ? (
           <input
             className="s7-input"
             defaultValue={item.description}
             disabled={isAi}
+            placeholder="Description"
             onBlur={(e) => {
               const v = e.target.value;
               if (v !== item.description) onPatch({ description: v });
             }}
             style={{ flex: 1 }}
+            aria-label="Description"
           />
-          {confidence ? (
-            <span
-              style={{
-                fontSize: 10,
-                padding: "2px 6px",
-                background: confidence.bg,
-                color: confidence.fg,
-                borderRadius: 999,
-                whiteSpace: "nowrap"
-              }}
-            >
-              {confidence.label}
-            </span>
-          ) : null}
-        </div>
-      </td>
-      <td style={tdStyle}>
-        <input
-          className="s7-input"
-          type="number"
-          step="0.01"
-          defaultValue={item.men ?? ""}
-          disabled={isAi}
-          style={{ width: 64 }}
-          onBlur={(e) => {
-            const n = e.target.value === "" ? null : Number(e.target.value);
-            onPatch({ men: n });
+        ) : (
+          <span
+            style={{
+              flex: 1,
+              color: item.description ? "var(--text)" : "var(--text-muted, #9ca3af)",
+              fontSize: 14
+            }}
+          >
+            {item.description || "(no description)"}
+          </span>
+        )}
+        {confidence ? (
+          <span
+            style={{
+              fontSize: 10,
+              padding: "2px 6px",
+              background: confidence.bg,
+              color: confidence.fg,
+              borderRadius: 999,
+              whiteSpace: "nowrap"
+            }}
+          >
+            {confidence.label}
+          </span>
+        ) : null}
+        {isPending ? <span style={{ color: "var(--text-muted)", fontSize: 10 }}>···</span> : null}
+        {/* PR B1.7 — per-row $ surfacing deferred to follow-up B1.7.1.
+            For now we display "—" so the header has a stable column. */}
+        <span
+          style={{
+            minWidth: 80,
+            textAlign: "right",
+            fontSize: 13,
+            color: "var(--text-muted, #6b7280)"
           }}
-        />
-      </td>
-      <td style={tdStyle}>
-        <input
-          className="s7-input"
-          type="number"
-          step="0.01"
-          defaultValue={item.days ?? ""}
-          disabled={isAi}
-          style={{ width: 64 }}
-          onBlur={(e) => {
-            const n = e.target.value === "" ? null : Number(e.target.value);
-            onPatch({ days: n });
-          }}
-        />
-      </td>
-      {plantColumns.map((n) => {
-        const cell = plantAt(n);
-        return (
-          <td key={`plant-${n}`} style={tdStyle}>
-            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-              <select
-                className="s7-input"
-                value={cell?.plantRateId ?? ""}
-                disabled={isAi}
-                style={{ minWidth: 110, flex: 1 }}
-                onChange={(e) => {
-                  const rateId = e.target.value;
-                  if (!rateId) {
-                    updatePlant(n, null);
-                    return;
-                  }
-                  const rate = plantRates.find((p) => p.id === rateId);
-                  updatePlant(n, {
-                    plantRateId: rateId,
-                    description: rate?.name ?? "",
-                    unit: rate?.unit ?? "day"
-                  });
-                }}
-              >
-                <option value="">—</option>
-                {plantRates.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-              <input
-                className="s7-input"
-                type="number"
-                step="1"
-                placeholder="qty"
-                defaultValue={cell?.qty ?? ""}
-                disabled={isAi}
-                style={{ width: 48 }}
-                onBlur={(e) => {
-                  const v = e.target.value === "" ? undefined : Number(e.target.value);
-                  if (cell) updatePlant(n, { qty: v });
-                }}
-                title="Quantity"
-              />
-              <input
-                className="s7-input"
-                type="number"
-                step="0.5"
-                placeholder="days"
-                defaultValue={cell?.days ?? ""}
-                disabled={isAi}
-                style={{ width: 48 }}
-                onBlur={(e) => {
-                  const v = e.target.value === "" ? undefined : Number(e.target.value);
-                  if (cell) updatePlant(n, { days: v });
-                }}
-                title="Days"
-              />
-            </div>
-          </td>
-        );
-      })}
-      <td style={tdStyle}>
-        <select
-          className="s7-input"
-          value={item.wasteGroup ?? ""}
-          disabled={isAi}
-          style={{ minWidth: 110 }}
-          onChange={(e) => {
-            const v = e.target.value || null;
-            // Changing group clears item; user re-picks.
-            onPatch({ wasteGroup: v, wasteItem: null });
-          }}
+          title="Per-row total (follow-up B1.7.1)"
         >
-          <option value="">—</option>
-          {wasteGroups.map((g) => (
-            <option key={g} value={g}>
-              {g}
-            </option>
-          ))}
-        </select>
-      </td>
-      <td style={tdStyle}>
-        <select
-          className="s7-input"
-          value={item.wasteItem ?? ""}
-          disabled={isAi || !item.wasteGroup}
-          style={{ minWidth: 140 }}
-          onChange={(e) => onPatch({ wasteItem: e.target.value || null })}
-        >
-          <option value="">—</option>
-          {wasteItemOptions.map((w) => (
-            <option key={w} value={w}>
-              {w}
-            </option>
-          ))}
-        </select>
-      </td>
-      <td style={tdStyle}>
-        <select
-          className="s7-input"
-          value={item.unit ?? ""}
-          disabled={isAi}
-          style={{ width: 64 }}
-          onChange={(e) => onPatch({ unit: e.target.value || null })}
-        >
-          <option value="">—</option>
-          {UNIT_OPTIONS.map((u) => (
-            <option key={u} value={u}>
-              {u}
-            </option>
-          ))}
-        </select>
-      </td>
-      <td style={tdStyle}>
-        <input
-          className="s7-input"
-          type="number"
-          step="0.001"
-          defaultValue={item.value ?? ""}
-          disabled={isAi}
-          style={{ width: 72 }}
-          onBlur={(e) => {
-            const v = e.target.value === "" ? null : Number(e.target.value);
-            onPatch({ value: v });
-          }}
-        />
-      </td>
-      <td style={{ ...tdStyle, textAlign: "center" }}>
-        <input
-          type="checkbox"
-          checked={item.wasteIncluded === true}
-          disabled={isAi}
-          onChange={(e) => onPatch({ wasteIncluded: e.target.checked })}
-          aria-label="Include in waste summary"
-        />
-      </td>
-      <td style={tdStyle}>
-        <input
-          className="s7-input"
-          defaultValue={item.notes ?? ""}
-          disabled={isAi}
-          style={{ width: "100%" }}
-          onBlur={(e) => {
-            const v = e.target.value;
-            if (v !== (item.notes ?? "")) onPatch({ notes: v || null });
-          }}
-        />
-      </td>
-      <td style={{ ...tdStyle, textAlign: "right" }}>
+          —
+        </span>
         {isAi ? (
           <div style={{ display: "inline-flex", gap: 4 }}>
             <button
@@ -801,12 +662,316 @@ function QuantityRow({
             🗑
           </button>
         )}
-      </td>
-    </tr>
+      </header>
+
+      {/* ── Expanded body ───────────────────────────────────────────── */}
+      {expanded ? (
+        <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+          {/* Section A: labour + plant. Flex-wrap so Plant N clusters
+              wrap onto a new line when the row overflows. */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
+            <FieldCell label="Men" width={80}>
+              <input
+                className="s7-input"
+                type="number"
+                step="0.01"
+                defaultValue={item.men ?? ""}
+                disabled={isAi}
+                style={{ width: 80, height: 32 }}
+                onBlur={(e) => {
+                  const n = e.target.value === "" ? null : Number(e.target.value);
+                  onPatch({ men: n });
+                }}
+              />
+            </FieldCell>
+            <FieldCell label="Days" width={80}>
+              <input
+                className="s7-input"
+                type="number"
+                step="0.01"
+                defaultValue={item.days ?? ""}
+                disabled={isAi}
+                style={{ width: 80, height: 32 }}
+                onBlur={(e) => {
+                  const n = e.target.value === "" ? null : Number(e.target.value);
+                  onPatch({ days: n });
+                }}
+              />
+            </FieldCell>
+
+            {plantColumns.map((n) => {
+              const cell = plantAt(n);
+              const isLast = n === plantColumns[plantColumns.length - 1];
+              return (
+                <PlantCluster
+                  key={`plant-${n}`}
+                  index={n}
+                  cell={cell}
+                  plantOptions={plantOptions}
+                  plantRates={plantRates}
+                  disabled={isAi}
+                  removable={n >= 2}
+                  isLast={isLast}
+                  onChange={(patch) => updatePlant(n, patch)}
+                  onAddColumn={onAddPlantColumn}
+                  onRemoveColumn={() => onRemovePlantColumn(n)}
+                />
+              );
+            })}
+          </div>
+
+          <Divider />
+
+          {/* Section B: waste — fixed grid 1fr 1fr 80px 100px auto */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr 80px 100px auto",
+              gap: 12,
+              alignItems: "end"
+            }}
+          >
+            <FieldCell label="Waste group">
+              <TooltipSelect
+                value={item.wasteGroup}
+                options={wasteGroupOptions}
+                onChange={(v) => onPatch({ wasteGroup: v, wasteItem: null })}
+                disabled={isAi}
+                ariaLabel="Waste group"
+                style={{ height: 32 }}
+              />
+            </FieldCell>
+            <FieldCell label="Waste item">
+              <TooltipSelect
+                value={item.wasteItem}
+                options={wasteItemOptions}
+                onChange={(v) => onPatch({ wasteItem: v })}
+                disabled={isAi || !item.wasteGroup}
+                ariaLabel="Waste item"
+                style={{ height: 32 }}
+              />
+            </FieldCell>
+            <FieldCell label="Unit" width={80}>
+              <TooltipSelect
+                value={item.unit}
+                options={UNIT_OPTIONS}
+                onChange={(v) => onPatch({ unit: v })}
+                disabled={isAi}
+                ariaLabel="Unit"
+                style={{ width: 80, height: 32 }}
+              />
+            </FieldCell>
+            <FieldCell label="Value" width={100}>
+              <input
+                className="s7-input"
+                type="number"
+                step="0.001"
+                defaultValue={item.value ?? ""}
+                disabled={isAi}
+                style={{ width: 100, height: 32 }}
+                onBlur={(e) => {
+                  const v = e.target.value === "" ? null : Number(e.target.value);
+                  onPatch({ value: v });
+                }}
+              />
+            </FieldCell>
+            <FieldCell label="Waste?">
+              <input
+                type="checkbox"
+                checked={item.wasteIncluded === true}
+                disabled={isAi}
+                onChange={(e) => onPatch({ wasteIncluded: e.target.checked })}
+                aria-label="Include in waste summary"
+                style={{ width: 20, height: 20, marginBottom: 6 }}
+              />
+            </FieldCell>
+          </div>
+
+          <Divider />
+
+          {/* Section C: notes (full width, 4-row textarea + expand modal). */}
+          <NotesField
+            value={item.notes}
+            onSave={(v) => onPatch({ notes: v })}
+            disabled={isAi}
+            placeholder="Notes for this item…"
+          />
+        </div>
+      ) : null}
+    </article>
   );
 }
 
-const tdStyle: React.CSSProperties = {
-  padding: 4,
-  verticalAlign: "middle"
+// ── PlantCluster ────────────────────────────────────────────────────────
+// 280px-wide cluster of [select rate, qty 44px, days 44px] with optional
+// "×" remove button on Plant 2+ and a "+" add-Plant button after the
+// trailing cluster.
+
+function PlantCluster({
+  index,
+  cell,
+  plantOptions,
+  plantRates,
+  disabled,
+  removable,
+  isLast,
+  onChange,
+  onAddColumn,
+  onRemoveColumn
+}: {
+  index: number;
+  cell: ScopePlantEntry | undefined;
+  plantOptions: TooltipSelectOption<string>[];
+  plantRates: PlantRate[];
+  disabled: boolean;
+  removable: boolean;
+  isLast: boolean;
+  onChange: (patch: Partial<ScopePlantEntry> | null) => void;
+  onAddColumn: () => void;
+  onRemoveColumn: () => void;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, width: 280 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        <span className="s7-type-label" style={labelStyle}>
+          Plant {index}
+        </span>
+        {removable ? (
+          <button
+            type="button"
+            onClick={onRemoveColumn}
+            aria-label={`Remove Plant ${index} column`}
+            title={`Remove Plant ${index} column`}
+            style={{
+              width: 16,
+              height: 16,
+              borderRadius: 999,
+              border: "1px solid var(--border-default, #e5e7eb)",
+              background: "transparent",
+              color: "var(--text-muted)",
+              cursor: "pointer",
+              fontSize: 10,
+              lineHeight: 1,
+              padding: 0
+            }}
+          >
+            ×
+          </button>
+        ) : null}
+        {isLast ? (
+          <button
+            type="button"
+            onClick={onAddColumn}
+            aria-label="Add Plant column"
+            title="Add Plant column"
+            style={{
+              width: 16,
+              height: 16,
+              borderRadius: 999,
+              border: "none",
+              background: "var(--brand-primary, #005B61)",
+              color: "#fff",
+              cursor: "pointer",
+              fontSize: 11,
+              lineHeight: 1,
+              padding: 0
+            }}
+          >
+            +
+          </button>
+        ) : null}
+      </div>
+      <div style={{ display: "flex", gap: 4 }}>
+        <TooltipSelect
+          value={cell?.plantRateId}
+          options={plantOptions}
+          onChange={(v) => {
+            if (!v) {
+              onChange(null);
+              return;
+            }
+            const rate = plantRates.find((p) => p.id === v);
+            onChange({
+              plantRateId: v,
+              description: rate?.item ?? "",
+              unit: rate?.unit ?? "day"
+            });
+          }}
+          disabled={disabled}
+          ariaLabel={`Plant ${index} rate`}
+          style={{ flex: 1, minWidth: 0, height: 32 }}
+        />
+        <input
+          className="s7-input"
+          type="number"
+          step="1"
+          placeholder="qty"
+          defaultValue={cell?.qty ?? ""}
+          disabled={disabled}
+          style={{ width: 44, height: 32, padding: "0 6px" }}
+          title="Quantity"
+          onBlur={(e) => {
+            const v = e.target.value === "" ? undefined : Number(e.target.value);
+            if (cell) onChange({ qty: v });
+          }}
+        />
+        <input
+          className="s7-input"
+          type="number"
+          step="0.5"
+          placeholder="days"
+          defaultValue={cell?.days ?? ""}
+          disabled={disabled}
+          style={{ width: 44, height: 32, padding: "0 6px" }}
+          title="Days"
+          onBlur={(e) => {
+            const v = e.target.value === "" ? undefined : Number(e.target.value);
+            if (cell) onChange({ days: v });
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── FieldCell + Divider ─────────────────────────────────────────────────
+
+function FieldCell({
+  label,
+  width,
+  children
+}: {
+  label: string;
+  width?: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, width }}>
+      <span className="s7-type-label" style={labelStyle}>
+        {label}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+function Divider() {
+  return (
+    <div
+      role="separator"
+      style={{
+        height: 0,
+        borderTop: "1px dashed var(--border-default, #e5e7eb)",
+        margin: "0 -4px"
+      }}
+    />
+  );
+}
+
+const labelStyle: CSSProperties = {
+  fontSize: 10,
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+  color: "var(--text-muted, #6b7280)"
 };

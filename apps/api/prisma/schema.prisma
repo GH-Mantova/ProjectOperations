@@ -2153,6 +2153,10 @@ model ScopeCard {
   // header. Each scope item's plantItems JSON array uses columnIndex
   // matching this column count (dense with explicit columnIndex).
   plantColumnCount Int @default(1) @map("plant_column_count")
+  // PR B1.7 — shared notes blocks at the bottom of the Cutting and Waste
+  // subtables. Replace the previous per-row notes column / NotesRow.
+  cuttingNotes String? @map("cutting_notes")
+  wasteNotes   String? @map("waste_notes")
   sortOrder   Int      @default(0) @map("sort_order")
   createdById String   @map("created_by_id")
   createdBy   User     @relation("ScopeCardCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)

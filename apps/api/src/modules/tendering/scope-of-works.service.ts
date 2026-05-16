@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import {
   CreateScopeItemDto,
+  CreateScopeItemInCardDto,
   Discipline,
   DISCIPLINES,
   ReorderScopeItemsDto,
@@ -554,6 +555,8 @@ export class ScopeOfWorksService {
       discipline: c.discipline,
       cardNumber: c.cardNumber,
       plantColumnCount: c.plantColumnCount,
+      cuttingNotes: c.cuttingNotes,
+      wasteNotes: c.wasteNotes,
       sortOrder: c.sortOrder,
       itemCount: c._count.scopeItems,
       createdAt: c.createdAt,
@@ -612,6 +615,25 @@ export class ScopeOfWorksService {
       where: { id: cardId },
       data: { plantColumnCount }
     });
+  }
+
+  /**
+   * PR B1.7 — Set the shared cutting/waste notes blocks for a card.
+   * Either field can be omitted (left unchanged) or set to null/empty
+   * to clear. Returns the updated card.
+   */
+  async setCardNotes(
+    tenderId: string,
+    cardId: string,
+    patch: { cuttingNotes?: string | null; wasteNotes?: string | null }
+  ) {
+    await this.requireTender(tenderId);
+    const card = await this.prisma.scopeCard.findFirst({ where: { id: cardId, tenderId } });
+    if (!card) throw new NotFoundException("Card not found.");
+    const data: { cuttingNotes?: string | null; wasteNotes?: string | null } = {};
+    if (patch.cuttingNotes !== undefined) data.cuttingNotes = patch.cuttingNotes || null;
+    if (patch.wasteNotes !== undefined) data.wasteNotes = patch.wasteNotes || null;
+    return this.prisma.scopeCard.update({ where: { id: cardId }, data });
   }
 
   /**
@@ -754,7 +776,7 @@ export class ScopeOfWorksService {
     tenderId: string,
     actorId: string,
     cardId: string,
-    dto: CreateScopeItemDto
+    dto: CreateScopeItemInCardDto
   ) {
     await this.requireTender(tenderId);
     const card = await this.prisma.scopeCard.findFirst({
@@ -763,7 +785,12 @@ export class ScopeOfWorksService {
     });
     if (!card) throw new NotFoundException("Card not found.");
     const discipline = card.discipline as Discipline;
-    assertRowTypeForDiscipline(discipline, dto.rowType);
+    // PR B1.7 — the canonical redesigned table no longer surfaces row
+    // type. Default to "general-labour" so existing constraints continue
+    // to pass; assertRowTypeForDiscipline still runs for safety in case
+    // an older client sends an explicit value.
+    const rowType = dto.rowType ?? "general-labour";
+    assertRowTypeForDiscipline(discipline, rowType);
 
     const itemNumber = await this.nextItemNumberInCard(cardId);
     const wbsCode = `${discipline}${card.cardNumber}.${itemNumber}`;
@@ -774,12 +801,11 @@ export class ScopeOfWorksService {
         cardId,
         wbsCode,
         itemNumber,
-        rowType: dto.rowType,
-        description: dto.description,
+        rowType,
+        description: dto.description ?? "",
         status: "confirmed",
         aiProposed: false,
-        createdById: actorId,
-        ...numericFieldsFrom(dto)
+        createdById: actorId
       },
       include: { card: true }
     });

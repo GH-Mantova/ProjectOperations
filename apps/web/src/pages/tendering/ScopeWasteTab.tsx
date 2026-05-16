@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { NotesField } from "../../components";
 
 // Waste disposal rows for a tender × discipline. truckDays and lineTotal
 // are derived server-side — the UI only submits raw inputs (tonnes, loads,
@@ -55,12 +56,19 @@ export function ScopeWasteTab({
   tenderId,
   discipline,
   wbsRefs,
-  canManage
+  canManage,
+  wasteNotes,
+  onWasteNotesChange
 }: {
   tenderId: string;
   discipline: string;
   wbsRefs: string[];
   canManage: boolean;
+  // PR B1.7 — shared notes for the whole subtable (persists to
+  // ScopeCard.wasteNotes via PATCH /scope/cards/:cardId). Optional so
+  // legacy callers without card context still render.
+  wasteNotes?: string | null;
+  onWasteNotesChange?: (value: string | null) => Promise<void> | void;
 }) {
   const { authFetch } = useAuth();
   const [rows, setRows] = useState<WasteRow[]>([]);
@@ -211,7 +219,6 @@ export function ScopeWasteTab({
                   "$/T",
                   "$/Load",
                   "Line total",
-                  "Notes",
                   ""
                 ].map((h) => (
                   <th
@@ -411,18 +418,6 @@ export function ScopeWasteTab({
                     {fmtCurrency(row.lineTotal)}
                   </td>
                   <td style={{ padding: 2 }}>
-                    <input
-                      className="s7-input s7-input--sm"
-                      defaultValue={row.notes ?? ""}
-                      disabled={!canManage}
-                      onBlur={(e) =>
-                        (e.target.value || null) !== (row.notes ?? null) &&
-                        void patchRow(row.id, { notes: e.target.value || null })
-                      }
-                      style={{ width: 160 }}
-                    />
-                  </td>
-                  <td style={{ padding: 2 }}>
                     {canManage ? (
                       <button
                         type="button"
@@ -450,6 +445,18 @@ export function ScopeWasteTab({
         >
           + Add waste row
         </button>
+      ) : null}
+
+      {onWasteNotesChange ? (
+        <div style={{ marginTop: 16 }}>
+          <NotesField
+            label="Waste notes"
+            value={wasteNotes ?? null}
+            onSave={(v) => onWasteNotesChange(v)}
+            disabled={!canManage}
+            placeholder="Shared notes for this card's waste subtable…"
+          />
+        </div>
       ) : null}
     </section>
   );

@@ -52,6 +52,7 @@ export function ScopeCardsTab({
     createCard,
     renameCard,
     setPlantColumnCount,
+    setCardNotes,
     changeDiscipline,
     deleteCard,
     reorderCards
@@ -295,10 +296,22 @@ export function ScopeCardsTab({
             discipline={activeCard.discipline}
             wbsRefs={cardWbsRefs}
             canManage={true}
+            wasteNotes={activeCard.wasteNotes}
+            onWasteNotesChange={async (v) => {
+              await setCardNotes(activeCard.id, { wasteNotes: v });
+            }}
           />
 
           {activeCard.discipline !== "ASB" ? (
-            <ScopeCuttingSheet tenderId={tenderId} wbsRefs={cardWbsRefs} canManage={true} />
+            <ScopeCuttingSheet
+              tenderId={tenderId}
+              wbsRefs={cardWbsRefs}
+              canManage={true}
+              cuttingNotes={activeCard.cuttingNotes}
+              onCuttingNotesChange={async (v) => {
+                await setCardNotes(activeCard.id, { cuttingNotes: v });
+              }}
+            />
           ) : null}
         </div>
       ) : null}

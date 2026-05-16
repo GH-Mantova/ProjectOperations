@@ -2167,12 +2167,13 @@ model ScopeOfWorksItem {
   id           String  @id @default(uuid())
   tenderId     String  @map("tender_id")
   tender       Tender  @relation(fields: [tenderId], references: [id], onDelete: Cascade)
-  // PR A2 — parent card. Nullable during the transition; will be required
-  // after backfill completes and A2.5 migrates services off discipline.
+  // PR A2 — parent card. Nullable retained for ON DELETE SET NULL semantics
+  // (deleting a card preserves child rows). PR A2.5 dropped the legacy
+  // `discipline` String column from this model; card.discipline is now
+  // the authoritative source.
   cardId       String?    @map("card_id")
   card         ScopeCard? @relation(fields: [cardId], references: [id], onDelete: SetNull)
   wbsCode      String  @map("wbs_code")
-  discipline   String
   itemNumber   Int     @map("item_number")
   rowType      String  @map("row_type")
   description  String
@@ -2255,7 +2256,7 @@ model ScopeOfWorksItem {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@index([tenderId, discipline, itemNumber])
+  @@index([tenderId, itemNumber])
   @@index([tenderId, status])
   @@index([cardId])
   @@map("scope_of_works_items")

@@ -143,7 +143,7 @@ export class GanttService {
 
     const items = await this.prisma.scopeOfWorksItem.findMany({
       where: { tenderId: project.sourceTenderId },
-      select: { discipline: true, days: true }
+      select: { card: { select: { discipline: true } }, days: true }
     });
     if (items.length === 0) {
       throw new BadRequestException("Source tender has no scope items.");
@@ -151,8 +151,8 @@ export class GanttService {
 
     const buckets = new Map<string, number>();
     for (const item of items) {
-      if (!item.discipline) continue;
-      const d = item.discipline;
+      const d = item.card?.discipline;
+      if (!d) continue;
       const existing = buckets.get(d) ?? 0;
       const itemDays = item.days ? Number(item.days) : 5;
       buckets.set(d, existing + (Number.isFinite(itemDays) ? itemDays : 5));

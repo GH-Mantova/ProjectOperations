@@ -504,12 +504,17 @@ export class ContractsService {
   private async scopeDisciplineSubtotals(tenderId: string): Promise<Record<string, number>> {
     // Mirror of the summary calc in ScopeRedesignService but without the cutting
     // roll-up — line items track disciplines only.
+    // PR A2.5 — discipline read via card relation.
     const items = await this.prisma.scopeOfWorksItem.findMany({
       where: { tenderId, status: { not: "excluded" } },
-      select: { discipline: true, estimateItemId: true, provisionalAmount: true }
+      select: {
+        card: { select: { discipline: true } },
+        estimateItemId: true,
+        provisionalAmount: true
+      }
     });
     const estimateItemIds = items
-      .filter((i) => i.discipline !== "Other")
+      .filter((i) => i.card?.discipline !== "Other")
       .map((i) => i.estimateItemId)
       .filter((id): id is string => !!id);
     const estimateItems = await this.prisma.estimateItem.findMany({
@@ -536,10 +541,11 @@ export class ContractsService {
       .then((e) => (e ? Number(e.markup) : 30));
     const out: Record<string, number> = {};
     for (const i of items) {
-      if (i.discipline === "Other") {
+      const itemDiscipline = i.card?.discipline ?? "Other";
+      if (itemDiscipline === "Other") {
         out.Other = (out.Other ?? 0) + (i.provisionalAmount ? Number(i.provisionalAmount) : 0);
       } else if (i.estimateItemId) {
-        out[i.discipline] = (out[i.discipline] ?? 0) + (priceByItem.get(i.estimateItemId) ?? 0);
+        out[itemDiscipline] = (out[itemDiscipline] ?? 0) + (priceByItem.get(i.estimateItemId) ?? 0);
       }
     }
     for (const d of Object.keys(out)) {

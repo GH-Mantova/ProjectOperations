@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-16 07:44 AEST
+Last updated: 2026-05-16 08:01 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -4138,3 +4138,38 @@ wbsRefs. B2/B3 will move them into per-card scoped subtables with their
 own creation flows.
 
 Audit findings: none. Rollback is `git revert` of the merge commit.
+
+## 2026-05-16 — PR B1.5.1 (hotfix) — scope-waste DTO validator uses canonical 4-code list
+Type: PR (fix — DTO validator)
+Branch: fix/scope-waste-discipline-validator
+Status: OPENED
+
+Caught after PR B1.5 merged. The scope-waste DTO validator
+(apps/api/src/modules/tendering/scope-waste.controller.ts) still had a
+file-local `const DISCIPLINES = ["SO", "Str", "Asb", "Civ", "Prv"]` —
+a PR A1 sweep miss. Any POST/PATCH to scope_waste_items carrying a
+current discipline value (DEM/CIV/ASB/Other) would have been rejected
+by class-validator with a "discipline must be one of SO,Str,Asb,Civ,Prv"
+error. Not yet user-visible because scope_waste_items is empty in dev
+and the new cards-as-tabs UI hasn't been exercised against the waste
+subtable in any real session.
+
+Fix: import IS_DISCIPLINE_CODES from
+apps/api/src/modules/personas/definitions/disciplines and reference it
+in the @IsIn() decorator. Removed the local DISCIPLINES constant.
+
+Spec sweep surfaced one more legacy literal at
+apps/api/src/modules/tendering/scope-redesign.controller.ts:75 — a
+Swagger @ApiQuery({ name: "discipline", enum: [...] }) annotation
+with the same 5-code list. Per the hotfix spec, this is surfaced not
+auto-fixed — affects Swagger docs only, not runtime validation. Follow-up
+PR can clean it up at low priority.
+
+Tests: API 493 passing (unchanged — no test depended on the broken
+validator). Web 138 unchanged. tsc + lint clean. No new tests added
+(would require a fixture for waste items which the test suite doesn't
+currently maintain).
+
+Files changed:
+  - apps/api/src/modules/tendering/scope-waste.controller.ts (5-line swap)
+  - progress.md

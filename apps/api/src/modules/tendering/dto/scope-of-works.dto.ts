@@ -110,6 +110,18 @@ class ScopeItemFieldsBase {
   // Provisional sum amount (discipline=Prv only; ignored otherwise).
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() provisionalAmount?: number | null;
 
+  // PR B1.6 — canonical items table columns 6-10. `wasteGroup` (line 108)
+  // already exists; the four below complete the canonical column set per
+  // docs/Designs/scope-of-works-redesign.md.
+  @ApiPropertyOptional({ enum: ["m²", "m³", "t", "ea"] })
+  @IsOptional() @IsIn(["m²", "m³", "t", "ea"]) unit?: string | null;
+
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() value?: number | null;
+
+  @ApiPropertyOptional() @IsOptional() @IsString() wasteItem?: string | null;
+
+  @ApiPropertyOptional() @IsOptional() wasteIncluded?: boolean;
+
   // Scope item may arrive with a specific wbsCode on redesign create.
   @ApiPropertyOptional() @IsOptional() @IsString() wbsCode?: string | null;
 
@@ -174,6 +186,16 @@ export class UpdateScopeCardDto {
       "New discipline. Cascades: cardNumber reissued in new discipline, item wbsCodes rewritten, cutting + waste wbsRefs updated."
   })
   @IsOptional() @IsIn(DISCIPLINES as unknown as string[]) discipline?: Discipline;
+
+  // PR B1.6 — Plant column count per card. Plant 1 always visible (so
+  // minimum is 1); Plant 2+ added via the "+" button on the rightmost
+  // Plant header. Frontend is responsible for confirming with the user
+  // before decreasing past a column that has data in it.
+  @ApiPropertyOptional({
+    minimum: 1,
+    description: "Number of Plant columns visible on this card's items table. Minimum 1 (Plant 1 always present)."
+  })
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) plantColumnCount?: number;
 }
 
 export class ReorderScopeCardsDto {

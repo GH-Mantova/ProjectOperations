@@ -5,7 +5,6 @@ import {
   CreateScopeItemDto,
   CreateScopeItemInCardDto,
   Discipline,
-  DISCIPLINES,
   ReorderScopeItemsDto,
   ScopeStatus,
   UpdateScopeHeaderDto,
@@ -14,100 +13,16 @@ import {
 import { assertRowTypeForDiscipline } from "./scope-redesign.service";
 import { getScopeCardDefault } from "./scope/card-defaults";
 import {
+  buildRateMaps,
   computeScopeItemTotal,
-  wasteRateKey,
-  type RateMaps,
-  type ScopeItemPricingInput,
-  type ScopePlantEntryInput
+  DEFAULT_ROLE_BY_DISCIPLINE,
+  DISCIPLINE_ORDER,
+  toPricingInput
 } from "./scope-item-pricing";
-
-const DEFAULT_ROLE_BY_DISCIPLINE: Record<Discipline, string> = {
-  DEM: "Demolition labourer",
-  CIV: "Machine operator",
-  ASB: "Asbestos labourer",
-  Other: "Demolition labourer"
-};
-
-const DISCIPLINE_ORDER: Discipline[] = [...DISCIPLINES];
 
 function toDecimal(value: number | null | undefined | Prisma.Decimal): Prisma.Decimal | null {
   if (value === null || value === undefined) return null;
   return new Prisma.Decimal(value as number);
-}
-
-// PR B1.7.1 — helpers for per-row line totals. Module-private so they
-// don't widen the service's public API.
-
-function decToNum(value: Prisma.Decimal | number | null | undefined): number | null {
-  if (value === null || value === undefined) return null;
-  return typeof value === "number" ? value : Number(value);
-}
-
-/**
- * Build the rate-lookup maps consumed by computeScopeItemTotal. We pick
- * the labour rate per discipline by resolving discipline → role via
- * DEFAULT_ROLE_BY_DISCIPLINE and reading `dayRate` (shift defaults to
- * Day — Night/Weekend rates are not surfaced in the canonical UI yet).
- *
- * For waste we keep only one rate per (group, type). If the rate card
- * has multiple facilities for the same (group, type), the first active
- * row wins — mirrors the legacy createEstimateItemFromScope fallback.
- */
-function buildRateMaps(
-  labourRates: ReadonlyArray<{ role: string; dayRate: Prisma.Decimal }>,
-  plantRates: ReadonlyArray<{ id: string; rate: Prisma.Decimal }>,
-  wasteRates: ReadonlyArray<{ wasteGroup: string | null; wasteType: string; tonRate: Prisma.Decimal }>
-): RateMaps {
-  const labourByRole = new Map<string, number>();
-  for (const r of labourRates) labourByRole.set(r.role, Number(r.dayRate));
-
-  const labourRateByDiscipline = new Map<Discipline, number>();
-  for (const d of DISCIPLINE_ORDER) {
-    const role = DEFAULT_ROLE_BY_DISCIPLINE[d];
-    const rate = labourByRole.get(role);
-    if (rate != null) labourRateByDiscipline.set(d, rate);
-  }
-
-  const plantRateById = new Map<string, number>();
-  for (const p of plantRates) plantRateById.set(p.id, Number(p.rate));
-
-  const wasteTonRateByGroupAndType = new Map<string, number>();
-  for (const w of wasteRates) {
-    if (!w.wasteGroup) continue;
-    const key = wasteRateKey(w.wasteGroup, w.wasteType);
-    if (!wasteTonRateByGroupAndType.has(key)) {
-      wasteTonRateByGroupAndType.set(key, Number(w.tonRate));
-    }
-  }
-
-  return { labourRateByDiscipline, plantRateById, wasteTonRateByGroupAndType };
-}
-
-/**
- * Project a Prisma ScopeOfWorksItem row into the shape consumed by the
- * pure pricing function. Reads only canonical (B1.6+) fields plus
- * provisionalAmount (used for Other discipline).
- */
-function toPricingInput(
-  item: Prisma.ScopeOfWorksItemGetPayload<{ include: { card: true } }>,
-  discipline: Discipline
-): ScopeItemPricingInput {
-  const plantItemsRaw = item.plantItems;
-  const plantItems = Array.isArray(plantItemsRaw)
-    ? (plantItemsRaw as unknown as ScopePlantEntryInput[])
-    : null;
-  return {
-    discipline,
-    men: decToNum(item.men),
-    days: decToNum(item.days),
-    plantItems,
-    unit: item.unit,
-    value: decToNum(item.value),
-    wasteIncluded: item.wasteIncluded === true,
-    wasteGroup: item.wasteGroup,
-    wasteItem: item.wasteItem,
-    provisionalAmount: decToNum(item.provisionalAmount)
-  };
 }
 
 function numericFieldsFrom(dto: Partial<UpdateScopeItemDto & CreateScopeItemDto>) {
@@ -229,13 +144,14 @@ export class ScopeOfWorksService {
     // been explicitly confirmed into an EstimateItem (canonical B1.6
     // rows never were, so they always contributed $0). See
     // scope-item-pricing.ts for the pure formula.
-    const [labourRates, plantRates, wasteRates, tenderEstimate] = await Promise.all([
+    // PR B1.7.2 — waste rate card no longer fetched here. Waste $ is
+    // computed on the dedicated waste summary subtable (B3).
+    const [labourRates, plantRates, tenderEstimate] = await Promise.all([
       this.prisma.estimateLabourRate.findMany({ where: { isActive: true } }),
       this.prisma.estimatePlantRate.findMany({ where: { isActive: true } }),
-      this.prisma.estimateWasteRate.findMany({ where: { isActive: true } }),
       this.prisma.tenderEstimate.findUnique({ where: { tenderId }, select: { markup: true } })
     ]);
-    const rateMaps = buildRateMaps(labourRates, plantRates, wasteRates);
+    const rateMaps = buildRateMaps(labourRates, plantRates);
     const markupPercent = tenderEstimate ? Number(tenderEstimate.markup) : 30;
 
     const itemsWithTotals = sorted.map((item) => {
@@ -984,6 +900,13 @@ export class ScopeOfWorksService {
     return created;
   }
 
+  /**
+   * @deprecated PR B1.7.2 — legacy EstimateItem-based per-row pricing.
+   * Canonical (B1.6+) rows never create EstimateItem so this path
+   * silently returned $0 for them. listItems() now uses the pure
+   * computeScopeItemTotal helper directly. Method kept for safety
+   * until a separate cleanup PR confirms there are no callers.
+   */
   private async computeEstimateItemPrices(itemIds: string[]): Promise<Map<string, number>> {
     const map = new Map<string, number>();
     if (itemIds.length === 0) return map;

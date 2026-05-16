@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { ScopeColumnManager, labelFor } from "./ScopeColumnManager";
 import { ScopeListDropdown } from "./ScopeListDropdown";
+import { ScopeRowPills, type ScopePlantItem, type ScopeMeasurement } from "./ScopeRowPills";
 
 // PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
 export type Discipline = "DEM" | "CIV" | "ASB" | "Other";
@@ -33,6 +34,10 @@ export type ScopeItem = {
   wasteLoads: number | null;
   provisionalAmount: string | null;
   estimateItemId: string | null;
+  // PR B1.5.2 — multi-plant + multi-measurement arrays surfaced via
+  // ScopeRowPills under each row.
+  plantItems: ScopePlantItem[] | null;
+  measurements: ScopeMeasurement[] | null;
 };
 
 type RowTypeListItem = {
@@ -359,21 +364,37 @@ export function ScopeQuantitiesTable({
             </thead>
             <tbody>
               {wbsSortedVisible.map((item) => (
-                <QuantityRow
-                  key={item.id}
-                  item={item}
-                  columns={columns}
-                  headerColumns={headerColumns}
-                  rowTypes={rowTypes}
-                  columnsForRow={columnsForRow}
-                  notesEnabled={notesEnabled}
-                  isPending={pendingIds.has(item.id)}
-                  onPatch={(body) => void patchItem(item.id, body)}
-                  onConfirm={() => void confirmItem(item.id)}
-                  onExclude={() => void excludeItem(item.id)}
-                  onDuplicate={() => void duplicateItem(item)}
-                  onDelete={() => deleteItem(item)}
-                />
+                <Fragment key={item.id}>
+                  <QuantityRow
+                    item={item}
+                    columns={columns}
+                    headerColumns={headerColumns}
+                    rowTypes={rowTypes}
+                    columnsForRow={columnsForRow}
+                    notesEnabled={notesEnabled}
+                    isPending={pendingIds.has(item.id)}
+                    onPatch={(body) => void patchItem(item.id, body)}
+                    onConfirm={() => void confirmItem(item.id)}
+                    onExclude={() => void excludeItem(item.id)}
+                    onDuplicate={() => void duplicateItem(item)}
+                    onDelete={() => deleteItem(item)}
+                  />
+                  {/* PR B1.5.2 — pills row under each item (multi-plant +
+                      multi-measurement). Spans every column. */}
+                  <tr style={{ background: "var(--surface-muted, #FBFAF7)" }}>
+                    <td
+                      colSpan={headerColumns.length + 4}
+                      style={{ padding: "4px 12px 8px", borderBottom: "1px solid var(--border, #e5e7eb)" }}
+                    >
+                      <ScopeRowPills
+                        item={item}
+                        onPatch={async (body) => {
+                          await patchItem(item.id, body);
+                        }}
+                      />
+                    </td>
+                  </tr>
+                </Fragment>
               ))}
             </tbody>
           </table>

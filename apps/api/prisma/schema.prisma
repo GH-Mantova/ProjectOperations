@@ -2143,6 +2143,11 @@ model ScopeCard {
   tender      Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
   name        String
   discipline  String
+  // PR B1 — stable integer identifier per (tenderId, discipline). Never
+  // reused (deleted card numbers stay burned). Combined with discipline
+  // to form the card "code" (DEM1, DEM2, CIV1...). Items inside use
+  // dotted codes (DEM1.1, DEM1.2...) derived from this.
+  cardNumber  Int      @map("card_number")
   sortOrder   Int      @default(0) @map("sort_order")
   createdById String   @map("created_by_id")
   createdBy   User     @relation("ScopeCardCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -2153,6 +2158,7 @@ model ScopeCard {
   wasteItems   ScopeWasteItem[]
   cuttingItems CuttingSheetItem[]
 
+  @@unique([tenderId, discipline, cardNumber])
   @@index([tenderId, sortOrder])
   @@map("scope_cards")
 }

@@ -63,6 +63,7 @@ describe("Prisma types — ScopeCard create shape (PR A2)", () => {
     const input: Prisma.ScopeCardCreateInput = {
       name: "Demolition",
       discipline: "DEM",
+      cardNumber: 1,
       tender: { connect: { id: "tender-123" } },
       createdBy: { connect: { id: "user-456" } }
     };
@@ -73,6 +74,7 @@ describe("Prisma types — ScopeCard create shape (PR A2)", () => {
     const input: Prisma.ScopeCardCreateInput = {
       name: "Civil works",
       discipline: "CIV",
+      cardNumber: 1,
       sortOrder: 1,
       tender: { connect: { id: "tender-123" } },
       createdBy: { connect: { id: "user-456" } }

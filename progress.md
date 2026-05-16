@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-16 06:53 AEST
+Last updated: 2026-05-16 07:23 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -3930,3 +3930,117 @@ architectural reference for the scope-of-works rebuild chain. This is the
 design that drove PRs A1, A1.5, A2, and A2.5, and will drive PR B1/B2/B3
 (MVP UI rebuild) and C1-D1 (post-demo arrangement screen + PDF render).
 Status: COMPLETE
+
+## 2026-05-16 — PR B1 (backend-only) — ScopeCard cardNumber + card-CRUD service & endpoints
+Type: PR (feat — schema additive + service additions; backend-only scope per Marco's amendment)
+Branch: feat/scope-card-numbering-backend
+Status: OPENED
+
+First of the B-chain. Spec'd as a full backend + frontend rewrite (~30 files,
+~2,500 lines). After surfacing the realistic complexity and a renumbering
+collision in the dev seed data, Marco split B1 into:
+  - This PR (B1 backend) — schema + service + endpoints + tests
+  - PR B1.5 (deferred) — frontend rewrite (cards-as-tabs UI, ~12 new components,
+    3-5 file deletions, @dnd-kit horizontal + vertical sortable)
+
+What ships in B1 (backend-only):
+
+Schema (apps/api/prisma/schema.prisma):
+  - ScopeCard.cardNumber Int @map("card_number") — stable per (tenderId, discipline)
+  - @@unique([tenderId, discipline, cardNumber]) enforces "never reused" invariant
+  - cardNumber combined with discipline forms card "code" (DEM1, DEM2, CIV1...);
+    items use dotted codes (DEM1.1, DEM1.2...) derived from this.
+
+Migration (20260516200000_scope_card_number):
+  - Adds card_number column, backfills every existing card with card_number=1
+    (safe — PR A2 created exactly one card per (tender, discipline))
+  - Adds unique index
+  - Step A: ROW_NUMBER() OVER (PARTITION BY card_id ORDER BY sort_order, created_at)
+    renumbers item_number per card. CRITICAL for the dev seed which had legacy
+    quirky itemNumbers (DEM had items with itemNumber 1, 2, 1 — the third
+    being a stale per-discipline counter from the pre-A1 layout). Without this
+    step, the wbsCode update would have produced duplicate codes (DEM1.1
+    collision).
+  - Step B: rewrites scope_of_works_items.wbs_code to dotted form using
+    c.discipline || c.card_number || '.' || soi.item_number, with idempotency
+    guard wbs_code NOT LIKE '%.%'.
+  - Step C+D: cutting_sheet_items.wbs_ref + scope_waste_items.wbs_ref updated
+    to match new dotted codes (no-op in dev because both tables are empty;
+    written defensively for production data).
+  - Verified on dev DB: 4 cards now have card_number=1, all 7 items renumbered
+    to DEM1.1/DEM1.2/DEM1.3, ASB1.1/ASB1.2, CIV1.1, Other1.1. 0 flat codes
+    remaining.
+
+Seed (apps/api/prisma/seed.ts):
+  - SCOPE_CARD_DEFAULTS gains cardNumber field (all defaults = 1)
+  - Card creation pulls cardNumber from defaults
+  - 7 wbsCode literals updated: DEM1→DEM1.1, DEM2→DEM1.2, DEM3→DEM1.3,
+    ASB1→ASB1.1, ASB2→ASB1.2, CIV1→CIV1.1, OTH1→Other1.1
+  - DEM3's itemNumber corrected from 1 to 3 (legacy quirk fixed in seed)
+
+Service (apps/api/src/modules/tendering/scope-of-works.service.ts):
+  - getOrCreateCardForDiscipline updated to populate cardNumber on create +
+    orderBy { cardNumber: "asc" } to prefer lowest cardNumber when multiple
+    cards exist per discipline
+  - New: listCards(tenderId) → cards with itemCount via _count
+  - New: createCard(tenderId, actorId, dto) → MAX(cardNumber)+1 per discipline,
+    sortOrder = tender-wide max+1
+  - New: renameCard(tenderId, cardId, name) → preserves cardNumber + discipline
+  - New: changeCardDiscipline(tenderId, cardId, newDiscipline) — atomically
+    reissues cardNumber, renumbers items' wbsCode, cascades cutting + waste
+    wbsRef updates. Wrapped in $transaction. No-op when target = current.
+  - New: deleteCard(tenderId, cardId) — throws ConflictException when card
+    has items (Q3=A decision)
+  - New: reorderCards(tenderId, cardIds[]) — bulk sortOrder update via
+    interactive transaction
+  - New: createItemInCard(tenderId, actorId, cardId, dto) — wbsCode =
+    ${discipline}${cardNumber}.${itemNumber} with itemNumber per-card (not
+    per-discipline like legacy createItem)
+  - New private: nextItemNumberInCard(cardId)
+
+proposals.service.ts: inline card upsert updated to populate cardNumber from
+defaults + orderBy cardNumber.
+
+Controller (apps/api/src/modules/tendering/scope-of-works.controller.ts):
+  - GET    /tenders/:tenderId/scope/cards            (listCards)
+  - POST   /tenders/:tenderId/scope/cards            (createCard)
+  - PATCH  /tenders/:tenderId/scope/cards/:cardId    (rename OR changeDiscipline)
+  - DELETE /tenders/:tenderId/scope/cards/:cardId    (204; 409 if items exist)
+  - POST   /tenders/:tenderId/scope/cards/reorder    (204; { cardIds: string[] })
+  - POST   /tenders/:tenderId/scope/cards/:cardId/items  (createItemInCard)
+
+DTOs added: CreateScopeCardDto, UpdateScopeCardDto, ReorderScopeCardsDto.
+
+Tests (apps/api/src/modules/tendering/scope/__tests__/scope-cards.service.spec.ts):
+  - 15 new tests covering all 7 new service methods + the discipline-change
+    cascade path
+  - Existing scope-card-schema.spec.ts updated: type-level Prisma fixtures
+    now include cardNumber (required field)
+
+Verification:
+  - pnpm --filter api test: 493 passing (478 baseline + 15 new); 6 skipped
+  - pnpm --filter web test --run: 132 passing (unchanged)
+  - pnpm --filter api exec tsc --noEmit: clean
+  - pnpm --filter web exec tsc --noEmit: clean
+  - pnpm --filter api lint / web lint: clean / clean
+  - pnpm --filter web build: clean
+  - pnpm --filter api compliance:smoke: passes
+  - pnpm --filter api seed: idempotent; 7 items get dotted wbsCodes
+
+Frontend explicitly NOT touched in this PR (per Option 1 scope decision):
+  - apps/web/src/pages/tendering/ScopeOfWorksTab.tsx — unchanged
+  - apps/web/src/pages/tendering/ScopeDisciplineBar.tsx — unchanged
+  - apps/web/src/pages/tendering/TenderDetailPage.tsx — unchanged
+  - The existing 5-card-styled UI keeps working against the existing
+    /tenders/:id/scope/items endpoints. Item wbsCodes shown in the UI just
+    have dots in them now (DEM1.1 vs DEM1), which the existing table renders
+    fine as plain strings. No user-visible change beyond the dotted codes.
+
+PR B1.5 (deferred): frontend rewrite — cards-as-tabs UI per docs/Designs/
+scope-of-works-redesign.md. ~12 new components, 3-5 file deletions,
+@dnd-kit horizontal (tabs) + vertical (rows) sortable, inline rename,
+ChangeDisciplineModal with renumber preview, empty-state quick-starts.
+
+Reverse SQL kept in PR body, not committed.
+
+Audit findings: none.

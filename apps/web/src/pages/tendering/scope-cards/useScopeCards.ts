@@ -11,6 +11,10 @@ export type ScopeCard = {
   cardNumber: number;
   /** PR B1.6 — Plant column count for this card's items table. Min 1. */
   plantColumnCount: number;
+  /** PR B1.7 — shared notes for the cutting subtable (replaces NotesRow). */
+  cuttingNotes: string | null;
+  /** PR B1.7 — shared notes for the waste subtable (replaces per-row notes). */
+  wasteNotes: string | null;
   sortOrder: number;
   itemCount: number;
   createdAt: string;
@@ -94,6 +98,27 @@ export function useScopeCards(tenderId: string) {
     [authFetch, tenderId, load]
   );
 
+  /**
+   * PR B1.7 — set the shared cutting/waste notes blocks for a card.
+   * Either or both fields can be supplied in a single call. Pass null
+   * (or omit) to clear.
+   */
+  const setCardNotes = useCallback(
+    async (
+      cardId: string,
+      patch: { cuttingNotes?: string | null; wasteNotes?: string | null }
+    ): Promise<void> => {
+      const res = await authFetch(`/tenders/${tenderId}/scope/cards/${cardId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch)
+      });
+      if (!res.ok) throw new Error(await res.text());
+      await load();
+    },
+    [authFetch, tenderId, load]
+  );
+
   const changeDiscipline = useCallback(
     async (cardId: string, discipline: string): Promise<ChangeDisciplineResult> => {
       const res = await authFetch(`/tenders/${tenderId}/scope/cards/${cardId}`, {
@@ -164,6 +189,7 @@ export function useScopeCards(tenderId: string) {
     createCard,
     renameCard,
     setPlantColumnCount,
+    setCardNotes,
     changeDiscipline,
     deleteCard,
     reorderCards

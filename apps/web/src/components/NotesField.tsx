@@ -109,7 +109,6 @@ export function NotesField({
     // Focus the modal textarea on open.
     window.setTimeout(() => modalTextareaRef.current?.focus(), 0);
     return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modalOpen]);
 
   const handleModalKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {

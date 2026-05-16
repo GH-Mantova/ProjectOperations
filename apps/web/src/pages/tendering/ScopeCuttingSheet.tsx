@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { NotesField } from "../../components";
 
 type ItemType = "saw-cut" | "core-hole" | "other-rate";
 
@@ -74,11 +75,18 @@ function fmt(n: string | number | null | undefined): string {
 export function ScopeCuttingSheet({
   tenderId,
   wbsRefs,
-  canManage
+  canManage,
+  cuttingNotes,
+  onCuttingNotesChange
 }: {
   tenderId: string;
   wbsRefs: string[];
   canManage: boolean;
+  // PR B1.7 — single shared notes block at the bottom of the 3-tab UI
+  // (Cutting / Coring / Other), visible regardless of active tab.
+  // Persists to ScopeCard.cuttingNotes via PATCH /scope/cards/:cardId.
+  cuttingNotes?: string | null;
+  onCuttingNotesChange?: (value: string | null) => Promise<void> | void;
 }) {
   const { authFetch } = useAuth();
   const [items, setItems] = useState<CuttingItem[]>([]);
@@ -273,6 +281,18 @@ export function ScopeCuttingSheet({
           + Add {tab === "saw-cut" ? "saw cut" : tab === "core-hole" ? "core hole" : "other-rate line"}
         </button>
       ) : null}
+
+      {onCuttingNotesChange ? (
+        <div style={{ marginTop: 16 }}>
+          <NotesField
+            label="Cutting notes"
+            value={cuttingNotes ?? null}
+            onSave={(v) => onCuttingNotesChange(v)}
+            disabled={!canManage}
+            placeholder="Shared notes for this card's cutting subtable (visible across all 3 tabs)…"
+          />
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -304,37 +324,6 @@ function WbsCell({ item, wbsRefs, canManage, patch }: { item: CuttingItem; wbsRe
         <option key={r} value={r}>{r}</option>
       ))}
     </select>
-  );
-}
-
-function NotesRow({
-  item,
-  canManage,
-  patch,
-  colSpan
-}: {
-  item: CuttingItem;
-  canManage: boolean;
-  patch: RowProps["patch"];
-  colSpan: number;
-}) {
-  return (
-    <tr>
-      <td colSpan={colSpan} style={{ padding: "0 6px 6px" }}>
-        <textarea
-          className="s7-input"
-          placeholder="Notes"
-          defaultValue={item.notes ?? ""}
-          disabled={!canManage}
-          rows={2}
-          style={{ width: "100%", minHeight: 40, resize: "vertical" }}
-          onBlur={(e) => {
-            const v = e.target.value;
-            if (v !== (item.notes ?? "")) void patch(item.id, { notes: v });
-          }}
-        />
-      </td>
-    </tr>
   );
 }
 
@@ -486,7 +475,6 @@ function SawCutTable({ items, wbsRefs, canManage, patch, remove }: RowProps) {
                   ) : null}
                 </td>
               </tr>
-              <NotesRow item={item} canManage={canManage} patch={patch} colSpan={headers.length} />
             </Fragment>
           );
         })}
@@ -632,7 +620,6 @@ function CoreHoleTable({ items, wbsRefs, canManage, patch, remove }: RowProps) {
                   ) : null}
                 </td>
               </tr>
-              <NotesRow item={item} canManage={canManage} patch={patch} colSpan={headers.length} />
             </Fragment>
           );
         })}
@@ -713,7 +700,6 @@ function OtherRateTable({
                   ) : null}
                 </td>
               </tr>
-              <NotesRow item={item} canManage={canManage} patch={patch} colSpan={headers.length} />
             </Fragment>
           );
         })}

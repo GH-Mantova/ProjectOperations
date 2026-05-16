@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-16 22:40 AEST
+Last updated: 2026-05-16 23:03 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -4670,5 +4670,85 @@ Follow-up items (carried forward to B3):
 
 No schema changes. No migration. No env vars. No new dependencies.
 Rollback is a clean git revert — tender totals revert with it.
+
+Audit findings: none.
+
+## 2026-05-17 — PR B1.7.2 — Hotfix: remove waste from scope item total + align /scope/summary
+
+Branch: fix/scope-item-totals-b1-7-2
+Section: Tendering scope-of-works UI redesign — B1.7.1 hotfix
+
+Two bugs caught in B1.7.1 smoke:
+
+### Bug A — Waste contributing to scope item total
+B1.7.1 mistakenly added (value × tonRate) to computeScopeItemTotal's
+lineTotal when wasteIncluded && unit==="t". Per the design doc,
+waste belongs to the auto-generated waste summary subtable —
+scope items themselves should NEVER reflect waste $.
+
+Fix: stripped the waste leg entirely from scope-item-pricing.ts.
+ScopeItemTotals dropped its `waste` field. ScopeItemPricingInput
+dropped unit / value / wasteIncluded / wasteGroup / wasteItem (none
+feed labour/plant). The pure formula is now just:
+  labour    = (men ?? 0) × (days ?? 0) × labourRate
+  plant     = Σ (qty ?? 1) × (days ?? 0) × plant.rate
+  lineTotal = labour + plant   (Other → provisionalAmount)
+
+### Bug B — /scope/summary divergence
+After B1.7.1 attached per-row lineTotals on /scope/items, the
+collapsed item headers showed real $ but the card footer's
+"Subtotal" / "With markup" still showed $0 for canonical rows.
+
+Root cause: two independent code paths.
+  - /scope/items (scope-of-works.service.ts:listItems) — B1.7.1
+    used the new computeScopeItemTotal helper.
+  - /scope/summary (scope-redesign.controller.ts:128 → service:
+    summary) — separate path, still using legacy priceByItemId
+    (reads EstimateItem-linked rows only; canonical B1.6+ rows
+    have no estimateItemId → $0).
+
+Fix (Option X from the B1.7.2 investigation): re-pointed the
+per-discipline block in scope-redesign.service.ts:summary() to use
+the same computeScopeItemTotal helper. Cutting + waste subtable
+calcs + tenderPrice unchanged (their lineTotals are server-computed
+on CuttingSheetItem / ScopeWasteItem directly — independent paths
+with legitimate logic).
+
+To make this work cleanly, moved DEFAULT_ROLE_BY_DISCIPLINE +
+DISCIPLINE_ORDER + buildRateMaps + toPricingInput + decToNum from
+scope-of-works.service.ts into scope-item-pricing.ts (now both
+services import the same primitives).
+
+### Deprecations
+- scope-of-works.service.ts:computeEstimateItemPrices marked
+  @deprecated PR B1.7.2. listItems() no longer calls it.
+- scope-redesign.service.ts:computeEstimateItemPrices marked
+  @deprecated PR B1.7.2. summary() no longer calls it.
+Both kept in place — a separate cleanup PR will remove them once
+we're confident there are no remaining callers (none found in grep
+today, but leaving for safety).
+
+### Tender-total side effect
+Already flagged in B1.7.1: summary().tenderPrice rises for any
+tender with canonical (B1.6+) rows that were previously
+contributing $0. Same bug fix, same justification — the summary
+endpoint always claimed to include every scope item.
+
+### Verification
+- pnpm --filter api test: 515 passing (519 baseline − 4 waste-only
+  specs removed = 515); 6 skipped
+- pnpm --filter api exec tsc --noEmit: clean
+- pnpm --filter api lint: clean
+- pnpm --filter web test --run: 148 passing (unchanged)
+- pnpm --filter web exec tsc --noEmit: clean
+- pnpm --filter web lint: clean
+- pnpm --filter web build: clean
+
+No schema changes. No migration. No env vars. No new dependencies.
+Frontend unchanged.
+
+Carried forward (B3): proper waste calc on the dedicated subtable
+(was the original B1.7.1 follow-up; this hotfix just removes the
+wrong placement, doesn't add the correct one).
 
 Audit findings: none.

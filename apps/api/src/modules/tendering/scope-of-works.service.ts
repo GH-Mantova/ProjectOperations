@@ -13,11 +13,10 @@ import {
 import { assertRowTypeForDiscipline } from "./scope-redesign.service";
 
 const DEFAULT_ROLE_BY_DISCIPLINE: Record<Discipline, string> = {
-  SO: "Demolition labourer",
-  Str: "Demolition labourer",
-  Asb: "Asbestos labourer",
-  Civ: "Machine operator",
-  Prv: "Demolition labourer"
+  DEM: "Demolition labourer",
+  CIV: "Machine operator",
+  ASB: "Asbestos labourer",
+  Other: "Demolition labourer"
 };
 
 const DISCIPLINE_ORDER: Discipline[] = [...DISCIPLINES];
@@ -334,7 +333,7 @@ export class ScopeOfWorksService {
         title: scopeItem.description.length > 60 ? scopeItem.description.slice(0, 60) : scopeItem.description,
         description: scopeItem.notes ? `${scopeItem.description}\n\n${scopeItem.notes}` : scopeItem.description,
         markup: new Prisma.Decimal("30"),
-        isProvisional: discipline === "Prv"
+        isProvisional: discipline === "Other"
       }
     });
 
@@ -496,7 +495,7 @@ export class ScopeOfWorksService {
     await this.requireTender(tenderId);
     const created: Array<Awaited<ReturnType<typeof this.prisma.scopeOfWorksItem.create>>> = [];
     for (const proposal of items) {
-      const discipline = DISCIPLINE_ORDER.includes(proposal.code) ? proposal.code : ("SO" as Discipline);
+      const discipline = DISCIPLINE_ORDER.includes(proposal.code) ? proposal.code : ("DEM" as Discipline);
       const itemNumber = await this.nextItemNumber(tenderId, discipline);
       const wbsCode = `${discipline}${itemNumber}`;
 
@@ -585,10 +584,10 @@ function inferRowType(
   proposal: { estimatedLabourRole?: string; estimatedWasteTonnes?: Array<{ type: string }>; title: string }
 ): ScopeStatus | "demolition" | "cutting" | "asbestos" | "excavation" | "waste" | "general" {
   const title = proposal.title.toLowerCase();
-  if (discipline === "Asb") return "asbestos";
-  if (discipline === "Civ") return "excavation";
+  if (discipline === "ASB") return "asbestos";
+  if (discipline === "CIV") return "excavation";
   if (title.includes("saw") || title.includes("cut") || title.includes("core")) return "cutting";
   if ((proposal.estimatedWasteTonnes?.length ?? 0) > 0 && title.includes("dispos")) return "waste";
-  if (discipline === "SO" || discipline === "Str") return "demolition";
+  if (discipline === "DEM") return "demolition";
   return "general";
 }

@@ -326,7 +326,7 @@ function drawCoverPage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay | null)
     overlayTotal = overlay.clientFacingTotal;
   } else {
     for (const d of DISCIPLINE_ORDER) {
-      if (d === "Prv") continue;
+      if (d === "Other") continue;
       const bucket = p.summary[d];
       if (!bucket || (bucket.itemCount === 0 && bucket.withMarkup === 0)) continue;
       nonProv.push({ code: d, label: DISCIPLINE_LABEL[d], amount: bucket.withMarkup });
@@ -410,9 +410,9 @@ function drawCoverPage(doc: Doc, p: ExportPayload, overlay: QuoteOverlay | null)
   }
 
   // Provisional sums table. With overlay we prefer the estimator's
-  // curated provisional lines; without overlay we fall back to Prv scope
-  // items (legacy behaviour).
-  const provScopeItems = p.scopeItems.filter((i) => i.discipline === "Prv");
+  // curated provisional lines; without overlay we fall back to Other-discipline
+  // scope items (post-PR-A1: provisional sums live under the Other discipline).
+  const provScopeItems = p.scopeItems.filter((i) => i.discipline === "Other");
   const useOverlayProv = overlay && overlay.showProvisional && overlay.provisionalLines.length > 0;
   const provItems = useOverlayProv
     ? overlay.provisionalLines.map((l, idx) => ({

@@ -41,7 +41,7 @@ export class ScopeOfWorksController {
   @Get("items")
   @RequirePermissions("estimates.view")
   @ApiOperation({
-    summary: "List scope items sorted SO → Str → Asb → Civ → Prv with per-discipline summary totals."
+    summary: "List scope items sorted DEM → CIV → ASB → Other with per-discipline summary totals."
   })
   list(@Param("tenderId") tenderId: string) {
     return this.service.listItems(tenderId);

@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-15 23:26 AEST
+Last updated: 2026-05-16 02:37 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -428,6 +428,30 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
 ---
 
 ## PHASE 6 — DEFERRED FROM CHAIN (tech debt)
+
+✅  Discipline migration from 5-code to 4-code system (PR A1) — 2026-05-16
+    Closed by PR A1 of the scope-of-works redesign chain (see
+    docs/Designs/scope-of-works-redesign.md). Collapsed the legacy 5-code
+    discipline system (SO/Str/Asb/Civ/Prv) into the canonical 4-code
+    system (DEM/CIV/ASB/Other). SO and Str both merged into DEM (the
+    unified demolition umbrella); Asb→ASB, Civ→CIV, Prv→Other (broader
+    than provisional sums — covers PS, cost options, adjustments).
+    Source of truth: apps/api/src/modules/personas/definitions/disciplines.ts.
+    Data migration: 20260516000000_chore_discipline_code_migration covers
+    all 5 discipline-bearing tables (scope_of_works_items, scope_waste_items,
+    scope_view_configs, claim_line_items, gantt_tasks). Idempotent. The
+    new test file discipline-codes.spec.ts (8 tests) is the regression
+    guard for the migration's constants and persona prompt vocabulary.
+    Frontend scope was Option B: tendering UI updated in this PR, the
+    Projects-side ProjectDetailPage.tsx Jobs dropdown deferred to a
+    follow-up A1.5.
+
+⏸️  PR A1.5 — Migrate ProjectDetailPage Jobs-side discipline dropdown
+    apps/web/src/pages/projects/ProjectDetailPage.tsx:1468-1472 still
+    contains a `<select>` with legacy values "SO" / "Str" / "Asb" / "Civ"
+    / "Prv". This is the Projects-side discipline surface, separate from
+    the Tendering surfaces covered by PR A1. Migrate to DEM/CIV/ASB/Other
+    immediately after PR A1 lands. Single-file PR.
 
 ✅  Rate-fabrication prohibition precedence hardening — closed by PR #161
     Completed in PR #161 (2026-05-16). Pre-demo safety hardening.

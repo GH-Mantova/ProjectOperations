@@ -31,11 +31,10 @@ const COLUMNS_BY_ROW_TYPE: Record<string, string[]> = {
 
 // Row-type × discipline matrix (server-authoritative).
 const ROW_TYPES_BY_DISCIPLINE: Record<Discipline, string[]> = {
-  SO: ["demolition", "waste-disposal", "plant-only", "general-labour", "cutting"],
-  Str: ["demolition", "waste-disposal", "plant-only", "general-labour", "cutting"],
-  Asb: ["asbestos-removal", "enclosure", "waste-disposal", "plant-only", "general-labour"],
-  Civ: ["excavation", "earthworks", "waste-disposal", "plant-only", "general-labour", "cutting"],
-  Prv: ["waste-disposal", "plant-only", "general-labour", "cutting"]
+  DEM: ["demolition", "waste-disposal", "plant-only", "general-labour", "cutting"],
+  CIV: ["excavation", "earthworks", "waste-disposal", "plant-only", "general-labour", "cutting"],
+  ASB: ["asbestos-removal", "enclosure", "waste-disposal", "plant-only", "general-labour"],
+  Other: ["waste-disposal", "plant-only", "general-labour", "cutting"]
 };
 
 // Legacy aliases acceptable on any discipline the matrix allows.
@@ -504,7 +503,7 @@ export class ScopeRedesignService {
     // provisional sum by definition.
     for (const d of DISCIPLINES) {
       perDiscipline[d].withMarkup =
-        d === "Prv" ? perDiscipline[d].subtotal : perDiscipline[d].subtotal * (1 + markup / 100);
+        d === "Other" ? perDiscipline[d].subtotal : perDiscipline[d].subtotal * (1 + markup / 100);
     }
 
     const cuttingItems = await this.prisma.cuttingSheetItem.findMany({

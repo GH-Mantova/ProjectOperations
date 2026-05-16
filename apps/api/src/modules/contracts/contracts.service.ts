@@ -7,7 +7,8 @@ import { NotificationsService } from "../platform/notifications.service";
 import { adjustToPrecedingWorkday } from "./public-holidays";
 
 const CONTRACT_SEQ_ID = 1;
-const DISCIPLINE_ORDER = ["SO", "Str", "Asb", "Civ", "Prv"] as const;
+// PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
+const DISCIPLINE_ORDER = ["DEM", "CIV", "ASB", "Other"] as const;
 
 type Actor = { id: string; permissions: ReadonlySet<string> };
 
@@ -508,7 +509,7 @@ export class ContractsService {
       select: { discipline: true, estimateItemId: true, provisionalAmount: true }
     });
     const estimateItemIds = items
-      .filter((i) => i.discipline !== "Prv")
+      .filter((i) => i.discipline !== "Other")
       .map((i) => i.estimateItemId)
       .filter((id): id is string => !!id);
     const estimateItems = await this.prisma.estimateItem.findMany({
@@ -535,14 +536,14 @@ export class ContractsService {
       .then((e) => (e ? Number(e.markup) : 30));
     const out: Record<string, number> = {};
     for (const i of items) {
-      if (i.discipline === "Prv") {
-        out.Prv = (out.Prv ?? 0) + (i.provisionalAmount ? Number(i.provisionalAmount) : 0);
+      if (i.discipline === "Other") {
+        out.Other = (out.Other ?? 0) + (i.provisionalAmount ? Number(i.provisionalAmount) : 0);
       } else if (i.estimateItemId) {
         out[i.discipline] = (out[i.discipline] ?? 0) + (priceByItem.get(i.estimateItemId) ?? 0);
       }
     }
     for (const d of Object.keys(out)) {
-      if (d !== "Prv") out[d] = out[d] * (1 + markup / 100);
+      if (d !== "Other") out[d] = out[d] * (1 + markup / 100);
     }
     return out;
   }
@@ -566,16 +567,14 @@ function formatDate(d: Date): string {
 
 function describeDiscipline(code: string): string {
   switch (code) {
-    case "SO":
-      return "Strip-outs";
-    case "Str":
-      return "Structural demolition";
-    case "Asb":
-      return "Asbestos removal";
-    case "Civ":
+    case "DEM":
+      return "Demolition";
+    case "CIV":
       return "Civil works";
-    case "Prv":
-      return "Provisional sums";
+    case "ASB":
+      return "Asbestos removal";
+    case "Other":
+      return "Other (provisional sums, options, adjustments)";
     default:
       return code;
   }

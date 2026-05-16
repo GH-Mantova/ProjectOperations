@@ -1,6 +1,9 @@
 import type { ReactNode } from "react";
 
-export const DISCIPLINES = ["SO", "Str", "Asb", "Civ", "Prv"] as const;
+// PR A1 (2026-05-16) — discipline codes migrated from the legacy 5-code
+// system (SO/Str/Asb/Civ/Prv) to the canonical 4-code system
+// (DEM/CIV/ASB/Other). SO and Str both collapsed into DEM; Prv became Other.
+export const DISCIPLINES = ["DEM", "CIV", "ASB", "Other"] as const;
 export type Discipline = (typeof DISCIPLINES)[number];
 
 type DisciplineMeta = {
@@ -9,11 +12,10 @@ type DisciplineMeta = {
 };
 
 export const DISCIPLINE_META: Record<Discipline, DisciplineMeta> = {
-  SO: { long: "Strip-outs", accent: "#94A3B8" },
-  Str: { long: "Structural", accent: "#3B82F6" },
-  Asb: { long: "Asbestos", accent: "#F59E0B" },
-  Civ: { long: "Civil", accent: "#22C55E" },
-  Prv: { long: "Provisional", accent: "#9CA3AF" }
+  DEM: { long: "Demolition", accent: "#3B82F6" },
+  CIV: { long: "Civil", accent: "#22C55E" },
+  ASB: { long: "Asbestos", accent: "#F59E0B" },
+  Other: { long: "Other", accent: "#9CA3AF" }
 };
 
 export type DisciplineStat = {

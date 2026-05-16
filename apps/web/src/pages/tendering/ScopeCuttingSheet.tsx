@@ -118,7 +118,7 @@ export function ScopeCuttingSheet({
   }, [load, wbsKey]);
 
   // Discipline is inferred from the scope wbs refs passed in by the parent
-  // (e.g. ["SO1","SO2"] → "SO"). Fallback to null when the parent supplies
+  // (e.g. ["DEM1","DEM2"] → "DEM"). Fallback to null when the parent supplies
   // no refs — in that case we show everything so the sheet still works
   // during tender setup before any scope items exist.
   const discipline = useMemo(() => {

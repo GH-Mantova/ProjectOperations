@@ -1281,7 +1281,7 @@ async function main() {
 
     // ── IS-T020 — Brisbane Grammar School demo tender ──────────────────────
     // Walk-through tender for the Monday presentation. Has scope across all
-    // five disciplines (SO/Str/Asb/Civ/Prv), a ClientQuote with cost lines,
+    // four disciplines (DEM/CIV/ASB/Other), a ClientQuote with cost lines,
     // multiple clarifications using the new typed log, and a follow-up.
     const bgsClient = await prisma.client.upsert({
       where: { name: "Brisbane Grammar School" },
@@ -1489,8 +1489,8 @@ async function main() {
         {
           tenderId: bgsTender.id,
           createdById: estimatorUser.id,
-          wbsCode:"SO1",
-          discipline: "SO",
+          wbsCode:"DEM1",
+          discipline: "DEM",
           itemNumber: 1,
           rowType: "demolition",
           description: "Strip-out internal partitions, ceilings, and joinery to Level 1",
@@ -1505,8 +1505,8 @@ async function main() {
         {
           tenderId: bgsTender.id,
           createdById: estimatorUser.id,
-          wbsCode:"SO2",
-          discipline: "SO",
+          wbsCode:"DEM2",
+          discipline: "DEM",
           itemNumber: 2,
           rowType: "demolition",
           description: "Carpet uplift + skirting removal — corridors and offices",
@@ -1521,8 +1521,8 @@ async function main() {
         {
           tenderId: bgsTender.id,
           createdById: estimatorUser.id,
-          wbsCode:"Str1",
-          discipline: "Str",
+          wbsCode:"DEM3",
+          discipline: "DEM",
           itemNumber: 1,
           rowType: "demolition",
           description: "Demolish internal masonry walls — non-load-bearing",
@@ -1538,8 +1538,8 @@ async function main() {
         {
           tenderId: bgsTender.id,
           createdById: estimatorUser.id,
-          wbsCode: "Asb1",
-          discipline: "Asb",
+          wbsCode: "ASB1",
+          discipline: "ASB",
           itemNumber: 1,
           rowType: "asbestos",
           description:
@@ -1564,8 +1564,8 @@ async function main() {
         {
           tenderId: bgsTender.id,
           createdById: estimatorUser.id,
-          wbsCode: "Asb2",
-          discipline: "Asb",
+          wbsCode: "ASB2",
+          discipline: "ASB",
           itemNumber: 2,
           rowType: "asbestos",
           description:
@@ -1587,8 +1587,8 @@ async function main() {
         {
           tenderId: bgsTender.id,
           createdById: estimatorUser.id,
-          wbsCode:"Civ1",
-          discipline: "Civ",
+          wbsCode:"CIV1",
+          discipline: "CIV",
           itemNumber: 1,
           rowType: "excavation",
           description: "Trench excavation for new services — eastern corridor",
@@ -1605,8 +1605,8 @@ async function main() {
         {
           tenderId: bgsTender.id,
           createdById: estimatorUser.id,
-          wbsCode:"Prv1",
-          discipline: "Prv",
+          wbsCode:"OTH1",
+          discipline: "Other",
           itemNumber: 1,
           rowType: "provisional",
           description: "Provisional sum — unknown ACM discovery during strip-out",
@@ -3149,30 +3149,30 @@ async function seedGlobalLists(prisma: PrismaClient, adminUserId: string) {
       name: "Scope row types",
       description: "Row types shown in the Scope of Works editor, filtered by discipline.",
       items: [
-        { value: "demolition", label: "Demolition", metadata: { disciplines: ["SO", "Str"] } },
-        { value: "asbestos-removal", label: "Asbestos removal", metadata: { disciplines: ["Asb"] } },
-        { value: "enclosure", label: "Enclosure", metadata: { disciplines: ["Asb"] } },
-        { value: "excavation", label: "Excavation", metadata: { disciplines: ["Civ"] } },
-        { value: "earthworks", label: "Earthworks", metadata: { disciplines: ["Civ"] } },
+        { value: "demolition", label: "Demolition", metadata: { disciplines: ["DEM"] } },
+        { value: "asbestos-removal", label: "Asbestos removal", metadata: { disciplines: ["ASB"] } },
+        { value: "enclosure", label: "Enclosure", metadata: { disciplines: ["ASB"] } },
+        { value: "excavation", label: "Excavation", metadata: { disciplines: ["CIV"] } },
+        { value: "earthworks", label: "Earthworks", metadata: { disciplines: ["CIV"] } },
         {
           value: "waste-disposal",
           label: "Waste/Disposal",
-          metadata: { disciplines: ["SO", "Str", "Asb", "Civ", "Prv"] }
+          metadata: { disciplines: ["DEM", "CIV", "ASB", "Other"] }
         },
         {
           value: "plant-only",
           label: "Plant only",
-          metadata: { disciplines: ["SO", "Str", "Asb", "Civ", "Prv"] }
+          metadata: { disciplines: ["DEM", "CIV", "ASB", "Other"] }
         },
         {
           value: "general-labour",
           label: "General/Labour",
-          metadata: { disciplines: ["SO", "Str", "Asb", "Civ", "Prv"] }
+          metadata: { disciplines: ["DEM", "CIV", "ASB", "Other"] }
         },
         {
           value: "cutting",
           label: "Cutting (see cutting sheet)",
-          metadata: { disciplines: ["SO", "Str", "Civ", "Prv"] }
+          metadata: { disciplines: ["DEM", "CIV", "Other"] }
         }
       ]
     },

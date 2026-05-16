@@ -61,14 +61,14 @@ describe("ProposalsService.storeProposals", () => {
     await service.storeProposals("conv-1", "toolu_X", {
       proposals: [
         {
-          discipline: "demolition",
+          discipline: "DEM",
           title: "T1",
           description: "D1",
           quantity: 100,
           unit: "sqm"
         },
         {
-          discipline: "asbestos",
+          discipline: "ASB",
           title: "T2",
           description: "D2",
           quantity: 50,
@@ -109,7 +109,7 @@ describe("ProposalsService.acceptProposal", () => {
         proposals: overrides.proposals ?? [
           {
             index: 0,
-            discipline: "demolition",
+            discipline: "DEM",
             title: "Internal demo L1",
             description: "Scope details",
             quantity: 250,
@@ -132,7 +132,7 @@ describe("ProposalsService.acceptProposal", () => {
       data?: Record<string, unknown>;
     };
     expect(data.data?.tenderId).toBe("tender-1");
-    expect(data.data?.discipline).toBe("SO");
+    expect(data.data?.discipline).toBe("DEM");
     expect(data.data?.aiProposed).toBe(true);
     expect(data.data?.measurementUnit).toBe("sqm");
 
@@ -157,11 +157,12 @@ describe("ProposalsService.acceptProposal", () => {
     expect(data.data?.measurementUnit).toBe("m2");
   });
 
-  it("maps demolition→SO, asbestos→Asb, civil→Civ disciplines", async () => {
+  it("persists discipline verbatim (DEM/CIV/ASB/Other) — no translation needed post-PR-A1", async () => {
     for (const [aiDisc, internal] of [
-      ["demolition", "SO"],
-      ["asbestos", "Asb"],
-      ["civil", "Civ"]
+      ["DEM", "DEM"],
+      ["ASB", "ASB"],
+      ["CIV", "CIV"],
+      ["Other", "Other"]
     ] as const) {
       const { prisma, mocks } = buildPrismaMock();
       mocks.conversationMessageFindUnique.mockResolvedValueOnce(

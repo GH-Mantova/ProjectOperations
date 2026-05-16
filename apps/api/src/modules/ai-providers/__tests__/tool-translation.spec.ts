@@ -41,16 +41,17 @@ describe("toolsToOpenAIFormat", () => {
 });
 
 describe("propose_scope_items tool schema", () => {
-  it("constrains discipline to demolition/asbestos/civil only", () => {
+  it("constrains discipline to DEM/CIV/ASB/Other (PR A1)", () => {
     const itemsSchema = (
       proposeScopeItemsTool.inputSchema.properties.proposals as {
         items?: { properties?: { discipline?: { enum?: string[] } } };
       }
     ).items;
     expect(itemsSchema?.properties?.discipline?.enum).toEqual([
-      "demolition",
-      "asbestos",
-      "civil"
+      "DEM",
+      "CIV",
+      "ASB",
+      "Other"
     ]);
   });
 

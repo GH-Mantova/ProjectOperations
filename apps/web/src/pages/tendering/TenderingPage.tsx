@@ -109,7 +109,8 @@ const PROBABILITY_COLOR: Record<ProbabilityBucket, string> = {
   Cold: "#E2E8F0"
 };
 
-const DISCIPLINES = ["SO", "Str", "Asb", "Civ", "Prv"] as const;
+// PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
+const DISCIPLINES = ["DEM", "CIV", "ASB", "Other"] as const;
 type Discipline = (typeof DISCIPLINES)[number];
 
 type ColumnKey =

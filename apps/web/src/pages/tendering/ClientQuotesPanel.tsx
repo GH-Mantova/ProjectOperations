@@ -1892,7 +1892,7 @@ function QuoteScopeTab({
   };
 
   // PR B FIX 3 — grouped drag reorder. Each discipline group is its own
-  // sortable scope, so a drag inside SO can never bleed into Asb rows. We
+  // sortable scope, so a drag inside DEM can never bleed into ASB rows. We
   // splice the reordered group back into the master rows array at the
   // positions the group originally occupied to keep the global sortOrder
   // contiguous before PATCHing the server.

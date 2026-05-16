@@ -22,7 +22,7 @@ class AcceptProposalDto {
 
   @IsOptional()
   @IsString()
-  discipline?: "demolition" | "asbestos" | "civil";
+  discipline?: "DEM" | "CIV" | "ASB" | "Other";
 
   @IsOptional() @IsString() title?: string;
   @IsOptional() @IsString() description?: string;

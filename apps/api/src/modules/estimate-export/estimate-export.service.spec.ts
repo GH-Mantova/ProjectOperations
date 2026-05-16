@@ -16,11 +16,10 @@ function makeDecimal(v: number) {
 
 function baseSummary() {
   return {
-    SO: { itemCount: 0, subtotal: 0, withMarkup: 0 },
-    Str: { itemCount: 0, subtotal: 0, withMarkup: 0 },
-    Asb: { itemCount: 0, subtotal: 0, withMarkup: 0 },
-    Civ: { itemCount: 0, subtotal: 0, withMarkup: 0 },
-    Prv: { itemCount: 0, subtotal: 0, withMarkup: 0 },
+    DEM: { itemCount: 0, subtotal: 0, withMarkup: 0 },
+    CIV: { itemCount: 0, subtotal: 0, withMarkup: 0 },
+    ASB: { itemCount: 0, subtotal: 0, withMarkup: 0 },
+    Other: { itemCount: 0, subtotal: 0, withMarkup: 0 },
     cutting: { itemCount: 0, subtotal: 0 },
     tenderPrice: 0
   };
@@ -87,8 +86,8 @@ function scopeItem(partial: Partial<{
 }> = {}) {
   return {
     id: partial.id ?? "s-1",
-    wbsCode: partial.wbsCode ?? "SO1",
-    discipline: partial.discipline ?? "SO",
+    wbsCode: partial.wbsCode ?? "DEM1",
+    discipline: partial.discipline ?? "DEM",
     rowType: partial.rowType ?? "demolition",
     description: partial.description ?? "Strip out level 1",
     itemNumber: partial.itemNumber ?? 1,
@@ -156,17 +155,17 @@ describe("EstimateExportService.fetchTenderForExport", () => {
     expect(payload.tender.estimator?.firstName).toBe("Raj");
   });
 
-  it("sorts scope items SO → Str → Asb → Civ → Prv by discipline", async () => {
+  it("sorts scope items DEM → CIV → ASB → Other by discipline", async () => {
     const tender = baseTender({
       scopeItems: [
-        scopeItem({ id: "a", discipline: "Civ", wbsCode: "Civ1" }),
-        scopeItem({ id: "b", discipline: "SO", wbsCode: "SO1" }),
-        scopeItem({ id: "c", discipline: "Asb", wbsCode: "Asb1" }),
-        scopeItem({ id: "d", discipline: "Str", wbsCode: "Str1" }),
+        scopeItem({ id: "a", discipline: "CIV", wbsCode: "CIV1" }),
+        scopeItem({ id: "b", discipline: "DEM", wbsCode: "DEM1" }),
+        scopeItem({ id: "c", discipline: "ASB", wbsCode: "ASB1" }),
+        scopeItem({ id: "d", discipline: "DEM", wbsCode: "DEM2" }),
         scopeItem({
           id: "e",
-          discipline: "Prv",
-          wbsCode: "Prv1",
+          discipline: "Other",
+          wbsCode: "OTH1",
           provisionalAmount: makeDecimal(2500)
         })
       ]
@@ -174,7 +173,7 @@ describe("EstimateExportService.fetchTenderForExport", () => {
     const svc = makeService(tender);
     const payload = await svc.fetchTenderForExport("t-1");
     const disciplines = payload.scopeItems.map((i) => i.discipline);
-    expect(disciplines).toEqual(["SO", "Str", "Asb", "Civ", "Prv"]);
+    expect(disciplines).toEqual(["DEM", "DEM", "CIV", "ASB", "Other"]);
   });
 
   it("buckets cutting items into sawCuts / coreHoles / otherRates and flags POA for >650mm core holes", async () => {
@@ -269,30 +268,30 @@ describe("EstimateExportService.fetchTenderForExport", () => {
   it("reuses ScopeRedesignService.summary for the cost summary (no local recalculation)", async () => {
     const summary = {
       ...baseSummary(),
-      SO: { itemCount: 2, subtotal: 10000, withMarkup: 13000 },
-      Str: { itemCount: 1, subtotal: 5000, withMarkup: 6500 },
+      DEM: { itemCount: 2, subtotal: 10000, withMarkup: 13000 },
+      CIV: { itemCount: 1, subtotal: 5000, withMarkup: 6500 },
       cutting: { itemCount: 3, subtotal: 2400 },
       tenderPrice: 21900
     };
     const svc = makeService(baseTender(), summary);
     const payload = await svc.fetchTenderForExport("t-1");
-    expect(payload.summary.SO.withMarkup).toBe(13000);
-    expect(payload.summary.Str.withMarkup).toBe(6500);
+    expect(payload.summary.DEM.withMarkup).toBe(13000);
+    expect(payload.summary.CIV.withMarkup).toBe(6500);
     expect(payload.summary.cutting.subtotal).toBe(2400);
     expect(payload.summary.tenderPrice).toBe(21900);
   });
 
-  it("exposes DISCIPLINE_ORDER in the canonical SO-Str-Asb-Civ-Prv sequence", () => {
-    expect([...DISCIPLINE_ORDER]).toEqual(["SO", "Str", "Asb", "Civ", "Prv"]);
+  it("exposes DISCIPLINE_ORDER in the canonical DEM-CIV-ASB-Other sequence", () => {
+    expect([...DISCIPLINE_ORDER]).toEqual(["DEM", "CIV", "ASB", "Other"]);
   });
 
   it("pipes the payload through buildQuotePdf without throwing (integration smoke)", async () => {
     const tender = baseTender({
-      scopeItems: [scopeItem({ discipline: "SO", wbsCode: "SO1", description: "Strip out" })]
+      scopeItems: [scopeItem({ discipline: "DEM", wbsCode: "DEM1", description: "Strip out" })]
     });
     const summary = {
       ...baseSummary(),
-      SO: { itemCount: 1, subtotal: 1000, withMarkup: 1300 },
+      DEM: { itemCount: 1, subtotal: 1000, withMarkup: 1300 },
       tenderPrice: 1300
     };
     const svc = makeService(tender, summary);
@@ -305,11 +304,11 @@ describe("EstimateExportService.fetchTenderForExport", () => {
 
   it("pipes the payload through buildEstimateExcel without throwing (integration smoke)", async () => {
     const tender = baseTender({
-      scopeItems: [scopeItem({ discipline: "SO", wbsCode: "SO1", description: "Strip out" })]
+      scopeItems: [scopeItem({ discipline: "DEM", wbsCode: "DEM1", description: "Strip out" })]
     });
     const summary = {
       ...baseSummary(),
-      SO: { itemCount: 1, subtotal: 1000, withMarkup: 1300 },
+      DEM: { itemCount: 1, subtotal: 1000, withMarkup: 1300 },
       tenderPrice: 1300
     };
     const svc = makeService(tender, summary);

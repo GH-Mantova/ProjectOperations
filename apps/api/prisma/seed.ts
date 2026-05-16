@@ -11,6 +11,7 @@ import {
   seedSafetyDemos
 } from "./seed-initial-services";
 import { seedFormTemplates } from "./seed-form-templates";
+import { SCOPE_CARD_DEFAULTS } from "../src/modules/tendering/scope/card-defaults";
 
 const databaseUrl =
   process.env.DATABASE_URL ??
@@ -1481,13 +1482,36 @@ async function main() {
 
     await persistMockFileBytes(bgsDrawingFileItemId, bgsDrawingBytes);
 
-    // Scope items across all 5 disciplines — tight rows that demonstrate
-    // each discipline's row-type fields without flooding the table.
+    // Scope cards (PR A2) — one per discipline that has items. Created
+    // BEFORE scope items so each item's cardId can reference the parent
+    // card. Deterministic IDs keep the seed idempotent.
     await prisma.scopeOfWorksItem.deleteMany({ where: { tenderId: bgsTender.id } });
+    await prisma.scopeCard.deleteMany({ where: { tenderId: bgsTender.id } });
+    const cardIdByDiscipline = Object.fromEntries(
+      SCOPE_CARD_DEFAULTS.map((c) => [c.discipline, `${bgsTender.id}-card-${c.discipline}`])
+    ) as Record<(typeof SCOPE_CARD_DEFAULTS)[number]["discipline"], string>;
+    const bgsCardDemId = cardIdByDiscipline.DEM;
+    const bgsCardCivId = cardIdByDiscipline.CIV;
+    const bgsCardAsbId = cardIdByDiscipline.ASB;
+    const bgsCardOtherId = cardIdByDiscipline.Other;
+    await prisma.scopeCard.createMany({
+      data: SCOPE_CARD_DEFAULTS.map((c) => ({
+        id: cardIdByDiscipline[c.discipline],
+        tenderId: bgsTender.id,
+        name: c.name,
+        discipline: c.discipline,
+        sortOrder: c.sortOrder,
+        createdById: estimatorUser.id
+      }))
+    });
+
+    // Scope items across all 4 disciplines — tight rows that demonstrate
+    // each discipline's row-type fields without flooding the table.
     await prisma.scopeOfWorksItem.createMany({
       data: [
         {
           tenderId: bgsTender.id,
+          cardId: bgsCardDemId,
           createdById: estimatorUser.id,
           wbsCode:"DEM1",
           discipline: "DEM",
@@ -1504,6 +1528,7 @@ async function main() {
         },
         {
           tenderId: bgsTender.id,
+          cardId: bgsCardDemId,
           createdById: estimatorUser.id,
           wbsCode:"DEM2",
           discipline: "DEM",
@@ -1520,6 +1545,7 @@ async function main() {
         },
         {
           tenderId: bgsTender.id,
+          cardId: bgsCardDemId,
           createdById: estimatorUser.id,
           wbsCode:"DEM3",
           discipline: "DEM",
@@ -1537,6 +1563,7 @@ async function main() {
         },
         {
           tenderId: bgsTender.id,
+          cardId: bgsCardAsbId,
           createdById: estimatorUser.id,
           wbsCode: "ASB1",
           discipline: "ASB",
@@ -1563,6 +1590,7 @@ async function main() {
         },
         {
           tenderId: bgsTender.id,
+          cardId: bgsCardAsbId,
           createdById: estimatorUser.id,
           wbsCode: "ASB2",
           discipline: "ASB",
@@ -1586,6 +1614,7 @@ async function main() {
         },
         {
           tenderId: bgsTender.id,
+          cardId: bgsCardCivId,
           createdById: estimatorUser.id,
           wbsCode:"CIV1",
           discipline: "CIV",
@@ -1604,6 +1633,7 @@ async function main() {
         },
         {
           tenderId: bgsTender.id,
+          cardId: bgsCardOtherId,
           createdById: estimatorUser.id,
           wbsCode:"OTH1",
           discipline: "Other",

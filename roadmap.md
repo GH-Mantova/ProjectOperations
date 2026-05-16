@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-16 04:05 AEST
+Last updated: 2026-05-16 05:28 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -445,6 +445,26 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     Frontend scope was Option B: tendering UI updated in this PR, the
     Projects-side ProjectDetailPage.tsx Jobs dropdown deferred to a
     follow-up A1.5.
+
+✅  PR A2 — ScopeCard schema foundation (2026-05-16)
+    Added scope_cards table + card_id FKs on scope_of_works_items,
+    scope_waste_items, cutting_sheet_items. One card per (tenderId,
+    discipline) pair created by the data migration; all existing items
+    linked (4 cards / 7 items / 0 orphans on dev DB). Schema-only —
+    services continue reading ScopeOfWorksItem.discipline as authoritative
+    (per Path 3 of the Q5 decision). New helper
+    apps/api/src/modules/tendering/scope/card-defaults.ts exports the
+    discipline → card-name + sortOrder mapping used by both the seed and
+    the data migration's CASE block.
+
+⏸️  PR A2.5 — Migrate services to card.discipline + drop ScopeOfWorksItem.discipline
+    Service-layer refactor: ~6 services (scope-redesign, scope-of-works,
+    proposals, tendering, scope-waste, quote-scope-items) currently read
+    `i.discipline` on scope items and use `where: { tenderId, discipline }`
+    Prisma queries. Migrate each to read `i.card.discipline` (or join
+    through cardId). After all reads migrated, drop the discipline column
+    from ScopeOfWorksItem. ~25-30 sites. Moderate risk. Schedule after
+    PR B1/B2/B3 land so UI smoke validates the schema first.
 
 ✅  PR A1.5 — Projects-side discipline dropdown migration (2026-05-16)
     Migrated apps/web/src/pages/projects/ProjectDetailPage.tsx:1468-1472

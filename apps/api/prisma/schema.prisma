@@ -87,6 +87,7 @@ model User {
   sentQuoteEmails            QuoteEmail[]              @relation("QuoteEmailSentBy")
   tenderFilterPresets        TenderFilterPreset[]
   scopeWasteItemsCreated     ScopeWasteItem[]          @relation("ScopeWasteItemCreatedBy")
+  scopeCardsCreated          ScopeCard[]               @relation("ScopeCardCreatedBy")
   subcontractorsCreated      SubcontractorSupplier[]   @relation("SubcontractorCreatedBy")
   subcontractorDocsUploaded  SubcontractorDocument[]   @relation("SubDocUploadedBy")
   creditAppsCreated          CreditApplication[]       @relation("CreditAppCreator")
@@ -715,6 +716,7 @@ model Tender {
   scopeRevisions     TenderScopeRevision[]
   scopeItems         ScopeOfWorksItem[]
   scopeHeader        ScopeOfWorksHeader?
+  scopeCards         ScopeCard[]
   estimateExports    EstimateExport[]
   projects           Project[]
   clarificationNotes TenderClarificationNote[]
@@ -2123,6 +2125,38 @@ model Timesheet {
   @@map("timesheets")
 }
 
+// ── Scope cards (PR A2, 2026-05-16) ──────────────────────────────────────
+// User-named groupings of scope items. Replaces the legacy fixed-discipline
+// card UI (5 hardcoded cards: SO/Str/Asb/Civ/Prv) with arbitrary user-named
+// cards tagged with the 4-code discipline system (DEM/CIV/ASB/Other). Each
+// card holds scope items, concrete cutting lines, and waste summary lines.
+//
+// Authoritative discipline ownership: the card's `discipline` field is the
+// canonical answer for "what discipline is this work?". After PR A2 lands,
+// PR A2.5 migrates queries to read `card.discipline` and drops
+// `ScopeOfWorksItem.discipline`. Until then, this PR keeps both in sync via
+// the data migration and leaves item.discipline as the read source for all
+// services.
+model ScopeCard {
+  id          String   @id @default(uuid())
+  tenderId    String   @map("tender_id")
+  tender      Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  name        String
+  discipline  String
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdById String   @map("created_by_id")
+  createdBy   User     @relation("ScopeCardCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  scopeItems   ScopeOfWorksItem[]
+  wasteItems   ScopeWasteItem[]
+  cuttingItems CuttingSheetItem[]
+
+  @@index([tenderId, sortOrder])
+  @@map("scope_cards")
+}
+
 // ── Scope of Works (PR #44) ───────────────────────────────────────────────
 // Interactive QS sheet — sits between the tender documents and the
 // estimate. Rows are discipline-typed and carry row-type-specific fields
@@ -2133,6 +2167,10 @@ model ScopeOfWorksItem {
   id           String  @id @default(uuid())
   tenderId     String  @map("tender_id")
   tender       Tender  @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  // PR A2 — parent card. Nullable during the transition; will be required
+  // after backfill completes and A2.5 migrates services off discipline.
+  cardId       String?    @map("card_id")
+  card         ScopeCard? @relation(fields: [cardId], references: [id], onDelete: SetNull)
   wbsCode      String  @map("wbs_code")
   discipline   String
   itemNumber   Int     @map("item_number")
@@ -2219,6 +2257,7 @@ model ScopeOfWorksItem {
 
   @@index([tenderId, discipline, itemNumber])
   @@index([tenderId, status])
+  @@index([cardId])
   @@map("scope_of_works_items")
 }
 
@@ -2231,6 +2270,9 @@ model ScopeWasteItem {
   id            String   @id @default(cuid())
   tenderId      String   @map("tender_id")
   tender        Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  // PR A2 — parent card (nullable during transition).
+  cardId        String?    @map("card_id")
+  card          ScopeCard? @relation(fields: [cardId], references: [id], onDelete: SetNull)
   discipline    String
   wbsRef        String?  @map("wbs_ref")
   description   String
@@ -2251,6 +2293,7 @@ model ScopeWasteItem {
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   @@index([tenderId, discipline])
+  @@index([cardId])
   @@map("scope_waste_items")
 }
 
@@ -2411,6 +2454,9 @@ model CuttingSheetItem {
   id           String            @id @default(cuid())
   tenderId     String            @map("tender_id")
   tender       Tender            @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  // PR A2 — parent card (nullable during transition).
+  cardId       String?           @map("card_id")
+  card         ScopeCard?        @relation(fields: [cardId], references: [id], onDelete: SetNull)
   wbsRef       String            @map("wbs_ref")
   description  String?
   itemType     String            @map("item_type") // saw-cut | core-hole
@@ -2439,6 +2485,7 @@ model CuttingSheetItem {
   updatedAt    DateTime          @updatedAt @map("updated_at")
 
   @@index([tenderId, itemType, sortOrder])
+  @@index([cardId])
   @@map("cutting_sheet_items")
 }
 

@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-16 04:05 AEST
+Last updated: 2026-05-16 05:28 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -3762,5 +3762,81 @@ or migrations.
 Demo readiness: the Projects-side discipline dropdown now uses the same
 DEM/CIV/ASB/Other vocabulary as Tendering. The full migration is now
 complete across both surfaces.
+
+Audit findings: none.
+
+## 2026-05-16 — PR A2 — ScopeCard schema foundation
+Type: PR (feat — schema additive + data migration)
+Branch: feat/scope-card-schema-foundation
+Status: OPENED
+
+First structural PR in the scope-of-works redesign chain
+(docs/Designs/scope-of-works-redesign.md). Introduces ScopeCard as the
+user-named grouping concept that will host scope items, cutting lines,
+and waste lines. PR A2 is schema-only (per Q6=A) — services continue
+reading ScopeOfWorksItem.discipline as authoritative. PR A2.5 (separate
+PR, scheduled after) migrates service queries to read card.discipline
+and drops ScopeOfWorksItem.discipline.
+
+Pre-flight CHECK 0 results:
+  - HEAD at 5e7ed3a (PR A1.5 merged)
+  - API 467 / web 132 baselines confirmed
+  - scope_of_works_items: 7 rows (IS-T020 seed). scope_waste_items + cutting_sheet_items: 0 rows
+  - Per-tender distribution: 1 tender × 4 disciplines = 4 cards to backfill
+  - Only @@unique involving discipline is ScopeViewConfig (line 2401, untouched per spec)
+
+Schema changes:
+  - New scope_cards table (id UUID, tender_id, name, discipline, sort_order, created_by_id, timestamps; FKs to tenders + users)
+  - card_id TEXT nullable FK added to scope_of_works_items + scope_waste_items + cutting_sheet_items, with ON DELETE SET NULL (preserves data if a card is deleted)
+  - @@index([cardId]) on each child table
+  - User.scopeCardsCreated + Tender.scopeCards back-references
+
+Data migration (20260516120000_scope_card_foundation):
+  - Pure additive — no schema drops, no data loss risk
+  - One card per (tender_id, discipline) pair, sourced from DISTINCT scope_of_works_items
+  - Deterministic card UUIDs via MD5(tender_id||':'||discipline) so re-running is idempotent
+  - Friendly card names: DEM→"Demolition", CIV→"Civil works", ASB→"Asbestos removal", Other→"Other"
+  - sort_order: DEM=0, CIV=1, ASB=2, Other=3 (matches existing UI order)
+  - created_by_id sourced from the earliest scope item's creator within each group
+  - Backfill: 4 cards created, 7 scope items linked. 0 orphans in scope_of_works_items. waste/cutting tables empty, no items to link.
+
+New helper module: apps/api/src/modules/tendering/scope/card-defaults.ts
+exports SCOPE_CARD_DEFAULTS (the discipline → name + sortOrder mapping) +
+getScopeCardDefault(). Seed imports this so the seeded card names stay
+consistent with the SCOPE_CARD_DEFAULTS constant. The SQL migration's
+hardcoded CASE block has the same mapping (kept in sync manually — the
+migration is a one-shot historical artifact, not re-run).
+
+Seed: refactored apps/api/prisma/seed.ts to create 4 cards before the
+existing scope_of_works_items.createMany call, and added cardId references
+to each of the 7 scope item entries. Deterministic card IDs of the form
+`${tenderId}-card-DEM` etc. so seed is idempotent.
+
+Test coverage (9 new tests in scope-card-schema.spec.ts):
+  - SCOPE_CARD_DEFAULTS has 4 entries (one per IS_DISCIPLINE_CODES)
+  - sortOrder values DEM=0 / CIV=1 / ASB=2 / Other=3 match SQL migration
+  - Friendly names match the SQL migration's CASE mapping
+  - getScopeCardDefault returns populated record for every code
+  - sortOrder values are unique
+  - Prisma type-level: ScopeCardCreateInput accepts minimal + sortOrder shapes
+  - Prisma type-level: ScopeOfWorksItem.cardId compiles as optional
+  - SCOPE_CARD_DEFAULTS is typed readonly
+
+Files changed: 7
+  - apps/api/prisma/schema.prisma (new model + 3 cardId columns + 2 back-refs)
+  - apps/api/prisma/migrations/20260516120000_scope_card_foundation/migration.sql (new)
+  - apps/api/prisma/seed.ts (4 card createMany + cardId on 7 items)
+  - apps/api/src/modules/tendering/scope/card-defaults.ts (new helper)
+  - apps/api/src/modules/tendering/scope/__tests__/scope-card-schema.spec.ts (new tests)
+  - progress.md, roadmap.md, project_instructions.md
+
+Tests: API 467 baseline + 9 new = 476 passing (6 skipped, unchanged).
+Web 132 passing (unchanged). tsc + lint + web build + compliance:smoke
+all clean. No new dependencies, env vars.
+
+Sibling chain reference:
+  - PR A2.5 (deferred): migrate services to read card.discipline + drop
+    ScopeOfWorksItem.discipline. ~25-30 sites across ~6 services.
+    Scheduled after PR B1/B2/B3 so UI smoke validates the schema first.
 
 Audit findings: none.

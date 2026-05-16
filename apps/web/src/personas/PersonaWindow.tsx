@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Link } from "react-router-dom";
 import { ChatPanel } from "./ChatPanel";
 import { useActivePersona } from "./PersonaContext";
@@ -63,6 +63,12 @@ const ICON_CLOSE = (
     <line x1="6" y1="6" x2="18" y2="18" />
   </svg>
 );
+
+// PR B1.8.1 — pointer-move pixels required to promote a click into a
+// drag. Anything smaller is treated as a click so onClick handlers
+// (minimise/close buttons, pill-to-open) still fire. 4px is the same
+// threshold @dnd-kit uses by default and the de-facto web standard.
+const DRAG_THRESHOLD_PX = 4;
 
 // PR B1.8 — minimise glyph. Single horizontal line; mirrors the OS
 // "minimise window" affordance.
@@ -137,12 +143,26 @@ export function PersonaWindow() {
   const [isDragging, setIsDragging] = useState(false);
 
   const rootRef = useRef<HTMLDivElement | null>(null);
+  // PR B1.8.1 — drag state lives in a ref with two phases:
+  //   - `started=false`: pointer is down but movement hasn't crossed
+  //     DRAG_THRESHOLD_PX yet, so we have NOT called setPointerCapture
+  //     and the native click event will still fire on pointerup.
+  //   - `started=true`: the user has dragged past the threshold;
+  //     setPointerCapture is on, position updates are live, and the
+  //     pointerup *suppresses* the click (clickSuppressedRef).
   const dragRef = useRef<{
     pointerId: number;
     offsetX: number;
     offsetY: number;
+    startX: number;
+    startY: number;
     bubbleSize: { width: number; height: number };
+    started: boolean;
   } | null>(null);
+  // When true, the next click event on this component should be swallowed
+  // because it is the trailing edge of a real drag gesture rather than a
+  // click. Cleared synchronously inside the click handler.
+  const clickSuppressedRef = useRef(false);
 
   // Reset the open state whenever the active persona+sub-mode changes
   // (matches pre-B1.8 behavior); also load the stored position +
@@ -206,15 +226,22 @@ export function PersonaWindow() {
       const node = rootRef.current;
       if (!node) return;
       const rect = node.getBoundingClientRect();
+      // PR B1.8.1 — DO NOT setPointerCapture here. Capturing on the
+      // initial mousedown stops the browser from firing the trailing
+      // click event, which broke every left-click on the minimise/close
+      // buttons and the pill itself. We only capture once movement
+      // exceeds DRAG_THRESHOLD_PX in onPointerMove below.
       dragRef.current = {
         pointerId: e.pointerId,
         offsetX: e.clientX - rect.left,
         offsetY: e.clientY - rect.top,
-        bubbleSize: { width: rect.width, height: rect.height }
+        startX: e.clientX,
+        startY: e.clientY,
+        bubbleSize: { width: rect.width, height: rect.height },
+        started: false
       };
-      e.currentTarget.setPointerCapture(e.pointerId);
-      setIsDragging(true);
-      e.preventDefault();
+      // No preventDefault either — the browser-native click chain has to
+      // run for the buttons inside to receive their click events.
     },
     []
   );
@@ -223,6 +250,23 @@ export function PersonaWindow() {
     (e: ReactPointerEvent<HTMLElement>) => {
       const drag = dragRef.current;
       if (!drag || drag.pointerId !== e.pointerId) return;
+
+      // Phase 1 → 2 transition: only promote the gesture to a real drag
+      // once the pointer has moved past the threshold. This is what
+      // lets a brief click pass through to onClick handlers.
+      if (!drag.started) {
+        const dx = e.clientX - drag.startX;
+        const dy = e.clientY - drag.startY;
+        if (dx * dx + dy * dy < DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) return;
+        drag.started = true;
+        setIsDragging(true);
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {
+          /* setPointerCapture can throw if the pointer is gone — ignore */
+        }
+      }
+
       const candidate: WindowPosition = {
         x: e.clientX - drag.offsetX,
         y: e.clientY - drag.offsetY
@@ -241,18 +285,27 @@ export function PersonaWindow() {
     (e: ReactPointerEvent<HTMLElement>) => {
       const drag = dragRef.current;
       if (!drag || drag.pointerId !== e.pointerId) return;
+      const wasRealDrag = drag.started;
       dragRef.current = null;
-      setIsDragging(false);
-      try {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      } catch {
-        /* pointer capture already released — ignore */
+      if (wasRealDrag) {
+        setIsDragging(false);
+        try {
+          e.currentTarget.releasePointerCapture(e.pointerId);
+        } catch {
+          /* pointer capture already released — ignore */
+        }
+        // The trailing click event on the pill should be swallowed so
+        // we don't accidentally re-open after dragging. The flag is
+        // cleared synchronously inside the click handler.
+        clickSuppressedRef.current = true;
+        // Persist the final position.
+        setPosition((current) => {
+          if (current && storageKeys) writeStoredPosition(storageKeys.position, current);
+          return current;
+        });
       }
-      // Persist the final position.
-      setPosition((current) => {
-        if (current && storageKeys) writeStoredPosition(storageKeys.position, current);
-        return current;
-      });
+      // If the gesture never crossed the threshold, do nothing — let
+      // the native click event fire on the originally clicked element.
     },
     [storageKeys?.position]
   );
@@ -325,6 +378,10 @@ export function PersonaWindow() {
               <button
                 type="button"
                 className="persona-window__icon-button"
+                // PR B1.8.1 — stop the pointerdown bubbling to the
+                // draggable header so clicking these buttons never
+                // primes a drag gesture on the parent.
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={handleMinimise}
                 aria-label="Minimise persona window"
                 title="Minimise"
@@ -334,6 +391,7 @@ export function PersonaWindow() {
               <button
                 type="button"
                 className="persona-window__icon-button"
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={handleClose}
                 aria-label="Close persona window"
                 title="Close (resets position)"
@@ -362,14 +420,20 @@ export function PersonaWindow() {
           className="persona-window__button"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
-          onPointerUp={(e) => {
-            const wasDragging = isDragging;
-            endDrag(e);
-            // Don't open the panel if the pointer-up was the end of a
-            // drag gesture rather than a click.
-            if (!wasDragging) handleOpenFromPill();
-          }}
+          onPointerUp={endDrag}
           onPointerCancel={endDrag}
+          onClick={(e: ReactMouseEvent<HTMLButtonElement>) => {
+            // PR B1.8.1 — if the click is the trailing edge of a real
+            // drag (pointer travelled past DRAG_THRESHOLD_PX), swallow
+            // it. Otherwise the user genuinely tapped/clicked the pill,
+            // so open the panel.
+            if (clickSuppressedRef.current) {
+              clickSuppressedRef.current = false;
+              e.preventDefault();
+              return;
+            }
+            handleOpenFromPill();
+          }}
           aria-label={`Open ${content.title}`}
           style={{ cursor: isDragging ? "grabbing" : "grab", touchAction: "none" }}
         >

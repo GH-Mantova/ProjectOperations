@@ -5,16 +5,16 @@ import { ScopeRedesignService } from "../tendering/scope-redesign.service";
 import { buildEstimateExcel } from "./excel/estimate-excel.builder";
 import { buildQuotePdf } from "./pdf/quote-pdf.builder";
 
-// Discipline display order must match the Quote tab and the cost-summary bar.
-export const DISCIPLINE_ORDER = ["SO", "Str", "Asb", "Civ", "Prv"] as const;
+// PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
+// Display order must match the Quote tab and the cost-summary bar.
+export const DISCIPLINE_ORDER = ["DEM", "CIV", "ASB", "Other"] as const;
 export type Discipline = (typeof DISCIPLINE_ORDER)[number];
 
 export const DISCIPLINE_LABEL: Record<string, string> = {
-  SO: "Strip-outs",
-  Str: "Structural Demolition",
-  Asb: "Asbestos Removal",
-  Civ: "Civil Works",
-  Prv: "Provisional Sums"
+  DEM: "Demolition",
+  CIV: "Civil Works",
+  ASB: "Asbestos Removal",
+  Other: "Other (Provisional Sums, Options, Adjustments)"
 };
 
 function toNum(v: unknown): number {
@@ -137,11 +137,10 @@ export type ExportPayload = {
   exclusions: Array<{ text: string }>;
   tandc: { clauses: TcClause[] };
   summary: {
-    SO: { itemCount: number; subtotal: number; withMarkup: number };
-    Str: { itemCount: number; subtotal: number; withMarkup: number };
-    Asb: { itemCount: number; subtotal: number; withMarkup: number };
-    Civ: { itemCount: number; subtotal: number; withMarkup: number };
-    Prv: { itemCount: number; subtotal: number; withMarkup: number };
+    DEM: { itemCount: number; subtotal: number; withMarkup: number };
+    CIV: { itemCount: number; subtotal: number; withMarkup: number };
+    ASB: { itemCount: number; subtotal: number; withMarkup: number };
+    Other: { itemCount: number; subtotal: number; withMarkup: number };
     cutting: { itemCount: number; subtotal: number };
     tenderPrice: number;
   };
@@ -324,11 +323,10 @@ export class EstimateExportService {
     // Cast to the shape we know is returned so the builders get a stable
     // contract.
     const summaryTyped = summary as unknown as {
-      SO: { itemCount: number; subtotal: number; withMarkup: number };
-      Str: { itemCount: number; subtotal: number; withMarkup: number };
-      Asb: { itemCount: number; subtotal: number; withMarkup: number };
-      Civ: { itemCount: number; subtotal: number; withMarkup: number };
-      Prv: { itemCount: number; subtotal: number; withMarkup: number };
+      DEM: { itemCount: number; subtotal: number; withMarkup: number };
+      CIV: { itemCount: number; subtotal: number; withMarkup: number };
+      ASB: { itemCount: number; subtotal: number; withMarkup: number };
+      Other: { itemCount: number; subtotal: number; withMarkup: number };
       cutting: { itemCount: number; subtotal: number };
       tenderPrice: number;
     };
@@ -376,11 +374,10 @@ export class EstimateExportService {
       exclusions: tender.exclusions.map((e) => ({ text: e.text })),
       tandc: { clauses },
       summary: {
-        SO: discBucket("SO"),
-        Str: discBucket("Str"),
-        Asb: discBucket("Asb"),
-        Civ: discBucket("Civ"),
-        Prv: discBucket("Prv"),
+        DEM: discBucket("DEM"),
+        CIV: discBucket("CIV"),
+        ASB: discBucket("ASB"),
+        Other: discBucket("Other"),
         cutting: { itemCount: summaryTyped.cutting.itemCount, subtotal: round2(summaryTyped.cutting.subtotal) },
         tenderPrice: round2(summaryTyped.tenderPrice)
       }

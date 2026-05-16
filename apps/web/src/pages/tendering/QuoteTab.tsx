@@ -10,15 +10,15 @@ import { CSS } from "@dnd-kit/utilities";
 import { useAuth } from "../../auth/AuthContext";
 import { ClientQuotesPanel } from "./ClientQuotesPanel";
 
-type Discipline = "SO" | "Str" | "Asb" | "Civ" | "Prv";
+// PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
+type Discipline = "DEM" | "CIV" | "ASB" | "Other";
 
 type DisciplineStat = { itemCount: number; subtotal: number; withMarkup: number };
 type ScopeSummary = {
-  SO: DisciplineStat;
-  Str: DisciplineStat;
-  Asb: DisciplineStat;
-  Civ: DisciplineStat;
-  Prv: DisciplineStat;
+  DEM: DisciplineStat;
+  CIV: DisciplineStat;
+  ASB: DisciplineStat;
+  Other: DisciplineStat;
   cutting: { itemCount: number; subtotal: number };
   tenderPrice: number;
 };
@@ -48,10 +48,10 @@ type TenderHeader = {
 };
 
 const DISCIPLINE_ROWS: Array<{ key: Discipline; label: string }> = [
-  { key: "SO", label: "Strip-outs" },
-  { key: "Str", label: "Structural" },
-  { key: "Asb", label: "Asbestos removal" },
-  { key: "Civ", label: "Civil works" }
+  { key: "DEM", label: "Demolition" },
+  { key: "CIV", label: "Civil works" },
+  { key: "ASB", label: "Asbestos removal" },
+  { key: "Other", label: "Other" }
 ];
 
 function fmtCurrency(n: number): string {
@@ -104,7 +104,7 @@ export function QuoteTab({
           }>;
         };
         const prv = body.items
-          .filter((i) => i.discipline === "Prv")
+          .filter((i) => i.discipline === "Other")
           .map((i) => ({
             id: i.id,
             description: i.description,

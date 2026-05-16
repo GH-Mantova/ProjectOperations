@@ -3,7 +3,8 @@ import { useAuth } from "../../auth/AuthContext";
 import { ScopeColumnManager, labelFor } from "./ScopeColumnManager";
 import { ScopeListDropdown } from "./ScopeListDropdown";
 
-export type Discipline = "SO" | "Str" | "Asb" | "Civ" | "Prv";
+// PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
+export type Discipline = "DEM" | "CIV" | "ASB" | "Other";
 
 export type ScopeItem = {
   id: string;
@@ -44,11 +45,10 @@ type ColumnsResponse = { available: string[]; required: string[] };
 type ViewConfigResponse = { discipline: string; columns: string[] };
 
 const DEFAULT_COLUMNS_BY_DISCIPLINE: Record<Discipline, string[]> = {
-  SO: ["men", "days", "shift", "measurementQty", "measurementUnit", "material", "notes"],
-  Str: ["men", "days", "shift", "measurementQty", "measurementUnit", "material", "notes"],
-  Asb: ["men", "days", "shift", "measurementQty", "measurementUnit", "material", "notes"],
-  Civ: ["men", "days", "shift", "plantAssetId", "measurementQty", "measurementUnit", "material", "notes"],
-  Prv: ["notes"]
+  DEM: ["men", "days", "shift", "measurementQty", "measurementUnit", "material", "notes"],
+  CIV: ["men", "days", "shift", "plantAssetId", "measurementQty", "measurementUnit", "material", "notes"],
+  ASB: ["men", "days", "shift", "measurementQty", "measurementUnit", "material", "notes"],
+  Other: ["notes"]
 };
 
 const CONFIDENCE_STYLE: Record<string, { bg: string; fg: string; label: string }> = {
@@ -563,7 +563,7 @@ function QuantityRow({
             ))}
           </select>
         </td>
-        {item.discipline === "Prv" ? (
+        {item.discipline === "Other" ? (
           <td colSpan={Math.max(1, headerColumns.length)} style={{ padding: 4 }}>
             <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12 }}>
               <span style={{ color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.3 }}>

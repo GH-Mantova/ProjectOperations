@@ -8,27 +8,25 @@ import type { ConversationMessage } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../../prisma/prisma.service";
 import type { ProposeScopeItemsArgs } from "../../ai-providers/tools/propose-scope-items.tool";
+import { type IsDisciplineCode } from "../../personas/definitions/disciplines";
 
-// AI-facing discipline → internal scope-of-works discipline code.
-// IS works in three disciplines exposed to the AI as friendly names; the
-// existing scope_of_works_items.discipline column uses the short codes.
-const AI_TO_INTERNAL_DISCIPLINE: Record<string, "SO" | "Asb" | "Civ"> = {
-  demolition: "SO",
-  asbestos: "Asb",
-  civil: "Civ"
-};
-
-const DEFAULT_ROW_TYPE_BY_DISCIPLINE: Record<"SO" | "Asb" | "Civ", string> = {
-  SO: "demolition",
-  Asb: "asbestos-removal",
-  Civ: "general-labour"
+// PR A1 (2026-05-16) — the AI-facing discipline vocabulary now matches the
+// internal scope-of-works discipline column (4-code system: DEM/CIV/ASB/Other).
+// The propose_scope_items tool enforces the codes via its enum, so no
+// translation is required at this layer. Default row-type mapping kept
+// per-discipline below.
+const DEFAULT_ROW_TYPE_BY_DISCIPLINE: Record<IsDisciplineCode, string> = {
+  DEM: "demolition",
+  CIV: "general-labour",
+  ASB: "asbestos-removal",
+  Other: "general-labour"
 };
 
 export type ProposalStatus = "pending" | "accepted" | "rejected";
 
 export type StoredProposal = {
   index: number;
-  discipline: "demolition" | "asbestos" | "civil";
+  discipline: IsDisciplineCode;
   title: string;
   description: string;
   quantity: number;
@@ -45,7 +43,7 @@ export type ProposalsMetadata = {
 };
 
 export type ProposalEdits = Partial<{
-  discipline: "demolition" | "asbestos" | "civil";
+  discipline: IsDisciplineCode;
   title: string;
   description: string;
   quantity: number;
@@ -138,13 +136,10 @@ export class ProposalsService {
       index: proposal.index,
       status: "pending"
     };
-    const internalDiscipline = AI_TO_INTERNAL_DISCIPLINE[merged.discipline];
-    if (!internalDiscipline) {
-      throw new BadRequestException(`Unknown discipline "${merged.discipline}".`);
-    }
+    const discipline = merged.discipline;
 
-    const itemNumber = await this.nextItemNumber(tenderId, internalDiscipline);
-    const wbsCode = `${internalDiscipline}${itemNumber}`;
+    const itemNumber = await this.nextItemNumber(tenderId, discipline);
+    const wbsCode = `${discipline}${itemNumber}`;
     const description = merged.title === merged.description
       ? merged.description
       : `${merged.title} — ${merged.description}`;
@@ -152,9 +147,9 @@ export class ProposalsService {
       data: {
         tenderId,
         wbsCode,
-        discipline: internalDiscipline,
+        discipline,
         itemNumber,
-        rowType: DEFAULT_ROW_TYPE_BY_DISCIPLINE[internalDiscipline],
+        rowType: DEFAULT_ROW_TYPE_BY_DISCIPLINE[discipline],
         description,
         notes: merged.notes ?? null,
         measurementQty: new Prisma.Decimal(merged.quantity),
@@ -281,7 +276,7 @@ export class ProposalsService {
 
   private async nextItemNumber(
     tenderId: string,
-    discipline: "SO" | "Asb" | "Civ"
+    discipline: IsDisciplineCode
   ): Promise<number> {
     const count = await this.prisma.scopeOfWorksItem.count({
       where: { tenderId, discipline }

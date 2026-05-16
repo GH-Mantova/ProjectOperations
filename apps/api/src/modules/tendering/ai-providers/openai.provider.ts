@@ -59,7 +59,7 @@ export class MockAiProvider implements AiProvider {
   async draftScope(_systemPrompt: string, _userMessage: string): Promise<ProposedScopeItem[]> {
     return [
       {
-        code: "SO",
+        code: "DEM",
         title: "Internal strip-out — existing fit-out",
         description:
           "Remove all non-structural internal fit-out including partitions, ceilings, floor coverings, joinery, fixtures, and services ready for the next trade.",

@@ -8,12 +8,22 @@ import { ClientQuoteStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ScopeRedesignService } from "../tendering/scope-redesign.service";
 
+// PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
+// Legacy 5-code keys are retained as aliases so historical quotes
+// referencing the old codes still render with sensible labels until
+// the data migration sweeps them up. The migration runs in the same
+// PR so the aliases should be unused in practice.
 const DISCIPLINE_LABEL: Record<string, string> = {
-  SO: "Strip-out & demolition works",
-  Str: "Structural demolition",
+  DEM: "Demolition works",
+  CIV: "Civil works",
+  ASB: "Asbestos removal",
+  Other: "Other (provisional sums, options, adjustments)",
+  // Legacy aliases — kept as a transitional safety net.
+  SO: "Demolition works",
+  Str: "Demolition works",
   Asb: "Asbestos removal",
   Civ: "Civil works",
-  Prv: "Provisional sums"
+  Prv: "Other (provisional sums, options, adjustments)"
 };
 
 export type SummaryResult = {
@@ -653,7 +663,7 @@ export class ClientQuotesService {
       string,
       { itemCount: number; subtotal: number; withMarkup: number } | { itemCount: number; subtotal: number } | number
     >;
-    const disciplines = ["SO", "Str", "Asb", "Civ"] as const;
+    const disciplines = ["DEM", "CIV", "ASB"] as const;
     let sort = 0;
     const letters = ["A", "B", "C", "D", "E", "F"];
     for (const d of disciplines) {

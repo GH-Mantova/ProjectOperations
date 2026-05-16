@@ -1,8 +1,16 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 
+// PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
+// Legacy codes kept as aliases so historical Gantt tasks created before
+// the data migration still resolve to a colour.
 const DISCIPLINE_COLOURS: Record<string, string> = {
-  SO: "#005B61",
+  DEM: "#4A90A4",
+  CIV: "#27AE60",
+  ASB: "#E67E22",
+  Other: "#8E44AD",
+  // Legacy aliases — kept until next prune.
+  SO: "#4A90A4",
   Str: "#4A90A4",
   Asb: "#E67E22",
   Civ: "#27AE60",

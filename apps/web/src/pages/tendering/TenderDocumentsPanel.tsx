@@ -228,7 +228,7 @@ export function TenderDocumentsPanel({
           <div>
             <div style={{ fontSize: 15, fontWeight: 500 }}>✨ Draft scope with Claude</div>
             <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--text-muted)" }}>
-              Claude reads the uploaded docs and proposes SO/Str/Asb/Civ/Prv items with descriptions &amp; quantities.
+              Claude reads the uploaded docs and proposes DEM/CIV/ASB/Other items with descriptions &amp; quantities.
             </p>
           </div>
           <button

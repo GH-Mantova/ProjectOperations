@@ -13,16 +13,16 @@ import {
 import { ScopeQuantitiesTable, type ScopeItem as TableItem } from "./ScopeQuantitiesTable";
 
 type ScopeSummaryResponse = {
-  SO: DisciplineStat;
-  Str: DisciplineStat;
-  Asb: DisciplineStat;
-  Civ: DisciplineStat;
-  Prv: DisciplineStat;
+  DEM: DisciplineStat;
+  CIV: DisciplineStat;
+  ASB: DisciplineStat;
+  Other: DisciplineStat;
   cutting: { itemCount: number; subtotal: number };
   tenderPrice: number;
 };
 
-const DISCIPLINES = ["SO", "Str", "Asb", "Civ", "Prv"] as const;
+// PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
+const DISCIPLINES = ["DEM", "CIV", "ASB", "Other"] as const;
 type Discipline = (typeof DISCIPLINES)[number];
 // PR #72 — waste rows moved to their own tab (ScopeWasteTab). Dropping
 // "waste" from the UI row-type options; legacy rows with rowType="waste"
@@ -114,11 +114,10 @@ type Header = {
 };
 
 const DISCIPLINE_META: Record<Discipline, { long: string; accent: string }> = {
-  SO: { long: "Strip-outs", accent: "#94A3B8" },
-  Str: { long: "Structural", accent: "#3B82F6" },
-  Asb: { long: "Asbestos", accent: "#F59E0B" },
-  Civ: { long: "Civil", accent: "#22C55E" },
-  Prv: { long: "Provisional", accent: "#9CA3AF" }
+  DEM: { long: "Demolition", accent: "#3B82F6" },
+  CIV: { long: "Civil", accent: "#22C55E" },
+  ASB: { long: "Asbestos", accent: "#F59E0B" },
+  Other: { long: "Other", accent: "#9CA3AF" }
 };
 
 const CONFIDENCE_STYLE: Record<string, { bg: string; fg: string; label: string }> = {
@@ -140,7 +139,7 @@ export function ScopeOfWorksTab({ tenderId, tenderTitle }: { tenderId: string; t
   const [toast, setToast] = useState<string | null>(null);
   const [addOpenForDiscipline, setAddOpenForDiscipline] = useState<Discipline | null>(null);
   const [headerOpen, setHeaderOpen] = useState(false);
-  const [selectedDiscipline, setSelectedDiscipline] = useState<SelDiscipline>("SO");
+  const [selectedDiscipline, setSelectedDiscipline] = useState<SelDiscipline>("DEM");
   const [summary, setSummary] = useState<ScopeSummaryResponse | null>(null);
 
   const load = useCallback(async () => {
@@ -349,18 +348,16 @@ export function ScopeOfWorksTab({ tenderId, tenderTitle }: { tenderId: string; t
         stats={
           summary
             ? {
-                SO: summary.SO,
-                Str: summary.Str,
-                Asb: summary.Asb,
-                Civ: summary.Civ,
-                Prv: summary.Prv
+                DEM: summary.DEM,
+                CIV: summary.CIV,
+                ASB: summary.ASB,
+                Other: summary.Other
               }
             : {
-                SO: { itemCount: 0, subtotal: 0, withMarkup: 0 },
-                Str: { itemCount: 0, subtotal: 0, withMarkup: 0 },
-                Asb: { itemCount: 0, subtotal: 0, withMarkup: 0 },
-                Civ: { itemCount: 0, subtotal: 0, withMarkup: 0 },
-                Prv: { itemCount: 0, subtotal: 0, withMarkup: 0 }
+                DEM: { itemCount: 0, subtotal: 0, withMarkup: 0 },
+                CIV: { itemCount: 0, subtotal: 0, withMarkup: 0 },
+                ASB: { itemCount: 0, subtotal: 0, withMarkup: 0 },
+                Other: { itemCount: 0, subtotal: 0, withMarkup: 0 }
               }
         }
       />
@@ -391,8 +388,8 @@ export function ScopeOfWorksTab({ tenderId, tenderTitle }: { tenderId: string; t
                 type="button"
                 className="s7-btn s7-btn--primary"
                 onClick={() => {
-                  setAddOpenForDiscipline("SO");
-                  document.getElementById("sow-group-SO")?.scrollIntoView({ behavior: "smooth" });
+                  setAddOpenForDiscipline("DEM");
+                  document.getElementById("sow-group-DEM")?.scrollIntoView({ behavior: "smooth" });
                 }}
               >
                 + Add scope items manually
@@ -455,7 +452,7 @@ export function ScopeOfWorksTab({ tenderId, tenderTitle }: { tenderId: string; t
         canManage={true}
       />
 
-      {selectedDiscipline !== "Asb" ? (
+      {selectedDiscipline !== "ASB" ? (
         <ScopeCuttingSheet
           tenderId={tenderId}
           wbsRefs={(data?.items ?? [])
@@ -468,11 +465,10 @@ export function ScopeOfWorksTab({ tenderId, tenderTitle }: { tenderId: string; t
       {summary ? (
         <ScopeGrandTotalBar
           stats={{
-            SO: summary.SO,
-            Str: summary.Str,
-            Asb: summary.Asb,
-            Civ: summary.Civ,
-            Prv: summary.Prv
+            DEM: summary.DEM,
+            CIV: summary.CIV,
+            ASB: summary.ASB,
+            Other: summary.Other
           }}
           cuttingSubtotal={summary.cutting.subtotal}
           tenderPrice={summary.tenderPrice}

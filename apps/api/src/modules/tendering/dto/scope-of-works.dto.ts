@@ -15,7 +15,8 @@ import {
 } from "class-validator";
 import { Type } from "class-transformer";
 
-export const DISCIPLINES = ["SO", "Str", "Asb", "Civ", "Prv"] as const;
+// PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
+export const DISCIPLINES = ["DEM", "CIV", "ASB", "Other"] as const;
 // Row-type slugs accepted by the API. The first six entries are the legacy
 // names (kept so historical rows keep passing validation); the rest are the
 // new canonical slugs introduced with the scope redesign and match the

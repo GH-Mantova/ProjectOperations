@@ -93,7 +93,7 @@ export async function buildEstimateExcel(payload: ExportPayload): Promise<Buffer
   let grandTotal = 0;
 
   for (const disc of DISCIPLINE_ORDER) {
-    if (disc === "Prv") continue;
+    if (disc === "Other") continue;
     const bucket = payload.summary[disc];
     if (!bucket || (bucket.itemCount === 0 && bucket.withMarkup === 0)) continue;
     const r = summary.getRow(rowIdx);
@@ -117,8 +117,8 @@ export async function buildEstimateExcel(payload: ExportPayload): Promise<Buffer
     rowIdx += 1;
   }
 
-  // Provisional row — shown as its own block below the main total.
-  const prv = payload.summary.Prv;
+  // Provisional / Other row — shown as its own block below the main total.
+  const prv = payload.summary.Other;
   const hasProv = prv && (prv.itemCount > 0 || prv.subtotal > 0);
 
   const total = summary.getRow(rowIdx);
@@ -134,8 +134,8 @@ export async function buildEstimateExcel(payload: ExportPayload): Promise<Buffer
   if (hasProv) {
     rowIdx += 1;
     const prvRow = summary.getRow(rowIdx);
-    prvRow.getCell(1).value = "Prv";
-    prvRow.getCell(2).value = "Provisional Sums";
+    prvRow.getCell(1).value = "Other";
+    prvRow.getCell(2).value = "Other (Provisional Sums, Options, Adjustments)";
     prvRow.getCell(3).value = prv.itemCount;
     prvRow.getCell(4).value = prv.subtotal;
     prvRow.getCell(4).numFmt = CURRENCY_FMT;

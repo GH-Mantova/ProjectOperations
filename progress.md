@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-15 23:26 AEST
+Last updated: 2026-05-16 02:37 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -3615,5 +3615,113 @@ company instruction during/after demo and accidentally tries to undo
 the rate-fabrication rule, the prohibition's new precedence language
 instructs the model to ignore the loosening attempt and surface the
 conflict.
+
+Audit findings: none.
+
+## 2026-05-16 — PR A1 — Discipline migration from 5-code to 4-code system
+Type: PR (chore, design-doc plan PR A1)
+Branch: chore/discipline-migration-dem-civ-asb-other
+Status: OPENED
+
+Context: codebase had three discipline vocabularies in three places:
+  1. Persona prompts (5-code SO/Str/Asb/Civ/Prv with detailed descriptions)
+  2. propose_scope_items tool (3-word lowercase enum demolition/asbestos/civil)
+  3. tender-scope-drafting service (hybrid 5-code TS + 3-word + 5-code prompt)
+Plus the DB stored String discipline values, the seed wrote 5-code literals, and
+the frontend hardcoded the 5-code list in multiple files.
+
+Migration to single canonical 4-code system (DEM/CIV/ASB/Other):
+  - SO (Strip-outs)   -> DEM (Demolition umbrella)
+  - Str (Structural)  -> DEM (Demolition umbrella)
+  - Asb (Asbestos)    -> ASB
+  - Civ (Civil)       -> CIV
+  - Prv (Provisional) -> Other (broader: PS + cost options + adjustments)
+
+New canonical source: apps/api/src/modules/personas/definitions/disciplines.ts
+exports IS_DISCIPLINE_CODES, IS_DISCIPLINE_LABELS, IS_DISCIPLINE_DESCRIPTIONS,
+LEGACY_DISCIPLINE_MIGRATION_MAP, LEGACY_LOWERCASE_DISCIPLINE_MAP. Every
+consumer imports from here; no other file inlines literals.
+
+Pre-flight investigation (per Marco's confirmation gate):
+  - scope_view_configs collision check: 0 tenders with both SO+Str rows
+    (the @@unique([tenderId, discipline]) constraint risk was not present
+    in current data). Plain UPDATE statements safe.
+  - @@unique constraints involving discipline: only one (line 2401,
+    ScopeViewConfig). No additional risk surfaces.
+  - propose-scope-items.handler.ts: pure wrapper, re-exports tool's name
+    + inputSchema. No hardcoded vocabulary. Left untouched.
+  - DB record distribution (dev): 7 rows total across 5 tables, all in
+    scope_of_works_items.
+
+Scope expansion beyond spec: pre-flight + iterative tsc surfaced 7+ files
+the spec missed. All were necessary for the migration to be functional —
+skipping them would have shipped broken contracts/exports. Files added to
+this PR beyond spec:
+  - apps/api/src/modules/client-quotes/client-quotes.service.ts
+  - apps/api/src/modules/contracts/contracts.service.ts
+  - apps/api/src/modules/estimate-export/estimate-export.service.ts
+  - apps/api/src/modules/estimate-export/estimate-export.service.spec.ts
+  - apps/api/src/modules/estimate-export/excel/estimate-excel.builder.ts
+  - apps/api/src/modules/estimate-export/pdf/quote-pdf.builder.ts
+  - apps/api/src/modules/tendering/ai-providers/openai.provider.ts
+  - apps/api/src/modules/tendering/scope/proposals.service.ts
+  - apps/api/src/modules/tendering/scope/proposals.controller.ts
+  - apps/api/src/modules/tendering/scope/__tests__/proposals.service.spec.ts
+  - apps/api/src/modules/tendering/scope-of-works.service.ts
+  - apps/api/src/modules/tendering/dto/scope-of-works.dto.ts
+  - apps/api/src/modules/tendering/scope-redesign.service.ts
+  - apps/api/src/modules/tendering/scope-of-works.controller.ts (Swagger string)
+  - apps/api/src/modules/projects/gantt.service.ts (colour map)
+  - apps/api/src/modules/ai-providers/__tests__/tool-translation.spec.ts (enum assertion)
+
+Database migration: 20260516000000_chore_discipline_code_migration. Pure
+data migration (no schema change — column type was already String). UPDATE
+statements for all 5 discipline-bearing tables: scope_of_works_items,
+scope_waste_items, scope_view_configs, claim_line_items, gantt_tasks.
+Idempotent: SO/Str/Asb/Civ/Prv→DEM/CIV/ASB/CIV/Other once, then no-op.
+Applied locally via docker exec; verified 7 rows migrated (3 DEM + 2 ASB
++ 1 CIV + 1 Other) matching pre-flight prediction.
+
+Frontend scope (Option B per Marco): 8 tendering web files updated.
+ProjectDetailPage.tsx (Jobs-side dropdown at line 1468-1472) deferred to
+follow-up PR A1.5 — it's a Projects-side surface and out of strict
+tendering scope. TenderDocumentsPanel.tsx user-facing UI string updated
+in this PR per Marco's confirmation.
+
+Persona prompt regression risk: accepted (per Marco). The new unified DEM
+description preserves the strip-out vs fit-out disambiguation that PR #142
+established. The strip-out vs fit-out regression test in
+tendering-assistant.system-prompt.regression.spec.ts still runs and
+preserves its skip-without-API-key behaviour; will exercise the new prompt
+on next CI run with ANTHROPIC_API_KEY configured.
+
+Test coverage: new apps/api/src/modules/personas/__tests__/discipline-codes.spec.ts
+with 8 tests:
+  - 5 tests on the constants (4 codes in canonical order, legacy migration
+    map maps to valid new codes, lowercase legacy map maps to valid new
+    codes, labels non-empty per code, descriptions substantive per code)
+  - 3 tests on persona prompt (all 4 new codes present, no legacy
+    standalone codes, strip-out vs fit-out disambiguation preserved)
+Existing tool-translation.spec.ts updated to assert the new 4-code enum
+instead of the legacy 3-word lowercase enum. estimate-export.service.spec.ts
+fixtures + assertions updated to 4-code shape. proposals.service.spec.ts
+fixtures + assertions updated.
+
+Files changed: ~25 files (1 new constants file, 1 new test file, 1 new
+migration, ~22 file edits, 3 doc updates). See migration.sql header for
+the table list. See PR body for the per-file breakdown.
+
+Tests: API 459 baseline + 8 new = 467 passing (6 skipped, unchanged).
+Web 132 passing (unchanged). tsc + lint clean on both. compliance:smoke
+passes. No new dependencies. No new env vars.
+
+Phase 6 carry-forward: PR A1.5 to migrate ProjectDetailPage.tsx Jobs-side
+dropdown. PR A2 (next in design-doc chain) introduces the database schema
+for the new line-item structure with UUIDs.
+
+Demo readiness: the discipline vocabulary is now consistent across the
+entire codebase (persona prompts, AI tool enum, scope drafting service,
+DB schema/seed, frontend UI, contracts, quote/estimate exports, Gantt
+colour map). The Sean+Raj demo will see DEM/CIV/ASB/Other consistently.
 
 Audit findings: none.

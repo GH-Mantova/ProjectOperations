@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-16 11:05 AEST
+Last updated: 2026-05-16 21:57 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -4449,5 +4449,73 @@ Follow-up items (carried into B1.7.1 / B3):
 
 No new dependencies. No env vars. Rollback is git revert + the
 additive migration is no-op-safe to keep (data nullable).
+
+Audit findings: none.
+
+## 2026-05-17 — PR B1.8 — Plant qty/days width + draggable/minimisable Tendering Assistant
+
+Branch: feat/scope-b1-8-ui-polish
+Section: Tendering UI polish (post-B1.7 follow-ups)
+
+Two independent fixes shipped together — both small, both
+self-contained, both user-visible quality-of-life improvements.
+
+### Fix 1 — Plant qty/days input width
+Files: apps/web/src/pages/tendering/ScopeQuantitiesTable.tsx
+PlantCluster's qty + days inputs widened from 44px to 64px.
+Two- and three-digit values (e.g. "12", "0.5") were getting
+clipped at 44px. Parent cluster still 280px wide; the rate
+TooltipSelect's flex: 1 absorbs the new 40px of input space.
+
+### Fix 2 — Draggable + minimisable Tendering Assistant
+Files: apps/web/src/personas/PersonaWindow.tsx (rewrite, 121 → 363
+LOC) + apps/web/src/personas/persona-window-helpers.ts (+50 LOC)
++ apps/web/src/personas/__tests__/persona-window-helpers.test.ts
+(+85 LOC, 10 new specs).
+
+What changed:
+- Drag handle on the panel header when open (cursor: grab/grabbing,
+  touchAction: none). Pointer events handle mouse + touch + pen.
+- Drag handle on the entire pill button when minimised. Drag-vs-
+  click discrimination on pointerup so dragging the pill doesn't
+  re-open the panel mid-gesture.
+- New minimise button (— icon) next to the existing × close button.
+  Minimise = collapse to pill, keep saved position. Close = clear
+  saved position + minimised state, return to default bottom-right
+  corner.
+- Position state persisted to localStorage per active persona key
+  (e.g. persona-window:tendering:scope:position +
+  persona-window:tendering:scope:minimised). Different sub-modes
+  remember their own positions independently.
+- Viewport clamp on every pointer-move, every window resize, and
+  every layout-change (minimise ↔ open swap, since the open panel
+  is larger than the pill).
+- Position is undefined on first load → CSS default (bottom-right)
+  wins. As soon as the user drags or a stored position is read,
+  inline left/top override takes over.
+
+New helpers (apps/web/src/personas/persona-window-helpers.ts):
+- clampWindowPosition(candidate, bubbleSize, viewport, margin?):
+  pure clamp to keep the bubble inside the viewport. Default
+  margin 8px (PERSONA_WINDOW_MARGIN exported).
+- personaWindowStorageKeys(personaKey): returns
+  { position, minimised } string keys, or null when no persona
+  is active.
+
+Tests added (10):
+- clampWindowPosition: in-bounds passthrough, left/right/top/bottom
+  edge clamps, oversized-bubble fallback (pins to margin), custom
+  margin override.
+- personaWindowStorageKeys: null safety, stable per-persona keys,
+  sub-mode scoping (scope vs quote keys differ).
+
+Verification:
+- pnpm --filter web exec tsc --noEmit: clean
+- pnpm --filter web test --run: 148 passing (138 baseline + 10 new)
+- pnpm --filter web lint: clean
+- pnpm --filter web build: clean
+
+No new dependencies. No env vars. No API/schema changes.
+Rollback is a clean git revert.
 
 Audit findings: none.

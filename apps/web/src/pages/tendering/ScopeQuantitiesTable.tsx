@@ -908,7 +908,7 @@ function PlantCluster({
           placeholder="qty"
           defaultValue={cell?.qty ?? ""}
           disabled={disabled}
-          style={{ width: 44, height: 32, padding: "0 6px" }}
+          style={{ width: 64, height: 32, padding: "0 6px" }}
           title="Quantity"
           onBlur={(e) => {
             const v = e.target.value === "" ? undefined : Number(e.target.value);
@@ -922,7 +922,7 @@ function PlantCluster({
           placeholder="days"
           defaultValue={cell?.days ?? ""}
           disabled={disabled}
-          style={{ width: 44, height: 32, padding: "0 6px" }}
+          style={{ width: 64, height: 32, padding: "0 6px" }}
           title="Days"
           onBlur={(e) => {
             const v = e.target.value === "" ? undefined : Number(e.target.value);

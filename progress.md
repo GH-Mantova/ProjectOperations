@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-16 21:57 AEST
+Last updated: 2026-05-16 22:12 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -4516,6 +4516,61 @@ Verification:
 - pnpm --filter web build: clean
 
 No new dependencies. No env vars. No API/schema changes.
+Rollback is a clean git revert.
+
+Audit findings: none.
+
+## 2026-05-17 — PR B1.8.1 — Fix PersonaWindow click handlers blocked by drag pointer capture
+
+Branch: fix/persona-window-click-handlers-b1-8-1
+Section: Tendering UI polish (B1.8 follow-up hotfix)
+
+Bug Marco caught during B1.8 smoke: left-clicking minimise (—),
+close (×), and the pill itself was a no-op. Drag still worked.
+Right-click on the pill happened to open the panel (confusing
+accidental fallback because the right-button mousedown was rejected
+by the e.button !== 0 guard, leaving the native click path intact
+since no capture was taken).
+
+Root cause: onPointerDown in PersonaWindow.tsx was calling
+e.currentTarget.setPointerCapture(pointerId) immediately on every
+mousedown. Pointer capture suppresses the browser's trailing click
+event on the captured target — so onClick handlers never fired on
+the minimise/close buttons or on the pill.
+
+Fix:
+- New DRAG_THRESHOLD_PX = 4 constant. Drag state in dragRef now has
+  a `started: boolean` phase flag.
+- onPointerDown records the start coordinates and offset but does
+  NOT call setPointerCapture or preventDefault — those would each
+  swallow the click.
+- onPointerMove waits for the squared distance from start to exceed
+  DRAG_THRESHOLD_PX² before promoting the gesture: only then does
+  it call setPointerCapture and setIsDragging(true), and only then
+  do position updates flow.
+- endDrag distinguishes a real drag (drag.started=true) from a
+  threshold-not-crossed click. Real drag → release capture, set
+  clickSuppressedRef true so the pill's trailing click is swallowed.
+  Not-a-drag → do nothing; the native click event proceeds normally.
+- Pill button rewritten with a normal onClick handler that consults
+  clickSuppressedRef. Replaces the previous wasDragging/onPointerUp
+  hack which never fired anyway because the click was suppressed.
+- Minimise and close buttons get onPointerDown={e => e.stopPropagation()}
+  so clicking them never primes a drag on the parent header.
+
+The 4px threshold is the same value @dnd-kit uses by default and
+matches the de-facto web-platform "click vs drag" boundary. Touch
+and pen pointers still work — they were never the issue (mobile
+browsers don't fire click after touchmove anyway).
+
+Verification:
+- pnpm --filter web exec tsc --noEmit: clean
+- pnpm --filter web test --run: 148 passing (unchanged — no new
+  helper tests needed; pure UX interaction logic)
+- pnpm --filter web lint: clean
+- pnpm --filter web build: clean
+
+No schema/DTO/API changes. No new dependencies. No env vars.
 Rollback is a clean git revert.
 
 Audit findings: none.

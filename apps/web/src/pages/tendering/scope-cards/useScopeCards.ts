@@ -9,6 +9,8 @@ export type ScopeCard = {
   name: string;
   discipline: string;
   cardNumber: number;
+  /** PR B1.6 — Plant column count for this card's items table. Min 1. */
+  plantColumnCount: number;
   sortOrder: number;
   itemCount: number;
   createdAt: string;
@@ -67,6 +69,24 @@ export function useScopeCards(tenderId: string) {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      await load();
+    },
+    [authFetch, tenderId, load]
+  );
+
+  /**
+   * PR B1.6 — set the per-card Plant column count. Used by the items
+   * table when the user clicks "+" on the rightmost Plant header or
+   * "×" on a Plant 2+ header.
+   */
+  const setPlantColumnCount = useCallback(
+    async (cardId: string, plantColumnCount: number): Promise<void> => {
+      const res = await authFetch(`/tenders/${tenderId}/scope/cards/${cardId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plantColumnCount })
       });
       if (!res.ok) throw new Error(await res.text());
       await load();
@@ -143,6 +163,7 @@ export function useScopeCards(tenderId: string) {
     reload: load,
     createCard,
     renameCard,
+    setPlantColumnCount,
     changeDiscipline,
     deleteCard,
     reorderCards

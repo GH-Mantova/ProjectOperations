@@ -1,12 +1,15 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import {
+  CreateScopeCardDto,
   CreateScopeItemDto,
+  ReorderScopeCardsDto,
   ReorderScopeItemsDto,
+  UpdateScopeCardDto,
   UpdateScopeHeaderDto,
   UpdateScopeItemDto
 } from "./dto/scope-of-works.dto";
@@ -122,5 +125,91 @@ export class ScopeOfWorksController {
   })
   confirmAll(@Param("tenderId") tenderId: string, @CurrentUser() actor: RequestUser) {
     return this.service.confirmAllDrafts(tenderId, actor.sub);
+  }
+
+  // ── Cards (PR B1) ─────────────────────────────────────────────────────
+  @Get("cards")
+  @RequirePermissions("estimates.view")
+  @ApiOperation({
+    summary: "List scope cards for the tender with item counts. Ordered by sortOrder (user-controlled)."
+  })
+  listCards(@Param("tenderId") tenderId: string) {
+    return this.service.listCards(tenderId);
+  }
+
+  @Post("cards")
+  @RequirePermissions("estimates.manage")
+  @ApiOperation({
+    summary: "Create a new scope card. cardNumber auto-assigned as MAX(cardNumber)+1 in (tenderId, discipline)."
+  })
+  @ApiResponse({ status: 201, description: "Created card." })
+  createCard(
+    @Param("tenderId") tenderId: string,
+    @Body() dto: CreateScopeCardDto,
+    @CurrentUser() actor: RequestUser
+  ) {
+    return this.service.createCard(tenderId, actor.sub, dto);
+  }
+
+  @Patch("cards/:cardId")
+  @RequirePermissions("estimates.manage")
+  @ApiOperation({
+    summary:
+      "Update a scope card. Pass `name` to rename, or `discipline` to change discipline (cascades item wbsCode + cutting/waste wbsRef updates)."
+  })
+  updateCard(
+    @Param("tenderId") tenderId: string,
+    @Param("cardId") cardId: string,
+    @Body() dto: UpdateScopeCardDto
+  ) {
+    if (dto.discipline) {
+      return this.service.changeCardDiscipline(tenderId, cardId, dto.discipline);
+    }
+    if (dto.name !== undefined) {
+      return this.service.renameCard(tenderId, cardId, dto.name);
+    }
+    throw new BadRequestException("Provide name or discipline.");
+  }
+
+  @Delete("cards/:cardId")
+  @HttpCode(204)
+  @RequirePermissions("estimates.manage")
+  @ApiOperation({
+    summary: "Delete a scope card. 409 if the card has scope items — move or delete items first."
+  })
+  @ApiResponse({ status: 204, description: "Card deleted." })
+  @ApiResponse({ status: 409, description: "Card has items — cannot delete." })
+  async deleteCard(
+    @Param("tenderId") tenderId: string,
+    @Param("cardId") cardId: string
+  ): Promise<void> {
+    await this.service.deleteCard(tenderId, cardId);
+  }
+
+  @Post("cards/reorder")
+  @HttpCode(204)
+  @RequirePermissions("estimates.manage")
+  @ApiOperation({ summary: "Bulk-update card sortOrder. Each card receives sortOrder = its index in cardIds." })
+  async reorderCards(
+    @Param("tenderId") tenderId: string,
+    @Body() dto: ReorderScopeCardsDto
+  ): Promise<void> {
+    await this.service.reorderCards(tenderId, dto.cardIds);
+  }
+
+  @Post("cards/:cardId/items")
+  @RequirePermissions("estimates.manage")
+  @ApiOperation({
+    summary:
+      "Create a scope item inside a specific card. wbsCode = `${discipline}${cardNumber}.${itemNumber}` with itemNumber per-card."
+  })
+  @ApiResponse({ status: 201, description: "Created scope item with parent card included." })
+  createItemInCard(
+    @Param("tenderId") tenderId: string,
+    @Param("cardId") cardId: string,
+    @Body() dto: CreateScopeItemDto,
+    @CurrentUser() actor: RequestUser
+  ) {
+    return this.service.createItemInCard(tenderId, actor.sub, cardId, dto);
   }
 }

@@ -145,8 +145,10 @@ export class ProposalsService {
       ? merged.description
       : `${merged.title} — ${merged.description}`;
     // PR A2.5 — every scope item must link to a card. Look up or create.
+    // PR B1 — populate cardNumber on creation (first card per discipline = 1).
     const card = await this.prisma.scopeCard.findFirst({
       where: { tenderId, discipline },
+      orderBy: { cardNumber: "asc" },
       select: { id: true }
     });
     let cardId = card?.id;
@@ -157,6 +159,7 @@ export class ProposalsService {
           tenderId,
           name: defaults.name,
           discipline,
+          cardNumber: defaults.cardNumber,
           sortOrder: defaults.sortOrder,
           createdById: userId
         },

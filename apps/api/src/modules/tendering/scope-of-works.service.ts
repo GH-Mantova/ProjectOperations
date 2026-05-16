@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import {
@@ -490,9 +490,13 @@ export class ScopeOfWorksService {
 
   /**
    * PR A2.5 — every ScopeOfWorksItem must be linked to a ScopeCard.
-   * Look up the card for (tenderId, discipline); create it on demand with
-   * defaults (name + sortOrder) if absent. Idempotent — repeated calls
-   * for the same pair return the same card.
+   * Look up the FIRST card for (tenderId, discipline); create it on
+   * demand with defaults if absent. Idempotent for the discipline-derived
+   * legacy flows (proposals.acceptProposal, createItem).
+   *
+   * PR B1 — if a discipline has multiple cards, this returns the lowest
+   * cardNumber. Callers that need a SPECIFIC card use the new
+   * createItemInCard / listCards / etc. methods.
    */
   private async getOrCreateCardForDiscipline(
     tenderId: string,
@@ -501,6 +505,7 @@ export class ScopeOfWorksService {
   ): Promise<string> {
     const existing = await this.prisma.scopeCard.findFirst({
       where: { tenderId, discipline },
+      orderBy: { cardNumber: "asc" },
       select: { id: true }
     });
     if (existing) return existing.id;
@@ -510,12 +515,253 @@ export class ScopeOfWorksService {
         tenderId,
         name: defaults.name,
         discipline,
+        cardNumber: defaults.cardNumber,
         sortOrder: defaults.sortOrder,
         createdById: actorId
       },
       select: { id: true }
     });
     return created.id;
+  }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // PR B1 — card-CRUD service methods
+  // ──────────────────────────────────────────────────────────────────────
+
+  /**
+   * List all cards for a tender with item counts. Drives the cards-as-tabs
+   * UI; ordered by sortOrder (user-controlled via reorderCards).
+   */
+  async listCards(tenderId: string) {
+    await this.requireTender(tenderId);
+    const cards = await this.prisma.scopeCard.findMany({
+      where: { tenderId },
+      orderBy: { sortOrder: "asc" },
+      include: { _count: { select: { scopeItems: true } } }
+    });
+    return cards.map((c) => ({
+      id: c.id,
+      tenderId: c.tenderId,
+      name: c.name,
+      discipline: c.discipline,
+      cardNumber: c.cardNumber,
+      sortOrder: c.sortOrder,
+      itemCount: c._count.scopeItems,
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt
+    }));
+  }
+
+  /**
+   * Create a new card. cardNumber auto-assigned as MAX(cardNumber)+1 in
+   * (tenderId, discipline). Never reuses freed numbers. sortOrder lands
+   * the new card at the end of the tab row.
+   */
+  async createCard(
+    tenderId: string,
+    actorId: string,
+    dto: { name: string; discipline: Discipline }
+  ) {
+    await this.requireTender(tenderId);
+    const maxCard = await this.prisma.scopeCard.aggregate({
+      where: { tenderId, discipline: dto.discipline },
+      _max: { cardNumber: true }
+    });
+    const cardNumber = (maxCard._max.cardNumber ?? 0) + 1;
+    const maxSort = await this.prisma.scopeCard.aggregate({
+      where: { tenderId },
+      _max: { sortOrder: true }
+    });
+    const sortOrder = (maxSort._max.sortOrder ?? -1) + 1;
+    return this.prisma.scopeCard.create({
+      data: {
+        tenderId,
+        name: dto.name.trim().slice(0, 200),
+        discipline: dto.discipline,
+        cardNumber,
+        sortOrder,
+        createdById: actorId
+      }
+    });
+  }
+
+  /**
+   * Rename card. cardNumber + discipline preserved.
+   */
+  async renameCard(tenderId: string, cardId: string, name: string) {
+    await this.requireTender(tenderId);
+    const card = await this.prisma.scopeCard.findFirst({
+      where: { id: cardId, tenderId }
+    });
+    if (!card) throw new NotFoundException("Card not found.");
+    return this.prisma.scopeCard.update({
+      where: { id: cardId },
+      data: { name: name.trim().slice(0, 200) }
+    });
+  }
+
+  /**
+   * Change card discipline. Cascades:
+   *   - cardNumber re-issued (next available in NEW discipline)
+   *   - wbsCode rewritten on every item in card
+   *   - wbsRef updated on cutting and waste rows referencing those items
+   * Idempotent for same-discipline calls (returns zero renumbered).
+   */
+  async changeCardDiscipline(
+    tenderId: string,
+    cardId: string,
+    newDiscipline: Discipline
+  ) {
+    await this.requireTender(tenderId);
+    const card = await this.prisma.scopeCard.findFirst({
+      where: { id: cardId, tenderId },
+      include: { scopeItems: { orderBy: { itemNumber: "asc" } } }
+    });
+    if (!card) throw new NotFoundException("Card not found.");
+    if (card.discipline === newDiscipline) {
+      return { card, itemsRenumbered: 0, cuttingRefsUpdated: 0, wasteRefsUpdated: 0 };
+    }
+
+    const max = await this.prisma.scopeCard.aggregate({
+      where: { tenderId, discipline: newDiscipline },
+      _max: { cardNumber: true }
+    });
+    const newCardNumber = (max._max.cardNumber ?? 0) + 1;
+    const newPrefix = `${newDiscipline}${newCardNumber}`;
+
+    return this.prisma.$transaction(async (tx) => {
+      const updatedCard = await tx.scopeCard.update({
+        where: { id: cardId },
+        data: { discipline: newDiscipline, cardNumber: newCardNumber }
+      });
+
+      const refMap: Array<{ oldCode: string; newCode: string }> = [];
+      for (const item of card.scopeItems) {
+        const newCode = `${newPrefix}.${item.itemNumber}`;
+        refMap.push({ oldCode: item.wbsCode, newCode });
+        await tx.scopeOfWorksItem.update({
+          where: { id: item.id },
+          data: { wbsCode: newCode }
+        });
+      }
+
+      let cuttingRefsUpdated = 0;
+      for (const { oldCode, newCode } of refMap) {
+        const r = await tx.cuttingSheetItem.updateMany({
+          where: { tenderId, wbsRef: oldCode },
+          data: { wbsRef: newCode }
+        });
+        cuttingRefsUpdated += r.count;
+      }
+
+      let wasteRefsUpdated = 0;
+      for (const { oldCode, newCode } of refMap) {
+        const r = await tx.scopeWasteItem.updateMany({
+          where: { tenderId, wbsRef: oldCode },
+          data: { wbsRef: newCode }
+        });
+        wasteRefsUpdated += r.count;
+      }
+
+      return {
+        card: updatedCard,
+        itemsRenumbered: refMap.length,
+        cuttingRefsUpdated,
+        wasteRefsUpdated
+      };
+    });
+  }
+
+  /**
+   * Delete card. Blocked when card has items (per Q3=A decision —
+   * caller must move or delete items first).
+   */
+  async deleteCard(tenderId: string, cardId: string): Promise<void> {
+    await this.requireTender(tenderId);
+    const card = await this.prisma.scopeCard.findFirst({
+      where: { id: cardId, tenderId },
+      select: { id: true }
+    });
+    if (!card) throw new NotFoundException("Card not found.");
+    const itemCount = await this.prisma.scopeOfWorksItem.count({
+      where: { cardId, tenderId }
+    });
+    if (itemCount > 0) {
+      throw new ConflictException(
+        `Cannot delete card with ${itemCount} item(s). Move or delete items first.`
+      );
+    }
+    await this.prisma.scopeCard.delete({ where: { id: cardId } });
+  }
+
+  /**
+   * Bulk-update card sortOrder. Used by drag-reorder on the tab row.
+   * Each card gets sortOrder = its index in the cardIds array.
+   */
+  async reorderCards(tenderId: string, cardIds: string[]): Promise<void> {
+    await this.requireTender(tenderId);
+    const cards = await this.prisma.scopeCard.findMany({
+      where: { tenderId },
+      select: { id: true }
+    });
+    const validIds = new Set(cards.map((c) => c.id));
+    for (const id of cardIds) {
+      if (!validIds.has(id)) {
+        throw new BadRequestException(`Card ${id} not found in tender.`);
+      }
+    }
+    await this.prisma.$transaction(
+      cardIds.map((id, index) =>
+        this.prisma.scopeCard.update({ where: { id }, data: { sortOrder: index } })
+      )
+    );
+  }
+
+  /**
+   * Card-scoped item creation. wbsCode = `${discipline}${cardNumber}.${itemNumber}`
+   * with itemNumber per-card (NOT per-discipline as in legacy createItem).
+   */
+  async createItemInCard(
+    tenderId: string,
+    actorId: string,
+    cardId: string,
+    dto: CreateScopeItemDto
+  ) {
+    await this.requireTender(tenderId);
+    const card = await this.prisma.scopeCard.findFirst({
+      where: { id: cardId, tenderId },
+      select: { id: true, discipline: true, cardNumber: true }
+    });
+    if (!card) throw new NotFoundException("Card not found.");
+    const discipline = card.discipline as Discipline;
+    assertRowTypeForDiscipline(discipline, dto.rowType);
+
+    const itemNumber = await this.nextItemNumberInCard(cardId);
+    const wbsCode = `${discipline}${card.cardNumber}.${itemNumber}`;
+
+    return this.prisma.scopeOfWorksItem.create({
+      data: {
+        tenderId,
+        cardId,
+        wbsCode,
+        itemNumber,
+        rowType: dto.rowType,
+        description: dto.description,
+        status: "confirmed",
+        aiProposed: false,
+        createdById: actorId,
+        ...numericFieldsFrom(dto)
+      },
+      include: { card: true }
+    });
+  }
+
+  private async nextItemNumberInCard(cardId: string): Promise<number> {
+    const max = await this.prisma.scopeOfWorksItem.aggregate({
+      where: { cardId },
+      _max: { itemNumber: true }
+    });
+    return (max._max.itemNumber ?? 0) + 1;
   }
 
   async createDraftItemsFromAi(

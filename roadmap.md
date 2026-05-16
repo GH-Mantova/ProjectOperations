@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-16 06:53 AEST
+Last updated: 2026-05-16 07:23 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -428,6 +428,46 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
 ---
 
 ## PHASE 6 — DEFERRED FROM CHAIN (tech debt)
+
+✅  PR B1 (backend) — ScopeCard cardNumber + card-CRUD endpoints (2026-05-16)
+    Schema + service + endpoint layer for cards-as-tabs. ScopeCard gains a
+    cardNumber Int column unique per (tenderId, discipline); item wbsCodes
+    migrated from flat (DEM1, DEM2, DEM3) to hierarchical dotted form
+    (DEM1.1, DEM1.2, DEM1.3) via the 20260516200000_scope_card_number
+    migration. Migration's first step uses ROW_NUMBER() OVER (PARTITION BY
+    card_id ORDER BY sort_order, created_at) to renumber legacy item_number
+    values that had collisions from the pre-A1 per-discipline counter.
+    Service gains: listCards, createCard (cardNumber=MAX+1 in discipline),
+    renameCard, changeCardDiscipline (atomic — reissues cardNumber, renumbers
+    items, cascades cutting + waste wbsRef in a $transaction), deleteCard
+    (409 if items exist), reorderCards (bulk sortOrder update),
+    createItemInCard (per-card itemNumber). 6 new REST endpoints under
+    /tenders/:tenderId/scope/cards. 15 new tests. Frontend continues using
+    legacy ScopeOfWorksTab against pre-B1 contract — dotted wbsCodes render
+    fine as plain strings in the existing table. No user-visible change
+    beyond the dotted codes.
+
+⏸️  PR B1.5 — Frontend rewrite for cards-as-tabs UI
+    The major user-facing piece deferred from B1. Build the new ScopeCardsTab
+    + ~12 component tree replacing ScopeOfWorksTab + ScopeDisciplineBar +
+    ScopeQuantitiesTable. @dnd-kit horizontal (tab reorder) + vertical (item
+    reorder within card) sortable. Inline rename on tabs (click → input,
+    blur/Enter saves, Escape cancels). ChangeDisciplineModal with renumber
+    preview before triggering changeCardDiscipline endpoint. Empty-state
+    with 4 quick-start buttons (one per IS discipline). Files to delete:
+    ScopeOfWorksTab.tsx, ScopeDisciplineBar.tsx, ScopeQuantitiesTable.tsx,
+    ScopeListDropdown.tsx, ScopeRowPills.tsx, ScopeColumnManager.tsx (audit
+    confirms no cross-folder consumers). All 6 new endpoints already exist;
+    UI just calls them.
+
+⏸️  PR B2 — Per-card concrete cutting subtable
+    Currently page-level under the tendering Scope tab. Moves to a
+    collapsible section inside each card body (alongside that card's items).
+    Renders cutting_sheet_items filtered by parent card's wbsCode prefix.
+
+⏸️  PR B3 — Per-card waste summary subtable
+    Same shape as B2 but for scope_waste_items. Per-card filtering by
+    parent card's wbsCode prefix.
 
 ✅  Discipline migration from 5-code to 4-code system (PR A1) — 2026-05-16
     Closed by PR A1 of the scope-of-works redesign chain (see

@@ -154,3 +154,32 @@ export class ReorderScopeItemsDto {
   @Type(() => ReorderEntryDto)
   order!: ReorderEntryDto[];
 }
+
+// ── PR B1 — Scope card DTOs ──────────────────────────────────────────────
+export class CreateScopeCardDto {
+  @ApiProperty({ description: "Display name (free-form, max 200 chars)." })
+  @IsString() @MaxLength(200) name!: string;
+
+  @ApiProperty({ enum: DISCIPLINES, description: "IS discipline (DEM/CIV/ASB/Other)." })
+  @IsIn(DISCIPLINES as unknown as string[]) discipline!: Discipline;
+}
+
+export class UpdateScopeCardDto {
+  @ApiPropertyOptional({ description: "New display name (rename)." })
+  @IsOptional() @IsString() @MaxLength(200) name?: string;
+
+  @ApiPropertyOptional({
+    enum: DISCIPLINES,
+    description:
+      "New discipline. Cascades: cardNumber reissued in new discipline, item wbsCodes rewritten, cutting + waste wbsRefs updated."
+  })
+  @IsOptional() @IsIn(DISCIPLINES as unknown as string[]) discipline?: Discipline;
+}
+
+export class ReorderScopeCardsDto {
+  @ApiProperty({ type: [String], description: "Card IDs in desired display order; each gets sortOrder = its index." })
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsString({ each: true })
+  cardIds!: string[];
+}

@@ -19,13 +19,18 @@ export type ScopeCardDefault = {
   discipline: IsDisciplineCode;
   name: string;
   sortOrder: number;
+  cardNumber: number;
 };
 
+// PR B1 — cardNumber=1 for every default because the seed creates the
+// first card per discipline. Code that creates additional cards in the
+// same (tender, discipline) computes cardNumber dynamically via
+// MAX(card_number) + 1 in ScopeOfWorksService.createCard().
 export const SCOPE_CARD_DEFAULTS: readonly ScopeCardDefault[] = [
-  { discipline: "DEM", name: "Demolition", sortOrder: 0 },
-  { discipline: "CIV", name: "Civil works", sortOrder: 1 },
-  { discipline: "ASB", name: "Asbestos removal", sortOrder: 2 },
-  { discipline: "Other", name: "Other", sortOrder: 3 }
+  { discipline: "DEM", name: "Demolition", sortOrder: 0, cardNumber: 1 },
+  { discipline: "CIV", name: "Civil works", sortOrder: 1, cardNumber: 1 },
+  { discipline: "ASB", name: "Asbestos removal", sortOrder: 2, cardNumber: 1 },
+  { discipline: "Other", name: "Other", sortOrder: 3, cardNumber: 1 }
 ] as const;
 
 /**

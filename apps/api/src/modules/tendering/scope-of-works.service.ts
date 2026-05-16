@@ -13,6 +13,13 @@ import {
 } from "./dto/scope-of-works.dto";
 import { assertRowTypeForDiscipline } from "./scope-redesign.service";
 import { getScopeCardDefault } from "./scope/card-defaults";
+import {
+  computeScopeItemTotal,
+  wasteRateKey,
+  type RateMaps,
+  type ScopeItemPricingInput,
+  type ScopePlantEntryInput
+} from "./scope-item-pricing";
 
 const DEFAULT_ROLE_BY_DISCIPLINE: Record<Discipline, string> = {
   DEM: "Demolition labourer",
@@ -26,6 +33,81 @@ const DISCIPLINE_ORDER: Discipline[] = [...DISCIPLINES];
 function toDecimal(value: number | null | undefined | Prisma.Decimal): Prisma.Decimal | null {
   if (value === null || value === undefined) return null;
   return new Prisma.Decimal(value as number);
+}
+
+// PR B1.7.1 — helpers for per-row line totals. Module-private so they
+// don't widen the service's public API.
+
+function decToNum(value: Prisma.Decimal | number | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  return typeof value === "number" ? value : Number(value);
+}
+
+/**
+ * Build the rate-lookup maps consumed by computeScopeItemTotal. We pick
+ * the labour rate per discipline by resolving discipline → role via
+ * DEFAULT_ROLE_BY_DISCIPLINE and reading `dayRate` (shift defaults to
+ * Day — Night/Weekend rates are not surfaced in the canonical UI yet).
+ *
+ * For waste we keep only one rate per (group, type). If the rate card
+ * has multiple facilities for the same (group, type), the first active
+ * row wins — mirrors the legacy createEstimateItemFromScope fallback.
+ */
+function buildRateMaps(
+  labourRates: ReadonlyArray<{ role: string; dayRate: Prisma.Decimal }>,
+  plantRates: ReadonlyArray<{ id: string; rate: Prisma.Decimal }>,
+  wasteRates: ReadonlyArray<{ wasteGroup: string | null; wasteType: string; tonRate: Prisma.Decimal }>
+): RateMaps {
+  const labourByRole = new Map<string, number>();
+  for (const r of labourRates) labourByRole.set(r.role, Number(r.dayRate));
+
+  const labourRateByDiscipline = new Map<Discipline, number>();
+  for (const d of DISCIPLINE_ORDER) {
+    const role = DEFAULT_ROLE_BY_DISCIPLINE[d];
+    const rate = labourByRole.get(role);
+    if (rate != null) labourRateByDiscipline.set(d, rate);
+  }
+
+  const plantRateById = new Map<string, number>();
+  for (const p of plantRates) plantRateById.set(p.id, Number(p.rate));
+
+  const wasteTonRateByGroupAndType = new Map<string, number>();
+  for (const w of wasteRates) {
+    if (!w.wasteGroup) continue;
+    const key = wasteRateKey(w.wasteGroup, w.wasteType);
+    if (!wasteTonRateByGroupAndType.has(key)) {
+      wasteTonRateByGroupAndType.set(key, Number(w.tonRate));
+    }
+  }
+
+  return { labourRateByDiscipline, plantRateById, wasteTonRateByGroupAndType };
+}
+
+/**
+ * Project a Prisma ScopeOfWorksItem row into the shape consumed by the
+ * pure pricing function. Reads only canonical (B1.6+) fields plus
+ * provisionalAmount (used for Other discipline).
+ */
+function toPricingInput(
+  item: Prisma.ScopeOfWorksItemGetPayload<{ include: { card: true } }>,
+  discipline: Discipline
+): ScopeItemPricingInput {
+  const plantItemsRaw = item.plantItems;
+  const plantItems = Array.isArray(plantItemsRaw)
+    ? (plantItemsRaw as unknown as ScopePlantEntryInput[])
+    : null;
+  return {
+    discipline,
+    men: decToNum(item.men),
+    days: decToNum(item.days),
+    plantItems,
+    unit: item.unit,
+    value: decToNum(item.value),
+    wasteIncluded: item.wasteIncluded === true,
+    wasteGroup: item.wasteGroup,
+    wasteItem: item.wasteItem,
+    provisionalAmount: decToNum(item.provisionalAmount)
+  };
 }
 
 function numericFieldsFrom(dto: Partial<UpdateScopeItemDto & CreateScopeItemDto>) {
@@ -141,20 +223,38 @@ export class ScopeOfWorksService {
       return a.sortOrder - b.sortOrder;
     });
 
-    // Linked estimate item totals (price by itemId).
-    const estimateItemIds = sorted.map((s) => s.estimateItemId).filter((id): id is string => !!id);
-    const priceByItemId = await this.computeEstimateItemPrices(estimateItemIds);
+    // PR B1.7.1 — batch-fetch the three rate cards + the tender markup
+    // and compute a per-row total from canonical fields. Replaces the
+    // legacy priceByItemId path which only worked for rows that had
+    // been explicitly confirmed into an EstimateItem (canonical B1.6
+    // rows never were, so they always contributed $0). See
+    // scope-item-pricing.ts for the pure formula.
+    const [labourRates, plantRates, wasteRates, tenderEstimate] = await Promise.all([
+      this.prisma.estimateLabourRate.findMany({ where: { isActive: true } }),
+      this.prisma.estimatePlantRate.findMany({ where: { isActive: true } }),
+      this.prisma.estimateWasteRate.findMany({ where: { isActive: true } }),
+      this.prisma.tenderEstimate.findUnique({ where: { tenderId }, select: { markup: true } })
+    ]);
+    const rateMaps = buildRateMaps(labourRates, plantRates, wasteRates);
+    const markupPercent = tenderEstimate ? Number(tenderEstimate.markup) : 30;
+
+    const itemsWithTotals = sorted.map((item) => {
+      const discipline = (item.card?.discipline ?? "Other") as Discipline;
+      const totals = computeScopeItemTotal(toPricingInput(item, discipline), rateMaps, markupPercent);
+      return {
+        ...item,
+        lineTotal: totals.lineTotal,
+        lineTotalWithMarkup: totals.lineTotalWithMarkup
+      };
+    });
 
     const summaryByDiscipline = DISCIPLINE_ORDER.map((d) => {
-      const group = sorted.filter((i) => i.card?.discipline === d && i.status !== "excluded");
-      const total = group.reduce(
-        (sum, i) => sum + (i.estimateItemId ? Number(priceByItemId.get(i.estimateItemId) ?? 0) : 0),
-        0
-      );
+      const group = itemsWithTotals.filter((i) => i.card?.discipline === d && i.status !== "excluded");
+      const total = group.reduce((sum, i) => sum + i.lineTotal, 0);
       return { discipline: d, itemCount: group.length, totalValue: Number(total.toFixed(2)) };
     });
 
-    return { items: sorted, summary: summaryByDiscipline };
+    return { items: itemsWithTotals, summary: summaryByDiscipline };
   }
 
   // ── Items: create manual row ──────────────────────────────────────────

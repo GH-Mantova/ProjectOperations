@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-16 22:12 AEST
+Last updated: 2026-05-16 22:40 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -4572,5 +4572,103 @@ Verification:
 
 No schema/DTO/API changes. No new dependencies. No env vars.
 Rollback is a clean git revert.
+
+Audit findings: none.
+
+## 2026-05-17 — PR B1.7.1 — Surface per-row $ total on scope items API
+
+Branch: feat/scope-item-line-total-b1-7-1
+Section: Tendering scope-of-works UI redesign — B1.7 follow-up
+
+Goal: replace the "—" placeholder in the B1.7 collapsed item header
+with a real per-row total computed from the canonical (B1.6+)
+fields. Pre-B1.7.1 the header always showed "—" because the legacy
+priceByItemId path only worked for rows that had been explicitly
+confirmed into an EstimateItem — and canonical B1.6 rows never were.
+
+API changes (Approach A from the B1.7.1 investigation — see
+roadmap.md entry):
+  - NEW apps/api/src/modules/tendering/scope-item-pricing.ts —
+    pure helper computeScopeItemTotal(item, rates, markupPercent):
+      labour = (men ?? 0) × (days ?? 0) × dayRate
+      plant  = Σ over plantItems where plantRateId set:
+                 (qty ?? 1) × (days ?? 0) × plant.rate
+      waste  = wasteIncluded && unit === "t" && wasteGroup &&
+               wasteItem && value > 0
+                 ? value × waste.tonRate
+                 : 0
+      Other discipline → lineTotal = provisionalAmount (never marked up).
+      lineTotalWithMarkup = lineTotal × (1 + markup / 100).
+
+  - scope-of-works.service.ts listItems():
+      - Batch-fetches the three rate cards + tender markup via
+        a single Promise.all (4 queries, all small).
+      - buildRateMaps() resolves discipline → role →
+        EstimateLabourRate.dayRate for labour; indexes plant rates
+        by id; indexes waste rates by (group, type), first active
+        row wins (matches the legacy createEstimateItemFromScope
+        fallback).
+      - toPricingInput() projects the Prisma row into the pure
+        helper's input shape.
+      - Each returned item gains lineTotal + lineTotalWithMarkup.
+      - summaryByDiscipline.subtotal is re-pointed at the new
+        per-row totals.
+
+Notable behavior change (called out in PR body):
+  - Tender totals will RISE for any tender with canonical (B1.6+)
+    rows that previously contributed $0. This is a bug fix, not a
+    regression — the summary endpoint always claimed to include all
+    scope items, it just silently undercounted the canonical ones.
+
+Locked decisions from the B1.7.1 investigation phase:
+  Q1: waste contribution only when unit === "t". Other units = $0
+      with a documented limitation (B3 revisits when waste subtable
+      auto-calc rewires).
+  Q2: surface BOTH lineTotal and lineTotalWithMarkup; header shows
+      lineTotalWithMarkup (consistent with the footer's "with
+      markup" subtotal).
+  Q3: markup read from TenderEstimate.markup, default 30 when the
+      tender has no estimate row yet.
+  Q4: Other discipline → lineTotal = provisionalAmount, never
+      marked up (matches scope-redesign.service.ts:510-513
+      semantics).
+
+Frontend:
+  - ScopeQuantitiesTable.tsx ScopeItem type gains optional
+    lineTotal + lineTotalWithMarkup (both number | string | null
+    so older API responses don't break the type).
+  - Collapsed item header reads item.lineTotalWithMarkup via the
+    existing fmtCurrency formatter. Falls back to "—" when null.
+    Tabular-nums for stable column alignment.
+
+Tests:
+  - 14 new specs in scope/__tests__/scope-item-pricing.spec.ts:
+    empty item, labour-only, plant single/multi/missing-rate/
+    missing-qty/default-qty, waste happy-path, non-t unit (×3),
+    wasteIncluded=false, missing wasteGroup/wasteItem, unknown
+    (group, item) pair, Other discipline override, markup math,
+    mixed all components.
+
+Verification:
+  - pnpm --filter api test: 519 passing (505 baseline + 14 new); 6 skipped
+  - pnpm --filter api exec tsc --noEmit: clean
+  - pnpm --filter api lint: clean
+  - pnpm --filter web test --run: 148 passing (unchanged)
+  - pnpm --filter web exec tsc --noEmit: clean
+  - pnpm --filter web lint: clean
+  - pnpm --filter web build: clean
+
+Follow-up items (carried forward to B3):
+  - Waste contribution math when unit !== "t". Needs either a
+    density column on EstimateWasteRate (m³ → tonnes) or a
+    per-row override. Today m²/m³/ea waste rows show $0.
+  - Multi-facility waste: the canonical row picks the first
+    active (group, type) rate. If the user needs facility-level
+    cost variation, B3 should add a facility picker.
+  - Night/Weekend labour rates not surfaced — shift always
+    defaults to Day. Out of scope for B1.7.1.
+
+No schema changes. No migration. No env vars. No new dependencies.
+Rollback is a clean git revert — tender totals revert with it.
 
 Audit findings: none.

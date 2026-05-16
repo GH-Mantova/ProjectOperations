@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-16 21:57 AEST
+Last updated: 2026-05-16 22:40 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -509,15 +509,23 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     filtered by active card's wbsRefs (B2/B3 move them per-card).
     Tests: 132 → 138 (6 new utility tests). API tests unchanged at 493.
 
-⏸️  PR B1.7.1 — Per-row $ total surfacing on the item header bar
-    Currently the collapsed item card shows "—" in the per-row $ position.
-    Two approaches: (a) surface priceByItemId on each item in GET /scope/items
-    (today it is computed internally for summaryByDiscipline but discarded
-    per-row), or (b) compute client-side from the canonical fields
-    (men×days×labour_rate + Σ plant.qty×plant.days×rate + value +
-    waste_rate×qty when wasteIncluded). Option (b) is self-contained but
-    duplicates rate-engine logic. Note: canonical B1.6 rows don't create
-    EstimateItems so today's priceByItemId is $0 for new rows regardless.
+✅  PR B1.7.1 — Per-row $ total surfacing on the item header bar (2026-05-17)
+    Replaces the "—" placeholder with a real per-row total computed
+    server-side from canonical B1.6+ fields. New pure helper
+    apps/api/src/modules/tendering/scope-item-pricing.ts encapsulates
+    the formula (labour = men×days×dayRate; plant = Σ qty×days×rate;
+    waste = value×tonRate when unit==="t" && wasteIncluded; Other →
+    provisionalAmount). listItems() batch-fetches the three rate
+    cards + the tender markup in a single Promise.all and attaches
+    lineTotal + lineTotalWithMarkup to each item; summaryByDiscipline
+    re-points at the new per-row totals. Frontend collapsed header
+    renders lineTotalWithMarkup (matches the footer's "with markup"
+    subtotal). 14 new pricing-helper specs (505 → 519 API tests).
+    Note: tender totals rose for any tender with canonical rows that
+    were previously contributing $0 — bug fix, not regression.
+    Carried into B3: density-aware waste calc for non-t units;
+    facility picker for multi-facility waste rates; night/weekend
+    shift labour rates.
 
 ⏸️  PR B2 — Per-card concrete cutting subtable
     Currently page-level under the tendering Scope tab. Moves to a

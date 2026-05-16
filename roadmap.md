@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-16 07:44 AEST
+Last updated: 2026-05-16 09:22 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -446,6 +446,22 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     legacy ScopeOfWorksTab against pre-B1 contract — dotted wbsCodes render
     fine as plain strings in the existing table. No user-visible change
     beyond the dotted codes.
+
+✅  PR B1.6 — Items table redesign per design doc (2026-05-16)
+    Canonical 12-column fixed layout per docs/Designs/scope-of-works-redesign.md
+    lines 269-309. Replaces the dynamic-column-by-row-type mechanism with
+    a fixed set: WBS / Description / Men / Days / Plant 1...N / Waste group /
+    Waste item / Unit / Value / Waste? / Notes / Delete. Plant column count
+    is per-card (new ScopeCard.plantColumnCount column, default 1) with
+    "+"/"×" header buttons; column removal confirms with the user if any
+    row has data at that columnIndex. Adds 4 new columns on ScopeOfWorksItem
+    (unit, value, wasteItem, wasteIncluded). Legacy columns kept in schema
+    for back-compat. ScopeQuantitiesTable.tsx rewritten (840 → 612 lines);
+    ScopeColumnManager + view-config + pills row + Row Type column all gone
+    from UI. Tests: 493 → 498. Follow-ups: dead-code cleanup in
+    scope-redesign.service.ts COLUMNS_BY_ROW_TYPE matrix, ScopeViewConfig
+    table+endpoints deprecation, and auto-waste-summary calc rewire
+    (deferred to PR B3).
 
 ✅  PR B1.5 — Cards-as-tabs frontend (2026-05-16)
     Cards-as-tabs UX shipped. New scope-cards/ component tree (8 files +

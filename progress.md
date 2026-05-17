@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-16 23:03 AEST
+Last updated: 2026-05-17 00:12 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -4750,5 +4750,108 @@ Frontend unchanged.
 Carried forward (B3): proper waste calc on the dedicated subtable
 (was the original B1.7.1 follow-up; this hotfix just removes the
 wrong placement, doesn't add the correct one).
+
+Audit findings: none.
+
+## 2026-05-17 — PR B2 — Tender + per-card markup picker + Other-discipline markup
+
+Branch: feat/scope-markup-picker-b2
+Section: Tendering scope-of-works UI redesign — pricing controls
+
+### What shipped
+1. **Tender-level markup picker** in the Scope of Works page header
+   (right-aligned cluster: "Markup: __%" + "Reset all" button). Reads
+   /tenders/:id/estimate; writes via PATCH which now upserts the row
+   on first save. No more dependency on calling POST first.
+2. **Per-card markup override** field in the card body header strip,
+   alongside the discipline picker. Info-bordered input (brand-accent
+   colour) when an override is active; placeholder shows the tender
+   markup; × button next to the input clears back to null. null =
+   inherit tender markup.
+3. **Reset-all** button on the tender header. Clears every card's
+   markupOverride in the tender. Confirm dialog only when ≥1 card
+   has an override; silent otherwise.
+4. **Other-discipline now applies markup**. computeScopeItemTotal
+   previously short-circuited Other to lineTotalWithMarkup =
+   provisionalAmount with no markup; now Other ALSO multiplies by
+   markupFactor. lineTotal still reflects the raw provisional sum
+   so the markup amount is visible as the delta.
+5. **Per-card effective markup resolution**. Both /scope/items and
+   /scope/summary now compute markup per-item:
+     effective = card.markupOverride ?? tender.markup ?? 30
+   Items already include the card relation, so no extra queries.
+6. **Footer self-sums per card**. ScopeQuantitiesTable dropped its
+   `subtotal` + `subtotalWithMarkup` props; the footer now sums each
+   item's lineTotal / lineTotalWithMarkup (attached by B1.7.1).
+   Means per-card overrides reflect immediately and accurately even
+   when two cards share a discipline.
+
+### Schema
+```
+ScopeCard.markupOverride Decimal? @db.Decimal(5, 2) @map("markup_override")
+```
+Migration: 20260517010000_card_markup_override (additive, nullable,
+no backfill). Applied manually via docker exec + recorded in
+_prisma_migrations.
+
+### API changes
+- updateEstimate UPSERTS the TenderEstimate row when missing. Fresh
+  tenders no longer need an explicit POST before PATCH. Backward
+  compatible.
+- listCards response gains markupOverride: number | null.
+- UpdateScopeCardDto + markupOverride (number | null, @Min(0)).
+- PATCH /tenders/:id/scope/cards/:cardId routes on markupOverride
+  in addition to existing fields.
+- NEW POST /tenders/:id/scope/markup/reset-all → returns
+  { cardsReset: count }. Single updateMany scoped to the tender.
+
+### Behavior change (flagged in PR body)
+Other-discipline tender totals RISE for any tender with Other rows
+previously contributing at face value. computeScopeItemTotal
+previously hard-coded "no markup for Other"; now Other multiplies by
+markupFactor like every other discipline. This is per Marco's
+explicit spec, not a regression.
+
+### Verification
+- pnpm --filter api test: 522 passing (515 baseline + 7 new)
+- pnpm --filter api exec tsc --noEmit: clean
+- pnpm --filter api lint: clean
+- pnpm --filter web test --run: 148 passing (unchanged)
+- pnpm --filter web exec tsc --noEmit: clean
+- pnpm --filter web lint: clean
+- pnpm --filter web build: clean
+
+### Tests added (7 new)
+- scope-item-pricing.spec.ts: flipped "Other never marked up" to
+  "Other applies markup" (12345 × 1.30 = 16048.5); added Other-at-0%
+  variant.
+- scope-cards.service.spec.ts: +3 setCardMarkupOverride specs
+  (Decimal stored, null clears, 404); +2 resetAllCardMarkup specs
+  (updateMany shape + count); +1 listCards exposes markupOverride.
+- Test harness extended with scopeCardUpdateMany mock.
+
+### Files touched
+- prisma/schema.prisma — ScopeCard.markupOverride
+- migrations/20260517010000_card_markup_override/migration.sql
+- scope-item-pricing.ts — Other gets markup; markupFactor lifted
+- dto/scope-of-works.dto.ts — UpdateScopeCardDto.markupOverride
+- scope-of-works.service.ts — per-card effective markup in listItems;
+  setCardMarkupOverride; resetAllCardMarkup; listCards exposes
+  markupOverride
+- scope-redesign.service.ts:summary() — per-card effective markup
+- scope-of-works.controller.ts — markupOverride routing + reset-all
+- estimates.service.ts:updateEstimate — upsert
+- scope/__tests__/scope-cards.service.spec.ts — +6 specs + mock
+- scope/__tests__/scope-item-pricing.spec.ts — +1 flipped + 1 new
+- useScopeCards.ts — type + 2 callbacks
+- useTenderEstimate.ts (NEW) — tender markup hook
+- ScopeCardsTab.tsx — tender + per-card markup pickers; drop summary
+  fetch; drop subtotal props
+- ScopeQuantitiesTable.tsx — drop subtotal props; self-sum footer
+
+No new dependencies. No env vars.
+
+Carried forward: nothing new — B3 (waste subtable rewire) is the next
+queued PR.
 
 Audit findings: none.

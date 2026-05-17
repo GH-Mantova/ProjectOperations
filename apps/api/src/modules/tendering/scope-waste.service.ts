@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { narrowToNumber, toDecimal } from "./scope-of-works.service";
 
 type UpsertWasteDto = {
   discipline?: string;
@@ -47,12 +48,20 @@ export class ScopeWasteService {
   async create(tenderId: string, actorId: string, dto: UpsertWasteDto) {
     if (!dto.description) throw new BadRequestException("description is required.");
     if (!dto.discipline) throw new BadRequestException("discipline is required.");
+    // PR B4a.3 — narrow DTO numerics at the call site so CodeQL's
+    // dataflow analyzer can see the typeof guards. Downstream Decimal
+    // constructors then operate on trusted `number | null` locals.
+    const tonnesN = narrowToNumber(dto.wasteTonnes);
+    const m3N = narrowToNumber(dto.m3);
+    const loadsN = narrowToNumber(dto.wasteLoads);
+    const ratePerTonneN = narrowToNumber(dto.ratePerTonne);
+    const ratePerLoadN = narrowToNumber(dto.ratePerLoad);
     const { truckDays, lineTotal } = this.deriveTotals(
-      dto.wasteTonnes,
-      dto.m3,
-      dto.wasteLoads,
-      dto.ratePerTonne,
-      dto.ratePerLoad,
+      tonnesN,
+      m3N,
+      loadsN,
+      ratePerTonneN,
+      ratePerLoadN,
       dto.unit
     );
     return this.prisma.scopeWasteItem.create({
@@ -66,13 +75,13 @@ export class ScopeWasteService {
         wasteType: dto.wasteType ?? null,
         wasteFacility: dto.wasteFacility ?? null,
         unit: dto.unit ?? null,
-        wasteTonnes: dto.wasteTonnes !== undefined && dto.wasteTonnes !== null ? new Prisma.Decimal(dto.wasteTonnes) : null,
-        m3: dto.m3 !== undefined && dto.m3 !== null ? new Prisma.Decimal(dto.m3) : null,
-        wasteLoads: dto.wasteLoads ?? null,
-        truckDays: truckDays !== null ? new Prisma.Decimal(truckDays) : null,
-        ratePerTonne: dto.ratePerTonne !== undefined && dto.ratePerTonne !== null ? new Prisma.Decimal(dto.ratePerTonne) : null,
-        ratePerLoad: dto.ratePerLoad !== undefined && dto.ratePerLoad !== null ? new Prisma.Decimal(dto.ratePerLoad) : null,
-        lineTotal: lineTotal !== null ? new Prisma.Decimal(lineTotal) : null,
+        wasteTonnes: toDecimal(tonnesN),
+        m3: toDecimal(m3N),
+        wasteLoads: loadsN,
+        truckDays: toDecimal(truckDays),
+        ratePerTonne: toDecimal(ratePerTonneN),
+        ratePerLoad: toDecimal(ratePerLoadN),
+        lineTotal: toDecimal(lineTotal),
         notes: dto.notes ?? null,
         sortOrder: dto.sortOrder ?? 0,
         // PR B3 — manual creates default autoSummed=false. Only
@@ -88,11 +97,22 @@ export class ScopeWasteService {
     if (!existing || existing.tenderId !== tenderId) {
       throw new NotFoundException("Waste item not found on this tender.");
     }
-    const tonnes = dto.wasteTonnes !== undefined ? dto.wasteTonnes : existing.wasteTonnes ? Number(existing.wasteTonnes) : null;
-    const m3 = dto.m3 !== undefined ? dto.m3 : existing.m3 ? Number(existing.m3) : null;
-    const loads = dto.wasteLoads !== undefined ? dto.wasteLoads : existing.wasteLoads;
-    const ratePerTonne = dto.ratePerTonne !== undefined ? dto.ratePerTonne : existing.ratePerTonne ? Number(existing.ratePerTonne) : null;
-    const ratePerLoad = dto.ratePerLoad !== undefined ? dto.ratePerLoad : existing.ratePerLoad ? Number(existing.ratePerLoad) : null;
+    // PR B4a.3 — narrow DTO numerics at the call site. The resulting
+    // locals are typed `number | null` so CodeQL no longer flags the
+    // downstream Prisma.Decimal constructors as tainted sinks.
+    const dtoTonnesN = dto.wasteTonnes === undefined ? undefined : narrowToNumber(dto.wasteTonnes);
+    const dtoM3N = dto.m3 === undefined ? undefined : narrowToNumber(dto.m3);
+    const dtoLoadsN = dto.wasteLoads === undefined ? undefined : narrowToNumber(dto.wasteLoads);
+    const dtoRatePerTonneN = dto.ratePerTonne === undefined ? undefined : narrowToNumber(dto.ratePerTonne);
+    const dtoRatePerLoadN = dto.ratePerLoad === undefined ? undefined : narrowToNumber(dto.ratePerLoad);
+
+    // Compute effective values for the totals: DTO value (narrowed) wins
+    // when present; otherwise fall back to existing row.
+    const tonnes = dtoTonnesN !== undefined ? dtoTonnesN : existing.wasteTonnes ? Number(existing.wasteTonnes) : null;
+    const m3 = dtoM3N !== undefined ? dtoM3N : existing.m3 ? Number(existing.m3) : null;
+    const loads = dtoLoadsN !== undefined ? dtoLoadsN : existing.wasteLoads;
+    const ratePerTonne = dtoRatePerTonneN !== undefined ? dtoRatePerTonneN : existing.ratePerTonne ? Number(existing.ratePerTonne) : null;
+    const ratePerLoad = dtoRatePerLoadN !== undefined ? dtoRatePerLoadN : existing.ratePerLoad ? Number(existing.ratePerLoad) : null;
     const unit = dto.unit !== undefined ? dto.unit : existing.unit;
     const { truckDays, lineTotal } = this.deriveTotals(tonnes, m3, loads, ratePerTonne, ratePerLoad, unit);
     const data: Prisma.ScopeWasteItemUpdateInput = {};
@@ -103,17 +123,13 @@ export class ScopeWasteService {
     if (dto.wasteType !== undefined) data.wasteType = dto.wasteType;
     if (dto.wasteFacility !== undefined) data.wasteFacility = dto.wasteFacility;
     if (dto.unit !== undefined) data.unit = dto.unit;
-    if (dto.wasteTonnes !== undefined)
-      data.wasteTonnes = dto.wasteTonnes === null ? null : new Prisma.Decimal(dto.wasteTonnes);
-    if (dto.m3 !== undefined)
-      data.m3 = dto.m3 === null ? null : new Prisma.Decimal(dto.m3);
-    if (dto.wasteLoads !== undefined) data.wasteLoads = dto.wasteLoads;
-    if (dto.ratePerTonne !== undefined)
-      data.ratePerTonne = dto.ratePerTonne === null ? null : new Prisma.Decimal(dto.ratePerTonne);
-    if (dto.ratePerLoad !== undefined)
-      data.ratePerLoad = dto.ratePerLoad === null ? null : new Prisma.Decimal(dto.ratePerLoad);
-    data.truckDays = truckDays !== null ? new Prisma.Decimal(truckDays) : null;
-    data.lineTotal = lineTotal !== null ? new Prisma.Decimal(lineTotal) : null;
+    if (dtoTonnesN !== undefined) data.wasteTonnes = toDecimal(dtoTonnesN);
+    if (dtoM3N !== undefined) data.m3 = toDecimal(dtoM3N);
+    if (dtoLoadsN !== undefined) data.wasteLoads = dtoLoadsN;
+    if (dtoRatePerTonneN !== undefined) data.ratePerTonne = toDecimal(dtoRatePerTonneN);
+    if (dtoRatePerLoadN !== undefined) data.ratePerLoad = toDecimal(dtoRatePerLoadN);
+    data.truckDays = toDecimal(truckDays);
+    data.lineTotal = toDecimal(lineTotal);
     if (dto.notes !== undefined) data.notes = dto.notes;
     if (dto.sortOrder !== undefined) data.sortOrder = dto.sortOrder;
     return this.prisma.scopeWasteItem.update({ where: { id }, data });

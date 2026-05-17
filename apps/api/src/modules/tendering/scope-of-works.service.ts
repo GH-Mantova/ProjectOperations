@@ -47,47 +47,77 @@ export function toDecimal(value: unknown): Prisma.Decimal | null {
   return null;
 }
 
+// PR B4a.3 — call-site narrowing for DTO numeric fields. CodeQL's
+// dataflow analyzer is path-insensitive on object field accesses, so
+// it doesn't trace through the `typeof` guards inside `toDecimal` and
+// keeps flagging `new Prisma.Decimal(...)` as a tainted sink.
+// Narrowing at the call site (where CodeQL can see the typeof check)
+// clears the alert. The helper inside toDecimal still does the same
+// check — this is belt-and-braces, not a replacement.
+// See: https://codeql.github.com/codeql-query-help/javascript/js-type-confusion-through-parameter-tampering/
+export function narrowToNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed === "") return null;
+    const parsed = Number(trimmed);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
 function numericFieldsFrom(dto: Partial<UpdateScopeItemDto & CreateScopeItemDto>) {
+  // PR B4a.3 — every numeric DTO field flows through narrowToNumber at
+  // the call site (typeof check is visible to CodeQL's dataflow
+  // analyzer) before reaching the Prisma sink. Same narrowing already
+  // happens inside toDecimal; this is the documented mitigation
+  // pattern for js/type-confusion-through-parameter-tampering.
   return {
-    men: dto.men !== undefined ? toDecimal(dto.men) : undefined,
-    days: dto.days !== undefined ? toDecimal(dto.days) : undefined,
+    men: dto.men !== undefined ? toDecimal(narrowToNumber(dto.men)) : undefined,
+    days: dto.days !== undefined ? toDecimal(narrowToNumber(dto.days)) : undefined,
     shift: dto.shift,
-    sqm: dto.sqm !== undefined ? toDecimal(dto.sqm) : undefined,
-    m3: dto.m3 !== undefined ? toDecimal(dto.m3) : undefined,
+    sqm: dto.sqm !== undefined ? toDecimal(narrowToNumber(dto.sqm)) : undefined,
+    m3: dto.m3 !== undefined ? toDecimal(narrowToNumber(dto.m3)) : undefined,
     materialType: dto.materialType,
     cuttingEquipment: dto.cuttingEquipment,
     elevation: dto.elevation,
-    depthMm: dto.depthMm,
-    lm: dto.lm !== undefined ? toDecimal(dto.lm) : undefined,
-    coreHoleDiameterMm: dto.coreHoleDiameterMm,
-    coreHoleQty: dto.coreHoleQty !== undefined ? toDecimal(dto.coreHoleQty) : undefined,
+    depthMm: dto.depthMm !== undefined ? narrowToNumber(dto.depthMm) : undefined,
+    lm: dto.lm !== undefined ? toDecimal(narrowToNumber(dto.lm)) : undefined,
+    coreHoleDiameterMm:
+      dto.coreHoleDiameterMm !== undefined ? narrowToNumber(dto.coreHoleDiameterMm) : undefined,
+    coreHoleQty:
+      dto.coreHoleQty !== undefined ? toDecimal(narrowToNumber(dto.coreHoleQty)) : undefined,
     acmType: dto.acmType,
     acmMaterial: dto.acmMaterial,
     enclosureRequired: dto.enclosureRequired,
     airMonitoring: dto.airMonitoring,
-    excavationDepthM: dto.excavationDepthM !== undefined ? toDecimal(dto.excavationDepthM) : undefined,
+    excavationDepthM:
+      dto.excavationDepthM !== undefined ? toDecimal(narrowToNumber(dto.excavationDepthM)) : undefined,
     excavationMaterial: dto.excavationMaterial,
     machineSize: dto.machineSize,
     wasteType: dto.wasteType,
     wasteFacility: dto.wasteFacility,
-    wasteTonnes: dto.wasteTonnes !== undefined ? toDecimal(dto.wasteTonnes) : undefined,
-    wasteLoads: dto.wasteLoads,
-    wasteM3: dto.wasteM3 !== undefined ? toDecimal(dto.wasteM3) : undefined,
-    excavatorDays: dto.excavatorDays !== undefined ? toDecimal(dto.excavatorDays) : undefined,
-    bobcatDays: dto.bobcatDays !== undefined ? toDecimal(dto.bobcatDays) : undefined,
-    ewpDays: dto.ewpDays !== undefined ? toDecimal(dto.ewpDays) : undefined,
-    hookTruckDays: dto.hookTruckDays !== undefined ? toDecimal(dto.hookTruckDays) : undefined,
-    semiTipperDays: dto.semiTipperDays !== undefined ? toDecimal(dto.semiTipperDays) : undefined,
+    wasteTonnes: dto.wasteTonnes !== undefined ? toDecimal(narrowToNumber(dto.wasteTonnes)) : undefined,
+    wasteLoads: dto.wasteLoads !== undefined ? narrowToNumber(dto.wasteLoads) : undefined,
+    wasteM3: dto.wasteM3 !== undefined ? toDecimal(narrowToNumber(dto.wasteM3)) : undefined,
+    excavatorDays: dto.excavatorDays !== undefined ? toDecimal(narrowToNumber(dto.excavatorDays)) : undefined,
+    bobcatDays: dto.bobcatDays !== undefined ? toDecimal(narrowToNumber(dto.bobcatDays)) : undefined,
+    ewpDays: dto.ewpDays !== undefined ? toDecimal(narrowToNumber(dto.ewpDays)) : undefined,
+    hookTruckDays: dto.hookTruckDays !== undefined ? toDecimal(narrowToNumber(dto.hookTruckDays)) : undefined,
+    semiTipperDays: dto.semiTipperDays !== undefined ? toDecimal(narrowToNumber(dto.semiTipperDays)) : undefined,
     assetId: dto.assetId,
     notes: dto.notes,
     // Redesign additions.
-    measurementQty: dto.measurementQty !== undefined ? toDecimal(dto.measurementQty) : undefined,
+    measurementQty:
+      dto.measurementQty !== undefined ? toDecimal(narrowToNumber(dto.measurementQty)) : undefined,
     measurementUnit: dto.measurementUnit,
     material: dto.material,
     plantAssetId: dto.plantAssetId,
     wasteGroup: dto.wasteGroup,
     provisionalAmount:
-      dto.provisionalAmount !== undefined ? toDecimal(dto.provisionalAmount) : undefined,
+      dto.provisionalAmount !== undefined
+        ? toDecimal(narrowToNumber(dto.provisionalAmount))
+        : undefined,
     // Scope redesign v2 (PR #71). plantItems + measurements stored as
     // JSONB arrays. We pass through the DTO value directly; shape is
     // enforced by the class-validator shape hints in the DTO file.
@@ -101,18 +131,18 @@ function numericFieldsFrom(dto: Partial<UpdateScopeItemDto & CreateScopeItemDto>
     // @deprecated PR B4a — unit + value no longer drive the waste
     // aggregator (superseded by tonnes/m3 dimension fields below).
     unit: dto.unit,
-    value: dto.value !== undefined ? toDecimal(dto.value) : undefined,
+    value: dto.value !== undefined ? toDecimal(narrowToNumber(dto.value)) : undefined,
     wasteItem: dto.wasteItem,
     wasteIncluded: dto.wasteIncluded,
     // PR B4a — dimension fields. sqm/m3/tonnes are derived server-side
     // in createItem/updateItem via computeDerivedDimensions; raw inputs
     // (length/height/depth/density/chargeBy/cuttingIncluded) pass
     // through here.
-    length: dto.length !== undefined ? toDecimal(dto.length) : undefined,
-    height: dto.height !== undefined ? toDecimal(dto.height) : undefined,
-    depth: dto.depth !== undefined ? toDecimal(dto.depth) : undefined,
-    density: dto.density !== undefined ? toDecimal(dto.density) : undefined,
-    tonnes: dto.tonnes !== undefined ? toDecimal(dto.tonnes) : undefined,
+    length: dto.length !== undefined ? toDecimal(narrowToNumber(dto.length)) : undefined,
+    height: dto.height !== undefined ? toDecimal(narrowToNumber(dto.height)) : undefined,
+    depth: dto.depth !== undefined ? toDecimal(narrowToNumber(dto.depth)) : undefined,
+    density: dto.density !== undefined ? toDecimal(narrowToNumber(dto.density)) : undefined,
+    tonnes: dto.tonnes !== undefined ? toDecimal(narrowToNumber(dto.tonnes)) : undefined,
     chargeBy: dto.chargeBy,
     cuttingIncluded: dto.cuttingIncluded
   };

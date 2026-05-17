@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-17 03:33 AEST
+Last updated: 2026-05-17 03:51 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -5192,5 +5192,56 @@ branch (rebased onto main to pick up #181's hardened toDecimal).
 
 Force-pushed to feat/scope-item-dimensions-b4a — PR #180 auto-merge
 resumes once CI passes against the rebased history.
+
+### B4a.3 — CodeQL call-site narrowing
+
+After B4a.2 force-push, CodeQL was still flagging
+`scope-of-works.service.ts:111` (and the matching call sites in
+scope-waste.service.ts) as a "Type confusion through parameter
+tampering" sink. The B4a.1 `toDecimal` helper does narrow internally,
+but CodeQL's dataflow analyzer is path-insensitive on object field
+accesses (`dto.length`) and can't see the typeof guard inside the
+called function. The recommended mitigation (per the CodeQL docs
+themselves) is a typeof check at the CALL SITE.
+
+**What changed:**
+
+1. **New `narrowToNumber` helper** exported from
+   `scope-of-works.service.ts`. Pure: returns `number | null`, with a
+   visible `typeof value === "number" && Number.isFinite(value)`
+   guard so CodeQL sees the narrowing happen at the source.
+2. **`numericFieldsFrom` wraps every DTO numeric field access** with
+   `narrowToNumber(...)` before passing to `toDecimal`. Covers
+   23 fields including the new B4a dimensions (length/height/depth/
+   density/tonnes/sqm/m3) plus the integer-only fields (depthMm,
+   coreHoleDiameterMm, wasteLoads). Existing call sites keep their
+   `dto.X !== undefined ? ... : undefined` partial-PATCH gate.
+3. **`scope-waste.service.ts` rewritten to normalise DTO numerics
+   upfront** into local `number | null` variables, then construct
+   Decimals from those trusted locals. Eight Prisma.Decimal sinks
+   moved from `new Prisma.Decimal(dto.X)` → `toDecimal(localN)`,
+   killing the taint flow at the source. Partial-PATCH semantics
+   preserved by keeping `undefined` markers separate from `null`
+   (only write to the update payload when the DTO actually touched
+   the field).
+
+**Defense in depth:** `toDecimal` still narrows internally — the
+call-site guards don't replace it, they precede it. The double
+narrowing satisfies CodeQL's static analysis without weakening the
+runtime contract.
+
+**Out of scope:** `scope-redesign.service.ts` (4 sinks) and
+`tendering.service.ts` (3 sinks) have the same pattern but weren't
+flagged on PR #180. A separate sweep PR will harden them
+consistently if/when CodeQL surfaces them.
+
+### Verification (after B4a.3)
+- pnpm --filter api test: 569 passing (no regressions); 6 skipped
+- pnpm --filter api exec tsc --noEmit: clean
+- pnpm --filter api lint: clean
+- Web unchanged.
+
+No new tests in B4a.3 — `to-decimal.spec.ts` covers the equivalent
+narrowing logic; `narrowToNumber` is a trivial subset.
 
 Audit findings: none.

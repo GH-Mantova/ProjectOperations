@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-17 01:02 AEST
+Last updated: 2026-05-17 03:12 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -5001,5 +5001,63 @@ Math doesn't care (`lineTotal = qty × rate`); column rename deferred.
   name lie is fine for now but worth a sweep later.
 
 No new dependencies. No env vars.
+
+Audit findings: none.
+
+## 2026-05-17 — PR B4a.1 — Hotfix: defensive type narrowing in toDecimal (CodeQL)
+
+Branch: fix/scope-item-dimensions-type-guard-b4a-1
+Section: Tendering scope-of-works — security hardening
+
+### Why
+PR #180 (B4a) CI surfaced two critical CodeQL alerts on
+apps/api/src/modules/tendering/scope-of-works.service.ts where the
+`toDecimal` helper cast its parameter via `value as number` before
+constructing a `Prisma.Decimal`. CodeQL classified this as a "Type
+confusion through parameter tampering" sink: an HTTP body parameter
+declared as a number could still arrive as an array or string if
+validation is bypassed, and the cast-then-construct path would feed
+that straight to Prisma.Decimal.
+
+This hotfix lands on main FIRST (ahead of PR #180 merging) so the
+hardened helper is in place when the B4a CodeQL job re-runs on its
+rebase — unblocking the auto-merge on PR #180.
+
+### What changed
+- `toDecimal` signature widened from
+  `number | null | undefined | Prisma.Decimal` → `unknown`.
+- Explicit narrowing inside the helper:
+  - `null` / `undefined` → `null`
+  - `Prisma.Decimal` instance → passthrough (returned as-is)
+  - `number` → reject NaN/Infinity, else construct
+  - `string` → trim, reject empty/non-numeric, else construct (passing
+    the trimmed string so Prisma.Decimal preserves source precision)
+  - anything else (arrays, objects, booleans) → `null`
+- `toDecimal` is now `export`ed so the spec can hit it directly.
+- All existing callers continue to compile unchanged (the widened
+  signature accepts the previous union as a subset).
+
+### Defense in depth
+class-validator + ValidationPipe already reject malformed bodies at
+the controller boundary, so this hotfix is belt-and-braces: it
+protects the Prisma.Decimal sink even if some future caller invokes
+toDecimal from a code path that bypasses validation (eg. internal
+worker, AI tool handler, batch import).
+
+### Tests added
+- NEW `apps/api/src/modules/tendering/__tests__/to-decimal.spec.ts`
+  with 18 specs covering: null/undefined, finite numbers (incl. 0,
+  negative), NaN, Infinity, Prisma.Decimal passthrough, numeric
+  strings (incl. whitespace trim), empty/whitespace/non-numeric/
+  partially-numeric strings, arrays, objects, and booleans.
+
+### Verification
+- pnpm --filter api test: 548 passing (530 baseline + 18 new); 6 skipped
+- pnpm --filter api exec tsc --noEmit: clean
+- pnpm --filter api lint: clean
+- Web unchanged; no build re-run needed.
+
+No new dependencies. No env vars. No schema changes.
+Rollback is a clean git revert.
 
 Audit findings: none.

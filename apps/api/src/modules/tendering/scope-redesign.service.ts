@@ -491,8 +491,9 @@ export class ScopeRedesignService {
       this.prisma.tenderEstimate.findUnique({ where: { tenderId }, select: { markup: true } })
     ]);
     const rateMaps = buildRateMaps(labourRates, plantRates);
-    const markupPercent = tenderEstimate ? Number(tenderEstimate.markup) : 30;
+    const tenderMarkup = tenderEstimate ? Number(tenderEstimate.markup) : 30;
 
+    // PR B2 — markup resolves per-card: card.markupOverride ?? tenderMarkup.
     const perDiscipline: Record<string, { itemCount: number; subtotal: number; withMarkup: number }> = {};
     for (const d of DISCIPLINES) perDiscipline[d] = { itemCount: 0, subtotal: 0, withMarkup: 0 };
     for (const item of items) {
@@ -500,10 +501,12 @@ export class ScopeRedesignService {
       const bucket = perDiscipline[itemDiscipline];
       if (!bucket) continue;
       bucket.itemCount += 1;
+      const effectiveMarkup =
+        item.card?.markupOverride != null ? Number(item.card.markupOverride) : tenderMarkup;
       const totals = computeScopeItemTotal(
         toPricingInput(item, itemDiscipline),
         rateMaps,
-        markupPercent
+        effectiveMarkup
       );
       bucket.subtotal += totals.lineTotal;
       bucket.withMarkup += totals.lineTotalWithMarkup;

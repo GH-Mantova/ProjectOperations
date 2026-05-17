@@ -418,17 +418,40 @@ export class EstimatesService {
   }
 
   async updateEstimate(tenderId: string, dto: UpdateEstimateDto, actorId?: string) {
-    const estimate = await this.requireEstimate(tenderId);
-    this.ensureNotLocked(estimate);
+    // PR B2 — upsert behaviour. Fresh tenders have no TenderEstimate
+    // row until one is explicitly created; the scope-of-works markup
+    // picker now expects PATCH /tenders/:id/estimate to work without
+    // a prior POST. If the estimate doesn't exist we create it on the
+    // fly with the patched values (markup defaults to 30 when omitted).
+    await this.requireTender(tenderId);
+    const existing = await this.getEstimateForTender(tenderId);
+    if (!existing) {
+      const created = await this.prisma.tenderEstimate.create({
+        data: {
+          tenderId,
+          markup: new Prisma.Decimal(dto.markup ?? "30"),
+          notes: dto.notes ?? null
+        }
+      });
+      await this.auditService.write({
+        actorId,
+        action: "estimates.create",
+        entityType: "TenderEstimate",
+        entityId: created.id,
+        metadata: { tenderId, viaUpsert: true }
+      });
+      return this.requireEstimate(tenderId);
+    }
+    this.ensureNotLocked(existing);
     const data: Prisma.TenderEstimateUpdateInput = {};
     if (dto.markup !== undefined) data.markup = new Prisma.Decimal(dto.markup);
     if (dto.notes !== undefined) data.notes = dto.notes;
-    await this.prisma.tenderEstimate.update({ where: { id: estimate.id }, data });
+    await this.prisma.tenderEstimate.update({ where: { id: existing.id }, data });
     await this.auditService.write({
       actorId,
       action: "estimates.update",
       entityType: "TenderEstimate",
-      entityId: estimate.id
+      entityId: existing.id
     });
     return this.requireEstimate(tenderId);
   }

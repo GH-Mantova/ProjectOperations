@@ -146,17 +146,22 @@ export class ScopeOfWorksService {
     // scope-item-pricing.ts for the pure formula.
     // PR B1.7.2 — waste rate card no longer fetched here. Waste $ is
     // computed on the dedicated waste summary subtable (B3).
+    // PR B2 — markup resolves per-card: effective = card.markupOverride
+    // ?? tenderEstimate.markup ?? 30. card relation already included
+    // above so no extra query.
     const [labourRates, plantRates, tenderEstimate] = await Promise.all([
       this.prisma.estimateLabourRate.findMany({ where: { isActive: true } }),
       this.prisma.estimatePlantRate.findMany({ where: { isActive: true } }),
       this.prisma.tenderEstimate.findUnique({ where: { tenderId }, select: { markup: true } })
     ]);
     const rateMaps = buildRateMaps(labourRates, plantRates);
-    const markupPercent = tenderEstimate ? Number(tenderEstimate.markup) : 30;
+    const tenderMarkup = tenderEstimate ? Number(tenderEstimate.markup) : 30;
 
     const itemsWithTotals = sorted.map((item) => {
       const discipline = (item.card?.discipline ?? "Other") as Discipline;
-      const totals = computeScopeItemTotal(toPricingInput(item, discipline), rateMaps, markupPercent);
+      const effectiveMarkup =
+        item.card?.markupOverride != null ? Number(item.card.markupOverride) : tenderMarkup;
+      const totals = computeScopeItemTotal(toPricingInput(item, discipline), rateMaps, effectiveMarkup);
       return {
         ...item,
         lineTotal: totals.lineTotal,
@@ -573,6 +578,7 @@ export class ScopeOfWorksService {
       plantColumnCount: c.plantColumnCount,
       cuttingNotes: c.cuttingNotes,
       wasteNotes: c.wasteNotes,
+      markupOverride: c.markupOverride !== null ? Number(c.markupOverride) : null,
       sortOrder: c.sortOrder,
       itemCount: c._count.scopeItems,
       createdAt: c.createdAt,
@@ -650,6 +656,39 @@ export class ScopeOfWorksService {
     if (patch.cuttingNotes !== undefined) data.cuttingNotes = patch.cuttingNotes || null;
     if (patch.wasteNotes !== undefined) data.wasteNotes = patch.wasteNotes || null;
     return this.prisma.scopeCard.update({ where: { id: cardId }, data });
+  }
+
+  /**
+   * PR B2 — Set the per-card markup override. Pass null to clear the
+   * override (card then inherits TenderEstimate.markup). Frontend
+   * validates 0-100; the DTO @Min(0) blocks negatives but technically
+   * accepts >100 — that's caller responsibility.
+   */
+  async setCardMarkupOverride(tenderId: string, cardId: string, markupOverride: number | null) {
+    await this.requireTender(tenderId);
+    const card = await this.prisma.scopeCard.findFirst({ where: { id: cardId, tenderId } });
+    if (!card) throw new NotFoundException("Card not found.");
+    return this.prisma.scopeCard.update({
+      where: { id: cardId },
+      data: {
+        markupOverride: markupOverride == null ? null : new Prisma.Decimal(markupOverride)
+      }
+    });
+  }
+
+  /**
+   * PR B2 — Reset every card in this tender back to "inherit tender
+   * markup" (markupOverride = null). Returns the count of cards
+   * actually affected (Prisma's updateMany count includes rows that
+   * were already null).
+   */
+  async resetAllCardMarkup(tenderId: string) {
+    await this.requireTender(tenderId);
+    const result = await this.prisma.scopeCard.updateMany({
+      where: { tenderId, markupOverride: { not: null } },
+      data: { markupOverride: null }
+    });
+    return { cardsReset: result.count };
   }
 
   /**

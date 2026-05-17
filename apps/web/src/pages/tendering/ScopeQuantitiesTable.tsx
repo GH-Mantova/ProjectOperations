@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { NotesField, TooltipSelect, type TooltipSelectOption } from "../../components";
+import { computeDerivedDimensions } from "./scopeItemDimensions";
 
 // PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
 export type Discipline = "DEM" | "CIV" | "ASB" | "Other";
@@ -31,11 +32,29 @@ export type ScopeItem = {
   notes: string | null;
   men: string | null;
   days: string | null;
+  // @deprecated PR B4a — legacy canonical fields; no longer surfaced
+  // or written. Retained on the type so the listItems response still
+  // parses cleanly for old rows.
   unit: string | null;
   value: string | null;
   wasteGroup: string | null;
   wasteItem: string | null;
   wasteIncluded: boolean;
+  // PR B4a — dimension/quantification fields. sqm/m3/tonnes are
+  // derived server-side; the user can override any of the three by
+  // typing directly. chargeBy is the preferred billing unit for the
+  // waste aggregator (null = inherit facility rate.unit).
+  // cuttingIncluded mirrors wasteIncluded for the cutting subtable
+  // (aggregator wired in B4b; UI shipped in B4a).
+  length: string | null;
+  height: string | null;
+  depth: string | null;
+  sqm: string | null;
+  m3: string | null;
+  density: string | null;
+  tonnes: string | null;
+  chargeBy: string | null;
+  cuttingIncluded: boolean;
   plantItems: ScopePlantEntry[] | null;
   estimateItemId: string | null;
   provisionalAmount: string | null;
@@ -45,14 +64,6 @@ export type ScopeItem = {
   lineTotal?: number | string | null;
   lineTotalWithMarkup?: number | string | null;
 };
-
-// Per the redesign doc the unit dropdown is hard-coded (no rate-card source).
-const UNIT_OPTIONS: ReadonlyArray<TooltipSelectOption<string>> = [
-  { value: "m²", label: "m²" },
-  { value: "m³", label: "m³" },
-  { value: "t", label: "t" },
-  { value: "ea", label: "ea" }
-];
 
 // PR B1.7 — actual shape from GET /estimate-rates/plant matches the
 // EstimatePlantRate model. The previous PR B1.6 type used fictional
@@ -516,6 +527,78 @@ function ItemCard({
     ? (wasteItemsByGroup.get(item.wasteGroup) ?? []).map((w) => ({ value: w, label: w }))
     : [];
 
+  // PR B4a — controlled state for the 8 dimension fields + chargeBy.
+  // Held as strings so we can distinguish "" (no explicit value, derive)
+  // from "0" (user typed zero, override). The 7 numeric inputs sync from
+  // props whenever the upstream `item` changes; chargeBy is a select.
+  type DimKey = "length" | "height" | "depth" | "sqm" | "m3" | "density" | "tonnes";
+  const initDim = (v: string | null) => (v == null ? "" : String(v));
+  const [dims, setDims] = useState({
+    length: initDim(item.length),
+    height: initDim(item.height),
+    depth: initDim(item.depth),
+    sqm: initDim(item.sqm),
+    m3: initDim(item.m3),
+    density: initDim(item.density),
+    tonnes: initDim(item.tonnes)
+  });
+  // Re-sync local state when the upstream row is refreshed (eg after a
+  // successful PATCH returns new server-derived values).
+  useEffect(() => {
+    setDims({
+      length: initDim(item.length),
+      height: initDim(item.height),
+      depth: initDim(item.depth),
+      sqm: initDim(item.sqm),
+      m3: initDim(item.m3),
+      density: initDim(item.density),
+      tonnes: initDim(item.tonnes)
+    });
+  }, [item.length, item.height, item.depth, item.sqm, item.m3, item.density, item.tonnes]);
+
+  const setDim = (k: DimKey, v: string) => setDims((s) => ({ ...s, [k]: v }));
+
+  // Live-derive sqm/m3/tonnes from the user's typed inputs. Empty
+  // string → "no override here, derive from raw". Non-empty → explicit
+  // override that wins over any derivation.
+  const parsed = useMemo(
+    () => ({
+      length: dims.length === "" ? null : Number(dims.length),
+      height: dims.height === "" ? null : Number(dims.height),
+      depth: dims.depth === "" ? null : Number(dims.depth),
+      density: dims.density === "" ? null : Number(dims.density),
+      sqm: dims.sqm === "" ? null : Number(dims.sqm),
+      m3: dims.m3 === "" ? null : Number(dims.m3),
+      tonnes: dims.tonnes === "" ? null : Number(dims.tonnes)
+    }),
+    [dims]
+  );
+  const derived = useMemo(() => computeDerivedDimensions(parsed), [parsed]);
+
+  // On blur of any of the 8 dimension fields, send a single PATCH with
+  // the full dimension picture. The backend re-runs the same math and
+  // persists self-consistent sqm/m3/tonnes; explicit overrides survive.
+  const persistDims = () => {
+    onPatch({
+      length: parsed.length,
+      height: parsed.height,
+      depth: parsed.depth,
+      density: parsed.density,
+      // Send null for "no override" so the server falls back to derive.
+      sqm: parsed.sqm,
+      m3: parsed.m3,
+      tonnes: parsed.tonnes
+    });
+  };
+
+  // Display: explicit value takes priority; otherwise show the derived
+  // value as the placeholder so the user sees the math live without
+  // having to read it from a separate column.
+  const placeholderFor = (k: "sqm" | "m3" | "tonnes") => {
+    const v = derived[k];
+    return v == null ? "" : String(v);
+  };
+
   return (
     <article
       style={{
@@ -744,11 +827,130 @@ function ItemCard({
 
           <Divider />
 
-          {/* Section B: waste — fixed grid 1fr 1fr 80px 100px auto */}
+          {/* PR B4a — Quantification section. Four raw dimension inputs
+              (L/H/D/density) drive auto-derivation of sqm/m³/tonnes;
+              user can override any derived value by typing. ChargeBy
+              toggle picks the preferred billing unit for the waste
+              aggregator (null = inherit facility rate.unit). All 8
+              fields are controlled and submit a single PATCH on blur. */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
+            <FieldCell label="Length" width={80}>
+              <input
+                className="s7-input"
+                type="number"
+                step="0.001"
+                value={dims.length}
+                disabled={isAi}
+                style={{ width: 80, height: 32 }}
+                onChange={(e) => setDim("length", e.target.value)}
+                onBlur={persistDims}
+              />
+            </FieldCell>
+            <FieldCell label="Height" width={80}>
+              <input
+                className="s7-input"
+                type="number"
+                step="0.001"
+                value={dims.height}
+                disabled={isAi}
+                style={{ width: 80, height: 32 }}
+                onChange={(e) => setDim("height", e.target.value)}
+                onBlur={persistDims}
+              />
+            </FieldCell>
+            <FieldCell label="Depth" width={80}>
+              <input
+                className="s7-input"
+                type="number"
+                step="0.001"
+                value={dims.depth}
+                disabled={isAi}
+                style={{ width: 80, height: 32 }}
+                onChange={(e) => setDim("depth", e.target.value)}
+                onBlur={persistDims}
+              />
+            </FieldCell>
+            <FieldCell label="Density (t/m³)" width={90}>
+              <input
+                className="s7-input"
+                type="number"
+                step="0.001"
+                value={dims.density}
+                disabled={isAi}
+                style={{ width: 90, height: 32 }}
+                onChange={(e) => setDim("density", e.target.value)}
+                onBlur={persistDims}
+              />
+            </FieldCell>
+            <FieldCell label="Sqm" width={90}>
+              <input
+                className="s7-input"
+                type="number"
+                step="0.01"
+                value={dims.sqm}
+                placeholder={placeholderFor("sqm")}
+                disabled={isAi}
+                style={{ width: 90, height: 32 }}
+                title="Auto = length × height. Type to override."
+                onChange={(e) => setDim("sqm", e.target.value)}
+                onBlur={persistDims}
+              />
+            </FieldCell>
+            <FieldCell label="M³" width={90}>
+              <input
+                className="s7-input"
+                type="number"
+                step="0.01"
+                value={dims.m3}
+                placeholder={placeholderFor("m3")}
+                disabled={isAi}
+                style={{ width: 90, height: 32 }}
+                title="Auto = sqm × depth. Type to override."
+                onChange={(e) => setDim("m3", e.target.value)}
+                onBlur={persistDims}
+              />
+            </FieldCell>
+            <FieldCell label="Tonnes" width={90}>
+              <input
+                className="s7-input"
+                type="number"
+                step="0.01"
+                value={dims.tonnes}
+                placeholder={placeholderFor("tonnes")}
+                disabled={isAi}
+                style={{ width: 90, height: 32 }}
+                title="Auto = m³ × density. Type to override."
+                onChange={(e) => setDim("tonnes", e.target.value)}
+                onBlur={persistDims}
+              />
+            </FieldCell>
+            <FieldCell label="Charge by" width={80}>
+              <select
+                className="s7-input"
+                value={item.chargeBy ?? ""}
+                disabled={isAi}
+                onChange={(e) => onPatch({ chargeBy: e.target.value === "" ? null : e.target.value })}
+                aria-label="Charge by"
+                title="Preferred billing unit for the waste aggregator. Blank = inherit facility rate unit."
+                style={{ width: 80, height: 32 }}
+              >
+                <option value="">auto</option>
+                <option value="t">t</option>
+                <option value="m³">m³</option>
+              </select>
+            </FieldCell>
+          </div>
+
+          <Divider />
+
+          {/* PR B4a — Classification section. Group/Item still drive the
+              waste aggregator (group key); Waste? and Cutting? checkboxes
+              flag the row for the two respective aggregators (cutting
+              aggregator wired in B4b). */}
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 1fr 80px 100px auto",
+              gridTemplateColumns: "1fr 1fr auto auto",
               gap: 12,
               alignItems: "end"
             }}
@@ -773,30 +975,6 @@ function ItemCard({
                 style={{ height: 32 }}
               />
             </FieldCell>
-            <FieldCell label="Unit" width={80}>
-              <TooltipSelect
-                value={item.unit}
-                options={UNIT_OPTIONS}
-                onChange={(v) => onPatch({ unit: v })}
-                disabled={isAi}
-                ariaLabel="Unit"
-                style={{ width: 80, height: 32 }}
-              />
-            </FieldCell>
-            <FieldCell label="Value" width={100}>
-              <input
-                className="s7-input"
-                type="number"
-                step="0.001"
-                defaultValue={item.value ?? ""}
-                disabled={isAi}
-                style={{ width: 100, height: 32 }}
-                onBlur={(e) => {
-                  const v = e.target.value === "" ? null : Number(e.target.value);
-                  onPatch({ value: v });
-                }}
-              />
-            </FieldCell>
             <FieldCell label="Waste?">
               <input
                 type="checkbox"
@@ -804,6 +982,16 @@ function ItemCard({
                 disabled={isAi}
                 onChange={(e) => onPatch({ wasteIncluded: e.target.checked })}
                 aria-label="Include in waste summary"
+                style={{ width: 20, height: 20, marginBottom: 6 }}
+              />
+            </FieldCell>
+            <FieldCell label="Cutting?">
+              <input
+                type="checkbox"
+                checked={item.cuttingIncluded === true}
+                disabled={isAi}
+                onChange={(e) => onPatch({ cuttingIncluded: e.target.checked })}
+                aria-label="Include in cutting summary"
                 style={{ width: 20, height: 20, marginBottom: 6 }}
               />
             </FieldCell>

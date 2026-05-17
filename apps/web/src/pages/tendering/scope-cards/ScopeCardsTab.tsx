@@ -279,7 +279,7 @@ export function ScopeCardsTab({
             }}
           >
             <h3 style={{ margin: 0, fontSize: 16 }}>{activeCard.name}</h3>
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 16 }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
               <CardMarkupOverride
                 value={activeCard.markupOverride}
                 tenderMarkup={tenderMarkup}
@@ -292,6 +292,23 @@ export function ScopeCardsTab({
                   }
                 }}
               />
+              {activeCard.markupOverride != null ? (
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--ghost s7-btn--sm"
+                  onClick={async () => {
+                    try {
+                      await setCardMarkupOverride(activeCard.id, null);
+                      await reloadEverything();
+                    } catch (err) {
+                      setError((err as Error).message);
+                    }
+                  }}
+                  title="Clear this card's markup override (inherit tender markup)"
+                >
+                  Reset this card
+                </button>
+              ) : null}
               <label style={{ fontSize: 12, color: "var(--text-muted)" }}>
                 Discipline:&nbsp;
                 <select
@@ -469,7 +486,10 @@ function CardMarkupOverride({
   tenderMarkup,
   onSave
 }: {
-  value: number | null;
+  // PR B2.1 — accept undefined too in case an older cached response
+  // is missing the field. `value != null` handles both null and
+  // undefined the same way.
+  value: number | null | undefined;
   tenderMarkup: number;
   onSave: (next: number | null) => Promise<void> | void;
 }) {

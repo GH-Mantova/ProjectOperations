@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-17 00:32 AEST
+Last updated: 2026-05-17 01:02 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -580,12 +580,39 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     share a discipline.
     Tests: 515 → 522 API (+7); web 148 unchanged.
 
-⏸️  PR B3 — Per-card waste summary subtable
-    Same shape as the deferred per-card cutting subtable (originally
-    tagged B2, now queued behind B3). Per-card filtering of
-    scope_waste_items by parent card's wbsCode prefix. Picks up the
-    proper waste calc that B1.7.1 placed wrongly on items and B1.7.2
-    removed.
+✅  PR B3 — Per-card waste summary subtable + "Sum from above" (2026-05-17)
+    Per-card waste filtering shipped (ScopeWasteItem.cardId already
+    existed from PR A2 — service + frontend now actually use it).
+    NEW "Sum from above" button on the per-card waste subtable
+    transactionally aggregates canonical scope items (wasteIncluded=true)
+    by (wasteGroup, wasteItem, unit), sums value, picks the first
+    active matching EstimateWasteRate for facility + rate, and
+    REPLACES only ScopeWasteItem rows where autoSummed=true. Manual
+    rows (autoSummed=false) are preserved across regenerations.
+    Two new columns: unit (drives facility filter) + autoSummed
+    (marks regenerable rows). Frontend: editable unit dropdown
+    (m²/m³/t/ea), facility filter now (group, type, unit)-aware,
+    amber row tint + disabled dropdown + "— no facility for [unit]
+    —" placeholder when no rate matches, small "AUTO" badge on
+    autoSummed rows. New endpoint POST /tenders/:id/scope/cards/
+    :cardId/waste/sum-from-above returns { replaced, created }.
+    Tests: 522 → 530 API (+8 service specs); web 148 unchanged.
+    Note: existing tenders with cardless legacy waste rows become
+    invisible in the new per-card view — follow-up cleanup tracked
+    below.
+
+⏸️  PR B3-followup — Orphaned cardless waste rows
+    Existing rows with cardId=NULL are filtered out by the new
+    per-card list. Two options: (a) backfill cardId via
+    wbsRef → wbsCode → cardId lookup, or (b) surface them in a
+    dedicated "uncategorised waste" admin view. Decide after a
+    smoke pass on real data.
+
+⏸️  PR B3-cleanup — Rename ScopeWasteItem.wasteTonnes → qty
+    Column-name lie introduced in B3: wasteTonnes now holds quantity
+    in unit (not always tonnes). Math is correct; column needs
+    renaming for clarity. Pure schema rename + Prisma update; no
+    data migration required (just metadata).
 
 ⏸️  PR B4 — Per-card concrete cutting subtable [previously B2]
     Currently page-level under the tendering Scope tab. Moves to a

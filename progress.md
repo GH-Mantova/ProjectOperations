@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-17 00:32 AEST
+Last updated: 2026-05-17 01:02 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -4905,3 +4905,101 @@ Rollback is a clean git revert.
 
 Audit findings: Bug A still under-diagnosed pending live-state
 verification.
+
+## 2026-05-17 — PR B3 — Per-card waste summary subtable + "Sum from above"
+
+Branch: feat/scope-waste-summary-b3
+Section: Tendering scope-of-works UI redesign — waste rewire
+
+### What shipped
+1. **Per-card waste filtering** — ScopeWasteItem already had a nullable
+   cardId column (PR A2); the service + frontend now actually use it.
+   /scope/waste accepts ?cardId= and the frontend always passes it
+   when mounted inside a card body.
+2. **NEW "Sum from above"** button on the per-card waste subtable
+   (canManage + cardId required). Calls POST /tenders/:id/scope/
+   cards/:cardId/waste/sum-from-above. Server-side transactional
+   aggregator reads canonical scope items where wasteIncluded=true,
+   groups by (wasteGroup, wasteItem, unit), sums value, picks the
+   first active EstimateWasteRate matching (group, type, unit) for
+   facility + tonRate. Replaces only autoSummed=true rows for the
+   card; manual rows (autoSummed=false) survive.
+3. **Unit column** (m²/m³/t/ea) editable per-row. Changing unit
+   clears facility + rate so the cascade stays valid.
+4. **Facility dropdown filter** now considers (group, type, unit).
+   When no facility matches, the dropdown is disabled, placeholder
+   reads "— no facility for [unit] —", and the row is tinted amber.
+5. **"AUTO" badge** on autoSummed rows so the user knows which
+   rows will be replaced on the next regeneration.
+
+### Schema
+```
+ScopeWasteItem.unit       String?  @map(...)
+ScopeWasteItem.autoSummed Boolean  @default(false) @map("auto_summed")
+```
+Migration: 20260517020000_waste_item_unit_and_auto_summed (additive,
+both columns safe defaults — unit nullable, autoSummed=false).
+
+`wasteTonnes` becomes a "quantity in unit" column lie for non-t rows.
+Math doesn't care (`lineTotal = qty × rate`); column rename deferred.
+
+### API changes
+- UpsertWasteDto + cardId (optional) + unit (optional).
+- list() accepts { discipline?, cardId? }. When cardId is set,
+  whole-tender cardless rows are deliberately excluded — covered by
+  Q7 of the B3 investigation.
+- create() defaults autoSummed=false; only sumFromAbove flips it true.
+- update() passes through unit.
+- NEW sumFromAbove(tenderId, cardId, actorId):
+    1. Find card (404 if not in tender).
+    2. Batch-read scope items for the card + active waste rates.
+    3. Group items by (wasteGroup, wasteItem, unit), sum value.
+       Skip items missing any field or value<=0.
+    4. Per group: look up first active EstimateWasteRate matching
+       (wasteGroup, wasteType, unit). facility/rate=null when no
+       match (row gets amber tint client-side).
+    5. Transaction: deleteMany WHERE cardId AND autoSummed=true,
+       then create the new aggregated rows with autoSummed=true.
+    6. Returns { replaced, created }.
+- NEW ScopeCardWasteController mounted at
+    /tenders/:tenderId/scope/cards/:cardId/waste
+  hosts POST /sum-from-above. Shares the same service instance.
+
+### Flagged in PR body
+- **Existing tenders with cardless legacy waste rows become invisible**
+  in the new per-card view (filtered out by cardId). Follow-up
+  cleanup PR tracked in roadmap will either backfill cardId from
+  wbsRef → wbsCode or surface them in a separate orphaned-rows
+  section. Working tenders with fresh cards are unaffected.
+- All existing waste rows default to autoSummed=false. Safe default —
+  they're treated as manual rows and preserved across regenerations.
+
+### Tests added (8 new specs in scope-waste.service.spec.ts)
+- 404 on missing card
+- Aggregation by (group, item, unit) sums correctly
+- Skip wasteIncluded=false
+- Skip missing group/item/unit/value or value<=0
+- facility+rate=null when no matching rate exists
+- deleteMany scoped to (tenderId, cardId, autoSummed=true)
+- Empty input → { replaced:0, created:0 }
+- First-match facility selection when multiple rates exist
+
+### Verification
+- pnpm --filter api test: 530 passing (522 baseline + 8 new); 6 skipped
+- pnpm --filter api exec tsc --noEmit: clean
+- pnpm --filter api lint: clean
+- pnpm --filter web test --run: 148 passing (unchanged)
+- pnpm --filter web exec tsc --noEmit: clean
+- pnpm --filter web lint: clean
+- pnpm --filter web build: clean
+
+### Carried forward (cleanup PRs)
+- B3-followup: orphaned legacy waste rows (cardId IS NULL). Either
+  backfill via wbsRef → wbsCode lookup or surface in a dedicated
+  "Uncategorised waste" admin view.
+- Rename ScopeWasteItem.wasteTonnes → qty (or similar). The column-
+  name lie is fine for now but worth a sweep later.
+
+No new dependencies. No env vars.
+
+Audit findings: none.

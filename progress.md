@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-17 07:32 AEST
+Last updated: 2026-05-17 08:21 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -5534,3 +5534,38 @@ CI: ✅ all checks passed
   - Analyze (javascript-typescript) [CodeQL]
   - tendering-e2e
 Status: MERGED
+
+## 2026-05-17 18:17 AEST — PR B4b.1 STARTED
+Type: PR
+Branch: fix/b4b1-cutting-cardid-hotfix
+Detail: Codex P2 hotfix on PR #184 (B4b). (a) Service-layer normalize
+  empty-string / whitespace-only cardId to null in createCuttingItem
+  before the scope_cards FK validation runs — closes the gap where
+  an empty string would 500 instead of being treated as "no card".
+  (b) Drop unused cardId from UpdateCuttingItemDto — the field was
+  declared with a "re-parenting" comment but the service handler
+  never read it, so clients could PATCH and get 200 while nothing
+  moved. Re-parenting isn't a requested feature; removing the field
+  closes the silent-no-op gap until it actually is.
+Status: IN_PROGRESS
+
+## 2026-05-17 18:17 AEST — PR B4b.1 OPENED
+Type: PR
+Branch: fix/b4b1-cutting-cardid-hotfix
+PR: #[N]
+Status: WAITING_CI
+Detail: 2 service-layer fixes + 5 specs (4 P2a behaviour incl. 2
+  bonus regressions for B4b's existing validation, 1 P2b
+  @ts-expect-error compile-time contract guard). No schema, no
+  migration, no frontend changes. Pure backend contract tightening.
+  UpdateCuttingItemDto narrowly exported so the contract spec can
+  import the type.
+Files: scope-redesign.service.ts (normalize block + 3 cardId reads
+  updated), scope-redesign.controller.ts (drop cardId field from
+  UpdateCuttingItemDto, narrow `export` on the class for spec
+  visibility), cutting-create-cardid.spec.ts (new, 5 specs),
+  progress.md + roadmap.md.
+Pre-PR checks: 7/7 green
+
+## 2026-05-17 [HH:MM] AEST — PR B4b.1 MERGED
+[filled in post-merge — Phase 8 task]

@@ -385,11 +385,22 @@ export class ScopeRedesignService {
     if (!["saw-cut", "core-hole", "other-rate"].includes(dto.itemType)) {
       throw new BadRequestException('itemType must be "saw-cut", "core-hole", or "other-rate".');
     }
+    // PR B4b.1 — normalize blank cardId to null. Codex flagged that
+    // `cardId: dto.cardId ?? null` preserves an empty string, which
+    // would then fail the scope_cards FK with a 500 instead of a
+    // controlled response. Empty strings are a common artefact from
+    // optional HTML selects, so we treat them as "no card" rather
+    // than "invalid card". The validation block below still runs on
+    // non-empty values, so a non-existent UUID still 404s correctly.
+    const normalizedCardId =
+      typeof dto.cardId === "string" && dto.cardId.trim() === ""
+        ? null
+        : dto.cardId ?? null;
     // PR B4b — when cardId is provided, validate it belongs to this
     // tender so a stale frontend can't attach rows to a foreign card.
-    if (dto.cardId) {
+    if (normalizedCardId) {
       const card = await this.prisma.scopeCard.findFirst({
-        where: { id: dto.cardId, tenderId },
+        where: { id: normalizedCardId, tenderId },
         select: { id: true }
       });
       if (!card) throw new NotFoundException("Scope card not found on this tender.");
@@ -398,7 +409,7 @@ export class ScopeRedesignService {
     return this.prisma.cuttingSheetItem.create({
       data: {
         tenderId,
-        cardId: dto.cardId ?? null,
+        cardId: normalizedCardId,
         createdById: actorId,
         wbsRef: dto.wbsRef.trim(),
         description: dto.description?.trim() || null,

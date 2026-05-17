@@ -12,7 +12,7 @@
 //   build if cardId is ever re-added to the update DTO without the
 //   service handler being wired up at the same time.
 
-import { NotFoundException } from "@nestjs/common";
+import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { ScopeRedesignService } from "../scope-redesign.service";
 import type { UpdateCuttingItemDto } from "../scope-redesign.controller";
 
@@ -59,34 +59,40 @@ function makeDto(overrides: Record<string, unknown> = {}) {
 }
 
 describe("ScopeRedesignService.createCuttingItem — cardId contract (PR B4b.1)", () => {
-  it("empty-string cardId normalises to null and skips FK validation (P2a)", async () => {
+  it("empty-string cardId rejects with 400 (B-followup — was normalised-to-null pre-NOT NULL)", async () => {
+    // PR B-followup: cardId is now schema-required (NOT NULL). The
+    // B4b.1 "normalize empty-string to null and persist as cardless"
+    // path is no longer valid — Prisma would reject the insert.
+    // Instead we throw a controlled 400 at the service boundary so
+    // the user sees a clean error, not a 500-via-FK or a 500-via
+    // database-constraint.
     const { prisma, mocks } = buildPrismaMock();
     const svc = new ScopeRedesignService(prisma as never);
-    await svc.createCuttingItem(
-      "tender-1",
-      "user-1",
-      makeDto({ cardId: "" })
-    );
-    // The FK lookup must NOT run for a normalised-null cardId. If it
-    // did, the regression introduced by Codex's P2a would re-appear:
-    // a missing card 404 instead of the desired "cardless row" path.
+    await expect(
+      svc.createCuttingItem("tender-1", "user-1", makeDto({ cardId: "" }))
+    ).rejects.toBeInstanceOf(BadRequestException);
     expect(mocks.scopeCardFindFirst).not.toHaveBeenCalled();
-    // The Prisma create must persist null, not the empty string.
-    const data = (mocks.cuttingCreate.mock.calls[0]?.[0] as { data: Record<string, unknown> }).data;
-    expect(data.cardId).toBeNull();
+    expect(mocks.cuttingCreate).not.toHaveBeenCalled();
   });
 
-  it("whitespace-only cardId also normalises to null (P2a)", async () => {
+  it("whitespace-only cardId also rejects with 400 (B-followup)", async () => {
     const { prisma, mocks } = buildPrismaMock();
     const svc = new ScopeRedesignService(prisma as never);
-    await svc.createCuttingItem(
-      "tender-1",
-      "user-1",
-      makeDto({ cardId: "   " })
-    );
+    await expect(
+      svc.createCuttingItem("tender-1", "user-1", makeDto({ cardId: "   " }))
+    ).rejects.toBeInstanceOf(BadRequestException);
     expect(mocks.scopeCardFindFirst).not.toHaveBeenCalled();
-    const data = (mocks.cuttingCreate.mock.calls[0]?.[0] as { data: Record<string, unknown> }).data;
-    expect(data.cardId).toBeNull();
+    expect(mocks.cuttingCreate).not.toHaveBeenCalled();
+  });
+
+  it("missing cardId (undefined) rejects with 400 (B-followup — schema is NOT NULL)", async () => {
+    const { prisma, mocks } = buildPrismaMock();
+    const svc = new ScopeRedesignService(prisma as never);
+    await expect(
+      svc.createCuttingItem("tender-1", "user-1", makeDto({}))
+    ).rejects.toThrow(/cardId is required/);
+    expect(mocks.scopeCardFindFirst).not.toHaveBeenCalled();
+    expect(mocks.cuttingCreate).not.toHaveBeenCalled();
   });
 
   it("real cardId still validates against scope_cards (B4b regression)", async () => {

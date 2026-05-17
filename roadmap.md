@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-17 08:21 AEST
+Last updated: 2026-05-17 09:20 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -687,13 +687,28 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     @ts-expect-error compile-time contract guard); 590 → 595
     passing. No schema, no migration, no frontend changes.
 
-⏸️  PR B4b-followup — Orphaned cardless cutting rows
-    Same pattern as B3-followup for waste. Existing CuttingSheetItem
-    rows with cardId=NULL become invisible in the new per-card view
-    when the frontend starts passing cardId. Two options: (a) backfill
-    cardId via wbsRef → wbsCode → cardId lookup, or (b) surface them
-    in a dedicated "uncategorised cutting" admin view. Decide after a
-    smoke pass on real data.
+✅  PR B-followup — Orphan cutting reconciliation + cardId NOT NULL
+    guards (2026-05-17)
+    Closes the B4b carry-forward. Two test cutting rows on IS-T020
+    (DEM1.1, pre-B4b 2026-05-16 creations) deleted via migration;
+    zero waste orphans existed at promotion time. NOT NULL
+    constraints added to both cutting_sheet_items.card_id and
+    scope_waste_items.card_id — the per-card invariant is now
+    DB-enforced, not convention-enforced. FK ON DELETE on both
+    tables changed from SET NULL → CASCADE (SET NULL would violate
+    the new NOT NULL). createCuttingItem and the waste create now
+    reject missing/blank cardId with a controlled 400; B4b.1's
+    normalize-to-null path is no longer valid. Frontend addItem +
+    addRow guard against missing cardId. +4 new specs (3 schema-
+    shape compile guards + 1 missing-cardId behavioural), 2 B4b.1
+    normalization specs modified in-place to expect 400 instead of
+    null-persist. 595 → 599 passing. Migration
+    20260517090000_b_followup_cardid_not_null is destructive
+    (DELETE) but scope is narrow: pre-merge timestamp filter
+    ensures any post-B4b orphan blocks the migration rather than
+    being silently destroyed. Smoke-confirmed against IS-T020 dev
+    DB before merge.
+    Supersedes the prior ⏸️ B4b-followup carry-forward.
 
 ✅  Discipline migration from 5-code to 4-code system (PR A1) — 2026-05-16
     Closed by PR A1 of the scope-of-works redesign chain (see

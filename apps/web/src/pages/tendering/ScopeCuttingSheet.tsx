@@ -172,15 +172,22 @@ export function ScopeCuttingSheet({
 
   const addItem = async () => {
     if (!canManage) return;
+    // PR B-followup — cardId is now required by the API. The
+    // ScopeCardsTab mount always passes one; this guard handles the
+    // legacy whole-tender mount path (no card context) by failing
+    // soft with a controlled error rather than letting the POST go
+    // out and 400 from the backend.
+    if (!cardId) {
+      setError("Cannot add a cutting item without a scope card in context.");
+      return;
+    }
     const wbsRef = wbsRefs[0] ?? "SO1";
     const body: Record<string, unknown> = {
       wbsRef,
       itemType: tab,
-      shift: "Day"
+      shift: "Day",
+      cardId
     };
-    // PR B4b — attach manually-added rows to the active card so the
-    // per-card list query picks them up.
-    if (cardId) body.cardId = cardId;
     if (tab === "other-rate" && otherRates[0]) {
       body.otherRateId = otherRates[0].id;
       body.quantityEach = 1;

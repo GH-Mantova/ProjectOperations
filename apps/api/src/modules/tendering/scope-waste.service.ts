@@ -48,6 +48,17 @@ export class ScopeWasteService {
   async create(tenderId: string, actorId: string, dto: UpsertWasteDto) {
     if (!dto.description) throw new BadRequestException("description is required.");
     if (!dto.discipline) throw new BadRequestException("discipline is required.");
+    // PR B-followup — cardId is NOT NULL at the schema level. Mirrors
+    // the cutting service guard.
+    if (
+      dto.cardId == null ||
+      (typeof dto.cardId === "string" && dto.cardId.trim() === "")
+    ) {
+      throw new BadRequestException(
+        "cardId is required — waste items must belong to a scope card."
+      );
+    }
+    const cardId = dto.cardId.trim();
     // PR B4a.3 — narrow DTO numerics at the call site so CodeQL's
     // dataflow analyzer can see the typeof guards. Downstream Decimal
     // constructors then operate on trusted `number | null` locals.
@@ -67,7 +78,7 @@ export class ScopeWasteService {
     return this.prisma.scopeWasteItem.create({
       data: {
         tenderId,
-        cardId: dto.cardId ?? null,
+        cardId,
         discipline: dto.discipline,
         wbsRef: dto.wbsRef ?? null,
         description: dto.description,

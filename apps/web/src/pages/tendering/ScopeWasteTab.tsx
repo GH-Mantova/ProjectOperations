@@ -160,11 +160,15 @@ export function ScopeWasteTab({
 
   const addRow = async () => {
     if (!canManage) return;
+    // PR B-followup — cardId is now required by the API. Guard the
+    // legacy whole-tender mount path with a controlled error.
+    if (!cardId) {
+      setError("Cannot add a waste row without a scope card in context.");
+      return;
+    }
     const body = {
       discipline,
-      // PR B3 — manual rows are attached to the active card when one is
-      // in scope. Legacy whole-tender callers still pass cardId=null.
-      cardId: cardId ?? null,
+      cardId,
       wbsRef: wbsRefs[0] ?? null,
       description: "Waste disposal"
     };

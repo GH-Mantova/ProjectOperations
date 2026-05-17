@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-17 08:25 AEST
+Last updated: 2026-05-17 09:20 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -5580,3 +5580,44 @@ CI: ✅ all checks passed
   - Analyze (javascript-typescript) [CodeQL]
   - tendering-e2e
 Status: MERGED
+
+## 2026-05-17 19:16 AEST — PR B-followup STARTED
+Type: PR
+Branch: fix/b-followup-orphan-cardid-guards
+Detail: Closes the orphan-row carry-forward from B4b. Two test
+  cutting rows on IS-T020 (DEM1.1, pre-B4b 2026-05-16 creations)
+  deleted via migration; zero waste orphans existed. Both
+  cutting_sheet_items.card_id and scope_waste_items.card_id get
+  NOT NULL constraints. createCuttingItem + waste create reject
+  missing or blank cardId with 400 (B4b.1 normalize-to-null path
+  is no longer valid). FK ON DELETE changes from SET NULL → CASCADE
+  on both tables (SET NULL would violate the new NOT NULL).
+Status: IN_PROGRESS
+
+## 2026-05-17 19:16 AEST — PR B-followup OPENED
+Type: PR
+Branch: fix/b-followup-orphan-cardid-guards
+PR: #[N]
+Status: WAITING_CI
+Detail: One migration (20260517090000_b_followup_cardid_not_null):
+  DELETE 2 cutting orphans WHERE created_at < B4b merge time
+  (defensive filter); swap both FK constraints SET NULL → CASCADE;
+  ALTER COLUMN card_id SET NOT NULL on both tables. Schema fields
+  cardId String? → String on CuttingSheetItem + ScopeWasteItem.
+  Service layer: cutting + waste create now throw 400 on missing/
+  blank cardId; cutting CreateCuttingItemDto.cardId promoted to
+  @IsString @IsNotEmpty (was @IsOptional). Frontend: addItem +
+  addRow guard against missing cardId with controlled error.
+Files: schema.prisma (+15), migration (new, +50),
+  scope-redesign.controller.ts (DTO cardId required),
+  scope-redesign.service.ts (create throws 400),
+  scope-waste.service.ts (create throws 400),
+  ScopeCuttingSheet.tsx + ScopeWasteTab.tsx (guard add paths),
+  cutting-create-cardid.spec.ts (B4b.1 normalize specs updated
+  to expect 400; +1 missing-cardId spec),
+  cardid-not-null-schema.spec.ts (new, 3 schema-shape compile
+  guards), progress.md + roadmap.md.
+Pre-PR checks: 7/7 green
+
+## 2026-05-17 [HH:MM] AEST — PR B-followup MERGED
+[filled in post-merge — Phase 8 task]

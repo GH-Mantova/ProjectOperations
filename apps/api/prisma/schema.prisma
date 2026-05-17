@@ -2232,7 +2232,10 @@ model ScopeOfWorksItem {
   length          Decimal? @db.Decimal(10, 3)
   height          Decimal? @db.Decimal(10, 3)
   depth           Decimal? @db.Decimal(10, 3)
-  density         Decimal? @db.Decimal(5, 3)
+  // PR B4a.6 — widened from Decimal(5,3) to Decimal(8,3) so users can
+  // enter kg/m³ values (e.g. concrete ~2400) without a numeric overflow
+  // crash. Existing rows are safe (widening only; no data loss).
+  density         Decimal? @db.Decimal(8, 3)
   tonnes          Decimal? @db.Decimal(10, 2)
   chargeBy        String?  @map("charge_by")
   cuttingIncluded Boolean  @default(false) @map("cutting_included")

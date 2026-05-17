@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-17 22:18 AEST
+Last updated: 2026-05-17 22:23 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -5725,5 +5725,16 @@ Files: docs/Designs/scope-of-works-redesign.md, progress.md,
   roadmap.md
 Pre-PR checks: 4/4 green (api+web lint + test)
 
-## 2026-05-18 [HH:MM] AEST — PR docs/c1-quote-arrangement-discovery MERGED
-[filled in post-merge — Phase 9 task]
+## 2026-05-18 08:22 AEST — PR docs/c1-quote-arrangement-discovery MERGED
+Type: PR (docs only)
+Branch: docs/c1-quote-arrangement-discovery
+PR: #193 (https://github.com/GH-Mantova/ProjectOperations/pull/193)
+Merge SHA: 29a7099fa4556e8d005150706a8c5aac19382514
+Merged at: 2026-05-17T22:22:04Z (auto-merge squash)
+CI: ✅ all checks passed
+  - API — lint, test, compliance smoke
+  - Web — lint, logic tests, build
+  - Analyze (actions) [CodeQL]
+  - Analyze (javascript-typescript) [CodeQL]
+  - tendering-e2e
+Status: MERGED

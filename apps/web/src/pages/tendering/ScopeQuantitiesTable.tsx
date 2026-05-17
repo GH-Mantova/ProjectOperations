@@ -95,8 +95,6 @@ type Props = {
   plantColumnCount: number;
   discipline: Discipline;
   items: ScopeItem[];
-  subtotal: number;
-  subtotalWithMarkup: number;
   onItemsChanged: () => Promise<void> | void;
   onPlantColumnCountChange: (next: number) => Promise<void>;
 };
@@ -107,8 +105,6 @@ export function ScopeQuantitiesTable({
   plantColumnCount,
   discipline: _discipline,
   items,
-  subtotal,
-  subtotalWithMarkup,
   onItemsChanged,
   onPlantColumnCountChange
 }: Props) {
@@ -289,6 +285,22 @@ export function ScopeQuantitiesTable({
 
   const visible = useMemo(() => items.filter((i) => i.status !== "excluded"), [items]);
   const excluded = useMemo(() => items.filter((i) => i.status === "excluded"), [items]);
+  // PR B2 — footer self-sums from the per-row totals (already attached
+  // by the items API in B1.7.1). Each card now manages its own subtotal
+  // independently of the whole-discipline /scope/summary aggregate, so
+  // per-card markup overrides reflect immediately and accurately.
+  const subtotal = useMemo(
+    () => visible.reduce((sum, i) => sum + (i.lineTotal != null ? Number(i.lineTotal) : 0), 0),
+    [visible]
+  );
+  const subtotalWithMarkup = useMemo(
+    () =>
+      visible.reduce(
+        (sum, i) => sum + (i.lineTotalWithMarkup != null ? Number(i.lineTotalWithMarkup) : 0),
+        0
+      ),
+    [visible]
+  );
   const wbsSortedVisible = useMemo(
     () => [...visible].sort((a, b) => a.itemNumber - b.itemNumber || a.sortOrder - b.sortOrder),
     [visible]

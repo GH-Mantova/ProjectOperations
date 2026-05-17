@@ -39,6 +39,7 @@ function buildPrismaMock(opts: {
     return { id: where.id, ...data };
   });
   const scopeCardDelete: AsyncMock = jest.fn(async () => ({}));
+  const scopeCardUpdateMany: AsyncMock = jest.fn(async () => ({ count: 0 }));
   const scopeOfWorksItemCount: AsyncMock = jest.fn(async () => opts.scopeItemCount ?? 0);
   const scopeOfWorksItemUpdate: AsyncMock = jest.fn(async () => ({}));
   const scopeOfWorksItemAggregate: AsyncMock = jest.fn(async () => ({
@@ -76,6 +77,7 @@ function buildPrismaMock(opts: {
       aggregate: scopeCardAggregate,
       create: scopeCardCreate,
       update: scopeCardUpdate,
+      updateMany: scopeCardUpdateMany,
       delete: scopeCardDelete
     },
     scopeOfWorksItem: {
@@ -98,6 +100,7 @@ function buildPrismaMock(opts: {
       scopeCardAggregate,
       scopeCardCreate,
       scopeCardUpdate,
+      scopeCardUpdateMany,
       scopeCardDelete,
       scopeOfWorksItemCount,
       scopeOfWorksItemAggregate,
@@ -496,5 +499,108 @@ describe("ScopeOfWorksService.createItemInCard relaxed DTO (PR B1.7)", () => {
       data?: { rowType?: string };
     };
     expect(args.data?.rowType).toBe("demolition");
+  });
+});
+
+describe("ScopeOfWorksService.setCardMarkupOverride (PR B2)", () => {
+  it("stores a Decimal value when supplied", async () => {
+    const { prisma, mocks } = buildPrismaMock({
+      scopeCardFindFirst: { id: "c1", tenderId: "tender-1" }
+    });
+    const svc = new ScopeOfWorksService(prisma as never);
+    await svc.setCardMarkupOverride("tender-1", "c1", 42.5);
+    const args = (mocks.scopeCardUpdate.mock.calls[0]?.[0] ?? {}) as {
+      data?: { markupOverride?: unknown };
+    };
+    // Prisma.Decimal toString matches the input.
+    expect(String(args.data?.markupOverride)).toBe("42.5");
+  });
+
+  it("clears the override when null is supplied", async () => {
+    const { prisma, mocks } = buildPrismaMock({
+      scopeCardFindFirst: { id: "c1", tenderId: "tender-1" }
+    });
+    const svc = new ScopeOfWorksService(prisma as never);
+    await svc.setCardMarkupOverride("tender-1", "c1", null);
+    const args = (mocks.scopeCardUpdate.mock.calls[0]?.[0] ?? {}) as {
+      data?: { markupOverride?: unknown };
+    };
+    expect(args.data?.markupOverride).toBeNull();
+  });
+
+  it("throws NotFoundException when card is not in the tender", async () => {
+    const { prisma } = buildPrismaMock({ scopeCardFindFirst: null });
+    const svc = new ScopeOfWorksService(prisma as never);
+    await expect(
+      svc.setCardMarkupOverride("tender-1", "missing", 30)
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe("ScopeOfWorksService.resetAllCardMarkup (PR B2)", () => {
+  it("issues an updateMany scoped to the tender + non-null overrides", async () => {
+    const { prisma, mocks } = buildPrismaMock();
+    mocks.scopeCardUpdateMany.mockResolvedValueOnce({ count: 3 });
+    const svc = new ScopeOfWorksService(prisma as never);
+    const result = await svc.resetAllCardMarkup("tender-1");
+    expect(result).toEqual({ cardsReset: 3 });
+    const args = (mocks.scopeCardUpdateMany.mock.calls[0]?.[0] ?? {}) as {
+      where?: { tenderId?: string; markupOverride?: { not: null } };
+      data?: { markupOverride?: null };
+    };
+    expect(args.where?.tenderId).toBe("tender-1");
+    expect(args.where?.markupOverride).toEqual({ not: null });
+    expect(args.data?.markupOverride).toBeNull();
+  });
+
+  it("returns cardsReset: 0 when no cards had an override", async () => {
+    const { prisma, mocks } = buildPrismaMock();
+    mocks.scopeCardUpdateMany.mockResolvedValueOnce({ count: 0 });
+    const svc = new ScopeOfWorksService(prisma as never);
+    const result = await svc.resetAllCardMarkup("tender-1");
+    expect(result).toEqual({ cardsReset: 0 });
+  });
+});
+
+describe("listCards exposes markupOverride (PR B2)", () => {
+  it("returns markupOverride as number when set; null when cleared", async () => {
+    const { prisma } = buildPrismaMock({
+      scopeCardFindMany: [
+        {
+          id: "c1",
+          tenderId: "tender-1",
+          name: "Demo",
+          discipline: "DEM",
+          cardNumber: 1,
+          plantColumnCount: 1,
+          cuttingNotes: null,
+          wasteNotes: null,
+          markupOverride: 45.5,
+          sortOrder: 0,
+          _count: { scopeItems: 0 },
+          createdAt: new Date(),
+          updatedAt: new Date()
+        },
+        {
+          id: "c2",
+          tenderId: "tender-1",
+          name: "Civ",
+          discipline: "CIV",
+          cardNumber: 1,
+          plantColumnCount: 1,
+          cuttingNotes: null,
+          wasteNotes: null,
+          markupOverride: null,
+          sortOrder: 1,
+          _count: { scopeItems: 0 },
+          createdAt: new Date(),
+          updatedAt: new Date()
+        }
+      ]
+    });
+    const svc = new ScopeOfWorksService(prisma as never);
+    const result = await svc.listCards("tender-1");
+    expect(result[0]?.markupOverride).toBe(45.5);
+    expect(result[1]?.markupOverride).toBeNull();
   });
 });

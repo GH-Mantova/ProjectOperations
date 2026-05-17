@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-16 23:03 AEST
+Last updated: 2026-05-17 00:12 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -544,14 +544,41 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     summary subtable; facility picker for multi-facility waste
     rates; night/weekend shift labour rates.
 
-⏸️  PR B2 — Per-card concrete cutting subtable
+✅  PR B2 — Tender + per-card markup picker + Other-discipline markup (2026-05-17)
+    Three pieces of pricing control shipped together.
+    (1) Tender-level markup field in the Scope of Works page header
+        (right-aligned cluster with input + "Reset all" button). Reads
+        /tenders/:id/estimate; writes via PATCH which now upserts the
+        TenderEstimate row on first save.
+    (2) Per-card markup override field in the card body header strip.
+        New ScopeCard.markupOverride Decimal(5,2) nullable; null =
+        inherit tender markup, non-null = override for this card only.
+        Input is info-bordered when active; × button clears.
+    (3) "Reset all" button on the tender header. Confirms when ≥1
+        card has an override. Backed by new POST /tenders/:id/scope/
+        markup/reset-all → { cardsReset: count }.
+    Bonus: Other-discipline rows now apply markup. Previously short-
+    circuited to lineTotalWithMarkup = provisionalAmount (no markup);
+    now multiply by markupFactor like every other discipline. Flagged
+    in PR body as a tender-total bump for tenders with Other rows.
+    Footer math: ScopeQuantitiesTable dropped subtotal/subtotalWithMarkup
+    props. Per-card footer now self-sums from each item's lineTotal +
+    lineTotalWithMarkup attached by /scope/items (B1.7.1). Per-card
+    overrides reflect immediately and accurately even when two cards
+    share a discipline.
+    Tests: 515 → 522 API (+7); web 148 unchanged.
+
+⏸️  PR B3 — Per-card waste summary subtable
+    Same shape as the deferred per-card cutting subtable (originally
+    tagged B2, now queued behind B3). Per-card filtering of
+    scope_waste_items by parent card's wbsCode prefix. Picks up the
+    proper waste calc that B1.7.1 placed wrongly on items and B1.7.2
+    removed.
+
+⏸️  PR B4 — Per-card concrete cutting subtable [previously B2]
     Currently page-level under the tendering Scope tab. Moves to a
     collapsible section inside each card body (alongside that card's items).
     Renders cutting_sheet_items filtered by parent card's wbsCode prefix.
-
-⏸️  PR B3 — Per-card waste summary subtable
-    Same shape as B2 but for scope_waste_items. Per-card filtering by
-    parent card's wbsCode prefix.
 
 ✅  Discipline migration from 5-code to 4-code system (PR A1) — 2026-05-16
     Closed by PR A1 of the scope-of-works redesign chain (see

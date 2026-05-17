@@ -135,27 +135,32 @@ export function toPricingInput(
  *   Other discipline overrides: lineTotal = provisionalAmount ?? 0
  *
  *   lineTotalWithMarkup = lineTotal × (1 + markupPercent / 100)
- *     except Other, which is a fixed provisional and never marked up
- *     (matches existing summaryByDiscipline semantics in
- *     scope-redesign.service.ts:510-513).
+ *     (PR B2 — Other discipline NOW applies markup too; B1.7.1's
+ *     "no markup for Other" exemption was removed per Marco's spec.)
  *
  * Waste is NOT included here — it belongs to the dedicated waste
  * summary subtable (B3). B1.7.1 mistakenly added a waste leg; B1.7.2
  * removed it.
+ *
+ * The caller supplies the *effective* markup for this row — for B2 the
+ * resolver is `card.markupOverride ?? tenderEstimate.markup ?? 30`.
  */
 export function computeScopeItemTotal(
   item: ScopeItemPricingInput,
   rates: RateMaps,
   markupPercent: number
 ): ScopeItemTotals {
-  // Other discipline is provisional-only — bypass the cost calc.
+  const markupFactor = 1 + (Number.isFinite(markupPercent) ? markupPercent : 0) / 100;
+
+  // Other discipline is provisional-only — labour/plant don't apply.
+  // PR B2: markup now DOES apply (was previously a hard exemption).
   if (item.discipline === "Other") {
     const provisional = n(item.provisionalAmount);
     return {
       labour: 0,
       plant: 0,
       lineTotal: provisional,
-      lineTotalWithMarkup: provisional
+      lineTotalWithMarkup: provisional * markupFactor
     };
   }
 
@@ -178,7 +183,6 @@ export function computeScopeItemTotal(
   }
 
   const lineTotal = labour + plant;
-  const markupFactor = 1 + (Number.isFinite(markupPercent) ? markupPercent : 0) / 100;
   const lineTotalWithMarkup = lineTotal * markupFactor;
 
   return { labour, plant, lineTotal, lineTotalWithMarkup };

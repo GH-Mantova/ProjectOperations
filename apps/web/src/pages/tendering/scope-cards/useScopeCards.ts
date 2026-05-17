@@ -15,6 +15,8 @@ export type ScopeCard = {
   cuttingNotes: string | null;
   /** PR B1.7 — shared notes for the waste subtable (replaces per-row notes). */
   wasteNotes: string | null;
+  /** PR B2 — per-card markup % override. null = inherit tender markup. */
+  markupOverride: number | null;
   sortOrder: number;
   itemCount: number;
   createdAt: string;
@@ -119,6 +121,37 @@ export function useScopeCards(tenderId: string) {
     [authFetch, tenderId, load]
   );
 
+  /**
+   * PR B2 — set the per-card markup override. Pass null to clear and
+   * fall back to the tender-level markup.
+   */
+  const setCardMarkupOverride = useCallback(
+    async (cardId: string, markupOverride: number | null): Promise<void> => {
+      const res = await authFetch(`/tenders/${tenderId}/scope/cards/${cardId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ markupOverride })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      await load();
+    },
+    [authFetch, tenderId, load]
+  );
+
+  /**
+   * PR B2 — clear every card's markupOverride in this tender. Returns
+   * the count of cards that actually had an override.
+   */
+  const resetAllCardMarkup = useCallback(async (): Promise<{ cardsReset: number }> => {
+    const res = await authFetch(`/tenders/${tenderId}/scope/markup/reset-all`, {
+      method: "POST"
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const result = (await res.json()) as { cardsReset: number };
+    await load();
+    return result;
+  }, [authFetch, tenderId, load]);
+
   const changeDiscipline = useCallback(
     async (cardId: string, discipline: string): Promise<ChangeDisciplineResult> => {
       const res = await authFetch(`/tenders/${tenderId}/scope/cards/${cardId}`, {
@@ -190,6 +223,8 @@ export function useScopeCards(tenderId: string) {
     renameCard,
     setPlantColumnCount,
     setCardNotes,
+    setCardMarkupOverride,
+    resetAllCardMarkup,
     changeDiscipline,
     deleteCard,
     reorderCards

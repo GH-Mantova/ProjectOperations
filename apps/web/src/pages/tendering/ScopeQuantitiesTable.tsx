@@ -596,6 +596,37 @@ function ItemCard({
     const sqmToSave = dirty.sqm && dims.sqm !== "" ? Number(dims.sqm) : derived.sqm;
     const m3ToSave = dirty.m3 && dims.m3 !== "" ? Number(dims.m3) : derived.m3;
     const tonnesToSave = dirty.tonnes && dims.tonnes !== "" ? Number(dims.tonnes) : derived.tonnes;
+
+    // PR B4a.6 — client-side overflow guard. The Prisma Decimal columns
+    // have hard precision limits (length/height/depth = Decimal(10,3);
+    // density = Decimal(8,3) after the B4a.6 widening; sqm/m3/tonnes =
+    // Decimal(10,2)). A value past those ceilings throws "numeric field
+    // overflow" on the server and leaves the row in an unsaveable state.
+    // Reject locally instead — the typed value stays in the field so the
+    // user can fix it, but no PATCH fires until it's in range.
+    const MAX_DIM = 9999999; // Decimal(10,3) ceiling for length/height/depth
+    const MAX_DENSITY = 99999; // Decimal(8,3) ceiling for density
+    const MAX_DERIVED = 99999999; // Decimal(10,2) ceiling for sqm/m3/tonnes
+    const inRange = (v: number | null, max: number) =>
+      v == null || (Number.isFinite(v) && Math.abs(v) < max);
+    const valid =
+      inRange(parsed.length, MAX_DIM) &&
+      inRange(parsed.height, MAX_DIM) &&
+      inRange(parsed.depth, MAX_DIM) &&
+      inRange(parsed.density, MAX_DENSITY) &&
+      inRange(sqmToSave, MAX_DERIVED) &&
+      inRange(m3ToSave, MAX_DERIVED) &&
+      inRange(tonnesToSave, MAX_DERIVED);
+    if (!valid) {
+      console.warn("Dimension PATCH rejected: value out of Decimal range", {
+        parsed,
+        sqmToSave,
+        m3ToSave,
+        tonnesToSave
+      });
+      return;
+    }
+
     onPatch({
       length: parsed.length,
       height: parsed.height,

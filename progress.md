@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-17 05:20 AEST
+Last updated: 2026-05-17 06:13 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -5401,5 +5401,79 @@ Two bugs surfaced after B4a deployed to main; one design polish item.
 
 No new dependencies. No env vars. No schema changes.
 Rollback is a clean git revert.
+
+Audit findings: none.
+
+## 2026-05-17 — PR B4a.6 — Hotfix: widen density Decimal precision to prevent overflow on kg/m³ values
+
+Branch: fix/scope-dimensions-overflow-b4a-6
+Section: Tendering scope-of-works — column-precision fix
+
+### Why
+B4a defined `density` as `Decimal(5,3)`, which caps the absolute
+value below 100. A user entered a kg/m³ figure (concrete ~2400) on
+item `cmonoidox00rlubccg27ce18n`, hit the precision ceiling, and the
+PATCH crashed with `numeric field overflow` from PostgreSQL:
+
+```
+A field with precision 5, scale 3 must round to an absolute value
+less than 10^2.
+  at ScopeOfWorksService.updateItem (scope-of-works.service.ts:315)
+```
+
+The row stayed in the DB but every subsequent save against it threw
+the same error, leaving the item bricked.
+
+### What changed
+1. **Schema** (`apps/api/prisma/schema.prisma`): `density` widened
+   from `Decimal(5,3)` to `Decimal(8,3)`. Max absolute value now
+   99999.999 — comfortably above any realistic density value in
+   either t/m³ (≤ ~22 for the densest metals) or kg/m³ (typical
+   construction materials 100–8000).
+2. **Migration** (`20260517060000_b4a_widen_density`): pure ALTER
+   COLUMN TYPE, no data loss (widening only).
+3. **Frontend overflow guard** (`ScopeQuantitiesTable.tsx`
+   `persistDims`): pre-flight check rejects values past each
+   column's hard precision ceiling before the PATCH fires. Limits:
+   length/height/depth `< 9,999,999` (Decimal(10,3)); density
+   `< 99,999` (Decimal(8,3)); sqm/m3/tonnes `< 99,999,999`
+   (Decimal(10,2)). Out-of-range values produce a `console.warn`
+   and the PATCH is skipped — the typed value stays in the field
+   so the user can edit it down, but the bricked-row failure mode
+   is impossible to reach.
+
+### Audit of other new B4a columns
+| Field | Type | Max | Verdict |
+|---|---|---|---|
+| length/height/depth | Decimal(10,3) | 9,999,999.999 | Fine for any construction dimension |
+| sqm/m3 | Decimal(10,2) | 99,999,999.99 | Fine |
+| tonnes | Decimal(10,2) | 99,999,999.99 | Fine |
+| density | **Decimal(5,3)** → Decimal(8,3) | was 99.999 | Widened |
+
+Only `density` needed widening; the other B4a fields are already
+sized for the realistic ranges.
+
+### Recovery
+Bricked items (like the one Marco hit in dev) become saveable again
+as soon as the migration applies — the stored density value is still
+intact, and the next PATCH no longer overflows. No data recovery
+script needed.
+
+### Tests
+No new specs. The existing 17 dimension specs cover the math; the
+overflow guard is a boundary check, not a math change. The guard
+itself is exercised by manual repro (type 99999 into density → PATCH
+fires; type 999999 → console.warn, no PATCH).
+
+### Verification
+- pnpm --filter api test: 573 passing (unchanged); 6 skipped
+- pnpm --filter api exec tsc --noEmit: clean
+- pnpm --filter api lint: clean
+- pnpm --filter web test --run: 148 passing (unchanged)
+- pnpm --filter web exec tsc --noEmit: clean
+- pnpm --filter web lint: clean
+- pnpm --filter web build: clean
+
+No new dependencies. No env vars.
 
 Audit findings: none.

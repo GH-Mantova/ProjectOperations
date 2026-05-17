@@ -20,9 +20,30 @@ import {
   toPricingInput
 } from "./scope-item-pricing";
 
-function toDecimal(value: number | null | undefined | Prisma.Decimal): Prisma.Decimal | null {
+// PR B4a.1 — defensive type narrowing for the Prisma.Decimal constructor.
+// CodeQL flagged the previous `value as number` cast as a "type confusion
+// through parameter tampering" sink (HTTP request parameter could in
+// theory be an array or string despite class-validator's runtime guard).
+// Accept `unknown` and explicitly narrow: numbers + finite-numeric strings
+// pass; arrays, objects, NaN, Infinity, and non-numeric strings return
+// null. Exported for direct testing.
+export function toDecimal(value: unknown): Prisma.Decimal | null {
   if (value === null || value === undefined) return null;
-  return new Prisma.Decimal(value as number);
+  if (value instanceof Prisma.Decimal) return value;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return null;
+    return new Prisma.Decimal(value);
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed === "") return null;
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed)) return null;
+    // Pass the trimmed string (not the parsed number) so Prisma.Decimal
+    // preserves the source precision verbatim where it can.
+    return new Prisma.Decimal(trimmed);
+  }
+  return null;
 }
 
 function numericFieldsFrom(dto: Partial<UpdateScopeItemDto & CreateScopeItemDto>) {

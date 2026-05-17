@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-17 19:46 AEST
+Last updated: 2026-05-17 19:51 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -5682,5 +5682,16 @@ Files: project_instructions.md, docs/lessons-learned/README.md (new),
 Pre-PR checks: 4/4 green (api+web lint + test); skipped build/
   compliance:smoke/playwright — doc-only, no runtime impact.
 
-## 2026-05-18 [HH:MM] AEST — PR docs/discipline-codes-and-lessons-learned MERGED
-[filled in post-merge — Phase 8 task]
+## 2026-05-18 05:49 AEST — PR docs/discipline-codes-and-lessons-learned MERGED
+Type: PR (docs only)
+Branch: docs/discipline-codes-and-lessons-learned
+PR: #191 (https://github.com/GH-Mantova/ProjectOperations/pull/191)
+Merge SHA: 6ac0028baf771f7fdc4b8edb7a4f71e20e41315d
+Merged at: 2026-05-17T19:49:41Z (auto-merge squash)
+CI: ✅ all checks passed
+  - API — lint, test, compliance smoke
+  - Web — lint, logic tests, build
+  - Analyze (actions) [CodeQL]
+  - Analyze (javascript-typescript) [CodeQL]
+  - tendering-e2e
+Status: MERGED

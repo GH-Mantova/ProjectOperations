@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-17 08:21 AEST
+Last updated: 2026-05-17 08:25 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -5567,5 +5567,16 @@ Files: scope-redesign.service.ts (normalize block + 3 cardId reads
   progress.md + roadmap.md.
 Pre-PR checks: 7/7 green
 
-## 2026-05-17 [HH:MM] AEST — PR B4b.1 MERGED
-[filled in post-merge — Phase 8 task]
+## 2026-05-17 18:24 AEST — PR B4b.1 MERGED
+Type: PR
+Branch: fix/b4b1-cutting-cardid-hotfix
+PR: #186 (https://github.com/GH-Mantova/ProjectOperations/pull/186)
+Merge SHA: 5a6152f91e007b64dd738c2540686fb3205c38f9
+Merged at: 2026-05-17T08:24:25Z (auto-merge squash)
+CI: ✅ all checks passed
+  - API — lint, test, compliance smoke
+  - Web — lint, logic tests, build
+  - Analyze (actions) [CodeQL]
+  - Analyze (javascript-typescript) [CodeQL]
+  - tendering-e2e
+Status: MERGED

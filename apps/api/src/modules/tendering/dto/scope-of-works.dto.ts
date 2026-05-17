@@ -90,7 +90,9 @@ class ScopeItemFieldsBase {
   @ApiPropertyOptional() @IsOptional() @IsString() wasteFacility?: string | null;
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() wasteTonnes?: number | null;
   @ApiPropertyOptional() @IsOptional() @IsInt() wasteLoads?: number | null;
-  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() wasteM3?: number | null;
+  // @deprecated PR B4a — legacy demolition-bucket field. Superseded by
+  // the all-discipline `m3` dimension below.
+  @ApiPropertyOptional({ deprecated: true }) @IsOptional() @Type(() => Number) @IsNumber() wasteM3?: number | null;
 
   // Plant days
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() excavatorDays?: number | null;
@@ -110,17 +112,36 @@ class ScopeItemFieldsBase {
   // Provisional sum amount (discipline=Prv only; ignored otherwise).
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() provisionalAmount?: number | null;
 
-  // PR B1.6 — canonical items table columns 6-10. `wasteGroup` (line 108)
-  // already exists; the four below complete the canonical column set per
-  // docs/Designs/scope-of-works-redesign.md.
-  @ApiPropertyOptional({ enum: ["m²", "m³", "t", "ea"] })
+  // PR B1.6 — canonical items table columns. `wasteGroup` (line 108)
+  // already exists; `wasteItem` + `wasteIncluded` complete the per-row
+  // waste flagging contract.
+  //
+  // @deprecated PR B4a — `unit` + `value` superseded by the dimension
+  // fields below (sqm/m3/density/tonnes/chargeBy). Retained on the DTO
+  // so old clients keep validating; new code reads from dimensions.
+  @ApiPropertyOptional({ deprecated: true, enum: ["m²", "m³", "t", "ea"] })
   @IsOptional() @IsIn(["m²", "m³", "t", "ea"]) unit?: string | null;
 
-  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() value?: number | null;
+  @ApiPropertyOptional({ deprecated: true }) @IsOptional() @Type(() => Number) @IsNumber() value?: number | null;
 
   @ApiPropertyOptional() @IsOptional() @IsString() wasteItem?: string | null;
 
   @ApiPropertyOptional() @IsOptional() wasteIncluded?: boolean;
+
+  // PR B4a — dimension/quantification fields. Raw inputs (length, height,
+  // depth, density) auto-derive sqm/m3/tonnes via computeDerivedDimensions;
+  // user can override any derived value by typing directly. `chargeBy`
+  // is the preferred billing unit for the waste aggregator (null = fall
+  // back to facility's rate.unit). `cuttingIncluded` flags this row for
+  // the cutting aggregator (wired in B4b).
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() length?: number | null;
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() height?: number | null;
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() depth?: number | null;
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() density?: number | null;
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() tonnes?: number | null;
+  @ApiPropertyOptional({ enum: ["t", "m³"] })
+  @IsOptional() @IsIn(["t", "m³"]) chargeBy?: string | null;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() cuttingIncluded?: boolean;
 
   // Scope item may arrive with a specific wbsCode on redesign create.
   @ApiPropertyOptional() @IsOptional() @IsString() wbsCode?: string | null;

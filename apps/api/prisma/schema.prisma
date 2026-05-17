@@ -2209,18 +2209,37 @@ model ScopeOfWorksItem {
   days  Decimal? @db.Decimal(8, 2)
   shift String?
 
-  // PR B1.6 — canonical items table columns 6-10 (per docs/Designs/
-  // scope-of-works-redesign.md line 273+). `wasteGroup` (already exists
-  // below) + `wasteItem` form the group/item dropdown pair. `unit` is
-  // m²/m³/t/ea and drives the waste summary calc only. `value` is the
-  // quantity in `unit`. `wasteIncluded` flags whether this row contributes
-  // to the auto-generated waste summary.
+  // PR B1.6 — canonical items table columns. `wasteGroup` (below) +
+  // `wasteItem` form the group/item dropdown pair. `wasteIncluded` flags
+  // whether this row contributes to the auto-generated waste summary.
+  //
+  // @deprecated PR B4a — `unit` + `value` superseded by the L/H/D + sqm/
+  // m3/density/tonnes + chargeBy dimension fields below. Retained for
+  // backward compat with rows written by B1.6–B3; no longer read or
+  // written by new code. Cleanup PR drops the columns.
   unit          String?  @map("unit")
   value         Decimal? @db.Decimal(12, 3) @map("value")
   wasteItem     String?  @map("waste_item")
   wasteIncluded Boolean  @default(false) @map("waste_included")
 
-  // Demolition
+  // PR B4a — dimension/quantification fields. Raw inputs (length, height,
+  // depth, density) drive auto-derivation of sqm/m3/tonnes; any derived
+  // value can be overridden by the user typing directly. `chargeBy` is
+  // the user's preferred billing unit ("t" | "m³") for the waste
+  // aggregator; null = fall back to the facility's rate.unit.
+  // `cuttingIncluded` mirrors `wasteIncluded` for the cutting subtable
+  // (aggregator wired in B4b).
+  length          Decimal? @db.Decimal(10, 3)
+  height          Decimal? @db.Decimal(10, 3)
+  depth           Decimal? @db.Decimal(10, 3)
+  density         Decimal? @db.Decimal(5, 3)
+  tonnes          Decimal? @db.Decimal(10, 2)
+  chargeBy        String?  @map("charge_by")
+  cuttingIncluded Boolean  @default(false) @map("cutting_included")
+
+  // PR B4a — sqm + m3 promoted from demolition-bucket to canonical
+  // all-discipline dimension fields. Derived from length×height /
+  // sqm×depth or supplied directly as an override.
   sqm          Decimal? @db.Decimal(10, 2)
   m3           Decimal? @db.Decimal(10, 2)
   materialType String?  @map("material_type")
@@ -2250,6 +2269,9 @@ model ScopeOfWorksItem {
   wasteFacility String?  @map("waste_facility")
   wasteTonnes   Decimal? @map("waste_tonnes") @db.Decimal(10, 3)
   wasteLoads    Int?     @map("waste_loads")
+  // @deprecated PR B4a — legacy demolition-bucket field. Superseded by
+  // the all-discipline `m3` on ScopeOfWorksItem above. Retained for
+  // backward compat; no longer read or written by new code.
   wasteM3       Decimal? @map("waste_m3") @db.Decimal(10, 2)
 
   // Redesign additions — generic measurement + material + plant FK.
@@ -2311,14 +2333,19 @@ model ScopeWasteItem {
   wasteGroup    String?  @map("waste_group")
   wasteType     String?  @map("waste_type")
   wasteFacility String?  @map("waste_facility")
-  // PR B3 — `wasteTonnes` is reused as a generic "quantity in unit"
-  // column. For rows with unit="t" it stays as tonnes (legacy meaning);
-  // for unit="m²"/"m³"/"ea" it holds qty in that unit. Rename deferred
-  // to a future cleanup PR; math doesn't care (lineTotal = qty × rate).
+  // PR B4a — `wasteTonnes` reverts to its literal meaning (tonnes).
+  // The aggregator writes BOTH `wasteTonnes` and `m3` per row so the
+  // UI can render either, and the line total bills by the facility's
+  // unit (rate.unit === "t" ? wasteTonnes : m3) × ratePerTonne.
   wasteTonnes   Decimal? @map("waste_tonnes") @db.Decimal(10, 3)
+  // PR B4a — m³ companion to wasteTonnes. Aggregator writes both;
+  // facility's rate.unit decides which side the line total bills against.
+  m3            Decimal? @db.Decimal(10, 2)
   wasteLoads    Int?     @map("waste_loads")
   // PR B3 — unit drives the facility filter on the summary subtable.
-  // null for legacy rows (assumed unit="t" by convention).
+  // PR B4a — facility filter on the subtable no longer narrows by
+  // unit; this column now carries the facility's rate unit forward
+  // for display (read-only badge on the row).
   unit          String?
   // PR B3 — true when this row was created by "Sum from above" and
   // can be replaced on regeneration. Manual rows (default false) are

@@ -19,6 +19,7 @@ import {
   DISCIPLINE_ORDER,
   toPricingInput
 } from "./scope-item-pricing";
+import { computeDerivedDimensions } from "./scope-item-dimensions";
 
 // PR B4a.1 — defensive type narrowing for the Prisma.Decimal constructor.
 // CodeQL flagged the previous `value as number` cast as a "type confusion
@@ -94,14 +95,80 @@ function numericFieldsFrom(dto: Partial<UpdateScopeItemDto & CreateScopeItemDto>
       dto.plantItems !== undefined ? (dto.plantItems as unknown as Prisma.InputJsonValue) : undefined,
     measurements:
       dto.measurements !== undefined ? (dto.measurements as unknown as Prisma.InputJsonValue) : undefined,
-    // PR B1.6 — canonical items table columns. unit + value drive the
-    // waste summary calc (B3); wasteItem completes the group/item pair;
-    // wasteIncluded flags whether this row contributes to the auto
-    // waste summary rows.
+    // PR B1.6 — canonical items table columns. wasteItem completes the
+    // group/item pair; wasteIncluded flags this row for the waste
+    // aggregator.
+    // @deprecated PR B4a — unit + value no longer drive the waste
+    // aggregator (superseded by tonnes/m3 dimension fields below).
     unit: dto.unit,
     value: dto.value !== undefined ? toDecimal(dto.value) : undefined,
     wasteItem: dto.wasteItem,
-    wasteIncluded: dto.wasteIncluded
+    wasteIncluded: dto.wasteIncluded,
+    // PR B4a — dimension fields. sqm/m3/tonnes are derived server-side
+    // in createItem/updateItem via computeDerivedDimensions; raw inputs
+    // (length/height/depth/density/chargeBy/cuttingIncluded) pass
+    // through here.
+    length: dto.length !== undefined ? toDecimal(dto.length) : undefined,
+    height: dto.height !== undefined ? toDecimal(dto.height) : undefined,
+    depth: dto.depth !== undefined ? toDecimal(dto.depth) : undefined,
+    density: dto.density !== undefined ? toDecimal(dto.density) : undefined,
+    tonnes: dto.tonnes !== undefined ? toDecimal(dto.tonnes) : undefined,
+    chargeBy: dto.chargeBy,
+    cuttingIncluded: dto.cuttingIncluded
+  };
+}
+
+// PR B4a — fold computeDerivedDimensions into the persisted record.
+//
+// The DB can't tell a derived sqm from a user-typed override, so:
+//   - Raw fields (length/height/depth/density) fall back to the existing
+//     row when the DTO didn't supply them — they have a single stored
+//     meaning (the raw input).
+//   - Override fields (sqm/m3/tonnes) only count as overrides when the
+//     DTO actually sent them. If the DTO didn't touch them, treat as
+//     "no override, derive from raw" — preventing stale derivations
+//     from freezing the value across partial patches.
+//
+// The frontend's controlled-input model is expected to send the full
+// dimension picture on any edit; this fallback is purely defensive.
+function deriveDimensionFields(
+  base: ReturnType<typeof numericFieldsFrom>,
+  existing?: {
+    length?: Prisma.Decimal | null;
+    height?: Prisma.Decimal | null;
+    depth?: Prisma.Decimal | null;
+    density?: Prisma.Decimal | null;
+  } | null
+): ReturnType<typeof numericFieldsFrom> {
+  const dec = (v: Prisma.Decimal | null | undefined): number | null =>
+    v === null || v === undefined ? null : Number(v);
+
+  // Raw inputs: DTO patch wins, else existing row, else null.
+  const length = base.length !== undefined ? dec(base.length as Prisma.Decimal | null) : dec(existing?.length ?? null);
+  const height = base.height !== undefined ? dec(base.height as Prisma.Decimal | null) : dec(existing?.height ?? null);
+  const depth = base.depth !== undefined ? dec(base.depth as Prisma.Decimal | null) : dec(existing?.depth ?? null);
+  const density = base.density !== undefined ? dec(base.density as Prisma.Decimal | null) : dec(existing?.density ?? null);
+
+  // Overrides: only honoured when the DTO sent them. Undefined → null
+  // (derive). Null → null (user cleared, derive). Number → override.
+  const sqmOverride = base.sqm !== undefined ? dec(base.sqm as Prisma.Decimal | null) : null;
+  const m3Override = base.m3 !== undefined ? dec(base.m3 as Prisma.Decimal | null) : null;
+  const tonnesOverride = base.tonnes !== undefined ? dec(base.tonnes as Prisma.Decimal | null) : null;
+
+  const derived = computeDerivedDimensions({
+    length,
+    height,
+    depth,
+    density,
+    sqm: sqmOverride,
+    m3: m3Override,
+    tonnes: tonnesOverride
+  });
+  return {
+    ...base,
+    sqm: toDecimal(derived.sqm),
+    m3: toDecimal(derived.m3),
+    tonnes: toDecimal(derived.tonnes)
   };
 }
 
@@ -226,7 +293,7 @@ export class ScopeOfWorksService {
         status: "confirmed",
         aiProposed: false,
         createdById: actorId,
-        ...numericFieldsFrom(dto)
+        ...deriveDimensionFields(numericFieldsFrom(dto))
       }
     });
   }
@@ -258,7 +325,7 @@ export class ScopeOfWorksService {
         rowType: dto.rowType,
         status: dto.status,
         sortOrder: dto.sortOrder,
-        ...numericFieldsFrom(dto)
+        ...deriveDimensionFields(numericFieldsFrom(dto), existing)
       },
       include: { card: true }
     });

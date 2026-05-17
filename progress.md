@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-17 19:51 AEST
+Last updated: 2026-05-17 22:18 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -5695,3 +5695,35 @@ CI: ✅ all checks passed
   - Analyze (javascript-typescript) [CodeQL]
   - tendering-e2e
 Status: MERGED
+
+## 2026-05-18 08:15 AEST — PR docs/c1-quote-arrangement-discovery STARTED
+Type: PR (docs only — discovery / investigation pass)
+Branch: docs/c1-quote-arrangement-discovery
+Detail: Phase 0 discovery for the C-chain (Quote Arrangement
+  screen base + downstream). Read-only codebase inventory +
+  cheap DB probes. Output: new "C-chain — Phase 0 discovery
+  findings (2026-05-18)" section appended to
+  docs/Designs/scope-of-works-redesign.md. No code, schema, or
+  test changes. C1 implementation prompt to be written by MAIN
+  in a follow-up session after reviewing findings.
+Status: IN_PROGRESS
+
+## 2026-05-18 08:15 AEST — PR docs/c1-quote-arrangement-discovery OPENED
+Type: PR (docs only)
+Branch: docs/c1-quote-arrangement-discovery
+PR: #[N]
+Status: WAITING_CI
+Detail: 1 design-doc section appended (+~265 lines) + progress.md
+  + roadmap.md updates. Findings: Quote layer is substantially
+  built (ClientQuote + 5 sub-tables + 4 controllers + 2122-LOC
+  ClientQuotesPanel.tsx with dnd-kit already wired); push-from-scope
+  endpoint is the embryonic Calc-Sheet→Arrangement primitive.
+  Q1/Q2/Q3 marked RESOLVED; Q4 (per-quote name vs Client.name)
+  + Q5 (PDFKit stopgap vs HTML migration) flagged OPEN with
+  recommendations. Refined C-chain to C1/C2/C3/C4/D1 (no C0 needed).
+Files: docs/Designs/scope-of-works-redesign.md, progress.md,
+  roadmap.md
+Pre-PR checks: 4/4 green (api+web lint + test)
+
+## 2026-05-18 [HH:MM] AEST — PR docs/c1-quote-arrangement-discovery MERGED
+[filled in post-merge — Phase 9 task]

@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-17 09:20 AEST
+Last updated: 2026-05-17 22:18 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -709,6 +709,40 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     being silently destroyed. Smoke-confirmed against IS-T020 dev
     DB before merge.
     Supersedes the prior ⏸️ B4b-followup carry-forward.
+
+⏳  PR C1 — Quote Arrangement screen base
+    Phase 0 discovery complete (2026-05-18, see
+    docs/Designs/scope-of-works-redesign.md → "C-chain — Phase 0
+    discovery findings (2026-05-18)"). Discovery found the Quote
+    layer is substantially already built — ClientQuote + 5 sub-
+    tables, 4 controllers, 2122-LOC ClientQuotesPanel.tsx with
+    dnd-kit already wired. The push-from-scope endpoint at
+    POST /tenders/:id/quotes/:quoteId/scope-items/push-from-scope
+    is the embryonic Calc-Sheet→Arrangement primitive. C1 extends
+    in place rather than building new. Awaiting MAIN to write the
+    C1 implementation prompt; recommendations captured in the
+    discovery section (Q4: use Client.name + Rev; Q5: stopgap on
+    PDFKit, decouple from HTML→PDF migration).
+
+⏸️  PR C2 — Drag-and-drop + grouping (blocked on C1)
+    Reuse existing @dnd-kit wiring; group-by-source-card pivot;
+    update sortOrder on drag-end via existing reorder endpoint.
+
+⏸️  PR C3 — Collapse / expand / hide (blocked on C2)
+    Per-row hide via QuoteScopeItem.isVisible (already exists);
+    per-section toggle via ClientQuote.show* flags (already exist).
+    Likely no schema change.
+
+⏸️  PR C4 — Change Quote details + Reset to original (blocked on C3)
+    Reset = re-run push-from-scope + clear isVisible/sortOrder
+    overrides. May add nullable ClientQuote.displayName if Q4
+    follow-up surfaces.
+
+⏸️  PR D1 — Quote PDF respects arrangement (blocked on C4)
+    Modify quote-pdf.builder.ts to read from QuoteScopeItem
+    (currently reads raw scope tables); honour isVisible,
+    sortOrder, show* flags; per-section heading from C2's pivot.
+    Stopgap on PDFKit (no HTML→PDF dependency).
 
 ✅  Discipline migration from 5-code to 4-code system (PR A1) — 2026-05-16
     Closed by PR A1 of the scope-of-works redesign chain (see

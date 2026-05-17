@@ -818,3 +818,267 @@ This design is the canonical reference. Any deviation in any PR spec must update
 
 — end of doc —
 
+## C-chain — Phase 0 discovery findings (2026-05-18)
+
+**Status:** investigation complete, no code written. C1 implementation
+prompt to be written by MAIN in a follow-up session based on findings
+below.
+
+**Base SHA at investigation time:** `f755f70181355625b3ff958a50d7b316dcd534f0` (chore #192, post docs/discipline #191)
+**Tests at investigation time:** API 599 pass / 6 skip; web 148
+
+### 1. Codebase inventory
+
+#### 1.1 Quote-related schema (from `apps/api/prisma/schema.prisma`)
+
+The Quote layer is **substantially built** already. C-chain will
+restructure and add presentation state, not start from scratch.
+
+| Model | Table | Key fields | Scoped by |
+|---|---|---|---|
+| `Client` (line 401) | `clients` | name, abn, address, payment terms, bank details | (root) |
+| `TenderClient` (line 739) | `tender_clients` | `isAwarded`, `contractIssued`, `relationshipType`, FK contactId | `tenderId` |
+| `ClientQuote` (line 2828) | `client_quotes` | `quoteRef` (unique), `revision`, `status`, `adjustmentPct/Amt`, `assumptionMode`, **6× show* flags** (`showProvisional`, `showCostOptions`, `showScopeTable`, `showAssumptions`, `showExclusions`, `showReferencedDrawings`), `detailLevel`, `sentAt`, `generatedPdfPath` | `tenderId + clientId` |
+| `QuoteCostLine` (line 2870) | `quote_cost_lines` | label, description, price, **sortOrder**, **isVisible** | `quoteId` |
+| `QuoteProvisionalLine` (line 2885) | `quote_provisional_lines` | description, price, notes, **sortOrder** | `quoteId` |
+| `QuoteCostOption` (line 2898) | `quote_cost_options` | label, description, price, notes, **sortOrder** | `quoteId` |
+| `QuoteAssumption` (line 2912) | `quote_assumptions` | text, **sortOrder**, optional FK to `QuoteCostLine` (linked-vs-free mode) | `quoteId` |
+| `QuoteExclusion` (line 2926) | `quote_exclusions` | text, **sortOrder** | `quoteId` |
+| `QuoteEmail` (line 2937) | `quote_emails` | sentTo[], subject, bodyPreview, sentAt, sentById | `quoteId` |
+| `QuoteScopeItem` (line 2381) | `quote_scope_items` | `sourceItemId`/`sourceItemType` (provenance), label, description, qty, unit, notes, **sortOrder**, **isVisible** | `quoteId` |
+
+**Key finding:** every sub-table already has `sortOrder` + most have
+`isVisible`. The "Arrangement screen" largely DRIVES existing
+fields rather than introducing new ones. `QuoteScopeItem` already
+carries provenance back to a source scope item — exactly the
+"calc-sheet → arrangement" link the C-chain needs.
+
+**`ClientQuote.showXxx` flags** are presentation toggles already
+shipped — C3's "collapse / expand / hide" semantics may map
+cleanly onto these for whole-section visibility, with finer-grain
+per-row visibility via `isVisible` on the sub-tables.
+
+**No `cardId` FK** on any quote model — quotes are tender-scoped,
+not card-scoped (correct: cards are an estimating-side concept; the
+arrangement pivots cards into a client-facing view).
+
+#### 1.2 Quote-related backend routes
+
+| Controller file | Route prefix | Surface area |
+|---|---|---|
+| `client-quotes.controller.ts` | `tenders/:tenderId/quotes` | Full CRUD on quote + cost-lines / provisional-lines / cost-options / assumptions (with reorder + copy-from-tender) / exclusions / summary |
+| `quote-scope-items.controller.ts` | `tenders/:tenderId/quotes/:quoteId/scope-items` | CRUD + **reorder + reset + push-from-scope** — the primitive of "regenerate arrangement from Calc Sheet" already exists in basic form |
+| `quote.controller.ts` | `tenders/:tenderId` | T&Cs, tender-level assumptions / exclusions (the per-tender pool that copy-from-tender pulls from), exports |
+| `tender-clients.controller.ts` | `tenders/:tenderId/clients` + `tendering/clients/search` | Client picker primitives + tender-client linking |
+
+**Key finding:** `push-from-scope` (POST `/scope-items/push-from-scope`)
+on quote-scope-items is the C-chain's "regenerate from Calc Sheet"
+primitive in embryonic form. C1 should review what it currently
+does and decide whether to extend or replace it.
+
+#### 1.3 Quote-related frontend
+
+| File | LOC | Summary |
+|---|---|---|
+| `ClientQuotesPanel.tsx` | 2122 | Per-client quote editor. Contains: `ClientRow`, `QuoteContentsPanel`, `QuoteEditor`, and tab components `CostTab` / `ProvisionalTab` / `OptionsTab` / `AssumptionsTab` (free + linked variants) / `ExclusionsTab` / `PreviewTab`. **Drag-and-drop already wired via `@dnd-kit/core` + `@dnd-kit/sortable`**; `SortableQuoteRow` + `StaticQuoteRow` co-exist. |
+| `QuoteTab.tsx` | 816 | Outer tab on the tender detail page; renders the per-discipline scope summary + mounts `ClientQuotesPanel`. Already uses 4-code discipline labels (`DEM/CIV/ASB/Other`). |
+| `SendQuoteModal.tsx` | 269 | Send-quote UI — recipient picker, body preview, send action. |
+
+**Key finding:** the "Arrangement screen" the design doc envisions
+is **partially built already as `ClientQuotesPanel`**. The C-chain
+work is more "extend / restructure / add per-quote pivot view"
+than "build from scratch". `dnd-kit` is the existing dnd library —
+C2's drag-and-drop should reuse it.
+
+**No discrete pivot-table component exists.** The C-chain's
+arrangement-screen pivot (cards as columns, quotes as rows, or vice
+versa) is genuinely new UI on top of the existing data layer.
+
+#### 1.4 Quote PDF pipeline (current state)
+
+- File: `apps/api/src/modules/estimate-export/pdf/quote-pdf.builder.ts` (1173 LOC)
+- Stack: **PDFKit** (per file header: "Server-side PDF builder using PDFKit primitives only. No headless browser, no HTML rendering — intentional for stability.")
+- Reads from: `fetchTenderForExport` — `ScopeOfWorksItem + CuttingSheetItem + TenderTandC + TenderAssumption + TenderExclusion`
+- **Reads directly from scope tables**, not from `QuoteScopeItem`. D1's job is to rewire this to honour per-quote arrangement.
+- 5A.2 HTML→PDF migration: **not shipped**. Q5 status: OPEN.
+
+#### 1.5 Persona implications (current state)
+
+- `disciplines.ts` exports `IS_DISCIPLINE_CODES = ["DEM", "CIV", "ASB", "Other"]` — canonical 4-code confirmed.
+- `tendering.persona.ts` has a `QUOTE_SUBMODE_PROMPT` block (persona is already aware of quote workflow).
+- **No mentions of "arrangement", "Calculation Sheet", or "arrangement screen"** in the persona prompts. C-chain implementation should include a persona update introducing the **Calc-Sheet-as-source-of-truth invariant** ("the persona always works on the Calculation Sheet, never on the Arrangement; the Arrangement is a client-facing presentation layer derived from the Calc Sheet").
+
+### 2. Data shape probes (dev DB, 2026-05-18)
+
+#### 2.1 Quote inventory by tender
+
+```
+            id             |                         title                         | quote_count
+---------------------------+-------------------------------------------------------+-------------
+ cmonoidox00rlubccg27ce18n | Brisbane Grammar School — Science Block refurbishment |           1
+ cmonv7yz50004ub601c0knolv | Compliance Tender 1777697548014                       |           0
+ (… 18 more tenders, all with quote_count = 0)
+```
+
+Only IS-T020 has a quote. 19 of 20 sampled tenders have zero
+quotes (typical for early-stage tenders). C-chain demo data
+generation may want to seed quotes against more tenders to
+showcase the arrangement UI populated.
+
+#### 2.2 Client inventory
+
+8 clients total. 5 seed clients (`client-001` … `client-005`) +
+3 cuid-style additions (Brisbane Grammar School is the one with an
+ABN — that's IS-T020's tender client).
+
+#### 2.3 TenderClient inventory
+
+85 tender-client links across the dev DB. Per-tender many-to-many
+between clients and tenders works as expected. Sample:
+
+```
+         tender_id         |         client_id         | is_awarded
+---------------------------+---------------------------+------------
+ cmoo6vij90004ubo8ghmj2lyl | client-003                | t
+ cmoo6vij90004ubo8ghmj2lyl | cmonoidla00p0ubccu7898lnw | f
+```
+
+Multiple clients per tender (one awarded, others not) — the
+arrangement screen will need to handle this when picking which
+client's quote to view/build.
+
+#### 2.4 Quote sub-table counts (dev)
+
+```
+      source       | count
+-------------------+-------
+ cost_lines        |     3
+ scope_items       |     0
+ provisional_lines |     1
+ cost_options      |     0
+ assumptions       |     4
+ exclusions        |     7
+```
+
+`quote_scope_items` is empty — the "push from scope" primitive
+exists but hasn't been used in dev yet. C1 will populate this on
+quote creation.
+
+#### 2.5 IS-T020 scope state
+
+```
+ cards
+-------
+     4
+```
+
+| card_id | items |
+|---|---|
+| `…-card-ASB` | 2 |
+| `…-card-CIV` | 1 |
+| `…-card-DEM` | 4 |
+| `…-card-Other` | 1 |
+
+Eight scope items total across 4 cards. The C-chain pivot will
+have a tractable demo dataset.
+
+### 3. Design-doc open questions — status
+
+**Q1 (PR A2 / B-chain): How exactly do existing tender records map to the new card structure?**
+- **Status:** RESOLVED
+- **Finding:** Shipped via A2 + B-chain. Cards exist per tender × discipline; existing scope items migrated to their natural cards.
+
+**Q2 (PR B2 / B4b): How do existing concrete cutting tables get split by inferring which scope item they relate to?**
+- **Status:** RESOLVED
+- **Finding:** B4b shipped Copy-from-above with material auto-inference + cardId FK. B-followup deleted the 2 pre-card-scoping cutting orphans and made `card_id` NOT NULL on both cutting + waste tables.
+
+**Q3 (PR B3): Does waste auto-row appear immediately when Waste? checkbox toggles?**
+- **Status:** RESOLVED (verified from shipped behaviour)
+- **Finding:** No — the `Waste?` toggle in `ScopeQuantitiesTable.tsx` fires `onPatch({ wasteIncluded: ... })` immediately, but only persists the flag. The waste summary row only appears when the user explicitly clicks "Sum from above" on the waste subtable. Matches B3's stated design (user-driven regeneration; manual rows survive).
+
+**Q4 (PR C1): Where do client-facing quote names come from? Client.name? Per-quote name field?**
+- **Status:** OPEN — central C1 decision
+- **Finding:** `ClientQuote` has `quoteRef` (unique, machine-style) and `revision` (Int) but **NO** human-friendly `name` / `title` / `displayName` column. `Client.name` exists. The natural display name today is `${Client.name} — Rev ${revision}` (e.g. "Brisbane Grammar School — Rev 1") or `${quoteRef}`.
+- **Recommendation:** Start with `Client.name + revision` as the displayed name (zero schema work). If estimators ask for per-quote labels later (e.g. two parallel quote variants for the same client), promote to a nullable `displayName` column on `ClientQuote` in a follow-up. This keeps C1 small while preserving the upgrade path.
+
+**Q5 (PR D1): If 5A.2 (HTML→PDF migration) hasn't shipped by demo, stopgap on PDFKit or block on 5A.2?**
+- **Status:** OPEN
+- **Finding:** 5A.2 has **not** shipped. `quote-pdf.builder.ts` is still PDFKit (its file header explicitly notes "intentional for stability"). HTML→PDF is not in the dependency graph (`puppeteer` / `playwright PDF` search returned nothing).
+- **Recommendation:** **Stopgap on PDFKit.** D1's job is to make the PDF respect arrangement; that's a "what to render" change, not a "how to render" change. PDFKit can read from `QuoteScopeItem` + the `ClientQuote.show*` flags + per-line `isVisible` + per-line `sortOrder` exactly as well as HTML would. Coupling C-chain to 5A.2 would block the demo on a sibling migration that has its own scope; the stability argument in the file header still applies.
+
+### 4. Refined C-chain PR breakdown
+
+Post-discovery, the C-chain is **smaller than the design doc
+sketched** because so much plumbing already exists. Re-scoping:
+
+**PR C0 — NOT NEEDED.** Discovery did not surface any pre-work
+required. Existing Quote tab can be progressively replaced.
+
+**PR C1 — Quote Arrangement screen base** — complexity: **M**
+- **Scope:**
+  - New "Arrangement" view inside the Quote tab (alongside or
+    replacing the current `ClientQuotesPanel`'s editor — TBD)
+  - Client picker (reuse `tendering/clients/search` endpoint)
+  - Create / select a quote per `(tender, client)` pair
+  - Populate `QuoteScopeItem` from the Calc Sheet on quote
+    creation (extend existing `push-from-scope` if needed)
+  - Display quote-scope-items as a flat list with the existing
+    `sortOrder` driving order
+  - Use `Client.name + Rev ${revision}` as displayed quote name (Q4 recommendation)
+- **Out:** drag-and-drop, hide/collapse, grouping (those are C2 / C3)
+- **Files touched:** mostly `ClientQuotesPanel.tsx` + 1-2 new backend handlers; no schema changes if Q4 recommendation accepted
+- **Tests:** ~6-10 specs around the push-from-scope extension + client picker
+
+**PR C2 — Drag-and-drop + grouping** — complexity: **M**
+- **Scope:**
+  - Reuse existing `@dnd-kit` wiring on `QuoteScopeItem` rows
+  - Group-by-source-card pivot (rows grouped by their `sourceItemId`'s card)
+  - Update `sortOrder` on drag-end via existing reorder endpoint
+- **Schema:** likely none; existing `sortOrder` does the work. May need a `groupId` or similar if grouping needs to persist independently of card boundaries — defer decision to C2's discovery
+- **Files touched:** mostly `ClientQuotesPanel.tsx`
+- **Tests:** ~4-6 specs around reorder semantics + group integrity
+
+**PR C3 — Collapse / expand / hide** — complexity: **S**
+- **Scope:**
+  - Per-row hide via existing `QuoteScopeItem.isVisible`
+  - Per-section collapse/expand for the 6 `ClientQuote.showXxx` flags
+  - Optional: per-row "collapsed" state if rows need to fold (likely just CSS)
+- **Schema:** none — existing flags + `isVisible` suffice
+- **Files touched:** mostly frontend
+- **Tests:** ~3-4 specs
+
+**PR C4 — Change Quote details + Reset to original** — complexity: **S/M**
+- **Scope:**
+  - Edit `Client.name` displayed override (the Q4 follow-up if estimators ask) OR per-quote labels via a new `displayName` column
+  - "Reset to original" = re-run `push-from-scope` (already exists) + clear `isVisible` / `sortOrder` overrides
+  - "Reset this row" = revert one `QuoteScopeItem` to its source
+- **Schema:** possibly `+ClientQuote.displayName String?` if Q4 follow-up is in scope
+- **Tests:** ~5-7 specs around reset semantics + override behaviour
+
+**PR D1 — Quote PDF respects arrangement** — complexity: **M**
+- **Scope:**
+  - Modify `quote-pdf.builder.ts` to read from `QuoteScopeItem` instead of (or in addition to) raw scope items
+  - Honour `isVisible`, `sortOrder`, `ClientQuote.show*` flags
+  - Per-section heading from group-by-source-card pivot (matches C2)
+  - Stopgap on PDFKit (Q5 recommendation accepted)
+- **Schema:** none
+- **Files touched:** `quote-pdf.builder.ts` + `estimate-export.service.ts` (the upstream fetch)
+- **Tests:** ~4-6 PDF-builder specs against a fixture quote
+
+### 5. Recommendations for MAIN before writing the C1 prompt
+
+1. **Confirm Q4 answer** (per-quote name vs Client.name fallback). Recommended: Client.name + revision in C1; promote to per-quote `displayName` in C4 only if requested.
+2. **Confirm Q5 answer** (PDFKit stopgap vs block on 5A.2). Recommended: stopgap on PDFKit — D1 is a "what to render" change, decoupled from HTML migration's "how to render".
+3. **Decide on `push-from-scope` extension vs replacement.** The endpoint already exists at POST `/tenders/:tenderId/quotes/:quoteId/scope-items/push-from-scope`. C1 should either (a) extend it to handle the full Calc-Sheet → Arrangement materialisation, or (b) ship a new endpoint and deprecate this one. Discovery didn't open the handler — C1's implementation prompt should include a Phase 0 reading of what it currently does so the decision is informed.
+4. **Decide the C1 frontend boundary**: extend `ClientQuotesPanel.tsx` (currently 2122 LOC, already organised into per-quote tabs) vs build a new arrangement-screen component. Recommended: extend in place. The existing structure (ClientRow → QuoteContentsPanel → QuoteEditor → tab components) is the right place to add an "Arrangement" tab alongside Cost / Provisional / Options / Assumptions / Exclusions / Preview.
+5. **Persona update**: C1 (or any C-chain PR) should add the Calc-Sheet-as-source-of-truth invariant to `tendering.persona.ts`'s QUOTE_SUBMODE_PROMPT. Discovery confirmed this rule is not yet in the persona prompt.
+
+### 6. Out-of-scope notes captured during discovery
+
+- **Demo data thin on the Quote side.** Only IS-T020 has a quote; only 3 cost lines + 1 provisional line + 7 exclusions + 4 assumptions across the whole dev DB. C1's demo prep may want a seed-data PR adding 2-3 more quotes to populate the arrangement screen visually.
+- **TenderClient model is rich** — has `isAwarded`, `contractIssued`, `relationshipType`, etc. The arrangement screen's client picker may want to surface "awarded" / "primary" status to help estimators distinguish the awarded client from also-rans. Not in scope for C1 but worth a UX note.
+- **`assumptionMode` on `ClientQuote`** has values `"free"` and (presumably) `"linked"`. The current `QuoteAssumption` model supports both modes (optional FK to `QuoteCostLine`). C3's "collapse / hide" UI should respect this — linked assumptions probably auto-hide when their cost line is hidden, which is a non-trivial UX detail to confirm with estimators.
+- **`generatedPdfPath` on `ClientQuote`** suggests PDFs are cached. D1 should think about cache invalidation when arrangement changes.
+
+— end of C-chain Phase 0 discovery —
+

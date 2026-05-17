@@ -35,7 +35,9 @@ class CreateCuttingItemDto {
   @IsOptional() @IsString() cardId?: string | null;
 }
 
-class UpdateCuttingItemDto {
+// Exported so the B4b.1 contract spec can assert that cardId is no
+// longer a declared property on this DTO (silent-no-op prevention).
+export class UpdateCuttingItemDto {
   @IsOptional() @IsString() wbsRef?: string;
   @IsOptional() @IsString() description?: string | null;
   @IsOptional() @IsIn(["saw-cut", "core-hole", "other-rate"]) itemType?: "saw-cut" | "core-hole" | "other-rate";
@@ -52,8 +54,6 @@ class UpdateCuttingItemDto {
   @IsOptional() @IsString() otherRateId?: string | null;
   @IsOptional() @IsString() notes?: string | null;
   @IsOptional() @IsInt() sortOrder?: number | null;
-  // PR B4b — allow re-parenting a cutting row to a different card.
-  @IsOptional() @IsString() cardId?: string | null;
 }
 
 @ApiTags("Scope of Works — redesign")

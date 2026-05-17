@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-17 07:27 AEST
+Last updated: 2026-05-17 08:21 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -673,6 +673,19 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     Wall + Floor as separate seeded rows; EstimateCoreHoleRate already
     applies elevation multipliers (Wall=1.1, Inverted=2.0) at compute
     time. Marco's brief confirmed the existing pricing math is correct.
+
+✅  PR B4b.1 — Cutting cardId normalization + UpdateDto cleanup (2026-05-17)
+    Codex post-merge P2 hotfix on B4b. (a) createCuttingItem now
+    normalizes empty-string / whitespace-only cardId to null BEFORE
+    the scope_cards FK validation — closes the gap where an empty
+    string would 500 instead of being treated as cardless. (b)
+    Removed unused cardId field from UpdateCuttingItemDto — service
+    handler never read it, so clients could PATCH and silently
+    no-op. Re-parenting isn't a requested feature; if it ever is,
+    the service handler must be wired up in the same PR that
+    re-exposes the field. +5 specs (4 P2a behaviour + 1 P2b
+    @ts-expect-error compile-time contract guard); 590 → 595
+    passing. No schema, no migration, no frontend changes.
 
 ⏸️  PR B4b-followup — Orphaned cardless cutting rows
     Same pattern as B3-followup for waste. Existing CuttingSheetItem

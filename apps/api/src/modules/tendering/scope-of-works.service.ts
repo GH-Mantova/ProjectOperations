@@ -19,7 +19,6 @@ import {
   DISCIPLINE_ORDER,
   toPricingInput
 } from "./scope-item-pricing";
-import { computeDerivedDimensions } from "./scope-item-dimensions";
 
 // PR B4a.1 — defensive type narrowing for the Prisma.Decimal constructor.
 // CodeQL flagged the previous `value as number` cast as a "type confusion
@@ -148,74 +147,23 @@ function numericFieldsFrom(dto: Partial<UpdateScopeItemDto & CreateScopeItemDto>
   };
 }
 
-// PR B4a — fold computeDerivedDimensions into the persisted record.
+// PR B4a.5 — the backend no longer attempts to derive sqm/m3/tonnes
+// from the raw inputs (length/height/depth/density). The frontend is
+// now the single source of truth for what each dimension field should
+// hold: it tracks per-field "dirty" state to distinguish explicit user
+// overrides from previously-derived values, computes the live picture
+// client-side, and ships ALL seven dimension fields on every save.
 //
-// The DB can't tell a derived sqm from a user-typed override, so:
-//   - Raw fields (length/height/depth/density) fall back to the existing
-//     row when the DTO didn't supply them — they have a single stored
-//     meaning (the raw input).
-//   - Override fields (sqm/m3/tonnes) only count as overrides when the
-//     DTO actually sent them. If the DTO didn't touch them, treat as
-//     "no override, derive from raw" — preventing stale derivations
-//     from freezing the value across partial patches.
-//
-// PR B4a.2 — early-return when the DTO doesn't touch ANY dimension
-// field. A partial PATCH that only updates eg. notes or wasteIncluded
-// must not re-derive sqm/m3/tonnes from the current raw inputs —
-// doing so would destroy a previously-saved explicit override (the
-// DB can't tell us which side a stored sqm came from). The frontend's
-// controlled-input model ships the full dimension picture whenever
-// any one dimension changes; with that contract, "DTO has no
-// dimension field" reliably means "leave dimensions untouched."
+// The earlier server-side derive (B4a + B4a.2) was a leaky abstraction:
+// the DB can't tell a stored "10" apart from a derived "10" vs an
+// explicit override of "10", so any inference path leaked the wrong
+// behaviour in one direction or another (B4a.2 partial-PATCH
+// preservation vs B4a.5 cascading-derivation bug). Persist exactly
+// what the frontend sends — explicit, unambiguous, simpler.
 function deriveDimensionFields(
-  base: ReturnType<typeof numericFieldsFrom>,
-  existing?: {
-    length?: Prisma.Decimal | null;
-    height?: Prisma.Decimal | null;
-    depth?: Prisma.Decimal | null;
-    density?: Prisma.Decimal | null;
-  } | null
+  base: ReturnType<typeof numericFieldsFrom>
 ): ReturnType<typeof numericFieldsFrom> {
-  const touchesDimensions =
-    base.length !== undefined ||
-    base.height !== undefined ||
-    base.depth !== undefined ||
-    base.density !== undefined ||
-    base.sqm !== undefined ||
-    base.m3 !== undefined ||
-    base.tonnes !== undefined;
-  if (!touchesDimensions) return base;
-
-  const dec = (v: Prisma.Decimal | null | undefined): number | null =>
-    v === null || v === undefined ? null : Number(v);
-
-  // Raw inputs: DTO patch wins, else existing row, else null.
-  const length = base.length !== undefined ? dec(base.length as Prisma.Decimal | null) : dec(existing?.length ?? null);
-  const height = base.height !== undefined ? dec(base.height as Prisma.Decimal | null) : dec(existing?.height ?? null);
-  const depth = base.depth !== undefined ? dec(base.depth as Prisma.Decimal | null) : dec(existing?.depth ?? null);
-  const density = base.density !== undefined ? dec(base.density as Prisma.Decimal | null) : dec(existing?.density ?? null);
-
-  // Overrides: only honoured when the DTO sent them. Undefined → null
-  // (derive). Null → null (user cleared, derive). Number → override.
-  const sqmOverride = base.sqm !== undefined ? dec(base.sqm as Prisma.Decimal | null) : null;
-  const m3Override = base.m3 !== undefined ? dec(base.m3 as Prisma.Decimal | null) : null;
-  const tonnesOverride = base.tonnes !== undefined ? dec(base.tonnes as Prisma.Decimal | null) : null;
-
-  const derived = computeDerivedDimensions({
-    length,
-    height,
-    depth,
-    density,
-    sqm: sqmOverride,
-    m3: m3Override,
-    tonnes: tonnesOverride
-  });
-  return {
-    ...base,
-    sqm: toDecimal(derived.sqm),
-    m3: toDecimal(derived.m3),
-    tonnes: toDecimal(derived.tonnes)
-  };
+  return base;
 }
 
 @Injectable()
@@ -371,7 +319,7 @@ export class ScopeOfWorksService {
         rowType: dto.rowType,
         status: dto.status,
         sortOrder: dto.sortOrder,
-        ...deriveDimensionFields(numericFieldsFrom(dto), existing)
+        ...deriveDimensionFields(numericFieldsFrom(dto))
       },
       include: { card: true }
     });

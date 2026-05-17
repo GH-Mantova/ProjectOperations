@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-17 04:04 AEST
+Last updated: 2026-05-17 05:20 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -5305,5 +5305,101 @@ No new tests in B4a.4 — assertObjectBody is a 1-line guard already
 covered by the BadRequestException behaviour pattern; the typeof
 + Array.isArray check is the same one in to-decimal.spec.ts (which
 already proves arrays don't get through).
+
+Audit findings: none.
+
+## 2026-05-17 — PR B4a.5 — Hotfix: dimension derive override propagation + sqm-density tonnes fallback + remove chargeBy from card
+
+Branch: fix/scope-dimensions-derivation-b4a-5
+Section: Tendering scope-of-works — derivation contract fix
+
+### Why
+Two bugs surfaced after B4a deployed to main; one design polish item.
+
+1. **Cascading derivation broken.** Item with persisted sqm=10, m³=5,
+   tonnes=12.25. User types sqm=99 → m³ should recompute to 49.5 but
+   stayed at 5. Root cause: the frontend treated every non-empty
+   field as an explicit override, including values loaded from the
+   server that were previously derived. The helper saw m³="5" as an
+   override and refused to recompute.
+
+2. **`chargeBy` dropdown shown on scope item card.** Pre-B4a design
+   decision was to surface chargeBy only on the waste subtable
+   (derived from facility); it made it into the card UI by accident.
+
+3. **Tonnes formula missing sqm fallback.** Per Marco's spec, when
+   m³ is null/0 the tonnes derivation should fall back to
+   `sqm × density / 1000` (density treated as kg/m² for sheet
+   materials). The B4a helper only handled the m³ × density case.
+
+### What changed
+
+**Bug 1 — chargeBy off the card UI**
+- Deleted the "Charge by" FieldCell from
+  `apps/web/src/pages/tendering/ScopeQuantitiesTable.tsx`
+  Quantification section. DTO + schema column retained (waste
+  subtable logic may set it later); only the card surface drops it.
+
+**Bug 2 — derivation contract: frontend is source of truth**
+- Frontend (`ScopeQuantitiesTable.tsx` `ItemCard`):
+  - New per-field `dirty` state for sqm/m3/tonnes. Set when the user
+    types into that field; resets when the upstream `item` refreshes.
+  - `parsed` only treats `dirty.X && dims.X !== ""` as an override.
+    Persisted-but-not-edited values pass as `null` (= derive in the
+    helper). Cascading recompute fires whenever a raw input changes.
+  - Derived-field inputs show the LIVE-derived value when not dirty
+    (via new `valueFor()`) — not just as a placeholder — so the user
+    sees the math in the field itself.
+  - `persistDims` sends the FULL dimension picture on blur: raw
+    inputs + the value currently shown to the user for each derived
+    field (override if dirty, derived otherwise).
+- Backend (`scope-of-works.service.ts`):
+  - `deriveDimensionFields` reduced to a passthrough. The DB can't
+    distinguish stored-override from stored-derived, so every server-
+    side inference path leaked the wrong behaviour in one direction
+    (B4a.2 partial-PATCH preservation vs B4a.5 cascading-derivation).
+    Persist exactly what the frontend ships — explicit, unambiguous.
+  - Dropped the unused `computeDerivedDimensions` import.
+  - `existing` argument no longer threaded into `deriveDimensionFields`
+    from `updateItem`; signature simplified accordingly.
+
+**Bug 3 — sqm-density tonnes fallback**
+- Both helpers (`apps/api/src/modules/tendering/scope-item-dimensions.ts`
+  and mirror at `apps/web/src/pages/tendering/scopeItemDimensions.ts`):
+  - Tonnes derivation: explicit > `m³ × density` (m³ > 0) > `sqm × density / 1000` (sqm > 0) > null.
+  - Sheet-material fallback treats density as kg/m²; divide by 1000
+    converts kg → tonnes.
+  - Both helpers updated identically — keep them in sync by hand.
+
+### Tests
+- `scope-item-dimensions.spec.ts`: +4 new specs (sqm fallback with
+  m³=null, sqm fallback with m³=0, m³ wins over sqm fallback,
+  explicit tonnes=0 override) and 1 spec reworded for the new
+  semantic (explicit 0 sqm + 0 m³ → tonnes is null unless tonnes is
+  also explicit). 13 → 17 specs.
+- `scope-update-item-preserve.spec.ts`: rewritten for the new
+  contract (backend no longer derives; "length-only PATCH recomputes
+  server-side" behaviour replaced with "length-only PATCH writes
+  length only, leaves the other six fields untouched"). 4 specs total.
+- API total: 573 passing (569 baseline + 4 net new); 6 skipped.
+
+### Carried forward
+- Existing B4a items in the DB that were saved before B4a.5 may have
+  inconsistent sqm/m3/tonnes if they were created via a partial PATCH
+  flow under the old server-side derive. Items show what the DB
+  currently holds; users can re-save any card to refresh from the
+  frontend's live derivation.
+
+### Verification
+- pnpm --filter api test: 573 passing; 6 skipped
+- pnpm --filter api exec tsc --noEmit: clean
+- pnpm --filter api lint: clean
+- pnpm --filter web test --run: 148 passing (unchanged)
+- pnpm --filter web exec tsc --noEmit: clean
+- pnpm --filter web lint: clean
+- pnpm --filter web build: clean
+
+No new dependencies. No env vars. No schema changes.
+Rollback is a clean git revert.
 
 Audit findings: none.

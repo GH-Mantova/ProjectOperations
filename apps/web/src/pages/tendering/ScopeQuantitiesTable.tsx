@@ -527,10 +527,9 @@ function ItemCard({
     ? (wasteItemsByGroup.get(item.wasteGroup) ?? []).map((w) => ({ value: w, label: w }))
     : [];
 
-  // PR B4a — controlled state for the 8 dimension fields + chargeBy.
-  // Held as strings so we can distinguish "" (no explicit value, derive)
-  // from "0" (user typed zero, override). The 7 numeric inputs sync from
-  // props whenever the upstream `item` changes; chargeBy is a select.
+  // PR B4a / B4a.5 — controlled state for the 7 dimension fields.
+  // Held as strings so we can distinguish "" (no value) from "0".
+  // Synced from props whenever the upstream `item` changes.
   type DimKey = "length" | "height" | "depth" | "sqm" | "m3" | "density" | "tonnes";
   const initDim = (v: string | null) => (v == null ? "" : String(v));
   const [dims, setDims] = useState({
@@ -542,8 +541,15 @@ function ItemCard({
     density: initDim(item.density),
     tonnes: initDim(item.tonnes)
   });
-  // Re-sync local state when the upstream row is refreshed (eg after a
-  // successful PATCH returns new server-derived values).
+  // PR B4a.5 — track which of the three derived fields (sqm/m3/tonnes)
+  // the user has explicitly typed into during this mount. Persisted-
+  // but-not-edited values do NOT count as overrides: the live preview
+  // re-derives them whenever a raw input changes. Resets to all-false
+  // when the upstream item refreshes (eg after a PATCH response, or
+  // when the user collapses and reopens the card).
+  const [dirty, setDirty] = useState({ sqm: false, m3: false, tonnes: false });
+
+  // Re-sync local state when the upstream row is refreshed.
   useEffect(() => {
     setDims({
       length: initDim(item.length),
@@ -554,46 +560,63 @@ function ItemCard({
       density: initDim(item.density),
       tonnes: initDim(item.tonnes)
     });
-  }, [item.length, item.height, item.depth, item.sqm, item.m3, item.density, item.tonnes]);
+    setDirty({ sqm: false, m3: false, tonnes: false });
+  }, [item.id, item.length, item.height, item.depth, item.sqm, item.m3, item.density, item.tonnes]);
 
-  const setDim = (k: DimKey, v: string) => setDims((s) => ({ ...s, [k]: v }));
+  const setDim = (k: DimKey, v: string) => {
+    setDims((s) => ({ ...s, [k]: v }));
+    if (k === "sqm" || k === "m3" || k === "tonnes") {
+      setDirty((d) => ({ ...d, [k]: true }));
+    }
+  };
 
-  // Live-derive sqm/m3/tonnes from the user's typed inputs. Empty
-  // string → "no override here, derive from raw". Non-empty → explicit
-  // override that wins over any derivation.
+  // Live-derive sqm/m3/tonnes. Only fields the user has explicitly
+  // touched in this session count as overrides; persisted-but-not-
+  // edited values are treated as null (= derive) so cascading
+  // recompute fires when a raw input changes.
   const parsed = useMemo(
     () => ({
       length: dims.length === "" ? null : Number(dims.length),
       height: dims.height === "" ? null : Number(dims.height),
       depth: dims.depth === "" ? null : Number(dims.depth),
       density: dims.density === "" ? null : Number(dims.density),
-      sqm: dims.sqm === "" ? null : Number(dims.sqm),
-      m3: dims.m3 === "" ? null : Number(dims.m3),
-      tonnes: dims.tonnes === "" ? null : Number(dims.tonnes)
+      sqm: dirty.sqm && dims.sqm !== "" ? Number(dims.sqm) : null,
+      m3: dirty.m3 && dims.m3 !== "" ? Number(dims.m3) : null,
+      tonnes: dirty.tonnes && dims.tonnes !== "" ? Number(dims.tonnes) : null
     }),
-    [dims]
+    [dims, dirty]
   );
   const derived = useMemo(() => computeDerivedDimensions(parsed), [parsed]);
 
-  // On blur of any of the 8 dimension fields, send a single PATCH with
-  // the full dimension picture. The backend re-runs the same math and
-  // persists self-consistent sqm/m3/tonnes; explicit overrides survive.
+  // PR B4a.5 — send the FULL dimension picture on blur. Backend
+  // persists exactly what we ship (no server-side derive); the value
+  // we send for each derived field is either the user's explicit
+  // override (when dirty) or the live-derived value (when not).
   const persistDims = () => {
+    const sqmToSave = dirty.sqm && dims.sqm !== "" ? Number(dims.sqm) : derived.sqm;
+    const m3ToSave = dirty.m3 && dims.m3 !== "" ? Number(dims.m3) : derived.m3;
+    const tonnesToSave = dirty.tonnes && dims.tonnes !== "" ? Number(dims.tonnes) : derived.tonnes;
     onPatch({
       length: parsed.length,
       height: parsed.height,
       depth: parsed.depth,
       density: parsed.density,
-      // Send null for "no override" so the server falls back to derive.
-      sqm: parsed.sqm,
-      m3: parsed.m3,
-      tonnes: parsed.tonnes
+      sqm: sqmToSave,
+      m3: m3ToSave,
+      tonnes: tonnesToSave
     });
   };
 
-  // Display: explicit value takes priority; otherwise show the derived
-  // value as the placeholder so the user sees the math live without
-  // having to read it from a separate column.
+  // PR B4a.5 — when the user hasn't touched a derived field this
+  // session, its input shows the LIVE derivation directly (not just
+  // as a placeholder) so cascading recompute is visible. When the
+  // user has typed an explicit override, dims.X holds their value
+  // and gets rendered verbatim.
+  const valueFor = (k: "sqm" | "m3" | "tonnes") => {
+    if (dirty[k]) return dims[k];
+    const d = derived[k];
+    return d == null ? "" : String(d);
+  };
   const placeholderFor = (k: "sqm" | "m3" | "tonnes") => {
     const v = derived[k];
     return v == null ? "" : String(v);
@@ -887,7 +910,7 @@ function ItemCard({
                 className="s7-input"
                 type="number"
                 step="0.01"
-                value={dims.sqm}
+                value={valueFor("sqm")}
                 placeholder={placeholderFor("sqm")}
                 disabled={isAi}
                 style={{ width: 90, height: 32 }}
@@ -901,7 +924,7 @@ function ItemCard({
                 className="s7-input"
                 type="number"
                 step="0.01"
-                value={dims.m3}
+                value={valueFor("m3")}
                 placeholder={placeholderFor("m3")}
                 disabled={isAi}
                 style={{ width: 90, height: 32 }}
@@ -915,29 +938,14 @@ function ItemCard({
                 className="s7-input"
                 type="number"
                 step="0.01"
-                value={dims.tonnes}
+                value={valueFor("tonnes")}
                 placeholder={placeholderFor("tonnes")}
                 disabled={isAi}
                 style={{ width: 90, height: 32 }}
-                title="Auto = m³ × density. Type to override."
+                title="Auto = m³ × density or sqm × density / 1000. Type to override."
                 onChange={(e) => setDim("tonnes", e.target.value)}
                 onBlur={persistDims}
               />
-            </FieldCell>
-            <FieldCell label="Charge by" width={80}>
-              <select
-                className="s7-input"
-                value={item.chargeBy ?? ""}
-                disabled={isAi}
-                onChange={(e) => onPatch({ chargeBy: e.target.value === "" ? null : e.target.value })}
-                aria-label="Charge by"
-                title="Preferred billing unit for the waste aggregator. Blank = inherit facility rate unit."
-                style={{ width: 80, height: 32 }}
-              >
-                <option value="">auto</option>
-                <option value="t">t</option>
-                <option value="m³">m³</option>
-              </select>
             </FieldCell>
           </div>
 

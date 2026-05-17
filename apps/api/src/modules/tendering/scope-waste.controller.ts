@@ -26,6 +26,11 @@ class UpsertWasteDto {
   // PR B3 — unit drives the facility filter on the summary subtable.
   @IsOptional() @IsString() unit?: string | null;
   @IsOptional() @Type(() => Number) @IsNumber() wasteTonnes?: number | null;
+  // PR B4a.2 — m³ companion to wasteTonnes. Without this on the
+  // controller-side DTO, PATCH bodies carrying `m3` were silently
+  // stripped by class-validator's whitelist (the service-side type
+  // accepts it but never received it from the wire).
+  @IsOptional() @Type(() => Number) @IsNumber() m3?: number | null;
   @IsOptional() @Type(() => Number) @IsInt() wasteLoads?: number | null;
   @IsOptional() @Type(() => Number) @IsNumber() ratePerTonne?: number | null;
   @IsOptional() @Type(() => Number) @IsNumber() ratePerLoad?: number | null;

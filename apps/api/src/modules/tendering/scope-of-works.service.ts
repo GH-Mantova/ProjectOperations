@@ -129,8 +129,14 @@ function numericFieldsFrom(dto: Partial<UpdateScopeItemDto & CreateScopeItemDto>
 //     "no override, derive from raw" — preventing stale derivations
 //     from freezing the value across partial patches.
 //
-// The frontend's controlled-input model is expected to send the full
-// dimension picture on any edit; this fallback is purely defensive.
+// PR B4a.2 — early-return when the DTO doesn't touch ANY dimension
+// field. A partial PATCH that only updates eg. notes or wasteIncluded
+// must not re-derive sqm/m3/tonnes from the current raw inputs —
+// doing so would destroy a previously-saved explicit override (the
+// DB can't tell us which side a stored sqm came from). The frontend's
+// controlled-input model ships the full dimension picture whenever
+// any one dimension changes; with that contract, "DTO has no
+// dimension field" reliably means "leave dimensions untouched."
 function deriveDimensionFields(
   base: ReturnType<typeof numericFieldsFrom>,
   existing?: {
@@ -140,6 +146,16 @@ function deriveDimensionFields(
     density?: Prisma.Decimal | null;
   } | null
 ): ReturnType<typeof numericFieldsFrom> {
+  const touchesDimensions =
+    base.length !== undefined ||
+    base.height !== undefined ||
+    base.depth !== undefined ||
+    base.density !== undefined ||
+    base.sqm !== undefined ||
+    base.m3 !== undefined ||
+    base.tonnes !== undefined;
+  if (!touchesDimensions) return base;
+
   const dec = (v: Prisma.Decimal | null | undefined): number | null =>
     v === null || v === undefined ? null : Number(v);
 

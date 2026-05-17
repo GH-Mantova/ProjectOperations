@@ -225,7 +225,11 @@ export class ScopeWasteService {
       const tonnes = i.tonnes == null ? 0 : Number(i.tonnes);
       const m3 = i.m3 == null ? 0 : Number(i.m3);
       if (!(tonnes > 0) && !(m3 > 0)) continue;
-      const key = `${i.wasteGroup} ${i.wasteItem}`;
+      // PR B4a.2 — null-byte delimiter so a group/item pair like
+      // ("A B", "C") cannot collide with ("A", "B C"). User input
+      // never contains \x00 in practice, but a space delimiter would
+      // collapse those two distinct pairs into the same key.
+      const key = `${i.wasteGroup}\x00${i.wasteItem}`;
       const existing = totals.get(key);
       if (existing) {
         existing.tonnes += tonnes;

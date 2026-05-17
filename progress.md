@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-17 03:12 AEST
+Last updated: 2026-05-17 03:33 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -5139,5 +5139,58 @@ nothing relies on them.
 - pnpm --filter web build: clean
 
 No new dependencies. No env vars.
+
+### B4a.2 — Three fixes folded into the same PR (CodeQL + Codex review)
+
+PR #180 review surfaced three issues; fixed in place on the same
+branch (rebased onto main to pick up #181's hardened toDecimal).
+
+1. **CodeQL alerts cleared by rebase.** The B4a branch picked up
+   #181's `toDecimal: unknown` defensive narrowing on rebase. No
+   new code needed in B4a itself — the new dimension call sites
+   (`length`, `height`, `depth`, `density`, `tonnes`) now flow
+   through the hardened constructor.
+2. **`m3` added to the controller-side `UpsertWasteDto`** (Codex P1
+   — data loss). class-validator's whitelist was silently stripping
+   `m3` from PATCH bodies because the controller DTO didn't declare
+   it. The service-side type accepted it but never received it from
+   the wire; manual edits to the M³ cell vanished on save.
+3. **`deriveDimensionFields` early-return on no-dimension PATCH**
+   (Codex P1 — data corruption). Previous logic re-derived
+   sqm/m3/tonnes from raw inputs on EVERY save, even when the DTO
+   didn't touch any dimension field. A partial PATCH that only
+   updated eg. `notes` or `wasteIncluded` would silently overwrite
+   a previously-saved explicit sqm/m³/tonnes override. Fix: if none
+   of length/height/depth/density/sqm/m3/tonnes are in the DTO,
+   return the base unchanged. The frontend's controlled-input model
+   already ships the full dimension picture on any dimension edit,
+   so the early-return preserves overrides while keeping the
+   override semantics intact for genuine dimension changes.
+4. **Collision-safe waste aggregation key** (Codex P2). Previous
+   key `${wasteGroup} ${wasteItem}` would collapse `("A B", "C")`
+   and `("A", "B C")` into the same row. Changed to a null-byte
+   delimiter (`\x00`) so distinct pairs stay distinct.
+
+### Tests added in B4a.2 (5 new specs)
+- `__tests__/scope-update-item-preserve.spec.ts` (NEW, 4 specs):
+  notes-only PATCH leaves dimensions untouched; wasteIncluded-only
+  PATCH leaves dimensions untouched; length-only PATCH recomputes
+  from raw (override not preserved when not supplied); explicit
+  sqm override survives an accompanying length change.
+- `scope-waste.service.spec.ts` (+1): collision-safe key regression
+  proving `("A B", "C")` and `("A", "B C")` stay as two rows.
+
+### Verification (after rebase + B4a.2 fixes)
+- pnpm --filter api test: 569 passing (548 main baseline post-#181
+  + 16 B4a + 5 B4a.2); 6 skipped
+- pnpm --filter api exec tsc --noEmit: clean
+- pnpm --filter api lint: clean
+- pnpm --filter web test --run: 148 passing (unchanged)
+- pnpm --filter web exec tsc --noEmit: clean
+- pnpm --filter web lint: clean
+- pnpm --filter web build: clean
+
+Force-pushed to feat/scope-item-dimensions-b4a — PR #180 auto-merge
+resumes once CI passes against the rebased history.
 
 Audit findings: none.

@@ -293,4 +293,28 @@ describe("ScopeWasteService.sumFromAbove (PR B4a)", () => {
     expect(Number(data.wasteTonnes)).toBe(10);
     expect(Number(data.m3)).toBe(10);
   });
+
+  it("collision-safe key: ('A B', 'C') and ('A', 'B C') stay as separate rows (PR B4a.2)", async () => {
+    // A space-delimited key would collapse both pairs into "A B C" and
+    // sum them as one. The null-byte delimiter keeps them distinct.
+    const { prisma, mocks } = buildPrismaMock({
+      scopeItems: [
+        { wasteIncluded: true, wasteGroup: "A B", wasteItem: "C", tonnes: 5, m3: 0 },
+        { wasteIncluded: true, wasteGroup: "A", wasteItem: "B C", tonnes: 7, m3: 0 }
+      ],
+      wasteRates: []
+    });
+    const svc = new ScopeWasteService(prisma as never);
+    const result = await svc.sumFromAbove("tender-1", "card-1", "user-1");
+    expect(result).toEqual({ replaced: 0, created: 2 });
+    const calls = mocks.scopeWasteItemCreate.mock.calls.map(
+      (c) => (c[0] as { data: Record<string, unknown> }).data
+    );
+    const first = calls.find((d) => d.wasteGroup === "A B" && d.wasteType === "C");
+    const second = calls.find((d) => d.wasteGroup === "A" && d.wasteType === "B C");
+    expect(first).toBeDefined();
+    expect(second).toBeDefined();
+    expect(Number(first?.wasteTonnes)).toBe(5);
+    expect(Number(second?.wasteTonnes)).toBe(7);
+  });
 });

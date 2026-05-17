@@ -5061,3 +5061,83 @@ No new dependencies. No env vars. No schema changes.
 Rollback is a clean git revert.
 
 Audit findings: none.
+
+## 2026-05-17 — PR B4a — Scope item dimensions + waste subtable rework
+
+Branch: feat/scope-item-dimensions-b4a
+Section: Tendering scope-of-works UI redesign — quantification
+
+### What shipped
+1. **Quantification section** on the scope card item body. Eight
+   controlled inputs: length, height, depth, density (raw) and
+   sqm, m³, tonnes (derived, with override) plus a chargeBy toggle
+   (t/m³/auto). Live preview via scopeItemDimensions.ts; backend
+   re-runs the same compute on save for self-consistency.
+2. **Classification section** still carries the wasteGroup/wasteItem
+   dropdowns (group key for the aggregator) plus Waste? and the new
+   Cutting? tick boxes. Cutting aggregator is B4b — B4a ships the
+   field plumbing only.
+3. **Waste subtable rework** — Unit column dropped; Tonnes + M³ +
+   Billed-by columns added; facility filter relaxed to (group, type)
+   only; per-row "$/t" or "$/m³" label adjacent to the rate input.
+4. **sumFromAbove rewrite** — group key drops `unit`, sums BOTH
+   tonnes and m³ per (group, item), picks rate by (group, type) only,
+   line total bills against rate.unit (m³ → m3 × rate; else tonnes ×
+   rate). Items missing both tonnes AND m³ are skipped.
+
+### Schema
+```
+ScopeOfWorksItem.length          Decimal(10,3)
+ScopeOfWorksItem.height          Decimal(10,3)
+ScopeOfWorksItem.depth           Decimal(10,3)
+ScopeOfWorksItem.density         Decimal(5,3)
+ScopeOfWorksItem.tonnes          Decimal(10,2)
+ScopeOfWorksItem.chargeBy        String?      // "t" | "m³" | null
+ScopeOfWorksItem.cuttingIncluded Boolean default(false)
+ScopeWasteItem.m3                Decimal(10,2)
+```
+ScopeOfWorksItem.sqm + ScopeOfWorksItem.m3 already existed (legacy
+demolition-bucket fields) — promoted to canonical all-discipline
+dimension fields in place.
+
+Migration: 20260517030000_b4a_scope_item_dimensions (pure additive,
+8 columns, no backfill).
+
+### Deprecated (kept for backward compat)
+- `ScopeOfWorksItem.unit` — superseded by chargeBy
+- `ScopeOfWorksItem.value` — superseded by tonnes/m³ dimensions
+- `ScopeOfWorksItem.wasteM3` — superseded by canonical `m3`
+- `ScopeWasteItem.wasteTonnes` column-name lie reverted to its literal
+  meaning (tonnes); m³ now lives in its own column.
+
+Cleanup PR will drop the deprecated columns once we've verified
+nothing relies on them.
+
+### Flagged in PR body
+- **Existing autoSummed waste rows go stale** under the new
+  aggregator (the B3 contract wrote qty-in-unit to `wasteTonnes`;
+  B4a needs both `tonnes` and `m3` on the source items). User
+  re-runs "Sum from above" per card after the upgrade — no data
+  migration shipped (per-row density isn't a value we can invent).
+- Legacy unit/value/wasteM3 retained for backward compat; cleanup
+  PR drops them later.
+
+### Tests
+- 12 new specs in scope-item-dimensions.spec.ts (compute combinations
+  + override behaviour + 0-vs-null distinction + rounding).
+- 4 net new specs in scope-waste.service.spec.ts; original 8 rewritten
+  for the new (group, item) key + tonnes/m³ split.
+- API total: 546 passing (530 baseline + 16 new); 6 skipped.
+
+### Verification
+- pnpm --filter api test: 546 passing; 6 skipped
+- pnpm --filter api exec tsc --noEmit: clean
+- pnpm --filter api lint: clean
+- pnpm --filter web test --run: 148 passing (unchanged)
+- pnpm --filter web exec tsc --noEmit: clean
+- pnpm --filter web lint: clean
+- pnpm --filter web build: clean
+
+No new dependencies. No env vars.
+
+Audit findings: none.

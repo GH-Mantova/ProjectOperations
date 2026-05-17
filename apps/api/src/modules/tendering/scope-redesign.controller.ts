@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
-import { IsArray, IsIn, IsInt, IsNumber, IsOptional, IsString } from "class-validator";
+import { IsArray, IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString } from "class-validator";
 import { Type } from "class-transformer";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
@@ -30,9 +30,10 @@ class CreateCuttingItemDto {
   @IsOptional() @IsString() otherRateId?: string;
   @IsOptional() @IsString() notes?: string;
   @IsOptional() @IsInt() sortOrder?: number;
-  // PR B4b — link the manually-added row to a specific scope card so
-  // the per-card cutting subtable can scope its list query by cardId.
-  @IsOptional() @IsString() cardId?: string | null;
+  // PR B-followup — cardId is now required at both DTO and schema
+  // levels. Cutting rows must belong to a scope card; cardless
+  // creation is no longer a supported state.
+  @IsString() @IsNotEmpty() cardId!: string;
 }
 
 // Exported so the B4b.1 contract spec can assert that cardId is no

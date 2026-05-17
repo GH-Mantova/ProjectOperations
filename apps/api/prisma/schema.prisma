@@ -2327,9 +2327,13 @@ model ScopeWasteItem {
   id            String   @id @default(cuid())
   tenderId      String   @map("tender_id")
   tender        Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
-  // PR A2 — parent card (nullable during transition).
-  cardId        String?    @map("card_id")
-  card          ScopeCard? @relation(fields: [cardId], references: [id], onDelete: SetNull)
+  // PR A2 — parent card. PR B-followup — promoted from nullable to
+  // required. Per-card subtable became canonical in B3; zero orphan
+  // rows existed at promotion time. onDelete changed from SetNull
+  // (would violate NOT NULL) to Cascade — deleting a scope card
+  // removes its waste rows.
+  cardId        String     @map("card_id")
+  card          ScopeCard  @relation(fields: [cardId], references: [id], onDelete: Cascade)
   discipline    String
   wbsRef        String?  @map("wbs_ref")
   description   String
@@ -2527,9 +2531,16 @@ model CuttingSheetItem {
   id           String            @id @default(cuid())
   tenderId     String            @map("tender_id")
   tender       Tender            @relation(fields: [tenderId], references: [id], onDelete: Cascade)
-  // PR A2 — parent card (nullable during transition).
-  cardId       String?           @map("card_id")
-  card         ScopeCard?        @relation(fields: [cardId], references: [id], onDelete: SetNull)
+  // PR A2 — parent card. PR B-followup — promoted from nullable to
+  // required. Per-card subtable became canonical in B4b; the
+  // transition window is closed. createCuttingItem now rejects
+  // missing cardId at the service layer; the migration deleted the
+  // 2 known pre-B4b orphan rows on IS-T020 before applying the
+  // NOT NULL constraint. onDelete behaviour changed from SetNull
+  // (which would now violate the NOT NULL constraint) to Cascade —
+  // deleting a scope card removes its cutting rows.
+  cardId       String            @map("card_id")
+  card         ScopeCard         @relation(fields: [cardId], references: [id], onDelete: Cascade)
   wbsRef       String            @map("wbs_ref")
   description  String?
   itemType     String            @map("item_type") // saw-cut | core-hole

@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-17 09:20 AEST
+Last updated: 2026-05-17 09:25 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -5619,5 +5619,16 @@ Files: schema.prisma (+15), migration (new, +50),
   guards), progress.md + roadmap.md.
 Pre-PR checks: 7/7 green
 
-## 2026-05-17 [HH:MM] AEST — PR B-followup MERGED
-[filled in post-merge — Phase 8 task]
+## 2026-05-17 19:23 AEST — PR B-followup MERGED
+Type: PR
+Branch: fix/b-followup-orphan-cardid-guards
+PR: #188 (https://github.com/GH-Mantova/ProjectOperations/pull/188)
+Merge SHA: cfc8c17f3be54ba9b2d2fd73cafe0f6341169ad0
+Merged at: 2026-05-17T09:23:52Z (auto-merge squash)
+CI: ✅ all checks passed
+  - API — lint, test, compliance smoke
+  - Web — lint, logic tests, build
+  - Analyze (actions) [CodeQL]
+  - Analyze (javascript-typescript) [CodeQL]
+  - tendering-e2e
+Status: MERGED

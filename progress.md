@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-17 00:12 AEST
+Last updated: 2026-05-17 00:32 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -4855,3 +4855,53 @@ Carried forward: nothing new — B3 (waste subtable rewire) is the next
 queued PR.
 
 Audit findings: none.
+
+## 2026-05-17 — PR B2.1 — Hotfix: "Reset this card" markup button
+
+Branch: fix/scope-markup-picker-b2-1
+Section: Tendering scope-of-works UI redesign — B2 follow-up
+
+Marco's B2 smoke surfaced two issues:
+
+### Bug A — "Per-card markup picker missing on non-DEM cards"
+Investigation found NO discipline gate in the rendering path.
+CardMarkupOverride renders inside `{activeCard ? (...)}` which is
+unconditional. Possible runtime causes (stale cache, undefined
+markupOverride from older API serialisation) but none reproducible
+from code reading.
+
+Defensive change: CardMarkupOverride.value prop type widened from
+`number | null` to `number | null | undefined` so a stale cached
+response missing the field falls through to "no override" instead
+of throwing a TypeScript error. `hasOverride = value != null` was
+already tolerant via loose equality.
+
+Marco will re-verify Bug A after merge. If the field still vanishes
+on CIV/ASB/Other tabs the next step is a browser devtools dump of
+`activeCard` state at the time of repro.
+
+### Bug B — "Reset" split into two buttons
+NEW "Reset this card" button sits next to CardMarkupOverride in the
+active-card strip. Wraps setCardMarkupOverride(activeCard.id, null).
+Only renders when activeCard.markupOverride != null (hides instead
+of greying out — keeps the strip clean when nothing to reset). No
+confirm dialog (single card, immediately reversible by retyping).
+
+"Reset all" on the tender header is unchanged.
+
+The × button INSIDE the CardMarkupOverride input stays for inline
+discoverability. Both affordances do the same thing — different UI
+patterns for different ergonomics (× = compact, "Reset this card" =
+discoverable).
+
+### Verification
+- pnpm --filter web exec tsc --noEmit: clean
+- pnpm --filter web test --run: 148 passing (unchanged)
+- pnpm --filter web lint: clean
+- pnpm --filter web build: clean
+
+No API changes. No schema. No new dependencies. Frontend-only.
+Rollback is a clean git revert.
+
+Audit findings: Bug A still under-diagnosed pending live-state
+verification.

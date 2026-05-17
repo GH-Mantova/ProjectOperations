@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-17 00:12 AEST
+Last updated: 2026-05-17 00:32 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -543,6 +543,18 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     Carried into B3: proper waste calc on the dedicated waste
     summary subtable; facility picker for multi-facility waste
     rates; night/weekend shift labour rates.
+
+✅  PR B2.1 — Hotfix: "Reset this card" markup button (2026-05-17)
+    B2 smoke surfaced two issues. (A) "Markup picker missing on non-
+    DEM cards" — investigation found NO discipline gate anywhere in
+    the rendering path; defensive null|undefined widening on the
+    CardMarkupOverride.value prop shipped in case a stale cached
+    response is the cause. Re-verification post-merge. (B) "Reset"
+    split into two affordances: "Reset all" stays on the tender
+    header (unchanged); NEW "Reset this card" button next to the
+    per-card markup input. Only renders when an override is set
+    (hides cleanly when nothing to reset). The × button inside the
+    input stays for inline discoverability.
 
 ✅  PR B2 — Tender + per-card markup picker + Other-discipline markup (2026-05-17)
     Three pieces of pricing control shipped together.

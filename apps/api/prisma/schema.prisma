@@ -2552,6 +2552,12 @@ model CuttingSheetItem {
   otherRate    CuttingOtherRate? @relation(fields: [otherRateId], references: [id], onDelete: SetNull)
   notes        String?
   sortOrder    Int               @default(0) @map("sort_order")
+  // PR B4b — marks rows created by the per-card "Copy from above"
+  // aggregator. Replace semantics: re-running Copy from above deletes
+  // autoCopied=true saw-cut rows on the card before regenerating, so
+  // manual rows (autoCopied=false) and all core-hole/other-rate rows
+  // survive. Mirrors ScopeWasteItem.autoSummed from B3.
+  autoCopied   Boolean           @default(false) @map("auto_copied")
   createdById  String            @map("created_by_id")
   createdBy    User              @relation("CuttingSheetItemCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   createdAt    DateTime          @default(now()) @map("created_at")

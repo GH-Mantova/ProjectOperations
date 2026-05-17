@@ -12,7 +12,7 @@ import { TenderScopeDraftingService } from "./tender-scope-drafting.service";
 import { TenderConvertController } from "./tender-convert.controller";
 import { ScopeOfWorksController } from "./scope-of-works.controller";
 import { ScopeOfWorksService } from "./scope-of-works.service";
-import { ScopeRedesignController } from "./scope-redesign.controller";
+import { ScopeRedesignController, ScopeCardCuttingController } from "./scope-redesign.controller";
 import { ScopeRedesignService } from "./scope-redesign.service";
 import { ScopeWasteController, ScopeCardWasteController } from "./scope-waste.controller";
 import { ScopeWasteService } from "./scope-waste.service";
@@ -28,6 +28,7 @@ import { ProposalsService } from "./scope/proposals.service";
     TenderConvertController,
     ScopeOfWorksController,
     ScopeRedesignController,
+    ScopeCardCuttingController,
     ScopeWasteController,
     ScopeCardWasteController,
     ProposalsController

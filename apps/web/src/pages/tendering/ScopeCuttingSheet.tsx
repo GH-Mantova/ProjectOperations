@@ -36,6 +36,10 @@ type CuttingItem = {
   otherRate: OtherRate | null;
   notes: string | null;
   sortOrder: number;
+  // PR B4b — distinguishes rows created by Copy from above (regenerable)
+  // from manually-added rows (preserved across regenerations). Mirrors
+  // ScopeWasteItem.autoSummed from B3.
+  autoCopied: boolean;
 };
 
 const SAW_EQUIPMENT = ["Roadsaw", "Demosaw", "Ringsaw", "Flush-cut", "Tracksaw"];
@@ -77,7 +81,8 @@ export function ScopeCuttingSheet({
   wbsRefs,
   canManage,
   cuttingNotes,
-  onCuttingNotesChange
+  onCuttingNotesChange,
+  cardId
 }: {
   tenderId: string;
   wbsRefs: string[];
@@ -87,6 +92,11 @@ export function ScopeCuttingSheet({
   // Persists to ScopeCard.cuttingNotes via PATCH /scope/cards/:cardId.
   cuttingNotes?: string | null;
   onCuttingNotesChange?: (value: string | null) => Promise<void> | void;
+  // PR B4b — when supplied, the list is scoped server-side to this
+  // card and the Copy-from-above button appears on the Saw-cut tab.
+  // Falls back to whole-tender + client-side WBS filtering for legacy
+  // callers that don't have a card in scope.
+  cardId?: string;
 }) {
   const { authFetch } = useAuth();
   const [items, setItems] = useState<CuttingItem[]>([]);
@@ -101,8 +111,15 @@ export function ScopeCuttingSheet({
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      // PR B4b — per-card scoping. When cardId is supplied the
+      // backend filters; legacy whole-tender callers (cardId
+      // omitted) get every cutting row and the discipline filter
+      // below still narrows the view by WBS prefix.
+      const itemsUrl = cardId
+        ? `/tenders/${tenderId}/scope/cutting-items?cardId=${encodeURIComponent(cardId)}`
+        : `/tenders/${tenderId}/scope/cutting-items`;
       const [itemsRes, ratesRes] = await Promise.all([
-        authFetch(`/tenders/${tenderId}/scope/cutting-items`),
+        authFetch(itemsUrl),
         authFetch(`/estimate-rates/other-rates`)
       ]);
       if (!itemsRes.ok) throw new Error(await itemsRes.text());
@@ -116,7 +133,7 @@ export function ScopeCuttingSheet({
     } finally {
       setLoading(false);
     }
-  }, [authFetch, tenderId]);
+  }, [authFetch, tenderId, cardId]);
 
   useEffect(() => {
     void load();
@@ -161,6 +178,9 @@ export function ScopeCuttingSheet({
       itemType: tab,
       shift: "Day"
     };
+    // PR B4b — attach manually-added rows to the active card so the
+    // per-card list query picks them up.
+    if (cardId) body.cardId = cardId;
     if (tab === "other-rate" && otherRates[0]) {
       body.otherRateId = otherRates[0].id;
       body.quantityEach = 1;
@@ -173,6 +193,37 @@ export function ScopeCuttingSheet({
       setError(await response.text());
       return;
     }
+    await load();
+  };
+
+  // PR B4b — "Copy from above" aggregator trigger. Saw-cut tab only,
+  // requires both canManage + a cardId in scope. Posts to the new
+  // per-card endpoint; on success reloads the list and surfaces any
+  // server-side warnings (eg depth > 2000mm) to the user.
+  const copyFromAbove = async () => {
+    if (!canManage || !cardId) return;
+    const ok = window.confirm(
+      "Replace auto-copied saw-cut rows with current scope items? Manually-added rows will be preserved."
+    );
+    if (!ok) return;
+    const response = await authFetch(
+      `/tenders/${tenderId}/scope/cards/${cardId}/cutting/copy-from-above`,
+      { method: "POST" }
+    );
+    if (!response.ok) {
+      setError(await response.text());
+      return;
+    }
+    type CopyResult = { replaced: number; created: number; warnings?: string[] };
+    const result = (await response.json()) as CopyResult;
+    const parts: string[] = [
+      `Copy from above: replaced ${result.replaced}, created ${result.created}.`
+    ];
+    if (result.warnings && result.warnings.length > 0) {
+      parts.push(`Warnings:\n- ${result.warnings.join("\n- ")}`);
+    }
+    // Lightweight notification — full toast system isn't in scope here.
+    window.alert(parts.join("\n\n"));
     await load();
   };
 
@@ -270,16 +321,29 @@ export function ScopeCuttingSheet({
       )}
 
       {canManage ? (
-        <button
-          type="button"
-          className="s7-btn s7-btn--primary"
-          style={{ marginTop: 12 }}
-          onClick={() => void addItem()}
-          disabled={tab === "other-rate" && otherRates.length === 0}
-          title={tab === "other-rate" && otherRates.length === 0 ? "No active other-rates in catalogue" : undefined}
-        >
-          + Add {tab === "saw-cut" ? "saw cut" : tab === "core-hole" ? "core hole" : "other-rate line"}
-        </button>
+        <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center" }}>
+          <button
+            type="button"
+            className="s7-btn s7-btn--primary"
+            onClick={() => void addItem()}
+            disabled={tab === "other-rate" && otherRates.length === 0}
+            title={tab === "other-rate" && otherRates.length === 0 ? "No active other-rates in catalogue" : undefined}
+          >
+            + Add {tab === "saw-cut" ? "saw cut" : tab === "core-hole" ? "core hole" : "other-rate line"}
+          </button>
+          {/* PR B4b — Copy from above: Saw-cut tab only, requires the
+              card scope so the aggregator can target the right rows. */}
+          {tab === "saw-cut" && cardId ? (
+            <button
+              type="button"
+              className="s7-btn s7-btn--secondary"
+              onClick={() => void copyFromAbove()}
+              title="Create saw-cut rows from scope items where 'Cutting?' is ticked. Manual rows are preserved."
+            >
+              ↓ Copy from above
+            </button>
+          ) : null}
+        </div>
       ) : null}
 
       {onCuttingNotesChange ? (
@@ -348,7 +412,29 @@ function SawCutTable({ items, wbsRefs, canManage, patch, remove }: RowProps) {
             <Fragment key={item.id}>
               <tr style={{ borderTop: "1px solid var(--border, #e5e7eb)" }}>
                 <td style={{ padding: 4 }}>
-                  <WbsCell item={item} wbsRefs={wbsRefs} canManage={canManage} patch={patch} />
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    {/* PR B4b — AUTO badge marks rows created by Copy
+                        from above (mirrors B3's autoSummed badge style
+                        on the waste subtable). Tells the user this row
+                        will be replaced on the next regeneration. */}
+                    {item.autoCopied ? (
+                      <span
+                        title="Auto-copied from scope items above — replaced when you press Copy from above"
+                        style={{
+                          fontSize: 9,
+                          padding: "1px 5px",
+                          background: "#FEAA6D",
+                          color: "#fff",
+                          borderRadius: 999,
+                          fontWeight: 700,
+                          whiteSpace: "nowrap"
+                        }}
+                      >
+                        AUTO
+                      </span>
+                    ) : null}
+                    <WbsCell item={item} wbsRefs={wbsRefs} canManage={canManage} patch={patch} />
+                  </div>
                 </td>
                 <td style={{ padding: 4 }}>
                   <input
@@ -399,11 +485,25 @@ function SawCutTable({ items, wbsRefs, canManage, patch, remove }: RowProps) {
                   )}
                 </td>
                 <td style={{ padding: 4 }}>
+                  {/* PR B4b — amber warning border on auto-copied rows
+                      where the material couldn't be inferred from the
+                      scope item. Prompts the estimator to pick manually
+                      before pricing kicks in. */}
                   <select
                     className="s7-input"
                     value={item.material ?? ""}
                     disabled={!canManage}
                     onChange={(e) => void patch(item.id, { material: e.target.value || null })}
+                    title={
+                      item.autoCopied && !item.material
+                        ? "Couldn't auto-detect material from the scope item — please pick one."
+                        : undefined
+                    }
+                    style={
+                      item.autoCopied && !item.material
+                        ? { border: "2px solid #FEAA6D", borderRadius: 4 }
+                        : undefined
+                    }
                   >
                     <option value="">—</option>
                     {SAW_MATERIALS.map((m) => <option key={m} value={m}>{m}</option>)}

@@ -367,6 +367,7 @@ export function ScopeCardsTab({
               onCuttingNotesChange={async (v) => {
                 await setCardNotes(activeCard.id, { cuttingNotes: v });
               }}
+              cardId={activeCard.id}
             />
           ) : null}
         </div>

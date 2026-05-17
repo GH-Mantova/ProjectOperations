@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-17 06:13 AEST
+Last updated: 2026-05-17 07:27 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -5477,3 +5477,49 @@ fires; type 999999 → console.warn, no PATCH).
 No new dependencies. No env vars.
 
 Audit findings: none.
+
+## 2026-05-17 17:22 AEST — PR B4b STARTED
+Type: PR
+Branch: feat/b4b-cutting-per-card
+Detail: Per-card concrete cutting subtable + Copy from above. Moves
+  cutting from page-level to per-card collapsible section (mirrors
+  B3 waste pattern). Adds Copy-from-above on saw-cut tab populating
+  from cuttingIncluded scope items.
+Status: IN_PROGRESS
+
+## 2026-05-17 17:22 AEST — PR B4b OPENED
+Type: PR
+Branch: feat/b4b-cutting-per-card
+PR: #[N]
+Status: WAITING_CI
+Detail: Per-card cutting subtable + Copy from above aggregator. Schema
+  adds `autoCopied` boolean to CuttingSheetItem so the new per-card
+  Saw-cut Copy-from-above can replace previously-copied rows on
+  regenerate without disturbing manual saw-cut rows or any
+  core-hole / other-rate rows. New `inferCuttingMaterial` helper does
+  best-effort matching against material → materialType → description;
+  no match returns null (Marco's locked answer #1 — deliberately no
+  default-to-Concrete; UI flags with an amber border). New endpoint
+  `POST /tenders/:tenderId/scope/cards/:cardId/cutting/copy-from-above`
+  mirrors B3's sum-from-above shape. Depth conversion m → mm (Marco's
+  locked answer #4); rows with computed depth > 2000mm surface a
+  warning in the response payload (does NOT block). Existing
+  per-discipline cutting subtotal in `summary()` continues to scope
+  by tenderId only (Phase 2.9 paranoid re-check — no change needed).
+Files: schema.prisma (+1 col on CuttingSheetItem), migration
+  20260517070000_b4b_cutting_per_card, scope-redesign.controller.ts
+  (cardId on Create/Update DTOs, ?cardId= on list, new
+  ScopeCardCuttingController), scope-redesign.service.ts
+  (listCuttingItems cardId filter, createCuttingItem cardId validate
+  + persist, inferCuttingMaterial helper, copyFromAbove transactional
+  aggregator), tendering.module.ts (register new controller),
+  ScopeCuttingSheet.tsx (cardId prop, server-side per-card list,
+  Copy-from-above button on Saw-cut tab, AUTO badge mirroring B3
+  autoSummed style, amber material warning border on auto-copied rows
+  without inferable material), ScopeCardsTab.tsx (cardId pass-through),
+  2 new spec files (infer-cutting-material.spec.ts + cutting-copy-from-
+  above.spec.ts), progress.md + roadmap.md + project_instructions.md.
+Pre-PR checks: 7/7 green
+
+## 2026-05-17 [HH:MM] AEST — PR B4b MERGED
+[filled in post-merge — Phase 8 task]

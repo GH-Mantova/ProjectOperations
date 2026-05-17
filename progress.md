@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-17 07:27 AEST
+Last updated: 2026-05-17 07:32 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -5521,5 +5521,16 @@ Files: schema.prisma (+1 col on CuttingSheetItem), migration
   above.spec.ts), progress.md + roadmap.md + project_instructions.md.
 Pre-PR checks: 7/7 green
 
-## 2026-05-17 [HH:MM] AEST — PR B4b MERGED
-[filled in post-merge — Phase 8 task]
+## 2026-05-17 17:30 AEST — PR B4b MERGED
+Type: PR
+Branch: feat/b4b-cutting-per-card
+PR: #184 (https://github.com/GH-Mantova/ProjectOperations/pull/184)
+Merge SHA: fe39e27eadeda4ff0802737ca3d51346e3ef6f7e
+Merged at: 2026-05-17T07:30:39Z (auto-merge squash)
+CI: ✅ all checks passed
+  - API — lint, test, compliance smoke
+  - Web — lint, logic tests, build
+  - Analyze (actions) [CodeQL]
+  - Analyze (javascript-typescript) [CodeQL]
+  - tendering-e2e
+Status: MERGED

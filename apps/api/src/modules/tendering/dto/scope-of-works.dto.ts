@@ -205,6 +205,19 @@ export class UpdateScopeCardDto {
 
   @ApiPropertyOptional({ nullable: true, description: "Shared notes for the Waste subtable (replaces per-row notes column)." })
   @IsOptional() @IsString() @MaxLength(8000) wasteNotes?: string | null;
+
+  // PR B2 — per-card markup override. null clears the override and
+  // falls back to TenderEstimate.markup; any non-null number overrides
+  // for this card only. Frontend validates 0-100; the DB column is
+  // Decimal(5,2) so larger values would persist but the API rejects
+  // them at the validator boundary.
+  @ApiPropertyOptional({
+    nullable: true,
+    minimum: 0,
+    maximum: 100,
+    description: "Per-card markup % override. Null = inherit tender markup. 0-100."
+  })
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) markupOverride?: number | null;
 }
 
 // PR B1.7 — Card-scoped create DTO. Discipline is derived server-side

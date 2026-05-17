@@ -6,6 +6,7 @@ import { ScopeCardTabsRow } from "./ScopeCardTabsRow";
 import { ScopeCardEmptyState } from "./ScopeCardEmptyState";
 import { ChangeDisciplineModal } from "./ChangeDisciplineModal";
 import { useScopeCards, type ScopeCard } from "./useScopeCards";
+import { useTenderEstimate } from "./useTenderEstimate";
 import {
   ScopeQuantitiesTable,
   type Discipline as TableDiscipline,
@@ -26,16 +27,6 @@ type ListResponse = {
   summary: unknown;
 };
 
-type SummaryStat = { itemCount: number; subtotal: number; withMarkup: number };
-type SummaryResponse = {
-  DEM: SummaryStat;
-  CIV: SummaryStat;
-  ASB: SummaryStat;
-  Other: SummaryStat;
-  cutting: { itemCount: number; subtotal: number };
-  tenderPrice: number;
-};
-
 export function ScopeCardsTab({
   tenderId,
   tenderTitle
@@ -53,16 +44,18 @@ export function ScopeCardsTab({
     renameCard,
     setPlantColumnCount,
     setCardNotes,
+    setCardMarkupOverride,
+    resetAllCardMarkup,
     changeDiscipline,
     deleteCard,
     reorderCards
   } = useScopeCards(tenderId);
+  const { markup: tenderMarkup, saveMarkup: saveTenderMarkup } = useTenderEstimate(tenderId);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const activeCardIdFromUrl = searchParams.get("card");
 
   const [items, setItems] = useState<ListResponse["items"]>([]);
-  const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [loadingItems, setLoadingItems] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -75,14 +68,15 @@ export function ScopeCardsTab({
     setLoadingItems(true);
     setError(null);
     try {
-      const [listRes, summaryRes] = await Promise.all([
-        authFetch(`/tenders/${tenderId}/scope/items`),
-        authFetch(`/tenders/${tenderId}/scope/summary`)
-      ]);
+      // PR B2 — /scope/summary no longer fetched here. The per-card
+      // footer in ScopeQuantitiesTable computes its own subtotal from
+      // the items it already has (each item carries lineTotal +
+      // lineTotalWithMarkup via /scope/items). Whole-tender totals
+      // moved to other surfaces.
+      const listRes = await authFetch(`/tenders/${tenderId}/scope/items`);
       if (!listRes.ok) throw new Error(await listRes.text());
       const body = (await listRes.json()) as ListResponse;
       setItems(body.items);
-      if (summaryRes.ok) setSummary((await summaryRes.json()) as SummaryResponse);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -196,13 +190,45 @@ export function ScopeCardsTab({
 
   return (
     <div className="sow-tab" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <header className="sow-tab__header">
+      <header
+        className="sow-tab__header"
+        style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16 }}
+      >
         <div>
           <h2 className="s7-type-page-title" style={{ margin: 0, fontSize: 24 }}>
             Scope of Works
           </h2>
           <p style={{ color: "var(--text-muted)", marginTop: 4 }}>{tenderTitle}</p>
         </div>
+        <TenderMarkupPicker
+          markup={tenderMarkup}
+          onSave={async (next) => {
+            try {
+              await saveTenderMarkup(next);
+              await reloadEverything();
+            } catch (err) {
+              setError((err as Error).message);
+            }
+          }}
+          onResetAll={async () => {
+            const anyOverridden = cards.some((c) => c.markupOverride != null);
+            if (anyOverridden) {
+              const ok = window.confirm(
+                "Reset every card's markup override back to the tender default? This affects " +
+                  cards.filter((c) => c.markupOverride != null).length +
+                  " card(s)."
+              );
+              if (!ok) return;
+            }
+            try {
+              const { cardsReset } = await resetAllCardMarkup();
+              await reloadEverything();
+              setToast(`${cardsReset} card override${cardsReset === 1 ? "" : "s"} cleared`);
+            } catch (err) {
+              setError((err as Error).message);
+            }
+          }}
+        />
       </header>
 
       <ScopeCardTabsRow
@@ -247,28 +273,44 @@ export function ScopeCardsTab({
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              marginBottom: 12
+              marginBottom: 12,
+              gap: 16,
+              flexWrap: "wrap"
             }}
           >
             <h3 style={{ margin: 0, fontSize: 16 }}>{activeCard.name}</h3>
-            <label style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              Discipline:&nbsp;
-              <select
-                value={activeCard.discipline}
-                onChange={(e) => {
-                  const newDiscipline = e.target.value;
-                  if (newDiscipline === activeCard.discipline) return;
-                  setDisciplineChange({ card: activeCard, newDiscipline });
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 16 }}>
+              <CardMarkupOverride
+                value={activeCard.markupOverride}
+                tenderMarkup={tenderMarkup}
+                onSave={async (next) => {
+                  try {
+                    await setCardMarkupOverride(activeCard.id, next);
+                    await reloadEverything();
+                  } catch (err) {
+                    setError((err as Error).message);
+                  }
                 }}
-                style={{ padding: "2px 6px" }}
-              >
-                {DISCIPLINE_CODES.map((d) => (
-                  <option key={d} value={d}>
-                    {DISCIPLINE_LABELS[d]} ({d})
-                  </option>
-                ))}
-              </select>
-            </label>
+              />
+              <label style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                Discipline:&nbsp;
+                <select
+                  value={activeCard.discipline}
+                  onChange={(e) => {
+                    const newDiscipline = e.target.value;
+                    if (newDiscipline === activeCard.discipline) return;
+                    setDisciplineChange({ card: activeCard, newDiscipline });
+                  }}
+                  style={{ padding: "2px 6px" }}
+                >
+                  {DISCIPLINE_CODES.map((d) => (
+                    <option key={d} value={d}>
+                      {DISCIPLINE_LABELS[d]} ({d})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
           </div>
 
           {loadingItems && cardItems.length === 0 ? (
@@ -280,10 +322,6 @@ export function ScopeCardsTab({
               plantColumnCount={activeCard.plantColumnCount}
               discipline={activeCard.discipline as TableDiscipline}
               items={cardItems}
-              subtotal={summary ? summary[activeCard.discipline as TableDiscipline]?.subtotal ?? 0 : 0}
-              subtotalWithMarkup={
-                summary ? summary[activeCard.discipline as TableDiscipline]?.withMarkup ?? 0 : 0
-              }
               onItemsChanged={reloadEverything}
               onPlantColumnCountChange={async (next) => {
                 await setPlantColumnCount(activeCard.id, next);
@@ -378,5 +416,126 @@ export function ScopeCardsTab({
         />
       ) : null}
     </div>
+  );
+}
+
+// ── PR B2 — Markup picker UI helpers ───────────────────────────────────
+
+function TenderMarkupPicker({
+  markup,
+  onSave,
+  onResetAll
+}: {
+  markup: number;
+  onSave: (next: number) => Promise<void> | void;
+  onResetAll: () => Promise<void> | void;
+}) {
+  return (
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 12 }}>
+      <label style={{ fontSize: 12, color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: 6 }}>
+        Markup:
+        <input
+          type="number"
+          min={0}
+          max={100}
+          step="0.01"
+          defaultValue={markup}
+          key={`tender-markup-${markup}`}
+          onBlur={(e) => {
+            const raw = e.target.value;
+            if (raw === "") return;
+            const n = Math.max(0, Math.min(100, Number(raw)));
+            if (Number.isFinite(n) && n !== markup) void onSave(n);
+          }}
+          style={{ width: 70, padding: "2px 6px" }}
+          aria-label="Tender markup percent"
+        />
+        %
+      </label>
+      <button
+        type="button"
+        className="s7-btn s7-btn--ghost s7-btn--sm"
+        onClick={() => void onResetAll()}
+        title="Reset every card's markup override back to the tender default"
+      >
+        Reset all
+      </button>
+    </div>
+  );
+}
+
+function CardMarkupOverride({
+  value,
+  tenderMarkup,
+  onSave
+}: {
+  value: number | null;
+  tenderMarkup: number;
+  onSave: (next: number | null) => Promise<void> | void;
+}) {
+  const hasOverride = value != null;
+  return (
+    <label
+      style={{
+        fontSize: 12,
+        color: "var(--text-muted)",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6
+      }}
+    >
+      Markup:
+      <input
+        type="number"
+        min={0}
+        max={100}
+        step="0.01"
+        placeholder={String(tenderMarkup)}
+        defaultValue={value ?? ""}
+        key={`card-markup-${value ?? "inherit"}-${tenderMarkup}`}
+        onBlur={(e) => {
+          const raw = e.target.value;
+          if (raw === "") {
+            if (hasOverride) void onSave(null);
+            return;
+          }
+          const n = Math.max(0, Math.min(100, Number(raw)));
+          if (!Number.isFinite(n)) return;
+          if (n !== value) void onSave(n);
+        }}
+        style={{
+          width: 70,
+          padding: "2px 6px",
+          borderColor: hasOverride ? "var(--brand-accent, #FEAA6D)" : undefined,
+          borderStyle: hasOverride ? "solid" : undefined,
+          borderWidth: hasOverride ? 1 : undefined
+        }}
+        aria-label="Card markup override percent"
+        title={hasOverride ? "Override active — click × to clear" : `Inherits tender markup (${tenderMarkup}%)`}
+      />
+      %
+      {hasOverride ? (
+        <button
+          type="button"
+          aria-label="Clear card markup override"
+          title="Clear override (inherit tender markup)"
+          onClick={() => void onSave(null)}
+          style={{
+            width: 18,
+            height: 18,
+            borderRadius: 999,
+            border: "1px solid var(--border-default, #e5e7eb)",
+            background: "transparent",
+            color: "var(--text-muted)",
+            cursor: "pointer",
+            fontSize: 11,
+            lineHeight: 1,
+            padding: 0
+          }}
+        >
+          ×
+        </button>
+      ) : null}
+    </label>
   );
 }

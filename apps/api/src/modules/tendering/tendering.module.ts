@@ -14,7 +14,7 @@ import { ScopeOfWorksController } from "./scope-of-works.controller";
 import { ScopeOfWorksService } from "./scope-of-works.service";
 import { ScopeRedesignController } from "./scope-redesign.controller";
 import { ScopeRedesignService } from "./scope-redesign.service";
-import { ScopeWasteController } from "./scope-waste.controller";
+import { ScopeWasteController, ScopeCardWasteController } from "./scope-waste.controller";
 import { ScopeWasteService } from "./scope-waste.service";
 import { ProposalsController } from "./scope/proposals.controller";
 import { ProposalsService } from "./scope/proposals.service";
@@ -29,6 +29,7 @@ import { ProposalsService } from "./scope/proposals.service";
     ScopeOfWorksController,
     ScopeRedesignController,
     ScopeWasteController,
+    ScopeCardWasteController,
     ProposalsController
   ],
   providers: [

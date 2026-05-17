@@ -2311,8 +2311,19 @@ model ScopeWasteItem {
   wasteGroup    String?  @map("waste_group")
   wasteType     String?  @map("waste_type")
   wasteFacility String?  @map("waste_facility")
+  // PR B3 — `wasteTonnes` is reused as a generic "quantity in unit"
+  // column. For rows with unit="t" it stays as tonnes (legacy meaning);
+  // for unit="m²"/"m³"/"ea" it holds qty in that unit. Rename deferred
+  // to a future cleanup PR; math doesn't care (lineTotal = qty × rate).
   wasteTonnes   Decimal? @map("waste_tonnes") @db.Decimal(10, 3)
   wasteLoads    Int?     @map("waste_loads")
+  // PR B3 — unit drives the facility filter on the summary subtable.
+  // null for legacy rows (assumed unit="t" by convention).
+  unit          String?
+  // PR B3 — true when this row was created by "Sum from above" and
+  // can be replaced on regeneration. Manual rows (default false) are
+  // preserved across regenerations.
+  autoSummed    Boolean  @default(false) @map("auto_summed")
   truckDays     Decimal? @map("truck_days") @db.Decimal(5, 1)
   ratePerTonne  Decimal? @map("rate_per_tonne") @db.Decimal(10, 2)
   ratePerLoad   Decimal? @map("rate_per_load") @db.Decimal(10, 2)

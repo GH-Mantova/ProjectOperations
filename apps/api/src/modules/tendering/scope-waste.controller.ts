@@ -15,11 +15,16 @@ import { IS_DISCIPLINE_CODES } from "../personas/definitions/disciplines";
 // (DEM/CIV/ASB/Other) was rejected with a validation error.
 class UpsertWasteDto {
   @IsOptional() @IsIn(IS_DISCIPLINE_CODES as readonly string[]) discipline?: string;
+  // PR B3 — parent card for per-card scoping. Nullable in the DTO so
+  // legacy whole-tender callers still work.
+  @IsOptional() @IsString() cardId?: string | null;
   @IsOptional() @IsString() wbsRef?: string | null;
   @IsOptional() @IsString() description?: string;
   @IsOptional() @IsString() wasteGroup?: string | null;
   @IsOptional() @IsString() wasteType?: string | null;
   @IsOptional() @IsString() wasteFacility?: string | null;
+  // PR B3 — unit drives the facility filter on the summary subtable.
+  @IsOptional() @IsString() unit?: string | null;
   @IsOptional() @Type(() => Number) @IsNumber() wasteTonnes?: number | null;
   @IsOptional() @Type(() => Number) @IsInt() wasteLoads?: number | null;
   @IsOptional() @Type(() => Number) @IsNumber() ratePerTonne?: number | null;
@@ -46,9 +51,16 @@ export class ScopeWasteController {
 
   @Get()
   @RequirePermissions("estimates.view")
-  @ApiOperation({ summary: "List waste disposal rows on the tender (optionally filtered by discipline)." })
-  list(@Param("tenderId") tenderId: string, @Query("discipline") discipline?: string) {
-    return this.service.list(tenderId, discipline);
+  @ApiOperation({
+    summary:
+      "List waste disposal rows on the tender. Optional ?cardId= filter (PR B3 per-card) or ?discipline= (legacy whole-tender)."
+  })
+  list(
+    @Param("tenderId") tenderId: string,
+    @Query("discipline") discipline?: string,
+    @Query("cardId") cardId?: string
+  ) {
+    return this.service.list(tenderId, { discipline, cardId });
   }
 
   @Post()
@@ -85,5 +97,31 @@ export class ScopeWasteController {
   @ApiOperation({ summary: "Bulk update sortOrder across multiple waste rows." })
   reorder(@Param("tenderId") tenderId: string, @Body() dto: ReorderDto) {
     return this.service.reorder(tenderId, dto.order);
+  }
+}
+
+// PR B3 — Second controller mounted at the per-card path so the
+// "Sum from above" endpoint can sit naturally under
+//   POST /tenders/:tenderId/scope/cards/:cardId/waste/sum-from-above
+// Shares the same ScopeWasteService instance.
+@ApiTags("Scope of Works — Waste")
+@ApiBearerAuth()
+@Controller("tenders/:tenderId/scope/cards/:cardId/waste")
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+export class ScopeCardWasteController {
+  constructor(private readonly service: ScopeWasteService) {}
+
+  @Post("sum-from-above")
+  @RequirePermissions("estimates.manage")
+  @ApiOperation({
+    summary:
+      "PR B3 — aggregate scope items (wasteIncluded=true) by (wasteGroup, wasteItem, unit) and write/replace autoSummed waste rows for the card. Manual rows preserved."
+  })
+  sumFromAbove(
+    @Param("tenderId") tenderId: string,
+    @Param("cardId") cardId: string,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.sumFromAbove(tenderId, cardId, actor.sub);
   }
 }

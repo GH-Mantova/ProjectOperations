@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { IsArray, IsIn, IsInt, IsNumber, IsOptional, IsString, Min } from "class-validator";
 import { Type } from "class-transformer";
@@ -54,6 +54,15 @@ class ReorderDto {
 export class ScopeWasteController {
   constructor(private readonly service: ScopeWasteService) {}
 
+  // PR B4a.4 — same controller-boundary assertion as ScopeOfWorksController.
+  // See that controller for the rationale; the CodeQL alert chain reaches
+  // this service via the m3 / wasteTonnes Decimal sinks.
+  private assertObjectBody(dto: unknown): asserts dto is Record<string, unknown> {
+    if (typeof dto !== "object" || dto === null || Array.isArray(dto)) {
+      throw new BadRequestException("Request body must be a JSON object.");
+    }
+  }
+
   @Get()
   @RequirePermissions("estimates.view")
   @ApiOperation({
@@ -73,10 +82,11 @@ export class ScopeWasteController {
   @ApiOperation({ summary: "Create a waste row. truckDays + lineTotal are derived server-side." })
   create(
     @Param("tenderId") tenderId: string,
-    @Body() dto: UpsertWasteDto,
+    @Body() dto: unknown,
     @CurrentUser() actor: { sub: string }
   ) {
-    return this.service.create(tenderId, actor.sub, dto);
+    this.assertObjectBody(dto);
+    return this.service.create(tenderId, actor.sub, dto as UpsertWasteDto);
   }
 
   @Patch(":itemId")
@@ -85,9 +95,10 @@ export class ScopeWasteController {
   update(
     @Param("tenderId") tenderId: string,
     @Param("itemId") itemId: string,
-    @Body() dto: UpsertWasteDto
+    @Body() dto: unknown
   ) {
-    return this.service.update(tenderId, itemId, dto);
+    this.assertObjectBody(dto);
+    return this.service.update(tenderId, itemId, dto as UpsertWasteDto);
   }
 
   @Delete(":itemId")
@@ -100,8 +111,9 @@ export class ScopeWasteController {
   @Post("reorder")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Bulk update sortOrder across multiple waste rows." })
-  reorder(@Param("tenderId") tenderId: string, @Body() dto: ReorderDto) {
-    return this.service.reorder(tenderId, dto.order);
+  reorder(@Param("tenderId") tenderId: string, @Body() dto: unknown) {
+    this.assertObjectBody(dto);
+    return this.service.reorder(tenderId, (dto as unknown as ReorderDto).order);
   }
 }
 

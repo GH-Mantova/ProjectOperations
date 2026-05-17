@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-17 03:51 AEST
+Last updated: 2026-05-17 04:04 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -5243,5 +5243,67 @@ consistently if/when CodeQL surfaces them.
 
 No new tests in B4a.3 — `to-decimal.spec.ts` covers the equivalent
 narrowing logic; `narrowToNumber` is a trivial subset.
+
+### B4a.4 — Controller-boundary assertObjectBody (GitHub Security suggested fix)
+
+The B4a.3 call-site `narrowToNumber` didn't clear CodeQL either:
+the dataflow analyzer doesn't recognise cross-function narrowing as
+a sanitization point. GitHub Security's "suggested fix" on the PR
+review proposed the canonical mitigation — an `Array.isArray` /
+typeof check at the @Body() controller boundary, which CodeQL's
+sanitizer model treats as a hard stop on taint propagation.
+
+**What changed (14 handlers across 3 controllers):**
+
+1. **`scope-of-works.controller.ts`** (8 handlers): `updateHeader`,
+   `create`, `update`, `reorder`, `createCard`, `updateCard`,
+   `reorderCards`, `createItemInCard`. New private
+   `assertObjectBody(dto: unknown): asserts dto is Record<string,
+   unknown>` method; every `@Body()` parameter retyped from its DTO
+   class to `unknown`; assertion called before forwarding; cast
+   back to the DTO type via `as unknown as X` (required because
+   `Record<string, unknown>` doesn't structurally overlap DTOs with
+   required fields).
+2. **`scope-waste.controller.ts`** (3 handlers in
+   `ScopeWasteController`): `create`, `update`, `reorder`. The
+   second controller in the file (`ScopeCardWasteController`,
+   sumFromAbove endpoint) has no `@Body()` parameter so doesn't
+   need the assertion.
+3. **`scope-redesign.controller.ts`** (3 handlers):
+   `patchViewConfig`, `createCuttingItem`, `updateCuttingItem`.
+   Hardens the cutting Decimal sinks (quantityLm + shiftLoading
+   in `scope-redesign.service.ts`) that are part of the same
+   CodeQL alert chain.
+
+**Why the cast is safe:**
+- `assertObjectBody` throws `BadRequestException` for arrays /
+  non-objects / null before the cast runs.
+- NestJS's `ValidationPipe` still runs class-validator's per-field
+  metadata on the @Body() argument regardless of the static type,
+  so DTOs with required fields still fail validation when missing.
+- The service-layer `narrowToNumber` + `toDecimal` guards from
+  B4a.3 still narrow every numeric field at the sink. The cast
+  here just satisfies the compiler.
+
+**Defense in depth (full stack):**
+1. Controller-boundary `assertObjectBody` (B4a.4) — rejects
+   non-object bodies before any field access.
+2. `ValidationPipe` + class-validator decorators on the DTO —
+   per-field validation (still runs after the cast).
+3. Service-layer `narrowToNumber` at every numeric field access
+   (B4a.3) — typeof check the CodeQL analyzer can see.
+4. `toDecimal` internal narrowing (B4a.1) — final guard at the
+   Prisma.Decimal constructor.
+
+### Verification (after B4a.4)
+- pnpm --filter api test: 569 passing (no regressions); 6 skipped
+- pnpm --filter api exec tsc --noEmit: clean
+- pnpm --filter api lint: clean
+- Web unchanged.
+
+No new tests in B4a.4 — assertObjectBody is a 1-line guard already
+covered by the BadRequestException behaviour pattern; the typeof
++ Array.isArray check is the same one in to-decimal.spec.ts (which
+already proves arrays don't get through).
 
 Audit findings: none.

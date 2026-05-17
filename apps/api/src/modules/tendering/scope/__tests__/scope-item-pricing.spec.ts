@@ -113,7 +113,10 @@ describe("computeScopeItemTotal (PR B1.7.1 / B1.7.2)", () => {
     expect(result.plant).toBe(650);
   });
 
-  it("Other discipline → lineTotal is provisionalAmount; never marked up", () => {
+  it("Other discipline → lineTotal is provisionalAmount; PR B2 applies markup", () => {
+    // PR B2 — Other-discipline rows DO get markup now. lineTotal still
+    // reflects the raw provisional sum so the markup amount is visible
+    // as the delta; lineTotalWithMarkup = provisional × markupFactor.
     const result = computeScopeItemTotal(
       emptyItem({
         discipline: "Other",
@@ -129,7 +132,18 @@ describe("computeScopeItemTotal (PR B1.7.1 / B1.7.2)", () => {
     expect(result.labour).toBe(0);
     expect(result.plant).toBe(0);
     expect(result.lineTotal).toBe(12345);
-    expect(result.lineTotalWithMarkup).toBe(12345);
+    // 12345 × 1.30 = 16048.5
+    expect(result.lineTotalWithMarkup).toBeCloseTo(16048.5, 6);
+  });
+
+  it("Other discipline at 0% markup → lineTotalWithMarkup == lineTotal", () => {
+    const result = computeScopeItemTotal(
+      emptyItem({ discipline: "Other", provisionalAmount: 5000 }),
+      baseRates(),
+      0
+    );
+    expect(result.lineTotal).toBe(5000);
+    expect(result.lineTotalWithMarkup).toBe(5000);
   });
 
   it("markup — lineTotalWithMarkup = lineTotal × (1 + markup/100)", () => {

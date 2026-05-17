@@ -355,6 +355,7 @@ export function ScopeCardsTab({
             onWasteNotesChange={async (v) => {
               await setCardNotes(activeCard.id, { wasteNotes: v });
             }}
+            cardId={activeCard.id}
           />
 
           {activeCard.discipline !== "ASB" ? (

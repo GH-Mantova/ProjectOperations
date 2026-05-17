@@ -17,6 +17,12 @@ type WasteRow = {
   wasteGroup: string | null;
   wasteType: string | null;
   wasteFacility: string | null;
+  // PR B3 — `unit` drives facility filtering. `autoSummed` distinguishes
+  // rows created by "Sum from above" (regenerable) from manual rows
+  // (preserved).
+  unit: string | null;
+  autoSummed: boolean;
+  // Column-name lie: holds qty in the unit, not always tonnes (PR B3).
   wasteTonnes: string | null;
   wasteLoads: number | null;
   truckDays: string | null;
@@ -32,10 +38,13 @@ type WasteRate = {
   wasteGroup: string | null;
   wasteType: string;
   facility: string;
+  unit: string;
   tonRate: string;
   loadRate: string;
   isActive: boolean;
 };
+
+const UNIT_OPTIONS = ["m²", "m³", "t", "ea"] as const;
 
 function ceilHalf(value: number): number {
   return Math.ceil(value * 2) / 2;
@@ -58,7 +67,8 @@ export function ScopeWasteTab({
   wbsRefs,
   canManage,
   wasteNotes,
-  onWasteNotesChange
+  onWasteNotesChange,
+  cardId
 }: {
   tenderId: string;
   discipline: string;
@@ -69,6 +79,10 @@ export function ScopeWasteTab({
   // legacy callers without card context still render.
   wasteNotes?: string | null;
   onWasteNotesChange?: (value: string | null) => Promise<void> | void;
+  // PR B3 — when supplied, the subtable lists rows scoped to this
+  // card (instead of the whole discipline) and exposes the "Sum from
+  // above" button.
+  cardId?: string;
 }) {
   const { authFetch } = useAuth();
   const [rows, setRows] = useState<WasteRow[]>([]);
@@ -80,8 +94,13 @@ export function ScopeWasteTab({
     setLoading(true);
     setError(null);
     try {
+      // PR B3 — when a cardId is in scope, filter by it (per-card view).
+      // Falls back to whole-discipline for legacy callers without a card.
+      const wasteUrl = cardId
+        ? `/tenders/${tenderId}/scope/waste?cardId=${encodeURIComponent(cardId)}`
+        : `/tenders/${tenderId}/scope/waste?discipline=${discipline}`;
       const [rowsResp, ratesResp] = await Promise.all([
-        authFetch(`/tenders/${tenderId}/scope/waste?discipline=${discipline}`),
+        authFetch(wasteUrl),
         authFetch(`/estimate-rates/waste`)
       ]);
       if (!rowsResp.ok) throw new Error(await rowsResp.text());
@@ -95,7 +114,7 @@ export function ScopeWasteTab({
     } finally {
       setLoading(false);
     }
-  }, [authFetch, tenderId, discipline]);
+  }, [authFetch, tenderId, discipline, cardId]);
 
   useEffect(() => {
     void load();
@@ -119,15 +138,35 @@ export function ScopeWasteTab({
     for (const r of rates) if (!type || r.wasteType === type) s.add(r.facility);
     return [...s].sort();
   };
-  const rateFor = (type: string | null, facility: string | null) => {
+  // PR B3 — facility filter now considers unit too: a (group, type, unit)
+  // combo may have zero matching facilities, in which case the dropdown
+  // is rendered disabled and the row gets an amber warning tint.
+  const facilitiesForRow = (group: string | null, type: string | null, unit: string | null) => {
+    const s = new Set<string>();
+    for (const r of rates) {
+      if (group && r.wasteGroup !== group) continue;
+      if (type && r.wasteType !== type) continue;
+      if (unit && r.unit !== unit) continue;
+      s.add(r.facility);
+    }
+    return [...s].sort();
+  };
+  const rateFor = (type: string | null, facility: string | null, unit?: string | null) => {
     if (!type || !facility) return null;
-    return rates.find((r) => r.wasteType === type && r.facility === facility) ?? null;
+    return (
+      rates.find(
+        (r) => r.wasteType === type && r.facility === facility && (!unit || r.unit === unit)
+      ) ?? null
+    );
   };
 
   const addRow = async () => {
     if (!canManage) return;
     const body = {
       discipline,
+      // PR B3 — manual rows are attached to the active card when one is
+      // in scope. Legacy whole-tender callers still pass cardId=null.
+      cardId: cardId ?? null,
       wbsRef: wbsRefs[0] ?? null,
       description: "Waste disposal"
     };
@@ -135,6 +174,31 @@ export function ScopeWasteTab({
       method: "POST",
       body: JSON.stringify(body)
     });
+    if (!response.ok) {
+      setError(await response.text());
+      return;
+    }
+    await load();
+  };
+
+  // PR B3 — "Sum from above" handler. Confirm dialog fires only when
+  // there's at least one autoSummed row already (those will be
+  // regenerated). Manual rows are preserved server-side regardless.
+  const sumFromAbove = async () => {
+    if (!canManage || !cardId) return;
+    const autoCount = rows.filter((r) => r.autoSummed).length;
+    if (autoCount > 0) {
+      const ok = window.confirm(
+        `This will regenerate ${autoCount} auto-summed waste row${
+          autoCount === 1 ? "" : "s"
+        }. Manual rows will be preserved. Continue?`
+      );
+      if (!ok) return;
+    }
+    const response = await authFetch(
+      `/tenders/${tenderId}/scope/cards/${cardId}/waste/sum-from-above`,
+      { method: "POST" }
+    );
     if (!response.ok) {
       setError(await response.text());
       return;
@@ -212,11 +276,12 @@ export function ScopeWasteTab({
                   "Description",
                   "Group",
                   "Type",
+                  "Unit",
                   "Facility",
-                  "Tonnes",
+                  "Qty",
                   "Loads",
                   "Truck days",
-                  "$/T",
+                  "$/Unit",
                   "$/Load",
                   "Line total",
                   ""
@@ -237,8 +302,19 @@ export function ScopeWasteTab({
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
-                <tr key={row.id} style={{ borderTop: "1px solid var(--border, #e5e7eb)" }}>
+              {rows.map((row) => {
+                const facilityOptions = facilitiesForRow(row.wasteGroup, row.wasteType, row.unit);
+                const noFacility =
+                  !!row.wasteGroup && !!row.wasteType && !!row.unit && facilityOptions.length === 0;
+                const rowTint = noFacility ? "rgba(254, 170, 109, 0.12)" : undefined;
+                return (
+                <tr
+                  key={row.id}
+                  style={{
+                    borderTop: "1px solid var(--border, #e5e7eb)",
+                    background: rowTint
+                  }}
+                >
                   <td style={{ padding: 2 }}>
                     <select
                       value={row.wbsRef ?? ""}
@@ -258,16 +334,37 @@ export function ScopeWasteTab({
                     </select>
                   </td>
                   <td style={{ padding: 2 }}>
-                    <input
-                      className="s7-input s7-input--sm"
-                      defaultValue={row.description}
-                      disabled={!canManage}
-                      onBlur={(e) =>
-                        e.target.value !== row.description &&
-                        void patchRow(row.id, { description: e.target.value })
-                      }
-                      style={{ width: "100%" }}
-                    />
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      {/* PR B3 — small "auto" badge marks rows created by
+                          Sum from above; tells the user this row will be
+                          replaced on the next regeneration. */}
+                      {row.autoSummed ? (
+                        <span
+                          title="Auto-summed from items above — regenerated when you press Sum from above"
+                          style={{
+                            fontSize: 9,
+                            padding: "1px 5px",
+                            background: "#FEAA6D",
+                            color: "#fff",
+                            borderRadius: 999,
+                            fontWeight: 700,
+                            whiteSpace: "nowrap"
+                          }}
+                        >
+                          AUTO
+                        </span>
+                      ) : null}
+                      <input
+                        className="s7-input s7-input--sm"
+                        defaultValue={row.description}
+                        disabled={!canManage}
+                        onBlur={(e) =>
+                          e.target.value !== row.description &&
+                          void patchRow(row.id, { description: e.target.value })
+                        }
+                        style={{ width: "100%" }}
+                      />
+                    </div>
                   </td>
                   <td style={{ padding: 2 }}>
                     <select
@@ -323,16 +420,44 @@ export function ScopeWasteTab({
                     </select>
                   </td>
                   <td style={{ padding: 2 }}>
+                    {/* PR B3 — unit dropdown. Changing unit clears the
+                        facility + rate so the cascade stays valid. */}
+                    <select
+                      className="s7-select s7-input--sm"
+                      value={row.unit ?? ""}
+                      disabled={!canManage}
+                      onChange={(e) => {
+                        const next = e.target.value || null;
+                        void patchRow(row.id, {
+                          unit: next,
+                          wasteFacility: null,
+                          ratePerTonne: null,
+                          ratePerLoad: null
+                        });
+                      }}
+                      style={{ width: 64, fontSize: 12, padding: 2 }}
+                      title={row.unit ?? "Pick a unit"}
+                    >
+                      <option value="">—</option>
+                      {row.unit && !(UNIT_OPTIONS as readonly string[]).includes(row.unit) ? (
+                        <option value={row.unit}>{row.unit}</option>
+                      ) : null}
+                      {UNIT_OPTIONS.map((u) => (
+                        <option key={u} value={u}>{u}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td style={{ padding: 2 }}>
                     <select
                       className="s7-select s7-input--sm"
                       value={row.wasteFacility ?? ""}
-                      disabled={!canManage || !row.wasteType}
+                      disabled={!canManage || !row.wasteType || noFacility}
                       onChange={(e) => {
                         const next = e.target.value || null;
-                        const rate = rateFor(row.wasteType, next);
-                        // Auto-populate rates from the catalogue on facility
-                        // select. User can still override afterwards — any
-                        // later PATCH to ratePerTonne/ratePerLoad wins.
+                        // PR B3 — pass unit so the lookup picks the right
+                        // rate when multiple facilities serve the same
+                        // (group, type) at different units.
+                        const rate = rateFor(row.wasteType, next, row.unit);
                         void patchRow(row.id, {
                           wasteFacility: next,
                           ratePerTonne: rate ? Number(rate.tonRate) : null,
@@ -340,12 +465,21 @@ export function ScopeWasteTab({
                         });
                       }}
                       style={{ width: 140, fontSize: 12, padding: 2 }}
+                      title={
+                        noFacility
+                          ? `No facility for ${row.unit ?? "unit"}`
+                          : row.wasteFacility ?? "Pick a facility"
+                      }
                     >
-                      <option value="">—</option>
-                      {row.wasteFacility && !facilitiesForType(row.wasteType).includes(row.wasteFacility) ? (
+                      {noFacility ? (
+                        <option value="">— no facility for {row.unit} —</option>
+                      ) : (
+                        <option value="">—</option>
+                      )}
+                      {row.wasteFacility && !facilityOptions.includes(row.wasteFacility) ? (
                         <option value={row.wasteFacility}>{row.wasteFacility}</option>
                       ) : null}
-                      {facilitiesForType(row.wasteType).map((f) => (
+                      {facilityOptions.map((f) => (
                         <option key={f} value={f}>{f}</option>
                       ))}
                     </select>
@@ -430,21 +564,33 @@ export function ScopeWasteTab({
                     ) : null}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
 
       {canManage ? (
-        <button
-          type="button"
-          className="s7-btn s7-btn--primary"
-          style={{ marginTop: 12 }}
-          onClick={() => void addRow()}
-        >
-          + Add waste row
-        </button>
+        <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className="s7-btn s7-btn--primary"
+            onClick={() => void addRow()}
+          >
+            + Add waste row
+          </button>
+          {cardId ? (
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost"
+              onClick={() => void sumFromAbove()}
+              title="Aggregate scope items above (wasteIncluded=true) into auto-summed waste rows"
+            >
+              Sum from above
+            </button>
+          ) : null}
+        </div>
       ) : null}
 
       {onWasteNotesChange ? (

@@ -176,10 +176,26 @@ export class ScopeOfWorksController {
         wasteNotes: dto.wasteNotes
       });
     }
+    // PR B2 — per-card markup override. Pass null to clear.
+    if (dto.markupOverride !== undefined) {
+      return this.service.setCardMarkupOverride(tenderId, cardId, dto.markupOverride);
+    }
     if (dto.name !== undefined) {
       return this.service.renameCard(tenderId, cardId, dto.name);
     }
-    throw new BadRequestException("Provide name, discipline, plantColumnCount, cuttingNotes, or wasteNotes.");
+    throw new BadRequestException(
+      "Provide name, discipline, plantColumnCount, cuttingNotes, wasteNotes, or markupOverride."
+    );
+  }
+
+  @Post("markup/reset-all")
+  @RequirePermissions("estimates.manage")
+  @ApiOperation({
+    summary: "PR B2 — Reset every card's markupOverride to null in one call. Returns { cardsReset: count }."
+  })
+  @ApiResponse({ status: 200, description: "All card overrides cleared for the tender." })
+  resetAllCardMarkup(@Param("tenderId") tenderId: string) {
+    return this.service.resetAllCardMarkup(tenderId);
   }
 
   @Delete("cards/:cardId")

@@ -17,13 +17,17 @@ type WasteRow = {
   wasteGroup: string | null;
   wasteType: string | null;
   wasteFacility: string | null;
-  // PR B3 — `unit` drives facility filtering. `autoSummed` distinguishes
-  // rows created by "Sum from above" (regenerable) from manual rows
-  // (preserved).
+  // PR B4a — `unit` is no longer user-editable on the subtable. It's a
+  // read-only display badge carrying the facility's rate unit forward
+  // ("Billed by" column). `autoSummed` distinguishes rows created by
+  // "Sum from above" (regenerable) from manual rows (preserved).
   unit: string | null;
   autoSummed: boolean;
-  // Column-name lie: holds qty in the unit, not always tonnes (PR B3).
+  // PR B4a — wasteTonnes is back to meaning literal tonnes; m³ is the
+  // companion column. Both are persisted per row; the line total bills
+  // against whichever side matches the facility's rate.unit.
   wasteTonnes: string | null;
+  m3: string | null;
   wasteLoads: number | null;
   truckDays: string | null;
   ratePerTonne: string | null;
@@ -43,8 +47,6 @@ type WasteRate = {
   loadRate: string;
   isActive: boolean;
 };
-
-const UNIT_OPTIONS = ["m²", "m³", "t", "ea"] as const;
 
 function ceilHalf(value: number): number {
   return Math.ceil(value * 2) / 2;
@@ -138,26 +140,22 @@ export function ScopeWasteTab({
     for (const r of rates) if (!type || r.wasteType === type) s.add(r.facility);
     return [...s].sort();
   };
-  // PR B3 — facility filter now considers unit too: a (group, type, unit)
-  // combo may have zero matching facilities, in which case the dropdown
-  // is rendered disabled and the row gets an amber warning tint.
-  const facilitiesForRow = (group: string | null, type: string | null, unit: string | null) => {
+  // PR B4a — facility filter relaxed to (group, type) only. A given
+  // (group, type) may map to multiple facilities at different units;
+  // the chosen facility's rate.unit decides which side (tonnes vs m³)
+  // the line total bills against.
+  const facilitiesForRow = (group: string | null, type: string | null) => {
     const s = new Set<string>();
     for (const r of rates) {
       if (group && r.wasteGroup !== group) continue;
       if (type && r.wasteType !== type) continue;
-      if (unit && r.unit !== unit) continue;
       s.add(r.facility);
     }
     return [...s].sort();
   };
-  const rateFor = (type: string | null, facility: string | null, unit?: string | null) => {
+  const rateFor = (type: string | null, facility: string | null) => {
     if (!type || !facility) return null;
-    return (
-      rates.find(
-        (r) => r.wasteType === type && r.facility === facility && (!unit || r.unit === unit)
-      ) ?? null
-    );
+    return rates.find((r) => r.wasteType === type && r.facility === facility) ?? null;
   };
 
   const addRow = async () => {
@@ -276,12 +274,13 @@ export function ScopeWasteTab({
                   "Description",
                   "Group",
                   "Type",
-                  "Unit",
                   "Facility",
-                  "Qty",
+                  "Billed by",
+                  "Tonnes",
+                  "M³",
                   "Loads",
                   "Truck days",
-                  "$/Unit",
+                  "$/unit",
                   "$/Load",
                   "Line total",
                   ""
@@ -303,9 +302,15 @@ export function ScopeWasteTab({
             </thead>
             <tbody>
               {rows.map((row) => {
-                const facilityOptions = facilitiesForRow(row.wasteGroup, row.wasteType, row.unit);
+                const facilityOptions = facilitiesForRow(row.wasteGroup, row.wasteType);
                 const noFacility =
-                  !!row.wasteGroup && !!row.wasteType && !!row.unit && facilityOptions.length === 0;
+                  !!row.wasteGroup && !!row.wasteType && facilityOptions.length === 0;
+                // PR B4a — billing unit comes from the row's `unit`
+                // (set by the aggregator to rate.unit, or by manual
+                // edit). Defaults to "t" when blank so legacy rows
+                // keep working.
+                const billingUnit = row.unit === "m³" ? "m³" : "t";
+                const rateLabel = billingUnit === "m³" ? "$/m³" : "$/t";
                 const rowTint = noFacility ? "rgba(254, 170, 109, 0.12)" : undefined;
                 return (
                 <tr
@@ -420,46 +425,20 @@ export function ScopeWasteTab({
                     </select>
                   </td>
                   <td style={{ padding: 2 }}>
-                    {/* PR B3 — unit dropdown. Changing unit clears the
-                        facility + rate so the cascade stays valid. */}
-                    <select
-                      className="s7-select s7-input--sm"
-                      value={row.unit ?? ""}
-                      disabled={!canManage}
-                      onChange={(e) => {
-                        const next = e.target.value || null;
-                        void patchRow(row.id, {
-                          unit: next,
-                          wasteFacility: null,
-                          ratePerTonne: null,
-                          ratePerLoad: null
-                        });
-                      }}
-                      style={{ width: 64, fontSize: 12, padding: 2 }}
-                      title={row.unit ?? "Pick a unit"}
-                    >
-                      <option value="">—</option>
-                      {row.unit && !(UNIT_OPTIONS as readonly string[]).includes(row.unit) ? (
-                        <option value={row.unit}>{row.unit}</option>
-                      ) : null}
-                      {UNIT_OPTIONS.map((u) => (
-                        <option key={u} value={u}>{u}</option>
-                      ))}
-                    </select>
-                  </td>
-                  <td style={{ padding: 2 }}>
+                    {/* PR B4a — facility filter relaxed: (group, type)
+                        only. Picking a facility writes the facility's
+                        rate.unit forward to row.unit so the line total
+                        bills against the right side. */}
                     <select
                       className="s7-select s7-input--sm"
                       value={row.wasteFacility ?? ""}
                       disabled={!canManage || !row.wasteType || noFacility}
                       onChange={(e) => {
                         const next = e.target.value || null;
-                        // PR B3 — pass unit so the lookup picks the right
-                        // rate when multiple facilities serve the same
-                        // (group, type) at different units.
-                        const rate = rateFor(row.wasteType, next, row.unit);
+                        const rate = rateFor(row.wasteType, next);
                         void patchRow(row.id, {
                           wasteFacility: next,
+                          unit: rate?.unit ?? null,
                           ratePerTonne: rate ? Number(rate.tonRate) : null,
                           ratePerLoad: rate ? Number(rate.loadRate) : null
                         });
@@ -467,12 +446,12 @@ export function ScopeWasteTab({
                       style={{ width: 140, fontSize: 12, padding: 2 }}
                       title={
                         noFacility
-                          ? `No facility for ${row.unit ?? "unit"}`
+                          ? "No facility for this group/type"
                           : row.wasteFacility ?? "Pick a facility"
                       }
                     >
                       {noFacility ? (
-                        <option value="">— no facility for {row.unit} —</option>
+                        <option value="">— no facility —</option>
                       ) : (
                         <option value="">—</option>
                       )}
@@ -484,17 +463,52 @@ export function ScopeWasteTab({
                       ))}
                     </select>
                   </td>
+                  <td style={{ padding: 2, fontSize: 11, color: "var(--text-muted)" }}>
+                    {/* PR B4a — read-only "Billed by" badge mirrors the
+                        facility's rate.unit. Empty when no facility set. */}
+                    {row.wasteFacility ? (
+                      <span
+                        title={`Line total bills against ${billingUnit}`}
+                        style={{
+                          display: "inline-block",
+                          padding: "1px 6px",
+                          background: "var(--surface-muted, #F6F6F6)",
+                          borderRadius: 4,
+                          fontFamily: "ui-monospace, monospace"
+                        }}
+                      >
+                        {billingUnit}
+                      </span>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td style={{ padding: 2 }}>
                     <input
                       className="s7-input s7-input--sm"
                       type="number"
-                      step="0.01"
+                      step="0.001"
                       defaultValue={row.wasteTonnes ?? ""}
                       disabled={!canManage}
                       onBlur={(e) => {
                         const n = e.target.value === "" ? null : Number(e.target.value);
                         if (String(n) !== String(row.wasteTonnes))
                           void patchRow(row.id, { wasteTonnes: n });
+                      }}
+                      style={{ width: 70, textAlign: "right" }}
+                    />
+                  </td>
+                  <td style={{ padding: 2 }}>
+                    <input
+                      className="s7-input s7-input--sm"
+                      type="number"
+                      step="0.01"
+                      defaultValue={row.m3 ?? ""}
+                      disabled={!canManage}
+                      onBlur={(e) => {
+                        const n = e.target.value === "" ? null : Number(e.target.value);
+                        if (String(n) !== String(row.m3))
+                          void patchRow(row.id, { m3: n });
                       }}
                       style={{ width: 70, textAlign: "right" }}
                     />
@@ -519,19 +533,23 @@ export function ScopeWasteTab({
                       : "—"}
                   </td>
                   <td style={{ padding: 2 }}>
-                    <input
-                      className="s7-input s7-input--sm"
-                      type="number"
-                      step="0.01"
-                      defaultValue={row.ratePerTonne ?? ""}
-                      disabled={!canManage}
-                      onBlur={(e) => {
-                        const n = e.target.value === "" ? null : Number(e.target.value);
-                        if (String(n) !== String(row.ratePerTonne))
-                          void patchRow(row.id, { ratePerTonne: n });
-                      }}
-                      style={{ width: 70, textAlign: "right" }}
-                    />
+                    <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                      <input
+                        className="s7-input s7-input--sm"
+                        type="number"
+                        step="0.01"
+                        defaultValue={row.ratePerTonne ?? ""}
+                        disabled={!canManage}
+                        title={`Rate per ${billingUnit}`}
+                        onBlur={(e) => {
+                          const n = e.target.value === "" ? null : Number(e.target.value);
+                          if (String(n) !== String(row.ratePerTonne))
+                            void patchRow(row.id, { ratePerTonne: n });
+                        }}
+                        style={{ width: 60, textAlign: "right" }}
+                      />
+                      <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{rateLabel}</span>
+                    </div>
                   </td>
                   <td style={{ padding: 2 }}>
                     <input

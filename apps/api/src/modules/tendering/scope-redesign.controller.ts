@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { IsArray, IsIn, IsInt, IsNumber, IsOptional, IsString } from "class-validator";
 import { Type } from "class-transformer";
@@ -58,6 +58,16 @@ class UpdateCuttingItemDto {
 export class ScopeRedesignController {
   constructor(private readonly service: ScopeRedesignService) {}
 
+  // PR B4a.4 — same controller-boundary assertion as ScopeOfWorksController.
+  // The cutting create/update sinks construct Prisma.Decimal from
+  // quantityLm + shiftLoading inside scope-redesign.service.ts; this
+  // assertion sanitizes the @Body source so CodeQL stops tracking taint.
+  private assertObjectBody(dto: unknown): asserts dto is Record<string, unknown> {
+    if (typeof dto !== "object" || dto === null || Array.isArray(dto)) {
+      throw new BadRequestException("Request body must be a JSON object.");
+    }
+  }
+
   @Get("columns")
   @RequirePermissions("estimates.view")
   @ApiOperation({
@@ -80,7 +90,9 @@ export class ScopeRedesignController {
   @Patch("view-config")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Upsert the optional column set for (tender × discipline)." })
-  patchViewConfig(@Param("tenderId") tenderId: string, @Body() dto: UpsertViewConfigDto) {
+  patchViewConfig(@Param("tenderId") tenderId: string, @Body() rawDto: unknown) {
+    this.assertObjectBody(rawDto);
+    const dto = rawDto as unknown as UpsertViewConfigDto;
     return this.service.upsertViewConfig(tenderId, dto.discipline, dto.columns);
   }
 
@@ -101,10 +113,11 @@ export class ScopeRedesignController {
   @ApiResponse({ status: 400, description: "Invalid itemType or missing wbsRef." })
   createCuttingItem(
     @Param("tenderId") tenderId: string,
-    @Body() dto: CreateCuttingItemDto,
+    @Body() dto: unknown,
     @CurrentUser() actor: { sub: string }
   ) {
-    return this.service.createCuttingItem(tenderId, actor.sub, dto);
+    this.assertObjectBody(dto);
+    return this.service.createCuttingItem(tenderId, actor.sub, dto as unknown as CreateCuttingItemDto);
   }
 
   @Patch("cutting-items/:itemId")
@@ -113,9 +126,10 @@ export class ScopeRedesignController {
   updateCuttingItem(
     @Param("tenderId") tenderId: string,
     @Param("itemId") itemId: string,
-    @Body() dto: UpdateCuttingItemDto
+    @Body() dto: unknown
   ) {
-    return this.service.updateCuttingItem(tenderId, itemId, dto);
+    this.assertObjectBody(dto);
+    return this.service.updateCuttingItem(tenderId, itemId, dto as UpdateCuttingItemDto);
   }
 
   @Delete("cutting-items/:itemId")

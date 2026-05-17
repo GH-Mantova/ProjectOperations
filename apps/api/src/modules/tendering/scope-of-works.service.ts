@@ -19,6 +19,7 @@ import {
   DISCIPLINE_ORDER,
   toPricingInput
 } from "./scope-item-pricing";
+import { computeDerivedDimensions } from "./scope-item-dimensions";
 
 // PR B4a.1 — defensive type narrowing for the Prisma.Decimal constructor.
 // CodeQL flagged the previous `value as number` cast as a "type confusion
@@ -46,47 +47,77 @@ export function toDecimal(value: unknown): Prisma.Decimal | null {
   return null;
 }
 
+// PR B4a.3 — call-site narrowing for DTO numeric fields. CodeQL's
+// dataflow analyzer is path-insensitive on object field accesses, so
+// it doesn't trace through the `typeof` guards inside `toDecimal` and
+// keeps flagging `new Prisma.Decimal(...)` as a tainted sink.
+// Narrowing at the call site (where CodeQL can see the typeof check)
+// clears the alert. The helper inside toDecimal still does the same
+// check — this is belt-and-braces, not a replacement.
+// See: https://codeql.github.com/codeql-query-help/javascript/js-type-confusion-through-parameter-tampering/
+export function narrowToNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed === "") return null;
+    const parsed = Number(trimmed);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
 function numericFieldsFrom(dto: Partial<UpdateScopeItemDto & CreateScopeItemDto>) {
+  // PR B4a.3 — every numeric DTO field flows through narrowToNumber at
+  // the call site (typeof check is visible to CodeQL's dataflow
+  // analyzer) before reaching the Prisma sink. Same narrowing already
+  // happens inside toDecimal; this is the documented mitigation
+  // pattern for js/type-confusion-through-parameter-tampering.
   return {
-    men: dto.men !== undefined ? toDecimal(dto.men) : undefined,
-    days: dto.days !== undefined ? toDecimal(dto.days) : undefined,
+    men: dto.men !== undefined ? toDecimal(narrowToNumber(dto.men)) : undefined,
+    days: dto.days !== undefined ? toDecimal(narrowToNumber(dto.days)) : undefined,
     shift: dto.shift,
-    sqm: dto.sqm !== undefined ? toDecimal(dto.sqm) : undefined,
-    m3: dto.m3 !== undefined ? toDecimal(dto.m3) : undefined,
+    sqm: dto.sqm !== undefined ? toDecimal(narrowToNumber(dto.sqm)) : undefined,
+    m3: dto.m3 !== undefined ? toDecimal(narrowToNumber(dto.m3)) : undefined,
     materialType: dto.materialType,
     cuttingEquipment: dto.cuttingEquipment,
     elevation: dto.elevation,
-    depthMm: dto.depthMm,
-    lm: dto.lm !== undefined ? toDecimal(dto.lm) : undefined,
-    coreHoleDiameterMm: dto.coreHoleDiameterMm,
-    coreHoleQty: dto.coreHoleQty !== undefined ? toDecimal(dto.coreHoleQty) : undefined,
+    depthMm: dto.depthMm !== undefined ? narrowToNumber(dto.depthMm) : undefined,
+    lm: dto.lm !== undefined ? toDecimal(narrowToNumber(dto.lm)) : undefined,
+    coreHoleDiameterMm:
+      dto.coreHoleDiameterMm !== undefined ? narrowToNumber(dto.coreHoleDiameterMm) : undefined,
+    coreHoleQty:
+      dto.coreHoleQty !== undefined ? toDecimal(narrowToNumber(dto.coreHoleQty)) : undefined,
     acmType: dto.acmType,
     acmMaterial: dto.acmMaterial,
     enclosureRequired: dto.enclosureRequired,
     airMonitoring: dto.airMonitoring,
-    excavationDepthM: dto.excavationDepthM !== undefined ? toDecimal(dto.excavationDepthM) : undefined,
+    excavationDepthM:
+      dto.excavationDepthM !== undefined ? toDecimal(narrowToNumber(dto.excavationDepthM)) : undefined,
     excavationMaterial: dto.excavationMaterial,
     machineSize: dto.machineSize,
     wasteType: dto.wasteType,
     wasteFacility: dto.wasteFacility,
-    wasteTonnes: dto.wasteTonnes !== undefined ? toDecimal(dto.wasteTonnes) : undefined,
-    wasteLoads: dto.wasteLoads,
-    wasteM3: dto.wasteM3 !== undefined ? toDecimal(dto.wasteM3) : undefined,
-    excavatorDays: dto.excavatorDays !== undefined ? toDecimal(dto.excavatorDays) : undefined,
-    bobcatDays: dto.bobcatDays !== undefined ? toDecimal(dto.bobcatDays) : undefined,
-    ewpDays: dto.ewpDays !== undefined ? toDecimal(dto.ewpDays) : undefined,
-    hookTruckDays: dto.hookTruckDays !== undefined ? toDecimal(dto.hookTruckDays) : undefined,
-    semiTipperDays: dto.semiTipperDays !== undefined ? toDecimal(dto.semiTipperDays) : undefined,
+    wasteTonnes: dto.wasteTonnes !== undefined ? toDecimal(narrowToNumber(dto.wasteTonnes)) : undefined,
+    wasteLoads: dto.wasteLoads !== undefined ? narrowToNumber(dto.wasteLoads) : undefined,
+    wasteM3: dto.wasteM3 !== undefined ? toDecimal(narrowToNumber(dto.wasteM3)) : undefined,
+    excavatorDays: dto.excavatorDays !== undefined ? toDecimal(narrowToNumber(dto.excavatorDays)) : undefined,
+    bobcatDays: dto.bobcatDays !== undefined ? toDecimal(narrowToNumber(dto.bobcatDays)) : undefined,
+    ewpDays: dto.ewpDays !== undefined ? toDecimal(narrowToNumber(dto.ewpDays)) : undefined,
+    hookTruckDays: dto.hookTruckDays !== undefined ? toDecimal(narrowToNumber(dto.hookTruckDays)) : undefined,
+    semiTipperDays: dto.semiTipperDays !== undefined ? toDecimal(narrowToNumber(dto.semiTipperDays)) : undefined,
     assetId: dto.assetId,
     notes: dto.notes,
     // Redesign additions.
-    measurementQty: dto.measurementQty !== undefined ? toDecimal(dto.measurementQty) : undefined,
+    measurementQty:
+      dto.measurementQty !== undefined ? toDecimal(narrowToNumber(dto.measurementQty)) : undefined,
     measurementUnit: dto.measurementUnit,
     material: dto.material,
     plantAssetId: dto.plantAssetId,
     wasteGroup: dto.wasteGroup,
     provisionalAmount:
-      dto.provisionalAmount !== undefined ? toDecimal(dto.provisionalAmount) : undefined,
+      dto.provisionalAmount !== undefined
+        ? toDecimal(narrowToNumber(dto.provisionalAmount))
+        : undefined,
     // Scope redesign v2 (PR #71). plantItems + measurements stored as
     // JSONB arrays. We pass through the DTO value directly; shape is
     // enforced by the class-validator shape hints in the DTO file.
@@ -94,14 +125,96 @@ function numericFieldsFrom(dto: Partial<UpdateScopeItemDto & CreateScopeItemDto>
       dto.plantItems !== undefined ? (dto.plantItems as unknown as Prisma.InputJsonValue) : undefined,
     measurements:
       dto.measurements !== undefined ? (dto.measurements as unknown as Prisma.InputJsonValue) : undefined,
-    // PR B1.6 — canonical items table columns. unit + value drive the
-    // waste summary calc (B3); wasteItem completes the group/item pair;
-    // wasteIncluded flags whether this row contributes to the auto
-    // waste summary rows.
+    // PR B1.6 — canonical items table columns. wasteItem completes the
+    // group/item pair; wasteIncluded flags this row for the waste
+    // aggregator.
+    // @deprecated PR B4a — unit + value no longer drive the waste
+    // aggregator (superseded by tonnes/m3 dimension fields below).
     unit: dto.unit,
-    value: dto.value !== undefined ? toDecimal(dto.value) : undefined,
+    value: dto.value !== undefined ? toDecimal(narrowToNumber(dto.value)) : undefined,
     wasteItem: dto.wasteItem,
-    wasteIncluded: dto.wasteIncluded
+    wasteIncluded: dto.wasteIncluded,
+    // PR B4a — dimension fields. sqm/m3/tonnes are derived server-side
+    // in createItem/updateItem via computeDerivedDimensions; raw inputs
+    // (length/height/depth/density/chargeBy/cuttingIncluded) pass
+    // through here.
+    length: dto.length !== undefined ? toDecimal(narrowToNumber(dto.length)) : undefined,
+    height: dto.height !== undefined ? toDecimal(narrowToNumber(dto.height)) : undefined,
+    depth: dto.depth !== undefined ? toDecimal(narrowToNumber(dto.depth)) : undefined,
+    density: dto.density !== undefined ? toDecimal(narrowToNumber(dto.density)) : undefined,
+    tonnes: dto.tonnes !== undefined ? toDecimal(narrowToNumber(dto.tonnes)) : undefined,
+    chargeBy: dto.chargeBy,
+    cuttingIncluded: dto.cuttingIncluded
+  };
+}
+
+// PR B4a — fold computeDerivedDimensions into the persisted record.
+//
+// The DB can't tell a derived sqm from a user-typed override, so:
+//   - Raw fields (length/height/depth/density) fall back to the existing
+//     row when the DTO didn't supply them — they have a single stored
+//     meaning (the raw input).
+//   - Override fields (sqm/m3/tonnes) only count as overrides when the
+//     DTO actually sent them. If the DTO didn't touch them, treat as
+//     "no override, derive from raw" — preventing stale derivations
+//     from freezing the value across partial patches.
+//
+// PR B4a.2 — early-return when the DTO doesn't touch ANY dimension
+// field. A partial PATCH that only updates eg. notes or wasteIncluded
+// must not re-derive sqm/m3/tonnes from the current raw inputs —
+// doing so would destroy a previously-saved explicit override (the
+// DB can't tell us which side a stored sqm came from). The frontend's
+// controlled-input model ships the full dimension picture whenever
+// any one dimension changes; with that contract, "DTO has no
+// dimension field" reliably means "leave dimensions untouched."
+function deriveDimensionFields(
+  base: ReturnType<typeof numericFieldsFrom>,
+  existing?: {
+    length?: Prisma.Decimal | null;
+    height?: Prisma.Decimal | null;
+    depth?: Prisma.Decimal | null;
+    density?: Prisma.Decimal | null;
+  } | null
+): ReturnType<typeof numericFieldsFrom> {
+  const touchesDimensions =
+    base.length !== undefined ||
+    base.height !== undefined ||
+    base.depth !== undefined ||
+    base.density !== undefined ||
+    base.sqm !== undefined ||
+    base.m3 !== undefined ||
+    base.tonnes !== undefined;
+  if (!touchesDimensions) return base;
+
+  const dec = (v: Prisma.Decimal | null | undefined): number | null =>
+    v === null || v === undefined ? null : Number(v);
+
+  // Raw inputs: DTO patch wins, else existing row, else null.
+  const length = base.length !== undefined ? dec(base.length as Prisma.Decimal | null) : dec(existing?.length ?? null);
+  const height = base.height !== undefined ? dec(base.height as Prisma.Decimal | null) : dec(existing?.height ?? null);
+  const depth = base.depth !== undefined ? dec(base.depth as Prisma.Decimal | null) : dec(existing?.depth ?? null);
+  const density = base.density !== undefined ? dec(base.density as Prisma.Decimal | null) : dec(existing?.density ?? null);
+
+  // Overrides: only honoured when the DTO sent them. Undefined → null
+  // (derive). Null → null (user cleared, derive). Number → override.
+  const sqmOverride = base.sqm !== undefined ? dec(base.sqm as Prisma.Decimal | null) : null;
+  const m3Override = base.m3 !== undefined ? dec(base.m3 as Prisma.Decimal | null) : null;
+  const tonnesOverride = base.tonnes !== undefined ? dec(base.tonnes as Prisma.Decimal | null) : null;
+
+  const derived = computeDerivedDimensions({
+    length,
+    height,
+    depth,
+    density,
+    sqm: sqmOverride,
+    m3: m3Override,
+    tonnes: tonnesOverride
+  });
+  return {
+    ...base,
+    sqm: toDecimal(derived.sqm),
+    m3: toDecimal(derived.m3),
+    tonnes: toDecimal(derived.tonnes)
   };
 }
 
@@ -226,7 +339,7 @@ export class ScopeOfWorksService {
         status: "confirmed",
         aiProposed: false,
         createdById: actorId,
-        ...numericFieldsFrom(dto)
+        ...deriveDimensionFields(numericFieldsFrom(dto))
       }
     });
   }
@@ -258,7 +371,7 @@ export class ScopeOfWorksService {
         rowType: dto.rowType,
         status: dto.status,
         sortOrder: dto.sortOrder,
-        ...numericFieldsFrom(dto)
+        ...deriveDimensionFields(numericFieldsFrom(dto), existing)
       },
       include: { card: true }
     });

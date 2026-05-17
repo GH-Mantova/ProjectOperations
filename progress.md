@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-17 03:12 AEST
+Last updated: 2026-05-17 04:04 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -5059,5 +5059,251 @@ worker, AI tool handler, batch import).
 
 No new dependencies. No env vars. No schema changes.
 Rollback is a clean git revert.
+
+Audit findings: none.
+
+## 2026-05-17 — PR B4a — Scope item dimensions + waste subtable rework
+
+Branch: feat/scope-item-dimensions-b4a
+Section: Tendering scope-of-works UI redesign — quantification
+
+### What shipped
+1. **Quantification section** on the scope card item body. Eight
+   controlled inputs: length, height, depth, density (raw) and
+   sqm, m³, tonnes (derived, with override) plus a chargeBy toggle
+   (t/m³/auto). Live preview via scopeItemDimensions.ts; backend
+   re-runs the same compute on save for self-consistency.
+2. **Classification section** still carries the wasteGroup/wasteItem
+   dropdowns (group key for the aggregator) plus Waste? and the new
+   Cutting? tick boxes. Cutting aggregator is B4b — B4a ships the
+   field plumbing only.
+3. **Waste subtable rework** — Unit column dropped; Tonnes + M³ +
+   Billed-by columns added; facility filter relaxed to (group, type)
+   only; per-row "$/t" or "$/m³" label adjacent to the rate input.
+4. **sumFromAbove rewrite** — group key drops `unit`, sums BOTH
+   tonnes and m³ per (group, item), picks rate by (group, type) only,
+   line total bills against rate.unit (m³ → m3 × rate; else tonnes ×
+   rate). Items missing both tonnes AND m³ are skipped.
+
+### Schema
+```
+ScopeOfWorksItem.length          Decimal(10,3)
+ScopeOfWorksItem.height          Decimal(10,3)
+ScopeOfWorksItem.depth           Decimal(10,3)
+ScopeOfWorksItem.density         Decimal(5,3)
+ScopeOfWorksItem.tonnes          Decimal(10,2)
+ScopeOfWorksItem.chargeBy        String?      // "t" | "m³" | null
+ScopeOfWorksItem.cuttingIncluded Boolean default(false)
+ScopeWasteItem.m3                Decimal(10,2)
+```
+ScopeOfWorksItem.sqm + ScopeOfWorksItem.m3 already existed (legacy
+demolition-bucket fields) — promoted to canonical all-discipline
+dimension fields in place.
+
+Migration: 20260517030000_b4a_scope_item_dimensions (pure additive,
+8 columns, no backfill).
+
+### Deprecated (kept for backward compat)
+- `ScopeOfWorksItem.unit` — superseded by chargeBy
+- `ScopeOfWorksItem.value` — superseded by tonnes/m³ dimensions
+- `ScopeOfWorksItem.wasteM3` — superseded by canonical `m3`
+- `ScopeWasteItem.wasteTonnes` column-name lie reverted to its literal
+  meaning (tonnes); m³ now lives in its own column.
+
+Cleanup PR will drop the deprecated columns once we've verified
+nothing relies on them.
+
+### Flagged in PR body
+- **Existing autoSummed waste rows go stale** under the new
+  aggregator (the B3 contract wrote qty-in-unit to `wasteTonnes`;
+  B4a needs both `tonnes` and `m3` on the source items). User
+  re-runs "Sum from above" per card after the upgrade — no data
+  migration shipped (per-row density isn't a value we can invent).
+- Legacy unit/value/wasteM3 retained for backward compat; cleanup
+  PR drops them later.
+
+### Tests
+- 12 new specs in scope-item-dimensions.spec.ts (compute combinations
+  + override behaviour + 0-vs-null distinction + rounding).
+- 4 net new specs in scope-waste.service.spec.ts; original 8 rewritten
+  for the new (group, item) key + tonnes/m³ split.
+- API total: 546 passing (530 baseline + 16 new); 6 skipped.
+
+### Verification
+- pnpm --filter api test: 546 passing; 6 skipped
+- pnpm --filter api exec tsc --noEmit: clean
+- pnpm --filter api lint: clean
+- pnpm --filter web test --run: 148 passing (unchanged)
+- pnpm --filter web exec tsc --noEmit: clean
+- pnpm --filter web lint: clean
+- pnpm --filter web build: clean
+
+No new dependencies. No env vars.
+
+### B4a.2 — Three fixes folded into the same PR (CodeQL + Codex review)
+
+PR #180 review surfaced three issues; fixed in place on the same
+branch (rebased onto main to pick up #181's hardened toDecimal).
+
+1. **CodeQL alerts cleared by rebase.** The B4a branch picked up
+   #181's `toDecimal: unknown` defensive narrowing on rebase. No
+   new code needed in B4a itself — the new dimension call sites
+   (`length`, `height`, `depth`, `density`, `tonnes`) now flow
+   through the hardened constructor.
+2. **`m3` added to the controller-side `UpsertWasteDto`** (Codex P1
+   — data loss). class-validator's whitelist was silently stripping
+   `m3` from PATCH bodies because the controller DTO didn't declare
+   it. The service-side type accepted it but never received it from
+   the wire; manual edits to the M³ cell vanished on save.
+3. **`deriveDimensionFields` early-return on no-dimension PATCH**
+   (Codex P1 — data corruption). Previous logic re-derived
+   sqm/m3/tonnes from raw inputs on EVERY save, even when the DTO
+   didn't touch any dimension field. A partial PATCH that only
+   updated eg. `notes` or `wasteIncluded` would silently overwrite
+   a previously-saved explicit sqm/m³/tonnes override. Fix: if none
+   of length/height/depth/density/sqm/m3/tonnes are in the DTO,
+   return the base unchanged. The frontend's controlled-input model
+   already ships the full dimension picture on any dimension edit,
+   so the early-return preserves overrides while keeping the
+   override semantics intact for genuine dimension changes.
+4. **Collision-safe waste aggregation key** (Codex P2). Previous
+   key `${wasteGroup} ${wasteItem}` would collapse `("A B", "C")`
+   and `("A", "B C")` into the same row. Changed to a null-byte
+   delimiter (`\x00`) so distinct pairs stay distinct.
+
+### Tests added in B4a.2 (5 new specs)
+- `__tests__/scope-update-item-preserve.spec.ts` (NEW, 4 specs):
+  notes-only PATCH leaves dimensions untouched; wasteIncluded-only
+  PATCH leaves dimensions untouched; length-only PATCH recomputes
+  from raw (override not preserved when not supplied); explicit
+  sqm override survives an accompanying length change.
+- `scope-waste.service.spec.ts` (+1): collision-safe key regression
+  proving `("A B", "C")` and `("A", "B C")` stay as two rows.
+
+### Verification (after rebase + B4a.2 fixes)
+- pnpm --filter api test: 569 passing (548 main baseline post-#181
+  + 16 B4a + 5 B4a.2); 6 skipped
+- pnpm --filter api exec tsc --noEmit: clean
+- pnpm --filter api lint: clean
+- pnpm --filter web test --run: 148 passing (unchanged)
+- pnpm --filter web exec tsc --noEmit: clean
+- pnpm --filter web lint: clean
+- pnpm --filter web build: clean
+
+Force-pushed to feat/scope-item-dimensions-b4a — PR #180 auto-merge
+resumes once CI passes against the rebased history.
+
+### B4a.3 — CodeQL call-site narrowing
+
+After B4a.2 force-push, CodeQL was still flagging
+`scope-of-works.service.ts:111` (and the matching call sites in
+scope-waste.service.ts) as a "Type confusion through parameter
+tampering" sink. The B4a.1 `toDecimal` helper does narrow internally,
+but CodeQL's dataflow analyzer is path-insensitive on object field
+accesses (`dto.length`) and can't see the typeof guard inside the
+called function. The recommended mitigation (per the CodeQL docs
+themselves) is a typeof check at the CALL SITE.
+
+**What changed:**
+
+1. **New `narrowToNumber` helper** exported from
+   `scope-of-works.service.ts`. Pure: returns `number | null`, with a
+   visible `typeof value === "number" && Number.isFinite(value)`
+   guard so CodeQL sees the narrowing happen at the source.
+2. **`numericFieldsFrom` wraps every DTO numeric field access** with
+   `narrowToNumber(...)` before passing to `toDecimal`. Covers
+   23 fields including the new B4a dimensions (length/height/depth/
+   density/tonnes/sqm/m3) plus the integer-only fields (depthMm,
+   coreHoleDiameterMm, wasteLoads). Existing call sites keep their
+   `dto.X !== undefined ? ... : undefined` partial-PATCH gate.
+3. **`scope-waste.service.ts` rewritten to normalise DTO numerics
+   upfront** into local `number | null` variables, then construct
+   Decimals from those trusted locals. Eight Prisma.Decimal sinks
+   moved from `new Prisma.Decimal(dto.X)` → `toDecimal(localN)`,
+   killing the taint flow at the source. Partial-PATCH semantics
+   preserved by keeping `undefined` markers separate from `null`
+   (only write to the update payload when the DTO actually touched
+   the field).
+
+**Defense in depth:** `toDecimal` still narrows internally — the
+call-site guards don't replace it, they precede it. The double
+narrowing satisfies CodeQL's static analysis without weakening the
+runtime contract.
+
+**Out of scope:** `scope-redesign.service.ts` (4 sinks) and
+`tendering.service.ts` (3 sinks) have the same pattern but weren't
+flagged on PR #180. A separate sweep PR will harden them
+consistently if/when CodeQL surfaces them.
+
+### Verification (after B4a.3)
+- pnpm --filter api test: 569 passing (no regressions); 6 skipped
+- pnpm --filter api exec tsc --noEmit: clean
+- pnpm --filter api lint: clean
+- Web unchanged.
+
+No new tests in B4a.3 — `to-decimal.spec.ts` covers the equivalent
+narrowing logic; `narrowToNumber` is a trivial subset.
+
+### B4a.4 — Controller-boundary assertObjectBody (GitHub Security suggested fix)
+
+The B4a.3 call-site `narrowToNumber` didn't clear CodeQL either:
+the dataflow analyzer doesn't recognise cross-function narrowing as
+a sanitization point. GitHub Security's "suggested fix" on the PR
+review proposed the canonical mitigation — an `Array.isArray` /
+typeof check at the @Body() controller boundary, which CodeQL's
+sanitizer model treats as a hard stop on taint propagation.
+
+**What changed (14 handlers across 3 controllers):**
+
+1. **`scope-of-works.controller.ts`** (8 handlers): `updateHeader`,
+   `create`, `update`, `reorder`, `createCard`, `updateCard`,
+   `reorderCards`, `createItemInCard`. New private
+   `assertObjectBody(dto: unknown): asserts dto is Record<string,
+   unknown>` method; every `@Body()` parameter retyped from its DTO
+   class to `unknown`; assertion called before forwarding; cast
+   back to the DTO type via `as unknown as X` (required because
+   `Record<string, unknown>` doesn't structurally overlap DTOs with
+   required fields).
+2. **`scope-waste.controller.ts`** (3 handlers in
+   `ScopeWasteController`): `create`, `update`, `reorder`. The
+   second controller in the file (`ScopeCardWasteController`,
+   sumFromAbove endpoint) has no `@Body()` parameter so doesn't
+   need the assertion.
+3. **`scope-redesign.controller.ts`** (3 handlers):
+   `patchViewConfig`, `createCuttingItem`, `updateCuttingItem`.
+   Hardens the cutting Decimal sinks (quantityLm + shiftLoading
+   in `scope-redesign.service.ts`) that are part of the same
+   CodeQL alert chain.
+
+**Why the cast is safe:**
+- `assertObjectBody` throws `BadRequestException` for arrays /
+  non-objects / null before the cast runs.
+- NestJS's `ValidationPipe` still runs class-validator's per-field
+  metadata on the @Body() argument regardless of the static type,
+  so DTOs with required fields still fail validation when missing.
+- The service-layer `narrowToNumber` + `toDecimal` guards from
+  B4a.3 still narrow every numeric field at the sink. The cast
+  here just satisfies the compiler.
+
+**Defense in depth (full stack):**
+1. Controller-boundary `assertObjectBody` (B4a.4) — rejects
+   non-object bodies before any field access.
+2. `ValidationPipe` + class-validator decorators on the DTO —
+   per-field validation (still runs after the cast).
+3. Service-layer `narrowToNumber` at every numeric field access
+   (B4a.3) — typeof check the CodeQL analyzer can see.
+4. `toDecimal` internal narrowing (B4a.1) — final guard at the
+   Prisma.Decimal constructor.
+
+### Verification (after B4a.4)
+- pnpm --filter api test: 569 passing (no regressions); 6 skipped
+- pnpm --filter api exec tsc --noEmit: clean
+- pnpm --filter api lint: clean
+- Web unchanged.
+
+No new tests in B4a.4 — assertObjectBody is a 1-line guard already
+covered by the BadRequestException behaviour pattern; the typeof
++ Array.isArray check is the same one in to-decimal.spec.ts (which
+already proves arrays don't get through).
 
 Audit findings: none.

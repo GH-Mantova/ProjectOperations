@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { narrowToNumber, toDecimal } from "./scope-of-works.service";
 
 type UpsertWasteDto = {
   discipline?: string;
@@ -12,6 +13,9 @@ type UpsertWasteDto = {
   wasteFacility?: string | null;
   unit?: string | null;
   wasteTonnes?: number | null;
+  // PR B4a — m³ companion to wasteTonnes. Manual create/edit accepts
+  // either; the sumFromAbove aggregator writes both.
+  m3?: number | null;
   wasteLoads?: number | null;
   ratePerTonne?: number | null;
   ratePerLoad?: number | null;
@@ -44,7 +48,22 @@ export class ScopeWasteService {
   async create(tenderId: string, actorId: string, dto: UpsertWasteDto) {
     if (!dto.description) throw new BadRequestException("description is required.");
     if (!dto.discipline) throw new BadRequestException("discipline is required.");
-    const { truckDays, lineTotal } = this.deriveTotals(dto.wasteTonnes, dto.wasteLoads, dto.ratePerTonne, dto.ratePerLoad);
+    // PR B4a.3 — narrow DTO numerics at the call site so CodeQL's
+    // dataflow analyzer can see the typeof guards. Downstream Decimal
+    // constructors then operate on trusted `number | null` locals.
+    const tonnesN = narrowToNumber(dto.wasteTonnes);
+    const m3N = narrowToNumber(dto.m3);
+    const loadsN = narrowToNumber(dto.wasteLoads);
+    const ratePerTonneN = narrowToNumber(dto.ratePerTonne);
+    const ratePerLoadN = narrowToNumber(dto.ratePerLoad);
+    const { truckDays, lineTotal } = this.deriveTotals(
+      tonnesN,
+      m3N,
+      loadsN,
+      ratePerTonneN,
+      ratePerLoadN,
+      dto.unit
+    );
     return this.prisma.scopeWasteItem.create({
       data: {
         tenderId,
@@ -56,12 +75,13 @@ export class ScopeWasteService {
         wasteType: dto.wasteType ?? null,
         wasteFacility: dto.wasteFacility ?? null,
         unit: dto.unit ?? null,
-        wasteTonnes: dto.wasteTonnes !== undefined && dto.wasteTonnes !== null ? new Prisma.Decimal(dto.wasteTonnes) : null,
-        wasteLoads: dto.wasteLoads ?? null,
-        truckDays: truckDays !== null ? new Prisma.Decimal(truckDays) : null,
-        ratePerTonne: dto.ratePerTonne !== undefined && dto.ratePerTonne !== null ? new Prisma.Decimal(dto.ratePerTonne) : null,
-        ratePerLoad: dto.ratePerLoad !== undefined && dto.ratePerLoad !== null ? new Prisma.Decimal(dto.ratePerLoad) : null,
-        lineTotal: lineTotal !== null ? new Prisma.Decimal(lineTotal) : null,
+        wasteTonnes: toDecimal(tonnesN),
+        m3: toDecimal(m3N),
+        wasteLoads: loadsN,
+        truckDays: toDecimal(truckDays),
+        ratePerTonne: toDecimal(ratePerTonneN),
+        ratePerLoad: toDecimal(ratePerLoadN),
+        lineTotal: toDecimal(lineTotal),
         notes: dto.notes ?? null,
         sortOrder: dto.sortOrder ?? 0,
         // PR B3 — manual creates default autoSummed=false. Only
@@ -77,11 +97,24 @@ export class ScopeWasteService {
     if (!existing || existing.tenderId !== tenderId) {
       throw new NotFoundException("Waste item not found on this tender.");
     }
-    const tonnes = dto.wasteTonnes !== undefined ? dto.wasteTonnes : existing.wasteTonnes ? Number(existing.wasteTonnes) : null;
-    const loads = dto.wasteLoads !== undefined ? dto.wasteLoads : existing.wasteLoads;
-    const ratePerTonne = dto.ratePerTonne !== undefined ? dto.ratePerTonne : existing.ratePerTonne ? Number(existing.ratePerTonne) : null;
-    const ratePerLoad = dto.ratePerLoad !== undefined ? dto.ratePerLoad : existing.ratePerLoad ? Number(existing.ratePerLoad) : null;
-    const { truckDays, lineTotal } = this.deriveTotals(tonnes, loads, ratePerTonne, ratePerLoad);
+    // PR B4a.3 — narrow DTO numerics at the call site. The resulting
+    // locals are typed `number | null` so CodeQL no longer flags the
+    // downstream Prisma.Decimal constructors as tainted sinks.
+    const dtoTonnesN = dto.wasteTonnes === undefined ? undefined : narrowToNumber(dto.wasteTonnes);
+    const dtoM3N = dto.m3 === undefined ? undefined : narrowToNumber(dto.m3);
+    const dtoLoadsN = dto.wasteLoads === undefined ? undefined : narrowToNumber(dto.wasteLoads);
+    const dtoRatePerTonneN = dto.ratePerTonne === undefined ? undefined : narrowToNumber(dto.ratePerTonne);
+    const dtoRatePerLoadN = dto.ratePerLoad === undefined ? undefined : narrowToNumber(dto.ratePerLoad);
+
+    // Compute effective values for the totals: DTO value (narrowed) wins
+    // when present; otherwise fall back to existing row.
+    const tonnes = dtoTonnesN !== undefined ? dtoTonnesN : existing.wasteTonnes ? Number(existing.wasteTonnes) : null;
+    const m3 = dtoM3N !== undefined ? dtoM3N : existing.m3 ? Number(existing.m3) : null;
+    const loads = dtoLoadsN !== undefined ? dtoLoadsN : existing.wasteLoads;
+    const ratePerTonne = dtoRatePerTonneN !== undefined ? dtoRatePerTonneN : existing.ratePerTonne ? Number(existing.ratePerTonne) : null;
+    const ratePerLoad = dtoRatePerLoadN !== undefined ? dtoRatePerLoadN : existing.ratePerLoad ? Number(existing.ratePerLoad) : null;
+    const unit = dto.unit !== undefined ? dto.unit : existing.unit;
+    const { truckDays, lineTotal } = this.deriveTotals(tonnes, m3, loads, ratePerTonne, ratePerLoad, unit);
     const data: Prisma.ScopeWasteItemUpdateInput = {};
     if (dto.discipline !== undefined) data.discipline = dto.discipline;
     if (dto.wbsRef !== undefined) data.wbsRef = dto.wbsRef;
@@ -90,15 +123,13 @@ export class ScopeWasteService {
     if (dto.wasteType !== undefined) data.wasteType = dto.wasteType;
     if (dto.wasteFacility !== undefined) data.wasteFacility = dto.wasteFacility;
     if (dto.unit !== undefined) data.unit = dto.unit;
-    if (dto.wasteTonnes !== undefined)
-      data.wasteTonnes = dto.wasteTonnes === null ? null : new Prisma.Decimal(dto.wasteTonnes);
-    if (dto.wasteLoads !== undefined) data.wasteLoads = dto.wasteLoads;
-    if (dto.ratePerTonne !== undefined)
-      data.ratePerTonne = dto.ratePerTonne === null ? null : new Prisma.Decimal(dto.ratePerTonne);
-    if (dto.ratePerLoad !== undefined)
-      data.ratePerLoad = dto.ratePerLoad === null ? null : new Prisma.Decimal(dto.ratePerLoad);
-    data.truckDays = truckDays !== null ? new Prisma.Decimal(truckDays) : null;
-    data.lineTotal = lineTotal !== null ? new Prisma.Decimal(lineTotal) : null;
+    if (dtoTonnesN !== undefined) data.wasteTonnes = toDecimal(dtoTonnesN);
+    if (dtoM3N !== undefined) data.m3 = toDecimal(dtoM3N);
+    if (dtoLoadsN !== undefined) data.wasteLoads = dtoLoadsN;
+    if (dtoRatePerTonneN !== undefined) data.ratePerTonne = toDecimal(dtoRatePerTonneN);
+    if (dtoRatePerLoadN !== undefined) data.ratePerLoad = toDecimal(dtoRatePerLoadN);
+    data.truckDays = toDecimal(truckDays);
+    data.lineTotal = toDecimal(lineTotal);
     if (dto.notes !== undefined) data.notes = dto.notes;
     if (dto.sortOrder !== undefined) data.sortOrder = dto.sortOrder;
     return this.prisma.scopeWasteItem.update({ where: { id }, data });
@@ -126,37 +157,55 @@ export class ScopeWasteService {
   }
 
   // CEILING(loads / 3) rounded up to nearest half-day.
-  // line total = tonnes * ratePerTonne + loads * ratePerLoad.
+  // PR B4a — line total now bills against EITHER tonnes OR m³ depending
+  // on the row's unit (which mirrors the facility's rate.unit). The
+  // `ratePerTonne` field name is a legacy column name; semantically it's
+  // "rate per billing unit" — same number regardless of which side the
+  // qty comes from.
+  //   unit === "m³":  qty = m3,          lineTotal = m3 * ratePerTonne + loads * ratePerLoad
+  //   else (default): qty = wasteTonnes, lineTotal = tonnes * ratePerTonne + loads * ratePerLoad
   private deriveTotals(
     tonnes: number | null | undefined,
+    m3: number | null | undefined,
     loads: number | null | undefined,
     ratePerTonne: number | null | undefined,
-    ratePerLoad: number | null | undefined
+    ratePerLoad: number | null | undefined,
+    unit: string | null | undefined
   ): { truckDays: number | null; lineTotal: number | null } {
     const truckDays =
       loads === null || loads === undefined ? null : Math.ceil((loads / 3) * 2) / 2;
+    const qty = unit === "m³" ? m3 : tonnes;
     let lineTotal: number | null = null;
-    if ((tonnes !== null && tonnes !== undefined && ratePerTonne !== null && ratePerTonne !== undefined) ||
+    if ((qty !== null && qty !== undefined && ratePerTonne !== null && ratePerTonne !== undefined) ||
         (loads !== null && loads !== undefined && ratePerLoad !== null && ratePerLoad !== undefined)) {
-      const t = tonnes ?? 0;
+      const q = qty ?? 0;
       const rt = ratePerTonne ?? 0;
       const l = loads ?? 0;
       const rl = ratePerLoad ?? 0;
-      lineTotal = Math.round((t * rt + l * rl) * 100) / 100;
+      lineTotal = Math.round((q * rt + l * rl) * 100) / 100;
     }
     return { truckDays, lineTotal };
   }
 
   /**
-   * PR B3 — "Sum from above" aggregator. Reads canonical scope items
-   * for the card, groups items where wasteIncluded=true by
-   * (wasteGroup, wasteItem, unit), sums their `value`, picks the first
-   * active EstimateWasteRate matching (group, type, unit), and
-   * REPLACES the existing autoSummed=true waste rows for the card in a
-   * single transaction.
+   * "Sum from above" aggregator. Reads canonical scope items for the
+   * card, groups items where wasteIncluded=true by (wasteGroup,
+   * wasteItem), sums both `tonnes` and `m3`, picks the first active
+   * EstimateWasteRate matching (group, type), and REPLACES the existing
+   * autoSummed=true waste rows for the card in a single transaction.
    *
    * Manual rows (autoSummed=false) are untouched. Returns the count of
    * rows replaced and the count of new rows created.
+   *
+   * PR B4a — the group key dropped `unit` (a single group can now sum
+   * across different scope items regardless of how they were
+   * dimensioned), the per-row qty is now BOTH tonnes and m³, and the
+   * line total bills against whichever side matches the facility's
+   * rate.unit. Items missing both tonnes AND m³ are skipped.
+   *
+   * Existing autoSummed rows that were created under the B3 contract
+   * are deleted on first regeneration — see PR body for the migration
+   * note (user re-runs Sum from above per card after the upgrade).
    */
   async sumFromAbove(tenderId: string, cardId: string, actorId: string) {
     const card = await this.prisma.scopeCard.findFirst({
@@ -172,59 +221,72 @@ export class ScopeWasteService {
           wasteIncluded: true,
           wasteGroup: true,
           wasteItem: true,
-          unit: true,
-          value: true
+          tonnes: true,
+          m3: true
         }
       }),
       this.prisma.estimateWasteRate.findMany({ where: { isActive: true } })
     ]);
 
-    // Aggregate by (wasteGroup, wasteItem, unit). Skip items missing
-    // any required field — they can't be summarised meaningfully.
+    // Aggregate by (wasteGroup, wasteItem). Skip items missing the
+    // group/item pair or with neither tonnes nor m³ contributing.
     type GroupKey = string;
     const totals = new Map<
       GroupKey,
-      { wasteGroup: string; wasteType: string; unit: string; qty: number }
+      { wasteGroup: string; wasteType: string; tonnes: number; m3: number }
     >();
     for (const i of items) {
       if (!i.wasteIncluded) continue;
-      if (!i.wasteGroup || !i.wasteItem || !i.unit) continue;
-      const qty = i.value == null ? 0 : Number(i.value);
-      if (!(qty > 0)) continue;
-      const key = `${i.wasteGroup} ${i.wasteItem} ${i.unit}`;
+      if (!i.wasteGroup || !i.wasteItem) continue;
+      const tonnes = i.tonnes == null ? 0 : Number(i.tonnes);
+      const m3 = i.m3 == null ? 0 : Number(i.m3);
+      if (!(tonnes > 0) && !(m3 > 0)) continue;
+      // PR B4a.2 — null-byte delimiter so a group/item pair like
+      // ("A B", "C") cannot collide with ("A", "B C"). User input
+      // never contains \x00 in practice, but a space delimiter would
+      // collapse those two distinct pairs into the same key.
+      const key = `${i.wasteGroup}\x00${i.wasteItem}`;
       const existing = totals.get(key);
       if (existing) {
-        existing.qty += qty;
+        existing.tonnes += tonnes;
+        existing.m3 += m3;
       } else {
         totals.set(key, {
           wasteGroup: i.wasteGroup,
           wasteType: i.wasteItem,
-          unit: i.unit,
-          qty
+          tonnes,
+          m3
         });
       }
     }
 
-    // Resolve a facility + tonRate per group, picking the first active
-    // (group, type, unit) match. null when no rate exists — frontend
-    // renders the row with an amber warning tint.
+    // Resolve a facility + rate per group, picking the first active
+    // (group, type) match. Unit no longer narrows the rate lookup; the
+    // billing side comes from the rate's own unit. null when no rate
+    // exists; frontend renders the row with an amber warning tint.
     const rowsToInsert = Array.from(totals.values()).map((g, index) => {
       const rate = rates.find(
-        (r) => r.wasteGroup === g.wasteGroup && r.wasteType === g.wasteType && r.unit === g.unit
+        (r) => r.wasteGroup === g.wasteGroup && r.wasteType === g.wasteType
       );
       const tonRate = rate ? Number(rate.tonRate) : null;
-      const lineTotal = tonRate != null ? Math.round(g.qty * tonRate * 100) / 100 : null;
+      const billingUnit = rate?.unit ?? null;
+      const qtyForBilling = billingUnit === "m³" ? g.m3 : g.tonnes;
+      const lineTotal = tonRate != null ? Math.round(qtyForBilling * tonRate * 100) / 100 : null;
+      // Round persisted tonnes/m³ to match Decimal column precision.
+      const tonnesRounded = Math.round(g.tonnes * 1000) / 1000;
+      const m3Rounded = Math.round(g.m3 * 100) / 100;
       return {
         tenderId,
         cardId,
         discipline: card.discipline,
         wbsRef: null as string | null,
-        description: `${g.wasteType} (${g.unit})`,
+        description: g.wasteType,
         wasteGroup: g.wasteGroup,
         wasteType: g.wasteType,
         wasteFacility: rate?.facility ?? null,
-        unit: g.unit,
-        wasteTonnes: new Prisma.Decimal(g.qty), // column-name lie: qty-in-unit
+        unit: billingUnit,
+        wasteTonnes: new Prisma.Decimal(tonnesRounded),
+        m3: new Prisma.Decimal(m3Rounded),
         wasteLoads: null as number | null,
         truckDays: null as Prisma.Decimal | null,
         ratePerTonne: tonRate != null ? new Prisma.Decimal(tonRate) : null,

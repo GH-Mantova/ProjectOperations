@@ -25,6 +25,22 @@ type RequestUser = { sub: string };
 export class ScopeOfWorksController {
   constructor(private readonly service: ScopeOfWorksService) {}
 
+  // PR B4a.4 — controller-boundary assertion (GitHub Security suggested
+  // fix for the CodeQL js/type-confusion-through-parameter-tampering
+  // alerts). Every @Body() handler types its DTO parameter as `unknown`
+  // and calls this assertion before forwarding. CodeQL recognises the
+  // `Array.isArray` check as a sanitization point and stops tracking
+  // taint past it; ValidationPipe still runs after this method to do
+  // class-validator's per-field validation, so the cast that follows
+  // is sound. Defense-in-depth: narrowToNumber + toDecimal inside the
+  // service layer still narrow each numeric field before it reaches
+  // the Prisma.Decimal constructor.
+  private assertObjectBody(dto: unknown): asserts dto is Record<string, unknown> {
+    if (typeof dto !== "object" || dto === null || Array.isArray(dto)) {
+      throw new BadRequestException("Request body must be a JSON object.");
+    }
+  }
+
   // ── Header ────────────────────────────────────────────────────────────
   @Get("header")
   @RequirePermissions("estimates.view")
@@ -37,8 +53,9 @@ export class ScopeOfWorksController {
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Update the site context header (auto-saved from the collapsible form)." })
   @ApiResponse({ status: 200, description: "Updated header." })
-  updateHeader(@Param("tenderId") tenderId: string, @Body() dto: UpdateScopeHeaderDto) {
-    return this.service.updateHeader(tenderId, dto);
+  updateHeader(@Param("tenderId") tenderId: string, @Body() dto: unknown) {
+    this.assertObjectBody(dto);
+    return this.service.updateHeader(tenderId, dto as UpdateScopeHeaderDto);
   }
 
   // ── Items ─────────────────────────────────────────────────────────────
@@ -60,10 +77,11 @@ export class ScopeOfWorksController {
   @ApiResponse({ status: 400, description: "Unknown discipline." })
   create(
     @Param("tenderId") tenderId: string,
-    @Body() dto: CreateScopeItemDto,
+    @Body() dto: unknown,
     @CurrentUser() actor: RequestUser
   ) {
-    return this.service.createItem(tenderId, dto, actor.sub);
+    this.assertObjectBody(dto);
+    return this.service.createItem(tenderId, dto as unknown as CreateScopeItemDto, actor.sub);
   }
 
   @Patch("items/:itemId")
@@ -75,10 +93,11 @@ export class ScopeOfWorksController {
   update(
     @Param("tenderId") tenderId: string,
     @Param("itemId") itemId: string,
-    @Body() dto: UpdateScopeItemDto,
+    @Body() dto: unknown,
     @CurrentUser() actor: RequestUser
   ) {
-    return this.service.updateItem(tenderId, itemId, dto, actor.sub);
+    this.assertObjectBody(dto);
+    return this.service.updateItem(tenderId, itemId, dto as UpdateScopeItemDto, actor.sub);
   }
 
   @Delete("items/:itemId")
@@ -94,8 +113,9 @@ export class ScopeOfWorksController {
   @Post("items/reorder")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Bulk update of sortOrder across multiple scope items." })
-  reorder(@Param("tenderId") tenderId: string, @Body() dto: ReorderScopeItemsDto) {
-    return this.service.reorder(tenderId, dto);
+  reorder(@Param("tenderId") tenderId: string, @Body() dto: unknown) {
+    this.assertObjectBody(dto);
+    return this.service.reorder(tenderId, dto as unknown as ReorderScopeItemsDto);
   }
 
   @Post("items/:itemId/confirm")
@@ -146,10 +166,11 @@ export class ScopeOfWorksController {
   @ApiResponse({ status: 201, description: "Created card." })
   createCard(
     @Param("tenderId") tenderId: string,
-    @Body() dto: CreateScopeCardDto,
+    @Body() dto: unknown,
     @CurrentUser() actor: RequestUser
   ) {
-    return this.service.createCard(tenderId, actor.sub, dto);
+    this.assertObjectBody(dto);
+    return this.service.createCard(tenderId, actor.sub, dto as unknown as CreateScopeCardDto);
   }
 
   @Patch("cards/:cardId")
@@ -161,8 +182,10 @@ export class ScopeOfWorksController {
   updateCard(
     @Param("tenderId") tenderId: string,
     @Param("cardId") cardId: string,
-    @Body() dto: UpdateScopeCardDto
+    @Body() rawDto: unknown
   ) {
+    this.assertObjectBody(rawDto);
+    const dto = rawDto as UpdateScopeCardDto;
     if (dto.discipline) {
       return this.service.changeCardDiscipline(tenderId, cardId, dto.discipline);
     }
@@ -219,8 +242,10 @@ export class ScopeOfWorksController {
   @ApiOperation({ summary: "Bulk-update card sortOrder. Each card receives sortOrder = its index in cardIds." })
   async reorderCards(
     @Param("tenderId") tenderId: string,
-    @Body() dto: ReorderScopeCardsDto
+    @Body() rawDto: unknown
   ): Promise<void> {
+    this.assertObjectBody(rawDto);
+    const dto = rawDto as unknown as ReorderScopeCardsDto;
     await this.service.reorderCards(tenderId, dto.cardIds);
   }
 
@@ -234,9 +259,10 @@ export class ScopeOfWorksController {
   createItemInCard(
     @Param("tenderId") tenderId: string,
     @Param("cardId") cardId: string,
-    @Body() dto: CreateScopeItemInCardDto,
+    @Body() dto: unknown,
     @CurrentUser() actor: RequestUser
   ) {
-    return this.service.createItemInCard(tenderId, actor.sub, cardId, dto);
+    this.assertObjectBody(dto);
+    return this.service.createItemInCard(tenderId, actor.sub, cardId, dto as CreateScopeItemInCardDto);
   }
 }

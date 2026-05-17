@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-17 01:02 AEST
+Last updated: 2026-05-17 03:01 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -614,10 +614,35 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     renaming for clarity. Pure schema rename + Prisma update; no
     data migration required (just metadata).
 
-⏸️  PR B4 — Per-card concrete cutting subtable [previously B2]
-    Currently page-level under the tendering Scope tab. Moves to a
-    collapsible section inside each card body (alongside that card's items).
-    Renders cutting_sheet_items filtered by parent card's wbsCode prefix.
+✅  PR B4a — Scope item dimensions + waste subtable rework (2026-05-17)
+    Eight controlled dimension inputs (length, height, depth, density,
+    sqm, m³, tonnes, chargeBy) on the scope card item body with live
+    derive via a pure helper duplicated client + server. Backend
+    re-runs the same compute on save (deriveDimensionFields) so
+    persisted sqm/m³/tonnes are always self-consistent; explicit
+    overrides survive across partial PATCHes. Waste subtable: Unit
+    column dropped; Tonnes + M³ + Billed-by columns added; facility
+    filter relaxed to (group, type) only; per-row $/t or $/m³ label
+    next to the rate input. sumFromAbove rewrite: group key drops
+    unit, sums both tonnes and m³, picks rate by (group, type), bills
+    by rate.unit. Legacy ScopeOfWorksItem.unit/value and wasteM3 marked
+    @deprecated PR B4a (retained for backward compat; cleanup PR drops
+    them later). cuttingIncluded tick box wired + persisted; aggregator
+    deferred to B4b. Schema: 7 new fields on ScopeOfWorksItem + 1 (m3)
+    on ScopeWasteItem; migration 20260517030000_b4a_scope_item_dimensions
+    is pure additive. Tests: 530 → 546 API (+16: 12 dimensions helper
+    + 4 net new waste service); web 148 unchanged.
+    Flagged: existing autoSummed waste rows go stale on the new
+    aggregator — user re-runs Sum from above per card after the
+    upgrade (no data migration shipped; per-row density isn't a value
+    we can invent).
+
+⏸️  PR B4b — Cutting aggregator + per-card concrete cutting subtable
+    [previously B4] Currently page-level under the tendering Scope tab.
+    Moves to a collapsible section inside each card body alongside the
+    items. Renders cutting_sheet_items filtered by parent card's
+    wbsCode prefix. Wires the cuttingIncluded flag (shipped in B4a UI)
+    into a "Sum from above"–style aggregator for cutting lines.
 
 ✅  Discipline migration from 5-code to 4-code system (PR A1) — 2026-05-16
     Closed by PR A1 of the scope-of-works redesign chain (see

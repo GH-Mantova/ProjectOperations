@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-17 09:54 AEST
+Last updated: 2026-05-17 19:46 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -5649,3 +5649,38 @@ Result: 162/162 succeeded (HTTP 204), 0 already-gone, 0 failed,
   duration 149s. Final state: GitHub repo now shows 1 branch
   (main); audit-trail folder committed via a small chore PR.
 Status: COMPLETE
+
+## 2026-05-18 05:43 AEST — PR docs/discipline-codes-and-lessons-learned STARTED
+Type: PR (docs only)
+Branch: docs/discipline-codes-and-lessons-learned
+Detail: Two surgical doc updates committed together. (1)
+  project_instructions.md §10 — replace legacy 5-code scope
+  table with canonical 4-code (DEM/CIV/ASB/Other), add
+  migration-history sub-section pointing at PR A1. Drift
+  flagged during B4b investigation, deferred to a doc-only PR
+  by explicit decision. (2) New docs/lessons-learned/ folder +
+  first entry documenting Codex's P2 on PR #188 (migration
+  date-filter precision). Inline breadcrumb appended to the
+  PR #188 migration file pointing at the lessons-learned write-up.
+Status: IN_PROGRESS
+
+## 2026-05-18 05:43 AEST — PR docs/discipline-codes-and-lessons-learned OPENED
+Type: PR (docs only)
+Branch: docs/discipline-codes-and-lessons-learned
+PR: #[N]
+Status: WAITING_CI
+Detail: 5 file changes (1 modified §10, 2 new lessons-learned
+  files, 1 comment-only append to PR #188 migration, 1
+  progress.md update). No code, no schema, no migration, no
+  test changes. Prisma migrate status confirmed clean after
+  appending the lessons-learned comment to the existing
+  migration file.
+Files: project_instructions.md, docs/lessons-learned/README.md (new),
+  docs/lessons-learned/2026-05-17-migration-date-filter-precision.md (new),
+  apps/api/prisma/migrations/20260517090000_b_followup_cardid_not_null/migration.sql (comment-only +20 lines),
+  progress.md
+Pre-PR checks: 4/4 green (api+web lint + test); skipped build/
+  compliance:smoke/playwright — doc-only, no runtime impact.
+
+## 2026-05-18 [HH:MM] AEST — PR docs/discipline-codes-and-lessons-learned MERGED
+[filled in post-merge — Phase 8 task]

@@ -1,7 +1,7 @@
 # ProjectOperations — Project Instructions
 # Version: 1.1
 # Created: 2026-04-25 10:02 AEST
-# Last updated: 2026-05-17 07:27 AEST
+# Last updated: 2026-05-17 19:46 AEST
 # Maintained by: Claude Code (update after any architectural decision,
 #   module addition, business rule change, or workflow change)
 # Accessed by: All Claude chats in this project via web_fetch
@@ -348,14 +348,37 @@ ADMIN (Admin + Super User only — hidden for all other roles)
 
 ## SECTION 10 — ESTIMATING DOMAIN (permanent business logic)
 
-### Scope codes
-| Code | Discipline |
-|------|-----------|
-| SO | Strip-outs |
-| Str | Structural demolition |
-| Asb | Asbestos removal |
-| Civ | Civil works |
-| Prv | Provisional sums |
+### Scope codes (canonical 4-code system)
+
+Canonical source: `apps/api/src/modules/personas/definitions/disciplines.ts`
+
+| Code  | Discipline |
+| ---   | --- |
+| DEM   | Demolition |
+| CIV   | Civil works |
+| ASB   | Asbestos removal |
+| Other | Provisional, cost options, adjustments, and anything that doesn't fit DEM/CIV/ASB |
+
+### Migration history
+
+PR A1 (2026-05-16) migrated from a legacy 5-code system to the
+current 4-code system. Old code references in pre-2026-05-16
+progress.md entries, persona regression specs, and commit
+messages map as follows:
+
+| Legacy code                   | Current code |
+| ---                           | ---          |
+| SO  (Strip-outs)              | DEM          |
+| Str (Structural demolition)   | DEM          |
+| Asb (Asbestos removal)        | ASB          |
+| Civ (Civil works)             | CIV          |
+| Prv (Provisional sums)        | Other        |
+
+Both Strip-outs and Structural demolition collapsed into Demolition
+(DEM). Provisional sums moved into Other because the
+discipline-tagging system shouldn't be polluted by line-item types
+(provisional, cost-option, adjustment) that aren't actually
+disciplines.
 
 ### Cost sections (display order)
 Labour → Equip & Sub → Plant → Disposal → Cutting

@@ -45,3 +45,23 @@ ALTER TABLE "cutting_sheet_items"
 
 ALTER TABLE "scope_waste_items"
   ALTER COLUMN "card_id" SET NOT NULL;
+
+-- ────────────────────────────────────────────────────────────
+-- LESSON (added 2026-05-18 via PR docs/discipline-codes-and-lessons-learned)
+--
+-- The date filter above uses 2026-05-17 07:30:00+00 as the
+-- pre-B4b cutoff. B4b's actual merge was 2026-05-17 07:30:39 UTC
+-- (merge SHA fe39e27). The 39-second slack is a defect: a
+-- post-B4b orphan created in that window would be silently
+-- deleted instead of blocking the migration via the NOT NULL
+-- ALTER below, which was the whole point of the safety filter.
+--
+-- No data was harmed (dev had 2 orphans both from 2026-05-16;
+-- CI shadow DB was empty). Migration is already applied and
+-- not being retroactively edited.
+--
+-- If you're copying this migration as a template for another
+-- date-bounded delete: use the exact merge timestamp of the
+-- gating PR, never a rounded-down minute. Full write-up at
+-- docs/lessons-learned/2026-05-17-migration-date-filter-precision.md
+-- ────────────────────────────────────────────────────────────

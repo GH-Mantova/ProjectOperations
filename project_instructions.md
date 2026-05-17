@@ -1,7 +1,7 @@
 # ProjectOperations — Project Instructions
 # Version: 1.1
 # Created: 2026-04-25 10:02 AEST
-# Last updated: 2026-05-17 05:20 AEST
+# Last updated: 2026-05-17 07:27 AEST
 # Maintained by: Claude Code (update after any architectural decision,
 #   module addition, business rule change, or workflow change)
 # Accessed by: All Claude chats in this project via web_fetch
@@ -592,6 +592,12 @@ Similar to Excel pivot tables / Power BI — scoped to IS's own data.
 **COMMERCIAL**
 - Tendering — pipeline, register, estimates, Cutrite rates, AI scope drafting
 - Scope of Works — waste tab, multi-plant/measurement pills, cutting discipline filter
+- Per-card cutting subtable (saw-cut / core-hole / other-rate) with Copy
+  from above auto-population from cuttingIncluded scope items (B4b).
+  Replace semantics: regeneration replaces autoCopied=true saw-cut rows
+  only; manual rows + core-hole + other-rate rows survive. Material
+  inference returns null on no-match (NOT default-Concrete); UI flags
+  with an amber border so the estimator picks manually.
 - Quote system — per-client quotes, revisions, cost lines A/B/C, provisional sums,
   cost options, send via Outlook, client scoring (5 stars, win rate)
 - Quote PDF — IS logo, ABN, T&C two-column font 6, estimator-aware,

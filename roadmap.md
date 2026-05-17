@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-17 03:01 AEST
+Last updated: 2026-05-17 07:27 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -637,12 +637,50 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     upgrade (no data migration shipped; per-row density isn't a value
     we can invent).
 
-⏸️  PR B4b — Cutting aggregator + per-card concrete cutting subtable
-    [previously B4] Currently page-level under the tendering Scope tab.
-    Moves to a collapsible section inside each card body alongside the
-    items. Renders cutting_sheet_items filtered by parent card's
-    wbsCode prefix. Wires the cuttingIncluded flag (shipped in B4a UI)
-    into a "Sum from above"–style aggregator for cutting lines.
+✅  PR B4b — Per-card concrete cutting subtable + Copy from above (2026-05-17)
+    Cutting moves from page-level to per-card collapsible section
+    (mirrors B3 waste pattern). ScopeCuttingSheet already mounted
+    per-card from B1.7 — B4b adds server-side cardId scoping so the
+    list query is authoritative (not relying on client-side WBS
+    prefix filtering) and a new "Copy from above" button on the
+    Saw-cut tab.
+
+    Copy-from-above reads scope items on the card where
+    cuttingIncluded=true (the flag shipped with B4a UI) and creates
+    Saw-cut rows with: wbsRef=scopeItem.wbsCode, description verbatim,
+    depthMm=round(depth*1000), quantityLm=length, material via
+    inferCuttingMaterial(material/materialType/description) helper.
+    Equipment / elevation / method / shift left null — estimator
+    picks. Material returns null on no-match (NOT default-Concrete) so
+    the UI flags with an amber border and forces a manual pick.
+
+    Replace semantics: re-running Copy-from-above deletes
+    autoCopied=true saw-cut rows on the card then regenerates. Manual
+    saw-cut rows (autoCopied=false), all core-hole rows, and all
+    other-rate rows are preserved.
+
+    Schema: +1 column (autoCopied BOOLEAN on CuttingSheetItem).
+    Migration: 20260517070000_b4b_cutting_per_card (pure additive).
+    New endpoint:
+      POST /tenders/:tenderId/scope/cards/:cardId/cutting/copy-from-above
+    returning { replaced, created, warnings } — warnings flag rows
+    with computed depthMm > 2000 so the estimator can sanity-check.
+
+    Tests: 573 → 590 API (+17: 8 inferCuttingMaterial + 9 copyFromAbove);
+    web 148 unchanged.
+
+    No schema changes to rate cards — EstimateCuttingRate already has
+    Wall + Floor as separate seeded rows; EstimateCoreHoleRate already
+    applies elevation multipliers (Wall=1.1, Inverted=2.0) at compute
+    time. Marco's brief confirmed the existing pricing math is correct.
+
+⏸️  PR B4b-followup — Orphaned cardless cutting rows
+    Same pattern as B3-followup for waste. Existing CuttingSheetItem
+    rows with cardId=NULL become invisible in the new per-card view
+    when the frontend starts passing cardId. Two options: (a) backfill
+    cardId via wbsRef → wbsCode → cardId lookup, or (b) surface them
+    in a dedicated "uncategorised cutting" admin view. Decide after a
+    smoke pass on real data.
 
 ✅  Discipline migration from 5-code to 4-code system (PR A1) — 2026-05-16
     Closed by PR A1 of the scope-of-works redesign chain (see

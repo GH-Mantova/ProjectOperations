@@ -30,6 +30,9 @@ class CreateCuttingItemDto {
   @IsOptional() @IsString() otherRateId?: string;
   @IsOptional() @IsString() notes?: string;
   @IsOptional() @IsInt() sortOrder?: number;
+  // PR B4b — link the manually-added row to a specific scope card so
+  // the per-card cutting subtable can scope its list query by cardId.
+  @IsOptional() @IsString() cardId?: string | null;
 }
 
 class UpdateCuttingItemDto {
@@ -49,6 +52,8 @@ class UpdateCuttingItemDto {
   @IsOptional() @IsString() otherRateId?: string | null;
   @IsOptional() @IsString() notes?: string | null;
   @IsOptional() @IsInt() sortOrder?: number | null;
+  // PR B4b — allow re-parenting a cutting row to a different card.
+  @IsOptional() @IsString() cardId?: string | null;
 }
 
 @ApiTags("Scope of Works — redesign")
@@ -98,9 +103,16 @@ export class ScopeRedesignController {
 
   @Get("cutting-items")
   @RequirePermissions("estimates.view")
-  @ApiOperation({ summary: "List concrete cutting items on the tender, ordered by WBS ref then sort order." })
-  listCuttingItems(@Param("tenderId") tenderId: string) {
-    return this.service.listCuttingItems(tenderId);
+  @ApiOperation({
+    summary:
+      "List concrete cutting items on the tender, ordered by WBS ref then sort order. PR B4b — optional ?cardId= filter scopes the list to a single scope card."
+  })
+  @ApiQuery({ name: "cardId", required: false, type: String })
+  listCuttingItems(
+    @Param("tenderId") tenderId: string,
+    @Query("cardId") cardId?: string
+  ) {
+    return this.service.listCuttingItems(tenderId, { cardId });
   }
 
   @Post("cutting-items")
@@ -147,5 +159,36 @@ export class ScopeRedesignController {
   })
   summary(@Param("tenderId") tenderId: string) {
     return this.service.summary(tenderId);
+  }
+}
+
+// PR B4b — Per-card cutting controller. Sibling of ScopeCardWasteController.
+// Mounted at the per-card path so "Copy from above" sits naturally under
+//   POST /tenders/:tenderId/scope/cards/:cardId/cutting/copy-from-above
+// Shares the same ScopeRedesignService instance.
+@ApiTags("Scope of Works — Cutting")
+@ApiBearerAuth()
+@Controller("tenders/:tenderId/scope/cards/:cardId/cutting")
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+export class ScopeCardCuttingController {
+  constructor(private readonly service: ScopeRedesignService) {}
+
+  @Post("copy-from-above")
+  @RequirePermissions("estimates.manage")
+  @ApiOperation({
+    summary:
+      "PR B4b — read scope items on the card where cuttingIncluded=true and create/replace autoCopied=true saw-cut rows. Manual rows + core-hole + other-rate rows preserved."
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      "{ replaced, created, warnings } — `warnings` flags any rows with computed depth > 2000mm so the estimator can verify."
+  })
+  copyFromAbove(
+    @Param("tenderId") tenderId: string,
+    @Param("cardId") cardId: string,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.copyFromAbove(tenderId, cardId, actor.sub);
   }
 }

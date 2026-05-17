@@ -121,6 +121,38 @@ function mapUserMaterial(raw: string | null | undefined): string {
 }
 
 /**
+ * PR B4b — best-effort material inference for the cutting "Copy from
+ * above" aggregator. Walks the scope item's fields in priority order
+ * (material → materialType → description) and returns the first
+ * categorical match. Returns null when no confident match — the
+ * frontend renders the row with an amber border to prompt the
+ * estimator to pick manually. Deliberately does NOT default to
+ * "Concrete" (Marco's locked answer #1): silent defaults hide
+ * misclassifications and the cutting rate matrix produces wildly
+ * different rates per material.
+ *
+ * The three return values match the cutting rate-table material
+ * vocabulary, NOT the discipline-code vocabulary (DEM/CIV/ASB/Other).
+ */
+export function inferCuttingMaterial(item: {
+  material?: string | null;
+  materialType?: string | null;
+  description?: string | null;
+}): "Concrete" | "Masonry" | "Asphalt" | null {
+  const candidates = [item.material, item.materialType, item.description]
+    .filter((v): v is string => typeof v === "string" && v.length > 0)
+    .map((v) => v.toLowerCase());
+  for (const candidate of candidates) {
+    if (candidate.includes("asphalt")) return "Asphalt";
+    if (candidate.includes("brick") || candidate.includes("block") || candidate.includes("masonry")) {
+      return "Masonry";
+    }
+    if (candidate.includes("concrete")) return "Concrete";
+  }
+  return null;
+}
+
+/**
  * Implement the spec's 6-step rate resolver. Returns null when no rate
  * exists for the resolved key (UI shows "—" rather than erroring).
  */
@@ -310,10 +342,16 @@ export class ScopeRedesignService {
   }
 
   // ── Cutting sheet items ──────────────────────────────────────────────
-  async listCuttingItems(tenderId: string) {
+  async listCuttingItems(tenderId: string, options?: { cardId?: string }) {
     await this.requireTender(tenderId);
+    // PR B4b — when cardId is supplied, scope the list to a single
+    // card (per-card subtable). Omitted → whole-tender list (legacy
+    // callers + admin views).
     return this.prisma.cuttingSheetItem.findMany({
-      where: { tenderId },
+      where: {
+        tenderId,
+        ...(options?.cardId ? { cardId: options.cardId } : {})
+      },
       orderBy: [{ wbsRef: "asc" }, { sortOrder: "asc" }],
       include: { otherRate: true }
     });
@@ -339,6 +377,7 @@ export class ScopeRedesignService {
       otherRateId?: string | null;
       notes?: string | null;
       sortOrder?: number | null;
+      cardId?: string | null;
     }
   ) {
     await this.requireTender(tenderId);
@@ -346,10 +385,20 @@ export class ScopeRedesignService {
     if (!["saw-cut", "core-hole", "other-rate"].includes(dto.itemType)) {
       throw new BadRequestException('itemType must be "saw-cut", "core-hole", or "other-rate".');
     }
+    // PR B4b — when cardId is provided, validate it belongs to this
+    // tender so a stale frontend can't attach rows to a foreign card.
+    if (dto.cardId) {
+      const card = await this.prisma.scopeCard.findFirst({
+        where: { id: dto.cardId, tenderId },
+        select: { id: true }
+      });
+      if (!card) throw new NotFoundException("Scope card not found on this tender.");
+    }
     const priced = await this.pricedCuttingData(dto);
     return this.prisma.cuttingSheetItem.create({
       data: {
         tenderId,
+        cardId: dto.cardId ?? null,
         createdById: actorId,
         wbsRef: dto.wbsRef.trim(),
         description: dto.description?.trim() || null,
@@ -367,6 +416,9 @@ export class ScopeRedesignService {
         otherRateId: dto.otherRateId ?? null,
         notes: dto.notes ?? null,
         sortOrder: dto.sortOrder ?? 0,
+        // PR B4b — manual creates default autoCopied=false. The Copy
+        // from above aggregator is the only path that flips this true.
+        autoCopied: false,
         ratePerM: priced.ratePerM,
         ratePerHole: priced.ratePerHole,
         lineTotal: priced.lineTotal
@@ -470,6 +522,126 @@ export class ScopeRedesignService {
     if (!existing || existing.tenderId !== tenderId) throw new NotFoundException("Cutting item not found.");
     await this.prisma.cuttingSheetItem.delete({ where: { id: itemId } });
     return { id: itemId };
+  }
+
+  /**
+   * PR B4b — "Copy from above" aggregator for the per-card cutting
+   * subtable's Saw-cut tab. Reads scope items on the card where
+   * cuttingIncluded=true, then atomically replaces the card's
+   * autoCopied=true saw-cut rows with one fresh row per qualifying
+   * scope item. Manual saw-cut rows (autoCopied=false), all core-hole
+   * rows, and all other-rate rows are untouched.
+   *
+   * Per-item mapping:
+   *   - wbsRef     = scopeItem.wbsCode  (cutting uses `wbsRef`, scope uses `wbsCode`)
+   *   - description = scopeItem.description (verbatim)
+   *   - depthMm     = round(scopeItem.depth × 1000)  (m → mm; Marco's locked answer #4)
+   *   - quantityLm  = scopeItem.length  (already metres → Lm)
+   *   - material    = inferCuttingMaterial(scopeItem) (may be null)
+   *   - equipment / elevation / method / shift = null  (estimator picks)
+   *   - autoCopied  = true
+   *
+   * Items missing length OR depth are skipped silently.
+   *
+   * Warnings: depthMm > 2000 produces a warning entry in the response
+   * (does NOT block the row) so the estimator can sanity-check before
+   * the row reaches the cutting matrix.
+   *
+   * Mirrors ScopeWasteService.sumFromAbove from B3.
+   */
+  async copyFromAbove(
+    tenderId: string,
+    cardId: string,
+    actorId: string
+  ): Promise<{ replaced: number; created: number; warnings: string[] }> {
+    const card = await this.prisma.scopeCard.findFirst({
+      where: { id: cardId, tenderId },
+      select: { id: true }
+    });
+    if (!card) throw new NotFoundException("Scope card not found on this tender.");
+
+    const items = await this.prisma.scopeOfWorksItem.findMany({
+      where: { tenderId, cardId, status: { not: "excluded" }, cuttingIncluded: true },
+      select: {
+        wbsCode: true,
+        description: true,
+        length: true,
+        depth: true,
+        material: true,
+        materialType: true
+      }
+    });
+
+    type RowPayload = {
+      wbsRef: string;
+      description: string | null;
+      depthMm: number;
+      quantityLm: Prisma.Decimal;
+      material: string | null;
+    };
+    const payloads: RowPayload[] = [];
+    const warnings: string[] = [];
+
+    for (const item of items) {
+      const length = item.length == null ? 0 : Number(item.length);
+      const depth = item.depth == null ? 0 : Number(item.depth);
+      if (!(length > 0) || !(depth > 0)) continue;
+      const depthMm = Math.round(depth * 1000);
+      if (depthMm > 2000) {
+        warnings.push(`${item.wbsCode}: depth ${depthMm}mm — please verify`);
+      }
+      payloads.push({
+        wbsRef: item.wbsCode,
+        description: item.description ?? null,
+        depthMm,
+        quantityLm: new Prisma.Decimal(length),
+        material: inferCuttingMaterial(item)
+      });
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const deleted = await tx.cuttingSheetItem.deleteMany({
+        where: { tenderId, cardId, itemType: "saw-cut", autoCopied: true }
+      });
+      let created = 0;
+      for (let i = 0; i < payloads.length; i += 1) {
+        const p = payloads[i];
+        await tx.cuttingSheetItem.create({
+          data: {
+            tenderId,
+            cardId,
+            createdById: actorId,
+            wbsRef: p.wbsRef,
+            description: p.description,
+            itemType: "saw-cut",
+            equipment: null,
+            elevation: null,
+            material: p.material,
+            depthMm: p.depthMm,
+            diameterMm: null,
+            quantityLm: p.quantityLm,
+            quantityEach: null,
+            shift: null,
+            method: null,
+            shiftLoading: null,
+            otherRateId: null,
+            notes: null,
+            sortOrder: i,
+            autoCopied: true,
+            // Equipment / elevation / method are all null on copy →
+            // pricedCuttingData short-circuits to null; row appears
+            // unpriced until the estimator picks. No need to call it.
+            ratePerM: null,
+            ratePerHole: null,
+            lineTotal: null
+          }
+        });
+        created += 1;
+      }
+      return { replaced: deleted.count, created };
+    });
+
+    return { ...result, warnings };
   }
 
   // ── Summary ──────────────────────────────────────────────────────────

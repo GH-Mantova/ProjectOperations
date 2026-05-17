@@ -71,12 +71,19 @@ export function computeDerivedDimensions(input: DimensionInput): DerivedDimensio
     m3 = null;
   }
 
-  // tonnes: explicit override wins. Otherwise needs computed m3 × density.
+  // tonnes: explicit override wins. Otherwise:
+  //   - if m³ > 0 → m³ × density (density treated as t/m³ for volumes)
+  //   - else if sqm > 0 → sqm × density / 1000 (PR B4a.5 sheet-material
+  //     fallback: density treated as kg/m², divided by 1000 to convert
+  //     kg → tonnes)
+  //   - else null
   let tonnes: number | null;
   if (input.tonnes !== null && input.tonnes !== undefined && Number.isFinite(input.tonnes)) {
     tonnes = round2(input.tonnes);
-  } else if (m3 !== null && density !== null) {
+  } else if (m3 !== null && m3 > 0 && density !== null) {
     tonnes = round2(m3 * density);
+  } else if (sqm !== null && sqm > 0 && density !== null) {
+    tonnes = round2((sqm * density) / 1000);
   } else {
     tonnes = null;
   }

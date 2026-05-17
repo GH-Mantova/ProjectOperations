@@ -63,10 +63,42 @@ describe("computeDerivedDimensions (PR B4a)", () => {
     ).toEqual({ sqm: 10, m3: 5, tonnes: 99 });
   });
 
-  it("explicit 0 is honoured as an override (not treated as null)", () => {
+  it("explicit 0 is honoured for sqm + m3 (overrides preserved)", () => {
+    // PR B4a.5: tonnes is null here because the m³ > 0 leg fails (m³ = 0)
+    // AND the sqm > 0 fallback leg fails (sqm = 0). To force tonnes = 0
+    // explicitly the caller must pass tonnes: 0 (see next test).
     expect(
       computeDerivedDimensions({ length: 4, height: 2.5, sqm: 0, depth: 0.5, density: 2 })
+    ).toEqual({ sqm: 0, m3: 0, tonnes: null });
+  });
+
+  it("explicit tonnes: 0 is honoured as an override even when sqm/m3 are 0", () => {
+    expect(
+      computeDerivedDimensions({ sqm: 0, m3: 0, tonnes: 0, density: 2 })
     ).toEqual({ sqm: 0, m3: 0, tonnes: 0 });
+  });
+
+  it("tonnes falls back to sqm × density / 1000 when m³ is null (PR B4a.5)", () => {
+    // Sheet-material case: user typed sqm + density only (no depth).
+    // density treated as kg/m²; /1000 converts kg → tonnes.
+    expect(
+      computeDerivedDimensions({ sqm: 99, density: 2.45 })
+    ).toEqual({ sqm: 99, m3: null, tonnes: 0.24 }); // 99 × 2.45 / 1000 = 0.24255 → round2 0.24
+  });
+
+  it("tonnes falls back to sqm × density / 1000 when m³ is 0 (PR B4a.5)", () => {
+    // m³ leg fails the > 0 gate; sqm fallback fires.
+    expect(
+      computeDerivedDimensions({ sqm: 50, m3: 0, density: 5 })
+    ).toEqual({ sqm: 50, m3: 0, tonnes: 0.25 }); // 50 × 5 / 1000 = 0.25
+  });
+
+  it("tonnes uses m³ × density when m³ > 0 (does NOT use sqm fallback)", () => {
+    // Both legs could compute — m³ wins, sqm fallback is skipped.
+    // m³ × density = 4 × 2 = 8. sqm fallback would give 100 × 2 / 1000 = 0.2.
+    expect(
+      computeDerivedDimensions({ sqm: 100, m3: 4, density: 2 })
+    ).toEqual({ sqm: 100, m3: 4, tonnes: 8 });
   });
 
   it("null sqm explicitly means 'derive' — falls back to L×H", () => {

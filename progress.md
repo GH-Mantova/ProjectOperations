@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-17 09:25 AEST
+Last updated: 2026-05-17 09:54 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -5632,3 +5632,20 @@ CI: ✅ all checks passed
   - Analyze (javascript-typescript) [CodeQL]
   - tendering-e2e
 Status: MERGED
+
+## 2026-05-17 19:52 AEST — Branch prune (housekeeping)
+Type: housekeeping (not a PR)
+Detail: Deleted 162 branches from GitHub. The repo had 163 branches
+  before pruning, mostly merged-but-not-deleted from the B-chain
+  (scope-of-works redesign) PR chain. Pruned 160 MERGED-AND-SAFE +
+  2 ORPHAN (both confirmed safe by MAIN — see
+  docs/housekeeping/2026-05-17-branch-prune/README.md for analysis).
+Method: batch size 10, 1s pause between batches, defensive verify
+  that main was excluded from delete list before any DELETE fired.
+  Per-deletion failure would have stopped the loop (none occurred).
+  Full audit + delete log preserved in
+  docs/housekeeping/2026-05-17-branch-prune/.
+Result: 162/162 succeeded (HTTP 204), 0 already-gone, 0 failed,
+  duration 149s. Final state: GitHub repo now shows 1 branch
+  (main); audit-trail folder committed via a small chore PR.
+Status: COMPLETE

@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-18 00:54 AEST
+Last updated: 2026-05-18 01:45 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -5784,3 +5784,36 @@ CI: ✅ all checks passed
   - Analyze (javascript-typescript) [CodeQL]
   - tendering-e2e
 Status: MERGED
+
+## 2026-05-18 11:42 AEST — PR fix/B02-jobs-post-handler STARTED
+Type: PR (bug fix — first of the bug-fix wave from Fix Map 2026-05-18)
+Branch: fix/b02-jobs-post-handler
+Detail: B02 from the Fix Map. Wire up POST /api/v1/jobs handler so
+  manual job creation works. Frontend NewJobSlideOver modal was
+  posting to /jobs and getting "Cannot POST /api/v1/jobs" because
+  JobsController had no @Post() handler at root. Adds CreateJobDto,
+  JobsService.createJob (mirrors convertTenderToJob shape — caller-
+  supplied jobNumber, no auto-generator in scope), @Post() handler
+  with jobs.manage permission, audit via auditService.write
+  ({action: 'jobs.create'}).
+Status: IN_PROGRESS
+
+## 2026-05-18 11:42 AEST — PR fix/B02-jobs-post-handler OPENED
+Type: PR (bug fix)
+Branch: fix/b02-jobs-post-handler
+PR: #[N]
+Status: WAITING_CI
+Detail: 4 file changes. CreateJobDto added to job-delivery.dto.ts;
+  JobsService.createJob method added; @Post() create handler on
+  JobsController; new __tests__/create-job.spec.ts with 8 specs.
+  Phase 0.4 surfaced 4 contradictions with the original Fix Map
+  hypothesis (broader body shape, required clientId, no runtime
+  generator, audit via auditService not status-history) — adapted
+  rather than stopped because the right call was to mirror the
+  existing convertTenderToJob shape that already exists.
+Files: jobs.controller.ts, jobs.service.ts, dto/job-delivery.dto.ts,
+  __tests__/create-job.spec.ts, progress.md, roadmap.md
+Pre-PR checks: 7/7 green
+
+## 2026-05-18 [HH:MM] AEST — PR fix/B02-jobs-post-handler MERGED
+[filled in post-merge — Phase 7 task]

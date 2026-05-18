@@ -13,6 +13,7 @@ import { SharePointService } from "../platform/sharepoint.service";
 import {
   CloseoutJobDto,
   CreateJobActivityDto,
+  CreateJobDto,
   CreateJobIssueDto,
   CreateJobProgressEntryDto,
   CreateJobStageDto,
@@ -348,6 +349,80 @@ export class JobsService {
       ...job,
       documents
     };
+  }
+
+  /**
+   * PR fix/B02 — manual job creation. The frontend's `NewJobSlideOver`
+   * modal (apps/web/src/pages/jobs/JobsListPage.tsx) was POSTing to
+   * /jobs and getting a 404 because no @Post() handler existed.
+   *
+   * Mirrors the create-shape of `convertTenderToJob` (line ~887):
+   *   - jobNumber is caller-supplied (no auto-generator in the codebase)
+   *   - status defaults to "PLANNING" (matches the modal's default + Job.status default)
+   *   - audit via this.auditService.write({ action: "jobs.create" })
+   *   - no initial JobStatusHistory entry — that table tracks
+   *     transitions, not the initial state (matches convertTenderToJob)
+   *
+   * Validates clientId (required, FK) and siteId (optional, FK). Both
+   * exist-checks are explicit so the user gets a controlled 404 rather
+   * than a Prisma FK-violation 500.
+   */
+  async createJob(dto: CreateJobDto, actorId?: string) {
+    if (!dto.jobNumber.trim()) throw new BadRequestException("jobNumber is required.");
+    if (!dto.name.trim()) throw new BadRequestException("name is required.");
+    if (!dto.clientId.trim()) throw new BadRequestException("clientId is required.");
+
+    const jobNumber = dto.jobNumber.trim();
+    const clientId = dto.clientId.trim();
+
+    // FK validation: client must exist (controlled 404 instead of FK 500).
+    const client = await this.prisma.client.findUnique({
+      where: { id: clientId },
+      select: { id: true }
+    });
+    if (!client) throw new NotFoundException("Client not found.");
+
+    if (dto.siteId) {
+      const site = await this.prisma.site.findUnique({
+        where: { id: dto.siteId.trim() },
+        select: { id: true }
+      });
+      if (!site) throw new NotFoundException("Site not found.");
+    }
+
+    // jobNumber uniqueness — explicit pre-check so we return 409 with
+    // a sensible message instead of a Prisma P2002 unique-constraint
+    // 500. The schema's @unique on jobNumber is the ultimate guard.
+    const existing = await this.prisma.job.findUnique({
+      where: { jobNumber },
+      select: { id: true }
+    });
+    if (existing) {
+      throw new ConflictException(`Job number "${jobNumber}" is already in use.`);
+    }
+
+    const created = await this.prisma.job.create({
+      data: {
+        jobNumber,
+        name: dto.name.trim(),
+        description: dto.description?.trim() || null,
+        clientId,
+        siteId: dto.siteId?.trim() || null,
+        status: dto.status?.trim() || "PLANNING",
+        projectManagerId: dto.projectManagerId?.trim() || null,
+        supervisorId: dto.supervisorId?.trim() || null
+      }
+    });
+
+    await this.auditService.write({
+      actorId,
+      action: "jobs.create",
+      entityType: "Job",
+      entityId: created.id,
+      metadata: { jobNumber, clientId }
+    });
+
+    return this.getById(created.id);
   }
 
   async updateJob(id: string, dto: UpdateJobDto, actorId?: string) {

@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-18 00:49 AEST
+Last updated: 2026-05-18 01:45 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -723,6 +723,12 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     entries (C1-D1) unchanged below; new P-chain entries (P-tab1
     through P-tab6) live in the Design Map only — they'll move into
     roadmap proper when implementation prompts ship.
+
+✅  Bug fix B02 — POST /api/v1/jobs (manual job creation)
+    Shipped 2026-05-18, PR #[N]. JobsController gets @Post() create
+    handler; JobsService.createJob mirrors convertTenderToJob shape;
+    audit via auditService.write({action:'jobs.create'}). +8 specs.
+    Fix Map B02 closed.
 
 ⏳  PR C1 — Quote Arrangement screen base
     Phase 0 discovery complete (2026-05-18, see

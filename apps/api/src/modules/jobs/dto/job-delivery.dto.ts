@@ -17,6 +17,23 @@ export class UpdateJobDto {
   @IsOptional() @IsString() supervisorId?: string;
 }
 
+// PR fix/B02 — manual job creation. Fields match what the
+// `NewJobSlideOver` modal (apps/web/src/pages/jobs/JobsListPage.tsx)
+// sends. jobNumber is caller-supplied (mirrors the existing
+// convertTenderToJob path); auto-generation is not currently in
+// the codebase and out of scope for B02. status defaults to
+// "PLANNING" if omitted but the modal always sends it explicitly.
+export class CreateJobDto {
+  @IsString() jobNumber!: string;
+  @IsString() name!: string;
+  @IsString() clientId!: string;
+  @IsOptional() @IsString() status?: string;
+  @IsOptional() @IsString() description?: string;
+  @IsOptional() @IsString() siteId?: string;
+  @IsOptional() @IsString() projectManagerId?: string;
+  @IsOptional() @IsString() supervisorId?: string;
+}
+
 export class UpdateJobStatusDto {
   @IsString()
   status!: string;

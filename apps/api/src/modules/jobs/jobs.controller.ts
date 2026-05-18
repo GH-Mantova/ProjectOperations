@@ -7,6 +7,7 @@ import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import {
   CloseoutJobDto,
   CreateJobActivityDto,
+  CreateJobDto,
   CreateJobIssueDto,
   CreateJobProgressEntryDto,
   CreateJobStageDto,
@@ -40,6 +41,16 @@ export class JobsController {
   @ApiOperation({ summary: "List archived jobs with read-only historical visibility" })
   listArchive(@Query() query: JobQueryDto) {
     return this.service.listArchive(query);
+  }
+
+  @Post()
+  @RequirePermissions("jobs.manage")
+  @ApiOperation({
+    summary:
+      "Create a job manually (without a tender source). The frontend NewJobSlideOver modal calls this. Tender-sourced jobs continue to flow through the convert-to-job endpoint."
+  })
+  create(@Body() dto: CreateJobDto, @CurrentUser() actor: { sub: string }) {
+    return this.service.createJob(dto, actor.sub);
   }
 
   @Get(":id")

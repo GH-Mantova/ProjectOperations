@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-18 01:50 AEST
+Last updated: 2026-05-18 02:26 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -5828,3 +5828,44 @@ CI: ✅ all checks passed
   - Analyze (javascript-typescript) [CodeQL]
   - tendering-e2e
 Status: MERGED
+
+## 2026-05-18 12:23 AEST — PR fix/B01-job-detail-error-boundary STARTED
+Type: PR (bug fix — second of the bug-fix wave from Fix Map 2026-05-18)
+Branch: fix/b01-job-detail-error-boundary
+Detail: B01 from the Fix Map. Surgical React error boundary around
+  each tab section in JobDetailPage so a render exception in any
+  one panel shows a localised fallback instead of blanking the
+  entire route. Also adds dev-mode console.error in the fetch
+  catch so any non-2xx /jobs/:id response surfaces in DevTools
+  rather than just hitting "Job not found". New reusable
+  ErrorBoundary class component at apps/web/src/components/.
+  Phase 0.4 static audit + DB probe on job-001 found no unguarded
+  optional dereferences and all FKs populated — the boundary is
+  defence-in-depth, not a known-crash fix; the dev console.error
+  is what surfaces the cause next time a crash happens.
+Status: IN_PROGRESS
+
+## 2026-05-18 12:23 AEST — PR fix/B01-job-detail-error-boundary OPENED
+Type: PR (bug fix)
+Branch: fix/b01-job-detail-error-boundary
+PR: #[N]
+Status: WAITING_CI
+Detail: 5 file changes. New ErrorBoundary class component
+  (apps/web/src/components/ErrorBoundary.tsx) with sectionName
+  prop, optional fallback, optional onReset, dev-mode console.error
+  via import.meta.env.DEV. 7 ErrorBoundary wraps in JobDetailPage
+  (one per tab: Overview, Stages & Activities, Issues, Variations,
+  Progress, Documents, History). Dev-mode console.error added in
+  the reload() fetch catch. New .error-boundary-fallback CSS block
+  appended to styles.css. 5 vitest specs in __tests__/ that
+  exercise getDerivedStateFromError + componentDidCatch + reset
+  directly (no testing-library/jsdom available in this workspace).
+  Design Map updated with P-platform1 entry (app-wide boundary
+  promotion, telemetry, future work).
+Files: apps/web/src/components/ErrorBoundary.tsx (new),
+  apps/web/src/components/__tests__/ErrorBoundary.test.tsx (new),
+  apps/web/src/pages/jobs/JobDetailPage.tsx,
+  apps/web/src/styles.css,
+  docs/Designs/scope-of-works-redesign.md,
+  progress.md, roadmap.md
+Pre-PR checks: 7/7 green

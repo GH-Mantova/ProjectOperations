@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { ErrorBoundary } from "../../components/ErrorBoundary";
 
 type JobActivity = {
   id: string;
@@ -168,6 +169,9 @@ export function JobDetailPage() {
         setExpandedStages(new Set(data.stages.map((stage) => stage.id)));
       }
     } catch (err) {
+      if (import.meta.env.DEV) {
+        console.error("[JobDetailPage] fetch failed:", err);
+      }
       setError((err as Error).message);
     } finally {
       setLoading(false);
@@ -313,6 +317,7 @@ export function JobDetailPage() {
       </nav>
 
       {tab === "overview" ? (
+        <ErrorBoundary sectionName="Overview">
         <section className="job-detail__overview">
           <div className="s7-card job-detail__overview-kpi">
             <span className="s7-type-label">Total activities</span>
@@ -349,9 +354,11 @@ export function JobDetailPage() {
             </div>
           ) : null}
         </section>
+        </ErrorBoundary>
       ) : null}
 
       {tab === "stages" ? (
+        <ErrorBoundary sectionName="Stages & Activities">
         <section className="s7-card">
           {job.stages.length === 0 ? (
             <EmptyState heading="No stages defined" subtext="Define the job's stages to start tracking activities." />
@@ -411,9 +418,11 @@ export function JobDetailPage() {
             </ul>
           )}
         </section>
+        </ErrorBoundary>
       ) : null}
 
       {tab === "issues" ? (
+        <ErrorBoundary sectionName="Issues">
         <section className="s7-card">
           {job.issues.length === 0 ? (
             <EmptyState heading="No issues" subtext="Issues raised against this job will appear here with severity and status." />
@@ -439,9 +448,11 @@ export function JobDetailPage() {
             </ul>
           )}
         </section>
+        </ErrorBoundary>
       ) : null}
 
       {tab === "variations" ? (
+        <ErrorBoundary sectionName="Variations">
         <section className="s7-card">
           {job.variations.length === 0 ? (
             <EmptyState heading="No variations" subtext="Variations capture scope or value changes against the contract." />
@@ -483,9 +494,11 @@ export function JobDetailPage() {
             </div>
           )}
         </section>
+        </ErrorBoundary>
       ) : null}
 
       {tab === "progress" ? (
+        <ErrorBoundary sectionName="Progress">
         <section className="s7-card">
           {job.progressEntries.length === 0 ? (
             <EmptyState heading="No progress entries" subtext="Weekly progress reports will appear here." />
@@ -512,9 +525,11 @@ export function JobDetailPage() {
             </ul>
           )}
         </section>
+        </ErrorBoundary>
       ) : null}
 
       {tab === "documents" ? (
+        <ErrorBoundary sectionName="Documents">
         <section className="s7-card">
           {documents === null ? (
             <Skeleton width="60%" height={14} />
@@ -540,9 +555,11 @@ export function JobDetailPage() {
             </ul>
           )}
         </section>
+        </ErrorBoundary>
       ) : null}
 
       {tab === "history" ? (
+        <ErrorBoundary sectionName="History">
         <section className="s7-card">
           {job.statusHistory.length === 0 ? (
             <EmptyState heading="No status history" subtext="Status transitions will appear here." />
@@ -564,6 +581,7 @@ export function JobDetailPage() {
             </ul>
           )}
         </section>
+        </ErrorBoundary>
       ) : null}
     </div>
   );

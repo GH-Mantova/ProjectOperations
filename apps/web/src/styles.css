@@ -9243,3 +9243,28 @@ textarea {
   border-color: var(--brand-accent);
   outline: none;
 }
+
+/* B01 — surgical error boundary fallback (JobDetailPage and future surfaces) */
+.error-boundary-fallback {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 16px 20px;
+  margin: 12px 0;
+  border: 1px solid var(--status-warning, #d97706);
+  border-left-width: 4px;
+  border-radius: var(--radius-md, 8px);
+  background: var(--surface-warning-subtle, #fff7ed);
+  color: var(--text-primary, #1f2937);
+}
+.error-boundary-fallback__heading {
+  margin: 0;
+  font-weight: 600;
+  font-size: 14px;
+}
+.error-boundary-fallback__sub {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary, #6b7280);
+}

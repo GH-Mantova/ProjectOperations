@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-18 01:45 AEST
+Last updated: 2026-05-18 02:26 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -725,10 +725,21 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     roadmap proper when implementation prompts ship.
 
 ✅  Bug fix B02 — POST /api/v1/jobs (manual job creation)
-    Shipped 2026-05-18, PR #[N]. JobsController gets @Post() create
+    Shipped 2026-05-18, PR #197. JobsController gets @Post() create
     handler; JobsService.createJob mirrors convertTenderToJob shape;
     audit via auditService.write({action:'jobs.create'}). +8 specs.
     Fix Map B02 closed.
+
+✅  Bug fix B01 — JobDetailPage surgical error boundary
+    Shipped 2026-05-18, PR #[N]. New ErrorBoundary class component
+    (apps/web/src/components/) wraps each tab section in
+    JobDetailPage; dev-mode console.error in reload() catch surfaces
+    fetch failures in DevTools; +5 vitest specs. Phase 0.4 audit
+    found job-001 had no unguarded dereferences or null FKs — fix
+    is defence-in-depth + future-crash observability. Design Map
+    gets new P-platform1 entry (app-wide boundary promotion +
+    Application Insights telemetry as future work). Fix Map B01
+    closed.
 
 ⏳  PR C1 — Quote Arrangement screen base
     Phase 0 discovery complete (2026-05-18, see

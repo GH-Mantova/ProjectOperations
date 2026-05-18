@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-17 22:23 AEST
+Last updated: 2026-05-18 00:49 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -5738,3 +5738,38 @@ CI: ✅ all checks passed
   - Analyze (javascript-typescript) [CodeQL]
   - tendering-e2e
 Status: MERGED
+
+## 2026-05-18 10:46 AEST — PR docs/triage-fix-and-design-maps STARTED
+Type: PR (docs only — triage / investigation pass)
+Branch: docs/triage-fix-and-design-maps
+Detail: Read-only triage of 8 bugs (3 functional bugs found morning
+  of 2026-05-18: blank job detail page, broken POST /api/v1/jobs,
+  missing project→job transition; 4 carried-over Chat1 polish bugs;
+  1 "300% win" data anomaly) and 11 features (5 C-chain references
+  + 6 P-chain new entries). Output: Fix Map + Design Map appended
+  as new sections to docs/Designs/scope-of-works-redesign.md.
+  Implementation prompts to be written by MAIN per-item once Marco
+  approves priorities.
+Status: IN_PROGRESS
+
+## 2026-05-18 10:46 AEST — PR docs/triage-fix-and-design-maps OPENED
+Type: PR (docs only)
+Branch: docs/triage-fix-and-design-maps
+PR: #[N]
+Status: WAITING_CI
+Detail: 1 file modified (scope-of-works-redesign.md) + progress.md
+  + roadmap.md. ~~650 lines added across Fix Map (8 bug detail
+  blocks + summary table) and Design Map (11 feature detail blocks
+  + summary table + 5 cross-cutting decisions). Headline findings:
+  B02 root cause confirmed (JobsController has no @Post() handler);
+  B08 root cause confirmed (Brisbane Grammar School has
+  win_count=3, tender_count=1 in DB — bumpWinCount idempotency
+  bug); B05 confirmed (3 prefix formats in DB); B03 is L-complexity
+  architectural decision; B04/B06/B07 marked TBD pending Marco
+  re-screenshot.
+Files: docs/Designs/scope-of-works-redesign.md, progress.md,
+  roadmap.md
+Pre-PR checks: 4/4 green (api+web lint + test)
+
+## 2026-05-18 [HH:MM] AEST — PR docs/triage-fix-and-design-maps MERGED
+[filled in post-merge — Phase 8 task]

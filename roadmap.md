@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-17 22:18 AEST
+Last updated: 2026-05-18 00:49 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -709,6 +709,20 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     being silently destroyed. Smoke-confirmed against IS-T020 dev
     DB before merge.
     Supersedes the prior ⏸️ B4b-followup carry-forward.
+
+📋  Triage Maps (Fix Map + Design Map) — 2026-05-18
+    Fix Map covers 8 bugs (B01-B08); Design Map covers 11 features
+    (C1-D1 + P-tab1-P-tab6). See
+    docs/Designs/scope-of-works-redesign.md sections "Fix Map
+    (2026-05-18)" and "Design Map (2026-05-18)". Implementation
+    prompts written by MAIN per item; bug-fix wave precedes feature
+    wave by Marco's decision. Confirmed root causes for B02, B05,
+    B08; B03 flagged as L-complexity architectural decision needing
+    its own sub-discovery; B01/B04/B06/B07 need fresh repro
+    screenshots / browser-console capture from Marco. C-chain
+    entries (C1-D1) unchanged below; new P-chain entries (P-tab1
+    through P-tab6) live in the Design Map only — they'll move into
+    roadmap proper when implementation prompts ship.
 
 ⏳  PR C1 — Quote Arrangement screen base
     Phase 0 discovery complete (2026-05-18, see

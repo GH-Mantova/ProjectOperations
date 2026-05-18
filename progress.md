@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-18 05:53 AEST
+Last updated: 2026-05-18 06:13 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -6006,3 +6006,47 @@ CI: ✅ all checks passed
   - Analyze (javascript-typescript) [CodeQL]
   - tendering-e2e
 Status: MERGED
+
+## 2026-05-18 16:11 AEST — PR docs/post-b01.1-housekeeping STARTED
+Type: PR (docs — governance / map maintenance)
+Branch: docs/post-b01.1-housekeeping
+Detail: Updates the Fix Map + Design Map in
+  docs/Designs/scope-of-works-redesign.md to reflect today's
+  bug-fix wave. Adds P-platform3 (Service Worker update
+  strategy) to capture the SW caching friction surfaced during
+  B01.1 deployment. No source code, schema, or test changes.
+Status: IN_PROGRESS
+
+## 2026-05-18 16:11 AEST — PR docs/post-b01.1-housekeeping OPENED
+Type: PR (docs — governance / map maintenance)
+Branch: docs/post-b01.1-housekeeping
+PR: #[N]
+Status: WAITING_CI
+Detail: 3 file changes. docs/Designs/scope-of-works-redesign.md
+  — Fix Map header updated ("3 of 8 shipped"); summary table
+  gained a Status column; B01/B01.1/B02 marked ✅ Shipped with
+  PR refs; B04 marked ⏳ Verification-pending; new B01.1 row
+  added to summary table; new B01.1 per-bug detail section
+  inserted after B01; B01/B02/B04 per-bug detail sections each
+  got a Status block at top; B04's "Blocked by B01" language
+  removed (block is resolved); Design Map gains P-platform3
+  entry after P-platform2. progress.md + roadmap.md per
+  protocol.
+Audit findings (Decision 3 — full grep pass):
+  - Fix Map header line 1087 "no fixes shipped" — UPDATED
+  - Summary table B01 — UPDATED (added ✅ + PR #199 + B01.1 cross-ref)
+  - Summary table B01.1 — ADDED (was missing entirely)
+  - Summary table B02 — UPDATED (added ✅ + PR #197 + Codex P2 note)
+  - Summary table B04 — UPDATED (⏳ marker + dependency cleared)
+  - B01 per-bug detail — UPDATED (Status block + B01.1 cross-ref)
+  - B01 per-bug "Dependencies: Blocks B04" — UPDATED to "resolved post-ship"
+  - B01.1 per-bug detail — ADDED (was missing entirely)
+  - B02 per-bug detail — UPDATED (Status block + Codex P2 deferred note)
+  - B04 per-bug detail — UPDATED (Status block + dependency reworded + smoke test path corrected)
+  - B03/B05/B06/B07/B08 — INSPECTED, unchanged
+  - P-platform1 (Design Map) — INSPECTED, unchanged
+  - P-platform2 (Design Map) — INSPECTED, unchanged
+  - P-platform3 — ADDED
+Files: docs/Designs/scope-of-works-redesign.md, progress.md,
+  roadmap.md
+Pre-PR checks: 4/4 green

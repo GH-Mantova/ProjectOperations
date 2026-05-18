@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-18 01:45 AEST
+Last updated: 2026-05-18 01:50 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -5815,5 +5815,16 @@ Files: jobs.controller.ts, jobs.service.ts, dto/job-delivery.dto.ts,
   __tests__/create-job.spec.ts, progress.md, roadmap.md
 Pre-PR checks: 7/7 green
 
-## 2026-05-18 [HH:MM] AEST — PR fix/B02-jobs-post-handler MERGED
-[filled in post-merge — Phase 7 task]
+## 2026-05-18 11:49 AEST — PR fix/B02-jobs-post-handler MERGED
+Type: PR (bug fix — first of the bug-fix wave)
+Branch: fix/b02-jobs-post-handler
+PR: #197 (https://github.com/GH-Mantova/ProjectOperations/pull/197)
+Merge SHA: 1cec631c1c69491ee0f44ed2865beaa4bf8f6efb
+Merged at: 2026-05-18T01:49:12Z (auto-merge squash)
+CI: ✅ all checks passed
+  - API — lint, test, compliance smoke
+  - Web — lint, logic tests, build
+  - Analyze (actions) [CodeQL]
+  - Analyze (javascript-typescript) [CodeQL]
+  - tendering-e2e
+Status: MERGED

@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-18 05:53 AEST
+Last updated: 2026-05-18 06:13 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -767,6 +767,19 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     example under §19 conventions. Design Map gets P-platform2
     (API/FE type contract enforcement — Zod-or-OpenAPI, 3-4
     PRs). Fix Map B01.1 closed.
+
+✅  docs/post-b01.1-housekeeping — 2026-05-18
+    Shipped PR #[N]. Fix Map updated to reflect today's wave:
+    B01 (PR #199), B01.1 (PR #203), B02 (PR #197) all marked
+    ✅ Shipped with cross-references; B04 marked
+    ⏳ Verification-pending (JobsListPage screenshot still
+    needed before closing). New B01.1 row + per-bug detail
+    added (was missing entirely). Summary table gained a
+    Status column. Design Map gains P-platform3 (Service
+    Worker update strategy — Approach A skip-waiting + toast,
+    1-2 PRs, future). Full Fix Map + Design Map audit
+    performed; 13 entries inspected, 10 changes made, 3
+    inspected-and-unchanged.
 
 ⏳  PR C1 — Quote Arrangement screen base
     Phase 0 discovery complete (2026-05-18, see

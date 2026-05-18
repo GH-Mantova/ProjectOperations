@@ -1084,29 +1084,40 @@ required. Existing Quote tab can be progressively replaced.
 
 ## Fix Map (2026-05-18)
 
-**Status:** triage complete, no fixes shipped. Decided per-bug after
-review by MAIN whether each ships as its own PR or grouped.
+**Status:** 3 of 8 shipped (B01, B01.1, B02 — see PR refs in
+summary table); 1 verification-pending (B04); 4 still open
+(B03, B05, B06, B07, B08). Updated 2026-05-18 post-B01.1.
 
 **Base SHA at triage time:** `78c7b049947e486941dac285bf456650962c2f03` (post chore #194)
 **Tests at triage time:** API 599 pass / 6 skip; web 148
 
 ### Summary table
 
-| ID | Title | Severity | Suspected cause | Fix complexity | Blocks/Blocked-by |
-|---|---|---|---|---|---|
-| B01 | Job detail blank page (/jobs/job-001) | BLOCKER | Frontend render exception with no error boundary OR auth/session edge case; backend + DB look fine | M | Blocks B04 visual verify |
-| B02 | POST /api/v1/jobs returns "Cannot POST" | BLOCKER | `JobsController` has no `@Post()` handler; frontend calls one that doesn't exist | S | — |
-| B03 | No project → job transition | BLOCKER | Architectural gap: existing `convertFromTender` creates Project; existing `tender-conversion/:id/convert-to-job` creates Job — both off tender; no Project→Job path exists | L (sub-discovery candidate) | — |
-| B04 | KPI card overlap (Chat1 #1) | COSMETIC | Unverified visual edge case at narrow widths; CSS structurally sound | S (TBD) | Blocked by B01 (can't smoke) |
-| B05 | Job ID format inconsistency (Chat1 #2) | FUNCTIONAL | 3 prefix formats coexist: `J-YYYY-NNN` (seed), `JOB-YYYY-NNN` (runtime), `JOB-COMP-<epoch>` (compliance harness) | S | — |
-| B06 | Scheduler weekend clip (Chat1 #4) | COSMETIC | Unverified; no `--weekend` variant in `.sched-week__*` CSS — likely a narrow-column rendering issue | S (TBD) | — |
-| B07 | "Due this week" mislabel (Chat1 #6) | COSMETIC | Widget filter is "due in next `daysAhead` days" (default 7); title says "this week" → off-by-cutoff at end of week | S | — |
-| B08 | Client win 300% | FUNCTIONAL | `bumpWinCount` re-fires winCount increment without re-checking tenderCount; copy-tender flow or re-award triggers it | S (data fix + idempotency guard) | — |
+| ID | Status | Title | Severity | Suspected cause | Fix complexity | Blocks/Blocked-by |
+|---|---|---|---|---|---|---|
+| B01 | ✅ Shipped (PR #199) | Job detail blank page (/jobs/job-001) | BLOCKER | Surgical ErrorBoundary added (correct defence-in-depth) but did NOT resolve the user-visible symptom — root cause was line 207 precedence bug fixed in B01.1 | M | — |
+| B01.1 | ✅ Shipped (PR #203) | JobDetailPage line 207 precedence bug (real cause of blank page) | BLOCKER | `job?.activities.length` parsed as `job?.(activities.length)`; truthy job + undefined activities (API nests inside stages) threw at render, React 18 unmounted the route — verified by Marco 2026-05-18 | S | — |
+| B02 | ✅ Shipped (PR #197) | POST /api/v1/jobs returns "Cannot POST" | BLOCKER | `JobsController` had no `@Post()` handler; frontend called one that didn't exist. Codex P2 race-fix (findUnique-then-create) deferred and folded into B05's future PR | S | — |
+| B03 | Open | No project → job transition | BLOCKER | Architectural gap: existing `convertFromTender` creates Project; existing `tender-conversion/:id/convert-to-job` creates Job — both off tender; no Project→Job path exists | L (sub-discovery candidate) | — |
+| B04 | ⏳ Verification-pending | KPI card overlap (Chat1 #1) | COSMETIC | JobDetailPage cards visually clean post-B01.1; original Chat1 report cited JobsListPage cards — needs fresh screenshot before closing | S (TBD) | B01 dependency resolved |
+| B05 | Open | Job ID format inconsistency (Chat1 #2) | FUNCTIONAL | 3 prefix formats coexist: `J-YYYY-NNN` (seed), `JOB-YYYY-NNN` (runtime), `JOB-COMP-<epoch>` (compliance harness). Will absorb Codex P2 race-fix from B02 | S | — |
+| B06 | Open | Scheduler weekend clip (Chat1 #4) | COSMETIC | Unverified; no `--weekend` variant in `.sched-week__*` CSS — likely a narrow-column rendering issue | S (TBD) | — |
+| B07 | Open | "Due this week" mislabel (Chat1 #6) | COSMETIC | Widget filter is "due in next `daysAhead` days" (default 7); title says "this week" → off-by-cutoff at end of week | S | — |
+| B08 | Open | Client win 300% | FUNCTIONAL | `bumpWinCount` re-fires winCount increment without re-checking tenderCount; copy-tender flow or re-award triggers it | S (data fix + idempotency guard) | — |
 
 ### Per-bug detail
 
 #### B01 — Job detail blank page
 
+- **Status:** ✅ Shipped 2026-05-17 in PR #199. Surgical
+  ErrorBoundary added around each tab section in JobDetailPage +
+  dev-mode `console.error` in the fetch catch. This was the right
+  defence-in-depth but did NOT resolve the user-visible blank
+  page — the actual throw happens in the parent component above
+  any boundary's mount point. Real cause was fixed in **B01.1**
+  (PR #203, line 207 precedence bug). See
+  `docs/diagnostics/2026-05-18-b01-blank-page/REPORT.md` for the
+  diagnostic that surfaced the real cause.
 - **Where it lives:** `apps/web/src/App.tsx:188` (route registration `/jobs/:id` → `JobDetailPage`), `apps/web/src/pages/jobs/JobDetailPage.tsx` (570 LOC).
 - **Evidence:** Marco screenshot showed `/jobs/job-001` URL with blank white viewport. Route handler responded (URL changed; not a 404) but no UI rendered.
 - **Backend + data confirmed OK:**
@@ -1128,11 +1139,72 @@ review by MAIN whether each ships as its own PR or grouped.
   3. Click the "Ipswich Motorway Stage 4 — Earthworks" card
   4. Expected: job detail renders with stages, issues, variations sections. NOT blank, NOT "Job not found".
   5. Open browser console; expect zero errors.
-- **Open questions for MAIN:** is there a global error boundary on the React tree that Marco could check, or do we need one? Memory hints that `EmptyState`/`Skeleton` are from `@project-ops/ui` but I didn't find any app-level error boundary.
-- **Dependencies:** Blocks B04 (KPI card overlap on the same page).
+- **Open questions for MAIN:** is there a global error boundary on the React tree that Marco could check, or do we need one? Memory hints that `EmptyState`/`Skeleton` are from `@project-ops/ui` but I didn't find any app-level error boundary. **Answer (post-ship):** No app-level boundary existed. P-platform1 in the Design Map captures that future work.
+- **Dependencies:** Was blocking B04 (KPI card overlap on the same page) — resolved post-ship.
+
+#### B01.1 — JobDetailPage line 207 precedence bug (blank-page root cause)
+
+- **Status:** ✅ Shipped 2026-05-18 in PR #203. Visually verified
+  by Marco in browser same day (Ctrl+Shift+R required to flush
+  stale SW bundle — that friction is captured as **P-platform3**
+  in the Design Map).
+- **Where it lives:** `apps/web/src/pages/jobs/JobDetailPage.tsx:207` (pre-fix).
+- **Evidence:** Marco's DevTools console showed
+  `Uncaught TypeError: Cannot read properties of undefined (reading 'length')`
+  with the `MessagePort.M` frame at the bottom of the stack —
+  classic signature of a render-phase throw via React 18's
+  scheduler. Triple-confirmed: Cowork source analysis
+  (`docs/diagnostics/2026-05-18-b01-blank-page/REPORT.md` §6) +
+  symptom shape (blank, no fallback, no EmptyState) + runtime
+  trace.
+- **Root cause:** `job?.activities.length ?? 0` parses as
+  `job?.(activities.length)`. The optional chain only short-
+  circuits when `job` itself is nullish. When `job` is truthy
+  and `job.activities` is undefined (which it always is — the
+  API nests activities inside `stages[].activities` and never
+  sends a top-level `activities` key), `undefined.length` throws
+  at render-phase, React 18 unmounts the route subtree → blank
+  page. Line 208 immediately next door used the safe pattern
+  `(job?.activities ?? []).length` — the asymmetry between 207
+  and 208 was the actual defect.
+- **Fix shape (FE-only):**
+  1. Type-lie removed: `activities: JobActivity[]` dropped from
+     the `JobDetail` type; `activities?: JobActivity[]` added to
+     `JobStage` where the API include actually puts them.
+  2. New `flattenActivities` helper (exported, pure) derives a
+     flat list from `stages[].activities` with safe-defaults at
+     every hop. Component uses it via `useMemo`.
+  3. `toggleActivity`'s optimistic update now walks nested
+     stages; stage rendering uses `stage.activities` directly.
+  4. Same precedence antipattern on line 202
+     (`job?.issues.filter(...)`) fixed defensively (not a live
+     bug because the API always sends issues, but identical
+     trap).
+  5. `if (!job) return null` replaced with EmptyState +
+     back-link so future null-state bugs never produce blank
+     pages again.
+  6. ErrorBoundary gained a JSDoc clarifying it catches errors
+     thrown by its CHILDREN, not the parent above the JSX
+     return (the trap that made B01's boundary look broken).
+- **Tests added:** 3 vitest specs in
+  `apps/web/src/pages/jobs/__tests__/JobDetailPage.b01-1.test.tsx`
+  against `flattenActivities` (regression, derivation, null
+  safety). Pure-logic — web workspace has no testing-library/jsdom.
+- **Follow-ups (not in this PR's scope):** P-platform2 (API/FE
+  type contract enforcement) and P-platform3 (SW update strategy)
+  captured in Design Map.
+- **Dependencies:** None.
 
 #### B02 — POST /api/v1/jobs returns "Cannot POST"
 
+- **Status:** ✅ Shipped 2026-05-18 in PR #197. `@Post()` handler
+  + `CreateJobDto` + `JobsService.createJob` (mirrors
+  `convertTenderToJob` shape — caller-supplied jobNumber, no
+  auto-generator). Audit via `auditService.write({action: 'jobs.create'})`.
+  **Codex P2 deferred:** the race-condition fix for
+  `findUnique`-then-`create` on jobNumber uniqueness was reviewed
+  and folded into B05's future PR (B05 already needs to touch
+  the job-number generator surface).
 - **Where it lives:** `apps/api/src/modules/jobs/jobs.controller.ts:26` (`@Controller("jobs")` — no `@Post()` at root); `apps/web/src/pages/jobs/JobsListPage.tsx:449` (frontend POSTs to `/jobs`).
 - **Evidence:** Modal "Cannot POST /api/v1/jobs" after submitting job-creation form. Confirmed: controller has only `@Get`, `@Patch`, and `@Post(":id/<sub-resource>")` handlers — nothing at the controller root.
 - **Hypotheses:**
@@ -1170,17 +1242,24 @@ review by MAIN whether each ships as its own PR or grouped.
 
 #### B04 — KPI card overlap (Chat1 #1)
 
+- **Status:** ⏳ Verification-pending. JobDetailPage KPI cards
+  rendered cleanly after B01.1 restored page rendering
+  (2026-05-18) — no overlap observed in Marco's post-fix browser
+  check. **But:** the original Chat1 report cited JobsListPage
+  cards, not JobDetailPage, and JobsListPage hasn't been
+  re-screenshotted. Cannot close until JobsListPage is visually
+  verified at narrow widths.
 - **Where it lives:** `apps/web/src/styles.css:3972` (`.tendering-stat-card`) + `apps/web/src/pages/JobsPage.tsx:1201, 1205, 1209, 1217` (4 stat cards: source tender / estimated value / win confidence / carried documents).
 - **Evidence:** Chat1 observation, never visually verified by Marco. CSS structurally fine (display:grid with 4px gap).
 - **Hypotheses:**
   - **H1**: Cards overlap horizontally at narrow widths because the parent container doesn't wrap (or wraps badly).
   - **H2**: Value-string overflow (long currency / long tender number) breaks the layout.
   - **H3**: Already-resolved since Chat1's observation; no current bug.
-- **Recommended hypothesis to test first:** H3 first — confirm via fresh screenshot from Marco after B01 unblocks visual access to the jobs detail page.
+- **Recommended hypothesis to test first:** H3 first — fresh screenshot of JobsListPage from Marco (B01 / B01.1 no longer block visual access).
 - **Fix sketch:** TBD pending re-screenshot. If H1: wrap parent in `flex-wrap: wrap` or set `min-width: 0` on child. If H2: `text-overflow: ellipsis`.
-- **Smoke test (after fix):** Resize browser from 1920px down to 768px on `/jobs/<job-id>` (after B01); cards must stack cleanly, no overlap, no value clipping.
-- **Open questions for MAIN:** request a current screenshot before allocating a fix PR.
-- **Dependencies:** Blocked by B01 (can't visually verify until job detail renders).
+- **Smoke test (after fix):** Resize browser from 1920px down to 768px on `/jobs` (the list page); cards must stack cleanly, no overlap, no value clipping.
+- **Open questions for MAIN:** request a current JobsListPage screenshot before allocating a fix PR.
+- **Dependencies:** Was blocked by B01 (resolved post-B01.1 ship); now self-sufficient pending visual verification.
 
 #### B05 — Job ID format inconsistency (Chat1 #2)
 
@@ -1591,6 +1670,51 @@ approaches to fix this class of bug:
 **Why not now:** Out of scope for B01.1 (one-line render-phase
 fix shouldn't drag a 3–4 PR platform change behind it).
 Captured here so the architectural debt isn't lost.
+
+#### P-platform3 — Service Worker update strategy
+
+**Status:** Future work
+**Complexity:** S
+**Source:** Surfaced by B01.1 deployment (2026-05-18) — Claude
+Code flagged that the PWA service worker may cache the broken
+bundle and require hard-refresh / "Update on reload" to see
+fixes
+**Depends on:** none
+
+The PWA's current service worker setup is offline-first
+(correct for the field worker use case) but creates "code
+shipped, user still sees broken version" friction for office
+users on each release. After B01.1 merged, Marco needed to
+Ctrl+Shift+R to flush the cached bundle before the fix was
+visible.
+
+**Approach A — Skip-waiting + automatic update prompt:**
+- Service worker calls `self.skipWaiting()` on new install
+- Client posts message to user: "Update available. Reload?"
+- User clicks → page reloads with fresh bundle
+- Standard Workbox pattern
+
+**Approach B — Versioned cache busting:**
+- Cache name includes a build hash (e.g. `app-cache-v{hash}`)
+- Old caches deleted on activation
+- Less UX friction but no user notification of new version
+- Requires build-time injection of hash
+
+**Recommendation when this is picked up:** Approach A with a
+non-blocking toast notification. Office users get notified
+and can update at a natural break; field users on offline
+workflows are unaffected because the toast only fires when
+actually online.
+
+**Estimated PRs:** 1–2
+- **P-platform3a** — skip-waiting wiring + update toast component
+- **P-platform3b** (optional) — telemetry on SW version skew
+  events (Application Insights, if P-platform1d has shipped)
+
+**Why not now:** Office users can hard-refresh after each
+release. The friction is real but not blocking. Captured here
+so it isn't forgotten when the user base grows beyond Sean
+and Raj.
 
 ### Cross-cutting decisions (must be locked before implementation)
 

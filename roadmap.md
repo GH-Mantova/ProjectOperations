@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-18 06:13 AEST
+Last updated: 2026-05-18 06:19 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -769,7 +769,7 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     PRs). Fix Map B01.1 closed.
 
 ✅  docs/post-b01.1-housekeeping — 2026-05-18
-    Shipped PR #[N]. Fix Map updated to reflect today's wave:
+    Shipped PR #205. Fix Map updated to reflect today's wave:
     B01 (PR #199), B01.1 (PR #203), B02 (PR #197) all marked
     ✅ Shipped with cross-references; B04 marked
     ⏳ Verification-pending (JobsListPage screenshot still

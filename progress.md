@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-18 00:49 AEST
+Last updated: 2026-05-18 00:54 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -5771,5 +5771,16 @@ Files: docs/Designs/scope-of-works-redesign.md, progress.md,
   roadmap.md
 Pre-PR checks: 4/4 green (api+web lint + test)
 
-## 2026-05-18 [HH:MM] AEST — PR docs/triage-fix-and-design-maps MERGED
-[filled in post-merge — Phase 8 task]
+## 2026-05-18 10:52 AEST — PR docs/triage-fix-and-design-maps MERGED
+Type: PR (docs only)
+Branch: docs/triage-fix-and-design-maps
+PR: #195 (https://github.com/GH-Mantova/ProjectOperations/pull/195)
+Merge SHA: 4c50e3cb745d0c700401077514c25105bfde2dc9
+Merged at: 2026-05-18T00:52:44Z (auto-merge squash)
+CI: ✅ all checks passed
+  - API — lint, test, compliance smoke
+  - Web — lint, logic tests, build
+  - Analyze (actions) [CodeQL]
+  - Analyze (javascript-typescript) [CodeQL]
+  - tendering-e2e
+Status: MERGED

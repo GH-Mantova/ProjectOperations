@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-18 02:26 AEST
+Last updated: 2026-05-18 02:32 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -5848,7 +5848,7 @@ Status: IN_PROGRESS
 ## 2026-05-18 12:23 AEST — PR fix/B01-job-detail-error-boundary OPENED
 Type: PR (bug fix)
 Branch: fix/b01-job-detail-error-boundary
-PR: #[N]
+PR: #199 (https://github.com/GH-Mantova/ProjectOperations/pull/199)
 Status: WAITING_CI
 Detail: 5 file changes. New ErrorBoundary class component
   (apps/web/src/components/ErrorBoundary.tsx) with sectionName
@@ -5869,3 +5869,17 @@ Files: apps/web/src/components/ErrorBoundary.tsx (new),
   docs/Designs/scope-of-works-redesign.md,
   progress.md, roadmap.md
 Pre-PR checks: 7/7 green
+
+## 2026-05-18 12:30 AEST — PR fix/B01-job-detail-error-boundary MERGED
+Type: PR (bug fix — second of the bug-fix wave)
+Branch: fix/b01-job-detail-error-boundary
+PR: #199 (https://github.com/GH-Mantova/ProjectOperations/pull/199)
+Merge SHA: b9f61b663789345038012a046a467f0931c0b786
+Merged at: 2026-05-18T02:30:11Z (auto-merge squash)
+CI: ✅ all checks passed
+  - API — lint, test, compliance smoke
+  - Web — lint, logic tests, build
+  - Analyze (actions) [CodeQL]
+  - Analyze (javascript-typescript) [CodeQL]
+  - tendering-e2e
+Status: MERGED

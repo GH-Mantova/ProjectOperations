@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-18 02:26 AEST
+Last updated: 2026-05-18 02:32 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -731,7 +731,7 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     Fix Map B02 closed.
 
 ✅  Bug fix B01 — JobDetailPage surgical error boundary
-    Shipped 2026-05-18, PR #[N]. New ErrorBoundary class component
+    Shipped 2026-05-18, PR #199. New ErrorBoundary class component
     (apps/web/src/components/) wraps each tab section in
     JobDetailPage; dev-mode console.error in reload() catch surfaces
     fetch failures in DevTools; +5 vitest specs. Phase 0.4 audit

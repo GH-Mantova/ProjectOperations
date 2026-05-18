@@ -22,6 +22,10 @@ type JobStage = {
   status: string;
   startDate?: string | null;
   endDate?: string | null;
+  // The API nests activities inside each stage (see jobInclude in
+  // apps/api/src/modules/jobs/jobs.service.ts). There is no
+  // top-level `activities` array on the response — B01.1.
+  activities?: JobActivity[];
 };
 
 type JobIssue = {
@@ -78,7 +82,6 @@ type JobDetail = {
   projectManager?: { id: string; firstName: string; lastName: string } | null;
   supervisor?: { id: string; firstName: string; lastName: string } | null;
   stages: JobStage[];
-  activities: JobActivity[];
   issues: JobIssue[];
   variations: JobVariation[];
   progressEntries: JobProgress[];
@@ -146,6 +149,19 @@ function formatDate(iso?: string | null): string {
   return new Date(iso).toLocaleDateString();
 }
 
+// Walks a job's nested stages[].activities into a flat list. Pure,
+// exported so it can be unit-tested as a regression guard against
+// B01.1 (line 207 `job?.activities.length` precedence bug).
+// Tolerates a missing `job`, missing `stages`, and stages whose
+// `activities` field is absent.
+type FlattenInput = {
+  stages?: Array<{ activities?: JobActivity[] | null; [k: string]: unknown }>;
+} | null | undefined;
+
+export function flattenActivities(job: FlattenInput): JobActivity[] {
+  return (job?.stages ?? []).flatMap((s) => s.activities ?? []);
+}
+
 export function JobDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { authFetch } = useAuth();
@@ -199,22 +215,35 @@ export function JobDetailPage() {
     };
   }, [tab, id, authFetch]);
 
-  const openIssueCount = useMemo(() => job?.issues.filter((issue) => issue.status === "OPEN").length ?? 0, [job]);
+  // The API nests activities inside each stage (jobInclude shape);
+  // there is no top-level activities array on the response. We derive
+  // a flat list once and reuse it for the overview KPIs. Was B01.1.
+  const allActivities = useMemo<JobActivity[]>(() => flattenActivities(job), [job]);
+  const openIssueCount = useMemo(
+    () => (job?.issues ?? []).filter((issue) => issue.status === "OPEN").length,
+    [job]
+  );
   const variationsTotal = useMemo(
     () => (job?.variations ?? []).reduce((sum, v) => sum + Number(v.amount ?? 0), 0),
     [job]
   );
-  const totalActivities = job?.activities.length ?? 0;
-  const completedActivities = (job?.activities ?? []).filter((a) => a.status === "COMPLETE").length;
+  const totalActivities = allActivities.length;
+  const completedActivities = allActivities.filter((a) => a.status === "COMPLETE").length;
   const progress = totalActivities > 0 ? Math.round((completedActivities / totalActivities) * 100) : 0;
 
   const toggleActivity = async (activityId: string, currentStatus: string) => {
     if (!job) return;
     const next = ACTIVITY_NEXT[currentStatus] ?? "IN_PROGRESS";
-    // Optimistic
+    // Optimistic — activities live inside each stage in the API
+    // response, so we walk stages[].activities (B01.1).
     setJob({
       ...job,
-      activities: job.activities.map((a) => (a.id === activityId ? { ...a, status: next } : a))
+      stages: job.stages.map((stage) => ({
+        ...stage,
+        activities: (stage.activities ?? []).map((a) =>
+          a.id === activityId ? { ...a, status: next } : a
+        )
+      }))
     });
     try {
       const response = await authFetch(`/jobs/${job.id}/activities/${activityId}`, {
@@ -259,7 +288,22 @@ export function JobDetailPage() {
     );
   }
 
-  if (!job) return null;
+  // Renders during initial load AND when job fetch returns null.
+  // We use EmptyState instead of `return null` so a future bug
+  // breaking the fetch path still shows the user SOMETHING
+  // (rather than a blank page that requires F12 to diagnose).
+  // See B01.1 / docs/diagnostics/2026-05-18-b01-blank-page/REPORT.md
+  if (!job) {
+    return (
+      <div className="job-detail">
+        <EmptyState
+          heading="Loading job…"
+          subtext="If this persists, the job may not exist or you may not have access."
+          action={<Link to="/jobs" className="s7-btn s7-btn--secondary">← Back to jobs</Link>}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="job-detail">
@@ -365,9 +409,11 @@ export function JobDetailPage() {
           ) : (
             <ul className="job-tree">
               {job.stages.map((stage) => {
-                const stageActivities = job.activities
-                  .filter((activity) => activity.jobStageId === stage.id)
-                  .sort((a, b) => a.activityOrder - b.activityOrder);
+                // stage.activities come from the API include scoped to
+                // this stage; no need to filter by jobStageId (B01.1).
+                const stageActivities = [...(stage.activities ?? [])].sort(
+                  (a, b) => a.activityOrder - b.activityOrder
+                );
                 const isOpen = expandedStages.has(stage.id);
                 return (
                   <li key={stage.id} className="job-tree__stage">

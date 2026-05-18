@@ -1547,6 +1547,51 @@ boundary.
 - **P-platform1d** — Application Insights wiring + env-var
   contract documented in `environment-reference.md`. S/M.
 
+#### P-platform2 — API/FE type contract enforcement
+
+**Status:** Future work
+**Complexity:** L
+**Source:** Surfaced by B01.1 root-cause analysis (2026-05-18)
+**Depends on:** none
+
+The B01.1 bug existed because the FE TypeScript type for a job
+declared a top-level `activities` field that the API never
+sends. TypeScript couldn't catch this because API responses
+are effectively `any` at the fetch boundary. Two systemic
+approaches to fix this class of bug:
+
+**Approach A — OpenAPI codegen:**
+- API exposes OpenAPI spec (NestJS has built-in support)
+- FE codegens types from the spec
+- Build-time guarantee that FE and API shapes match
+- One-shot setup; ongoing type drift detection in CI
+
+**Approach B — Runtime validation (Zod):**
+- Define Zod schemas for each API response
+- authFetch (or a wrapper) runs `schema.parse()` on incoming JSON
+- Runtime errors at the boundary with clear messages
+- More flexible than codegen, slightly slower at runtime
+
+**Recommendation when this is picked up:** Hybrid.
+- Zod schemas as the source of truth
+- TS types derived via `z.infer<>`
+- Optional: codegen API DTOs from the same schemas (e.g. via
+  ts-rest or tRPC) for end-to-end consistency
+
+**Estimated PRs:** 3–4
+- **P-platform2a** — choose tool, set up Zod + first schema (POC
+  on `/jobs/:id` since we already know its shape from B01.1)
+- **P-platform2b** — migrate hot-path endpoints (`/jobs`,
+  `/tenders`, `/projects`, `/clients`)
+- **P-platform2c** — migrate remaining endpoints + remove `any`
+  casts at fetch boundary
+- **P-platform2d** (optional) — codegen API DTOs from the same
+  schemas
+
+**Why not now:** Out of scope for B01.1 (one-line render-phase
+fix shouldn't drag a 3–4 PR platform change behind it).
+Captured here so the architectural debt isn't lost.
+
 ### Cross-cutting decisions (must be locked before implementation)
 
 1. **Worker dropdown source-of-truth** — `User` table, `WorkerProfile` table, or hybrid? Recommendation: `User` table filtered by `permissions.includes('projects.manage')` for PM dropdown; `WorkerProfile` for field-worker allocation. The two models have different audiences.

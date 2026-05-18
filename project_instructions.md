@@ -1,7 +1,7 @@
 # ProjectOperations — Project Instructions
 # Version: 1.1
 # Created: 2026-04-25 10:02 AEST
-# Last updated: 2026-05-17 19:46 AEST
+# Last updated: 2026-05-18 03:05 AEST
 # Maintained by: Claude Code (update after any architectural decision,
 #   module addition, business rule change, or workflow change)
 # Accessed by: All Claude chats in this project via web_fetch
@@ -68,6 +68,7 @@
 | §16 | Planned Integrations | Not yet built |
 | §17 | Support Chat Roles | STOP HERE — Variant A: Chat# (screenshots), Variant B: DR# (documents) |
 | §18 | Main Chat Operating Rules | OldMain# behaviour, fetching files, updating instructions, decisions |
+| §19 | Cowork (local diagnostic agent) | Read/probe-only local agent; diagnostic report convention; not for implementation |
 
 **Quick navigation for common tasks:**
 - "What modules are live?" → §13
@@ -1334,3 +1335,76 @@ The TOC must always reflect the actual sections present.
 This chat makes all architectural decisions. Support chats (Chat1, Chat2 etc.)
 describe what they see — this chat decides what to do about it.
 Claude Code implements — this chat writes the prompts.
+
+---
+
+## SECTION 19 — COWORK (LOCAL DIAGNOSTIC AGENT)
+
+**What Cowork is:**
+Cowork is a local agent with read/write access to the repo at
+`C:\ProjectOperations2` and the dev environment. It is used for
+local file reads, DB probes, browser-based smoke tests, and
+diagnostic reports. Cowork is NOT an implementation agent —
+Claude Code remains the sole code-shipping tool.
+
+**When MAIN uses Cowork:**
+
+1. **Diagnostic reads** — investigating a bug, reading source
+   files MAIN can't fetch from GitHub (e.g. private feature
+   branches, stash state), running DB probes against the dev
+   postgres container, capturing local config.
+   Output: `docs/diagnostics/<YYYY-MM-DD>-<topic>/REPORT.md`
+
+2. **Smoke test reports** — after a fix lands on main, verifying
+   the user-visible behaviour in the running app, capturing
+   browser console + network + DOM state.
+   Output: `docs/diagnostics/<YYYY-MM-DD>-<topic>-smoketest/REPORT.md`
+
+3. **One-shot probes** — small lookups (DB row count, file
+   presence, config value, current branch state) where a full
+   markdown report would be overkill.
+   Output: direct paste-back to MAIN, no committed artefact.
+
+**What Cowork does NOT do:**
+
+- No source code changes (Claude Code's job)
+- No schema migrations (Claude Code's job)
+- No PR creation (Claude Code's job)
+- No architectural decisions (MAIN's role)
+- No test fixes / lint fixes (Claude Code's job)
+- No deployments (out of scope for any agent)
+
+**Standard flow for a bug investigation:**
+
+1. MAIN writes a Cowork diagnostic prompt with explicit
+   deliverables
+2. Marco pastes it to Cowork
+3. Cowork produces `REPORT.md` in the right diagnostics subfolder
+4. Marco pastes report contents (or just the path if clean) back
+   to MAIN
+5. MAIN reads the report and identifies the cause
+6. MAIN writes a Claude Code implementation prompt
+7. Marco pastes that to Claude Code, which ships the fix
+   (with all the usual Claude Code protocols intact)
+
+**Report conventions:**
+
+- Markdown only
+- Filename: `REPORT.md` (singular, predictable)
+- Path: `docs/diagnostics/<YYYY-MM-DD>-<topic>/REPORT.md`
+- Sections clearly numbered (§1, §2, §3 ...) so MAIN can
+  reference them by id when writing the follow-up prompt
+- Every factual claim backed by a verbatim file paste, code
+  snippet, or command output — no interpretive summaries
+- Interpretation is MAIN's job, not Cowork's
+- Reports are NOT committed by Cowork. Marco reviews; if useful
+  as a lessons-learned record, Marco can include in a later PR
+  or move to `docs/lessons-learned/`. Default is uncommitted.
+
+**Cowork outputs do NOT replace Claude Code's protocols.**
+Pre-flight (Phase 0), test gates (Phase 5-6 depending on PR
+type), bypass actor add/remove, progress.md updates, chore
+MERGED-log PRs — these are Claude Code conventions and remain
+unchanged. Cowork sits outside the PR cycle.
+
+See also: `docs/diagnostics/README.md` for the report template.

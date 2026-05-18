@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-18 02:32 AEST
+Last updated: 2026-05-18 03:05 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -5883,3 +5883,33 @@ CI: ✅ all checks passed
   - Analyze (javascript-typescript) [CodeQL]
   - tendering-e2e
 Status: MERGED
+
+## 2026-05-18 13:03 AEST — PR docs/cowork-rules STARTED
+Type: PR (docs — governance)
+Branch: docs/cowork-rules
+Detail: Adds §19 (Cowork — local diagnostic agent) to
+  project_instructions.md and creates docs/diagnostics/README.md
+  as the folder convention + REPORT.md template. Captures the new
+  tool flow surfaced by today's B01 investigation: Cowork handles
+  reads + probes + smoke reports (no implementation); MAIN reads
+  reports + writes prompts; Claude Code ships fixes. Standing
+  rule going forward; survives chat compaction. No code, schema,
+  or test changes.
+Status: IN_PROGRESS
+
+## 2026-05-18 13:03 AEST — PR docs/cowork-rules OPENED
+Type: PR (docs — governance)
+Branch: docs/cowork-rules
+PR: #[N]
+Status: WAITING_CI
+Detail: 4 file changes. project_instructions.md gets a new TOC
+  row (§19) + the full §19 block at end of file. New
+  docs/diagnostics/README.md (folder convention + report
+  template). progress.md + roadmap.md per protocol. The chat-
+  routing block at file top and all existing sections (§17
+  Support chats, §18 Main chat ops) are untouched. Claude
+  Code's protocols (pre-flight, gates, bypass, progress.md,
+  chore PRs) unchanged.
+Files: project_instructions.md, docs/diagnostics/README.md (new),
+  progress.md, roadmap.md
+Pre-PR checks: 4/4 green

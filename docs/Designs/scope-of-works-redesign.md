@@ -1082,3 +1082,417 @@ required. Existing Quote tab can be progressively replaced.
 
 — end of C-chain Phase 0 discovery —
 
+## Fix Map (2026-05-18)
+
+**Status:** triage complete, no fixes shipped. Decided per-bug after
+review by MAIN whether each ships as its own PR or grouped.
+
+**Base SHA at triage time:** `78c7b049947e486941dac285bf456650962c2f03` (post chore #194)
+**Tests at triage time:** API 599 pass / 6 skip; web 148
+
+### Summary table
+
+| ID | Title | Severity | Suspected cause | Fix complexity | Blocks/Blocked-by |
+|---|---|---|---|---|---|
+| B01 | Job detail blank page (/jobs/job-001) | BLOCKER | Frontend render exception with no error boundary OR auth/session edge case; backend + DB look fine | M | Blocks B04 visual verify |
+| B02 | POST /api/v1/jobs returns "Cannot POST" | BLOCKER | `JobsController` has no `@Post()` handler; frontend calls one that doesn't exist | S | — |
+| B03 | No project → job transition | BLOCKER | Architectural gap: existing `convertFromTender` creates Project; existing `tender-conversion/:id/convert-to-job` creates Job — both off tender; no Project→Job path exists | L (sub-discovery candidate) | — |
+| B04 | KPI card overlap (Chat1 #1) | COSMETIC | Unverified visual edge case at narrow widths; CSS structurally sound | S (TBD) | Blocked by B01 (can't smoke) |
+| B05 | Job ID format inconsistency (Chat1 #2) | FUNCTIONAL | 3 prefix formats coexist: `J-YYYY-NNN` (seed), `JOB-YYYY-NNN` (runtime), `JOB-COMP-<epoch>` (compliance harness) | S | — |
+| B06 | Scheduler weekend clip (Chat1 #4) | COSMETIC | Unverified; no `--weekend` variant in `.sched-week__*` CSS — likely a narrow-column rendering issue | S (TBD) | — |
+| B07 | "Due this week" mislabel (Chat1 #6) | COSMETIC | Widget filter is "due in next `daysAhead` days" (default 7); title says "this week" → off-by-cutoff at end of week | S | — |
+| B08 | Client win 300% | FUNCTIONAL | `bumpWinCount` re-fires winCount increment without re-checking tenderCount; copy-tender flow or re-award triggers it | S (data fix + idempotency guard) | — |
+
+### Per-bug detail
+
+#### B01 — Job detail blank page
+
+- **Where it lives:** `apps/web/src/App.tsx:188` (route registration `/jobs/:id` → `JobDetailPage`), `apps/web/src/pages/jobs/JobDetailPage.tsx` (570 LOC).
+- **Evidence:** Marco screenshot showed `/jobs/job-001` URL with blank white viewport. Route handler responded (URL changed; not a 404) but no UI rendered.
+- **Backend + data confirmed OK:**
+  - `GET /jobs/:id` exists at `JobsController:45` (`getById(@Param('id') id)` → `service.getById`).
+  - `jobs.service.ts:332` (`getById`) wraps `requireJob(id)` (line 1251) which uses the rich `jobInclude` (line 92) — includes `stages`, `issues`, `variations`, `progressEntries`, `statusHistory`, etc. Shape matches the `JobDetail` type in the component.
+  - DB has `job-001` (`SELECT id, job_number, name, status FROM jobs WHERE id='job-001'` → exists, `J-2025-001 / Ipswich Motorway Stage 4 — Earthworks / ACTIVE`).
+- **Hypotheses:**
+  - **H1** (most likely): a render-time exception inside one of the nested sections (`StageSection` / `ActivitySection` / etc.) crashes the React tree silently. No error boundary above `JobDetailPage`, so the whole route renders blank. Likely a nested field — e.g. `activity.owner` is null and code dereferences `.firstName`.
+  - **H2**: `authFetch` returns a 401 (expired token) → `response.ok=false` → throws → `setError("Job not found.")` → renders `EmptyState`. But Marco said BLANK, not "Job not found", so H2 is unlikely unless the EmptyState component itself crashes (it doesn't — used everywhere).
+  - **H3**: `setExpandedStages(new Set(data.stages.map(s => s.id)))` on line 168 throws if `data.stages` is undefined. Catch block sets error AND `job` was already set on line 166 → render proceeds with truthy `job` but undefined nested arrays → JSX access throws → blank tree.
+- **Recommended hypothesis to test first:** H1 / H3 (closely related). Add an error boundary at the `<Route>` level OR wrap each tab section. Cheapest first-cut: log to console.error in the catch on line 170 to surface the underlying error to Marco.
+- **Fix sketch:**
+  1. Add an error boundary component (`<ErrorBoundary fallback={<EmptyState heading="Could not render job"/>}>`) around `JobDetailPage`'s nested sections.
+  2. Audit nested optional fields in the render path (`owner`, `lead`, `approvedBy`, `reportedBy`) for unguarded `.firstName` dereferences.
+  3. Re-throw `error` to the browser console in dev mode so the actual stack reaches Marco.
+- **Smoke test (after fix):**
+  1. Login as admin
+  2. Navigate to `/jobs`
+  3. Click the "Ipswich Motorway Stage 4 — Earthworks" card
+  4. Expected: job detail renders with stages, issues, variations sections. NOT blank, NOT "Job not found".
+  5. Open browser console; expect zero errors.
+- **Open questions for MAIN:** is there a global error boundary on the React tree that Marco could check, or do we need one? Memory hints that `EmptyState`/`Skeleton` are from `@project-ops/ui` but I didn't find any app-level error boundary.
+- **Dependencies:** Blocks B04 (KPI card overlap on the same page).
+
+#### B02 — POST /api/v1/jobs returns "Cannot POST"
+
+- **Where it lives:** `apps/api/src/modules/jobs/jobs.controller.ts:26` (`@Controller("jobs")` — no `@Post()` at root); `apps/web/src/pages/jobs/JobsListPage.tsx:449` (frontend POSTs to `/jobs`).
+- **Evidence:** Modal "Cannot POST /api/v1/jobs" after submitting job-creation form. Confirmed: controller has only `@Get`, `@Patch`, and `@Post(":id/<sub-resource>")` handlers — nothing at the controller root.
+- **Hypotheses:**
+  - **H1** (confirmed): `@Post()` handler simply doesn't exist. Frontend calls `authFetch("/jobs", { method: "POST" })`; Nest responds 404 "Cannot POST /api/v1/jobs".
+- **Recommended hypothesis to test first:** H1.
+- **Fix sketch:**
+  1. Add `@Post() create(@Body() dto: CreateJobDto, @CurrentUser() actor) { return this.service.createJob(dto, actor.sub); }` to `JobsController`.
+  2. Add `createJob(dto, actorId)` to `JobsService`. Look at the existing `convertFromTender` / `reuseArchivedJobConversion` paths for the pattern. A minimal manual-create is `prisma.job.create({ data: { ... } })` + writing a status-history row + audit log.
+  3. Add `CreateJobDto` (or reuse fields from `UpdateJobDto` made required). The frontend body (line 449-451) sends `name`, optional `description`, optional `siteId` — match those.
+- **Smoke test (after fix):**
+  1. Navigate to `/jobs`
+  2. Click "New job"
+  3. Enter name "Test Job 1", leave description + site blank, submit
+  4. Expected: modal closes; new card appears in the list with name "Test Job 1" and a `JOB-2026-NNN` number; clicking it navigates to its detail page (after B01 is also fixed).
+- **Open questions for MAIN:** what's the policy on manual jobs (without a tender source)? The schema allows `sourceTenderId = null` but a quick scan of the conversion paths suggests all production jobs come from tenders. If manual jobs shouldn't exist, the fix is "hide/disable the New Job button when not converting" rather than "wire up POST /jobs".
+- **Dependencies:** None.
+
+#### B03 — No project → job transition
+
+- **Where it lives:**
+  - Tender→Project conversion: `apps/api/src/modules/projects/projects.service.ts:390` (`convertFromTender`) + `apps/api/src/modules/tendering/tender-convert.controller.ts:18` (`POST /tenders/:id/convert`).
+  - Tender→Job conversion (parallel, separate): `apps/api/src/modules/jobs/tender-conversion.controller.ts:45` (`POST /tender-conversion/:tenderId/convert-to-job`) + `JobsService.reuseArchivedJobConversion`.
+  - Project status UI: `apps/web/src/pages/projects/AdvanceStatusModal.tsx` — status flow is `MOBILISING → ACTIVE → PRACTICAL_COMPLETION → DEFECTS → CLOSED` (all within Project).
+- **Evidence:** Marco: "When I go to tenders and change the status to awarded, it shows under project, but I can't move from project to jobs". The status flow in `AdvanceStatusModal.tsx` confirms no Project→Job transition exists. Schema has `Job.sourceTender` (line ~1860) but no `Job.sourceProjectId`.
+- **Hypotheses:**
+  - **H1**: Project→Job is genuinely unimplemented; needs new schema FK + endpoint + UI button + design decision on what "becoming a Job" means (does the Project close? Is the Job a child of the Project? Do scope items duplicate?).
+  - **H2**: Project and Job were conceptually meant to be the same entity at different lifecycle stages; the schema already has overlap (both have client, scope, team, contractValue, etc.). Fix is to collapse them, NOT add a transition.
+- **Recommended hypothesis to test first:** H1 with a sub-discovery PR that nails down (a) what Marco's workflow expects ("Project IS the delivery phase" vs "Project precedes Job") and (b) what data needs to move/duplicate/freeze on transition.
+- **Fix sketch:** **L complexity.** This isn't a single fix — it's a design decision. Recommend MAIN run a separate sub-discovery pass before writing any implementation prompt. Possible scopes:
+  - **Scope A** (minimal): add a `MOBILISING → ACTIVE → … → CLOSED` step labelled "Convert to Job" that creates a Job record off the Project + sets Project.status=ARCHIVED. Adds `Job.sourceProjectId` FK.
+  - **Scope B** (collapse): merge Project + Job into a single Project entity, deprecate the Job model. Multi-PR migration.
+- **Smoke test (after fix):** depends on the chosen scope.
+- **Open questions for MAIN:** see Hypotheses + Fix sketch above. This is the architectural decision that has to come first.
+- **Dependencies:** None to other bugs; but enlarges B01 scope if H2 is chosen (we'd be deprecating the entire Jobs module).
+
+#### B04 — KPI card overlap (Chat1 #1)
+
+- **Where it lives:** `apps/web/src/styles.css:3972` (`.tendering-stat-card`) + `apps/web/src/pages/JobsPage.tsx:1201, 1205, 1209, 1217` (4 stat cards: source tender / estimated value / win confidence / carried documents).
+- **Evidence:** Chat1 observation, never visually verified by Marco. CSS structurally fine (display:grid with 4px gap).
+- **Hypotheses:**
+  - **H1**: Cards overlap horizontally at narrow widths because the parent container doesn't wrap (or wraps badly).
+  - **H2**: Value-string overflow (long currency / long tender number) breaks the layout.
+  - **H3**: Already-resolved since Chat1's observation; no current bug.
+- **Recommended hypothesis to test first:** H3 first — confirm via fresh screenshot from Marco after B01 unblocks visual access to the jobs detail page.
+- **Fix sketch:** TBD pending re-screenshot. If H1: wrap parent in `flex-wrap: wrap` or set `min-width: 0` on child. If H2: `text-overflow: ellipsis`.
+- **Smoke test (after fix):** Resize browser from 1920px down to 768px on `/jobs/<job-id>` (after B01); cards must stack cleanly, no overlap, no value clipping.
+- **Open questions for MAIN:** request a current screenshot before allocating a fix PR.
+- **Dependencies:** Blocked by B01 (can't visually verify until job detail renders).
+
+#### B05 — Job ID format inconsistency (Chat1 #2)
+
+- **Where it lives:** `apps/api/prisma/seed-initial-services.ts` (seed uses `J-2025-NNN`) + compliance smoke harness (uses `JOB-COMP-<epoch>`) + runtime job-number generator (uses `JOB-YYYY-NNN`). The runtime generator is in `JobsService.generateJobNumber` or similar — wasn't located explicitly but inferred from `JOB-2026-001` data and `ProjectNumberSequence` schema model precedent (`apps/api/prisma/schema.prisma:1847`).
+- **Evidence:** DB probe (38 rows) confirmed three coexisting formats:
+  - `J-2025-001`, `J-2025-002` — 2 seed records
+  - `JOB-2025-099` — 1 seed record
+  - `JOB-2026-001` — 1 runtime-created (the most recent non-compliance row)
+  - `JOB-COMP-<epoch>` — 33 compliance-smoke records
+- **Hypotheses:**
+  - **H1** (confirmed): seed and runtime generator use different prefix formats.
+- **Recommended hypothesis to test first:** H1.
+- **Fix sketch:** Update seed to use `JOB-YYYY-NNN` to match runtime. Compliance harness can keep `JOB-COMP-<epoch>` (it's disposable test data) OR also switch — Marco's call. No migration needed because seed runs idempotently against ID = `job-001`, `job-002`, etc. Just change the displayed `jobNumber` literals.
+- **Smoke test (after fix):**
+  1. Reset DB + reseed
+  2. Navigate to `/jobs`
+  3. All non-compliance job cards display `JOB-YYYY-NNN` format. No `J-2025-NNN` anywhere.
+- **Open questions for MAIN:** keep `JOB-COMP-<epoch>` for compliance smoke or also normalize? Recommendation: keep the COMP- prefix so they're visually distinguishable in the audit table; just don't display them in the user-facing list.
+- **Dependencies:** None.
+
+#### B06 — Scheduler weekend clipping (Chat1 #4)
+
+- **Where it lives:** `apps/web/src/pages/scheduler/SchedulerWorkspacePage.tsx:436` (week-header `["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]`) + `apps/web/src/styles.css:2343` (`.sched-week__col`) + `.sched-month__cell` (line 2488+).
+- **Evidence:** Chat1 observation, never visually verified. CSS has no `--weekend` variant — all 7 columns share the same styling.
+- **Hypotheses:**
+  - **H1**: All 7 columns are equal width but the parent grid has a max-width that compresses Saturday/Sunday columns differently from weekdays at narrow widths.
+  - **H2**: A specific shift / event renders only on weekends and overflows because of a hardcoded width.
+  - **H3**: Already-resolved.
+- **Recommended hypothesis to test first:** H3 — re-screenshot from Marco. Without a specific repro, root cause speculation is unproductive.
+- **Fix sketch:** TBD pending repro.
+- **Smoke test (after fix):** Navigate to `/scheduler`; load a week with weekend shifts; verify Sat + Sun columns render at the same width as Mon-Fri with no content clipping.
+- **Open questions for MAIN:** request a fresh screenshot, ideally with a weekend-shift visible.
+- **Dependencies:** None.
+
+#### B07 — "Due this week" mislabel (Chat1 #6)
+
+- **Where it lives:** `apps/web/src/dashboards/widgets/tendering.tsx:242` (`DueThisWeekPanel`) + `apps/web/src/dashboards/widgetRegistry.ts:283` (widget metadata `name: "Due this week"`).
+- **Evidence:** Confirmed via code read: widget filter is `daysUntil(t.dueDate) <= daysAhead` where `daysAhead` defaults to 7 (configurable). Title says "Due this week" but the actual semantic is "due in the next N days" (default 7 = rolling 7-day window from today). At end of week, results spill into next week.
+- **Hypotheses:**
+  - **H1** (confirmed): label / semantic mismatch. Title implies "this week" (Mon-Sun current week) but logic is rolling 7-day.
+- **Recommended hypothesis to test first:** H1.
+- **Fix sketch:** Two options:
+  - **(a) Rename label** to "Due in next 7 days" or "Due soon" — preserves current 7-day rolling behaviour, fixes label. 1-line change in `widgetRegistry.ts:283`.
+  - **(b) Change semantic** to literal current-week (Mon-Sun of `new Date()`'s ISO week). Adjust the filter in `DueThisWeekPanel` line 250.
+  Recommendation: (a) — the 7-day rolling window is a more useful default for tenders (estimators don't suddenly stop caring on Sunday night).
+- **Smoke test (after fix):** Open `/tendering/dashboard`; verify widget title matches its content.
+- **Open questions for MAIN:** decide (a) vs (b). The `daysAhead` config field already exists — letting estimators set it to 14 to mean "next two weeks" is the strongest argument for (a).
+- **Dependencies:** None.
+
+#### B08 — Client win 300%
+
+- **Where it lives:** `apps/api/src/modules/tendering/tendering.service.ts:1026` (`bumpWinCount`) + `apps/api/src/modules/tendering/tendering.service.ts:1009` (the win-rate computation in another path).
+- **Evidence:** DB probe confirmed Brisbane Grammar School has `win_count=3, tender_count=1, win_rate=300.00` — `winCount > tenderCount` is mathematically impossible for a probability. `winRate` is stored as a percentage on `clients.win_rate`; no `win_probability` column exists anywhere.
+- **Hypotheses:**
+  - **H1** (most likely): `bumpWinCount` (`tendering.service.ts:1026`) increments `winCount` without checking idempotency. If a tender is awarded → bumpWinCount runs (winCount=1). Tender duplicated via "Copy" flow → if the copy retains the AWARDED status, bumpWinCount fires again on the COPY (winCount=2, tenderCount still 1 because Copy didn't increment tenderCount). Status edit re-award → bumpWinCount #3 (winCount=3).
+  - **H2**: A backfill / migration ran `bumpWinCount` more than once over the same set.
+- **Recommended hypothesis to test first:** H1 via the Copy-tender flow.
+- **Fix sketch:**
+  1. **Data fix:** one-shot SQL to clamp `winCount = LEAST(winCount, tenderCount)` and recompute `winRate = winCount/tenderCount*100`. Migration `XXXX_clamp_client_win_counters.sql`.
+  2. **Idempotency guard:** in `bumpWinCount`, before incrementing, check whether this `(clientId, tenderId)` win has already been counted. Simplest approach: add a `wonAt` timestamp on `TenderClient`; if already set, skip. (Schema add: nullable `won_at TIMESTAMPTZ` on `tender_clients`. Migration + code change.)
+  3. **Copy-tender flow:** when duplicating a tender, reset `is_awarded=false` on the copy's `TenderClient` rows so the next award fires fresh — OR explicitly do NOT re-run bumpWinCount during copy.
+- **Smoke test (after fix):**
+  1. Reset Brisbane Grammar School: `UPDATE clients SET win_count=1, win_rate=100 WHERE id='cmonoidor00riubccwps0j96a';`
+  2. Re-trigger the bug: duplicate IS-T020 (the AWARDED parent)
+  3. Verify the new IS-T020-COPY-2 does NOT bump winCount again; client still shows `win_count=1, tender_count=2, win_rate=50`.
+  4. Award IS-T020-COPY-2 explicitly → winCount=2, tenderCount=2, winRate=100. Correct.
+- **Open questions for MAIN:** does the Copy-tender flow today preserve AWARDED status on the copy, or reset it? If it preserves, fix step 3 is mandatory; if it resets, step 3 is moot.
+- **Dependencies:** None.
+
+— end of Fix Map —
+
+## Design Map (2026-05-18)
+
+**Status:** triage complete, no implementation shipped. Implementation
+prompts to be written by MAIN per-feature as priorities are set.
+
+**Scope:** 11 features — 5 in C-chain (Quote Arrangement, post-MVP)
+and 6 in P-chain (Projects module redesign, described by Marco
+2026-05-18).
+
+### Summary table
+
+| ID | Chain | Feature | Complexity | Cross-cutting concerns | Status |
+|---|---|---|---|---|---|
+| C1 | C-chain | Quote Arrangement screen base | M | extends push-from-scope | discovered, ready for impl prompt |
+| C2 | C-chain | Drag-and-drop + grouping | M | reuses @dnd-kit; pivots on source card | discovered |
+| C3 | C-chain | Collapse/expand/hide | S | reuses isVisible + show* flags | discovered |
+| C4 | C-chain | Reset to original / displayName | S/M | re-runs push-from-scope | discovered |
+| D1 | C-chain | Quote PDF respects arrangement | M | PDFKit stopgap (Q5 locked) | discovered |
+| P-tab1 | P-chain | Project Overview restructure | S | depends on user list catalog | new |
+| P-tab2 | P-chain | Project Documents with type dropdown | M | extensible doc-type catalog | new |
+| P-tab3 | P-chain | Project Scope with "pull from quote" + log | L | overlaps with C2/C3 UX; needs change-log model | new |
+| P-tab4 | P-chain | Project Schedule from project scope + WBS Gantt | M | depends on P-tab3; Gantt explode/collapse | new |
+| P-tab5 | P-chain | Project Team as calendar with cascading allocation | L | scheduler module shares logic; worker→ticket→asset relations | new |
+| P-tab6 | P-chain | Project Activity = change-log | S | depends on P-tab3 log model | new |
+
+### C-chain features
+
+See the existing "C-chain — Phase 0 discovery findings (2026-05-18)"
+section above. No deltas; nothing has shipped on C-chain since that
+discovery, so all open questions (Q4 Client.name vs displayName,
+Q5 PDFKit stopgap, push-from-scope extension boundary) remain
+locked as recommendations awaiting MAIN's final answer.
+
+### P-chain features
+
+#### P-tab1 — Project Overview restructure
+
+**Purpose:** Make the Project Overview tab the single landing screen
+for a delivery-phase project — Manager / Supervisor (only one
+authoritative role label) + key dates + financials, no clutter.
+
+**Current state:**
+- File: `apps/web/src/pages/projects/ProjectDetailPage.tsx:217` (`OverviewTab`)
+- Currently renders 3 sections: Financials (4 stats), Team (4 PersonCards — Project Manager / Supervisor / Estimator / WHS Officer), Key dates (4 dates)
+- Backend: `Project` schema (`apps/api/prisma/schema.prisma:1854`) has `projectManagerId`, `supervisorId`, and FK relations. `whsOfficer` is part of the `project` payload from `jobInclude`-equivalent in `projects.service.ts`. Estimator comes from the source tender.
+
+**Proposed change (Marco's brief, verbatim where ambiguous):**
+> "Project Overview should not surface Supervisor and WHS Officer as
+> primary identity — just one role. The list of PMs is Beau Murphy,
+> Colin Hanlon, Sean Lattin, Marco Mantovaninni."
+
+**Restructured intent (MAIN's interpretation):**
+- Drop Supervisor + WHS Officer from OverviewTab's Team section (still keep the fields in the underlying schema so reports / dashboards can use them; just hide the UI surface).
+- Promote Project Manager to a more prominent slot (currently same size as the other 3 roles).
+- Replace the PM picker with a dropdown sourced from the 4 named users (Beau / Colin / Sean / Marco — all confirmed to exist in dev DB as `user-pm-001`, `user-pm-002`, `user-admin`, `user-supervisor-001` respectively).
+
+**Open questions:**
+- **Is Supervisor / WHS Officer used elsewhere?** Probe-confirmed they're FK columns on the Project row; UI display in OverviewTab is the primary consumer. Other consumers (reports, dashboard widgets) may exist — would need a grep before deletion. **Recommendation:** hide in UI; do not drop the column.
+- **PM dropdown source:** the 4 names align with `user-pm-001`, `user-pm-002`, `user-admin`, `user-supervisor-001`. Should the dropdown filter by a role/permission ("users with `projects.manage`"), or hardcode the 4 user IDs, or query a saved "PM candidates" catalog?
+  - **Recommendation:** filter by permission `projects.manage` — most extensible.
+
+**Cross-cutting concerns:**
+- Other tabs (Team, Activity) display PM data — restructure shouldn't break those.
+
+**Suggested PR breakdown:**
+- Single PR (S complexity). Frontend-only changes to OverviewTab; backend schema unchanged.
+
+#### P-tab2 — Project Documents with type dropdown
+
+**Purpose:** Add a typed-category dropdown (drawings / SWMS / ARCP / DMP / contract / Form65 / etc) to the upload UI so documents can be filtered and the tab becomes a structured catalogue rather than a flat list.
+
+**Current state:**
+- File: `apps/web/src/pages/projects/ProjectDetailPage.tsx:501` (`DocumentsTab`)
+- Backend: `DocumentLink` model (`apps/api/prisma/schema.prisma:262`) already has a `category: String` field (free-form string, not enum) — extensible by design. Seed data shows existing categories: "Contract", "Programme", "Environmental", "SWMS", "Geotechnical".
+- Tender-vs-project provenance already tracked via `secondaryEntity` metadata (per seed). Image 9 shows current "tender · 05/05/2026" / "tender · 04/05/2026" labels.
+
+**Proposed change (Marco's brief, verbatim where ambiguous):**
+> "Documents — need a dropdown when uploading: drawings, SWMS, ARCP,
+> DMP, contract, Form65… this list may change and/or grow in the future."
+
+**Restructured intent (MAIN's interpretation):**
+- Add a dropdown to the upload UI that lets the user pick from a curated category list.
+- Store the picked value in the existing `DocumentLink.category` field.
+- Provide an admin UI to manage the available category list (since "this list may change and/or grow in the future").
+
+**Open questions:**
+- **Extensibility: ENUM, admin catalog, or frontend constant?** Three options:
+  - **(a)** Postgres ENUM on `category` — type-safe but every new value needs a migration.
+  - **(b)** Admin-managed catalog table (`DocumentCategory` with `name`, `module`, `isActive`, `sortOrder`) — most flexible.
+  - **(c)** Frontend constant list — fastest now, painful later.
+  - **Recommendation:** **(b)**. The string column already exists; we just add the catalog table + admin UI. Existing values continue to work without migration; new values are admin-added without code change.
+- **Should categories be module-scoped?** "Form65" is a project document; "Quote PDF" is a tendering artifact. The catalog table should have a `module` filter so the UI dropdown only shows project-relevant categories.
+
+**Cross-cutting concerns:**
+- The same dropdown will eventually appear on Tender Documents (uploading there has its own category needs). Catalog table should be module-aware from day one.
+- Document uploads in other modules (Forms, Maintenance) already use `DocumentLink` — consistency check.
+
+**Suggested PR breakdown:**
+- **P-tab2a** — Schema + admin catalog (DocumentCategory model + migration + admin CRUD endpoints + admin UI). S/M.
+- **P-tab2b** — Wire the dropdown into the Project Documents upload UI. S.
+
+#### P-tab3 — Project Scope with "pull from quote" + change-log
+
+**Purpose:** The Project Scope tab is the frozen-at-conversion view of what's been promised to the client. It should let estimators / PMs see the scope at WBS granularity (DEM1.1, DEM1.2 …) with collapsible groupings, pull the most recent quote arrangement as the starting point, and keep an audit trail of any post-conversion edits.
+
+**Current state:**
+- File: `apps/web/src/pages/projects/ProjectDetailPage.tsx:292` (`ScopeTab`)
+- Currently shows "Scope and rates are frozen at conversion — <timestamp>" + grouped by `scopeCode`. IS-P001 shows "No scope items / No line items were snapshotted from the source tender" — the snapshot at conversion appears not to have populated for that project, which is its own gap to address inside this work.
+- Backend has `QuoteScopeItem` (per C-chain discovery) with `sourceItemId`/`sourceItemType` provenance and per-row `sortOrder` + `isVisible`. WBS numbering lives on `ScopeOfWorksItem.wbsCode` (e.g. `DEM1.1`).
+
+**Proposed change (Marco's brief, verbatim where ambiguous):**
+> "Project Scope — should pull from the quote (preserving discipline
+> numbering like DEM1.1, DEM1.2); also needs the same collapse/explode
+> rules as the generated quote; needs a change-log for any
+> post-conversion edits."
+
+**Restructured intent (MAIN's interpretation):**
+- Change the snapshot source: instead of (or in addition to) `ScopeOfWorksItem`, materialise from the **awarded quote's** `QuoteScopeItem` rows — preserves the arrangement the client actually accepted.
+- Add a UI mode that mirrors C2/C3's collapse/explode/hide semantics (group by source card, show/hide per row, collapse group).
+- Add a change-log: every post-conversion edit (description tweaked, quantity changed, row added) creates a `ProjectActivityLog` entry with `action='SCOPE_EDITED'` (new enum value) and `details` containing before/after.
+
+**Open questions:**
+- **Conversion snapshot vs awarded-quote snapshot:** today `convertFromTender` populates a "flat scope". Should it instead read from the awarded `ClientQuote`'s `QuoteScopeItem` rows? If yes, what if no client has been marked AWARDED before conversion? **Recommendation:** prefer awarded-quote source; fall back to tender's raw scope if no awarded quote exists.
+- **Collapse/explode UX: build now or wait for C-chain?** P-tab3 depends on the same dnd-kit + grouping work as C2/C3. If C2/C3 ships first, P-tab3 reuses; if P-tab3 ships first, it ships standalone.
+  - **Recommendation:** sequence C2/C3 first so P-tab3 reuses the work.
+- **Change-log granularity:** per-field, per-line, or per-card? **Recommendation:** per-line (one log entry per scope-row edit, with a diff in `details`). Matches what the existing ProjectActivityLog supports.
+
+**Cross-cutting concerns:**
+- Depends on C-chain (C2/C3 ideally precede; D1 also wants this data layer to be quote-arrangement-aware).
+- The "pull from quote" semantic means the existing `convertFromTender` snapshot needs an overhaul.
+
+**Suggested PR breakdown:**
+- **P-tab3a** — Backend: change snapshot source to awarded quote; fallback path; new ProjectActivityAction enum value. M.
+- **P-tab3b** — Frontend: collapse/explode/hide UI (reusing C-chain dnd-kit work if it's shipped). S/M.
+- **P-tab3c** — Change-log read+write integration (writes from edits in 3b; reads displayed in P-tab6's Activity tab). S.
+
+#### P-tab4 — Project Schedule from project scope + WBS Gantt
+
+**Purpose:** The Schedule tab's Gantt chart should reflect the WBS used in the project's frozen scope (collapsible / explodable like the scope view), and must read from the project's snapshot — not the tender's raw scope as it does today.
+
+**Current state:**
+- File: `apps/web/src/pages/projects/ProjectDetailPage.tsx:348` (`ScheduleTab`)
+- "Generate from scope" button at line 373 calls `POST /projects/:id/gantt/generate`. The confirmation prompt confirms Marco's complaint: "Generate Gantt tasks from the source tender's scope disciplines?" — explicitly reads from tender, not project.
+- Backend service handles this — needs to be located in `projects.service.ts`.
+
+**Proposed change (Marco's brief, verbatim where ambiguous):**
+> "The Gantt chart should reflect the WBS implemented on scope as well,
+> allowing the user to explode or collapse the gantt chart as required.
+> Also, it must be the scope on the project, not the one from the
+> tender/quote (which is what it is doing right now)."
+
+**Restructured intent (MAIN's interpretation):**
+- Change the Gantt-generation read source from tender → project scope snapshot (the new P-tab3a output).
+- Add tree-mode to the Gantt: each discipline node (DEM, CIV, etc) can explode to per-WBS-row tasks (DEM1.1, DEM1.2 …) and collapse back to a single discipline-summary bar.
+- Default view: collapsed at discipline level; click to expand.
+
+**Open questions:**
+- **Gantt library tree-mode:** what library is `GanttChart.tsx:447` using? Custom or third-party? Need to check whether tree-mode is supported natively, requires a fork, or means switching libraries.
+- **Source-of-truth ordering:** when the user reorders scope rows via the project scope tab (P-tab3), should the Gantt re-flow automatically, or does it need a manual "regenerate"?
+  - **Recommendation:** auto-reflow when scope changes; gives a coherent project view.
+
+**Cross-cutting concerns:**
+- Depends on P-tab3a (the project scope snapshot has to be the new source).
+- Gantt tree-mode UX may overlap with C2/C3 collapse/explode pattern.
+
+**Suggested PR breakdown:**
+- **P-tab4a** — Switch Gantt source from tender → project snapshot. S/M.
+- **P-tab4b** — Tree-mode Gantt (explode/collapse). M (depends on library capability).
+
+#### P-tab5 — Project Team as calendar with cascading allocation
+
+**Purpose:** Replace the current "list of workers + list of assets" view with a calendar where managers can click-and-drag to allocate workers and plant to specific dates / activities, with cascading dropdowns (resource type → discipline → eligible worker / asset, filtered by qualifying ticket for plant operators).
+
+**Current state:**
+- File: `apps/web/src/pages/projects/ProjectDetailPage.tsx:573` (`TeamTab`)
+- Currently fetches `/projects/:id/allocations` + shows two empty sections ("Workers" / "Plant & equipment"). Add-worker / Add-asset modals exist but the UI is list-based, not calendar-based.
+- Backend: `WorkerQualification`, `Asset`, `ShiftAssetAssignment`, `AllocationTargetType` enum (`WORKER | ASSET`) all exist in schema. `worker_qualifications` table confirmed (probe at `Phase 2` returned 9 tables matching `%qualif% / %ticket% / %asset%`).
+
+**Proposed change (Marco's brief, verbatim where ambiguous):**
+> "Project Team — calendar view, click-and-drag allocation, cascading
+> dropdowns (labour/plant → discipline → workers, with optional
+> qualifying ticket check for plant operators). The logic for the 5th
+> tab will be replicated on the scheduler once we reach that stage of
+> development. If this needs to be done now, to ensure compatibility
+> between modules, then do it."
+
+**Restructured intent (MAIN's interpretation):**
+- Replace the list view with a week-view calendar (similar to `SchedulerWorkspacePage.tsx`'s sched-week structure).
+- Allocation by click-and-drag on a date range, opens a cascading picker (Resource type → Discipline → eligible Worker/Asset).
+- For plant: filter eligible workers by `WorkerQualification` matching the asset's required ticket type. Schema-confirmed: `worker_qualifications` table exists.
+- Build with Scheduler-compatible primitives so the same logic can be reused when the standalone Scheduler module ships.
+
+**Open questions:**
+- **Build shared logic now (extract calendar component) or duplicate then refactor?**
+  - **Recommendation:** extract a `<CalendarAllocator>` component in a shared `apps/web/src/components/calendar/` folder from day one. Marco's brief explicitly said "do it" if compat matters; it does.
+- **Worker → ticket → asset relationship in schema:** `WorkerQualification` exists but its FK shape to `Asset` (whether direct or via a ticket-type lookup table) wasn't deeply verified. Sub-discovery needed before implementation prompt.
+- **Calendar library choice:** roll our own with date-fns + CSS Grid (consistent with existing `sched-week` styling), or pull in `react-big-calendar` / `fullcalendar`? Recommendation: roll our own — bundle size and styling consistency win out.
+
+**Cross-cutting concerns:**
+- Heavy overlap with the future Scheduler module. Architectural decision required up-front.
+- Depends on accurate `WorkerQualification` data (currently dev-DB has migration drift on this table — confirm dataset is queryable before building UI).
+
+**Suggested PR breakdown:**
+- **P-tab5a** — Sub-discovery pass on worker→ticket→asset schema + scheduler-shared-component boundary. (Read-only pass like this current PR.) S.
+- **P-tab5b** — `<CalendarAllocator>` shared component built generically. M.
+- **P-tab5c** — Wire P-tab5 to use `<CalendarAllocator>` + cascading dropdown UX. M.
+
+#### P-tab6 — Project Activity = change-log
+
+**Purpose:** Make the Activity tab the unified view of every state change, scope edit, document upload/removal, and team allocation event on the project — a single audit trail.
+
+**Current state:**
+- File: `apps/web/src/pages/projects/ProjectDetailPage.tsx:1214` (`ActivityTab`)
+- Backend: `ProjectActivityLog` model exists (`apps/api/prisma/schema.prisma:1936`) with `action: ProjectActivityAction` enum (line 1827) — already supports `PROJECT_CREATED`, `STATUS_CHANGED`, `TEAM_CHANGED`, `CONTRACT_VALUE_CHANGED`, `BUDGET_CHANGED`, `DOCUMENT_ADDED`, `DOCUMENT_REMOVED`, `WORKER_ALLOCATED`, `ASSET_ALLOCATED`, `TIMESHEET_SUBMITTED`, `TIMESHEET_REJECTED`, `PRESTART_SUBMITTED`.
+- Image 11/12 confirms current UI is exactly this — generic event log with click-to-expand JSON details.
+- Marco's note "this is the log I was talking about" effectively confirms the existing tab matches the intent.
+
+**Proposed change (Marco's brief, verbatim where ambiguous):**
+> "Activity tab — this is the log I was talking about (referencing
+> the change-log requirement from tab 3)."
+
+**Restructured intent (MAIN's interpretation):**
+- The existing tab already does what Marco wants for status / team / financial / document / allocation events.
+- The gap is **scope edits** — `ProjectActivityAction` doesn't have `SCOPE_EDITED` yet. That's the cross-link to P-tab3.
+
+**Open questions:**
+- **Granularity of the new SCOPE_EDITED action:** per-line, per-card, per-field? **Recommendation:** per-line with a diff payload in `details` (mirrors what P-tab3 surfaces).
+
+**Cross-cutting concerns:**
+- P-tab3 must add the `SCOPE_EDITED` enum value + the write-path. P-tab6 just gets a new icon / label for that action.
+
+**Suggested PR breakdown:**
+- **P-tab6a** — Add `SCOPE_EDITED` rendering to ActivityTab + icon/label for the new event type. Bundled with P-tab3a or shipped together. S.
+
+### Cross-cutting decisions (must be locked before implementation)
+
+1. **Worker dropdown source-of-truth** — `User` table, `WorkerProfile` table, or hybrid? Recommendation: `User` table filtered by `permissions.includes('projects.manage')` for PM dropdown; `WorkerProfile` for field-worker allocation. The two models have different audiences.
+2. **Document type extensibility** — ENUM, admin catalog, or frontend constant? **Recommendation: admin catalog (`DocumentCategory` table with `module` scoping).** No migration per category change.
+3. **Scheduler shared logic** — build P-tab5 calendar logic now with Scheduler in mind, or build standalone then refactor when Scheduler ships? **Recommendation: build shared `<CalendarAllocator>` from day one.** Marco explicitly said "do it" if compat matters.
+4. **Project scope change-log granularity** — per-field, per-line, per-card? **Recommendation: per-line.** Matches the granularity of the existing ProjectActivityLog `details: Json` payload.
+5. **C-chain vs P-chain priority** — both depend on each other partially (P-tab3 reuses C2/C3 UX patterns; P-tab5 is independent of either). **Recommendation:** C-chain first (C1→C2→C3 at minimum) so P-tab3 / P-tab4 can reuse the collapse/explode/hide infrastructure. P-tab1, P-tab2, P-tab5, P-tab6 can ship in parallel with the C-chain since they don't share UX patterns.
+
+— end of Design Map —
+

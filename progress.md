@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-18 03:05 AEST
+Last updated: 2026-05-18 03:11 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -5900,7 +5900,7 @@ Status: IN_PROGRESS
 ## 2026-05-18 13:03 AEST — PR docs/cowork-rules OPENED
 Type: PR (docs — governance)
 Branch: docs/cowork-rules
-PR: #[N]
+PR: #201 (https://github.com/GH-Mantova/ProjectOperations/pull/201)
 Status: WAITING_CI
 Detail: 4 file changes. project_instructions.md gets a new TOC
   row (§19) + the full §19 block at end of file. New
@@ -5910,6 +5910,24 @@ Detail: 4 file changes. project_instructions.md gets a new TOC
   Support chats, §18 Main chat ops) are untouched. Claude
   Code's protocols (pre-flight, gates, bypass, progress.md,
   chore PRs) unchanged.
+  Deviation noted: a pre-existing Cowork B01.1 report at
+  docs/diagnostics/2026-05-18-b01-blank-page/REPORT.md was
+  found locally; left untracked because the prompt explicitly
+  excluded B01.1 work from this PR.
 Files: project_instructions.md, docs/diagnostics/README.md (new),
   progress.md, roadmap.md
 Pre-PR checks: 4/4 green
+
+## 2026-05-18 13:09 AEST — PR docs/cowork-rules MERGED
+Type: PR (docs — governance)
+Branch: docs/cowork-rules
+PR: #201 (https://github.com/GH-Mantova/ProjectOperations/pull/201)
+Merge SHA: 27d7c586d04a466018c9f05087e8a6154c76f3c0
+Merged at: 2026-05-18T03:09:08Z (auto-merge squash)
+CI: ✅ all checks passed
+  - API — lint, test, compliance smoke
+  - Web — lint, logic tests, build
+  - Analyze (actions) [CodeQL]
+  - Analyze (javascript-typescript) [CodeQL]
+  - tendering-e2e
+Status: MERGED

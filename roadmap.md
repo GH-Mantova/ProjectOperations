@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-18 03:11 AEST
+Last updated: 2026-05-18 05:47 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -748,6 +748,25 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     adds the report template. Standing convention going
     forward: bug-investigation loop uses Cowork → MAIN →
     Claude Code in sequence.
+
+✅  fix/B01.1 — JobDetailPage line 207 precedence bug — 2026-05-18
+    Shipped PR #[N]. Real cause of the B01 blank-page symptom.
+    Triple-confirmed: Cowork source analysis + symptom shape +
+    Marco's DevTools console showing exact error
+    (TypeError "Cannot read properties of undefined (reading
+    'length')" at MessagePort.M — React 18 scheduler signature
+    of a render-phase throw). FE-only fix: `job.activities`
+    references replaced with a flat list derived from
+    `stages[].activities` via a `flattenActivities` helper
+    (exported + 3 vitest specs). Type-lie dropped from
+    JobDetail. Full-file audit of the same precedence
+    antipattern. EmptyState fallback replaces `return null`.
+    ErrorBoundary JSDoc clarifies it does NOT catch
+    render-phase errors thrown above its mount point. Cowork's
+    diagnostic report (599 lines) committed as the first
+    example under §19 conventions. Design Map gets P-platform2
+    (API/FE type contract enforcement — Zod-or-OpenAPI, 3-4
+    PRs). Fix Map B01.1 closed.
 
 ⏳  PR C1 — Quote Arrangement screen base
     Phase 0 discovery complete (2026-05-18, see

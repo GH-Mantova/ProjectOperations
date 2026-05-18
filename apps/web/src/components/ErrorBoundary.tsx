@@ -12,6 +12,16 @@ type State = {
   error: Error | null;
 };
 
+/**
+ * Catches render-phase errors thrown by its children and displays a
+ * fallback UI. It does NOT protect against errors thrown in the
+ * PARENT component above the JSX return statement — those errors
+ * unmount the route subtree before any child boundary mounts.
+ *
+ * For app-wide coverage of render-phase throws in route components,
+ * see P-platform1 in the Design Map
+ * (docs/Designs/scope-of-works-redesign.md).
+ */
 export class ErrorBoundary extends Component<Props, State> {
   state: State = { hasError: false, error: null };
 

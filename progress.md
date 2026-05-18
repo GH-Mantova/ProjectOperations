@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-18 03:11 AEST
+Last updated: 2026-05-18 05:47 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -5931,3 +5931,64 @@ CI: ✅ all checks passed
   - Analyze (javascript-typescript) [CodeQL]
   - tendering-e2e
 Status: MERGED
+
+## 2026-05-18 15:44 AEST — PR fix/B01.1 STARTED
+Type: PR (fix — frontend render-phase bug)
+Branch: fix/B01.1
+Detail: Fixes JobDetailPage.tsx line 207 precedence bug
+  identified by Cowork diagnostic and confirmed by Marco's
+  DevTools console:
+    Uncaught TypeError: Cannot read properties of undefined
+    (reading 'length')
+    at MessagePort.M (React 18 scheduler signature)
+  Cause: `job?.activities.length` short-circuits only if `job`
+  is nullish; truthy job + undefined activities (API never
+  sends top-level activities — they're nested inside stages)
+  throws TypeError at render. B01's surgical ErrorBoundary did
+  NOT catch this because the throw is above the boundary's
+  mount point — React 18 unmounts the route subtree before any
+  boundary mounts.
+  Fix shape: FE-only. Replace top-level `job.activities` usage
+  with a derived flat list from `stages[].activities` via a
+  pure `flattenActivities` helper (exported for unit testing).
+  Drop the `activities: JobActivity[]` type-lie from the
+  `JobDetail` type; add `activities?: JobActivity[]` to
+  JobStage where they actually live. Full-file audit of the
+  same `?.x.y` precedence antipattern (one extra hit on line
+  202 fixed defensively even though API always sends issues).
+  Replace `if (!job) return null` with EmptyState. Add JSDoc
+  to ErrorBoundary clarifying its scope. Commit Cowork's
+  diagnostic report (599 lines) per §19 conventions. Add
+  P-platform2 entry to Design Map (API/FE type contract
+  enforcement — future).
+Status: IN_PROGRESS
+
+## 2026-05-18 15:44 AEST — PR fix/B01.1 OPENED
+Type: PR (fix — frontend render-phase bug)
+Branch: fix/B01.1
+PR: #[N]
+Status: WAITING_CI
+Detail: 7 file changes. apps/web/src/pages/jobs/JobDetailPage.tsx
+  — flattenActivities helper added (exported); JobDetail type
+  loses top-level activities field; JobStage gains activities?;
+  line 207 derives from stages; line 202 precedence-fixed
+  defensively; toggleActivity optimistic update walks nested
+  stages; stage rendering uses stage.activities directly (no
+  filter); `if (!job) return null` → EmptyState with back-link.
+  apps/web/src/components/ErrorBoundary.tsx — JSDoc only.
+  apps/web/src/pages/jobs/__tests__/JobDetailPage.b01-1.test.tsx
+  — new, 3 vitest specs against flattenActivities (regression,
+  derivation, null safety). All pure-logic specs because the
+  web workspace has no testing-library/jsdom.
+  docs/Designs/scope-of-works-redesign.md — P-platform2 entry
+  (API/FE type contract enforcement, Zod-or-OpenAPI, 3-4 PRs).
+  docs/diagnostics/2026-05-18-b01-blank-page/REPORT.md — first
+  Cowork diagnostic report committed under §19 conventions.
+  progress.md + roadmap.md per protocol.
+Files: apps/web/src/pages/jobs/JobDetailPage.tsx,
+  apps/web/src/components/ErrorBoundary.tsx,
+  apps/web/src/pages/jobs/__tests__/JobDetailPage.b01-1.test.tsx (new),
+  docs/Designs/scope-of-works-redesign.md,
+  docs/diagnostics/2026-05-18-b01-blank-page/REPORT.md (new),
+  progress.md, roadmap.md
+Pre-PR checks: 4/4 green

@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-18 06:13 AEST
+Last updated: 2026-05-18 06:19 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -6020,7 +6020,7 @@ Status: IN_PROGRESS
 ## 2026-05-18 16:11 AEST — PR docs/post-b01.1-housekeeping OPENED
 Type: PR (docs — governance / map maintenance)
 Branch: docs/post-b01.1-housekeeping
-PR: #[N]
+PR: #205 (https://github.com/GH-Mantova/ProjectOperations/pull/205)
 Status: WAITING_CI
 Detail: 3 file changes. docs/Designs/scope-of-works-redesign.md
   — Fix Map header updated ("3 of 8 shipped"); summary table
@@ -6050,3 +6050,17 @@ Audit findings (Decision 3 — full grep pass):
 Files: docs/Designs/scope-of-works-redesign.md, progress.md,
   roadmap.md
 Pre-PR checks: 4/4 green
+
+## 2026-05-18 16:17 AEST — PR docs/post-b01.1-housekeeping MERGED
+Type: PR (docs — governance / map maintenance)
+Branch: docs/post-b01.1-housekeeping
+PR: #205 (https://github.com/GH-Mantova/ProjectOperations/pull/205)
+Merge SHA: 8e148d4f42ab8a820a57a31e05452899229c31ff
+Merged at: 2026-05-18T06:17:11Z (auto-merge squash)
+CI: ✅ all checks passed
+  - API — lint, test, compliance smoke
+  - Web — lint, logic tests, build
+  - Analyze (actions) [CodeQL]
+  - Analyze (javascript-typescript) [CodeQL]
+  - tendering-e2e
+Status: MERGED

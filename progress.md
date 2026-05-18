@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-18 05:47 AEST
+Last updated: 2026-05-18 05:53 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -5966,7 +5966,7 @@ Status: IN_PROGRESS
 ## 2026-05-18 15:44 AEST — PR fix/B01.1 OPENED
 Type: PR (fix — frontend render-phase bug)
 Branch: fix/B01.1
-PR: #[N]
+PR: #203 (https://github.com/GH-Mantova/ProjectOperations/pull/203)
 Status: WAITING_CI
 Detail: 7 file changes. apps/web/src/pages/jobs/JobDetailPage.tsx
   — flattenActivities helper added (exported); JobDetail type
@@ -5992,3 +5992,17 @@ Files: apps/web/src/pages/jobs/JobDetailPage.tsx,
   docs/diagnostics/2026-05-18-b01-blank-page/REPORT.md (new),
   progress.md, roadmap.md
 Pre-PR checks: 4/4 green
+
+## 2026-05-18 15:51 AEST — PR fix/B01.1 MERGED
+Type: PR (fix — frontend render-phase bug)
+Branch: fix/B01.1
+PR: #203 (https://github.com/GH-Mantova/ProjectOperations/pull/203)
+Merge SHA: 3dfe9e225e2631842e8343368b7c87fbf50419ca
+Merged at: 2026-05-18T05:51:22Z (auto-merge squash)
+CI: ✅ all checks passed
+  - API — lint, test, compliance smoke
+  - Web — lint, logic tests, build
+  - Analyze (actions) [CodeQL]
+  - Analyze (javascript-typescript) [CodeQL]
+  - tendering-e2e
+Status: MERGED

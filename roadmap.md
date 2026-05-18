@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-18 02:32 AEST
+Last updated: 2026-05-18 03:05 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -740,6 +740,14 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     gets new P-platform1 entry (app-wide boundary promotion +
     Application Insights telemetry as future work). Fix Map B01
     closed.
+
+✅  Cowork rules + diagnostics directory convention — 2026-05-18
+    Shipped PR #[N]. project_instructions.md §19 formalises
+    the Cowork local-agent role (reads + diagnostic reports
+    only; not implementation). docs/diagnostics/README.md
+    adds the report template. Standing convention going
+    forward: bug-investigation loop uses Cowork → MAIN →
+    Claude Code in sequence.
 
 ⏳  PR C1 — Quote Arrangement screen base
     Phase 0 discovery complete (2026-05-18, see

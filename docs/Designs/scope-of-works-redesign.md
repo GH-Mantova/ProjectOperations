@@ -1486,6 +1486,67 @@ authoritative role label) + key dates + financials, no clutter.
 **Suggested PR breakdown:**
 - **P-tab6a** — Add `SCOPE_EDITED` rendering to ActivityTab + icon/label for the new event type. Bundled with P-tab3a or shipped together. S.
 
+#### P-platform1 — App-wide error boundary infrastructure
+
+**Purpose:** Generalise the surgical error-boundary pattern landed
+on JobDetailPage (PR fix/B01) into a platform-wide capability so
+every routed page wraps its sections in a defensive boundary, and
+the top-level router shell catches anything that escapes a page
+boundary.
+
+**Current state:**
+- File: `apps/web/src/components/ErrorBoundary.tsx` — small class
+  component with `sectionName` + optional `fallback` + `onReset`,
+  dev-mode `console.error` via `import.meta.env.DEV`, default
+  fallback styled by `.error-boundary-fallback` in `styles.css`.
+- Only consumer: `apps/web/src/pages/jobs/JobDetailPage.tsx` —
+  seven tab sections each wrapped, one boundary per section.
+- No router-level boundary; an exception in any non-job page or
+  in the layout itself still blanks the app.
+
+**Proposed change:**
+- Audit every routed page under `apps/web/src/pages/` (jobs,
+  projects, tendering, scheduler, forms, archive, etc) and wrap
+  each tab / panel / list surface in `<ErrorBoundary sectionName=…>`.
+- Add a top-level `<ErrorBoundary sectionName="App">` in
+  `apps/web/src/main.tsx` (or the equivalent shell) around the
+  `<RouterProvider>` to catch anything that escapes a page.
+- Promote `ErrorBoundary` from `apps/web/src/components/` to
+  `packages/ui/src/` so non-web workspaces (e.g. a future native
+  shell) can reuse it. Re-export from `@project-ops/ui`.
+- Add a Sentry / telemetry hook on `componentDidCatch` (gated by
+  env var) so production crashes are observable, not just the dev
+  console log.
+
+**Open questions:**
+- **Telemetry sink:** Sentry, Application Insights (Azure-native),
+  or a custom audit-log POST? Recommendation: Application
+  Insights — Azure stack alignment, no extra vendor.
+- **Boundary granularity per page:** one boundary per route, or
+  one per panel (the JobDetailPage pattern)? Recommendation:
+  per-panel where panels are independently mounted (tabs,
+  modals, side rails); one per route is the minimum.
+- **Fallback styling consistency:** today's fallback is one CSS
+  block. As we add boundaries everywhere we'll want a shared
+  `<SectionErrorFallback />` UI primitive in `@project-ops/ui`.
+
+**Cross-cutting concerns:**
+- Touches every page in `apps/web/src/pages/` — large surface area
+  but each wrap is mechanical.
+- Telemetry integration adds an env-var contract (S4-adjacent).
+- The promote-to-`@project-ops/ui` step affects the import path
+  on the one existing consumer (JobDetailPage) — trivial edit.
+
+**Suggested PR breakdown:**
+- **P-platform1a** — Promote `ErrorBoundary` to `packages/ui`;
+  update the JobDetailPage import; add a `<SectionErrorFallback />`
+  primitive. S.
+- **P-platform1b** — Wrap every routed page's panel surfaces.
+  M (mechanical but wide).
+- **P-platform1c** — Top-level shell boundary in `main.tsx`. S.
+- **P-platform1d** — Application Insights wiring + env-var
+  contract documented in `environment-reference.md`. S/M.
+
 ### Cross-cutting decisions (must be locked before implementation)
 
 1. **Worker dropdown source-of-truth** — `User` table, `WorkerProfile` table, or hybrid? Recommendation: `User` table filtered by `permissions.includes('projects.manage')` for PM dropdown; `WorkerProfile` for field-worker allocation. The two models have different audiences.

@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-18 06:19 AEST
+Last updated: 2026-05-19 00:19 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -780,6 +780,16 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     1-2 PRs, future). Full Fix Map + Design Map audit
     performed; 13 entries inspected, 10 changes made, 3
     inspected-and-unchanged.
+
+✅  docs/commit-dependabot-207-report — 2026-05-19
+    Shipped PR #[N]. Commits the Cowork diagnostic report
+    produced during PR #207 (brace-expansion bump) triage as
+    the second-ever committed Cowork report (first was
+    B01.1's via PR #203). README updated with three-case
+    guidance for when reports get committed (lessons-learned,
+    triage template, architectural decision evidence). §19
+    in project_instructions.md unchanged — README is the
+    operational override that explains the deviation cases.
 
 ⏳  PR C1 — Quote Arrangement screen base
     Phase 0 discovery complete (2026-05-18, see

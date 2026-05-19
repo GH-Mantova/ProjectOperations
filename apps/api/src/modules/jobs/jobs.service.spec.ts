@@ -6,6 +6,18 @@ describe("JobsService", () => {
     refreshLiveFollowUps: jest.fn()
   };
 
+  // PR B05 — JobsService now takes a JobNumberService dependency.
+  // None of these existing tests exercise the generator path; the
+  // validator is invoked from convertTenderToJob's path so we provide
+  // a permissive default that accepts any input.
+  const jobNumberServiceMock = {
+    generate: jest.fn(async () => "J-2026-999"),
+    validate: jest.fn(() => null),
+    format: jest.fn(
+      (year: number, n: number) => `J-${year}-${String(n).padStart(3, "0")}`
+    )
+  };
+
   it("rejects contract issuance for a non-awarded tender client", async () => {
     const service = new JobsService(
       {
@@ -29,7 +41,8 @@ describe("JobsService", () => {
       } as never,
       { write: jest.fn() } as never,
       { ensureFolder: jest.fn() } as never,
-      notificationsServiceMock as never
+      notificationsServiceMock as never,
+      jobNumberServiceMock as never
     );
 
     await expect(
@@ -80,7 +93,8 @@ describe("JobsService", () => {
       } as never,
       { write: jest.fn() } as never,
       { ensureFolder: jest.fn() } as never,
-      notificationsServiceMock as never
+      notificationsServiceMock as never,
+      jobNumberServiceMock as never
     );
 
     await service.rollbackTenderLifecycle(
@@ -164,7 +178,8 @@ describe("JobsService", () => {
       } as never,
       { write: jest.fn() } as never,
       { ensureFolder: jest.fn() } as never,
-      notificationsServiceMock as never
+      notificationsServiceMock as never,
+      jobNumberServiceMock as never
     );
 
     await service.rollbackTenderLifecycle(
@@ -248,7 +263,8 @@ describe("JobsService", () => {
       } as never,
       { write: jest.fn() } as never,
       { ensureFolder: jest.fn() } as never,
-      notificationsServiceMock as never
+      notificationsServiceMock as never,
+      jobNumberServiceMock as never
     );
 
     await service.reuseArchivedJobConversion(
@@ -341,7 +357,8 @@ describe("JobsService", () => {
       } as never,
       { write: jest.fn() } as never,
       { ensureFolder: jest.fn() } as never,
-      notificationsServiceMock as never
+      notificationsServiceMock as never,
+      jobNumberServiceMock as never
     );
 
     await service.reuseArchivedJobConversion(
@@ -392,7 +409,8 @@ describe("JobsService", () => {
       } as never,
       { write: jest.fn() } as never,
       { ensureFolder: jest.fn() } as never,
-      notificationsServiceMock as never
+      notificationsServiceMock as never,
+      jobNumberServiceMock as never
     );
 
     await expect(
@@ -434,7 +452,8 @@ describe("JobsService", () => {
       } as never,
       { write: jest.fn() } as never,
       { ensureFolder: jest.fn() } as never,
-      notificationsServiceMock as never
+      notificationsServiceMock as never,
+      jobNumberServiceMock as never
     );
 
     await service.updateStatus("job-1", { status: "ACTIVE", note: "Mobilised" }, "user-1");
@@ -460,7 +479,8 @@ describe("JobsService", () => {
       } as never,
       { write: jest.fn() } as never,
       { ensureFolder: jest.fn() } as never,
-      notificationsServiceMock as never
+      notificationsServiceMock as never,
+      jobNumberServiceMock as never
     );
 
     await expect(
@@ -480,11 +500,128 @@ describe("JobsService", () => {
       } as never,
       { write: jest.fn() } as never,
       { ensureFolder: jest.fn() } as never,
-      notificationsServiceMock as never
+      notificationsServiceMock as never,
+      jobNumberServiceMock as never
     );
 
     await expect(service.updateJob("job-1", { name: "Changed" }, "user-1")).rejects.toThrow(
       "Archived jobs are read-only."
     );
+  });
+
+  // -----------------------------------------------------------------
+  // PR B05 — convertTenderToJob: canonical job-number generation +
+  // validation, plus the B02.1 race-fix on the convert path.
+  // -----------------------------------------------------------------
+
+  // Bare-bones tender stub used by the convertTenderToJob B05 tests.
+  // Awarded + contract-issued so the method reaches the generator/
+  // validator + the existingJob check + the transaction body.
+  const convertibleTender = () => ({
+    id: "tender-1",
+    sourceJob: null,
+    description: null,
+    tenderNumber: "T-001",
+    tenderClients: [
+      { id: "tc-1", clientId: "client-1", isAwarded: true, contractIssued: true }
+    ],
+    tenderDocuments: []
+  });
+
+  it("convertTenderToJob: rejects non-canonical supplied jobNumber with 400", async () => {
+    const strictValidator = {
+      generate: jest.fn(async () => "J-2026-001"),
+      validate: jest.fn((v: string) =>
+        /^J-\d{4}-\d{3}$/.test(v) ? null : `Job number "${v}" is not in canonical format J-YYYY-NNN.`
+      ),
+      format: jest.fn()
+    };
+    const service = new JobsService(
+      {
+        tender: { findUnique: jest.fn().mockResolvedValue(convertibleTender()) }
+      } as never,
+      { write: jest.fn() } as never,
+      { ensureFolder: jest.fn() } as never,
+      notificationsServiceMock as never,
+      strictValidator as never
+    );
+
+    await expect(
+      service.convertTenderToJob(
+        "tender-1",
+        { jobNumber: "JOB-2026-001", name: "Converted" },
+        "user-1"
+      )
+    ).rejects.toMatchObject({ status: 400 });
+    expect(strictValidator.generate).not.toHaveBeenCalled();
+  });
+
+  it("convertTenderToJob: server-generates jobNumber when caller omits it", async () => {
+    const generator = jest.fn(async () => "J-2026-042");
+    const sharepointMock = { ensureFolder: jest.fn().mockResolvedValue({ id: "folder-1" }) };
+    const txMock = jest.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
+      callback({
+        job: { create: jest.fn().mockResolvedValue({ id: "job-new", jobNumber: "J-2026-042", name: "Converted" }) },
+        jobConversion: { create: jest.fn() },
+        sharePointFolderLink: { update: jest.fn() },
+        documentLink: { createMany: jest.fn() },
+        searchEntry: { create: jest.fn() },
+        tender: { update: jest.fn() }
+      })
+    );
+    const service = new JobsService(
+      {
+        tender: { findUnique: jest.fn().mockResolvedValue(convertibleTender()) },
+        job: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          findUnique: jest.fn().mockResolvedValue({ id: "job-new", jobNumber: "J-2026-042" })
+        },
+        documentLink: { findMany: jest.fn().mockResolvedValue([]) },
+        $transaction: txMock
+      } as never,
+      { write: jest.fn() } as never,
+      sharepointMock as never,
+      notificationsServiceMock as never,
+      { generate: generator, validate: jest.fn(() => null), format: jest.fn() } as never
+    );
+
+    await service.convertTenderToJob(
+      "tender-1",
+      { name: "Converted" },
+      "user-1"
+    );
+
+    expect(generator).toHaveBeenCalledTimes(1);
+    // ensureFolder's relativePath should use the generated number.
+    const folderArg = sharepointMock.ensureFolder.mock.calls[0]?.[0] as { relativePath: string };
+    expect(folderArg.relativePath).toContain("J-2026-042");
+  });
+
+  it("convertTenderToJob: translates P2002 race inside the transaction into 409", async () => {
+    const { Prisma } = await import("@prisma/client");
+    const p2002 = new Prisma.PrismaClientKnownRequestError("dup", {
+      code: "P2002",
+      clientVersion: "test",
+      meta: { target: ["job_number"] }
+    });
+    const txMock = jest.fn(async () => {
+      throw p2002;
+    });
+    const service = new JobsService(
+      {
+        tender: { findUnique: jest.fn().mockResolvedValue(convertibleTender()) },
+        job: { findFirst: jest.fn().mockResolvedValue(null) },
+        documentLink: { findMany: jest.fn().mockResolvedValue([]) },
+        $transaction: txMock
+      } as never,
+      { write: jest.fn() } as never,
+      { ensureFolder: jest.fn().mockResolvedValue({ id: "folder-1" }) } as never,
+      notificationsServiceMock as never,
+      { generate: jest.fn(async () => "J-2026-099"), validate: jest.fn(() => null), format: jest.fn() } as never
+    );
+
+    await expect(
+      service.convertTenderToJob("tender-1", { name: "Race" }, "user-1")
+    ).rejects.toMatchObject({ status: 409 });
   });
 });

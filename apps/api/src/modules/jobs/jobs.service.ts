@@ -32,6 +32,7 @@ import {
   RollbackTenderLifecycleDto
 } from "./dto/job-conversion.dto";
 import { JobQueryDto } from "./dto/job-query.dto";
+import { JobNumberService } from "./job-number.service";
 
 const tenderConversionInclude = {
   estimator: {
@@ -247,13 +248,30 @@ const jobInclude = {
   }
 } as const;
 
+/**
+ * B02.1 race-fix helper. Returns true when the error is a Prisma
+ * unique-constraint violation (P2002) whose target includes the
+ * `job_number` column. Prisma encodes `meta.target` inconsistently
+ * across providers — sometimes as a string, sometimes as a string
+ * array — so we check both shapes.
+ */
+function isJobNumberUniqueViolation(err: unknown): boolean {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError)) return false;
+  if (err.code !== "P2002") return false;
+  const target = err.meta?.target;
+  if (Array.isArray(target)) return target.includes("job_number");
+  if (typeof target === "string") return target.includes("job_number");
+  return false;
+}
+
 @Injectable()
 export class JobsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly sharePointService: SharePointService,
-    private readonly notificationsService: NotificationsService
+    private readonly notificationsService: NotificationsService,
+    private readonly jobNumberService: JobNumberService
   ) {}
 
   async list(query: JobQueryDto) {
@@ -352,27 +370,43 @@ export class JobsService {
   }
 
   /**
-   * PR fix/B02 — manual job creation. The frontend's `NewJobSlideOver`
-   * modal (apps/web/src/pages/jobs/JobsListPage.tsx) was POSTing to
-   * /jobs and getting a 404 because no @Post() handler existed.
+   * PR B05 — manual job creation. The frontend's `NewJobSlideOver`
+   * modal (apps/web/src/pages/jobs/JobsListPage.tsx) POSTs here.
    *
-   * Mirrors the create-shape of `convertTenderToJob` (line ~887):
-   *   - jobNumber is caller-supplied (no auto-generator in the codebase)
-   *   - status defaults to "PLANNING" (matches the modal's default + Job.status default)
-   *   - audit via this.auditService.write({ action: "jobs.create" })
-   *   - no initial JobStatusHistory entry — that table tracks
-   *     transitions, not the initial state (matches convertTenderToJob)
+   * Job number resolution:
+   *   - omitted/empty -> server generates via JobNumberService
+   *     (canonical J-YYYY-NNN, per-year sequence, Brisbane TZ)
+   *   - supplied -> validated against the canonical regex; non-canonical
+   *     supplied numbers are rejected with 400
    *
-   * Validates clientId (required, FK) and siteId (optional, FK). Both
-   * exist-checks are explicit so the user gets a controlled 404 rather
-   * than a Prisma FK-violation 500.
+   * Race protection (B02.1): the explicit findUnique pre-check gives a
+   * friendly 409 in the common case; the try/catch on prisma.job.create
+   * translates a P2002 unique-constraint violation (race between two
+   * concurrent creators) into a ConflictException so the caller sees a
+   * proper 409 rather than a 500.
+   *
+   * Audit + initial-state semantics unchanged from B02:
+   *   - audit via action: "jobs.create"
+   *   - no JobStatusHistory entry on creation (table tracks transitions,
+   *     not initial state — matches convertTenderToJob)
    */
   async createJob(dto: CreateJobDto, actorId?: string) {
-    if (!dto.jobNumber.trim()) throw new BadRequestException("jobNumber is required.");
-    if (!dto.name.trim()) throw new BadRequestException("name is required.");
-    if (!dto.clientId.trim()) throw new BadRequestException("clientId is required.");
+    if (!dto.name?.trim()) throw new BadRequestException("name is required.");
+    if (!dto.clientId?.trim()) throw new BadRequestException("clientId is required.");
 
-    const jobNumber = dto.jobNumber.trim();
+    // Resolve jobNumber: server-generate when caller omits, validate when supplied.
+    let jobNumber: string;
+    const supplied = dto.jobNumber?.trim();
+    if (!supplied) {
+      jobNumber = await this.jobNumberService.generate();
+    } else {
+      const validationError = this.jobNumberService.validate(supplied);
+      if (validationError) {
+        throw new BadRequestException(validationError);
+      }
+      jobNumber = supplied;
+    }
+
     const clientId = dto.clientId.trim();
 
     // FK validation: client must exist (controlled 404 instead of FK 500).
@@ -390,9 +424,8 @@ export class JobsService {
       if (!site) throw new NotFoundException("Site not found.");
     }
 
-    // jobNumber uniqueness — explicit pre-check so we return 409 with
-    // a sensible message instead of a Prisma P2002 unique-constraint
-    // 500. The schema's @unique on jobNumber is the ultimate guard.
+    // jobNumber uniqueness — friendly pre-check. The try/catch below
+    // handles the case where two concurrent requests both pass this check.
     const existing = await this.prisma.job.findUnique({
       where: { jobNumber },
       select: { id: true }
@@ -401,18 +434,30 @@ export class JobsService {
       throw new ConflictException(`Job number "${jobNumber}" is already in use.`);
     }
 
-    const created = await this.prisma.job.create({
-      data: {
-        jobNumber,
-        name: dto.name.trim(),
-        description: dto.description?.trim() || null,
-        clientId,
-        siteId: dto.siteId?.trim() || null,
-        status: dto.status?.trim() || "PLANNING",
-        projectManagerId: dto.projectManagerId?.trim() || null,
-        supervisorId: dto.supervisorId?.trim() || null
+    let created;
+    try {
+      created = await this.prisma.job.create({
+        data: {
+          jobNumber,
+          name: dto.name.trim(),
+          description: dto.description?.trim() || null,
+          clientId,
+          siteId: dto.siteId?.trim() || null,
+          status: dto.status?.trim() || "PLANNING",
+          projectManagerId: dto.projectManagerId?.trim() || null,
+          supervisorId: dto.supervisorId?.trim() || null
+        }
+      });
+    } catch (err) {
+      // B02.1 race-fix: P2002 on job_number means another request
+      // inserted the same number between our pre-check and this create.
+      // Translate to ConflictException with the same shape as the
+      // pre-check so callers see a consistent 409.
+      if (isJobNumberUniqueViolation(err)) {
+        throw new ConflictException(`Job number "${jobNumber}" is already in use.`);
       }
-    });
+      throw err;
+    }
 
     await this.auditService.write({
       actorId,
@@ -912,9 +957,25 @@ export class JobsService {
       );
     }
 
+    // PR B05 — same generator/validation semantics as createJob. If the
+    // frontend conversion modal is still sending a legacy JOB-YYYY-NNN
+    // number, validate() rejects it with 400 telling the caller to
+    // either omit or send canonical.
+    let resolvedJobNumber: string;
+    const suppliedJobNumber = dto.jobNumber?.trim();
+    if (!suppliedJobNumber) {
+      resolvedJobNumber = await this.jobNumberService.generate();
+    } else {
+      const validationError = this.jobNumberService.validate(suppliedJobNumber);
+      if (validationError) {
+        throw new BadRequestException(validationError);
+      }
+      resolvedJobNumber = suppliedJobNumber;
+    }
+
     const existingJob = await this.prisma.job.findFirst({
       where: {
-        OR: [{ jobNumber: dto.jobNumber }, { sourceTenderId: tenderId }]
+        OR: [{ jobNumber: resolvedJobNumber }, { sourceTenderId: tenderId }]
       },
       include: {
         closeout: true
@@ -950,7 +1011,7 @@ export class JobsService {
     const jobFolder = await this.sharePointService.ensureFolder(
       {
         name: dto.name,
-        relativePath: `Project Operations/Jobs/${dto.jobNumber}_${this.slugify(dto.name)}`,
+        relativePath: `Project Operations/Jobs/${resolvedJobNumber}_${this.slugify(dto.name)}`,
         module: "jobs",
         linkedEntityType: "Job",
         linkedEntityId: tenderId
@@ -958,10 +1019,12 @@ export class JobsService {
       actorId
     );
 
-    const job = await this.prisma.$transaction(async (tx) => {
+    let job;
+    try {
+      job = await this.prisma.$transaction(async (tx) => {
       const createdJob = await tx.job.create({
         data: {
-          jobNumber: dto.jobNumber,
+          jobNumber: resolvedJobNumber,
           name: dto.name,
           description: dto.description ?? tender.description ?? null,
           clientId: awardedContractedClient.clientId,
@@ -1023,7 +1086,16 @@ export class JobsService {
       });
 
       return createdJob;
-    });
+      });
+    } catch (err) {
+      // B02.1 race-fix on the convert path. Same shape as createJob's
+      // P2002 handling — if two requests race to create a job with
+      // the same number, translate to 409.
+      if (isJobNumberUniqueViolation(err)) {
+        throw new ConflictException(`Job number "${resolvedJobNumber}" is already in use.`);
+      }
+      throw err;
+    }
 
     await this.auditService.write({
       actorId,
@@ -1109,6 +1181,9 @@ export class JobsService {
       throw new BadRequestException("One or more selected tender documents do not belong to this tender.");
     }
 
+      // No B02.1 race-fix needed here: this path uses tx.job.update and
+      // does NOT change jobNumber, so P2002 on the job_number unique
+      // constraint cannot occur. (PR B05.)
       const job = await this.prisma.$transaction(async (tx) => {
         const reopenedJob = await tx.job.update({
           where: { id: existingJob.id },

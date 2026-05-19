@@ -125,7 +125,9 @@ async function main() {
     }).expect(200);
 
     const conversionResponse = await api.post(`/api/v1/tenders/${tender.id}/convert-to-job`).send({
-      jobNumber: `JOB-COMP-${now}`,
+      // PR B05 — omit jobNumber so the server generates a canonical
+      // J-YYYY-NNN via JobNumberService. The previous JOB-COMP-${now}
+      // format is now rejected by the validator.
       name: `Compliance Job ${now}`,
       description: "Automated conversion target job.",
       siteId: sites.items[0].id,

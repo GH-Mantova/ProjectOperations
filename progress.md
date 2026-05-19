@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-18 06:19 AEST
+Last updated: 2026-05-19 00:19 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -6064,3 +6064,42 @@ CI: ✅ all checks passed
   - Analyze (javascript-typescript) [CodeQL]
   - tendering-e2e
 Status: MERGED
+
+## 2026-05-19 10:18 AEST — PR docs/commit-dependabot-207-report STARTED
+Type: PR (docs — governance / Cowork report commit)
+Branch: docs/commit-dependabot-207-report
+Detail: Commits the Cowork diagnostic report produced during
+  PR #207 (brace-expansion bump) triage as the second-ever
+  committed Cowork report (first was B01.1's via PR #203).
+  README updated with three-case guidance for when reports
+  get committed: (1) lessons-learned record, (2) triage
+  template, (3) architectural decision evidence. §19 in
+  project_instructions.md UNCHANGED — README is the
+  operational override that documents the deviation cases,
+  not a rule change.
+Status: IN_PROGRESS
+
+## 2026-05-19 10:18 AEST — PR docs/commit-dependabot-207-report OPENED
+Type: PR (docs — governance / Cowork report commit)
+Branch: docs/commit-dependabot-207-report
+PR: #[N]
+Status: WAITING_CI
+Detail: 4 file changes.
+  - docs/diagnostics/2026-05-19-dependabot-207/REPORT.md (new,
+    371 lines, 17 KB) — Cowork's PR #207 triage report.
+    Verdict: safe to merge. Caught misleading PR title (claimed
+    1.1.13→5.0.5 but lockfile diff was actually two patch
+    bumps: 1.1.13→1.1.14 and 5.0.5→5.0.6). 6 sections covering
+    consumer map / prepare scripts / tests / cleanup / verdict.
+  - docs/diagnostics/README.md — "When to commit" section
+    expanded from 2-bullet to 3-case structure (lessons-learned,
+    triage template, architectural decision evidence) with
+    explicit examples pointing at both committed reports.
+  - progress.md + roadmap.md per protocol.
+  project_instructions.md §19 INTENTIONALLY UNCHANGED (canonical
+  default-uncommitted rule still holds; README documents the
+  deviation cases).
+Files: docs/diagnostics/2026-05-19-dependabot-207/REPORT.md (new),
+  docs/diagnostics/README.md,
+  progress.md, roadmap.md
+Pre-PR checks: 4/4 green

@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-19 00:24 AEST
+Last updated: 2026-05-19 05:56 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -790,6 +790,23 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     triage template, architectural decision evidence). §19
     in project_instructions.md unchanged — README is the
     operational override that explains the deviation cases.
+
+⏳  fix/B05 + B02.1 — Job ID canonicalisation + createJob race-fix — 2026-05-19
+    PR #[N] OPENED, awaiting human review (no auto-merge —
+    schema migration). Three coexisting Job ID formats
+    consolidated to canonical J-YYYY-NNN via new
+    JobNumberService (per-year sequence, Brisbane TZ). Migration
+    normalises 2 JOB-YYYY-NNN + 36 JOB-COMP-* rows in place;
+    JOB-COMP-* renumbering starts at MAX(existing 2026)+1 to
+    avoid collision with the JOB-2026-001 rewrite. createJob +
+    convertTenderToJob both generate when omitted, validate when
+    supplied (legacy format → 400). B02.1 P2002 race-fix on both
+    paths → 409. +19 API tests. Compliance harness's hard-coded
+    JOB-COMP-* dropped (server now generates) — flagged as a
+    scope deviation in the PR body (out-of-scope per prompt, but
+    necessary to keep the 7-check gate green). On merge: Fix Map
+    B05 + B02.1 closed; B02 entry gains "Codex P2 folded into
+    B05" note.
 
 ⏳  PR C1 — Quote Arrangement screen base
     Phase 0 discovery complete (2026-05-18, see

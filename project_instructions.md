@@ -1,7 +1,7 @@
 # ProjectOperations — Project Instructions
 # Version: 1.1
 # Created: 2026-04-25 10:02 AEST
-# Last updated: 2026-05-18 03:05 AEST
+# Last updated: 2026-05-19 05:56 AEST
 # Maintained by: Claude Code (update after any architectural decision,
 #   module addition, business rule change, or workflow change)
 # Accessed by: All Claude chats in this project via web_fetch
@@ -635,6 +635,11 @@ Similar to Excel pivot tables / Power BI — scoped to IS's own data.
 **OPERATIONS**
 - Projects — live job management + Gantt scheduling (Schedule tab)
 - Jobs, Scheduler, Forms, Assets, Maintenance (baseline)
+  - Job numbers follow canonical format `J-YYYY-NNN` (zero-padded
+    3-digit per-year sequence, Brisbane TZ). Server-generated via
+    `JobNumberService` when caller omits `jobNumber`; supplied
+    values are validated and rejected if non-canonical. Per-year
+    sequence backed by `JobNumberSequence` row-lock. PR B05.
 - Resource allocation — assign workers/plant to jobs
 - Sites — standalone site register, linked to tenders/projects
 - Worker availability — leave calendar, unavailability, scheduler overlay

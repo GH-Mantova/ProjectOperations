@@ -2800,6 +2800,16 @@ model ContractNumberSequence {
   @@map("contract_number_sequences")
 }
 
+// PR B05 — per-year sequence backing canonical job numbers (J-YYYY-NNN).
+// One row per calendar year; the row is the lock target for atomic
+// generation via upsert+increment inside a transaction.
+model JobNumberSequence {
+  year       Int @id
+  lastNumber Int @default(0) @map("last_number")
+
+  @@map("job_number_sequences")
+}
+
 model VariationNumberSequence {
   id         Int @id @default(1)
   lastNumber Int @default(0) @map("last_number")

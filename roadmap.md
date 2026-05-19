@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-19 00:19 AEST
+Last updated: 2026-05-19 00:24 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -782,7 +782,7 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     inspected-and-unchanged.
 
 ✅  docs/commit-dependabot-207-report — 2026-05-19
-    Shipped PR #[N]. Commits the Cowork diagnostic report
+    Shipped PR #208. Commits the Cowork diagnostic report
     produced during PR #207 (brace-expansion bump) triage as
     the second-ever committed Cowork report (first was
     B01.1's via PR #203). README updated with three-case

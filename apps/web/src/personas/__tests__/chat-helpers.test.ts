@@ -51,9 +51,12 @@ describe("chatPanelEmptyHint", () => {
 
   it("maps each named sub-mode to a friendly clause", () => {
     expect(chatPanelEmptyHint(tendering("scope"))).toContain("scope drafting");
-    expect(chatPanelEmptyHint(tendering("estimate"))).toContain("estimating");
-    expect(chatPanelEmptyHint(tendering("quote"))).toContain("the quote");
-    expect(chatPanelEmptyHint(tendering("clarifications"))).toContain("clarifications");
+    expect(chatPanelEmptyHint(tendering("quote"))).toContain("the quote and estimate");
+  });
+
+  it("falls back to 'this view' for removed sub-modes", () => {
+    expect(chatPanelEmptyHint(tendering("estimate"))).toContain("this view");
+    expect(chatPanelEmptyHint(tendering("clarifications"))).toContain("this view");
   });
 
   it("falls back to 'this view' for unknown sub-modes (defensive)", () => {

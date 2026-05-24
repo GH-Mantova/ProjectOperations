@@ -10,9 +10,7 @@
 const TENDER_SCOPED_SUB_MODES = new Set([
   "tender-detail",
   "scope",
-  "estimate",
-  "quote",
-  "clarifications"
+  "quote"
 ]);
 
 const TENDER_PATH_PATTERN = /^\/tenders\/([^/?#]+)(?:\/|$|\?)/;

@@ -32,21 +32,16 @@ const TENDERING_SUB_MODES = [
   "register",
   "tender-detail",
   "scope",
-  "estimate",
-  "quote",
-  "clarifications"
+  "quote"
 ] as const;
 
 // Tender-scoped sub-modes — every Tendering sub-mode EXCEPT register.
 // register is the tender list / pipeline view (not scoped to a single
-// tender); rate lookups don't apply there. PR #149 binds lookup_rate
-// to this set so all five tender-scoped sub-modes have rate access.
+// tender); rate lookups don't apply there.
 const TENDERING_RATE_SUB_MODES = [
   "tender-detail",
   "scope",
-  "estimate",
-  "quote",
-  "clarifications"
+  "quote"
 ] as const;
 
 // §5A.1 multi-turn loop: PersonasModule owns the tool-handler registry
@@ -159,11 +154,10 @@ export class PersonasModule implements OnModuleInit {
       this.proposeScopeItems.name
     ]);
 
-    // §5A.1 PR D — propose_estimate_items lands only on the estimate
-    // sub-mode. Same per-sub-mode-restriction rationale as
-    // propose_scope_items: estimate-creation work belongs in the
-    // estimate tab, not the scope/quote/clarifications tabs.
-    this.registry.bindToSubMode("tendering.estimate", [
+    // §5A.1 — propose_estimate_items lands on the quote sub-mode.
+    // Estimate and quote were merged into a single sub-mode; estimate
+    // creation is part of the quote workflow.
+    this.registry.bindToSubMode("tendering.quote", [
       this.proposeEstimateItems.name
     ]);
 
@@ -179,13 +173,10 @@ export class PersonasModule implements OnModuleInit {
       this.proposeQuoteContent.name
     ]);
 
-    // §5A.1 PR F — clarifications sub-mode tools.
-    // list_tender_clarifications lets the model see open RFIs and the
-    // comms log so it can draft responses and avoid duplicates;
-    // propose_clarifications writes new RFIs / log entries / RFI
-    // responses into the tender for Accept/Edit/Reject review. Both
-    // bound to the clarifications sub-mode ONLY.
-    this.registry.bindToSubMode("tendering.clarifications", [
+    // §5A.1 — clarifications tools merged into the tender-detail
+    // sub-mode. list_tender_clarifications and propose_clarifications
+    // are available from the tender overview page.
+    this.registry.bindToSubMode("tendering.tender-detail", [
       this.listTenderClarifications.name,
       this.proposeClarifications.name
     ]);

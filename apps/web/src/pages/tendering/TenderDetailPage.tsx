@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { QuoteTab } from "./QuoteTab";
@@ -75,7 +75,7 @@ const STAGE_ACCENT: Record<string, string> = {
   WITHDRAWN: "var(--text-muted, #9CA3AF)"
 };
 
-type Tab = "overview" | "scope" | "estimate";
+type Tab = "overview" | "scope" | "quote";
 
 type EstimateSummaryPayload = {
   estimateId: string | null;
@@ -139,7 +139,15 @@ function formatNumber(n: number): string {
 export function TenderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { authFetch, user } = useAuth();
+
+  const tab: Tab = useMemo(() => {
+    if (location.pathname.endsWith("/scope")) return "scope";
+    if (location.pathname.endsWith("/quote")) return "quote";
+    return "overview";
+  }, [location.pathname]);
+
   const canManageTenders = useMemo(() => user?.permissions.includes("tenders.manage") ?? false, [user]);
   const canManageEstimates = useMemo(() => user?.permissions.includes("estimates.manage") ?? false, [user]);
   const canAdminEstimates = useMemo(() => user?.permissions.includes("estimates.admin") ?? false, [user]);
@@ -153,7 +161,6 @@ export function TenderDetailPage() {
   const [estimateLock, setEstimateLock] = useState<EstimateLockInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>("overview");
   const [posting, setPosting] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
   const [newNote, setNewNote] = useState("");
@@ -202,13 +209,14 @@ export function TenderDetailPage() {
   useEffect(() => {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<Tab>).detail;
-      if (detail === "overview" || detail === "scope" || detail === "estimate") {
-        setTab(detail);
-      }
+      if (!id) return;
+      if (detail === "scope") navigate(`/tenders/${id}/scope`);
+      else if (detail === "quote") navigate(`/tenders/${id}/quote`);
+      else if (detail === "overview") navigate(`/tenders/${id}`);
     };
     window.addEventListener("tender-detail:switch-tab", handler);
     return () => window.removeEventListener("tender-detail:switch-tab", handler);
-  }, []);
+  }, [id, navigate]);
 
   const probabilityBucket = bucketForProbability(tender?.probability);
 
@@ -428,7 +436,7 @@ export function TenderDetailPage() {
             role="tab"
             aria-selected={tab === "overview"}
             className={tab === "overview" ? "tender-detail__tab tender-detail__tab--active" : "tender-detail__tab"}
-            onClick={() => setTab("overview")}
+            onClick={() => navigate(`/tenders/${id}`)}
           >
             Overview
           </button>
@@ -437,16 +445,16 @@ export function TenderDetailPage() {
             role="tab"
             aria-selected={tab === "scope"}
             className={tab === "scope" ? "tender-detail__tab tender-detail__tab--active" : "tender-detail__tab"}
-            onClick={() => setTab("scope")}
+            onClick={() => navigate(`/tenders/${id}/scope`)}
           >
             Scope of Works
           </button>
           <button
             type="button"
             role="tab"
-            aria-selected={tab === "estimate"}
-            className={tab === "estimate" ? "tender-detail__tab tender-detail__tab--active" : "tender-detail__tab"}
-            onClick={() => setTab("estimate")}
+            aria-selected={tab === "quote"}
+            className={tab === "quote" ? "tender-detail__tab tender-detail__tab--active" : "tender-detail__tab"}
+            onClick={() => navigate(`/tenders/${id}/quote`)}
           >
             Quote
           </button>
@@ -693,7 +701,7 @@ export function TenderDetailPage() {
                   <button
                     type="button"
                     className="s7-btn s7-btn--secondary s7-btn--sm"
-                    onClick={() => setTab("estimate")}
+                    onClick={() => navigate(`/tenders/${id}/quote`)}
                   >
                     Open estimate →
                   </button>
@@ -830,7 +838,7 @@ export function TenderDetailPage() {
           <ScopeCardsTab tenderId={tender.id} tenderTitle={tender.title} />
         )}
 
-        {tab === "estimate" && (
+        {tab === "quote" && (
           <QuoteTab
             tenderId={tender.id}
             tender={{

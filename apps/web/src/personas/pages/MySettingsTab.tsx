@@ -121,7 +121,7 @@ export function MySettingsTab() {
             persona={p}
             providerOptions={providerOptions}
             showPersonalInstruction={showPersonalInstruction}
-            showBYOK={false}
+
             onSaved={() => showToast("My settings saved")}
             onError={(m) => showToast(`Failed to save: ${m}`)}
           />
@@ -154,14 +154,12 @@ function PersonaSettingsCard({
   persona,
   providerOptions,
   showPersonalInstruction,
-  showBYOK,
   onSaved,
   onError
 }: {
   persona: PersonaSummary;
   providerOptions: ProviderOption[];
   showPersonalInstruction: boolean;
-  showBYOK: boolean;
   onSaved: () => void;
   onError: (msg: string) => void;
 }) {
@@ -340,28 +338,6 @@ function PersonaSettingsCard({
                   resize: "vertical"
                 }}
               />
-            </div>
-          ) : null}
-
-          {showBYOK ? (
-            <div>
-              <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
-                My API Key (Bring Your Own Key)
-              </label>
-              <div
-                style={{
-                  background: "var(--surface-page, #F6F6F6)",
-                  border: "1px dashed var(--border-subtle, rgba(0,0,0,0.16))",
-                  borderRadius: 6,
-                  padding: 12,
-                  fontSize: 13,
-                  color: "var(--text-muted)"
-                }}
-              >
-                🔒 BYOK is currently in development. The infrastructure to securely store
-                your key is still being built. Once it ships, you&apos;ll be able to add your
-                personal API key here.
-              </div>
             </div>
           ) : null}
 

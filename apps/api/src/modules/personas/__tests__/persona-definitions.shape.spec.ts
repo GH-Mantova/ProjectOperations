@@ -32,9 +32,7 @@ describe("Tendering sub-mode labels (PR #150)", () => {
     register: "Tender register — pipeline view",
     "tender-detail": "Tender detail — answer questions about the tender",
     scope: "Scope — propose and refine scope items",
-    estimate: "Estimate — review and refine cost lines",
-    quote: "Quote — cost line structure and exclusions",
-    clarifications: "Clarifications — summarisation and response drafts"
+    quote: "Quote — estimating, costing, and client quotes"
   };
 
   it.each(Object.entries(expectedLabels))(

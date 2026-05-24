@@ -184,6 +184,8 @@ export function App() {
             <Route path="/tenders/settings" element={<TenderingSettingsPage />} />
             <Route path="/tenders/reports" element={<TenderingReportsPage />} />
             <Route path="/tenders/:id" element={<TenderDetailPage />} />
+            <Route path="/tenders/:id/scope" element={<TenderDetailPage />} />
+            <Route path="/tenders/:id/quote" element={<TenderDetailPage />} />
             <Route path="/jobs" element={<JobsListPage />} />
             <Route path="/jobs/:id" element={<JobDetailPage />} />
             <Route path="/projects" element={<ProjectsListPage />} />

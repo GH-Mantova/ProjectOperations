@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-24 03:08 AEST
+Last updated: 2026-05-24 03:45 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -6243,3 +6243,72 @@ Pre-PR checks (local): 5/7 green; 2/7 BLOCKED by pre-existing local-DB
     same is_super_user error before any tender page is reached.
   CI gate (the source of truth): runs against a fresh-seeded DB and
   will exercise both compliance:smoke and tendering-e2e end-to-end.
+
+## 2026-05-24 13:25 AEST — PR chore/remove-legacy-draft-scope-path MERGED
+Type: PR ([5A.1] PR B — remove legacy "Draft scope with Claude" path)
+Branch: chore/remove-legacy-draft-scope-path
+PR: #212 (https://github.com/GH-Mantova/ProjectOperations/pull/212)
+Merge SHA: fc53b24b52e9019509a8e47015b7a358a84877c7
+Merged at: 2026-05-24T03:25:10Z (squash merge)
+CI: ✅ all checks passed
+  - API — lint, test, compliance smoke
+  - Web — lint, logic tests, build
+  - Analyze (actions) [CodeQL]
+  - Analyze (javascript-typescript) [CodeQL]
+  - tendering-e2e
+Status: MERGED
+
+## 2026-05-24 13:35 AEST — PR chore/pr-b-followup-orphan-cleanup STARTED
+Type: PR (chore — PR B follow-up: orphaned helper removal + PR #212 merge log)
+Branch: chore/pr-b-followup-orphan-cleanup
+Detail: Removes two now-dead helpers that PR #212 left behind in
+  apps/api/src/modules/tendering/scope-of-works.service.ts:
+  - createDraftItemsFromAi (the only consumer was the legacy
+    tender-scope-drafting service deleted by #212)
+  - file-local inferRowType (only used by createDraftItemsFromAi)
+  ScopeStatus import becomes orphaned and is dropped from the
+  ./dto/scope-of-works.dto import list. computeEstimateItemPrices is
+  a separate @deprecated cleanup and is NOT touched here. Also logs
+  PR #212's MERGED entry which was missed at merge time.
+Status: IN_PROGRESS
+
+## 2026-05-24 13:35 AEST — PR chore/pr-b-followup-orphan-cleanup OPENED
+Type: PR (chore — PR B follow-up: orphaned helper removal + PR #212 merge log)
+Branch: chore/pr-b-followup-orphan-cleanup
+PR: #[N]
+Status: WAITING_CI
+Detail: 2 file changes. Source edit:
+  - apps/api/src/modules/tendering/scope-of-works.service.ts —
+    createDraftItemsFromAi method (~64 lines) deleted; file-local
+    inferRowType function (~12 lines) deleted; ScopeStatus dropped
+    from the DTO import list (sole consumer was inferRowType's
+    return-type union). Other shared helpers (requireTender,
+    nextItemNumber, getOrCreateCardForDiscipline, DISCIPLINE_ORDER,
+    Discipline, Prisma) are still used elsewhere and remain.
+  Docs:
+  - progress.md — PR #212 MERGED entry appended; STARTED + OPENED
+    entries for this PR appended.
+  No roadmap.md / project_instructions.md changes — #212 already
+  updated those.
+  No new deps. No new env vars. No migrations.
+Files: 1 source-edited (-79 lines), 1 doc-edited (progress.md, +PR #212
+  MERGED entry + this PR's STARTED/OPENED)
+Pre-PR checks (local): 5/7 green; 2/7 BLOCKED by the same pre-existing
+  local-DB drift as PR #212 (the smoke + e2e gates exercise the API
+  login path, which 500s on `users.is_super_user` because ~66
+  migrations from 2026-04-20 onward are unapplied locally). CI's
+  fresh-DB run is the real verifier — for PR #212 it returned all
+  six checks green on the same head commit that failed those two
+  gates locally, confirming the diagnosis. Not papered over (no
+  `prisma migrate resolve` mutation).
+  Green locally:
+  - API lint clean
+  - Web lint clean
+  - API tests 624 passed, 6 skipped — UNCHANGED from PR #212 baseline,
+    as required for a dead-code removal
+  - Web tests 156 unchanged
+  - pnpm build green (api + web)
+  Blocked locally (env-drift, not caused by this PR):
+  - pnpm compliance:smoke — login 500 on `users.is_super_user`
+  - playwright tendering chromium — same root cause; 5/5 specs fail
+    at the login step

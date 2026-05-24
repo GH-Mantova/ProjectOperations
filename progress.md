@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-24 03:45 AEST
+Last updated: 2026-05-24 03:47 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -6275,7 +6275,7 @@ Status: IN_PROGRESS
 ## 2026-05-24 13:35 AEST — PR chore/pr-b-followup-orphan-cleanup OPENED
 Type: PR (chore — PR B follow-up: orphaned helper removal + PR #212 merge log)
 Branch: chore/pr-b-followup-orphan-cleanup
-PR: #[N]
+PR: #213 (https://github.com/GH-Mantova/ProjectOperations/pull/213)
 Status: WAITING_CI
 Detail: 2 file changes. Source edit:
   - apps/api/src/modules/tendering/scope-of-works.service.ts —

@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-24 12:42 AEST
+Last updated: 2026-05-24 12:44 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -6851,7 +6851,7 @@ Status: IN_PROGRESS
 
 ## 2026-05-24 23:30 AEST — PR feat/read-asbestos-register OPENED
 Chain PR: PR G (conceptual)
-GitHub PR: #[N]
+GitHub PR: #218 (https://github.com/GH-Mantova/ProjectOperations/pull/218)
 Type: PR ([5A.1] PR G — read_asbestos_register asbestos register tool)
 Branch: feat/read-asbestos-register
 Status: WAITING_CI

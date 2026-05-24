@@ -99,7 +99,11 @@ export function ChatPanel() {
     acceptEstimateProposal,
     rejectEstimateProposal,
     acceptAllPendingEstimateProposals,
-    rejectAllPendingEstimateProposals
+    rejectAllPendingEstimateProposals,
+    acceptQuoteProposal,
+    rejectQuoteProposal,
+    acceptAllPendingQuoteProposals,
+    rejectAllPendingQuoteProposals
   } = useStreamingChat(slug, subMode, contextKey);
 
   const [view, setView] = useState<View>("chat");
@@ -171,6 +175,10 @@ export function ChatPanel() {
             onRejectEstimateProposal={rejectEstimateProposal}
             onAcceptAllEstimateProposals={acceptAllPendingEstimateProposals}
             onRejectAllEstimateProposals={rejectAllPendingEstimateProposals}
+            onAcceptQuoteProposal={acceptQuoteProposal}
+            onRejectQuoteProposal={rejectQuoteProposal}
+            onAcceptAllQuoteProposals={acceptAllPendingQuoteProposals}
+            onRejectAllQuoteProposals={rejectAllPendingQuoteProposals}
           />
           {status === "error" && error ? (
             <div className="persona-window__error" role="alert">

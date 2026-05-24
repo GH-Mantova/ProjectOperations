@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-24 05:01 AEST
+Last updated: 2026-05-24 07:38 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -296,7 +296,12 @@ route (scope mode = drafting tools; quote mode = advisory; etc.).
      bound to the estimate sub-mode only; system prompt mandates
      lookup_rate first for every rate. See §5A.1 PR D changelog entry
      below.
-   - PR E: quote generation tool.
+   - ✅ PR E (shipped 2026-05-24): propose_quote_content +
+     list_tender_quotes — quote-content tools. Mirrors PR D end-to-end;
+     bound to the quote sub-mode only; the model proposes cost-line
+     structure / exclusions / assumptions into an existing
+     ClientQuote (DRAFT only); never invents a cost-line price.
+     See §5A.1 PR E changelog entry below.
    - PR F: clarifications mode tool.
    - PR G: asbestos register reading + cross-reference logic
      (separate PR — system prompt §3 already instructs the model
@@ -1884,6 +1889,73 @@ mirroring the propose_scope_items per-sub-mode discipline.
 
 Closes the last code-bearing Item 5 sub-task in §5A.1. PRs E/F/G/H
 are now the only remaining items (H is shipped; E/F/G remain).
+
+No new dependencies. No new env vars. No migrations.
+
+### 2026-05-24 — §5A.1 PR E: propose_quote_content + list_tender_quotes shipped
+Adds the Tendering Assistant's two quote sub-mode tools — read-only
+list_tender_quotes for discovery, and the propose-then-confirm
+propose_quote_content for content creation — closing the quote
+sub-mode's "advisory only" gap. The estimator still creates each
+ClientQuote in the Quote tab (with its target client + revision); the
+AI proposes what goes INSIDE that quote — cost-line structure,
+exclusions, and assumptions. No schema changes: ClientQuote,
+QuoteCostLine, QuoteExclusion, and QuoteAssumption all already
+exist.
+
+Backend: new list-tender-quotes.handler.ts (read-only;
+contextKey-default with explicit tenderId override; tenders.view
+permission gate; super-users bypass), new
+propose-quote-content.tool.ts (JSON schema + per-block types), new
+QuoteProposalsService (storeQuoteProposals writes the tool_call +
+tool_result rows with a toolName="propose_quote_content"
+discriminator; acceptQuoteProposal validates the target ClientQuote
+belongs to the conversation's tender, validates status === DRAFT —
+SENT and SUPERSEDED quotes are immutable — computes the next
+sortOrder per row type from MAX(existing) + 1 so accepted content
+appends without colliding with manual entries, then writes one row
+per cost-line / exclusion / assumption into the quote), new
+ProposeQuoteContentHandler (emits SSE event="quote_proposals"), new
+QuoteProposalsController (POST /personas/tendering/quote-proposals/
+:messageId/{accept, reject, accept-all, reject-all}; ai.persona.tendering
+guard). The toolName discriminator lets the service and the
+frontend's history-rebuild distinguish quote proposals from scope
+proposals and estimate proposals — the three flows stay strictly
+isolated.
+
+System prompt: QUOTE_SUBMODE_PROMPT rewritten. The model is told to
+call list_tender_quotes first and confirm the target quote with the
+user before proposing content into it; only DRAFT quotes accept new
+content; cost-line prices are USER-SUPPLIED unless the user
+explicitly stated a figure in the conversation — never invent or
+ballpark a price (quote totals are a function of the estimate, which
+the estimator owns). The GLOBAL_RATE_FABRICATION_PROHIBITION baseline
+and the RATE_LOOKUP MANDATORY POLICY block both remain in force
+unchanged.
+
+Frontend: new QuoteProposalCardList component parallel to
+EstimateProposalCardList, rendering the cost-line / exclusion /
+assumption groups inside the target quote. chat-helpers gains
+ChatQuoteProposal + ChatQuoteProposalsMessage types; the ChatMessage
+and SSEChunk unions widen for a third proposal variant;
+parseSSEEvent learns the "quote_proposals" event; a parallel pair of
+appendQuoteProposalsMessage / updateQuoteProposalsMessage helpers
+ships alongside the scope + estimate helpers. use-streaming-chat
+handles the new SSE event, exposes the four
+accept/reject/acceptAll/rejectAll callbacks, and
+rebuildMessagesFromHistory now branches three ways on
+metadata.toolName so a page reload places each row on its dedicated
+card surface. MessageList + ChatPanel route the new role.
+
+Bindings (no structural change to existing tools): list_tender_quotes
+and propose_quote_content are both bound to the tendering.quote
+sub-mode ONLY — the scope, estimate, and clarifications tabs have
+their own creation tools and shouldn't surface quote tools. The
+drawing tools and lookup_rate continue to be bound as before.
+
+Remaining §5A.1 Item 5 sub-tasks after PR E: F (clarifications mode
+tool) and G (asbestos register reading + cross-reference). H is
+shipped.
 
 No new dependencies. No new env vars. No migrations.
 

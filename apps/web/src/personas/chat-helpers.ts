@@ -115,10 +115,47 @@ export type ChatEstimateProposalsMessage = {
   proposals: ChatEstimateProposal[];
 };
 
+// §5A.1 PR E — quote-content proposal types, parallel to the estimate
+// variant. The model proposes content (cost-line structure / exclusions
+// / assumptions) into an existing ClientQuote.
+export type ChatQuoteCostLine = {
+  label: string;
+  description: string;
+  price?: number;
+};
+
+export type ChatQuoteExclusion = {
+  text: string;
+};
+
+export type ChatQuoteAssumption = {
+  text: string;
+};
+
+export type ChatQuoteProposal = {
+  index: number;
+  quoteId: string;
+  costLines?: ChatQuoteCostLine[];
+  exclusions?: ChatQuoteExclusion[];
+  assumptions?: ChatQuoteAssumption[];
+  status: ProposalStatus;
+  acceptedCostLineIds?: string[];
+  acceptedExclusionIds?: string[];
+  acceptedAssumptionIds?: string[];
+  decidedAt?: string;
+};
+
+export type ChatQuoteProposalsMessage = {
+  role: "quote-proposals";
+  messageId: string;
+  proposals: ChatQuoteProposal[];
+};
+
 export type ChatMessage =
   | ChatTextMessage
   | ChatProposalsMessage
-  | ChatEstimateProposalsMessage;
+  | ChatEstimateProposalsMessage
+  | ChatQuoteProposalsMessage;
 
 export type ChatStatus = "idle" | "streaming" | "error";
 
@@ -132,6 +169,11 @@ export type SSEChunk =
       type: "estimate_proposals";
       messageId: string;
       proposals: ChatEstimateProposal[];
+    }
+  | {
+      type: "quote_proposals";
+      messageId: string;
+      proposals: ChatQuoteProposal[];
     };
 
 // Send button is active only when the user has typed something AND we're not
@@ -189,6 +231,30 @@ export function updateEstimateProposalsMessage(
 ): ChatMessage[] {
   return history.map((m) => {
     if (m.role !== "estimate-proposals" || m.messageId !== messageId) return m;
+    return { ...m, proposals: updater(m.proposals) };
+  });
+}
+
+// §5A.1 PR E — quote-proposal helpers, parallel to the
+// estimate-proposal helpers above. The three flows
+// (scope / estimate / quote) are independent: each carries its own
+// SSE event, role string, message history shape, and accept/reject
+// endpoint.
+export function appendQuoteProposalsMessage(
+  history: ChatMessage[],
+  messageId: string,
+  proposals: ChatQuoteProposal[]
+): ChatMessage[] {
+  return [...history, { role: "quote-proposals", messageId, proposals }];
+}
+
+export function updateQuoteProposalsMessage(
+  history: ChatMessage[],
+  messageId: string,
+  updater: (proposals: ChatQuoteProposal[]) => ChatQuoteProposal[]
+): ChatMessage[] {
+  return history.map((m) => {
+    if (m.role !== "quote-proposals" || m.messageId !== messageId) return m;
     return { ...m, proposals: updater(m.proposals) };
   });
 }
@@ -290,6 +356,21 @@ export function parseSSEEvent(rawEvent: string): SSEChunk[] {
         type: "estimate_proposals",
         messageId: obj.messageId,
         proposals: obj.proposals as unknown as ChatEstimateProposal[]
+      }
+    ];
+  }
+  // §5A.1 PR E — quote-proposals SSE event. Parallel to estimate_proposals;
+  // routes the payload to QuoteProposalCardList.
+  if (
+    obj.type === "quote_proposals" &&
+    typeof obj.messageId === "string" &&
+    Array.isArray(obj.proposals)
+  ) {
+    return [
+      {
+        type: "quote_proposals",
+        messageId: obj.messageId,
+        proposals: obj.proposals as unknown as ChatQuoteProposal[]
       }
     ];
   }

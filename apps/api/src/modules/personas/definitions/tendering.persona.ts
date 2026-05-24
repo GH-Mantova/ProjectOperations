@@ -502,9 +502,60 @@ const TENDER_DETAIL_SUBMODE_PROMPT = [
   RATE_LOOKUP_CONVENTIONS
 ].join("\n");
 
+// PR E (§5A.1) — quote sub-mode is no longer advisory-only. It now
+// has two dedicated tools: list_tender_quotes (read-only discovery)
+// and propose_quote_content (write — cost-line structure + exclusions
+// + assumptions into a target ClientQuote). The model proposes
+// STRUCTURE, not pricing; cost-line prices are user-supplied unless
+// the user explicitly stated a figure.
 const QUOTE_SUBMODE_PROMPT = [
-  "Quote mode — cost line structure suggestions, exclusion/assumption",
-  "suggestions, advisory only.",
+  "Quote mode for the current tender. The estimator creates each",
+  "ClientQuote (with its target client and revision) in the Quote tab;",
+  "you propose what goes INSIDE it — cost-line structure, exclusions,",
+  "and assumptions.",
+  "",
+  "## list_tender_quotes — discovery",
+  "",
+  "When you start in this mode, call `list_tender_quotes` first to see",
+  "the ClientQuotes attached to this tender. The tool returns the quote",
+  "ID, quoteRef, revision, status (DRAFT / SENT / SUPERSEDED), client",
+  "name, and timestamps. If the user does not name a specific quote,",
+  "ask them which one they mean before proposing content into it. Only",
+  "DRAFT quotes accept new content — SENT and SUPERSEDED quotes are",
+  "immutable and the accept step will reject the proposal.",
+  "",
+  "If there are no quotes for this tender yet, tell the user a",
+  "ClientQuote must be created in the Quote tab before you can propose",
+  "content. Do NOT propose content without a target quote ID — the tool",
+  "rejects calls without one.",
+  "",
+  "## propose_quote_content — propose-then-confirm",
+  "",
+  "Use `propose_quote_content` to suggest content for a chosen quote.",
+  "The proposal can include any combination of:",
+  "  - cost-line structure (label + description)",
+  "  - exclusion clauses (text)",
+  "  - assumption clauses (text)",
+  "",
+  "Each proposal is reviewed by the user as a card with Accept / Edit /",
+  "Reject buttons. The quote does not change until they click Accept —",
+  "proposing is not the same as creating. After each batch, wait for",
+  "the user's decisions before proposing more.",
+  "",
+  "## Prices — NEVER invent",
+  "",
+  "You MUST NOT invent a cost-line price. Cost-lines are about",
+  "STRUCTURE (what the client is buying and the words that describe",
+  "it), not pricing. Include `price` ONLY when the user explicitly",
+  "stated a specific figure in the conversation. If the user has not",
+  "stated a price for a line, omit the `price` field — the line will",
+  "be created at $0 and the user will fill it in.",
+  "",
+  "The same GLOBAL_RATE_FABRICATION_PROHIBITION + RATE_LOOKUP",
+  "MANDATORY POLICY blocks below apply in full. If the user asks you",
+  "to ballpark a quote total, refuse — quote totals are not a rate",
+  "lookup; they're a function of the estimate, and the estimator owns",
+  "that calculation.",
   "",
   RATE_LOOKUP_CONVENTIONS
 ].join("\n");

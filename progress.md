@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-24 05:03 AEST
+Last updated: 2026-05-24 07:38 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -6536,4 +6536,134 @@ Pre-PR checks (local): 7/7 green — full §6 gate clean.
     users.is_super_user self-resolved between PR H and this PR —
     migrations finally applied on this dev machine).
   - playwright tendering chromium green (5/5 in 29.2s).
+
+## 2026-05-24 15:06 AEST — PR feat/propose-estimate-items MERGED
+Type: PR ([5A.1] PR D — propose_estimate_items estimate-creation tool)
+Branch: feat/propose-estimate-items
+PR: #215 (https://github.com/GH-Mantova/ProjectOperations/pull/215)
+Merge SHA: e874bef1d086bf7fbf0c16e64570dd32015bc902
+Merged at: 2026-05-24T05:06:38Z (squash merge — auto-merge)
+CI: ✅ all checks passed
+  - API — lint, test, compliance smoke
+  - Web — lint, logic tests, build
+  - Analyze (actions) [CodeQL]
+  - Analyze (javascript-typescript) [CodeQL]
+  - tendering-e2e
+Status: MERGED
+
+## 2026-05-24 17:30 AEST — PR feat/propose-quote-content STARTED
+Type: PR ([5A.1] PR E — propose_quote_content quote-content tool)
+Branch: feat/propose-quote-content
+Detail: Adds two tools to the Tendering Assistant's quote sub-mode
+  (previously advisory-only). list_tender_quotes is a read-only
+  discovery tool that lists the ClientQuotes attached to the active
+  tender so the model can confirm the target quote with the user
+  before proposing into it. propose_quote_content is the
+  propose-then-confirm content tool — cost-line structure, exclusions,
+  and assumptions — mirroring propose_scope_items / propose_estimate_items
+  end-to-end (tool schema, service with toolName discriminator, thin
+  handler with SSE side-effect, controller, frontend card list).
+  No schema changes — ClientQuote / QuoteCostLine / QuoteExclusion /
+  QuoteAssumption all exist. Two integrity checks at accept time:
+  the target quote must belong to the conversation's tender, and its
+  status must be DRAFT (SENT / SUPERSEDED quotes are immutable). The
+  model proposes STRUCTURE, never inventing a price — price is
+  included only when the user explicitly stated a figure.
+Status: IN_PROGRESS
+
+## 2026-05-24 17:30 AEST — PR feat/propose-quote-content OPENED
+Type: PR ([5A.1] PR E — propose_quote_content quote-content tool)
+Branch: feat/propose-quote-content
+PR: #[N]
+Status: WAITING_CI
+Detail: ~17 files (5 new backend + 1 new frontend + 1 new test +
+  several edits). Backend new:
+  - apps/api/src/modules/personas/tools/handlers/list-tender-quotes.handler.ts
+    — read-only discovery tool; lists tender's ClientQuotes; falls
+    back to ctx.contextKey when input.tenderId omitted; rejects
+    non-tenders.view callers (super-users bypass).
+  - apps/api/src/modules/ai-providers/tools/propose-quote-content.tool.ts
+    — tool definition + types (QuoteCostLineProposal /
+    QuoteExclusionProposal / QuoteAssumptionProposal /
+    ProposeQuoteContentArgs).
+  - apps/api/src/modules/tendering/scope/quote-proposals.service.ts —
+    QuoteProposalsService. storeQuoteProposals (tool_call + tool_result
+    rows in $transaction; toolName="propose_quote_content"
+    discriminator in tool_result metadata).
+    acceptQuoteProposal (loads target ClientQuote; rejects with 404
+    when missing; 400 when belongs to a different tender; 400 when
+    status is not DRAFT; computes next sortOrder per row type from
+    Math.max(existing) + 1 so accepted proposals append rather than
+    collide with manual entries; creates QuoteCostLine /
+    QuoteExclusion / QuoteAssumption rows). rejectQuoteProposal,
+    acceptAllPending, rejectAllPending; loadProposalMessage helper
+    enforces toolName discriminator so the service ignores
+    scope/estimate proposal rows.
+  - apps/api/src/modules/personas/tools/handlers/propose-quote-content.handler.ts
+    — thin handler emitting SSE event "quote_proposals".
+  - apps/api/src/modules/tendering/scope/quote-proposals.controller.ts
+    — POST /personas/tendering/quote-proposals/:messageId/{accept,
+    reject, accept-all, reject-all}; ai.persona.tendering guard.
+  Backend edits:
+  - tendering.module.ts — QuoteProposalsController +
+    QuoteProposalsService added to controllers/providers/exports.
+  - personas.module.ts — both handlers added to providers; registered
+    in onModuleInit; bindToSubMode("tendering.quote", [...]) — both
+    bound to the quote sub-mode ONLY.
+  - tendering.persona.ts — QUOTE_SUBMODE_PROMPT rewritten: the quote
+    sub-mode now has list_tender_quotes + propose_quote_content;
+    propose-then-confirm; call list_tender_quotes first; never invent
+    a cost-line price (include `price` only when the user stated a
+    figure); GLOBAL_RATE_FABRICATION_PROHIBITION + RATE_LOOKUP
+    MANDATORY POLICY unchanged in force.
+  Frontend new:
+  - apps/web/src/personas/QuoteProposalCardList.tsx — parallel to
+    EstimateProposalCardList: renders cost-line + exclusion +
+    assumption groups inside the target quote; Accept/Edit/Reject +
+    bulk. Edit mode allows per-cost-line label/price tweaks and
+    per-clause text tweaks before commit.
+  Frontend edits:
+  - chat-helpers.ts — ChatQuoteProposal + ChatQuoteProposalsMessage
+    types; ChatMessage + SSEChunk unions widened; parseSSEEvent
+    handles "quote_proposals"; new appendQuoteProposalsMessage +
+    updateQuoteProposalsMessage helpers.
+  - use-streaming-chat.ts — handles quote_proposals SSE chunk;
+    exposes acceptQuoteProposal / rejectQuoteProposal /
+    acceptAllPendingQuoteProposals / rejectAllPendingQuoteProposals
+    callbacks wired to the new endpoints; rebuildMessagesFromHistory
+    now branches on metadata.toolName for the three proposal variants
+    (scope / estimate / quote).
+  - MessageList.tsx + ChatPanel.tsx — render the new card list for
+    quote-proposals rows; pass new handlers through.
+  Tests:
+  - quote-proposals.service.spec.ts (16 specs: store + accept
+    [DRAFT happy path + sortOrder append + 404 missing quote + 400
+    wrong-tender + 400 SENT + 400 SUPERSEDED + edits + 404 not-owner
+    + 400 already-accepted + 404 out-of-range + 400 no-tender + 400
+    missing-toolName + 400 wrong-toolName] + reject + rejectAll).
+  - list-tender-quotes.handler.spec.ts (6 specs: contextKey default,
+    explicit tenderId override, empty-quotes hint, missing-tender
+    error, permission denial, super-user bypass).
+  - propose-quote-content.handler.spec.ts (3 specs).
+  - quote-proposal-helpers.test.ts (9 specs mirroring
+    estimate-proposal-helpers.test.ts).
+  Docs (per §6 same-PR rule):
+  - progress.md — #215 MERGED + this PR STARTED/OPENED.
+  - roadmap.md — §5A.1 Item 5 PR E marked ✅; changelog entry appended.
+  - project_instructions.md §13 — list_tender_quotes +
+    propose_quote_content added; quote sub-mode marked
+    no-longer-advisory-only.
+  No new dependencies. No new env vars. No migrations.
+Pre-PR checks (local): 7/7 green — full §6 gate clean.
+  - API lint clean
+  - Web lint clean
+  - API tests 677 passed, 6 skipped — +25 vs baseline 652, matching
+    the 16 QuoteProposalsService specs + 6 ListTenderQuotesHandler
+    specs + 3 ProposeQuoteContentHandler specs added.
+  - Web tests 180 passed — +12 vs baseline 168, matching the 12
+    new specs in quote-proposal-helpers.test.ts.
+  - pnpm build green (api + web).
+  - pnpm compliance:smoke green.
+  - playwright tendering chromium green (5/5 in 22.0s).
+
 

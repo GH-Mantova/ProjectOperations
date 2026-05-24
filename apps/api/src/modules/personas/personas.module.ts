@@ -10,8 +10,10 @@ import { PersonaPermissionGuard } from "./persona-permission.guard";
 import { DrawingToolsAccessService } from "./tools/handlers/drawing-tools.shared";
 import { ExtractDrawingTitleblockHandler } from "./tools/handlers/extract-drawing-titleblock.handler";
 import { ListTenderDrawingsHandler } from "./tools/handlers/list-tender-drawings.handler";
+import { ListTenderQuotesHandler } from "./tools/handlers/list-tender-quotes.handler";
 import { LookupRateHandler } from "./tools/handlers/lookup-rate.handler";
 import { ProposeEstimateItemsHandler } from "./tools/handlers/propose-estimate-items.handler";
+import { ProposeQuoteContentHandler } from "./tools/handlers/propose-quote-content.handler";
 import { ProposeScopeItemsHandler } from "./tools/handlers/propose-scope-items.handler";
 import { ReadTenderDrawingHandler } from "./tools/handlers/read-tender-drawing.handler";
 import {
@@ -61,7 +63,9 @@ const TENDERING_RATE_SUB_MODES = [
     DrawingToolsAccessService,
     ProposeScopeItemsHandler,
     ProposeEstimateItemsHandler,
+    ProposeQuoteContentHandler,
     ListTenderDrawingsHandler,
+    ListTenderQuotesHandler,
     ExtractDrawingTitleblockHandler,
     ReadTenderDrawingHandler,
     LookupRateHandler,
@@ -75,7 +79,9 @@ export class PersonasModule implements OnModuleInit {
     private readonly registry: ToolHandlerRegistry,
     private readonly proposeScopeItems: ProposeScopeItemsHandler,
     private readonly proposeEstimateItems: ProposeEstimateItemsHandler,
+    private readonly proposeQuoteContent: ProposeQuoteContentHandler,
     private readonly listTenderDrawings: ListTenderDrawingsHandler,
+    private readonly listTenderQuotes: ListTenderQuotesHandler,
     private readonly extractDrawingTitleblock: ExtractDrawingTitleblockHandler,
     private readonly readTenderDrawing: ReadTenderDrawingHandler,
     private readonly lookupRate: LookupRateHandler,
@@ -91,6 +97,8 @@ export class PersonasModule implements OnModuleInit {
     this.registry.register(this.readTenderDrawing);
     this.registry.register(this.proposeScopeItems);
     this.registry.register(this.proposeEstimateItems);
+    this.registry.register(this.proposeQuoteContent);
+    this.registry.register(this.listTenderQuotes);
     this.registry.register(this.lookupRate);
 
     // Drawing tools are reference material — useful from any Tendering
@@ -131,6 +139,18 @@ export class PersonasModule implements OnModuleInit {
     // estimate tab, not the scope/quote/clarifications tabs.
     this.registry.bindToSubMode("tendering.estimate", [
       this.proposeEstimateItems.name
+    ]);
+
+    // §5A.1 PR E — quote sub-mode tools. list_tender_quotes lets the
+    // model discover which ClientQuote the user is referring to;
+    // propose_quote_content writes the AI's suggested cost-line
+    // structure / exclusions / assumptions into that quote for
+    // Accept/Edit/Reject review. Both bound to the quote sub-mode
+    // ONLY — the scope and estimate tabs have their own creation
+    // tools and shouldn't surface quote tools.
+    this.registry.bindToSubMode("tendering.quote", [
+      this.listTenderQuotes.name,
+      this.proposeQuoteContent.name
     ]);
 
     // PR #149 — lookup_rate is bound to ALL tender-scoped tendering

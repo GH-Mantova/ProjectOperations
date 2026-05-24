@@ -1,7 +1,7 @@
 # ProjectOperations — Project Instructions
 # Version: 1.1
 # Created: 2026-04-25 10:02 AEST
-# Last updated: 2026-05-24 05:01 AEST
+# Last updated: 2026-05-24 07:38 AEST
 # Maintained by: Claude Code (update after any architectural decision,
 #   module addition, business rule change, or workflow change)
 # Accessed by: All Claude chats in this project via web_fetch
@@ -853,6 +853,38 @@ AI Persona System (planned — Phase 5A.1)
     RATE_LOOKUP MANDATORY POLICY blocks apply in full. SSE
     event name is "estimate_proposals" (distinct from the
     scope-proposal "proposals" event).
+  - list_tender_quotes — bound to the quote sub-mode only
+    (PR E, 2026-05-24). Read-only discovery: lists the
+    ClientQuotes attached to the active tender so the model
+    can confirm the target quote with the user before
+    proposing content into it. Falls back to the
+    contextKey-resolved tender when input.tenderId is omitted.
+    Permission gate: tenders.view (super-users bypass).
+  - propose_quote_content — bound to the quote sub-mode only
+    (PR E, 2026-05-24). Quote-content parallel to
+    propose_scope_items / propose_estimate_items: proposes
+    cost-line STRUCTURE (label + description; price is
+    user-supplied unless the user explicitly stated a figure),
+    exclusion clauses, and assumption clauses, INTO a target
+    ClientQuote. The quote sub-mode is NO LONGER advisory-only
+    as of PR E. Backing models: ClientQuote (resolved from the
+    input quoteId; must belong to the conversation's tender
+    AND status === DRAFT — SENT and SUPERSEDED quotes are
+    immutable), QuoteCostLine, QuoteExclusion, QuoteAssumption.
+    Accept-time integrity checks reject cross-tender quoteIds
+    (400) and non-DRAFT statuses (400). The tool_result row's
+    metadata carries a toolName="propose_quote_content"
+    discriminator so the service AND the frontend's
+    rebuildMessagesFromHistory distinguish it from scope and
+    estimate proposal rows; the three flows stay strictly
+    isolated. The system prompt mandates that the model
+    propose STRUCTURE only and NEVER invent a cost-line price
+    — `price` is included only when the user explicitly
+    stated a figure. The GLOBAL_RATE_FABRICATION_PROHIBITION
+    and RATE_LOOKUP MANDATORY POLICY blocks apply in full.
+    SSE event name is "quote_proposals" (distinct from the
+    scope-proposal "proposals" event and the estimate-proposal
+    "estimate_proposals" event).
   - lookup_rate — bound to ALL FIVE tender-scoped Tendering
     sub-modes (tender-detail, scope, estimate, quote,
     clarifications) since PR #149. Register sub-mode (tender

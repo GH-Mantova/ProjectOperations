@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-19 05:56 AEST
+Last updated: 2026-05-24 02:31 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -6121,7 +6121,7 @@ Status: MERGED
 ## 2026-05-19 15:52 AEST — PR fix/b05-job-id-canonical-and-race-fix OPENED
 Type: PR (fix — Job ID canonicalisation + B02.1 race-fix)
 Branch: fix/b05-job-id-canonical-and-race-fix
-PR: #[N]
+PR: #210 (https://github.com/GH-Mantova/ProjectOperations/pull/210)
 Status: PENDING REVIEW (no auto-merge — schema migration needs human review)
 Detail: B05 + B02.1 bundled. Consolidates three coexisting Job ID
   formats (J-YYYY-NNN, JOB-YYYY-NNN, JOB-COMP-<epoch>) to canonical
@@ -6173,3 +6173,17 @@ Migration applied via docker exec (drift workaround) + resolved as
     Renumbered JOB-COMP-* rows: 36 (J-2026-002 through J-2026-037)
     Promoted JOB-2025-099 → J-2025-099
     Promoted JOB-2026-001 → J-2026-001
+
+## 2026-05-19 16:04 AEST — PR fix/b05-job-id-canonical-and-race-fix MERGED
+Type: PR (fix — Job ID canonicalisation + B02.1 race-fix)
+Branch: fix/b05-job-id-canonical-and-race-fix
+PR: #210 (https://github.com/GH-Mantova/ProjectOperations/pull/210)
+Merge SHA: b39bf9cb488cad72c017e8aac71cb8f90a0370cc
+Merged at: 2026-05-19T06:04:04Z (squash merge — human-reviewed, schema migration)
+CI: ✅ all checks passed
+  - API — lint, test, compliance smoke
+  - Web — lint, logic tests, build
+  - Analyze (actions) [CodeQL]
+  - Analyze (javascript-typescript) [CodeQL]
+  - tendering-e2e
+Status: MERGED

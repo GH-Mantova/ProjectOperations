@@ -1084,9 +1084,9 @@ required. Existing Quote tab can be progressively replaced.
 
 ## Fix Map (2026-05-18)
 
-**Status:** 3 of 8 shipped (B01, B01.1, B02 — see PR refs in
-summary table); 1 verification-pending (B04); 4 still open
-(B03, B05, B06, B07, B08). Updated 2026-05-18 post-B01.1.
+**Status:** 4 of 8 shipped (B01, B01.1, B02, B05 — see PR refs in
+summary table); 1 verification-pending (B04); 3 still open
+(B03, B06, B07, B08). Updated 2026-05-24 post-B05.
 
 **Base SHA at triage time:** `78c7b049947e486941dac285bf456650962c2f03` (post chore #194)
 **Tests at triage time:** API 599 pass / 6 skip; web 148
@@ -1100,7 +1100,7 @@ summary table); 1 verification-pending (B04); 4 still open
 | B02 | ✅ Shipped (PR #197) | POST /api/v1/jobs returns "Cannot POST" | BLOCKER | `JobsController` had no `@Post()` handler; frontend called one that didn't exist. Codex P2 race-fix (findUnique-then-create) deferred and folded into B05's future PR | S | — |
 | B03 | Open | No project → job transition | BLOCKER | Architectural gap: existing `convertFromTender` creates Project; existing `tender-conversion/:id/convert-to-job` creates Job — both off tender; no Project→Job path exists | L (sub-discovery candidate) | — |
 | B04 | ⏳ Verification-pending | KPI card overlap (Chat1 #1) | COSMETIC | JobDetailPage cards visually clean post-B01.1; original Chat1 report cited JobsListPage cards — needs fresh screenshot before closing | S (TBD) | B01 dependency resolved |
-| B05 | Open | Job ID format inconsistency (Chat1 #2) | FUNCTIONAL | 3 prefix formats coexist: `J-YYYY-NNN` (seed), `JOB-YYYY-NNN` (runtime), `JOB-COMP-<epoch>` (compliance harness). Will absorb Codex P2 race-fix from B02 | S | — |
+| B05 | ✅ Shipped (PR #210) | Job ID format inconsistency (Chat1 #2) | FUNCTIONAL | 3 prefix formats coexist: `J-YYYY-NNN` (seed), `JOB-YYYY-NNN` (runtime), `JOB-COMP-<epoch>` (compliance harness). Will absorb Codex P2 race-fix from B02 | S | — |
 | B06 | Open | Scheduler weekend clip (Chat1 #4) | COSMETIC | Unverified; no `--weekend` variant in `.sched-week__*` CSS — likely a narrow-column rendering issue | S (TBD) | — |
 | B07 | Open | "Due this week" mislabel (Chat1 #6) | COSMETIC | Widget filter is "due in next `daysAhead` days" (default 7); title says "this week" → off-by-cutoff at end of week | S | — |
 | B08 | Open | Client win 300% | FUNCTIONAL | `bumpWinCount` re-fires winCount increment without re-checking tenderCount; copy-tender flow or re-award triggers it | S (data fix + idempotency guard) | — |
@@ -1201,10 +1201,11 @@ summary table); 1 verification-pending (B04); 4 still open
   + `CreateJobDto` + `JobsService.createJob` (mirrors
   `convertTenderToJob` shape — caller-supplied jobNumber, no
   auto-generator). Audit via `auditService.write({action: 'jobs.create'})`.
-  **Codex P2 deferred:** the race-condition fix for
-  `findUnique`-then-`create` on jobNumber uniqueness was reviewed
-  and folded into B05's future PR (B05 already needs to touch
-  the job-number generator surface).
+  **Codex P2 race-fix shipped:** the `findUnique`-then-`create`
+  race on jobNumber uniqueness shipped in PR #210 as B02.1,
+  bundled with the B05 canonicalisation work. P2002 unique-violation
+  now translates to a 409 `ConflictException` on both job-create
+  paths (`createJob` + `convertTenderToJob`).
 - **Where it lives:** `apps/api/src/modules/jobs/jobs.controller.ts:26` (`@Controller("jobs")` — no `@Post()` at root); `apps/web/src/pages/jobs/JobsListPage.tsx:449` (frontend POSTs to `/jobs`).
 - **Evidence:** Modal "Cannot POST /api/v1/jobs" after submitting job-creation form. Confirmed: controller has only `@Get`, `@Patch`, and `@Post(":id/<sub-resource>")` handlers — nothing at the controller root.
 - **Hypotheses:**
@@ -1263,6 +1264,17 @@ summary table); 1 verification-pending (B04); 4 still open
 
 #### B05 — Job ID format inconsistency (Chat1 #2)
 
+- **Status:** ✅ Shipped 2026-05-19 in PR #210 (bundled with the
+  B02.1 race-fix). Canonical job-number format is **`J-YYYY-NNN`** —
+  not the `JOB-YYYY-NNN` this triage fix-sketch proposed. PR #210
+  added a `JobNumberService` + per-year `JobNumberSequence` table
+  (Brisbane TZ) that generates job numbers when the caller omits one
+  and validates/rejects (400) legacy formats. Contrary to the
+  fix-sketch below, a migration WAS required —
+  `20260519_feat_job_number_canonicalisation` normalised existing
+  rows in place (2× `JOB-YYYY-NNN`, 36× `JOB-COMP-*` → canonical).
+  The fix-sketch and open questions below are kept for historical
+  context but are superseded by what shipped.
 - **Where it lives:** `apps/api/prisma/seed-initial-services.ts` (seed uses `J-2025-NNN`) + compliance smoke harness (uses `JOB-COMP-<epoch>`) + runtime job-number generator (uses `JOB-YYYY-NNN`). The runtime generator is in `JobsService.generateJobNumber` or similar — wasn't located explicitly but inferred from `JOB-2026-001` data and `ProjectNumberSequence` schema model precedent (`apps/api/prisma/schema.prisma:1847`).
 - **Evidence:** DB probe (38 rows) confirmed three coexisting formats:
   - `J-2025-001`, `J-2025-002` — 2 seed records

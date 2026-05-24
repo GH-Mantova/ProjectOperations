@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-24 11:56 AEST
+Last updated: 2026-05-24 12:42 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -310,10 +310,17 @@ route (scope mode = drafting tools; quote mode = advisory; etc.).
      folded in a labour-unit correction in lookup-rate
      (AUD per hour → AUD per day per IS §10 Qty × Days × Rate
      formula). See §5A.1 PR F changelog entry below.
-   - PR G: asbestos register reading + cross-reference logic
-     (separate PR — system prompt §3 already instructs the model
-     on the workflow; tool that auto-detects and reads the register
-     is a future addition).
+   - ✅ PR G (shipped 2026-05-24): `read_asbestos_register` —
+     read-only persona tool that auto-detects the register attached
+     to a tender (by filename keyword: asbestos register / hazmat /
+     ACM survey / Division 6) and extracts its content. Handles
+     PDF (text layer + scanned-image fallback for the first 3
+     pages), single-page image, XLSX (every sheet's rows
+     tab-delimited), and DOCX (raw text via mammoth). Bound to all
+     six Tendering Assistant sub-modes — register cross-reference
+     is reference material, like the drawing tools. After this PR,
+     Tendering Assistant sub-mode tooling is **complete**. See
+     §5A.1 PR G changelog entry below.
    - ✅ PR H (shipped 2026-05-24): lookup_rate extended to all
      remaining rate types (labour, plant, waste, fuel, enclosure,
      other). Same handler pattern as cutting/core_hole; additive
@@ -1965,6 +1972,93 @@ tool) and G (asbestos register reading + cross-reference). H is
 shipped.
 
 No new dependencies. No new env vars. No migrations.
+
+### 2026-05-24 — §5A.1 PR G: read_asbestos_register shipped — Tendering Assistant tooling COMPLETE
+Adds the final tool in the §5A.1 Item 5 series: a read-only persona
+tool that auto-detects and reads the asbestos register / hazmat
+survey attached to a tender. The Tendering Assistant's system
+prompt already required a register cross-reference before any ASB
+scope item; this PR makes that cross-reference actually possible
+across all the register formats consultants ship (PDF text layer,
+scanned PDF, single-page image, XLSX, DOCX).
+
+Auto-detection uses a small case-insensitive keyword set
+(`asbestos register`, `asbestos survey`, `asbestos report`,
+`hazmat`, `hazardous material`, `acm survey`, `acm register`,
+`division 6`, `div 6`) matched against both the file name and the
+TenderDocumentLink title. 0/1/2+ outcomes diverge: 0 candidates is
+a non-error "raise a clarification" message; 1 reads it; 2+ returns
+a candidate list and asks the model to call again with a specific
+`documentId`.
+
+Per-format readers:
+- **PDF (text layer)** — extracts every page via pdfjs-dist with
+  `isEvalSupported: false` (Dependabot alerts #14/#15 CVE
+  mitigation), concatenated with `--- Page N ---` separators. The
+  text layer of a tabular ACM register beats page-by-page vision
+  for accuracy at zero vision-token cost.
+- **PDF (scanned, no text layer)** — falls back to rendering the
+  first up-to-3 pages as JPEG via the same pipeline as
+  read_tender_drawing (@napi-rs/canvas + pdfjs + sharp; ≤1568px
+  longer side; JPEG q85). Returns image blocks plus a text hint
+  pointing at `read_tender_drawing` for further pages.
+- **Image (PNG/JPEG)** — single-page register; normalised through
+  sharp and returned as one image block.
+- **XLSX** — every sheet, every non-empty row, tab-delimited.
+  Header row included. Empty sheets reported as such with a
+  re-upload prompt.
+- **DOCX** — `mammoth.extractRawText({ buffer })`. Empty documents
+  reported as such with a re-upload prompt.
+- **Unknown MIME** — clean error naming the detected MIME.
+
+Context-window protection: `MAX_EXTRACTED_CHARS = 60_000`. Larger
+content is truncated and tagged with a `[truncated — showing first
+N of M characters; ask for a specific section or page if you need
+more]` marker so the model knows to scope its next request.
+
+Cross-tender guard: an explicit `documentId` whose `tenderId`
+doesn't match the conversation's contextKey is rejected with a
+clean error — mirrors the cross-tender 400s in the propose tools.
+
+Bindings: read_asbestos_register is bound to ALL SIX Tendering
+Assistant sub-modes (register, tender-detail, scope, estimate,
+quote, clarifications). The register is reference material useful
+from any sub-mode: scope proposes ASB items, estimate prices them,
+quote references the standard exclusion clause "asbestos not noted
+in the asbestos register", clarifications drafts RFIs about the
+register. The pipeline (register sub-mode) has no specific tender;
+the tool returns a clean "needs a tender" message there, matching
+the drawing-tools convention.
+
+System prompt: three coordinated updates. (1) The ASB entry in
+IS_SCOPE_DESCRIPTION now instructs the model to call
+`read_asbestos_register` instead of "request" the register;
+(2) drawing convention (7) names the tool explicitly;
+(3) the "starting work on a new tender" example sequence step 7
+says call read_asbestos_register and raise a clarification via
+propose_clarifications if no register is attached.
+
+`DrawingToolsAccessService` gained one additive method
+(`listDocumentsForTender`) so the register reader can see XLSX/DOCX
+candidates the existing `listDrawingsForTender` (PDF/PNG/JPEG MIME
+filter) would exclude. Rename of the service class is deferred —
+its naming is now slightly narrow but the rename touches every
+drawing-tool import and isn't worth bundling here.
+
+Seed: synthetic register PDF for the IS-T020 BGS demo tender,
+realistic 4-row ACM schedule, idempotent upsert. Filename
+`BGS-T020 Asbestos Register - Hazmat Survey.pdf` hits the
+detection keyword set.
+
+**New dependency:** `mammoth@^1.12.0` for DOCX text extraction.
+Standard, well-maintained library. `exceljs` is already a
+dependency — no new package for XLSX.
+
+No schema migration. No new env vars.
+
+With PR G shipped, the §5A.1 Item 5 sub-task list is **complete**:
+PRs D / E / F / G / H all shipped (plus B's cleanup). Tendering
+Assistant tooling is fully built out.
 
 ### 2026-05-24 — §5A.1 PR F: propose_clarifications + list_tender_clarifications shipped
 Adds the Tendering Assistant's two clarifications sub-mode tools —

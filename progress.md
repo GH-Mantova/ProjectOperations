@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-24 11:57 AEST
+Last updated: 2026-05-24 12:42 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -6814,6 +6814,142 @@ Pre-PR checks (local): 7/7 green — full §6 gate clean.
   - pnpm build green (api + web).
   - pnpm compliance:smoke green.
   - playwright tendering chromium green (5/5 in 24.8s).
+
+## 2026-05-24 22:00 AEST — PR feat/propose-clarifications MERGED
+Type: PR ([5A.1] PR F — propose_clarifications + clarifications tools)
+Branch: feat/propose-clarifications
+PR: #217 (https://github.com/GH-Mantova/ProjectOperations/pull/217)
+Merge SHA: 9b93bf86c32c8cedc22f906c9d10b1a9aaac0f51
+Merged at: 2026-05-24T12:00:40Z (squash merge — auto-merge)
+CI: ✅ all checks passed
+  - API — lint, test, compliance smoke
+  - Web — lint, logic tests, build
+  - Analyze (actions) [CodeQL]
+  - Analyze (javascript-typescript) [CodeQL]
+  - tendering-e2e
+Status: MERGED
+
+## 2026-05-24 23:30 AEST — PR feat/read-asbestos-register STARTED
+Type: PR ([5A.1] PR G — read_asbestos_register asbestos register tool)
+Branch: feat/read-asbestos-register
+Detail: Adds the final tool in the §5A.1 Item 5 series. The
+  Tendering Assistant's system prompt already mandates a register
+  cross-reference before any ASB scope item is proposed, but until
+  now there was no tool to actually read the register — the model
+  could only `read_tender_drawing` a PDF page-by-page (lossy for a
+  tabular ACM register; unable to read XLSX or DOCX at all).
+  `read_asbestos_register` auto-detects the register attached to a
+  tender by filename keyword and extracts its content as text (PDF
+  text layer, XLSX rows, DOCX raw text) or images (single-page image
+  registers + scanned PDFs as a vision fallback for the first 3
+  pages, with a pointer to read_tender_drawing for the rest).
+  Bound to all six Tendering Assistant sub-modes — register
+  cross-reference is reference material like the drawing tools, not
+  sub-mode-specific work. After this PR, Tendering Assistant
+  sub-mode tooling is complete.
+Status: IN_PROGRESS
+
+## 2026-05-24 23:30 AEST — PR feat/read-asbestos-register OPENED
+Chain PR: PR G (conceptual)
+GitHub PR: #[N]
+Type: PR ([5A.1] PR G — read_asbestos_register asbestos register tool)
+Branch: feat/read-asbestos-register
+Status: WAITING_CI
+Detail: ~10 file changes. Backend new:
+  - apps/api/src/modules/personas/tools/handlers/read-asbestos-register.handler.ts
+    — read-only persona tool with inline schema (no separate
+    *.tool.ts; pattern matches the other read tools). Inputs:
+    optional tenderId (defaults to ctx.contextKey), optional
+    documentId (for multi-match disambiguation). Permission:
+    tenderdocuments.view via
+    DrawingToolsAccessService.hasTenderDocumentsViewPermission
+    (super-users bypass). Auto-detection via the
+    `looksLikeAsbestosRegister` helper (exported with its keyword
+    set for unit testing). 0/1/2+ match outcomes diverge as
+    specified. Per-format readers: PDF text-layer with
+    `isEvalSupported: false` (Dependabot alerts #14/#15 mitigation
+    — copied inline CVE comment); scanned-PDF vision fallback
+    rendering up to 3 pages; image normalised through `sharp`
+    (≤1568px, JPEG q85 — same params as read_tender_drawing); XLSX
+    via `exceljs.Workbook.xlsx.load`, every sheet's non-empty rows
+    serialised tab-delimited; DOCX via `mammoth.extractRawText`.
+    MAX_EXTRACTED_CHARS = 60_000 with explicit truncation marker.
+    Cross-tender documentId rejected with a clean error. Clean
+    error paths for SharePoint-not-found, corrupt files, and
+    unknown MIMEs.
+  - apps/api/src/modules/personas/tools/handlers/__tests__/
+    read-asbestos-register.handler.spec.ts — 27 specs covering
+    permission (denied + super-user bypass), no-context handling,
+    0/1/2+ candidate paths, explicit documentId + cross-tender
+    rejection + not-found, born-digital PDF text extraction with
+    page separators, scanned PDF fallback with the
+    read_tender_drawing hint when totalPages > pagesToRender,
+    image register, XLSX register, DOCX register (mocked mammoth
+    to avoid round-tripping a real OOXML package), corrupt PDF
+    bytes, unknown MIME, oversize truncation, and a parametrised
+    keyword-set unit test for looksLikeAsbestosRegister.
+  Backend edits:
+  - apps/api/src/modules/personas/tools/handlers/drawing-tools.shared.ts
+    — additive: new `listDocumentsForTender(tenderId)` method
+    returns ALL file-backed TenderDocumentLink rows for a tender,
+    unfiltered by MIME (so XLSX/DOCX registers are visible to the
+    new tool). `listDrawingsForTender`, `loadDocument`,
+    `downloadFileBytes`, and the permission helper unchanged. The
+    class name remains DrawingToolsAccessService — its narrow
+    naming is now slightly misleading (it backs register reading
+    too), but the rename is out of scope; noted as optional future
+    cleanup in the PR body.
+  - apps/api/src/modules/personas/personas.module.ts —
+    ReadAsbestosRegisterHandler added to providers, injected in
+    the constructor, registered in onModuleInit, and bound to all
+    six Tendering Assistant sub-modes (register, tender-detail,
+    scope, estimate, quote, clarifications) — matching the
+    drawing-tools binding pattern. The pipeline (register
+    sub-mode) has no specific tender; the tool returns a clean
+    "needs a tender" message there.
+  - apps/api/src/modules/personas/definitions/tendering.persona.ts
+    — three system-prompt updates: (1) the ASB entry in
+    IS_SCOPE_DESCRIPTION now instructs the model to call
+    `read_asbestos_register` instead of "request" the register;
+    (2) drawing convention (7) names the tool explicitly; (3) the
+    "starting work on a new tender" example sequence step 7 now
+    says call `read_asbestos_register` and raise a clarification
+    via `propose_clarifications` if no register is attached.
+  Seed:
+  - apps/api/prisma/seed.ts — synthetic asbestos register PDF
+    seeded for the BGS / IS-T020 demo tender. Realistic ACM table
+    (4 rows: friable + non-friable, location, material, class,
+    quantity). Idempotent upsert on fixed id
+    `seed-tender-document-bgs-asbestos-register` and fixed
+    SharePoint item id, filename
+    `BGS-T020 Asbestos Register - Hazmat Survey.pdf` (hits the
+    detection keyword set). New helper
+    `generateSyntheticAsbestosRegister` alongside the existing
+    drawing generator.
+  Dependencies:
+  - **NEW DEPENDENCY:** `mammoth@^1.12.0` added to
+    apps/api/package.json for DOCX text extraction. Standard
+    well-maintained library. exceljs is already a dep — no new
+    package for XLSX.
+  Docs (per §6):
+  - progress.md — #217 MERGED + this PR STARTED/OPENED.
+  - roadmap.md — §5A.1 Item 5 PR G marked ✅; changelog entry
+    appended noting Tendering Assistant sub-mode tooling is now
+    complete.
+  - project_instructions.md §13 — `read_asbestos_register` added
+    to the persona tool list with all format coverage notes.
+  No schema migration. No new env vars.
+Pre-PR checks (local): 8/8 green — full §6 gate clean.
+  - API lint clean
+  - Web lint clean
+  - API tests 731 passed, 6 skipped — +27 vs baseline 704, matching
+    the 27 specs in read-asbestos-register.handler.spec.ts.
+  - Web tests 191 unchanged (no web code touched).
+  - pnpm build green (api + web).
+  - pnpm compliance:smoke green.
+  - playwright tendering chromium green (5/5 in 25.4s).
+  - pnpm seed runs clean and idempotent (verified back-to-back).
+
 
 
 

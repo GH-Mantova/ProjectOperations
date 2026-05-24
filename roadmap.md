@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-24 03:08 AEST
+Last updated: 2026-05-24 04:17 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -299,11 +299,12 @@ route (scope mode = drafting tools; quote mode = advisory; etc.).
      (separate PR — system prompt §3 already instructs the model
      on the workflow; tool that auto-detects and reads the register
      is a future addition).
-   - PR H: extend lookup_rate to remaining rate types (labour,
-     plant, fuel, waste, enclosure, other). Same handler pattern,
-     additive to the rateType enum + dispatch branch + system
-     prompt section. Each is a small extension once the foundation
-     pattern from PR #148 is validated.
+   - ✅ PR H (shipped 2026-05-24): lookup_rate extended to all
+     remaining rate types (labour, plant, waste, fuel, enclosure,
+     other). Same handler pattern as cutting/core_hole; additive
+     to the rateType enum, input-schema sub-objects, dispatch
+     branches, and the RATE_LOOKUP system-prompt block. See
+     §5A.1 PR H changelog entry below.
 
 ### 5A.2 — HTML→PDF renderer migration
 
@@ -1764,4 +1765,63 @@ No new dependencies. No new env vars. No migrations. The closed
 dependency cluster was verified by grepping the apps/ tree for
 every removed identifier — no consumer remained outside the deleted
 files.
+
+### 2026-05-24 — §5A.1 PR H: lookup_rate extended to all rate types
+Closes the last remaining Item 5 sub-task by extending the
+lookup_rate persona tool from the two foundational rate types
+(cutting + core_hole, PRs #148 + #149) to all six remaining IS rate
+types: labour, plant, waste, fuel, enclosure, and other (the
+cutting-sheet catalogue flat-fee table). No schema changes — every
+rate table already exists; this is purely new read/lookup logic on
+top of existing models.
+
+Handler change (apps/api/src/modules/personas/tools/handlers/
+lookup-rate.handler.ts): rateType enum widened from
+["cutting","core_hole"] to ["cutting","core_hole","labour","plant",
+"waste","fuel","enclosure","other"]; the handler description and
+the fallback error-message language broadened to match. Six new
+input sub-objects in the JSON schema (labour / plant / waste /
+fuel / enclosure / other), six new parse/validate functions
+mirroring parseCuttingInput, six new lookup methods mirroring
+lookupCutting/lookupCoreHole, six new dispatch branches in execute().
+All queries filter isActive: true; case-insensitive matching uses
+Prisma's `mode: "insensitive"`. No-match paths list the available
+options for that table (mirroring availableCuttingCombinations) so
+the user gets a useful error rather than a bare not-found.
+
+Backing models per type: labour → EstimateLabourRate (role
+@unique; three shift columns dayRate/nightRate/weekendRate);
+plant → EstimatePlantRate (item @unique; rate + unit + fuelRate);
+waste → EstimateWasteRate ((wasteType, facility) @@unique;
+tonRate + loadRate + unit + wasteGroup); fuel → EstimateFuelRate
+(item @unique; rate + unit); enclosure → EstimateEnclosureRate
+(enclosureType @unique; rate + unit); other → CuttingOtherRate
+(description NOT unique; case-insensitive substring match returns
+all active matches so the user can pick).
+
+System prompt (apps/api/src/modules/personas/definitions/
+tendering.persona.ts): the RATE_LOOKUP_CONVENTIONS block — which
+is appended to every tender-scoped sub-mode description per PR #149
+— is broadened. The MANDATORY POLICY trigger list now enumerates
+all eight categories; the "deferred to subsequent PRs" section is
+replaced with per-type mechanics sections matching the existing
+cutting/core_hole sections (call shape, key fields, edge cases).
+The GLOBAL_RATE_FABRICATION_PROHIBITION baseline and the
+RATE_LOOKUP override-precedence language are NOT weakened — only
+the supported-types list is broadened.
+
+Tests (lookup-rate.handler.spec.ts): the existing Prisma mock is
+extended to cover all six new tables with case-insensitive findFirst
+matching; happy-path + no-match tests added for each of the six new
+types (12 new specs). The "unsupported rateType" test, which used
+"labour" to assert the deferred-types fallback, is updated to use
+"bogus" and to assert against the new fallback message ("rateType
+must be one of …").
+
+Bindings unchanged: lookup_rate stays bound to the same five
+tender-scoped sub-modes (tender-detail, scope, estimate, quote,
+clarifications). Register sub-mode stays unbound — same rationale
+as PR #149: no specific tender from which to ask for rates.
+
+No new dependencies. No new env vars. No migrations.
 

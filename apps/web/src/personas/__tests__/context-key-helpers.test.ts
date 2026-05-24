@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import { deriveContextKey, isTenderScopedSubMode } from "../context-key-helpers";
 
 describe("isTenderScopedSubMode", () => {
-  it("returns true for tender-detail/scope/estimate/quote/clarifications", () => {
+  it("returns true for tender-detail/scope/quote", () => {
     expect(isTenderScopedSubMode("tender-detail")).toBe(true);
     expect(isTenderScopedSubMode("scope")).toBe(true);
-    expect(isTenderScopedSubMode("estimate")).toBe(true);
     expect(isTenderScopedSubMode("quote")).toBe(true);
-    expect(isTenderScopedSubMode("clarifications")).toBe(true);
+  });
+  it("returns false for removed sub-modes (estimate, clarifications)", () => {
+    expect(isTenderScopedSubMode("estimate")).toBe(false);
+    expect(isTenderScopedSubMode("clarifications")).toBe(false);
   });
   it("returns false for global sub-modes (pipeline, register)", () => {
     expect(isTenderScopedSubMode("pipeline")).toBe(false);
@@ -25,9 +27,7 @@ describe("deriveContextKey", () => {
   it("returns the tender id for tender-scoped sub-modes on /tenders/:id paths", () => {
     expect(deriveContextKey("/tenders/cmoo123", "tender-detail")).toBe("cmoo123");
     expect(deriveContextKey("/tenders/cmoo123/scope", "scope")).toBe("cmoo123");
-    expect(deriveContextKey("/tenders/abc-456/estimate", "estimate")).toBe("abc-456");
     expect(deriveContextKey("/tenders/T-001/quote", "quote")).toBe("T-001");
-    expect(deriveContextKey("/tenders/T-001/clarifications", "clarifications")).toBe("T-001");
   });
 
   it("returns null for global sub-modes regardless of path", () => {

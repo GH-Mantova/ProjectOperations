@@ -59,10 +59,9 @@ describe("panelContent", () => {
     expect(c.subtitle).toBe("Scope — propose and refine scope items");
   });
 
-  it("body contains a coming-soon placeholder", () => {
+  it("does not include a body field", () => {
     const c = panelContent(tendering)!;
-    expect(c.body).toContain("coming soon");
-    expect(c.body).toContain("Tendering Assistant");
+    expect(c).not.toHaveProperty("body");
   });
 });
 

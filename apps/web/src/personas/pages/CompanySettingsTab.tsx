@@ -114,7 +114,7 @@ export function CompanySettingsTab() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      <Section title="Provider Access" description="Which AI providers is the company allowed to use? Provider connection testing arrives with the AI integration PR.">
+      <Section title="Provider Access" description="Which AI providers is the company allowed to use?">
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {PROVIDER_LIST.map((p) => {
             const enabled = global.enabledProviders.includes(p.key);
@@ -160,9 +160,7 @@ export function CompanySettingsTab() {
           <span>
             <strong>Allow users to bring their own API keys (BYOK)</strong>
             <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 2 }}>
-              Master switch for the BYOK feature. Per-user key input is hidden until the
-              encryption PR ships. Toggling this on now surfaces the per-user field once
-              encryption is in place.
+              When enabled, users can add their own AI provider API keys on the My Settings tab.
             </div>
           </span>
         </label>

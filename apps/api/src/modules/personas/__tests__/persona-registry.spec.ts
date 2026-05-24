@@ -30,19 +30,9 @@ describe("persona-registry", () => {
       expect(match?.subMode.name).toBe("scope");
     });
 
-    it("returns tendering + estimate sub-mode for /tenders/abc-001/estimate", () => {
-      const match = findPersonaForRoute("/tenders/abc-001/estimate");
-      expect(match?.subMode.name).toBe("estimate");
-    });
-
     it("returns tendering + quote sub-mode for /tenders/123/quote", () => {
       const match = findPersonaForRoute("/tenders/123/quote");
       expect(match?.subMode.name).toBe("quote");
-    });
-
-    it("returns tendering + clarifications sub-mode for /tenders/123/clarifications", () => {
-      const match = findPersonaForRoute("/tenders/123/clarifications");
-      expect(match?.subMode.name).toBe("clarifications");
     });
 
     it("returns null for /tenders/pipeline — defunct redirect, persona shouldn't briefly attach as tender-detail", () => {
@@ -98,7 +88,7 @@ describe("persona-registry", () => {
 
     it("ignores unrelated query strings and hash fragments", () => {
       expect(findPersonaForRoute("/tenders/123/scope?foo=bar")?.subMode.name).toBe("scope");
-      expect(findPersonaForRoute("/tenders/123/estimate#section")?.subMode.name).toBe("estimate");
+      expect(findPersonaForRoute("/tenders/123/quote#section")?.subMode.name).toBe("quote");
     });
 
     describe("?detail= query param (Tendering tab-based sub-modes)", () => {
@@ -110,14 +100,9 @@ describe("persona-registry", () => {
         expect(findPersonaForRoute("/tenders/abc-001?detail=quote")?.subMode.name).toBe("quote");
       });
 
-      it("treats ?detail=estimate as equivalent to /estimate", () => {
-        expect(findPersonaForRoute("/tenders/123?detail=estimate")?.subMode.name).toBe("estimate");
-      });
-
-      it("treats ?detail=clarifications as equivalent to /clarifications", () => {
-        expect(findPersonaForRoute("/tenders/123?detail=clarifications")?.subMode.name).toBe(
-          "clarifications"
-        );
+      it("falls back to tender-detail for removed sub-modes via ?detail=", () => {
+        expect(findPersonaForRoute("/tenders/123?detail=estimate")?.subMode.name).toBe("tender-detail");
+        expect(findPersonaForRoute("/tenders/123?detail=clarifications")?.subMode.name).toBe("tender-detail");
       });
 
       it("falls back to tender-detail when ?detail= names an unknown sub-mode", () => {

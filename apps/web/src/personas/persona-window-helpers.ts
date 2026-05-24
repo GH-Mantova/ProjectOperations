@@ -3,7 +3,6 @@ import type { ActivePersona } from "./types";
 export type PanelContent = {
   title: string;
   subtitle: string;
-  body: string;
 };
 
 // Each navigation to a different sub-mode resets the panel to closed.
@@ -22,8 +21,7 @@ export function panelContent(active: ActivePersona | null): PanelContent | null 
   if (!active) return null;
   return {
     title: active.persona.displayName,
-    subtitle: active.subMode.label,
-    body: `${active.persona.displayName} — coming soon. AI integration in next PR.`
+    subtitle: active.subMode.label
   };
 }
 

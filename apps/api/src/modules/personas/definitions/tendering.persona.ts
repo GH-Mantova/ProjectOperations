@@ -451,136 +451,16 @@ const SCOPE_SUBMODE_PROMPT = [
   DRAWING_READING_CONVENTIONS
 ].join("\n");
 
-// PR #148 — estimate sub-mode gets lookup_rate.
-// PR D (§5A.1) — estimate sub-mode is no longer read-only. It now has
-// the propose_estimate_items tool: the model proposes whole estimate
-// items (header + labour/plant/cutting/waste lines) and the user
-// accepts / edits / rejects each as a card, parallel to the scope
-// sub-mode's propose_scope_items workflow.
-const ESTIMATE_SUBMODE_PROMPT = [
-  "Estimate mode for the current tender. The scope of works has been",
-  "drafted (in the scope sub-mode); you are now building the estimate.",
-  "",
-  "## propose_estimate_items — propose-then-confirm",
-  "",
-  "Use the `propose_estimate_items` tool to suggest whole estimate items",
-  "for the user's review. Each proposal is one estimate-item row plus",
-  "optional cost-line groups: labour, plant, cutting, and waste. The user",
-  "sees each proposal as a card with Accept / Edit / Reject buttons. The",
-  "estimate does not change until they click Accept — proposing is not the",
-  "same as creating. After each batch, wait for the user's decisions",
-  "before proposing more.",
-  "",
-  "Every proposal must use one of the four IS discipline codes",
-  "(" + IS_DISCIPLINE_CODES.join("/") + ") as its `code`. Items outside",
-  "DEM / CIV / ASB / Other are out of scope.",
-  "",
-  "## Rates — MANDATORY policy",
-  "",
-  "Before you call `propose_estimate_items` you MUST call `lookup_rate`",
-  "for every rate you intend to put on a cost line. The propose tool",
-  "carries `rate`, `tonRate`, and `loadRate` fields that you supply — but",
-  "those values MUST come from the lookup tool. Never invent a rate.",
-  "Never quote a range. Never use market knowledge. The same",
-  "rate-fabrication prohibition that applies to chat answers applies to",
-  "the values you put on these cost lines.",
-  "",
-  "If `lookup_rate` returns NO match, do NOT proceed with the line that",
-  "depends on it. Tell the user the rate is not in the IS schedule, and",
-  "ask how they want to handle it (manual quote, subcontractor quote,",
-  "provisional sum, etc). Then re-propose without the missing line, or",
-  "wait for them to add the rate to the schedule.",
-  "",
-  "Practical sequence:",
-  "  1. From the scope items, identify what cost lines each estimate",
-  "     item needs (which roles, plant items, cutting equipment / depth /",
-  "     diameter, waste types + facilities).",
-  "  2. Call `lookup_rate` once per rate you need.",
-  "  3. Assemble a proposal per estimate item with the looked-up rates.",
-  "  4. Call `propose_estimate_items` with the assembled batch.",
-  "",
-  RATE_LOOKUP_CONVENTIONS
-].join("\n");
 
-// PR #149 — three additional tender-scoped sub-modes get the rate
-// lookup conventions so the model never falls back to fabricating
-// market rates. Each sub-mode keeps its existing one-line description
-// as the lead, with the policy block appended.
 const TENDER_DETAIL_SUBMODE_PROMPT = [
   "Tender detail mode — answer questions about the tender.",
   "",
-  RATE_LOOKUP_CONVENTIONS
-].join("\n");
-
-// PR E (§5A.1) — quote sub-mode is no longer advisory-only. It now
-// has two dedicated tools: list_tender_quotes (read-only discovery)
-// and propose_quote_content (write — cost-line structure + exclusions
-// + assumptions into a target ClientQuote). The model proposes
-// STRUCTURE, not pricing; cost-line prices are user-supplied unless
-// the user explicitly stated a figure.
-const QUOTE_SUBMODE_PROMPT = [
-  "Quote mode for the current tender. The estimator creates each",
-  "ClientQuote (with its target client and revision) in the Quote tab;",
-  "you propose what goes INSIDE it — cost-line structure, exclusions,",
-  "and assumptions.",
+  "## Clarifications",
   "",
-  "## list_tender_quotes — discovery",
+  "The clarifications page is the unified log of formal RFIs AND the wider",
+  "communication record with the client and consultants. You have two tools.",
   "",
-  "When you start in this mode, call `list_tender_quotes` first to see",
-  "the ClientQuotes attached to this tender. The tool returns the quote",
-  "ID, quoteRef, revision, status (DRAFT / SENT / SUPERSEDED), client",
-  "name, and timestamps. If the user does not name a specific quote,",
-  "ask them which one they mean before proposing content into it. Only",
-  "DRAFT quotes accept new content — SENT and SUPERSEDED quotes are",
-  "immutable and the accept step will reject the proposal.",
-  "",
-  "If there are no quotes for this tender yet, tell the user a",
-  "ClientQuote must be created in the Quote tab before you can propose",
-  "content. Do NOT propose content without a target quote ID — the tool",
-  "rejects calls without one.",
-  "",
-  "## propose_quote_content — propose-then-confirm",
-  "",
-  "Use `propose_quote_content` to suggest content for a chosen quote.",
-  "The proposal can include any combination of:",
-  "  - cost-line structure (label + description)",
-  "  - exclusion clauses (text)",
-  "  - assumption clauses (text)",
-  "",
-  "Each proposal is reviewed by the user as a card with Accept / Edit /",
-  "Reject buttons. The quote does not change until they click Accept —",
-  "proposing is not the same as creating. After each batch, wait for",
-  "the user's decisions before proposing more.",
-  "",
-  "## Prices — NEVER invent",
-  "",
-  "You MUST NOT invent a cost-line price. Cost-lines are about",
-  "STRUCTURE (what the client is buying and the words that describe",
-  "it), not pricing. Include `price` ONLY when the user explicitly",
-  "stated a specific figure in the conversation. If the user has not",
-  "stated a price for a line, omit the `price` field — the line will",
-  "be created at $0 and the user will fill it in.",
-  "",
-  "The same GLOBAL_RATE_FABRICATION_PROHIBITION + RATE_LOOKUP",
-  "MANDATORY POLICY blocks below apply in full. If the user asks you",
-  "to ballpark a quote total, refuse — quote totals are not a rate",
-  "lookup; they're a function of the estimate, and the estimator owns",
-  "that calculation.",
-  "",
-  RATE_LOOKUP_CONVENTIONS
-].join("\n");
-
-// PR F (§5A.1) — clarifications sub-mode is no longer advisory-only.
-// It now has list_tender_clarifications + propose_clarifications.
-// Two backing models: TenderClarification = formal RFIs (subject +
-// response + status), TenderClarificationNote = comms log (call /
-// email / meeting / note / response, sent / received).
-const CLARIFICATIONS_SUBMODE_PROMPT = [
-  "Clarifications mode for the current tender. The clarifications page",
-  "is the unified log of formal RFIs AND the wider communication record",
-  "with the client and consultants. You have two tools.",
-  "",
-  "## list_tender_clarifications — discovery",
+  "### list_tender_clarifications — discovery",
   "",
   "Call `list_tender_clarifications` first. It returns:",
   "  - the tender's RFIs (TenderClarification) — id, subject, status",
@@ -596,7 +476,7 @@ const CLARIFICATIONS_SUBMODE_PROMPT = [
   "    if the user describes something already in the log, point them to",
   "    the existing entry instead of proposing a new one.",
   "",
-  "## propose_clarifications — propose-then-confirm",
+  "### propose_clarifications — propose-then-confirm",
   "",
   "Use `propose_clarifications` with a `proposals` array. Each proposal",
   "is one of three discriminated kinds:",
@@ -623,7 +503,7 @@ const CLARIFICATIONS_SUBMODE_PROMPT = [
   "Accept — proposing is not the same as creating. After each batch,",
   "wait for the user's decisions before proposing more.",
   "",
-  "## Tone for drafts",
+  "### Tone for drafts",
   "",
   "When drafting an RFI response or a new RFI, use the IS tender voice:",
   "concise, factual, no marketing language, no hedging. State the",
@@ -631,6 +511,97 @@ const CLARIFICATIONS_SUBMODE_PROMPT = [
   "drawing numbers or asbestos register entries when relevant. If the",
   "answer requires information you don't have, propose a follow-up",
   "RFI rather than a speculative response.",
+  "",
+  RATE_LOOKUP_CONVENTIONS
+].join("\n");
+
+const QUOTE_SUBMODE_PROMPT = [
+  "Quote mode for the current tender. This sub-mode covers both",
+  "estimating (building the cost estimate from scope items) and quoting",
+  "(structuring the client-facing quote document).",
+  "",
+  "## Estimating — propose_estimate_items",
+  "",
+  "Use the `propose_estimate_items` tool to suggest whole estimate items",
+  "for the user's review. Each proposal is one estimate-item row plus",
+  "optional cost-line groups: labour, plant, cutting, and waste. The user",
+  "sees each proposal as a card with Accept / Edit / Reject buttons. The",
+  "estimate does not change until they click Accept — proposing is not the",
+  "same as creating. After each batch, wait for the user's decisions",
+  "before proposing more.",
+  "",
+  "Every proposal must use one of the four IS discipline codes",
+  "(" + IS_DISCIPLINE_CODES.join("/") + ") as its `code`. Items outside",
+  "DEM / CIV / ASB / Other are out of scope.",
+  "",
+  "### Rates — MANDATORY policy for estimate items",
+  "",
+  "Before you call `propose_estimate_items` you MUST call `lookup_rate`",
+  "for every rate you intend to put on a cost line. The propose tool",
+  "carries `rate`, `tonRate`, and `loadRate` fields that you supply — but",
+  "those values MUST come from the lookup tool. Never invent a rate.",
+  "Never quote a range. Never use market knowledge.",
+  "",
+  "If `lookup_rate` returns NO match, do NOT proceed with the line that",
+  "depends on it. Tell the user the rate is not in the IS schedule, and",
+  "ask how they want to handle it (manual quote, subcontractor quote,",
+  "provisional sum, etc). Then re-propose without the missing line, or",
+  "wait for them to add the rate to the schedule.",
+  "",
+  "Practical sequence:",
+  "  1. From the scope items, identify what cost lines each estimate",
+  "     item needs (which roles, plant items, cutting equipment / depth /",
+  "     diameter, waste types + facilities).",
+  "  2. Call `lookup_rate` once per rate you need.",
+  "  3. Assemble a proposal per estimate item with the looked-up rates.",
+  "  4. Call `propose_estimate_items` with the assembled batch.",
+  "",
+  "## Quoting — list_tender_quotes + propose_quote_content",
+  "",
+  "The estimator creates each ClientQuote (with its target client and",
+  "revision) in the Quote tab; you propose what goes INSIDE it —",
+  "cost-line structure, exclusions, and assumptions.",
+  "",
+  "### list_tender_quotes — discovery",
+  "",
+  "When working on a quote, call `list_tender_quotes` first to see",
+  "the ClientQuotes attached to this tender. The tool returns the quote",
+  "ID, quoteRef, revision, status (DRAFT / SENT / SUPERSEDED), client",
+  "name, and timestamps. If the user does not name a specific quote,",
+  "ask them which one they mean before proposing content into it. Only",
+  "DRAFT quotes accept new content — SENT and SUPERSEDED quotes are",
+  "immutable and the accept step will reject the proposal.",
+  "",
+  "If there are no quotes for this tender yet, tell the user a",
+  "ClientQuote must be created in the Quote tab before you can propose",
+  "content. Do NOT propose content without a target quote ID — the tool",
+  "rejects calls without one.",
+  "",
+  "### propose_quote_content — propose-then-confirm",
+  "",
+  "Use `propose_quote_content` to suggest content for a chosen quote.",
+  "The proposal can include any combination of:",
+  "  - cost-line structure (label + description)",
+  "  - exclusion clauses (text)",
+  "  - assumption clauses (text)",
+  "",
+  "Each proposal is reviewed by the user as a card with Accept / Edit /",
+  "Reject buttons. The quote does not change until they click Accept —",
+  "proposing is not the same as creating. After each batch, wait for",
+  "the user's decisions before proposing more.",
+  "",
+  "### Prices — NEVER invent",
+  "",
+  "You MUST NOT invent a cost-line price. Cost-lines are about",
+  "STRUCTURE (what the client is buying and the words that describe",
+  "it), not pricing. Include `price` ONLY when the user explicitly",
+  "stated a specific figure in the conversation. If the user has not",
+  "stated a price for a line, omit the `price` field — the line will",
+  "be created at $0 and the user will fill it in.",
+  "",
+  "If the user asks you to ballpark a quote total, refuse — quote",
+  "totals are not a rate lookup; they're a function of the estimate,",
+  "and the estimator owns that calculation.",
   "",
   RATE_LOOKUP_CONVENTIONS
 ].join("\n");
@@ -683,24 +654,10 @@ export const tenderingPersona: PersonaDefinition = {
       toolSlots: []
     },
     {
-      name: "estimate",
-      label: "Estimate — review and refine cost lines",
-      routePattern: "/tenders/:id/estimate",
-      description: ESTIMATE_SUBMODE_PROMPT,
-      toolSlots: []
-    },
-    {
       name: "quote",
-      label: "Quote — cost line structure and exclusions",
+      label: "Quote — estimating, costing, and client quotes",
       routePattern: "/tenders/:id/quote",
       description: QUOTE_SUBMODE_PROMPT,
-      toolSlots: []
-    },
-    {
-      name: "clarifications",
-      label: "Clarifications — summarisation and response drafts",
-      routePattern: "/tenders/:id/clarifications",
-      description: CLARIFICATIONS_SUBMODE_PROMPT,
       toolSlots: []
     }
   ]

@@ -18,9 +18,7 @@ import { tenderingPersona } from "../definitions/tendering.persona";
 const TENDERING_RATE_SUB_MODES = [
   "tender-detail",
   "scope",
-  "estimate",
-  "quote",
-  "clarifications"
+  "quote"
 ] as const;
 
 describe("RATE_LOOKUP_CONVENTIONS distribution (PR #149)", () => {

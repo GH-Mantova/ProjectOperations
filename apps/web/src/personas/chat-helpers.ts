@@ -7,9 +7,7 @@ const SUB_MODE_FRIENDLY_LABELS: Record<string, string> = {
   register: "this view",
   "tender-detail": "this tender",
   scope: "scope drafting",
-  estimate: "estimating",
-  quote: "the quote",
-  clarifications: "clarifications"
+  quote: "the quote and estimate"
 };
 
 export function chatPanelEmptyHint(active: ActivePersona): string {

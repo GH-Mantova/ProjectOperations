@@ -1,15 +1,6 @@
 import { ToolHandlerRegistry } from "../tools/tool-handler.registry";
 import type { ToolHandler } from "../tools/tool-handler.types";
 
-// Unit-level test that mirrors PersonasModule.onModuleInit's binding
-// logic exactly. Faster than a full NestJS TestingModule spin-up and
-// directly exercises the registry's view of the four production
-// handlers. Trade-off: if PersonasModule.onModuleInit ever drifts
-// from this stub, the test won't catch it. Acceptable for PR #143's
-// scope — the production binding logic and this stub use the same
-// `TENDERING_SUB_MODES` array shape and the same per-sub-mode
-// drawing-tools list, so drift would be obvious in code review.
-
 const stubHandler = (name: string): ToolHandler => ({
   name,
   description: "stub for binding tests",
@@ -21,12 +12,16 @@ const TENDERING_SUB_MODES = [
   "register",
   "tender-detail",
   "scope",
-  "estimate",
-  "quote",
-  "clarifications"
+  "quote"
 ] as const;
 
-describe("PersonasModule — sub-mode bindings (PR #143)", () => {
+const TENDERING_RATE_SUB_MODES = [
+  "tender-detail",
+  "scope",
+  "quote"
+] as const;
+
+describe("PersonasModule — sub-mode bindings", () => {
   let registry: ToolHandlerRegistry;
 
   beforeEach(() => {
@@ -35,6 +30,12 @@ describe("PersonasModule — sub-mode bindings (PR #143)", () => {
     registry.register(stubHandler("extract_drawing_titleblock"));
     registry.register(stubHandler("read_tender_drawing"));
     registry.register(stubHandler("propose_scope_items"));
+    registry.register(stubHandler("propose_estimate_items"));
+    registry.register(stubHandler("propose_quote_content"));
+    registry.register(stubHandler("propose_clarifications"));
+    registry.register(stubHandler("list_tender_quotes"));
+    registry.register(stubHandler("list_tender_clarifications"));
+    registry.register(stubHandler("read_asbestos_register"));
     registry.register(stubHandler("lookup_rate"));
 
     const drawingTools = [
@@ -45,11 +46,27 @@ describe("PersonasModule — sub-mode bindings (PR #143)", () => {
     for (const sm of TENDERING_SUB_MODES) {
       registry.bindToSubMode(`tendering.${sm}`, drawingTools);
     }
+
+    const registerTools = ["read_asbestos_register"];
+    for (const sm of TENDERING_SUB_MODES) {
+      registry.bindToSubMode(`tendering.${sm}`, registerTools);
+    }
+
     registry.bindToSubMode("tendering.scope", [...drawingTools, "propose_scope_items"]);
-    // PR #149 — lookup_rate on all tender-scoped sub-modes
-    // (everything except register).
+
+    registry.bindToSubMode("tendering.quote", [
+      "propose_estimate_items",
+      "list_tender_quotes",
+      "propose_quote_content"
+    ]);
+
+    registry.bindToSubMode("tendering.tender-detail", [
+      "list_tender_clarifications",
+      "propose_clarifications"
+    ]);
+
     const rateTools = ["lookup_rate"];
-    for (const sm of ["tender-detail", "scope", "estimate", "quote", "clarifications"] as const) {
+    for (const sm of TENDERING_RATE_SUB_MODES) {
       registry.bindToSubMode(`tendering.${sm}`, rateTools);
     }
   });
@@ -76,52 +93,67 @@ describe("PersonasModule — sub-mode bindings (PR #143)", () => {
   describe("propose_scope_items binding", () => {
     it("is exposed in tendering.scope sub-mode", () => {
       const tools = registry.getToolsForSubMode("tendering.scope");
-      const names = tools.map((t) => t.name);
-      expect(names).toContain("propose_scope_items");
+      expect(tools.map((t) => t.name)).toContain("propose_scope_items");
     });
 
-    it.each(["register", "tender-detail", "estimate", "quote", "clarifications"])(
-      "is NOT exposed in tendering.%s sub-mode (scope-creation is sub-mode-specific)",
+    it.each(["register", "tender-detail", "quote"])(
+      "is NOT exposed in tendering.%s sub-mode",
       (subMode) => {
         const tools = registry.getToolsForSubMode(`tendering.${subMode}`);
-        const names = tools.map((t) => t.name);
-        expect(names).not.toContain("propose_scope_items");
+        expect(tools.map((t) => t.name)).not.toContain("propose_scope_items");
       }
     );
   });
 
-  describe("scope sub-mode bindings", () => {
-    it("contains all five production tools (drawing tools + propose_scope_items + lookup_rate)", () => {
-      const tools = registry.getToolsForSubMode("tendering.scope");
-      const names = tools.map((t) => t.name).sort();
-      expect(names).toEqual(
-        [
-          "extract_drawing_titleblock",
-          "list_tender_drawings",
-          "lookup_rate",
-          "propose_scope_items",
-          "read_tender_drawing"
-        ].sort()
-      );
+  describe("propose_estimate_items binding", () => {
+    it("is exposed in tendering.quote sub-mode", () => {
+      const tools = registry.getToolsForSubMode("tendering.quote");
+      expect(tools.map((t) => t.name)).toContain("propose_estimate_items");
+    });
+
+    it.each(["register", "tender-detail", "scope"])(
+      "is NOT exposed in tendering.%s sub-mode",
+      (subMode) => {
+        const tools = registry.getToolsForSubMode(`tendering.${subMode}`);
+        expect(tools.map((t) => t.name)).not.toContain("propose_estimate_items");
+      }
+    );
+  });
+
+  describe("clarification tools binding", () => {
+    it("exposes list_tender_clarifications in tendering.tender-detail", () => {
+      const tools = registry.getToolsForSubMode("tendering.tender-detail");
+      expect(tools.map((t) => t.name)).toContain("list_tender_clarifications");
+    });
+
+    it("exposes propose_clarifications in tendering.tender-detail", () => {
+      const tools = registry.getToolsForSubMode("tendering.tender-detail");
+      expect(tools.map((t) => t.name)).toContain("propose_clarifications");
+    });
+
+    it.each(["register", "scope", "quote"])(
+      "does NOT expose propose_clarifications in tendering.%s",
+      (subMode) => {
+        const tools = registry.getToolsForSubMode(`tendering.${subMode}`);
+        expect(tools.map((t) => t.name)).not.toContain("propose_clarifications");
+      }
+    );
+  });
+
+  describe("quote tools binding", () => {
+    it("exposes list_tender_quotes in tendering.quote", () => {
+      const tools = registry.getToolsForSubMode("tendering.quote");
+      expect(tools.map((t) => t.name)).toContain("list_tender_quotes");
+    });
+
+    it("exposes propose_quote_content in tendering.quote", () => {
+      const tools = registry.getToolsForSubMode("tendering.quote");
+      expect(tools.map((t) => t.name)).toContain("propose_quote_content");
     });
   });
 
-  // PR #149 broadened the binding from scope+estimate to ALL
-  // tender-scoped sub-modes (everything except register, the tender
-  // list / pipeline view). Smoke testing of PR #148 caught the model
-  // fabricating market rates from tender-detail because the tool
-  // wasn't bound there. Register stays excluded — there's no specific
-  // tender from which to ask for rates.
-  describe("lookup_rate binding (PR #149)", () => {
-    const tenderingRateSubModes = [
-      "tender-detail",
-      "scope",
-      "estimate",
-      "quote",
-      "clarifications"
-    ] as const;
-
-    it.each(tenderingRateSubModes)(
+  describe("lookup_rate binding", () => {
+    it.each(TENDERING_RATE_SUB_MODES)(
       "is exposed in tendering.%s sub-mode",
       (subMode) => {
         const tools = registry.getToolsForSubMode(`tendering.${subMode}`);
@@ -129,7 +161,7 @@ describe("PersonasModule — sub-mode bindings (PR #143)", () => {
       }
     );
 
-    it("is NOT exposed in tendering.register sub-mode (tender list view, no specific tender context)", () => {
+    it("is NOT exposed in tendering.register sub-mode", () => {
       const tools = registry.getToolsForSubMode("tendering.register");
       expect(tools.map((t) => t.name)).not.toContain("lookup_rate");
     });

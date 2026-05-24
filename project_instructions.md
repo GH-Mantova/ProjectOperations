@@ -1,7 +1,7 @@
 # ProjectOperations — Project Instructions
 # Version: 1.1
 # Created: 2026-04-25 10:02 AEST
-# Last updated: 2026-05-19 05:56 AEST
+# Last updated: 2026-05-24 03:08 AEST
 # Maintained by: Claude Code (update after any architectural decision,
 #   module addition, business rule change, or workflow change)
 # Accessed by: All Claude chats in this project via web_fetch
@@ -892,18 +892,20 @@ AI Persona System (planned — Phase 5A.1)
     override — tendering's tender-scoped sub-modes additionally
     mandate lookup_rate tool calls via RATE_LOOKUP_CONVENTIONS.
     The override appears later in the assembled prompt so it wins
-    over the baseline naturally. Two runtime assembly sites
-    currently exist: intrinsicPrompt() in
-    ai-providers.service.ts (the persona chat path) and the
-    file-local SYSTEM_PROMPT in tender-scope-drafting.service.ts
-    (the document-extraction path used by POST
-    /api/v1/tenders/:id/draft-scope). Both receive
-    GLOBAL_RATE_FABRICATION_PROHIBITION as a prefix. Future
-    cross-cutting prompt rules must land at BOTH sites — or
-    consolidate the second site to route through intrinsicPrompt
-    (out of scope for PR #152). shared-prompts.ts is the canonical
-    home for new cross-cutting blocks (safety, IP confidentiality,
-    etc.) — define there, prepend at every assembly site.
+    over the baseline naturally. One runtime assembly site exists:
+    intrinsicPrompt() in ai-providers.service.ts (the persona chat
+    path). It receives GLOBAL_RATE_FABRICATION_PROHIBITION as a
+    prefix. (PR #152 originally had a second site — the file-local
+    SYSTEM_PROMPT in tender-scope-drafting.service.ts on the legacy
+    POST /api/v1/tenders/:id/draft-scope path — but the entire
+    legacy path was deleted in §5A.1 PR B; scope drafting now flows
+    through the Tendering Assistant persona's propose_scope_items
+    tool, which assembles its system prompt via intrinsicPrompt.)
+    Future cross-cutting prompt rules land at intrinsicPrompt; if a
+    new assembly site is added it must receive the same prefix.
+    shared-prompts.ts is the canonical home for new cross-cutting
+    blocks (safety, IP confidentiality, etc.) — define there,
+    prepend at every assembly site.
   System prompt enumerates the five IS scope codes
   (SO/Str/Asb/Civ/Prv) with strip-out vs fit-out / civil drainage
   vs MEP / civil concrete demolition vs new construction

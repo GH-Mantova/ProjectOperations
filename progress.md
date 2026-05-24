@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-24 02:31 AEST
+Last updated: 2026-05-24 03:08 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -6187,3 +6187,59 @@ CI: ✅ all checks passed
   - Analyze (javascript-typescript) [CodeQL]
   - tendering-e2e
 Status: MERGED
+
+## 2026-05-24 12:35 AEST — PR chore/remove-legacy-draft-scope-path STARTED
+Type: PR (chore — §5A.1 PR B: legacy "Draft scope with Claude" removal)
+Branch: chore/remove-legacy-draft-scope-path
+Detail: Deletes the standalone scope-drafting endpoint + button + provider
+  classes that §5A.1 PR 8 (PR #132) left alongside the persona-based
+  propose_scope_items tool. Closed dependency cluster — every removed
+  identifier was greppable to only the deleted files. Roadmap §5A.1 had
+  this listed as remaining work in Item 5.
+Status: IN_PROGRESS
+
+## 2026-05-24 12:35 AEST — PR chore/remove-legacy-draft-scope-path OPENED
+Type: PR (chore — §5A.1 PR B: legacy "Draft scope with Claude" removal)
+Branch: chore/remove-legacy-draft-scope-path
+PR: #[N]
+Status: WAITING_CI
+Detail: 12 file changes. Backend deletions:
+  - apps/api/src/modules/tendering/tender-scope-drafting.controller.ts
+  - apps/api/src/modules/tendering/tender-scope-drafting.service.ts
+  - apps/api/src/modules/tendering/ai-providers/ai-provider.interface.ts
+  - apps/api/src/modules/tendering/ai-providers/claude.provider.ts
+  - apps/api/src/modules/tendering/ai-providers/openai.provider.ts
+  Backend edits:
+  - apps/api/src/modules/tendering/tendering.module.ts — TenderScopeDraftingController/Service entries removed from controllers[]/providers[]; AiProvidersModule import dropped (no longer consumed anywhere in the tendering module directory — confirmed by grep).
+  - apps/api/src/modules/ai-providers/__tests__/intrinsic-prompt.spec.ts — SCOPE_DRAFTING_SYSTEM_PROMPT import removed; "scope-drafting SYSTEM_PROMPT carries global prefix (PR #152 Site 2)" describe block deleted; header comment updated to a single runtime assembly site (intrinsicPrompt).
+  Frontend edits:
+  - apps/web/src/pages/tendering/TenderDocumentsPanel.tsx — onDraftRequest / drafting / draftBadgeState / showInlineUploadOnly props removed; draftButtonTooltip helper + hasReadableDoc memo + READABLE_PATTERN constant + useMemo import removed (orphaned by the panel removal); the .draft-scope-panel JSX block removed.
+  - apps/web/src/pages/tendering/TenderDetailPage.tsx — drafting / draftToast useState pair removed; runDraft / requestDraft useCallbacks removed; TenderDocumentsPanel prop pass-through trimmed; draftToast render block removed; stale PR #44 "Drafted Scope tab retired" import-comment removed.
+  - apps/web/src/styles.css — 9 .draft-scope-* CSS rules removed (panel + review + review__head + review__list + card + card__code + card__description + review__actions + review__revise); section header on surviving doc-upload-* rules updated from "Tender documents upload + draft-scope panel" to "Tender documents upload".
+  Docs (per §6 same-PR rule): progress.md (this entry), roadmap.md (§5A.1 Item 5 PR B marked ✅; changelog entry appended), project_instructions.md §13 (PR #152 paragraph rewritten — one assembly site, with historical second-site context preserved in parentheses).
+  No new deps. No new env vars. No migrations.
+Files: 5 deleted, 5 source-edited, 3 doc-edited (13 total)
+Pre-PR checks (local): 5/7 green; 2/7 BLOCKED by pre-existing local-DB
+  drift unrelated to this PR. CI's fresh-DB run is the real verifier.
+  Green locally:
+  - API lint clean
+  - Web lint clean
+  - API tests 624 passed, 6 skipped (-2 vs baseline 626 — exactly matches
+    the two deleted specs in the "scope-drafting SYSTEM_PROMPT carries
+    global prefix (PR #152 Site 2)" describe block)
+  - Web tests 156 unchanged
+  - pnpm build green (api + web)
+  Blocked locally:
+  - pnpm compliance:smoke — login returns 500 on `users.is_super_user`
+    column missing. Root cause: `prisma migrate status` reports 66
+    migrations unapplied locally (2026-04-20 → 2026-05-19 — including
+    20260422_feat_contracts which adds is_super_user). PR touches no
+    schema, no migrations, no User model — failure pre-exists and would
+    block ANY gate-runner on this machine. Auto-mode classifier blocked
+    the `prisma migrate resolve --applied` recovery attempt (correctly:
+    it would silently mutate local DB history). Not papered over.
+  - playwright tendering chromium — same root cause; 5/5 specs fail at
+    the login step because the API login endpoint returns 500 with the
+    same is_super_user error before any tender page is reached.
+  CI gate (the source of truth): runs against a fresh-seeded DB and
+  will exercise both compliance:smoke and tendering-e2e end-to-end.

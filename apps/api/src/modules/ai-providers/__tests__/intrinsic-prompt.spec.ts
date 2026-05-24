@@ -1,13 +1,14 @@
 import { intrinsicPrompt } from "../ai-providers.service";
 import { tenderingPersona } from "../../personas/definitions/tendering.persona";
-import { SYSTEM_PROMPT as SCOPE_DRAFTING_SYSTEM_PROMPT } from "../../tendering/tender-scope-drafting.service";
 
 // PR #152 — verify GLOBAL_RATE_FABRICATION_PROHIBITION reaches every
-// runtime system-prompt assembly site. Two sites today:
+// runtime system-prompt assembly site. One site today:
 //   1. intrinsicPrompt() in ai-providers.service.ts (persona chat path)
-//   2. SYSTEM_PROMPT const in tender-scope-drafting.service.ts (the
-//      document-extraction draftScope path)
-// Both must carry the prefix; missing it on either is a regression.
+// The legacy second site (SYSTEM_PROMPT in tender-scope-drafting.service.ts,
+// the document-extraction draftScope path) was deleted alongside the rest
+// of that path in §5A.1 PR B — scope drafting now flows through the
+// Tendering Assistant persona's propose_scope_items tool, which assembles
+// its system prompt via intrinsicPrompt.
 
 describe("intrinsicPrompt global prefix (PR #152)", () => {
   it("includes the rate-fabrication baseline rule for every tendering sub-mode", () => {
@@ -95,19 +96,5 @@ describe("global prefix override precedence language (PR #161)", () => {
     const subMode = tenderingPersona.subModes[0]!;
     const prompt = intrinsicPrompt(tenderingPersona, subMode);
     expect(prompt).toContain("surface the conflict to the user");
-  });
-});
-
-describe("scope-drafting SYSTEM_PROMPT carries global prefix (PR #152 Site 2)", () => {
-  it("includes the rate-fabrication baseline rule", () => {
-    expect(SCOPE_DRAFTING_SYSTEM_PROMPT).toContain("Rate handling — baseline rule");
-    expect(SCOPE_DRAFTING_SYSTEM_PROMPT).toContain("MUST NOT");
-  });
-
-  it("places the global prefix BEFORE the scope-drafting estimator persona text", () => {
-    const globalIdx = SCOPE_DRAFTING_SYSTEM_PROMPT.indexOf("Rate handling — baseline rule");
-    const estimatorIdx = SCOPE_DRAFTING_SYSTEM_PROMPT.indexOf("expert estimator for Initial Services");
-    expect(globalIdx).toBeGreaterThanOrEqual(0);
-    expect(estimatorIdx).toBeGreaterThan(globalIdx);
   });
 });

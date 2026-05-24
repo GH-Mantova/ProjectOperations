@@ -1,10 +1,9 @@
-import { useMemo, useRef, useState, type DragEvent } from "react";
+import { useRef, useState, type DragEvent } from "react";
 import { useAuth } from "../../auth/AuthContext";
 
 const ACCEPTED = [".pdf", ".docx", ".doc", ".xlsx", ".xls", ".dwg", ".png", ".jpg", ".jpeg"];
 const MAX_BYTES = 100 * 1024 * 1024;
 const DWG_PATTERN = /\.dwg$/i;
-const READABLE_PATTERN = /\.(pdf|docx?|xlsx?|png|jpe?g)$/i;
 
 export type DocumentRecord = {
   id: string;
@@ -35,20 +34,12 @@ export function TenderDocumentsPanel({
   tenderId,
   documents,
   onDocumentsChanged,
-  canManage,
-  onDraftRequest,
-  drafting,
-  draftBadgeState,
-  showInlineUploadOnly
+  canManage
 }: {
   tenderId: string;
   documents: DocumentRecord[];
   onDocumentsChanged: () => void;
   canManage: boolean;
-  onDraftRequest: () => void;
-  drafting: boolean;
-  draftBadgeState: "none" | "new" | "reviewed";
-  showInlineUploadOnly?: boolean;
 }) {
   const { authFetch } = useAuth();
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -56,21 +47,6 @@ export function TenderDocumentsPanel({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-
-  const hasReadableDoc = useMemo(
-    () =>
-      documents.some((d) => {
-        const name = d.fileLink?.name ?? d.title;
-        return READABLE_PATTERN.test(name);
-      }),
-    [documents]
-  );
-
-  const draftButtonTooltip = documents.length === 0
-    ? "Upload at least one document first"
-    : !hasReadableDoc
-      ? "DWG files cannot be read by Claude — upload a PDF or image of the drawings"
-      : null;
 
   const uploadFile = async (file: File) => {
     if (file.size > MAX_BYTES) throw new Error(`${file.name} exceeds the 100 MB limit.`);
@@ -222,32 +198,6 @@ export function TenderDocumentsPanel({
           })}
         </ul>
       ) : null}
-
-      {showInlineUploadOnly ? null : (
-        <div className="draft-scope-panel">
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 500 }}>✨ Draft scope with Claude</div>
-            <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--text-muted)" }}>
-              Claude reads the uploaded docs and proposes DEM/CIV/ASB/Other items with descriptions &amp; quantities.
-            </p>
-          </div>
-          <button
-            type="button"
-            className="s7-btn s7-btn--primary"
-            onClick={() => onDraftRequest()}
-            disabled={!!draftButtonTooltip || drafting || !canManage}
-            title={draftButtonTooltip ?? undefined}
-          >
-            {drafting
-              ? "Claude is reading…"
-              : draftBadgeState === "new"
-                ? "View drafted scope →"
-                : draftBadgeState === "reviewed"
-                  ? "Re-draft scope →"
-                  : "Draft scope →"}
-          </button>
-        </div>
-      )}
 
       {toast ? (
         <div

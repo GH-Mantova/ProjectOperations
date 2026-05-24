@@ -1,5 +1,4 @@
 import { Module, forwardRef } from "@nestjs/common";
-import { AiProvidersModule } from "../ai-providers/ai-providers.module";
 import { AuditModule } from "../audit/audit.module";
 import { PlatformModule } from "../platform/platform.module";
 import { ProjectsModule } from "../projects/projects.module";
@@ -7,8 +6,6 @@ import { TenderingController } from "./tendering.controller";
 import { TenderingService } from "./tendering.service";
 import { TenderClientNotesController } from "./tender-client-notes.controller";
 import { TenderClientNotesService } from "./tender-client-notes.service";
-import { TenderScopeDraftingController } from "./tender-scope-drafting.controller";
-import { TenderScopeDraftingService } from "./tender-scope-drafting.service";
 import { TenderConvertController } from "./tender-convert.controller";
 import { ScopeOfWorksController } from "./scope-of-works.controller";
 import { ScopeOfWorksService } from "./scope-of-works.service";
@@ -20,11 +17,10 @@ import { ProposalsController } from "./scope/proposals.controller";
 import { ProposalsService } from "./scope/proposals.service";
 
 @Module({
-  imports: [AuditModule, PlatformModule, AiProvidersModule, forwardRef(() => ProjectsModule)],
+  imports: [AuditModule, PlatformModule, forwardRef(() => ProjectsModule)],
   controllers: [
     TenderingController,
     TenderClientNotesController,
-    TenderScopeDraftingController,
     TenderConvertController,
     ScopeOfWorksController,
     ScopeRedesignController,
@@ -36,7 +32,6 @@ import { ProposalsService } from "./scope/proposals.service";
   providers: [
     TenderingService,
     TenderClientNotesService,
-    TenderScopeDraftingService,
     ScopeOfWorksService,
     ScopeRedesignService,
     ScopeWasteService,

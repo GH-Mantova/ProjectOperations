@@ -521,6 +521,9 @@ describe("LookupRateHandler", () => {
       expect(payload.dayRateAud).toBe(72.5);
       expect(payload.nightRateAud).toBe(90.0);
       expect(payload.weekendRateAud).toBe(115.0);
+      // PR F — labour rate is per DAY (IS Qty × Days × Rate formula),
+      // not per hour. The previous "AUD per hour" string was wrong.
+      expect(payload.unit).toBe("AUD per day");
     });
 
     it("returns helpful error with available roles when no match", async () => {

@@ -1,7 +1,7 @@
 # ProjectOperations — Project Instructions
 # Version: 1.1
 # Created: 2026-04-25 10:02 AEST
-# Last updated: 2026-05-24 07:38 AEST
+# Last updated: 2026-05-24 11:56 AEST
 # Maintained by: Claude Code (update after any architectural decision,
 #   module addition, business rule change, or workflow change)
 # Accessed by: All Claude chats in this project via web_fetch
@@ -885,6 +885,36 @@ AI Persona System (planned — Phase 5A.1)
     SSE event name is "quote_proposals" (distinct from the
     scope-proposal "proposals" event and the estimate-proposal
     "estimate_proposals" event).
+  - list_tender_clarifications — bound to the clarifications
+    sub-mode only (PR F, 2026-05-24). Read-only discovery: lists
+    the tender's formal RFIs (TenderClarification — id, subject,
+    status, dueDate, hasResponse) and the last 50 comms-log
+    entries (TenderClarificationNote — id, noteType, direction,
+    text, occurredAt). Lets the model identify OPEN RFIs to draft
+    responses for and avoid raising duplicates. Permission gate:
+    tenders.view (super-users bypass).
+  - propose_clarifications — bound to the clarifications
+    sub-mode only (PR F, 2026-05-24). Clarifications-content
+    parallel to propose_scope_items / propose_estimate_items /
+    propose_quote_content. The clarifications sub-mode is NO
+    LONGER advisory-only as of PR F. Three discriminated proposal
+    kinds: new_rfi (creates a TenderClarification status=OPEN),
+    new_note (creates a TenderClarificationNote with
+    createdById = authenticated user; occurredAt defaults to now),
+    rfi_response (updates an existing TenderClarification with a
+    response and flips status to CLOSED). Accept-time integrity
+    checks on rfi_response: 404 missing RFI, 400 cross-tender, 400
+    already-responded. The tool_result row's metadata carries a
+    toolName="propose_clarifications" discriminator so the service
+    AND the frontend's rebuildMessagesFromHistory distinguish it
+    from scope / estimate / quote proposal rows; the four flows
+    stay strictly isolated. The system prompt mandates the model
+    call list_tender_clarifications first, target existing RFIs
+    via rfi_response rather than raising duplicates, and use the
+    IS tender voice on drafts. The GLOBAL_RATE_FABRICATION_PROHIBITION
+    and RATE_LOOKUP MANDATORY POLICY blocks apply in full. SSE
+    event name is "clarification_proposals" (distinct from
+    proposals / estimate_proposals / quote_proposals events).
   - lookup_rate — bound to ALL FIVE tender-scoped Tendering
     sub-modes (tender-detail, scope, estimate, quote,
     clarifications) since PR #149. Register sub-mode (tender
@@ -910,6 +940,13 @@ AI Persona System (planned — Phase 5A.1)
     rather than a bare not-found. Read-only — returns the rate
     as JSON in chat output, does not write to estimate items or
     scope items (estimate-creation tool is the next sub-task).
+    **Labour unit correction (PR F, 2026-05-24).** The labour
+    result returned `unit: "AUD per hour"`; corrected to
+    `unit: "AUD per day"` per §10 (the IS labour formula is
+    Qty × Days × Rate). The rate-table rows themselves were
+    always per-day; the unit string was just wrong. A unit
+    assertion in lookup-rate.handler.spec.ts locks the new
+    value in.
 
     Rate fabrication risk (discovered via PR #149 smoke testing
     of PR #148): models will invent plausible market rates with

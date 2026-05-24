@@ -1,10 +1,12 @@
 import { useEffect, useRef } from "react";
 import type {
+  ChatClarificationProposal,
   ChatEstimateProposal,
   ChatMessage,
   ChatProposal,
   ChatQuoteProposal
 } from "./chat-helpers";
+import { ClarificationProposalCardList } from "./ClarificationProposalCardList";
 import { EstimateProposalCardList } from "./EstimateProposalCardList";
 import { ProposalCardList } from "./ProposalCardList";
 import { QuoteProposalCardList } from "./QuoteProposalCardList";
@@ -48,6 +50,23 @@ type Props = {
     messageId: string
   ) => Promise<{ accepted: number; failed: number }>;
   onRejectAllQuoteProposals?: (messageId: string) => Promise<number>;
+  onAcceptClarificationProposal?: (
+    messageId: string,
+    proposalIndex: number,
+    edits?: Partial<ChatClarificationProposal["proposal"]>
+  ) => Promise<{
+    ok: boolean;
+    acceptedRecord?: ChatClarificationProposal["acceptedRecord"];
+    error?: string;
+  }>;
+  onRejectClarificationProposal?: (
+    messageId: string,
+    proposalIndex: number
+  ) => Promise<boolean>;
+  onAcceptAllClarificationProposals?: (
+    messageId: string
+  ) => Promise<{ accepted: number; failed: number }>;
+  onRejectAllClarificationProposals?: (messageId: string) => Promise<number>;
 };
 
 export function MessageList({
@@ -66,7 +85,11 @@ export function MessageList({
   onAcceptQuoteProposal,
   onRejectQuoteProposal,
   onAcceptAllQuoteProposals,
-  onRejectAllQuoteProposals
+  onRejectAllQuoteProposals,
+  onAcceptClarificationProposal,
+  onRejectClarificationProposal,
+  onAcceptAllClarificationProposals,
+  onRejectAllClarificationProposals
 }: Props) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -142,6 +165,27 @@ export function MessageList({
                   onReject={onRejectQuoteProposal}
                   onAcceptAll={onAcceptAllQuoteProposals}
                   onRejectAll={onRejectAllQuoteProposals}
+                />
+              );
+            }
+            if (m.role === "clarification-proposals") {
+              if (
+                !onAcceptClarificationProposal ||
+                !onRejectClarificationProposal ||
+                !onAcceptAllClarificationProposals ||
+                !onRejectAllClarificationProposals
+              ) {
+                return null;
+              }
+              return (
+                <ClarificationProposalCardList
+                  key={`${m.messageId}-${i}`}
+                  messageId={m.messageId}
+                  proposals={m.proposals}
+                  onAccept={onAcceptClarificationProposal}
+                  onReject={onRejectClarificationProposal}
+                  onAcceptAll={onAcceptAllClarificationProposals}
+                  onRejectAll={onRejectAllClarificationProposals}
                 />
               );
             }

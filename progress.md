@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-24 07:40 AEST
+Last updated: 2026-05-24 11:56 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -6665,5 +6665,155 @@ Pre-PR checks (local): 7/7 green — full §6 gate clean.
   - pnpm build green (api + web).
   - pnpm compliance:smoke green.
   - playwright tendering chromium green (5/5 in 22.0s).
+
+## 2026-05-24 17:43 AEST — PR feat/propose-quote-content MERGED
+Type: PR ([5A.1] PR E — propose_quote_content quote-content tool)
+Branch: feat/propose-quote-content
+PR: #216 (https://github.com/GH-Mantova/ProjectOperations/pull/216)
+Merge SHA: b90dcf063d17792ec83efeb1e535de2efa848b78
+Merged at: 2026-05-24T07:43:15Z (squash merge — auto-merge)
+CI: ✅ all checks passed
+  - API — lint, test, compliance smoke
+  - Web — lint, logic tests, build
+  - Analyze (actions) [CodeQL]
+  - Analyze (javascript-typescript) [CodeQL]
+  - tendering-e2e
+Status: MERGED
+
+## 2026-05-24 19:30 AEST — PR feat/propose-clarifications STARTED
+Type: PR ([5A.1] PR F — propose_clarifications + clarifications tools)
+Branch: feat/propose-clarifications
+Detail: Adds two tools to the Tendering Assistant's clarifications
+  sub-mode (previously advisory-only). list_tender_clarifications is
+  read-only — returns the tender's TenderClarifications (formal RFIs:
+  id, subject, status, dueDate, hasResponse) and the last 50
+  TenderClarificationNotes (id, noteType, direction, text, occurredAt).
+  propose_clarifications is the propose-then-confirm content tool —
+  three discriminated proposal kinds: new_rfi (creates a
+  TenderClarification status=OPEN), new_note (creates a
+  TenderClarificationNote with createdById = userId), rfi_response
+  (updates an existing TenderClarification with response + flips
+  status to CLOSED). Mirrors propose_quote_content (PR E) end-to-end
+  — tool schema, service with toolName discriminator, thin handler
+  with SSE side-effect, controller, frontend card list with a per-kind
+  switch inside the card.
+  No schema changes — both Prisma models already exist. Integrity
+  checks at accept time: rfi_response 404s on missing RFI; 400s when
+  rfi belongs to a different tender; 400s when the RFI already has a
+  response (no double-answer). createdById on new_note rows resolves
+  from the authenticated actor.sub.
+  Also folds in a labour-unit correction in lookup-rate.handler.ts:
+  the labour result returned `unit: "AUD per hour"`, but per
+  project_instructions §10 the IS labour formula is Qty × Days × Rate
+  — rates are per DAY, not per hour. Single-string change + test
+  assertion lock.
+Status: IN_PROGRESS
+
+## 2026-05-24 19:30 AEST — PR feat/propose-clarifications OPENED
+Type: PR ([5A.1] PR F — propose_clarifications + clarifications tools)
+Branch: feat/propose-clarifications
+PR: #[N]
+Status: WAITING_CI
+Detail: ~17 files. Backend new (5):
+  - apps/api/src/modules/personas/tools/handlers/list-tender-clarifications.handler.ts
+    — read-only discovery; returns RFIs (sorted OPEN-first) + last 50
+    notes; tenders.view gate; super-users bypass.
+  - apps/api/src/modules/ai-providers/tools/propose-clarifications.tool.ts
+    — tool definition + discriminated proposal types
+    (NewRfiProposal / NewNoteProposal / RfiResponseProposal).
+  - apps/api/src/modules/tendering/scope/clarification-proposals.service.ts
+    — ClarificationProposalsService. storeClarificationProposals
+    (tool_call + tool_result rows in $transaction;
+    toolName="propose_clarifications" discriminator).
+    acceptClarificationProposal switches on kind:
+      • new_rfi → prisma.tenderClarification.create (status OPEN;
+        dueDate parsed from ISO if supplied);
+      • new_note → prisma.tenderClarificationNote.create
+        (createdById = userId; occurredAt defaults to now);
+      • rfi_response → loads target RFI, rejects 404 missing /
+        400 cross-tender / 400 already-responded, then updates the
+        RFI with response + status=CLOSED (mirrors the existing
+        tendering.service updateActivity RFI path).
+    Service rejects metadata from any non-propose_clarifications
+    tool_result (discriminator guard).
+  - apps/api/src/modules/personas/tools/handlers/propose-clarifications.handler.ts
+    — thin handler; SSE event "clarification_proposals".
+  - apps/api/src/modules/tendering/scope/clarification-proposals.controller.ts
+    — POST /personas/tendering/clarification-proposals/:messageId/
+    {accept, reject, accept-all, reject-all}; ai.persona.tendering
+    guard. Edits DTO is a kind-agnostic superset (the service merges
+    only the fields valid for the stored proposal's kind).
+  Backend edits:
+  - tendering.module.ts — controller + service added to controllers/
+    providers/exports.
+  - personas.module.ts — both handlers registered; both bound to
+    tendering.clarifications sub-mode ONLY.
+  - tendering.persona.ts — CLARIFICATIONS_SUBMODE_PROMPT rewritten:
+    propose-then-confirm; call list_tender_clarifications first to
+    discover existing RFIs and notes; never raise a duplicate; tone
+    guidance for IS tender voice; GLOBAL_RATE_FABRICATION_PROHIBITION
+    + RATE_LOOKUP MANDATORY POLICY unchanged in force.
+  - apps/api/src/modules/personas/tools/handlers/lookup-rate.handler.ts
+    — labour result `unit` changed from "AUD per hour" to "AUD per
+    day" (project_instructions §10: labour formula is Qty × Days ×
+    Rate; rate is per DAY).
+  - lookup-rate.handler.spec.ts — added a unit assertion locking the
+    new "AUD per day" string in the existing labour happy-path spec.
+  Frontend new:
+  - apps/web/src/personas/ClarificationProposalCardList.tsx — parallel
+    to QuoteProposalCardList with a per-kind switch inside each card.
+    new_rfi shows subject + due date; new_note shows type/direction/
+    occurredAt + body text; rfi_response shows the target rfiId
+    (code-formatted) + the response. Edit mode fields are
+    kind-specific (NewRfiEditFields / NewNoteEditFields /
+    RfiResponseEditFields).
+  Frontend edits:
+  - chat-helpers.ts — discriminated ChatClarificationProposalInput
+    union (ChatNewRfiProposal / ChatNewNoteProposal /
+    ChatRfiResponseProposal); ChatClarificationProposal +
+    ChatClarificationProposalsMessage types; ChatMessage + SSEChunk
+    widened (4th proposal variant); parseSSEEvent handles
+    "clarification_proposals"; new appendClarificationProposalsMessage
+    + updateClarificationProposalsMessage helpers.
+  - use-streaming-chat.ts — handles clarification_proposals SSE chunk;
+    accept/reject/acceptAll/rejectAll callbacks wired to the new
+    endpoints; rebuildMessagesFromHistory branches four ways on
+    metadata.toolName (scope / estimate / quote / clarifications) so
+    each row routes to its dedicated card surface after page reload.
+  - MessageList.tsx + ChatPanel.tsx — render the new card list; pass
+    handlers through.
+  Tests:
+  - clarification-proposals.service.spec.ts (18 specs: store + accept
+    [new_rfi happy + dueDate parsing + new_note happy + occurredAt
+    default-to-now + rfi_response happy + 404 missing + 400 wrong
+    tender + 400 already-responded + edits + 404 not-owner + 400
+    already-accepted + 404 out-of-range + 400 no-tender + 400
+    missing-toolName + 400 wrong-toolName] + reject + rejectAll).
+  - list-tender-clarifications.handler.spec.ts (6 specs).
+  - propose-clarifications.handler.spec.ts (3 specs).
+  - clarification-proposal-helpers.test.ts (9 specs mirroring
+    quote-proposal-helpers.test.ts).
+  Docs:
+  - progress.md — #216 MERGED + this PR STARTED/OPENED.
+  - roadmap.md — §5A.1 Item 5 PR F marked ✅; changelog entry.
+  - project_instructions.md §13 — list_tender_clarifications +
+    propose_clarifications added; clarifications sub-mode marked
+    no-longer-advisory-only; labour-unit correction noted under the
+    lookup_rate paragraph.
+  No new dependencies. No new env vars. No migrations.
+Pre-PR checks (local): 7/7 green — full §6 gate clean.
+  - API lint clean
+  - Web lint clean
+  - API tests 704 passed, 6 skipped — +27 vs baseline 677, matching
+    the 18 ClarificationProposalsService specs + 6
+    ListTenderClarificationsHandler specs + 3
+    ProposeClarificationsHandler specs added (plus the +1 in-line
+    labour-unit assertion).
+  - Web tests 191 passed — +11 vs baseline 180, matching the 9-11
+    new specs in clarification-proposal-helpers.test.ts.
+  - pnpm build green (api + web).
+  - pnpm compliance:smoke green.
+  - playwright tendering chromium green (5/5 in 24.8s).
+
 
 

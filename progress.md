@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-24 05:01 AEST
+Last updated: 2026-05-24 05:03 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -6445,7 +6445,7 @@ Status: IN_PROGRESS
 ## 2026-05-24 14:55 AEST — PR feat/propose-estimate-items OPENED
 Type: PR ([5A.1] PR D — propose_estimate_items estimate-creation tool)
 Branch: feat/propose-estimate-items
-PR: #[N]
+PR: #215 (https://github.com/GH-Mantova/ProjectOperations/pull/215)
 Status: WAITING_CI
 Detail: 13 file changes (4 new + 6 source-edited + 3 doc-edited).
   Backend new:

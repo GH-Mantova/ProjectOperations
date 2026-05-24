@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-24 11:56 AEST
+Last updated: 2026-05-24 11:57 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -6712,7 +6712,7 @@ Status: IN_PROGRESS
 ## 2026-05-24 19:30 AEST — PR feat/propose-clarifications OPENED
 Type: PR ([5A.1] PR F — propose_clarifications + clarifications tools)
 Branch: feat/propose-clarifications
-PR: #[N]
+PR: #217 (https://github.com/GH-Mantova/ProjectOperations/pull/217)
 Status: WAITING_CI
 Detail: ~17 files. Backend new (5):
   - apps/api/src/modules/personas/tools/handlers/list-tender-clarifications.handler.ts

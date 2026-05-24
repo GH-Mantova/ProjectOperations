@@ -9,9 +9,11 @@ import { PersonasService } from "./personas.service";
 import { PersonaPermissionGuard } from "./persona-permission.guard";
 import { DrawingToolsAccessService } from "./tools/handlers/drawing-tools.shared";
 import { ExtractDrawingTitleblockHandler } from "./tools/handlers/extract-drawing-titleblock.handler";
+import { ListTenderClarificationsHandler } from "./tools/handlers/list-tender-clarifications.handler";
 import { ListTenderDrawingsHandler } from "./tools/handlers/list-tender-drawings.handler";
 import { ListTenderQuotesHandler } from "./tools/handlers/list-tender-quotes.handler";
 import { LookupRateHandler } from "./tools/handlers/lookup-rate.handler";
+import { ProposeClarificationsHandler } from "./tools/handlers/propose-clarifications.handler";
 import { ProposeEstimateItemsHandler } from "./tools/handlers/propose-estimate-items.handler";
 import { ProposeQuoteContentHandler } from "./tools/handlers/propose-quote-content.handler";
 import { ProposeScopeItemsHandler } from "./tools/handlers/propose-scope-items.handler";
@@ -64,8 +66,10 @@ const TENDERING_RATE_SUB_MODES = [
     ProposeScopeItemsHandler,
     ProposeEstimateItemsHandler,
     ProposeQuoteContentHandler,
+    ProposeClarificationsHandler,
     ListTenderDrawingsHandler,
     ListTenderQuotesHandler,
+    ListTenderClarificationsHandler,
     ExtractDrawingTitleblockHandler,
     ReadTenderDrawingHandler,
     LookupRateHandler,
@@ -80,8 +84,10 @@ export class PersonasModule implements OnModuleInit {
     private readonly proposeScopeItems: ProposeScopeItemsHandler,
     private readonly proposeEstimateItems: ProposeEstimateItemsHandler,
     private readonly proposeQuoteContent: ProposeQuoteContentHandler,
+    private readonly proposeClarifications: ProposeClarificationsHandler,
     private readonly listTenderDrawings: ListTenderDrawingsHandler,
     private readonly listTenderQuotes: ListTenderQuotesHandler,
+    private readonly listTenderClarifications: ListTenderClarificationsHandler,
     private readonly extractDrawingTitleblock: ExtractDrawingTitleblockHandler,
     private readonly readTenderDrawing: ReadTenderDrawingHandler,
     private readonly lookupRate: LookupRateHandler,
@@ -98,7 +104,9 @@ export class PersonasModule implements OnModuleInit {
     this.registry.register(this.proposeScopeItems);
     this.registry.register(this.proposeEstimateItems);
     this.registry.register(this.proposeQuoteContent);
+    this.registry.register(this.proposeClarifications);
     this.registry.register(this.listTenderQuotes);
+    this.registry.register(this.listTenderClarifications);
     this.registry.register(this.lookupRate);
 
     // Drawing tools are reference material — useful from any Tendering
@@ -151,6 +159,17 @@ export class PersonasModule implements OnModuleInit {
     this.registry.bindToSubMode("tendering.quote", [
       this.listTenderQuotes.name,
       this.proposeQuoteContent.name
+    ]);
+
+    // §5A.1 PR F — clarifications sub-mode tools.
+    // list_tender_clarifications lets the model see open RFIs and the
+    // comms log so it can draft responses and avoid duplicates;
+    // propose_clarifications writes new RFIs / log entries / RFI
+    // responses into the tender for Accept/Edit/Reject review. Both
+    // bound to the clarifications sub-mode ONLY.
+    this.registry.bindToSubMode("tendering.clarifications", [
+      this.listTenderClarifications.name,
+      this.proposeClarifications.name
     ]);
 
     // PR #149 — lookup_rate is bound to ALL tender-scoped tendering

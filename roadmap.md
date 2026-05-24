@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-24 07:38 AEST
+Last updated: 2026-05-24 11:56 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -302,7 +302,14 @@ route (scope mode = drafting tools; quote mode = advisory; etc.).
      structure / exclusions / assumptions into an existing
      ClientQuote (DRAFT only); never invents a cost-line price.
      See §5A.1 PR E changelog entry below.
-   - PR F: clarifications mode tool.
+   - ✅ PR F (shipped 2026-05-24): propose_clarifications +
+     list_tender_clarifications — clarifications tools. Mirrors PR E
+     end-to-end; bound to the clarifications sub-mode only. Three
+     discriminated proposal kinds (new_rfi, new_note, rfi_response)
+     with cross-tender + already-responded integrity checks. Also
+     folded in a labour-unit correction in lookup-rate
+     (AUD per hour → AUD per day per IS §10 Qty × Days × Rate
+     formula). See §5A.1 PR F changelog entry below.
    - PR G: asbestos register reading + cross-reference logic
      (separate PR — system prompt §3 already instructs the model
      on the workflow; tool that auto-detects and reads the register
@@ -1955,6 +1962,89 @@ drawing tools and lookup_rate continue to be bound as before.
 
 Remaining §5A.1 Item 5 sub-tasks after PR E: F (clarifications mode
 tool) and G (asbestos register reading + cross-reference). H is
+shipped.
+
+No new dependencies. No new env vars. No migrations.
+
+### 2026-05-24 — §5A.1 PR F: propose_clarifications + list_tender_clarifications shipped
+Adds the Tendering Assistant's two clarifications sub-mode tools —
+read-only list_tender_clarifications for discovery, and the
+propose-then-confirm propose_clarifications for content creation —
+closing the clarifications sub-mode's "advisory only" gap. No schema
+changes: TenderClarification and TenderClarificationNote already
+exist.
+
+The clarifications log is mixed: formal RFIs (TenderClarification, with
+status / response / due date) plus a wider comms record
+(TenderClarificationNote — call, email, meeting, note, response;
+sent or received). The propose tool handles both via three
+discriminated proposal kinds:
+  - **new_rfi** — creates a TenderClarification with status=OPEN.
+  - **new_note** — creates a TenderClarificationNote with
+    createdById = authenticated user; occurredAt defaults to now if
+    the model omits it.
+  - **rfi_response** — updates an existing TenderClarification with
+    a response and flips status to CLOSED. Three accept-time
+    integrity checks: 404 when the target RFI doesn't exist, 400 when
+    it belongs to a different tender, 400 when it already has a
+    response (the dedicated edit page is where re-answers go).
+
+Backend: new list-tender-clarifications.handler.ts (read-only;
+sorts RFIs OPEN-first; returns last 50 notes; tenders.view gate;
+super-users bypass), new propose-clarifications.tool.ts (JSON schema
+with `kind` discriminator + per-kind required fields), new
+ClarificationProposalsService (storeClarificationProposals,
+acceptClarificationProposal with kind-switch and rfi_response
+integrity checks, rejectClarificationProposal, acceptAllPending,
+rejectAllPending; loadProposalMessage enforces the
+toolName="propose_clarifications" discriminator so the service is
+strictly isolated from the scope/estimate/quote proposal stores),
+new ProposeClarificationsHandler (SSE event="clarification_proposals"),
+new ClarificationProposalsController (POST /personas/tendering/
+clarification-proposals/:messageId/{accept,reject,accept-all,
+reject-all}; ai.persona.tendering guard).
+
+System prompt: CLARIFICATIONS_SUBMODE_PROMPT rewritten. The model is
+told to call list_tender_clarifications first; to target existing
+RFIs by id via rfi_response rather than raising a duplicate; to use
+the IS tender voice (concise, factual, no marketing, no hedging) on
+drafts; and that the GLOBAL_RATE_FABRICATION_PROHIBITION +
+RATE_LOOKUP MANDATORY POLICY blocks remain in force unchanged.
+
+Frontend: new ClarificationProposalCardList component parallel to
+QuoteProposalCardList, with a per-kind switch inside each card
+(new_rfi shows subject + due date; new_note shows
+type/direction/occurredAt + body; rfi_response shows the target
+rfiId code-formatted + the response text). Edit mode reveals
+kind-specific fields. chat-helpers gains the four
+ChatClarificationProposalInput discriminated types,
+ChatClarificationProposal, ChatClarificationProposalsMessage; the
+ChatMessage and SSEChunk unions widen for the 4th proposal variant;
+parseSSEEvent learns the "clarification_proposals" event; a parallel
+pair of appendClarificationProposalsMessage /
+updateClarificationProposalsMessage helpers ships alongside the
+quote/estimate/scope helpers. use-streaming-chat handles the new
+SSE event, exposes the four accept/reject/acceptAll/rejectAll
+callbacks, and rebuildMessagesFromHistory now branches four ways
+on metadata.toolName so a page reload places each row on its
+dedicated card surface. MessageList + ChatPanel route the new role.
+
+Bindings unchanged structurally: list_tender_clarifications and
+propose_clarifications are both bound to tendering.clarifications
+ONLY. Existing sub-mode bindings (scope / estimate / quote / drawing
+tools / lookup_rate) are unchanged.
+
+**Labour-rate unit correction (folded into this PR).** The
+lookup_rate labour result returned `unit: "AUD per hour"`, but per
+project_instructions §10 the IS labour formula is Qty × Days × Rate
+— labour rates are per DAY, not per hour. Single string change in
+lookup-rate.handler.ts plus a unit assertion locking the corrected
+value in lookup-rate.handler.spec.ts. This was a latent bug; the
+labour rate-table rows themselves were always per-day, the unit
+string was just wrong.
+
+Remaining §5A.1 Item 5 sub-tasks after PR F: only **G** (asbestos
+register reading + cross-reference) remains. H / E / F / D are
 shipped.
 
 No new dependencies. No new env vars. No migrations.

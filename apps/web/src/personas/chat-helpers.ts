@@ -151,11 +151,59 @@ export type ChatQuoteProposalsMessage = {
   proposals: ChatQuoteProposal[];
 };
 
+// §5A.1 PR F — clarifications-content proposal types. Discriminated by
+// `kind`: new_rfi (creates a TenderClarification), new_note (creates a
+// TenderClarificationNote), rfi_response (updates an existing RFI).
+export type ChatNewRfiProposal = {
+  kind: "new_rfi";
+  subject: string;
+  dueDate?: string;
+};
+
+export type ChatNewNoteProposal = {
+  kind: "new_note";
+  noteType: "call" | "email" | "meeting" | "note" | "response";
+  direction: "sent" | "received";
+  text: string;
+  occurredAt?: string;
+};
+
+export type ChatRfiResponseProposal = {
+  kind: "rfi_response";
+  rfiId: string;
+  response: string;
+};
+
+export type ChatClarificationProposalInput =
+  | ChatNewRfiProposal
+  | ChatNewNoteProposal
+  | ChatRfiResponseProposal;
+
+export type ChatAcceptedClarificationRecord =
+  | { kind: "new_rfi"; rfiId: string }
+  | { kind: "new_note"; noteId: string }
+  | { kind: "rfi_response"; rfiId: string };
+
+export type ChatClarificationProposal = {
+  index: number;
+  proposal: ChatClarificationProposalInput;
+  status: ProposalStatus;
+  acceptedRecord?: ChatAcceptedClarificationRecord;
+  decidedAt?: string;
+};
+
+export type ChatClarificationProposalsMessage = {
+  role: "clarification-proposals";
+  messageId: string;
+  proposals: ChatClarificationProposal[];
+};
+
 export type ChatMessage =
   | ChatTextMessage
   | ChatProposalsMessage
   | ChatEstimateProposalsMessage
-  | ChatQuoteProposalsMessage;
+  | ChatQuoteProposalsMessage
+  | ChatClarificationProposalsMessage;
 
 export type ChatStatus = "idle" | "streaming" | "error";
 
@@ -174,6 +222,11 @@ export type SSEChunk =
       type: "quote_proposals";
       messageId: string;
       proposals: ChatQuoteProposal[];
+    }
+  | {
+      type: "clarification_proposals";
+      messageId: string;
+      proposals: ChatClarificationProposal[];
     };
 
 // Send button is active only when the user has typed something AND we're not
@@ -255,6 +308,27 @@ export function updateQuoteProposalsMessage(
 ): ChatMessage[] {
   return history.map((m) => {
     if (m.role !== "quote-proposals" || m.messageId !== messageId) return m;
+    return { ...m, proposals: updater(m.proposals) };
+  });
+}
+
+// §5A.1 PR F — clarifications-proposal helpers, parallel to the
+// quote/estimate/scope helpers above.
+export function appendClarificationProposalsMessage(
+  history: ChatMessage[],
+  messageId: string,
+  proposals: ChatClarificationProposal[]
+): ChatMessage[] {
+  return [...history, { role: "clarification-proposals", messageId, proposals }];
+}
+
+export function updateClarificationProposalsMessage(
+  history: ChatMessage[],
+  messageId: string,
+  updater: (proposals: ChatClarificationProposal[]) => ChatClarificationProposal[]
+): ChatMessage[] {
+  return history.map((m) => {
+    if (m.role !== "clarification-proposals" || m.messageId !== messageId) return m;
     return { ...m, proposals: updater(m.proposals) };
   });
 }
@@ -371,6 +445,21 @@ export function parseSSEEvent(rawEvent: string): SSEChunk[] {
         type: "quote_proposals",
         messageId: obj.messageId,
         proposals: obj.proposals as unknown as ChatQuoteProposal[]
+      }
+    ];
+  }
+  // §5A.1 PR F — clarification-proposals SSE event. Routes the payload
+  // to ClarificationProposalCardList.
+  if (
+    obj.type === "clarification_proposals" &&
+    typeof obj.messageId === "string" &&
+    Array.isArray(obj.proposals)
+  ) {
+    return [
+      {
+        type: "clarification_proposals",
+        messageId: obj.messageId,
+        proposals: obj.proposals as unknown as ChatClarificationProposal[]
       }
     ];
   }

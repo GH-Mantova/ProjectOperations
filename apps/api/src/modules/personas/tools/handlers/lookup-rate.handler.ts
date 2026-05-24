@@ -489,7 +489,7 @@ export class LookupRateHandler implements ToolHandler<Input> {
       dayRateAud: dayRate,
       nightRateAud: nightRate,
       weekendRateAud: weekendRate,
-      unit: "AUD per hour",
+      unit: "AUD per day",
       currency: "AUD",
       lookupSource: "live rates (estimate_labour_rates table)"
     });

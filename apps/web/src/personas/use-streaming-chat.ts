@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import {
   appendAssistantMessage,
+  appendClarificationProposalsMessage,
   appendEstimateProposalsMessage,
   appendProposalsMessage,
   appendQuoteProposalsMessage,
@@ -9,9 +10,11 @@ import {
   buildRetryHistory,
   readSSEStream,
   toApiMessages,
+  updateClarificationProposalsMessage,
   updateEstimateProposalsMessage,
   updateProposalsMessage,
   updateQuoteProposalsMessage,
+  type ChatClarificationProposal,
   type ChatEstimateProposal,
   type ChatMessage,
   type ChatProposal,
@@ -244,6 +247,19 @@ export function useStreamingChat(
             const event = chunk;
             setMessages((prev) =>
               appendQuoteProposalsMessage(prev, event.messageId, event.proposals)
+            );
+          } else if (chunk.type === "clarification_proposals") {
+            // §5A.1 PR F — clarification-content proposal tool_result row.
+            // Routed to ClarificationProposalCardList via the
+            // "clarification-proposals" role.
+            if (accumulated.length > 0) {
+              setMessages((prev) => appendAssistantMessage(prev, accumulated));
+              accumulated = "";
+              setCurrentResponse("");
+            }
+            const event = chunk;
+            setMessages((prev) =>
+              appendClarificationProposalsMessage(prev, event.messageId, event.proposals)
             );
           } else if (chunk.type === "error") {
             throw new Error(chunk.error);
@@ -720,6 +736,126 @@ export function useStreamingChat(
     [authFetch]
   );
 
+  // §5A.1 PR F — clarification-proposal accept/reject helpers wired to
+  // /personas/tendering/clarification-proposals/*. Parallel to the
+  // estimate/quote helpers above.
+  const acceptClarificationProposal = useCallback(
+    async (
+      messageId: string,
+      proposalIndex: number,
+      edits?: Partial<ChatClarificationProposal["proposal"]>
+    ): Promise<{
+      ok: boolean;
+      acceptedRecord?: ChatClarificationProposal["acceptedRecord"];
+      error?: string;
+    }> => {
+      const res = await authFetch(
+        `/personas/tendering/clarification-proposals/${messageId}/accept`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ proposalIndex, ...(edits ?? {}) })
+        }
+      );
+      if (!res.ok) {
+        let detail = `${res.status}`;
+        try {
+          const text = await res.text();
+          if (text) detail = text;
+        } catch {
+          // ignore
+        }
+        return { ok: false, error: detail };
+      }
+      const body = (await res.json()) as {
+        ok: boolean;
+        acceptedRecord?: ChatClarificationProposal["acceptedRecord"];
+      };
+      const decidedAt = new Date().toISOString();
+      setMessages((prev) =>
+        updateClarificationProposalsMessage(prev, messageId, (proposals) =>
+          proposals.map((p) => {
+            if (p.index !== proposalIndex) return p;
+            const mergedProposal = {
+              ...p.proposal,
+              ...(edits ?? {})
+            } as typeof p.proposal;
+            return {
+              ...p,
+              proposal: mergedProposal,
+              status: "accepted",
+              acceptedRecord: body.acceptedRecord,
+              decidedAt
+            };
+          })
+        )
+      );
+      return { ok: true, acceptedRecord: body.acceptedRecord };
+    },
+    [authFetch]
+  );
+
+  const rejectClarificationProposal = useCallback(
+    async (messageId: string, proposalIndex: number): Promise<boolean> => {
+      const res = await authFetch(
+        `/personas/tendering/clarification-proposals/${messageId}/reject`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ proposalIndex })
+        }
+      );
+      if (!res.ok) return false;
+      const decidedAt = new Date().toISOString();
+      setMessages((prev) =>
+        updateClarificationProposalsMessage(prev, messageId, (proposals) =>
+          proposals.map((p) =>
+            p.index === proposalIndex ? { ...p, status: "rejected", decidedAt } : p
+          )
+        )
+      );
+      return true;
+    },
+    [authFetch]
+  );
+
+  const acceptAllPendingClarificationProposals = useCallback(
+    async (messageId: string): Promise<{ accepted: number; failed: number }> => {
+      const res = await authFetch(
+        `/personas/tendering/clarification-proposals/${messageId}/accept-all`,
+        { method: "POST" }
+      );
+      if (!res.ok) return { accepted: 0, failed: 0 };
+      const body = (await res.json()) as { accepted: number; failed: number };
+      if (conversationIdRef.current) {
+        await loadConversation(conversationIdRef.current);
+      }
+      return { accepted: body.accepted, failed: body.failed };
+    },
+    [authFetch, loadConversation]
+  );
+
+  const rejectAllPendingClarificationProposals = useCallback(
+    async (messageId: string): Promise<number> => {
+      const res = await authFetch(
+        `/personas/tendering/clarification-proposals/${messageId}/reject-all`,
+        { method: "POST" }
+      );
+      if (!res.ok) return 0;
+      const body = (await res.json()) as { rejected: number };
+      const decidedAt = new Date().toISOString();
+      setMessages((prev) =>
+        updateClarificationProposalsMessage(prev, messageId, (proposals) =>
+          proposals.map((p) =>
+            p.status === "pending" ? { ...p, status: "rejected", decidedAt } : p
+          )
+        )
+      );
+      return body.rejected;
+    },
+    [authFetch]
+  );
+
   const deleteConversation = useCallback(
     async (id: string): Promise<boolean> => {
       if (!personaSlug) return false;
@@ -761,7 +897,11 @@ export function useStreamingChat(
     acceptQuoteProposal,
     rejectQuoteProposal,
     acceptAllPendingQuoteProposals,
-    rejectAllPendingQuoteProposals
+    rejectAllPendingQuoteProposals,
+    acceptClarificationProposal,
+    rejectClarificationProposal,
+    acceptAllPendingClarificationProposals,
+    rejectAllPendingClarificationProposals
   };
 }
 
@@ -782,7 +922,11 @@ export function rebuildMessagesFromHistory(
       | {
           toolUseId?: string;
           toolName?: string;
-          proposals?: ChatProposal[] | ChatEstimateProposal[] | ChatQuoteProposal[];
+          proposals?:
+            | ChatProposal[]
+            | ChatEstimateProposal[]
+            | ChatQuoteProposal[]
+            | ChatClarificationProposal[];
         }
       | null;
   }>
@@ -803,6 +947,12 @@ export function rebuildMessagesFromHistory(
           role: "quote-proposals",
           messageId: row.id,
           proposals: row.metadata!.proposals as ChatQuoteProposal[]
+        });
+      } else if (row.metadata?.toolName === "propose_clarifications") {
+        out.push({
+          role: "clarification-proposals",
+          messageId: row.id,
+          proposals: row.metadata!.proposals as ChatClarificationProposal[]
         });
       } else {
         out.push({

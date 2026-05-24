@@ -1,7 +1,7 @@
 # ProjectOperations — Project Instructions
 # Version: 1.1
 # Created: 2026-04-25 10:02 AEST
-# Last updated: 2026-05-24 03:08 AEST
+# Last updated: 2026-05-24 04:17 AEST
 # Maintained by: Claude Code (update after any architectural decision,
 #   module addition, business rule change, or workflow change)
 # Accessed by: All Claude chats in this project via web_fetch
@@ -836,16 +836,27 @@ AI Persona System (planned — Phase 5A.1)
     sub-modes (tender-detail, scope, estimate, quote,
     clarifications) since PR #149. Register sub-mode (tender
     list / pipeline view) is excluded — no specific tender from
-    which to ask for rates. Live schedule rate lookup for
-    cutting and core holes today; other rate types
-    (labour/plant/fuel/waste/enclosure/other) deferred to
-    subsequent PRs. Cutting uses exact-schedule lookup
-    (equipment / elevation / material / depthMm); core holes
-    apply IS elevation multiplier (Floor=1.0×, Wall=1.1×,
-    Inverted=2.0×) to the per-diameter base rate. Read-only —
-    returns rate as JSON in chat output, does not write to
-    estimate items or scope items (estimate-creation tool is the
-    next sub-task).
+    which to ask for rates. As of PR H (2026-05-24) lookup_rate
+    covers all eight IS rate types: cutting (exact-schedule
+    lookup by equipment / elevation / material / depthMm), core
+    holes (per-diameter base rate × IS elevation multiplier
+    Floor=1.0× / Wall=1.1× / Inverted=2.0×), labour
+    (EstimateLabourRate, role @unique, returns dayRate /
+    nightRate / weekendRate plus the requested shift's rate),
+    plant (EstimatePlantRate, item @unique, returns rate + unit
+    + fuelRate), waste (EstimateWasteRate, (wasteType, facility)
+    @@unique, returns tonRate + loadRate + unit + wasteGroup),
+    fuel (EstimateFuelRate, item @unique), enclosure
+    (EstimateEnclosureRate, enclosureType @unique), and other
+    (CuttingOtherRate — description is NOT unique; case-
+    insensitive substring match returns ALL active matches so
+    the user can pick from the catalogue). All queries filter
+    isActive: true; case-insensitive matching uses Prisma's
+    `mode: "insensitive"`. No-match paths list the available
+    options for that table so the user gets a useful error
+    rather than a bare not-found. Read-only — returns the rate
+    as JSON in chat output, does not write to estimate items or
+    scope items (estimate-creation tool is the next sub-task).
 
     Rate fabrication risk (discovered via PR #149 smoke testing
     of PR #148): models will invent plausible market rates with

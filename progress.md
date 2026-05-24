@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-24 03:47 AEST
+Last updated: 2026-05-24 04:18 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -6306,6 +6306,98 @@ Pre-PR checks (local): 5/7 green; 2/7 BLOCKED by the same pre-existing
   - Web lint clean
   - API tests 624 passed, 6 skipped — UNCHANGED from PR #212 baseline,
     as required for a dead-code removal
+  - Web tests 156 unchanged
+  - pnpm build green (api + web)
+  Blocked locally (env-drift, not caused by this PR):
+  - pnpm compliance:smoke — login 500 on `users.is_super_user`
+  - playwright tendering chromium — same root cause; 5/5 specs fail
+    at the login step
+
+## 2026-05-24 13:50 AEST — PR chore/pr-b-followup-orphan-cleanup MERGED
+Type: PR ([5A.1] PR B follow-up — orphaned helper cleanup)
+Branch: chore/pr-b-followup-orphan-cleanup
+PR: #213 (https://github.com/GH-Mantova/ProjectOperations/pull/213)
+Merge SHA: 3d328bb646bdcd7d582a9276bef867f5db6e7d10
+Merged at: 2026-05-24T03:50:25Z (squash merge — auto-merge)
+CI: ✅ all checks passed
+  - API — lint, test, compliance smoke
+  - Web — lint, logic tests, build
+  - Analyze (actions) [CodeQL]
+  - Analyze (javascript-typescript) [CodeQL]
+  - tendering-e2e
+Status: MERGED
+
+## 2026-05-24 14:00 AEST — PR feat/lookup-rate-remaining-types STARTED
+Type: PR ([5A.1] PR H — extend lookup_rate to all rate types)
+Branch: feat/lookup-rate-remaining-types
+Detail: Adds the six remaining IS rate types to the lookup_rate persona
+  tool: labour, plant, waste, fuel, enclosure, other. No schema changes
+  — every rate table already exists. Same handler pattern as cutting /
+  core_hole. Bindings unchanged: still bound to the five tender-scoped
+  sub-modes (tender-detail, scope, estimate, quote, clarifications).
+  Closes the last Item 5 sub-task in roadmap §5A.1.
+Status: IN_PROGRESS
+
+## 2026-05-24 14:00 AEST — PR feat/lookup-rate-remaining-types OPENED
+Type: PR ([5A.1] PR H — extend lookup_rate to all rate types)
+Branch: feat/lookup-rate-remaining-types
+PR: #214 (https://github.com/GH-Mantova/ProjectOperations/pull/214)
+Status: WAITING_CI
+Detail: 5 file changes (3 source + 3 doc — one file overlaps the
+  two categories: progress.md gets the #213 MERGED entry plus this
+  PR's STARTED/OPENED).
+  Source:
+  - apps/api/src/modules/personas/tools/handlers/lookup-rate.handler.ts —
+    rateType enum widened from ["cutting","core_hole"] to all 8 types.
+    Handler description + fallback error message broadened. Six new
+    input sub-objects in the JSON schema (labour / plant / waste /
+    fuel / enclosure / other), six parse/validate functions mirroring
+    parseCuttingInput, six lookup methods mirroring lookupCutting,
+    six dispatch branches in execute(). All queries filter
+    isActive: true; case-insensitive matching uses Prisma's
+    `mode: "insensitive"`. No-match paths list the available options
+    for that table (mirroring availableCuttingCombinations). Backing
+    models: labour → EstimateLabourRate; plant → EstimatePlantRate;
+    waste → EstimateWasteRate ((wasteType, facility) @@unique);
+    fuel → EstimateFuelRate; enclosure → EstimateEnclosureRate;
+    other → CuttingOtherRate (description NOT unique — case-
+    insensitive substring match returns all active matches).
+  - apps/api/src/modules/personas/tools/handlers/__tests__/
+    lookup-rate.handler.spec.ts — Prisma mock extended to cover all
+    six new tables with case-insensitive findFirst matching;
+    happy-path + no-match tests added for each of the six new types
+    (12 new specs). The legacy "unsupported rateType" test updated to
+    assert the new fallback wording ("rateType must be one of …").
+  - apps/api/src/modules/personas/definitions/tendering.persona.ts —
+    RATE_LOOKUP_CONVENTIONS broadened: MANDATORY POLICY trigger list
+    enumerates all 8 categories; "deferred to subsequent PRs" section
+    replaced with per-type mechanics matching the existing
+    cutting/core_hole sections. GLOBAL_RATE_FABRICATION_PROHIBITION
+    baseline and RATE_LOOKUP override-precedence language NOT
+    weakened — only the supported-types list is broadened.
+  Docs (per §6 same-PR rule):
+  - progress.md — #213 MERGED entry + this STARTED/OPENED.
+  - roadmap.md — §5A.1 Item 5 PR H marked ✅; changelog entry appended.
+  - project_instructions.md §13 — lookup_rate paragraph rewritten:
+    "deferred to subsequent PRs" replaced with the full 8-type
+    coverage description.
+  No new deps. No new env vars. No migrations (no schema change —
+  reads existing rate tables).
+Files: 3 source-edited, 3 doc-edited (5 distinct files; progress.md
+  is counted once across both categories).
+Pre-PR checks (local): 5/7 green; 2/7 BLOCKED by the same pre-existing
+  local-DB drift as PRs #212/#213 (smoke + e2e exercise API login,
+  which 500s on `users.is_super_user` because ~66 migrations from
+  2026-04-20 onward are unapplied locally). Not papered over (no
+  `prisma migrate resolve` mutation). CI's fresh-DB run is the real
+  verifier — for PRs #212 and #213, CI returned all checks green on
+  the same head commit that failed those two gates locally.
+  Green locally:
+  - API lint clean
+  - Web lint clean
+  - API tests 636 passed, 6 skipped — +12 vs baseline 624, exactly
+    matching the 12 new specs in this PR (2 per new rate type × 6
+    new rate types: labour / plant / waste / fuel / enclosure / other)
   - Web tests 156 unchanged
   - pnpm build green (api + web)
   Blocked locally (env-drift, not caused by this PR):

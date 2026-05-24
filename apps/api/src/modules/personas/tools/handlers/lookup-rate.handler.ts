@@ -28,6 +28,8 @@ type CoreHoleElevation = keyof typeof CORE_HOLE_ELEVATION_MULTIPLIERS;
 const CUTTING_ELEVATIONS_DB = ["Wall", "Floor", "Any"] as const;
 type CuttingElevationInput = "wall" | "floor";
 
+type LabourShift = "day" | "night" | "weekend";
+
 type CuttingInput = {
   equipment?: unknown;
   elevation?: unknown;
@@ -40,13 +42,45 @@ type CoreHoleInput = {
   diameterMm?: unknown;
 };
 
+type LabourInput = {
+  role?: unknown;
+  shift?: unknown;
+};
+
+type PlantInput = {
+  item?: unknown;
+};
+
+type WasteInput = {
+  wasteType?: unknown;
+  facility?: unknown;
+};
+
+type FuelInput = {
+  item?: unknown;
+};
+
+type EnclosureInput = {
+  enclosureType?: unknown;
+};
+
+type OtherInput = {
+  description?: unknown;
+};
+
 type Input = {
   rateType?: unknown;
   cutting?: CuttingInput;
   coreHole?: CoreHoleInput;
+  labour?: LabourInput;
+  plant?: PlantInput;
+  waste?: WasteInput;
+  fuel?: FuelInput;
+  enclosure?: EnclosureInput;
+  other?: OtherInput;
 };
 
-// Normalised cutting input after validation.
+// Normalised inputs after validation.
 type CuttingArgs = {
   equipment: string;
   elevation: CuttingElevationInput;
@@ -59,23 +93,52 @@ type CoreHoleArgs = {
   diameterMm: number;
 };
 
+type LabourArgs = {
+  role: string;
+  shift: LabourShift;
+};
+
+type PlantArgs = {
+  item: string;
+};
+
+type WasteArgs = {
+  wasteType: string;
+  facility: string;
+};
+
+type FuelArgs = {
+  item: string;
+};
+
+type EnclosureArgs = {
+  enclosureType: string;
+};
+
+type OtherArgs = {
+  description: string;
+};
+
 @Injectable()
 export class LookupRateHandler implements ToolHandler<Input> {
   name = "lookup_rate";
   description =
     "Look up an Initial Services schedule rate from the live rate library. " +
-    "Currently supports two rate types: cutting (schedule lookup by equipment, elevation, material, and depth) " +
-    "and core_hole (base rate by diameter with the elevation multiplier applied: Floor=1.0x, Wall=1.1x, Inverted=2.0x). " +
+    "Supports eight rate types: cutting (schedule lookup by equipment/elevation/material/depth), " +
+    "core_hole (base rate by diameter with elevation multiplier Floor=1.0x, Wall=1.1x, Inverted=2.0x), " +
+    "labour (day/night/weekend rate by role), plant (rate + fuel by item), " +
+    "waste (ton+load rate by wasteType+facility), fuel (rate by item), " +
+    "enclosure (rate by enclosureType), and other (description-matched cutting-sheet catalogue rate). " +
     "Read-only — does not write to estimate items or scope items. " +
-    "Use proactively when proposing cutting or core hole scope items so the user sees both the proposal and the live rate together.";
+    "Use proactively when proposing scope items so the user sees both the proposal and the live rate together.";
   inputSchema = {
     type: "object" as const,
     properties: {
       rateType: {
         type: "string",
-        enum: ["cutting", "core_hole"],
+        enum: ["cutting", "core_hole", "labour", "plant", "waste", "fuel", "enclosure", "other"],
         description:
-          "Which rate type to look up. Other types (labour/plant/fuel/waste/enclosure/other) are not yet supported."
+          "Which rate type to look up. All eight IS rate types are supported."
       },
       cutting: {
         type: "object",
@@ -122,6 +185,88 @@ export class LookupRateHandler implements ToolHandler<Input> {
           }
         },
         required: ["elevation", "diameterMm"]
+      },
+      labour: {
+        type: "object",
+        description:
+          "Required when rateType is 'labour'. Labour rates are keyed by role and have three shift columns (day/night/weekend); the lookup returns the requested shift's rate plus all three for context.",
+        properties: {
+          role: {
+            type: "string",
+            description:
+              "Labour role (matched case-insensitive). Common values: Demolition labourer, Asbestos labourer, Machine operator, Project manager, Supervisor."
+          },
+          shift: {
+            type: "string",
+            enum: ["day", "night", "weekend"],
+            description: "Shift the rate is being quoted for."
+          }
+        },
+        required: ["role", "shift"]
+      },
+      plant: {
+        type: "object",
+        description:
+          "Required when rateType is 'plant'. Plant rates are keyed by item; the lookup returns the rate, unit, and fuel rate (the running fuel cost when the item is operated).",
+        properties: {
+          item: {
+            type: "string",
+            description: "Plant item (matched case-insensitive). Common values: 5T excavator, 13T excavator, Bobcat, Skid steer, EWP, Scissor lift."
+          }
+        },
+        required: ["item"]
+      },
+      waste: {
+        type: "object",
+        description:
+          "Required when rateType is 'waste'. Waste rates are keyed by (wasteType, facility); the lookup returns the ton rate, load rate, billing unit, and waste group.",
+        properties: {
+          wasteType: {
+            type: "string",
+            description: "Waste type as classified by the receiving facility (matched case-insensitive). Common values: General waste, Concrete, Asbestos friable, Asbestos non-friable, Mixed C&D."
+          },
+          facility: {
+            type: "string",
+            description: "Receiving facility name (matched case-insensitive). e.g. Cleanaway Willawong, BMI Swanbank."
+          }
+        },
+        required: ["wasteType", "facility"]
+      },
+      fuel: {
+        type: "object",
+        description:
+          "Required when rateType is 'fuel'. Fuel rates are keyed by item; the lookup returns the rate and its billing unit.",
+        properties: {
+          item: {
+            type: "string",
+            description: "Fuel item (matched case-insensitive). Common values: Diesel, Unleaded, AdBlue."
+          }
+        },
+        required: ["item"]
+      },
+      enclosure: {
+        type: "object",
+        description:
+          "Required when rateType is 'enclosure'. Enclosure rates are keyed by enclosure type; the lookup returns the rate and its billing unit.",
+        properties: {
+          enclosureType: {
+            type: "string",
+            description: "Enclosure type (matched case-insensitive). Common values: Class A enclosure, Class B enclosure, Negative-pressure decon unit."
+          }
+        },
+        required: ["enclosureType"]
+      },
+      other: {
+        type: "object",
+        description:
+          "Required when rateType is 'other'. The 'Other' catalogue holds flat-fee or unit-priced cutting-sheet line items (establishment fees, saw-blade changes, etc.). description is NOT a unique key — when multiple active rows match, all of them are returned.",
+        properties: {
+          description: {
+            type: "string",
+            description: "Description text to match (case-insensitive substring). e.g. 'establishment', 'saw blade'."
+          }
+        },
+        required: ["description"]
       }
     },
     required: ["rateType"]
@@ -154,9 +299,68 @@ export class LookupRateHandler implements ToolHandler<Input> {
       }
     }
 
+    if (input.rateType === "labour") {
+      const args = parseLabourInput(input.labour);
+      if (typeof args === "string") return errorResult(args);
+      try {
+        return await this.lookupLabour(args);
+      } catch {
+        return errorResult("Failed to look up labour rate due to an internal error.");
+      }
+    }
+
+    if (input.rateType === "plant") {
+      const args = parsePlantInput(input.plant);
+      if (typeof args === "string") return errorResult(args);
+      try {
+        return await this.lookupPlant(args);
+      } catch {
+        return errorResult("Failed to look up plant rate due to an internal error.");
+      }
+    }
+
+    if (input.rateType === "waste") {
+      const args = parseWasteInput(input.waste);
+      if (typeof args === "string") return errorResult(args);
+      try {
+        return await this.lookupWaste(args);
+      } catch {
+        return errorResult("Failed to look up waste rate due to an internal error.");
+      }
+    }
+
+    if (input.rateType === "fuel") {
+      const args = parseFuelInput(input.fuel);
+      if (typeof args === "string") return errorResult(args);
+      try {
+        return await this.lookupFuel(args);
+      } catch {
+        return errorResult("Failed to look up fuel rate due to an internal error.");
+      }
+    }
+
+    if (input.rateType === "enclosure") {
+      const args = parseEnclosureInput(input.enclosure);
+      if (typeof args === "string") return errorResult(args);
+      try {
+        return await this.lookupEnclosure(args);
+      } catch {
+        return errorResult("Failed to look up enclosure rate due to an internal error.");
+      }
+    }
+
+    if (input.rateType === "other") {
+      const args = parseOtherInput(input.other);
+      if (typeof args === "string") return errorResult(args);
+      try {
+        return await this.lookupOther(args);
+      } catch {
+        return errorResult("Failed to look up other rate due to an internal error.");
+      }
+    }
+
     return errorResult(
-      `Invalid lookup_rate input: rateType must be 'cutting' or 'core_hole'. ` +
-        `Other rate types (labour/plant/fuel/waste/enclosure/other) are not yet supported.`
+      `Invalid lookup_rate input: rateType must be one of 'cutting', 'core_hole', 'labour', 'plant', 'waste', 'fuel', 'enclosure', or 'other'.`
     );
   }
 
@@ -255,6 +459,185 @@ export class LookupRateHandler implements ToolHandler<Input> {
     });
   }
 
+  // Labour: role is @unique on EstimateLabourRate. Match case-insensitive.
+  // Return the requested shift's rate as the primary value, plus all
+  // three shift rates for context.
+  private async lookupLabour(args: LabourArgs): Promise<ToolHandlerExecuteResult> {
+    const row = await this.prisma.estimateLabourRate.findFirst({
+      where: {
+        role: { equals: args.role, mode: "insensitive" },
+        isActive: true
+      }
+    });
+    if (!row) {
+      const available = await this.availableLabourRoles();
+      return errorResult(
+        `No active labour rate found for role="${args.role}". ` +
+          `Available roles: ${available || "none seeded"}.`
+      );
+    }
+    const dayRate = decimalToNumber(row.dayRate);
+    const nightRate = decimalToNumber(row.nightRate);
+    const weekendRate = decimalToNumber(row.weekendRate);
+    const shiftRate =
+      args.shift === "day" ? dayRate : args.shift === "night" ? nightRate : weekendRate;
+    return jsonResult({
+      rateType: "labour",
+      role: row.role,
+      shift: args.shift,
+      rateAud: shiftRate,
+      dayRateAud: dayRate,
+      nightRateAud: nightRate,
+      weekendRateAud: weekendRate,
+      unit: "AUD per hour",
+      currency: "AUD",
+      lookupSource: "live rates (estimate_labour_rates table)"
+    });
+  }
+
+  // Plant: item is @unique on EstimatePlantRate. Match case-insensitive.
+  // Return rate, billing unit, and fuelRate (the running fuel cost the
+  // estimator adds on top of the hire rate when the item is operated).
+  private async lookupPlant(args: PlantArgs): Promise<ToolHandlerExecuteResult> {
+    const row = await this.prisma.estimatePlantRate.findFirst({
+      where: {
+        item: { equals: args.item, mode: "insensitive" },
+        isActive: true
+      }
+    });
+    if (!row) {
+      const available = await this.availablePlantItems();
+      return errorResult(
+        `No active plant rate found for item="${args.item}". ` +
+          `Available items: ${available || "none seeded"}.`
+      );
+    }
+    return jsonResult({
+      rateType: "plant",
+      item: row.item,
+      rateAud: decimalToNumber(row.rate),
+      unit: `AUD per ${row.unit}`,
+      fuelRateAud: decimalToNumber(row.fuelRate),
+      currency: "AUD",
+      lookupSource: "live rates (estimate_plant_rates table)"
+    });
+  }
+
+  // Waste: (wasteType, facility) is @@unique on EstimateWasteRate. Both
+  // matched case-insensitive. Return ton rate, load rate, billing unit,
+  // and waste group classification.
+  private async lookupWaste(args: WasteArgs): Promise<ToolHandlerExecuteResult> {
+    const row = await this.prisma.estimateWasteRate.findFirst({
+      where: {
+        wasteType: { equals: args.wasteType, mode: "insensitive" },
+        facility: { equals: args.facility, mode: "insensitive" },
+        isActive: true
+      }
+    });
+    if (!row) {
+      const available = await this.availableWasteCombinations();
+      return errorResult(
+        `No active waste rate found for wasteType="${args.wasteType}", facility="${args.facility}". ` +
+          `Available combinations: ${available || "none seeded"}.`
+      );
+    }
+    return jsonResult({
+      rateType: "waste",
+      wasteType: row.wasteType,
+      facility: row.facility,
+      wasteGroup: row.wasteGroup,
+      tonRateAud: decimalToNumber(row.tonRate),
+      loadRateAud: decimalToNumber(row.loadRate),
+      unit: row.unit,
+      currency: "AUD",
+      lookupSource: "live rates (estimate_waste_rates table)"
+    });
+  }
+
+  // Fuel: item is @unique on EstimateFuelRate. Match case-insensitive.
+  // Return rate and its billing unit (typically per litre).
+  private async lookupFuel(args: FuelArgs): Promise<ToolHandlerExecuteResult> {
+    const row = await this.prisma.estimateFuelRate.findFirst({
+      where: {
+        item: { equals: args.item, mode: "insensitive" },
+        isActive: true
+      }
+    });
+    if (!row) {
+      const available = await this.availableFuelItems();
+      return errorResult(
+        `No active fuel rate found for item="${args.item}". ` +
+          `Available items: ${available || "none seeded"}.`
+      );
+    }
+    return jsonResult({
+      rateType: "fuel",
+      item: row.item,
+      rateAud: decimalToNumber(row.rate),
+      unit: `AUD per ${row.unit}`,
+      currency: "AUD",
+      lookupSource: "live rates (estimate_fuel_rates table)"
+    });
+  }
+
+  // Enclosure: enclosureType is @unique on EstimateEnclosureRate. Match
+  // case-insensitive. Return rate and its billing unit.
+  private async lookupEnclosure(args: EnclosureArgs): Promise<ToolHandlerExecuteResult> {
+    const row = await this.prisma.estimateEnclosureRate.findFirst({
+      where: {
+        enclosureType: { equals: args.enclosureType, mode: "insensitive" },
+        isActive: true
+      }
+    });
+    if (!row) {
+      const available = await this.availableEnclosureTypes();
+      return errorResult(
+        `No active enclosure rate found for enclosureType="${args.enclosureType}". ` +
+          `Available types: ${available || "none seeded"}.`
+      );
+    }
+    return jsonResult({
+      rateType: "enclosure",
+      enclosureType: row.enclosureType,
+      rateAud: decimalToNumber(row.rate),
+      unit: `AUD per ${row.unit}`,
+      currency: "AUD",
+      lookupSource: "live rates (estimate_enclosure_rates table)"
+    });
+  }
+
+  // Other: CuttingOtherRate.description is NOT a unique key — multiple
+  // active rows can match. Use a case-insensitive substring match (the
+  // model often won't know the exact catalogue wording) and return all
+  // matches so the user can pick.
+  private async lookupOther(args: OtherArgs): Promise<ToolHandlerExecuteResult> {
+    const rows = await this.prisma.cuttingOtherRate.findMany({
+      where: {
+        description: { contains: args.description, mode: "insensitive" },
+        isActive: true
+      },
+      orderBy: [{ sortOrder: "asc" }, { description: "asc" }]
+    });
+    if (rows.length === 0) {
+      const available = await this.availableOtherDescriptions();
+      return errorResult(
+        `No active other rate found matching description="${args.description}". ` +
+          `Available descriptions: ${available || "none seeded"}.`
+      );
+    }
+    return jsonResult({
+      rateType: "other",
+      searchDescription: args.description,
+      matches: rows.map((r) => ({
+        description: r.description,
+        rateAud: decimalToNumber(r.rate),
+        unit: `AUD per ${r.unit}`
+      })),
+      currency: "AUD",
+      lookupSource: "live rates (cutting_other_rates table)"
+    });
+  }
+
   private async availableCuttingCombinations(args: CuttingArgs): Promise<string | null> {
     const rows = await this.prisma.estimateCuttingRate.findMany({
       where: {
@@ -278,6 +661,66 @@ export class LookupRateHandler implements ToolHandler<Input> {
       orderBy: { diameterMm: "asc" }
     });
     return rows.map((r) => r.diameterMm).join(", ");
+  }
+
+  private async availableLabourRoles(): Promise<string> {
+    const rows = await this.prisma.estimateLabourRate.findMany({
+      where: { isActive: true },
+      select: { role: true },
+      orderBy: [{ sortOrder: "asc" }, { role: "asc" }],
+      take: 50
+    });
+    return rows.map((r) => r.role).join(", ");
+  }
+
+  private async availablePlantItems(): Promise<string> {
+    const rows = await this.prisma.estimatePlantRate.findMany({
+      where: { isActive: true },
+      select: { item: true },
+      orderBy: [{ sortOrder: "asc" }, { item: "asc" }],
+      take: 50
+    });
+    return rows.map((r) => r.item).join(", ");
+  }
+
+  private async availableWasteCombinations(): Promise<string> {
+    const rows = await this.prisma.estimateWasteRate.findMany({
+      where: { isActive: true },
+      select: { wasteType: true, facility: true },
+      orderBy: [{ sortOrder: "asc" }, { wasteType: "asc" }, { facility: "asc" }],
+      take: 50
+    });
+    return rows.map((r) => `${r.wasteType} @ ${r.facility}`).join(", ");
+  }
+
+  private async availableFuelItems(): Promise<string> {
+    const rows = await this.prisma.estimateFuelRate.findMany({
+      where: { isActive: true },
+      select: { item: true },
+      orderBy: [{ sortOrder: "asc" }, { item: "asc" }],
+      take: 50
+    });
+    return rows.map((r) => r.item).join(", ");
+  }
+
+  private async availableEnclosureTypes(): Promise<string> {
+    const rows = await this.prisma.estimateEnclosureRate.findMany({
+      where: { isActive: true },
+      select: { enclosureType: true },
+      orderBy: [{ sortOrder: "asc" }, { enclosureType: "asc" }],
+      take: 50
+    });
+    return rows.map((r) => r.enclosureType).join(", ");
+  }
+
+  private async availableOtherDescriptions(): Promise<string> {
+    const rows = await this.prisma.cuttingOtherRate.findMany({
+      where: { isActive: true },
+      select: { description: true },
+      orderBy: [{ sortOrder: "asc" }, { description: "asc" }],
+      take: 50
+    });
+    return rows.map((r) => r.description).join(", ");
   }
 }
 
@@ -318,6 +761,78 @@ function parseCoreHoleInput(raw: CoreHoleInput | undefined): CoreHoleArgs | stri
     return "Invalid lookup_rate input: coreHole.diameterMm must be a positive number.";
   }
   return { elevation, diameterMm: Math.round(diameterMm) };
+}
+
+function parseLabourInput(raw: LabourInput | undefined): LabourArgs | string {
+  if (!raw || typeof raw !== "object") {
+    return "Invalid lookup_rate input: labour block is required when rateType is 'labour'.";
+  }
+  const { role, shift } = raw;
+  if (typeof role !== "string" || role.trim().length === 0) {
+    return "Invalid lookup_rate input: labour.role must be a non-empty string.";
+  }
+  if (shift !== "day" && shift !== "night" && shift !== "weekend") {
+    return "Invalid lookup_rate input: labour.shift must be 'day', 'night', or 'weekend'.";
+  }
+  return { role: role.trim(), shift };
+}
+
+function parsePlantInput(raw: PlantInput | undefined): PlantArgs | string {
+  if (!raw || typeof raw !== "object") {
+    return "Invalid lookup_rate input: plant block is required when rateType is 'plant'.";
+  }
+  const { item } = raw;
+  if (typeof item !== "string" || item.trim().length === 0) {
+    return "Invalid lookup_rate input: plant.item must be a non-empty string.";
+  }
+  return { item: item.trim() };
+}
+
+function parseWasteInput(raw: WasteInput | undefined): WasteArgs | string {
+  if (!raw || typeof raw !== "object") {
+    return "Invalid lookup_rate input: waste block is required when rateType is 'waste'.";
+  }
+  const { wasteType, facility } = raw;
+  if (typeof wasteType !== "string" || wasteType.trim().length === 0) {
+    return "Invalid lookup_rate input: waste.wasteType must be a non-empty string.";
+  }
+  if (typeof facility !== "string" || facility.trim().length === 0) {
+    return "Invalid lookup_rate input: waste.facility must be a non-empty string.";
+  }
+  return { wasteType: wasteType.trim(), facility: facility.trim() };
+}
+
+function parseFuelInput(raw: FuelInput | undefined): FuelArgs | string {
+  if (!raw || typeof raw !== "object") {
+    return "Invalid lookup_rate input: fuel block is required when rateType is 'fuel'.";
+  }
+  const { item } = raw;
+  if (typeof item !== "string" || item.trim().length === 0) {
+    return "Invalid lookup_rate input: fuel.item must be a non-empty string.";
+  }
+  return { item: item.trim() };
+}
+
+function parseEnclosureInput(raw: EnclosureInput | undefined): EnclosureArgs | string {
+  if (!raw || typeof raw !== "object") {
+    return "Invalid lookup_rate input: enclosure block is required when rateType is 'enclosure'.";
+  }
+  const { enclosureType } = raw;
+  if (typeof enclosureType !== "string" || enclosureType.trim().length === 0) {
+    return "Invalid lookup_rate input: enclosure.enclosureType must be a non-empty string.";
+  }
+  return { enclosureType: enclosureType.trim() };
+}
+
+function parseOtherInput(raw: OtherInput | undefined): OtherArgs | string {
+  if (!raw || typeof raw !== "object") {
+    return "Invalid lookup_rate input: other block is required when rateType is 'other'.";
+  }
+  const { description } = raw;
+  if (typeof description !== "string" || description.trim().length === 0) {
+    return "Invalid lookup_rate input: other.description must be a non-empty string.";
+  }
+  return { description: description.trim() };
 }
 
 function pickMostSpecificCuttingRow<

@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-24 04:18 AEST
+Last updated: 2026-05-24 05:01 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -6404,3 +6404,136 @@ Pre-PR checks (local): 5/7 green; 2/7 BLOCKED by the same pre-existing
   - pnpm compliance:smoke — login 500 on `users.is_super_user`
   - playwright tendering chromium — same root cause; 5/5 specs fail
     at the login step
+
+## 2026-05-24 14:21 AEST — PR feat/lookup-rate-remaining-types MERGED
+Type: PR ([5A.1] PR H — extend lookup_rate to all rate types)
+Branch: feat/lookup-rate-remaining-types
+PR: #214 (https://github.com/GH-Mantova/ProjectOperations/pull/214)
+Merge SHA: 4812051d274933036679dbfeb487f11086293a20
+Merged at: 2026-05-24T04:21:37Z (squash merge — auto-merge)
+CI: ✅ all checks passed
+  - API — lint, test, compliance smoke
+  - Web — lint, logic tests, build
+  - Analyze (actions) [CodeQL]
+  - Analyze (javascript-typescript) [CodeQL]
+  - tendering-e2e
+Status: MERGED
+
+## 2026-05-24 14:55 AEST — PR feat/propose-estimate-items STARTED
+Type: PR ([5A.1] PR D — propose_estimate_items estimate-creation tool)
+Branch: feat/propose-estimate-items
+Detail: Adds propose_estimate_items, the Tendering Assistant's
+  estimate-creation tool. Mirrors propose_scope_items end-to-end:
+  tool definition, EstimateProposalsService (store + accept +
+  reject + bulk), thin handler with SSE side-effect, controller
+  with ai.persona.tendering guard, registration + bind to the
+  estimate sub-mode only, rewritten ESTIMATE_SUBMODE_PROMPT
+  (estimate mode is no longer read-only), and a parallel frontend
+  EstimateProposalCardList wired through MessageList +
+  ChatPanel. New SSE event name `estimate_proposals` distinct
+  from the existing `proposals` event so the two flows stay
+  independent. Backing Prisma models: TenderEstimate +
+  EstimateItem + EstimateLabourLine + EstimatePlantLine +
+  EstimateCuttingLine + EstimateWasteLine (all already exist —
+  no schema change). EstimateEquipLine and EstimateAssumption
+  intentionally out of scope; estimator can add them manually
+  after acceptance. Rate fields (rate / tonRate / loadRate) are
+  model-supplied — the system prompt mandates lookup_rate first
+  for every rate. Closes the last code-bearing Item 5 sub-task.
+Status: IN_PROGRESS
+
+## 2026-05-24 14:55 AEST — PR feat/propose-estimate-items OPENED
+Type: PR ([5A.1] PR D — propose_estimate_items estimate-creation tool)
+Branch: feat/propose-estimate-items
+PR: #[N]
+Status: WAITING_CI
+Detail: 13 file changes (4 new + 6 source-edited + 3 doc-edited).
+  Backend new:
+  - apps/api/src/modules/ai-providers/tools/propose-estimate-items.tool.ts
+    — tool definition + types. JSON schema enforces 1-30 proposals,
+    code enum (DEM/CIV/ASB/Other), title required, optional
+    description / markup / isProvisional / provisionalAmount, and
+    optional labour/plant/cutting/waste line arrays with per-line
+    shape matching the Prisma models.
+  - apps/api/src/modules/tendering/scope/estimate-proposals.service.ts
+    — storeEstimateProposals (tool_call + tool_result rows in
+    $transaction; tool_result metadata carries
+    toolName="propose_estimate_items" discriminator);
+    acceptEstimateProposal (GET-OR-CREATE TenderEstimate,
+    locked-check rejects with 400, next itemNumber per
+    (estimateId, code), creates EstimateItem + labour/plant/
+    cutting/waste line rows from the merged proposal);
+    rejectEstimateProposal; acceptAllPending; rejectAllPending;
+    loadProposalMessage helper enforces toolName discriminator so
+    the service ignores non-estimate tool_result rows.
+  - apps/api/src/modules/personas/tools/handlers/propose-estimate-items.handler.ts
+    — thin handler mirroring ProposeScopeItemsHandler; calls store
+    and returns text-result + SSE side-effect event="estimate_proposals".
+  - apps/api/src/modules/tendering/scope/estimate-proposals.controller.ts
+    — POST /personas/tendering/estimate-proposals/:messageId/accept
+    | /reject | /accept-all | /reject-all; ai.persona.tendering
+    guard.
+  Backend edits:
+  - apps/api/src/modules/tendering/tendering.module.ts —
+    EstimateProposalsController + EstimateProposalsService added
+    to controllers/providers/exports.
+  - apps/api/src/modules/personas/personas.module.ts —
+    ProposeEstimateItemsHandler added to providers; registered in
+    onModuleInit; bindToSubMode("tendering.estimate", [...]) —
+    bound to the estimate sub-mode ONLY (mirrors
+    propose_scope_items' scope-only binding).
+  - apps/api/src/modules/personas/definitions/tendering.persona.ts
+    — ESTIMATE_SUBMODE_PROMPT rewritten: propose-then-confirm; MUST
+    call lookup_rate for every rate before proposing;
+    GLOBAL_RATE_FABRICATION_PROHIBITION + RATE_LOOKUP MANDATORY
+    POLICY language remain in force unchanged.
+  Frontend new:
+  - apps/web/src/personas/EstimateProposalCardList.tsx — parallel to
+    ProposalCardList, renders the richer estimate-item shape:
+    header (code/title/markup/provisional) + collapsible cost-line
+    groups (labour, plant, cutting, waste). Accept/Edit/Reject + bulk.
+  Frontend edits:
+  - apps/web/src/personas/chat-helpers.ts — new ChatEstimateProposal
+    + ChatEstimateProposalsMessage types, ChatMessage union widened,
+    SSEChunk union widened, parseSSEEvent handles
+    "estimate_proposals", new appendEstimateProposalsMessage +
+    updateEstimateProposalsMessage helpers.
+  - apps/web/src/personas/use-streaming-chat.ts — handles
+    estimate_proposals SSE chunk; new acceptEstimateProposal /
+    rejectEstimateProposal / acceptAllPendingEstimateProposals /
+    rejectAllPendingEstimateProposals callbacks wired to the new
+    endpoints; rebuildMessagesFromHistory branches on
+    metadata.toolName so estimate-proposal rows survive page reload.
+  - apps/web/src/personas/MessageList.tsx + ChatPanel.tsx — render
+    EstimateProposalCardList for estimate-proposals rows; pass new
+    handlers through from the hook.
+  Tests:
+  - estimate-proposals.service.spec.ts (13 specs: store + accept
+    [get-or-create + reuse-existing + locked + edits + 404 not-owner
+    + 400 already-accepted + 404 index + 400 no-tender + 400 non-
+    estimate-metadata] + reject + acceptAll + rejectAll).
+  - propose-estimate-items.handler.spec.ts (3 specs).
+  - estimate-proposal-helpers.test.ts (11 specs mirroring
+    proposal-helpers.test.ts).
+  Docs (per §6 same-PR rule):
+  - progress.md — #214 MERGED + this PR STARTED/OPENED.
+  - roadmap.md — §5A.1 Item 5 PR D marked ✅; changelog entry
+    appended.
+  - project_instructions.md §13 — propose_estimate_items added to
+    the persona tool list; estimate sub-mode marked no-longer-
+    read-only.
+  No new dependencies. No new env vars. No migrations.
+Pre-PR checks (local): 7/7 green — full §6 gate clean.
+  - API lint clean
+  - Web lint clean
+  - API tests 652 passed, 6 skipped — +16 vs baseline 636, matching
+    the 13 EstimateProposalsService specs + 3 ProposeEstimateItemsHandler
+    specs added in this PR.
+  - Web tests 168 passed — +12 vs baseline 156, matching the 12
+    new specs in estimate-proposal-helpers.test.ts.
+  - pnpm build green (api + web).
+  - pnpm compliance:smoke green (the prior PRs' local env-block on
+    users.is_super_user self-resolved between PR H and this PR —
+    migrations finally applied on this dev machine).
+  - playwright tendering chromium green (5/5 in 29.2s).
+

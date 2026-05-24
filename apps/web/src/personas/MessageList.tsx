@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import type { ChatMessage, ChatProposal } from "./chat-helpers";
+import type { ChatEstimateProposal, ChatMessage, ChatProposal } from "./chat-helpers";
+import { EstimateProposalCardList } from "./EstimateProposalCardList";
 import { ProposalCardList } from "./ProposalCardList";
 
 type Props = {
@@ -15,6 +16,16 @@ type Props = {
   onRejectProposal?: (messageId: string, proposalIndex: number) => Promise<boolean>;
   onAcceptAllProposals?: (messageId: string) => Promise<{ accepted: number; failed: number }>;
   onRejectAllProposals?: (messageId: string) => Promise<number>;
+  onAcceptEstimateProposal?: (
+    messageId: string,
+    proposalIndex: number,
+    edits?: Partial<ChatEstimateProposal>
+  ) => Promise<{ ok: boolean; estimateItemId?: string; error?: string }>;
+  onRejectEstimateProposal?: (messageId: string, proposalIndex: number) => Promise<boolean>;
+  onAcceptAllEstimateProposals?: (
+    messageId: string
+  ) => Promise<{ accepted: number; failed: number }>;
+  onRejectAllEstimateProposals?: (messageId: string) => Promise<number>;
 };
 
 export function MessageList({
@@ -25,7 +36,11 @@ export function MessageList({
   onAcceptProposal,
   onRejectProposal,
   onAcceptAllProposals,
-  onRejectAllProposals
+  onRejectAllProposals,
+  onAcceptEstimateProposal,
+  onRejectEstimateProposal,
+  onAcceptAllEstimateProposals,
+  onRejectAllEstimateProposals
 }: Props) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -59,6 +74,27 @@ export function MessageList({
                   onReject={onRejectProposal}
                   onAcceptAll={onAcceptAllProposals}
                   onRejectAll={onRejectAllProposals}
+                />
+              );
+            }
+            if (m.role === "estimate-proposals") {
+              if (
+                !onAcceptEstimateProposal ||
+                !onRejectEstimateProposal ||
+                !onAcceptAllEstimateProposals ||
+                !onRejectAllEstimateProposals
+              ) {
+                return null;
+              }
+              return (
+                <EstimateProposalCardList
+                  key={`${m.messageId}-${i}`}
+                  messageId={m.messageId}
+                  proposals={m.proposals}
+                  onAccept={onAcceptEstimateProposal}
+                  onReject={onRejectEstimateProposal}
+                  onAcceptAll={onAcceptAllEstimateProposals}
+                  onRejectAll={onRejectAllEstimateProposals}
                 />
               );
             }

@@ -1,7 +1,13 @@
 import { useEffect, useRef } from "react";
-import type { ChatEstimateProposal, ChatMessage, ChatProposal } from "./chat-helpers";
+import type {
+  ChatEstimateProposal,
+  ChatMessage,
+  ChatProposal,
+  ChatQuoteProposal
+} from "./chat-helpers";
 import { EstimateProposalCardList } from "./EstimateProposalCardList";
 import { ProposalCardList } from "./ProposalCardList";
+import { QuoteProposalCardList } from "./QuoteProposalCardList";
 
 type Props = {
   messages: ChatMessage[];
@@ -26,6 +32,22 @@ type Props = {
     messageId: string
   ) => Promise<{ accepted: number; failed: number }>;
   onRejectAllEstimateProposals?: (messageId: string) => Promise<number>;
+  onAcceptQuoteProposal?: (
+    messageId: string,
+    proposalIndex: number,
+    edits?: Partial<ChatQuoteProposal>
+  ) => Promise<{
+    ok: boolean;
+    acceptedCostLineIds?: string[];
+    acceptedExclusionIds?: string[];
+    acceptedAssumptionIds?: string[];
+    error?: string;
+  }>;
+  onRejectQuoteProposal?: (messageId: string, proposalIndex: number) => Promise<boolean>;
+  onAcceptAllQuoteProposals?: (
+    messageId: string
+  ) => Promise<{ accepted: number; failed: number }>;
+  onRejectAllQuoteProposals?: (messageId: string) => Promise<number>;
 };
 
 export function MessageList({
@@ -40,7 +62,11 @@ export function MessageList({
   onAcceptEstimateProposal,
   onRejectEstimateProposal,
   onAcceptAllEstimateProposals,
-  onRejectAllEstimateProposals
+  onRejectAllEstimateProposals,
+  onAcceptQuoteProposal,
+  onRejectQuoteProposal,
+  onAcceptAllQuoteProposals,
+  onRejectAllQuoteProposals
 }: Props) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -95,6 +121,27 @@ export function MessageList({
                   onReject={onRejectEstimateProposal}
                   onAcceptAll={onAcceptAllEstimateProposals}
                   onRejectAll={onRejectAllEstimateProposals}
+                />
+              );
+            }
+            if (m.role === "quote-proposals") {
+              if (
+                !onAcceptQuoteProposal ||
+                !onRejectQuoteProposal ||
+                !onAcceptAllQuoteProposals ||
+                !onRejectAllQuoteProposals
+              ) {
+                return null;
+              }
+              return (
+                <QuoteProposalCardList
+                  key={`${m.messageId}-${i}`}
+                  messageId={m.messageId}
+                  proposals={m.proposals}
+                  onAccept={onAcceptQuoteProposal}
+                  onReject={onRejectQuoteProposal}
+                  onAcceptAll={onAcceptAllQuoteProposals}
+                  onRejectAll={onRejectAllQuoteProposals}
                 />
               );
             }

@@ -1,0 +1,128 @@
+import type { ToolDefinition } from "./types";
+
+// §5A.1 PR E — quote sub-mode content-creation tool. Parallel to
+// propose_estimate_items but writes into a ClientQuote rather than a
+// TenderEstimate.
+//
+// Three content blocks the model can propose for an existing quote:
+//   - costLines  → QuoteCostLine rows (label + description; the user
+//                   sets the price unless they explicitly named it in
+//                   the conversation)
+//   - exclusions → QuoteExclusion rows (text)
+//   - assumptions → QuoteAssumption rows (text, optionally linked to
+//                    a costLineId — only valid when referencing an
+//                    EXISTING cost-line id; the AI cannot link to a
+//                    cost-line proposed in the same call, since that
+//                    cost-line's id only exists after acceptance.)
+//
+// The model proposes STRUCTURE, not pricing. `price` on costLines is
+// included ONLY if the user explicitly stated a figure; if the AI
+// omits price, the line is created at 0 and the user edits it in.
+// GLOBAL_RATE_FABRICATION_PROHIBITION applies in full — the model
+// must not guess at line totals.
+export const proposeQuoteContentTool: ToolDefinition = {
+  name: "propose_quote_content",
+  description: [
+    "Propose CONTENT into a ClientQuote — cost-line structure,",
+    "exclusions, and assumptions. The estimator creates the ClientQuote",
+    "in the Quote tab; you propose what goes IN it. Use",
+    "list_tender_quotes first to discover the target quote ID and",
+    "confirm which quote the user means before calling this tool. Each",
+    "proposal is reviewed by the user as a card with Accept / Edit /",
+    "Reject buttons. Propose ONLY cost-line LABELS and DESCRIPTIONS;",
+    "do NOT invent a price. Include `price` only when the user stated",
+    "a specific figure — otherwise omit it, and the line will be",
+    "created at $0 for the user to edit."
+  ].join(" "),
+  inputSchema: {
+    type: "object",
+    properties: {
+      quoteId: {
+        type: "string",
+        description:
+          "The target ClientQuote id (from list_tender_quotes). The quote MUST belong to the active tender and MUST be in DRAFT status — proposing into a SENT or SUPERSEDED quote will be rejected at accept time."
+      },
+      costLines: {
+        type: "array",
+        description: "Proposed quote cost-line structure (label + description).",
+        items: {
+          type: "object",
+          properties: {
+            label: {
+              type: "string",
+              maxLength: 200,
+              description: "Short cost-line label, e.g. 'Internal demolition', 'Asbestos removal'."
+            },
+            description: {
+              type: "string",
+              maxLength: 2000,
+              description: "Detailed description shown on the quote PDF for this line."
+            },
+            price: {
+              type: "number",
+              minimum: 0,
+              description:
+                "OPTIONAL. Include ONLY when the user explicitly stated a specific figure. Never invent or estimate a price — the line will be created at 0 if omitted."
+            }
+          },
+          required: ["label", "description"]
+        },
+        maxItems: 30
+      },
+      exclusions: {
+        type: "array",
+        description: "Proposed exclusion clauses for the quote.",
+        items: {
+          type: "object",
+          properties: {
+            text: {
+              type: "string",
+              maxLength: 1000,
+              description: "Exclusion clause text, e.g. 'Excludes any encountered asbestos not noted in the asbestos register.'"
+            }
+          },
+          required: ["text"]
+        },
+        maxItems: 30
+      },
+      assumptions: {
+        type: "array",
+        description: "Proposed assumption clauses for the quote.",
+        items: {
+          type: "object",
+          properties: {
+            text: {
+              type: "string",
+              maxLength: 1000,
+              description: "Assumption clause text, e.g. 'Assumes 24/7 site access during demolition phase.'"
+            }
+          },
+          required: ["text"]
+        },
+        maxItems: 30
+      }
+    },
+    required: ["quoteId"]
+  }
+};
+
+export type QuoteCostLineProposal = {
+  label: string;
+  description: string;
+  price?: number;
+};
+
+export type QuoteExclusionProposal = {
+  text: string;
+};
+
+export type QuoteAssumptionProposal = {
+  text: string;
+};
+
+export type ProposeQuoteContentArgs = {
+  quoteId: string;
+  costLines?: QuoteCostLineProposal[];
+  exclusions?: QuoteExclusionProposal[];
+  assumptions?: QuoteAssumptionProposal[];
+};

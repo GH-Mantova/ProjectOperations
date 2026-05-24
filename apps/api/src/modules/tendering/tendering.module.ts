@@ -17,6 +17,8 @@ import { ProposalsController } from "./scope/proposals.controller";
 import { ProposalsService } from "./scope/proposals.service";
 import { EstimateProposalsController } from "./scope/estimate-proposals.controller";
 import { EstimateProposalsService } from "./scope/estimate-proposals.service";
+import { QuoteProposalsController } from "./scope/quote-proposals.controller";
+import { QuoteProposalsService } from "./scope/quote-proposals.service";
 
 @Module({
   imports: [AuditModule, PlatformModule, forwardRef(() => ProjectsModule)],
@@ -30,7 +32,8 @@ import { EstimateProposalsService } from "./scope/estimate-proposals.service";
     ScopeWasteController,
     ScopeCardWasteController,
     ProposalsController,
-    EstimateProposalsController
+    EstimateProposalsController,
+    QuoteProposalsController
   ],
   providers: [
     TenderingService,
@@ -39,14 +42,16 @@ import { EstimateProposalsService } from "./scope/estimate-proposals.service";
     ScopeRedesignService,
     ScopeWasteService,
     ProposalsService,
-    EstimateProposalsService
+    EstimateProposalsService,
+    QuoteProposalsService
   ],
   exports: [
     TenderingService,
     ScopeRedesignService,
     ScopeWasteService,
     ProposalsService,
-    EstimateProposalsService
+    EstimateProposalsService,
+    QuoteProposalsService
   ]
 })
 export class TenderingModule {}

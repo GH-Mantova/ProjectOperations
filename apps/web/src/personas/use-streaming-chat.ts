@@ -4,15 +4,18 @@ import {
   appendAssistantMessage,
   appendEstimateProposalsMessage,
   appendProposalsMessage,
+  appendQuoteProposalsMessage,
   appendUserMessage,
   buildRetryHistory,
   readSSEStream,
   toApiMessages,
   updateEstimateProposalsMessage,
   updateProposalsMessage,
+  updateQuoteProposalsMessage,
   type ChatEstimateProposal,
   type ChatMessage,
   type ChatProposal,
+  type ChatQuoteProposal,
   type ChatStatus
 } from "./chat-helpers";
 
@@ -228,6 +231,19 @@ export function useStreamingChat(
             const event = chunk;
             setMessages((prev) =>
               appendEstimateProposalsMessage(prev, event.messageId, event.proposals)
+            );
+          } else if (chunk.type === "quote_proposals") {
+            // §5A.1 PR E — quote-content proposal tool_result row. Same
+            // pattern as scope + estimate proposals, routed to
+            // QuoteProposalCardList via the "quote-proposals" role.
+            if (accumulated.length > 0) {
+              setMessages((prev) => appendAssistantMessage(prev, accumulated));
+              accumulated = "";
+              setCurrentResponse("");
+            }
+            const event = chunk;
+            setMessages((prev) =>
+              appendQuoteProposalsMessage(prev, event.messageId, event.proposals)
             );
           } else if (chunk.type === "error") {
             throw new Error(chunk.error);
@@ -576,6 +592,134 @@ export function useStreamingChat(
     [authFetch]
   );
 
+  // §5A.1 PR E — quote-proposal accept/reject helpers wired to the
+  // /personas/tendering/quote-proposals/* endpoints. Parallel to the
+  // estimate-proposal helpers above.
+  const acceptQuoteProposal = useCallback(
+    async (
+      messageId: string,
+      proposalIndex: number,
+      edits?: Partial<ChatQuoteProposal>
+    ): Promise<{
+      ok: boolean;
+      acceptedCostLineIds?: string[];
+      acceptedExclusionIds?: string[];
+      acceptedAssumptionIds?: string[];
+      error?: string;
+    }> => {
+      const res = await authFetch(
+        `/personas/tendering/quote-proposals/${messageId}/accept`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ proposalIndex, ...(edits ?? {}) })
+        }
+      );
+      if (!res.ok) {
+        let detail = `${res.status}`;
+        try {
+          const text = await res.text();
+          if (text) detail = text;
+        } catch {
+          // ignore
+        }
+        return { ok: false, error: detail };
+      }
+      const body = (await res.json()) as {
+        ok: boolean;
+        acceptedCostLineIds?: string[];
+        acceptedExclusionIds?: string[];
+        acceptedAssumptionIds?: string[];
+      };
+      const decidedAt = new Date().toISOString();
+      setMessages((prev) =>
+        updateQuoteProposalsMessage(prev, messageId, (proposals) =>
+          proposals.map((p) =>
+            p.index === proposalIndex
+              ? {
+                  ...p,
+                  ...(edits ?? {}),
+                  status: "accepted",
+                  acceptedCostLineIds: body.acceptedCostLineIds,
+                  acceptedExclusionIds: body.acceptedExclusionIds,
+                  acceptedAssumptionIds: body.acceptedAssumptionIds,
+                  decidedAt
+                }
+              : p
+          )
+        )
+      );
+      return {
+        ok: true,
+        acceptedCostLineIds: body.acceptedCostLineIds,
+        acceptedExclusionIds: body.acceptedExclusionIds,
+        acceptedAssumptionIds: body.acceptedAssumptionIds
+      };
+    },
+    [authFetch]
+  );
+
+  const rejectQuoteProposal = useCallback(
+    async (messageId: string, proposalIndex: number): Promise<boolean> => {
+      const res = await authFetch(
+        `/personas/tendering/quote-proposals/${messageId}/reject`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ proposalIndex })
+        }
+      );
+      if (!res.ok) return false;
+      const decidedAt = new Date().toISOString();
+      setMessages((prev) =>
+        updateQuoteProposalsMessage(prev, messageId, (proposals) =>
+          proposals.map((p) =>
+            p.index === proposalIndex ? { ...p, status: "rejected", decidedAt } : p
+          )
+        )
+      );
+      return true;
+    },
+    [authFetch]
+  );
+
+  const acceptAllPendingQuoteProposals = useCallback(
+    async (messageId: string): Promise<{ accepted: number; failed: number }> => {
+      const res = await authFetch(
+        `/personas/tendering/quote-proposals/${messageId}/accept-all`,
+        { method: "POST" }
+      );
+      if (!res.ok) return { accepted: 0, failed: 0 };
+      const body = (await res.json()) as { accepted: number; failed: number };
+      if (conversationIdRef.current) {
+        await loadConversation(conversationIdRef.current);
+      }
+      return { accepted: body.accepted, failed: body.failed };
+    },
+    [authFetch, loadConversation]
+  );
+
+  const rejectAllPendingQuoteProposals = useCallback(
+    async (messageId: string): Promise<number> => {
+      const res = await authFetch(
+        `/personas/tendering/quote-proposals/${messageId}/reject-all`,
+        { method: "POST" }
+      );
+      if (!res.ok) return 0;
+      const body = (await res.json()) as { rejected: number };
+      const decidedAt = new Date().toISOString();
+      setMessages((prev) =>
+        updateQuoteProposalsMessage(prev, messageId, (proposals) =>
+          proposals.map((p) =>
+            p.status === "pending" ? { ...p, status: "rejected", decidedAt } : p
+          )
+        )
+      );
+      return body.rejected;
+    },
+    [authFetch]
+  );
+
   const deleteConversation = useCallback(
     async (id: string): Promise<boolean> => {
       if (!personaSlug) return false;
@@ -613,7 +757,11 @@ export function useStreamingChat(
     acceptEstimateProposal,
     rejectEstimateProposal,
     acceptAllPendingEstimateProposals,
-    rejectAllPendingEstimateProposals
+    rejectAllPendingEstimateProposals,
+    acceptQuoteProposal,
+    rejectQuoteProposal,
+    acceptAllPendingQuoteProposals,
+    rejectAllPendingQuoteProposals
   };
 }
 
@@ -634,7 +782,7 @@ export function rebuildMessagesFromHistory(
       | {
           toolUseId?: string;
           toolName?: string;
-          proposals?: ChatProposal[] | ChatEstimateProposal[];
+          proposals?: ChatProposal[] | ChatEstimateProposal[] | ChatQuoteProposal[];
         }
       | null;
   }>
@@ -649,6 +797,12 @@ export function rebuildMessagesFromHistory(
           role: "estimate-proposals",
           messageId: row.id,
           proposals: row.metadata!.proposals as ChatEstimateProposal[]
+        });
+      } else if (row.metadata?.toolName === "propose_quote_content") {
+        out.push({
+          role: "quote-proposals",
+          messageId: row.id,
+          proposals: row.metadata!.proposals as ChatQuoteProposal[]
         });
       } else {
         out.push({

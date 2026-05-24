@@ -6,7 +6,6 @@ import {
   CreateScopeItemInCardDto,
   Discipline,
   ReorderScopeItemsDto,
-  ScopeStatus,
   UpdateScopeHeaderDto,
   UpdateScopeItemDto
 } from "./dto/scope-of-works.dto";
@@ -956,71 +955,6 @@ export class ScopeOfWorksService {
     return (max._max.itemNumber ?? 0) + 1;
   }
 
-  async createDraftItemsFromAi(
-    tenderId: string,
-    actorId: string,
-    items: Array<{
-      code: Discipline;
-      title: string;
-      description: string;
-      confidence: "high" | "medium" | "low";
-      sourceReference?: string;
-      estimatedLabourDays?: number;
-      estimatedLabourRole?: string;
-      estimatedWasteTonnes?: Array<{ type: string; tonnes: number }>;
-      estimatedPlantItems?: Array<{ item: string; days: number }>;
-    }>
-  ) {
-    await this.requireTender(tenderId);
-    const created: Array<Prisma.ScopeOfWorksItemGetPayload<{ include: { card: true } }>> = [];
-    for (const proposal of items) {
-      const discipline = DISCIPLINE_ORDER.includes(proposal.code) ? proposal.code : ("DEM" as Discipline);
-      const itemNumber = await this.nextItemNumber(tenderId, discipline);
-      const wbsCode = `${discipline}${itemNumber}`;
-
-      const wasteTonnes = proposal.estimatedWasteTonnes?.[0]?.tonnes;
-      const wasteType = proposal.estimatedWasteTonnes?.[0]?.type;
-
-      let excavatorDays: number | undefined;
-      let bobcatDays: number | undefined;
-      let ewpDays: number | undefined;
-      for (const p of proposal.estimatedPlantItems ?? []) {
-        const item = p.item.toLowerCase();
-        if (item.includes("excavator")) excavatorDays = (excavatorDays ?? 0) + p.days;
-        else if (item.includes("bobcat")) bobcatDays = (bobcatDays ?? 0) + p.days;
-        else if (item.includes("ewp") || item.includes("scissor")) ewpDays = (ewpDays ?? 0) + p.days;
-      }
-
-      const rowType = inferRowType(discipline, proposal);
-      const cardId = await this.getOrCreateCardForDiscipline(tenderId, discipline, actorId);
-
-      const record = await this.prisma.scopeOfWorksItem.create({
-        include: { card: true },
-        data: {
-          tenderId,
-          cardId,
-          wbsCode,
-          itemNumber,
-          rowType,
-          description: `${proposal.title}${proposal.description ? `\n${proposal.description}` : ""}`.trim().slice(0, 2000),
-          status: "draft",
-          aiProposed: true,
-          aiConfidence: proposal.confidence,
-          aiSourceRef: proposal.sourceReference ?? null,
-          createdById: actorId,
-          days: proposal.estimatedLabourDays ? new Prisma.Decimal(proposal.estimatedLabourDays) : null,
-          wasteTonnes: wasteTonnes ? new Prisma.Decimal(wasteTonnes) : null,
-          wasteType: wasteType ?? null,
-          excavatorDays: excavatorDays ? new Prisma.Decimal(excavatorDays) : null,
-          bobcatDays: bobcatDays ? new Prisma.Decimal(bobcatDays) : null,
-          ewpDays: ewpDays ? new Prisma.Decimal(ewpDays) : null
-        }
-      });
-      created.push(record);
-    }
-    return created;
-  }
-
   /**
    * @deprecated PR B1.7.2 — legacy EstimateItem-based per-row pricing.
    * Canonical (B1.6+) rows never create EstimateItem so this path
@@ -1065,17 +999,4 @@ export class ScopeOfWorksService {
     }
     return map;
   }
-}
-
-function inferRowType(
-  discipline: Discipline,
-  proposal: { estimatedLabourRole?: string; estimatedWasteTonnes?: Array<{ type: string }>; title: string }
-): ScopeStatus | "demolition" | "cutting" | "asbestos" | "excavation" | "waste" | "general" {
-  const title = proposal.title.toLowerCase();
-  if (discipline === "ASB") return "asbestos";
-  if (discipline === "CIV") return "excavation";
-  if (title.includes("saw") || title.includes("cut") || title.includes("core")) return "cutting";
-  if ((proposal.estimatedWasteTonnes?.length ?? 0) > 0 && title.includes("dispos")) return "waste";
-  if (discipline === "DEM") return "demolition";
-  return "general";
 }

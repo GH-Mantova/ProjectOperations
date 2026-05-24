@@ -1,7 +1,7 @@
 # ProjectOperations — Project Instructions
 # Version: 1.1
 # Created: 2026-04-25 10:02 AEST
-# Last updated: 2026-05-24 11:56 AEST
+# Last updated: 2026-05-24 12:42 AEST
 # Maintained by: Claude Code (update after any architectural decision,
 #   module addition, business rule change, or workflow change)
 # Accessed by: All Claude chats in this project via web_fetch
@@ -830,6 +830,37 @@ AI Persona System (planned — Phase 5A.1)
     six sub-modes (register, tender-detail, scope, estimate, quote,
     clarifications). Drawings are reference material; useful from
     any context.
+  - read_asbestos_register — bound to ALL six sub-modes
+    (PR G, 2026-05-24). Read-only tool that auto-detects and
+    reads the asbestos register / hazmat survey attached to a
+    tender, then extracts its content for the cross-reference
+    step the system prompt mandates before any ASB scope item is
+    proposed. Filename auto-detection via case-insensitive
+    keyword set (`asbestos register`, `asbestos survey`,
+    `asbestos report`, `hazmat`, `hazardous material`,
+    `acm survey`, `acm register`, `division 6`, `div 6`) matched
+    against both fileLink.name AND TenderDocumentLink.title.
+    Format-aware extraction: PDF text layer with
+    `isEvalSupported: false` (Dependabot #14/#15 CVE
+    mitigation), with a scanned-PDF vision fallback rendering
+    up to the first 3 pages and a hint pointing at
+    read_tender_drawing for further pages; image normalised
+    through sharp (≤1568px, JPEG q85); XLSX every sheet's
+    non-empty rows tab-delimited via exceljs; DOCX raw text via
+    mammoth (new dependency). 0/1/2+ candidate outcomes diverge:
+    0 returns a non-error "raise a clarification" message;
+    1 reads it; 2+ returns a candidate list and asks the model
+    to call again with a specific documentId. Cross-tender
+    documentId rejected with a clean error. Output capped at
+    MAX_EXTRACTED_CHARS = 60_000 with an explicit truncation
+    marker. Permission gate: tenderdocuments.view (super-users
+    bypass). Bound to all six sub-modes — register
+    cross-reference is reference material like the drawing
+    tools: scope (proposing ASB items), estimate (pricing),
+    quote (the standard "asbestos not noted in the asbestos
+    register" exclusion), tender-detail / clarifications
+    (drafting RFIs about the register). With PR G, the
+    Tendering Assistant sub-mode tooling is **complete**.
   - propose_scope_items — bound to the scope sub-mode only.
     Scope creation is sub-mode-specific work.
   - propose_estimate_items — bound to the estimate sub-mode only

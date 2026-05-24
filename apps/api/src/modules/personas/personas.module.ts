@@ -17,6 +17,7 @@ import { ProposeClarificationsHandler } from "./tools/handlers/propose-clarifica
 import { ProposeEstimateItemsHandler } from "./tools/handlers/propose-estimate-items.handler";
 import { ProposeQuoteContentHandler } from "./tools/handlers/propose-quote-content.handler";
 import { ProposeScopeItemsHandler } from "./tools/handlers/propose-scope-items.handler";
+import { ReadAsbestosRegisterHandler } from "./tools/handlers/read-asbestos-register.handler";
 import { ReadTenderDrawingHandler } from "./tools/handlers/read-tender-drawing.handler";
 import {
   GetCurrentTimeHandler,
@@ -72,6 +73,7 @@ const TENDERING_RATE_SUB_MODES = [
     ListTenderClarificationsHandler,
     ExtractDrawingTitleblockHandler,
     ReadTenderDrawingHandler,
+    ReadAsbestosRegisterHandler,
     LookupRateHandler,
     GetCurrentTimeHandler,
     GetTestImageHandler
@@ -90,6 +92,7 @@ export class PersonasModule implements OnModuleInit {
     private readonly listTenderClarifications: ListTenderClarificationsHandler,
     private readonly extractDrawingTitleblock: ExtractDrawingTitleblockHandler,
     private readonly readTenderDrawing: ReadTenderDrawingHandler,
+    private readonly readAsbestosRegister: ReadAsbestosRegisterHandler,
     private readonly lookupRate: LookupRateHandler,
     private readonly getCurrentTime: GetCurrentTimeHandler,
     private readonly getTestImage: GetTestImageHandler
@@ -107,6 +110,7 @@ export class PersonasModule implements OnModuleInit {
     this.registry.register(this.proposeClarifications);
     this.registry.register(this.listTenderQuotes);
     this.registry.register(this.listTenderClarifications);
+    this.registry.register(this.readAsbestosRegister);
     this.registry.register(this.lookupRate);
 
     // Drawing tools are reference material — useful from any Tendering
@@ -132,6 +136,20 @@ export class PersonasModule implements OnModuleInit {
     ];
     for (const sm of TENDERING_SUB_MODES) {
       this.registry.bindToSubMode(`tendering.${sm}`, drawingTools);
+    }
+
+    // §5A.1 PR G — read_asbestos_register is reference material, same
+    // shape as the drawing tools: useful from any Tendering Assistant
+    // sub-mode. Scope (proposing ASB items), estimate (pricing ASB),
+    // quote (the standard exclusion clause references "asbestos not
+    // noted in the asbestos register"), tender-detail / clarifications
+    // (drafting RFIs about the register). The register sub-mode
+    // (pipeline / tender list) has no specific tender; the tool returns
+    // a clean "needs a tender" message there, mirroring the drawing-
+    // tools convention.
+    const registerTools = [this.readAsbestosRegister.name];
+    for (const sm of TENDERING_SUB_MODES) {
+      this.registry.bindToSubMode(`tendering.${sm}`, registerTools);
     }
     // propose_scope_items lands only on the scope sub-mode.
     // bindToSubMode is idempotent (dedups), so this safely extends the

@@ -137,6 +137,38 @@ export class DrawingToolsAccessService {
       }));
   }
 
+  // §5A.1 PR G — list ALL file-backed TenderDocumentLink rows for a
+  // tender, unfiltered by MIME. listDrawingsForTender filters by the
+  // drawing-MIME set (PDF/PNG/JPEG); the asbestos-register reader needs
+  // to see XLSX/DOCX registers too. Same row shape so the new tool can
+  // share `DrawingDocumentRow` and the existing loaders/downloaders.
+  async listDocumentsForTender(tenderId: string): Promise<DrawingDocumentRow[]> {
+    const rows = await this.prisma.tenderDocumentLink.findMany({
+      where: { tenderId, fileLink: { isNot: null } },
+      include: { fileLink: true },
+      orderBy: { createdAt: "desc" }
+    });
+    return rows
+      .filter((r) => r.fileLink !== null)
+      .map((r) => ({
+        id: r.id,
+        tenderId: r.tenderId,
+        category: r.category,
+        title: r.title,
+        fileLink: r.fileLink
+          ? {
+              siteId: r.fileLink.siteId,
+              driveId: r.fileLink.driveId,
+              itemId: r.fileLink.itemId,
+              name: r.fileLink.name,
+              mimeType: r.fileLink.mimeType,
+              sizeBytes: r.fileLink.sizeBytes
+            }
+          : null,
+        createdAt: r.createdAt
+      }));
+  }
+
   async loadDocument(documentId: string): Promise<DrawingDocumentRow | null> {
     const row = await this.prisma.tenderDocumentLink.findUnique({
       where: { id: documentId },

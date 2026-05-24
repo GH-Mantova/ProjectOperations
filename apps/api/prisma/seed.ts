@@ -37,6 +37,71 @@ function hashPassword(password: string) {
 // hermetic. For richer demo material see roadmap.md PHASE 6 entry.
 // Pdfkit's stream-to-buffer flow uses event listeners, so wrap in
 // a Promise.
+// §5A.1 PR G — synthetic asbestos register PDF for the BGS demo
+// tender, so the new read_asbestos_register tool has something to
+// detect + read end-to-end. Realistic ACM table rows (location,
+// material, class, condition, qty) so the model can cross-reference.
+function generateSyntheticAsbestosRegister(opts: {
+  project: string;
+  client: string;
+  surveyDate: string;
+  rows: Array<{
+    ref: string;
+    location: string;
+    material: string;
+    acmType: string;
+    friable: "Friable" | "Non-friable";
+    condition: string;
+    approxQty: string;
+  }>;
+}): Promise<Buffer> {
+  return new Promise<Buffer>((resolveBuf, rejectBuf) => {
+    const doc = new PDFDocument({ size: "A4", margin: 36 });
+    const chunks: Buffer[] = [];
+    doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+    doc.on("end", () => resolveBuf(Buffer.concat(chunks)));
+    doc.on("error", rejectBuf);
+
+    doc.fontSize(14).text("ASBESTOS REGISTER / HAZMAT SURVEY", { align: "left" });
+    doc.moveDown(0.3);
+    doc.fontSize(10).text(`Project: ${opts.project}`);
+    doc.text(`Client:  ${opts.client}`);
+    doc.text(`Survey date: ${opts.surveyDate}`);
+    doc.moveDown(0.5);
+    doc.fontSize(9).text(
+      "This register identifies asbestos-containing materials (ACM) " +
+        "and is the authoritative reference for the ASB scope of any " +
+        "demolition or refurbishment works on this site. Cross-reference " +
+        "every proposed ASB line item against the entries below."
+    );
+    doc.moveDown(0.7);
+
+    // Header row
+    doc.fontSize(9);
+    const headers = ["Ref", "Location", "Material", "ACM Type", "Class", "Condition", "Approx Qty"];
+    doc.text(headers.join(" | "));
+    doc.text("-".repeat(110));
+
+    for (const r of opts.rows) {
+      doc.text(
+        [r.ref, r.location, r.material, r.acmType, r.friable, r.condition, r.approxQty].join(
+          " | "
+        )
+      );
+    }
+
+    doc.moveDown(0.7);
+    doc.fontSize(8).text(
+      "Notes: Quantities are indicative. Class B materials may be " +
+        "removed under standard non-friable controls; Class A (friable) " +
+        "requires Class A licence + full encapsulation. Refer to AS 2601 " +
+        "and the SafeWork QLD Code of Practice for removal methodology."
+    );
+
+    doc.end();
+  });
+}
+
 function generateSyntheticDrawing(opts: {
   drawingNumber: string;
   title: string;
@@ -1481,6 +1546,109 @@ async function main() {
     });
 
     await persistMockFileBytes(bgsDrawingFileItemId, bgsDrawingBytes);
+
+    // §5A.1 PR G — synthetic asbestos register PDF for the BGS demo
+    // tender. Filename hits the read_asbestos_register detection keyword
+    // set (`asbestos register`, `hazmat`). Shares the bgsDrawingFolder so
+    // it lands alongside the drawings.
+    const bgsRegisterFileItemId = "mock-file-tender-bgs-t020-asbestos-register";
+    const bgsRegisterBytes = await generateSyntheticAsbestosRegister({
+      project: "IS-T020 Brisbane Grammar School Science Block",
+      client: "Brisbane Grammar School",
+      surveyDate: "15.04.2026",
+      rows: [
+        {
+          ref: "ACM-01",
+          location: "Level 1 plant room - pipe lagging",
+          material: "Pipe insulation",
+          acmType: "Amosite",
+          friable: "Friable",
+          condition: "Damaged",
+          approxQty: "12 lm"
+        },
+        {
+          ref: "ACM-02",
+          location: "Level 1 ceiling cavity above lab 1.04",
+          material: "Vinyl floor tile 9\"x9\"",
+          acmType: "Chrysotile",
+          friable: "Non-friable",
+          condition: "Stable",
+          approxQty: "48 sqm"
+        },
+        {
+          ref: "ACM-03",
+          location: "Roof - eaves soffit lining (south wing)",
+          material: "Super-6 cement sheeting",
+          acmType: "Chrysotile",
+          friable: "Non-friable",
+          condition: "Weathered",
+          approxQty: "110 sqm"
+        },
+        {
+          ref: "ACM-04",
+          location: "Level 2 wet area - vinyl skirting",
+          material: "Vinyl skirting + adhesive",
+          acmType: "Chrysotile",
+          friable: "Non-friable",
+          condition: "Good",
+          approxQty: "65 lm"
+        }
+      ]
+    });
+    const bgsRegisterSizeBytes = bgsRegisterBytes.byteLength;
+
+    const bgsRegisterFile = await prisma.sharePointFileLink.upsert({
+      where: {
+        siteId_driveId_itemId: {
+          siteId: "project-operations-site",
+          driveId: "project-operations-library",
+          itemId: bgsRegisterFileItemId
+        }
+      },
+      update: {
+        folderLinkId: bgsDrawingFolder.id,
+        name: "BGS-T020 Asbestos Register - Hazmat Survey.pdf",
+        relativePath: `${bgsDrawingFolder.relativePath}/BGS-T020 Asbestos Register - Hazmat Survey.pdf`,
+        webUrl: `https://sharepoint.local/${bgsDrawingFolder.relativePath}/BGS-T020 Asbestos Register - Hazmat Survey.pdf`,
+        sizeBytes: bgsRegisterSizeBytes,
+        linkedEntityType: "Tender",
+        linkedEntityId: bgsTender.id
+      },
+      create: {
+        folderLinkId: bgsDrawingFolder.id,
+        siteId: "project-operations-site",
+        driveId: "project-operations-library",
+        itemId: bgsRegisterFileItemId,
+        name: "BGS-T020 Asbestos Register - Hazmat Survey.pdf",
+        relativePath: `${bgsDrawingFolder.relativePath}/BGS-T020 Asbestos Register - Hazmat Survey.pdf`,
+        webUrl: `https://sharepoint.local/${bgsDrawingFolder.relativePath}/BGS-T020 Asbestos Register - Hazmat Survey.pdf`,
+        mimeType: "application/pdf",
+        sizeBytes: bgsRegisterSizeBytes,
+        linkedEntityType: "Tender",
+        linkedEntityId: bgsTender.id
+      }
+    });
+
+    await prisma.tenderDocumentLink.upsert({
+      where: { id: "seed-tender-document-bgs-asbestos-register" },
+      update: {
+        tenderId: bgsTender.id,
+        category: "tender",
+        title: "Asbestos Register / Hazmat Survey",
+        folderLinkId: bgsDrawingFolder.id,
+        fileLinkId: bgsRegisterFile.id
+      },
+      create: {
+        id: "seed-tender-document-bgs-asbestos-register",
+        tenderId: bgsTender.id,
+        category: "tender",
+        title: "Asbestos Register / Hazmat Survey",
+        folderLinkId: bgsDrawingFolder.id,
+        fileLinkId: bgsRegisterFile.id
+      }
+    });
+
+    await persistMockFileBytes(bgsRegisterFileItemId, bgsRegisterBytes);
 
     // Scope cards (PR A2) — one per discipline that has items. Created
     // BEFORE scope items so each item's cardId can reference the parent

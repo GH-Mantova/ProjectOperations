@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-24 04:17 AEST
+Last updated: 2026-05-24 04:18 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -6341,7 +6341,7 @@ Status: IN_PROGRESS
 ## 2026-05-24 14:00 AEST — PR feat/lookup-rate-remaining-types OPENED
 Type: PR ([5A.1] PR H — extend lookup_rate to all rate types)
 Branch: feat/lookup-rate-remaining-types
-PR: #[N]
+PR: #214 (https://github.com/GH-Mantova/ProjectOperations/pull/214)
 Status: WAITING_CI
 Detail: 5 file changes (3 source + 3 doc — one file overlaps the
   two categories: progress.md gets the #213 MERGED entry plus this

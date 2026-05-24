@@ -2,12 +2,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import {
   appendAssistantMessage,
+  appendEstimateProposalsMessage,
   appendProposalsMessage,
   appendUserMessage,
   buildRetryHistory,
   readSSEStream,
   toApiMessages,
+  updateEstimateProposalsMessage,
   updateProposalsMessage,
+  type ChatEstimateProposal,
   type ChatMessage,
   type ChatProposal,
   type ChatStatus
@@ -211,6 +214,20 @@ export function useStreamingChat(
             const event = chunk;
             setMessages((prev) =>
               appendProposalsMessage(prev, event.messageId, event.proposals)
+            );
+          } else if (chunk.type === "estimate_proposals") {
+            // §5A.1 PR D — estimate-item proposal tool_result row. Same
+            // flush-assistant-text-first pattern as scope proposals, but
+            // routed to the dedicated EstimateProposalCardList via the
+            // "estimate-proposals" message role.
+            if (accumulated.length > 0) {
+              setMessages((prev) => appendAssistantMessage(prev, accumulated));
+              accumulated = "";
+              setCurrentResponse("");
+            }
+            const event = chunk;
+            setMessages((prev) =>
+              appendEstimateProposalsMessage(prev, event.messageId, event.proposals)
             );
           } else if (chunk.type === "error") {
             throw new Error(chunk.error);
@@ -448,6 +465,117 @@ export function useStreamingChat(
     [authFetch]
   );
 
+  // §5A.1 PR D — estimate-proposal accept/reject helpers wired to the
+  // /personas/tendering/estimate-proposals/* endpoints. Parallel to the
+  // scope-proposal helpers above; they update an "estimate-proposals"
+  // message in the local history rather than a "proposals" one.
+  const acceptEstimateProposal = useCallback(
+    async (
+      messageId: string,
+      proposalIndex: number,
+      edits?: Partial<ChatEstimateProposal>
+    ): Promise<{ ok: boolean; estimateItemId?: string; error?: string }> => {
+      const res = await authFetch(
+        `/personas/tendering/estimate-proposals/${messageId}/accept`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ proposalIndex, ...(edits ?? {}) })
+        }
+      );
+      if (!res.ok) {
+        let detail = `${res.status}`;
+        try {
+          const text = await res.text();
+          if (text) detail = text;
+        } catch {
+          // ignore
+        }
+        return { ok: false, error: detail };
+      }
+      const body = (await res.json()) as { ok: boolean; estimateItemId?: string };
+      const decidedAt = new Date().toISOString();
+      setMessages((prev) =>
+        updateEstimateProposalsMessage(prev, messageId, (proposals) =>
+          proposals.map((p) =>
+            p.index === proposalIndex
+              ? {
+                  ...p,
+                  ...(edits ?? {}),
+                  status: "accepted",
+                  acceptedEstimateItemId: body.estimateItemId,
+                  decidedAt
+                }
+              : p
+          )
+        )
+      );
+      return { ok: true, estimateItemId: body.estimateItemId };
+    },
+    [authFetch]
+  );
+
+  const rejectEstimateProposal = useCallback(
+    async (messageId: string, proposalIndex: number): Promise<boolean> => {
+      const res = await authFetch(
+        `/personas/tendering/estimate-proposals/${messageId}/reject`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ proposalIndex })
+        }
+      );
+      if (!res.ok) return false;
+      const decidedAt = new Date().toISOString();
+      setMessages((prev) =>
+        updateEstimateProposalsMessage(prev, messageId, (proposals) =>
+          proposals.map((p) =>
+            p.index === proposalIndex ? { ...p, status: "rejected", decidedAt } : p
+          )
+        )
+      );
+      return true;
+    },
+    [authFetch]
+  );
+
+  const acceptAllPendingEstimateProposals = useCallback(
+    async (messageId: string): Promise<{ accepted: number; failed: number }> => {
+      const res = await authFetch(
+        `/personas/tendering/estimate-proposals/${messageId}/accept-all`,
+        { method: "POST" }
+      );
+      if (!res.ok) return { accepted: 0, failed: 0 };
+      const body = (await res.json()) as { accepted: number; failed: number };
+      if (conversationIdRef.current) {
+        await loadConversation(conversationIdRef.current);
+      }
+      return { accepted: body.accepted, failed: body.failed };
+    },
+    [authFetch, loadConversation]
+  );
+
+  const rejectAllPendingEstimateProposals = useCallback(
+    async (messageId: string): Promise<number> => {
+      const res = await authFetch(
+        `/personas/tendering/estimate-proposals/${messageId}/reject-all`,
+        { method: "POST" }
+      );
+      if (!res.ok) return 0;
+      const body = (await res.json()) as { rejected: number };
+      const decidedAt = new Date().toISOString();
+      setMessages((prev) =>
+        updateEstimateProposalsMessage(prev, messageId, (proposals) =>
+          proposals.map((p) =>
+            p.status === "pending" ? { ...p, status: "rejected", decidedAt } : p
+          )
+        )
+      );
+      return body.rejected;
+    },
+    [authFetch]
+  );
+
   const deleteConversation = useCallback(
     async (id: string): Promise<boolean> => {
       if (!personaSlug) return false;
@@ -481,7 +609,11 @@ export function useStreamingChat(
     acceptProposal,
     rejectProposal,
     acceptAllPending,
-    rejectAllPending
+    rejectAllPending,
+    acceptEstimateProposal,
+    rejectEstimateProposal,
+    acceptAllPendingEstimateProposals,
+    rejectAllPendingEstimateProposals
   };
 }
 
@@ -490,12 +622,21 @@ export function useStreamingChat(
 // text and the tool_result-as-proposals; tool_call rows are filtered out
 // (no UI surface for them). Out-of-order or malformed metadata falls back
 // to skip rather than crash.
+// §5A.1 PR D extends the dispatch: estimate-proposal tool_result rows
+// carry a `toolName: "propose_estimate_items"` discriminator that
+// scope-proposal rows lack — branch on that to build the right shape.
 export function rebuildMessagesFromHistory(
   rows: Array<{
     id: string;
     role: string;
     content: string;
-    metadata?: { toolUseId?: string; proposals?: ChatProposal[] } | null;
+    metadata?:
+      | {
+          toolUseId?: string;
+          toolName?: string;
+          proposals?: ChatProposal[] | ChatEstimateProposal[];
+        }
+      | null;
   }>
 ): ChatMessage[] {
   const out: ChatMessage[] = [];
@@ -503,7 +644,19 @@ export function rebuildMessagesFromHistory(
     if (row.role === "user" || row.role === "assistant") {
       out.push({ role: row.role, content: row.content });
     } else if (row.role === "tool_result" && Array.isArray(row.metadata?.proposals)) {
-      out.push({ role: "proposals", messageId: row.id, proposals: row.metadata!.proposals! });
+      if (row.metadata?.toolName === "propose_estimate_items") {
+        out.push({
+          role: "estimate-proposals",
+          messageId: row.id,
+          proposals: row.metadata!.proposals as ChatEstimateProposal[]
+        });
+      } else {
+        out.push({
+          role: "proposals",
+          messageId: row.id,
+          proposals: row.metadata!.proposals as ChatProposal[]
+        });
+      }
     }
     // tool_call rows: dropped intentionally — no client-side UI.
   }

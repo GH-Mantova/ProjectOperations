@@ -1,7 +1,7 @@
 # ProjectOperations — Project Instructions
 # Version: 1.1
 # Created: 2026-04-25 10:02 AEST
-# Last updated: 2026-05-24 04:17 AEST
+# Last updated: 2026-05-24 05:01 AEST
 # Maintained by: Claude Code (update after any architectural decision,
 #   module addition, business rule change, or workflow change)
 # Accessed by: All Claude chats in this project via web_fetch
@@ -832,6 +832,27 @@ AI Persona System (planned — Phase 5A.1)
     any context.
   - propose_scope_items — bound to the scope sub-mode only.
     Scope creation is sub-mode-specific work.
+  - propose_estimate_items — bound to the estimate sub-mode only
+    (PR D, 2026-05-24). Estimate-creation parallel to
+    propose_scope_items: proposes whole estimate items
+    (EstimateItem header + optional labour/plant/cutting/waste
+    cost-line groups) for Accept/Edit/Reject. The estimate
+    sub-mode is NO LONGER read-only as of PR D. Backing models:
+    TenderEstimate (GET-OR-CREATE per tender), EstimateItem,
+    EstimateLabourLine, EstimatePlantLine, EstimateCuttingLine,
+    EstimateWasteLine. EstimateEquipLine and EstimateAssumption
+    are intentionally NOT part of the proposal shape — the
+    estimator adds them manually post-accept if needed. The
+    tool_result row's metadata carries a
+    toolName="propose_estimate_items" discriminator so the
+    frontend's rebuildMessagesFromHistory distinguishes it from
+    the legacy scope-proposal rows. The system prompt mandates
+    that the model call lookup_rate for every rate
+    (rate / tonRate / loadRate) BEFORE proposing — never invent
+    a rate; the GLOBAL_RATE_FABRICATION_PROHIBITION and
+    RATE_LOOKUP MANDATORY POLICY blocks apply in full. SSE
+    event name is "estimate_proposals" (distinct from the
+    scope-proposal "proposals" event).
   - lookup_rate — bound to ALL FIVE tender-scoped Tendering
     sub-modes (tender-detail, scope, estimate, quote,
     clarifications) since PR #149. Register sub-mode (tender

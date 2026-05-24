@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-24 04:17 AEST
+Last updated: 2026-05-24 05:01 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -291,8 +291,11 @@ route (scope mode = drafting tools; quote mode = advisory; etc.).
    Remaining in this Item 5 sub-area:
    - ✅ PR B (shipped 2026-05-24): legacy "Draft scope with Claude"
      code path deleted. See §5A.1 PR B changelog entry below.
-   - PR D: estimate creation tool (uses lookup_rate to populate
-     estimate item rates from live schedule values).
+   - ✅ PR D (shipped 2026-05-24): propose_estimate_items —
+     estimate-creation tool. Mirrors propose_scope_items end-to-end;
+     bound to the estimate sub-mode only; system prompt mandates
+     lookup_rate first for every rate. See §5A.1 PR D changelog entry
+     below.
    - PR E: quote generation tool.
    - PR F: clarifications mode tool.
    - PR G: asbestos register reading + cross-reference logic
@@ -1822,6 +1825,65 @@ Bindings unchanged: lookup_rate stays bound to the same five
 tender-scoped sub-modes (tender-detail, scope, estimate, quote,
 clarifications). Register sub-mode stays unbound — same rationale
 as PR #149: no specific tender from which to ask for rates.
+
+No new dependencies. No new env vars. No migrations.
+
+### 2026-05-24 — §5A.1 PR D: propose_estimate_items shipped
+Adds the Tendering Assistant's estimate-creation tool, mirroring
+propose_scope_items end-to-end. The estimate sub-mode is no longer
+read-only: the model proposes whole estimate items (header + optional
+labour/plant/cutting/waste cost-line groups), and the user reviews
+each as a card with Accept / Edit / Reject buttons. No schema changes
+— TenderEstimate, EstimateItem, and the four cost-line tables already
+exist; this PR is purely new tool + service + handler + controller +
+frontend code.
+
+Backend: new propose-estimate-items.tool.ts (JSON schema + types),
+new EstimateProposalsService (store + accept + reject + bulk; GET-OR-
+CREATE TenderEstimate idempotent with createEstimateItemFromScope;
+rejects when estimate is locked), new ProposeEstimateItemsHandler
+(emits SSE event="estimate_proposals"), new EstimateProposalsController
+(POST /personas/tendering/estimate-proposals/:messageId/accept | reject
+| accept-all | reject-all, ai.persona.tendering guard). The
+tool_result metadata carries a toolName="propose_estimate_items"
+discriminator so the service AND the frontend rebuild logic can
+distinguish estimate-proposal rows from the legacy scope-proposal
+rows that lack the field. EstimateEquipLine and EstimateAssumption
+are intentionally out of scope — the estimator can add them manually
+after acceptance.
+
+System prompt: ESTIMATE_SUBMODE_PROMPT rewritten. The model is
+instructed to call lookup_rate for every rate it intends to put on a
+cost line BEFORE calling propose_estimate_items; if a lookup returns
+no match, the model must not invent a rate — it must surface the gap
+to the user and either skip the line or wait for the rate to be added
+to the schedule. The GLOBAL_RATE_FABRICATION_PROHIBITION baseline and
+the RATE_LOOKUP MANDATORY POLICY block remain unchanged — the new
+prompt extends them with estimate-creation-specific guidance.
+
+Frontend: new EstimateProposalCardList component parallel to
+ProposalCardList, rendering the richer estimate-item shape (header
++ collapsible cost-line groups). chat-helpers gains
+ChatEstimateProposal + ChatEstimateProposalsMessage types, the
+ChatMessage and SSEChunk unions widen, parseSSEEvent learns the
+"estimate_proposals" event, and a parallel pair of
+appendEstimateProposalsMessage / updateEstimateProposalsMessage
+helpers ships alongside the existing scope-proposal helpers.
+use-streaming-chat handles the new SSE event, exposes accept /
+reject / acceptAll / rejectAll callbacks wired to the new endpoints,
+and the rebuildMessagesFromHistory function branches on
+metadata.toolName so estimate-proposal rows survive a page reload.
+MessageList + ChatPanel route the new message role to the new card
+list. The legacy scope-proposals UI is untouched and unchanged.
+
+Bindings unchanged structurally but extended: lookup_rate stays
+bound to the same five tender-scoped sub-modes per PR #149;
+propose_scope_items stays bound to the scope sub-mode only;
+propose_estimate_items is bound to the estimate sub-mode only —
+mirroring the propose_scope_items per-sub-mode discipline.
+
+Closes the last code-bearing Item 5 sub-task in §5A.1. PRs E/F/G/H
+are now the only remaining items (H is shipped; E/F/G remain).
 
 No new dependencies. No new env vars. No migrations.
 

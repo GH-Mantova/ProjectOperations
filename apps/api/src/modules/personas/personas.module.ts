@@ -11,6 +11,7 @@ import { DrawingToolsAccessService } from "./tools/handlers/drawing-tools.shared
 import { ExtractDrawingTitleblockHandler } from "./tools/handlers/extract-drawing-titleblock.handler";
 import { ListTenderDrawingsHandler } from "./tools/handlers/list-tender-drawings.handler";
 import { LookupRateHandler } from "./tools/handlers/lookup-rate.handler";
+import { ProposeEstimateItemsHandler } from "./tools/handlers/propose-estimate-items.handler";
 import { ProposeScopeItemsHandler } from "./tools/handlers/propose-scope-items.handler";
 import { ReadTenderDrawingHandler } from "./tools/handlers/read-tender-drawing.handler";
 import {
@@ -59,6 +60,7 @@ const TENDERING_RATE_SUB_MODES = [
     PersonaDispatcherService,
     DrawingToolsAccessService,
     ProposeScopeItemsHandler,
+    ProposeEstimateItemsHandler,
     ListTenderDrawingsHandler,
     ExtractDrawingTitleblockHandler,
     ReadTenderDrawingHandler,
@@ -72,6 +74,7 @@ export class PersonasModule implements OnModuleInit {
   constructor(
     private readonly registry: ToolHandlerRegistry,
     private readonly proposeScopeItems: ProposeScopeItemsHandler,
+    private readonly proposeEstimateItems: ProposeEstimateItemsHandler,
     private readonly listTenderDrawings: ListTenderDrawingsHandler,
     private readonly extractDrawingTitleblock: ExtractDrawingTitleblockHandler,
     private readonly readTenderDrawing: ReadTenderDrawingHandler,
@@ -87,6 +90,7 @@ export class PersonasModule implements OnModuleInit {
     this.registry.register(this.extractDrawingTitleblock);
     this.registry.register(this.readTenderDrawing);
     this.registry.register(this.proposeScopeItems);
+    this.registry.register(this.proposeEstimateItems);
     this.registry.register(this.lookupRate);
 
     // Drawing tools are reference material — useful from any Tendering
@@ -119,6 +123,14 @@ export class PersonasModule implements OnModuleInit {
     this.registry.bindToSubMode("tendering.scope", [
       ...drawingTools,
       this.proposeScopeItems.name
+    ]);
+
+    // §5A.1 PR D — propose_estimate_items lands only on the estimate
+    // sub-mode. Same per-sub-mode-restriction rationale as
+    // propose_scope_items: estimate-creation work belongs in the
+    // estimate tab, not the scope/quote/clarifications tabs.
+    this.registry.bindToSubMode("tendering.estimate", [
+      this.proposeEstimateItems.name
     ]);
 
     // PR #149 — lookup_rate is bound to ALL tender-scoped tendering

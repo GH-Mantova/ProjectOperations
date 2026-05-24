@@ -47,7 +47,78 @@ export type ChatProposalsMessage = {
   proposals: ChatProposal[];
 };
 
-export type ChatMessage = ChatTextMessage | ChatProposalsMessage;
+// §5A.1 PR D — estimate-item proposal types, parallel to ChatProposal /
+// ChatProposalsMessage. Shape mirrors StoredEstimateProposal on the
+// backend; the chat surface receives them via the "estimate_proposals"
+// SSE event (distinct from scope proposals' "proposals" event).
+export type IsDisciplineCode = "DEM" | "CIV" | "ASB" | "Other";
+
+export type ChatEstimateLabourLine = {
+  role: string;
+  qty: number;
+  days: number;
+  shift: "Day" | "Night" | "Weekend";
+  rate: number;
+};
+
+export type ChatEstimatePlantLine = {
+  plantItem: string;
+  qty: number;
+  days: number;
+  comment?: string;
+  rate: number;
+};
+
+export type ChatEstimateCuttingLine = {
+  cuttingType: string;
+  equipment?: string;
+  elevation?: string;
+  material?: string;
+  depthMm?: number;
+  diameterMm?: number;
+  qty: number;
+  unit: string;
+  comment?: string;
+  rate: number;
+};
+
+export type ChatEstimateWasteLine = {
+  wasteGroup?: string;
+  wasteType: string;
+  facility: string;
+  qtyTonnes: number;
+  tonRate: number;
+  loads: number;
+  loadRate: number;
+};
+
+export type ChatEstimateProposal = {
+  index: number;
+  code: IsDisciplineCode;
+  title: string;
+  description?: string;
+  markup?: number;
+  isProvisional?: boolean;
+  provisionalAmount?: number;
+  labourLines?: ChatEstimateLabourLine[];
+  plantLines?: ChatEstimatePlantLine[];
+  cuttingLines?: ChatEstimateCuttingLine[];
+  wasteLines?: ChatEstimateWasteLine[];
+  status: ProposalStatus;
+  acceptedEstimateItemId?: string;
+  decidedAt?: string;
+};
+
+export type ChatEstimateProposalsMessage = {
+  role: "estimate-proposals";
+  messageId: string;
+  proposals: ChatEstimateProposal[];
+};
+
+export type ChatMessage =
+  | ChatTextMessage
+  | ChatProposalsMessage
+  | ChatEstimateProposalsMessage;
 
 export type ChatStatus = "idle" | "streaming" | "error";
 
@@ -56,7 +127,12 @@ export type SSEChunk =
   | { type: "error"; error: string }
   | { type: "done" }
   | { type: "conversation"; conversationId: string }
-  | { type: "proposals"; messageId: string; proposals: ChatProposal[] };
+  | { type: "proposals"; messageId: string; proposals: ChatProposal[] }
+  | {
+      type: "estimate_proposals";
+      messageId: string;
+      proposals: ChatEstimateProposal[];
+    };
 
 // Send button is active only when the user has typed something AND we're not
 // currently streaming a response back.
@@ -90,6 +166,29 @@ export function updateProposalsMessage(
 ): ChatMessage[] {
   return history.map((m) => {
     if (m.role !== "proposals" || m.messageId !== messageId) return m;
+    return { ...m, proposals: updater(m.proposals) };
+  });
+}
+
+// §5A.1 PR D — estimate-proposal helpers, parallel to the scope-proposal
+// helpers above. The two flows are independent: an estimate_proposals
+// SSE event creates an "estimate-proposals" message row; scope proposals
+// create "proposals" rows. Accept/edit/reject hits different endpoints.
+export function appendEstimateProposalsMessage(
+  history: ChatMessage[],
+  messageId: string,
+  proposals: ChatEstimateProposal[]
+): ChatMessage[] {
+  return [...history, { role: "estimate-proposals", messageId, proposals }];
+}
+
+export function updateEstimateProposalsMessage(
+  history: ChatMessage[],
+  messageId: string,
+  updater: (proposals: ChatEstimateProposal[]) => ChatEstimateProposal[]
+): ChatMessage[] {
+  return history.map((m) => {
+    if (m.role !== "estimate-proposals" || m.messageId !== messageId) return m;
     return { ...m, proposals: updater(m.proposals) };
   });
 }
@@ -177,6 +276,22 @@ export function parseSSEEvent(rawEvent: string): SSEChunk[] {
     Array.isArray(obj.proposals)
   ) {
     return [{ type: "proposals", messageId: obj.messageId, proposals: obj.proposals }];
+  }
+  // §5A.1 PR D — estimate-proposals SSE event. Distinct wire type from
+  // "proposals" so the frontend routes the payload to the dedicated
+  // EstimateProposalCardList without coupling to the scope shape.
+  if (
+    obj.type === "estimate_proposals" &&
+    typeof obj.messageId === "string" &&
+    Array.isArray(obj.proposals)
+  ) {
+    return [
+      {
+        type: "estimate_proposals",
+        messageId: obj.messageId,
+        proposals: obj.proposals as unknown as ChatEstimateProposal[]
+      }
+    ];
   }
   return [];
 }

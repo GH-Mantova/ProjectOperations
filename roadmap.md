@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-19 05:56 AEST
+Last updated: 2026-05-24 03:08 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -289,7 +289,8 @@ route (scope mode = drafting tools; quote mode = advisory; etc.).
    + forbidden-pattern check); 432 passing total.
 
    Remaining in this Item 5 sub-area:
-   - PR B: delete legacy "Draft scope with Claude" code path.
+   - ✅ PR B (shipped 2026-05-24): legacy "Draft scope with Claude"
+     code path deleted. See §5A.1 PR B changelog entry below.
    - PR D: estimate creation tool (uses lookup_rate to populate
      estimate item rates from live schedule values).
    - PR E: quote generation tool.
@@ -1724,3 +1725,43 @@ consultant drawings would land via UI upload or a future
 seed-fixtures/optional/ directory). Drawing-tools sub-task gates
 (PR #142 + #143 + #144 + #145 + #146) now all complete pending
 Marco's fresh-conversation smoke from re-seeded state.
+
+### 2026-05-24 — §5A.1 PR B: legacy "Draft scope with Claude" path deleted
+Closes the carry-forward from §5A.1 PR 8 (PR #132), which migrated AI
+scope drafting onto the Tendering Assistant persona but left the
+standalone endpoint + button alongside the new path. PR B removes the
+dead path now that the persona-based propose_scope_items tool is the
+canonical entry point.
+
+Backend deletions: tender-scope-drafting.controller.ts +
+tender-scope-drafting.service.ts + the entire
+apps/api/src/modules/tendering/ai-providers/ subdirectory
+(ai-provider.interface.ts, claude.provider.ts, openai.provider.ts —
+used only by the deleted service). TenderingModule loses its
+TenderScopeDraftingController/Service entries and its AiProvidersModule
+import (no longer consumed anywhere in the tendering module
+directory).
+
+Frontend deletions: TenderDocumentsPanel.tsx loses the
+onDraftRequest / drafting / draftBadgeState / showInlineUploadOnly
+props, the draftButtonTooltip helper, the .draft-scope-panel JSX
+block, and the now-orphaned hasReadableDoc memo + READABLE_PATTERN
+constant + useMemo import. TenderDetailPage.tsx loses the drafting /
+draftToast useState pair, the runDraft / requestDraft useCallbacks,
+the panel-prop pass-through, the draftToast render block, and the
+stale PR #44 retirement comment. styles.css loses the 9
+.draft-scope-* CSS rules; section header on the surviving
+doc-upload-* rules updated to "Tender documents upload".
+
+Test edits: intrinsic-prompt.spec.ts loses the
+SCOPE_DRAFTING_SYSTEM_PROMPT import and the "PR #152 Site 2"
+describe block. Header comment updated to reflect a single
+runtime assembly site (intrinsicPrompt). project_instructions.md
+§13 PR #152 paragraph rewritten to match (one site, with the
+historical context preserved in parentheses).
+
+No new dependencies. No new env vars. No migrations. The closed
+dependency cluster was verified by grepping the apps/ tree for
+every removed identifier — no consumer remained outside the deleted
+files.
+

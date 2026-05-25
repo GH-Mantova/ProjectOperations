@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-25 02:56 AEST
+Last updated: 2026-05-25 06:32 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -2171,4 +2171,12 @@ footers with page numbers. All dynamic values HTML-escaped.
 pdfkit dependency kept (persona test fixtures). 9 new tests.
 Sample PDFs at docs/samples/ for Sean's visual sign-off.
 No new dependencies. No new env vars. No migration.
+
+### 2026-05-25 — §5A.2 fix-forward: repeating header + acceptance page-break
+
+Recovers commit 70b4d98, which the PR #221 squash merge missed.
+CSS position:fixed header band repeats on every printed page (was
+absent from the T&C overflow page). Acceptance/signature block wrapped
+in break-inside:avoid so it never splits across a page boundary.
+Sample PDFs regenerated with the fix applied.
 

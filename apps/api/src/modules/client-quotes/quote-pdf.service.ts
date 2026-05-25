@@ -135,7 +135,7 @@ export class QuotePdfService {
       displayHeaderFooter: true,
       headerHtml: headerTemplate(overlay.quoteRef),
       footerHtml: footerTemplate(),
-      margin: { top: "30mm" },
+      margin: { top: "35mm", bottom: "22mm" },
     });
 
     const filename = `IS_Quote_${quote.quoteRef.replace(/[^A-Za-z0-9_-]/g, "_")}.pdf`;

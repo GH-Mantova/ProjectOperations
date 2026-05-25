@@ -237,19 +237,31 @@ describe("Quote HTML builder", () => {
     expect(html).toContain("Contingency");
   });
 
-  it("provides a header template with branding and quote ref", () => {
+  it("provides a header template with branding, quote ref, and document control", () => {
     const header = headerTemplate("IS-T020");
     expect(header).toContain("INITIAL SERVICES");
     expect(header).toContain("Demolition Licence: 2328018");
     expect(header).toContain("Quote No. IS-T020");
     expect(header).toContain("data:image/png;base64,");
+    expect(header).toContain("Electronic document");
+    expect(header).toContain("Uncontrolled when printed");
+    expect(header).toContain("-webkit-print-color-adjust:exact");
   });
 
-  it("provides a footer template with page numbers", () => {
+  it("provides a footer template with page numbers and teal branding", () => {
     const footer = footerTemplate();
     expect(footer).toContain("pageNumber");
     expect(footer).toContain("totalPages");
     expect(footer).toContain("admin@initialservices.net");
+    expect(footer).toContain("#005B61");
+    expect(footer).toContain("-webkit-print-color-adjust:exact");
+  });
+
+  it("does not append stray parenthesis to cost summary labels", () => {
+    const overlay = makeOverlay();
+    const html = buildQuoteHtml(basePayload(), overlay);
+    expect(html).not.toMatch(/>A\)<\/td>/);
+    expect(html).toContain(">A</td>");
   });
 });
 
@@ -273,7 +285,7 @@ describe("Quote HTML → PDF (integration)", () => {
       displayHeaderFooter: true,
       headerHtml: headerTemplate("IS-T020"),
       footerHtml: footerTemplate(),
-      margin: { top: "30mm" },
+      margin: { top: "35mm", bottom: "22mm" },
     });
     expect(buf).toBeInstanceOf(Buffer);
     expect(buf.subarray(0, 5).toString("ascii")).toBe("%PDF-");
@@ -291,7 +303,7 @@ describe("Quote HTML → PDF (integration)", () => {
       displayHeaderFooter: true,
       headerHtml: headerTemplate("IS-Q001"),
       footerHtml: footerTemplate(),
-      margin: { top: "30mm" },
+      margin: { top: "35mm", bottom: "22mm" },
     });
     expect(buf).toBeInstanceOf(Buffer);
     expect(buf.subarray(0, 5).toString("ascii")).toBe("%PDF-");

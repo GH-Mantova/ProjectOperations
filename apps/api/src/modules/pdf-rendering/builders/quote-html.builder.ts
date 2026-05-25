@@ -132,7 +132,7 @@ function css(): string {
 
 @page {
   size: A4;
-  margin: 25mm 15mm 20mm 15mm;
+  margin: 35mm 15mm 22mm 15mm;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -378,7 +378,7 @@ function coverPage(
   if (overlay) {
     for (const line of overlay.costLines) {
       nonProv.push({
-        code: `${line.label})`,
+        code: line.label,
         label: line.description,
         amount: line.price,
       });
@@ -431,7 +431,7 @@ function coverPage(
 <tbody>`;
     overlay.costOptions.forEach((o, i) => {
       const cls = i % 2 === 1 ? ' class="alt"' : "";
-      html += `<tr${cls}><td>${esc(o.label)})</td><td>${esc(o.description)}</td><td class="right">${esc(fmtCurrency(o.price))}</td></tr>`;
+      html += `<tr${cls}><td>${esc(o.label)}</td><td>${esc(o.description)}</td><td class="right">${esc(fmtCurrency(o.price))}</td></tr>`;
     });
     html += `</tbody></table>`;
   }
@@ -504,12 +504,12 @@ function coverPage(
   return html;
 }
 
-// ── Page 2: Scope of Works ──────────────────────────────────────────
-function scopePage(
+// ── Scope of Works section (flows after cover page — no forced page break) ──
+function scopeSection(
   p: ExportPayload,
   overlay: QuoteOverlay | null,
 ): string {
-  let html = `<div class="page-break"></div>`;
+  let html = "";
 
   // Preliminary works
   html += `<div class="section-heading">Preliminary Works</div>`;
@@ -784,18 +784,25 @@ function acceptanceBlock(p: ExportPayload): string {
 // ── Puppeteer header/footer templates ───────────────────────────────
 function headerTemplate(quoteRef: string): string {
   const logo = logoBase64();
-  return `<div style="width:100%;background:${BRAND.teal};color:#fff;padding:4pt 15mm 6pt 15mm;display:flex;align-items:center;gap:8pt;font-family:Helvetica,Arial,sans-serif;position:relative;border-bottom:2pt solid ${BRAND.orange}">
-  <img src="data:image/png;base64,${logo}" style="height:22pt;width:auto">
-  <span style="font-weight:700;font-size:10pt;flex:1">INITIAL SERVICES</span>
-  <span style="font-size:5.5pt;text-align:right;white-space:nowrap">Demolition Licence: 2328018 | Class A Asbestos Licence: 2320431</span>
-  <span style="position:absolute;bottom:2pt;left:50%;transform:translateX(-50%);font-weight:700;font-size:7pt">Quote No. ${esc(quoteRef)}</span>
+  return `<div style="width:100%;margin:0;padding:0;font-family:Helvetica,Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact">
+  <div style="background:${BRAND.teal};color:#fff;padding:6pt 15mm 10pt 15mm;display:flex;align-items:center;gap:8pt;position:relative">
+    <img src="data:image/png;base64,${logo}" style="height:28pt;width:auto">
+    <span style="font-weight:700;font-size:12pt;flex:1">INITIAL SERVICES</span>
+    <span style="font-size:6.5pt;text-align:right;white-space:nowrap">Demolition Licence: 2328018 | Class A Asbestos Licence: 2320431</span>
+    <span style="position:absolute;bottom:2pt;left:50%;transform:translateX(-50%);font-weight:700;font-size:8pt">Quote No. ${esc(quoteRef)}</span>
+  </div>
+  <div style="height:2pt;background:${BRAND.orange}"></div>
+  <div style="text-align:right;font-size:6pt;color:#777;padding:2pt 15mm 0 15mm;line-height:1.4">Electronic document &nbsp;|&nbsp; Uncontrolled when printed &nbsp;|&nbsp; Printed on: <span class="date"></span></div>
 </div>`;
 }
 
 function footerTemplate(): string {
-  return `<div style="width:100%;font-size:7pt;color:#666;padding:4pt 15mm;display:flex;justify-content:space-between;align-items:center">
-  <span>10 Grice St, Clontarf Q 4019 | P: (07) 3888 0539 | E: admin@initialservices.net | A.B.N: 75 631 222 556</span>
-  <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
+  return `<div style="width:100%;margin:0;padding:0;font-family:Helvetica,Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact">
+  <div style="height:2pt;background:${BRAND.orange}"></div>
+  <div style="background:${BRAND.teal};color:#fff;padding:5pt 15mm;display:flex;justify-content:space-between;align-items:center;font-size:7pt">
+    <span>10 Grice St, Clontarf Q 4019 | P: (07) 3888 0539 | E: admin@initialservices.net | A.B.N: 75 631 222 556</span>
+    <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
+  </div>
 </div>`;
 }
 
@@ -810,7 +817,7 @@ export function buildQuoteHtml(
 
   let body = "";
   body += coverPage(payload, overlay);
-  body += scopePage(payload, overlay);
+  body += scopeSection(payload, overlay);
   body += assumptionsPage(payload, overlay);
   body += acceptanceBlock(payload);
 

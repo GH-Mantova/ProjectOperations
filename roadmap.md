@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-24 12:42 AEST
+Last updated: 2026-05-25 00:32 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -336,10 +336,11 @@ rendering bug class Sean is currently experiencing (header/footer
 drift, logo borders, font changes mid-paragraph, text overlapping,
 T&C two-column layout broken). Unlocks future template-editor work.
 
-🔲 HTML→PDF renderer infrastructure
-   (Puppeteer or equivalent in Docker, rendering pipeline,
-    template loading from filesystem or database, font handling,
-    page margin/header/footer handling.)
+✅ HTML→PDF renderer infrastructure (PR #220 — 2026-05-25)
+   PdfRenderingModule with PdfRendererService (Puppeteer 23.x,
+   bundled Chromium). Template loading, {{key}} interpolation,
+   IS brand fonts (Outfit + Syne), concurrency guard, typed errors.
+   18 tests (6 defaults + 8 template helpers + 4 integration).
 
 🔲 Quote PDF — HTML template + migration
    (Build HTML/CSS template matching Sean's reference letterhead +
@@ -2142,4 +2143,17 @@ register reading + cross-reference) remains. H / E / F / D are
 shipped.
 
 No new dependencies. No new env vars. No migrations.
+
+### 2026-05-25 — §5A.2 PR 1: HTML→PDF renderer infrastructure (PR #220)
+
+First PR of Phase 5A.2. Adds PdfRenderingModule with PdfRendererService
+— the shared HTML→PDF rendering service that future document-migration
+PRs will consume. Engine: Puppeteer 23.x with bundled Chromium.
+Lazy-launched shared browser, auto-reconnect, 4-concurrent-render guard.
+API: `renderHtmlToPdf`, `loadTemplate`, `renderTemplateToPdf` with
+`{{key}}` interpolation. IS brand fonts (Outfit + Syne, OFL variable
+TTFs) bundled for deterministic rendering. Sample template exercises
+both fonts, brand colours, tables. 18 tests (6 defaults, 8 template
+helpers, 4 integration with pdfjs-dist page-count verification).
+New dependency: `puppeteer@23.11.1`. No new env vars. No migration.
 

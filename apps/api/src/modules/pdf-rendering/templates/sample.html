@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{title}}</title>
+<style>
+  @font-face {
+    font-family: 'Outfit';
+    src: url('./assets/fonts/Outfit-Variable.ttf') format('truetype');
+    font-weight: 100 900;
+    font-display: swap;
+  }
+  @font-face {
+    font-family: 'Syne';
+    src: url('./assets/fonts/Syne-Variable.ttf') format('truetype');
+    font-weight: 400 800;
+    font-display: swap;
+  }
+
+  :root {
+    --brand-primary: #005B61;
+    --brand-primary-light: #E6F0F1;
+    --brand-primary-dark: #004449;
+    --brand-accent: #FEAA6D;
+    --surface-page: #F6F6F6;
+    --text-primary: #000000;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 400;
+    font-size: 11pt;
+    color: var(--text-primary);
+    background: #ffffff;
+    line-height: 1.5;
+    padding: 0;
+  }
+
+  h1, h2, h3 {
+    font-family: 'Syne', sans-serif;
+    color: var(--brand-primary);
+  }
+
+  h1 { font-size: 22pt; font-weight: 700; margin-bottom: 8pt; }
+  h2 { font-size: 14pt; font-weight: 600; margin: 16pt 0 6pt; }
+
+  .header-bar {
+    background: var(--brand-primary);
+    color: #ffffff;
+    padding: 12pt 20pt;
+    display: flex;
+    align-items: center;
+    gap: 12pt;
+  }
+  .header-bar h1 { color: #ffffff; margin: 0; }
+
+  .content { padding: 20pt; }
+
+  .brand-card {
+    background: var(--brand-primary-light);
+    border-left: 4pt solid var(--brand-primary);
+    padding: 12pt 16pt;
+    margin: 12pt 0;
+    border-radius: 4pt;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12pt 0;
+  }
+  th {
+    background: var(--brand-primary);
+    color: #ffffff;
+    font-family: 'Syne', sans-serif;
+    font-weight: 600;
+    text-align: left;
+    padding: 8pt 12pt;
+  }
+  td {
+    padding: 8pt 12pt;
+    border-bottom: 1pt solid #e0e0e0;
+  }
+  tr:nth-child(even) td { background: var(--surface-page); }
+
+  .accent { color: var(--brand-accent); font-weight: 600; }
+  .footer-note {
+    margin-top: 24pt;
+    padding-top: 12pt;
+    border-top: 1pt solid #e0e0e0;
+    font-size: 9pt;
+    color: #666666;
+  }
+</style>
+</head>
+<body>
+
+<div class="header-bar">
+  <h1>{{title}}</h1>
+</div>
+
+<div class="content">
+  <div class="brand-card">
+    <strong>Initial Services</strong> — South East Queensland construction and civil works.<br>
+    Generated: {{date}}
+  </div>
+
+  <h2>Sample Content</h2>
+  <p>
+    This template exercises the IS brand fonts (Outfit for body, Syne for headings),
+    brand colours (teal <span class="accent">#005B61</span>), and the standard PDF layout.
+  </p>
+
+  <h2>Demo Table</h2>
+  <table>
+    <thead>
+      <tr><th>Item</th><th>Description</th><th>Value</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Brand Primary</td><td>Teal</td><td>#005B61</td></tr>
+      <tr><td>Brand Accent</td><td>Orange (interactive)</td><td>#FEAA6D</td></tr>
+      <tr><td>Surface</td><td>Light grey background</td><td>#F6F6F6</td></tr>
+      <tr><td>Body Font</td><td>Outfit (variable)</td><td>400–700</td></tr>
+      <tr><td>Heading Font</td><td>Syne (variable)</td><td>600–700</td></tr>
+    </tbody>
+  </table>
+
+  <p class="footer-note">
+    {{footer}}
+  </p>
+</div>
+
+</body>
+</html>

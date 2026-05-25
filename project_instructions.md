@@ -1,7 +1,7 @@
 # ProjectOperations — Project Instructions
 # Version: 1.1
 # Created: 2026-04-25 10:02 AEST
-# Last updated: 2026-05-24 12:42 AEST
+# Last updated: 2026-05-25 00:32 AEST
 # Maintained by: Claude Code (update after any architectural decision,
 #   module addition, business rule change, or workflow change)
 # Accessed by: All Claude chats in this project via web_fetch
@@ -1100,17 +1100,34 @@ AI Persona System (planned — Phase 5A.1)
   Scheduler, etc. Added one at a time post-sign-off as each module
   stabilises.
 
-### 🔲 PLANNED — PHASE 5A.2 (HTML→PDF Renderer)
+### ✅ LIVE — PHASE 5A.2 PR 1 (HTML→PDF Renderer Infrastructure)
 
-PDF Generation — HTML→PDF Renderer (planned — Phase 5A.2)
-- Replaces PDFKit-based generator. PDFKit code retired post-migration.
-- Engine: Puppeteer (or @sparticuz/chromium for serverless contexts).
-- Templates: HTML/CSS files in repo, designed to match Sean's
-  reference templates (stored outside repo at
-  C:\ProjectOperations-Reference\ for sensitivity reasons —
-  real client data).
+PDF Rendering Module (`apps/api/src/modules/pdf-rendering/`)
+- `PdfRendererService` — shared service for HTML→PDF rendering via Puppeteer.
+  API: `renderHtmlToPdf(html, options?)`, `loadTemplate(name)`,
+  `renderTemplateToPdf(name, data, options?)`.
+- Engine: Puppeteer 23.x with bundled Chromium. Lazy-launched single
+  shared browser instance, auto-reconnect on crash, 4-concurrent-render
+  guard. Launch args: `--no-sandbox`, `--disable-setuid-sandbox`,
+  `--disable-dev-shm-usage`.
+- Templates: HTML/CSS files at `pdf-rendering/templates/`. Brand fonts
+  (Outfit body, Syne headings — OFL-licensed variable TTFs) bundled
+  under `templates/assets/fonts/`. `{{key}}` interpolation helper.
+- `PdfRenderOptions` defaults: A4, 15mm L/R + 25mm top + 20mm bottom
+  margins, printBackground=true, 30s timeout.
+- `PdfRenderError` typed error class.
+- `nest-cli.json` `compilerOptions.assets` copies templates to dist.
+
+### 🔲 PLANNED — PHASE 5A.2 PRs 2–4 (Document Migrations)
+
+Document migrations use the renderer infrastructure above.
 - Three documents migrated: quote, variation, schedule of rates.
   Sean signs off visual fidelity per document.
+- PDFKit code retired only after all three migrations land and Sean
+  signs off.
+- Templates designed to match Sean's reference templates (stored
+  outside repo at C:\ProjectOperations-Reference\ for sensitivity
+  reasons — real client data).
 - Bug class addressed: header/footer drift, logo borders, font
   mid-paragraph changes, text overlapping, T&C column flow breakage.
   All are PDFKit layout-engine bugs that disappear with browser-engine

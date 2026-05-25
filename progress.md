@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-24 12:44 AEST
+Last updated: 2026-05-25 00:32 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -6950,6 +6950,64 @@ Pre-PR checks (local): 8/8 green — full §6 gate clean.
   - playwright tendering chromium green (5/5 in 25.4s).
   - pnpm seed runs clean and idempotent (verified back-to-back).
 
+## 2026-05-25 08:00 AEST — PR feat/read-asbestos-register MERGED
+Type: PR ([5A.1] PR G — read_asbestos_register asbestos register tool)
+Branch: feat/read-asbestos-register
+PR: #218 (https://github.com/GH-Mantova/ProjectOperations/pull/218)
+Merge SHA: 45185d5
+CI: ✅ all checks passed
+Status: MERGED
 
+## 2026-05-25 08:30 AEST — PR feat/5a1-persona-routing-fix MERGED
+Type: PR ([5A.1] persona sub-mode routing fix + §5A.1 finalisation)
+Branch: feat/5a1-persona-routing-fix
+PR: #219 (https://github.com/GH-Mantova/ProjectOperations/pull/219)
+Merge SHA: f2acc4d
+CI: ✅ all checks passed + Cowork live browser smoke test (7/7 items pass)
+Status: MERGED
+
+## 2026-05-25 10:30 AEST — PR feat/5a2-html-pdf-renderer STARTED
+Type: PR ([5A.2] HTML→PDF renderer infrastructure — PR 1 of §5A.2)
+Branch: feat/5a2-html-pdf-renderer
+Detail: Adds PdfRenderingModule with PdfRendererService — shared
+  HTML→PDF rendering via Puppeteer 23.x. Lazy browser lifecycle,
+  concurrency guard, typed errors, {{key}} template interpolation,
+  IS brand fonts (Outfit + Syne variable TTFs). Sample template.
+  18 tests. Does not touch existing PDFKit code.
+  New dependency: puppeteer@23.11.1
+  No new env vars. No schema migration.
+Status: IN_PROGRESS
+
+## 2026-05-25 10:30 AEST — PR feat/5a2-html-pdf-renderer OPENED
+Chain PR: §5A.2 PR 1
+GitHub PR: #220 (https://github.com/GH-Mantova/ProjectOperations/pull/220)
+Type: PR ([5A.2] HTML→PDF renderer infrastructure (Puppeteer))
+Branch: feat/5a2-html-pdf-renderer
+Status: WAITING_CI
+Files added:
+  - apps/api/src/modules/pdf-rendering/pdf-rendering.module.ts
+  - apps/api/src/modules/pdf-rendering/pdf-renderer.service.ts
+  - apps/api/src/modules/pdf-rendering/pdf-render.types.ts
+  - apps/api/src/modules/pdf-rendering/pdf-render.error.ts
+  - apps/api/src/modules/pdf-rendering/template.helpers.ts
+  - apps/api/src/modules/pdf-rendering/templates/sample.html
+  - apps/api/src/modules/pdf-rendering/templates/assets/fonts/ (Outfit + Syne TTFs + OFL licences)
+  - apps/api/src/modules/pdf-rendering/__tests__/pdf-render-types.spec.ts
+  - apps/api/src/modules/pdf-rendering/__tests__/template-helpers.spec.ts
+  - apps/api/src/modules/pdf-rendering/__tests__/pdf-renderer.integration.spec.ts
+Files modified:
+  - apps/api/src/app.module.ts (PdfRenderingModule registered)
+  - apps/api/nest-cli.json (compilerOptions.assets for template copy)
+  - apps/api/package.json (puppeteer dep)
+  - pnpm-lock.yaml
+  - progress.md, roadmap.md, project_instructions.md (doc updates)
+Pre-PR checks (local): 7/7 green — full §6 gate clean.
+  - API lint clean (zero warnings, zero errors)
+  - Web lint clean
+  - API tests 746 passed, 6 skipped — +18 vs baseline (3 new test files)
+  - Web tests unchanged (no web code touched)
+  - pnpm build green (api + web, templates copied to dist)
+  - pnpm compliance:smoke green ("status": "passed")
+  - Playwright E2E deferred (no UI changes in this PR)
 
 

@@ -38,6 +38,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '22', cache: 'pnpm' }
       - run: pnpm install --frozen-lockfile
+      - run: npx puppeteer browsers install chrome
       - run: pnpm prisma:generate
         env:
           DATABASE_URL: postgresql://project_ops:project_ops@localhost:5432/project_operations?schema=public

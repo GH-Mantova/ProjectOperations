@@ -25,6 +25,7 @@ import { ContactsModule } from "./modules/contacts/contacts.module";
 import { DirectoryModule } from "./modules/directory/directory.module";
 import { SafetyModule } from "./modules/safety/safety.module";
 import { MasterDataModule } from "./modules/master-data/master-data.module";
+import { PdfRenderingModule } from "./modules/pdf-rendering/pdf-rendering.module";
 import { PermissionsModule } from "./modules/permissions/permissions.module";
 import { PersonasModule } from "./modules/personas/personas.module";
 import { PlatformModule } from "./modules/platform/platform.module";
@@ -69,6 +70,7 @@ import { FieldModule } from "./modules/field/field.module";
     ClientQuotesModule,
     EstimateExportModule,
     EstimatesModule,
+    PdfRenderingModule,
     PermissionsModule,
     PersonasModule,
     PlatformModule,

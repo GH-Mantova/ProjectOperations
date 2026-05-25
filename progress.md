@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-25 23:46 AEST
+Last updated: 2026-05-25 23:48 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -7153,6 +7153,7 @@ Status: COMPLETE (merged)
 
 ## 2026-05-26 — fix/quote-pdf-brand-and-layout OPENED
 Chain PR: §5A.2 fix-forward
+GitHub PR: #224 (https://github.com/GH-Mantova/ProjectOperations/pull/224)
 Type: Fix-forward PR (§5A.2 Quote PDF — brand styling + layout)
 Branch: fix/quote-pdf-brand-and-layout
 Detail: PR #223 fixed the doubled header by moving it to Puppeteer

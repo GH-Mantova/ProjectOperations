@@ -5,6 +5,7 @@ import { ScopeRedesignService } from "../tendering/scope-redesign.service";
 import { buildEstimateExcel } from "./excel/estimate-excel.builder";
 import {
   buildQuoteHtml,
+  headerTemplate,
   footerTemplate,
 } from "../pdf-rendering/builders/quote-html.builder";
 import { PdfRendererService } from "../pdf-rendering/pdf-renderer.service";
@@ -396,7 +397,9 @@ export class EstimateExportService {
     const html = buildQuoteHtml(payload);
     const buffer = await this.pdfRenderer.renderHtmlToPdf(html, {
       displayHeaderFooter: true,
+      headerHtml: headerTemplate(payload.tender.tenderNumber),
       footerHtml: footerTemplate(),
+      margin: { top: "30mm" },
     });
     await this.prisma.estimateExport.create({
       data: { tenderId, type: "pdf", generatedBy: userId }

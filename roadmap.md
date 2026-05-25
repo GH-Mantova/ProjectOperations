@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-25 06:32 AEST
+Last updated: 2026-05-25 22:41 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -2179,4 +2179,15 @@ CSS position:fixed header band repeats on every printed page (was
 absent from the T&C overflow page). Acceptance/signature block wrapped
 in break-inside:avoid so it never splits across a page boundary.
 Sample PDFs regenerated with the fix applied.
+
+### 2026-05-26 — §5A.2 fix-forward: fix doubled / overlapping repeating header
+
+PR #222's CSS position:fixed header doubled on every page (both the
+fixed header and inline headerBand() were present) and overlapped body
+content on pages 3–4. Reworked: header now uses Puppeteer's
+headerTemplate (same mechanism as the footer) with the IS logo embedded
+as base64. Removed fixedHeaderBand(), headerBand(), and all associated
+CSS. Page margin.top increased from 25mm to 30mm. Both sample PDFs
+regenerated; programmatic verification confirms exactly 1× header per
+page on all 4 pages of both samples.
 

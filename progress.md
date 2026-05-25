@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-25 06:34 AEST
+Last updated: 2026-05-25 22:41 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -7129,4 +7129,22 @@ Chain PR: §5A.2 fix-forward
 GitHub PR: #222 (https://github.com/GH-Mantova/ProjectOperations/pull/222)
 Type: Fix-forward PR (§5A.2 Quote PDF)
 Branch: fix/quote-pdf-repeating-header
-Status: WAITING_CI (auto-merge enabled)
+Status: COMPLETE (merged)
+
+## 2026-05-26 — fix/quote-pdf-header-overlap STARTED
+Type: Fix-forward PR (§5A.2 Quote PDF — header overlap fix)
+Branch: fix/quote-pdf-header-overlap
+Detail: PR #222 introduced a CSS position:fixed repeating header, but it
+  doubled the header on every page (both the fixed header and inline
+  headerBand calls were present) and overlapped body content (T&C clauses
+  12–13 on pages 3–4). This fix-forward:
+  1. Removes the broken CSS position:fixed header and inline headerBand()
+     calls entirely.
+  2. Moves the header into Puppeteer's headerTemplate — the same mechanism
+     the footer already uses — with the IS logo embedded as base64.
+  3. Increases page margin.top from 25mm to 30mm to reserve space for the
+     Puppeteer header so body content never renders underneath.
+  4. Regenerates both sample PDFs; programmatic verification confirms the
+     header appears exactly 1× per page on all 4 pages of both samples.
+  The acceptance-block break-inside:avoid from PR #222 is preserved.
+Status: IN_PROGRESS

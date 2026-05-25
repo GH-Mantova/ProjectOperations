@@ -9,7 +9,7 @@ const config: Config = {
   },
   collectCoverageFrom: ["src/**/*.ts"],
   coverageDirectory: "coverage",
-  testEnvironment: "node"
+  testEnvironment: "node",
 };
 
 export default config;

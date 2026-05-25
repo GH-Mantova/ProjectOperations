@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-25 02:57 AEST
+Last updated: 2026-05-25 03:24 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -7088,3 +7088,18 @@ Pre-PR checks (local): 8/8 green — full §6 gate clean.
   - pnpm compliance:smoke green
   - No new dependencies. No new env vars. No schema migration.
   - Sample PDFs at docs/samples/ for Sean's visual sign-off
+
+## 2026-05-25 19:00 AEST — PR feat/5a2-quote-pdf-html FIX-FORWARD
+Type: Fix-forward push to existing PR #221
+Branch: feat/5a2-quote-pdf-html
+Detail: CI Chrome provisioning — added explicit
+  `pnpm --filter @project-ops/api exec puppeteer browsers install chrome`
+  step in `.github/workflows/ci.yml` after `pnpm install`. The pnpm
+  store cache suppresses puppeteer's postinstall on warm-cache runs,
+  and Chrome downloads to `~/.cache/puppeteer` (outside node_modules),
+  so the cached store never restores it. The explicit step runs
+  unconditionally on every CI run.
+  Also added CI/deploy Chrome provisioning note to
+  project_instructions.md §13 (Phase 5A.2 PR 2 section).
+Pre-PR checks (local): all green (lint, 757 tests, build, smoke).
+Status: PUSHED (awaiting CI re-run + auto-merge)

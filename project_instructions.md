@@ -1,7 +1,7 @@
 # ProjectOperations — Project Instructions
 # Version: 1.1
 # Created: 2026-04-25 10:02 AEST
-# Last updated: 2026-05-25 02:56 AEST
+# Last updated: 2026-05-25 03:24 AEST
 # Maintained by: Claude Code (update after any architectural decision,
 #   module addition, business rule change, or workflow change)
 # Accessed by: All Claude chats in this project via web_fetch
@@ -1139,8 +1139,14 @@ Quote PDF generation (`pdf-rendering/builders/quote-html.builder.ts`)
   Puppeteer page footers with page numbers.
 - pnpm 10 note: `pnpm.onlyBuiltDependencies: ["puppeteer"]` in root
   package.json ensures puppeteer's install script runs and downloads
-  Chromium. Without this, `pnpm install` skips the script and the
-  renderer cannot launch a browser.
+  Chromium locally. Without this, `pnpm install` skips the script.
+- CI/deploy Chrome provisioning: in CI and Azure deploy workflows,
+  always run `pnpm --filter @project-ops/api exec puppeteer browsers
+  install chrome` as an explicit step after `pnpm install`. The pnpm
+  store cache may suppress the postinstall, and Puppeteer downloads
+  Chrome to `~/.cache/puppeteer` (outside `node_modules`), so the
+  cached store never restores it. Never rely on the postinstall alone
+  for CI or deploy — use the explicit install step.
 
 ### 🔲 PLANNED — PHASE 5A.2 PRs 3–4 (Remaining Document Migrations)
 

@@ -32,6 +32,7 @@
     "playwright": "^1.59.1"
   },
   "pnpm": {
+    "onlyBuiltDependencies": ["puppeteer"],
     "overrides": {
       "path-to-regexp": ">=8.4.0",
       "picomatch": ">=4.0.4",

@@ -42,11 +42,13 @@ export class PdfRendererService implements OnModuleDestroy {
       );
     }
 
-    const browser = await this.getBrowser();
-    const page = await browser.newPage();
     this.inFlight++;
+    let page: Awaited<ReturnType<Browser["newPage"]>> | null = null;
 
     try {
+      const browser = await this.getBrowser();
+      page = await browser.newPage();
+
       const format = options?.format ?? PDF_RENDER_DEFAULTS.format;
       const margin = { ...PDF_RENDER_DEFAULTS.margin, ...options?.margin };
       const printBackground =
@@ -57,9 +59,10 @@ export class PdfRendererService implements OnModuleDestroy {
         options?.displayHeaderFooter ?? PDF_RENDER_DEFAULTS.displayHeaderFooter;
 
       await page.setContent(html, {
-        waitUntil: "domcontentloaded",
+        waitUntil: "load",
         timeout: timeoutMs,
       });
+      await page.evaluate(() => document.fonts.ready);
 
       const pdfUint8 = await page.pdf({
         format: format as "A4",
@@ -77,7 +80,7 @@ export class PdfRendererService implements OnModuleDestroy {
       throw new PdfRenderError("PDF rendering failed", err);
     } finally {
       this.inFlight--;
-      await page.close().catch(() => {});
+      await page?.close().catch(() => {});
     }
   }
 

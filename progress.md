@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-25 00:32 AEST
+Last updated: 2026-05-25 02:07 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -7009,5 +7009,31 @@ Pre-PR checks (local): 7/7 green — full §6 gate clean.
   - pnpm build green (api + web, templates copied to dist)
   - pnpm compliance:smoke green ("status": "passed")
   - Playwright E2E deferred (no UI changes in this PR)
+
+## 2026-05-25 16:00 AEST — PR feat/5a2-html-pdf-renderer FIX-FORWARD
+Type: Fix-forward push to existing PR #220
+Branch: feat/5a2-html-pdf-renderer
+Detail: Three fixes from Cowork code review:
+  1. CI Puppeteer provisioning — added `onlyBuiltDependencies:
+     ["puppeteer"]` to root package.json so pnpm 10 runs puppeteer's
+     install script (downloads Chromium). Removed broken
+     `npx puppeteer browsers install chrome` CI step.
+  2. Concurrency guard ordering — moved `this.inFlight++` before any
+     `await` in renderHtmlToPdf so concurrent callers cannot bypass the
+     MAX_CONCURRENT_RENDERS check. Added integration test proving the
+     5th concurrent render throws PdfRenderError.
+  3. Font-load race — changed `waitUntil` from `"domcontentloaded"` to
+     `"load"` and added `await page.evaluate(() => document.fonts.ready)`
+     before PDF generation.
+Pre-PR checks (local): 8/8 green — full §6 gate clean.
+  - API lint clean
+  - Web lint clean
+  - API tests 747 passed, 6 skipped — +1 vs prior (concurrency test)
+  - Web tests unchanged
+  - pnpm build green
+  - pnpm compliance:smoke green
+  - No lockfile change (onlyBuiltDependencies is config, not a dep)
+  - No schema migration. No new env vars.
+Status: PUSHED (awaiting CI re-run + auto-merge)
 
 

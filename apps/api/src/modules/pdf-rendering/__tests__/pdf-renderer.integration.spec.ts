@@ -66,4 +66,17 @@ describe("PdfRendererService (integration)", () => {
       service.renderTemplateToPdf("does-not-exist.html", {}),
     ).rejects.toThrow(PdfRenderError);
   });
+
+  it("rejects when concurrency limit is exceeded", async () => {
+    const html = "<html><body><p>Concurrent</p></body></html>";
+    const slow = Array.from({ length: 4 }, () =>
+      service.renderHtmlToPdf(html),
+    );
+
+    await expect(service.renderHtmlToPdf(html)).rejects.toThrow(
+      /Concurrency limit reached/,
+    );
+
+    await Promise.allSettled(slow);
+  }, 60_000);
 });

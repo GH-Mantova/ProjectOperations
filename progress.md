@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-25 22:41 AEST
+Last updated: 2026-05-25 22:42 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -7131,7 +7131,9 @@ Type: Fix-forward PR (§5A.2 Quote PDF)
 Branch: fix/quote-pdf-repeating-header
 Status: COMPLETE (merged)
 
-## 2026-05-26 — fix/quote-pdf-header-overlap STARTED
+## 2026-05-26 — fix/quote-pdf-header-overlap OPENED
+Chain PR: §5A.2 fix-forward
+GitHub PR: #223 (https://github.com/GH-Mantova/ProjectOperations/pull/223)
 Type: Fix-forward PR (§5A.2 Quote PDF — header overlap fix)
 Branch: fix/quote-pdf-header-overlap
 Detail: PR #222 introduced a CSS position:fixed repeating header, but it
@@ -7147,4 +7149,4 @@ Detail: PR #222 introduced a CSS position:fixed repeating header, but it
   4. Regenerates both sample PDFs; programmatic verification confirms the
      header appears exactly 1× per page on all 4 pages of both samples.
   The acceptance-block break-inside:avoid from PR #222 is preserved.
-Status: IN_PROGRESS
+Status: WAITING_VISUAL_SIGNOFF

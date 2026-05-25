@@ -399,7 +399,7 @@ export class EstimateExportService {
       displayHeaderFooter: true,
       headerHtml: headerTemplate(payload.tender.tenderNumber),
       footerHtml: footerTemplate(),
-      margin: { top: "30mm" },
+      margin: { top: "35mm", bottom: "22mm" },
     });
     await this.prisma.estimateExport.create({
       data: { tenderId, type: "pdf", generatedBy: userId }

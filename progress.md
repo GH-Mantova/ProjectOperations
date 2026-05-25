@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-25 22:42 AEST
+Last updated: 2026-05-25 23:48 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -7149,4 +7149,36 @@ Detail: PR #222 introduced a CSS position:fixed repeating header, but it
   4. Regenerates both sample PDFs; programmatic verification confirms the
      header appears exactly 1× per page on all 4 pages of both samples.
   The acceptance-block break-inside:avoid from PR #222 is preserved.
+Status: COMPLETE (merged)
+
+## 2026-05-26 — fix/quote-pdf-brand-and-layout OPENED
+Chain PR: §5A.2 fix-forward
+GitHub PR: #224 (https://github.com/GH-Mantova/ProjectOperations/pull/224)
+Type: Fix-forward PR (§5A.2 Quote PDF — brand styling + layout)
+Branch: fix/quote-pdf-brand-and-layout
+Detail: PR #223 fixed the doubled header by moving it to Puppeteer
+  headerTemplate, but the result lost the IS teal brand styling and the
+  document-control block. Visual review surfaced additional issues.
+  This fix-forward addresses all of them:
+  1. Header template restyled as IS teal brand band: teal background,
+     white text, IS logo, "INITIAL SERVICES", licence line, "Quote No.",
+     orange rule divider, document-control block ("Electronic document /
+     Uncontrolled when printed / Printed on: <date>"). Uses
+     -webkit-print-color-adjust:exact for background rendering.
+  2. Footer template restyled as matching teal brand band with orange
+     rule; keeps address line + page numbering.
+  3. Removed hard page-break before Scope of Works section — content
+     now flows naturally after the cover page, eliminating the ~80%
+     blank page gap when scope is short.
+  4. Fixed stray ")" appended to cost summary scope labels and cost
+     option labels (builder was concatenating "${line.label})" instead
+     of "${line.label}").
+  5. Task 4 (missing Scope of Works table for IS-T020-R3): not a
+     builder bug — the quote's detailLevel is likely "simple" or
+     showScopeTable is false, which correctly suppresses the table.
+     Data/flag setting, not code.
+  Page margins: top 35mm, bottom 22mm (up from 30mm/20mm) to
+  accommodate the taller branded header and footer without overlap.
+  Both sample PDFs regenerated; programmatic verification confirms
+  header and footer appear exactly 1× per page on all pages.
 Status: WAITING_VISUAL_SIGNOFF

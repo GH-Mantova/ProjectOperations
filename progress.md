@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-25 02:07 AEST
+Last updated: 2026-05-25 02:56 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -7036,4 +7036,24 @@ Pre-PR checks (local): 8/8 green — full §6 gate clean.
   - No schema migration. No new env vars.
 Status: PUSHED (awaiting CI re-run + auto-merge)
 
-
+## 2026-05-25 18:00 AEST — PR feat/5a2-quote-pdf-html STARTED
+Type: PR ([5A.2] Quote PDF — HTML template + migration, PR 2 of §5A.2)
+Branch: feat/5a2-quote-pdf-html
+Detail: Migrates the Quote PDF from the 1,174-line PDFKit builder to
+  the HTML→PDF renderer (PdfRendererService from PR #220). Deletes
+  quote-pdf.builder.ts outright — no fallback path, owner-approved.
+  Both consumers migrated:
+  1. QuotePdfService.generate() — per-ClientQuote PDF with overlay
+  2. EstimateExportService.exportPdf() — tender-level PDF, no overlay
+  New file: builders/quote-html.builder.ts — programmatic HTML builder
+  matching Sean's reference Quote.docx layout: IS brand fonts (Outfit/
+  Syne), teal/orange colour scheme, IS logo + watermark, cover page,
+  cost summary table, cost options, provisional sums, scope table
+  (simple/detailed/tender-level), assumptions (free/linked), exclusions,
+  two-column T&C, acceptance/signature block, Puppeteer page footers.
+  All dynamic values HTML-escaped. Every QuoteOverlay flag honoured.
+  pdfkit + @types/pdfkit kept (used by persona test fixtures + seed).
+  9 new tests (7 unit + 2 integration with pdfjs page-count check).
+  Sample PDFs at docs/samples/ for Sean's visual sign-off.
+  No new dependencies. No new env vars. No schema migration.
+Status: IN_PROGRESS

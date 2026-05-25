@@ -4,6 +4,7 @@ import {
   type ExportPayload
 } from "./estimate-export.service";
 import type { ScopeRedesignService } from "../tendering/scope-redesign.service";
+import type { PdfRendererService } from "../pdf-rendering/pdf-renderer.service";
 
 // These tests hit the pure fetch + shape path of fetchTenderForExport by
 // feeding fake Prisma and ScopeRedesignService instances. We don't spin up a
@@ -61,6 +62,11 @@ type FakeTender = {
   tandC: { clauses: unknown } | null;
 };
 
+const fakePdfBuffer = Buffer.from("%PDF-1.4 fake-pdf-content-for-testing");
+const mockRenderer = {
+  renderHtmlToPdf: jest.fn().mockResolvedValue(fakePdfBuffer),
+} as unknown as PdfRendererService;
+
 function makeService(tender: FakeTender, summary = baseSummary()) {
   const prisma = {
     tender: { findUnique: async () => tender },
@@ -69,7 +75,7 @@ function makeService(tender: FakeTender, summary = baseSummary()) {
   const scope = {
     summary: async () => summary
   } as unknown as ScopeRedesignService;
-  return new EstimateExportService(prisma, scope);
+  return new EstimateExportService(prisma, scope, mockRenderer);
 }
 
 function scopeItem(partial: Partial<{
@@ -290,7 +296,7 @@ describe("EstimateExportService.fetchTenderForExport", () => {
     expect([...DISCIPLINE_ORDER]).toEqual(["DEM", "CIV", "ASB", "Other"]);
   });
 
-  it("pipes the payload through buildQuotePdf without throwing (integration smoke)", async () => {
+  it("pipes the payload through HTML renderer without throwing (integration smoke)", async () => {
     const tender = baseTender({
       scopeItems: [scopeItem({ discipline: "DEM", wbsCode: "DEM1", description: "Strip out" })]
     });
@@ -300,11 +306,11 @@ describe("EstimateExportService.fetchTenderForExport", () => {
       tenderPrice: 1300
     };
     const svc = makeService(tender, summary);
-    const { buffer } = await svc.exportPdf("t-1", "u-1");
+    const { buffer, filename } = await svc.exportPdf("t-1", "u-1");
     expect(Buffer.isBuffer(buffer)).toBe(true);
-    expect(buffer.length).toBeGreaterThan(1000);
-    // PDF magic header
     expect(buffer.slice(0, 4).toString("ascii")).toBe("%PDF");
+    expect(filename).toMatch(/IS_Quote_.*\.pdf$/);
+    expect(mockRenderer.renderHtmlToPdf).toHaveBeenCalled();
   });
 
   it("pipes the payload through buildEstimateExcel without throwing (integration smoke)", async () => {

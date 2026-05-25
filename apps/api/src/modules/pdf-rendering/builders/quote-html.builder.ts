@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type {
@@ -151,99 +152,7 @@ h1, h2, h3 {
 
 .page-break { page-break-before: always; }
 
-/* ── Fixed header band (repeats on every printed page) */
-.header-band-fixed {
-  position: fixed;
-  top: -10mm;
-  left: -15mm;
-  right: -15mm;
-  background: ${BRAND.teal};
-  color: #fff;
-  padding: 6pt 15mm 8pt 15mm;
-  display: flex;
-  align-items: center;
-  gap: 8pt;
-  z-index: 10;
-}
-.header-band-fixed .logo { height: 28pt; width: auto; }
-.header-band-fixed .title {
-  font-family: 'Syne', sans-serif;
-  font-weight: 700;
-  font-size: 12pt;
-  flex: 1;
-}
-.header-band-fixed .licences {
-  font-size: 6.5pt;
-  text-align: right;
-  white-space: nowrap;
-}
-.header-band-fixed .quote-ref {
-  position: absolute;
-  bottom: 2pt;
-  left: 50%;
-  transform: translateX(-50%);
-  font-family: 'Syne', sans-serif;
-  font-weight: 700;
-  font-size: 8pt;
-}
-.orange-rule-fixed {
-  position: fixed;
-  top: calc(-10mm + 40pt);
-  left: -15mm;
-  right: -15mm;
-  height: 2pt;
-  background: ${BRAND.orange};
-  z-index: 10;
-}
-/* Push body content below the fixed header */
-body { padding-top: 36pt; }
-
-/* ── Inline header band (used on first page only) ─── */
-.header-band {
-  background: ${BRAND.teal};
-  color: #fff;
-  padding: 10pt 0;
-  display: flex;
-  align-items: center;
-  gap: 8pt;
-  margin: 0 -15mm;
-  padding-left: 15mm;
-  padding-right: 15mm;
-  position: relative;
-}
-.header-band .logo { height: 32pt; width: auto; }
-.header-band .title {
-  font-family: 'Syne', sans-serif;
-  font-weight: 700;
-  font-size: 13pt;
-  flex: 1;
-}
-.header-band .licences {
-  font-size: 7pt;
-  text-align: right;
-  white-space: nowrap;
-}
-.header-band .quote-ref {
-  position: absolute;
-  bottom: 4pt;
-  left: 50%;
-  transform: translateX(-50%);
-  font-family: 'Syne', sans-serif;
-  font-weight: 700;
-  font-size: 9pt;
-}
-.orange-rule {
-  height: 2pt;
-  background: ${BRAND.orange};
-  margin: 0 -15mm;
-}
-.doc-notice {
-  text-align: right;
-  font-size: 6.5pt;
-  color: #777;
-  margin-top: 2pt;
-  line-height: 1.5;
-}
+/* Header is rendered via Puppeteer headerTemplate — no in-body header CSS needed */
 
 /* ── Watermark ─────────────────────────────────────── */
 .watermark {
@@ -422,33 +331,9 @@ tr.cost-opt-header td {
 `;
 }
 
-// ── Fixed header band (repeats every page via CSS position:fixed) ───
-function fixedHeaderBand(quoteRef: string): string {
-  return `
-<div class="header-band-fixed">
-  <img class="logo" src="./assets/teal_sq_logo4x.png" alt="IS">
-  <span class="title">INITIAL SERVICES</span>
-  <span class="licences">Demolition Licence: 2328018 | Class A Asbestos Licence: 2320431</span>
-  <span class="quote-ref">Quote No. ${esc(quoteRef)}</span>
-</div>
-<div class="orange-rule-fixed"></div>`;
-}
-
-// ── Inline header band (first occurrence on a section start) ────────
-function headerBand(quoteRef: string): string {
-  return `
-<div class="header-band">
-  <img class="logo" src="./assets/teal_sq_logo4x.png" alt="IS">
-  <span class="title">INITIAL SERVICES</span>
-  <span class="licences">Demolition Licence: 2328018 | Class A Asbestos Licence: 2320431</span>
-  <span class="quote-ref">Quote No. ${esc(quoteRef)}</span>
-</div>
-<div class="orange-rule"></div>
-<div class="doc-notice">
-  Electronic document<br>
-  Uncontrolled when printed<br>
-  Printed on: ${fmtDate(new Date())}
-</div>`;
+function logoBase64(): string {
+  const logoPath = join(getTemplatesDir(), "assets", "teal_sq_logo4x.png");
+  return readFileSync(logoPath).toString("base64");
 }
 
 // ── Page 1: Cover + Cost Summary ────────────────────────────────────
@@ -467,7 +352,7 @@ function coverPage(
   const estimatorName =
     `${estimator.firstName} ${estimator.lastName}`.trim();
 
-  let html = headerBand(quoteRef);
+  let html = "";
 
   // Two-column meta
   html += `<div class="meta-grid">
@@ -624,9 +509,7 @@ function scopePage(
   p: ExportPayload,
   overlay: QuoteOverlay | null,
 ): string {
-  const quoteRef = overlay?.quoteRef ?? p.tender.tenderNumber;
   let html = `<div class="page-break"></div>`;
-  html += headerBand(quoteRef);
 
   // Preliminary works
   html += `<div class="section-heading">Preliminary Works</div>`;
@@ -778,9 +661,7 @@ function assumptionsPage(
   p: ExportPayload,
   overlay: QuoteOverlay | null,
 ): string {
-  const quoteRef = overlay?.quoteRef ?? p.tender.tenderNumber;
   let html = `<div class="page-break"></div>`;
-  html += headerBand(quoteRef);
 
   // Allowances
   html += `<div class="section-heading">PROJECT SPECIFIC ALLOWANCES</div><div class="section-rule"></div>`;
@@ -901,6 +782,16 @@ function acceptanceBlock(p: ExportPayload): string {
 }
 
 // ── Puppeteer header/footer templates ───────────────────────────────
+function headerTemplate(quoteRef: string): string {
+  const logo = logoBase64();
+  return `<div style="width:100%;background:${BRAND.teal};color:#fff;padding:4pt 15mm 6pt 15mm;display:flex;align-items:center;gap:8pt;font-family:Helvetica,Arial,sans-serif;position:relative;border-bottom:2pt solid ${BRAND.orange}">
+  <img src="data:image/png;base64,${logo}" style="height:22pt;width:auto">
+  <span style="font-weight:700;font-size:10pt;flex:1">INITIAL SERVICES</span>
+  <span style="font-size:5.5pt;text-align:right;white-space:nowrap">Demolition Licence: 2328018 | Class A Asbestos Licence: 2320431</span>
+  <span style="position:absolute;bottom:2pt;left:50%;transform:translateX(-50%);font-weight:700;font-size:7pt">Quote No. ${esc(quoteRef)}</span>
+</div>`;
+}
+
 function footerTemplate(): string {
   return `<div style="width:100%;font-size:7pt;color:#666;padding:4pt 15mm;display:flex;justify-content:space-between;align-items:center">
   <span>10 Grice St, Clontarf Q 4019 | P: (07) 3888 0539 | E: admin@initialservices.net | A.B.N: 75 631 222 556</span>
@@ -931,11 +822,10 @@ export function buildQuoteHtml(
 <style>${css()}</style>
 </head>
 <body>
-${fixedHeaderBand(quoteRef)}
 <div class="watermark"><img src="./assets/teal_sq_logo4x.png" alt=""></div>
 ${body}
 </body>
 </html>`;
 }
 
-export { footerTemplate };
+export { headerTemplate, footerTemplate };

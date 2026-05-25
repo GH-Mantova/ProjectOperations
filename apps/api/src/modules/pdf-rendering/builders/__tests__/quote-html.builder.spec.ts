@@ -2,6 +2,7 @@ import { Test } from "@nestjs/testing";
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.js";
 import {
   buildQuoteHtml,
+  headerTemplate,
   footerTemplate,
   type QuoteOverlay,
 } from "../quote-html.builder";
@@ -136,7 +137,6 @@ describe("Quote HTML builder", () => {
   it("produces valid HTML with key sections", () => {
     const html = buildQuoteHtml(basePayload());
     expect(html).toContain("<!DOCTYPE html>");
-    expect(html).toContain("INITIAL SERVICES");
     expect(html).toContain("IS-T020");
     expect(html).toContain("Cost Summary");
     expect(html).toContain("Scope of Works");
@@ -237,6 +237,14 @@ describe("Quote HTML builder", () => {
     expect(html).toContain("Contingency");
   });
 
+  it("provides a header template with branding and quote ref", () => {
+    const header = headerTemplate("IS-T020");
+    expect(header).toContain("INITIAL SERVICES");
+    expect(header).toContain("Demolition Licence: 2328018");
+    expect(header).toContain("Quote No. IS-T020");
+    expect(header).toContain("data:image/png;base64,");
+  });
+
   it("provides a footer template with page numbers", () => {
     const footer = footerTemplate();
     expect(footer).toContain("pageNumber");
@@ -263,7 +271,9 @@ describe("Quote HTML → PDF (integration)", () => {
     const html = buildQuoteHtml(basePayload());
     const buf = await renderer.renderHtmlToPdf(html, {
       displayHeaderFooter: true,
+      headerHtml: headerTemplate("IS-T020"),
       footerHtml: footerTemplate(),
+      margin: { top: "30mm" },
     });
     expect(buf).toBeInstanceOf(Buffer);
     expect(buf.subarray(0, 5).toString("ascii")).toBe("%PDF-");
@@ -279,7 +289,9 @@ describe("Quote HTML → PDF (integration)", () => {
     const html = buildQuoteHtml(basePayload(), makeOverlay());
     const buf = await renderer.renderHtmlToPdf(html, {
       displayHeaderFooter: true,
+      headerHtml: headerTemplate("IS-Q001"),
       footerHtml: footerTemplate(),
+      margin: { top: "30mm" },
     });
     expect(buf).toBeInstanceOf(Buffer);
     expect(buf.subarray(0, 5).toString("ascii")).toBe("%PDF-");

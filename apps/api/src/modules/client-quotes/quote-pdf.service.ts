@@ -6,6 +6,7 @@ import {
 } from "../estimate-export/estimate-export.service";
 import {
   buildQuoteHtml,
+  headerTemplate,
   footerTemplate,
   type QuoteOverlay,
 } from "../pdf-rendering/builders/quote-html.builder";
@@ -132,7 +133,9 @@ export class QuotePdfService {
     const html = buildQuoteHtml(base, overlay);
     const buffer = await this.pdfRenderer.renderHtmlToPdf(html, {
       displayHeaderFooter: true,
+      headerHtml: headerTemplate(overlay.quoteRef),
       footerHtml: footerTemplate(),
+      margin: { top: "30mm" },
     });
 
     const filename = `IS_Quote_${quote.quoteRef.replace(/[^A-Za-z0-9_-]/g, "_")}.pdf`;

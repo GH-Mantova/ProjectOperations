@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-25 02:56 AEST
+Last updated: 2026-05-25 02:57 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -7057,3 +7057,34 @@ Detail: Migrates the Quote PDF from the 1,174-line PDFKit builder to
   Sample PDFs at docs/samples/ for Sean's visual sign-off.
   No new dependencies. No new env vars. No schema migration.
 Status: IN_PROGRESS
+
+## 2026-05-25 18:30 AEST — PR feat/5a2-quote-pdf-html OPENED
+Chain PR: §5A.2 PR 2
+GitHub PR: #221 (https://github.com/GH-Mantova/ProjectOperations/pull/221)
+Type: PR ([5A.2] Quote PDF — HTML template + migration)
+Branch: feat/5a2-quote-pdf-html
+Status: WAITING_CI
+Files added:
+  - apps/api/src/modules/pdf-rendering/builders/quote-html.builder.ts
+  - apps/api/src/modules/pdf-rendering/builders/__tests__/quote-html.builder.spec.ts
+  - apps/api/src/modules/pdf-rendering/templates/assets/teal_sq_logo4x.png
+  - docs/samples/sample-quote-tender-level.pdf
+  - docs/samples/sample-quote-with-overlay.pdf
+Files modified:
+  - apps/api/src/modules/client-quotes/quote-pdf.service.ts
+  - apps/api/src/modules/client-quotes/client-quotes.module.ts
+  - apps/api/src/modules/estimate-export/estimate-export.service.ts
+  - apps/api/src/modules/estimate-export/estimate-export.module.ts
+  - apps/api/src/modules/estimate-export/estimate-export.service.spec.ts
+  - progress.md, roadmap.md, project_instructions.md
+Files deleted:
+  - apps/api/src/modules/estimate-export/pdf/quote-pdf.builder.ts (1,174 lines)
+Pre-PR checks (local): 8/8 green — full §6 gate clean.
+  - API lint clean
+  - Web lint clean
+  - API tests 757 passed, 6 skipped — +10 vs baseline (9 new + 1 updated)
+  - Web tests unchanged (no web code touched)
+  - pnpm build green
+  - pnpm compliance:smoke green
+  - No new dependencies. No new env vars. No schema migration.
+  - Sample PDFs at docs/samples/ for Sean's visual sign-off

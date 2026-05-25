@@ -151,7 +151,54 @@ h1, h2, h3 {
 
 .page-break { page-break-before: always; }
 
-/* ── Header band ───────────────────────────────────── */
+/* ── Fixed header band (repeats on every printed page) */
+.header-band-fixed {
+  position: fixed;
+  top: -10mm;
+  left: -15mm;
+  right: -15mm;
+  background: ${BRAND.teal};
+  color: #fff;
+  padding: 6pt 15mm 8pt 15mm;
+  display: flex;
+  align-items: center;
+  gap: 8pt;
+  z-index: 10;
+}
+.header-band-fixed .logo { height: 28pt; width: auto; }
+.header-band-fixed .title {
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  font-size: 12pt;
+  flex: 1;
+}
+.header-band-fixed .licences {
+  font-size: 6.5pt;
+  text-align: right;
+  white-space: nowrap;
+}
+.header-band-fixed .quote-ref {
+  position: absolute;
+  bottom: 2pt;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  font-size: 8pt;
+}
+.orange-rule-fixed {
+  position: fixed;
+  top: calc(-10mm + 40pt);
+  left: -15mm;
+  right: -15mm;
+  height: 2pt;
+  background: ${BRAND.orange};
+  z-index: 10;
+}
+/* Push body content below the fixed header */
+body { padding-top: 36pt; }
+
+/* ── Inline header band (used on first page only) ─── */
 .header-band {
   background: ${BRAND.teal};
   color: #fff;
@@ -320,6 +367,10 @@ tr.cost-opt-header td {
 }
 
 /* ── Acceptance block ──────────────────────────────── */
+.acceptance-wrapper {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
 .acceptance-header {
   background: ${BRAND.teal};
   color: #fff;
@@ -371,7 +422,19 @@ tr.cost-opt-header td {
 `;
 }
 
-// ── Header band HTML ────────────────────────────────────────────────
+// ── Fixed header band (repeats every page via CSS position:fixed) ───
+function fixedHeaderBand(quoteRef: string): string {
+  return `
+<div class="header-band-fixed">
+  <img class="logo" src="./assets/teal_sq_logo4x.png" alt="IS">
+  <span class="title">INITIAL SERVICES</span>
+  <span class="licences">Demolition Licence: 2328018 | Class A Asbestos Licence: 2320431</span>
+  <span class="quote-ref">Quote No. ${esc(quoteRef)}</span>
+</div>
+<div class="orange-rule-fixed"></div>`;
+}
+
+// ── Inline header band (first occurrence on a section start) ────────
 function headerBand(quoteRef: string): string {
   return `
 <div class="header-band">
@@ -817,7 +880,8 @@ function assumptionsPage(
 function acceptanceBlock(p: ExportPayload): string {
   const clientName =
     p.tender.clients[0]?.name ?? "[CLIENT COMPANY NAME]";
-  let html = `<div class="acceptance-header">ACCEPTANCE</div>`;
+  let html = `<div class="acceptance-wrapper">`;
+  html += `<div class="acceptance-header">ACCEPTANCE</div>`;
   html += `<div class="acceptance-intro">By signing below, the client acknowledges they have read, understood and agree to the Terms and Conditions of this quotation.</div>`;
   html += `<div class="sign-field-label">FOR AND ON BEHALF OF:</div>`;
   html += `<div style="font-weight:700;font-size:9pt;margin-bottom:8pt">${esc(clientName.toUpperCase())}</div>`;
@@ -832,6 +896,7 @@ function acceptanceBlock(p: ExportPayload): string {
     html += `<div class="sign-field"></div><div class="sign-field-name">${esc(f)}</div>`;
   }
   html += `</div>`;
+  html += `</div>`; // close .acceptance-wrapper
   return html;
 }
 
@@ -849,6 +914,8 @@ export function buildQuoteHtml(
   overlay: QuoteOverlay | null = null,
 ): string {
   const base = baseUrl();
+  const quoteRef =
+    overlay?.quoteRef ?? payload.tender.tenderNumber;
 
   let body = "";
   body += coverPage(payload, overlay);
@@ -864,6 +931,7 @@ export function buildQuoteHtml(
 <style>${css()}</style>
 </head>
 <body>
+${fixedHeaderBand(quoteRef)}
 <div class="watermark"><img src="./assets/teal_sq_logo4x.png" alt=""></div>
 ${body}
 </body>

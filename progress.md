@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-25 03:24 AEST
+Last updated: 2026-05-25 06:32 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -7103,3 +7103,23 @@ Detail: CI Chrome provisioning — added explicit
   project_instructions.md §13 (Phase 5A.2 PR 2 section).
 Pre-PR checks (local): all green (lint, 757 tests, build, smoke).
 Status: PUSHED (awaiting CI re-run + auto-merge)
+
+## 2026-05-25 — PR #221 MERGED
+Type: PR
+Detail: [5A.2] Quote PDF — HTML template + migration, squash-merged.
+Status: COMPLETE
+
+## 2026-05-25 — fix/quote-pdf-repeating-header STARTED
+Type: Fix-forward PR (§5A.2 Quote PDF)
+Branch: fix/quote-pdf-repeating-header
+Detail: Recovers commit 70b4d98, which the PR #221 squash merge missed.
+  Two CSS fixes to quote-html.builder.ts:
+  1. Repeating header — CSS position:fixed header band that renders on
+     every printed page, including the T&C overflow page (page 4). Before
+     this fix, page 4 had no header band at all.
+  2. Acceptance block — break-inside:avoid wrapper so the signature block
+     never splits across a page boundary.
+  Regenerated docs/samples/ PDFs with the fix applied.
+  No new dependencies. No new env vars. No schema migration.
+Pre-PR checks (local): all green (build, lint, 757 tests, compliance:smoke).
+Status: IN_PROGRESS

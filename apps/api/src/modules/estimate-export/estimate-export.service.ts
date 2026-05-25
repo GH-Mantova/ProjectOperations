@@ -3,7 +3,11 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { parseDefaultClauses, type TcClause } from "../quote/tc-parser";
 import { ScopeRedesignService } from "../tendering/scope-redesign.service";
 import { buildEstimateExcel } from "./excel/estimate-excel.builder";
-import { buildQuotePdf } from "./pdf/quote-pdf.builder";
+import {
+  buildQuoteHtml,
+  footerTemplate,
+} from "../pdf-rendering/builders/quote-html.builder";
+import { PdfRendererService } from "../pdf-rendering/pdf-renderer.service";
 
 // PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
 // Display order must match the Quote tab and the cost-summary bar.
@@ -162,7 +166,8 @@ function isClauseArray(value: unknown): value is TcClause[] {
 export class EstimateExportService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly scopeSummary: ScopeRedesignService
+    private readonly scopeSummary: ScopeRedesignService,
+    private readonly pdfRenderer: PdfRendererService,
   ) {}
 
   async fetchTenderForExport(tenderId: string): Promise<ExportPayload> {
@@ -388,7 +393,11 @@ export class EstimateExportService {
 
   async exportPdf(tenderId: string, userId: string): Promise<{ buffer: Buffer; filename: string }> {
     const payload = await this.fetchTenderForExport(tenderId);
-    const buffer = await buildQuotePdf(payload);
+    const html = buildQuoteHtml(payload);
+    const buffer = await this.pdfRenderer.renderHtmlToPdf(html, {
+      displayHeaderFooter: true,
+      footerHtml: footerTemplate(),
+    });
     await this.prisma.estimateExport.create({
       data: { tenderId, type: "pdf", generatedBy: userId }
     });

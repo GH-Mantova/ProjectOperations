@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-25 00:32 AEST
+Last updated: 2026-05-25 02:56 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -342,13 +342,11 @@ T&C two-column layout broken). Unlocks future template-editor work.
    IS brand fonts (Outfit + Syne), concurrency guard, typed errors.
    18 tests (6 defaults + 8 template helpers + 4 integration).
 
-🔲 Quote PDF — HTML template + migration
-   (Build HTML/CSS template matching Sean's reference letterhead +
-    layout. Sean signs off visual fidelity. Migrate quote PDF
-    generation through the new renderer. Existing PDFKit code
-    retired only after sign-off. Reference templates at
-    C:\ProjectOperations-Reference\ — outside the repo, sensitive
-    client data.)
+✅ Quote PDF — HTML template + migration (2026-05-25)
+   PDFKit builder deleted. HTML builder (quote-html.builder.ts)
+   produces full quote document via PdfRendererService. Both consumers
+   migrated (QuotePdfService + EstimateExportService). 9 new tests.
+   Sample PDFs at docs/samples/ for Sean's visual sign-off.
 
 🔲 Variation PDF — HTML template + migration
    (Same approach as quote. Sean's reference template required.)
@@ -2156,4 +2154,21 @@ TTFs) bundled for deterministic rendering. Sample template exercises
 both fonts, brand colours, tables. 18 tests (6 defaults, 8 template
 helpers, 4 integration with pdfjs-dist page-count verification).
 New dependency: `puppeteer@23.11.1`. No new env vars. No migration.
+
+### 2026-05-25 — §5A.2 PR 2: Quote PDF — HTML template + migration
+
+Second PR of Phase 5A.2. Migrates the Quote PDF from the 1,174-line
+PDFKit builder (quote-pdf.builder.ts) to the HTML→PDF renderer. The
+PDFKit builder is deleted outright — no fallback path (owner-approved).
+Both consumers (QuotePdfService.generate for per-ClientQuote PDFs,
+EstimateExportService.exportPdf for tender-level PDFs) rewired to the
+new HTML builder. Template reproduces every section: IS-branded cover
+page, cost summary, cost options, provisional sums, scope table
+(simple/detailed/tender-level), preliminary works, referenced drawings,
+allowances, assumptions (free + linked), exclusions, two-column T&C,
+acceptance/signature block. IS watermark and Puppeteer-driven page
+footers with page numbers. All dynamic values HTML-escaped.
+pdfkit dependency kept (persona test fixtures). 9 new tests.
+Sample PDFs at docs/samples/ for Sean's visual sign-off.
+No new dependencies. No new env vars. No migration.
 

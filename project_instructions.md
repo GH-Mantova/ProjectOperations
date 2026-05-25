@@ -1,7 +1,7 @@
 # ProjectOperations — Project Instructions
 # Version: 1.1
 # Created: 2026-04-25 10:02 AEST
-# Last updated: 2026-05-25 00:32 AEST
+# Last updated: 2026-05-25 03:24 AEST
 # Maintained by: Claude Code (update after any architectural decision,
 #   module addition, business rule change, or workflow change)
 # Accessed by: All Claude chats in this project via web_fetch
@@ -550,7 +550,7 @@ Rate = look up from core hole schedule by diameter (32mm to 650mm)
 | IS template exclusions | "Copy IS template exclusions" — copies IS standard clauses, NOT tender exclusions |
 | Field workers | Separate mobile-only module — deferred. Do NOT consolidate WorkerProfile into User model. |
 | PDF margins | 15mm left/right (42.52pt), 25mm top below header, 20mm bottom above footer |
-| PDF font | Helvetica (PDFKit built-in) — closest to Calibri without licensing |
+| PDF font | Outfit (body) + Syne (headings) — variable TTFs, OFL-licensed. Bundled in pdf-rendering/templates/assets/fonts/ |
 | PDF watermark | IS logo at 5% opacity centred — if no logo: "IS" text Syne 120pt teal rotated 45° |
 
 ---
@@ -1118,20 +1118,43 @@ PDF Rendering Module (`apps/api/src/modules/pdf-rendering/`)
 - `PdfRenderError` typed error class.
 - `nest-cli.json` `compilerOptions.assets` copies templates to dist.
 
-### 🔲 PLANNED — PHASE 5A.2 PRs 2–4 (Document Migrations)
+### ✅ LIVE — PHASE 5A.2 PR 2 (Quote PDF — HTML Template + Migration)
 
-Document migrations use the renderer infrastructure above.
-- Three documents migrated: quote, variation, schedule of rates.
+Quote PDF generation (`pdf-rendering/builders/quote-html.builder.ts`)
+- `buildQuoteHtml(payload, overlay?)` — programmatic HTML builder that
+  produces a full IS-branded quote document. Rendered via
+  `PdfRendererService.renderHtmlToPdf`.
+- Both consumers migrated:
+  - `EstimateExportService.exportPdf()` — tender-level quote, no overlay.
+  - `QuotePdfService.generate()` — per-ClientQuote with QuoteOverlay.
+- `QuoteOverlay` type re-exported from the HTML builder (was in the
+  deleted PDFKit builder).
+- PDFKit `quote-pdf.builder.ts` (1,174 lines) deleted. `pdfkit` dep
+  kept for persona test fixtures + seed.
+- All dynamic values HTML-escaped via `esc()` helper.
+- Sections: cover page, cost summary, cost options, provisional sums,
+  scope table (simple/detailed/tender-level), preliminary works,
+  referenced drawings, allowances, assumptions (free/linked), exclusions,
+  two-column T&C (CSS columns), acceptance/signature block, IS watermark,
+  Puppeteer page footers with page numbers.
+- pnpm 10 note: `pnpm.onlyBuiltDependencies: ["puppeteer"]` in root
+  package.json ensures puppeteer's install script runs and downloads
+  Chromium locally. Without this, `pnpm install` skips the script.
+- CI/deploy Chrome provisioning: in CI and Azure deploy workflows,
+  always run `pnpm --filter @project-ops/api exec puppeteer browsers
+  install chrome` as an explicit step after `pnpm install`. The pnpm
+  store cache may suppress the postinstall, and Puppeteer downloads
+  Chrome to `~/.cache/puppeteer` (outside `node_modules`), so the
+  cached store never restores it. Never rely on the postinstall alone
+  for CI or deploy — use the explicit install step.
+
+### 🔲 PLANNED — PHASE 5A.2 PRs 3–4 (Remaining Document Migrations)
+
+- Two documents remaining: variation, schedule of rates.
   Sean signs off visual fidelity per document.
-- PDFKit code retired only after all three migrations land and Sean
-  signs off.
 - Templates designed to match Sean's reference templates (stored
   outside repo at C:\ProjectOperations-Reference\ for sensitivity
   reasons — real client data).
-- Bug class addressed: header/footer drift, logo borders, font
-  mid-paragraph changes, text overlapping, T&C column flow breakage.
-  All are PDFKit layout-engine bugs that disappear with browser-engine
-  rendering.
 - Forward-compatible with future rich-text-editor / template-editor
   work — editors output HTML, renderer consumes HTML, no impedance
   mismatch.

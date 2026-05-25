@@ -5,9 +5,11 @@ import {
   type ExportPayload
 } from "../estimate-export/estimate-export.service";
 import {
-  buildQuotePdf,
-  type QuoteOverlay
-} from "../estimate-export/pdf/quote-pdf.builder";
+  buildQuoteHtml,
+  footerTemplate,
+  type QuoteOverlay,
+} from "../pdf-rendering/builders/quote-html.builder";
+import { PdfRendererService } from "../pdf-rendering/pdf-renderer.service";
 import { ClientQuotesService } from "./client-quotes.service";
 
 function toNum(v: { toString(): string } | number | null | undefined): number {
@@ -22,7 +24,8 @@ export class QuotePdfService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly quotes: ClientQuotesService,
-    private readonly exportSvc: EstimateExportService
+    private readonly exportSvc: EstimateExportService,
+    private readonly pdfRenderer: PdfRendererService,
   ) {}
 
   async generate(
@@ -126,7 +129,11 @@ export class QuotePdfService {
       ];
     }
 
-    const buffer = await buildQuotePdf(base, overlay);
+    const html = buildQuoteHtml(base, overlay);
+    const buffer = await this.pdfRenderer.renderHtmlToPdf(html, {
+      displayHeaderFooter: true,
+      footerHtml: footerTemplate(),
+    });
 
     const filename = `IS_Quote_${quote.quoteRef.replace(/[^A-Za-z0-9_-]/g, "_")}.pdf`;
     await this.prisma.estimateExport.create({

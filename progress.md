@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-25 02:07 AEST
+Last updated: 2026-05-25 03:24 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -7036,4 +7036,70 @@ Pre-PR checks (local): 8/8 green — full §6 gate clean.
   - No schema migration. No new env vars.
 Status: PUSHED (awaiting CI re-run + auto-merge)
 
+## 2026-05-25 18:00 AEST — PR feat/5a2-quote-pdf-html STARTED
+Type: PR ([5A.2] Quote PDF — HTML template + migration, PR 2 of §5A.2)
+Branch: feat/5a2-quote-pdf-html
+Detail: Migrates the Quote PDF from the 1,174-line PDFKit builder to
+  the HTML→PDF renderer (PdfRendererService from PR #220). Deletes
+  quote-pdf.builder.ts outright — no fallback path, owner-approved.
+  Both consumers migrated:
+  1. QuotePdfService.generate() — per-ClientQuote PDF with overlay
+  2. EstimateExportService.exportPdf() — tender-level PDF, no overlay
+  New file: builders/quote-html.builder.ts — programmatic HTML builder
+  matching Sean's reference Quote.docx layout: IS brand fonts (Outfit/
+  Syne), teal/orange colour scheme, IS logo + watermark, cover page,
+  cost summary table, cost options, provisional sums, scope table
+  (simple/detailed/tender-level), assumptions (free/linked), exclusions,
+  two-column T&C, acceptance/signature block, Puppeteer page footers.
+  All dynamic values HTML-escaped. Every QuoteOverlay flag honoured.
+  pdfkit + @types/pdfkit kept (used by persona test fixtures + seed).
+  9 new tests (7 unit + 2 integration with pdfjs page-count check).
+  Sample PDFs at docs/samples/ for Sean's visual sign-off.
+  No new dependencies. No new env vars. No schema migration.
+Status: IN_PROGRESS
 
+## 2026-05-25 18:30 AEST — PR feat/5a2-quote-pdf-html OPENED
+Chain PR: §5A.2 PR 2
+GitHub PR: #221 (https://github.com/GH-Mantova/ProjectOperations/pull/221)
+Type: PR ([5A.2] Quote PDF — HTML template + migration)
+Branch: feat/5a2-quote-pdf-html
+Status: WAITING_CI
+Files added:
+  - apps/api/src/modules/pdf-rendering/builders/quote-html.builder.ts
+  - apps/api/src/modules/pdf-rendering/builders/__tests__/quote-html.builder.spec.ts
+  - apps/api/src/modules/pdf-rendering/templates/assets/teal_sq_logo4x.png
+  - docs/samples/sample-quote-tender-level.pdf
+  - docs/samples/sample-quote-with-overlay.pdf
+Files modified:
+  - apps/api/src/modules/client-quotes/quote-pdf.service.ts
+  - apps/api/src/modules/client-quotes/client-quotes.module.ts
+  - apps/api/src/modules/estimate-export/estimate-export.service.ts
+  - apps/api/src/modules/estimate-export/estimate-export.module.ts
+  - apps/api/src/modules/estimate-export/estimate-export.service.spec.ts
+  - progress.md, roadmap.md, project_instructions.md
+Files deleted:
+  - apps/api/src/modules/estimate-export/pdf/quote-pdf.builder.ts (1,174 lines)
+Pre-PR checks (local): 8/8 green — full §6 gate clean.
+  - API lint clean
+  - Web lint clean
+  - API tests 757 passed, 6 skipped — +10 vs baseline (9 new + 1 updated)
+  - Web tests unchanged (no web code touched)
+  - pnpm build green
+  - pnpm compliance:smoke green
+  - No new dependencies. No new env vars. No schema migration.
+  - Sample PDFs at docs/samples/ for Sean's visual sign-off
+
+## 2026-05-25 19:00 AEST — PR feat/5a2-quote-pdf-html FIX-FORWARD
+Type: Fix-forward push to existing PR #221
+Branch: feat/5a2-quote-pdf-html
+Detail: CI Chrome provisioning — added explicit
+  `pnpm --filter @project-ops/api exec puppeteer browsers install chrome`
+  step in `.github/workflows/ci.yml` after `pnpm install`. The pnpm
+  store cache suppresses puppeteer's postinstall on warm-cache runs,
+  and Chrome downloads to `~/.cache/puppeteer` (outside node_modules),
+  so the cached store never restores it. The explicit step runs
+  unconditionally on every CI run.
+  Also added CI/deploy Chrome provisioning note to
+  project_instructions.md §13 (Phase 5A.2 PR 2 section).
+Pre-PR checks (local): all green (lint, 757 tests, build, smoke).
+Status: PUSHED (awaiting CI re-run + auto-merge)

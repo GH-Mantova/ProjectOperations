@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { AuditModule } from "../audit/audit.module";
 import { EmailModule } from "../email/email.module";
 import { EstimateExportModule } from "../estimate-export/estimate-export.module";
 import { PdfRenderingModule } from "../pdf-rendering/pdf-rendering.module";
@@ -11,7 +12,7 @@ import { QuoteScopeItemsService } from "./quote-scope-items.service";
 import { QuoteSendService } from "./quote-send.service";
 
 @Module({
-  imports: [TenderingModule, EstimateExportModule, EmailModule, PdfRenderingModule],
+  imports: [AuditModule, TenderingModule, EstimateExportModule, EmailModule, PdfRenderingModule],
   controllers: [ClientQuotesController, QuoteScopeItemsController],
   providers: [ClientQuotesService, QuotePdfService, QuoteSendService, QuoteScopeItemsService],
   exports: [ClientQuotesService, QuoteScopeItemsService]

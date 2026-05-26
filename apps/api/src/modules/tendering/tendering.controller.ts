@@ -182,6 +182,23 @@ export class TenderingController {
     return this.service.update(id, dto, actor.sub);
   }
 
+  @Get(":id/delete-preflight")
+  @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Returns cascade counts so the UI can show what will be deleted" })
+  @ApiResponse({ status: 200, description: "Preflight summary with counts of related records." })
+  deletePreflight(@Param("id") id: string) {
+    return this.service.deletePreflight(id);
+  }
+
+  @Delete(":id")
+  @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Hard-delete a tender and all related records (quotes, scope, documents, exports)" })
+  @ApiResponse({ status: 200, description: "Deletion summary with cascade counts." })
+  @ApiResponse({ status: 404, description: "Tender not found." })
+  delete(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
+    return this.service.delete(id, actor.sub);
+  }
+
   @Post(":id/duplicate")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Duplicate a tender (copies fields and clients, resets lifecycle dates and outcomes)" })

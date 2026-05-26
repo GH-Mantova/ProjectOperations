@@ -445,6 +445,72 @@ export class TenderingService {
     return tender;
   }
 
+  async delete(id: string, actorId: string) {
+    const tender = await this.prisma.tender.findUnique({
+      where: { id },
+      include: {
+        _count: {
+          select: {
+            clientQuotes: true,
+            scopeItems: true,
+            scopeCards: true,
+            tenderDocuments: true,
+            estimateExports: true,
+            tenderClients: true,
+            tenderNotes: true,
+            clarifications: true
+          }
+        }
+      }
+    });
+    if (!tender) throw new NotFoundException("Tender not found.");
+
+    await this.auditService.write({
+      actorId,
+      action: "tenders.delete",
+      entityType: "Tender",
+      entityId: id,
+      metadata: {
+        tenderNumber: tender.tenderNumber,
+        title: tender.title,
+        status: tender.status,
+        cascadedCounts: tender._count
+      }
+    });
+
+    await this.prisma.tender.delete({ where: { id } });
+
+    return {
+      id,
+      tenderNumber: tender.tenderNumber,
+      cascadedCounts: tender._count
+    };
+  }
+
+  async deletePreflight(id: string) {
+    const tender = await this.prisma.tender.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        tenderNumber: true,
+        title: true,
+        status: true,
+        _count: {
+          select: {
+            clientQuotes: true,
+            scopeItems: true,
+            scopeCards: true,
+            tenderDocuments: true,
+            estimateExports: true,
+            tenderClients: true
+          }
+        }
+      }
+    });
+    if (!tender) throw new NotFoundException("Tender not found.");
+    return tender;
+  }
+
   async create(dto: UpsertTenderDto, actorId?: string) {
     await this.ensureUniqueTenderNumber(dto.tenderNumber);
     this.validateAwardedClients(dto.tenderClients ?? []);

@@ -7,6 +7,7 @@ import { AddClientModal } from "./AddClientModal";
 import { TenderDocumentsPanel } from "./TenderDocumentsPanel";
 import { TenderClientNotesSection } from "./TenderClientNotesSection";
 import { TenderClarificationLog } from "./TenderClarificationLog";
+import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { ConvertToProjectModal } from "./ConvertToProjectModal";
 import { ScopeCardsTab } from "./scope-cards/ScopeCardsTab";
 import { ClientStarRating } from "../../components/ClientStarRating";
@@ -168,6 +169,9 @@ export function TenderDetailPage() {
   const [addClientOpen, setAddClientOpen] = useState(false);
   const [clientMsg, setClientMsg] = useState<string | null>(null);
   const [statusUpdating, setStatusUpdating] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deletePreflight, setDeletePreflight] = useState<{ _count: Record<string, number> } | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const reload = useCallback(async () => {
     if (!id) return;
@@ -252,6 +256,31 @@ export function TenderDetailPage() {
       setError((err as Error).message);
     } finally {
       setStatusUpdating(false);
+    }
+  };
+
+  const startDeleteTender = async () => {
+    if (!tender) return;
+    setDeleteConfirmOpen(true);
+    setDeletePreflight(null);
+    try {
+      const res = await authFetch(`/tenders/${tender.id}/delete-preflight`);
+      if (res.ok) setDeletePreflight(await res.json());
+    } catch {
+      /* best-effort */
+    }
+  };
+
+  const confirmDeleteTender = async () => {
+    if (!tender) return;
+    setDeleteBusy(true);
+    try {
+      const res = await authFetch(`/tenders/${tender.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(await res.text());
+      navigate("/tenders");
+    } catch (err) {
+      setError((err as Error).message);
+      setDeleteBusy(false);
     }
   };
 
@@ -416,6 +445,17 @@ export function TenderDetailPage() {
                 disabled={duplicating}
               >
                 {duplicating ? "Duplicating…" : "Duplicate"}
+              </button>
+            ) : null}
+            {canManageTenders ? (
+              <button
+                type="button"
+                className="s7-btn s7-btn--sm"
+                style={{ color: "#DC2626", borderColor: "#FCA5A5" }}
+                onClick={() => void startDeleteTender()}
+                disabled={deleteBusy}
+              >
+                Delete
               </button>
             ) : null}
             {canConvertTender && tender.status === "AWARDED" ? (
@@ -888,6 +928,18 @@ export function TenderDetailPage() {
             setConvertOpen(false);
             navigate(`/projects/${result.projectId}`);
           }}
+        />
+      ) : null}
+
+      {deleteConfirmOpen && tender ? (
+        <ConfirmDeleteDialog
+          entityType="tender"
+          entityRef={tender.tenderNumber}
+          status={tender.status}
+          cascadeCounts={deletePreflight?._count}
+          busy={deleteBusy}
+          onConfirm={() => void confirmDeleteTender()}
+          onCancel={() => { setDeleteConfirmOpen(false); setDeletePreflight(null); }}
         />
       ) : null}
     </div>

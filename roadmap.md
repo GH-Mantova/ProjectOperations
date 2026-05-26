@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-26 00:30 AEST
+Last updated: 2026-05-26 01:08 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -384,6 +384,15 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
 
 🔲 Sites module detail page + hard siteId FK to Tender/Project
    (sites list works, detail page is stub — deferred from PR #76)
+
+🔧 Tender & quote delete + edit — PR #227 (2026-05-26)
+   Hard delete for tenders and quotes with responsible safeguards:
+   Prisma cascade (onDelete: SetNull for SafetyIncident/HazardObservation
+   FKs, Cascade for all owned children); audit log written BEFORE row
+   removal; permission-gated behind tenders.manage; preflight endpoint
+   returns cascade counts for UI confirmation dialog; AWARDED/CONTRACT_ISSUED
+   tenders require typing the tender ref to confirm. Edit endpoints already
+   existed — no changes needed.
 
 🔲 Quote PDF enhancements (post Raj/Marco sign-off):
    - IS licence/certification logos on PDF header
@@ -1551,6 +1560,12 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
 ---
 
 ## CHANGELOG
+
+### 2026-05-26 — Tender & quote delete + edit (PR #227)
+Hard delete for tenders and quotes with cascade handling, audit logging,
+permission gating, and confirmation dialogs. Prisma migration adds
+onDelete: SetNull to SafetyIncident/HazardObservation FK refs.
+Edit endpoints already existed — no changes needed.
 
 ### 2026-04-25 — Initial roadmap created
 Phases 1-4 marked complete based on PR chain #80-#91.

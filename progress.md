@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-26 04:53 AEST
+Last updated: 2026-05-26 06:17 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -6512,6 +6512,34 @@ Detail: 13 file changes (4 new + 6 source-edited + 3 doc-edited).
     [get-or-create + reuse-existing + locked + edits + 404 not-owner
     + 400 already-accepted + 404 index + 400 no-tender + 400 non-
     estimate-metadata] + reject + acceptAll + rejectAll).
+
+---
+
+## PR — [5] Tender Detail — fix phantom Clarifications draft + Activity Post verification
+
+Status: IN_PROGRESS
+Branch: fix/tender-clarifications-phantom-draft
+
+**Defect 3 — Phantom draft in Clarifications**: `TenderClarificationLog`
+called `useFormDraft` without `isDirty`, so the visibilitychange auto-save
+fired unconditionally — persisting an empty form to IndexedDB every time
+the tab went hidden. Fix: pass `isDirty` that requires `adding === true`
+AND at least one user-content field non-empty.
+
+**Audit of other useFormDraft consumers**: ContactsTab (modal, only mounted
+when open — no risk), AvailabilitySection (modal — no risk), FieldSafetyPage
+×2 (form components only mounted when user enters create mode — no risk).
+Only TenderClarificationLog needed the fix.
+
+**Defect 2 — Activity Post**: Verified the controlled-input implementation
+is correct (standard React `value` + `onChange` → `setNewNote`). The
+reported symptom was a testing artifact from Claude in Chrome's `form_input`
+tool not dispatching React synthetic events. No code change needed.
+
+Files changed:
+- apps/web/src/pages/tendering/TenderClarificationLog.tsx — added `isDirty`
+  predicate to `useFormDraft` call.
+- progress.md — entry for this PR.
 
 ---
 

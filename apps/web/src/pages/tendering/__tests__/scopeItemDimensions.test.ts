@@ -139,3 +139,78 @@ describe("dirty-on-load integration", () => {
     expect(dirty.sqm).toBe(true);
   });
 });
+
+describe("cascade-release downstream dirty flags", () => {
+  type DirtyFlags = { sqm: boolean; m3: boolean; tonnes: boolean };
+  type DimKey = "length" | "height" | "depth" | "density" | "sqm" | "m3" | "tonnes";
+
+  /**
+   * Mirrors the cascade-release logic in ScopeQuantitiesTable's setDim.
+   * Starts from all-dirty (simulating saved overrides on load) and applies
+   * the edit of a single upstream field.
+   */
+  function applySetDim(k: DimKey, initial: DirtyFlags = { sqm: true, m3: true, tonnes: true }): DirtyFlags {
+    const next = { ...initial };
+    if (k === "sqm" || k === "m3" || k === "tonnes") {
+      next[k] = true;
+    }
+    if (k === "length" || k === "height") {
+      next.sqm = false;
+      next.m3 = false;
+      next.tonnes = false;
+    } else if (k === "depth") {
+      next.m3 = false;
+      next.tonnes = false;
+    } else if (k === "density") {
+      next.tonnes = false;
+    } else if (k === "sqm") {
+      next.m3 = false;
+      next.tonnes = false;
+    } else if (k === "m3") {
+      next.tonnes = false;
+    }
+    return next;
+  }
+
+  it("editing length releases sqm, m3, tonnes", () => {
+    const d = applySetDim("length");
+    expect(d).toEqual({ sqm: false, m3: false, tonnes: false });
+  });
+
+  it("editing height releases sqm, m3, tonnes", () => {
+    const d = applySetDim("height");
+    expect(d).toEqual({ sqm: false, m3: false, tonnes: false });
+  });
+
+  it("editing depth releases m3, tonnes (sqm stays)", () => {
+    const d = applySetDim("depth");
+    expect(d).toEqual({ sqm: true, m3: false, tonnes: false });
+  });
+
+  it("editing density releases tonnes (sqm, m3 stay)", () => {
+    const d = applySetDim("density");
+    expect(d).toEqual({ sqm: true, m3: true, tonnes: false });
+  });
+
+  it("editing sqm sets sqm dirty, releases m3 and tonnes", () => {
+    const d = applySetDim("sqm", { sqm: false, m3: true, tonnes: true });
+    expect(d).toEqual({ sqm: true, m3: false, tonnes: false });
+  });
+
+  it("editing m3 sets m3 dirty, releases tonnes", () => {
+    const d = applySetDim("m3", { sqm: true, m3: false, tonnes: true });
+    expect(d).toEqual({ sqm: true, m3: true, tonnes: false });
+  });
+
+  it("editing tonnes does not release anything", () => {
+    const d = applySetDim("tonnes");
+    expect(d).toEqual({ sqm: true, m3: true, tonnes: true });
+  });
+
+  it("upstream edit then re-override downstream: tonnes sticks after m3 edit + tonnes edit", () => {
+    let d = applySetDim("m3");
+    expect(d.tonnes).toBe(false);
+    d = applySetDim("tonnes", d);
+    expect(d.tonnes).toBe(true);
+  });
+});

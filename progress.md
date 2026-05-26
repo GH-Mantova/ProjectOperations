@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-26 00:07 AEST
+Last updated: 2026-05-26 00:30 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -7194,3 +7194,19 @@ Detail: IS logo teal_sq_logo4x.png replaced with corrected cropping.
   new logo. Finding: apps/api/assets/teal_sq_logo4x.png is not referenced
   by any source file; only templates/assets/ is read by logoBase64().
 Status: WAITING_VISUAL_SIGNOFF
+
+## 2026-05-26 — fix/tendering-board-withdrawn-layout OPENED
+GitHub PR: #226
+Type: Bug fix (§5 Tendering)
+Branch: fix/tendering-board-withdrawn-layout
+Detail: Tendering Pipeline Kanban board has 7 status columns (Draft,
+  In Progress, Submitted, Awarded, Contract Issued, Lost, Withdrawn)
+  but the CSS grid was set to repeat(6, ...), causing the Withdrawn
+  column to wrap and render orphaned below Draft. Fix:
+  1. Changed grid-template-columns from repeat(6, minmax(240px, 1fr))
+     to repeat(7, minmax(220px, 1fr)).
+  2. Changed media query (≤1280px) from repeat(6, 260px) to
+     repeat(7, 240px).
+  No new dependencies. No new env vars. No schema migration.
+Pre-PR checks: build ✓, lint ✓, web tests ✓.
+Status: IN_PROGRESS

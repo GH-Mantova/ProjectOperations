@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-25 23:46 AEST
+Last updated: 2026-05-26 00:30 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -1190,6 +1190,10 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
 ⏸️  "Due this week" card label vs content mismatch (only overdue items)
     (Chat1 dashboard 2026-05-03 — card title says "Due this week"
      but rows show overdue-only.)
+
+✅  Tendering Pipeline board — Withdrawn column layout
+    (fix/tendering-board-withdrawn-layout — CSS grid repeat(6) → repeat(7)
+     so all 7 status columns render as peer columns. PR #226.)
 
 ⏸️  sanitiseProviderError — extend with Xero-specific status extraction
     (Deferred from PR #135 audit M1. The defence-in-depth wrapper

@@ -70,3 +70,11 @@ export function computeDerivedDimensions(input: DimensionInput): DerivedDimensio
 
   return { sqm, m3, tonnes };
 }
+
+export function isDimensionOverride(saved: string | null | undefined, autoDerived: number | null): boolean {
+  if (saved == null) return false;
+  const s = Number(saved);
+  if (!Number.isFinite(s)) return false;
+  if (autoDerived == null) return true;
+  return Math.round(s * 100) !== Math.round(autoDerived * 100);
+}

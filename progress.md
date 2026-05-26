@@ -1,6 +1,6 @@
 # ProjectOperations â€” Autonomous PR Chain
 
-Last updated: 2026-05-26 01:44 AEST
+Last updated: 2026-05-26 04:53 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 â†’ #81 â†’ #82 â†’ #83 â†’ #84 â†’ #85 â†’ #86 â†’ #87
@@ -6512,6 +6512,37 @@ Detail: 13 file changes (4 new + 6 source-edited + 3 doc-edited).
     [get-or-create + reuse-existing + locked + edits + 404 not-owner
     + 400 already-accepted + 404 index + 400 no-tender + 400 non-
     estimate-metadata] + reject + acceptAll + rejectAll).
+
+---
+
+## PR â€” [5A] Scope of Works â€” make dimension overrides stick across save / refresh
+
+Status: IN_PROGRESS
+Branch: fix/scope-dim-override-display
+
+**Bug**: SQM / MÂ³ / Tonnes override fields reverted to auto-derived values
+after save+refresh because the `useEffect` that runs on item load always
+reset `dirty` flags to `{ sqm: false, m3: false, tonnes: false }`.
+
+**Fix**: Changed the dirty-flag initialisation to compare the saved value
+against the pure auto-derived value (with sqm/m3/tonnes forced to null).
+If the saved value differs from what auto-derive would produce, the field
+is marked dirty on load so it renders as an override and is not clobbered.
+
+Files changed:
+- apps/web/src/pages/tendering/scopeItemDimensions.ts â€” added
+  `isDimensionOverride` helper (compares saved string vs auto-derived
+  number with 2-decimal rounding tolerance).
+- apps/web/src/pages/tendering/ScopeQuantitiesTable.tsx â€” replaced the
+  useEffect that initialised dirty flags; now uses `computeDerivedDimensions`
+  + `isDimensionOverride` to detect overrides on load.
+- apps/web/src/pages/tendering/__tests__/scopeItemDimensions.test.ts â€”
+  20 tests: 10 unit tests for `isDimensionOverride`, 10 integration tests
+  for dirty-on-load semantics.
+
+Density read-only investigation: no existing rate table for density
+(only exists as a field on ScopeWasteItem). Deferred â€” proposed lookup
+shape needs owner approval before implementation.
   - propose-estimate-items.handler.spec.ts (3 specs).
   - estimate-proposal-helpers.test.ts (11 specs mirroring
     proposal-helpers.test.ts).
@@ -7239,13 +7270,13 @@ Detail: Edit and hard-delete for tenders and client quotes.
 Pre-PR checks: build, lint, 768 tests (9 new), web tests â€” all pass.
 Status: PR https://github.com/GH-Mantova/ProjectOperations/pull/227
 
-## 2026-05-26 — feat/seed-template-tender OPENED
+## 2026-05-26 ï¿½ feat/seed-template-tender OPENED
 GitHub PR: #228
-Type: Seed data (§5 Tendering)
+Type: Seed data (ï¿½5 Tendering)
 Branch: feat/seed-template-tender
-Detail: Additive seed — IS-T100 full-feature template tender + ClientQuote.
-  Tender: IS-T100 "TEMPLATE — Full-Feature Reference Quote", status DRAFT.
-  Scope: 18 items across 4 disciplines (DEM×4, CIV×3, ASB×4, Other×5 incl.
+Detail: Additive seed ï¿½ IS-T100 full-feature template tender + ClientQuote.
+  Tender: IS-T100 "TEMPLATE ï¿½ Full-Feature Reference Quote", status DRAFT.
+  Scope: 18 items across 4 disciplines (DEMï¿½4, CIVï¿½3, ASBï¿½4, Otherï¿½5 incl.
     concrete cutting, core drilling, grinding, 2 provisional sums).
   Quote: IS-T100-R1, assumptionMode=linked, detailLevel=detailed, all show-
     flags ON (showProvisional, showCostOptions, showScopeTable, showAssumptions,
@@ -7253,5 +7284,5 @@ Detail: Additive seed — IS-T100 full-feature template tender + ClientQuote.
   Sub-records: 4 cost lines, 2 provisional lines, 2 cost options, 8 linked
     assumptions, 7 exclusions, 14 quote scope items, 3 referenced drawings.
   No schema change. No migration. No new deps. No new env vars.
-Pre-PR checks: build, lint, 768 API tests, 193 web tests — all pass.
+Pre-PR checks: build, lint, 768 API tests, 193 web tests ï¿½ all pass.
 Status: IN_PROGRESS

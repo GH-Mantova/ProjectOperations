@@ -576,9 +576,32 @@ function ItemCard({
 
   const setDim = (k: DimKey, v: string) => {
     setDims((s) => ({ ...s, [k]: v }));
-    if (k === "sqm" || k === "m3" || k === "tonnes") {
-      setDirty((d) => ({ ...d, [k]: true }));
-    }
+    setDirty((d) => {
+      const next = { ...d };
+      // Editing the field itself makes it a new override.
+      if (k === "sqm" || k === "m3" || k === "tonnes") {
+        next[k] = true;
+      }
+      // Editing an upstream releases all downstream overrides so the
+      // live auto-derive can take over. The user can re-override the
+      // downstream by typing into it again afterward.
+      if (k === "length" || k === "height") {
+        next.sqm = false;
+        next.m3 = false;
+        next.tonnes = false;
+      } else if (k === "depth") {
+        next.m3 = false;
+        next.tonnes = false;
+      } else if (k === "density") {
+        next.tonnes = false;
+      } else if (k === "sqm") {
+        next.m3 = false;
+        next.tonnes = false;
+      } else if (k === "m3") {
+        next.tonnes = false;
+      }
+      return next;
+    });
   };
 
   // Live-derive sqm/m3/tonnes. Only fields the user has explicitly

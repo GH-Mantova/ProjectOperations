@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-26 04:53 AEST
+Last updated: 2026-05-26 05:31 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -6543,6 +6543,27 @@ Files changed:
 Density read-only investigation: no existing rate table for density
 (only exists as a field on ScopeWasteItem). Deferred — proposed lookup
 shape needs owner approval before implementation.
+
+---
+
+## PR — [5A] Scope of Works — cascade-release downstream overrides on upstream edit
+
+Status: IN_PROGRESS
+Branch: fix/scope-dim-cascade-release (based on fix/scope-dim-override-display)
+
+**Bug**: After PR #229 made overrides stick on load, editing an upstream
+input (e.g. m³) no longer triggered live recompute of downstream fields
+(e.g. tonnes) because the downstream dirty flag stayed true.
+
+**Fix**: Extended `setDim` to cascade-release downstream dirty flags when
+an upstream input is edited. Dependency graph: length/height → sqm/m3/tonnes;
+depth → m3/tonnes; density → tonnes; sqm → m3/tonnes; m3 → tonnes.
+
+Files changed:
+- apps/web/src/pages/tendering/ScopeQuantitiesTable.tsx — rewrote `setDim`
+  with cascade-release logic for downstream dirty flags.
+- apps/web/src/pages/tendering/__tests__/scopeItemDimensions.test.ts —
+  added 8 cascade-release tests (total now 28).
   - propose-estimate-items.handler.spec.ts (3 specs).
   - estimate-proposal-helpers.test.ts (11 specs mirroring
     proposal-helpers.test.ts).

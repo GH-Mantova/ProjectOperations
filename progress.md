@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-25 23:48 AEST
+Last updated: 2026-05-26 00:06 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -7181,4 +7181,15 @@ Detail: PR #223 fixed the doubled header by moving it to Puppeteer
   accommodate the taller branded header and footer without overlap.
   Both sample PDFs regenerated; programmatic verification confirms
   header and footer appear exactly 1× per page on all pages.
+Status: WAITING_VISUAL_SIGNOFF
+
+## 2026-05-26 — fix/quote-logo-update OPENED
+Type: Asset-only PR (§5A.2 Quote PDF)
+Branch: fix/quote-logo-update
+Detail: IS logo teal_sq_logo4x.png replaced with corrected cropping.
+  Asset-only change — no code modified. Two tracked copies updated:
+  templates/assets/ (used by quote builder) and apps/api/assets/ (unused
+  by code, legacy/reference copy). Both sample PDFs regenerated with the
+  new logo. Finding: apps/api/assets/teal_sq_logo4x.png is not referenced
+  by any source file; only templates/assets/ is read by logoBase64().
 Status: WAITING_VISUAL_SIGNOFF

@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-26 00:06 AEST
+Last updated: 2026-05-26 00:07 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -7184,6 +7184,7 @@ Detail: PR #223 fixed the doubled header by moving it to Puppeteer
 Status: WAITING_VISUAL_SIGNOFF
 
 ## 2026-05-26 — fix/quote-logo-update OPENED
+GitHub PR: #225 (https://github.com/GH-Mantova/ProjectOperations/pull/225)
 Type: Asset-only PR (§5A.2 Quote PDF)
 Branch: fix/quote-logo-update
 Detail: IS logo teal_sq_logo4x.png replaced with corrected cropping.

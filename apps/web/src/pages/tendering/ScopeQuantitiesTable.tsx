@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { NotesField, TooltipSelect, type TooltipSelectOption } from "../../components";
-import { computeDerivedDimensions } from "./scopeItemDimensions";
+import { computeDerivedDimensions, isDimensionOverride } from "./scopeItemDimensions";
 
 // PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
 export type Discipline = "DEM" | "CIV" | "ASB" | "Other";
@@ -541,12 +541,8 @@ function ItemCard({
     density: initDim(item.density),
     tonnes: initDim(item.tonnes)
   });
-  // PR B4a.5 — track which of the three derived fields (sqm/m3/tonnes)
-  // the user has explicitly typed into during this mount. Persisted-
-  // but-not-edited values do NOT count as overrides: the live preview
-  // re-derives them whenever a raw input changes. Resets to all-false
-  // when the upstream item refreshes (eg after a PATCH response, or
-  // when the user collapses and reopens the card).
+  // Track which derived fields hold an explicit override (saved value
+  // differs from what auto-derive would produce from raw inputs alone).
   const [dirty, setDirty] = useState({ sqm: false, m3: false, tonnes: false });
 
   // Re-sync local state when the upstream row is refreshed.
@@ -560,7 +556,22 @@ function ItemCard({
       density: initDim(item.density),
       tonnes: initDim(item.tonnes)
     });
-    setDirty({ sqm: false, m3: false, tonnes: false });
+
+    const autoDerived = computeDerivedDimensions({
+      length: item.length == null ? null : Number(item.length),
+      height: item.height == null ? null : Number(item.height),
+      depth: item.depth == null ? null : Number(item.depth),
+      density: item.density == null ? null : Number(item.density),
+      sqm: null,
+      m3: null,
+      tonnes: null
+    });
+
+    setDirty({
+      sqm: isDimensionOverride(item.sqm, autoDerived.sqm),
+      m3: isDimensionOverride(item.m3, autoDerived.m3),
+      tonnes: isDimensionOverride(item.tonnes, autoDerived.tonnes)
+    });
   }, [item.id, item.length, item.height, item.depth, item.sqm, item.m3, item.density, item.tonnes]);
 
   const setDim = (k: DimKey, v: string) => {

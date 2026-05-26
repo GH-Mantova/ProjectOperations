@@ -1,6 +1,6 @@
 # ProjectOperations â€” Autonomous PR Chain
 
-Last updated: 2026-05-26 01:08 AEST
+Last updated: 2026-05-26 01:44 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 â†’ #81 â†’ #82 â†’ #83 â†’ #84 â†’ #85 â†’ #86 â†’ #87
@@ -7237,4 +7237,21 @@ Detail: Edit and hard-delete for tenders and client quotes.
   Migration: 20260526_tender_delete_safety_fk
   No new deps. No new env vars.
 Pre-PR checks: build, lint, 768 tests (9 new), web tests â€” all pass.
+Status: PR https://github.com/GH-Mantova/ProjectOperations/pull/227
+
+## 2026-05-26 — feat/seed-template-tender OPENED
+GitHub PR: #228
+Type: Seed data (§5 Tendering)
+Branch: feat/seed-template-tender
+Detail: Additive seed — IS-T100 full-feature template tender + ClientQuote.
+  Tender: IS-T100 "TEMPLATE — Full-Feature Reference Quote", status DRAFT.
+  Scope: 18 items across 4 disciplines (DEM×4, CIV×3, ASB×4, Other×5 incl.
+    concrete cutting, core drilling, grinding, 2 provisional sums).
+  Quote: IS-T100-R1, assumptionMode=linked, detailLevel=detailed, all show-
+    flags ON (showProvisional, showCostOptions, showScopeTable, showAssumptions,
+    showExclusions, showReferencedDrawings).
+  Sub-records: 4 cost lines, 2 provisional lines, 2 cost options, 8 linked
+    assumptions, 7 exclusions, 14 quote scope items, 3 referenced drawings.
+  No schema change. No migration. No new deps. No new env vars.
+Pre-PR checks: build, lint, 768 API tests, 193 web tests — all pass.
 Status: IN_PROGRESS

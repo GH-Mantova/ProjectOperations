@@ -1979,6 +1979,593 @@ async function main() {
       ]
     });
 
+    // ── IS-T100 — Full-Feature Template Tender ────────────────────────────
+    // A reference tender the owner copies when building real quotes.
+    // Exercises every quote feature: all 4 discipline groups, provisional
+    // sums, cost options, linked assumptions, exclusions, referenced
+    // drawings, and QuoteScopeItems. detailLevel=detailed,
+    // assumptionMode=linked, all show-flags ON.
+    const templateTenderId = "seed-tender-template-100";
+    const templateTender = await prisma.tender.upsert({
+      where: { tenderNumber: "IS-T100" },
+      update: {
+        title: "TEMPLATE — Full-Feature Reference Quote",
+        status: "DRAFT",
+        estimatorUserId: estimatorUser.id,
+        probability: 0,
+        estimatedValue: new Prisma.Decimal("0"),
+        notes: "Template tender — do not submit. Copy this tender to start a new quote with all sections pre-populated."
+      },
+      create: {
+        id: templateTenderId,
+        tenderNumber: "IS-T100",
+        title: "TEMPLATE — Full-Feature Reference Quote",
+        status: "DRAFT",
+        estimatorUserId: estimatorUser.id,
+        probability: 0,
+        estimatedValue: new Prisma.Decimal("0"),
+        notes: "Template tender — do not submit. Copy this tender to start a new quote with all sections pre-populated."
+      }
+    });
+
+    await prisma.tenderClient.upsert({
+      where: {
+        tenderId_clientId: {
+          tenderId: templateTender.id,
+          clientId: clientA.id
+        }
+      },
+      update: { relationshipType: "PRIMARY" },
+      create: {
+        tenderId: templateTender.id,
+        clientId: clientA.id,
+        relationshipType: "PRIMARY"
+      }
+    });
+
+    // Scope cards — all 4 disciplines
+    await prisma.scopeOfWorksItem.deleteMany({ where: { tenderId: templateTender.id } });
+    await prisma.scopeCard.deleteMany({ where: { tenderId: templateTender.id } });
+    const tplCardIds = Object.fromEntries(
+      SCOPE_CARD_DEFAULTS.map((c) => [c.discipline, `${templateTender.id}-card-${c.discipline}`])
+    ) as Record<(typeof SCOPE_CARD_DEFAULTS)[number]["discipline"], string>;
+    await prisma.scopeCard.createMany({
+      data: SCOPE_CARD_DEFAULTS.map((c) => ({
+        id: tplCardIds[c.discipline],
+        tenderId: templateTender.id,
+        name: c.name,
+        discipline: c.discipline,
+        cardNumber: c.cardNumber,
+        sortOrder: c.sortOrder,
+        createdById: estimatorUser.id
+      }))
+    });
+
+    // Scope items — DEM, ASB, CIV, Other (incl. cutting/coring/grinding)
+    await prisma.scopeOfWorksItem.createMany({
+      data: [
+        // ── DEM ──
+        {
+          tenderId: templateTender.id,
+          cardId: tplCardIds.DEM,
+          createdById: estimatorUser.id,
+          wbsCode: "DEM1.1",
+          itemNumber: 1,
+          rowType: "demolition",
+          description: "Internal strip-out — remove partitions, ceilings, joinery, and fixtures",
+          status: "confirmed",
+          men: new Prisma.Decimal("4"),
+          days: new Prisma.Decimal("6"),
+          shift: "DAY",
+          sqm: new Prisma.Decimal("750"),
+          measurements: [{ qty: 750, unit: "sqm" }],
+          notes: "Ground floor and Level 1 combined",
+          sortOrder: 0
+        },
+        {
+          tenderId: templateTender.id,
+          cardId: tplCardIds.DEM,
+          createdById: estimatorUser.id,
+          wbsCode: "DEM1.2",
+          itemNumber: 2,
+          rowType: "demolition",
+          description: "Structural demolition — load-bearing masonry walls and lintels",
+          status: "confirmed",
+          men: new Prisma.Decimal("3"),
+          days: new Prisma.Decimal("5"),
+          shift: "DAY",
+          sqm: new Prisma.Decimal("120"),
+          materialType: "masonry",
+          measurements: [{ qty: 120, unit: "sqm" }],
+          notes: "Engineer cert required prior to commencement",
+          sortOrder: 1
+        },
+        {
+          tenderId: templateTender.id,
+          cardId: tplCardIds.DEM,
+          createdById: estimatorUser.id,
+          wbsCode: "DEM1.3",
+          itemNumber: 3,
+          rowType: "demolition",
+          description: "Slab removal — 150mm reinforced concrete ground slab",
+          status: "confirmed",
+          men: new Prisma.Decimal("3"),
+          days: new Prisma.Decimal("4"),
+          shift: "DAY",
+          sqm: new Prisma.Decimal("85"),
+          depth: new Prisma.Decimal("0.150"),
+          materialType: "Concrete reinforced",
+          measurements: [{ qty: 85, unit: "sqm" }],
+          sortOrder: 2
+        },
+        {
+          tenderId: templateTender.id,
+          cardId: tplCardIds.DEM,
+          createdById: estimatorUser.id,
+          wbsCode: "DEM1.4",
+          itemNumber: 4,
+          rowType: "demolition",
+          description: "Masonry demolition — non-load-bearing block dividing walls",
+          status: "confirmed",
+          men: new Prisma.Decimal("2"),
+          days: new Prisma.Decimal("3"),
+          shift: "DAY",
+          sqm: new Prisma.Decimal("65"),
+          materialType: "masonry",
+          measurements: [{ qty: 65, unit: "sqm" }],
+          sortOrder: 3
+        },
+        // ── CIV ──
+        {
+          tenderId: templateTender.id,
+          cardId: tplCardIds.CIV,
+          createdById: estimatorUser.id,
+          wbsCode: "CIV1.1",
+          itemNumber: 1,
+          rowType: "excavation",
+          description: "Trench excavation for new stormwater and sewer services",
+          status: "confirmed",
+          men: new Prisma.Decimal("2"),
+          days: new Prisma.Decimal("4"),
+          shift: "DAY",
+          excavationDepthM: new Prisma.Decimal("1.50"),
+          excavationMaterial: "soil",
+          machineSize: "5T",
+          measurements: [{ qty: 60, unit: "lm" }],
+          notes: "Assume dry conditions — dewatering excluded",
+          sortOrder: 0
+        },
+        {
+          tenderId: templateTender.id,
+          cardId: tplCardIds.CIV,
+          createdById: estimatorUser.id,
+          wbsCode: "CIV1.2",
+          itemNumber: 2,
+          rowType: "excavation",
+          description: "Service reinstatement — backfill, compact, and reinstate surfaces",
+          status: "confirmed",
+          men: new Prisma.Decimal("2"),
+          days: new Prisma.Decimal("3"),
+          shift: "DAY",
+          measurements: [{ qty: 60, unit: "lm" }],
+          sortOrder: 1
+        },
+        {
+          tenderId: templateTender.id,
+          cardId: tplCardIds.CIV,
+          createdById: estimatorUser.id,
+          wbsCode: "CIV1.3",
+          itemNumber: 3,
+          rowType: "excavation",
+          description: "Hardstand works — new concrete hardstand to loading dock area",
+          status: "confirmed",
+          men: new Prisma.Decimal("3"),
+          days: new Prisma.Decimal("3"),
+          shift: "DAY",
+          sqm: new Prisma.Decimal("180"),
+          depth: new Prisma.Decimal("0.200"),
+          measurements: [{ qty: 180, unit: "sqm" }],
+          sortOrder: 2
+        },
+        // ── ASB ──
+        {
+          tenderId: templateTender.id,
+          cardId: tplCardIds.ASB,
+          createdById: estimatorUser.id,
+          wbsCode: "ASB1.1",
+          itemNumber: 1,
+          rowType: "asbestos",
+          description: "Class A friable removal — pipe lagging and duct insulation",
+          status: "confirmed",
+          men: new Prisma.Decimal("3"),
+          days: new Prisma.Decimal("5"),
+          shift: "DAY",
+          acmType: "friable",
+          acmMaterial: "pipe_insulation",
+          enclosureRequired: true,
+          airMonitoring: true,
+          lm: new Prisma.Decimal("55"),
+          measurementQty: new Prisma.Decimal("55"),
+          measurementUnit: "Lm",
+          measurements: [{ qty: 55, unit: "Lm" }],
+          notes: "Full negative-pressure enclosure — decontamination unit required",
+          sortOrder: 0
+        },
+        {
+          tenderId: templateTender.id,
+          cardId: tplCardIds.ASB,
+          createdById: estimatorUser.id,
+          wbsCode: "ASB1.2",
+          itemNumber: 2,
+          rowType: "asbestos",
+          description: "Class B bonded removal — floor tiles and adhesive, eaves soffit sheets",
+          status: "confirmed",
+          men: new Prisma.Decimal("3"),
+          days: new Prisma.Decimal("4"),
+          shift: "DAY",
+          acmType: "bonded",
+          acmMaterial: "vinyl_tile",
+          enclosureRequired: false,
+          airMonitoring: false,
+          sqm: new Prisma.Decimal("310"),
+          measurementQty: new Prisma.Decimal("310"),
+          measurementUnit: "m²",
+          measurements: [{ qty: 310, unit: "m²" }],
+          sortOrder: 1
+        },
+        {
+          tenderId: templateTender.id,
+          cardId: tplCardIds.ASB,
+          createdById: estimatorUser.id,
+          wbsCode: "ASB1.3",
+          itemNumber: 3,
+          rowType: "asbestos",
+          description: "Air monitoring — background, control, and clearance sampling",
+          status: "confirmed",
+          men: new Prisma.Decimal("1"),
+          days: new Prisma.Decimal("5"),
+          shift: "DAY",
+          airMonitoring: true,
+          measurements: [{ qty: 15, unit: "samples" }],
+          notes: "Licensed assessor — results within 24 hours",
+          sortOrder: 2
+        },
+        {
+          tenderId: templateTender.id,
+          cardId: tplCardIds.ASB,
+          createdById: estimatorUser.id,
+          wbsCode: "ASB1.4",
+          itemNumber: 4,
+          rowType: "asbestos",
+          description: "Form 65 submission and WH&S Qld notification",
+          status: "confirmed",
+          men: new Prisma.Decimal("1"),
+          days: new Prisma.Decimal("1"),
+          shift: "DAY",
+          measurements: [{ qty: 1, unit: "ea" }],
+          notes: "Minimum 5 business days prior to commencement",
+          sortOrder: 3
+        },
+        // ── Other — concrete cutting, core drilling, grinding ──
+        {
+          tenderId: templateTender.id,
+          cardId: tplCardIds.Other,
+          createdById: estimatorUser.id,
+          wbsCode: "Other1.1",
+          itemNumber: 1,
+          rowType: "cutting",
+          description: "Concrete cutting — wall saw cuts to slab penetrations",
+          status: "confirmed",
+          men: new Prisma.Decimal("2"),
+          days: new Prisma.Decimal("2"),
+          shift: "DAY",
+          cuttingEquipment: "Wall saw",
+          elevation: "Floor",
+          depthMm: 200,
+          lm: new Prisma.Decimal("24"),
+          materialType: "Concrete reinforced",
+          cuttingIncluded: true,
+          measurements: [{ qty: 24, unit: "lm" }],
+          notes: "200mm reinforced slab — wall saw both sides",
+          sortOrder: 0
+        },
+        {
+          tenderId: templateTender.id,
+          cardId: tplCardIds.Other,
+          createdById: estimatorUser.id,
+          wbsCode: "Other1.2",
+          itemNumber: 2,
+          rowType: "cutting",
+          description: "Core drilling — new service penetrations through RC walls and slab",
+          status: "confirmed",
+          men: new Prisma.Decimal("1"),
+          days: new Prisma.Decimal("3"),
+          shift: "DAY",
+          cuttingEquipment: "Core drill",
+          elevation: "Wall",
+          coreHoleDiameterMm: 150,
+          coreHoleQty: new Prisma.Decimal("18"),
+          materialType: "Concrete reinforced",
+          cuttingIncluded: true,
+          measurements: [{ qty: 18, unit: "ea" }],
+          notes: "150mm dia cores — GPR scan prior to each core",
+          sortOrder: 1
+        },
+        {
+          tenderId: templateTender.id,
+          cardId: tplCardIds.Other,
+          createdById: estimatorUser.id,
+          wbsCode: "Other1.3",
+          itemNumber: 3,
+          rowType: "cutting",
+          description: "Concrete grinding / flush-cutting — trip hazard elimination and surface prep",
+          status: "confirmed",
+          men: new Prisma.Decimal("1"),
+          days: new Prisma.Decimal("2"),
+          shift: "DAY",
+          cuttingEquipment: "Grinder",
+          elevation: "Floor",
+          depthMm: 5,
+          sqm: new Prisma.Decimal("40"),
+          materialType: "Concrete unreinforced",
+          cuttingIncluded: true,
+          measurements: [{ qty: 40, unit: "sqm" }],
+          notes: "Grind to level with adjacent surfaces",
+          sortOrder: 2
+        },
+        {
+          tenderId: templateTender.id,
+          cardId: tplCardIds.Other,
+          createdById: estimatorUser.id,
+          wbsCode: "Other1.4",
+          itemNumber: 4,
+          rowType: "provisional",
+          description: "Provisional sum — unknown ACM discovery during strip-out",
+          status: "confirmed",
+          provisionalAmount: new Prisma.Decimal("25000.00"),
+          sortOrder: 3
+        },
+        {
+          tenderId: templateTender.id,
+          cardId: tplCardIds.Other,
+          createdById: estimatorUser.id,
+          wbsCode: "Other1.5",
+          itemNumber: 5,
+          rowType: "provisional",
+          description: "Provisional sum — rock encountered during excavation",
+          status: "confirmed",
+          provisionalAmount: new Prisma.Decimal("15000.00"),
+          sortOrder: 4
+        }
+      ]
+    });
+
+    // Referenced drawings — TenderDocumentLink entries (render as "Referenced Drawings" on PDF)
+    await prisma.tenderDocumentLink.deleteMany({
+      where: { tenderId: templateTender.id }
+    });
+    await prisma.tenderDocumentLink.createMany({
+      data: [
+        {
+          id: "seed-tpl-doc-demolition-plan",
+          tenderId: templateTender.id,
+          category: "tender",
+          title: "Demolition Plan — Ground Floor (DA-100 Rev C)"
+        },
+        {
+          id: "seed-tpl-doc-services-layout",
+          tenderId: templateTender.id,
+          category: "tender",
+          title: "Services Layout — Hydraulic + Electrical (ME-200 Rev B)"
+        },
+        {
+          id: "seed-tpl-doc-asbestos-register",
+          tenderId: templateTender.id,
+          category: "tender",
+          title: "Asbestos Register / Hazmat Survey — Building A (Rev 2, March 2026)"
+        }
+      ]
+    });
+
+    // ClientQuote — full-feature overlay with all show-flags ON
+    const tplQuoteId = "seed-template-quote-100";
+    await prisma.clientQuote.deleteMany({ where: { tenderId: templateTender.id } });
+    const tplQuote = await prisma.clientQuote.create({
+      data: {
+        id: tplQuoteId,
+        tenderId: templateTender.id,
+        clientId: clientA.id,
+        revision: 1,
+        quoteRef: "IS-T100-R1",
+        status: "DRAFT",
+        assumptionMode: "linked",
+        detailLevel: "detailed",
+        showProvisional: true,
+        showCostOptions: true,
+        showScopeTable: true,
+        showAssumptions: true,
+        showExclusions: true,
+        showReferencedDrawings: true,
+        createdById: estimatorUser.id
+      }
+    });
+
+    // Cost lines — one per discipline group
+    const tplCostLineIds = {
+      dem: "seed-tpl-cl-dem",
+      asb: "seed-tpl-cl-asb",
+      civ: "seed-tpl-cl-civ",
+      cutting: "seed-tpl-cl-cutting"
+    };
+    await prisma.quoteCostLine.createMany({
+      data: [
+        {
+          id: tplCostLineIds.dem,
+          quoteId: tplQuote.id,
+          label: "Demolition",
+          description: "Internal strip-out, structural demolition, slab removal, and masonry demolition",
+          price: new Prisma.Decimal("245000.00"),
+          sortOrder: 0
+        },
+        {
+          id: tplCostLineIds.asb,
+          quoteId: tplQuote.id,
+          label: "Asbestos Removal",
+          description: "Class A friable removal, Class B bonded removal, air monitoring, and Form 65",
+          price: new Prisma.Decimal("185000.00"),
+          sortOrder: 1
+        },
+        {
+          id: tplCostLineIds.civ,
+          quoteId: tplQuote.id,
+          label: "Civil Works",
+          description: "Trench excavation, service reinstatement, and hardstand works",
+          price: new Prisma.Decimal("92000.00"),
+          sortOrder: 2
+        },
+        {
+          id: tplCostLineIds.cutting,
+          quoteId: tplQuote.id,
+          label: "Concrete Cutting & Coring",
+          description: "Wall saw cuts, core drilling for service penetrations, and surface grinding",
+          price: new Prisma.Decimal("38000.00"),
+          sortOrder: 3
+        }
+      ]
+    });
+
+    // Provisional sums
+    await prisma.quoteProvisionalLine.createMany({
+      data: [
+        {
+          quoteId: tplQuote.id,
+          description: "PS — unknown ACM discovered during strip-out works",
+          price: new Prisma.Decimal("25000.00"),
+          notes: "Provisional sum for asbestos-containing materials not identified in the register.",
+          sortOrder: 0
+        },
+        {
+          quoteId: tplQuote.id,
+          description: "PS — rock or unexpected subsurface obstruction during excavation",
+          price: new Prisma.Decimal("15000.00"),
+          notes: "Provisional sum for rock breaking if encountered during trench excavation.",
+          sortOrder: 1
+        }
+      ]
+    });
+
+    // Cost options — two alternative / optional items
+    await prisma.quoteCostOption.createMany({
+      data: [
+        {
+          quoteId: tplQuote.id,
+          label: "Option A",
+          description: "Weekend works premium — all trades working Saturday 6am–2pm",
+          price: new Prisma.Decimal("18500.00"),
+          notes: "Applicable if client requires Saturday shift to meet programme.",
+          sortOrder: 0
+        },
+        {
+          quoteId: tplQuote.id,
+          label: "Option B",
+          description: "Additional GPR scanning for post-tension slab investigation",
+          price: new Prisma.Decimal("4200.00"),
+          notes: "Recommended where as-built drawings are unavailable.",
+          sortOrder: 1
+        }
+      ]
+    });
+
+    // Assumptions — linked to cost lines (assumptionMode = "linked")
+    await prisma.quoteAssumption.deleteMany({ where: { quoteId: tplQuote.id } });
+    await prisma.quoteAssumption.createMany({
+      data: [
+        {
+          quoteId: tplQuote.id,
+          costLineId: tplCostLineIds.dem,
+          text: "All services isolated and capped by others prior to demolition commencement.",
+          sortOrder: 0
+        },
+        {
+          quoteId: tplQuote.id,
+          costLineId: tplCostLineIds.dem,
+          text: "Slab thickness assumed 150mm maximum — variations priced separately.",
+          sortOrder: 1
+        },
+        {
+          quoteId: tplQuote.id,
+          costLineId: tplCostLineIds.asb,
+          text: "Asbestos register provided is current — IS not liable for unregistered ACM.",
+          sortOrder: 2
+        },
+        {
+          quoteId: tplQuote.id,
+          costLineId: tplCostLineIds.asb,
+          text: "Client to provide minimum 5 business days' notice for Class A commencement.",
+          sortOrder: 3
+        },
+        {
+          quoteId: tplQuote.id,
+          costLineId: tplCostLineIds.civ,
+          text: "Dry conditions assumed — dewatering is excluded from this price.",
+          sortOrder: 4
+        },
+        {
+          quoteId: tplQuote.id,
+          costLineId: tplCostLineIds.cutting,
+          text: "GPR scan included for core drilling locations only — full floor scan excluded.",
+          sortOrder: 5
+        },
+        {
+          quoteId: tplQuote.id,
+          text: "Standard working hours: Monday–Friday 7am–3:30pm.",
+          sortOrder: 6
+        },
+        {
+          quoteId: tplQuote.id,
+          text: "Client to provide suitable vehicle access and laydown area.",
+          sortOrder: 7
+        }
+      ]
+    });
+
+    // Exclusions
+    await prisma.quoteExclusion.deleteMany({ where: { quoteId: tplQuote.id } });
+    await prisma.quoteExclusion.createMany({
+      data: [
+        { quoteId: tplQuote.id, text: "Engineering or structural design and certification.", sortOrder: 0 },
+        { quoteId: tplQuote.id, text: "Traffic management plans and implementation.", sortOrder: 1 },
+        { quoteId: tplQuote.id, text: "Building permits and council / regulatory fees.", sortOrder: 2 },
+        { quoteId: tplQuote.id, text: "Hydraulic, electrical, mechanical, and fire services works.", sortOrder: 3 },
+        { quoteId: tplQuote.id, text: "Soil contamination testing and remediation.", sortOrder: 4 },
+        { quoteId: tplQuote.id, text: "After-hours or weekend works unless stated in cost options.", sortOrder: 5 },
+        { quoteId: tplQuote.id, text: "Any works not specifically mentioned in this quotation.", sortOrder: 6 }
+      ]
+    });
+
+    // QuoteScopeItems — detailed scope table for the PDF (detailLevel=detailed)
+    await prisma.quoteScopeItem.deleteMany({ where: { quoteId: tplQuote.id } });
+    await prisma.quoteScopeItem.createMany({
+      data: [
+        { quoteId: tplQuote.id, label: "DEM1.1", description: "Internal strip-out — partitions, ceilings, joinery, fixtures", qty: "750", unit: "sqm", sortOrder: 0 },
+        { quoteId: tplQuote.id, label: "DEM1.2", description: "Structural demolition — load-bearing masonry walls and lintels", qty: "120", unit: "sqm", sortOrder: 1 },
+        { quoteId: tplQuote.id, label: "DEM1.3", description: "Slab removal — 150mm reinforced concrete ground slab", qty: "85", unit: "sqm", sortOrder: 2 },
+        { quoteId: tplQuote.id, label: "DEM1.4", description: "Masonry demolition — non-load-bearing block walls", qty: "65", unit: "sqm", sortOrder: 3 },
+        { quoteId: tplQuote.id, label: "CIV1.1", description: "Trench excavation — stormwater and sewer services", qty: "60", unit: "lm", sortOrder: 4 },
+        { quoteId: tplQuote.id, label: "CIV1.2", description: "Service reinstatement — backfill, compact, and surface reinstate", qty: "60", unit: "lm", sortOrder: 5 },
+        { quoteId: tplQuote.id, label: "CIV1.3", description: "Hardstand works — new concrete to loading dock area", qty: "180", unit: "sqm", sortOrder: 6 },
+        { quoteId: tplQuote.id, label: "ASB1.1", description: "Class A friable removal — pipe lagging and duct insulation", qty: "55", unit: "Lm", sortOrder: 7 },
+        { quoteId: tplQuote.id, label: "ASB1.2", description: "Class B bonded removal — floor tiles, adhesive, eaves soffits", qty: "310", unit: "m²", sortOrder: 8 },
+        { quoteId: tplQuote.id, label: "ASB1.3", description: "Air monitoring — background, control, and clearance sampling", qty: "15", unit: "samples", sortOrder: 9 },
+        { quoteId: tplQuote.id, label: "ASB1.4", description: "Form 65 submission and WH&S Qld notification", qty: "1", unit: "ea", sortOrder: 10 },
+        { quoteId: tplQuote.id, label: "Other1.1", description: "Concrete cutting — wall saw cuts to slab penetrations", qty: "24", unit: "lm", notes: "200mm RC slab — wall saw both sides", sortOrder: 11 },
+        { quoteId: tplQuote.id, label: "Other1.2", description: "Core drilling — service penetrations through RC walls and slab", qty: "18", unit: "ea", notes: "150mm dia — GPR scan prior to each core", sortOrder: 12 },
+        { quoteId: tplQuote.id, label: "Other1.3", description: "Concrete grinding / flush-cutting — trip hazard elimination", qty: "40", unit: "sqm", sortOrder: 13 }
+      ]
+    });
+
+    console.log("  ✓ IS-T100 template tender + full-feature quote seeded");
+
     const gatewaySite = await prisma.site.findFirst({
       where: { code: "GATEWAY" }
     });

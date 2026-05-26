@@ -86,9 +86,14 @@ export class ClientQuotesController {
 
   @Delete(":quoteId")
   @RequirePermissions("tenders.manage")
-  @ApiOperation({ summary: "Delete a DRAFT quote (403 on SENT/SUPERSEDED)" })
-  delete(@Param("tenderId") tenderId: string, @Param("quoteId") quoteId: string) {
-    return this.service.delete(tenderId, quoteId);
+  @ApiOperation({ summary: "Hard-delete a quote and all related cost lines, options, assumptions, exclusions" })
+  @ApiResponse({ status: 200, description: "Deleted quote ID." })
+  delete(
+    @Param("tenderId") tenderId: string,
+    @Param("quoteId") quoteId: string,
+    @CurrentUser() actor: RequestUser
+  ) {
+    return this.service.delete(tenderId, quoteId, actor.sub);
   }
 
   // ── Summary (internal — clientFacingTotal is the one the PDF renders) ─

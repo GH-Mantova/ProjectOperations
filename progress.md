@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-26 00:30 AEST
+Last updated: 2026-05-26 01:08 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -7209,4 +7209,32 @@ Detail: Tendering Pipeline Kanban board has 7 status columns (Draft,
      repeat(7, 240px).
   No new dependencies. No new env vars. No schema migration.
 Pre-PR checks: build ✓, lint ✓, web tests ✓.
+Status: IN_PROGRESS
+
+## 2026-05-26 — feat/tendering-delete-edit OPENED
+GitHub PR: #227
+Type: Feature (§5 Tendering)
+Branch: feat/tendering-delete-edit
+Detail: Edit and hard-delete for tenders and client quotes.
+  API:
+  1. DELETE /tenders/:id — hard-deletes a tender and all cascade
+     children (quotes, scope, documents, exports). Audit log written
+     before deletion with full metadata. Gated by tenders.manage.
+  2. GET /tenders/:id/delete-preflight — returns cascade counts for
+     the confirmation dialog.
+  3. DELETE .../quotes/:quoteId — enhanced: no longer DRAFT-only;
+     audit log added; actor ID passed through.
+  4. Existing PATCH endpoints already functional — no changes needed.
+  Schema:
+  5. SafetyIncident + HazardObservation tender FK → onDelete: SetNull.
+  Frontend:
+  6. ConfirmDeleteDialog component with cascade breakdown + typed
+     confirmation for AWARDED/CONTRACT_ISSUED tenders.
+  7. Pipeline TenderCard action menu (Edit/Delete), Register row
+     delete button, TenderDetailPage delete button — all permission-gated.
+  8. ClientQuotesPanel delete per quote with confirmation dialog.
+  Tests: 9 new unit tests (tender-delete, quote-delete).
+  Migration: 20260526_tender_delete_safety_fk
+  No new deps. No new env vars.
+Pre-PR checks: build, lint, 768 tests (9 new), web tests — all pass.
 Status: IN_PROGRESS

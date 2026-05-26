@@ -1,11 +1,11 @@
 import {
   BadRequestException,
-  ForbiddenException,
   Injectable,
   NotFoundException
 } from "@nestjs/common";
 import { ClientQuoteStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { AuditService } from "../audit/audit.service";
 import { ScopeRedesignService } from "../tendering/scope-redesign.service";
 
 // PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
@@ -60,7 +60,8 @@ function toNum(v: Prisma.Decimal | number | string | null | undefined): number {
 export class ClientQuotesService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly scope: ScopeRedesignService
+    private readonly scope: ScopeRedesignService,
+    private readonly auditService: AuditService
   ) {}
 
   // ── Quote CRUD ──────────────────────────────────────────────────────
@@ -181,11 +182,21 @@ export class ClientQuotesService {
     return this.getOne(tenderId, quoteId);
   }
 
-  async delete(tenderId: string, quoteId: string) {
+  async delete(tenderId: string, quoteId: string, actorId: string) {
     const q = await this.requireQuote(tenderId, quoteId);
-    if (q.status !== "DRAFT") {
-      throw new ForbiddenException("Only DRAFT quotes can be deleted.");
-    }
+
+    await this.auditService.write({
+      actorId,
+      action: "quotes.delete",
+      entityType: "ClientQuote",
+      entityId: quoteId,
+      metadata: {
+        quoteRef: q.quoteRef,
+        status: q.status,
+        tenderId
+      }
+    });
+
     await this.prisma.clientQuote.delete({ where: { id: quoteId } });
     return { id: quoteId };
   }

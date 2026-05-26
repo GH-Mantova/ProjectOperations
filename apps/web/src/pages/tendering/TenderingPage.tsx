@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 
 type TenderListItem = {
   id: string;
@@ -321,6 +322,11 @@ export function TenderingPage() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [quickEditTarget, setQuickEditTarget] = useState<TenderListItem | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<TenderListItem | null>(null);
+  const [deletePreflight, setDeletePreflight] = useState<{
+    _count: Record<string, number>;
+  } | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const canManage = user?.permissions.includes("tenders.manage") ?? false;
 
   const canUseView: View = view;
@@ -553,6 +559,34 @@ export function TenderingPage() {
     }
   };
 
+  const startDelete = async (tender: TenderListItem) => {
+    setDeleteTarget(tender);
+    setDeletePreflight(null);
+    try {
+      const res = await authFetch(`/tenders/${tender.id}/delete-preflight`);
+      if (res.ok) setDeletePreflight(await res.json());
+    } catch {
+      /* preflight is best-effort — dialog still shows without cascade counts */
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleteBusy(true);
+    try {
+      const res = await authFetch(`/tenders/${deleteTarget.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(await res.text());
+      setDeleteTarget(null);
+      setDeletePreflight(null);
+      setToast(`Tender ${deleteTarget.tenderNumber} deleted`);
+      reload(filters);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
   const onColumnsChange = (columns: ColumnKey[]) => {
     const withAlways = Array.from(new Set([...ALWAYS_VISIBLE, ...columns]));
     setVisibleColumns(withAlways);
@@ -644,6 +678,8 @@ export function TenderingPage() {
                 loading={loading}
                 onDrop={moveTender}
                 onOpen={(id) => navigate(`/tenders/${id}`)}
+                onDelete={canManage ? startDelete : undefined}
+                canManage={canManage}
               />
             );
           })}
@@ -674,6 +710,7 @@ export function TenderingPage() {
           onSort={toggleSort}
           onOpen={(id) => navigate(`/tenders/${id}`)}
           onQuickEdit={(t) => setQuickEditTarget(t)}
+          onDelete={startDelete}
           onNewTender={() => setNewOpen(true)}
         />
       )}
@@ -694,6 +731,18 @@ export function TenderingPage() {
           users={users}
           onClose={() => setQuickEditTarget(null)}
           onSaved={onQuickEditSaved}
+        />
+      ) : null}
+
+      {deleteTarget ? (
+        <ConfirmDeleteDialog
+          entityType="tender"
+          entityRef={deleteTarget.tenderNumber}
+          status={deleteTarget.status}
+          cascadeCounts={deletePreflight?._count}
+          busy={deleteBusy}
+          onConfirm={confirmDelete}
+          onCancel={() => { setDeleteTarget(null); setDeletePreflight(null); }}
         />
       ) : null}
     </div>
@@ -759,6 +808,7 @@ type RegisterViewProps = {
   onSort: (key: ColumnKey) => void;
   onOpen: (id: string) => void;
   onQuickEdit: (tender: TenderListItem) => void;
+  onDelete: (tender: TenderListItem) => void;
   onNewTender: () => void;
 };
 
@@ -788,6 +838,7 @@ function RegisterView(props: RegisterViewProps) {
     onSort,
     onOpen,
     onQuickEdit,
+    onDelete,
     onNewTender
   } = props;
 
@@ -925,6 +976,7 @@ function RegisterView(props: RegisterViewProps) {
                   onToggleSelected={() => onToggleSelected(tender.id)}
                   onOpen={() => onOpen(tender.id)}
                   onQuickEdit={() => onQuickEdit(tender)}
+                  onDelete={() => onDelete(tender)}
                   canManage={canManage}
                 />
               ))
@@ -1467,6 +1519,7 @@ function RegisterRow({
   onToggleSelected,
   onOpen,
   onQuickEdit,
+  onDelete,
   canManage
 }: {
   tender: TenderListItem;
@@ -1475,6 +1528,7 @@ function RegisterRow({
   onToggleSelected: () => void;
   onOpen: () => void;
   onQuickEdit: () => void;
+  onDelete: () => void;
   canManage: boolean;
 }) {
   const clients = tender.tenderClients.map((tc) => tc.client.name).join(", ") || "—";
@@ -1551,22 +1605,37 @@ function RegisterRow({
       ))}
       {canManage ? (
         <td onClick={(e) => e.stopPropagation()}>
-          <button
-            type="button"
-            aria-label={`Quick edit ${tender.tenderNumber}`}
-            title="Quick edit"
-            onClick={onQuickEdit}
-            style={{
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-              padding: 4,
-              opacity: hover ? 1 : 0,
-              transition: "opacity 150ms"
-            }}
-          >
-            ✎
-          </button>
+          <span style={{ display: "inline-flex", gap: 2, opacity: hover ? 1 : 0, transition: "opacity 150ms" }}>
+            <button
+              type="button"
+              aria-label={`Quick edit ${tender.tenderNumber}`}
+              title="Quick edit"
+              onClick={onQuickEdit}
+              style={{
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                padding: 4
+              }}
+            >
+              ✎
+            </button>
+            <button
+              type="button"
+              aria-label={`Delete ${tender.tenderNumber}`}
+              title="Delete"
+              onClick={onDelete}
+              style={{
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                padding: 4,
+                color: "#DC2626"
+              }}
+            >
+              ✕
+            </button>
+          </span>
         </td>
       ) : null}
     </tr>
@@ -1812,9 +1881,11 @@ type KanbanColumnProps = {
   loading: boolean;
   onDrop: (tenderId: string, stage: Stage) => void;
   onOpen: (tenderId: string) => void;
+  onDelete?: (tender: TenderListItem) => void;
+  canManage?: boolean;
 };
 
-function KanbanColumn({ stage, items, total, loading, onDrop, onOpen }: KanbanColumnProps) {
+function KanbanColumn({ stage, items, total, loading, onDrop, onOpen, onDelete, canManage }: KanbanColumnProps) {
   const [dragOver, setDragOver] = useState(false);
   return (
     <div
@@ -1850,7 +1921,13 @@ function KanbanColumn({ stage, items, total, loading, onDrop, onOpen }: KanbanCo
           <p className="tender-column__empty">No tenders in this stage.</p>
         ) : (
           items.map((tender) => (
-            <TenderCard key={tender.id} tender={tender} onOpen={() => onOpen(tender.id)} />
+            <TenderCard
+              key={tender.id}
+              tender={tender}
+              onOpen={() => onOpen(tender.id)}
+              onDelete={() => onDelete?.(tender)}
+              canManage={canManage}
+            />
           ))
         )}
       </div>
@@ -1861,9 +1938,12 @@ function KanbanColumn({ stage, items, total, loading, onDrop, onOpen }: KanbanCo
 type TenderCardProps = {
   tender: TenderListItem;
   onOpen: () => void;
+  onDelete?: () => void;
+  canManage?: boolean;
 };
 
-function TenderCard({ tender, onOpen }: TenderCardProps) {
+function TenderCard({ tender, onOpen, onDelete, canManage }: TenderCardProps) {
+  const [menuOpen, setMenuOpen] = useState(false);
   const clients = tender.tenderClients.map((tc) => tc.client.name).join(", ");
   const assignee = tender.estimator ? `${tender.estimator.firstName} ${tender.estimator.lastName}` : null;
   return (
@@ -1886,11 +1966,86 @@ function TenderCard({ tender, onOpen }: TenderCardProps) {
     >
       <div className="tender-card__head">
         <span className="tender-card__number">{tender.tenderNumber}</span>
-        {assignee ? (
-          <span className="tender-card__avatar" title={assignee}>
-            {initials(tender.estimator?.firstName, tender.estimator?.lastName)}
-          </span>
-        ) : null}
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          {assignee ? (
+            <span className="tender-card__avatar" title={assignee}>
+              {initials(tender.estimator?.firstName, tender.estimator?.lastName)}
+            </span>
+          ) : null}
+          {canManage ? (
+            <span style={{ position: "relative" }}>
+              <button
+                type="button"
+                className="tender-card__menu-btn"
+                onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
+                aria-label="Card actions"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: "2px 4px",
+                  fontSize: 16,
+                  lineHeight: 1,
+                  borderRadius: 4,
+                  color: "#6B7280"
+                }}
+              >
+                &#x22EE;
+              </button>
+              {menuOpen ? (
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    position: "absolute",
+                    right: 0,
+                    top: "100%",
+                    background: "#fff",
+                    border: "1px solid #E5E7EB",
+                    borderRadius: 6,
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
+                    zIndex: 50,
+                    minWidth: 130,
+                    overflow: "hidden"
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => { setMenuOpen(false); onOpen(); }}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 12px",
+                      border: "none",
+                      background: "transparent",
+                      cursor: "pointer",
+                      fontSize: 13
+                    }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setMenuOpen(false); onDelete?.(); }}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 12px",
+                      border: "none",
+                      background: "transparent",
+                      cursor: "pointer",
+                      fontSize: 13,
+                      color: "#DC2626"
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              ) : null}
+            </span>
+          ) : null}
+        </span>
       </div>
       <h3 className="tender-card__title">{tender.title}</h3>
       {clients ? <p className="tender-card__meta">{clients}</p> : null}

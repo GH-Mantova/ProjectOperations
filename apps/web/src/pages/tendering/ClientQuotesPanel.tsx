@@ -15,6 +15,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useAuth } from "../../auth/AuthContext";
+import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { SendQuoteModal } from "./SendQuoteModal";
 
 type QuoteStatus = "DRAFT" | "SENT" | "SUPERSEDED";
@@ -124,6 +125,8 @@ export function ClientQuotesPanel({
   const [summary, setSummary] = useState<SummaryResult | null>(null);
   const [editorTab, setEditorTab] = useState<EditorTab>("cost");
   const [sendOpen, setSendOpen] = useState(false);
+  const [quoteToDelete, setQuoteToDelete] = useState<QuoteSummary | null>(null);
+  const [quoteDeleteBusy, setQuoteDeleteBusy] = useState(false);
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -229,6 +232,28 @@ export function ClientQuotesPanel({
     }
   };
 
+  const confirmDeleteQuote = async () => {
+    if (!quoteToDelete) return;
+    setQuoteDeleteBusy(true);
+    try {
+      const res = await authFetch(`/tenders/${tenderId}/quotes/${quoteToDelete.id}`, {
+        method: "DELETE"
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setQuoteToDelete(null);
+      if (selectedId === quoteToDelete.id) {
+        setSelectedId(null);
+        setFull(null);
+        setSummary(null);
+      }
+      await loadList();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setQuoteDeleteBusy(false);
+    }
+  };
+
   if (tenderClients.length === 0) {
     return (
       <section className="s7-card" style={{ marginBottom: 16 }}>
@@ -279,6 +304,7 @@ export function ClientQuotesPanel({
                   setSelectedId(q.id);
                   setSendOpen(true);
                 }}
+                onDelete={setQuoteToDelete}
               />
             );
           })}
@@ -314,6 +340,17 @@ export function ClientQuotesPanel({
           }}
         />
       ) : null}
+
+      {quoteToDelete ? (
+        <ConfirmDeleteDialog
+          entityType="quote"
+          entityRef={quoteToDelete.quoteRef}
+          status={quoteToDelete.status}
+          busy={quoteDeleteBusy}
+          onConfirm={() => void confirmDeleteQuote()}
+          onCancel={() => setQuoteToDelete(null)}
+        />
+      ) : null}
     </section>
   );
 }
@@ -344,7 +381,8 @@ function ClientRow({
   onNewQuote,
   onNewRevision,
   onDownload,
-  onSend
+  onSend,
+  onDelete
 }: {
   tenderClient: TenderClientLite;
   latest: QuoteSummary | undefined;
@@ -355,6 +393,7 @@ function ClientRow({
   onNewRevision: () => void;
   onDownload: (q: QuoteSummary) => void;
   onSend: (q: QuoteSummary) => void;
+  onDelete: (q: QuoteSummary) => void;
 }) {
   const [expandOlder, setExpandOlder] = useState(false);
   return (
@@ -407,6 +446,17 @@ function ClientRow({
                 style={{ background: "#FEAA6D", borderColor: "#FEAA6D", color: "#000" }}
               >
                 Send
+              </button>
+            ) : null}
+            {canManage ? (
+              <button
+                type="button"
+                className="s7-btn s7-btn--ghost s7-btn--sm"
+                onClick={() => onDelete(latest)}
+                style={{ color: "#DC2626" }}
+                title="Delete quote"
+              >
+                Delete
               </button>
             ) : null}
           </div>

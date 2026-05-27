@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useAuth } from "../../auth/AuthContext";
-import { NotesField, TooltipSelect, type TooltipSelectOption } from "../../components";
+import { NotesField, OverrideField, TooltipSelect, type TooltipSelectOption } from "../../components";
 import { computeDerivedDimensions, isDimensionOverride } from "./scopeItemDimensions";
 
 // PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
@@ -1061,46 +1061,70 @@ function ItemCard({
               />
             </FieldCell>
             <FieldCell label="Sqm" width={90}>
-              <input
-                className="s7-input"
-                type="number"
-                step="0.01"
-                value={valueFor("sqm")}
-                placeholder={placeholderFor("sqm")}
-                disabled={isAi}
-                style={{ width: 90, height: 32 }}
-                title="Auto = length × height. Type to override."
-                onChange={(e) => setDim("sqm", e.target.value)}
-                onBlur={persistDims}
-              />
+              <OverrideField
+                isOverridden={dirty.sqm}
+                onRevert={() => {
+                  setDim("sqm", "");
+                  setDirty((d) => ({ ...d, sqm: false }));
+                }}
+              >
+                <input
+                  className="s7-input"
+                  type="number"
+                  step="0.01"
+                  value={valueFor("sqm")}
+                  placeholder={placeholderFor("sqm")}
+                  disabled={isAi}
+                  style={{ width: 90, height: 32 }}
+                  title="Auto = length × height. Type to override."
+                  onChange={(e) => setDim("sqm", e.target.value)}
+                  onBlur={persistDims}
+                />
+              </OverrideField>
             </FieldCell>
             <FieldCell label="M³" width={90}>
-              <input
-                className="s7-input"
-                type="number"
-                step="0.01"
-                value={valueFor("m3")}
-                placeholder={placeholderFor("m3")}
-                disabled={isAi}
-                style={{ width: 90, height: 32 }}
-                title="Auto = sqm × depth. Type to override."
-                onChange={(e) => setDim("m3", e.target.value)}
-                onBlur={persistDims}
-              />
+              <OverrideField
+                isOverridden={dirty.m3}
+                onRevert={() => {
+                  setDim("m3", "");
+                  setDirty((d) => ({ ...d, m3: false }));
+                }}
+              >
+                <input
+                  className="s7-input"
+                  type="number"
+                  step="0.01"
+                  value={valueFor("m3")}
+                  placeholder={placeholderFor("m3")}
+                  disabled={isAi}
+                  style={{ width: 90, height: 32 }}
+                  title="Auto = sqm × depth. Type to override."
+                  onChange={(e) => setDim("m3", e.target.value)}
+                  onBlur={persistDims}
+                />
+              </OverrideField>
             </FieldCell>
             <FieldCell label="Tonnes" width={90}>
-              <input
-                className="s7-input"
-                type="number"
-                step="0.01"
-                value={valueFor("tonnes")}
-                placeholder={placeholderFor("tonnes")}
-                disabled={isAi}
-                style={{ width: 90, height: 32 }}
-                title="Auto = m³ × density or sqm × density / 1000. Type to override."
-                onChange={(e) => setDim("tonnes", e.target.value)}
-                onBlur={persistDims}
-              />
+              <OverrideField
+                isOverridden={dirty.tonnes}
+                onRevert={() => {
+                  setDim("tonnes", "");
+                  setDirty((d) => ({ ...d, tonnes: false }));
+                }}
+              >
+                <input
+                  className="s7-input"
+                  type="number"
+                  step="0.01"
+                  value={valueFor("tonnes")}
+                  placeholder={placeholderFor("tonnes")}
+                  disabled={isAi}
+                  style={{ width: 90, height: 32 }}
+                  title="Auto = m³ × density or sqm × density / 1000. Type to override."
+                  onChange={(e) => setDim("tonnes", e.target.value)}
+                  onBlur={persistDims}
+                />
+              </OverrideField>
             </FieldCell>
           </div>
 

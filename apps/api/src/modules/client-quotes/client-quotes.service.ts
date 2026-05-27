@@ -26,6 +26,13 @@ const DISCIPLINE_LABEL: Record<string, string> = {
   Prv: "Other (provisional sums, options, adjustments)"
 };
 
+export type LineAppropriation = {
+  lineId: string;
+  baseValue: number;
+  overrideAmount: number | null;
+  displayedAmount: number;
+};
+
 export type SummaryResult = {
   baseTotalCostLines: number;
   adjustmentAmount: number;
@@ -33,6 +40,7 @@ export type SummaryResult = {
   provisionalTotal: number;
   costOptionsTotal: number;
   clientFacingTotal: number;
+  lineAppropriations: LineAppropriation[];
 };
 
 type CostLineInput = {
@@ -226,13 +234,41 @@ export class ClientQuotesService {
     const adjustedTotal = baseTotalCostLines + adjustmentAmount;
     const provisionalTotal = q.provisionalLines.reduce((s, l) => s + toNum(l.price), 0);
     const costOptionsTotal = q.costOptions.reduce((s, l) => s + toNum(l.price), 0);
+
+    // Proportional cost-line appropriation: distribute adjustmentAmount
+    // across visible lines that have no overrideAmount set.
+    const visibleLines = q.costLines.filter((l) => l.isVisible);
+    const unoverriddenBase = visibleLines
+      .filter((l) => l.overrideAmount === null)
+      .reduce((s, l) => s + toNum(l.baseValue), 0);
+
+    const lineAppropriations: LineAppropriation[] = visibleLines.map((l) => {
+      const bv = toNum(l.baseValue);
+      const oa = l.overrideAmount !== null ? toNum(l.overrideAmount) : null;
+      let displayedAmount: number;
+      if (oa !== null) {
+        displayedAmount = oa;
+      } else if (unoverriddenBase > 0 && adjustmentAmount !== 0) {
+        displayedAmount = bv + adjustmentAmount * (bv / unoverriddenBase);
+      } else {
+        displayedAmount = bv;
+      }
+      return {
+        lineId: l.id,
+        baseValue: round2(bv),
+        overrideAmount: oa !== null ? round2(oa) : null,
+        displayedAmount: round2(displayedAmount)
+      };
+    });
+
     return {
       baseTotalCostLines: round2(baseTotalCostLines),
       adjustmentAmount: round2(adjustmentAmount),
       adjustedTotal: round2(adjustedTotal),
       provisionalTotal: round2(provisionalTotal),
       costOptionsTotal: round2(costOptionsTotal),
-      clientFacingTotal: round2(adjustedTotal)
+      clientFacingTotal: round2(adjustedTotal),
+      lineAppropriations
     };
   }
 
@@ -256,6 +292,7 @@ export class ClientQuotesService {
         label: dto.label,
         description: dto.description,
         price: toDec(dto.price),
+        baseValue: toDec(dto.price),
         isVisible: dto.isVisible ?? true,
         sortOrder
       }
@@ -272,9 +309,16 @@ export class ClientQuotesService {
     const data: Prisma.QuoteCostLineUpdateInput = {};
     if (dto.label !== undefined) data.label = dto.label;
     if (dto.description !== undefined) data.description = dto.description;
-    if (dto.price !== undefined) data.price = toDec(dto.price);
+    if (dto.price !== undefined) {
+      data.price = toDec(dto.price);
+      data.baseValue = toDec(dto.price);
+    }
     if (dto.isVisible !== undefined) data.isVisible = dto.isVisible;
     if (dto.sortOrder !== undefined) data.sortOrder = dto.sortOrder;
+    if ((dto as Record<string, unknown>).overrideAmount !== undefined) {
+      const oa = (dto as Record<string, unknown>).overrideAmount;
+      data.overrideAmount = oa === null ? null : toDec(Number(oa));
+    }
     return this.prisma.quoteCostLine.update({ where: { id: lineId }, data });
   }
 

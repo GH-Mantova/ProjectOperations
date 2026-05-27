@@ -8,6 +8,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useAuth } from "../../auth/AuthContext";
+import { OverrideField } from "../../components";
 import { ClientQuotesPanel } from "./ClientQuotesPanel";
 
 // PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
@@ -25,7 +26,7 @@ type ScopeSummary = {
 
 type ListEntry = { id: string; text: string; sortOrder: number };
 
-type Clause = { number: string; heading: string; body: string };
+type Clause = { number: string; heading: string; body: string; isModified?: boolean };
 type TandCResponse = { id: string; tenderId: string; clauses: Clause[] };
 
 type ExportEntry = {
@@ -646,14 +647,19 @@ function TandCSection({
                   </button>
                 ) : null}
               </div>
-              <textarea
-                className="s7-input"
-                defaultValue={c.body}
-                disabled={!canManage}
-                onBlur={(e) => updateBody(c.number, e.target.value)}
-                rows={Math.max(3, Math.min(10, c.body.split(/\r?\n/).length + 1))}
-                style={{ width: "100%", minHeight: 80, resize: "vertical", fontSize: 13 }}
-              />
+              <OverrideField
+                isOverridden={!!c.isModified}
+                onRevert={() => void resetOne(c.number)}
+              >
+                <textarea
+                  className="s7-input"
+                  defaultValue={c.body}
+                  disabled={!canManage}
+                  onBlur={(e) => updateBody(c.number, e.target.value)}
+                  rows={Math.max(3, Math.min(10, c.body.split(/\r?\n/).length + 1))}
+                  style={{ width: "100%", minHeight: 80, resize: "vertical", fontSize: 13 }}
+                />
+              </OverrideField>
             </div>
           ))}
         </div>

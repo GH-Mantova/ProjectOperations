@@ -17,6 +17,10 @@ export type ScopeCard = {
   wasteNotes: string | null;
   /** PR B2 — per-card markup % override. null = inherit tender markup. */
   markupOverride: number | null;
+  peakCrewOverride: number | null;
+  totalPersonDaysOverride: number | null;
+  plantSummaryOverride: string | null;
+  durationOverride: number | null;
   sortOrder: number;
   itemCount: number;
   createdAt: string;
@@ -189,6 +193,49 @@ export function useScopeCards(tenderId: string) {
     [authFetch, tenderId, load]
   );
 
+  const updateCardHeaderOverrides = useCallback(
+    async (
+      cardId: string,
+      overrides: {
+        peakCrewOverride?: number | null;
+        totalPersonDaysOverride?: number | null;
+        plantSummaryOverride?: string | null;
+        durationOverride?: number | null;
+      }
+    ): Promise<void> => {
+      const res = await authFetch(`/tenders/${tenderId}/scope/cards/${cardId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(overrides)
+      });
+      if (!res.ok) throw new Error(await res.text());
+      await load();
+    },
+    [authFetch, tenderId, load]
+  );
+
+  const getCardSummary = useCallback(
+    async (cardId: string) => {
+      const res = await authFetch(`/tenders/${tenderId}/scope/cards/${cardId}/summary`);
+      if (!res.ok) throw new Error(await res.text());
+      return res.json() as Promise<{
+        computed: {
+          peakCrew: number;
+          totalPersonDays: number;
+          plantSummary: Array<{ description: string; totalQty: number; totalDays: number }>;
+          duration: number;
+        };
+        overrides: {
+          peakCrewOverride: number | null;
+          totalPersonDaysOverride: number | null;
+          plantSummaryOverride: string | null;
+          durationOverride: number | null;
+        };
+      }>;
+    },
+    [authFetch, tenderId]
+  );
+
   const reorderCards = useCallback(
     async (cardIds: string[]): Promise<void> => {
       // Optimistic reorder; rollback (via reload) if the POST fails.
@@ -227,6 +274,8 @@ export function useScopeCards(tenderId: string) {
     resetAllCardMarkup,
     changeDiscipline,
     deleteCard,
-    reorderCards
+    reorderCards,
+    updateCardHeaderOverrides,
+    getCardSummary
   };
 }

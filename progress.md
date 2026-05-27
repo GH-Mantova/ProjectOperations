@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-26 06:17 AEST
+Last updated: 2026-05-27 01:14 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -6512,6 +6512,30 @@ Detail: 13 file changes (4 new + 6 source-edited + 3 doc-edited).
     [get-or-create + reuse-existing + locked + edits + 404 not-owner
     + 400 already-accepted + 404 index + 400 no-tender + 400 non-
     estimate-metadata] + reject + acceptAll + rejectAll).
+
+---
+
+## PR — [5] Tender UX polish — canonical status labels + delete dialog cascade list
+
+Status: IN_PROGRESS
+Branch: fix/tender-status-labels-and-cascade-list
+
+**Defect 1**: Status dropdown labels on the Tender Detail page used
+"Identified" / "In Progress" instead of "Draft" / "Estimating", and was
+missing `CONTRACT_ISSUED`. Fix: centralised all 7 status labels + accents
+into `tenderStatusLabels.ts`; updated TenderDetailPage, TenderingPage,
+and TenderingReportsPage to import from the shared constant.
+
+**Defect 4**: Delete dialog cascade list omitted `tenderClients`. Fix:
+added rendering of the `tenderClients` count in ConfirmDeleteDialog.
+
+Files changed:
+- apps/web/src/pages/tendering/tenderStatusLabels.ts — NEW shared constant
+- apps/web/src/pages/tendering/TenderDetailPage.tsx — replaced inline labels
+- apps/web/src/pages/tendering/TenderingPage.tsx — replaced inline labels
+- apps/web/src/pages/tendering/TenderingReportsPage.tsx — replaced inline labels
+- apps/web/src/pages/tendering/ConfirmDeleteDialog.tsx — added tenderClients line
+- apps/web/src/pages/tendering/__tests__/tenderStatusLabels.test.ts — 4 tests
 
 ---
 

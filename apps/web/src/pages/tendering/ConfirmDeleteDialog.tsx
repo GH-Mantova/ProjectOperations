@@ -47,6 +47,8 @@ export function ConfirmDeleteDialog({
       cascadeLines.push(`${cascadeCounts.tenderDocuments} document link(s)`);
     if (cascadeCounts.estimateExports)
       cascadeLines.push(`${cascadeCounts.estimateExports} export(s)`);
+    if (cascadeCounts.tenderClients)
+      cascadeLines.push(`${cascadeCounts.tenderClients} client link(s)`);
   }
 
   return (

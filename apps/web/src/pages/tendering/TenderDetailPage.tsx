@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
@@ -10,6 +10,7 @@ import { TenderClarificationLog } from "./TenderClarificationLog";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { ConvertToProjectModal } from "./ConvertToProjectModal";
 import { ScopeCardsTab } from "./scope-cards/ScopeCardsTab";
+import { AssumptionsExclusionsFloatingEditor } from "./AssumptionsExclusionsFloatingEditor";
 import { ClientStarRating } from "../../components/ClientStarRating";
 
 type TenderDetail = {
@@ -156,6 +157,26 @@ export function TenderDetailPage() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deletePreflight, setDeletePreflight] = useState<{ _count: Record<string, number> } | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [aeEditorOpen, setAeEditorOpen] = useState(false);
+
+  // Alt+A toggles the Assumptions & Exclusions floating editor (not on Quote tab)
+  const aeEditorOpenRef = useRef(aeEditorOpen);
+  aeEditorOpenRef.current = aeEditorOpen;
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.altKey && e.key.toLowerCase() === "a" && tab !== "quote") {
+        e.preventDefault();
+        setAeEditorOpen((o) => !o);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [tab]);
+
+  // Close the editor when navigating to the Quote tab
+  useEffect(() => {
+    if (tab === "quote") setAeEditorOpen(false);
+  }, [tab]);
 
   const reload = useCallback(async () => {
     if (!id) return;
@@ -926,6 +947,31 @@ export function TenderDetailPage() {
           onCancel={() => { setDeleteConfirmOpen(false); setDeletePreflight(null); }}
         />
       ) : null}
+
+      {/* Floating Assumptions & Exclusions button — visible on Overview + SoW, hidden on Quote */}
+      {tab !== "quote" && tender && !aeEditorOpen && (
+        <button
+          onClick={() => setAeEditorOpen(true)}
+          title="Assumptions & Exclusions (Alt+A)"
+          aria-label="Open Assumptions & Exclusions editor"
+          style={{
+            position: "fixed", top: 16, right: 16, zIndex: 65,
+            width: 40, height: 40, borderRadius: "50%",
+            background: "var(--brand-primary, #2563eb)", color: "#fff",
+            border: "none", cursor: "pointer", fontSize: 18, fontWeight: 700,
+            boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+            display: "flex", alignItems: "center", justifyContent: "center"
+          }}
+        >A</button>
+      )}
+
+      {/* Floating editor panel */}
+      {aeEditorOpen && tender && (
+        <AssumptionsExclusionsFloatingEditor
+          tenderId={tender.id}
+          onClose={() => setAeEditorOpen(false)}
+        />
+      )}
     </div>
   );
 }

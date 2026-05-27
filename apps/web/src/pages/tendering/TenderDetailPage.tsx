@@ -163,14 +163,16 @@ export function TenderDetailPage() {
   const aeEditorOpenRef = useRef(aeEditorOpen);
   aeEditorOpenRef.current = aeEditorOpen;
   useEffect(() => {
+    if (tab === "quote") return;
     const handler = (e: KeyboardEvent) => {
-      if (e.altKey && e.key.toLowerCase() === "a" && tab !== "quote") {
-        e.preventDefault();
-        setAeEditorOpen((o) => !o);
-      }
+      if (!e.altKey || e.key.toLowerCase() !== "a") return;
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable) return;
+      e.preventDefault();
+      setAeEditorOpen((o) => !o);
     };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
   }, [tab]);
 
   // Close the editor when navigating to the Quote tab

@@ -128,6 +128,12 @@ export function TenderClarificationLog({
     contextKey: tenderId,
     schemaVersion: 1,
     getValues: () => ({ entryKind, direction, noteType, subject, text, dueDate, occurredAt }),
+    isDirty: () =>
+      adding &&
+      (subject.trim() !== "" ||
+       text.trim() !== "" ||
+       dueDate !== "" ||
+       occurredAt !== ""),
     setValues: (d) => {
       const data = d as {
         entryKind: "rfi" | "note";

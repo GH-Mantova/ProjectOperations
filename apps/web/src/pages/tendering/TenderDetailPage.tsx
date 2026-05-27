@@ -972,6 +972,7 @@ export function TenderDetailPage() {
         <AssumptionsExclusionsFloatingEditor
           tenderId={tender.id}
           onClose={() => setAeEditorOpen(false)}
+          readOnly={!canManageTenders}
         />
       )}
     </div>

@@ -6,6 +6,7 @@ type Entry = { id: string; text: string; sortOrder: number };
 type Props = {
   tenderId: string;
   onClose: () => void;
+  readOnly?: boolean;
 };
 
 const LS_KEY = "tendering.assumptionsExclusionsEditor.size";
@@ -28,7 +29,7 @@ function loadSize(): { width: number; height: number } {
   return { width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT };
 }
 
-export function AssumptionsExclusionsFloatingEditor({ tenderId, onClose }: Props) {
+export function AssumptionsExclusionsFloatingEditor({ tenderId, onClose, readOnly }: Props) {
   const { authFetch } = useAuth();
   const [assumptions, setAssumptions] = useState<Entry[]>([]);
   const [exclusions, setExclusions] = useState<Entry[]>([]);
@@ -146,6 +147,7 @@ export function AssumptionsExclusionsFloatingEditor({ tenderId, onClose }: Props
           setEntries={setAssumptions}
           loading={loading}
           authFetch={authFetch}
+          readOnly={readOnly}
         />
         <EntryColumn
           kind="exclusions"
@@ -156,6 +158,7 @@ export function AssumptionsExclusionsFloatingEditor({ tenderId, onClose }: Props
           loading={loading}
           authFetch={authFetch}
           borderLeft
+          readOnly={readOnly}
         />
       </div>
 
@@ -187,9 +190,10 @@ type ColumnProps = {
   loading: boolean;
   authFetch: ReturnType<typeof useAuth>["authFetch"];
   borderLeft?: boolean;
+  readOnly?: boolean;
 };
 
-function EntryColumn({ kind, title, tenderId, entries, setEntries, loading, authFetch, borderLeft }: ColumnProps) {
+function EntryColumn({ kind, title, tenderId, entries, setEntries, loading, authFetch, borderLeft, readOnly }: ColumnProps) {
   const [addingText, setAddingText] = useState("");
   const [addingVisible, setAddingVisible] = useState(false);
   const addInputRef = useRef<HTMLInputElement>(null);
@@ -275,10 +279,11 @@ function EntryColumn({ kind, title, tenderId, entries, setEntries, loading, auth
                 onUpdate={handleUpdate}
                 onDelete={() => void handleDelete(entry.id)}
                 inputRef={i === entries.length - 1 ? lastRowRef : undefined}
-                onEnterOnLast={i === entries.length - 1 ? showAddRow : undefined}
+                onEnterOnLast={i === entries.length - 1 && !readOnly ? showAddRow : undefined}
+                readOnly={readOnly}
               />
             ))}
-            {addingVisible ? (
+            {!readOnly && addingVisible ? (
               <div style={{ display: "flex", alignItems: "center", padding: "2px 8px", gap: 4 }}>
                 <input
                   ref={addInputRef}
@@ -292,7 +297,7 @@ function EntryColumn({ kind, title, tenderId, entries, setEntries, loading, auth
                   autoFocus
                 />
               </div>
-            ) : (
+            ) : !readOnly ? (
               <button
                 onClick={showAddRow}
                 style={{
@@ -301,7 +306,7 @@ function EntryColumn({ kind, title, tenderId, entries, setEntries, loading, auth
                   padding: "6px 12px", textAlign: "left", width: "100%"
                 }}
               >+ Add row</button>
-            )}
+            ) : null}
           </>
         )}
       </div>
@@ -317,9 +322,10 @@ type RowProps = {
   onDelete: () => void;
   inputRef?: React.Ref<HTMLInputElement>;
   onEnterOnLast?: () => void;
+  readOnly?: boolean;
 };
 
-function EntryRow({ entry, onUpdate, onDelete, inputRef, onEnterOnLast }: RowProps) {
+function EntryRow({ entry, onUpdate, onDelete, inputRef, onEnterOnLast, readOnly }: RowProps) {
   const [text, setText] = useState(entry.text);
 
   useEffect(() => { setText(entry.text); }, [entry.text]);
@@ -345,17 +351,20 @@ function EntryRow({ entry, onUpdate, onDelete, inputRef, onEnterOnLast }: RowPro
             onEnterOnLast?.();
           }
         }}
+        disabled={readOnly}
         style={{ flex: 1, height: 28, fontSize: 13 }}
       />
-      <button
-        onClick={onDelete}
-        aria-label="Delete entry"
-        style={{
-          background: "none", border: "none", cursor: "pointer",
-          color: "var(--text-muted, #9ca3af)", fontSize: 16, padding: "0 4px",
-          lineHeight: 1, flexShrink: 0
-        }}
-      >×</button>
+      {!readOnly && (
+        <button
+          onClick={onDelete}
+          aria-label="Delete entry"
+          style={{
+            background: "none", border: "none", cursor: "pointer",
+            color: "var(--text-muted, #9ca3af)", fontSize: 16, padding: "0 4px",
+            lineHeight: 1, flexShrink: 0
+          }}
+        >×</button>
+      )}
     </div>
   );
 }

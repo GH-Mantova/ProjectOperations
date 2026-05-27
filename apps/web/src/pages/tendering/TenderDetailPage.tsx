@@ -58,23 +58,7 @@ type TenderDetail = {
   }>;
 };
 
-const STAGE_LABEL: Record<string, string> = {
-  DRAFT: "Identified",
-  IN_PROGRESS: "In Progress",
-  SUBMITTED: "Submitted",
-  AWARDED: "Awarded",
-  LOST: "Lost",
-  WITHDRAWN: "Withdrawn"
-};
-
-const STAGE_ACCENT: Record<string, string> = {
-  DRAFT: "var(--status-neutral, #6B7280)",
-  IN_PROGRESS: "var(--status-info, #3B82F6)",
-  SUBMITTED: "var(--status-warning, #F59E0B)",
-  AWARDED: "var(--status-active, #005B61)",
-  LOST: "var(--status-danger, #EF4444)",
-  WITHDRAWN: "var(--text-muted, #9CA3AF)"
-};
+import { TENDER_STATUS_LABEL as STAGE_LABEL, TENDER_STATUS_ACCENT as STAGE_ACCENT } from "./tenderStatusLabels";
 
 type Tab = "overview" | "scope" | "quote";
 
@@ -325,8 +309,8 @@ export function TenderDetailPage() {
     );
   }
 
-  const stageLabel = STAGE_LABEL[tender.status] ?? tender.status;
-  const stageAccent = STAGE_ACCENT[tender.status] ?? "var(--text-muted)";
+  const stageLabel = (STAGE_LABEL as Record<string, string>)[tender.status] ?? tender.status;
+  const stageAccent = (STAGE_ACCENT as Record<string, string>)[tender.status] ?? "var(--text-muted)";
 
   const activityTimeline = [
     ...tender.tenderNotes.map((note) => ({

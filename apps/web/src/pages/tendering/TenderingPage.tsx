@@ -72,36 +72,12 @@ const EMPTY_FILTERS: Filters = {
   sortDir: "desc"
 };
 
-const STAGES = [
-  "DRAFT",
-  "IN_PROGRESS",
-  "SUBMITTED",
-  "AWARDED",
-  "CONTRACT_ISSUED",
-  "LOST",
-  "WITHDRAWN"
-] as const;
-type Stage = (typeof STAGES)[number];
-
-const STAGE_LABEL: Record<Stage, string> = {
-  DRAFT: "Draft",
-  IN_PROGRESS: "Estimating",
-  SUBMITTED: "Submitted",
-  AWARDED: "Awarded",
-  CONTRACT_ISSUED: "Contract",
-  LOST: "Lost",
-  WITHDRAWN: "Withdrawn"
-};
-
-const STAGE_ACCENT: Record<Stage, string> = {
-  DRAFT: "var(--status-neutral, #6B7280)",
-  IN_PROGRESS: "var(--status-info, #3B82F6)",
-  SUBMITTED: "var(--status-warning, #F59E0B)",
-  AWARDED: "var(--status-active, #005B61)",
-  CONTRACT_ISSUED: "var(--brand-primary, #005B61)",
-  LOST: "var(--status-danger, #EF4444)",
-  WITHDRAWN: "var(--text-muted, #9CA3AF)"
-};
+import {
+  TENDER_STATUSES as STAGES,
+  TENDER_STATUS_LABEL as STAGE_LABEL,
+  TENDER_STATUS_ACCENT as STAGE_ACCENT,
+  type TenderStatus as Stage
+} from "./tenderStatusLabels";
 
 const PROBABILITY_BUCKETS: ProbabilityBucket[] = ["Hot", "Warm", "Cold"];
 const PROBABILITY_COLOR: Record<ProbabilityBucket, string> = {

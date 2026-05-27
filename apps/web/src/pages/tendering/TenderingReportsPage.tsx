@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { TENDER_STATUS_LABEL, type TenderStatus } from "./tenderStatusLabels";
 
 type TenderRecord = {
   id: string;
@@ -24,15 +25,22 @@ type TenderRecord = {
 
 type Tab = "estimators" | "pipeline" | "clients";
 
-const STAGE_ORDER: Array<{ key: string; label: string; color: string }> = [
-  { key: "DRAFT", label: "Draft", color: "#94A3B8" },
-  { key: "IN_PROGRESS", label: "Estimating", color: "#FEAA6D" },
-  { key: "SUBMITTED", label: "Submitted", color: "#005B61" },
-  { key: "AWARDED", label: "Awarded", color: "#22C55E" },
-  { key: "CONTRACT_ISSUED", label: "Contract", color: "#22C55E" },
-  { key: "LOST", label: "Lost", color: "#EF4444" },
-  { key: "WITHDRAWN", label: "Withdrawn", color: "#E2E8F0" }
-];
+const STAGE_CHART_COLOR: Record<string, string> = {
+  DRAFT: "#94A3B8",
+  IN_PROGRESS: "#FEAA6D",
+  SUBMITTED: "#005B61",
+  AWARDED: "#22C55E",
+  CONTRACT_ISSUED: "#22C55E",
+  LOST: "#EF4444",
+  WITHDRAWN: "#E2E8F0"
+};
+
+const STAGE_ORDER: Array<{ key: string; label: string; color: string }> =
+  (Object.keys(TENDER_STATUS_LABEL) as TenderStatus[]).map((key) => ({
+    key,
+    label: TENDER_STATUS_LABEL[key],
+    color: STAGE_CHART_COLOR[key] ?? "#94A3B8"
+  }));
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 0 }).format(value);

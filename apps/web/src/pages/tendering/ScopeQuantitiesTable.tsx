@@ -998,12 +998,37 @@ function ItemCard({
                 options={materialOptions}
                 onChange={(v) => {
                   const lookup = v ? materialDensityMap.get(v) : undefined;
-                  const densityTonnes = lookup
-                    ? String(Number(lookup.density) / 1000)
-                    : "";
+                  // kg/m³ → t/m³ (÷1000); kg/m² stored as-is (the sqm
+                  // fallback path in computeDerivedDimensions already
+                  // divides by 1000 for sheet materials).
+                  const newDensity = lookup
+                    ? (lookup.unit === "kg/m³"
+                        ? Number(lookup.density) / 1000
+                        : Number(lookup.density))
+                    : null;
+
+                  // Recompute derived quantities with the new density so
+                  // sqm/m³/tonnes update immediately (review fix).
+                  const newParsed = {
+                    length: dims.length === "" ? null : Number(dims.length),
+                    height: dims.height === "" ? null : Number(dims.height),
+                    depth: dims.depth === "" ? null : Number(dims.depth),
+                    density: newDensity,
+                    sqm: dirty.sqm && dims.sqm !== "" ? Number(dims.sqm) : null,
+                    m3: dirty.m3 && dims.m3 !== "" ? Number(dims.m3) : null,
+                    tonnes: null // always rederive tonnes from new density
+                  };
+                  const rederived = computeDerivedDimensions(newParsed);
+
                   onPatch({
                     materialType: v,
-                    density: v ? Number(densityTonnes) : null
+                    density: newDensity,
+                    length: newParsed.length,
+                    height: newParsed.height,
+                    depth: newParsed.depth,
+                    sqm: rederived.sqm,
+                    m3: rederived.m3,
+                    tonnes: rederived.tonnes
                   });
                 }}
                 disabled={isAi}

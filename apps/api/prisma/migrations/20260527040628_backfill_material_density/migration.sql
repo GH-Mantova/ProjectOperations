@@ -12,7 +12,7 @@ FROM (VALUES
   ('Concrete',             2.400),
   ('Reinforced concrete',  2.500),
   ('Brick',                1.900),
-  ('Block',                2.100),
+  ('Block (concrete)',      2.100),
   ('Asphalt',              2.300),
   ('Soil (dry)',            1.500),
   ('Soil (wet)',            1.900),

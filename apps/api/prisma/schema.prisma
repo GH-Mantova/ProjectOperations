@@ -2177,6 +2177,10 @@ model ScopeCard {
   // a decimal (e.g. 30.00 means 30%). Reset via × button on the input or
   // bulk POST /scope/markup/reset-all.
   markupOverride Decimal? @db.Decimal(5, 2) @map("markup_override")
+  peakCrewOverride        Int?     @map("peak_crew_override")
+  totalPersonDaysOverride Decimal? @map("total_person_days_override") @db.Decimal(10, 2)
+  plantSummaryOverride    String?  @map("plant_summary_override")
+  durationOverride        Decimal? @map("duration_override") @db.Decimal(10, 2)
   sortOrder   Int      @default(0) @map("sort_order")
   createdById String   @map("created_by_id")
   createdBy   User     @relation("ScopeCardCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -2899,6 +2903,8 @@ model QuoteCostLine {
   label       String
   description String
   price       Decimal           @db.Decimal(12, 2)
+  baseValue      Decimal        @default(0) @map("base_value") @db.Decimal(14, 2)
+  overrideAmount Decimal?       @map("override_amount") @db.Decimal(14, 2)
   sortOrder   Int               @default(0) @map("sort_order")
   isVisible   Boolean           @default(true) @map("is_visible")
   assumptions QuoteAssumption[] @relation("CostLineAssumptions")

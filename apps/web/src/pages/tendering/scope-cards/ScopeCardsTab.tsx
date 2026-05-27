@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../../auth/AuthContext";
+import { OverrideField } from "../../../components";
 import { ScopeCardTabsRow } from "./ScopeCardTabsRow";
 import { ScopeCardEmptyState } from "./ScopeCardEmptyState";
 import { ChangeDisciplineModal } from "./ChangeDisciplineModal";
@@ -48,7 +49,9 @@ export function ScopeCardsTab({
     resetAllCardMarkup,
     changeDiscipline,
     deleteCard,
-    reorderCards
+    reorderCards,
+    updateCardHeaderOverrides,
+    getCardSummary
   } = useScopeCards(tenderId);
   const { markup: tenderMarkup, saveMarkup: saveTenderMarkup } = useTenderEstimate(tenderId);
 
@@ -126,6 +129,27 @@ export function ScopeCardsTab({
   const reloadEverything = useCallback(async () => {
     await Promise.all([loadItems(), reloadCards()]);
   }, [loadItems, reloadCards]);
+
+  // Card-header summary — auto-derived values + user overrides.
+  type CardSummaryData = {
+    computed: {
+      peakCrew: number;
+      totalPersonDays: number;
+      plantSummary: Array<{ description: string; totalQty: number; totalDays: number }>;
+      duration: number;
+    };
+    overrides: {
+      peakCrewOverride: number | null;
+      totalPersonDaysOverride: number | null;
+      plantSummaryOverride: string | null;
+      durationOverride: number | null;
+    };
+  };
+  const [cardSummary, setCardSummary] = useState<CardSummaryData | null>(null);
+  useEffect(() => {
+    if (!activeCard) { setCardSummary(null); return; }
+    void getCardSummary(activeCard.id).then(setCardSummary).catch(() => setCardSummary(null));
+  }, [activeCard?.id, getCardSummary, items]);
 
   // Items filtered to the active card. Synthesize a `discipline` field on
   // each item from the card's discipline (the legacy ScopeQuantitiesTable
@@ -329,6 +353,21 @@ export function ScopeCardsTab({
               </label>
             </div>
           </div>
+
+          {cardSummary ? (
+            <CardHeaderSummary
+              summary={cardSummary}
+              onOverride={async (patch) => {
+                try {
+                  await updateCardHeaderOverrides(activeCard.id, patch);
+                  const fresh = await getCardSummary(activeCard.id);
+                  setCardSummary(fresh);
+                } catch (err) {
+                  setError((err as Error).message);
+                }
+              }}
+            />
+          ) : null}
 
           {loadingItems && cardItems.length === 0 ? (
             <Skeleton width="100%" height={140} />
@@ -559,5 +598,140 @@ function CardMarkupOverride({
         </button>
       ) : null}
     </label>
+  );
+}
+
+// ── Card-header summary with override highlights ─────────────────────
+type SummaryData = {
+  computed: {
+    peakCrew: number;
+    totalPersonDays: number;
+    plantSummary: Array<{ description: string; totalQty: number; totalDays: number }>;
+    duration: number;
+  };
+  overrides: {
+    peakCrewOverride: number | null;
+    totalPersonDaysOverride: number | null;
+    plantSummaryOverride: string | null;
+    durationOverride: number | null;
+  };
+};
+
+function CardHeaderSummary({
+  summary,
+  onOverride
+}: {
+  summary: SummaryData;
+  onOverride: (patch: Record<string, number | string | null>) => Promise<void>;
+}) {
+  const { computed, overrides } = summary;
+  const cellStyle = { fontSize: 12, padding: "4px 8px" } as const;
+  const labelStyle = { ...cellStyle, color: "var(--text-muted)" } as const;
+  const valStyle = { ...cellStyle, fontWeight: 600, fontVariantNumeric: "tabular-nums" } as const;
+
+  const plantText = computed.plantSummary.length > 0
+    ? computed.plantSummary.map((p) => `${p.description} (${p.totalQty}× ${p.totalDays}d)`).join(", ")
+    : "—";
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(4, 1fr)",
+        gap: 4,
+        background: "var(--surface-muted, #F6F6F6)",
+        borderRadius: "var(--radius-sm, 4px)",
+        padding: 6,
+        marginBottom: 12,
+        fontSize: 12
+      }}
+    >
+      <div style={labelStyle}>Peak crew</div>
+      <div style={labelStyle}>Person-days</div>
+      <div style={labelStyle}>Plant</div>
+      <div style={labelStyle}>Duration (days)</div>
+
+      <div style={valStyle}>
+        <OverrideField
+          isOverridden={overrides.peakCrewOverride != null}
+          onRevert={() => void onOverride({ peakCrewOverride: null })}
+        >
+          <EditableNum
+            value={overrides.peakCrewOverride ?? computed.peakCrew}
+            placeholder={String(computed.peakCrew)}
+            onCommit={(v) => void onOverride({ peakCrewOverride: v })}
+          />
+        </OverrideField>
+      </div>
+      <div style={valStyle}>
+        <OverrideField
+          isOverridden={overrides.totalPersonDaysOverride != null}
+          onRevert={() => void onOverride({ totalPersonDaysOverride: null })}
+        >
+          <EditableNum
+            value={overrides.totalPersonDaysOverride ?? computed.totalPersonDays}
+            placeholder={String(computed.totalPersonDays)}
+            onCommit={(v) => void onOverride({ totalPersonDaysOverride: v })}
+          />
+        </OverrideField>
+      </div>
+      <div style={valStyle}>
+        <OverrideField
+          isOverridden={overrides.plantSummaryOverride != null}
+          onRevert={() => void onOverride({ plantSummaryOverride: null })}
+        >
+          <span title={plantText} style={{ cursor: "default", display: "inline-block", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {overrides.plantSummaryOverride ?? plantText}
+          </span>
+        </OverrideField>
+      </div>
+      <div style={valStyle}>
+        <OverrideField
+          isOverridden={overrides.durationOverride != null}
+          onRevert={() => void onOverride({ durationOverride: null })}
+        >
+          <EditableNum
+            value={overrides.durationOverride ?? computed.duration}
+            placeholder={String(computed.duration)}
+            onCommit={(v) => void onOverride({ durationOverride: v })}
+          />
+        </OverrideField>
+      </div>
+    </div>
+  );
+}
+
+function EditableNum({
+  value,
+  placeholder,
+  onCommit
+}: {
+  value: number;
+  placeholder: string;
+  onCommit: (v: number) => void;
+}) {
+  return (
+    <input
+      type="number"
+      step="0.01"
+      defaultValue={value}
+      placeholder={placeholder}
+      key={`ednum-${value}`}
+      onBlur={(e) => {
+        const raw = e.target.value;
+        if (raw === "") return;
+        const n = Number(raw);
+        if (Number.isFinite(n) && n !== value) onCommit(n);
+      }}
+      style={{
+        width: 70,
+        padding: "1px 4px",
+        border: "1px solid transparent",
+        background: "transparent",
+        fontWeight: 600,
+        fontSize: 12
+      }}
+      className="s7-input"
+    />
   );
 }

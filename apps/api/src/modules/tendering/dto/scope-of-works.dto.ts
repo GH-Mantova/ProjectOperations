@@ -239,6 +239,18 @@ export class UpdateScopeCardDto {
     description: "Per-card markup % override. Null = inherit tender markup. 0-100."
   })
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) markupOverride?: number | null;
+
+  @ApiPropertyOptional({ nullable: true, description: "Card-header peak crew override. Null = auto-derived." })
+  @IsOptional() @Type(() => Number) @IsInt() peakCrewOverride?: number | null;
+
+  @ApiPropertyOptional({ nullable: true, description: "Card-header total person-days override. Null = auto-derived." })
+  @IsOptional() @Type(() => Number) @IsNumber() totalPersonDaysOverride?: number | null;
+
+  @ApiPropertyOptional({ nullable: true, description: "Card-header plant summary override (JSON-encoded). Null = auto-derived." })
+  @IsOptional() @IsString() plantSummaryOverride?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, description: "Card-header duration override. Null = auto-derived." })
+  @IsOptional() @Type(() => Number) @IsNumber() durationOverride?: number | null;
 }
 
 // PR B1.7 — Card-scoped create DTO. Discipline is derived server-side

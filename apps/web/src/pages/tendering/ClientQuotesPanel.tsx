@@ -15,6 +15,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useAuth } from "../../auth/AuthContext";
+import { OverrideField } from "../../components";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { SendQuoteModal } from "./SendQuoteModal";
 
@@ -47,6 +48,8 @@ type CostLine = {
   label: string;
   description: string;
   price: string;
+  baseValue: string;
+  overrideAmount: string | null;
   sortOrder: number;
   isVisible: boolean;
 };
@@ -76,6 +79,12 @@ type FullQuote = QuoteSummary & {
   exclusions: ExclusionRow[];
   detailLevel?: "simple" | "detailed";
 };
+type LineAppropriation = {
+  lineId: string;
+  baseValue: number;
+  overrideAmount: number | null;
+  displayedAmount: number;
+};
 type SummaryResult = {
   baseTotalCostLines: number;
   adjustmentAmount: number;
@@ -83,6 +92,7 @@ type SummaryResult = {
   provisionalTotal: number;
   costOptionsTotal: number;
   clientFacingTotal: number;
+  lineAppropriations: LineAppropriation[];
 };
 
 function fmtCurrency(n: number | string | null | undefined): string {
@@ -789,6 +799,7 @@ function CostTab({
             <th style={{ textAlign: "left", padding: "6px 4px", width: 60 }}>Label</th>
             <th style={{ textAlign: "left", padding: "6px 4px" }}>Description</th>
             <th style={{ textAlign: "right", padding: "6px 4px", width: 140 }}>Price</th>
+            <th style={{ textAlign: "right", padding: "6px 4px", width: 120 }}>Adjusted</th>
             <th style={{ width: 40 }} />
           </tr>
         </thead>
@@ -854,6 +865,33 @@ function CostTab({
                       void onPatch(l.id, { label: l.label, description: l.description, price: n });
                   }}
                 />
+              </td>
+              <td style={{ padding: 4, textAlign: "right" }}>
+                {(() => {
+                  const approp = summary.lineAppropriations?.find((a) => a.lineId === l.id);
+                  if (!approp) return "—";
+                  return (
+                    <OverrideField
+                      isOverridden={approp.overrideAmount != null}
+                      onRevert={() => void onPatch(l.id, { overrideAmount: null })}
+                    >
+                      <input
+                        className="s7-input"
+                        type="number"
+                        step="0.01"
+                        defaultValue={approp.displayedAmount}
+                        key={`approp-${l.id}-${approp.displayedAmount}`}
+                        disabled={!canManage}
+                        style={{ width: 110, textAlign: "right" }}
+                        onBlur={(e) => {
+                          const n = Number(e.target.value);
+                          if (Number.isFinite(n) && n !== approp.displayedAmount)
+                            void onPatch(l.id, { overrideAmount: n });
+                        }}
+                      />
+                    </OverrideField>
+                  );
+                })()}
               </td>
               <td style={{ padding: 4 }}>
                 {canManage ? (

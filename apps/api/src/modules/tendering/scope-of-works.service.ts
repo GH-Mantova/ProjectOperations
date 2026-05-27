@@ -757,6 +757,102 @@ export class ScopeOfWorksService {
     });
   }
 
+  async updateCardHeaderOverrides(
+    tenderId: string,
+    cardId: string,
+    patch: {
+      peakCrewOverride?: number | null;
+      totalPersonDaysOverride?: number | null;
+      plantSummaryOverride?: string | null;
+      durationOverride?: number | null;
+    }
+  ) {
+    await this.requireTender(tenderId);
+    const card = await this.prisma.scopeCard.findFirst({ where: { id: cardId, tenderId } });
+    if (!card) throw new NotFoundException("Card not found.");
+    return this.prisma.scopeCard.update({
+      where: { id: cardId },
+      data: {
+        peakCrewOverride: patch.peakCrewOverride === undefined ? undefined : patch.peakCrewOverride,
+        totalPersonDaysOverride: patch.totalPersonDaysOverride === undefined
+          ? undefined
+          : patch.totalPersonDaysOverride == null ? null : new Prisma.Decimal(patch.totalPersonDaysOverride),
+        plantSummaryOverride: patch.plantSummaryOverride === undefined ? undefined : patch.plantSummaryOverride,
+        durationOverride: patch.durationOverride === undefined
+          ? undefined
+          : patch.durationOverride == null ? null : new Prisma.Decimal(patch.durationOverride),
+      }
+    });
+  }
+
+  async getCardSummary(tenderId: string, cardId: string) {
+    await this.requireTender(tenderId);
+    const card = await this.prisma.scopeCard.findFirst({
+      where: { id: cardId, tenderId },
+      include: {
+        scopeItems: {
+          where: { status: { not: "excluded" } },
+          select: { men: true, days: true, plantItems: true }
+        }
+      }
+    });
+    if (!card) throw new NotFoundException("Card not found.");
+
+    let peakCrew = 0;
+    let totalPersonDays = 0;
+    const plantByDesc = new Map<string, { peakQty: number; totalDays: number }>();
+
+    for (const item of card.scopeItems) {
+      const men = item.men ? Number(item.men) : 0;
+      const days = item.days ? Number(item.days) : 0;
+      if (men > peakCrew) peakCrew = men;
+      totalPersonDays += men * days;
+
+      const plantItems = item.plantItems as Array<{
+        columnIndex: number; plantRateId?: string; description?: string;
+        qty?: number; days?: number;
+      }> | null;
+      if (Array.isArray(plantItems)) {
+        for (const p of plantItems) {
+          const desc = p.description ?? p.plantRateId ?? `Plant ${p.columnIndex}`;
+          const pQty = p.qty ?? 0;
+          const pDays = p.days ?? 0;
+          const existing = plantByDesc.get(desc) ?? { peakQty: 0, totalDays: 0 };
+          if (pQty > existing.peakQty) existing.peakQty = pQty;
+          existing.totalDays += pQty * pDays;
+          plantByDesc.set(desc, existing);
+        }
+      }
+    }
+
+    const labourDuration = peakCrew > 0 ? totalPersonDays / peakCrew : 0;
+    let maxPlantDuration = 0;
+    const plantSummary: Array<{ name: string; peakQty: number }> = [];
+    for (const [name, data] of plantByDesc) {
+      plantSummary.push({ name, peakQty: data.peakQty });
+      if (data.peakQty > 0) {
+        const dur = data.totalDays / data.peakQty;
+        if (dur > maxPlantDuration) maxPlantDuration = dur;
+      }
+    }
+    const duration = Math.round(Math.max(labourDuration, maxPlantDuration) * 10) / 10;
+
+    return {
+      computed: {
+        peakCrew,
+        totalPersonDays: Math.round(totalPersonDays * 100) / 100,
+        plantSummary,
+        duration
+      },
+      overrides: {
+        peakCrewOverride: card.peakCrewOverride,
+        totalPersonDaysOverride: card.totalPersonDaysOverride ? Number(card.totalPersonDaysOverride) : null,
+        plantSummaryOverride: card.plantSummaryOverride,
+        durationOverride: card.durationOverride ? Number(card.durationOverride) : null,
+      }
+    };
+  }
+
   /**
    * PR B2 — Reset every card in this tender back to "inherit tender
    * markup" (markupOverride = null). Returns the count of cards

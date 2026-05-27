@@ -79,7 +79,17 @@ type OtherRate = {
   sortOrder: number;
 };
 
-type Tab = "labour" | "plant" | "waste" | "cutting" | "coreholes" | "fuel" | "enclosure" | "other";
+type MaterialDensity = {
+  id: string;
+  materialName: string;
+  density: string;
+  unit: string;
+  category: string | null;
+  isActive: boolean;
+  sortOrder: number;
+};
+
+type Tab = "labour" | "plant" | "waste" | "cutting" | "coreholes" | "fuel" | "enclosure" | "other" | "density";
 
 const SNAPSHOT_NOTE =
   "Rate snapshots: Every submitted quote freezes the rates in force on the submit date. Editing a rate here never changes an old quote.";
@@ -112,6 +122,7 @@ export function EstimateRatesAdminPage() {
   const [fuel, setFuel] = useState<FuelRate[]>([]);
   const [enclosure, setEnclosure] = useState<EnclosureRate[]>([]);
   const [other, setOther] = useState<OtherRate[]>([]);
+  const [density, setDensity] = useState<MaterialDensity[]>([]);
   const [searches, setSearches] = useState<Record<Tab, string>>({
     labour: "",
     plant: "",
@@ -120,7 +131,8 @@ export function EstimateRatesAdminPage() {
     coreholes: "",
     fuel: "",
     enclosure: "",
-    other: ""
+    other: "",
+    density: ""
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -130,7 +142,7 @@ export function EstimateRatesAdminPage() {
     setLoading(true);
     setError(null);
     try {
-      const [l, p, w, c, ch, f, e, o] = await Promise.all([
+      const [l, p, w, c, ch, f, e, o, md] = await Promise.all([
         authFetch(`/estimate-rates/labour`).then((r) => (r.ok ? (r.json() as Promise<LabourRate[]>) : [])),
         authFetch(`/estimate-rates/plant`).then((r) => (r.ok ? (r.json() as Promise<PlantRate[]>) : [])),
         authFetch(`/estimate-rates/waste`).then((r) => (r.ok ? (r.json() as Promise<WasteRate[]>) : [])),
@@ -138,7 +150,8 @@ export function EstimateRatesAdminPage() {
         authFetch(`/estimate-rates/core-holes`).then((r) => (r.ok ? (r.json() as Promise<CoreHoleRate[]>) : [])),
         authFetch(`/estimate-rates/fuel`).then((r) => (r.ok ? (r.json() as Promise<FuelRate[]>) : [])),
         authFetch(`/estimate-rates/enclosure`).then((r) => (r.ok ? (r.json() as Promise<EnclosureRate[]>) : [])),
-        authFetch(`/estimate-rates/other-rates`).then((r) => (r.ok ? (r.json() as Promise<OtherRate[]>) : []))
+        authFetch(`/estimate-rates/other-rates`).then((r) => (r.ok ? (r.json() as Promise<OtherRate[]>) : [])),
+        authFetch(`/estimate-rates/material-densities`).then((r) => (r.ok ? (r.json() as Promise<MaterialDensity[]>) : []))
       ]);
       setLabour(l as LabourRate[]);
       setPlant(p as PlantRate[]);
@@ -148,6 +161,7 @@ export function EstimateRatesAdminPage() {
       setFuel(f as FuelRate[]);
       setEnclosure(e as EnclosureRate[]);
       setOther(o as OtherRate[]);
+      setDensity(md as MaterialDensity[]);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -195,6 +209,7 @@ export function EstimateRatesAdminPage() {
   const fuelFiltered = filterRows(fuel, search, (r) => `${r.item} ${r.unit}`);
   const enclosureFiltered = filterRows(enclosure, search, (r) => `${r.enclosureType} ${r.unit}`);
   const otherFiltered = filterRows(other, search, (r) => `${r.description} ${r.unit}`);
+  const densityFiltered = filterRows(density, search, (r) => `${r.materialName} ${r.unit} ${r.category ?? ""}`);
 
   const countFor: Record<Tab, number> = {
     labour: labour.length,
@@ -204,7 +219,8 @@ export function EstimateRatesAdminPage() {
     coreholes: coreHoles.length,
     fuel: fuel.length,
     enclosure: enclosure.length,
-    other: other.length
+    other: other.length,
+    density: density.length
   };
 
   const filteredCount: Record<Tab, number> = {
@@ -215,7 +231,8 @@ export function EstimateRatesAdminPage() {
     coreholes: coreHolesFiltered.length,
     fuel: fuelFiltered.length,
     enclosure: enclosureFiltered.length,
-    other: otherFiltered.length
+    other: otherFiltered.length,
+    density: densityFiltered.length
   };
 
   return (
@@ -245,7 +262,8 @@ export function EstimateRatesAdminPage() {
           { key: "coreholes", label: `Core holes (${countFor.coreholes})` },
           { key: "fuel", label: `Fuel (${countFor.fuel})` },
           { key: "enclosure", label: `Enclosures (${countFor.enclosure})` },
-          { key: "other", label: `Other rates (${countFor.other})` }
+          { key: "other", label: `Other rates (${countFor.other})` },
+          { key: "density", label: `Densities (${countFor.density})` }
         ] as Array<{ key: Tab; label: string }>).map((t) => (
           <button
             key={t.key}
@@ -421,6 +439,28 @@ export function EstimateRatesAdminPage() {
                 basePath="/estimate-rates/other-rates"
                 addDefaults={{ description: "", unit: "each", rate: "0" }}
                 deleteLabel={(r) => r.description}
+                canAdmin={canAdmin}
+                saving={saving}
+                callApi={callApi}
+              />
+            </>
+          )}
+          {tab === "density" && (
+            <>
+              <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 0 }}>
+                Material densities used by the scope item form. Density auto-populates when a material is selected.
+              </p>
+              <RatesTable
+                rows={densityFiltered}
+                columns={[
+                  { key: "materialName", label: "Material", type: "text", widthPct: 30 },
+                  { key: "density", label: "Density", type: "number", step: "0.001", widthPct: 18 },
+                  { key: "unit", label: "Unit", type: "text", widthPct: 15 },
+                  { key: "category", label: "Category", type: "text", widthPct: 20 }
+                ]}
+                basePath="/estimate-rates/material-densities"
+                addDefaults={{ materialName: "", density: "0", unit: "kg/m³", category: "" }}
+                deleteLabel={(r) => r.materialName}
                 canAdmin={canAdmin}
                 saving={saving}
                 callApi={callApi}

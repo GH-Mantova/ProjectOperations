@@ -79,6 +79,16 @@ export class UpsertOtherRateDto {
   @IsOptional() @Type(() => Number) @IsInt() sortOrder?: number;
 }
 
+export class UpsertMaterialDensityDto {
+  @IsString() materialName!: string;
+  @IsNumberString() density!: string;
+  @IsString() unit!: string;
+  @IsOptional() @IsString() category?: string;
+  @IsOptional() @IsString() notes?: string;
+  @IsOptional() @IsBoolean() isActive?: boolean;
+  @IsOptional() @Type(() => Number) @IsInt() sortOrder?: number;
+}
+
 // Estimate & item DTOs
 export class UpdateEstimateDto {
   @IsOptional() @IsNumberString() markup?: string;

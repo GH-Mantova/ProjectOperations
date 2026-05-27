@@ -1592,6 +1592,21 @@ model EstimateEnclosureRate {
   @@map("estimate_enclosure_rates")
 }
 
+model EstimateMaterialDensity {
+  id           String   @id @default(cuid())
+  materialName String   @unique @map("material_name")
+  density      Decimal  @db.Decimal(8, 3)
+  unit         String   // "kg/m³" or "kg/m²"
+  category     String?  // "concrete" | "masonry" | "soil" | "sheet" | "metal" | "timber"
+  notes        String?
+  isActive     Boolean  @default(true) @map("is_active")
+  sortOrder    Int      @default(0) @map("sort_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("estimate_material_density")
+}
+
 model TenderEstimate {
   id         String         @id @default(uuid())
   tenderId   String         @unique @map("tender_id")

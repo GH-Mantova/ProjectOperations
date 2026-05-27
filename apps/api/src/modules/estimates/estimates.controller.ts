@@ -23,6 +23,7 @@ import {
   UpsertFuelRateDto,
   UpsertLabourLineDto,
   UpsertLabourRateDto,
+  UpsertMaterialDensityDto,
   UpsertOtherRateDto,
   UpsertPlantLineDto,
   UpsertPlantRateDto,
@@ -300,6 +301,42 @@ export class EstimatesController {
   @ApiResponse({ status: 200, description: "Other rate deleted." })
   deleteOtherRate(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
     return this.service.deleteOtherRate(id, actor.sub);
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  Rate library — material densities
+  // ──────────────────────────────────────────────────────────────
+
+  @Get("estimate-rates/material-densities")
+  @RequirePermissions("estimates.view")
+  @ApiOperation({ summary: "List material densities (rate library)" })
+  @ApiResponse({ status: 200, description: "Ordered list of material densities." })
+  listMaterialDensities() {
+    return this.service.listMaterialDensities();
+  }
+
+  @Post("estimate-rates/material-densities")
+  @RequirePermissions("estimates.admin")
+  @ApiOperation({ summary: "Create a material density" })
+  @ApiResponse({ status: 201, description: "Material density created." })
+  createMaterialDensity(@Body() dto: UpsertMaterialDensityDto, @CurrentUser() actor: { sub: string }) {
+    return this.service.upsertMaterialDensity(undefined, dto, actor.sub);
+  }
+
+  @Patch("estimate-rates/material-densities/:id")
+  @RequirePermissions("estimates.admin")
+  @ApiOperation({ summary: "Update a material density" })
+  @ApiResponse({ status: 200, description: "Material density updated." })
+  updateMaterialDensity(@Param("id") id: string, @Body() dto: UpsertMaterialDensityDto, @CurrentUser() actor: { sub: string }) {
+    return this.service.upsertMaterialDensity(id, dto, actor.sub);
+  }
+
+  @Delete("estimate-rates/material-densities/:id")
+  @RequirePermissions("estimates.admin")
+  @ApiOperation({ summary: "Soft-delete a material density (sets active = false)" })
+  @ApiResponse({ status: 200, description: "Material density deactivated." })
+  deleteMaterialDensity(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
+    return this.service.deleteMaterialDensity(id, actor.sub);
   }
 
   // ──────────────────────────────────────────────────────────────

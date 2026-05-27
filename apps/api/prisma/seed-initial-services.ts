@@ -3194,6 +3194,43 @@ export async function seedEstimateRates(prisma: PrismaClient): Promise<void> {
       }
     });
   }
+  // Material densities — lookup table for density by material name
+  type MaterialDensityRow = { materialName: string; density: string; unit: string; category: string };
+  const materialDensities: MaterialDensityRow[] = [
+    { materialName: "Concrete", density: "2400", unit: "kg/m³", category: "concrete" },
+    { materialName: "Reinforced concrete", density: "2500", unit: "kg/m³", category: "concrete" },
+    { materialName: "Brick", density: "1900", unit: "kg/m³", category: "masonry" },
+    { materialName: "Block (concrete)", density: "2100", unit: "kg/m³", category: "masonry" },
+    { materialName: "Asphalt", density: "2300", unit: "kg/m³", category: "concrete" },
+    { materialName: "Soil (dry)", density: "1500", unit: "kg/m³", category: "soil" },
+    { materialName: "Soil (wet)", density: "1900", unit: "kg/m³", category: "soil" },
+    { materialName: "Sand", density: "1600", unit: "kg/m³", category: "soil" },
+    { materialName: "Steel", density: "7850", unit: "kg/m³", category: "metal" },
+    { materialName: "Timber (softwood)", density: "600", unit: "kg/m³", category: "timber" },
+    { materialName: "Plasterboard", density: "850", unit: "kg/m³", category: "sheet" },
+    { materialName: "Carpet", density: "2", unit: "kg/m²", category: "sheet" },
+    { materialName: "Glass", density: "2500", unit: "kg/m³", category: "sheet" }
+  ];
+  for (const [index, row] of materialDensities.entries()) {
+    await prisma.estimateMaterialDensity.upsert({
+      where: { materialName: row.materialName },
+      update: {
+        density: new Prisma.Decimal(row.density),
+        unit: row.unit,
+        category: row.category,
+        isActive: true,
+        sortOrder: index + 1
+      },
+      create: {
+        materialName: row.materialName,
+        density: new Prisma.Decimal(row.density),
+        unit: row.unit,
+        category: row.category,
+        isActive: true,
+        sortOrder: index + 1
+      }
+    });
+  }
 }
 
 export async function seedBusinessDirectoryDemos(prisma: PrismaClient): Promise<void> {

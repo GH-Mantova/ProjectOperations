@@ -21,6 +21,7 @@ import {
   UpsertFuelRateDto,
   UpsertLabourLineDto,
   UpsertLabourRateDto,
+  UpsertMaterialDensityDto,
   UpsertOtherRateDto,
   UpsertPlantLineDto,
   UpsertPlantRateDto,
@@ -317,6 +318,47 @@ export class EstimatesService {
       actorId,
       action: "estimates.enclosureRate.delete",
       entityType: "EstimateEnclosureRate",
+      entityId: id
+    });
+    return { id };
+  }
+
+  // Material density — lookup table for density by material name
+  listMaterialDensities() {
+    return this.prisma.estimateMaterialDensity.findMany({
+      orderBy: [{ isActive: "desc" }, { category: "asc" }, { materialName: "asc" }]
+    });
+  }
+  async upsertMaterialDensity(id: string | undefined, dto: UpsertMaterialDensityDto, actorId?: string) {
+    const data = {
+      materialName: dto.materialName,
+      density: new Prisma.Decimal(dto.density),
+      unit: dto.unit,
+      category: dto.category ?? null,
+      notes: dto.notes ?? null,
+      isActive: dto.isActive ?? true,
+      sortOrder: dto.sortOrder ?? 0
+    };
+    const record = id
+      ? await this.prisma.estimateMaterialDensity.update({ where: { id }, data })
+      : await this.prisma.estimateMaterialDensity.create({ data });
+    await this.auditService.write({
+      actorId,
+      action: id ? "estimates.materialDensity.update" : "estimates.materialDensity.create",
+      entityType: "EstimateMaterialDensity",
+      entityId: record.id
+    });
+    return record;
+  }
+  async deleteMaterialDensity(id: string, actorId?: string) {
+    await this.prisma.estimateMaterialDensity.update({
+      where: { id },
+      data: { isActive: false }
+    });
+    await this.auditService.write({
+      actorId,
+      action: "estimates.materialDensity.delete",
+      entityType: "EstimateMaterialDensity",
       entityId: id
     });
     return { id };

@@ -54,6 +54,7 @@ export type ScopeItem = {
   density: string | null;
   tonnes: string | null;
   chargeBy: string | null;
+  materialType: string | null;
   cuttingIncluded: boolean;
   plantItems: ScopePlantEntry[] | null;
   estimateItemId: string | null;
@@ -83,6 +84,15 @@ type WasteRate = {
   wasteType: string;
   facility: string;
   unit: string;
+  isActive: boolean;
+};
+
+type MaterialDensityRate = {
+  id: string;
+  materialName: string;
+  density: string;
+  unit: string;
+  category: string | null;
   isActive: boolean;
 };
 
@@ -125,6 +135,7 @@ export function ScopeQuantitiesTable({
   const [deleteWarning, setDeleteWarning] = useState<ScopeItem | null>(null);
   const [plantRates, setPlantRates] = useState<PlantRate[]>([]);
   const [wasteRates, setWasteRates] = useState<WasteRate[]>([]);
+  const [materialDensities, setMaterialDensities] = useState<MaterialDensityRate[]>([]);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   // Items created in the current session — auto-expand them on first render.
   const autoExpandedRef = useRef<Set<string>>(new Set());
@@ -133,9 +144,10 @@ export function ScopeQuantitiesTable({
     let cancelled = false;
     (async () => {
       try {
-        const [plantRes, wasteRes] = await Promise.all([
+        const [plantRes, wasteRes, densityRes] = await Promise.all([
           authFetch("/estimate-rates/plant"),
-          authFetch("/estimate-rates/waste")
+          authFetch("/estimate-rates/waste"),
+          authFetch("/estimate-rates/material-densities")
         ]);
         if (cancelled) return;
         if (plantRes.ok) {
@@ -145,6 +157,10 @@ export function ScopeQuantitiesTable({
         if (wasteRes.ok) {
           const body = (await wasteRes.json()) as WasteRate[];
           setWasteRates(body.filter((w) => w.isActive));
+        }
+        if (densityRes.ok) {
+          const body = (await densityRes.json()) as MaterialDensityRate[];
+          setMaterialDensities(body.filter((d) => d.isActive));
         }
       } catch {
         // Non-fatal — dropdowns just render empty.
@@ -179,6 +195,18 @@ export function ScopeQuantitiesTable({
     () => plantRates.map((p) => ({ value: p.id, label: p.item })),
     [plantRates]
   );
+
+  const materialOptions = useMemo<TooltipSelectOption<string>[]>(
+    () => materialDensities.map((d) => ({ value: d.materialName, label: `${d.materialName} (${d.density} ${d.unit})` })),
+    [materialDensities]
+  );
+
+  // Map materialName → density for quick lookup on select.
+  const materialDensityMap = useMemo(() => {
+    const map = new Map<string, { density: string; unit: string }>();
+    for (const d of materialDensities) map.set(d.materialName, { density: d.density, unit: d.unit });
+    return map;
+  }, [materialDensities]);
 
   const patchItem = useCallback(
     async (id: string, body: Record<string, unknown>) => {
@@ -392,6 +420,8 @@ export function ScopeQuantitiesTable({
               plantRates={plantRates}
               wasteGroupOptions={wasteGroupOptions}
               wasteItemsByGroup={wasteItemsByGroup}
+              materialOptions={materialOptions}
+              materialDensityMap={materialDensityMap}
               isPending={pendingIds.has(item.id)}
               onPatch={(body) => void patchItem(item.id, body)}
               onConfirm={() => void confirmItem(item.id)}
@@ -476,6 +506,8 @@ type ItemCardProps = {
   plantRates: PlantRate[];
   wasteGroupOptions: TooltipSelectOption<string>[];
   wasteItemsByGroup: Map<string, string[]>;
+  materialOptions: TooltipSelectOption<string>[];
+  materialDensityMap: Map<string, { density: string; unit: string }>;
   isPending: boolean;
   onPatch: (body: Record<string, unknown>) => void;
   onConfirm: () => void;
@@ -494,6 +526,8 @@ function ItemCard({
   plantRates,
   wasteGroupOptions,
   wasteItemsByGroup,
+  materialOptions,
+  materialDensityMap,
   isPending,
   onPatch,
   onConfirm,
@@ -958,14 +992,40 @@ function ItemCard({
                 onBlur={persistDims}
               />
             </FieldCell>
+            <FieldCell label="Material" width={160}>
+              <TooltipSelect
+                value={item.materialType}
+                options={materialOptions}
+                onChange={(v) => {
+                  const lookup = v ? materialDensityMap.get(v) : undefined;
+                  const densityTonnes = lookup
+                    ? String(Number(lookup.density) / 1000)
+                    : "";
+                  onPatch({
+                    materialType: v,
+                    density: v ? Number(densityTonnes) : null
+                  });
+                }}
+                disabled={isAi}
+                ariaLabel="Material type"
+                style={{ height: 32 }}
+              />
+            </FieldCell>
             <FieldCell label="Density (t/m³)" width={90}>
               <input
                 className="s7-input"
                 type="number"
                 step="0.001"
                 value={dims.density}
-                disabled={isAi}
-                style={{ width: 90, height: 32 }}
+                disabled={isAi || !!item.materialType}
+                style={{
+                  width: 90,
+                  height: 32,
+                  ...(item.materialType
+                    ? { backgroundColor: "var(--surface-muted, #f3f4f6)", color: "var(--text-muted, #6b7280)" }
+                    : {})
+                }}
+                title={item.materialType ? `Auto-set from ${item.materialType}. Clear material to edit manually.` : "Manual density (tonnes per m³)"}
                 onChange={(e) => setDim("density", e.target.value)}
                 onBlur={persistDims}
               />

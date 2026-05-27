@@ -46,14 +46,25 @@ export class QuoteService {
   async getTandC(tenderId: string) {
     await this.requireTender(tenderId);
     const existing = await this.prisma.tenderTandC.findUnique({ where: { tenderId } });
-    if (existing) return existing;
+    if (existing) {
+      const defaults = parseDefaultClauses();
+      const defaultMap = new Map(defaults.map((c) => [c.number, c.body]));
+      const clauses = isClauseArray(existing.clauses)
+        ? (existing.clauses as TcClause[]).map((c) => ({
+            ...c,
+            isModified: defaultMap.has(c.number) && defaultMap.get(c.number) !== c.body
+          }))
+        : defaults.map((c) => ({ ...c, isModified: false }));
+      return { ...existing, clauses };
+    }
     const clauses = parseDefaultClauses();
-    return this.prisma.tenderTandC.create({
+    const record = await this.prisma.tenderTandC.create({
       data: {
         tenderId,
         clauses: clauses as unknown as Prisma.InputJsonValue
       }
     });
+    return { ...record, clauses: clauses.map((c) => ({ ...c, isModified: false })) };
   }
 
   async updateTandC(tenderId: string, clauses: TcClause[]) {

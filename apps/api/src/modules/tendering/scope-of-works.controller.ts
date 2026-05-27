@@ -203,12 +203,37 @@ export class ScopeOfWorksController {
     if (dto.markupOverride !== undefined) {
       return this.service.setCardMarkupOverride(tenderId, cardId, dto.markupOverride);
     }
+    // Card-header summary overrides.
+    if (
+      dto.peakCrewOverride !== undefined ||
+      dto.totalPersonDaysOverride !== undefined ||
+      dto.plantSummaryOverride !== undefined ||
+      dto.durationOverride !== undefined
+    ) {
+      return this.service.updateCardHeaderOverrides(tenderId, cardId, {
+        peakCrewOverride: dto.peakCrewOverride,
+        totalPersonDaysOverride: dto.totalPersonDaysOverride,
+        plantSummaryOverride: dto.plantSummaryOverride,
+        durationOverride: dto.durationOverride,
+      });
+    }
     if (dto.name !== undefined) {
       return this.service.renameCard(tenderId, cardId, dto.name);
     }
     throw new BadRequestException(
-      "Provide name, discipline, plantColumnCount, cuttingNotes, wasteNotes, or markupOverride."
+      "Provide name, discipline, plantColumnCount, cuttingNotes, wasteNotes, markupOverride, or header overrides."
     );
+  }
+
+  @Get("cards/:cardId/summary")
+  @RequirePermissions("estimates.view")
+  @ApiOperation({ summary: "Compute auto-derived card-header summary values + return any user overrides." })
+  @ApiResponse({ status: 200, description: "Card summary with computed and override values." })
+  getCardSummary(
+    @Param("tenderId") tenderId: string,
+    @Param("cardId") cardId: string
+  ) {
+    return this.service.getCardSummary(tenderId, cardId);
   }
 
   @Post("markup/reset-all")

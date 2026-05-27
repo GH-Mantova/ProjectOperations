@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-26 01:08 AEST
+Last updated: 2026-05-27 03:26 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -347,12 +347,20 @@ T&C two-column layout broken). Unlocks future template-editor work.
    produces full quote document via PdfRendererService. Both consumers
    migrated (QuotePdfService + EstimateExportService). 9 new tests.
    Sample PDFs at docs/samples/ for Sean's visual sign-off.
+   **Sean + Raj reviewed and approved the Quote PDF visual fidelity on
+   2026-05-26 — this §5A.2 sub-item is signed off.**
 
-🔲 Variation PDF — HTML template + migration
+⏸️ Variation PDF — HTML template + migration
    (Same approach as quote. Sean's reference template required.)
+   DEFERRED: Pushed back until the Scheduler / Job-allocation track
+   catches up (owner decision, 2026-05-26). The PDFKit-based Variation
+   PDF continues to render via the legacy path until then.
 
-🔲 Schedule of Rates PDF — HTML template + migration
+⏸️ Schedule of Rates PDF — HTML template + migration
    (Same approach. Sean's reference template required.)
+   DEFERRED: Pushed back until the Scheduler / Job-allocation track
+   catches up (owner decision, 2026-05-26). The PDFKit-based Schedule
+   of Rates PDF continues to render via the legacy path until then.
 
 ### 5A.3 — Existing 5A items (workflow review + dependent items)
 
@@ -399,6 +407,33 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
    - IS watermark on pages
    - T&C clause review — Marco to review and approve all 21 clauses
      (blocks PDF being legally valid for client distribution)
+
+🔲 PR A — Tendering: density as Rates & Lists lookup
+   New `EstimateMaterialDensity` model + seed of 13 IS-relevant defaults +
+   admin UI section + Material dropdown on the scope item form. Density input
+   becomes read-only and looked-up. Replaces the per-item free-text density.
+
+🔲 PR B — Tendering: card-header summaries + override highlight + proportional cost appropriation
+   Three interlocking pieces. (1) Shared override-highlight design token
+   (`--surface-override`) and revert icon, adopted across dimension overrides +
+   new summaries + T&C clauses. (2) Per-card header zone shows peak crew +
+   total person-days + per-equipment plant peak + card duration, all
+   overridable. (3) Quote Edit adjustments distribute proportionally across
+   cost lines by their share of the un-overridden total; no compounding, no
+   mutation of the underlying base values.
+
+🔲 PR C — Tendering: floating bulk editor for Assumptions / Exclusions (Alt+A)
+   New top-right anchored resizable panel reachable from Overview + Scope of
+   Works tabs (hidden on Quote). Writes through to the same
+   `TenderAssumption` / `TenderExclusion` data; size persists per user.
+
+🔲 PR D — Tendering: unified communications panel
+   Replace the separate Activity timeline + Clarifications & Communications +
+   Follow-ups panels with one `TenderEntry`-backed panel. Type dropdown
+   (Note / RFI / Email / Call / Meeting / Follow-up / Self-reminder / Task)
+   drives conditional fields (due date, assignee, status). Task assignment
+   to non-field users with both in-app + email notifications. Legacy tables
+   stay one release cycle then drop in a follow-up PR.
 
 🔲 Tendering module signed off by Raj + Sean
    → Gate: nothing in Phase 6+ starts until this sign-off is received
@@ -1540,6 +1575,12 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
 🔲 Form builder enhancements (conditional logic, signatures, GPS stamp)
 🔲 Maintenance scheduling automation (based on asset usage hours)
 
+🔲 Tendering — Outlook correspondence hub (post-Azure migration)
+    Microsoft Graph API integration: monitor company email, group
+    correspondence per tender / per client, surface in the unified comms
+    panel (PR D) once that ships. Calendar + Tasks integration follows.
+    Depends on the Azure launch landing first.
+
 🔲 Structured asbestos register per site
     (sites have knownHazards text field — replace with structured register:
      material type, location, quantity, friability rating, removal records,
@@ -1561,11 +1602,52 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
 
 ## CHANGELOG
 
+### 2026-05-27 — Dev tooling: harden dev-start.bat (PR #233)
+Replaced the dirty-tree warning-then-continue block with a fail-fast guard
+that exits non-zero when uncommitted changes are detected. A `git pull` on
+a dirty tree had twice left `.git/HEAD` in a broken state requiring manual
+recovery. Also replaced the port 3000/5173 warning+pause blocks with inline
+PowerShell calls that auto-kill orphan listeners and continue.
+
+### 2026-05-26 — Tender UX polish: canonical status labels + delete-dialog cascade list (PR #232)
+Centralised the 7 tender status labels into `tenderStatusLabels.ts` as a
+single source of truth for display strings. Fixed the detail-page status
+dropdown missing the `CONTRACT_ISSUED` option. Added the `tenderClients`
+line to the ConfirmDeleteDialog cascade list so users see which clients
+are affected before confirming a tender deletion.
+
+### 2026-05-26 — Tender Detail: fix phantom Clarifications draft + Activity Post verification (PR #231)
+Added an `isDirty` predicate to `useFormDraft` so the `visibilitychange`
+auto-save only fires when the form is open AND has user content — fixes a
+phantom Clarifications draft appearing after navigating away from an empty
+form. Defect 2 (Activity Post discarding content) was verified as a Cowork
+test artifact with no code change needed.
+
+### 2026-05-26 — Scope of Works: make dimension overrides stick across save / refresh (PR #229)
+Replaces the unconditional dirty-flag reset with `isDimensionOverride`
+detection so saved overrides on SQM / M³ / Tonnes display correctly as
+overrides after reload. Previously, saving then refreshing would reset the
+visual indicator even though the override value was persisted.
+
+### 2026-05-26 — Seed: full-feature template tender (PR #228)
+Seeded IS-T100 as a full-feature template tender with 4 disciplines, 18
+scope items including concrete cutting / coring / grinding, 2 provisional
+sums, 2 cost options, 8 linked assumptions, 7 exclusions, and 3 referenced
+drawings. ClientQuote IS-T100-R1 seeded with `assumptionMode=linked`,
+`detailLevel=detailed`, and all show-flags enabled.
+
 ### 2026-05-26 — Tender & quote delete + edit (PR #227)
-Hard delete for tenders and quotes with cascade handling, audit logging,
-permission gating, and confirmation dialogs. Prisma migration adds
-onDelete: SetNull to SafetyIncident/HazardObservation FK refs.
-Edit endpoints already existed — no changes needed.
+Hard delete for tenders and quotes with responsible safeguards: audit log
+written before row removal; permission-gated behind `tenders.manage`;
+preflight endpoint returns cascade counts for UI confirmation dialog;
+AWARDED/CONTRACT_ISSUED tenders require typing the tender ref to confirm.
+Prisma migration adds `onDelete: SetNull` on SafetyIncident /
+HazardObservation tender FKs, Cascade for all owned children.
+
+### 2026-05-26 — Tendering pipeline board layout fix (PR #226)
+CSS grid `repeat(6)` → `repeat(7)` so all 7 status columns render as
+peer columns. The Withdrawn column was rendering below Draft due to the
+missing grid track.
 
 ### 2026-04-25 — Initial roadmap created
 Phases 1-4 marked complete based on PR chain #80-#91.

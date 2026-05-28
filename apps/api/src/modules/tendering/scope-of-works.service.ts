@@ -814,9 +814,9 @@ export class ScopeOfWorksService {
       }> | null;
       if (Array.isArray(plantItems)) {
         for (const p of plantItems) {
-          if (!p.description || !p.qty) continue;
+          if (!p.description) continue;
           const desc = p.description;
-          const pQty = p.qty;
+          const pQty = p.qty ?? 1;
           const pDays = p.days ?? 0;
           const existing = plantByDesc.get(desc) ?? { peakQty: 0, totalDays: 0 };
           if (pQty > existing.peakQty) existing.peakQty = pQty;

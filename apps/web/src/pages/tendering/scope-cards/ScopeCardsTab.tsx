@@ -43,7 +43,6 @@ export function ScopeCardsTab({
     reload: reloadCards,
     createCard,
     renameCard,
-    setPlantColumnCount,
     setCardNotes,
     setCardMarkupOverride,
     resetAllCardMarkup,
@@ -375,13 +374,9 @@ export function ScopeCardsTab({
             <ScopeQuantitiesTable
               tenderId={tenderId}
               cardId={activeCard.id}
-              plantColumnCount={activeCard.plantColumnCount}
               discipline={activeCard.discipline as TableDiscipline}
               items={cardItems}
               onItemsChanged={reloadEverything}
-              onPlantColumnCountChange={async (next) => {
-                await setPlantColumnCount(activeCard.id, next);
-              }}
             />
           )}
 

@@ -113,21 +113,17 @@ function fmtCurrency(n: number): string {
 type Props = {
   tenderId: string;
   cardId: string;
-  plantColumnCount: number;
   discipline: Discipline;
   items: ScopeItem[];
   onItemsChanged: () => Promise<void> | void;
-  onPlantColumnCountChange: (next: number) => Promise<void>;
 };
 
 export function ScopeQuantitiesTable({
   tenderId,
   cardId,
-  plantColumnCount,
   discipline: _discipline,
   items,
-  onItemsChanged,
-  onPlantColumnCountChange
+  onItemsChanged
 }: Props) {
   const { authFetch } = useAuth();
   const [error, setError] = useState<string | null>(null);
@@ -290,38 +286,6 @@ export function ScopeQuantitiesTable({
     await onItemsChanged();
   };
 
-  const addPlantColumn = async () => {
-    try {
-      await onPlantColumnCountChange(plantColumnCount + 1);
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  };
-
-  const removePlantColumn = async (columnIndex: number) => {
-    if (columnIndex < 2) return; // Plant 1 is never removable.
-    const rowsWithData = items.filter(
-      (i) => Array.isArray(i.plantItems) && i.plantItems.some((p) => p.columnIndex === columnIndex)
-    );
-    if (rowsWithData.length > 0) {
-      const ok = window.confirm(
-        `Remove Plant ${columnIndex}? ${rowsWithData.length} row${rowsWithData.length === 1 ? "" : "s"} ` +
-          `in this card ${rowsWithData.length === 1 ? "has" : "have"} data in Plant ${columnIndex}. ` +
-          `That data will be deleted.`
-      );
-      if (!ok) return;
-      for (const row of rowsWithData) {
-        const stripped = (row.plantItems ?? []).filter((p) => p.columnIndex !== columnIndex);
-        await patchItem(row.id, { plantItems: stripped });
-      }
-    }
-    try {
-      await onPlantColumnCountChange(plantColumnCount - 1);
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  };
-
   const visible = useMemo(() => items.filter((i) => i.status !== "excluded"), [items]);
   const excluded = useMemo(() => items.filter((i) => i.status === "excluded"), [items]);
   // PR B2 — footer self-sums from the per-row totals (already attached
@@ -368,8 +332,6 @@ export function ScopeQuantitiesTable({
     });
   };
 
-  const plantColumns = Array.from({ length: Math.max(1, plantColumnCount) }, (_, i) => i + 1);
-
   return (
     <section className="s7-card" style={{ padding: 16 }}>
       {error ? (
@@ -415,7 +377,6 @@ export function ScopeQuantitiesTable({
               item={item}
               expanded={expandedIds.has(item.id)}
               onToggle={() => toggleExpanded(item.id)}
-              plantColumns={plantColumns}
               plantOptions={plantOptions}
               plantRates={plantRates}
               wasteGroupOptions={wasteGroupOptions}
@@ -427,8 +388,6 @@ export function ScopeQuantitiesTable({
               onConfirm={() => void confirmItem(item.id)}
               onExclude={() => void excludeItem(item.id)}
               onDelete={() => deleteItem(item)}
-              onAddPlantColumn={addPlantColumn}
-              onRemovePlantColumn={removePlantColumn}
             />
           ))
         )}
@@ -501,7 +460,6 @@ type ItemCardProps = {
   item: ScopeItem;
   expanded: boolean;
   onToggle: () => void;
-  plantColumns: number[];
   plantOptions: TooltipSelectOption<string>[];
   plantRates: PlantRate[];
   wasteGroupOptions: TooltipSelectOption<string>[];
@@ -513,15 +471,12 @@ type ItemCardProps = {
   onConfirm: () => void;
   onExclude: () => void;
   onDelete: () => void;
-  onAddPlantColumn: () => void;
-  onRemovePlantColumn: (columnIndex: number) => void;
 };
 
 function ItemCard({
   item,
   expanded,
   onToggle,
-  plantColumns,
   plantOptions,
   plantRates,
   wasteGroupOptions,
@@ -532,16 +487,11 @@ function ItemCard({
   onPatch,
   onConfirm,
   onExclude,
-  onDelete,
-  onAddPlantColumn,
-  onRemovePlantColumn
+  onDelete
 }: ItemCardProps) {
   const isAi = item.aiProposed && item.status !== "confirmed";
   const confidence = item.aiConfidence ? CONFIDENCE_STYLE[item.aiConfidence] : null;
   const baseBg = isAi ? "#FEF3C7" : "var(--surface-card, #fff)";
-
-  const plantAt = (columnIndex: number): ScopePlantEntry | undefined =>
-    Array.isArray(item.plantItems) ? item.plantItems.find((p) => p.columnIndex === columnIndex) : undefined;
 
   const updatePlant = (columnIndex: number, patch: Partial<ScopePlantEntry> | null) => {
     const current = Array.isArray(item.plantItems) ? item.plantItems : [];
@@ -554,6 +504,21 @@ function ItemCard({
         ? current.map((p) => (p.columnIndex === columnIndex ? { ...p, ...patch } : p))
         : [...current, { columnIndex, ...patch }];
     }
+    onPatch({ plantItems: next });
+  };
+
+  const itemPlantEntries: ScopePlantEntry[] = Array.isArray(item.plantItems)
+    ? [...item.plantItems].sort((a, b) => a.columnIndex - b.columnIndex)
+    : [];
+
+  const addPlant = () => {
+    const maxIndex = itemPlantEntries.reduce((m, p) => Math.max(m, p.columnIndex), 0);
+    const newEntry: ScopePlantEntry = { columnIndex: maxIndex + 1 };
+    onPatch({ plantItems: [...(item.plantItems ?? []), newEntry] });
+  };
+
+  const removePlant = (columnIndex: number) => {
+    const next = (item.plantItems ?? []).filter((p) => p.columnIndex !== columnIndex);
     onPatch({ plantItems: next });
   };
 
@@ -926,25 +891,31 @@ function ItemCard({
               />
             </FieldCell>
 
-            {plantColumns.map((n) => {
-              const cell = plantAt(n);
-              const isLast = n === plantColumns[plantColumns.length - 1];
-              return (
-                <PlantCluster
-                  key={`plant-${n}`}
-                  index={n}
-                  cell={cell}
-                  plantOptions={plantOptions}
-                  plantRates={plantRates}
-                  disabled={isAi}
-                  removable={n >= 2}
-                  isLast={isLast}
-                  onChange={(patch) => updatePlant(n, patch)}
-                  onAddColumn={onAddPlantColumn}
-                  onRemoveColumn={() => onRemovePlantColumn(n)}
-                />
-              );
-            })}
+            {itemPlantEntries.map((entry) => (
+              <PlantCluster
+                key={`plant-${entry.columnIndex}`}
+                index={entry.columnIndex}
+                cell={entry}
+                plantOptions={plantOptions}
+                plantRates={plantRates}
+                disabled={isAi}
+                onChange={(patch) => updatePlant(entry.columnIndex, patch)}
+                onRemove={() => removePlant(entry.columnIndex)}
+              />
+            ))}
+            {!isAi ? (
+              <div style={{ display: "flex", alignItems: "flex-end", paddingBottom: 2 }}>
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--ghost s7-btn--sm"
+                  onClick={addPlant}
+                  title="Add plant to this item"
+                  style={{ whiteSpace: "nowrap", fontSize: 11, padding: "4px 8px", height: 32 }}
+                >
+                  + Plant
+                </button>
+              </div>
+            ) : null}
           </div>
 
           <Divider />
@@ -1200,9 +1171,7 @@ function ItemCard({
 }
 
 // ── PlantCluster ────────────────────────────────────────────────────────
-// 280px-wide cluster of [select rate, qty 44px, days 44px] with optional
-// "×" remove button on Plant 2+ and a "+" add-Plant button after the
-// trailing cluster.
+// 280px-wide cluster of [select rate, qty, days] with a "×" remove button.
 
 function PlantCluster({
   index,
@@ -1210,22 +1179,16 @@ function PlantCluster({
   plantOptions,
   plantRates,
   disabled,
-  removable,
-  isLast,
   onChange,
-  onAddColumn,
-  onRemoveColumn
+  onRemove
 }: {
   index: number;
   cell: ScopePlantEntry | undefined;
   plantOptions: TooltipSelectOption<string>[];
   plantRates: PlantRate[];
   disabled: boolean;
-  removable: boolean;
-  isLast: boolean;
   onChange: (patch: Partial<ScopePlantEntry> | null) => void;
-  onAddColumn: () => void;
-  onRemoveColumn: () => void;
+  onRemove: () => void;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4, width: 280 }}>
@@ -1233,12 +1196,12 @@ function PlantCluster({
         <span className="s7-type-label" style={labelStyle}>
           Plant {index}
         </span>
-        {removable ? (
+        {!disabled ? (
           <button
             type="button"
-            onClick={onRemoveColumn}
-            aria-label={`Remove Plant ${index} column`}
-            title={`Remove Plant ${index} column`}
+            onClick={onRemove}
+            aria-label={`Remove Plant ${index}`}
+            title={`Remove Plant ${index}`}
             style={{
               width: 16,
               height: 16,
@@ -1253,28 +1216,6 @@ function PlantCluster({
             }}
           >
             ×
-          </button>
-        ) : null}
-        {isLast ? (
-          <button
-            type="button"
-            onClick={onAddColumn}
-            aria-label="Add Plant column"
-            title="Add Plant column"
-            style={{
-              width: 16,
-              height: 16,
-              borderRadius: 999,
-              border: "none",
-              background: "var(--brand-primary, #005B61)",
-              color: "#fff",
-              cursor: "pointer",
-              fontSize: 11,
-              lineHeight: 1,
-              padding: 0
-            }}
-          >
-            +
           </button>
         ) : null}
       </div>

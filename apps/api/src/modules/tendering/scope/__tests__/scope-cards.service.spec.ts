@@ -606,7 +606,7 @@ describe("listCards exposes markupOverride (PR B2)", () => {
 });
 
 describe("ScopeOfWorksService.getCardSummary — plant filtering", () => {
-  it("excludes plant entries with missing description or qty from summary", async () => {
+  it("excludes plant entries with missing description, keeps entries without qty", async () => {
     const { prisma } = buildPrismaMock({
       scopeCardFindFirst: {
         id: "card-1",
@@ -632,11 +632,39 @@ describe("ScopeOfWorksService.getCardSummary — plant filtering", () => {
     const svc = new ScopeOfWorksService(prisma as never);
     const result = await svc.getCardSummary("tender-1", "card-1");
     expect(result.computed.plantSummary).toEqual([
-      { name: "Excavator", peakQty: 2 }
+      { name: "Excavator", peakQty: 2 },
+      { name: "Bobcat", peakQty: 1 }
     ]);
   });
 
-  it("returns empty plantSummary when all entries are incomplete", async () => {
+  it("treats null qty as 1, matching pricing default", async () => {
+    const { prisma } = buildPrismaMock({
+      scopeCardFindFirst: {
+        id: "card-1",
+        tenderId: "tender-1",
+        peakCrewOverride: null,
+        totalPersonDaysOverride: null,
+        plantSummaryOverride: null,
+        durationOverride: null,
+        scopeItems: [
+          {
+            men: "1",
+            days: "1",
+            plantItems: [
+              { columnIndex: 1, description: "Tipper", qty: null, days: 5 }
+            ]
+          }
+        ]
+      }
+    });
+    const svc = new ScopeOfWorksService(prisma as never);
+    const result = await svc.getCardSummary("tender-1", "card-1");
+    expect(result.computed.plantSummary).toEqual([
+      { name: "Tipper", peakQty: 1 }
+    ]);
+  });
+
+  it("returns empty plantSummary when all entries have no description", async () => {
     const { prisma } = buildPrismaMock({
       scopeCardFindFirst: {
         id: "card-1",

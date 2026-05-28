@@ -73,6 +73,15 @@ function fmtDateTime(iso: string): string {
   }
 }
 
+const QUOTE_SUB_TABS = [
+  "Cost Summary",
+  "Assumptions",
+  "Exclusions",
+  "Terms & Conditions",
+  "Generate Quote"
+] as const;
+type QuoteSubTab = (typeof QUOTE_SUB_TABS)[number];
+
 export function QuoteTab({
   tenderId,
   tender,
@@ -87,6 +96,8 @@ export function QuoteTab({
   const [provisional, setProvisional] = useState<Array<{ id: string; description: string; amount: number }>>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [activeSubTab, setActiveSubTab] = useState<QuoteSubTab>("Cost Summary");
+  const [isEditing, setIsEditing] = useState(false);
 
   const loadSummary = useCallback(async () => {
     try {
@@ -130,38 +141,116 @@ export function QuoteTab({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      <ClientQuotesPanel
-        tenderId={tenderId}
-        tenderClients={tender.tenderClients ?? []}
-        canManage={canManage}
-      />
-      <CostSummarySection
-        summary={summary}
-        provisional={provisional}
-        tender={tender}
-        onRecalculate={loadSummary}
-      />
-      <TextListSection
-        kind="assumptions"
-        title="Assumptions"
-        tenderId={tenderId}
-        canManage={canManage}
-        onToast={setToast}
-      />
-      <TextListSection
-        kind="exclusions"
-        title="Exclusions"
-        tenderId={tenderId}
-        canManage={canManage}
-        onToast={setToast}
-      />
-      <TandCSection tenderId={tenderId} canManage={canManage} onToast={setToast} />
-      <GenerateQuoteSection
-        tenderId={tenderId}
-        tenderNumber={tender.tenderNumber}
-        ratesSnapshotAt={tender.ratesSnapshotAt ?? null}
-        onToast={setToast}
-      />
+      {!isEditing && (
+        <ClientQuotesPanel
+          tenderId={tenderId}
+          tenderClients={tender.tenderClients ?? []}
+          canManage={canManage}
+        />
+      )}
+
+      {canManage && (
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          {isEditing ? (
+            <>
+              <button
+                type="button"
+                className="s7-btn s7-btn--ghost s7-btn--sm"
+                onClick={() => {
+                  void loadSummary();
+                  setIsEditing(false);
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="s7-btn s7-btn--primary s7-btn--sm"
+                onClick={() => setIsEditing(false)}
+              >
+                Save
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={() => setIsEditing(true)}
+            >
+              Edit
+            </button>
+          )}
+        </div>
+      )}
+
+      <nav className="quote-sub-tabs" role="tablist" style={{ display: "flex", gap: 0, borderBottom: "2px solid var(--border, #e5e7eb)", marginBottom: 0 }}>
+        {QUOTE_SUB_TABS.map((t) => (
+          <button
+            key={t}
+            role="tab"
+            type="button"
+            aria-selected={activeSubTab === t}
+            className={activeSubTab === t ? "quote-sub-tab quote-sub-tab--active" : "quote-sub-tab"}
+            onClick={() => setActiveSubTab(t)}
+            style={{
+              padding: "8px 16px",
+              fontSize: 13,
+              fontWeight: activeSubTab === t ? 600 : 400,
+              color: activeSubTab === t ? "var(--brand-primary, #005B61)" : "var(--text-muted, #6b7280)",
+              background: "transparent",
+              border: "none",
+              borderBottom: activeSubTab === t ? "2px solid var(--brand-primary, #005B61)" : "2px solid transparent",
+              marginBottom: -2,
+              cursor: "pointer",
+              whiteSpace: "nowrap"
+            }}
+          >
+            {t}
+          </button>
+        ))}
+      </nav>
+
+      {activeSubTab === "Cost Summary" && (
+        <CostSummarySection
+          summary={summary}
+          provisional={provisional}
+          tender={tender}
+          onRecalculate={loadSummary}
+        />
+      )}
+
+      {activeSubTab === "Assumptions" && (
+        <TextListSection
+          kind="assumptions"
+          title="Assumptions"
+          tenderId={tenderId}
+          canManage={canManage}
+          onToast={setToast}
+        />
+      )}
+
+      {activeSubTab === "Exclusions" && (
+        <TextListSection
+          kind="exclusions"
+          title="Exclusions"
+          tenderId={tenderId}
+          canManage={canManage}
+          onToast={setToast}
+        />
+      )}
+
+      {activeSubTab === "Terms & Conditions" && (
+        <TandCSection tenderId={tenderId} canManage={canManage} onToast={setToast} />
+      )}
+
+      {activeSubTab === "Generate Quote" && (
+        <GenerateQuoteSection
+          tenderId={tenderId}
+          tenderNumber={tender.tenderNumber}
+          ratesSnapshotAt={tender.ratesSnapshotAt ?? null}
+          onToast={setToast}
+        />
+      )}
 
       {error ? <p style={{ color: "var(--status-danger)" }}>{error}</p> : null}
       {toast ? (

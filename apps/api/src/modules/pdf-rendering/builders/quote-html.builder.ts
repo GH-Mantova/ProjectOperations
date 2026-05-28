@@ -34,11 +34,13 @@ export type QuoteOverlay = {
     qty: string | null;
     unit: string | null;
     notes: string | null;
+    quoteDiscipline: string | null;
   }>;
   costLines: Array<{
     id: string;
     label: string;
     description: string;
+    displayDescription: string | null;
     price: number;
     sortOrder: number;
   }>;
@@ -379,7 +381,7 @@ function coverPage(
     for (const line of overlay.costLines) {
       nonProv.push({
         code: line.label,
-        label: line.description,
+        label: line.displayDescription ?? line.description,
         amount: line.price,
       });
     }
@@ -534,7 +536,7 @@ function scopeSection(
   if (overlay && overlay.showScopeTable === false) return html;
   if (overlay && overlay.detailLevel === "simple") return html;
 
-  // Detailed quote scope items
+  // Detailed quote scope items — grouped by quoteDiscipline, label column excluded from PDF
   if (
     overlay &&
     overlay.detailLevel === "detailed" &&
@@ -542,13 +544,28 @@ function scopeSection(
     overlay.scopeItems.length > 0
   ) {
     html += `<div class="section-heading">Scope of Works</div><div class="section-rule"></div>`;
+
+    const discGroups = new Map<string, typeof overlay.scopeItems>();
+    for (const row of overlay.scopeItems) {
+      const disc = row.quoteDiscipline ?? (/^[A-Za-z]+/.exec(row.label ?? "")?.[0] || "Other");
+      const arr = discGroups.get(disc) ?? [];
+      arr.push(row);
+      discGroups.set(disc, arr);
+    }
+
     html += `<table>
-<thead><tr><th style="width:10%">ITEM</th><th style="width:52%">SCOPE OF WORKS</th><th class="right" style="width:10%">QTY</th><th style="width:9%">UNIT</th><th>NOTES</th></tr></thead>
+<thead><tr><th style="width:55%">SCOPE OF WORKS</th><th class="right" style="width:12%">QTY</th><th style="width:10%">UNIT</th><th>NOTES</th></tr></thead>
 <tbody>`;
-    overlay.scopeItems.forEach((row, i) => {
-      const cls = i % 2 === 1 ? ' class="alt"' : "";
-      html += `<tr${cls}><td>${esc(row.label ?? "—")}</td><td>${esc(row.description)}</td><td class="right">${esc(row.qty ?? "—")}</td><td>${esc(row.unit ?? "—")}</td><td>${esc(row.notes ?? "")}</td></tr>`;
-    });
+    let rowIdx = 0;
+    for (const [disc, items] of discGroups) {
+      const discLabel = DISCIPLINE_LABEL[disc as keyof typeof DISCIPLINE_LABEL] ?? disc;
+      html += `<tr class="disc-header"><td colspan="4">${esc(discLabel)}</td></tr>`;
+      for (const row of items) {
+        const cls = rowIdx % 2 === 1 ? ' class="alt"' : "";
+        html += `<tr${cls}><td>${esc(row.description)}</td><td class="right">${esc(row.qty ?? "—")}</td><td>${esc(row.unit ?? "—")}</td><td>${esc(row.notes ?? "")}</td></tr>`;
+        rowIdx++;
+      }
+    }
     html += `</tbody></table>`;
     return html;
   }

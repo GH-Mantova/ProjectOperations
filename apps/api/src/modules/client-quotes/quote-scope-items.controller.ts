@@ -15,6 +15,7 @@ class UpsertQuoteScopeItemDto {
   @IsOptional() @IsString() qty?: string | null;
   @IsOptional() @IsString() unit?: string | null;
   @IsOptional() @IsString() notes?: string | null;
+  @IsOptional() @IsString() quoteDiscipline?: string | null;
   @IsOptional() @IsBoolean() isVisible?: boolean;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) sortOrder?: number;
 }

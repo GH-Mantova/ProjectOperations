@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -90,5 +91,31 @@ export class ProjectsController {
     @Query("limit") limit = "25"
   ) {
     return this.service.activity(id, Number(page) || 1, Number(limit) || 25);
+  }
+
+  @Get(":id/revert-to-tender/preflight")
+  @RequirePermissions("tenders.manage")
+  @ApiOperation({
+    summary:
+      "Returns cascade counts so the UI can show what will be destroyed when reverting this project back to its source tender"
+  })
+  @ApiResponse({ status: 200, description: "Preflight summary with project info, source tender, and cascade counts." })
+  @ApiResponse({ status: 400, description: "Project was not converted from a tender." })
+  @ApiResponse({ status: 404, description: "Project not found." })
+  revertPreflight(@Param("id") id: string) {
+    return this.service.revertToTenderPreflight(id);
+  }
+
+  @Delete(":id/revert-to-tender")
+  @RequirePermissions("tenders.manage")
+  @ApiOperation({
+    summary:
+      "Hard-delete the project and all related records, reset the source tender status to CONTRACT_ISSUED, and write an audit log entry. Wrapped in a single transaction."
+  })
+  @ApiResponse({ status: 200, description: "Revert succeeded — returns tenderId, timestamp, and cascade counts." })
+  @ApiResponse({ status: 400, description: "Project was not converted from a tender." })
+  @ApiResponse({ status: 404, description: "Project not found." })
+  revertToTender(@Param("id") id: string, @CurrentUser() actor: RequestUser) {
+    return this.service.revertToTender(id, actor.sub);
   }
 }

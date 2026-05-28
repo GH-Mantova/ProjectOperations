@@ -34,6 +34,7 @@ export class UpdateClientQuoteDto {
 export class UpsertCostLineDto {
   @IsString() label!: string;
   @IsString() description!: string;
+  @IsOptional() @IsString() displayDescription?: string | null;
   @IsNumber() price!: number;
   @IsOptional() @IsBoolean() isVisible?: boolean;
   @IsOptional() @Type(() => Number) @IsInt() sortOrder?: number;

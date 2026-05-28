@@ -14,6 +14,7 @@ type UpsertDto = {
   qty?: string | null;
   unit?: string | null;
   notes?: string | null;
+  quoteDiscipline?: string | null;
   isVisible?: boolean;
   sortOrder?: number;
 };
@@ -43,6 +44,7 @@ export class QuoteScopeItemsService {
         qty: dto.qty ?? null,
         unit: dto.unit ?? null,
         notes: dto.notes ?? null,
+        quoteDiscipline: dto.quoteDiscipline ?? null,
         isVisible: dto.isVisible ?? true,
         sortOrder: dto.sortOrder ?? 0
       }
@@ -63,6 +65,7 @@ export class QuoteScopeItemsService {
         qty: dto.qty !== undefined ? dto.qty : undefined,
         unit: dto.unit !== undefined ? dto.unit : undefined,
         notes: dto.notes !== undefined ? dto.notes : undefined,
+        quoteDiscipline: dto.quoteDiscipline !== undefined ? dto.quoteDiscipline : undefined,
         isVisible: dto.isVisible !== undefined ? dto.isVisible : undefined,
         sortOrder: dto.sortOrder !== undefined ? dto.sortOrder : undefined
       }

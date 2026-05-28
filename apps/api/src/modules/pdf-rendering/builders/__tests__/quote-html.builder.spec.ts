@@ -107,6 +107,7 @@ function makeOverlay(
         qty: "1",
         unit: "lot",
         notes: null,
+        quoteDiscipline: null,
       },
     ],
     costLines: [
@@ -114,6 +115,7 @@ function makeOverlay(
         id: "cl-1",
         label: "A",
         description: "Demolition",
+        displayDescription: null,
         price: 13000,
         sortOrder: 0,
       },
@@ -121,6 +123,7 @@ function makeOverlay(
         id: "cl-2",
         label: "B",
         description: "Civil restoration",
+        displayDescription: null,
         price: 2000,
         sortOrder: 1,
       },

@@ -615,6 +615,129 @@ export class ProjectsService {
     return this.getById(created.id);
   }
 
+  // ── Revert to Tender ───────────────────────────────────────────────
+  async revertToTenderPreflight(projectId: string) {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: {
+        id: true,
+        projectNumber: true,
+        name: true,
+        status: true,
+        sourceTenderId: true,
+        sourceTender: { select: { id: true, tenderNumber: true, title: true, status: true } },
+        _count: {
+          select: {
+            scopeItems: true,
+            milestones: true,
+            activityLog: true,
+            allocations: true,
+            preStartChecklists: true,
+            timesheets: true,
+            ganttTasks: true,
+            safetyIncidents: true,
+            hazardObservations: true,
+            documents: true
+          }
+        }
+      }
+    });
+    if (!project) throw new NotFoundException("Project not found.");
+    if (!project.sourceTenderId) {
+      throw new BadRequestException("This project was not converted from a tender — cannot revert.");
+    }
+
+    const contractCount = await this.prisma.contract.count({ where: { projectId } });
+
+    return {
+      id: project.id,
+      projectNumber: project.projectNumber,
+      name: project.name,
+      status: project.status,
+      sourceTender: project.sourceTender,
+      cascadeCounts: {
+        ...project._count,
+        contracts: contractCount
+      }
+    };
+  }
+
+  async revertToTender(projectId: string, actorId: string) {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: {
+        id: true,
+        projectNumber: true,
+        name: true,
+        status: true,
+        sourceTenderId: true,
+        _count: {
+          select: {
+            scopeItems: true,
+            milestones: true,
+            activityLog: true,
+            allocations: true,
+            preStartChecklists: true,
+            timesheets: true,
+            ganttTasks: true,
+            safetyIncidents: true,
+            hazardObservations: true,
+            documents: true
+          }
+        }
+      }
+    });
+    if (!project) throw new NotFoundException("Project not found.");
+    if (!project.sourceTenderId) {
+      throw new BadRequestException("This project was not converted from a tender — cannot revert.");
+    }
+
+    const contractCount = await this.prisma.contract.count({ where: { projectId } });
+    const cascadeCounts = { ...project._count, contracts: contractCount };
+    const tenderId = project.sourceTenderId;
+
+    await this.prisma.$transaction(async (tx) => {
+      // Nullify optional FK references that don't auto-cascade
+      await tx.safetyIncident.updateMany({ where: { projectId }, data: { projectId: null } });
+      await tx.hazardObservation.updateMany({ where: { projectId }, data: { projectId: null } });
+
+      // Unlink tender documents (projectId is nullable, onDelete: SetNull — but we do it
+      // explicitly so the doc rows survive and go back to the tender).
+      await tx.tenderDocumentLink.updateMany({ where: { projectId }, data: { projectId: null } });
+
+      // Delete the project — Prisma cascades scopeItems, milestones, activityLog,
+      // allocations, preStartChecklists, timesheets, contract, ganttTasks.
+      await tx.project.delete({ where: { id: projectId } });
+
+      // Reset the source tender's status back to CONTRACT_ISSUED.
+      await tx.tender.update({ where: { id: tenderId }, data: { status: "CONTRACT_ISSUED" } });
+
+      // Audit log inside the transaction so it rolls back on failure.
+      await tx.auditLog.create({
+        data: {
+          actorId,
+          action: "project.reverted_to_tender",
+          entityType: "Project",
+          entityId: projectId,
+          metadata: {
+            tenderId,
+            projectNumber: project.projectNumber,
+            projectName: project.name,
+            priorStatus: project.status,
+            cascadeCounts
+          } as Prisma.InputJsonValue
+        }
+      });
+    });
+
+    return {
+      success: true,
+      tenderId,
+      revertedAt: new Date().toISOString(),
+      cascadeCounts
+    };
+  }
+
   private async notifyProjectManager(projectId: string, userId: string, projectNumber: string, name: string) {
     await this.notifications.create(
       {

@@ -243,8 +243,8 @@ export class UpdateScopeCardDto {
   @ApiPropertyOptional({ nullable: true, description: "Card-header peak crew override. Null = auto-derived." })
   @IsOptional() @Type(() => Number) @IsInt() peakCrewOverride?: number | null;
 
-  @ApiPropertyOptional({ nullable: true, description: "Card-header total person-days override. Null = auto-derived." })
-  @IsOptional() @Type(() => Number) @IsNumber() totalPersonDaysOverride?: number | null;
+  @ApiPropertyOptional({ nullable: true, description: "Card-header labour days override. Null = auto-derived." })
+  @IsOptional() @Type(() => Number) @IsNumber() labourDaysOverride?: number | null;
 
   @ApiPropertyOptional({ nullable: true, description: "Card-header plant summary override (JSON-encoded). Null = auto-derived." })
   @IsOptional() @IsString() plantSummaryOverride?: string | null;

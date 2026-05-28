@@ -133,13 +133,13 @@ export function ScopeCardsTab({
   type CardSummaryData = {
     computed: {
       peakCrew: number;
-      totalPersonDays: number;
+      labourDays: number;
       plantSummary: PlantSummaryGroup[];
       duration: number;
     };
     overrides: {
       peakCrewOverride: number | null;
-      totalPersonDaysOverride: number | null;
+      labourDaysOverride: number | null;
       plantSummaryOverride: string | null;
       durationOverride: number | null;
     };
@@ -600,13 +600,13 @@ function CardMarkupOverride({
 type SummaryData = {
   computed: {
     peakCrew: number;
-    totalPersonDays: number;
+    labourDays: number;
     plantSummary: PlantSummaryGroup[];
     duration: number;
   };
   overrides: {
     peakCrewOverride: number | null;
-    totalPersonDaysOverride: number | null;
+    labourDaysOverride: number | null;
     plantSummaryOverride: string | null;
     durationOverride: number | null;
   };
@@ -641,7 +641,7 @@ function CardHeaderSummary({
       }}
     >
       <div style={labelStyle}>Peak crew</div>
-      <div style={labelStyle}>Person-days</div>
+      <div style={labelStyle}>Labour days</div>
       <div style={labelStyle}>Plant</div>
       <div style={labelStyle}>Duration (days)</div>
 
@@ -660,14 +660,14 @@ function CardHeaderSummary({
       </div>
       <div style={valStyle}>
         <OverrideField
-          isOverridden={overrides.totalPersonDaysOverride != null}
-          onRevert={() => void onOverride({ totalPersonDaysOverride: null })}
+          isOverridden={overrides.labourDaysOverride != null}
+          onRevert={() => void onOverride({ labourDaysOverride: null })}
           affordance
         >
           <EditableNum
-            value={overrides.totalPersonDaysOverride ?? computed.totalPersonDays}
-            placeholder={String(computed.totalPersonDays)}
-            onCommit={(v) => void onOverride({ totalPersonDaysOverride: v })}
+            value={overrides.labourDaysOverride ?? computed.labourDays}
+            placeholder={String(computed.labourDays)}
+            onCommit={(v) => void onOverride({ labourDaysOverride: v })}
           />
         </OverrideField>
       </div>

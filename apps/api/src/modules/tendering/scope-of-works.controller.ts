@@ -206,13 +206,13 @@ export class ScopeOfWorksController {
     // Card-header summary overrides.
     if (
       dto.peakCrewOverride !== undefined ||
-      dto.totalPersonDaysOverride !== undefined ||
+      dto.labourDaysOverride !== undefined ||
       dto.plantSummaryOverride !== undefined ||
       dto.durationOverride !== undefined
     ) {
       return this.service.updateCardHeaderOverrides(tenderId, cardId, {
         peakCrewOverride: dto.peakCrewOverride,
-        totalPersonDaysOverride: dto.totalPersonDaysOverride,
+        labourDaysOverride: dto.labourDaysOverride,
         plantSummaryOverride: dto.plantSummaryOverride,
         durationOverride: dto.durationOverride,
       });

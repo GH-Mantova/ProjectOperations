@@ -16,6 +16,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useAuth } from "../../auth/AuthContext";
 import { OverrideField } from "../../components";
+import { DISCIPLINE_LABELS } from "./scope-cards/utils/card-display";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { SendQuoteModal } from "./SendQuoteModal";
 
@@ -1700,6 +1701,7 @@ type QuoteScopeItem = {
   sourceItemId: string | null;
   sourceItemType: string | null;
   label: string | null;
+  quoteDiscipline: string | null;
   description: string;
   qty: string | null;
   unit: string | null;
@@ -2063,10 +2065,17 @@ function QuoteScopeTab({
     </thead>
   );
 
+  const disciplineForItem = (item: QuoteScopeItem): string => {
+    if (item.quoteDiscipline) return item.quoteDiscipline;
+    const prefix = item.label ? /^[A-Za-z]+/.exec(item.label)?.[0]?.toUpperCase() : null;
+    if (prefix === "DEM" || prefix === "CIV" || prefix === "ASB") return prefix;
+    return "Other";
+  };
+
   const disciplineGroups = useMemo(() => {
     const groups = new Map<string, QuoteScopeItem[]>();
     for (const r of rows) {
-      const discKey = r.label ? /^[A-Za-z]+/.exec(r.label)?.[0] ?? "Other" : "Other";
+      const discKey = disciplineForItem(r);
       const arr = groups.get(discKey) ?? [];
       arr.push(r);
       groups.set(discKey, arr);
@@ -2175,7 +2184,7 @@ function QuoteScopeTab({
         disciplineGroups.map(([group, groupRows]) => (
           <section key={group} style={{ marginBottom: 16 }}>
             <h4 className="s7-type-card-title" style={{ margin: "0 0 6px" }}>
-              {group}
+              {DISCIPLINE_LABELS[group] ?? group}
               <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 6 }}>
                 ({groupRows.length})
               </span>

@@ -762,7 +762,7 @@ export class ScopeOfWorksService {
     cardId: string,
     patch: {
       peakCrewOverride?: number | null;
-      totalPersonDaysOverride?: number | null;
+      labourDaysOverride?: number | null;
       plantSummaryOverride?: string | null;
       durationOverride?: number | null;
     }
@@ -774,9 +774,9 @@ export class ScopeOfWorksService {
       where: { id: cardId },
       data: {
         peakCrewOverride: patch.peakCrewOverride === undefined ? undefined : patch.peakCrewOverride,
-        totalPersonDaysOverride: patch.totalPersonDaysOverride === undefined
+        labourDaysOverride: patch.labourDaysOverride === undefined
           ? undefined
-          : patch.totalPersonDaysOverride == null ? null : new Prisma.Decimal(patch.totalPersonDaysOverride),
+          : patch.labourDaysOverride == null ? null : new Prisma.Decimal(patch.labourDaysOverride),
         plantSummaryOverride: patch.plantSummaryOverride === undefined ? undefined : patch.plantSummaryOverride,
         durationOverride: patch.durationOverride === undefined
           ? undefined
@@ -834,7 +834,7 @@ export class ScopeOfWorksService {
       }
     }
 
-    type VariantAccum = { peakQty: number; totalDays: number };
+    type VariantAccum = { peakQty: number; totalQtyDays: number };
     const categoryMap = new Map<string, Map<string, VariantAccum>>();
     let maxPlantDuration = 0;
 
@@ -860,46 +860,48 @@ export class ScopeOfWorksService {
         catEntries = new Map<string, VariantAccum>();
         categoryMap.set(category, catEntries);
       }
-      const existing = catEntries.get(variantKey) ?? { peakQty: 0, totalDays: 0 };
+      const existing = catEntries.get(variantKey) ?? { peakQty: 0, totalQtyDays: 0 };
       if (pQty > existing.peakQty) existing.peakQty = pQty;
-      existing.totalDays += pQty * pDays;
+      existing.totalQtyDays += pQty * pDays;
       catEntries.set(variantKey, existing);
     }
 
     const plantSummary: Array<{
       category: string;
-      items: Array<{ variant: string | null; peakQty: number }>;
+      items: Array<{ variant: string | null; peakQty: number; peakDays: number }>;
     }> = [];
 
     const sortedCategories = [...categoryMap.keys()].sort();
     for (const cat of sortedCategories) {
       const variants = categoryMap.get(cat)!;
       const sortedKeys = [...variants.keys()].sort();
-      const items: Array<{ variant: string | null; peakQty: number }> = [];
+      const items: Array<{ variant: string | null; peakQty: number; peakDays: number }> = [];
       for (const key of sortedKeys) {
         const data = variants.get(key)!;
-        items.push({ variant: key || null, peakQty: data.peakQty });
-        if (data.peakQty > 0) {
-          const dur = data.totalDays / data.peakQty;
-          if (dur > maxPlantDuration) maxPlantDuration = dur;
-        }
+        const peakDays = data.peakQty > 0
+          ? Math.round((data.totalQtyDays / data.peakQty) * 10) / 10
+          : 0;
+        items.push({ variant: key || null, peakQty: data.peakQty, peakDays });
+        if (peakDays > maxPlantDuration) maxPlantDuration = peakDays;
       }
       plantSummary.push({ category: cat, items });
     }
 
-    const labourDuration = peakCrew > 0 ? totalPersonDays / peakCrew : 0;
-    const duration = Math.round(Math.max(labourDuration, maxPlantDuration) * 10) / 10;
+    const labourDays = peakCrew > 0
+      ? Math.round((totalPersonDays / peakCrew) * 10) / 10
+      : 0;
+    const duration = Math.round(Math.max(labourDays, maxPlantDuration) * 10) / 10;
 
     return {
       computed: {
         peakCrew,
-        totalPersonDays: Math.round(totalPersonDays * 100) / 100,
+        labourDays,
         plantSummary,
         duration
       },
       overrides: {
         peakCrewOverride: card.peakCrewOverride,
-        totalPersonDaysOverride: card.totalPersonDaysOverride ? Number(card.totalPersonDaysOverride) : null,
+        labourDaysOverride: card.labourDaysOverride ? Number(card.labourDaysOverride) : null,
         plantSummaryOverride: card.plantSummaryOverride,
         durationOverride: card.durationOverride ? Number(card.durationOverride) : null,
       }

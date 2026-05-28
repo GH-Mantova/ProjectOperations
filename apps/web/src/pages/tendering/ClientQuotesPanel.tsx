@@ -18,6 +18,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { OverrideField } from "../../components";
 import { DISCIPLINE_CODES, DISCIPLINE_LABELS } from "./scope-cards/utils/card-display";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
+import { TandCSection } from "./QuoteTab";
 import { SendQuoteModal } from "./SendQuoteModal";
 
 type QuoteStatus = "DRAFT" | "SENT" | "SUPERSEDED";
@@ -665,6 +666,7 @@ function QuoteEditor({
     { key: "options", label: "Cost Options" },
     { key: "assumptions", label: "Assumptions" },
     { key: "exclusions", label: "Exclusions" },
+    { key: "tandc", label: "Terms & Conditions" },
     { key: "preview", label: "Preview" }
   ];
 
@@ -783,6 +785,10 @@ function QuoteEditor({
           onDelete={(id) => del(`/exclusions/${id}`)}
           onCopyFromTender={() => post("/exclusions/copy-from-tender", {})}
         />
+      ) : null}
+
+      {editorTab === "tandc" ? (
+        <TandCSection tenderId={tenderId} canManage={canManage} onToast={() => {}} />
       ) : null}
 
       {editorTab === "preview" ? (

@@ -97,6 +97,7 @@ export function QuoteTab({
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeSubTab, setActiveSubTab] = useState<QuoteSubTab>("Cost Summary");
+  const [isEditing, setIsEditing] = useState(false);
 
   const loadSummary = useCallback(async () => {
     try {
@@ -140,11 +141,13 @@ export function QuoteTab({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      <ClientQuotesPanel
-        tenderId={tenderId}
-        tenderClients={tender.tenderClients ?? []}
-        canManage={canManage}
-      />
+      {!isEditing && (
+        <ClientQuotesPanel
+          tenderId={tenderId}
+          tenderClients={tender.tenderClients ?? []}
+          canManage={canManage}
+        />
+      )}
 
       <nav className="quote-sub-tabs" role="tablist" style={{ display: "flex", gap: 0, borderBottom: "2px solid var(--border, #e5e7eb)", marginBottom: 0 }}>
         {QUOTE_SUB_TABS.map((t) => (

@@ -649,6 +649,7 @@ function CardHeaderSummary({
         <OverrideField
           isOverridden={overrides.peakCrewOverride != null}
           onRevert={() => void onOverride({ peakCrewOverride: null })}
+          affordance
         >
           <EditableNum
             value={overrides.peakCrewOverride ?? computed.peakCrew}
@@ -661,6 +662,7 @@ function CardHeaderSummary({
         <OverrideField
           isOverridden={overrides.labourDaysOverride != null}
           onRevert={() => void onOverride({ labourDaysOverride: null })}
+          affordance
         >
           <EditableNum
             value={overrides.labourDaysOverride ?? computed.labourDays}
@@ -673,6 +675,7 @@ function CardHeaderSummary({
         <OverrideField
           isOverridden={overrides.plantSummaryOverride != null}
           onRevert={() => void onOverride({ plantSummaryOverride: null })}
+          affordance
         >
           <EditablePlant
             override={overrides.plantSummaryOverride}
@@ -686,6 +689,7 @@ function CardHeaderSummary({
         <OverrideField
           isOverridden={overrides.durationOverride != null}
           onRevert={() => void onOverride({ durationOverride: null })}
+          affordance
         >
           <EditableNum
             value={overrides.durationOverride ?? computed.duration}

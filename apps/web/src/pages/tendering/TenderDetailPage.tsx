@@ -166,8 +166,6 @@ export function TenderDetailPage() {
     if (tab === "quote") return;
     const handler = (e: KeyboardEvent) => {
       if (!e.altKey || e.key.toLowerCase() !== "a") return;
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable) return;
       e.preventDefault();
       setAeEditorOpen((o) => !o);
     };
@@ -465,7 +463,7 @@ export function TenderDetailPage() {
                 Delete
               </button>
             ) : null}
-            {canConvertTender && tender.status === "AWARDED" ? (
+            {canConvertTender && tender.status === "CONTRACT_ISSUED" ? (
               <button
                 type="button"
                 className="s7-btn s7-btn--primary s7-btn--sm"

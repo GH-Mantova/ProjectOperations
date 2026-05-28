@@ -947,6 +947,12 @@ export class JobsService {
       throw new ConflictException("This tender has already been converted to a job.");
     }
 
+    if (tender.status !== "CONTRACT_ISSUED") {
+      throw new BadRequestException(
+        "Tender must be at CONTRACT_ISSUED status before converting to a job."
+      );
+    }
+
     const awardedContractedClient = tender.tenderClients.find(
       (item) => item.isAwarded && item.contractIssued
     );

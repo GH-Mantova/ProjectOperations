@@ -226,40 +226,63 @@ export class ClientQuotesService {
     const baseTotalCostLines = q.costLines
       .filter((l) => l.isVisible)
       .reduce((s, l) => s + toNum(l.price), 0);
-    // Dollar adjustment wins over percentage when both are set — the UI
-    // shouldn't really set both but we pick a deterministic order.
-    let adjustmentAmount = 0;
-    if (q.adjustmentAmt !== null) adjustmentAmount = toNum(q.adjustmentAmt);
-    else if (q.adjustmentPct !== null) adjustmentAmount = baseTotalCostLines * (toNum(q.adjustmentPct) / 100);
-    const adjustedTotal = baseTotalCostLines + adjustmentAmount;
+    // Compound adjustment: adjustedTotal = base × (1 + pct/100) + dollar.
+    const pct = q.adjustmentPct !== null ? toNum(q.adjustmentPct) : 0;
+    const dollar = q.adjustmentAmt !== null ? toNum(q.adjustmentAmt) : 0;
+    const adjustedTotal = baseTotalCostLines * (1 + pct / 100) + dollar;
+    const adjustmentAmount = adjustedTotal - baseTotalCostLines;
     const provisionalTotal = q.provisionalLines.reduce((s, l) => s + toNum(l.price), 0);
     const costOptionsTotal = q.costOptions.reduce((s, l) => s + toNum(l.price), 0);
 
-    // Proportional cost-line appropriation: distribute adjustmentAmount
-    // across visible lines that have no overrideAmount set.
+    // Proportional cost-line allocation: distribute adjustmentAmount
+    // across visible lines proportionally to their base price.
+    // Lines with an overrideAmount are fixed — remainder allocated lines
+    // absorb the adjustment. Rounding remainder goes to the largest line.
     const visibleLines = q.costLines.filter((l) => l.isVisible);
-    const unoverriddenBase = visibleLines
-      .filter((l) => l.overrideAmount === null)
-      .reduce((s, l) => s + toNum(l.baseValue), 0);
+    const allocatableLines = visibleLines.filter((l) => l.overrideAmount === null);
+    const allocatableBase = allocatableLines.reduce((s, l) => s + toNum(l.price), 0);
 
     const lineAppropriations: LineAppropriation[] = visibleLines.map((l) => {
-      const bv = toNum(l.baseValue);
+      const bv = toNum(l.price);
       const oa = l.overrideAmount !== null ? toNum(l.overrideAmount) : null;
-      let displayedAmount: number;
-      if (oa !== null) {
-        displayedAmount = oa;
-      } else if (unoverriddenBase > 0 && adjustmentAmount !== 0) {
-        displayedAmount = bv + adjustmentAmount * (bv / unoverriddenBase);
-      } else {
-        displayedAmount = bv;
-      }
       return {
         lineId: l.id,
         baseValue: round2(bv),
         overrideAmount: oa !== null ? round2(oa) : null,
-        displayedAmount: round2(displayedAmount)
+        displayedAmount: 0
       };
     });
+
+    if (adjustmentAmount !== 0 && allocatableBase > 0) {
+      let distributed = 0;
+      let largestIdx = -1;
+      let largestBase = -1;
+      for (let i = 0; i < lineAppropriations.length; i++) {
+        const la = lineAppropriations[i];
+        if (la.overrideAmount !== null) {
+          la.displayedAmount = la.overrideAmount;
+        } else {
+          const share = round2(adjustmentAmount * (la.baseValue / allocatableBase));
+          la.displayedAmount = round2(la.baseValue + share);
+          distributed += share;
+          if (la.baseValue > largestBase) {
+            largestBase = la.baseValue;
+            largestIdx = i;
+          }
+        }
+      }
+      // Remainder to largest allocatable line
+      const remainder = round2(adjustmentAmount - distributed);
+      if (remainder !== 0 && largestIdx >= 0) {
+        lineAppropriations[largestIdx].displayedAmount = round2(
+          lineAppropriations[largestIdx].displayedAmount + remainder
+        );
+      }
+    } else {
+      for (const la of lineAppropriations) {
+        la.displayedAmount = la.overrideAmount !== null ? la.overrideAmount : la.baseValue;
+      }
+    }
 
     return {
       baseTotalCostLines: round2(baseTotalCostLines),
@@ -755,4 +778,69 @@ export class ClientQuotesService {
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+export type AdjustmentInput = {
+  lines: Array<{ id: string; price: number; overrideAmount: number | null }>;
+  adjustmentPct: number;
+  adjustmentDollar: number;
+};
+
+export type AdjustmentResult = {
+  baseTotalCostLines: number;
+  adjustmentAmount: number;
+  adjustedTotal: number;
+  lineAllocations: Array<{ lineId: string; baseValue: number; displayed: number }>;
+};
+
+export function computeAdjustedCostLines(input: AdjustmentInput): AdjustmentResult {
+  const baseTotalCostLines = input.lines.reduce((s, l) => s + l.price, 0);
+  const adjustedTotal = baseTotalCostLines * (1 + input.adjustmentPct / 100) + input.adjustmentDollar;
+  const adjustmentAmount = adjustedTotal - baseTotalCostLines;
+
+  const allocatable = input.lines.filter((l) => l.overrideAmount === null);
+  const allocatableBase = allocatable.reduce((s, l) => s + l.price, 0);
+
+  const lineAllocations = input.lines.map((l) => ({
+    lineId: l.id,
+    baseValue: round2(l.price),
+    displayed: 0
+  }));
+
+  if (adjustmentAmount !== 0 && allocatableBase > 0) {
+    let distributed = 0;
+    let largestIdx = -1;
+    let largestBase = -1;
+    for (let i = 0; i < lineAllocations.length; i++) {
+      const line = input.lines[i];
+      const la = lineAllocations[i];
+      if (line.overrideAmount !== null) {
+        la.displayed = round2(line.overrideAmount);
+      } else {
+        const share = round2(adjustmentAmount * (line.price / allocatableBase));
+        la.displayed = round2(line.price + share);
+        distributed += share;
+        if (line.price > largestBase) {
+          largestBase = line.price;
+          largestIdx = i;
+        }
+      }
+    }
+    const remainder = round2(adjustmentAmount - distributed);
+    if (remainder !== 0 && largestIdx >= 0) {
+      lineAllocations[largestIdx].displayed = round2(lineAllocations[largestIdx].displayed + remainder);
+    }
+  } else {
+    for (let i = 0; i < lineAllocations.length; i++) {
+      const line = input.lines[i];
+      lineAllocations[i].displayed = line.overrideAmount !== null ? round2(line.overrideAmount) : round2(line.price);
+    }
+  }
+
+  return {
+    baseTotalCostLines: round2(baseTotalCostLines),
+    adjustmentAmount: round2(adjustmentAmount),
+    adjustedTotal: round2(adjustedTotal),
+    lineAllocations
+  };
 }

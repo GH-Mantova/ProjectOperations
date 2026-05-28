@@ -62,16 +62,16 @@ describe("card-display utilities (PR B1.5)", () => {
   });
 
   describe("formatPlantSummary", () => {
-    it("returns array of category lines for single category, single variant", () => {
+    it("renders variant with qty × days when peakDays > 0", () => {
       const groups = [
-        { category: "Excavator", items: [{ variant: "01T-03T (dry hire)", peakQty: 2 }] }
+        { category: "Excavator", items: [{ variant: "01T-03T (dry hire)", peakQty: 1, peakDays: 3 }] }
       ];
-      expect(formatPlantSummary(groups)).toEqual(["Excavators: 01T-03T (dry hire) ×2"]);
+      expect(formatPlantSummary(groups)).toEqual(["Excavators: 01T-03T (dry hire) 1 × 3d"]);
     });
 
-    it("omits variant text when variant is null", () => {
+    it("falls back to legacy ×qty format when peakDays is 0", () => {
       const groups = [
-        { category: "Bobcat", items: [{ variant: null, peakQty: 1 }] }
+        { category: "Bobcat", items: [{ variant: null, peakQty: 1, peakDays: 0 }] }
       ];
       expect(formatPlantSummary(groups)).toEqual(["Bobcats: ×1"]);
     });
@@ -81,24 +81,24 @@ describe("card-display utilities (PR B1.5)", () => {
         {
           category: "Excavator",
           items: [
-            { variant: "01T-03T", peakQty: 2 },
-            { variant: "16T-25T", peakQty: 1 }
+            { variant: "01T-03T (dry hire)", peakQty: 1, peakDays: 3 },
+            { variant: "16T-25T (wet hire)", peakQty: 1, peakDays: 2 }
           ]
         }
       ];
       expect(formatPlantSummary(groups)).toEqual([
-        "Excavators: 01T-03T ×2 · 16T-25T ×1"
+        "Excavators: 01T-03T (dry hire) 1 × 3d · 16T-25T (wet hire) 1 × 2d"
       ]);
     });
 
     it("returns multiple lines for multiple categories", () => {
       const groups = [
-        { category: "Bobcat", items: [{ variant: null, peakQty: 1 }] },
-        { category: "Excavator", items: [{ variant: "01T-03T", peakQty: 2 }] }
+        { category: "Bobcat", items: [{ variant: null, peakQty: 1, peakDays: 5 }] },
+        { category: "Excavator", items: [{ variant: "01T-03T", peakQty: 2, peakDays: 3 }] }
       ];
       expect(formatPlantSummary(groups)).toEqual([
-        "Bobcats: ×1",
-        "Excavators: 01T-03T ×2"
+        "Bobcats: 1 × 5d",
+        "Excavators: 01T-03T 2 × 3d"
       ]);
     });
 
@@ -108,7 +108,7 @@ describe("card-display utilities (PR B1.5)", () => {
 
     it("returns em dash array when all entries have zero qty", () => {
       const groups = [
-        { category: "Excavator", items: [{ variant: "01T-03T", peakQty: 0 }] }
+        { category: "Excavator", items: [{ variant: "01T-03T", peakQty: 0, peakDays: 3 }] }
       ];
       expect(formatPlantSummary(groups)).toEqual(["—"]);
     });

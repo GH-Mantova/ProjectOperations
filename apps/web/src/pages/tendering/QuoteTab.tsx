@@ -295,12 +295,6 @@ function CostSummarySection({
       <p style={{ fontStyle: "italic", color: "var(--text-muted)", fontSize: 12, margin: 0 }}>
         This quote is valid for 30 days from issue date or the end of the current financial year, whichever is first.
       </p>
-      {estimatorName ? (
-        <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8 }}>
-          Prepared by: <strong style={{ color: "var(--text)" }}>{estimatorName}</strong>
-          {tender.estimator?.email ? ` · ${tender.estimator.email}` : ""}
-        </p>
-      ) : null}
     </section>
   );
 }

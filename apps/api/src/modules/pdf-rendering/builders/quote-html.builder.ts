@@ -497,7 +497,6 @@ function coverPage(
   html += `<div class="disclaimers">
   All prices exclude GST. Add 10% if applicable.<br>
   This quote is valid for 30 days from the date of issue or the end of the current financial year, whichever is first.<br>
-  Prepared by: ${esc(estimatorName)}${estimator?.email ? ` | ${esc(estimator.email)}` : ""}<br>
   Payment terms: 25 days from date of invoice (BIFA compliant).
 </div>`;
 

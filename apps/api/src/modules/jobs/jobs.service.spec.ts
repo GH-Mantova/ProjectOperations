@@ -395,6 +395,7 @@ describe("JobsService", () => {
         tender: {
           findUnique: jest.fn().mockResolvedValue({
             id: "tender-1",
+            status: "CONTRACT_ISSUED",
             sourceJob: null,
             tenderClients: [{ id: "tc-1", clientId: "client-1", isAwarded: true, contractIssued: true }],
             tenderDocuments: []
@@ -519,6 +520,7 @@ describe("JobsService", () => {
   // validator + the existingJob check + the transaction body.
   const convertibleTender = () => ({
     id: "tender-1",
+    status: "CONTRACT_ISSUED",
     sourceJob: null,
     description: null,
     tenderNumber: "T-001",
@@ -526,6 +528,20 @@ describe("JobsService", () => {
       { id: "tc-1", clientId: "client-1", isAwarded: true, contractIssued: true }
     ],
     tenderDocuments: []
+  });
+
+  it("convertTenderToJob: rejects AWARDED status (requires CONTRACT_ISSUED)", async () => {
+    const awardedTender = { ...convertibleTender(), status: "AWARDED" };
+    const prismaMock = {
+      tender: { findUnique: jest.fn(async () => awardedTender) }
+    };
+    const service = new JobsService(
+      prismaMock as never, {} as never, {} as never,
+      {} as never, jobNumberServiceMock as never
+    );
+    await expect(
+      service.convertTenderToJob("tender-1", { name: "Too early" }, "user-1")
+    ).rejects.toMatchObject({ status: 400 });
   });
 
   it("convertTenderToJob: rejects non-canonical supplied jobNumber with 400", async () => {

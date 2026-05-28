@@ -5,7 +5,8 @@ import {
   DISCIPLINE_LABELS,
   disciplineColor,
   formatCardCode,
-  formatItemCode
+  formatItemCode,
+  formatPlantSummary
 } from "../utils/card-display";
 
 describe("card-display utilities (PR B1.5)", () => {
@@ -35,6 +36,51 @@ describe("card-display utilities (PR B1.5)", () => {
     it("falls back to a neutral grey for unknown codes", () => {
       expect(disciplineColor("XYZ")).toBe("#666");
       expect(disciplineColor("")).toBe("#666");
+    });
+  });
+
+  describe("formatPlantSummary", () => {
+    it("formats valid entries as 'Name ×Qty' joined by ' · '", () => {
+      const entries = [
+        { name: "Excavator", peakQty: 2 },
+        { name: "Bobcat", peakQty: 1 }
+      ];
+      expect(formatPlantSummary(entries)).toBe("Excavator ×2 · Bobcat ×1");
+    });
+
+    it("returns em dash when all entries have undefined fields", () => {
+      const entries = [
+        { name: undefined, peakQty: undefined }
+      ] as Array<{ name?: string; peakQty?: number }>;
+      expect(formatPlantSummary(entries)).toBe("—");
+    });
+
+    it("returns em dash for empty array", () => {
+      expect(formatPlantSummary([])).toBe("—");
+    });
+
+    it("filters out entries with missing name", () => {
+      const entries = [
+        { name: "", peakQty: 2 },
+        { name: "Bobcat", peakQty: 1 }
+      ];
+      expect(formatPlantSummary(entries)).toBe("Bobcat ×1");
+    });
+
+    it("filters out entries with zero qty", () => {
+      const entries = [
+        { name: "Excavator", peakQty: 0 },
+        { name: "Bobcat", peakQty: 3 }
+      ];
+      expect(formatPlantSummary(entries)).toBe("Bobcat ×3");
+    });
+
+    it("returns em dash when all entries are filtered out", () => {
+      const entries = [
+        { name: "", peakQty: 0 },
+        { name: undefined, peakQty: 1 } as { name?: string; peakQty?: number }
+      ];
+      expect(formatPlantSummary(entries)).toBe("—");
     });
   });
 

@@ -604,3 +604,60 @@ describe("listCards exposes markupOverride (PR B2)", () => {
     expect(result[1]?.markupOverride).toBeNull();
   });
 });
+
+describe("ScopeOfWorksService.getCardSummary — plant filtering", () => {
+  it("excludes plant entries with missing description or qty from summary", async () => {
+    const { prisma } = buildPrismaMock({
+      scopeCardFindFirst: {
+        id: "card-1",
+        tenderId: "tender-1",
+        peakCrewOverride: null,
+        totalPersonDaysOverride: null,
+        plantSummaryOverride: null,
+        durationOverride: null,
+        scopeItems: [
+          {
+            men: "2",
+            days: "3",
+            plantItems: [
+              { columnIndex: 1, description: "Excavator", qty: 2, days: 3 },
+              { columnIndex: 2, description: "", qty: 1, days: 2 },
+              { columnIndex: 3, description: "Bobcat", qty: undefined, days: 2 },
+              { columnIndex: 4, qty: 1, days: 1 }
+            ]
+          }
+        ]
+      }
+    });
+    const svc = new ScopeOfWorksService(prisma as never);
+    const result = await svc.getCardSummary("tender-1", "card-1");
+    expect(result.computed.plantSummary).toEqual([
+      { name: "Excavator", peakQty: 2 }
+    ]);
+  });
+
+  it("returns empty plantSummary when all entries are incomplete", async () => {
+    const { prisma } = buildPrismaMock({
+      scopeCardFindFirst: {
+        id: "card-1",
+        tenderId: "tender-1",
+        peakCrewOverride: null,
+        totalPersonDaysOverride: null,
+        plantSummaryOverride: null,
+        durationOverride: null,
+        scopeItems: [
+          {
+            men: "1",
+            days: "1",
+            plantItems: [
+              { columnIndex: 1, description: undefined, qty: undefined, days: undefined }
+            ]
+          }
+        ]
+      }
+    });
+    const svc = new ScopeOfWorksService(prisma as never);
+    const result = await svc.getCardSummary("tender-1", "card-1");
+    expect(result.computed.plantSummary).toEqual([]);
+  });
+});

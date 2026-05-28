@@ -3197,19 +3197,50 @@ export async function seedEstimateRates(prisma: PrismaClient): Promise<void> {
   // Material densities — lookup table for density by material name
   type MaterialDensityRow = { materialName: string; density: string; unit: string; category: string };
   const materialDensities: MaterialDensityRow[] = [
+    // ── Existing bulk materials ──────────────────────────────────────
     { materialName: "Concrete", density: "2400", unit: "kg/m³", category: "concrete" },
     { materialName: "Reinforced concrete", density: "2500", unit: "kg/m³", category: "concrete" },
+    { materialName: "Reinforced concrete (heavy reo)", density: "2600", unit: "kg/m³", category: "concrete" },
+    { materialName: "Lightweight concrete", density: "1800", unit: "kg/m³", category: "concrete" },
     { materialName: "Brick", density: "1900", unit: "kg/m³", category: "masonry" },
+    { materialName: "Brick (face)", density: "2000", unit: "kg/m³", category: "masonry" },
     { materialName: "Block (concrete)", density: "2100", unit: "kg/m³", category: "masonry" },
+    { materialName: "Concrete blocks (hollow)", density: "1400", unit: "kg/m³", category: "masonry" },
     { materialName: "Asphalt", density: "2300", unit: "kg/m³", category: "concrete" },
     { materialName: "Soil (dry)", density: "1500", unit: "kg/m³", category: "soil" },
     { materialName: "Soil (wet)", density: "1900", unit: "kg/m³", category: "soil" },
     { materialName: "Sand", density: "1600", unit: "kg/m³", category: "soil" },
+    { materialName: "Topsoil", density: "1300", unit: "kg/m³", category: "soil" },
+    { materialName: "Crushed rock", density: "1800", unit: "kg/m³", category: "soil" },
+    { materialName: "Gravel", density: "1700", unit: "kg/m³", category: "soil" },
     { materialName: "Steel", density: "7850", unit: "kg/m³", category: "metal" },
+    { materialName: "Aluminium", density: "2700", unit: "kg/m³", category: "metal" },
+    { materialName: "Roof sheeting (Colorbond)", density: "7850", unit: "kg/m³", category: "metal" },
     { materialName: "Timber (softwood)", density: "600", unit: "kg/m³", category: "timber" },
+    { materialName: "Hardwood timber", density: "1100", unit: "kg/m³", category: "timber" },
     { materialName: "Plasterboard", density: "850", unit: "kg/m³", category: "sheet" },
+    { materialName: "Asbestos-cement sheet", density: "1600", unit: "kg/m³", category: "sheet" },
+    { materialName: "Insulation (rock wool)", density: "100", unit: "kg/m³", category: "sheet" },
+    { materialName: "Insulation (fibreglass batts)", density: "16", unit: "kg/m³", category: "sheet" },
+    { materialName: "Vermiculite (loose-fill)", density: "100", unit: "kg/m³", category: "sheet" },
     { materialName: "Carpet", density: "2", unit: "kg/m²", category: "sheet" },
-    { materialName: "Glass", density: "2500", unit: "kg/m³", category: "sheet" }
+    { materialName: "Glass", density: "2500", unit: "kg/m³", category: "sheet" },
+    // ── Sheet materials (kg/m²) — dual-unit variants ─────────────────
+    { materialName: "Plasterboard 13mm (sheet)", density: "11.05", unit: "kg/m²", category: "sheet" },
+    { materialName: "Plasterboard 10mm (sheet)", density: "8.5", unit: "kg/m²", category: "sheet" },
+    { materialName: "Plywood 17mm (sheet)", density: "11", unit: "kg/m²", category: "sheet" },
+    { materialName: "Plywood 12mm (sheet)", density: "7.8", unit: "kg/m²", category: "sheet" },
+    { materialName: "Steel sheet 1.0mm", density: "7.85", unit: "kg/m²", category: "metal" },
+    { materialName: "Steel sheet 1.6mm", density: "12.56", unit: "kg/m²", category: "metal" },
+    { materialName: "Roof tiles (concrete)", density: "45", unit: "kg/m²", category: "sheet" },
+    { materialName: "Roof tiles (terracotta)", density: "50", unit: "kg/m²", category: "sheet" },
+    { materialName: "Slate roof tiles", density: "30", unit: "kg/m²", category: "sheet" },
+    { materialName: "Vinyl flooring", density: "3", unit: "kg/m²", category: "sheet" },
+    { materialName: "Ceramic tiles (floor)", density: "22", unit: "kg/m²", category: "sheet" },
+    { materialName: "Ceramic tiles (wall)", density: "14", unit: "kg/m²", category: "sheet" },
+    { materialName: "Acoustic ceiling tiles", density: "3", unit: "kg/m²", category: "sheet" },
+    { materialName: "Particleboard 17mm", density: "10.8", unit: "kg/m²", category: "sheet" },
+    { materialName: "MDF 16mm (sheet)", density: "12", unit: "kg/m²", category: "sheet" }
   ];
   for (const [index, row] of materialDensities.entries()) {
     await prisma.estimateMaterialDensity.upsert({

@@ -203,9 +203,7 @@ export function QuoteTab({
       )}
 
       {activeSubTab === "Terms & Conditions" && (
-        <div style={{ padding: "24px 0", color: "var(--text-muted)" }}>
-          Terms &amp; Conditions — coming soon
-        </div>
+        <TandCSection tenderId={tenderId} canManage={false} onToast={setToast} />
       )}
 
       {activeSubTab === "Generate Quote" && (

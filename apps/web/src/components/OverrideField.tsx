@@ -5,13 +5,22 @@ type Props = {
   onRevert: () => void;
   children: ReactNode;
   style?: CSSProperties;
+  affordance?: boolean;
 };
 
-export function OverrideField({ isOverridden, onRevert, children, style }: Props) {
+export function OverrideField({ isOverridden, onRevert, children, style, affordance }: Props) {
   const [hovered, setHovered] = useState(false);
 
   if (!isOverridden) {
-    return <div style={style}>{children}</div>;
+    return (
+      <div
+        className={affordance ? "card-header-editable" : undefined}
+        title={affordance ? "Click to edit" : undefined}
+        style={{ padding: affordance ? "2px 6px" : undefined, ...style }}
+      >
+        {children}
+      </div>
+    );
   }
 
   return (

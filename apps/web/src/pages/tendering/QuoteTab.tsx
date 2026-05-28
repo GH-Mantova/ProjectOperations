@@ -73,9 +73,7 @@ function fmtDateTime(iso: string): string {
   }
 }
 
-const QUOTE_SUB_TABS = [
-  "Generate Quote"
-] as const;
+const QUOTE_SUB_TABS = [] as const;
 type QuoteSubTab = (typeof QUOTE_SUB_TABS)[number];
 
 export function QuoteTab({
@@ -92,7 +90,7 @@ export function QuoteTab({
   const [provisional, setProvisional] = useState<Array<{ id: string; description: string; amount: number }>>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [activeSubTab, setActiveSubTab] = useState<QuoteSubTab>("Generate Quote");
+  const [showGenerate, setShowGenerate] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
 
   const loadSummary = useCallback(async () => {
@@ -168,45 +166,28 @@ export function QuoteTab({
               </button>
             </>
           ) : (
-            <button
-              type="button"
-              className="s7-btn s7-btn--ghost s7-btn--sm"
-              onClick={() => setIsEditing(true)}
-            >
-              Edit
-            </button>
+            <>
+              <button
+                type="button"
+                className="s7-btn s7-btn--ghost s7-btn--sm"
+                onClick={() => setIsEditing(true)}
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                className="s7-btn s7-btn--primary s7-btn--sm"
+                onClick={() => setShowGenerate((v) => !v)}
+                style={{ background: "#FEAA6D", borderColor: "#FEAA6D", color: "#000" }}
+              >
+                Generate Quote
+              </button>
+            </>
           )}
         </div>
       )}
 
-      <nav className="quote-sub-tabs" role="tablist" style={{ display: "flex", gap: 0, borderBottom: "2px solid var(--border, #e5e7eb)", marginBottom: 0 }}>
-        {QUOTE_SUB_TABS.map((t) => (
-          <button
-            key={t}
-            role="tab"
-            type="button"
-            aria-selected={activeSubTab === t}
-            className={activeSubTab === t ? "quote-sub-tab quote-sub-tab--active" : "quote-sub-tab"}
-            onClick={() => setActiveSubTab(t)}
-            style={{
-              padding: "8px 16px",
-              fontSize: 13,
-              fontWeight: activeSubTab === t ? 600 : 400,
-              color: activeSubTab === t ? "var(--brand-primary, #005B61)" : "var(--text-muted, #6b7280)",
-              background: "transparent",
-              border: "none",
-              borderBottom: activeSubTab === t ? "2px solid var(--brand-primary, #005B61)" : "2px solid transparent",
-              marginBottom: -2,
-              cursor: "pointer",
-              whiteSpace: "nowrap"
-            }}
-          >
-            {t}
-          </button>
-        ))}
-      </nav>
-
-      {activeSubTab === "Generate Quote" && (
+      {showGenerate && (
         <GenerateQuoteSection
           tenderId={tenderId}
           tenderNumber={tender.tenderNumber}

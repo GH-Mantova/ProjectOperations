@@ -74,7 +74,6 @@ function fmtDateTime(iso: string): string {
 }
 
 const QUOTE_SUB_TABS = [
-  "Exclusions",
   "Terms & Conditions",
   "Generate Quote"
 ] as const;
@@ -94,7 +93,7 @@ export function QuoteTab({
   const [provisional, setProvisional] = useState<Array<{ id: string; description: string; amount: number }>>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [activeSubTab, setActiveSubTab] = useState<QuoteSubTab>("Exclusions");
+  const [activeSubTab, setActiveSubTab] = useState<QuoteSubTab>("Terms & Conditions");
   const [isEditing, setIsEditing] = useState(false);
 
   const loadSummary = useCallback(async () => {
@@ -207,16 +206,6 @@ export function QuoteTab({
           </button>
         ))}
       </nav>
-
-      {activeSubTab === "Exclusions" && (
-        <TextListSection
-          kind="exclusions"
-          title="Exclusions"
-          tenderId={tenderId}
-          canManage={canManage}
-          onToast={setToast}
-        />
-      )}
 
       {activeSubTab === "Terms & Conditions" && (
         <TandCSection tenderId={tenderId} canManage={canManage} onToast={setToast} />

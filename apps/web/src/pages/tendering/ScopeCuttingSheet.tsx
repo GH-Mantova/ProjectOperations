@@ -65,9 +65,7 @@ const ELEVATIONS_FOR_EQUIPMENT: Record<string, string[]> = {
 // Three categorical materials match the rate library's material column.
 const SAW_MATERIALS = ["Asphalt", "Concrete", "Masonry"];
 const CORE_DIAMETERS = [32, 50, 75, 100, 150, 200, 250, 300, 400, 500, 650];
-const SHIFTS = ["Day", "Night", "Weekend"];
 const CORE_ELEVATIONS = ["Floor", "Wall", "Inverted"];
-const CORE_METHODS = ["N/A", "High-Freq", "Fuel"];
 
 function fmt(n: string | number | null | undefined): string {
   if (n === null || n === undefined) return "—";
@@ -399,7 +397,7 @@ function WbsCell({ item, wbsRefs, canManage, patch }: { item: CuttingItem; wbsRe
 }
 
 function SawCutTable({ items, wbsRefs, canManage, patch, remove }: RowProps) {
-  const headers = ["WBS", "Description", "Equipment", "Elevation", "Material", "Depth mm", "Qty Lm", "Rate $/m", "Shift", "Method", "Loading $", "Line total", ""];
+  const headers = ["WBS", "Description", "Equipment", "Elevation", "Material", "Depth mm", "Qty Lm", "Rate $/m", "Method", "Loading $", "Line total", ""];
   return (
     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
       <thead style={{ background: "var(--surface-muted, #F6F6F6)" }}>
@@ -541,16 +539,6 @@ function SawCutTable({ items, wbsRefs, canManage, patch, remove }: RowProps) {
                 <td style={{ padding: 4 }}>
                   <select
                     className="s7-input"
-                    value={item.shift ?? "Day"}
-                    disabled={!canManage}
-                    onChange={(e) => void patch(item.id, { shift: e.target.value })}
-                  >
-                    {SHIFTS.map((s) => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </td>
-                <td style={{ padding: 4 }}>
-                  <select
-                    className="s7-input"
                     value={item.method ?? ""}
                     disabled={!canManage || !equipment}
                     style={{ width: 110 }}
@@ -591,7 +579,7 @@ function SawCutTable({ items, wbsRefs, canManage, patch, remove }: RowProps) {
 }
 
 function CoreHoleTable({ items, wbsRefs, canManage, patch, remove }: RowProps) {
-  const headers = ["WBS", "Description", "Diameter mm", "Elevation", "Depth mm", "Quantity", "Rate $/hole", "Shift", "Method", "Loading $", "Line total", ""];
+  const headers = ["WBS", "Description", "Diameter mm", "Elevation", "Depth mm", "Quantity", "Rate $/hole", "Loading $", "Line total", ""];
   return (
     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
       <thead style={{ background: "var(--surface-muted, #F6F6F6)" }}>
@@ -681,27 +669,6 @@ function CoreHoleTable({ items, wbsRefs, canManage, patch, remove }: RowProps) {
                 </td>
                 <td style={{ padding: 4, color: "var(--text-muted)" }}>
                   {isPOA ? <span style={{ color: "#B45309", fontWeight: 600 }}>POA</span> : fmt(item.ratePerHole)}
-                </td>
-                <td style={{ padding: 4 }}>
-                  <select
-                    className="s7-input"
-                    value={item.shift ?? "Day"}
-                    disabled={!canManage}
-                    onChange={(e) => void patch(item.id, { shift: e.target.value })}
-                  >
-                    {SHIFTS.map((s) => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </td>
-                <td style={{ padding: 4 }}>
-                  <select
-                    className="s7-input"
-                    value={item.method ?? "N/A"}
-                    disabled={!canManage}
-                    style={{ width: 110 }}
-                    onChange={(e) => void patch(item.id, { method: e.target.value === "N/A" ? null : e.target.value })}
-                  >
-                    {CORE_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
-                  </select>
                 </td>
                 <td style={{ padding: 4 }}>
                   {showLoading ? (

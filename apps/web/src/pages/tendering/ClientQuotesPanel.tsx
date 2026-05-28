@@ -48,6 +48,7 @@ type CostLine = {
   id: string;
   label: string;
   description: string;
+  displayDescription: string | null;
   price: string;
   baseValue: string;
   overrideAmount: string | null;
@@ -875,16 +876,31 @@ function CostTab({
                 />
               </td>
               <td style={{ padding: 4 }}>
-                <input
-                  className="s7-input"
-                  defaultValue={l.description}
-                  disabled={!canManage}
-                  style={{ width: "100%" }}
-                  onBlur={(e) =>
-                    e.target.value !== l.description &&
-                    void onPatch(l.id, { description: e.target.value })
-                  }
-                />
+                {quote.detailLevel === "simple" ? (
+                  <input
+                    className="s7-input"
+                    key={`desc-${l.id}-simple`}
+                    defaultValue={l.displayDescription ?? l.description}
+                    disabled={!canManage}
+                    style={{ width: "100%" }}
+                    onBlur={(e) => {
+                      const val = e.target.value;
+                      if (val !== (l.displayDescription ?? l.description))
+                        void onPatch(l.id, { displayDescription: val });
+                    }}
+                  />
+                ) : (
+                  <input
+                    className="s7-input"
+                    defaultValue={l.description}
+                    disabled={!canManage}
+                    style={{ width: "100%" }}
+                    onBlur={(e) =>
+                      e.target.value !== l.description &&
+                      void onPatch(l.id, { description: e.target.value })
+                    }
+                  />
+                )}
               </td>
               <td style={{ padding: 4 }}>
                 <input

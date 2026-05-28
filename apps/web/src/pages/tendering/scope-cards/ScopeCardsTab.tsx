@@ -15,7 +15,7 @@ import {
 } from "../ScopeQuantitiesTable";
 import { ScopeWasteTab } from "../ScopeWasteTab";
 import { ScopeCuttingSheet } from "../ScopeCuttingSheet";
-import { DISCIPLINE_CODES, DISCIPLINE_LABELS } from "./utils/card-display";
+import { DISCIPLINE_CODES, DISCIPLINE_LABELS, formatPlantSummary } from "./utils/card-display";
 
 // PR B1.5 — main Scope of Works container. Replaces the legacy
 // ScopeOfWorksTab + ScopeDisciplineBar combo. Card tabs drive the
@@ -43,7 +43,6 @@ export function ScopeCardsTab({
     reload: reloadCards,
     createCard,
     renameCard,
-    setPlantColumnCount,
     setCardNotes,
     setCardMarkupOverride,
     resetAllCardMarkup,
@@ -135,7 +134,7 @@ export function ScopeCardsTab({
     computed: {
       peakCrew: number;
       totalPersonDays: number;
-      plantSummary: Array<{ description: string; totalQty: number; totalDays: number }>;
+      plantSummary: Array<{ name: string; peakQty: number }>;
       duration: number;
     };
     overrides: {
@@ -375,13 +374,9 @@ export function ScopeCardsTab({
             <ScopeQuantitiesTable
               tenderId={tenderId}
               cardId={activeCard.id}
-              plantColumnCount={activeCard.plantColumnCount}
               discipline={activeCard.discipline as TableDiscipline}
               items={cardItems}
               onItemsChanged={reloadEverything}
-              onPlantColumnCountChange={async (next) => {
-                await setPlantColumnCount(activeCard.id, next);
-              }}
             />
           )}
 
@@ -606,7 +601,7 @@ type SummaryData = {
   computed: {
     peakCrew: number;
     totalPersonDays: number;
-    plantSummary: Array<{ description: string; totalQty: number; totalDays: number }>;
+    plantSummary: Array<{ name: string; peakQty: number }>;
     duration: number;
   };
   overrides: {
@@ -629,9 +624,7 @@ function CardHeaderSummary({
   const labelStyle = { ...cellStyle, color: "var(--text-muted)" } as const;
   const valStyle = { ...cellStyle, fontWeight: 600, fontVariantNumeric: "tabular-nums" } as const;
 
-  const plantText = computed.plantSummary.length > 0
-    ? computed.plantSummary.map((p) => `${p.description} (${p.totalQty}× ${p.totalDays}d)`).join(", ")
-    : "—";
+  const plantText = formatPlantSummary(computed.plantSummary);
 
   return (
     <div

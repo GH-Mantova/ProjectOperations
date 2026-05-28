@@ -36,3 +36,14 @@ export const DISCIPLINE_COLORS: Record<string, string> = {
 export function disciplineColor(discipline: string): string {
   return DISCIPLINE_COLORS[discipline] ?? "#666";
 }
+
+export function formatPlantSummary(
+  entries: Array<{ name?: string; peakQty?: number }>
+): string {
+  const valid = entries.filter(
+    (p): p is { name: string; peakQty: number } =>
+      !!p.name && typeof p.peakQty === "number" && p.peakQty > 0
+  );
+  if (valid.length === 0) return "—";
+  return valid.map((p) => `${p.name} ×${p.peakQty}`).join(" · ");
+}

@@ -203,7 +203,7 @@ export function QuoteTab({
       )}
 
       {activeSubTab === "Terms & Conditions" && (
-        <TandCSection tenderId={tenderId} canManage={false} onToast={setToast} />
+        <TandCSection tenderId={tenderId} canManage={canManage} onToast={setToast} />
       )}
 
       {activeSubTab === "Generate Quote" && (

@@ -1713,13 +1713,12 @@ type QuoteRowProps = {
   canManage: boolean;
   patchRow: (id: string, patch: Record<string, unknown>) => Promise<void>;
   deleteRow: (id: string) => Promise<void>;
-  sourceBadge: (row: QuoteScopeItem) => string;
   dragHandle?: React.ReactNode;
   dragStyle?: React.CSSProperties;
   nodeRef?: (node: HTMLTableRowElement | null) => void;
 };
 
-function QuoteRowCells({ row, canManage, patchRow, deleteRow, sourceBadge, dragHandle }: QuoteRowProps) {
+function QuoteRowCells({ row, canManage, patchRow, deleteRow, dragHandle }: QuoteRowProps) {
   return (
     <>
       {dragHandle ? <td style={{ padding: 4, width: 24 }}>{dragHandle}</td> : null}
@@ -1732,17 +1731,8 @@ function QuoteRowCells({ row, canManage, patchRow, deleteRow, sourceBadge, dragH
           aria-label="Visible on PDF"
         />
       </td>
-      <td style={{ padding: 4 }}>
-        <input
-          className="s7-input s7-input--sm"
-          defaultValue={row.label ?? ""}
-          disabled={!canManage}
-          onBlur={(e) =>
-            (e.target.value || null) !== (row.label ?? null) &&
-            void patchRow(row.id, { label: e.target.value || null })
-          }
-          style={{ width: 70 }}
-        />
+      <td style={{ padding: 4, fontSize: 12, fontFamily: "var(--font-mono, monospace)" }}>
+        {row.label ?? "—"}
       </td>
       <td style={{ padding: 4 }}>
         <textarea
@@ -1793,7 +1783,6 @@ function QuoteRowCells({ row, canManage, patchRow, deleteRow, sourceBadge, dragH
           style={{ width: "100%" }}
         />
       </td>
-      <td style={{ padding: 4, fontSize: 11, color: "var(--text-muted)" }}>{sourceBadge(row)}</td>
       <td style={{ padding: 4, textAlign: "right" }}>
         {canManage ? (
           <button
@@ -1977,13 +1966,6 @@ function QuoteScopeTab({
     }
   };
 
-  const sourceBadge = (row: QuoteScopeItem): string => {
-    if (!row.sourceItemType) return "Manual";
-    if (row.sourceItemType === "scope") return row.label ?? "Scope";
-    if (row.sourceItemType === "waste") return "Waste";
-    if (row.sourceItemType === "cutting") return "Cutting";
-    return row.sourceItemType;
-  };
 
   const reorderRows = useCallback(
     async (newRows: QuoteScopeItem[]) => {
@@ -2039,7 +2021,6 @@ function QuoteScopeTab({
         canManage={canManage}
         patchRow={patchRow}
         deleteRow={deleteRow}
-        sourceBadge={sourceBadge}
       />
     ) : (
       <StaticQuoteRow
@@ -2048,7 +2029,6 @@ function QuoteScopeTab({
         canManage={canManage}
         patchRow={patchRow}
         deleteRow={deleteRow}
-        sourceBadge={sourceBadge}
       />
     );
 
@@ -2063,7 +2043,6 @@ function QuoteScopeTab({
           { label: "Qty", w: 90 },
           { label: "Unit", w: 80 },
           { label: "Notes", w: null },
-          { label: "Source", w: 90 },
           { label: "", w: 40 }
         ].map((h, i) => (
           <th

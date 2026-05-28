@@ -800,7 +800,9 @@ export class ScopeOfWorksService {
 
     let peakCrew = 0;
     let totalPersonDays = 0;
-    const plantByDesc = new Map<string, { peakQty: number; totalQtyDays: number }>();
+
+    type PlantEntry = { plantRateId?: string; description?: string; qty?: number; days?: number };
+    const allPlantEntries: PlantEntry[] = [];
 
     for (const item of card.scopeItems) {
       const men = item.men ? Number(item.men) : 0;
@@ -815,30 +817,79 @@ export class ScopeOfWorksService {
       if (Array.isArray(plantItems)) {
         for (const p of plantItems) {
           if (!p.description) continue;
-          const desc = p.description;
-          const pQty = p.qty ?? 1;
-          const pDays = p.days ?? 0;
-          const existing = plantByDesc.get(desc) ?? { peakQty: 0, totalQtyDays: 0 };
-          if (pQty > existing.peakQty) existing.peakQty = pQty;
-          existing.totalQtyDays += pQty * pDays;
-          plantByDesc.set(desc, existing);
+          allPlantEntries.push(p);
         }
       }
+    }
+
+    const rateIds = [...new Set(allPlantEntries.map((p) => p.plantRateId).filter(Boolean))] as string[];
+    const rateCategories = new Map<string, string>();
+    if (rateIds.length > 0) {
+      const rates = await this.prisma.estimatePlantRate.findMany({
+        where: { id: { in: rateIds } },
+        select: { id: true, category: true }
+      });
+      for (const r of rates) {
+        if (r.category) rateCategories.set(r.id, r.category);
+      }
+    }
+
+    type VariantAccum = { peakQty: number; totalQtyDays: number };
+    const categoryMap = new Map<string, Map<string, VariantAccum>>();
+    let maxPlantDuration = 0;
+
+    for (const p of allPlantEntries) {
+      const desc = p.description!;
+      const pQty = p.qty ?? 1;
+      const pDays = p.days ?? 0;
+
+      const category = (p.plantRateId ? rateCategories.get(p.plantRateId) : null) ?? "Other";
+
+      let variant: string | null;
+      if (desc === category) {
+        variant = null;
+      } else if (desc.startsWith(category + " ")) {
+        variant = desc.slice(category.length + 1);
+      } else {
+        variant = desc;
+      }
+      const variantKey = variant ?? "";
+
+      let catEntries = categoryMap.get(category);
+      if (!catEntries) {
+        catEntries = new Map<string, VariantAccum>();
+        categoryMap.set(category, catEntries);
+      }
+      const existing = catEntries.get(variantKey) ?? { peakQty: 0, totalQtyDays: 0 };
+      if (pQty > existing.peakQty) existing.peakQty = pQty;
+      existing.totalQtyDays += pQty * pDays;
+      catEntries.set(variantKey, existing);
+    }
+
+    const plantSummary: Array<{
+      category: string;
+      items: Array<{ variant: string | null; peakQty: number; peakDays: number }>;
+    }> = [];
+
+    const sortedCategories = [...categoryMap.keys()].sort();
+    for (const cat of sortedCategories) {
+      const variants = categoryMap.get(cat)!;
+      const sortedKeys = [...variants.keys()].sort();
+      const items: Array<{ variant: string | null; peakQty: number; peakDays: number }> = [];
+      for (const key of sortedKeys) {
+        const data = variants.get(key)!;
+        const peakDays = data.peakQty > 0
+          ? Math.round((data.totalQtyDays / data.peakQty) * 10) / 10
+          : 0;
+        items.push({ variant: key || null, peakQty: data.peakQty, peakDays });
+        if (peakDays > maxPlantDuration) maxPlantDuration = peakDays;
+      }
+      plantSummary.push({ category: cat, items });
     }
 
     const labourDays = peakCrew > 0
       ? Math.round((totalPersonDays / peakCrew) * 10) / 10
       : 0;
-
-    let maxPlantDuration = 0;
-    const plantSummary: Array<{ name: string; peakQty: number; peakDays: number }> = [];
-    for (const [name, data] of plantByDesc) {
-      const peakDays = data.peakQty > 0
-        ? Math.round((data.totalQtyDays / data.peakQty) * 10) / 10
-        : 0;
-      plantSummary.push({ name, peakQty: data.peakQty, peakDays });
-      if (peakDays > maxPlantDuration) maxPlantDuration = peakDays;
-    }
     const duration = Math.round(Math.max(labourDays, maxPlantDuration) * 10) / 10;
 
     return {

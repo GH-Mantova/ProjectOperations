@@ -222,7 +222,11 @@ export function useScopeCards(tenderId: string) {
         computed: {
           peakCrew: number;
           labourDays: number;
-          plantSummary: Array<{ name: string; peakQty: number }>;
+          plantSummary: Array<{
+            category: string;
+            items: Array<{ variant: string | null; peakQty: number; peakDays: number }>;
+          }>;
+
           duration: number;
         };
         overrides: {

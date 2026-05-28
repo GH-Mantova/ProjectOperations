@@ -2830,23 +2830,24 @@ export async function seedEstimateRates(prisma: PrismaClient): Promise<void> {
     });
   }
 
-  type PlantRow = { item: string; unit: string; rate: string; fuelRate?: string };
+  type PlantRow = { item: string; category: string; unit: string; rate: string; fuelRate?: string };
   const plant: PlantRow[] = [
-    { item: "Excavator 16T-25T (wet hire)", unit: "day", rate: "1500.00" },
-    { item: "Excavator 01T-03T (dry hire)", unit: "day", rate: "327.75" },
-    { item: "Bobcat", unit: "day", rate: "1000.00" },
-    { item: "Franna 14T", unit: "day", rate: "3500.00" },
-    { item: "Hook truck (10T concrete / 5T C&D)", unit: "day", rate: "1250.00" },
-    { item: "Semi tipper (20T concrete / 10T C&D)", unit: "day", rate: "1750.00" },
-    { item: "Plant float — over 13T", unit: "each way", rate: "1035.00" },
-    { item: "Plant float — under 13T", unit: "each way", rate: "402.50" },
-    { item: "Robot excavator", unit: "day", rate: "4000.00" },
-    { item: "Attachment 16T-25T", unit: "day", rate: "281.00" }
+    { item: "Excavator 16T-25T (wet hire)", category: "Excavator", unit: "day", rate: "1500.00" },
+    { item: "Excavator 01T-03T (dry hire)", category: "Excavator", unit: "day", rate: "327.75" },
+    { item: "Bobcat", category: "Bobcat", unit: "day", rate: "1000.00" },
+    { item: "Franna 14T", category: "Crane", unit: "day", rate: "3500.00" },
+    { item: "Hook truck (10T concrete / 5T C&D)", category: "Truck", unit: "day", rate: "1250.00" },
+    { item: "Semi tipper (20T concrete / 10T C&D)", category: "Truck", unit: "day", rate: "1750.00" },
+    { item: "Plant float — over 13T", category: "Other", unit: "each way", rate: "1035.00" },
+    { item: "Plant float — under 13T", category: "Other", unit: "each way", rate: "402.50" },
+    { item: "Robot excavator", category: "Excavator", unit: "day", rate: "4000.00" },
+    { item: "Attachment 16T-25T", category: "Other", unit: "day", rate: "281.00" }
   ];
   for (const [index, row] of plant.entries()) {
     await prisma.estimatePlantRate.upsert({
       where: { item: row.item },
       update: {
+        category: row.category,
         unit: row.unit,
         rate: new Prisma.Decimal(row.rate),
         fuelRate: new Prisma.Decimal(row.fuelRate ?? "0"),
@@ -2855,6 +2856,7 @@ export async function seedEstimateRates(prisma: PrismaClient): Promise<void> {
       },
       create: {
         item: row.item,
+        category: row.category,
         unit: row.unit,
         rate: new Prisma.Decimal(row.rate),
         fuelRate: new Prisma.Decimal(row.fuelRate ?? "0"),

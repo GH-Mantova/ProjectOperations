@@ -16,7 +16,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useAuth } from "../../auth/AuthContext";
 import { OverrideField } from "../../components";
-import { DISCIPLINE_LABELS } from "./scope-cards/utils/card-display";
+import { DISCIPLINE_CODES, DISCIPLINE_LABELS } from "./scope-cards/utils/card-display";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { SendQuoteModal } from "./SendQuoteModal";
 
@@ -1882,6 +1882,8 @@ function QuoteScopeTab({
     return () => window.clearTimeout(timer);
   }, [detailLevel]);
   const [grouped, setGrouped] = useState(true);
+  const [emptyGroups, setEmptyGroups] = useState<Set<string>>(new Set());
+  const [showDisciplineModal, setShowDisciplineModal] = useState(false);
 
   const dndSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -1933,6 +1935,27 @@ function QuoteScopeTab({
     const response = await authFetch(base, {
       method: "POST",
       body: JSON.stringify({ description: "New item", isVisible: true })
+    });
+    if (!response.ok) {
+      setError(await response.text());
+      return;
+    }
+    await load();
+  };
+
+  const addBlankForDiscipline = async (discipline: string) => {
+    const existing = rows.filter((r) => disciplineForItem(r) === discipline);
+    const nextNum = existing.length + 1;
+    const prefix = discipline === "Other" ? "Oth" : discipline;
+    const label = `${prefix}${nextNum}`;
+    const response = await authFetch(base, {
+      method: "POST",
+      body: JSON.stringify({
+        description: "New item",
+        isVisible: true,
+        label,
+        quoteDiscipline: discipline
+      })
     });
     if (!response.ok) {
       setError(await response.text());
@@ -2080,8 +2103,11 @@ function QuoteScopeTab({
       arr.push(r);
       groups.set(discKey, arr);
     }
+    for (const eg of emptyGroups) {
+      if (!groups.has(eg)) groups.set(eg, []);
+    }
     return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [rows]);
+  }, [rows, emptyGroups]);
 
   return (
     <div>
@@ -2156,10 +2182,10 @@ function QuoteScopeTab({
               <button
                 type="button"
                 className="s7-btn s7-btn--primary s7-btn--sm"
-                onClick={() => void addBlank()}
+                onClick={() => setShowDisciplineModal(true)}
                 disabled={busy}
               >
-                + Add item
+                + Add discipline
               </button>
             </>
           ) : null}
@@ -2181,33 +2207,52 @@ function QuoteScopeTab({
           rows — each becomes an editable client-facing line here.
         </p>
       ) : grouped ? (
-        disciplineGroups.map(([group, groupRows]) => (
-          <section key={group} style={{ marginBottom: 16 }}>
-            <h4 className="s7-type-card-title" style={{ margin: "0 0 6px" }}>
-              {DISCIPLINE_LABELS[group] ?? group}
-              <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 6 }}>
-                ({groupRows.length})
-              </span>
-            </h4>
-            <DndContext
-              sensors={dndSensors}
-              collisionDetection={closestCenter}
-              onDragEnd={(e) => handleGroupDragEnd(e, groupRows)}
-            >
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                  {renderHeader(true)}
-                  <SortableContext
-                    items={groupRows.map((r) => r.id)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    <tbody>{groupRows.map((r) => renderRow(r, true))}</tbody>
-                  </SortableContext>
-                </table>
-              </div>
-            </DndContext>
-          </section>
-        ))
+        <>
+          {disciplineGroups.map(([group, groupRows]) => (
+            <section key={group} style={{ marginBottom: 16 }}>
+              <h4 className="s7-type-card-title" style={{ margin: "0 0 6px" }}>
+                {DISCIPLINE_LABELS[group] ?? group}
+                <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 6 }}>
+                  ({groupRows.length})
+                </span>
+              </h4>
+              {groupRows.length > 0 ? (
+                <DndContext
+                  sensors={dndSensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={(e) => handleGroupDragEnd(e, groupRows)}
+                >
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                      {renderHeader(true)}
+                      <SortableContext
+                        items={groupRows.map((r) => r.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        <tbody>{groupRows.map((r) => renderRow(r, true))}</tbody>
+                      </SortableContext>
+                    </table>
+                  </div>
+                </DndContext>
+              ) : (
+                <p style={{ color: "var(--text-muted)", fontSize: 12, margin: "4px 0" }}>
+                  No items yet.
+                </p>
+              )}
+              {canManage ? (
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--ghost s7-btn--sm"
+                  style={{ marginTop: 4 }}
+                  disabled={busy}
+                  onClick={() => void addBlankForDiscipline(group)}
+                >
+                  + Add row
+                </button>
+              ) : null}
+            </section>
+          ))}
+        </>
       ) : (
         <DndContext
           sensors={dndSensors}
@@ -2227,6 +2272,65 @@ function QuoteScopeTab({
           </div>
         </DndContext>
       )}
+
+      {showDisciplineModal ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.4)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowDisciplineModal(false); }}
+        >
+          <div
+            style={{
+              background: "var(--surface-card, #fff)",
+              borderRadius: "var(--radius-lg, 12px)",
+              padding: 24,
+              maxWidth: 380,
+              width: "90%",
+              boxShadow: "var(--shadow-dropdown, 0 4px 16px rgba(0,0,0,0.10))"
+            }}
+          >
+            <h3 style={{ margin: "0 0 12px", fontSize: 16 }}>Add discipline group</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {DISCIPLINE_CODES.map((code) => {
+                const exists = disciplineGroups.some(([g]) => g === code);
+                return (
+                  <button
+                    key={code}
+                    type="button"
+                    className="s7-btn s7-btn--secondary"
+                    disabled={exists}
+                    onClick={() => {
+                      if (exists) return;
+                      setEmptyGroups((prev) => new Set([...prev, code]));
+                      setShowDisciplineModal(false);
+                    }}
+                  >
+                    {DISCIPLINE_LABELS[code] ?? code}
+                    {exists ? " (already added)" : ""}
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              style={{ marginTop: 12 }}
+              onClick={() => setShowDisciplineModal(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

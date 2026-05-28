@@ -615,7 +615,9 @@ function QuoteEditor({
   onPatchQuote,
   onRefresh,
   onDownload,
-  onSendClick
+  onSendClick,
+  onCancel,
+  onSave
 }: {
   tenderId: string;
   quote: FullQuote;
@@ -627,6 +629,8 @@ function QuoteEditor({
   onRefresh: () => Promise<void>;
   onDownload: () => void;
   onSendClick: () => void;
+  onCancel: () => void;
+  onSave: () => void;
 }) {
   const { authFetch } = useAuth();
 

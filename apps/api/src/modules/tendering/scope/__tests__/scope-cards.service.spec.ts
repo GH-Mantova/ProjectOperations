@@ -862,6 +862,62 @@ describe("ScopeOfWorksService.getCardSummary — category grouping + labourDays 
     expect(result.computed.plantSummary).toEqual([]);
   });
 
+  it("duration = max(labourDays, maxPlantDuration) when plant exceeds labour", async () => {
+    const { prisma } = buildPrismaMock({
+      scopeCardFindFirst: {
+        ...cardBase,
+        scopeItems: [
+          {
+            men: "2",
+            days: "3",
+            plantItems: [
+              { columnIndex: 1, plantRateId: "rate-exc", description: "Excavator 01T-03T", qty: 1, days: 14 }
+            ]
+          }
+        ]
+      },
+      estimatePlantRates: [{ id: "rate-exc", category: "Excavator" }]
+    });
+    const svc = new ScopeOfWorksService(prisma as never);
+    const result = await svc.getCardSummary("tender-1", "card-1");
+    expect(result.computed.labourDays).toBe(3);
+    expect(result.computed.duration).toBe(14);
+  });
+
+  it("duration = labourDays when labour exceeds plant", async () => {
+    const { prisma } = buildPrismaMock({
+      scopeCardFindFirst: {
+        ...cardBase,
+        scopeItems: [
+          {
+            men: "4",
+            days: "6",
+            plantItems: [
+              { columnIndex: 1, plantRateId: "rate-exc", description: "Excavator 01T-03T", qty: 1, days: 5 }
+            ]
+          },
+          { men: "3", days: "5", plantItems: null },
+          { men: "3", days: "4", plantItems: null },
+          { men: "2", days: "3", plantItems: null }
+        ]
+      },
+      estimatePlantRates: [{ id: "rate-exc", category: "Excavator" }]
+    });
+    const svc = new ScopeOfWorksService(prisma as never);
+    const result = await svc.getCardSummary("tender-1", "card-1");
+    expect(result.computed.labourDays).toBe(14.3);
+    expect(result.computed.duration).toBe(14.3);
+  });
+
+  it("duration = 0 when both labour and plant are zero", async () => {
+    const { prisma } = buildPrismaMock({
+      scopeCardFindFirst: { ...cardBase, scopeItems: [] }
+    });
+    const svc = new ScopeOfWorksService(prisma as never);
+    const result = await svc.getCardSummary("tender-1", "card-1");
+    expect(result.computed.duration).toBe(0);
+  });
+
   it("returns labourDaysOverride in overrides when set", async () => {
     const { prisma } = buildPrismaMock({
       scopeCardFindFirst: {

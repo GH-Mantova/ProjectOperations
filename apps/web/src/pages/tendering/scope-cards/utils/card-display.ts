@@ -39,7 +39,7 @@ export function disciplineColor(discipline: string): string {
 
 export type PlantSummaryGroup = {
   category: string;
-  items: Array<{ variant: string | null; peakQty: number }>;
+  items: Array<{ variant: string | null; peakQty: number; peakDays: number }>;
 };
 
 const PLURAL_MAP: Record<string, string> = {
@@ -67,7 +67,10 @@ export function formatPlantSummary(
     const label = pluraliseCategory(group.category);
     const variants = group.items
       .filter((it) => it.peakQty > 0)
-      .map((it) => (it.variant ? `${it.variant} ×${it.peakQty}` : `×${it.peakQty}`))
+      .map((it) => {
+        const qtyDays = it.peakDays > 0 ? `${it.peakQty} × ${it.peakDays}d` : `×${it.peakQty}`;
+        return it.variant ? `${it.variant} ${qtyDays}` : qtyDays;
+      })
       .join(" · ");
     if (variants) lines.push(`${label}: ${variants}`);
   }

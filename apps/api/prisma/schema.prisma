@@ -2179,7 +2179,7 @@ model ScopeCard {
   // bulk POST /scope/markup/reset-all.
   markupOverride Decimal? @db.Decimal(5, 2) @map("markup_override")
   peakCrewOverride        Int?     @map("peak_crew_override")
-  totalPersonDaysOverride Decimal? @map("total_person_days_override") @db.Decimal(10, 2)
+  labourDaysOverride Decimal? @map("labour_days_override") @db.Decimal(10, 2)
   plantSummaryOverride    String?  @map("plant_summary_override")
   durationOverride        Decimal? @map("duration_override") @db.Decimal(10, 2)
   sortOrder   Int      @default(0) @map("sort_order")

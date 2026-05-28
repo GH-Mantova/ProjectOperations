@@ -18,7 +18,7 @@ export type ScopeCard = {
   /** PR B2 — per-card markup % override. null = inherit tender markup. */
   markupOverride: number | null;
   peakCrewOverride: number | null;
-  totalPersonDaysOverride: number | null;
+  labourDaysOverride: number | null;
   plantSummaryOverride: string | null;
   durationOverride: number | null;
   sortOrder: number;
@@ -198,7 +198,7 @@ export function useScopeCards(tenderId: string) {
       cardId: string,
       overrides: {
         peakCrewOverride?: number | null;
-        totalPersonDaysOverride?: number | null;
+        labourDaysOverride?: number | null;
         plantSummaryOverride?: string | null;
         durationOverride?: number | null;
       }
@@ -221,13 +221,13 @@ export function useScopeCards(tenderId: string) {
       return res.json() as Promise<{
         computed: {
           peakCrew: number;
-          totalPersonDays: number;
+          labourDays: number;
           plantSummary: Array<{ name: string; peakQty: number }>;
           duration: number;
         };
         overrides: {
           peakCrewOverride: number | null;
-          totalPersonDaysOverride: number | null;
+          labourDaysOverride: number | null;
           plantSummaryOverride: string | null;
           durationOverride: number | null;
         };

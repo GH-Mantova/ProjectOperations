@@ -762,7 +762,7 @@ export class ScopeOfWorksService {
     cardId: string,
     patch: {
       peakCrewOverride?: number | null;
-      totalPersonDaysOverride?: number | null;
+      labourDaysOverride?: number | null;
       plantSummaryOverride?: string | null;
       durationOverride?: number | null;
     }
@@ -774,9 +774,9 @@ export class ScopeOfWorksService {
       where: { id: cardId },
       data: {
         peakCrewOverride: patch.peakCrewOverride === undefined ? undefined : patch.peakCrewOverride,
-        totalPersonDaysOverride: patch.totalPersonDaysOverride === undefined
+        labourDaysOverride: patch.labourDaysOverride === undefined
           ? undefined
-          : patch.totalPersonDaysOverride == null ? null : new Prisma.Decimal(patch.totalPersonDaysOverride),
+          : patch.labourDaysOverride == null ? null : new Prisma.Decimal(patch.labourDaysOverride),
         plantSummaryOverride: patch.plantSummaryOverride === undefined ? undefined : patch.plantSummaryOverride,
         durationOverride: patch.durationOverride === undefined
           ? undefined
@@ -800,7 +800,7 @@ export class ScopeOfWorksService {
 
     let peakCrew = 0;
     let totalPersonDays = 0;
-    const plantByDesc = new Map<string, { peakQty: number; totalDays: number }>();
+    const plantByDesc = new Map<string, { peakQty: number; totalQtyDays: number }>();
 
     for (const item of card.scopeItems) {
       const men = item.men ? Number(item.men) : 0;
@@ -818,36 +818,39 @@ export class ScopeOfWorksService {
           const desc = p.description;
           const pQty = p.qty ?? 1;
           const pDays = p.days ?? 0;
-          const existing = plantByDesc.get(desc) ?? { peakQty: 0, totalDays: 0 };
+          const existing = plantByDesc.get(desc) ?? { peakQty: 0, totalQtyDays: 0 };
           if (pQty > existing.peakQty) existing.peakQty = pQty;
-          existing.totalDays += pQty * pDays;
+          existing.totalQtyDays += pQty * pDays;
           plantByDesc.set(desc, existing);
         }
       }
     }
 
-    const labourDuration = peakCrew > 0 ? totalPersonDays / peakCrew : 0;
+    const labourDays = peakCrew > 0
+      ? Math.round((totalPersonDays / peakCrew) * 10) / 10
+      : 0;
+
     let maxPlantDuration = 0;
-    const plantSummary: Array<{ name: string; peakQty: number }> = [];
+    const plantSummary: Array<{ name: string; peakQty: number; peakDays: number }> = [];
     for (const [name, data] of plantByDesc) {
-      plantSummary.push({ name, peakQty: data.peakQty });
-      if (data.peakQty > 0) {
-        const dur = data.totalDays / data.peakQty;
-        if (dur > maxPlantDuration) maxPlantDuration = dur;
-      }
+      const peakDays = data.peakQty > 0
+        ? Math.round((data.totalQtyDays / data.peakQty) * 10) / 10
+        : 0;
+      plantSummary.push({ name, peakQty: data.peakQty, peakDays });
+      if (peakDays > maxPlantDuration) maxPlantDuration = peakDays;
     }
-    const duration = Math.round(Math.max(labourDuration, maxPlantDuration) * 10) / 10;
+    const duration = Math.round(Math.max(labourDays, maxPlantDuration) * 10) / 10;
 
     return {
       computed: {
         peakCrew,
-        totalPersonDays: Math.round(totalPersonDays * 100) / 100,
+        labourDays,
         plantSummary,
         duration
       },
       overrides: {
         peakCrewOverride: card.peakCrewOverride,
-        totalPersonDaysOverride: card.totalPersonDaysOverride ? Number(card.totalPersonDaysOverride) : null,
+        labourDaysOverride: card.labourDaysOverride ? Number(card.labourDaysOverride) : null,
         plantSummaryOverride: card.plantSummaryOverride,
         durationOverride: card.durationOverride ? Number(card.durationOverride) : null,
       }

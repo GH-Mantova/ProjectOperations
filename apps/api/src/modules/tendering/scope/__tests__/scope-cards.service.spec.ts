@@ -13,6 +13,7 @@ function buildPrismaMock(opts: {
   scopeCardAggregateMax?: { cardNumber?: number | null; sortOrder?: number | null };
   scopeItemCount?: number;
   scopeItemAggregateMaxItemNumber?: number;
+  estimatePlantRates?: Array<{ id: string; category: string | null }>;
 } = {}) {
   const tenderFindUnique: AsyncMock = jest.fn(async () =>
     opts.tenderExists === false ? null : { id: "tender-1" }
@@ -51,6 +52,9 @@ function buildPrismaMock(opts: {
   });
   const cuttingSheetItemUpdateMany: AsyncMock = jest.fn(async () => ({ count: 0 }));
   const scopeWasteItemUpdateMany: AsyncMock = jest.fn(async () => ({ count: 0 }));
+  const estimatePlantRateFindMany: AsyncMock = jest.fn(async () =>
+    opts.estimatePlantRates ?? []
+  );
 
   const tx = {
     scopeCard: { update: scopeCardUpdate },
@@ -88,6 +92,7 @@ function buildPrismaMock(opts: {
     },
     cuttingSheetItem: { updateMany: cuttingSheetItemUpdateMany },
     scopeWasteItem: { updateMany: scopeWasteItemUpdateMany },
+    estimatePlantRate: { findMany: estimatePlantRateFindMany },
     $transaction
   };
 
@@ -605,74 +610,171 @@ describe("listCards exposes markupOverride (PR B2)", () => {
   });
 });
 
-describe("ScopeOfWorksService.getCardSummary — plant filtering", () => {
-  it("excludes plant entries with missing description, keeps entries without qty", async () => {
+describe("ScopeOfWorksService.getCardSummary — plant category grouping", () => {
+  const cardBase = {
+    id: "card-1",
+    tenderId: "tender-1",
+    peakCrewOverride: null,
+    totalPersonDaysOverride: null,
+    plantSummaryOverride: null,
+    durationOverride: null
+  };
+
+  it("groups plant entries by rate category with variant derivation", async () => {
     const { prisma } = buildPrismaMock({
       scopeCardFindFirst: {
-        id: "card-1",
-        tenderId: "tender-1",
-        peakCrewOverride: null,
-        totalPersonDaysOverride: null,
-        plantSummaryOverride: null,
-        durationOverride: null,
+        ...cardBase,
         scopeItems: [
           {
             men: "2",
             days: "3",
             plantItems: [
-              { columnIndex: 1, description: "Excavator", qty: 2, days: 3 },
-              { columnIndex: 2, description: "", qty: 1, days: 2 },
-              { columnIndex: 3, description: "Bobcat", qty: undefined, days: 2 },
-              { columnIndex: 4, qty: 1, days: 1 }
+              { columnIndex: 1, plantRateId: "rate-exc1", description: "Excavator 01T-03T (dry hire)", qty: 2, days: 3 }
             ]
           }
         ]
-      }
+      },
+      estimatePlantRates: [{ id: "rate-exc1", category: "Excavator" }]
     });
     const svc = new ScopeOfWorksService(prisma as never);
     const result = await svc.getCardSummary("tender-1", "card-1");
     expect(result.computed.plantSummary).toEqual([
-      { name: "Excavator", peakQty: 2 },
-      { name: "Bobcat", peakQty: 1 }
+      { category: "Excavator", items: [{ variant: "01T-03T (dry hire)", peakQty: 2 }] }
+    ]);
+  });
+
+  it("shows two variants under the same category, sorted alphabetically", async () => {
+    const { prisma } = buildPrismaMock({
+      scopeCardFindFirst: {
+        ...cardBase,
+        scopeItems: [
+          {
+            men: "1",
+            days: "1",
+            plantItems: [
+              { columnIndex: 1, plantRateId: "rate-exc1", description: "Excavator 16T-25T", qty: 1, days: 2 },
+              { columnIndex: 2, plantRateId: "rate-exc2", description: "Excavator 01T-03T", qty: 2, days: 3 }
+            ]
+          }
+        ]
+      },
+      estimatePlantRates: [
+        { id: "rate-exc1", category: "Excavator" },
+        { id: "rate-exc2", category: "Excavator" }
+      ]
+    });
+    const svc = new ScopeOfWorksService(prisma as never);
+    const result = await svc.getCardSummary("tender-1", "card-1");
+    expect(result.computed.plantSummary).toEqual([
+      {
+        category: "Excavator",
+        items: [
+          { variant: "01T-03T", peakQty: 2 },
+          { variant: "16T-25T", peakQty: 1 }
+        ]
+      }
+    ]);
+  });
+
+  it("sets variant to null when description matches category exactly", async () => {
+    const { prisma } = buildPrismaMock({
+      scopeCardFindFirst: {
+        ...cardBase,
+        scopeItems: [
+          {
+            men: "1",
+            days: "1",
+            plantItems: [
+              { columnIndex: 1, plantRateId: "rate-bob", description: "Bobcat", qty: 1, days: 5 }
+            ]
+          }
+        ]
+      },
+      estimatePlantRates: [{ id: "rate-bob", category: "Bobcat" }]
+    });
+    const svc = new ScopeOfWorksService(prisma as never);
+    const result = await svc.getCardSummary("tender-1", "card-1");
+    expect(result.computed.plantSummary).toEqual([
+      { category: "Bobcat", items: [{ variant: null, peakQty: 1 }] }
+    ]);
+  });
+
+  it("sorts categories alphabetically and groups mixed categories", async () => {
+    const { prisma } = buildPrismaMock({
+      scopeCardFindFirst: {
+        ...cardBase,
+        scopeItems: [
+          {
+            men: "1",
+            days: "1",
+            plantItems: [
+              { columnIndex: 1, plantRateId: "rate-truck", description: "Hook truck (10T)", qty: 2, days: 1 },
+              { columnIndex: 2, plantRateId: "rate-exc", description: "Excavator 01T-03T", qty: 1, days: 3 }
+            ]
+          }
+        ]
+      },
+      estimatePlantRates: [
+        { id: "rate-truck", category: "Truck" },
+        { id: "rate-exc", category: "Excavator" }
+      ]
+    });
+    const svc = new ScopeOfWorksService(prisma as never);
+    const result = await svc.getCardSummary("tender-1", "card-1");
+    expect(result.computed.plantSummary[0]?.category).toBe("Excavator");
+    expect(result.computed.plantSummary[1]?.category).toBe("Truck");
+  });
+
+  it("buckets plant entries with null category under Other", async () => {
+    const { prisma } = buildPrismaMock({
+      scopeCardFindFirst: {
+        ...cardBase,
+        scopeItems: [
+          {
+            men: "1",
+            days: "1",
+            plantItems: [
+              { columnIndex: 1, plantRateId: "rate-misc", description: "Attachment 16T-25T", qty: 1, days: 2 }
+            ]
+          }
+        ]
+      },
+      estimatePlantRates: [{ id: "rate-misc", category: null }]
+    });
+    const svc = new ScopeOfWorksService(prisma as never);
+    const result = await svc.getCardSummary("tender-1", "card-1");
+    expect(result.computed.plantSummary).toEqual([
+      { category: "Other", items: [{ variant: "Attachment 16T-25T", peakQty: 1 }] }
     ]);
   });
 
   it("treats null qty as 1, matching pricing default", async () => {
     const { prisma } = buildPrismaMock({
       scopeCardFindFirst: {
-        id: "card-1",
-        tenderId: "tender-1",
-        peakCrewOverride: null,
-        totalPersonDaysOverride: null,
-        plantSummaryOverride: null,
-        durationOverride: null,
+        ...cardBase,
         scopeItems: [
           {
             men: "1",
             days: "1",
             plantItems: [
-              { columnIndex: 1, description: "Tipper", qty: null, days: 5 }
+              { columnIndex: 1, plantRateId: "rate-t", description: "Tipper", qty: null, days: 5 }
             ]
           }
         ]
-      }
+      },
+      estimatePlantRates: [{ id: "rate-t", category: "Truck" }]
     });
     const svc = new ScopeOfWorksService(prisma as never);
     const result = await svc.getCardSummary("tender-1", "card-1");
     expect(result.computed.plantSummary).toEqual([
-      { name: "Tipper", peakQty: 1 }
+      { category: "Truck", items: [{ variant: "Tipper", peakQty: 1 }] }
     ]);
   });
 
   it("returns empty plantSummary when all entries have no description", async () => {
     const { prisma } = buildPrismaMock({
       scopeCardFindFirst: {
-        id: "card-1",
-        tenderId: "tender-1",
-        peakCrewOverride: null,
-        totalPersonDaysOverride: null,
-        plantSummaryOverride: null,
-        durationOverride: null,
+        ...cardBase,
         scopeItems: [
           {
             men: "1",

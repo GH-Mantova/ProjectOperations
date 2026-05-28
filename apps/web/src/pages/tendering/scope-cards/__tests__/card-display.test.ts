@@ -6,7 +6,8 @@ import {
   disciplineColor,
   formatCardCode,
   formatItemCode,
-  formatPlantSummary
+  formatPlantSummary,
+  pluraliseCategory
 } from "../utils/card-display";
 
 describe("card-display utilities (PR B1.5)", () => {
@@ -39,48 +40,77 @@ describe("card-display utilities (PR B1.5)", () => {
     });
   });
 
+  describe("pluraliseCategory", () => {
+    it("pluralises known categories", () => {
+      expect(pluraliseCategory("Excavator")).toBe("Excavators");
+      expect(pluraliseCategory("Truck")).toBe("Trucks");
+      expect(pluraliseCategory("Crane")).toBe("Cranes");
+      expect(pluraliseCategory("Bobcat")).toBe("Bobcats");
+    });
+
+    it("does not pluralise Other", () => {
+      expect(pluraliseCategory("Other")).toBe("Other");
+    });
+
+    it("appends s to unknown categories not ending in s", () => {
+      expect(pluraliseCategory("Roller")).toBe("Rollers");
+    });
+
+    it("does not double-s categories already ending in s", () => {
+      expect(pluraliseCategory("Backhoes")).toBe("Backhoes");
+    });
+  });
+
   describe("formatPlantSummary", () => {
-    it("formats valid entries as 'Name ×Qty' joined by ' · '", () => {
-      const entries = [
-        { name: "Excavator", peakQty: 2 },
-        { name: "Bobcat", peakQty: 1 }
+    it("returns array of category lines for single category, single variant", () => {
+      const groups = [
+        { category: "Excavator", items: [{ variant: "01T-03T (dry hire)", peakQty: 2 }] }
       ];
-      expect(formatPlantSummary(entries)).toBe("Excavator ×2 · Bobcat ×1");
+      expect(formatPlantSummary(groups)).toEqual(["Excavators: 01T-03T (dry hire) ×2"]);
     });
 
-    it("returns em dash when all entries have undefined fields", () => {
-      const entries = [
-        { name: undefined, peakQty: undefined }
-      ] as Array<{ name?: string; peakQty?: number }>;
-      expect(formatPlantSummary(entries)).toBe("—");
-    });
-
-    it("returns em dash for empty array", () => {
-      expect(formatPlantSummary([])).toBe("—");
-    });
-
-    it("filters out entries with missing name", () => {
-      const entries = [
-        { name: "", peakQty: 2 },
-        { name: "Bobcat", peakQty: 1 }
+    it("omits variant text when variant is null", () => {
+      const groups = [
+        { category: "Bobcat", items: [{ variant: null, peakQty: 1 }] }
       ];
-      expect(formatPlantSummary(entries)).toBe("Bobcat ×1");
+      expect(formatPlantSummary(groups)).toEqual(["Bobcats: ×1"]);
     });
 
-    it("filters out entries with zero qty", () => {
-      const entries = [
-        { name: "Excavator", peakQty: 0 },
-        { name: "Bobcat", peakQty: 3 }
+    it("joins multiple variants with dot-separator within category", () => {
+      const groups = [
+        {
+          category: "Excavator",
+          items: [
+            { variant: "01T-03T", peakQty: 2 },
+            { variant: "16T-25T", peakQty: 1 }
+          ]
+        }
       ];
-      expect(formatPlantSummary(entries)).toBe("Bobcat ×3");
+      expect(formatPlantSummary(groups)).toEqual([
+        "Excavators: 01T-03T ×2 · 16T-25T ×1"
+      ]);
     });
 
-    it("returns em dash when all entries are filtered out", () => {
-      const entries = [
-        { name: "", peakQty: 0 },
-        { name: undefined, peakQty: 1 } as { name?: string; peakQty?: number }
+    it("returns multiple lines for multiple categories", () => {
+      const groups = [
+        { category: "Bobcat", items: [{ variant: null, peakQty: 1 }] },
+        { category: "Excavator", items: [{ variant: "01T-03T", peakQty: 2 }] }
       ];
-      expect(formatPlantSummary(entries)).toBe("—");
+      expect(formatPlantSummary(groups)).toEqual([
+        "Bobcats: ×1",
+        "Excavators: 01T-03T ×2"
+      ]);
+    });
+
+    it("returns em dash array for empty groups", () => {
+      expect(formatPlantSummary([])).toEqual(["—"]);
+    });
+
+    it("returns em dash array when all entries have zero qty", () => {
+      const groups = [
+        { category: "Excavator", items: [{ variant: "01T-03T", peakQty: 0 }] }
+      ];
+      expect(formatPlantSummary(groups)).toEqual(["—"]);
     });
   });
 

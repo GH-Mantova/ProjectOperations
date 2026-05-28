@@ -37,13 +37,39 @@ export function disciplineColor(discipline: string): string {
   return DISCIPLINE_COLORS[discipline] ?? "#666";
 }
 
+export type PlantSummaryGroup = {
+  category: string;
+  items: Array<{ variant: string | null; peakQty: number }>;
+};
+
+const PLURAL_MAP: Record<string, string> = {
+  Excavator: "Excavators",
+  Bobcat: "Bobcats",
+  Truck: "Trucks",
+  Crane: "Cranes",
+  Compactor: "Compactors",
+  Loader: "Loaders",
+  Forklift: "Forklifts"
+};
+
+export function pluraliseCategory(cat: string): string {
+  if (cat === "Other") return "Other";
+  if (PLURAL_MAP[cat]) return PLURAL_MAP[cat];
+  return cat.endsWith("s") ? cat : cat + "s";
+}
+
 export function formatPlantSummary(
-  entries: Array<{ name?: string; peakQty?: number }>
-): string {
-  const valid = entries.filter(
-    (p): p is { name: string; peakQty: number } =>
-      !!p.name && typeof p.peakQty === "number" && p.peakQty > 0
-  );
-  if (valid.length === 0) return "—";
-  return valid.map((p) => `${p.name} ×${p.peakQty}`).join(" · ");
+  groups: PlantSummaryGroup[]
+): string[] {
+  if (!groups || groups.length === 0) return ["—"];
+  const lines: string[] = [];
+  for (const group of groups) {
+    const label = pluraliseCategory(group.category);
+    const variants = group.items
+      .filter((it) => it.peakQty > 0)
+      .map((it) => (it.variant ? `${it.variant} ×${it.peakQty}` : `×${it.peakQty}`))
+      .join(" · ");
+    if (variants) lines.push(`${label}: ${variants}`);
+  }
+  return lines.length > 0 ? lines : ["—"];
 }

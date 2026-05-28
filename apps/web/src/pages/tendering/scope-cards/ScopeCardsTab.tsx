@@ -15,7 +15,7 @@ import {
 } from "../ScopeQuantitiesTable";
 import { ScopeWasteTab } from "../ScopeWasteTab";
 import { ScopeCuttingSheet } from "../ScopeCuttingSheet";
-import { DISCIPLINE_CODES, DISCIPLINE_LABELS, formatPlantSummary } from "./utils/card-display";
+import { DISCIPLINE_CODES, DISCIPLINE_LABELS, formatPlantSummary, type PlantSummaryGroup } from "./utils/card-display";
 
 // PR B1.5 — main Scope of Works container. Replaces the legacy
 // ScopeOfWorksTab + ScopeDisciplineBar combo. Card tabs drive the
@@ -134,7 +134,7 @@ export function ScopeCardsTab({
     computed: {
       peakCrew: number;
       totalPersonDays: number;
-      plantSummary: Array<{ name: string; peakQty: number }>;
+      plantSummary: PlantSummaryGroup[];
       duration: number;
     };
     overrides: {
@@ -601,7 +601,7 @@ type SummaryData = {
   computed: {
     peakCrew: number;
     totalPersonDays: number;
-    plantSummary: Array<{ name: string; peakQty: number }>;
+    plantSummary: PlantSummaryGroup[];
     duration: number;
   };
   overrides: {
@@ -624,7 +624,8 @@ function CardHeaderSummary({
   const labelStyle = { ...cellStyle, color: "var(--text-muted)" } as const;
   const valStyle = { ...cellStyle, fontWeight: 600, fontVariantNumeric: "tabular-nums" } as const;
 
-  const plantText = formatPlantSummary(computed.plantSummary);
+  const plantLines = formatPlantSummary(computed.plantSummary);
+  const plantText = plantLines.join("\n");
 
   return (
     <div
@@ -673,9 +674,12 @@ function CardHeaderSummary({
           isOverridden={overrides.plantSummaryOverride != null}
           onRevert={() => void onOverride({ plantSummaryOverride: null })}
         >
-          <span title={plantText} style={{ cursor: "default", display: "inline-block", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {overrides.plantSummaryOverride ?? plantText}
-          </span>
+          <EditablePlant
+            override={overrides.plantSummaryOverride}
+            autoText={plantText}
+            autoLines={plantLines}
+            onCommit={(v) => void onOverride({ plantSummaryOverride: v })}
+          />
         </OverrideField>
       </div>
       <div style={valStyle}>
@@ -690,6 +694,68 @@ function CardHeaderSummary({
           />
         </OverrideField>
       </div>
+    </div>
+  );
+}
+
+function EditablePlant({
+  override,
+  autoText,
+  autoLines,
+  onCommit
+}: {
+  override: string | null;
+  autoText: string;
+  autoLines: string[];
+  onCommit: (v: string | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const displayText = override ?? autoText;
+
+  if (editing) {
+    const lineCount = Math.max((displayText.match(/\n/g) ?? []).length + 1, 2);
+    return (
+      <textarea
+        autoFocus
+        defaultValue={displayText}
+        rows={lineCount}
+        onBlur={(e) => {
+          setEditing(false);
+          const v = e.target.value.trim();
+          if (v === "" || v === autoText) {
+            onCommit(null);
+          } else if (v !== (override ?? autoText)) {
+            onCommit(v);
+          }
+        }}
+        style={{
+          width: "100%",
+          padding: "1px 4px",
+          border: "1px solid var(--border, #e5e7eb)",
+          borderRadius: 3,
+          background: "var(--surface-card, #fff)",
+          fontWeight: 600,
+          fontSize: 12,
+          fontFamily: "inherit",
+          resize: "vertical",
+          lineHeight: 1.4
+        }}
+        className="s7-input"
+      />
+    );
+  }
+
+  return (
+    <div
+      onClick={() => setEditing(true)}
+      title={displayText}
+      style={{ cursor: "text", lineHeight: 1.4 }}
+    >
+      {(override ? override.split("\n") : autoLines).map((line, i) => (
+        <div key={i} style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {line}
+        </div>
+      ))}
     </div>
   );
 }

@@ -115,16 +115,18 @@ type TenderClientLite = {
   contact?: { id: string; firstName: string; lastName: string; email?: string | null } | null;
 };
 
-type EditorTab = "cost" | "scope" | "provisional" | "options" | "assumptions" | "exclusions" | "preview";
+type EditorTab = "cost" | "scope" | "provisional" | "options" | "assumptions" | "exclusions" | "tandc" | "preview";
 
 export function ClientQuotesPanel({
   tenderId,
   tenderClients,
-  canManage
+  canManage,
+  onEditingChange
 }: {
   tenderId: string;
   tenderClients: TenderClientLite[];
   canManage: boolean;
+  onEditingChange?: (editing: boolean) => void;
 }) {
   const { authFetch } = useAuth();
   const [quotes, setQuotes] = useState<QuoteSummary[]>([]);
@@ -180,6 +182,32 @@ export function ClientQuotesPanel({
       setSummary(null);
     }
   }, [selectedId, loadOne]);
+
+  useEffect(() => {
+    onEditingChange?.(selectedId !== null);
+  }, [selectedId, onEditingChange]);
+
+  const handleCancel = () => {
+    setSelectedId(null);
+    setFull(null);
+    setSummary(null);
+    setEditorTab("cost");
+  };
+
+  const handleSave = async () => {
+    if (selectedId) {
+      try {
+        await loadOne(selectedId);
+        await loadList();
+      } catch {
+        return;
+      }
+    }
+    setSelectedId(null);
+    setFull(null);
+    setSummary(null);
+    setEditorTab("cost");
+  };
 
   // Keep the latest revision per client visible on top; older revisions
   // collapse under a "Prior revisions" toggle per client.
@@ -333,6 +361,8 @@ export function ClientQuotesPanel({
           onRefresh={refresh}
           onDownload={() => void downloadPdf(full.id, full.quoteRef)}
           onSendClick={() => setSendOpen(true)}
+          onCancel={handleCancel}
+          onSave={() => void handleSave()}
         />
       ) : null}
 

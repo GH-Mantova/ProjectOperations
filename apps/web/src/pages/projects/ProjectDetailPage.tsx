@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { AdvanceStatusModal } from "./AdvanceStatusModal";
+import { ConfirmRevertDialog } from "./ConfirmRevertDialog";
 import { GanttChart, type GanttTask } from "./GanttChart";
 
 type Person = { id: string; firstName: string; lastName: string; email?: string } | null;
@@ -96,13 +97,21 @@ function fullName(p: Person): string {
 export function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { authFetch, user } = useAuth();
+  const navigate = useNavigate();
   const canManage = useMemo(() => user?.permissions.includes("projects.manage") ?? false, [user]);
+  const canRevert = useMemo(() => user?.permissions.includes("tenders.manage") ?? false, [user]);
 
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
   const [advanceOpen, setAdvanceOpen] = useState(false);
+  const [revertPreflight, setRevertPreflight] = useState<{
+    cascadeCounts: Record<string, number>;
+    sourceTender: { tenderNumber: string };
+  } | null>(null);
+  const [revertBusy, setRevertBusy] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     if (!id) return;
@@ -122,6 +131,38 @@ export function ProjectDetailPage() {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const startRevert = async () => {
+    if (!id) return;
+    try {
+      const r = await authFetch(`/projects/${id}/revert-to-tender/preflight`);
+      if (!r.ok) throw new Error(await r.text());
+      setRevertPreflight(await r.json());
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const executeRevert = async () => {
+    if (!id) return;
+    setRevertBusy(true);
+    try {
+      const r = await authFetch(`/projects/${id}/revert-to-tender`, { method: "DELETE" });
+      if (!r.ok) throw new Error(await r.text());
+      const body = (await r.json()) as { tenderId: string };
+      setRevertPreflight(null);
+      navigate(`/tenders/${body.tenderId}`);
+    } catch (err) {
+      setError((err as Error).message);
+      setRevertBusy(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -170,6 +211,16 @@ export function ProjectDetailPage() {
           >
             {STATUS_LABEL[project.status] ?? project.status}
           </span>
+          {canRevert && project.sourceTender ? (
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              style={{ color: "#DC2626" }}
+              onClick={() => void startRevert()}
+            >
+              Revert to Tender
+            </button>
+          ) : null}
           {canManage && project.status !== "CLOSED" ? (
             <button type="button" className="s7-btn s7-btn--primary s7-btn--sm" onClick={() => setAdvanceOpen(true)}>
               Advance status →
@@ -209,6 +260,36 @@ export function ProjectDetailPage() {
             void reload();
           }}
         />
+      ) : null}
+
+      {revertPreflight && project.sourceTender ? (
+        <ConfirmRevertDialog
+          projectNumber={project.projectNumber}
+          projectName={project.name}
+          tenderNumber={revertPreflight.sourceTender.tenderNumber}
+          cascadeCounts={revertPreflight.cascadeCounts}
+          onConfirm={() => void executeRevert()}
+          onCancel={() => setRevertPreflight(null)}
+          busy={revertBusy}
+        />
+      ) : null}
+
+      {toast ? (
+        <div
+          role="status"
+          style={{
+            position: "fixed",
+            bottom: 24,
+            right: 24,
+            background: "#005B61",
+            color: "#fff",
+            padding: "10px 16px",
+            borderRadius: 6,
+            boxShadow: "0 6px 20px rgba(0,0,0,0.15)"
+          }}
+        >
+          {toast}
+        </div>
       ) : null}
     </div>
   );

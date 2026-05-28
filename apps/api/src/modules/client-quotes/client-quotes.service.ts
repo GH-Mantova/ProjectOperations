@@ -313,6 +313,9 @@ export class ClientQuotesService {
       data.price = toDec(dto.price);
       data.baseValue = toDec(dto.price);
     }
+    if ((dto as Record<string, unknown>).displayDescription !== undefined) {
+      data.displayDescription = (dto as Record<string, unknown>).displayDescription as string | null;
+    }
     if (dto.isVisible !== undefined) data.isVisible = dto.isVisible;
     if (dto.sortOrder !== undefined) data.sortOrder = dto.sortOrder;
     if ((dto as Record<string, unknown>).overrideAmount !== undefined) {

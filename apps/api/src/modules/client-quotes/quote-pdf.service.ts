@@ -84,15 +84,16 @@ export class QuotePdfService {
           description: r.description,
           qty: r.qty,
           unit: r.unit,
-          notes: r.notes
+          notes: r.notes,
+          quoteDiscipline: r.quoteDiscipline
         })),
-      // Hidden cost lines stay in the editor but never reach the PDF.
       costLines: quote.costLines
         .filter((l) => l.isVisible)
         .map((l) => ({
           id: l.id,
           label: l.label,
           description: l.description,
+          displayDescription: l.displayDescription,
           price: toNum(l.price),
           sortOrder: l.sortOrder
         })),

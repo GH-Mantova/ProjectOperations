@@ -16,6 +16,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useAuth } from "../../auth/AuthContext";
 import { OverrideField } from "../../components";
+import { DISCIPLINE_CODES, DISCIPLINE_LABELS } from "./scope-cards/utils/card-display";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { SendQuoteModal } from "./SendQuoteModal";
 
@@ -47,6 +48,7 @@ type CostLine = {
   id: string;
   label: string;
   description: string;
+  displayDescription: string | null;
   price: string;
   baseValue: string;
   overrideAmount: string | null;
@@ -874,16 +876,31 @@ function CostTab({
                 />
               </td>
               <td style={{ padding: 4 }}>
-                <input
-                  className="s7-input"
-                  defaultValue={l.description}
-                  disabled={!canManage}
-                  style={{ width: "100%" }}
-                  onBlur={(e) =>
-                    e.target.value !== l.description &&
-                    void onPatch(l.id, { description: e.target.value })
-                  }
-                />
+                {quote.detailLevel === "simple" ? (
+                  <input
+                    className="s7-input"
+                    key={`desc-${l.id}-simple`}
+                    defaultValue={l.displayDescription ?? l.description}
+                    disabled={!canManage}
+                    style={{ width: "100%" }}
+                    onBlur={(e) => {
+                      const val = e.target.value;
+                      if (val !== (l.displayDescription ?? l.description))
+                        void onPatch(l.id, { displayDescription: val });
+                    }}
+                  />
+                ) : (
+                  <input
+                    className="s7-input"
+                    defaultValue={l.description}
+                    disabled={!canManage}
+                    style={{ width: "100%" }}
+                    onBlur={(e) =>
+                      e.target.value !== l.description &&
+                      void onPatch(l.id, { description: e.target.value })
+                    }
+                  />
+                )}
               </td>
               <td style={{ padding: 4 }}>
                 <input
@@ -1700,6 +1717,7 @@ type QuoteScopeItem = {
   sourceItemId: string | null;
   sourceItemType: string | null;
   label: string | null;
+  quoteDiscipline: string | null;
   description: string;
   qty: string | null;
   unit: string | null;
@@ -1713,13 +1731,12 @@ type QuoteRowProps = {
   canManage: boolean;
   patchRow: (id: string, patch: Record<string, unknown>) => Promise<void>;
   deleteRow: (id: string) => Promise<void>;
-  sourceBadge: (row: QuoteScopeItem) => string;
   dragHandle?: React.ReactNode;
   dragStyle?: React.CSSProperties;
   nodeRef?: (node: HTMLTableRowElement | null) => void;
 };
 
-function QuoteRowCells({ row, canManage, patchRow, deleteRow, sourceBadge, dragHandle }: QuoteRowProps) {
+function QuoteRowCells({ row, canManage, patchRow, deleteRow, dragHandle }: QuoteRowProps) {
   return (
     <>
       {dragHandle ? <td style={{ padding: 4, width: 24 }}>{dragHandle}</td> : null}
@@ -1732,17 +1749,8 @@ function QuoteRowCells({ row, canManage, patchRow, deleteRow, sourceBadge, dragH
           aria-label="Visible on PDF"
         />
       </td>
-      <td style={{ padding: 4 }}>
-        <input
-          className="s7-input s7-input--sm"
-          defaultValue={row.label ?? ""}
-          disabled={!canManage}
-          onBlur={(e) =>
-            (e.target.value || null) !== (row.label ?? null) &&
-            void patchRow(row.id, { label: e.target.value || null })
-          }
-          style={{ width: 70 }}
-        />
+      <td style={{ padding: 4, fontSize: 12, fontFamily: "var(--font-mono, monospace)" }}>
+        {row.label ?? "—"}
       </td>
       <td style={{ padding: 4 }}>
         <textarea
@@ -1793,7 +1801,6 @@ function QuoteRowCells({ row, canManage, patchRow, deleteRow, sourceBadge, dragH
           style={{ width: "100%" }}
         />
       </td>
-      <td style={{ padding: 4, fontSize: 11, color: "var(--text-muted)" }}>{sourceBadge(row)}</td>
       <td style={{ padding: 4, textAlign: "right" }}>
         {canManage ? (
           <button
@@ -1891,6 +1898,8 @@ function QuoteScopeTab({
     return () => window.clearTimeout(timer);
   }, [detailLevel]);
   const [grouped, setGrouped] = useState(true);
+  const [emptyGroups, setEmptyGroups] = useState<Set<string>>(new Set());
+  const [showDisciplineModal, setShowDisciplineModal] = useState(false);
 
   const dndSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -1950,6 +1959,27 @@ function QuoteScopeTab({
     await load();
   };
 
+  const addBlankForDiscipline = async (discipline: string) => {
+    const existing = rows.filter((r) => disciplineForItem(r) === discipline);
+    const nextNum = existing.length + 1;
+    const prefix = discipline === "Other" ? "Oth" : discipline;
+    const label = `${prefix}${nextNum}`;
+    const response = await authFetch(base, {
+      method: "POST",
+      body: JSON.stringify({
+        description: "New item",
+        isVisible: true,
+        label,
+        quoteDiscipline: discipline
+      })
+    });
+    if (!response.ok) {
+      setError(await response.text());
+      return;
+    }
+    await load();
+  };
+
   const reset = async () => {
     if (!window.confirm("This will replace all quote scope items with current scope of works data. Continue?")) return;
     setBusy(true);
@@ -1977,13 +2007,6 @@ function QuoteScopeTab({
     }
   };
 
-  const sourceBadge = (row: QuoteScopeItem): string => {
-    if (!row.sourceItemType) return "Manual";
-    if (row.sourceItemType === "scope") return row.label ?? "Scope";
-    if (row.sourceItemType === "waste") return "Waste";
-    if (row.sourceItemType === "cutting") return "Cutting";
-    return row.sourceItemType;
-  };
 
   const reorderRows = useCallback(
     async (newRows: QuoteScopeItem[]) => {
@@ -2013,22 +2036,47 @@ function QuoteScopeTab({
     void reorderRows(arrayMove(source, oldIndex, newIndex));
   };
 
-  // PR B FIX 3 — grouped drag reorder. Each discipline group is its own
-  // sortable scope, so a drag inside DEM can never bleed into ASB rows. We
-  // splice the reordered group back into the master rows array at the
-  // positions the group originally occupied to keep the global sortOrder
-  // contiguous before PATCHing the server.
-  const handleGroupDragEnd = (event: DragEndEvent, group: QuoteScopeItem[]) => {
+  const handleGroupedDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const oldIndex = group.findIndex((r) => r.id === active.id);
-    const newIndex = group.findIndex((r) => r.id === over.id);
+
+    const allGroupedIds = disciplineGroups.flatMap(([, items]) => items.map((r) => r.id));
+    const oldIndex = allGroupedIds.indexOf(active.id as string);
+    const newIndex = allGroupedIds.indexOf(over.id as string);
     if (oldIndex < 0 || newIndex < 0) return;
-    const reorderedGroup = arrayMove(group, oldIndex, newIndex);
-    const groupIds = new Set(group.map((r) => r.id));
-    let cursor = 0;
-    const merged = rows.map((r) => (groupIds.has(r.id) ? reorderedGroup[cursor++]! : r));
-    void reorderRows(merged);
+
+    const draggedItem = rows.find((r) => r.id === active.id);
+    const targetItem = rows.find((r) => r.id === over.id);
+    if (!draggedItem || !targetItem) return;
+
+    const sourceDiscipline = disciplineForItem(draggedItem);
+    const targetDiscipline = disciplineForItem(targetItem);
+
+    if (sourceDiscipline !== targetDiscipline) {
+      const prev = rows;
+      setRows((cur) => cur.map((r) =>
+        r.id === draggedItem.id ? { ...r, quoteDiscipline: targetDiscipline } : r
+      ));
+      authFetch(`${base}/${draggedItem.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ quoteDiscipline: targetDiscipline })
+      }).then((resp) => {
+        if (!resp.ok) {
+          setError("Failed to move item");
+          setRows(prev);
+        }
+      });
+    } else {
+      const group = disciplineGroups.find(([g]) => g === sourceDiscipline)?.[1] ?? [];
+      const gOld = group.findIndex((r) => r.id === active.id);
+      const gNew = group.findIndex((r) => r.id === over.id);
+      if (gOld < 0 || gNew < 0) return;
+      const reorderedGroup = arrayMove(group, gOld, gNew);
+      const groupIds = new Set(group.map((r) => r.id));
+      let cursor = 0;
+      const merged = rows.map((r) => (groupIds.has(r.id) ? reorderedGroup[cursor++]! : r));
+      void reorderRows(merged);
+    }
   };
 
   const renderRow = (row: QuoteScopeItem, draggable: boolean) =>
@@ -2039,7 +2087,6 @@ function QuoteScopeTab({
         canManage={canManage}
         patchRow={patchRow}
         deleteRow={deleteRow}
-        sourceBadge={sourceBadge}
       />
     ) : (
       <StaticQuoteRow
@@ -2048,7 +2095,6 @@ function QuoteScopeTab({
         canManage={canManage}
         patchRow={patchRow}
         deleteRow={deleteRow}
-        sourceBadge={sourceBadge}
       />
     );
 
@@ -2063,7 +2109,6 @@ function QuoteScopeTab({
           { label: "Qty", w: 90 },
           { label: "Unit", w: 80 },
           { label: "Notes", w: null },
-          { label: "Source", w: 90 },
           { label: "", w: 40 }
         ].map((h, i) => (
           <th
@@ -2084,16 +2129,26 @@ function QuoteScopeTab({
     </thead>
   );
 
+  const disciplineForItem = (item: QuoteScopeItem): string => {
+    if (item.quoteDiscipline) return item.quoteDiscipline;
+    const prefix = item.label ? /^[A-Za-z]+/.exec(item.label)?.[0]?.toUpperCase() : null;
+    if (prefix === "DEM" || prefix === "CIV" || prefix === "ASB") return prefix;
+    return "Other";
+  };
+
   const disciplineGroups = useMemo(() => {
     const groups = new Map<string, QuoteScopeItem[]>();
     for (const r of rows) {
-      const discKey = r.label ? /^[A-Za-z]+/.exec(r.label)?.[0] ?? "Other" : "Other";
+      const discKey = disciplineForItem(r);
       const arr = groups.get(discKey) ?? [];
       arr.push(r);
       groups.set(discKey, arr);
     }
+    for (const eg of emptyGroups) {
+      if (!groups.has(eg)) groups.set(eg, []);
+    }
     return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [rows]);
+  }, [rows, emptyGroups]);
 
   return (
     <div>
@@ -2168,10 +2223,10 @@ function QuoteScopeTab({
               <button
                 type="button"
                 className="s7-btn s7-btn--primary s7-btn--sm"
-                onClick={() => void addBlank()}
+                onClick={() => setShowDisciplineModal(true)}
                 disabled={busy}
               >
-                + Add item
+                + Add discipline
               </button>
             </>
           ) : null}
@@ -2193,33 +2248,50 @@ function QuoteScopeTab({
           rows — each becomes an editable client-facing line here.
         </p>
       ) : grouped ? (
-        disciplineGroups.map(([group, groupRows]) => (
-          <section key={group} style={{ marginBottom: 16 }}>
-            <h4 className="s7-type-card-title" style={{ margin: "0 0 6px" }}>
-              {group}
-              <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 6 }}>
-                ({groupRows.length})
-              </span>
-            </h4>
-            <DndContext
-              sensors={dndSensors}
-              collisionDetection={closestCenter}
-              onDragEnd={(e) => handleGroupDragEnd(e, groupRows)}
-            >
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                  {renderHeader(true)}
-                  <SortableContext
-                    items={groupRows.map((r) => r.id)}
-                    strategy={verticalListSortingStrategy}
+        <DndContext
+          sensors={dndSensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleGroupedDragEnd}
+        >
+          <SortableContext
+            items={disciplineGroups.flatMap(([, items]) => items.map((r) => r.id))}
+            strategy={verticalListSortingStrategy}
+          >
+            {disciplineGroups.map(([group, groupRows]) => (
+              <section key={group} style={{ marginBottom: 16 }}>
+                <h4 className="s7-type-card-title" style={{ margin: "0 0 6px" }}>
+                  {DISCIPLINE_LABELS[group] ?? group}
+                  <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 6 }}>
+                    ({groupRows.length})
+                  </span>
+                </h4>
+                {groupRows.length > 0 ? (
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                      {renderHeader(true)}
+                      <tbody>{groupRows.map((r) => renderRow(r, true))}</tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p style={{ color: "var(--text-muted)", fontSize: 12, margin: "4px 0" }}>
+                    No items yet.
+                  </p>
+                )}
+                {canManage ? (
+                  <button
+                    type="button"
+                    className="s7-btn s7-btn--ghost s7-btn--sm"
+                    style={{ marginTop: 4 }}
+                    disabled={busy}
+                    onClick={() => void addBlankForDiscipline(group)}
                   >
-                    <tbody>{groupRows.map((r) => renderRow(r, true))}</tbody>
-                  </SortableContext>
-                </table>
-              </div>
-            </DndContext>
-          </section>
-        ))
+                    + Add row
+                  </button>
+                ) : null}
+              </section>
+            ))}
+          </SortableContext>
+        </DndContext>
       ) : (
         <DndContext
           sensors={dndSensors}
@@ -2239,6 +2311,65 @@ function QuoteScopeTab({
           </div>
         </DndContext>
       )}
+
+      {showDisciplineModal ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.4)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowDisciplineModal(false); }}
+        >
+          <div
+            style={{
+              background: "var(--surface-card, #fff)",
+              borderRadius: "var(--radius-lg, 12px)",
+              padding: 24,
+              maxWidth: 380,
+              width: "90%",
+              boxShadow: "var(--shadow-dropdown, 0 4px 16px rgba(0,0,0,0.10))"
+            }}
+          >
+            <h3 style={{ margin: "0 0 12px", fontSize: 16 }}>Add discipline group</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {DISCIPLINE_CODES.map((code) => {
+                const exists = disciplineGroups.some(([g]) => g === code);
+                return (
+                  <button
+                    key={code}
+                    type="button"
+                    className="s7-btn s7-btn--secondary"
+                    disabled={exists}
+                    onClick={() => {
+                      if (exists) return;
+                      setEmptyGroups((prev) => new Set([...prev, code]));
+                      setShowDisciplineModal(false);
+                    }}
+                  >
+                    {DISCIPLINE_LABELS[code] ?? code}
+                    {exists ? " (already added)" : ""}
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              style={{ marginTop: 12 }}
+              onClick={() => setShowDisciplineModal(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

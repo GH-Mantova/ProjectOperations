@@ -149,6 +149,40 @@ export function QuoteTab({
         />
       )}
 
+      {canManage && (
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          {isEditing ? (
+            <>
+              <button
+                type="button"
+                className="s7-btn s7-btn--ghost s7-btn--sm"
+                onClick={() => {
+                  void loadSummary();
+                  setIsEditing(false);
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="s7-btn s7-btn--primary s7-btn--sm"
+                onClick={() => setIsEditing(false)}
+              >
+                Save
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={() => setIsEditing(true)}
+            >
+              Edit
+            </button>
+          )}
+        </div>
+      )}
+
       <nav className="quote-sub-tabs" role="tablist" style={{ display: "flex", gap: 0, borderBottom: "2px solid var(--border, #e5e7eb)", marginBottom: 0 }}>
         {QUOTE_SUB_TABS.map((t) => (
           <button

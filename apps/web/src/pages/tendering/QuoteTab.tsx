@@ -1,30 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import {
-  SortableContext,
-  arrayMove,
-  useSortable,
-  verticalListSortingStrategy
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { OverrideField } from "../../components";
 import { ClientQuotesPanel } from "./ClientQuotesPanel";
-
-// PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
-type Discipline = "DEM" | "CIV" | "ASB" | "Other";
-
-type DisciplineStat = { itemCount: number; subtotal: number; withMarkup: number };
-type ScopeSummary = {
-  DEM: DisciplineStat;
-  CIV: DisciplineStat;
-  ASB: DisciplineStat;
-  Other: DisciplineStat;
-  cutting: { itemCount: number; subtotal: number };
-  tenderPrice: number;
-};
-
-type ListEntry = { id: string; text: string; sortOrder: number };
 
 type Clause = { number: string; heading: string; body: string; isModified?: boolean };
 type TandCResponse = { id: string; tenderId: string; clauses: Clause[] };
@@ -48,16 +25,6 @@ type TenderHeader = {
   }>;
 };
 
-const DISCIPLINE_ROWS: Array<{ key: Discipline; label: string }> = [
-  { key: "DEM", label: "Demolition" },
-  { key: "CIV", label: "Civil works" },
-  { key: "ASB", label: "Asbestos removal" },
-  { key: "Other", label: "Other" }
-];
-
-function fmtCurrency(n: number): string {
-  return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 2 }).format(n);
-}
 function fmtDateTime(iso: string): string {
   try {
     const d = new Date(iso);
@@ -73,15 +40,6 @@ function fmtDateTime(iso: string): string {
   }
 }
 
-const QUOTE_SUB_TABS = [
-  "Cost Summary",
-  "Assumptions",
-  "Exclusions",
-  "Terms & Conditions",
-  "Generate Quote"
-] as const;
-type QuoteSubTab = (typeof QUOTE_SUB_TABS)[number];
-
 export function QuoteTab({
   tenderId,
   tender,
@@ -91,47 +49,10 @@ export function QuoteTab({
   tender: TenderHeader;
   canManage: boolean;
 }) {
-  const { authFetch } = useAuth();
-  const [summary, setSummary] = useState<ScopeSummary | null>(null);
-  const [provisional, setProvisional] = useState<Array<{ id: string; description: string; amount: number }>>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [activeSubTab, setActiveSubTab] = useState<QuoteSubTab>("Cost Summary");
+  const [showGenerate, setShowGenerate] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-
-  const loadSummary = useCallback(async () => {
-    try {
-      const [sumRes, scopeRes] = await Promise.all([
-        authFetch(`/tenders/${tenderId}/scope/summary`),
-        authFetch(`/tenders/${tenderId}/scope/items`)
-      ]);
-      if (sumRes.ok) setSummary((await sumRes.json()) as ScopeSummary);
-      if (scopeRes.ok) {
-        const body = (await scopeRes.json()) as {
-          items: Array<{
-            id: string;
-            discipline: string;
-            description: string;
-            provisionalAmount: string | null;
-          }>;
-        };
-        const prv = body.items
-          .filter((i) => i.discipline === "Other")
-          .map((i) => ({
-            id: i.id,
-            description: i.description,
-            amount: i.provisionalAmount ? Number(i.provisionalAmount) : 0
-          }));
-        setProvisional(prv);
-      }
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  }, [authFetch, tenderId]);
-
-  useEffect(() => {
-    void loadSummary();
-  }, [loadSummary]);
 
   useEffect(() => {
     if (!toast) return;
@@ -156,10 +77,7 @@ export function QuoteTab({
               <button
                 type="button"
                 className="s7-btn s7-btn--ghost s7-btn--sm"
-                onClick={() => {
-                  void loadSummary();
-                  setIsEditing(false);
-                }}
+                onClick={() => setIsEditing(false)}
               >
                 Cancel
               </button>
@@ -172,78 +90,28 @@ export function QuoteTab({
               </button>
             </>
           ) : (
-            <button
-              type="button"
-              className="s7-btn s7-btn--ghost s7-btn--sm"
-              onClick={() => setIsEditing(true)}
-            >
-              Edit
-            </button>
+            <>
+              <button
+                type="button"
+                className="s7-btn s7-btn--ghost s7-btn--sm"
+                onClick={() => setIsEditing(true)}
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                className="s7-btn s7-btn--primary s7-btn--sm"
+                onClick={() => setShowGenerate((v) => !v)}
+                style={{ background: "#FEAA6D", borderColor: "#FEAA6D", color: "#000" }}
+              >
+                Generate Quote
+              </button>
+            </>
           )}
         </div>
       )}
 
-      <nav className="quote-sub-tabs" role="tablist" style={{ display: "flex", gap: 0, borderBottom: "2px solid var(--border, #e5e7eb)", marginBottom: 0 }}>
-        {QUOTE_SUB_TABS.map((t) => (
-          <button
-            key={t}
-            role="tab"
-            type="button"
-            aria-selected={activeSubTab === t}
-            className={activeSubTab === t ? "quote-sub-tab quote-sub-tab--active" : "quote-sub-tab"}
-            onClick={() => setActiveSubTab(t)}
-            style={{
-              padding: "8px 16px",
-              fontSize: 13,
-              fontWeight: activeSubTab === t ? 600 : 400,
-              color: activeSubTab === t ? "var(--brand-primary, #005B61)" : "var(--text-muted, #6b7280)",
-              background: "transparent",
-              border: "none",
-              borderBottom: activeSubTab === t ? "2px solid var(--brand-primary, #005B61)" : "2px solid transparent",
-              marginBottom: -2,
-              cursor: "pointer",
-              whiteSpace: "nowrap"
-            }}
-          >
-            {t}
-          </button>
-        ))}
-      </nav>
-
-      {activeSubTab === "Cost Summary" && (
-        <CostSummarySection
-          summary={summary}
-          provisional={provisional}
-          tender={tender}
-          onRecalculate={loadSummary}
-        />
-      )}
-
-      {activeSubTab === "Assumptions" && (
-        <TextListSection
-          kind="assumptions"
-          title="Assumptions"
-          tenderId={tenderId}
-          canManage={canManage}
-          onToast={setToast}
-        />
-      )}
-
-      {activeSubTab === "Exclusions" && (
-        <TextListSection
-          kind="exclusions"
-          title="Exclusions"
-          tenderId={tenderId}
-          canManage={canManage}
-          onToast={setToast}
-        />
-      )}
-
-      {activeSubTab === "Terms & Conditions" && (
-        <TandCSection tenderId={tenderId} canManage={canManage} onToast={setToast} />
-      )}
-
-      {activeSubTab === "Generate Quote" && (
+      {showGenerate && (
         <GenerateQuoteSection
           tenderId={tenderId}
           tenderNumber={tender.tenderNumber}
@@ -275,335 +143,7 @@ export function QuoteTab({
   );
 }
 
-// ── Section 1: Cost summary ──────────────────────────────────────────
-function CostSummarySection({
-  summary,
-  provisional,
-  tender,
-  onRecalculate
-}: {
-  summary: ScopeSummary | null;
-  provisional: Array<{ id: string; description: string; amount: number }>;
-  tender: TenderHeader;
-  onRecalculate: () => void;
-}) {
-  const estimatorName = tender.estimator
-    ? `${tender.estimator.firstName} ${tender.estimator.lastName}`.trim()
-    : null;
-  const disciplineRows = useMemo(() => {
-    if (!summary) return [];
-    return DISCIPLINE_ROWS.filter((d) => summary[d.key].itemCount > 0).map((d) => ({
-      key: d.key,
-      label: d.label,
-      amount: summary[d.key].withMarkup
-    }));
-  }, [summary]);
-  const cuttingRow = summary && summary.cutting.itemCount > 0 ? summary.cutting.subtotal : 0;
-  const total = disciplineRows.reduce((s, r) => s + r.amount, 0) + cuttingRow;
-
-  return (
-    <section className="s7-card">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <h3 className="s7-type-section-heading" style={{ margin: 0 }}>Cost summary</h3>
-        <button type="button" className="s7-btn s7-btn--ghost s7-btn--sm" onClick={onRecalculate}>
-          Recalculate
-        </button>
-      </div>
-
-      {!summary ? (
-        <p style={{ color: "var(--text-muted)" }}>Loading summary…</p>
-      ) : disciplineRows.length === 0 && cuttingRow === 0 ? (
-        <p style={{ color: "var(--text-muted)" }}>
-          No scope items yet. Add items in the Scope of Works tab to populate this summary.
-        </p>
-      ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 12 }}>
-          <thead style={{ background: "#005B61", color: "#fff" }}>
-            <tr>
-              <th style={{ ...thStyle, textAlign: "left", width: 80 }}>Scope</th>
-              <th style={{ ...thStyle, textAlign: "left" }}>Description</th>
-              <th style={{ ...thStyle, textAlign: "right", width: 160 }}>Amount (ex GST)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {disciplineRows.map((row, i) => (
-              <tr key={row.key} style={{ background: i % 2 === 1 ? "#F6F6F6" : "transparent" }}>
-                <td style={tdStyle}>{row.key}</td>
-                <td style={tdStyle}>{row.label}</td>
-                <td style={{ ...tdStyle, textAlign: "right" }}>{fmtCurrency(row.amount)}</td>
-              </tr>
-            ))}
-            {cuttingRow > 0 ? (
-              <tr style={{ background: disciplineRows.length % 2 === 1 ? "#F6F6F6" : "transparent" }}>
-                <td style={tdStyle}>Cutting</td>
-                <td style={tdStyle}>Concrete cutting</td>
-                <td style={{ ...tdStyle, textAlign: "right" }}>{fmtCurrency(cuttingRow)}</td>
-              </tr>
-            ) : null}
-            <tr style={{ background: "#005B61", color: "#fff", fontWeight: 700 }}>
-              <td style={tdStyle} colSpan={2}>TOTAL</td>
-              <td style={{ ...tdStyle, textAlign: "right" }}>{fmtCurrency(total)}</td>
-            </tr>
-          </tbody>
-        </table>
-      )}
-
-      {provisional.length > 0 ? (
-        <>
-          <h4 style={{ fontSize: 13, margin: "14px 0 6px", textTransform: "uppercase", color: "var(--text-muted)" }}>
-            Provisional sums
-          </h4>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 12 }}>
-            <thead style={{ background: "var(--surface-muted, #F6F6F6)" }}>
-              <tr>
-                <th style={{ ...thStyle, textAlign: "left" }}>Description</th>
-                <th style={{ ...thStyle, textAlign: "right", width: 160 }}>Amount (ex GST)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {provisional.map((p, i) => (
-                <tr key={p.id} style={{ background: i % 2 === 1 ? "#F6F6F6" : "transparent" }}>
-                  <td style={tdStyle}>{p.description}</td>
-                  <td style={{ ...tdStyle, textAlign: "right" }}>{fmtCurrency(p.amount)}</td>
-                </tr>
-              ))}
-              <tr style={{ background: "#005B61", color: "#fff", fontWeight: 700 }}>
-                <td style={tdStyle}>TOTAL PROVISIONAL SUM</td>
-                <td style={{ ...tdStyle, textAlign: "right" }}>
-                  {fmtCurrency(provisional.reduce((s, p) => s + p.amount, 0))}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </>
-      ) : null}
-
-      <p style={{ fontStyle: "italic", color: "var(--text-muted)", fontSize: 12, marginTop: 8 }}>
-        All prices exclude GST. Add 10% if applicable.
-      </p>
-      <p style={{ fontStyle: "italic", color: "var(--text-muted)", fontSize: 12, margin: 0 }}>
-        This quote is valid for 30 days from issue date or the end of the current financial year, whichever is first.
-      </p>
-    </section>
-  );
-}
-
-const thStyle: React.CSSProperties = {
-  padding: "8px 10px",
-  fontWeight: 600,
-  fontSize: 11,
-  textTransform: "uppercase",
-  letterSpacing: 0.3
-};
-const tdStyle: React.CSSProperties = {
-  padding: "8px 10px",
-  borderBottom: "1px solid var(--border, #e5e7eb)"
-};
-
-// ── Sections 2 & 3: Assumptions + Exclusions (shared) ────────────────
-function TextListSection({
-  kind,
-  title,
-  tenderId,
-  canManage,
-  onToast
-}: {
-  kind: "assumptions" | "exclusions";
-  title: string;
-  tenderId: string;
-  canManage: boolean;
-  onToast: (msg: string) => void;
-}) {
-  const { authFetch } = useAuth();
-  const [items, setItems] = useState<ListEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const response = await authFetch(`/tenders/${tenderId}/${kind}`);
-      if (!response.ok) throw new Error(await response.text());
-      setItems((await response.json()) as ListEntry[]);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }, [authFetch, tenderId, kind]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const addOne = async () => {
-    const response = await authFetch(`/tenders/${tenderId}/${kind}`, {
-      method: "POST",
-      body: JSON.stringify({ text: "New " + (kind === "assumptions" ? "assumption" : "exclusion") })
-    });
-    if (!response.ok) {
-      setError(await response.text());
-      return;
-    }
-    await load();
-    // Focus the last row's input on the next tick.
-    requestAnimationFrame(() => {
-      const all = document.querySelectorAll<HTMLInputElement>(`[data-list-kind="${kind}"] input[type="text"]`);
-      const last = all[all.length - 1];
-      last?.focus();
-      last?.select();
-    });
-  };
-
-  const patchOne = async (id: string, text: string) => {
-    const response = await authFetch(`/tenders/${tenderId}/${kind}/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ text })
-    });
-    if (!response.ok) setError(await response.text());
-  };
-
-  const removeOne = async (id: string) => {
-    const response = await authFetch(`/tenders/${tenderId}/${kind}/${id}`, { method: "DELETE" });
-    if (!response.ok) {
-      setError(await response.text());
-      return;
-    }
-    setItems((prev) => prev.filter((i) => i.id !== id));
-  };
-
-  const onDragEnd = async (e: DragEndEvent) => {
-    const { active, over } = e;
-    if (!over || active.id === over.id) return;
-    const oldIndex = items.findIndex((i) => i.id === active.id);
-    const newIndex = items.findIndex((i) => i.id === over.id);
-    if (oldIndex < 0 || newIndex < 0) return;
-    const next = arrayMove(items, oldIndex, newIndex).map((item, i) => ({ ...item, sortOrder: i }));
-    setItems(next);
-    try {
-      const response = await authFetch(`/tenders/${tenderId}/${kind}/reorder`, {
-        method: "POST",
-        body: JSON.stringify({ order: next.map(({ id, sortOrder }) => ({ id, sortOrder })) })
-      });
-      if (!response.ok) throw new Error(await response.text());
-      onToast("Order saved");
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  };
-
-  return (
-    <section className="s7-card" data-list-kind={kind}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <h3 className="s7-type-section-heading" style={{ margin: 0 }}>{title}</h3>
-        {canManage ? (
-          <button type="button" className="s7-btn s7-btn--primary s7-btn--sm" onClick={() => void addOne()}>
-            + Add
-          </button>
-        ) : null}
-      </div>
-
-      {error ? <p style={{ color: "var(--status-danger)" }}>{error}</p> : null}
-
-      {loading ? (
-        <p style={{ color: "var(--text-muted)" }}>Loading…</p>
-      ) : items.length === 0 ? (
-        <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
-          No {kind === "assumptions" ? "assumptions" : "exclusions"} added. Click + Add to add one.
-        </p>
-      ) : (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => void onDragEnd(e)}>
-          <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
-            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-              {items.map((item) => (
-                <TextRow
-                  key={item.id}
-                  id={item.id}
-                  text={item.text}
-                  canManage={canManage}
-                  onChange={(v) => void patchOne(item.id, v)}
-                  onRemove={() => void removeOne(item.id)}
-                />
-              ))}
-            </ul>
-          </SortableContext>
-        </DndContext>
-      )}
-    </section>
-  );
-}
-
-function TextRow({
-  id,
-  text,
-  canManage,
-  onChange,
-  onRemove
-}: {
-  id: string;
-  text: string;
-  canManage: boolean;
-  onChange: (v: string) => void;
-  onRemove: () => void;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-    display: "flex",
-    gap: 6,
-    alignItems: "center",
-    padding: "6px 0",
-    borderBottom: "1px solid var(--border, #e5e7eb)"
-  };
-  return (
-    <li ref={setNodeRef} style={style}>
-      <button
-        type="button"
-        {...attributes}
-        {...listeners}
-        aria-label="Drag to reorder"
-        disabled={!canManage}
-        style={{
-          background: "transparent",
-          border: "none",
-          cursor: canManage ? "grab" : "default",
-          color: "var(--text-muted)",
-          padding: "4px 6px",
-          fontSize: 14
-        }}
-      >
-        ⋮⋮
-      </button>
-      <input
-        type="text"
-        className="s7-input"
-        defaultValue={text}
-        disabled={!canManage}
-        onBlur={(e) => {
-          const v = e.target.value;
-          if (v !== text) onChange(v);
-        }}
-        style={{ flex: 1 }}
-      />
-      {canManage ? (
-        <button
-          type="button"
-          className="s7-btn s7-btn--ghost s7-btn--sm"
-          aria-label="Delete"
-          onClick={onRemove}
-        >
-          ×
-        </button>
-      ) : null}
-    </li>
-  );
-}
-
-// ── Section 4: Terms & Conditions ────────────────────────────────────
-function TandCSection({
+export function TandCSection({
   tenderId,
   canManage,
   onToast
@@ -752,7 +292,6 @@ function TandCSection({
   );
 }
 
-// ── Section 5: Generate quote ────────────────────────────────────────
 function GenerateQuoteSection({
   tenderId,
   tenderNumber,

@@ -128,6 +128,30 @@ function readStoredView(): "feed" | "tabs" {
   return raw === "tabs" ? "tabs" : "feed";
 }
 
+type AssignableUser = { id: string; firstName: string; lastName: string };
+
+const TYPES_NEEDING_DUE_DATE: ReadonlySet<TenderEntryType> = new Set([
+  "follow_up",
+  "self_reminder",
+  "task"
+]);
+
+type DraftEntry = {
+  type: TenderEntryType;
+  subject: string;
+  body: string;
+  dueDate: string;
+  assigneeId: string;
+};
+
+const EMPTY_DRAFT: DraftEntry = {
+  type: "note",
+  subject: "",
+  body: "",
+  dueDate: "",
+  assigneeId: ""
+};
+
 export function TenderEntriesPanel({ tenderId }: { tenderId: string }) {
   const { authFetch, user } = useAuth();
   const [entries, setEntries] = useState<TenderEntry[]>([]);
@@ -137,6 +161,11 @@ export function TenderEntriesPanel({ tenderId }: { tenderId: string }) {
   const [view, setView] = useState<"feed" | "tabs">(() => readStoredView());
   const [tabsActive, setTabsActive] = useState<FilterChip>("notes");
   const [statusBusyId, setStatusBusyId] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [draft, setDraft] = useState<DraftEntry>(EMPTY_DRAFT);
+  const [submitting, setSubmitting] = useState(false);
+  const [users, setUsers] = useState<AssignableUser[]>([]);
+  const [usersLoaded, setUsersLoaded] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -172,6 +201,97 @@ export function TenderEntriesPanel({ tenderId }: { tenderId: string }) {
     () => entries.filter((entry) => matchesChip(entry, tabsActive, currentUserId)),
     [entries, tabsActive, currentUserId]
   );
+
+  const ensureUsersLoaded = useCallback(async () => {
+    if (usersLoaded) return;
+    try {
+      const response = await authFetch("/users?page=1&pageSize=100");
+      if (!response.ok) return;
+      const body = (await response.json()) as {
+        items: Array<{ id: string; firstName: string; lastName: string; isActive: boolean }>;
+      };
+      setUsers(
+        body.items
+          .filter((u) => u.isActive)
+          .map((u) => ({ id: u.id, firstName: u.firstName, lastName: u.lastName }))
+      );
+      setUsersLoaded(true);
+    } catch {
+      // Non-fatal — assignee picker just stays empty until reopened.
+    }
+  }, [authFetch, usersLoaded]);
+
+  const openAdd = useCallback(() => {
+    setDraft(EMPTY_DRAFT);
+    setAddOpen(true);
+    void ensureUsersLoaded();
+  }, [ensureUsersLoaded]);
+
+  const closeAdd = useCallback(() => {
+    setAddOpen(false);
+    setDraft(EMPTY_DRAFT);
+  }, []);
+
+  const submitAdd = useCallback(async () => {
+    if (!draft.body.trim()) {
+      setError("Body is required.");
+      return;
+    }
+    if (TYPES_NEEDING_DUE_DATE.has(draft.type) && !draft.dueDate) {
+      setError("This entry type needs a due date.");
+      return;
+    }
+    if (draft.type === "task" && !draft.assigneeId) {
+      setError("Tasks must be assigned to a user.");
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    const optimisticId = `optimistic-${Date.now()}`;
+    const optimistic: TenderEntry = {
+      id: optimisticId,
+      tenderId,
+      type: draft.type,
+      subject: draft.subject.trim() || null,
+      body: draft.body.trim(),
+      dueDate: draft.dueDate || null,
+      status: "open",
+      assigneeId: draft.assigneeId || null,
+      authorId: user?.id ?? "",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      author: user
+        ? { id: user.id, firstName: user.firstName, lastName: user.lastName }
+        : null,
+      assignee:
+        draft.assigneeId && users.find((u) => u.id === draft.assigneeId)
+          ? (users.find((u) => u.id === draft.assigneeId) as AssignableUser)
+          : null
+    };
+    setEntries((current) => [optimistic, ...current]);
+    try {
+      const response = await authFetch(`/tenders/${tenderId}/entries`, {
+        method: "POST",
+        body: JSON.stringify({
+          type: draft.type,
+          subject: draft.subject.trim() || undefined,
+          body: draft.body.trim(),
+          dueDate: draft.dueDate || undefined,
+          assigneeId: draft.assigneeId || undefined
+        })
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const created = (await response.json()) as TenderEntry;
+      setEntries((current) => current.map((row) => (row.id === optimisticId ? created : row)));
+      closeAdd();
+    } catch (err) {
+      setEntries((current) => current.filter((row) => row.id !== optimisticId));
+      setError((err as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [authFetch, closeAdd, draft, tenderId, user, users]);
 
   const toggleStatus = useCallback(
     async (entry: TenderEntry) => {
@@ -210,8 +330,7 @@ export function TenderEntriesPanel({ tenderId }: { tenderId: string }) {
           <button
             type="button"
             className="s7-btn s7-btn--primary s7-btn--sm"
-            disabled
-            title="Coming in Phase 6"
+            onClick={openAdd}
           >
             + Add entry
           </button>
@@ -243,6 +362,17 @@ export function TenderEntriesPanel({ tenderId }: { tenderId: string }) {
           })}
         </>
       )}
+
+      {addOpen ? (
+        <AddEntryModal
+          draft={draft}
+          users={users}
+          submitting={submitting}
+          onChange={setDraft}
+          onCancel={closeAdd}
+          onSubmit={submitAdd}
+        />
+      ) : null}
     </section>
   );
 }
@@ -497,6 +627,167 @@ function TabStrip({
           </button>
         );
       })}
+    </div>
+  );
+}
+
+function AddEntryModal({
+  draft,
+  users,
+  submitting,
+  onChange,
+  onCancel,
+  onSubmit
+}: {
+  draft: DraftEntry;
+  users: AssignableUser[];
+  submitting: boolean;
+  onChange: (next: DraftEntry) => void;
+  onCancel: () => void;
+  onSubmit: () => void;
+}) {
+  const needsDueDate = TYPES_NEEDING_DUE_DATE.has(draft.type);
+  const needsAssignee = draft.type === "task";
+  const bodyValid = draft.body.trim().length > 0;
+  const dueDateValid = !needsDueDate || !!draft.dueDate;
+  const assigneeValid = !needsAssignee || !!draft.assigneeId;
+  const canSubmit = !submitting && bodyValid && dueDateValid && assigneeValid;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Add entry"
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.45)",
+        zIndex: 70,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16
+      }}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onCancel();
+      }}
+    >
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (canSubmit) onSubmit();
+        }}
+        style={{
+          background: "#fff",
+          padding: 20,
+          borderRadius: 8,
+          width: "100%",
+          maxWidth: 520,
+          boxShadow: "0 12px 32px rgba(0,0,0,0.2)",
+          display: "flex",
+          flexDirection: "column",
+          gap: 12
+        }}
+      >
+        <h4 style={{ margin: 0 }}>New entry</h4>
+
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+          <span>Type</span>
+          <select
+            className="s7-select"
+            value={draft.type}
+            onChange={(event) =>
+              onChange({
+                ...draft,
+                type: event.target.value as TenderEntryType,
+                dueDate: TYPES_NEEDING_DUE_DATE.has(event.target.value as TenderEntryType)
+                  ? draft.dueDate
+                  : "",
+                assigneeId: event.target.value === "task" ? draft.assigneeId : ""
+              })
+            }
+          >
+            <option value="note">Note</option>
+            <option value="rfi">RFI</option>
+            <option value="email">Email</option>
+            <option value="call">Call</option>
+            <option value="meeting">Meeting</option>
+            <option value="follow_up">Follow-up</option>
+            <option value="self_reminder">Self-reminder</option>
+            <option value="task">Task</option>
+          </select>
+        </label>
+
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+          <span>Subject (optional)</span>
+          <input
+            className="s7-input"
+            value={draft.subject}
+            onChange={(event) => onChange({ ...draft, subject: event.target.value })}
+          />
+        </label>
+
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+          <span>Body</span>
+          <textarea
+            className="s7-input"
+            rows={4}
+            required
+            value={draft.body}
+            onChange={(event) => onChange({ ...draft, body: event.target.value })}
+          />
+        </label>
+
+        {needsDueDate ? (
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+            <span>Due date</span>
+            <input
+              className="s7-input"
+              type="date"
+              required
+              value={draft.dueDate}
+              onChange={(event) => onChange({ ...draft, dueDate: event.target.value })}
+            />
+          </label>
+        ) : null}
+
+        {needsAssignee ? (
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+            <span>Assignee</span>
+            <select
+              className="s7-select"
+              required
+              value={draft.assigneeId}
+              onChange={(event) => onChange({ ...draft, assigneeId: event.target.value })}
+            >
+              <option value="">Select a user…</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.firstName} {u.lastName}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <button
+            type="button"
+            className="s7-btn s7-btn--ghost"
+            onClick={onCancel}
+            disabled={submitting}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="s7-btn s7-btn--primary"
+            disabled={!canSubmit}
+          >
+            {submitting ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

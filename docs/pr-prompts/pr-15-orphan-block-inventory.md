@@ -46,13 +46,14 @@ the minimal cleanup plan.
 
 ### 2. "Recalculate" button — ALREADY GONE
 
-- `Grep` for `Recalculate` / `recalculate` across `apps/web/src/` returns
-  no matches. The only hits across the repo are inside `docs/` and
-  `progress.md` / `roadmap.md`. PR #255 (which made the cost summary
+- `Grep` for `Recalculate` / `recalculate` across `apps/` and `packages/`
+  returns no matches. The only hits across the repo are inside `docs/`
+  and `progress.md` / `roadmap.md`. PR #255 (which made the cost summary
   auto-recompute on input) appears to have removed the button at the
   same time it removed the manual trigger.
-- **No source change required for Phase 3.** Will document the no-op and
-  move on.
+- **Phase 3 outcome: no-op.** Re-verified after Phase 2: still zero
+  matches. The button does not need to be deleted because it no longer
+  exists. Owner will not see it in live verification.
 
 ### 3. Secondary tab strip (Cost Summary | Assumptions | Exclusions | T&C | Generate Quote) — ALREADY GONE
 

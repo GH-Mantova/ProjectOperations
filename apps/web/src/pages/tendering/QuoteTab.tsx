@@ -52,7 +52,6 @@ export function QuoteTab({
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showGenerate, setShowGenerate] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
 
   useEffect(() => {
     if (!toast) return;
@@ -62,52 +61,22 @@ export function QuoteTab({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      {!isEditing && (
-        <ClientQuotesPanel
-          tenderId={tenderId}
-          tenderClients={tender.tenderClients ?? []}
-          canManage={canManage}
-        />
-      )}
+      <ClientQuotesPanel
+        tenderId={tenderId}
+        tenderClients={tender.tenderClients ?? []}
+        canManage={canManage}
+      />
 
       {canManage && (
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          {isEditing ? (
-            <>
-              <button
-                type="button"
-                className="s7-btn s7-btn--ghost s7-btn--sm"
-                onClick={() => setIsEditing(false)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="s7-btn s7-btn--primary s7-btn--sm"
-                onClick={() => setIsEditing(false)}
-              >
-                Save
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                className="s7-btn s7-btn--ghost s7-btn--sm"
-                onClick={() => setIsEditing(true)}
-              >
-                Edit
-              </button>
-              <button
-                type="button"
-                className="s7-btn s7-btn--primary s7-btn--sm"
-                onClick={() => setShowGenerate((v) => !v)}
-                style={{ background: "#FEAA6D", borderColor: "#FEAA6D", color: "#000" }}
-              >
-                Generate Quote
-              </button>
-            </>
-          )}
+          <button
+            type="button"
+            className="s7-btn s7-btn--primary s7-btn--sm"
+            onClick={() => setShowGenerate((v) => !v)}
+            style={{ background: "#FEAA6D", borderColor: "#FEAA6D", color: "#000" }}
+          >
+            Generate Quote
+          </button>
         </div>
       )}
 

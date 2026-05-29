@@ -1,0 +1,10 @@
+{
+  "name": "@project-ops/pr-watcher",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Watches docs/pr-prompts/*-ready.md and runs each prompt headlessly via Claude Code. Zero dependencies.",
+  "scripts": {
+    "start": "node index.mjs"
+  }
+}

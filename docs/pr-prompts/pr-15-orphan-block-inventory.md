@@ -57,19 +57,22 @@ the minimal cleanup plan.
 
 ### 3. Secondary tab strip (Cost Summary | Assumptions | Exclusions | T&C | Generate Quote) — ALREADY GONE
 
-- The only `tabs.map(...)` call in `ClientQuotesPanel.tsx` is the
-  canonical one at line 699 (inside `QuoteEditor`). It iterates the
-  canonical 8-entry `tabs` array defined at lines 662-671: Cost Summary,
-  Scope items, Provisional Sums, Cost Options, Assumptions, Exclusions,
-  Terms & Conditions, Preview.
-- No `<nav>` wrapper or secondary tab buttons remain in
-  `ClientQuotesPanel.tsx` or `QuoteTab.tsx`.
+- The only `tabs.map(...)` call across `apps/web/src/pages/tendering/`
+  is the canonical one at line 699 of `ClientQuotesPanel.tsx` (inside
+  `QuoteEditor`). It iterates the canonical 8-entry `tabs` array defined
+  at lines 662-671: Cost Summary, Scope items, Provisional Sums, Cost
+  Options, Assumptions, Exclusions, Terms & Conditions, Preview.
+- The only `<nav>` wrappers nearby are in `TenderDetailPage.tsx` (the
+  outer Overview / Scope / Quote tab strip — out of scope) and an
+  unrelated one in `TenderingReportsPage.tsx`.
 - The "Generate Quote" affordance now lives as a header button in
-  `QuoteTab.tsx` (lines 101-108) and as the dedicated
-  `GenerateQuoteSection` (lines 295-444) that toggles via
-  `setShowGenerate`. No tab.
-- **No source change required for Phase 4 or for the "delete the
-  secondary tab strip" half of Phase 5.** Will document the no-op.
+  `QuoteTab.tsx` (post-Phase-2: lines 73-84) and as the dedicated
+  `GenerateQuoteSection` (lines 264-413 after Phase-2 line shift) that
+  toggles via `setShowGenerate`. No tab.
+- **Phase 4 outcome: no-op.** No secondary preview block exists to hide.
+  `QuoteEditor` is the single editor and only mounts when `selectedId
+  !== null` (line 355 of `ClientQuotesPanel.tsx`), so it is already gated
+  on a per-quote selection rather than the dropped `isEditing` flag.
 
 ## Removal plan per phase
 

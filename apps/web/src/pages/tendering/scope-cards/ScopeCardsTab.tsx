@@ -631,7 +631,7 @@ function CardHeaderSummary({
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "repeat(4, 1fr)",
+        gridTemplateColumns: "repeat(3, 1fr)",
         gap: 4,
         background: "var(--surface-muted, #F6F6F6)",
         borderRadius: "var(--radius-sm, 4px)",
@@ -643,7 +643,6 @@ function CardHeaderSummary({
       <div style={labelStyle}>Peak crew</div>
       <div style={labelStyle}>Labour days</div>
       <div style={labelStyle}>Plant</div>
-      <div style={labelStyle}>Duration (days)</div>
 
       <div style={valStyle}>
         <OverrideField
@@ -682,19 +681,6 @@ function CardHeaderSummary({
             autoText={plantText}
             autoLines={plantLines}
             onCommit={(v) => void onOverride({ plantSummaryOverride: v })}
-          />
-        </OverrideField>
-      </div>
-      <div style={valStyle}>
-        <OverrideField
-          isOverridden={overrides.durationOverride != null}
-          onRevert={() => void onOverride({ durationOverride: null })}
-          affordance
-        >
-          <EditableNum
-            value={overrides.durationOverride ?? computed.duration}
-            placeholder={String(computed.duration)}
-            onCommit={(v) => void onOverride({ durationOverride: v })}
           />
         </OverrideField>
       </div>

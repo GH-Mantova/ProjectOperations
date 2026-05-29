@@ -6,6 +6,8 @@ import { TenderingController } from "./tendering.controller";
 import { TenderingService } from "./tendering.service";
 import { TenderClientNotesController } from "./tender-client-notes.controller";
 import { TenderClientNotesService } from "./tender-client-notes.service";
+import { TenderEntriesController } from "./tender-entries.controller";
+import { TenderEntriesService } from "./tender-entries.service";
 import { TenderConvertController } from "./tender-convert.controller";
 import { ScopeOfWorksController } from "./scope-of-works.controller";
 import { ScopeOfWorksService } from "./scope-of-works.service";
@@ -27,6 +29,7 @@ import { ClarificationProposalsService } from "./scope/clarification-proposals.s
   controllers: [
     TenderingController,
     TenderClientNotesController,
+    TenderEntriesController,
     TenderConvertController,
     ScopeOfWorksController,
     ScopeRedesignController,
@@ -41,6 +44,7 @@ import { ClarificationProposalsService } from "./scope/clarification-proposals.s
   providers: [
     TenderingService,
     TenderClientNotesService,
+    TenderEntriesService,
     ScopeOfWorksService,
     ScopeRedesignService,
     ScopeWasteService,

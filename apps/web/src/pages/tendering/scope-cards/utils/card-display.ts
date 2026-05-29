@@ -58,21 +58,21 @@ export function pluraliseCategory(cat: string): string {
   return cat.endsWith("s") ? cat : cat + "s";
 }
 
+// One line per variant — singular category name because each line refers
+// to a single variant. `pluraliseCategory` is kept exported for other callers
+// but no longer used here.
 export function formatPlantSummary(
   groups: PlantSummaryGroup[]
 ): string[] {
   if (!groups || groups.length === 0) return ["—"];
   const lines: string[] = [];
   for (const group of groups) {
-    const label = pluraliseCategory(group.category);
-    const variants = group.items
-      .filter((it) => it.peakQty > 0)
-      .map((it) => {
-        const qtyDays = it.peakDays > 0 ? `${it.peakQty} × ${it.peakDays}d` : `×${it.peakQty}`;
-        return it.variant ? `${it.variant} ${qtyDays}` : qtyDays;
-      })
-      .join(" · ");
-    if (variants) lines.push(`${label}: ${variants}`);
+    for (const it of group.items) {
+      if (it.peakQty <= 0) continue;
+      const qtyDays = it.peakDays > 0 ? `${it.peakQty} × ${it.peakDays}d` : `×${it.peakQty}`;
+      const prefix = it.variant ? `${group.category} ${it.variant}` : group.category;
+      lines.push(`${prefix}: ${qtyDays}`);
+    }
   }
   return lines.length > 0 ? lines : ["—"];
 }

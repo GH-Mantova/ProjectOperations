@@ -1,6 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
+import { EmailService } from "../email/email.service";
+import { NotificationsService } from "../platform/notifications.service";
 
 export const TENDER_ENTRY_TYPES = [
   "note",
@@ -51,9 +53,13 @@ export type UpdateTenderEntryInput = {
 
 @Injectable()
 export class TenderEntriesService {
+  private readonly logger = new Logger(TenderEntriesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly notifications: NotificationsService,
+    private readonly email: EmailService
   ) {}
 
   async list(tenderId: string, query: ListTenderEntriesQuery) {
@@ -130,7 +136,82 @@ export class TenderEntriesService {
       metadata: { tenderId, type, hasAssignee: !!record.assigneeId }
     });
 
+    if (type === "task" && record.assigneeId && record.assigneeId !== actorId) {
+      await this.dispatchTaskAssignmentNotice(record, actorId);
+    }
+
     return record;
+  }
+
+  private async dispatchTaskAssignmentNotice(
+    record: {
+      id: string;
+      tenderId: string;
+      subject: string | null;
+      body: string;
+      dueDate: Date | null;
+      assigneeId: string | null;
+    },
+    actorId: string
+  ) {
+    if (!record.assigneeId) return;
+    try {
+      const [tender, assignee] = await Promise.all([
+        this.prisma.tender.findUnique({
+          where: { id: record.tenderId },
+          select: { id: true, tenderNumber: true, title: true }
+        }),
+        this.prisma.user.findUnique({
+          where: { id: record.assigneeId },
+          select: { id: true, email: true, firstName: true, lastName: true, isActive: true }
+        })
+      ]);
+      if (!tender || !assignee || !assignee.isActive) return;
+
+      const subjectLabel = record.subject?.trim() || "New task assigned";
+      const dueLabel = record.dueDate ? ` (due ${record.dueDate.toISOString().slice(0, 10)})` : "";
+      const linkUrl = `/tenders/${tender.id}`;
+      const notificationTitle = `New task on tender ${tender.tenderNumber}`;
+      const notificationBody = `${subjectLabel}${dueLabel} — ${record.body}`;
+
+      await this.notifications.create(
+        {
+          userId: assignee.id,
+          title: notificationTitle,
+          body: notificationBody,
+          severity: "MEDIUM",
+          linkUrl
+        },
+        actorId
+      );
+
+      const emailSubject = `[Project Ops] New task on tender ${tender.tenderNumber} — ${subjectLabel}`;
+      const emailText = [
+        `You have been assigned a task on tender ${tender.tenderNumber} (${tender.title}).`,
+        "",
+        `Subject: ${subjectLabel}`,
+        record.dueDate ? `Due: ${record.dueDate.toISOString().slice(0, 10)}` : "Due: (none)",
+        "",
+        record.body
+      ].join("\n");
+      const emailHtml = `
+        <p>You have been assigned a task on tender <strong>${tender.tenderNumber}</strong> — ${tender.title}.</p>
+        <p><strong>Subject:</strong> ${subjectLabel}<br/>
+        <strong>Due:</strong> ${record.dueDate ? record.dueDate.toISOString().slice(0, 10) : "(none)"}</p>
+        <p>${record.body.replace(/\n/g, "<br/>")}</p>
+      `;
+
+      const provider = await this.email.resolveProvider();
+      await provider.sendMail({
+        to: [assignee.email],
+        subject: emailSubject,
+        text: emailText,
+        html: emailHtml
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Task assignment notification failed for entry ${record.id}: ${message}`);
+    }
   }
 
   async update(tenderId: string, entryId: string, dto: UpdateTenderEntryInput, actorId: string) {

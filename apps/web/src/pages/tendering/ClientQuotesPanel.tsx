@@ -123,13 +123,11 @@ type EditorTab = "cost" | "scope" | "provisional" | "options" | "assumptions" | 
 export function ClientQuotesPanel({
   tenderId,
   tenderClients,
-  canManage,
-  onEditingChange
+  canManage
 }: {
   tenderId: string;
   tenderClients: TenderClientLite[];
   canManage: boolean;
-  onEditingChange?: (editing: boolean) => void;
 }) {
   const { authFetch } = useAuth();
   const [quotes, setQuotes] = useState<QuoteSummary[]>([]);
@@ -185,10 +183,6 @@ export function ClientQuotesPanel({
       setSummary(null);
     }
   }, [selectedId, loadOne]);
-
-  useEffect(() => {
-    onEditingChange?.(selectedId !== null);
-  }, [selectedId, onEditingChange]);
 
   const handleCancel = () => {
     setSelectedId(null);

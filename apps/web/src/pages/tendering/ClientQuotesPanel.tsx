@@ -134,6 +134,7 @@ export function ClientQuotesPanel({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
   const [full, setFull] = useState<FullQuote | null>(null);
   const [summary, setSummary] = useState<SummaryResult | null>(null);
   const [editorTab, setEditorTab] = useState<EditorTab>("cost");
@@ -184,7 +185,13 @@ export function ClientQuotesPanel({
     }
   }, [selectedId, loadOne]);
 
+  const handleEdit = (id: string) => {
+    setSelectedId(id);
+    setIsEditing(true);
+  };
+
   const handleCancel = () => {
+    setIsEditing(false);
     setSelectedId(null);
     setFull(null);
     setSummary(null);
@@ -200,6 +207,7 @@ export function ClientQuotesPanel({
         return;
       }
     }
+    setIsEditing(false);
     setSelectedId(null);
     setFull(null);
     setSummary(null);
@@ -227,6 +235,7 @@ export function ClientQuotesPanel({
       const created = (await res.json()) as FullQuote;
       await loadList();
       setSelectedId(created.id);
+      setIsEditing(true);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -277,6 +286,7 @@ export function ClientQuotesPanel({
       if (!res.ok) throw new Error(await res.text());
       setQuoteToDelete(null);
       if (selectedId === quoteToDelete.id) {
+        setIsEditing(false);
         setSelectedId(null);
         setFull(null);
         setSummary(null);
@@ -329,7 +339,9 @@ export function ClientQuotesPanel({
                 latest={latest}
                 older={older}
                 canManage={canManage}
+                isEditingLatest={!!latest && isEditing && selectedId === latest.id}
                 onSelect={setSelectedId}
+                onEdit={handleEdit}
                 onNewQuote={() => void createQuote(tc.client.id)}
                 onNewRevision={() =>
                   latest ? void createQuote(tc.client.id, latest.id) : void createQuote(tc.client.id)
@@ -340,6 +352,8 @@ export function ClientQuotesPanel({
                   setSendOpen(true);
                 }}
                 onDelete={setQuoteToDelete}
+                onSave={() => void handleSave()}
+                onCancel={handleCancel}
               />
             );
           })}
@@ -414,23 +428,31 @@ function ClientRow({
   latest,
   older,
   canManage,
+  isEditingLatest,
   onSelect,
+  onEdit,
   onNewQuote,
   onNewRevision,
   onDownload,
   onSend,
-  onDelete
+  onDelete,
+  onSave,
+  onCancel
 }: {
   tenderClient: TenderClientLite;
   latest: QuoteSummary | undefined;
   older: QuoteSummary[];
   canManage: boolean;
+  isEditingLatest: boolean;
   onSelect: (id: string) => void;
+  onEdit: (id: string) => void;
   onNewQuote: () => void;
   onNewRevision: () => void;
   onDownload: (q: QuoteSummary) => void;
   onSend: (q: QuoteSummary) => void;
   onDelete: (q: QuoteSummary) => void;
+  onSave: () => void;
+  onCancel: () => void;
 }) {
   const [expandOlder, setExpandOlder] = useState(false);
   return (
@@ -451,13 +473,33 @@ function ClientRow({
             {latest.sentAt ? (
               <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Sent {fmtDate(latest.sentAt)}</span>
             ) : null}
-            <button
-              type="button"
-              className="s7-btn s7-btn--ghost s7-btn--sm"
-              onClick={() => onSelect(latest.id)}
-            >
-              Edit
-            </button>
+            {isEditingLatest ? (
+              <>
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--primary s7-btn--sm"
+                  onClick={onSave}
+                  style={{ background: "#FEAA6D", borderColor: "#FEAA6D", color: "#000" }}
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--ghost s7-btn--sm"
+                  onClick={onCancel}
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="s7-btn s7-btn--ghost s7-btn--sm"
+                onClick={() => onEdit(latest.id)}
+              >
+                Edit
+              </button>
+            )}
             {canManage ? (
               <button
                 type="button"

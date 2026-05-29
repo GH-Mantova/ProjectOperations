@@ -46,6 +46,8 @@ model User {
   estimatedTenders           Tender[]                  @relation("TenderEstimator")
   tenderNotes                TenderNote[]              @relation("TenderNoteAuthor")
   tenderFollowUps            TenderFollowUp[]          @relation("TenderFollowUpAssignee")
+  tenderEntriesAuthored      TenderEntry[]             @relation("TenderEntryAuthor")
+  tenderEntriesAssigned      TenderEntry[]             @relation("TenderEntryAssignee")
   managedJobs                Job[]                     @relation("JobProjectManager")
   supervisedJobs             Job[]                     @relation("JobSupervisor")
   ownedActivities            JobActivity[]             @relation("JobActivityOwner")
@@ -721,6 +723,7 @@ model Tender {
   estimateExports    EstimateExport[]
   projects           Project[]
   clarificationNotes TenderClarificationNote[]
+  entries            TenderEntry[]
   cuttingSheetItems  CuttingSheetItem[]
   scopeViewConfigs   ScopeViewConfig[]
   tandC              TenderTandC?
@@ -816,6 +819,31 @@ model TenderFollowUp {
 
   @@index([tenderId, status])
   @@map("tender_follow_ups")
+}
+
+// PR #18 — unified communications panel. One table replaces the three
+// legacy Overview-tab feeds (Activity timeline / Clarifications &
+// Communications / Follow-ups). Legacy tables stay one release cycle
+// for safety; a follow-up PR drops them.
+model TenderEntry {
+  id         String    @id @default(cuid())
+  tenderId   String    @map("tender_id")
+  tender     Tender    @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  type       String    // 'note' | 'rfi' | 'email' | 'call' | 'meeting' | 'follow_up' | 'self_reminder' | 'task'
+  subject    String?
+  body       String
+  dueDate    DateTime? @map("due_date")
+  assigneeId String?   @map("assignee_id")
+  assignee   User?     @relation("TenderEntryAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  status     String    @default("open") // 'open' | 'done' | 'cancelled'
+  authorId   String    @map("author_id")
+  author     User      @relation("TenderEntryAuthor", fields: [authorId], references: [id])
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  @@index([tenderId, createdAt])
+  @@index([assigneeId, status])
+  @@map("tender_entries")
 }
 
 model TenderOutcome {

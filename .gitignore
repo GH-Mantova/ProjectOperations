@@ -52,3 +52,15 @@ apps/web/.tmp-smoke/
 Company Templates/
 company-templates/
 reference-templates/
+
+# PR-prompt watcher bookkeeping — never commit these.
+# The watcher creates and moves files between these folders to track state;
+# committing them causes phantom dirty trees on branch switches.
+docs/pr-prompts/*-ready.md
+docs/pr-prompts/processed/
+docs/pr-prompts/failed/
+docs/pr-prompts/paused/
+docs/pr-prompts/blocked/
+docs/pr-prompts/awaiting-review/
+docs/pr-prompts/reviewed/
+docs/pr-prompts/needs-marco/

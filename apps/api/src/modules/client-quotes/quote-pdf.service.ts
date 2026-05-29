@@ -89,14 +89,17 @@ export class QuotePdfService {
         })),
       costLines: quote.costLines
         .filter((l) => l.isVisible)
-        .map((l) => ({
-          id: l.id,
-          label: l.label,
-          description: l.description,
-          displayDescription: l.displayDescription,
-          price: toNum(l.price),
-          sortOrder: l.sortOrder
-        })),
+        .map((l) => {
+          const approp = summary.lineAppropriations.find((a) => a.lineId === l.id);
+          return {
+            id: l.id,
+            label: l.label,
+            description: l.description,
+            displayDescription: l.displayDescription,
+            price: approp ? approp.displayedAmount : toNum(l.price),
+            sortOrder: l.sortOrder
+          };
+        }),
       provisionalLines: quote.provisionalLines.map((l) => ({
         description: l.description,
         price: toNum(l.price),

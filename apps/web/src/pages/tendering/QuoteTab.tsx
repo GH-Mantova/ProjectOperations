@@ -179,9 +179,10 @@ export function TandCSection({
   const savePatch = useCallback(
     async (next: Clause[]) => {
       try {
+        const payloadClauses = next.map(({ isModified, ...rest }) => rest);
         const response = await authFetch(`/tenders/${tenderId}/tandc`, {
           method: "PATCH",
-          body: JSON.stringify({ clauses: next })
+          body: JSON.stringify({ clauses: payloadClauses })
         });
         if (!response.ok) throw new Error(await response.text());
         onToast("Saved");

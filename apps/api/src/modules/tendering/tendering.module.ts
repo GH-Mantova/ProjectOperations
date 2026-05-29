@@ -23,8 +23,6 @@ import { QuoteProposalsController } from "./scope/quote-proposals.controller";
 import { QuoteProposalsService } from "./scope/quote-proposals.service";
 import { ClarificationProposalsController } from "./scope/clarification-proposals.controller";
 import { ClarificationProposalsService } from "./scope/clarification-proposals.service";
-import { TenderEntriesController } from "./tender-entries.controller";
-import { TenderEntriesService } from "./tender-entries.service";
 
 @Module({
   imports: [AuditModule, PlatformModule, forwardRef(() => ProjectsModule)],
@@ -41,8 +39,7 @@ import { TenderEntriesService } from "./tender-entries.service";
     ProposalsController,
     EstimateProposalsController,
     QuoteProposalsController,
-    ClarificationProposalsController,
-    TenderEntriesController
+    ClarificationProposalsController
   ],
   providers: [
     TenderingService,
@@ -54,8 +51,7 @@ import { TenderEntriesService } from "./tender-entries.service";
     ProposalsService,
     EstimateProposalsService,
     QuoteProposalsService,
-    ClarificationProposalsService,
-    TenderEntriesService
+    ClarificationProposalsService
   ],
   exports: [
     TenderingService,

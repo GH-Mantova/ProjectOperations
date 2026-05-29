@@ -7,6 +7,7 @@ import { AddClientModal } from "./AddClientModal";
 import { TenderDocumentsPanel } from "./TenderDocumentsPanel";
 import { TenderClientNotesSection } from "./TenderClientNotesSection";
 import { TenderClarificationLog } from "./TenderClarificationLog";
+import { TenderEntriesPanel } from "./TenderEntriesPanel";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { ConvertToProjectModal } from "./ConvertToProjectModal";
 import { ScopeCardsTab } from "./scope-cards/ScopeCardsTab";
@@ -783,6 +784,8 @@ export function TenderDetailPage() {
                 </div>
               </section>
             ) : null}
+
+            <TenderEntriesPanel tenderId={tender.id} />
 
             <section className="s7-card">
               <div className="tender-detail__section-head">

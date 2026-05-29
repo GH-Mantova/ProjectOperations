@@ -62,21 +62,21 @@ describe("card-display utilities (PR B1.5)", () => {
   });
 
   describe("formatPlantSummary", () => {
-    it("renders variant with qty × days when peakDays > 0", () => {
+    it("renders one line per variant with singular category name", () => {
       const groups = [
         { category: "Excavator", items: [{ variant: "01T-03T (dry hire)", peakQty: 1, peakDays: 3 }] }
       ];
-      expect(formatPlantSummary(groups)).toEqual(["Excavators: 01T-03T (dry hire) 1 × 3d"]);
+      expect(formatPlantSummary(groups)).toEqual(["Excavator 01T-03T (dry hire): 1 × 3d"]);
     });
 
-    it("falls back to legacy ×qty format when peakDays is 0", () => {
+    it("renders variant-null entry without the variant token", () => {
       const groups = [
-        { category: "Bobcat", items: [{ variant: null, peakQty: 1, peakDays: 0 }] }
+        { category: "Truck", items: [{ variant: null, peakQty: 2, peakDays: 5 }] }
       ];
-      expect(formatPlantSummary(groups)).toEqual(["Bobcats: ×1"]);
+      expect(formatPlantSummary(groups)).toEqual(["Truck: 2 × 5d"]);
     });
 
-    it("joins multiple variants with dot-separator within category", () => {
+    it("produces one line per variant when a category has multiple variants", () => {
       const groups = [
         {
           category: "Excavator",
@@ -87,18 +87,37 @@ describe("card-display utilities (PR B1.5)", () => {
         }
       ];
       expect(formatPlantSummary(groups)).toEqual([
-        "Excavators: 01T-03T (dry hire) 1 × 3d · 16T-25T (wet hire) 1 × 2d"
+        "Excavator 01T-03T (dry hire): 1 × 3d",
+        "Excavator 16T-25T (wet hire): 1 × 2d"
       ]);
     });
 
-    it("returns multiple lines for multiple categories", () => {
+    it("preserves order and produces N lines across multiple categories", () => {
       const groups = [
-        { category: "Bobcat", items: [{ variant: null, peakQty: 1, peakDays: 5 }] },
-        { category: "Excavator", items: [{ variant: "01T-03T", peakQty: 2, peakDays: 3 }] }
+        {
+          category: "Excavator",
+          items: [
+            { variant: "01T-03T (dry hire)", peakQty: 1, peakDays: 3 },
+            { variant: "16T-25T (wet hire)", peakQty: 1, peakDays: 3 }
+          ]
+        },
+        { category: "Truck", items: [{ variant: null, peakQty: 2, peakDays: 5 }] }
       ];
       expect(formatPlantSummary(groups)).toEqual([
-        "Bobcats: 1 × 5d",
-        "Excavators: 01T-03T 2 × 3d"
+        "Excavator 01T-03T (dry hire): 1 × 3d",
+        "Excavator 16T-25T (wet hire): 1 × 3d",
+        "Truck: 2 × 5d"
+      ]);
+    });
+
+    it("falls back to ×qty format when peakDays is 0", () => {
+      const groups = [
+        { category: "Bobcat", items: [{ variant: null, peakQty: 1, peakDays: 0 }] },
+        { category: "Excavator", items: [{ variant: "01T-03T", peakQty: 2, peakDays: 0 }] }
+      ];
+      expect(formatPlantSummary(groups)).toEqual([
+        "Bobcat: ×1",
+        "Excavator 01T-03T: ×2"
       ]);
     });
 

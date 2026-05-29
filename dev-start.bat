@@ -38,21 +38,33 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM 4. Switch to main and pull latest
-echo.
-echo --- Switching to main and pulling latest ---
-git checkout main
-if errorlevel 1 (
-    echo Failed to checkout main. Resolve any conflicts and try again.
-    pause
-    exit /b 1
-)
+REM 4. Detect branch — switch to main + pull only if currently on main; otherwise just pull current branch
+for /f "tokens=*" %%i in ('git branch --show-current') do set CURRENT_BRANCH=%%i
 
-git pull
-if errorlevel 1 (
-    echo Failed to pull from origin/main. Check your network or git status.
-    pause
-    exit /b 1
+if "%CURRENT_BRANCH%"=="main" (
+    echo.
+    echo --- On main: pulling latest ---
+    git checkout main
+    if errorlevel 1 (
+        echo Failed to checkout main. Resolve any conflicts and try again.
+        pause
+        exit /b 1
+    )
+    git pull
+    if errorlevel 1 (
+        echo Failed to pull from origin/main. Check your network or git status.
+        pause
+        exit /b 1
+    )
+) else (
+    echo.
+    echo --- Staying on branch '%CURRENT_BRANCH%' ^(not main^); pulling latest ---
+    git pull
+    if errorlevel 1 (
+        echo Failed to pull. Check your network or git status.
+        pause
+        exit /b 1
+    )
 )
 
 REM 5. Verify postgres is running

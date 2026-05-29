@@ -329,6 +329,7 @@ export function ClientQuotesPanel({
                 latest={latest}
                 older={older}
                 canManage={canManage}
+                isEditingLatest={latest ? selectedId === latest.id : false}
                 onSelect={setSelectedId}
                 onNewQuote={() => void createQuote(tc.client.id)}
                 onNewRevision={() =>
@@ -340,6 +341,8 @@ export function ClientQuotesPanel({
                   setSendOpen(true);
                 }}
                 onDelete={setQuoteToDelete}
+                onSave={() => void handleSave()}
+                onCancel={handleCancel}
               />
             );
           })}
@@ -414,23 +417,29 @@ function ClientRow({
   latest,
   older,
   canManage,
+  isEditingLatest,
   onSelect,
   onNewQuote,
   onNewRevision,
   onDownload,
   onSend,
-  onDelete
+  onDelete,
+  onSave,
+  onCancel
 }: {
   tenderClient: TenderClientLite;
   latest: QuoteSummary | undefined;
   older: QuoteSummary[];
   canManage: boolean;
+  isEditingLatest: boolean;
   onSelect: (id: string) => void;
   onNewQuote: () => void;
   onNewRevision: () => void;
   onDownload: (q: QuoteSummary) => void;
   onSend: (q: QuoteSummary) => void;
   onDelete: (q: QuoteSummary) => void;
+  onSave: () => void;
+  onCancel: () => void;
 }) {
   const [expandOlder, setExpandOlder] = useState(false);
   return (
@@ -451,13 +460,33 @@ function ClientRow({
             {latest.sentAt ? (
               <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Sent {fmtDate(latest.sentAt)}</span>
             ) : null}
-            <button
-              type="button"
-              className="s7-btn s7-btn--ghost s7-btn--sm"
-              onClick={() => onSelect(latest.id)}
-            >
-              Edit
-            </button>
+            {isEditingLatest ? (
+              <>
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--primary s7-btn--sm"
+                  onClick={onSave}
+                  style={{ background: "#FEAA6D", borderColor: "#FEAA6D", color: "#000" }}
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--ghost s7-btn--sm"
+                  onClick={onCancel}
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="s7-btn s7-btn--ghost s7-btn--sm"
+                onClick={() => onSelect(latest.id)}
+              >
+                Edit
+              </button>
+            )}
             {canManage ? (
               <button
                 type="button"

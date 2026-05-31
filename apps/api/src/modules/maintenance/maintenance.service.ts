@@ -1,7 +1,13 @@
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import {
+  computeUtilisationRate,
+  hoursForShiftInRange,
+  workingHoursBetween
+} from "./asset-utilisation.helpers";
+import {
+  AssetUtilisationQueryDto,
   MaintenanceQueryDto,
   UpdateAssetStatusDto,
   UpsertBreakdownDto,
@@ -9,6 +15,16 @@ import {
   UpsertMaintenanceEventDto,
   UpsertMaintenancePlanDto
 } from "./dto/maintenance.dto";
+
+export interface AssetUtilisationRow {
+  assetId: string;
+  assetName: string;
+  category: string;
+  hoursAllocated: number;
+  hoursAvailable: number;
+  utilisationRate: number;
+  allocationCount: number;
+}
 
 const maintenanceAssetInclude = {
   category: true,
@@ -285,6 +301,80 @@ export class MaintenanceService {
       ...asset,
       maintenanceSummary: this.buildMaintenanceSummary(asset)
     };
+  }
+
+  // §7 plant/equipment utilisation reporting. Hours allocated come from
+  // ShiftAssetAssignment (the scheduler model that already tracks asset ↔
+  // shift links with startAt / endAt timestamps). Hours available is a
+  // pure calendar count of Mon-Fri × 8h between from/to UTC. ProjectAllocation
+  // is intentionally not used here — its start/end are calendar days not
+  // hours, and the scheduler is the system of record for actual asset time.
+  async assetUtilisation(query: AssetUtilisationQueryDto): Promise<AssetUtilisationRow[]> {
+    const rangeStart = new Date(query.from);
+    const rangeEnd = new Date(query.to);
+
+    if (Number.isNaN(rangeStart.getTime()) || Number.isNaN(rangeEnd.getTime())) {
+      throw new BadRequestException("Invalid from/to date.");
+    }
+
+    // Normalise to UTC day bounds so single-day queries (from == to) include
+    // every shift that lands on that day. Matches the payroll-export pattern.
+    rangeStart.setUTCHours(0, 0, 0, 0);
+    rangeEnd.setUTCHours(23, 59, 59, 999);
+
+    if (rangeEnd < rangeStart) {
+      throw new BadRequestException("`to` must be on or after `from`.");
+    }
+
+    const assetWhere = {
+      ...(query.assetId ? { id: query.assetId } : {}),
+      ...(query.category ? { category: { name: query.category } } : {})
+    };
+
+    const assets = await this.prisma.asset.findMany({
+      where: assetWhere,
+      include: {
+        category: true,
+        shiftAssignments: {
+          where: {
+            shift: {
+              startAt: { lt: rangeEnd },
+              endAt: { gt: rangeStart }
+            }
+          },
+          include: {
+            shift: { select: { id: true, startAt: true, endAt: true } }
+          }
+        }
+      }
+    });
+
+    const hoursAvailable = workingHoursBetween(rangeStart, rangeEnd);
+
+    const rows: AssetUtilisationRow[] = assets.map((asset) => {
+      const hoursAllocated = asset.shiftAssignments.reduce(
+        (sum, assignment) =>
+          sum + hoursForShiftInRange(assignment.shift.startAt, assignment.shift.endAt, rangeStart, rangeEnd),
+        0
+      );
+
+      return {
+        assetId: asset.id,
+        assetName: asset.name,
+        category: asset.category?.name ?? "Uncategorised",
+        hoursAllocated: Math.round(hoursAllocated * 100) / 100,
+        hoursAvailable,
+        utilisationRate: computeUtilisationRate(hoursAllocated, hoursAvailable),
+        allocationCount: asset.shiftAssignments.length
+      };
+    });
+
+    rows.sort((a, b) => {
+      if (b.utilisationRate !== a.utilisationRate) return b.utilisationRate - a.utilisationRate;
+      return a.assetName.localeCompare(b.assetName);
+    });
+
+    return rows;
   }
 
   private buildMaintenanceSummary(asset: {

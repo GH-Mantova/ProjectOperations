@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-05-27 03:26 AEST
+Last updated: 2026-05-31 21:32 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -427,13 +427,15 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
    Works tabs (hidden on Quote). Writes through to the same
    `TenderAssumption` / `TenderExclusion` data; size persists per user.
 
-🔲 PR D — Tendering: unified communications panel
-   Replace the separate Activity timeline + Clarifications & Communications +
+✅ PR D — Tendering: unified communications panel — PR #260 (2026-05-29)
+   Replaced the separate Activity timeline + Clarifications & Communications +
    Follow-ups panels with one `TenderEntry`-backed panel. Type dropdown
    (Note / RFI / Email / Call / Meeting / Follow-up / Self-reminder / Task)
-   drives conditional fields (due date, assignee, status). Task assignment
-   to non-field users with both in-app + email notifications. Legacy tables
-   stay one release cycle then drop in a follow-up PR.
+   drives conditional fields (due date, assignee, status). Task-assignment
+   notification scaffolding shipped (in-app + email hooks); full delivery
+   wired in a follow-up. Legacy tables retained one release cycle then
+   dropped in a follow-up PR. Idempotent backfill migration copies historical
+   rows from the legacy tables on first deploy.
 
 🔲 Tendering module signed off by Raj + Sean
    → Gate: nothing in Phase 6+ starts until this sign-off is received
@@ -1601,6 +1603,37 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
 ---
 
 ## CHANGELOG
+
+### 2026-05-29 — §5A PR D shipped: unified communications panel (PR #260)
+Replaced the three Overview-tab panels (Activity timeline, Clarifications &
+Communications, Follow-ups) with a single unified "Activity & communications"
+panel backed by a new `TenderEntry` table. Schema + idempotent backfill
+migration + CRUD API (Swagger + class-validator DTOs) + frontend
+`TenderEntriesPanel` with Feed/Tabs toggle and filter chips + add-entry
+modal with type-conditional fields + task-assignment notification
+scaffolding. Legacy tables (`TenderActivity`, `TenderClarification*`,
+`TenderFollowUp`) retained one release cycle then dropped in a follow-up.
+Closes the §5A "PR D" roadmap slot. Owner-verified live on 2026-05-29.
+
+### 2026-05-29 — Scope of Works: remove redundant Duration field from card header (PR #259)
+Dropped the standalone "Duration (days)" field from the discipline card
+header. The per-variant Plant lines (PR #258) already convey duration
+alongside qty/equipment, so the separate Duration column was visual noise
+and contributed to header crowding. Server-side `duration` calculation
+preserved on the data model — presentation-only change.
+
+### 2026-05-29 — Plant summary: one line per variant (PR #258)
+`formatPlantSummary` was joining per-variant plant entries with " · " into
+a single line, packing multiple variants onto one row. Switched to emitting
+one line per variant so each variant reads cleanly on its own row in the
+card-header summary and Plant cluster cells.
+
+### 2026-05-29 — Quote edit: restore Save/Cancel buttons (PR #257)
+Restored the Save/Cancel button swap on the Quote versions row that was
+lost in PR #256. PR-252 Phase 5 surfaced Save/Cancel inline next to the
+version chips; PR #256 regressed that surface. This PR re-applies the
+original handlers and conditional rendering so the buttons appear when a
+version is being edited and disappear after Save or Cancel.
 
 ### 2026-05-27 — Dev tooling: harden dev-start.bat (PR #233)
 Replaced the dirty-tree warning-then-continue block with a fail-fast guard

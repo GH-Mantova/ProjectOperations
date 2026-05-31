@@ -3,6 +3,10 @@ import { Cron } from "@nestjs/schedule";
 import { PrismaService } from "../../prisma/prisma.service";
 import { NotificationsService } from "../platform/notifications.service";
 import { EmailService } from "../email/email.service";
+import {
+  CompetencyGateResult,
+  checkCompetencyGate
+} from "./competency-gate";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -403,6 +407,21 @@ export class ComplianceService {
     if (!existing) throw new NotFoundException("Qualification not found.");
     await this.prisma.workerQualification.delete({ where: { id: qualId } });
     return { id: qualId };
+  }
+
+  // ─── Competency gate (read-only, roadmap §7) ───────────────────────────
+  // Helper-backed read endpoint. Does NOT mutate any allocation today —
+  // wiring this into AllocationsService is a deliberate next PR.
+  async checkWorkerCompetency(
+    workerProfileId: string,
+    requiredQualTypes: string[]
+  ): Promise<CompetencyGateResult> {
+    await this.requireWorker(workerProfileId);
+    const quals = await this.prisma.workerQualification.findMany({
+      where: { workerProfileId },
+      select: { qualType: true, expiryDate: true }
+    });
+    return checkCompetencyGate(quals, requiredQualTypes);
   }
 
   // ─── Helpers ────────────────────────────────────────────────────────────

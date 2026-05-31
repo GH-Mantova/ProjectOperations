@@ -2,13 +2,14 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Param,
   Patch,
   Post,
   Query,
   UseGuards
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiProduces, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
@@ -19,6 +20,7 @@ import {
   CreateTimesheetDto,
   FieldListQueryDto,
   ManageTimesheetQueryDto,
+  PayrollExportQueryDto,
   RejectTimesheetDto,
   TimesheetSummaryQueryDto,
   UpdatePreStartDto,
@@ -128,6 +130,23 @@ export class FieldController {
   })
   listAllTimesheets(@Query() query: ManageTimesheetQueryDto) {
     return this.service.listAllTimesheets(query);
+  }
+
+  @Get("timesheets/payroll-export.csv")
+  @RequirePermissions("field.manage")
+  @Header("Content-Type", "text/csv; charset=utf-8")
+  @Header("Content-Disposition", "attachment; filename=\"approved-timesheets.csv\"")
+  @ApiOperation({
+    summary:
+      "Approved timesheets in a date range as RFC 4180 CSV for payroll. Header row + one row per approved timesheet, sorted by worker_name ASC then date ASC."
+  })
+  @ApiProduces("text/csv")
+  @ApiQuery({ name: "from", required: true, type: String, description: "ISO date (inclusive)." })
+  @ApiQuery({ name: "to", required: true, type: String, description: "ISO date (inclusive)." })
+  @ApiResponse({ status: 200, description: "CSV payload." })
+  @ApiResponse({ status: 400, description: "from / to missing, invalid, or inverted." })
+  payrollExport(@Query() query: PayrollExportQueryDto) {
+    return this.service.getPayrollExportCsv(query);
   }
 
   @Get("timesheets/summary")

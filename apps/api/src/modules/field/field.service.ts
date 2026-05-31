@@ -14,11 +14,18 @@ import {
   CreateTimesheetDto,
   FieldListQueryDto,
   ManageTimesheetQueryDto,
+  PayrollExportQueryDto,
   RejectTimesheetDto,
   TimesheetSummaryQueryDto,
   UpdatePreStartDto,
   UpdateTimesheetDto
 } from "./dto/field.dto";
+import {
+  formatIsoDate,
+  renderPayrollCsv,
+  truncateNotes,
+  type PayrollCsvRow
+} from "./payroll-csv.helpers";
 
 type ActorContext = { userId: string; permissions: Set<string> };
 
@@ -918,6 +925,54 @@ export class FieldService {
     }
 
     return { approved: approved.length, timesheets: approved };
+  }
+
+  // §7 payroll export — read-only CSV of APPROVED timesheets in [from, to]
+  // (inclusive). Amy downloads this for the payroll system. WorkerProfile
+  // has no payroll-specific employee_id field today, so worker_employee_id
+  // falls back to the WorkerProfile UUID — a future column rename will be
+  // the right home if/when payroll IDs land in the schema.
+  async getPayrollExportCsv(query: PayrollExportQueryDto): Promise<string> {
+    const from = new Date(query.from);
+    const to = new Date(query.to);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+      throw new BadRequestException("from and to must be valid ISO dates.");
+    }
+    if (from > to) {
+      throw new BadRequestException("from must be on or before to.");
+    }
+    // Make the upper bound inclusive of the entire day so callers can pass
+    // the same calendar value for from/to to fetch a single day.
+    const toInclusive = new Date(to);
+    toInclusive.setUTCHours(23, 59, 59, 999);
+
+    const rows = await this.prisma.timesheet.findMany({
+      where: {
+        status: "APPROVED",
+        date: { gte: from, lte: toInclusive }
+      },
+      include: {
+        workerProfile: { select: { id: true, firstName: true, lastName: true } },
+        project: { select: { projectNumber: true } }
+      }
+    });
+
+    const mapped: (PayrollCsvRow & { sortKey: string })[] = rows.map((row) => {
+      const workerName = `${row.workerProfile.firstName} ${row.workerProfile.lastName}`.trim();
+      return {
+        workerName,
+        workerEmployeeId: row.workerProfile.id,
+        date: formatIsoDate(row.date),
+        jobRef: row.project.projectNumber,
+        regularHours: row.hoursWorked.toString(),
+        notes: truncateNotes(row.description),
+        sortKey: `${workerName.toLowerCase()} ${row.date.toISOString()}`
+      };
+    });
+
+    mapped.sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0));
+
+    return renderPayrollCsv(mapped.map(({ sortKey: _sortKey, ...rest }) => rest));
   }
 
   private serialiseManagedTimesheet = (t: {

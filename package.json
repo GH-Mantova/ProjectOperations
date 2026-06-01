@@ -23,7 +23,8 @@
     "prisma:generate": "pnpm --filter @project-ops/api prisma:generate",
     "prisma:migrate": "pnpm --filter @project-ops/api prisma:migrate",
     "seed": "pnpm --filter @project-ops/api seed",
-    "compliance:smoke": "pnpm --filter @project-ops/api compliance:smoke"
+    "compliance:smoke": "pnpm --filter @project-ops/api compliance:smoke",
+    "pr:watch": "node scripts/pr-watcher/index.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",

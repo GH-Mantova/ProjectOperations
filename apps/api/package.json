@@ -13,7 +13,8 @@
     "compliance:smoke": "ts-node --transpile-only scripts/compliance-smoke.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "seed": "tsx prisma/seed.ts"
+    "seed": "tsx prisma/seed.ts",
+    "xero:import-contacts": "tsx scripts/xero-import-contacts.ts"
   },
   "dependencies": {
     "@azure/identity": "^4.13.1",

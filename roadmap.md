@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-06-01 03:04 AEST
+Last updated: 2026-06-01 06:50 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -2336,3 +2336,16 @@ to the header template, removes the hard page-break before Scope of
 Works (eliminating ~80% blank page), and fixes stray ")" appended to
 cost summary and cost option labels.
 
+
+### 2026-06-01 — §4 Xero contacts CSV importer (one-shot CLI)
+
+Companion tooling for PR #277's Xero schema alignment. New
+`apps/api/scripts/xero-import-contacts.ts` (runner
+`pnpm xero:import-contacts`) reads Marco's two Xero exports
+(`Contacts Customers.csv`, `Contacts Suppliers.csv`) and
+upserts into `Client` / `SubcontractorSupplier` / `Contact`.
+Dry-run by default; `--commit` to write. Idempotent by
+`xeroContactId` or exact trimmed `name`. Inline RFC 4180
+parser — no new dep. 25 unit tests on the pure helpers.
+The script is one-shot — not part of the normal startup
+path and not exposed in the UI.

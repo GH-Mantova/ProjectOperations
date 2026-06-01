@@ -16,4 +16,5 @@ export const PAYMENT_TERMS_TYPES = [
   "DAY_OF_FOLLOWING_MONTH"
 ] as const;
 
+/** Union of the four payment-terms vocabulary values; derived from {@link PAYMENT_TERMS_TYPES}. */
 export type PaymentTermsType = (typeof PAYMENT_TERMS_TYPES)[number];

@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-06-01 03:04 AEST
+Last updated: 2026-06-01 06:50 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -7419,3 +7419,46 @@ Detail: Two bookkeeping changes bundled:
      watcher state never leaks into commits.
   No new dependencies. No new env vars. No schema migration.
 Status: COMPLETE (merged) — infra-only, no live verification needed
+
+## 2026-06-01 — PR feat/xero-contacts-importer OPENED
+Type: Tooling (§4 Integrations — Xero contact CSV importer)
+Branch: feat/xero-contacts-importer
+Detail: One-shot CLI script (`apps/api/scripts/xero-import-contacts.ts`,
+  runner `pnpm xero:import-contacts`) that reads Marco's two Xero
+  exports — `Contacts Customers.csv` (102 rows) and
+  `Contacts Suppliers.csv` (658 rows) — and upserts into the
+  `Client` / `SubcontractorSupplier` / `Contact` tables aligned
+  by PR #277 (Xero schema alignment).
+
+  Dry-run by default: classifies every row as CREATE / UPDATE /
+  NO_CHANGE / SKIPPED, writes a markdown report
+  (`apps/api/scripts/xero-import-report.md`, gitignored), and
+  exits without touching the database. Only `--commit` persists.
+  Idempotent: match on `xeroContactId` if set, otherwise exact
+  trimmed `name`; re-runs on the same input produce no further
+  changes.
+
+  Column mapping follows the triage already applied in PR #277
+  (legalName, country, paymentTermsDay, paymentTermsType,
+  postal/physical addresses, bank BSB + account split, plus
+  Person1–4 → polymorphic `Contact` rows with
+  `includeInInvoiceEmails`). Inline RFC 4180 parser — no CSV
+  dependency added. 25 Jest unit tests cover `parseBankNumber`
+  (concatenated digits, hyphen separator, malformed), `mapTerm`
+  (4 Xero terms → our enum + null fallback), `mapXeroRow`
+  (full row mapping, defaults, skip-on-blank, warning surfacing),
+  `extractPersons` (slot skipping, Person5 ignored), and
+  `parseCsv` (BOM, quoted commas, escaped quotes).
+
+  Verified locally: `pnpm --filter @project-ops/api build`,
+  `pnpm lint`, `pnpm --filter @project-ops/api test:serial --
+  xero-import-contacts` (25 passing), and an end-to-end dry-run
+  against the real CSVs on an empty DB reports
+  customers={CREATE:102}, suppliers={CREATE:658},
+  contacts={CREATE:29}.
+
+  No new dependencies. No new env vars. No schema migration —
+  PR #277 is the source of truth for fields. Marker file
+  `apps/api/scripts/xero-import-report.md` added to .gitignore.
+Status: OPEN — do NOT auto-merge; Marco reviews report then runs
+  `--commit` manually before merging.

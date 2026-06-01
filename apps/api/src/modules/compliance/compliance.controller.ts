@@ -37,6 +37,10 @@ class ExpiringQuery {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(90) days?: number;
 }
 
+class CompetencyCheckQuery {
+  @IsString() requiredQuals!: string;
+}
+
 @ApiTags("Compliance")
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -102,6 +106,34 @@ export class ComplianceController {
     @Param("qualId") qualId: string
   ) {
     return this.service.deleteQualification(workerProfileId, qualId);
+  }
+
+  // ─── Competency gate (read-only) ────────────────────────────────────────
+  // Roadmap §7. Does NOT block any allocation today — wiring to follow.
+  @Get("workers/:workerId/competency-check")
+  @RequirePermissions("compliance.view")
+  @ApiOperation({
+    summary:
+      "Check whether a worker meets a required qualification set. Read-only — does NOT block allocations."
+  })
+  @ApiQuery({
+    name: "requiredQuals",
+    required: true,
+    description: "Comma-separated qualType codes, e.g. 'asbestos_b,working_at_heights'."
+  })
+  @ApiResponse({ status: 200, description: "CompetencyGateResult — allowed flag plus missing/expired/expiringSoon arrays." })
+  competencyCheck(
+    @Param("workerId") workerId: string,
+    @Query() q: CompetencyCheckQuery
+  ) {
+    const requiredQualTypes = (q.requiredQuals ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    if (requiredQualTypes.length === 0) {
+      throw new BadRequestException("requiredQuals must contain at least one qualType code.");
+    }
+    return this.service.checkWorkerCompetency(workerId, requiredQualTypes);
   }
 
   // ─── Alerts + manual block ──────────────────────────────────────────────

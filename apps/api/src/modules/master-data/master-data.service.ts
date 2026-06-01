@@ -15,6 +15,15 @@ import {
   UpsertWorkerDto
 } from "./dto/master-data.dto";
 
+/**
+ * Service layer for the master-data module — clients, contacts, sites,
+ * resource types, competencies, workers, crews, assets, worker-competencies,
+ * and lookup values.
+ *
+ * Every `upsert*` method writes an entry via {@link AuditService} so that
+ * record-level changes are attributable to an actor. List methods share a
+ * common pagination helper and accept the same `q` text-search query DTO.
+ */
 @Injectable()
 export class MasterDataService {
   constructor(
@@ -22,6 +31,16 @@ export class MasterDataService {
     private readonly auditService: AuditService
   ) {}
 
+  /**
+   * Paginated list of clients, with each client's sites and claim-reminder user included.
+   *
+   * Polymorphic contacts are hydrated in a follow-up query and attached as
+   * `client.contacts` so callers that relied on the old Client.contacts reverse
+   * relation (before contacts became polymorphic on organisationType/organisationId)
+   * keep working unchanged.
+   *
+   * @param query Pagination + optional `q` substring matched against `name` (case-insensitive).
+   */
   async listClients(query: MasterDataQueryDto) {
     const result = await this.paginate(query, () =>
       this.prisma.client.findMany({
@@ -53,6 +72,18 @@ export class MasterDataService {
     return result;
   }
 
+  /**
+   * Create a client (when `id` is undefined) or update one in place.
+   *
+   * Enforces unique client `name` and the Xero `paymentTermsDay` / `paymentTermsType`
+   * pair invariant (see {@link assertPaymentTermsPair}). Writes an audit entry on success.
+   *
+   * @param id Client id to update, or `undefined` to create a new client.
+   * @param dto Full or partial client payload (PATCH semantics on update).
+   * @param actorId User id recorded against the audit entry.
+   * @throws ConflictException When another client already uses `dto.name`.
+   * @throws BadRequestException When the payment-terms pair is partially specified.
+   */
   async upsertClient(id: string | undefined, dto: UpsertClientDto, actorId?: string) {
     await this.ensureUniqueName("client", dto.name, id);
     this.assertPaymentTermsPair(dto);
@@ -63,6 +94,14 @@ export class MasterDataService {
     return record;
   }
 
+  /**
+   * Paginated list of CLIENT-owned contacts, optionally filtered to one client.
+   *
+   * Contact is a polymorphic table (organisationType + organisationId); this
+   * method scopes to `organisationType = "CLIENT"` and hydrates a small client
+   * summary (`id`, `name`, `code`, `status`) onto each row so callers keep the
+   * legacy `contact.client` shape. Search matches first/last name (case-insensitive).
+   */
   async listContacts(query: MasterDataQueryDto & { clientId?: string }) {
     const searchClause = query.q
       ? [
@@ -98,6 +137,19 @@ export class MasterDataService {
     return result;
   }
 
+  /**
+   * Create or update a CLIENT-owned contact and write an audit entry.
+   *
+   * On create, the contact is anchored to `dto.clientId` via the polymorphic
+   * organisationType/organisationId key. The deprecated `dto.position` field
+   * is mapped to `role` if `dto.role` is not supplied.
+   *
+   * `includeInInvoiceEmails` is only written when explicitly present in the
+   * DTO so PATCH bodies that omit the key do not overwrite the stored value.
+   *
+   * @param id Contact id to update, or `undefined` to create a new contact.
+   * @param actorId Recorded both as the audit actor and (on create) as `createdById`.
+   */
   async upsertContact(id: string | undefined, dto: UpsertContactDto, actorId?: string) {
     const baseData = {
       firstName: dto.firstName,
@@ -135,6 +187,10 @@ export class MasterDataService {
     return record;
   }
 
+  /**
+   * Paginated list of sites with each site's owning client included.
+   * Search matches `name` (case-insensitive).
+   */
   async listSites(query: MasterDataQueryDto) {
     return this.paginate(query, () =>
       this.prisma.site.findMany({
@@ -149,6 +205,12 @@ export class MasterDataService {
     );
   }
 
+  /**
+   * Create or update a site. Enforces unique site `name` and writes an audit entry.
+   *
+   * @param id Site id to update, or `undefined` to create a new site.
+   * @throws ConflictException When another site already uses `dto.name`.
+   */
   async upsertSite(id: string | undefined, dto: UpsertSiteDto, actorId?: string) {
     await this.ensureUniqueName("site", dto.name, id);
     const record = id
@@ -158,11 +220,19 @@ export class MasterDataService {
     return record;
   }
 
-  // PR E FIX 1 — return a site with its linked tenders + projects so the
-  // detail page can render both lists. Linked tenders use the new siteId
-  // FK plus a soft suburb match for legacy tenders that pre-date the FK.
-  // Projects are reached via tender.projects so we get both sources in
-  // a single query and de-dup downstream.
+  /**
+   * Return one site with its linked tenders (up to 50, newest first) and the
+   * de-duplicated projects reached through those tenders, or `null` if the
+   * site does not exist.
+   *
+   * Tenders are matched either by the new `siteId` FK or — for legacy tenders
+   * that pre-date the FK — by a case-insensitive substring match of the site's
+   * suburb in `tender.notes`. Projects come from `tender.projects` and are
+   * unioned across all matching tenders, so the same project appears once even
+   * when reachable via multiple tenders.
+   *
+   * @returns The site augmented with `tenders` and `projects`, or `null` when not found.
+   */
   async getSite(id: string) {
     const site = await this.prisma.site.findUnique({
       where: { id },
@@ -198,6 +268,9 @@ export class MasterDataService {
     };
   }
 
+  /**
+   * Paginated list of resource types. Search matches `name` (case-insensitive).
+   */
   async listResourceTypes(query: MasterDataQueryDto) {
     return this.paginate(query, () =>
       this.prisma.resourceType.findMany({
@@ -211,6 +284,10 @@ export class MasterDataService {
     );
   }
 
+  /**
+   * Create or update a resource type and write an audit entry.
+   * @param id Resource-type id to update, or `undefined` to create.
+   */
   async upsertResourceType(id: string | undefined, dto: UpsertResourceTypeDto, actorId?: string) {
     const record = id
       ? await this.prisma.resourceType.update({ where: { id }, data: dto })
@@ -219,6 +296,10 @@ export class MasterDataService {
     return record;
   }
 
+  /**
+   * Paginated list of competencies with their worker-competency assignments included.
+   * Search matches `name` (case-insensitive).
+   */
   async listCompetencies(query: MasterDataQueryDto) {
     return this.paginate(query, () =>
       this.prisma.competency.findMany({
@@ -233,6 +314,10 @@ export class MasterDataService {
     );
   }
 
+  /**
+   * Create or update a competency definition and write an audit entry.
+   * @param id Competency id to update, or `undefined` to create.
+   */
   async upsertCompetency(id: string | undefined, dto: UpsertCompetencyDto, actorId?: string) {
     const record = id
       ? await this.prisma.competency.update({ where: { id }, data: dto })
@@ -241,6 +326,10 @@ export class MasterDataService {
     return record;
   }
 
+  /**
+   * Paginated list of workers with their resource type and competency assignments.
+   * Search matches `firstName`, `lastName`, or `employeeCode` (case-insensitive).
+   */
   async listWorkers(query: MasterDataQueryDto) {
     return this.paginate(query, () =>
       this.prisma.worker.findMany({
@@ -271,6 +360,10 @@ export class MasterDataService {
     );
   }
 
+  /**
+   * Create or update a worker record and write an audit entry.
+   * @param id Worker id to update, or `undefined` to create.
+   */
   async upsertWorker(id: string | undefined, dto: UpsertWorkerDto, actorId?: string) {
     const record = id
       ? await this.prisma.worker.update({ where: { id }, data: dto })
@@ -279,6 +372,10 @@ export class MasterDataService {
     return record;
   }
 
+  /**
+   * Paginated list of crews with their members (each `CrewWorker` joined to its `Worker`).
+   * Search matches crew `name` (case-insensitive).
+   */
   async listCrews(query: MasterDataQueryDto) {
     return this.paginate(query, () =>
       this.prisma.crew.findMany({
@@ -293,6 +390,17 @@ export class MasterDataService {
     );
   }
 
+  /**
+   * Create or update a crew and (optionally) replace its member list wholesale.
+   *
+   * When `dto.workerIds` is supplied, existing `CrewWorker` rows for this crew
+   * are deleted and recreated to match — pass `[]` to remove every member, or
+   * omit `workerIds` to leave the membership untouched. Unique-name enforcement
+   * only runs on create (renaming an existing crew is allowed). Writes an audit entry.
+   *
+   * @param id Crew id to update, or `undefined` to create.
+   * @throws ConflictException When creating a crew whose `name` already exists.
+   */
   async upsertCrew(id: string | undefined, dto: UpsertCrewDto, actorId?: string) {
     if (!id) {
       await this.ensureUniqueName("crew", dto.name);
@@ -329,6 +437,10 @@ export class MasterDataService {
     return record;
   }
 
+  /**
+   * Paginated list of assets with their resource type included.
+   * Search matches `name` or `assetCode` (case-insensitive).
+   */
   async listAssets(query: MasterDataQueryDto) {
     return this.paginate(query, () =>
       this.prisma.asset.findMany({
@@ -357,6 +469,10 @@ export class MasterDataService {
     );
   }
 
+  /**
+   * Create or update an asset and write an audit entry.
+   * @param id Asset id to update, or `undefined` to create.
+   */
   async upsertAsset(id: string | undefined, dto: UpsertAssetDto, actorId?: string) {
     const record = id
       ? await this.prisma.asset.update({ where: { id }, data: dto })
@@ -365,6 +481,11 @@ export class MasterDataService {
     return record;
   }
 
+  /**
+   * Paginated list of worker-competency assignments, newest first.
+   * Search matches the joined worker's first/last name or the competency name
+   * (case-insensitive).
+   */
   async listWorkerCompetencies(query: MasterDataQueryDto) {
     return this.paginate(query, () =>
       this.prisma.workerCompetency.findMany({
@@ -395,6 +516,15 @@ export class MasterDataService {
     );
   }
 
+  /**
+   * Create or update a worker-competency assignment and write an audit entry.
+   *
+   * `achievedAt` and `expiresAt` arrive as ISO date strings on the DTO and are
+   * coerced to `Date` here so the underlying Prisma timestamp columns receive
+   * the correct type.
+   *
+   * @param id Worker-competency id to update, or `undefined` to create.
+   */
   async upsertWorkerCompetency(id: string | undefined, dto: UpsertWorkerCompetencyDto, actorId?: string) {
     const data = {
       workerId: dto.workerId,
@@ -411,6 +541,10 @@ export class MasterDataService {
     return record;
   }
 
+  /**
+   * Paginated list of lookup values ordered by `category` then `sortOrder`.
+   * Search matches `category`, `key`, or `value` (case-insensitive).
+   */
   async listLookupValues(query: MasterDataQueryDto) {
     return this.paginate(query, () =>
       this.prisma.lookupValue.findMany({
@@ -440,6 +574,10 @@ export class MasterDataService {
     );
   }
 
+  /**
+   * Create or update a lookup-value row and write an audit entry.
+   * @param id Lookup-value id to update, or `undefined` to create.
+   */
   async upsertLookupValue(id: string | undefined, dto: UpsertLookupValueDto, actorId?: string) {
     const record = id
       ? await this.prisma.lookupValue.update({ where: { id }, data: dto })

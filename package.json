@@ -24,6 +24,7 @@
     "prisma:migrate": "pnpm --filter @project-ops/api prisma:migrate",
     "seed": "pnpm --filter @project-ops/api seed",
     "compliance:smoke": "pnpm --filter @project-ops/api compliance:smoke",
+    "xero:import-contacts": "pnpm --filter @project-ops/api xero:import-contacts",
     "pr:watch": "node scripts/pr-watcher/index.mjs"
   },
   "devDependencies": {

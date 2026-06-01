@@ -115,8 +115,18 @@ export function parseBankNumber(raw: string): {
   const cleaned = (raw ?? "").replace(/\s/g, "").trim();
   if (!cleaned) return { bsb: null, account: null };
   if (cleaned.includes("-")) {
+    // Australian BSB is "XXX-XXX" (3-3 with a hyphen). When the bank field
+    // is e.g. "034-198 491719", whitespace strips to "034-198491719", and we
+    // recognise the 3-3 BSB and split off the account number. Per Codex
+    // review on PR #280 — previously the naive split corrupted the BSB.
+    const bsbStyle = cleaned.match(/^(\d{3})-(\d{3})(\d+)$/);
+    if (bsbStyle) {
+      return { bsb: bsbStyle[1] + bsbStyle[2], account: bsbStyle[3] };
+    }
+    // Fall back to "fullBSB-account" split where the segment before the
+    // hyphen is already a complete 6-digit BSB.
     const parts = cleaned.split("-");
-    if (parts.length === 2 && /^\d+$/.test(parts[0]) && /^\d+$/.test(parts[1])) {
+    if (parts.length === 2 && /^\d{6}$/.test(parts[0]) && /^\d+$/.test(parts[1])) {
       return { bsb: parts[0], account: parts[1] };
     }
     return { bsb: null, account: null };
@@ -163,6 +173,17 @@ function parseDayInt(raw: string | undefined): number | null {
 
 export interface OrgImportFields {
   name: string;
+  /**
+   * Xero's stable contact identifier — read from the CSV's `AccountNumber`
+   * column (Xero's contact code, populated when the contact was created via
+   * the Xero adapter sync). Null when the CSV doesn't carry one.
+   *
+   * When non-null, the importer matches existing rows by this ID FIRST,
+   * falling back to name match only when no ID match is found. Prevents
+   * duplicate rows when a Xero contact is renamed in either system. Per
+   * Codex review on PR #280.
+   */
+  xeroContactId: string | null;
   legalName: string | null;
   email: string | null;
   phone: string | null;
@@ -200,6 +221,7 @@ export function mapXeroRow(row: Record<string, string>): MapResult {
   }
   const fields: OrgImportFields = {
     name,
+    xeroContactId: nullIfEmpty(row.AccountNumber),
     legalName: nullIfEmpty(row.LegalName),
     email: (() => {
       const v = nullIfEmpty(row.EmailAddress);
@@ -462,14 +484,31 @@ async function processRows(opts: ProcessOptions): Promise<ReportSection> {
     }
     const fields = mapped.fields;
     let existing: { id: string } & Record<string, unknown> | null = null;
+    // Match by Xero contact ID first (stable across renames) — per Codex
+    // review on PR #280. Falls back to exact-name match when the CSV row
+    // doesn't carry an ID (the common case for Marco's current export).
     if (organisationType === "CLIENT") {
-      existing = await prisma.client.findUnique({
-        where: { name: fields.name }
-      }) as ({ id: string } & Record<string, unknown>) | null;
+      if (fields.xeroContactId) {
+        existing = await prisma.client.findFirst({
+          where: { xeroContactId: fields.xeroContactId }
+        }) as ({ id: string } & Record<string, unknown>) | null;
+      }
+      if (!existing) {
+        existing = await prisma.client.findUnique({
+          where: { name: fields.name }
+        }) as ({ id: string } & Record<string, unknown>) | null;
+      }
     } else {
-      existing = await prisma.subcontractorSupplier.findFirst({
-        where: { name: fields.name }
-      }) as ({ id: string } & Record<string, unknown>) | null;
+      if (fields.xeroContactId) {
+        existing = await prisma.subcontractorSupplier.findFirst({
+          where: { xeroContactId: fields.xeroContactId }
+        }) as ({ id: string } & Record<string, unknown>) | null;
+      }
+      if (!existing) {
+        existing = await prisma.subcontractorSupplier.findFirst({
+          where: { name: fields.name }
+        }) as ({ id: string } & Record<string, unknown>) | null;
+      }
     }
 
     let orgId: string;
@@ -481,6 +520,7 @@ async function processRows(opts: ProcessOptions): Promise<ReportSection> {
           const created = await prisma.client.create({
             data: {
               name: fields.name,
+              xeroContactId: fields.xeroContactId,
               legalName: fields.legalName,
               email: fields.email,
               phone: fields.phone,
@@ -511,6 +551,7 @@ async function processRows(opts: ProcessOptions): Promise<ReportSection> {
           const created = await prisma.subcontractorSupplier.create({
             data: {
               name: fields.name,
+              xeroContactId: fields.xeroContactId,
               legalName: fields.legalName,
               email: fields.email,
               phone: fields.phone,

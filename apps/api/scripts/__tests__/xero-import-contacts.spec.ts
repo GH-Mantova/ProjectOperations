@@ -14,10 +14,28 @@ describe("parseBankNumber", () => {
     });
   });
 
-  it("respects an explicit hyphen separator", () => {
+  // Per Codex review on PR #280 — Australian BSBs are formatted "XXX-XXX"
+  // (3-3 with a hyphen). When the bank field is "034-198 491719" or
+  // "034-198491719" after whitespace strip, the parser should recognise the
+  // 3-3 BSB and not split the BSB itself at the hyphen.
+  it("treats a 3-3 hyphen as the Australian BSB pattern", () => {
     expect(parseBankNumber("034-198491719")).toEqual({
-      bsb: "034",
-      account: "198491719"
+      bsb: "034198",
+      account: "491719"
+    });
+  });
+
+  it("recombines a hyphenated BSB even when there's whitespace before the account", () => {
+    expect(parseBankNumber("034-198 491719")).toEqual({
+      bsb: "034198",
+      account: "491719"
+    });
+  });
+
+  it("falls back to fullBSB-account split when the segment before the hyphen is already 6 digits", () => {
+    expect(parseBankNumber("034198-491719")).toEqual({
+      bsb: "034198",
+      account: "491719"
     });
   });
 
@@ -105,6 +123,7 @@ describe("mapXeroRow", () => {
     expect(result.warning).toBeUndefined();
     expect(result.fields).toEqual({
       name: "Acme Pty Ltd",
+      xeroContactId: null,
       legalName: "Acme Pty Limited",
       email: "sales@acme.com",
       phone: "07 1234 5678",
@@ -124,6 +143,19 @@ describe("mapXeroRow", () => {
       paymentTermsDay: 20,
       paymentTermsType: "DAYS_AFTER_INVOICE"
     });
+  });
+
+  // Per Codex review on PR #280 — when the CSV's AccountNumber column carries
+  // a Xero contact ID, the importer must thread it through to OrgImportFields
+  // so the lookup loop can match by ID before falling back to name.
+  it("reads AccountNumber into xeroContactId when present", () => {
+    const result = mapXeroRow(baseRow({ AccountNumber: "XERO-ABC-123" }));
+    expect(result.fields?.xeroContactId).toBe("XERO-ABC-123");
+  });
+
+  it("leaves xeroContactId null when AccountNumber is empty or whitespace-only", () => {
+    expect(mapXeroRow(baseRow({ AccountNumber: "" })).fields?.xeroContactId).toBeNull();
+    expect(mapXeroRow(baseRow({ AccountNumber: "   " })).fields?.xeroContactId).toBeNull();
   });
 
   it("defaults country to Australia when POCountry is empty", () => {

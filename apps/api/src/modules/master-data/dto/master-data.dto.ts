@@ -14,6 +14,15 @@ import {
 import { Type } from "class-transformer";
 import { PAYMENT_TERMS_TYPES, PaymentTermsType } from "../payment-terms.const";
 
+/**
+ * Payload for creating or updating a Client. Used by both `POST /master-data/clients`
+ * (create) and `PATCH /master-data/clients/:id` (update) — all fields except `name`
+ * are optional so PATCH callers can send only the keys they want to change.
+ *
+ * Includes the business directory fields (PR #73) and the Xero alignment fields
+ * (PR-40), notably the `paymentTermsDay` / `paymentTermsType` pair which the
+ * service layer enforces must be set together.
+ */
 export class UpsertClientDto {
   @IsString()
   name!: string;
@@ -71,7 +80,15 @@ export class UpsertClientDto {
   @IsOptional() @IsIn(PAYMENT_TERMS_TYPES as unknown as string[]) paymentTermsType?: PaymentTermsType | null;
 }
 
+/**
+ * Payload for creating or updating a Contact attached to a Client.
+ *
+ * Contact is a polymorphic table (organisationType + organisationId) and this
+ * DTO only covers CLIENT-owned contacts — `clientId` is required on create and
+ * maps to the polymorphic organisation id on the row.
+ */
 export class UpsertContactDto {
+  /** Owning client id; required on create, ignored on update. */
   @IsString()
   clientId!: string;
   @IsString()
@@ -93,6 +110,10 @@ export class UpsertContactDto {
   @IsOptional() @IsBoolean() includeInInvoiceEmails?: boolean;
 }
 
+/**
+ * Payload for creating or updating a Site — the physical work location used by
+ * tenders, projects, and scheduling. `name` is enforced unique at the service layer.
+ */
 export class UpsertSiteDto {
   @IsString()
   name!: string;
@@ -105,6 +126,10 @@ export class UpsertSiteDto {
   @IsOptional() @IsString() notes?: string;
 }
 
+/**
+ * Payload for creating or updating a ResourceType — the lookup that classifies
+ * workers and assets into categories (operator, labourer, excavator, etc.).
+ */
 export class UpsertResourceTypeDto {
   @IsString()
   name!: string;
@@ -114,6 +139,11 @@ export class UpsertResourceTypeDto {
   @IsOptional() @IsString() description?: string;
 }
 
+/**
+ * Payload for creating or updating a Competency — a named qualification a
+ * worker may hold (e.g. white card, confined-space entry). Workers are linked
+ * to competencies via the WorkerCompetency join.
+ */
 export class UpsertCompetencyDto {
   @IsString()
   name!: string;
@@ -121,6 +151,11 @@ export class UpsertCompetencyDto {
   @IsOptional() @IsString() description?: string;
 }
 
+/**
+ * Payload for creating or updating a Worker — the person record used by
+ * scheduling, timesheets, and competency tracking. Optionally links to a User
+ * (`userId`) for workers who log into the portal.
+ */
 export class UpsertWorkerDto {
   @IsString()
   firstName!: string;
@@ -136,15 +171,29 @@ export class UpsertWorkerDto {
   @IsOptional() @IsString() notes?: string;
 }
 
+/**
+ * Payload for creating or updating a Crew — a named group of workers that can
+ * be scheduled as a unit.
+ *
+ * `workerIds` is treated as the canonical membership list: when supplied, the
+ * service replaces existing `CrewWorker` rows wholesale, so omit the field to
+ * leave membership untouched and pass `[]` to remove every member.
+ */
 export class UpsertCrewDto {
   @IsString()
   name!: string;
   @IsOptional() @IsString() code?: string;
   @IsOptional() @IsString() description?: string;
   @IsOptional() @IsString() status?: string;
+  /** Canonical worker membership list; omitting leaves members untouched, `[]` removes all. */
   @IsOptional() @IsArray() workerIds?: string[];
 }
 
+/**
+ * Payload for creating or updating an Asset — equipment or vehicles owned by
+ * the company. `assetCode` is the human-friendly identifier shown on
+ * scheduling boards and maintenance forms.
+ */
 export class UpsertAssetDto {
   @IsString()
   name!: string;
@@ -157,16 +206,29 @@ export class UpsertAssetDto {
   @IsOptional() @IsString() notes?: string;
 }
 
+/**
+ * Payload for assigning a Competency to a Worker (or updating an existing assignment).
+ *
+ * Dates arrive as ISO date strings and are coerced to `Date` by the service so
+ * the underlying Prisma timestamp columns receive the correct type.
+ */
 export class UpsertWorkerCompetencyDto {
   @IsString()
   workerId!: string;
   @IsString()
   competencyId!: string;
+  /** Date the worker achieved this competency (ISO 8601). */
   @IsOptional() @IsDateString() achievedAt?: string;
+  /** Date this competency expires (ISO 8601); omit for non-expiring competencies. */
   @IsOptional() @IsDateString() expiresAt?: string;
   @IsOptional() @IsString() notes?: string;
 }
 
+/**
+ * Payload for creating or updating a LookupValue — a generic
+ * `category` → `key` → `value` row used to back configurable dropdowns and
+ * enum-like fields across the platform without schema changes.
+ */
 export class UpsertLookupValueDto {
   @IsString()
   category!: string;

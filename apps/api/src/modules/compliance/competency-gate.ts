@@ -16,6 +16,17 @@
  *   `status` is undefined, the qual is treated as active.
  */
 
+/**
+ * Qualification statuses considered "active" by the competency gate.
+ * Any other status value (`revoked`, `withdrawn`, `suspended`, `provisional`, etc.)
+ * causes the qualification to be treated as missing.
+ *
+ * When `WorkerQualification.status` is `undefined` (schema has no status column today),
+ * the qual is treated as active.
+ */
+export const QUAL_ACTIVE_STATUSES = ["active"] as const;
+export type QualActiveStatus = (typeof QUAL_ACTIVE_STATUSES)[number];
+
 export interface WorkerQualificationInput {
   qualType: string;
   expiryDate: Date | null;
@@ -54,18 +65,24 @@ const EXPIRING_SOON_DAYS = 30;
  * possibly-noisy lists from URL params without skewing the result arrays.
  */
 export function checkCompetencyGate(
-  workerQualifications: ReadonlyArray<WorkerQualificationInput>,
-  requiredQualTypes: ReadonlyArray<string>,
+  workerQualifications: ReadonlyArray<WorkerQualificationInput> | null | undefined,
+  requiredQualTypes: ReadonlyArray<string> | null | undefined,
   today: Date = new Date()
 ): CompetencyGateResult {
+  const quals = workerQualifications ?? [];
+  const required = requiredQualTypes ?? [];
   const todayMs = today.getTime();
   const soonCutoffMs = todayMs + EXPIRING_SOON_DAYS * DAY_MS;
 
   // Index the worker's active quals (latest-expiring per type wins, so a
   // renewed qual supersedes an older expired copy of the same type).
   const activeByType = new Map<string, Date | null>();
-  for (const q of workerQualifications) {
-    if (q.status !== undefined && q.status !== "active") continue;
+  for (const q of quals) {
+    if (
+      q.status !== undefined &&
+      !(QUAL_ACTIVE_STATUSES as readonly string[]).includes(q.status)
+    )
+      continue;
     if (!activeByType.has(q.qualType)) {
       activeByType.set(q.qualType, q.expiryDate);
       continue;
@@ -86,7 +103,7 @@ export function checkCompetencyGate(
   const expiringSoon: string[] = [];
   const seen = new Set<string>();
 
-  for (const code of requiredQualTypes) {
+  for (const code of required) {
     if (seen.has(code)) continue;
     seen.add(code);
 

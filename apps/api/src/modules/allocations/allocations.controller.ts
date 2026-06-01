@@ -30,11 +30,12 @@ export class AllocationsController {
   @RequirePermissions("resources.manage")
   @ApiOperation({
     summary:
-      "Create a worker or asset allocation on a project. For WORKER allocations, overlapping allocations on other active/mobilising projects are surfaced as warnings (no hard block)."
+      "Create a worker or asset allocation on a project. For WORKER allocations, overlapping allocations on other active/mobilising projects are surfaced as warnings (no hard block). The competency gate is evaluated against Project.requiredQualifications and returned on every response — soft-warn only: the allocation is still created when the worker fails the gate, and an AuditLog row is written capturing the allocator."
   })
   @ApiResponse({
     status: 201,
-    description: "{ allocation, warnings: [{ projectId, projectNumber, projectName, startDate, endDate }] }"
+    description:
+      "{ allocation, warnings: [{ projectId, projectNumber, projectName, startDate, endDate }], competency: { allowed, missing[], expired[], expiringSoon[] } }"
   })
   @ApiResponse({
     status: 400,

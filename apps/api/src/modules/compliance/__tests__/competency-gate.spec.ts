@@ -208,6 +208,18 @@ describe("checkCompetencyGate (pure helper, roadmap §7)", () => {
     expect(result.expiringSoon).toEqual([]);
   });
 
+  it("treats null workerQualifications as empty list", () => {
+    const result = checkCompetencyGate(null, ["asbestos_b"]);
+    expect(result.allowed).toBe(false);
+    expect(result.missing).toEqual(["asbestos_b"]);
+  });
+
+  it("treats null requiredQualTypes as empty list (vacuously allowed)", () => {
+    const result = checkCompetencyGate([], null);
+    expect(result.allowed).toBe(true);
+    expect(result.missing).toEqual([]);
+  });
+
   it("does not mutate the inputs", () => {
     const exp = daysFromToday(180);
     const workerQuals = [{ qualType: "asbestos_b", expiryDate: exp }];

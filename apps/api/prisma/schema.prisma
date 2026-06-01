@@ -1915,6 +1915,7 @@ model Project {
   siteAddressSuburb       String               @map("site_address_suburb")
   siteAddressState        String               @map("site_address_state")
   siteAddressPostcode     String               @map("site_address_postcode")
+  requiredQualifications  String[]             @default([]) @map("required_qualifications")
   contractValue           Decimal              @default(0) @map("contract_value") @db.Decimal(12, 2)
   budget                  Decimal              @default(0) @db.Decimal(12, 2)
   actualCost              Decimal              @default(0) @map("actual_cost") @db.Decimal(12, 2)

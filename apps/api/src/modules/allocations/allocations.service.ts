@@ -1,12 +1,21 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { CompetencyGateResult } from "../compliance/competency-gate";
+import { ComplianceService } from "../compliance/compliance.service";
 import { EmailService } from "../email/email.service";
 import { NotificationsService } from "../platform/notifications.service";
 import { CreateAllocationDto } from "./dto/create-allocation.dto";
 import { UpdateAllocationDto } from "./dto/update-allocation.dto";
 
 type ActorContext = { userId: string };
+
+const EMPTY_COMPETENCY: CompetencyGateResult = {
+  allowed: true,
+  missing: [],
+  expired: [],
+  expiringSoon: []
+};
 
 function formatDateDdMmmYyyy(date: Date): string {
   const day = String(date.getDate()).padStart(2, "0");
@@ -19,7 +28,8 @@ export class AllocationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
-    private readonly email: EmailService
+    private readonly email: EmailService,
+    private readonly compliance: ComplianceService
   ) {}
 
   async listForProject(projectId: string) {
@@ -76,7 +86,7 @@ export class AllocationsService {
   async create(projectId: string, dto: CreateAllocationDto, actor: ActorContext) {
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
-      select: { id: true, projectNumber: true, name: true }
+      select: { id: true, projectNumber: true, name: true, requiredQualifications: true }
     });
     if (!project) throw new NotFoundException("Project not found.");
 
@@ -195,7 +205,42 @@ export class AllocationsService {
       );
     }
 
-    return { allocation, warnings };
+    // Soft-warn competency gate: surface a structured verdict on every
+    // allocation response so the UI can show a warning. The allocation is
+    // never blocked — when the gate flags missing/expired quals we write an
+    // AuditLog row capturing who allocated the unqualified worker.
+    const isWorkerAllocation = allocation.type === "WORKER" && !!allocation.workerProfileId;
+    const competency: CompetencyGateResult = isWorkerAllocation
+      ? await this.compliance.checkWorkerCompetency(
+          allocation.workerProfileId!,
+          project.requiredQualifications
+        )
+      : EMPTY_COMPETENCY;
+
+    if (
+      isWorkerAllocation &&
+      (competency.missing.length > 0 || competency.expired.length > 0)
+    ) {
+      await this.prisma.auditLog.create({
+        data: {
+          actorId: actor.userId,
+          action: "allocation.unqualified_override",
+          entityType: "ProjectAllocation",
+          entityId: allocation.id,
+          metadata: {
+            projectId: project.id,
+            projectNumber: project.projectNumber,
+            workerProfileId: allocation.workerProfileId,
+            requiredQualifications: project.requiredQualifications,
+            missing: competency.missing,
+            expired: competency.expired,
+            expiringSoon: competency.expiringSoon
+          } satisfies Prisma.InputJsonValue
+        }
+      });
+    }
+
+    return { allocation, warnings, competency };
   }
 
   async update(projectId: string, allocId: string, dto: UpdateAllocationDto) {

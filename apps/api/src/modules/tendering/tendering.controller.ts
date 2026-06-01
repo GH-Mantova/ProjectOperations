@@ -107,23 +107,38 @@ export class TenderingController {
     return this.service.create(dto, actor.sub);
   }
 
+  /**
+   * @deprecated Use POST /api/v1/tenders/:tenderId/entries instead.
+   * The legacy note write path is preserved for one release cycle.
+   * Will be removed after PR-18 backfill bake-in.
+   */
   @Post(":id/notes")
   @RequirePermissions("tenders.manage")
-  @ApiOperation({ summary: "Add a tender note" })
+  @ApiOperation({ summary: "[DEPRECATED] Add a tender note", deprecated: true })
   addNote(@Param("id") id: string, @Body() dto: CreateTenderNoteDto, @CurrentUser() actor: { sub: string }) {
     return this.service.addNote(id, dto, actor.sub);
   }
 
+  /**
+   * @deprecated Use POST /api/v1/tenders/:tenderId/entries instead.
+   * The legacy clarification write path is preserved for one release cycle.
+   * Will be removed after PR-18 backfill bake-in.
+   */
   @Post(":id/clarifications")
   @RequirePermissions("tenders.manage")
-  @ApiOperation({ summary: "Add a tender clarification" })
+  @ApiOperation({ summary: "[DEPRECATED] Add a tender clarification", deprecated: true })
   addClarification(@Param("id") id: string, @Body() dto: CreateTenderClarificationDto, @CurrentUser() actor: { sub: string }) {
     return this.service.addClarification(id, dto, actor.sub);
   }
 
+  /**
+   * @deprecated Use POST /api/v1/tenders/:tenderId/entries instead.
+   * The legacy follow-up write path is preserved for one release cycle.
+   * Will be removed after PR-18 backfill bake-in.
+   */
   @Post(":id/follow-ups")
   @RequirePermissions("tenders.manage")
-  @ApiOperation({ summary: "Add a tender follow-up" })
+  @ApiOperation({ summary: "[DEPRECATED] Add a tender follow-up", deprecated: true })
   addFollowUp(@Param("id") id: string, @Body() dto: CreateTenderFollowUpDto, @CurrentUser() actor: { sub: string }) {
     return this.service.addFollowUp(id, dto, actor.sub);
   }

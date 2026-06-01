@@ -9,7 +9,7 @@ import {
   Query,
   UseGuards
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiPropertyOptional, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { IsBoolean, IsIn, IsOptional, IsString } from "class-validator";
 import { Type } from "class-transformer";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
@@ -41,6 +41,9 @@ class CreateContactDto {
   @IsOptional() @IsBoolean() isActive?: boolean;
   @IsOptional() @IsBoolean() hasPortalAccess?: boolean;
   @IsOptional() @IsString() notes?: string | null;
+
+  @ApiPropertyOptional({ description: "CC this contact on invoice/quote emails sent to their organisation." })
+  @IsOptional() @IsBoolean() includeInInvoiceEmails?: boolean;
 }
 
 class UpdateContactDto {
@@ -55,6 +58,9 @@ class UpdateContactDto {
   @IsOptional() @IsBoolean() isActive?: boolean;
   @IsOptional() @IsBoolean() hasPortalAccess?: boolean;
   @IsOptional() @IsString() notes?: string | null;
+
+  @ApiPropertyOptional({ description: "CC this contact on invoice/quote emails sent to their organisation." })
+  @IsOptional() @IsBoolean() includeInInvoiceEmails?: boolean;
   // PR D FIX 3 — reassign a contact between organisations. Both fields
   // must be supplied together for the move to take effect.
   @IsOptional() @IsString() @IsIn(ORG_TYPES as unknown as string[]) organisationType?: string;

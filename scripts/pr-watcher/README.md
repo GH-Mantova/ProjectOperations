@@ -64,6 +64,10 @@ Env vars override the defaults:
 |---|---|---|
 | `PR_WATCHER_MAX_TURNS` | `120` | Agent hard cap per run. Bump for big PRs. |
 | `PR_WATCHER_CLAUDE_BIN` | `claude` | Override if `claude` isn't on PATH. |
+| `PR_WATCHER_AUTO_MERGE` | `true` | Set to `"false"` to skip auto-merge and leave PRs for review. |
+| `PR_WATCHER_MERGE_TIMEOUT_MIN` | `90` | Max wait for a PR to merge after CI starts. |
+| `PR_WATCHER_POLL_INTERVAL_SEC` | `60` | How often to poll PR state during merge wait. |
+| `PR_WATCHER_STOP_AT` | _(unset)_ | Nightly cutoff `HH:MM` (24-hour, local). Past this, watcher won't start a new prompt and exits cleanly with code 0. In-flight prompt finishes. |
 
 Example:
 
@@ -97,6 +101,67 @@ Then `pnpm pr:watch` from anywhere in the repo starts it.
   triggering execution.
 - **Debounce.** A 800ms debounce per filename means saves/atomic-renames
   don't double-fire.
+
+## Usage / rate limit handling
+
+If the underlying Claude session hits a usage or rate limit mid-prompt, the
+watcher detects the pattern in the agent's output and **soft-halts** rather
+than cascading. Specifically:
+
+1. The current prompt is **left in `docs/pr-prompts/`** (NOT moved to
+   `failed/`). A sibling `.usage-limit.log` is written next to it with the
+   full agent output for diagnostics.
+2. The watcher logs a `[USAGE_LIMIT]` line and **exits with code 2**.
+3. All other `-ready.md` files queued at the time stay in place.
+
+To resume after the limit resets: just restart the watcher. The prompt that
+was halted gets picked up first.
+
+The detection regex matches common usage/rate-limit message shapes:
+`usage limit`, `rate limit`, `429`, `quota exceeded`, `credit balance`,
+`monthly usage`, etc.
+
+## Nightly mode (Windows Task Scheduler)
+
+Use `scripts/pr-watcher/start-nightly.ps1` as a wrapper. It:
+
+- **Pre-flights** — refuses to start if working tree is dirty or not on `main`
+- **Single-instance guards** — refuses to start a second watcher if one is already running
+- **Logs to a daily file** — `scripts/pr-watcher/logs/YYYY-MM-DD.log`
+- Defaults to `PR_WATCHER_STOP_AT=06:00` so the watcher exits before business hours
+- Defaults to `PR_WATCHER_AUTO_MERGE=false` (review-only — safer for unattended overnight runs)
+
+Default nightly window: **18:00 → 06:00** (12 hours of unattended processing).
+
+### Schedule it (manual setup, once)
+
+Open Task Scheduler → Create Basic Task:
+
+| Field | Value |
+|---|---|
+| Name | `PR Watcher Nightly` |
+| Trigger | Daily at `18:00` (6 PM) — gives a 12-hour window before the 06:00 cutoff |
+| Action | Start a program |
+| Program | `powershell.exe` |
+| Arguments | `-NoProfile -ExecutionPolicy Bypass -File "C:\ProjectOperations2\scripts\pr-watcher\start-nightly.ps1"` |
+| Start in | `C:\ProjectOperations2` |
+
+Under the task's properties:
+
+- ✅ **Run whether user is logged on or not**
+- ✅ **Run with highest privileges**
+- Conditions → ⬜ Start only if on AC power (uncheck so it runs on battery if needed)
+
+### Verify it works
+
+Run manually first:
+
+```powershell
+cd C:\ProjectOperations2
+.\scripts\pr-watcher\start-nightly.ps1
+```
+
+You should see the banner + the watcher's normal startup log, mirrored to today's log file.
 
 ## Recovering from a failure
 

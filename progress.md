@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-05-27 01:14 AEST
+Last updated: 2026-06-01 03:04 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -7338,3 +7338,84 @@ Detail: Additive seed � IS-T100 full-feature template tender + ClientQuote.
   No schema change. No migration. No new deps. No new env vars.
 Pre-PR checks: build, lint, 768 API tests, 193 web tests � all pass.
 Status: IN_PROGRESS
+
+## 2026-05-29 — PR #257 MERGED
+GitHub PR: #257 (https://github.com/GH-Mantova/ProjectOperations/pull/257)
+Type: Bug fix (§5A Tendering — Quote edit UX regression)
+Branch: fix/quote-save-cancel-buttons
+Detail: Restores the Save/Cancel button swap on the Quote versions row
+  that was lost in PR #256. PR-252 Phase 5 introduced the Edit/View
+  toggle with Save/Cancel surfaced inline next to the version chips;
+  PR #256 regressed that surface. This PR re-applies the original
+  handlers and conditional rendering so the buttons appear when a
+  version is being edited and disappear after Save or Cancel.
+  No new dependencies. No new env vars. No schema migration.
+Status: COMPLETE (merged) — owner-verified live on 2026-05-29
+
+## 2026-05-29 — PR #258 MERGED
+GitHub PR: #258 (https://github.com/GH-Mantova/ProjectOperations/pull/258)
+Type: Bug fix (§5 Tendering — Plant summary rendering)
+Branch: fix/plant-summary-one-line-per-variant
+Detail: `formatPlantSummary` was concatenating per-variant plant entries
+  with " · " into a single line, packing multiple variants onto one
+  row in the card-header summary. Switched to emitting one line per
+  variant so each variant reads cleanly on its own row in the
+  discipline card header and Plant cluster cells.
+  No new dependencies. No new env vars. No schema migration.
+Status: COMPLETE (merged) — owner-verified live on 2026-05-29
+
+## 2026-05-29 — PR #259 MERGED
+GitHub PR: #259 (https://github.com/GH-Mantova/ProjectOperations/pull/259)
+Type: UX cleanup (§5 Tendering — Scope of Works card header)
+Branch: fix/remove-card-header-duration
+Detail: Dropped the redundant "Duration (days)" field from the
+  discipline card header. The per-variant Plant lines added in PR #258
+  already communicate duration alongside qty/equipment, so the
+  standalone Duration column was visual noise and contributed to
+  header crowding. Server-side `duration` calculation is preserved on
+  the data model — the change is presentation-only on the card header.
+  No new dependencies. No new env vars. No schema migration.
+Status: COMPLETE (merged) — owner-verified live on 2026-05-29
+
+## 2026-05-29 — PR #260 MERGED
+GitHub PR: #260 (https://github.com/GH-Mantova/ProjectOperations/pull/260)
+Type: Feature (§5A.3 PR D — Tendering: unified communications panel)
+Branch: feat/tendering-unified-comms-panel
+Detail: Replaces the three Overview-tab panels (Activity timeline,
+  Clarifications & Communications, Follow-ups) with a single unified
+  "Activity & communications" panel backed by a new `TenderEntry`
+  table. Includes:
+  - Prisma schema additions: `TenderEntry` model with type discriminator
+    (Note / RFI / Email / Call / Meeting / Follow-up / Self-reminder /
+    Task), conditional fields (due date, assignee, status), tenderId FK
+    with cascade rules.
+  - Idempotent backfill migration that copies existing rows from the
+    legacy Activity / Clarification / Follow-up tables into TenderEntry
+    so the new panel renders historical data on first load.
+  - CRUD API endpoints under /tenders/:id/entries with Swagger
+    decorators and class-validator DTOs.
+  - Frontend `TenderEntriesPanel` with Feed/Tabs toggle and filter
+    chips by type; new add-entry modal with type-conditional fields.
+  - Task-assignment notification scaffolding (in-app + email hooks;
+    full delivery wired in a follow-up).
+  - Legacy tables (TenderActivity, TenderClarification*, TenderFollowUp)
+    retained for one release cycle then dropped in a follow-up migration.
+  Closes the §5A "PR D" roadmap slot.
+Status: COMPLETE (merged) — owner-verified live on 2026-05-29
+
+## 2026-05-29 — PR #261 MERGED
+GitHub PR: #261 (https://github.com/GH-Mantova/ProjectOperations/pull/261)
+Type: Infra (watcher tooling + repo hygiene)
+Branch: chore/pr-watcher-and-gitignore-bookkeeping
+Detail: Two bookkeeping changes bundled:
+  1. `scripts/pr-watcher/index.mjs` — added auto-merge polling so the
+     watcher attempts to auto-merge eligible PRs on each tick, and a
+     pause-on-failure mode that halts further attempts once a check
+     fails so the operator can intervene rather than the watcher
+     looping on a broken PR.
+  2. `.gitignore` — excludes the local pr-prompts bookkeeping subdirs
+     (`docs/pr-prompts/{processed,failed,paused,blocked,awaiting-review,
+     reviewed,needs-marco}/`) and `*-ready.md` files so day-to-day
+     watcher state never leaks into commits.
+  No new dependencies. No new env vars. No schema migration.
+Status: COMPLETE (merged) — infra-only, no live verification needed

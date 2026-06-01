@@ -9,7 +9,14 @@ import {
   Query,
   UseGuards
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiResponse,
+  ApiTags
+} from "@nestjs/swagger";
 import { IsDateString, IsIn, IsOptional, IsString } from "class-validator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
@@ -61,12 +68,20 @@ export class TenderEntriesController {
   @Get()
   @RequirePermissions("tenders.view")
   @ApiOperation({ summary: "List unified communication entries for a tender (newest first)" })
-  @ApiQuery({ name: "type", required: false, description: "Filter to a single entry type" })
-  @ApiQuery({ name: "assigneeId", required: false })
+  @ApiParam({ name: "tenderId", description: "Tender id whose entries are listed" })
+  @ApiQuery({
+    name: "type",
+    required: false,
+    enum: [...TENDER_ENTRY_TYPES],
+    description: "Filter to a single entry type"
+  })
+  @ApiQuery({ name: "assigneeId", required: false, description: "Filter by assignee user id" })
   @ApiQuery({ name: "status", required: false, enum: [...TENDER_ENTRY_STATUSES] })
   @ApiQuery({ name: "from", required: false, description: "ISO date — lower bound on createdAt" })
   @ApiQuery({ name: "to", required: false, description: "ISO date — upper bound on createdAt" })
   @ApiResponse({ status: 200, description: "Entries with author + assignee metadata." })
+  @ApiResponse({ status: 400, description: "Invalid type or status filter value." })
+  @ApiResponse({ status: 404, description: "Tender not found." })
   list(
     @Param("tenderId") tenderId: string,
     @Query("type") type?: string,
@@ -81,7 +96,14 @@ export class TenderEntriesController {
   @Post()
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Create a unified communication entry on a tender" })
+  @ApiParam({ name: "tenderId", description: "Tender id to attach the entry to" })
   @ApiResponse({ status: 201, description: "Created entry." })
+  @ApiResponse({
+    status: 400,
+    description:
+      "Validation failed (missing body, invalid type/status, conditional fields, or unknown/inactive assignee)."
+  })
+  @ApiResponse({ status: 404, description: "Tender not found." })
   create(
     @Param("tenderId") tenderId: string,
     @Body() dto: CreateTenderEntryDto,
@@ -93,7 +115,15 @@ export class TenderEntriesController {
   @Patch(":entryId")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Update an entry — body, subject, due date, assignee, status, or type" })
+  @ApiParam({ name: "tenderId", description: "Tender id owning the entry" })
+  @ApiParam({ name: "entryId", description: "Entry id to update" })
   @ApiResponse({ status: 200, description: "Updated entry." })
+  @ApiResponse({
+    status: 400,
+    description:
+      "Validation failed (empty body, invalid type/status, conditional fields, or unknown/inactive assignee)."
+  })
+  @ApiResponse({ status: 404, description: "Entry not found on this tender." })
   update(
     @Param("tenderId") tenderId: string,
     @Param("entryId") entryId: string,
@@ -106,7 +136,10 @@ export class TenderEntriesController {
   @Delete(":entryId")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Soft-delete an entry by setting status='cancelled'" })
+  @ApiParam({ name: "tenderId", description: "Tender id owning the entry" })
+  @ApiParam({ name: "entryId", description: "Entry id to cancel" })
   @ApiResponse({ status: 200, description: "Entry id + new status." })
+  @ApiResponse({ status: 404, description: "Entry not found on this tender." })
   remove(
     @Param("tenderId") tenderId: string,
     @Param("entryId") entryId: string,

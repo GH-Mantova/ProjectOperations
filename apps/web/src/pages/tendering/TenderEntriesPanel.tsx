@@ -2,16 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { EmptyState } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { requiresAssignee, requiresDueDate } from "./addEntryFieldVisibility";
+import {
+  matchesChip,
+  type FilterChip,
+  type TenderEntryType
+} from "./tenderEntriesFilters";
 
-export type TenderEntryType =
-  | "note"
-  | "rfi"
-  | "email"
-  | "call"
-  | "meeting"
-  | "follow_up"
-  | "self_reminder"
-  | "task";
+export type { TenderEntryType } from "./tenderEntriesFilters";
 
 export type TenderEntryStatus = "open" | "done" | "cancelled";
 
@@ -53,19 +50,6 @@ const TYPE_PALETTE: Record<TenderEntryType, string> = {
   task: "#C0392B"
 };
 
-type FilterChip = "all" | "notes" | "correspondence" | "followups" | "mytasks";
-
-const CORRESPONDENCE_TYPES: ReadonlySet<TenderEntryType> = new Set([
-  "rfi",
-  "email",
-  "call",
-  "meeting"
-]);
-const FOLLOWUP_TYPES: ReadonlySet<TenderEntryType> = new Set([
-  "follow_up",
-  "self_reminder"
-]);
-
 const TABS_GROUP_ORDER: Array<{ key: FilterChip; label: string }> = [
   { key: "notes", label: "Notes" },
   { key: "correspondence", label: "Correspondence" },
@@ -104,23 +88,6 @@ function formatDate(iso: string): string {
 function formatPerson(person: { firstName: string; lastName: string } | null): string {
   if (!person) return "";
   return `${person.firstName} ${person.lastName}`.trim();
-}
-
-function matchesChip(entry: TenderEntry, chip: FilterChip, currentUserId: string | null): boolean {
-  switch (chip) {
-    case "all":
-      return true;
-    case "notes":
-      return entry.type === "note";
-    case "correspondence":
-      return CORRESPONDENCE_TYPES.has(entry.type);
-    case "followups":
-      return FOLLOWUP_TYPES.has(entry.type);
-    case "mytasks":
-      return entry.type === "task" && !!currentUserId && entry.assigneeId === currentUserId;
-    default:
-      return true;
-  }
 }
 
 function readStoredView(): "feed" | "tabs" {

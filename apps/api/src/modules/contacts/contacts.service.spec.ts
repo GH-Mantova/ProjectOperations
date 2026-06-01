@@ -144,4 +144,40 @@ describe("ContactsService", () => {
       })
     );
   });
+
+  // Xero alignment (PR-40)
+  it("persists includeInInvoiceEmails=true on create", async () => {
+    const { prisma, mocks } = buildPrismaMock({ clientExists: true });
+    const service = new ContactsService(prisma);
+    await service.create(
+      {
+        organisationType: "CLIENT",
+        organisationId: "client-1",
+        firstName: "A",
+        lastName: "B",
+        includeInInvoiceEmails: true
+      },
+      "actor-1"
+    );
+    expect(mocks.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ includeInInvoiceEmails: true })
+    });
+  });
+
+  it("defaults includeInInvoiceEmails to false when omitted on create", async () => {
+    const { prisma, mocks } = buildPrismaMock({ clientExists: true });
+    const service = new ContactsService(prisma);
+    await service.create(
+      {
+        organisationType: "CLIENT",
+        organisationId: "client-1",
+        firstName: "A",
+        lastName: "B"
+      },
+      "actor-1"
+    );
+    expect(mocks.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ includeInInvoiceEmails: false })
+    });
+  });
 });

@@ -10,13 +10,14 @@ import {
   Req,
   UseGuards
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
-import { IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString } from "class-validator";
+import { ApiBearerAuth, ApiOperation, ApiPropertyOptional, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, Min } from "class-validator";
 import { Type } from "class-transformer";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
+import { PAYMENT_TERMS_TYPES, PaymentTermsType } from "../master-data/payment-terms.const";
 import { DirectoryService } from "./directory.service";
 
 type AuthedRequest = { user?: { permissionCodes?: string[] } };
@@ -64,6 +65,19 @@ class UpsertSubcontractorDto {
   @IsOptional() @IsString() onHoldReason?: string | null;
   @IsOptional() @IsString() internalNotes?: string | null;
   @IsOptional() @Type(() => Number) @IsInt() performanceRating?: number | null;
+
+  // Xero alignment (PR-40)
+  @ApiPropertyOptional({ description: "Legal entity name as it appears on contracts/invoices (distinct from display `name` and `tradingName`)." })
+  @IsOptional() @IsString() legalName?: string | null;
+
+  @ApiPropertyOptional({ description: "Country of the organisation. Defaults to 'Australia'." })
+  @IsOptional() @IsString() country?: string;
+
+  @ApiPropertyOptional({ description: "Day-of-month component of the Xero payment-terms pair (1–31). Must be supplied with `paymentTermsType`." })
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(31) paymentTermsDay?: number | null;
+
+  @ApiPropertyOptional({ enum: PAYMENT_TERMS_TYPES, description: "Vocabulary that mirrors Xero's contact payment-terms. Must be supplied with `paymentTermsDay`." })
+  @IsOptional() @IsIn(PAYMENT_TERMS_TYPES as unknown as string[]) paymentTermsType?: PaymentTermsType | null;
 }
 
 class UpsertContactDto {
@@ -76,6 +90,9 @@ class UpsertContactDto {
   @IsOptional() @IsBoolean() isPrimary?: boolean;
   @IsOptional() @IsBoolean() hasPortalAccess?: boolean;
   @IsOptional() @IsString() notes?: string | null;
+
+  @ApiPropertyOptional({ description: "CC this contact on invoice/quote emails sent to their organisation." })
+  @IsOptional() @IsBoolean() includeInInvoiceEmails?: boolean;
 }
 
 class UpsertLicenceDto {

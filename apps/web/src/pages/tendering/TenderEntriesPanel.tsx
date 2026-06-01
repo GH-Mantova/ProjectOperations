@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { EmptyState } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { requiresAssignee, requiresDueDate } from "./addEntryFieldVisibility";
 import {
   matchesChip,
   type FilterChip,
@@ -96,12 +97,6 @@ function readStoredView(): "feed" | "tabs" {
 }
 
 type AssignableUser = { id: string; firstName: string; lastName: string };
-
-const TYPES_NEEDING_DUE_DATE: ReadonlySet<TenderEntryType> = new Set([
-  "follow_up",
-  "self_reminder",
-  "task"
-]);
 
 type DraftEntry = {
   type: TenderEntryType;
@@ -204,11 +199,11 @@ export function TenderEntriesPanel({ tenderId }: { tenderId: string }) {
       setError("Body is required.");
       return;
     }
-    if (TYPES_NEEDING_DUE_DATE.has(draft.type) && !draft.dueDate) {
+    if (requiresDueDate(draft.type) && !draft.dueDate) {
       setError("This entry type needs a due date.");
       return;
     }
-    if (draft.type === "task" && !draft.assigneeId) {
+    if (requiresAssignee(draft.type) && !draft.assigneeId) {
       setError("Tasks must be assigned to a user.");
       return;
     }
@@ -613,8 +608,8 @@ function AddEntryModal({
   onCancel: () => void;
   onSubmit: () => void;
 }) {
-  const needsDueDate = TYPES_NEEDING_DUE_DATE.has(draft.type);
-  const needsAssignee = draft.type === "task";
+  const needsDueDate = requiresDueDate(draft.type);
+  const needsAssignee = requiresAssignee(draft.type);
   const bodyValid = draft.body.trim().length > 0;
   const dueDateValid = !needsDueDate || !!draft.dueDate;
   const assigneeValid = !needsAssignee || !!draft.assigneeId;
@@ -663,16 +658,15 @@ function AddEntryModal({
           <select
             className="s7-select"
             value={draft.type}
-            onChange={(event) =>
+            onChange={(event) => {
+              const nextType = event.target.value as TenderEntryType;
               onChange({
                 ...draft,
-                type: event.target.value as TenderEntryType,
-                dueDate: TYPES_NEEDING_DUE_DATE.has(event.target.value as TenderEntryType)
-                  ? draft.dueDate
-                  : "",
-                assigneeId: event.target.value === "task" ? draft.assigneeId : ""
-              })
-            }
+                type: nextType,
+                dueDate: requiresDueDate(nextType) ? draft.dueDate : "",
+                assigneeId: requiresAssignee(nextType) ? draft.assigneeId : ""
+              });
+            }}
           >
             <option value="note">Note</option>
             <option value="rfi">RFI</option>

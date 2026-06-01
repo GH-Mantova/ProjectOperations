@@ -53,6 +53,61 @@ const MERGE_TIMEOUT_MS =
 const POLL_INTERVAL_MS =
   Number(process.env.PR_WATCHER_POLL_INTERVAL_SEC ?? 60) * 1000;
 
+// Nightly cutoff (HH:MM, 24-hour, local). Past this, the watcher refuses to
+// start a NEW prompt and exits cleanly. The in-flight prompt (if any)
+// finishes normally. Unset = no cutoff. Example: "06:00" stops new prompts
+// at 6 AM.
+const STOP_AT = (process.env.PR_WATCHER_STOP_AT ?? "").trim() || null;
+
+// Compute the absolute cutoff timestamp ONCE at startup so the cutoff
+// doesn't shift if the watcher runs unusually long. The cutoff is the next
+// occurrence of HH:MM after startup. A 6pm start with STOP_AT=06:00 sets
+// the cutoff to 6am tomorrow.
+const STOP_AT_TIMESTAMP = (() => {
+  if (!STOP_AT) return null;
+  const m = STOP_AT.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const cutoffH = Number(m[1]);
+  const cutoffM = Number(m[2]);
+  if (cutoffH > 23 || cutoffM > 59) return null;
+  const now = new Date();
+  const stop = new Date(now);
+  stop.setHours(cutoffH, cutoffM, 0, 0);
+  if (stop.getTime() <= now.getTime()) {
+    stop.setDate(stop.getDate() + 1);
+  }
+  return stop.getTime();
+})();
+
+function isPastStopTime() {
+  if (STOP_AT_TIMESTAMP === null) return false;
+  return Date.now() >= STOP_AT_TIMESTAMP;
+}
+
+// Usage / rate-limit detection. When `claude --print` exits non-zero with
+// any of these patterns in its output, the watcher treats it as a soft
+// halt (keep the prompt queued, exit cleanly) instead of a real failure
+// (move to failed/, cascade-flush the rest of the queue). Prevents a
+// single usage cap from poisoning every queued prompt in seconds.
+const USAGE_LIMIT_PATTERNS = [
+  /usage\s*limit/i,
+  /rate\s*limit/i,
+  /rate[-\s]*limited/i,
+  /too\s*many\s*requests/i,
+  /credit\s*balance/i,
+  /insufficient\s*credits/i,
+  /monthly\s*usage/i,
+  /max(?:imum)?\s*requests?/i,
+  /quota\s*(?:exceeded|exhausted)/i,
+  /\b429\b/,
+];
+
+function isUsageLimitError(text) {
+  if (!text) return false;
+  const tail = text.length > 16384 ? text.slice(-16384) : text;
+  return USAGE_LIMIT_PATTERNS.some((re) => re.test(tail));
+}
+
 const queue = [];
 const seen = new Set();
 const debouncers = new Map();
@@ -257,6 +312,16 @@ async function syncMain() {
 
 async function drain() {
   if (running || queue.length === 0 || queuePaused) return;
+
+  // Nightly cutoff — refuse to start a new prompt past STOP_AT. The
+  // in-flight prompt (if any, called from inside an existing session) is
+  // unaffected; this is purely a gate before pulling the next one.
+  if (isPastStopTime()) {
+    log("STOP_AT", `past cutoff ${STOP_AT}, ${queue.length} prompt(s) left in queue`);
+    log("STOP_AT", "queued prompts stay in docs/pr-prompts/ — next run will pick them up");
+    process.exit(0);
+  }
+
   running = true;
   const filePath = queue.shift();
   const name = path.basename(filePath);
@@ -318,10 +383,31 @@ async function drain() {
     ].join("\n");
     let logBody = header + agentOutput;
 
-    // Agent failed outright — move to failed/.
-    // Pause downstream ONLY if auto-merge is on (sequential dependency mode).
-    // In review-only mode (auto-merge off), prompts are independent → continue.
+    // Agent failed. Two failure shapes:
+    //   (a) Usage / rate limit — transient, will recover. Keep prompt
+    //       queued, write a soft-halt log next to it, exit watcher cleanly.
+    //       On next start (after the limit resets), it gets picked up again.
+    //   (b) Real failure — move to failed/ with the log. If auto-merge mode,
+    //       pause downstream; in review-only mode, continue to next.
     if (code !== 0) {
+      if (isUsageLimitError(agentOutput)) {
+        // (a) Soft halt — usage/rate limit detected
+        const softLogDest = path.join(PROMPT_DIR, `${name}.usage-limit.log`);
+        try {
+          await writeFile(softLogDest, logBody);
+        } catch (err) {
+          log("error", `could not write soft-halt log: ${err.message}`);
+        }
+        log("USAGE_LIMIT", `${name} hit a usage/rate limit (exit ${code})`);
+        log("USAGE_LIMIT", `prompt left in docs/pr-prompts/ — restart watcher after limit resets`);
+        log("USAGE_LIMIT", `soft-halt log: ${path.relative(REPO_ROOT, softLogDest)}`);
+        seen.delete(name);
+        running = false;
+        // Exit code 2 = "soft halt, retry later" (distinct from 1 = real fail)
+        process.exit(2);
+      }
+
+      // (b) Real failure — move to failed/ and either pause or continue
       const dest = path.join(FAILED_DIR, name);
       const logDest = path.join(FAILED_DIR, `${name}.log`);
       try {
@@ -425,6 +511,13 @@ async function scanExisting() {
   log("watcher", `auto-merge:  ${AUTO_MERGE ? "ON" : "OFF"}`);
   log("watcher", `merge-tmout: ${MERGE_TIMEOUT_MS / 60000} min`);
   log("watcher", `poll-every:  ${POLL_INTERVAL_MS / 1000} s`);
+  if (STOP_AT_TIMESTAMP !== null) {
+    const cutoffIso = new Date(STOP_AT_TIMESTAMP).toISOString();
+    const minsFromNow = Math.round((STOP_AT_TIMESTAMP - Date.now()) / 60000);
+    log("watcher", `stop-at:     ${STOP_AT} → ${cutoffIso} (~${minsFromNow} min from now)`);
+  } else {
+    log("watcher", `stop-at:     (none — runs until queue empty or SIGINT)`);
+  }
 
   await scanExisting();
 

@@ -414,6 +414,10 @@ model Client {
   abn                 String?
   acn                 String?
   gstRegistered       Boolean             @default(true) @map("gst_registered")
+  legalName           String?             @map("legal_name")
+  country             String              @default("Australia")
+  paymentTermsDay     Int?                @map("payment_terms_day")
+  paymentTermsType    String?             @map("payment_terms_type")
   industry            String?
   website             String?
   physicalAddress     String?             @map("physical_address")
@@ -487,6 +491,7 @@ model Contact {
   notes             String?
   createdById       String?        @map("created_by_id")
   createdBy         User?          @relation("ContactCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  includeInInvoiceEmails Boolean       @default(false) @map("include_in_invoice_emails")
   createdAt         DateTime       @default(now()) @map("created_at")
   updatedAt         DateTime       @updatedAt @map("updated_at")
   tenderClients     TenderClient[]
@@ -3037,6 +3042,10 @@ model SubcontractorSupplier {
   abn                   String?
   acn                   String?
   gstRegistered         Boolean   @default(true) @map("gst_registered")
+  legalName             String?   @map("legal_name")
+  country               String    @default("Australia")
+  paymentTermsDay       Int?      @map("payment_terms_day")
+  paymentTermsType      String?   @map("payment_terms_type")
   website               String?
   entityType            String    @default("subcontractor") @map("entity_type")
   categories            String[]

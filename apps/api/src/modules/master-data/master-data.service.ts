@@ -1,4 +1,4 @@
-import { ConflictException, Injectable } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { MasterDataQueryDto } from "./dto/master-data-query.dto";
@@ -55,6 +55,7 @@ export class MasterDataService {
 
   async upsertClient(id: string | undefined, dto: UpsertClientDto, actorId?: string) {
     await this.ensureUniqueName("client", dto.name, id);
+    this.assertPaymentTermsPair(dto);
     const record = id
       ? await this.prisma.client.update({ where: { id }, data: dto })
       : await this.prisma.client.create({ data: dto });
@@ -107,7 +108,10 @@ export class MasterDataService {
       mobile: dto.mobile ?? null,
       isPrimary: dto.isPrimary ?? false,
       hasPortalAccess: dto.hasPortalAccess ?? false,
-      notes: dto.notes ?? null
+      notes: dto.notes ?? null,
+      ...(dto.includeInInvoiceEmails !== undefined
+        ? { includeInInvoiceEmails: dto.includeInInvoiceEmails }
+        : {})
     };
 
     if (!id) {
@@ -475,5 +479,44 @@ export class MasterDataService {
 
   private audit(actorId: string | undefined, action: string, entityType: string, entityId: string) {
     return this.auditService.write({ actorId, action, entityType, entityId });
+  }
+
+  // Xero alignment (PR-40) — `paymentTermsDay` + `paymentTermsType` are a
+  // semantic pair: a day without a type or a type without a day is
+  // meaningless. Enforced at the service layer rather than via a CHECK
+  // constraint so partial PATCH bodies that touch neither field still pass.
+  //
+  // We check KEY PRESENCE (`!== undefined`) rather than non-nullness because
+  // a PATCH body of `{paymentTermsDay: null}` is an explicit clear that needs
+  // to be paired with `paymentTermsType: null` — otherwise Prisma writes the
+  // single null and leaves the other half of the pair behind, violating the
+  // invariant. Per Codex review on PR #277.
+  private assertPaymentTermsPair(dto: {
+    paymentTermsDay?: number | null;
+    paymentTermsType?: string | null;
+  }) {
+    const dayInDto = dto.paymentTermsDay !== undefined;
+    const typeInDto = dto.paymentTermsType !== undefined;
+
+    // Rule 1: touch both, or neither. Touching only one (even with null) is
+    // ambiguous — reject so the caller has to be explicit.
+    if (dayInDto !== typeInDto) {
+      throw new BadRequestException(
+        "paymentTermsDay and paymentTermsType must be set together. Pass both fields (each may be null to clear the pair)."
+      );
+    }
+
+    // Rule 2: if both keys are present, both must be null (clear) or both
+    // must hold meaningful values (set). Mismatched null vs value is the
+    // same ambiguity as Rule 1.
+    if (dayInDto && typeInDto) {
+      const dayMeaningful = dto.paymentTermsDay !== null;
+      const typeMeaningful = dto.paymentTermsType !== null && dto.paymentTermsType !== "";
+      if (dayMeaningful !== typeMeaningful) {
+        throw new BadRequestException(
+          "paymentTermsDay and paymentTermsType must be set together (both with values, or both null to clear)."
+        );
+      }
+    }
   }
 }

@@ -1,7 +1,9 @@
+import { ApiPropertyOptional } from "@nestjs/swagger";
 import {
   IsArray,
   IsBoolean,
   IsDateString,
+  IsIn,
   IsInt,
   IsNumber,
   IsOptional,
@@ -10,6 +12,7 @@ import {
   Min
 } from "class-validator";
 import { Type } from "class-transformer";
+import { PAYMENT_TERMS_TYPES, PaymentTermsType } from "../payment-terms.const";
 
 export class UpsertClientDto {
   @IsString()
@@ -53,6 +56,19 @@ export class UpsertClientDto {
   @IsOptional() @IsBoolean() onHold?: boolean;
   @IsOptional() @IsString() onHoldReason?: string | null;
   @IsOptional() @IsString() internalNotes?: string | null;
+
+  // Xero alignment (PR-40)
+  @ApiPropertyOptional({ description: "Legal entity name as it appears on contracts/invoices (distinct from display `name` and `tradingName`)." })
+  @IsOptional() @IsString() legalName?: string | null;
+
+  @ApiPropertyOptional({ description: "Country of the organisation. Defaults to 'Australia'." })
+  @IsOptional() @IsString() country?: string;
+
+  @ApiPropertyOptional({ description: "Day-of-month component of the Xero payment-terms pair (1–31). Must be supplied with `paymentTermsType`." })
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(31) paymentTermsDay?: number | null;
+
+  @ApiPropertyOptional({ enum: PAYMENT_TERMS_TYPES, description: "Vocabulary that mirrors Xero's contact payment-terms. Must be supplied with `paymentTermsDay`." })
+  @IsOptional() @IsIn(PAYMENT_TERMS_TYPES as unknown as string[]) paymentTermsType?: PaymentTermsType | null;
 }
 
 export class UpsertContactDto {
@@ -72,6 +88,9 @@ export class UpsertContactDto {
   @IsOptional() @IsBoolean() hasPortalAccess?: boolean;
   @IsOptional() @IsBoolean() isAccountsContact?: boolean;
   @IsOptional() @IsString() notes?: string;
+
+  @ApiPropertyOptional({ description: "CC this contact on invoice/quote emails sent to their organisation." })
+  @IsOptional() @IsBoolean() includeInInvoiceEmails?: boolean;
 }
 
 export class UpsertSiteDto {

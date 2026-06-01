@@ -27,6 +27,7 @@ export type UpsertContactInput = {
   isActive?: boolean;
   hasPortalAccess?: boolean;
   notes?: string | null;
+  includeInInvoiceEmails?: boolean;
 };
 
 @Injectable()
@@ -105,6 +106,7 @@ export class ContactsService {
           isActive: input.isActive ?? true,
           hasPortalAccess: Boolean(input.hasPortalAccess),
           notes: input.notes ?? null,
+          includeInInvoiceEmails: Boolean(input.includeInInvoiceEmails),
           createdById: actorId ?? null
         }
       });
@@ -156,7 +158,8 @@ export class ContactsService {
         "isAccountsContact",
         "isActive",
         "hasPortalAccess",
-        "notes"
+        "notes",
+        "includeInInvoiceEmails"
       ] as const) {
         if (input[key] !== undefined) data[key] = input[key];
       }

@@ -17,6 +17,11 @@ import { CSS } from "@dnd-kit/utilities";
 import { useAuth } from "../../auth/AuthContext";
 import { OverrideField } from "../../components";
 import { DISCIPLINE_CODES, DISCIPLINE_LABELS } from "./scope-cards/utils/card-display";
+import {
+  disciplineForItem,
+  groupByDiscipline,
+  recomputeSortOrderWithinGroup
+} from "./quoteScopeGroupedReorder";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { TandCSection } from "./QuoteTab";
 import { SendQuoteModal } from "./SendQuoteModal";
@@ -2078,47 +2083,15 @@ function QuoteScopeTab({
     void reorderRows(arrayMove(source, oldIndex, newIndex));
   };
 
+  // Cross-discipline drops are a no-op: a scope item's discipline is determined
+  // by its source ScopeCard, not by where it's dropped in the quote. The item
+  // snaps back to its origin (per-group SortableContext handles the visual).
   const handleGroupedDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    if (!over || active.id === over.id) return;
-
-    const allGroupedIds = disciplineGroups.flatMap(([, items]) => items.map((r) => r.id));
-    const oldIndex = allGroupedIds.indexOf(active.id as string);
-    const newIndex = allGroupedIds.indexOf(over.id as string);
-    if (oldIndex < 0 || newIndex < 0) return;
-
-    const draggedItem = rows.find((r) => r.id === active.id);
-    const targetItem = rows.find((r) => r.id === over.id);
-    if (!draggedItem || !targetItem) return;
-
-    const sourceDiscipline = disciplineForItem(draggedItem);
-    const targetDiscipline = disciplineForItem(targetItem);
-
-    if (sourceDiscipline !== targetDiscipline) {
-      const prev = rows;
-      setRows((cur) => cur.map((r) =>
-        r.id === draggedItem.id ? { ...r, quoteDiscipline: targetDiscipline } : r
-      ));
-      authFetch(`${base}/${draggedItem.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ quoteDiscipline: targetDiscipline })
-      }).then((resp) => {
-        if (!resp.ok) {
-          setError("Failed to move item");
-          setRows(prev);
-        }
-      });
-    } else {
-      const group = disciplineGroups.find(([g]) => g === sourceDiscipline)?.[1] ?? [];
-      const gOld = group.findIndex((r) => r.id === active.id);
-      const gNew = group.findIndex((r) => r.id === over.id);
-      if (gOld < 0 || gNew < 0) return;
-      const reorderedGroup = arrayMove(group, gOld, gNew);
-      const groupIds = new Set(group.map((r) => r.id));
-      let cursor = 0;
-      const merged = rows.map((r) => (groupIds.has(r.id) ? reorderedGroup[cursor++]! : r));
-      void reorderRows(merged);
-    }
+    if (!over) return;
+    const merged = recomputeSortOrderWithinGroup(rows, String(active.id), String(over.id));
+    if (!merged) return;
+    void reorderRows(merged);
   };
 
   const renderRow = (row: QuoteScopeItem, draggable: boolean) =>
@@ -2171,26 +2144,10 @@ function QuoteScopeTab({
     </thead>
   );
 
-  const disciplineForItem = (item: QuoteScopeItem): string => {
-    if (item.quoteDiscipline) return item.quoteDiscipline;
-    const prefix = item.label ? /^[A-Za-z]+/.exec(item.label)?.[0]?.toUpperCase() : null;
-    if (prefix === "DEM" || prefix === "CIV" || prefix === "ASB") return prefix;
-    return "Other";
-  };
-
-  const disciplineGroups = useMemo(() => {
-    const groups = new Map<string, QuoteScopeItem[]>();
-    for (const r of rows) {
-      const discKey = disciplineForItem(r);
-      const arr = groups.get(discKey) ?? [];
-      arr.push(r);
-      groups.set(discKey, arr);
-    }
-    for (const eg of emptyGroups) {
-      if (!groups.has(eg)) groups.set(eg, []);
-    }
-    return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [rows, emptyGroups]);
+  const disciplineGroups = useMemo(
+    () => groupByDiscipline(rows, emptyGroups),
+    [rows, emptyGroups]
+  );
 
   return (
     <div>
@@ -2295,44 +2252,44 @@ function QuoteScopeTab({
           collisionDetection={closestCenter}
           onDragEnd={handleGroupedDragEnd}
         >
-          <SortableContext
-            items={disciplineGroups.flatMap(([, items]) => items.map((r) => r.id))}
-            strategy={verticalListSortingStrategy}
-          >
-            {disciplineGroups.map(([group, groupRows]) => (
-              <section key={group} style={{ marginBottom: 16 }}>
-                <h4 className="s7-type-card-title" style={{ margin: "0 0 6px" }}>
-                  {DISCIPLINE_LABELS[group] ?? group}
-                  <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 6 }}>
-                    ({groupRows.length})
-                  </span>
-                </h4>
-                {groupRows.length > 0 ? (
-                  <div style={{ overflowX: "auto" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                      {renderHeader(true)}
+          {disciplineGroups.map(([group, groupRows]) => (
+            <section key={group} style={{ marginBottom: 16 }}>
+              <h4 className="s7-type-card-title" style={{ margin: "0 0 6px" }}>
+                {DISCIPLINE_LABELS[group] ?? group}
+                <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 6 }}>
+                  ({groupRows.length})
+                </span>
+              </h4>
+              {groupRows.length > 0 ? (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                    {renderHeader(true)}
+                    <SortableContext
+                      items={groupRows.map((r) => r.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
                       <tbody>{groupRows.map((r) => renderRow(r, true))}</tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <p style={{ color: "var(--text-muted)", fontSize: 12, margin: "4px 0" }}>
-                    No items yet.
-                  </p>
-                )}
-                {canManage ? (
-                  <button
-                    type="button"
-                    className="s7-btn s7-btn--ghost s7-btn--sm"
-                    style={{ marginTop: 4 }}
-                    disabled={busy}
-                    onClick={() => void addBlankForDiscipline(group)}
-                  >
-                    + Add row
-                  </button>
-                ) : null}
-              </section>
-            ))}
-          </SortableContext>
+                    </SortableContext>
+                  </table>
+                </div>
+              ) : (
+                <p style={{ color: "var(--text-muted)", fontSize: 12, margin: "4px 0" }}>
+                  No items yet.
+                </p>
+              )}
+              {canManage ? (
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--ghost s7-btn--sm"
+                  style={{ marginTop: 4 }}
+                  disabled={busy}
+                  onClick={() => void addBlankForDiscipline(group)}
+                >
+                  + Add row
+                </button>
+              ) : null}
+            </section>
+          ))}
         </DndContext>
       ) : (
         <DndContext

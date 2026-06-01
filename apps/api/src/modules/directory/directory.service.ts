@@ -144,6 +144,7 @@ export class DirectoryService {
     this.validateEnum("businessType", dto.businessType, BUSINESS_TYPES, true);
     this.validateEnum("entityType", dto.entityType, ENTITY_TYPES, true);
     this.validateEnum("prequalStatus", dto.prequalStatus, PREQUAL_STATUSES, true);
+    this.assertPaymentTermsPair(dto);
 
     const data = stripBankFromInput(dto, canEditBank);
     const entity = await this.prisma.subcontractorSupplier.create({
@@ -178,6 +179,7 @@ export class DirectoryService {
     this.validateEnum("businessType", dto.businessType, BUSINESS_TYPES, false);
     this.validateEnum("entityType", dto.entityType, ENTITY_TYPES, false);
     this.validateEnum("prequalStatus", dto.prequalStatus, PREQUAL_STATUSES, false);
+    this.assertPaymentTermsPair(dto);
     await this.requireEntity(id);
     const data = stripBankFromInput(dto, canEditBank);
     return this.prisma.subcontractorSupplier.update({ where: { id }, data: data as never });
@@ -495,6 +497,44 @@ export class DirectoryService {
       await this.requireEntity(owner.subcontractorId);
     } else {
       throw new BadRequestException("Owner required.");
+    }
+  }
+
+  // Xero alignment (PR-40) — `paymentTermsDay` + `paymentTermsType` are a
+  // semantic pair: a day without a type or a type without a day is
+  // meaningless. Enforced at the service layer rather than via a CHECK
+  // constraint so partial PATCH bodies that touch neither field still pass.
+  //
+  // We check KEY PRESENCE (`!== undefined`) rather than non-nullness because
+  // a PATCH body of `{paymentTermsDay: null}` is an explicit clear that needs
+  // to be paired with `paymentTermsType: null` — otherwise Prisma writes the
+  // single null and leaves the other half of the pair behind, violating the
+  // invariant. Per Codex review on PR #277.
+  private assertPaymentTermsPair(dto: Record<string, unknown>) {
+    const dayInDto = dto.paymentTermsDay !== undefined;
+    const typeInDto = dto.paymentTermsType !== undefined;
+
+    // Rule 1: touch both, or neither. Touching only one (even with null) is
+    // ambiguous — reject so the caller has to be explicit.
+    if (dayInDto !== typeInDto) {
+      throw new BadRequestException(
+        "paymentTermsDay and paymentTermsType must be set together. Pass both fields (each may be null to clear the pair)."
+      );
+    }
+
+    // Rule 2: if both keys are present, both must be null (clear) or both
+    // must hold meaningful values (set). Mismatched null vs value is the
+    // same ambiguity as Rule 1.
+    if (dayInDto && typeInDto) {
+      const day = dto.paymentTermsDay;
+      const type = dto.paymentTermsType;
+      const dayMeaningful = day !== null;
+      const typeMeaningful = type !== null && type !== "";
+      if (dayMeaningful !== typeMeaningful) {
+        throw new BadRequestException(
+          "paymentTermsDay and paymentTermsType must be set together (both with values, or both null to clear)."
+        );
+      }
     }
   }
 

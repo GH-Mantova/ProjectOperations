@@ -7,6 +7,13 @@ export class MaintenanceQueryDto extends PaginationQueryDto {
   @IsOptional() @IsString() status?: string;
 }
 
+export class AssetUtilisationQueryDto {
+  @IsDateString() from!: string;
+  @IsDateString() to!: string;
+  @IsOptional() @IsString() assetId?: string;
+  @IsOptional() @IsString() category?: string;
+}
+
 export class UpsertMaintenancePlanDto {
   @IsString() assetId!: string;
   @IsString() title!: string;

@@ -136,6 +136,16 @@ export class RejectTimesheetDto {
   reason!: string;
 }
 
+export class PayrollExportQueryDto {
+  @ApiProperty({ description: "ISO date (inclusive). Earliest timesheet date to include." })
+  @IsDateString()
+  from!: string;
+
+  @ApiProperty({ description: "ISO date (inclusive). Latest timesheet date to include." })
+  @IsDateString()
+  to!: string;
+}
+
 export class BulkApproveTimesheetsDto {
   @ApiProperty({ description: "Up to 50 SUBMITTED timesheet IDs to approve in a single transaction." })
   @IsString({ each: true })

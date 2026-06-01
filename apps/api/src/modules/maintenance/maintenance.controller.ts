@@ -1,11 +1,12 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { MaintenanceService } from "./maintenance.service";
 import {
+  AssetUtilisationQueryDto,
   MaintenanceQueryDto,
   UpdateAssetStatusDto,
   UpsertBreakdownDto,
@@ -26,6 +27,25 @@ export class MaintenanceController {
   @ApiOperation({ summary: "List assets with maintenance summary" })
   dashboard(@Query() query: MaintenanceQueryDto) {
     return this.service.dashboard(query);
+  }
+
+  // Must be declared before `assets/:assetId` so Nest doesn't capture the
+  // literal "utilisation" as an assetId path param.
+  @Get("assets/utilisation")
+  @RequirePermissions("maintenance.view")
+  @ApiOperation({
+    summary: "Asset utilisation over a date range",
+    description:
+      "Returns per-asset hours allocated, hours available (Mon-Fri × 8h), utilisation rate (capped at 1.0) and allocation count for the requested window. Sorted by utilisation DESC, then asset name ASC."
+  })
+  @ApiQuery({ name: "from", required: true, description: "ISO date (inclusive)" })
+  @ApiQuery({ name: "to", required: true, description: "ISO date (inclusive)" })
+  @ApiQuery({ name: "assetId", required: false, description: "Filter to a single asset" })
+  @ApiQuery({ name: "category", required: false, description: "Filter by asset category name" })
+  @ApiResponse({ status: 200, description: "Utilisation rows" })
+  @ApiResponse({ status: 400, description: "Invalid or inverted from/to range" })
+  utilisation(@Query() query: AssetUtilisationQueryDto) {
+    return this.service.assetUtilisation(query);
   }
 
   @Get("assets/:assetId")

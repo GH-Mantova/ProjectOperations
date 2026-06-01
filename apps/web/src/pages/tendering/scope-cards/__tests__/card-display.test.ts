@@ -145,4 +145,118 @@ describe("card-display utilities (PR B1.5)", () => {
       }
     });
   });
+
+  describe("formatPlantSummary edge cases", () => {
+    it("renders variant === null with no extra space or variant token", () => {
+      const groups = [
+        { category: "Crane", items: [{ variant: null, peakQty: 1, peakDays: 7 }] }
+      ];
+      expect(formatPlantSummary(groups)).toEqual(["Crane: 1 × 7d"]);
+    });
+
+    it("renders variant === '' the same as null (falsy branch, no trailing space)", () => {
+      const groups = [
+        { category: "Crane", items: [{ variant: "", peakQty: 1, peakDays: 7 }] }
+      ];
+      expect(formatPlantSummary(groups)).toEqual(["Crane: 1 × 7d"]);
+    });
+
+    it("renders null-variant and string-variant entries in input order within one category", () => {
+      const groups = [
+        {
+          category: "Truck",
+          items: [
+            { variant: null, peakQty: 2, peakDays: 5 },
+            { variant: "Tipper", peakQty: 1, peakDays: 4 }
+          ]
+        }
+      ];
+      expect(formatPlantSummary(groups)).toEqual([
+        "Truck: 2 × 5d",
+        "Truck Tipper: 1 × 4d"
+      ]);
+    });
+
+    it("renders all lines across multiple categories with 3+ variants total, preserving category order", () => {
+      const groups = [
+        {
+          category: "Excavator",
+          items: [
+            { variant: "01T-03T", peakQty: 1, peakDays: 3 },
+            { variant: "16T-25T", peakQty: 2, peakDays: 4 }
+          ]
+        },
+        {
+          category: "Truck",
+          items: [
+            { variant: "Tipper", peakQty: 1, peakDays: 2 },
+            { variant: "Flatbed", peakQty: 1, peakDays: 1 }
+          ]
+        }
+      ];
+      expect(formatPlantSummary(groups)).toEqual([
+        "Excavator 01T-03T: 1 × 3d",
+        "Excavator 16T-25T: 2 × 4d",
+        "Truck Tipper: 1 × 2d",
+        "Truck Flatbed: 1 × 1d"
+      ]);
+    });
+
+    it("filters out a single peakQty=0 variant but keeps siblings in the same category", () => {
+      const groups = [
+        {
+          category: "Excavator",
+          items: [
+            { variant: "01T-03T", peakQty: 0, peakDays: 3 },
+            { variant: "16T-25T", peakQty: 2, peakDays: 4 }
+          ]
+        }
+      ];
+      expect(formatPlantSummary(groups)).toEqual(["Excavator 16T-25T: 2 × 4d"]);
+    });
+
+    it("contributes no lines for a category whose variants all have peakQty=0", () => {
+      const groups = [
+        {
+          category: "Bobcat",
+          items: [
+            { variant: "Small", peakQty: 0, peakDays: 2 },
+            { variant: "Large", peakQty: 0, peakDays: 4 }
+          ]
+        },
+        { category: "Truck", items: [{ variant: "Tipper", peakQty: 1, peakDays: 5 }] }
+      ];
+      expect(formatPlantSummary(groups)).toEqual(["Truck Tipper: 1 × 5d"]);
+    });
+
+    it("returns ['—'] when every category has zero-qty variants only", () => {
+      const groups = [
+        {
+          category: "Excavator",
+          items: [
+            { variant: "01T-03T", peakQty: 0, peakDays: 3 },
+            { variant: "16T-25T", peakQty: 0, peakDays: 4 }
+          ]
+        },
+        { category: "Truck", items: [{ variant: null, peakQty: 0, peakDays: 5 }] }
+      ];
+      expect(formatPlantSummary(groups)).toEqual(["—"]);
+    });
+
+    it("uses ×qty fallback when peakDays=0 and peakQty>0 with a variant present", () => {
+      const groups = [
+        { category: "Forklift", items: [{ variant: "2.5T", peakQty: 3, peakDays: 0 }] }
+      ];
+      expect(formatPlantSummary(groups)).toEqual(["Forklift 2.5T: ×3"]);
+    });
+
+    it("returns a single-string array for a single category with a single variant", () => {
+      const groups = [
+        { category: "Loader", items: [{ variant: "Wheel", peakQty: 1, peakDays: 1 }] }
+      ];
+      const result = formatPlantSummary(groups);
+      expect(result).toHaveLength(1);
+      expect(result).toEqual(["Loader Wheel: 1 × 1d"]);
+    });
+  });
 });

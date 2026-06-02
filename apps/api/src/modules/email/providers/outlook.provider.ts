@@ -3,7 +3,38 @@ import { ConfigService } from "@nestjs/config";
 import { ClientSecretCredential } from "@azure/identity";
 import { Client } from "@microsoft/microsoft-graph-client";
 import { TokenCredentialAuthenticationProvider } from "@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials";
+import { sanitiseProviderError } from "../../ai-providers/error-sanitiser";
 import type { EmailProvider, SendMailInput } from "../email-provider.interface";
+import {
+  MailAuthError,
+  MailError,
+  MailRateLimitError,
+  MailServerError,
+  MailValidationError,
+  categoriseGraphResponse
+} from "../mail-errors";
+
+export type MailCreds = {
+  tenantId: string | null;
+  clientId: string | null;
+  clientSecret: string | null;
+  senderUserId: string | null;
+};
+
+/**
+ * Resolve mail-sending credentials with AZURE_MAIL_* taking precedence over
+ * the legacy SHAREPOINT_* names. Existing deployments that only set the
+ * SharePoint creds continue to work; new deployments can isolate the mail-
+ * sending app registration via the dedicated AZURE_MAIL_* names.
+ */
+export function resolveMailCreds(env: NodeJS.ProcessEnv): MailCreds {
+  return {
+    tenantId: env.AZURE_MAIL_TENANT_ID ?? env.SHAREPOINT_TENANT_ID ?? null,
+    clientId: env.AZURE_MAIL_CLIENT_ID ?? env.SHAREPOINT_CLIENT_ID ?? null,
+    clientSecret: env.AZURE_MAIL_CLIENT_SECRET ?? env.SHAREPOINT_CLIENT_SECRET ?? null,
+    senderUserId: env.AZURE_MAIL_SENDER_USER_ID ?? env.AZURE_MAIL_FROM ?? null
+  };
+}
 
 /**
  * Outlook/Microsoft 365 email provider. Uses the app-only (client credentials)
@@ -14,12 +45,15 @@ import type { EmailProvider, SendMailInput } from "../email-provider.interface";
 export class OutlookEmailProvider implements EmailProvider {
   readonly name = "outlook" as const;
   private readonly logger = new Logger(OutlookEmailProvider.name);
-  private client: Client | null = null;
+  private client: Client | null;
 
   constructor(
     private readonly config: ConfigService,
-    private readonly senderAddress: string
-  ) {}
+    private readonly senderAddress: string,
+    preBuiltClient?: Client
+  ) {
+    this.client = preBuiltClient ?? null;
+  }
 
   async sendMail(input: SendMailInput): Promise<void> {
     const client = this.getClient();
@@ -52,7 +86,7 @@ export class OutlookEmailProvider implements EmailProvider {
       await client.api(`/users/${encodeURIComponent(this.senderAddress)}/sendMail`).post(message);
     } catch (err) {
       const wrapped = this.wrapError("sendMail", err);
-      this.logger.warn(`Outlook sendMail failed: ${wrapped.message}`);
+      this.logger.warn(`Outlook sendMail failed [${wrapped.category}]: ${wrapped.message}`);
       throw wrapped;
     }
   }
@@ -72,15 +106,15 @@ export class OutlookEmailProvider implements EmailProvider {
 
   private getClient(): Client {
     if (this.client) return this.client;
-    // Reuses the same SHAREPOINT_* credentials; a follow-up can split these
-    // into EMAIL_* if the mail-sending app registration diverges from the
-    // SharePoint one.
-    const tenantId = this.config.get<string>("SHAREPOINT_TENANT_ID");
-    const clientId = this.config.get<string>("SHAREPOINT_CLIENT_ID");
-    const clientSecret = this.config.get<string>("SHAREPOINT_CLIENT_SECRET");
+    const creds = resolveMailCreds(process.env);
+    // Fall back to ConfigService for the legacy SHAREPOINT_* names too, in
+    // case Nest's config has been seeded from a non-process.env source.
+    const tenantId = creds.tenantId ?? this.config.get<string>("SHAREPOINT_TENANT_ID") ?? null;
+    const clientId = creds.clientId ?? this.config.get<string>("SHAREPOINT_CLIENT_ID") ?? null;
+    const clientSecret = creds.clientSecret ?? this.config.get<string>("SHAREPOINT_CLIENT_SECRET") ?? null;
     if (!tenantId || !clientId || !clientSecret) {
       throw new ServiceUnavailableException(
-        "Outlook email requires SHAREPOINT_TENANT_ID, SHAREPOINT_CLIENT_ID, and SHAREPOINT_CLIENT_SECRET."
+        "Outlook email requires AZURE_MAIL_TENANT_ID, AZURE_MAIL_CLIENT_ID, and AZURE_MAIL_CLIENT_SECRET (or the legacy SHAREPOINT_* equivalents)."
       );
     }
     const credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
@@ -91,15 +125,86 @@ export class OutlookEmailProvider implements EmailProvider {
     return this.client;
   }
 
-  private wrapError(op: string, err: unknown): Error {
-    const msg = err instanceof Error ? err.message : String(err);
-    // Graph surfaces missing scopes as 403 ErrorAccessDenied / Authorization_RequestDenied;
-    // ErrorAccessDenied text often contains "Mail.Send" when that's the gap.
-    if (/Mail\.Send/i.test(msg) || /Authorization_RequestDenied/.test(msg)) {
-      return new Error(
-        "Mail.Send permission required. Ask your M365 administrator to grant the Mail.Send application permission to this app registration."
+  private wrapError(op: string, err: unknown): MailError {
+    // Defence-in-depth: truncate via sanitiseProviderError (cap 1000 chars)
+    // then strip HTML tags so an upstream HTML body can't leak through to
+    // downstream logs/UIs that render the error message. See PR #131/#135.
+    const sanitised = sanitiseProviderError(err);
+    const safeText = sanitised.logMessage.replace(/<[^>]*>/g, "").slice(0, 500);
+    const rawMessage = err instanceof Error ? err.message : String(err);
+    const status = extractStatus(err);
+
+    // Preserve the existing well-known message for the Mail.Send scope gap
+    // so admins seeing this error get a clear remediation path.
+    if (/Mail\.Send/i.test(rawMessage) || /Authorization_RequestDenied/i.test(rawMessage)) {
+      return new MailAuthError(
+        "Mail.Send permission required. Ask your M365 administrator to grant the Mail.Send application permission to this app registration.",
+        status
       );
     }
-    return new Error(`Outlook ${op}: ${msg}`);
+
+    if (status !== undefined) {
+      const category = categoriseGraphResponse(status);
+      const baseMessage = `Outlook ${op} (${status}): ${safeText}`;
+      switch (category) {
+        case "auth":
+          return new MailAuthError(baseMessage, status);
+        case "rate-limit":
+          return new MailRateLimitError(baseMessage, status, extractRetryAfter(err));
+        case "validation":
+          return new MailValidationError(baseMessage, status);
+        case "server":
+          return new MailServerError(baseMessage, status);
+        default:
+          return new MailError(baseMessage, "unknown", status);
+      }
+    }
+
+    if (isNetworkError(err)) {
+      return new MailError(`Outlook ${op}: ${safeText}`, "network");
+    }
+    return new MailError(`Outlook ${op}: ${safeText}`, "unknown");
   }
+}
+
+function extractStatus(err: unknown): number | undefined {
+  if (typeof err !== "object" || err === null) return undefined;
+  const obj = err as { statusCode?: unknown; status?: unknown };
+  const raw = obj.statusCode ?? obj.status;
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string") {
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+function extractRetryAfter(err: unknown): number | undefined {
+  if (typeof err !== "object" || err === null) return undefined;
+  const obj = err as {
+    retryAfter?: unknown;
+    headers?: { get?: (k: string) => string | null } & Record<string, unknown>;
+  };
+  if (typeof obj.retryAfter === "number" && Number.isFinite(obj.retryAfter)) return obj.retryAfter;
+  if (typeof obj.retryAfter === "string") {
+    const n = Number.parseInt(obj.retryAfter, 10);
+    if (!Number.isNaN(n)) return n;
+  }
+  const headers = obj.headers;
+  if (headers) {
+    const fromGetter = typeof headers.get === "function" ? headers.get("retry-after") : null;
+    const fromBag = headers["retry-after"] ?? headers["Retry-After"];
+    const raw = fromGetter ?? fromBag;
+    if (typeof raw === "string") {
+      const n = Number.parseInt(raw, 10);
+      if (!Number.isNaN(n)) return n;
+    }
+    if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  }
+  return undefined;
+}
+
+function isNetworkError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return /econnrefused|enotfound|etimedout|fetch failed|network/i.test(err.message);
 }

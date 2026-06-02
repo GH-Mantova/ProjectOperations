@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-06-01 21:35 AEST
+Last updated: 2026-06-02 07:57 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -7462,3 +7462,77 @@ Detail: One-shot CLI script (`apps/api/scripts/xero-import-contacts.ts`,
   `apps/api/scripts/xero-import-report.md` added to .gitignore.
 Status: OPEN — do NOT auto-merge; Marco reviews report then runs
   `--commit` manually before merging.
+
+## 2026-06-02 — PR #286 MERGED
+GitHub PR: #286 (https://github.com/GH-Mantova/ProjectOperations/pull/286)
+Type: Docs (deploy + onboarding)
+Branch: docs/pre-deploy-checklist-onboarding
+Detail: Three new docs to bridge pre-Azure-deploy work and Sean+Raj
+  onboarding: `docs/deploy/pre-deploy-checklist.md` (gating items
+  before first prod push), `docs/deploy/onboarding-sean-raj.md`
+  (account setup, perm grants, first-week checklist), and
+  `docs/deploy/tendering-smoke-test-plan.md` (the workflow Sean+Raj
+  run to sign off §5A.3). Pure docs — no code, no migration, no env.
+Status: COMPLETE (merged)
+
+## 2026-06-02 — PR #287 MERGED
+GitHub PR: #287 (https://github.com/GH-Mantova/ProjectOperations/pull/287)
+Type: Feature (§5A.3 — Quote scope grouped-mode drag reorder)
+Branch: feat/quote-scope-grouped-drag-reorder
+Detail: Closes the roadmap §5A.3 gap "Quote scope grouped-by-discipline
+  drag reorder" — grouped mode is Raj's primary view and was static
+  before this. Within-discipline reorder works via @dnd-kit using the
+  existing sortOrder reorder endpoint; cross-discipline drag is
+  rejected at drop time (groups must stay coherent). Flat-mode reorder
+  unchanged. Frontend-only — no schema change, no new endpoint.
+Status: COMPLETE (merged)
+
+## 2026-06-02 — PR #288 MERGED
+GitHub PR: #288 (https://github.com/GH-Mantova/ProjectOperations/pull/288)
+Type: Feature (§5A.3 — Sites module detail page)
+Branch: feat/sites-detail-page
+Detail: Replaces the `/sites/:id` stub with a real detail view:
+  KPI strip (active tenders, active projects, last visit, status),
+  tabbed sections (Overview / Tenders / Projects / Documents),
+  inline Edit and Delete with confirmation. Closes the roadmap
+  §5A.3 "Sites module detail page" item. Hard siteId FK to Tender
+  / Project from the same roadmap line is NOT in this PR — still
+  pending as a follow-up.
+Status: COMPLETE (merged)
+
+## 2026-06-02 — PR #289 MERGED
+GitHub PR: #289 (https://github.com/GH-Mantova/ProjectOperations/pull/289)
+Type: Tech debt (§6 — migration drift reconciliation)
+Branch: chore/reconcile-migration-drift
+Detail: Closes the §6 deploy-blocker "Migration history vs dev-DB
+  drift reconciliation". Drift had accumulated across PRs #117 /
+  #134 / #136 / #137 / #139 / #141 — each had needed manual SQL +
+  `prisma migrate resolve --applied` to limp past the divergence,
+  and production `migrate deploy` would have failed cleanly-from-
+  scratch. Added `apps/api/prisma/migrations/20260602084115_chore_reconcile_drift/`
+  which captures the residual schema delta so a fresh DB replays
+  identical to the live dev schema. No application code change.
+Status: COMPLETE (merged) — unblocks the pre-deploy checklist (PR #286)
+
+## 2026-06-02 — PR #290 MERGED
+GitHub PR: #290 (https://github.com/GH-Mantova/ProjectOperations/pull/290)
+Type: Dev tooling (PowerShell 5 compatibility)
+Branch: fix/watcher-ascii-only
+Detail: `scripts/pr-watcher/start-nightly.ps1` was using a Unicode
+  hyphen character that PowerShell 5.1 mis-parsed under the default
+  Windows-1252 console code page, causing the nightly watcher wrapper
+  to fail on Marco's box. Replaced with plain ASCII hyphen. No
+  behaviour change beyond "the script now actually runs on PS5".
+Status: COMPLETE (merged)
+
+## 2026-06-02 — PR #291 OPENED (WIP — backend scaffold only)
+GitHub PR: #291 (https://github.com/GH-Mantova/ProjectOperations/pull/291)
+Type: Feature WIP (§2 — admin reset-password)
+Branch: feat/admin-reset-password
+Detail: Backend scaffold for the admin "reset user password" flow:
+  new `apps/api/src/modules/admin-users/` module with controller +
+  service + DTOs and the endpoint wired through the auth/permissions
+  guard chain. This is intentionally partial — UI, tests, and the
+  audit-log entry are NOT in this PR. Tracked as 🚧 partial on the
+  roadmap; follow-up PR-48 finalisation will close those gaps.
+Status: OPEN — do NOT auto-merge; explicitly WIP per the PR title.

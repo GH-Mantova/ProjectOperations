@@ -6,7 +6,10 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import { randomBytes, scryptSync } from "crypto";
+import { PasswordService } from "../../common/security/password.service";
+import { generateTemporaryPassword } from "../../common/security/temporary-password";
 import { PrismaService } from "../../prisma/prisma.service";
+import { AuditService } from "../audit/audit.service";
 
 export type ViewerTier = "super" | "admin" | "none";
 
@@ -22,9 +25,15 @@ function hashPassword(plain: string): string {
   return `${salt}:${derived}`;
 }
 
+export const USER_PASSWORD_RESET_BY_ADMIN = "user.password_reset_by_admin";
+
 @Injectable()
 export class AdminUsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly passwordService: PasswordService,
+    private readonly auditService: AuditService
+  ) {}
 
   async me(userId: string) {
     const u = await this.prisma.user.findUnique({
@@ -34,6 +43,7 @@ export class AdminUsersService {
     if (!u) throw new NotFoundException("User not found.");
     return {
       id: u.id,
+      email: u.email,
       isSuperUser: u.isSuperUser,
       roles: u.userRoles.map((ur) => ({ name: ur.role.name }))
     };
@@ -167,5 +177,53 @@ export class AdminUsersService {
 
   async deactivate(viewerId: string, targetId: string) {
     return this.update(viewerId, targetId, { isActive: false });
+  }
+
+  async resetPassword(
+    actorId: string,
+    targetUserId: string
+  ): Promise<{ userId: string; temporaryPassword: string }> {
+    if (actorId === targetUserId) {
+      throw new BadRequestException("Use the standard reset flow for your own account.");
+    }
+
+    const viewer = await this.me(actorId);
+    const tier = tierOf(viewer);
+    if (tier === "none") throw new ForbiddenException("Admin access required.");
+
+    const target = await this.prisma.user.findUnique({
+      where: { id: targetUserId },
+      include: { userRoles: { include: { role: { select: { name: true } } } } }
+    });
+    if (!target || !target.isActive) throw new NotFoundException("User not found.");
+
+    const targetTier = tierOf({
+      isSuperUser: target.isSuperUser,
+      roles: target.userRoles.map((ur) => ({ name: ur.role.name }))
+    });
+
+    if (tier === "admin" && targetTier !== "none") {
+      throw new ForbiddenException("Admins cannot reset passwords for Admins or Super Users. Ask a Super User.");
+    }
+
+    const temporaryPassword = generateTemporaryPassword();
+
+    await this.prisma.user.update({
+      where: { id: targetUserId },
+      data: {
+        passwordHash: this.passwordService.hashPassword(temporaryPassword),
+        forcePasswordReset: true
+      }
+    });
+
+    await this.auditService.write({
+      actorId,
+      action: USER_PASSWORD_RESET_BY_ADMIN,
+      entityType: "User",
+      entityId: targetUserId,
+      metadata: { resetByEmail: viewer.email, resetAt: new Date().toISOString() }
+    });
+
+    return { userId: targetUserId, temporaryPassword };
   }
 }

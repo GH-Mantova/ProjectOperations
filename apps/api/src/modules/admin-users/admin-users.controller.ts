@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { IsBoolean, IsEmail, IsOptional, IsString, MinLength } from "class-validator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
@@ -68,5 +68,24 @@ export class AdminUsersController {
   @ApiOperation({ summary: "Soft-delete (deactivate) a user. Same tier rules as PATCH." })
   deactivate(@Param("userId") userId: string, @CurrentUser() actor: { sub: string }) {
     return this.service.deactivate(actor.sub, userId);
+  }
+
+  @Post(":userId/reset-password")
+  @ApiOperation({
+    summary:
+      "Reset password for a user — generates a temp password and forces reset on next login."
+  })
+  @ApiParam({ name: "userId", description: "The target user's id" })
+  @ApiResponse({ status: 201, description: "Temp password returned. Communicate out of band." })
+  @ApiResponse({ status: 400, description: "Cannot reset your own password via this endpoint." })
+  @ApiResponse({ status: 403, description: "Insufficient permission to reset this user." })
+  @ApiResponse({ status: 404, description: "User not found or inactive." })
+  async resetPassword(@Param("userId") userId: string, @CurrentUser() actor: { sub: string }) {
+    const result = await this.service.resetPassword(actor.sub, userId);
+    return {
+      ...result,
+      message:
+        "Communicate this password to the user out of band. They will be forced to reset it on their next login."
+    };
   }
 }

@@ -110,17 +110,20 @@ export function SiteDetailPage() {
     setLoading(true);
     setError(null);
     setNotFound(false);
+    // Clear stale detail at the start of every load — without this, a failed
+    // refetch (e.g. navigating from site A to site B and B errors) would
+    // leave site A's data on screen while the URL says B. Per Codex review
+    // on PR #288.
+    setDetail(null);
     try {
       const response = await authFetch(`/master-data/sites/${id}`);
       if (response.status === 404) {
-        setDetail(null);
         setNotFound(true);
         return;
       }
       if (!response.ok) throw new Error(await response.text());
       const body = (await response.json()) as SiteDetail | null;
       if (!body) {
-        setDetail(null);
         setNotFound(true);
         return;
       }
@@ -166,7 +169,12 @@ export function SiteDetailPage() {
     );
   }
 
-  if (error && !detail) {
+  // Render the error banner whenever an error occurred — do NOT gate on
+  // `!detail`. With the `setDetail(null)` at the start of `load` the
+  // condition is equivalent in steady state, but dropping the gate is
+  // defence-in-depth against future refetch paths that forget to clear
+  // detail. Per Codex review on PR #288.
+  if (error) {
     return (
       <div style={{ padding: 20, display: "grid", gap: 12, maxWidth: 560 }}>
         <h2 className="s7-type-section-heading" style={{ margin: 0 }}>Couldn’t load site</h2>

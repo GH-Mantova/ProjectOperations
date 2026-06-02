@@ -26,6 +26,14 @@ function hasPermission(req: AuthedRequest, code: string): boolean {
   return Array.isArray(req.user?.permissionCodes) && (req.user?.permissionCodes ?? []).includes(code);
 }
 
+/**
+ * Payload for creating or updating a subcontractor/supplier entry. Used by
+ * both `POST /directory` (create — `name` required) and `PATCH /directory/:id`
+ * (update — all fields optional). Includes business directory fields, prequal
+ * state, bank details (gated by `directory.finance`), and the Xero alignment
+ * fields whose `paymentTermsDay` / `paymentTermsType` pair the service layer
+ * enforces must be set together.
+ */
 class UpsertSubcontractorDto {
   @IsOptional() @IsString() name?: string;
   @IsOptional() @IsString() tradingName?: string | null;
@@ -80,6 +88,12 @@ class UpsertSubcontractorDto {
   @IsOptional() @IsIn(PAYMENT_TERMS_TYPES as unknown as string[]) paymentTermsType?: PaymentTermsType | null;
 }
 
+/**
+ * Payload for adding or patching a contact nested under a subcontractor
+ * (`/directory/:id/contacts`). Maps onto the polymorphic Contact model with
+ * `organisationType = "SUBCONTRACTOR"` set server-side. `firstName` /
+ * `lastName` are required on create and enforced at the service layer.
+ */
 class UpsertContactDto {
   @IsOptional() @IsString() firstName?: string;
   @IsOptional() @IsString() lastName?: string;
@@ -95,6 +109,12 @@ class UpsertContactDto {
   @IsOptional() @IsBoolean() includeInInvoiceEmails?: boolean;
 }
 
+/**
+ * Payload for adding or patching a polymorphic EntityLicence on either a
+ * client or a subcontractor. The owning entity is taken from the route, not
+ * the body. `licenceType` is required on create. Date fields accept ISO
+ * strings and are parsed server-side.
+ */
 class UpsertLicenceDto {
   @IsOptional() @IsString() licenceType?: string;
   @IsOptional() @IsString() licenceNumber?: string | null;
@@ -106,6 +126,12 @@ class UpsertLicenceDto {
   @IsOptional() @IsString() status?: string;
 }
 
+/**
+ * Payload for adding or patching a polymorphic EntityInsurance on either a
+ * client or a subcontractor. The owning entity is taken from the route.
+ * `insuranceType` is required on create. `expiryDate` accepts ISO strings
+ * and is parsed server-side.
+ */
 class UpsertInsuranceDto {
   @IsOptional() @IsString() insuranceType?: string;
   @IsOptional() @IsString() insurerName?: string | null;
@@ -117,6 +143,13 @@ class UpsertInsuranceDto {
   @IsOptional() @IsString() status?: string;
 }
 
+/**
+ * Payload for adding or patching a polymorphic CreditApplication on either
+ * a client or a subcontractor. `direction` is required on create
+ * (`outgoing` = we extend credit to a customer, `incoming` = we receive
+ * credit from a supplier). Status transitions are enforced server-side
+ * against the caller's `directory.admin` / `finance.manage` permissions.
+ */
 class UpsertCreditApplicationDto {
   @IsOptional() @IsString() @IsIn(["outgoing", "incoming"]) direction?: string;
   @IsOptional() @IsString() status?: string;
@@ -130,6 +163,11 @@ class UpsertCreditApplicationDto {
   @IsOptional() @IsString() accountNumber?: string | null;
 }
 
+/**
+ * Payload for adding or patching a SubcontractorDocument metadata row.
+ * `documentType` and `name` are required on create. The actual file lives
+ * wherever `filePath` points (SharePoint adapter).
+ */
 class UpsertDocumentDto {
   @IsOptional() @IsString() documentType?: string;
   @IsOptional() @IsString() name?: string;
@@ -137,11 +175,30 @@ class UpsertDocumentDto {
   @IsOptional() @IsString() notes?: string | null;
 }
 
+/**
+ * Payload for `PATCH /directory/:id/prequal`. Updates the prequalification
+ * status (required, must be in the fixed vocabulary) plus optional notes;
+ * the service layer stamps reviewer + timestamp.
+ */
 class UpdatePrequalDto {
   @IsString() prequalStatus!: string;
   @IsOptional() @IsString() prequalNotes?: string | null;
 }
 
+/**
+ * HTTP surface for the directory module — subcontractors / suppliers and the
+ * licences, insurances, credit applications, documents, and contacts that
+ * hang off them. Also exposes nested licence / insurance / credit-application
+ * routes on the client side so the same record types can live on either
+ * polymorphic owner.
+ *
+ * All routes are protected by JWT + the `PermissionsGuard`. Read routes
+ * require `directory.view`; mutating routes require `directory.manage`;
+ * destructive and prequal changes require `directory.admin`. Bank fields
+ * additionally require `directory.finance` for both visibility and write —
+ * enforced at the field level rather than the route level (see
+ * `stripBankFromInput` and `maskBank` in {@link DirectoryService}).
+ */
 @ApiTags("Directory")
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -150,6 +207,7 @@ export class DirectoryController {
   constructor(private readonly service: DirectoryService) {}
 
   // ─── Subcontractor list / get / CRUD ────────────────────────────────────
+  /** Paginated-by-name list of subcontractors/suppliers with a precomputed `expiryAlerts` count. */
   @Get("directory")
   @RequirePermissions("directory.view")
   @ApiOperation({ summary: "List subcontractors/suppliers with filters + expiry alerts count." })
@@ -168,6 +226,7 @@ export class DirectoryController {
     return this.service.list({ type, category, status, prequal, q });
   }
 
+  /** Flat list of licences + insurances expired or expiring within 30 days, sorted by urgency. */
   @Get("directory/expiry-alerts")
   @RequirePermissions("directory.view")
   @ApiOperation({ summary: "Licences + insurances expiring within 30 days or already expired." })
@@ -176,6 +235,7 @@ export class DirectoryController {
     return this.service.expiryAlerts();
   }
 
+  /** Full subcontractor record (contacts, licences, insurances, docs, credit apps); bank fields masked without `directory.finance`. */
   @Get("directory/:id")
   @RequirePermissions("directory.view")
   @ApiOperation({ summary: "Full subcontractor record with contacts, licences, insurances, docs, credit apps." })
@@ -183,6 +243,7 @@ export class DirectoryController {
     return this.service.get(id, hasPermission(req, "directory.finance"));
   }
 
+  /** Create a subcontractor/supplier; auto-creates a primary contact for `private_person`. Bank fields require `directory.finance`. */
   @Post("directory")
   @RequirePermissions("directory.manage")
   @ApiOperation({ summary: "Create a subcontractor/supplier entry. Auto-creates primary contact for private_person." })
@@ -194,6 +255,7 @@ export class DirectoryController {
     return this.service.create(dto as never, actor.sub, hasPermission(req, "directory.finance"));
   }
 
+  /** Patch a subcontractor/supplier; bank fields silently stripped if caller lacks `directory.finance`. */
   @Patch("directory/:id")
   @RequirePermissions("directory.manage")
   @ApiOperation({ summary: "Update subcontractor/supplier fields. Bank details require directory.finance." })
@@ -201,6 +263,7 @@ export class DirectoryController {
     return this.service.update(id, dto as never, hasPermission(req, "directory.finance"));
   }
 
+  /** Soft-delete (`isActive = false`); the row is preserved so historical references keep resolving. */
   @Delete("directory/:id")
   @RequirePermissions("directory.admin")
   @ApiOperation({ summary: "Soft-delete (set isActive=false)." })
@@ -208,6 +271,7 @@ export class DirectoryController {
     return this.service.softDelete(id);
   }
 
+  /** Update prequalification status + notes; stamps `prequalReviewedAt` and `prequalReviewedBy`. */
   @Patch("directory/:id/prequal")
   @RequirePermissions("directory.admin")
   @ApiOperation({ summary: "Update prequalification status + notes." })
@@ -220,6 +284,7 @@ export class DirectoryController {
   }
 
   // ─── Subcontractor contacts ─────────────────────────────────────────────
+  /** Attach a contact to a subcontractor; demotes any other primary contact on the same parent if `isPrimary` is set. */
   @Post("directory/:id/contacts")
   @RequirePermissions("directory.manage")
   addContact(
@@ -230,6 +295,7 @@ export class DirectoryController {
     return this.service.addContact(id, dto as never, actor.sub);
   }
 
+  /** Patch a contact, scoped to its subcontractor parent. */
   @Patch("directory/:id/contacts/:contactId")
   @RequirePermissions("directory.manage")
   patchContact(
@@ -240,6 +306,7 @@ export class DirectoryController {
     return this.service.updateContact(id, contactId, dto as never);
   }
 
+  /** Hard-delete a contact, scoped to its subcontractor parent. */
   @Delete("directory/:id/contacts/:contactId")
   @RequirePermissions("directory.manage")
   deleteContact(@Param("id") id: string, @Param("contactId") contactId: string) {
@@ -247,12 +314,14 @@ export class DirectoryController {
   }
 
   // ─── Subcontractor licences ─────────────────────────────────────────────
+  /** Attach a licence to a subcontractor; date strings are parsed server-side. */
   @Post("directory/:id/licences")
   @RequirePermissions("directory.manage")
   addSubLicence(@Param("id") id: string, @Body() dto: UpsertLicenceDto) {
     return this.service.addLicence({ subcontractorId: id }, dto as never);
   }
 
+  /** Patch a licence, scoped to its subcontractor parent; returns the row with refreshed `status`. */
   @Patch("directory/:id/licences/:licenceId")
   @RequirePermissions("directory.manage")
   patchSubLicence(
@@ -263,6 +332,7 @@ export class DirectoryController {
     return this.service.updateLicence({ subcontractorId: id }, licenceId, dto as never);
   }
 
+  /** Hard-delete a licence, scoped to its subcontractor parent. */
   @Delete("directory/:id/licences/:licenceId")
   @RequirePermissions("directory.manage")
   deleteSubLicence(@Param("id") id: string, @Param("licenceId") licenceId: string) {
@@ -270,12 +340,14 @@ export class DirectoryController {
   }
 
   // ─── Subcontractor insurances ───────────────────────────────────────────
+  /** Attach an insurance row to a subcontractor; `expiryDate` parsed server-side. */
   @Post("directory/:id/insurances")
   @RequirePermissions("directory.manage")
   addSubInsurance(@Param("id") id: string, @Body() dto: UpsertInsuranceDto) {
     return this.service.addInsurance({ subcontractorId: id }, dto as never);
   }
 
+  /** Patch an insurance row, scoped to its subcontractor parent; returns the row with refreshed `status`. */
   @Patch("directory/:id/insurances/:insuranceId")
   @RequirePermissions("directory.manage")
   patchSubInsurance(
@@ -286,6 +358,7 @@ export class DirectoryController {
     return this.service.updateInsurance({ subcontractorId: id }, insuranceId, dto as never);
   }
 
+  /** Hard-delete an insurance row, scoped to its subcontractor parent. */
   @Delete("directory/:id/insurances/:insuranceId")
   @RequirePermissions("directory.manage")
   deleteSubInsurance(@Param("id") id: string, @Param("insuranceId") insuranceId: string) {
@@ -293,6 +366,7 @@ export class DirectoryController {
   }
 
   // ─── Subcontractor credit applications ──────────────────────────────────
+  /** Create a credit application on a subcontractor; `direction` is required. */
   @Post("directory/:id/credit-applications")
   @RequirePermissions("directory.manage")
   addSubCreditApp(
@@ -303,6 +377,7 @@ export class DirectoryController {
     return this.service.addCreditApplication({ subcontractorId: id }, actor.sub, dto as never);
   }
 
+  /** Patch a credit application on a subcontractor; status transitions enforced against `directory.admin` and `finance.manage`. */
   @Patch("directory/:id/credit-applications/:appId")
   @RequirePermissions("directory.manage")
   patchSubCreditApp(
@@ -323,6 +398,7 @@ export class DirectoryController {
   }
 
   // ─── Subcontractor documents ────────────────────────────────────────────
+  /** Attach a document metadata row to a subcontractor; `uploadedById` is taken from the caller. */
   @Post("directory/:id/documents")
   @RequirePermissions("directory.manage")
   addDoc(
@@ -333,6 +409,7 @@ export class DirectoryController {
     return this.service.addDocument(id, actor.sub, dto as never);
   }
 
+  /** Patch a document metadata row, scoped to its subcontractor parent. */
   @Patch("directory/:id/documents/:docId")
   @RequirePermissions("directory.manage")
   patchDoc(
@@ -343,6 +420,7 @@ export class DirectoryController {
     return this.service.updateDocument(id, docId, dto as never);
   }
 
+  /** Hard-delete a document metadata row; the underlying file in storage is not touched. */
   @Delete("directory/:id/documents/:docId")
   @RequirePermissions("directory.manage")
   deleteDoc(@Param("id") id: string, @Param("docId") docId: string) {
@@ -350,12 +428,14 @@ export class DirectoryController {
   }
 
   // ─── Client-side nested licences / insurances / credit applications ─────
+  /** Attach a licence to a client (polymorphic owner = `clientId`). */
   @Post("clients/:clientId/licences")
   @RequirePermissions("directory.manage")
   addClientLicence(@Param("clientId") clientId: string, @Body() dto: UpsertLicenceDto) {
     return this.service.addLicence({ clientId }, dto as never);
   }
 
+  /** Patch a licence, scoped to its client parent. */
   @Patch("clients/:clientId/licences/:licenceId")
   @RequirePermissions("directory.manage")
   patchClientLicence(
@@ -366,6 +446,7 @@ export class DirectoryController {
     return this.service.updateLicence({ clientId }, licenceId, dto as never);
   }
 
+  /** Hard-delete a licence, scoped to its client parent. */
   @Delete("clients/:clientId/licences/:licenceId")
   @RequirePermissions("directory.manage")
   deleteClientLicence(
@@ -375,12 +456,14 @@ export class DirectoryController {
     return this.service.deleteLicence({ clientId }, licenceId);
   }
 
+  /** Attach an insurance row to a client. */
   @Post("clients/:clientId/insurances")
   @RequirePermissions("directory.manage")
   addClientInsurance(@Param("clientId") clientId: string, @Body() dto: UpsertInsuranceDto) {
     return this.service.addInsurance({ clientId }, dto as never);
   }
 
+  /** Patch an insurance row, scoped to its client parent. */
   @Patch("clients/:clientId/insurances/:insuranceId")
   @RequirePermissions("directory.manage")
   patchClientInsurance(
@@ -391,6 +474,7 @@ export class DirectoryController {
     return this.service.updateInsurance({ clientId }, insuranceId, dto as never);
   }
 
+  /** Hard-delete an insurance row, scoped to its client parent. */
   @Delete("clients/:clientId/insurances/:insuranceId")
   @RequirePermissions("directory.manage")
   deleteClientInsurance(
@@ -400,6 +484,7 @@ export class DirectoryController {
     return this.service.deleteInsurance({ clientId }, insuranceId);
   }
 
+  /** Create a credit application on a client; `direction` is required. */
   @Post("clients/:clientId/credit-applications")
   @RequirePermissions("directory.manage")
   addClientCreditApp(
@@ -410,6 +495,7 @@ export class DirectoryController {
     return this.service.addCreditApplication({ clientId }, actor.sub, dto as never);
   }
 
+  /** Patch a credit application on a client; status transitions enforced against `directory.admin` and `finance.manage`. */
   @Patch("clients/:clientId/credit-applications/:appId")
   @RequirePermissions("directory.manage")
   patchClientCreditApp(

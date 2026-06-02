@@ -1,9 +1,24 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 
+/**
+ * The fixed vocabulary of organisation types a {@link Contact} can be
+ * anchored to via the polymorphic `organisationType` + `organisationId`
+ * key. CLIENT contacts point at Client rows; SUBCONTRACTOR and SUPPLIER
+ * contacts both point at SubcontractorSupplier rows (the row's own
+ * `entityType` disambiguates).
+ */
 export const ORG_TYPES = ["CLIENT", "SUBCONTRACTOR", "SUPPLIER"] as const;
+
+/** Union of the three organisation-type discriminator values; derived from {@link ORG_TYPES}. */
 export type OrgType = (typeof ORG_TYPES)[number];
 
+/**
+ * Query parameters accepted by {@link ContactsService.list}. All fields are
+ * optional. `search` does a case-insensitive substring match across
+ * `firstName`, `lastName`, and `email`. Pagination defaults to page 1,
+ * limit 25 (capped at 100).
+ */
 export type ContactListFilters = {
   organisationType?: string;
   organisationId?: string;
@@ -13,6 +28,14 @@ export type ContactListFilters = {
   limit?: number;
 };
 
+/**
+ * Shared input shape for {@link ContactsService.create} and
+ * {@link ContactsService.update}. On create, `organisationType`,
+ * `organisationId`, `firstName`, and `lastName` are required. On update,
+ * any field may be omitted; supplying both `organisationType` and
+ * `organisationId` together reassigns the contact to a new owning
+ * organisation (see PR D FIX 3).
+ */
 export type UpsertContactInput = {
   organisationType?: string;
   organisationId?: string;
@@ -30,10 +53,32 @@ export type UpsertContactInput = {
   includeInInvoiceEmails?: boolean;
 };
 
+/**
+ * Service layer for the polymorphic Contact model — a single table that
+ * stores CLIENT, SUBCONTRACTOR, and SUPPLIER contacts, discriminated by
+ * `organisationType` + `organisationId`. This service is the
+ * cross-organisation CRUD surface; module-specific contact endpoints
+ * (e.g. {@link DirectoryService.addContact}) ultimately write rows in the
+ * same table.
+ *
+ * The `isPrimary` flag is unique within an organisation: setting it on one
+ * contact clears it on all siblings of the same parent inside the same
+ * transaction.
+ */
 @Injectable()
 export class ContactsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Paginated list of contacts. Filters by `organisationType` (validated
+   * against {@link ORG_TYPES}), `organisationId`, `isActive`, and a
+   * case-insensitive `search` across `firstName` / `lastName` / `email`.
+   * Returns `{ items, total, page, limit }`. Page defaults to 1, limit to
+   * 25 (capped at 100).
+   *
+   * @throws BadRequestException When `organisationType` is supplied but not
+   *   in the fixed vocabulary.
+   */
   async list(filters: ContactListFilters) {
     const page = Math.max(1, filters.page ?? 1);
     const limit = Math.min(100, Math.max(1, filters.limit ?? 25));
@@ -66,12 +111,27 @@ export class ContactsService {
     return { items, total, page, limit };
   }
 
+  /**
+   * Fetch a single contact by id.
+   *
+   * @throws NotFoundException When no contact exists with `id`.
+   */
   async get(id: string) {
     const row = await this.prisma.contact.findUnique({ where: { id } });
     if (!row) throw new NotFoundException("Contact not found.");
     return row;
   }
 
+  /**
+   * Create a contact anchored to a CLIENT, SUBCONTRACTOR, or SUPPLIER
+   * organisation. Validates that the owning organisation exists. If
+   * `isPrimary` is true, any existing primary contact on the same
+   * organisation is demoted in the same transaction.
+   *
+   * @throws BadRequestException When `organisationType` / `organisationId` /
+   *   `firstName` / `lastName` are missing or `organisationType` is invalid.
+   * @throws NotFoundException When the owning organisation does not exist.
+   */
   async create(input: UpsertContactInput, actorId?: string) {
     const organisationType = input.organisationType;
     const organisationId = input.organisationId;
@@ -113,6 +173,17 @@ export class ContactsService {
     });
   }
 
+  /**
+   * Patch a contact. PATCH semantics — only fields present in `input` are
+   * written. Supplying `organisationType` AND `organisationId` together
+   * reassigns the contact to a new owning organisation; the target
+   * organisation is validated and the `isPrimary` flag is cleared against
+   * the destination org, not the source.
+   *
+   * @throws NotFoundException When the contact (or, on reassignment, the
+   *   destination organisation) does not exist.
+   * @throws BadRequestException On invalid destination `organisationType`.
+   */
   async update(id: string, input: UpsertContactInput) {
     const existing = await this.prisma.contact.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException("Contact not found.");
@@ -171,6 +242,13 @@ export class ContactsService {
     });
   }
 
+  /**
+   * Soft-delete by flipping `isActive` to false. The row is preserved so
+   * historical references (audit, email recipients, prior jobs) keep
+   * resolving.
+   *
+   * @throws NotFoundException When no contact exists with `id`.
+   */
   async softDelete(id: string) {
     const existing = await this.prisma.contact.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException("Contact not found.");

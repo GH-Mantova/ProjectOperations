@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CenteredModal } from "@project-ops/ui";
 
 type CascadeCounts = {
   clientQuotes?: number;
@@ -51,84 +52,16 @@ export function ConfirmDeleteDialog({
       cascadeLines.push(`${cascadeCounts.tenderClients} client link(s)`);
   }
 
+  const title = `Delete ${entityType === "tender" ? "Tender" : "Quote"} ${entityRef}?`;
+
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={onCancel}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        zIndex: 1100,
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center"
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "#fff",
-          borderRadius: 10,
-          padding: 24,
-          width: "min(460px, 90vw)",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.18)"
-        }}
-      >
-        <h3 style={{ margin: "0 0 8px", fontSize: 16, color: "#DC2626" }}>
-          Delete {entityType === "tender" ? "Tender" : "Quote"} {entityRef}?
-        </h3>
-        <p style={{ margin: "0 0 12px", fontSize: 13, color: "#4B5563" }}>
-          This action is <strong>permanent and irreversible</strong>. The{" "}
-          {entityType} and all related data will be removed from the database.
-        </p>
-
-        {cascadeLines.length > 0 ? (
-          <div
-            style={{
-              background: "#FEF2F2",
-              border: "1px solid #FECACA",
-              borderRadius: 6,
-              padding: "8px 12px",
-              marginBottom: 12,
-              fontSize: 13
-            }}
-          >
-            <strong>The following will also be deleted:</strong>
-            <ul style={{ margin: "4px 0 0", paddingLeft: 20 }}>
-              {cascadeLines.map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-
-        {requiresTypedConfirmation ? (
-          <div style={{ marginBottom: 12 }}>
-            <label
-              style={{ display: "block", fontSize: 13, color: "#4B5563", marginBottom: 4 }}
-            >
-              Type <strong>{entityRef}</strong> to confirm:
-            </label>
-            <input
-              type="text"
-              value={typed}
-              onChange={(e) => setTyped(e.target.value)}
-              autoFocus
-              style={{
-                width: "100%",
-                padding: "6px 10px",
-                border: "1px solid #D1D5DB",
-                borderRadius: 6,
-                fontSize: 14,
-                boxSizing: "border-box"
-              }}
-            />
-          </div>
-        ) : null}
-
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+    <CenteredModal
+      title={title}
+      onClose={onCancel}
+      busy={busy}
+      maxWidth={460}
+      footer={
+        <>
           <button
             type="button"
             onClick={onCancel}
@@ -161,8 +94,57 @@ export function ConfirmDeleteDialog({
           >
             {busy ? "Deleting…" : "Delete permanently"}
           </button>
+        </>
+      }
+    >
+      <p style={{ margin: "12px 0", fontSize: 13, color: "#4B5563" }}>
+        This action is <strong>permanent and irreversible</strong>. The{" "}
+        {entityType} and all related data will be removed from the database.
+      </p>
+
+      {cascadeLines.length > 0 ? (
+        <div
+          style={{
+            background: "#FEF2F2",
+            border: "1px solid #FECACA",
+            borderRadius: 6,
+            padding: "8px 12px",
+            marginBottom: 12,
+            fontSize: 13
+          }}
+        >
+          <strong>The following will also be deleted:</strong>
+          <ul style={{ margin: "4px 0 0", paddingLeft: 20 }}>
+            {cascadeLines.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
         </div>
-      </div>
-    </div>
+      ) : null}
+
+      {requiresTypedConfirmation ? (
+        <div style={{ marginBottom: 12 }}>
+          <label
+            style={{ display: "block", fontSize: 13, color: "#4B5563", marginBottom: 4 }}
+          >
+            Type <strong>{entityRef}</strong> to confirm:
+          </label>
+          <input
+            type="text"
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            autoFocus
+            style={{
+              width: "100%",
+              padding: "6px 10px",
+              border: "1px solid #D1D5DB",
+              borderRadius: 6,
+              fontSize: 14,
+              boxSizing: "border-box"
+            }}
+          />
+        </div>
+      ) : null}
+    </CenteredModal>
   );
 }

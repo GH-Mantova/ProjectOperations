@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-06-01 21:35 AEST
+Last updated: 2026-06-02 07:57 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -377,10 +377,11 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
 
 🔲 Fix all issues identified during workflow review (PR per issue group)
 
-🔲 Quote scope grouped-by-discipline drag reorder
-   (grouped mode is Raj's primary view — currently static sortOrder.
-    Flat mode reorder works. Both modes must support drag reorder.
-    API exists, frontend @dnd-kit work only — deferred from PR #72)
+✅ Quote scope grouped-by-discipline drag reorder — PR #287 (2026-06-02)
+   (grouped mode is Raj's primary view — was static sortOrder. Within-
+    discipline reorder now ships via @dnd-kit using the existing
+    reorder endpoint; cross-discipline drag is rejected at drop time.
+    Flat-mode reorder unchanged.)
 
 🔲 Clarification types — add Call/Email/Meeting/Note as first-class types
    (TenderClarificationNote.noteType column exists from PR #72 migration.
@@ -390,8 +391,10 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
    (bulk status update built but needs live test with real tender data.
     Raj is currently blocked on this — prioritised as immediate fix)
 
-🔲 Sites module detail page + hard siteId FK to Tender/Project
-   (sites list works, detail page is stub — deferred from PR #76)
+🔧 Sites module detail page + hard siteId FK to Tender/Project
+   — Detail page ✅ PR #288 (2026-06-02): /sites/:id KPI strip, tabs
+     (Overview/Tenders/Projects/Documents), inline Edit + Delete.
+   — Hard siteId FK still 🔲 pending as a follow-up.
 
 🔧 Tender & quote delete + edit — PR #227 (2026-05-26)
    Hard delete for tenders and quotes with responsible safeguards:
@@ -1313,14 +1316,12 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
      Raj uploads one drawing set at a time. Add if profiling shows
      it's a real bottleneck.)
 
-⏸️  Migration history vs dev-DB drift reconciliation
-    (Drift accumulated across PRs #117/#134/#136/#137/#139/#141.
-     Each migration PR has needed manual SQL + migrate resolve
-     --applied to work around the divergence. Production migrate
-     deploy will fail or worse against drifted state. Work: dump
-     current dev schema, replay _prisma_migrations from clean,
-     generate reconciliation migration, validate clean replay
-     produces identical schema. Do BEFORE any production deploy.)
+✅  Migration history vs dev-DB drift reconciliation — PR #289 (2026-06-02)
+    (Drift had accumulated across PRs #117/#134/#136/#137/#139/#141.
+     Closed by 20260602084115_chore_reconcile_drift migration —
+     captures the residual schema delta so a fresh DB replays
+     identical to the live dev schema. Unblocks the pre-deploy
+     checklist; production migrate deploy is now safe to run.)
 
 ⏸️  Document Prisma .dll harmless-stale cases in troubleshooting doc
     (docs/troubleshooting/prisma-windows-engine-lock.md created in

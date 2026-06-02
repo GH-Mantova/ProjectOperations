@@ -59,3 +59,15 @@ export function categoriseGraphResponse(status: number): MailErrorCategory {
   if (status >= 500) return "server";
   return "unknown";
 }
+
+/**
+ * Strips `<` and `>` characters so error-message text can be safely embedded
+ * in downstream logs/UIs without risking HTML injection. Uses character-level
+ * stripping rather than tag-matching: a tag-matching regex like `/<[^>]*>/g`
+ * is defeated by malformed input such as `<scr<script>ipt>`, where removing
+ * the inner tag reconstructs the outer. Error messages have no legitimate
+ * need for angle brackets, so this is safe.
+ */
+export function stripAngleBrackets(s: string): string {
+  return s.replace(/[<>]/g, "");
+}

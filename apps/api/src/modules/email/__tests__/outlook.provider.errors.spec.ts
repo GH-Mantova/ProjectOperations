@@ -5,7 +5,8 @@ import {
   MailError,
   MailRateLimitError,
   MailServerError,
-  MailValidationError
+  MailValidationError,
+  stripAngleBrackets
 } from "../mail-errors";
 import { OutlookEmailProvider, resolveMailCreds } from "../providers/outlook.provider";
 
@@ -136,6 +137,44 @@ describe("OutlookEmailProvider categorised errors", () => {
     expect(caught).toBeInstanceOf(MailServerError);
     expect((caught as Error).message).not.toContain("<script>");
     expect((caught as Error).message).not.toContain("<b>");
+  });
+
+  it("strips angle brackets even from malformed input that defeats tag-matching regexes", async () => {
+    // Classic CodeQL test case: a naive /<[^>]*>/g sanitiser strips the inner
+    // <script> and the outer fragments reconstruct into <script>. Our
+    // character-level stripper must leave no angle brackets behind.
+    const malformed = "<scr<script>ipt>alert(1)</script>";
+    const post = jest.fn().mockRejectedValue(Object.assign(new Error(malformed), { statusCode: 500 }));
+    const provider = buildProvider(post);
+    let caught: unknown;
+    try {
+      await provider.sendMail(SAMPLE_INPUT);
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(MailServerError);
+    const msg = (caught as Error).message;
+    expect(msg).not.toMatch(/</);
+    expect(msg).not.toMatch(/>/);
+  });
+});
+
+describe("stripAngleBrackets", () => {
+  it("removes every `<` and `>` character", () => {
+    expect(stripAngleBrackets("<b>hi</b>")).toBe("bhi/b");
+  });
+
+  it("is not defeated by reconstruction from malformed nested tags", () => {
+    // If a tag-matching regex were used, it would strip the inner <script>
+    // and leave `<script>alert(1)</script>` behind. Character-level stripping
+    // removes every angle bracket, so reconstruction is impossible.
+    const sanitised = stripAngleBrackets("<scr<script>ipt>alert(1)</script>");
+    expect(sanitised).not.toMatch(/[<>]/);
+    expect(sanitised).toBe("scrscriptiptalert(1)/script");
+  });
+
+  it("leaves bracket-free text unchanged", () => {
+    expect(stripAngleBrackets("plain error: connection refused")).toBe("plain error: connection refused");
   });
 });
 

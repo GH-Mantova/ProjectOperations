@@ -11,7 +11,8 @@ import {
   MailRateLimitError,
   MailServerError,
   MailValidationError,
-  categoriseGraphResponse
+  categoriseGraphResponse,
+  stripAngleBrackets
 } from "../mail-errors";
 
 export type MailCreds = {
@@ -127,10 +128,11 @@ export class OutlookEmailProvider implements EmailProvider {
 
   private wrapError(op: string, err: unknown): MailError {
     // Defence-in-depth: truncate via sanitiseProviderError (cap 1000 chars)
-    // then strip HTML tags so an upstream HTML body can't leak through to
-    // downstream logs/UIs that render the error message. See PR #131/#135.
+    // then strip angle brackets so an upstream HTML body can't leak through to
+    // downstream logs/UIs that render the error message. Character-level
+    // stripping (not tag-matching) — see stripAngleBrackets in mail-errors.ts.
     const sanitised = sanitiseProviderError(err);
-    const safeText = sanitised.logMessage.replace(/<[^>]*>/g, "").slice(0, 500);
+    const safeText = stripAngleBrackets(sanitised.logMessage).slice(0, 500);
     const rawMessage = err instanceof Error ? err.message : String(err);
     const status = extractStatus(err);
 

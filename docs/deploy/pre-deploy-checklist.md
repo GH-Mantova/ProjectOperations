@@ -36,8 +36,15 @@ restart the App Service so values take effect.
       `?sslmode=require`
 - [ ] `JWT_ACCESS_SECRET` — 32-byte random (`openssl rand -base64 32`)
 - [ ] `JWT_REFRESH_SECRET` — 32-byte random, **different from access secret**
+- [ ] `BYOK_ENCRYPTION_KEY` — 64-hex-character key
+      (`openssl rand -hex 32`). `KeyEncryptionService` throws on App Service
+      startup if this is unset, so the API won't boot without it.
 - [ ] `NODE_ENV=production`
-- [ ] `PORT=8080` (Azure App Service default)
+- [ ] `API_PORT=8080` — the API reads `process.env.API_PORT` (not `PORT`)
+      in `apps/api/src/config/app.config.ts`. Azure App Service injects
+      `PORT` automatically; **the app does not consume it**, so leaving only
+      `PORT` would leave the API listening on the default `3000` while the
+      platform expects `8080`. Set `API_PORT=8080` explicitly.
 
 ### CORS
 
@@ -66,17 +73,42 @@ restart the App Service so values take effect.
 - [ ] `AZURE_MAIL_CLIENT_SECRET` — `<placeholder — Marco to fill>`
 - [ ] `AZURE_MAIL_FROM` — the sender mailbox (e.g. `noreply@initialservices.net`)
 
-## 3. Azure Static Web Apps — web environment variables
+## 3. Web build-time environment variables (deploy.yml, not Static Web Apps portal)
 
-Set in **Static Web Apps → Configuration → Application settings**. Trigger a
-fresh build/deploy after changes (env vars are baked into the Vite bundle at
-build time).
+**Important:** Vite bakes `VITE_*` environment variables into the JS bundle at
+**build time**, not at runtime. `apps/web/src/auth/msal.config.ts` reads
+`import.meta.env.VITE_SSO_ENABLED` / `VITE_ENTRA_CLIENT_ID` /
+`VITE_ENTRA_TENANT_ID` at build time and disables SSO entirely if any are
+missing. Putting these in the Static Web Apps portal `Application settings`
+does **NOT** make them available to the bundle — the portal only injects them
+into the (separate) Azure Functions runtime, which the SPA never sees.
 
+The build runs in `.github/workflows/deploy.yml` via `pnpm build:azure`, so
+these must be set in the workflow's `env:` block (or sourced from repo
+secrets) so they're present when Vite compiles. Example workflow snippet:
+
+```yaml
+- name: Build web app
+  working-directory: apps/web
+  env:
+    VITE_API_BASE_URL: ${{ secrets.PROD_API_BASE_URL }}
+    VITE_SSO_ENABLED: "true"
+    VITE_ENTRA_CLIENT_ID: ${{ secrets.PROD_ENTRA_CLIENT_ID }}
+    VITE_ENTRA_TENANT_ID: ${{ secrets.PROD_ENTRA_TENANT_ID }}
+  run: pnpm build
+```
+
+Checklist:
+
+- [ ] `deploy.yml` `Build web app` step injects all four `VITE_*` vars via
+      `env:` (or `pnpm build:azure` is updated to read them from repo secrets)
 - [ ] `VITE_API_BASE_URL` — public URL of the API App Service, including
-      `/api/v1` suffix
+      `/api/v1` suffix (sourced from `PROD_API_BASE_URL` secret)
 - [ ] `VITE_SSO_ENABLED=true`
 - [ ] `VITE_ENTRA_CLIENT_ID` — same value as the API's `ENTRA_CLIENT_ID`
 - [ ] `VITE_ENTRA_TENANT_ID` — same value as the API's `ENTRA_TENANT_ID`
+- [ ] After any value changes, **trigger a fresh deploy** so the bundle is
+      rebuilt — values changed in the portal alone will NOT take effect
 
 ## 4. Azure App Registration — Microsoft Graph permissions
 
@@ -110,9 +142,21 @@ Single App Registration covers SSO, SharePoint, and Mail.Send.
 - [ ] `.github/workflows/deploy.yml` re-enabled to `on: push: main`
       (currently `workflow_dispatch` only — per roadmap §6 line 986).
       Switch back to `workflow_dispatch` if a hot rollback is needed mid-test.
-- [ ] Repository secrets present and current:
-      `AZURE_WEBAPP_PUBLISH_PROFILE`, `AZURE_STATIC_WEB_APPS_API_TOKEN`,
-      and anything else `deploy.yml` consumes
+- [ ] Repository secrets present and current — `.github/workflows/deploy.yml`
+      reads these exact names; using any other name = silent build/deploy
+      failure:
+      - `AZURE_API_APP_NAME` — name of the Azure App Service hosting the API
+      - `AZURE_API_PUBLISH_PROFILE` — XML publish profile downloaded from the
+        API App Service
+      - `AZURE_STATIC_WEB_APPS_TOKEN` — deployment token from the Static Web
+        Apps resource
+      - `PROD_DATABASE_URL` — production Postgres connection string (used by
+        the `prisma migrate deploy` step)
+      - `PROD_API_BASE_URL` — public URL of the API including `/api/v1`
+        (used as the build-time value of `VITE_API_BASE_URL`)
+- [ ] If SSO build-time env vars are added per section 3, also create the
+      corresponding repo secrets (e.g. `PROD_ENTRA_CLIENT_ID`,
+      `PROD_ENTRA_TENANT_ID`) and reference them in the workflow
 - [ ] Branch protection on `main` confirms reviewer required and CI must pass
 
 ## 7. Smoke test (post-deploy, pre-handoff)

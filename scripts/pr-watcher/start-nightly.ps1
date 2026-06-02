@@ -32,7 +32,7 @@ $LogFile = Join-Path $LogDir ("{0}.log" -f (Get-Date -Format "yyyy-MM-dd"))
 Set-Location $RepoRoot
 
 # Make sure we're on main with a clean tree before starting. If not,
-# bail — the watcher branch-switches per PR and a dirty tree would
+# bail - the watcher branch-switches per PR and a dirty tree would
 # poison everything.
 $branch = (git branch --show-current).Trim()
 $dirty  = (git status --short)
@@ -44,11 +44,11 @@ if ($branch -ne "main" -or $dirty) {
     exit 1
 }
 
-# Single-instance guard — refuse to start if another watcher node process is already running.
+# Single-instance guard - refuse to start if another watcher node process is already running.
 $existing = Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
     Where-Object { $_.CommandLine -match "pr-watcher[\\/]index\.mjs" }
 if ($existing) {
-    $msg = "[$(Get-Date -Format o)] Watcher already running (PID $($existing.ProcessId)) — not starting another."
+    $msg = "[$(Get-Date -Format o)] Watcher already running (PID $($existing.ProcessId)) - not starting another."
     Add-Content -Path $LogFile -Value $msg
     Write-Host $msg
     exit 0
@@ -83,5 +83,5 @@ Write-Host $footer
 # Exit codes:
 #   0 = clean (queue empty or STOP_AT reached)
 #   1 = real failure
-#   2 = soft halt (usage / rate limit hit — will retry next run)
+#   2 = soft halt (usage / rate limit hit - will retry next run)
 exit $exit

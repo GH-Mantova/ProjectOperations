@@ -63,11 +63,35 @@ function stripBankFromInput<T extends Record<string, unknown>>(data: T, canEditB
   return clean;
 }
 
+/**
+ * Service layer for the directory module — subcontractors and suppliers and
+ * the records that hang off them (contacts, licences, insurances, credit
+ * applications, documents).
+ *
+ * Bank fields are gated by `directory.finance`: GETs mask them via
+ * {@link maskBank} and PATCHes silently drop them via
+ * {@link stripBankFromInput} when the caller lacks the permission.
+ * Licence/insurance rows expose a derived `status` (`active` /
+ * `expiring_soon` / `expired` / `not_required`) computed from `expiryDate`
+ * by {@link computeStatus} on every read. The polymorphic Contact,
+ * EntityLicence, EntityInsurance, and CreditApplication tables are shared
+ * with the client side; method signatures take an `owner` discriminator
+ * (`clientId` or `subcontractorId`) to scope rows to the correct parent.
+ */
 @Injectable()
 export class DirectoryService {
   constructor(private readonly prisma: PrismaService) {}
 
   // ─── Subcontractor CRUD ─────────────────────────────────────────────────
+  /**
+   * Paginated-by-name list of subcontractors/suppliers with a precomputed
+   * `expiryAlerts` count (licences + insurances expired or due within 30 days).
+   *
+   * Filters: `type` (entity type — `all` is treated as no filter),
+   * `category` (categories array contains), `status` (`active` /
+   * `inactive` → `isActive`), `prequal`, `q` (case-insensitive match on
+   * `name` / `tradingName` / `abn`).
+   */
   async list(filters: {
     type?: string;
     category?: string;
@@ -113,6 +137,16 @@ export class DirectoryService {
     });
   }
 
+  /**
+   * Full subcontractor/supplier record with licences, insurances, documents,
+   * credit applications, and contacts (hydrated from the polymorphic Contact
+   * table by `organisationType = "SUBCONTRACTOR"`).
+   *
+   * Licence/insurance rows have their `status` recomputed against the
+   * current date. Bank fields are masked when `canSeeBank` is false.
+   *
+   * @throws NotFoundException When no subcontractor exists with `id`.
+   */
   async get(id: string, canSeeBank: boolean) {
     const entity = await this.prisma.subcontractorSupplier.findUnique({
       where: { id },
@@ -139,6 +173,18 @@ export class DirectoryService {
     };
   }
 
+  /**
+   * Create a subcontractor/supplier. Validates `businessType`, `entityType`,
+   * and `prequalStatus` against their fixed vocabularies and enforces the
+   * Xero `paymentTermsDay` / `paymentTermsType` pair invariant.
+   *
+   * When `businessType === "private_person"` a primary {@link Contact} is
+   * auto-created from the entity `name` (split on the first space). Bank
+   * fields are dropped from the payload when `canEditBank` is false.
+   *
+   * @throws BadRequestException On missing/invalid `name` or partial
+   *   payment-terms pair.
+   */
   async create(dto: Record<string, unknown>, actorId: string, canEditBank: boolean) {
     if (!dto.name || typeof dto.name !== "string") throw new BadRequestException("name is required.");
     this.validateEnum("businessType", dto.businessType, BUSINESS_TYPES, true);
@@ -175,6 +221,16 @@ export class DirectoryService {
     return entity;
   }
 
+  /**
+   * Patch a subcontractor/supplier. PATCH semantics: each enum is validated
+   * only when present; payment-terms pair invariant still applies whenever
+   * either key is included. Bank fields are silently stripped when
+   * `canEditBank` is false (see {@link stripBankFromInput}).
+   *
+   * @throws NotFoundException When the entity does not exist.
+   * @throws BadRequestException On invalid enum value or partial
+   *   payment-terms pair.
+   */
   async update(id: string, dto: Record<string, unknown>, canEditBank: boolean) {
     this.validateEnum("businessType", dto.businessType, BUSINESS_TYPES, false);
     this.validateEnum("entityType", dto.entityType, ENTITY_TYPES, false);
@@ -185,11 +241,25 @@ export class DirectoryService {
     return this.prisma.subcontractorSupplier.update({ where: { id }, data: data as never });
   }
 
+  /**
+   * Soft-delete by flipping `isActive` to false. The row is not removed so
+   * historical references (jobs, tenders, documents) keep resolving.
+   *
+   * @throws NotFoundException When the entity does not exist.
+   */
   async softDelete(id: string) {
     await this.requireEntity(id);
     return this.prisma.subcontractorSupplier.update({ where: { id }, data: { isActive: false } });
   }
 
+  /**
+   * Update prequalification status + notes, stamping `prequalReviewedAt`
+   * (now) and `prequalReviewedBy` (`actorId`). `prequalStatus` is required
+   * and must be one of the {@link PREQUAL_STATUSES} values.
+   *
+   * @throws NotFoundException When the entity does not exist.
+   * @throws BadRequestException On invalid `prequalStatus`.
+   */
   async updatePrequal(id: string, actorId: string, dto: { prequalStatus: string; prequalNotes?: string | null }) {
     this.validateEnum("prequalStatus", dto.prequalStatus, PREQUAL_STATUSES, true);
     await this.requireEntity(id);
@@ -205,6 +275,15 @@ export class DirectoryService {
   }
 
   // ─── Contacts (thin wrappers over the polymorphic Contact model) ────────
+  /**
+   * Attach a new Contact to a subcontractor via the polymorphic
+   * `organisationType = "SUBCONTRACTOR"` / `organisationId = subId` key.
+   * Setting `isPrimary` first clears any existing primary contact on the
+   * same entity inside the same transaction.
+   *
+   * @throws NotFoundException When the subcontractor does not exist.
+   * @throws BadRequestException When `firstName` or `lastName` is missing.
+   */
   async addContact(subId: string, dto: Record<string, unknown>, actorId?: string) {
     await this.requireEntity(subId);
     if (!dto.firstName || !dto.lastName) throw new BadRequestException("firstName and lastName required.");
@@ -226,6 +305,14 @@ export class DirectoryService {
     });
   }
 
+  /**
+   * Patch a contact, scoped to a specific subcontractor parent. Setting
+   * `isPrimary` demotes any other primary contact on the same parent in
+   * the same transaction.
+   *
+   * @throws NotFoundException When no contact with `contactId` is attached
+   *   to subcontractor `subId`.
+   */
   async updateContact(subId: string, contactId: string, dto: Record<string, unknown>) {
     const existing = await this.prisma.contact.findFirst({
       where: { id: contactId, organisationType: "SUBCONTRACTOR", organisationId: subId }
@@ -247,6 +334,12 @@ export class DirectoryService {
     });
   }
 
+  /**
+   * Hard-delete a contact, scoped to a specific subcontractor parent.
+   *
+   * @throws NotFoundException When no contact with `contactId` is attached
+   *   to subcontractor `subId`.
+   */
   async deleteContact(subId: string, contactId: string) {
     const existing = await this.prisma.contact.findFirst({
       where: { id: contactId, organisationType: "SUBCONTRACTOR", organisationId: subId }
@@ -257,6 +350,14 @@ export class DirectoryService {
   }
 
   // ─── Licences (polymorphic) ─────────────────────────────────────────────
+  /**
+   * Create a licence row attached to either a client (`owner.clientId`) or a
+   * subcontractor (`owner.subcontractorId`). Date strings are parsed to
+   * `Date` and the derived `status` is recomputed before the row is returned.
+   *
+   * @throws NotFoundException When the owning entity does not exist.
+   * @throws BadRequestException On missing `licenceType` or invalid date format.
+   */
   async addLicence(owner: { clientId?: string; subcontractorId?: string }, dto: Record<string, unknown>) {
     if (!dto.licenceType) throw new BadRequestException("licenceType is required.");
     await this.requireOwner(owner);
@@ -271,6 +372,14 @@ export class DirectoryService {
     return computeStatus(row);
   }
 
+  /**
+   * Patch a licence row, scoped to its `owner` parent. Date fields are
+   * re-parsed only when supplied in the DTO. Returns the row with a freshly
+   * recomputed `status`.
+   *
+   * @throws NotFoundException When the licence doesn't exist or doesn't
+   *   belong to the supplied owner.
+   */
   async updateLicence(owner: { clientId?: string; subcontractorId?: string }, id: string, dto: Record<string, unknown>) {
     const existing = await this.prisma.entityLicence.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException("Licence not found.");
@@ -284,6 +393,12 @@ export class DirectoryService {
     return computeStatus(row);
   }
 
+  /**
+   * Hard-delete a licence row, scoped to its `owner` parent.
+   *
+   * @throws NotFoundException When the licence doesn't exist or doesn't
+   *   belong to the supplied owner.
+   */
   async deleteLicence(owner: { clientId?: string; subcontractorId?: string }, id: string) {
     const existing = await this.prisma.entityLicence.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException("Licence not found.");
@@ -295,6 +410,14 @@ export class DirectoryService {
   }
 
   // ─── Insurances (polymorphic) ───────────────────────────────────────────
+  /**
+   * Create an insurance row attached to either a client or a subcontractor
+   * (see `owner`). `expiryDate` is parsed to `Date` and the derived
+   * `status` is recomputed before the row is returned.
+   *
+   * @throws NotFoundException When the owning entity does not exist.
+   * @throws BadRequestException On missing `insuranceType` or invalid date format.
+   */
   async addInsurance(owner: { clientId?: string; subcontractorId?: string }, dto: Record<string, unknown>) {
     if (!dto.insuranceType) throw new BadRequestException("insuranceType is required.");
     await this.requireOwner(owner);
@@ -308,6 +431,14 @@ export class DirectoryService {
     return computeStatus(row);
   }
 
+  /**
+   * Patch an insurance row, scoped to its `owner` parent. `expiryDate` is
+   * only re-parsed when supplied. Returns the row with a freshly recomputed
+   * `status`.
+   *
+   * @throws NotFoundException When the insurance doesn't exist or doesn't
+   *   belong to the supplied owner.
+   */
   async updateInsurance(owner: { clientId?: string; subcontractorId?: string }, id: string, dto: Record<string, unknown>) {
     const existing = await this.prisma.entityInsurance.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException("Insurance not found.");
@@ -320,6 +451,12 @@ export class DirectoryService {
     return computeStatus(row);
   }
 
+  /**
+   * Hard-delete an insurance row, scoped to its `owner` parent.
+   *
+   * @throws NotFoundException When the insurance doesn't exist or doesn't
+   *   belong to the supplied owner.
+   */
   async deleteInsurance(owner: { clientId?: string; subcontractorId?: string }, id: string) {
     const existing = await this.prisma.entityInsurance.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException("Insurance not found.");
@@ -331,6 +468,17 @@ export class DirectoryService {
   }
 
   // ─── Credit applications (polymorphic) ──────────────────────────────────
+  /**
+   * Create a credit application attached to either a client or a
+   * subcontractor (see `owner`). `direction` is required and must be one
+   * of {@link CREDIT_DIRECTIONS}; `status` defaults to whatever Prisma
+   * applies. Date fields are parsed to `Date` and `createdById` is set
+   * from `actorId`.
+   *
+   * @throws NotFoundException When the owning entity does not exist.
+   * @throws BadRequestException On missing/invalid `direction` or
+   *   `status`, or on invalid date format.
+   */
   async addCreditApplication(
     owner: { clientId?: string; subcontractorId?: string },
     actorId: string,
@@ -351,6 +499,24 @@ export class DirectoryService {
     return this.prisma.creditApplication.create({ data: data as never });
   }
 
+  /**
+   * Patch a credit application, scoped to its `owner` parent. Enforces the
+   * workflow transition (`draft → submitted → under_review → approved /
+   * rejected`) against the caller's `canAdmin` / `canApprove` permissions
+   * via {@link enforceCreditTransition}.
+   *
+   * On the first transition into `approved`, `approvedDate` is stamped to
+   * now, `reviewedById` is set to `actorId`, and the row's `creditLimit`
+   * is propagated onto the owning client/subcontractor (with
+   * `creditApproved = true`). The mirror happens for `rejected →
+   * rejectedDate`. Date fields are only re-parsed when supplied.
+   *
+   * @throws NotFoundException When the application doesn't exist or doesn't
+   *   belong to the supplied owner.
+   * @throws BadRequestException On invalid `status` or date format.
+   * @throws ForbiddenException When the requested status transition is not
+   *   allowed for the caller's permissions.
+   */
   async updateCreditApplication(
     owner: { clientId?: string; subcontractorId?: string },
     id: string,
@@ -403,6 +569,15 @@ export class DirectoryService {
   }
 
   // ─── Documents (subcontractor only) ─────────────────────────────────────
+  /**
+   * Attach a document record to a subcontractor. The row stores metadata
+   * (`documentType`, `name`, `filePath`, `notes`) plus `uploadedById =
+   * actorId`; the bytes themselves live wherever `filePath` points
+   * (SharePoint via the configured adapter).
+   *
+   * @throws NotFoundException When the subcontractor does not exist.
+   * @throws BadRequestException When `documentType` or `name` is missing.
+   */
   async addDocument(subId: string, actorId: string, dto: Record<string, unknown>) {
     await this.requireEntity(subId);
     if (!dto.documentType || !dto.name) throw new BadRequestException("documentType and name required.");
@@ -411,6 +586,12 @@ export class DirectoryService {
     });
   }
 
+  /**
+   * Patch a document's metadata, scoped to its owning subcontractor.
+   *
+   * @throws NotFoundException When no document with `docId` is attached to
+   *   subcontractor `subId`.
+   */
   async updateDocument(subId: string, docId: string, dto: Record<string, unknown>) {
     const existing = await this.prisma.subcontractorDocument.findFirst({
       where: { id: docId, subcontractorId: subId }
@@ -419,6 +600,13 @@ export class DirectoryService {
     return this.prisma.subcontractorDocument.update({ where: { id: docId }, data: dto as never });
   }
 
+  /**
+   * Hard-delete a document row, scoped to its owning subcontractor. The
+   * underlying file in storage is not touched.
+   *
+   * @throws NotFoundException When no document with `docId` is attached to
+   *   subcontractor `subId`.
+   */
   async deleteDocument(subId: string, docId: string) {
     const existing = await this.prisma.subcontractorDocument.findFirst({
       where: { id: docId, subcontractorId: subId }
@@ -429,6 +617,14 @@ export class DirectoryService {
   }
 
   // ─── Expiry alerts ──────────────────────────────────────────────────────
+  /**
+   * Flat, expiry-sorted list of licence + insurance alerts across all
+   * clients and subcontractors. Includes anything already expired or
+   * expiring within 30 days, excluding rows marked `status =
+   * "not_required"`. Each alert carries the kind (`licence` / `insurance`),
+   * the parent entity kind and id, the type label, the expiry date, and a
+   * freshly computed `status` for UI badging.
+   */
   async expiryAlerts() {
     const cutoff = new Date(Date.now() + 30 * DAY_MS);
     const [licences, insurances] = await Promise.all([
@@ -571,4 +767,9 @@ export class DirectoryService {
   }
 }
 
+/**
+ * Public re-export of the licence-status vocabulary
+ * (`active` / `expired` / `expiring_soon` / `not_required`) for callers
+ * outside this module that need to render badges or validate input.
+ */
 export const DIRECTORY_LICENCE_STATUSES = LICENCE_STATUSES;

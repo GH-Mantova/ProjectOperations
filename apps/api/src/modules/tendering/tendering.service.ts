@@ -364,6 +364,43 @@ export class TenderingService {
     return this.getById(id);
   }
 
+  // §5A.3 — Team panel writes here. Distinct from the legacy `estimatorUserId`
+  // (TenderEstimator relation): that field represents the historical
+  // estimator-of-record, while `assignedEstimatorId` is the team-level
+  // assignment used by the new Team panel. Pass `null` to clear.
+  async setAssignedEstimator(tenderId: string, userId: string | null, actorId?: string) {
+    const existing = await this.prisma.tender.findUnique({
+      where: { id: tenderId },
+      select: { id: true, assignedEstimatorId: true }
+    });
+    if (!existing) throw new NotFoundException("Tender not found.");
+
+    if (userId) {
+      const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+      if (!user) throw new NotFoundException("Assignee user not found.");
+    }
+
+    const updated = await this.prisma.tender.update({
+      where: { id: tenderId },
+      data: {
+        assignedEstimator: userId ? { connect: { id: userId } } : { disconnect: true }
+      }
+    });
+
+    await this.auditService.write({
+      actorId,
+      action: "tenders.assigned-estimator.update",
+      entityType: "Tender",
+      entityId: tenderId,
+      metadata: {
+        previousAssignedEstimatorId: existing.assignedEstimatorId,
+        assignedEstimatorId: userId
+      }
+    });
+
+    return updated;
+  }
+
   async listFilterPresets(userId: string) {
     return this.prisma.tenderFilterPreset.findMany({
       where: { userId },

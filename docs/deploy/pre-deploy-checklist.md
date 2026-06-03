@@ -4,12 +4,52 @@ Operational checklist to run before flipping the Tendering module to Azure for
 Sean (visual / quote sign-off) and Raj (workflow walkthrough). Work top-to-bottom.
 Do not skip a category. If a box can't be ticked, stop and resolve before deploy.
 
+---
+
+## 0. Deployment topology
+
+The first-module-live setup decided 2026-06-02:
+
+| Tier | Host | Role |
+|---|---|---|
+| Source of truth | GitHub `GH-Mantova/ProjectOperations` | All code; CI gates main |
+| Dev clones | Marco's laptop + Marco's personal computer | Local feature work |
+| Application | Azure (API = App Service, Web = Static Web Apps) | Live ERP for Sean / Raj / Marco |
+| File storage | SharePoint Online (Initial Services tenant) | Tender + (future) Job document storage with auto-folder creation tied to ERP create events |
+
+**SharePoint topology (live mode)**:
+
+- Site: `initialservices.sharepoint.com/sites/Initialservices`
+- Document library: `Documents` (the default "Shared Documents")
+- Tender root: `1. Operations/1. Tenders/{tenderNumber}/`
+- Future Jobs root (PR-64 follow-up): `1. Operations/2. Jobs won/{jobNumber}/`
+- Canonical document categories under each tender / job (11):
+  1. Tender Documents
+  2. Drawings
+  3. Specifications
+  4. Bill of Quantities
+  5. Quotes — Subcontractor or Supplier
+  6. Submissions
+  7. Correspondence
+  8. Compliance & WHS
+  9. Asbestos
+  10. Site Photos
+  11. Other
+
+First module operational on Azure: **Tendering**, gated on Sean + Raj
+sign-off via `tendering-smoke-test-plan.md`.
+
+---
+
 > Companion docs: [`onboarding-sean-raj.md`](./onboarding-sean-raj.md) and
 > [`tendering-smoke-test-plan.md`](./tendering-smoke-test-plan.md).
 
-> Dependencies: this checklist assumes **PR-50 (migration drift fix)** and
-> **PR-51 (Azure Mail.Send)** are merged into `main`. If either is still open,
-> stop and merge them first.
+> Dependencies: this checklist assumes **PR #289 (migration drift fix)**,
+> **PR-51 (Azure Mail.Send)**, and **PR #292 (OutlookEmailProvider
+> categorised errors + AZURE_MAIL_* env vars)** are merged into `main`.
+> PR-64 (Tender SharePoint folder auto-creation + 11 document categories)
+> is highly recommended before handoff so Sean / Raj see the production
+> folder layout. If any of these are still open, stop and merge them first.
 
 ---
 
@@ -58,6 +98,10 @@ restart the App Service so values take effect.
 - [ ] `SHAREPOINT_CLIENT_ID` — `<placeholder — Marco to fill>`
 - [ ] `SHAREPOINT_CLIENT_SECRET` — `<placeholder — Marco to fill>`
       (stored as App Service setting, **not** committed)
+- [ ] `SHAREPOINT_SITE_HOSTNAME=initialservices.sharepoint.com`
+- [ ] `SHAREPOINT_SITE_PATH=/sites/Initialservices`
+- [ ] `SHAREPOINT_LIBRARY_NAME=Documents`
+- [ ] `SHAREPOINT_TENDERS_ROOT=1. Operations/1. Tenders`
 
 ### M365 SSO
 

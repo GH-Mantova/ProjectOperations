@@ -1,3 +1,5 @@
+import { CenteredModal } from "@project-ops/ui";
+
 // PR #111 — modal shown when manual saveDraft detects an existing draft
 // for (current user, this form). The hook calls onOverwriteConfirm which
 // can render this dialog and resolve true/false. Kept tiny so callers
@@ -20,36 +22,11 @@ export function OverwriteConfirmDialog({
     minute: "2-digit"
   });
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={onCancel}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        zIndex: 1100,
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center"
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "#fff",
-          borderRadius: 10,
-          padding: 20,
-          width: "min(420px, 90vw)",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.18)"
-        }}
-      >
-        <h3 style={{ margin: "0 0 8px", fontSize: 16 }}>Overwrite existing draft?</h3>
-        <p style={{ margin: "0 0 16px", fontSize: 13, color: "#4B5563" }}>
-          A draft for this form already exists, saved {when}. Overwrite with
-          the current values?
-        </p>
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+    <CenteredModal
+      title="Overwrite existing draft?"
+      onClose={onCancel}
+      footer={
+        <>
           <button
             type="button"
             onClick={onCancel}
@@ -80,8 +57,13 @@ export function OverwriteConfirmDialog({
           >
             Overwrite
           </button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <p style={{ margin: "0 0 16px", fontSize: 13, color: "#4B5563" }}>
+        A draft for this form already exists, saved {when}. Overwrite with
+        the current values?
+      </p>
+    </CenteredModal>
   );
 }

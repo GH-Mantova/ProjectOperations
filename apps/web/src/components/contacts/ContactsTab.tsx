@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { DraftBanner, SaveDraftButton, useFormDraft } from "../../drafts";
 
@@ -309,61 +310,41 @@ export function ContactsTab({
       )}
 
       {inviting && inviteUrl ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          onClick={() => {
+        <CenteredModal
+          title="Portal invitation created"
+          subtitle={`Share this link with ${inviting.firstName} ${inviting.lastName} (${inviting.email}). It expires in 14 days.`}
+          onClose={() => {
             setInviting(null);
             setInviteUrl(null);
           }}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.5)",
-            zIndex: 1100,
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center"
-          }}
+          maxWidth={560}
+          footer={
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost"
+              onClick={() => {
+                setInviting(null);
+                setInviteUrl(null);
+              }}
+            >
+              Close
+            </button>
+          }
         >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="s7-card"
-            style={{ padding: 20, width: "min(560px, 92vw)" }}
-          >
-            <h3 className="s7-type-section-heading" style={{ margin: "0 0 8px" }}>
-              Portal invitation created
-            </h3>
-            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 12px" }}>
-              Share this link with {inviting.firstName} {inviting.lastName} ({inviting.email}). It expires in 14 days.
-            </p>
-            <div style={{ display: "flex", gap: 6 }}>
-              <input className="s7-input" readOnly value={inviteUrl} style={{ flex: 1 }} />
-              <button
-                type="button"
-                className="s7-btn s7-btn--primary"
-                onClick={() => {
-                  void navigator.clipboard.writeText(inviteUrl);
-                  flashToast("Link copied");
-                }}
-              >
-                Copy
-              </button>
-            </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
-              <button
-                type="button"
-                className="s7-btn s7-btn--ghost"
-                onClick={() => {
-                  setInviting(null);
-                  setInviteUrl(null);
-                }}
-              >
-                Close
-              </button>
-            </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <input className="s7-input" readOnly value={inviteUrl} style={{ flex: 1 }} />
+            <button
+              type="button"
+              className="s7-btn s7-btn--primary"
+              onClick={() => {
+                void navigator.clipboard.writeText(inviteUrl);
+                flashToast("Link copied");
+              }}
+            >
+              Copy
+            </button>
           </div>
-        </div>
+        </CenteredModal>
       ) : null}
 
       {creating || editing ? (
@@ -523,30 +504,13 @@ export function ContactFormModal({
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        zIndex: 1100,
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center"
-      }}
+    <CenteredModal
+      title={existing ? "Edit contact" : "Add contact"}
+      onClose={onClose}
+      busy={submitting}
+      maxWidth={520}
     >
-      <form
-        onSubmit={submit}
-        onClick={(e) => e.stopPropagation()}
-        className="s7-card"
-        style={{ padding: 20, width: "min(520px, 90vw)", maxHeight: "90vh", overflow: "auto" }}
-      >
-        <h3 className="s7-type-section-heading" style={{ margin: "0 0 12px" }}>
-          {existing ? "Edit contact" : "Add contact"}
-        </h3>
-
+      <form onSubmit={submit}>
         {!existing && draft.hasDraft ? (
           <DraftBanner
             userId={user?.id ?? null}
@@ -727,6 +691,6 @@ export function ContactFormModal({
           </div>
         </div>
       </form>
-    </div>
+    </CenteredModal>
   );
 }

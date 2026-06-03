@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 
 type Row = {
@@ -239,47 +240,51 @@ function UserFormModal({
   };
 
   return (
-    <div className="slide-over-overlay" role="dialog" aria-modal="true" onClick={onClose}>
-      <div className="s7-card" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
-        <h3 style={{ marginTop: 0 }}>{mode === "create" ? "Add user" : `Edit ${user?.firstName} ${user?.lastName}`}</h3>
-        <label className="estimate-editor__field">
-          <span>First name</span>
-          <input className="s7-input" value={firstName} onChange={(e) => setFirstName(e.target.value)} autoFocus />
-        </label>
-        <label className="estimate-editor__field">
-          <span>Last name</span>
-          <input className="s7-input" value={lastName} onChange={(e) => setLastName(e.target.value)} />
-        </label>
-        <label className="estimate-editor__field">
-          <span>Email</span>
-          <input className="s7-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-        </label>
-        <label className="estimate-editor__field">
-          <span>Role</span>
-          <select className="s7-input" value={roleId} onChange={(e) => setRoleId(e.target.value)}>
-            {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-          </select>
-        </label>
-        {mode === "create" ? (
-          <>
-            <label className="estimate-editor__field">
-              <span>Temporary password (min 8 chars)</span>
-              <input className="s7-input" type="text" value={temporaryPassword} onChange={(e) => setTempPassword(e.target.value)} />
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
-              <input type="checkbox" checked={forcePasswordReset} onChange={(e) => setForceReset(e.target.checked)} />
-              Force password reset on first login
-            </label>
-          </>
-        ) : null}
-        {error ? <p style={{ color: "var(--status-danger)" }}>{error}</p> : null}
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
+    <CenteredModal
+      title={mode === "create" ? "Add user" : `Edit ${user?.firstName} ${user?.lastName}`}
+      onClose={onClose}
+      busy={saving}
+      maxWidth={460}
+      footer={
+        <>
           <button type="button" className="s7-btn s7-btn--ghost" onClick={onClose}>Cancel</button>
           <button type="button" className="s7-btn s7-btn--primary" onClick={() => void submit()} disabled={saving}>
             {saving ? "Saving…" : mode === "create" ? "Create" : "Save"}
           </button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <label className="estimate-editor__field">
+        <span>First name</span>
+        <input className="s7-input" value={firstName} onChange={(e) => setFirstName(e.target.value)} autoFocus />
+      </label>
+      <label className="estimate-editor__field">
+        <span>Last name</span>
+        <input className="s7-input" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+      </label>
+      <label className="estimate-editor__field">
+        <span>Email</span>
+        <input className="s7-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+      </label>
+      <label className="estimate-editor__field">
+        <span>Role</span>
+        <select className="s7-input" value={roleId} onChange={(e) => setRoleId(e.target.value)}>
+          {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+        </select>
+      </label>
+      {mode === "create" ? (
+        <>
+          <label className="estimate-editor__field">
+            <span>Temporary password (min 8 chars)</span>
+            <input className="s7-input" type="text" value={temporaryPassword} onChange={(e) => setTempPassword(e.target.value)} />
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+            <input type="checkbox" checked={forcePasswordReset} onChange={(e) => setForceReset(e.target.checked)} />
+            Force password reset on first login
+          </label>
+        </>
+      ) : null}
+      {error ? <p style={{ color: "var(--status-danger)" }}>{error}</p> : null}
+    </CenteredModal>
   );
 }

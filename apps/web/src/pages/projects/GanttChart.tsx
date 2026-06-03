@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 
 export type GanttTask = {
@@ -347,29 +348,13 @@ function EditTaskModal({
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        zIndex: 1100,
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center"
-      }}
+    <CenteredModal
+      title={task.title}
+      onClose={onClose}
+      busy={saving}
+      maxWidth={480}
     >
-      <form
-        onSubmit={submit}
-        onClick={(e) => e.stopPropagation()}
-        className="s7-card"
-        style={{ padding: 20, width: "min(480px, 90vw)" }}
-      >
-        <h3 className="s7-type-section-heading" style={{ margin: "0 0 12px" }}>
-          {task.title}
-        </h3>
+      <form onSubmit={submit}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <label style={{ fontSize: 12, gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: 2 }}>
             <span>Title</span>
@@ -442,6 +427,6 @@ function EditTaskModal({
           ) : null}
         </div>
       </form>
-    </div>
+    </CenteredModal>
   );
 }

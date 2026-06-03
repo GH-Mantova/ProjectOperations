@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 
 type ClientSearchResult = {
@@ -70,80 +71,74 @@ export function AddClientModal({
   };
 
   return (
-    <div
-      className="slide-over-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Add client to tender"
-      onClick={onClose}
+    <CenteredModal
+      title="Add client to tender"
+      onClose={onClose}
+      maxWidth={520}
+      footer={
+        <button type="button" className="s7-btn s7-btn--ghost" onClick={onClose}>Close</button>
+      }
     >
-      <div className="s7-card" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
-        <h2 className="s7-type-section-heading" style={{ marginTop: 0 }}>Add client to tender</h2>
-        <label className="estimate-editor__field">
-          <span>Search clients</span>
-          <input
-            autoFocus
-            className="s7-input"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Start typing a client name…"
-          />
-        </label>
+      <label className="estimate-editor__field">
+        <span>Search clients</span>
+        <input
+          autoFocus
+          className="s7-input"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Start typing a client name…"
+        />
+      </label>
 
-        {error ? <p style={{ color: "var(--status-danger)", marginTop: 8 }}>{error}</p> : null}
+      {error ? <p style={{ color: "var(--status-danger)", marginTop: 8 }}>{error}</p> : null}
 
-        <ul style={{ listStyle: "none", padding: 0, margin: "12px 0 0", maxHeight: 320, overflowY: "auto" }}>
-          {q.trim().length === 0 ? (
-            <li style={{ color: "var(--text-muted)", fontSize: 13, padding: 8 }}>
-              Type at least one character to search.
-            </li>
-          ) : results.length === 0 ? (
-            <li style={{ color: "var(--text-muted)", fontSize: 13, padding: 8 }}>No matches.</li>
-          ) : (
-            results.map((r) => {
-              const alreadyLinked = linkedClientIds.includes(r.id);
-              return (
-                <li
-                  key={r.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: "8px 10px",
-                    borderBottom: "1px solid var(--border, #e5e7eb)",
-                    gap: 8
-                  }}
-                >
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 500 }}>{r.name}</div>
-                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                      {r.contactName ? `${r.contactName}` : null}
-                      {r.contactName && r.email ? " · " : null}
-                      {r.email ?? null}
-                    </div>
+      <ul style={{ listStyle: "none", padding: 0, margin: "12px 0 0", maxHeight: 320, overflowY: "auto" }}>
+        {q.trim().length === 0 ? (
+          <li style={{ color: "var(--text-muted)", fontSize: 13, padding: 8 }}>
+            Type at least one character to search.
+          </li>
+        ) : results.length === 0 ? (
+          <li style={{ color: "var(--text-muted)", fontSize: 13, padding: 8 }}>No matches.</li>
+        ) : (
+          results.map((r) => {
+            const alreadyLinked = linkedClientIds.includes(r.id);
+            return (
+              <li
+                key={r.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "8px 10px",
+                  borderBottom: "1px solid var(--border, #e5e7eb)",
+                  gap: 8
+                }}
+              >
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 500 }}>{r.name}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                    {r.contactName ? `${r.contactName}` : null}
+                    {r.contactName && r.email ? " · " : null}
+                    {r.email ?? null}
                   </div>
-                  {alreadyLinked ? (
-                    <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Already linked</span>
-                  ) : (
-                    <button
-                      type="button"
-                      className="s7-btn s7-btn--primary s7-btn--sm"
-                      disabled={busyId !== null}
-                      onClick={() => void add(r.id)}
-                    >
-                      {busyId === r.id ? "Adding…" : "Add"}
-                    </button>
-                  )}
-                </li>
-              );
-            })
-          )}
-        </ul>
-
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
-          <button type="button" className="s7-btn s7-btn--ghost" onClick={onClose}>Close</button>
-        </div>
-      </div>
-    </div>
+                </div>
+                {alreadyLinked ? (
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Already linked</span>
+                ) : (
+                  <button
+                    type="button"
+                    className="s7-btn s7-btn--primary s7-btn--sm"
+                    disabled={busyId !== null}
+                    onClick={() => void add(r.id)}
+                  >
+                    {busyId === r.id ? "Adding…" : "Add"}
+                  </button>
+                )}
+              </li>
+            );
+          })
+        )}
+      </ul>
+    </CenteredModal>
   );
 }

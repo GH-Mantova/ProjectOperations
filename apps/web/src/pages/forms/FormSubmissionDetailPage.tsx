@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 
 type Field = {
@@ -363,27 +364,13 @@ export function FormSubmissionDetailPage() {
       </div>
 
       {openComment ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setOpenComment(null)}
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1100, display: "flex", alignItems: "center", justifyContent: "center" }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="s7-card"
-            style={{ padding: 18, width: "min(420px, 92vw)" }}
-          >
-            <h3 style={{ margin: "0 0 8px" }}>{openComment === "approve" ? "Approve submission" : "Reject submission"}</h3>
-            <textarea
-              className="s7-textarea"
-              rows={3}
-              placeholder={openComment === "approve" ? "Optional comment for the submitter…" : "Required — explain why this is being rejected."}
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              style={{ width: "100%" }}
-            />
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
+        <CenteredModal
+          title={openComment === "approve" ? "Approve submission" : "Reject submission"}
+          onClose={() => setOpenComment(null)}
+          busy={busy}
+          maxWidth={420}
+          footer={
+            <>
               <button type="button" className="s7-btn s7-btn--ghost" onClick={() => setOpenComment(null)}>
                 Cancel
               </button>
@@ -395,9 +382,18 @@ export function FormSubmissionDetailPage() {
               >
                 Confirm
               </button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        >
+          <textarea
+            className="s7-textarea"
+            rows={3}
+            placeholder={openComment === "approve" ? "Optional comment for the submitter…" : "Required — explain why this is being rejected."}
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            style={{ width: "100%" }}
+          />
+        </CenteredModal>
       ) : null}
     </div>
   );

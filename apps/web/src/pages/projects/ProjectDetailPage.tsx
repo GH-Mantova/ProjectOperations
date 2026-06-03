@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { EmptyState, Skeleton } from "@project-ops/ui";
+import { CenteredModal, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { AdvanceStatusModal } from "./AdvanceStatusModal";
 import { ConfirmRevertDialog } from "./ConfirmRevertDialog";
@@ -983,19 +983,12 @@ function AllocateWorkerModal({
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.55)", display: "grid", placeItems: "center", zIndex: 100 }}
-      onClick={onClose}
+    <CenteredModal
+      title="Allocate worker"
+      onClose={onClose}
+      busy={submitting}
+      maxWidth={520}
     >
-      <div
-        className="s7-card"
-        style={{ width: "min(520px, 92vw)", padding: 24, maxHeight: "90vh", overflowY: "auto" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="s7-type-section-title" style={{ margin: 0 }}>Allocate worker</h2>
-
         {!selected ? (
           <>
             <p style={{ color: "var(--text-muted)", margin: "8px 0" }}>Search by name or role.</p>
@@ -1104,8 +1097,7 @@ function AllocateWorkerModal({
             </div>
           </>
         )}
-      </div>
-    </div>
+    </CenteredModal>
   );
 }
 
@@ -1189,19 +1181,12 @@ function AllocateAssetModal({
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.55)", display: "grid", placeItems: "center", zIndex: 100 }}
-      onClick={onClose}
+    <CenteredModal
+      title="Allocate asset"
+      onClose={onClose}
+      busy={submitting}
+      maxWidth={520}
     >
-      <div
-        className="s7-card"
-        style={{ width: "min(520px, 92vw)", padding: 24, maxHeight: "90vh", overflowY: "auto" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="s7-type-section-title" style={{ margin: 0 }}>Allocate asset</h2>
-
         {!selected ? (
           <>
             <p style={{ color: "var(--text-muted)", margin: "8px 0" }}>Search by name or asset number.</p>
@@ -1287,8 +1272,7 @@ function AllocateAssetModal({
             </div>
           </>
         )}
-      </div>
-    </div>
+    </CenteredModal>
   );
 }
 
@@ -1507,27 +1491,13 @@ function AddGanttTaskModal({
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        zIndex: 1100,
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center"
-      }}
+    <CenteredModal
+      title="New task"
+      onClose={onClose}
+      busy={submitting}
+      maxWidth={480}
     >
-      <form
-        onSubmit={submit}
-        onClick={(e) => e.stopPropagation()}
-        className="s7-card"
-        style={{ padding: 20, width: "min(480px, 90vw)" }}
-      >
-        <h3 className="s7-type-section-heading" style={{ margin: "0 0 12px" }}>New task</h3>
+      <form onSubmit={submit}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <label style={{ fontSize: 12, gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: 2 }}>
             <span>Title *</span>
@@ -1589,6 +1559,6 @@ function AddGanttTaskModal({
           </button>
         </div>
       </form>
-    </div>
+    </CenteredModal>
   );
 }

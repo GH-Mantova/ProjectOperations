@@ -32,6 +32,12 @@ class UpdateTenderProbabilityDto {
   @Max(100)
   probability?: number | null;
 }
+
+class SetAssignedEstimatorDto {
+  @IsOptional()
+  @IsString()
+  userId!: string | null;
+}
 import { TenderingService } from "./tendering.service";
 
 @ApiTags("Tendering")
@@ -244,6 +250,21 @@ export class TenderingController {
     @CurrentUser() actor: { sub: string }
   ) {
     return this.service.updateProbability(id, dto.probability ?? null, actor.sub);
+  }
+
+  @Patch(":id/assigned-estimator")
+  @RequirePermissions("tenders.manage")
+  @ApiOperation({
+    summary: "Assign (or clear) the team-level estimator on a tender — used by the Team panel"
+  })
+  @ApiResponse({ status: 200, description: "Updated tender with the new assigned estimator." })
+  @ApiResponse({ status: 404, description: "Tender or assignee not found." })
+  setAssignedEstimator(
+    @Param("id") id: string,
+    @Body() dto: SetAssignedEstimatorDto,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.setAssignedEstimator(id, dto.userId ?? null, actor.sub);
   }
 
   @Patch(":id/quick-edit")

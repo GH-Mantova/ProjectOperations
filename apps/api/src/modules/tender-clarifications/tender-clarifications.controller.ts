@@ -1,5 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { IsDateString, IsIn, IsOptional, IsString } from "class-validator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
@@ -14,6 +14,7 @@ class CreateClarificationDto {
   @IsString() text!: string;
   @IsOptional() @IsDateString() date?: string;
   @IsOptional() @IsString() @IsIn(NOTE_TYPES as unknown as string[]) noteType?: string;
+  @IsOptional() @IsString() clientId?: string | null;
 }
 
 class UpdateClarificationDto {
@@ -21,6 +22,7 @@ class UpdateClarificationDto {
   @IsOptional() @IsString() text?: string;
   @IsOptional() @IsDateString() date?: string;
   @IsOptional() @IsString() @IsIn(NOTE_TYPES as unknown as string[]) noteType?: string;
+  @IsOptional() @IsString() clientId?: string | null;
 }
 
 @ApiTags("Tender Clarification Notes")
@@ -33,9 +35,15 @@ export class TenderClarificationsController {
   @Get()
   @RequirePermissions("tenders.view")
   @ApiOperation({ summary: "List sent/received clarification notes on a tender, newest first." })
+  @ApiQuery({
+    name: "clientId",
+    required: false,
+    type: String,
+    description: "Filter notes to a single client. Omit to return all notes for the tender."
+  })
   @ApiResponse({ status: 200, description: "Clarification notes with author metadata." })
-  list(@Param("tenderId") tenderId: string) {
-    return this.service.list(tenderId);
+  list(@Param("tenderId") tenderId: string, @Query("clientId") clientId?: string) {
+    return this.service.list(tenderId, clientId);
   }
 
   @Post()
@@ -62,9 +70,16 @@ export class TenderClarificationsController {
   }
 
   @Delete(":id")
+  @HttpCode(204)
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Delete a clarification note from a tender." })
-  remove(@Param("tenderId") tenderId: string, @Param("id") id: string) {
-    return this.service.remove(tenderId, id);
+  @ApiResponse({ status: 204, description: "Clarification note deleted." })
+  @ApiResponse({ status: 404, description: "Clarification note not found on this tender." })
+  async remove(
+    @Param("tenderId") tenderId: string,
+    @Param("id") id: string,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    await this.service.remove(tenderId, id, actor.sub);
   }
 }

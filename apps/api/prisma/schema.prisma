@@ -44,6 +44,7 @@ model User {
   worker                     Worker?
   workerProfile              WorkerProfile?
   estimatedTenders           Tender[]                  @relation("TenderEstimator")
+  assignedTenders            Tender[]                  @relation("TenderAssignedEstimator")
   tenderNotes                TenderNote[]              @relation("TenderNoteAuthor")
   tenderFollowUps            TenderFollowUp[]          @relation("TenderFollowUpAssignee")
   tenderEntriesAuthored      TenderEntry[]             @relation("TenderEntryAuthor")
@@ -466,6 +467,7 @@ model Client {
   creditApplications  CreditApplication[] @relation("ClientCreditApps")
   portalUsers         ClientPortalUser[]
   portalInvites       PortalInvite[]
+  clarificationNotes  TenderClarificationNote[] @relation("ClientTenderClarificationNotes")
 
   @@unique([name])
   @@index([status])
@@ -693,6 +695,7 @@ model Tender {
   title              String
   description        String?
   estimatorUserId    String?                   @map("estimator_user_id")
+  assignedEstimatorId String?                  @map("assigned_estimator_id")
   siteId             String?                   @map("site_id")
   status             String                    @default("DRAFT")
   dueDate            DateTime?                 @map("due_date")
@@ -709,6 +712,7 @@ model Tender {
   createdAt          DateTime                  @default(now()) @map("created_at")
   updatedAt          DateTime                  @updatedAt @map("updated_at")
   estimator          User?                     @relation("TenderEstimator", fields: [estimatorUserId], references: [id], onDelete: SetNull)
+  assignedEstimator  User?                     @relation("TenderAssignedEstimator", fields: [assignedEstimatorId], references: [id], onDelete: SetNull)
   site               Site?                     @relation(fields: [siteId], references: [id], onDelete: SetNull)
   tenderClients      TenderClient[]
   tenderNotes        TenderNote[]
@@ -741,6 +745,7 @@ model Tender {
 
   @@index([status])
   @@index([estimatorUserId])
+  @@index([assignedEstimatorId])
   @@index([siteId])
   @@map("tenders")
 }
@@ -2554,9 +2559,15 @@ model TenderClarificationNote {
   occurredAt  DateTime @default(now()) @map("occurred_at")
   createdById String   @map("created_by_id")
   createdBy   User     @relation("TenderClarificationNoteAuthor", fields: [createdById], references: [id])
+  // §5A.3 — optional client link so the Activity sidebar can filter
+  // entries to a single client. Nullable for backward compatibility with
+  // pre-existing rows.
+  clientId    String?  @map("client_id")
+  client      Client?  @relation("ClientTenderClarificationNotes", fields: [clientId], references: [id], onDelete: SetNull)
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@index([tenderId, occurredAt])
+  @@index([clientId])
   @@map("tender_clarification_notes")
 }
 

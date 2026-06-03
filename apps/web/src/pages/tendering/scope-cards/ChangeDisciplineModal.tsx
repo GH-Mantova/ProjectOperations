@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CenteredModal } from "@project-ops/ui";
 import type { ScopeCard } from "./useScopeCards";
 import { DISCIPLINE_LABELS, disciplineColor, formatCardCode } from "./utils/card-display";
 
@@ -28,58 +29,13 @@ export function ChangeDisciplineModal({ card, newDiscipline, itemCount, onConfir
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.4)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1000
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !busy) onCancel();
-      }}
-    >
-      <div
-        style={{
-          background: "var(--surface, #fff)",
-          borderRadius: 8,
-          padding: 24,
-          maxWidth: 520,
-          width: "90%",
-          boxShadow: "0 20px 60px rgba(0,0,0,0.3)"
-        }}
-      >
-        <h3 style={{ margin: 0, fontSize: 18 }}>Change discipline?</h3>
-        <p style={{ marginTop: 12, lineHeight: 1.5 }}>
-          Change card <strong>{card.name}</strong> from{" "}
-          <span style={{ color: disciplineColor(card.discipline), fontWeight: 600 }}>
-            {card.discipline}
-          </span>{" "}
-          to{" "}
-          <span style={{ color: disciplineColor(newDiscipline), fontWeight: 600 }}>
-            {newDiscipline}
-          </span>{" "}
-          ({DISCIPLINE_LABELS[newDiscipline] ?? newDiscipline})?
-        </p>
-        {itemCount > 0 ? (
-          <p style={{ marginTop: 12, lineHeight: 1.5, color: "var(--text-muted)" }}>
-            <strong>{itemCount}</strong> item{itemCount === 1 ? "" : "s"} will be renumbered
-            ({formatCardCode(card.discipline, card.cardNumber)}.1 →{" "}
-            {newDiscipline}<em>?</em>.1, …). Any linked cutting or waste lines
-            will be updated automatically. The new card number depends on
-            existing {newDiscipline} cards on this tender.
-          </p>
-        ) : (
-          <p style={{ marginTop: 12, lineHeight: 1.5, color: "var(--text-muted)" }}>
-            The card has no items. Only the discipline label and card number change.
-          </p>
-        )}
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 24 }}>
+    <CenteredModal
+      title="Change discipline?"
+      onClose={onCancel}
+      busy={busy}
+      maxWidth={520}
+      footer={
+        <>
           <button
             type="button"
             onClick={onCancel}
@@ -96,8 +52,33 @@ export function ChangeDisciplineModal({ card, newDiscipline, itemCount, onConfir
           >
             {busy ? "Changing…" : "Change discipline"}
           </button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <p style={{ marginTop: 12, lineHeight: 1.5 }}>
+        Change card <strong>{card.name}</strong> from{" "}
+        <span style={{ color: disciplineColor(card.discipline), fontWeight: 600 }}>
+          {card.discipline}
+        </span>{" "}
+        to{" "}
+        <span style={{ color: disciplineColor(newDiscipline), fontWeight: 600 }}>
+          {newDiscipline}
+        </span>{" "}
+        ({DISCIPLINE_LABELS[newDiscipline] ?? newDiscipline})?
+      </p>
+      {itemCount > 0 ? (
+        <p style={{ marginTop: 12, lineHeight: 1.5, color: "var(--text-muted)" }}>
+          <strong>{itemCount}</strong> item{itemCount === 1 ? "" : "s"} will be renumbered
+          ({formatCardCode(card.discipline, card.cardNumber)}.1 →{" "}
+          {newDiscipline}<em>?</em>.1, …). Any linked cutting or waste lines
+          will be updated automatically. The new card number depends on
+          existing {newDiscipline} cards on this tender.
+        </p>
+      ) : (
+        <p style={{ marginTop: 12, lineHeight: 1.5, color: "var(--text-muted)" }}>
+          The card has no items. Only the discipline label and card number change.
+        </p>
+      )}
+    </CenteredModal>
   );
 }

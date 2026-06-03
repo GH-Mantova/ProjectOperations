@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 
 export type SiteFormClientOption = { id: string; name: string };
@@ -69,30 +70,13 @@ export function SiteFormModal({ clients, existing, onClose, onSaved }: SiteFormM
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        zIndex: 1100,
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center"
-      }}
+    <CenteredModal
+      title={existing ? `Edit site · ${existing.name}` : "New site"}
+      onClose={onClose}
+      busy={submitting}
+      maxWidth={540}
     >
-      <form
-        onSubmit={submit}
-        onClick={(e) => e.stopPropagation()}
-        className="s7-card"
-        style={{ padding: 20, width: "min(540px, 90vw)", maxHeight: "90vh", overflow: "auto" }}
-      >
-        <h3 className="s7-type-section-heading" style={{ margin: "0 0 12px" }}>
-          {existing ? `Edit site · ${existing.name}` : "New site"}
-        </h3>
-
+      <form onSubmit={submit}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <label style={{ fontSize: 12, display: "flex", flexDirection: "column", gap: 2, gridColumn: "1 / -1" }}>
             <span>Site name *</span>
@@ -176,6 +160,6 @@ export function SiteFormModal({ clients, existing, onClose, onSaved }: SiteFormM
           </button>
         </div>
       </form>
-    </div>
+    </CenteredModal>
   );
 }

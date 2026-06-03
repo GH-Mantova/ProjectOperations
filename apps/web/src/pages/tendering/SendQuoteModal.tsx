@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 
 type TenderClientLite = {
@@ -104,152 +105,13 @@ export function SendQuoteModal({
   };
 
   return (
-    <div
-      className="slide-over-overlay"
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.4)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 200
-      }}
-    >
-      <div
-        className="s7-card"
-        style={{ width: 640, maxWidth: "90vw", maxHeight: "90vh", overflowY: "auto" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 style={{ marginTop: 0 }}>
-          Send quote {quote.quoteRef} to {quote.client.name}
-        </h3>
-
-        <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginTop: 8 }}>To:</label>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 4 }}>
-          {to.map((addr) => (
-            <span
-              key={addr}
-              style={{
-                padding: "2px 8px",
-                background: "#E8F4F5",
-                borderRadius: 999,
-                fontSize: 12,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4
-              }}
-            >
-              {addr}
-              <button
-                type="button"
-                onClick={() => setTo((prev) => prev.filter((a) => a !== addr))}
-                style={{ background: "none", border: "none", cursor: "pointer" }}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-        <div style={{ display: "flex", gap: 4 }}>
-          <input
-            className="s7-input"
-            value={toInput}
-            placeholder="Add email…"
-            onChange={(e) => setToInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addTo())}
-            style={{ flex: 1 }}
-          />
-          <button type="button" className="s7-btn s7-btn--ghost s7-btn--sm" onClick={addTo}>
-            Add
-          </button>
-        </div>
-
-        <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginTop: 12 }}>CC:</label>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 4 }}>
-          {cc.map((addr) => (
-            <span
-              key={addr}
-              style={{
-                padding: "2px 8px",
-                background: "#F6F6F6",
-                borderRadius: 999,
-                fontSize: 12,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4
-              }}
-            >
-              {addr}
-              <button
-                type="button"
-                onClick={() => setCc((prev) => prev.filter((a) => a !== addr))}
-                style={{ background: "none", border: "none", cursor: "pointer" }}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-        <div style={{ display: "flex", gap: 4 }}>
-          <input
-            className="s7-input"
-            value={ccInput}
-            placeholder="Add cc email…"
-            onChange={(e) => setCcInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addCc())}
-            style={{ flex: 1 }}
-          />
-          <button type="button" className="s7-btn s7-btn--ghost s7-btn--sm" onClick={addCc}>
-            Add
-          </button>
-        </div>
-
-        <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginTop: 12 }}>
-          Subject:
-        </label>
-        <input
-          className="s7-input"
-          value={subject}
-          onChange={(e) => setSubject(e.target.value)}
-          style={{ width: "100%" }}
-        />
-
-        <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginTop: 12 }}>Body:</label>
-        <textarea
-          className="s7-input"
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          rows={12}
-          style={{ width: "100%" }}
-        />
-
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            marginTop: 12,
-            fontSize: 13
-          }}
-        >
-          <input type="checkbox" checked={attachPdf} onChange={(e) => setAttachPdf(e.target.checked)} />
-          Attach PDF quote — <code>IS_Quote_{quote.quoteRef}.pdf</code>
-        </label>
-
-        {error ? (
-          <div
-            role="alert"
-            style={{ background: "#FEE2E2", color: "#7F1D1D", padding: 8, borderRadius: 4, marginTop: 10 }}
-          >
-            {error}
-          </div>
-        ) : null}
-
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
+    <CenteredModal
+      title={`Send quote ${quote.quoteRef} to ${quote.client.name}`}
+      onClose={onClose}
+      busy={busy}
+      maxWidth={640}
+      footer={
+        <>
           <button type="button" className="s7-btn s7-btn--ghost" onClick={onClose} disabled={busy}>
             Cancel
           </button>
@@ -262,8 +124,129 @@ export function SendQuoteModal({
           >
             {busy ? "Sending…" : "Send"}
           </button>
-        </div>
+        </>
+      }
+    >
+      <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginTop: 8 }}>To:</label>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 4 }}>
+        {to.map((addr) => (
+          <span
+            key={addr}
+            style={{
+              padding: "2px 8px",
+              background: "#E8F4F5",
+              borderRadius: 999,
+              fontSize: 12,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4
+            }}
+          >
+            {addr}
+            <button
+              type="button"
+              onClick={() => setTo((prev) => prev.filter((a) => a !== addr))}
+              style={{ background: "none", border: "none", cursor: "pointer" }}
+            >
+              ×
+            </button>
+          </span>
+        ))}
       </div>
-    </div>
+      <div style={{ display: "flex", gap: 4 }}>
+        <input
+          className="s7-input"
+          value={toInput}
+          placeholder="Add email…"
+          onChange={(e) => setToInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addTo())}
+          style={{ flex: 1 }}
+        />
+        <button type="button" className="s7-btn s7-btn--ghost s7-btn--sm" onClick={addTo}>
+          Add
+        </button>
+      </div>
+
+      <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginTop: 12 }}>CC:</label>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 4 }}>
+        {cc.map((addr) => (
+          <span
+            key={addr}
+            style={{
+              padding: "2px 8px",
+              background: "#F6F6F6",
+              borderRadius: 999,
+              fontSize: 12,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4
+            }}
+          >
+            {addr}
+            <button
+              type="button"
+              onClick={() => setCc((prev) => prev.filter((a) => a !== addr))}
+              style={{ background: "none", border: "none", cursor: "pointer" }}
+            >
+              ×
+            </button>
+          </span>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 4 }}>
+        <input
+          className="s7-input"
+          value={ccInput}
+          placeholder="Add cc email…"
+          onChange={(e) => setCcInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addCc())}
+          style={{ flex: 1 }}
+        />
+        <button type="button" className="s7-btn s7-btn--ghost s7-btn--sm" onClick={addCc}>
+          Add
+        </button>
+      </div>
+
+      <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginTop: 12 }}>
+        Subject:
+      </label>
+      <input
+        className="s7-input"
+        value={subject}
+        onChange={(e) => setSubject(e.target.value)}
+        style={{ width: "100%" }}
+      />
+
+      <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginTop: 12 }}>Body:</label>
+      <textarea
+        className="s7-input"
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        rows={12}
+        style={{ width: "100%" }}
+      />
+
+      <label
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          marginTop: 12,
+          fontSize: 13
+        }}
+      >
+        <input type="checkbox" checked={attachPdf} onChange={(e) => setAttachPdf(e.target.checked)} />
+        Attach PDF quote — <code>IS_Quote_{quote.quoteRef}.pdf</code>
+      </label>
+
+      {error ? (
+        <div
+          role="alert"
+          style={{ background: "#FEE2E2", color: "#7F1D1D", padding: 8, borderRadius: 4, marginTop: 10 }}
+        >
+          {error}
+        </div>
+      ) : null}
+    </CenteredModal>
   );
 }

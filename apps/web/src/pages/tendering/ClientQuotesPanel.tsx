@@ -14,6 +14,7 @@ import {
   verticalListSortingStrategy
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { OverrideField } from "../../components";
 import { DISCIPLINE_CODES, DISCIPLINE_LABELS } from "./scope-cards/utils/card-display";
@@ -2312,62 +2313,42 @@ function QuoteScopeTab({
       )}
 
       {showDisciplineModal ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.4)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000
-          }}
-          onClick={(e) => { if (e.target === e.currentTarget) setShowDisciplineModal(false); }}
-        >
-          <div
-            style={{
-              background: "var(--surface-card, #fff)",
-              borderRadius: "var(--radius-lg, 12px)",
-              padding: 24,
-              maxWidth: 380,
-              width: "90%",
-              boxShadow: "var(--shadow-dropdown, 0 4px 16px rgba(0,0,0,0.10))"
-            }}
-          >
-            <h3 style={{ margin: "0 0 12px", fontSize: 16 }}>Add discipline group</h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {DISCIPLINE_CODES.map((code) => {
-                const exists = disciplineGroups.some(([g]) => g === code);
-                return (
-                  <button
-                    key={code}
-                    type="button"
-                    className="s7-btn s7-btn--secondary"
-                    disabled={exists}
-                    onClick={() => {
-                      if (exists) return;
-                      setEmptyGroups((prev) => new Set([...prev, code]));
-                      setShowDisciplineModal(false);
-                    }}
-                  >
-                    {DISCIPLINE_LABELS[code] ?? code}
-                    {exists ? " (already added)" : ""}
-                  </button>
-                );
-              })}
-            </div>
+        <CenteredModal
+          title="Add discipline group"
+          onClose={() => setShowDisciplineModal(false)}
+          maxWidth={380}
+          footer={
             <button
               type="button"
               className="s7-btn s7-btn--ghost s7-btn--sm"
-              style={{ marginTop: 12 }}
               onClick={() => setShowDisciplineModal(false)}
             >
               Cancel
             </button>
+          }
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {DISCIPLINE_CODES.map((code) => {
+              const exists = disciplineGroups.some(([g]) => g === code);
+              return (
+                <button
+                  key={code}
+                  type="button"
+                  className="s7-btn s7-btn--secondary"
+                  disabled={exists}
+                  onClick={() => {
+                    if (exists) return;
+                    setEmptyGroups((prev) => new Set([...prev, code]));
+                    setShowDisciplineModal(false);
+                  }}
+                >
+                  {DISCIPLINE_LABELS[code] ?? code}
+                  {exists ? " (already added)" : ""}
+                </button>
+              );
+            })}
           </div>
-        </div>
+        </CenteredModal>
       ) : null}
     </div>
   );

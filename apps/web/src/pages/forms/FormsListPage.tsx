@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { EmptyState, Skeleton } from "@project-ops/ui";
+import { CenteredModal, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -621,41 +621,12 @@ function ApprovalsTab({
       </table>
 
       {openComment ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setOpenComment(null)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.5)",
-            zIndex: 1100,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center"
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="s7-card"
-            style={{ padding: 18, width: "min(420px, 92vw)" }}
-          >
-            <h3 className="s7-type-section-heading" style={{ margin: "0 0 8px" }}>
-              {openComment.mode === "approve" ? "Approve submission" : "Reject submission"}
-            </h3>
-            <textarea
-              className="s7-textarea"
-              rows={3}
-              placeholder={
-                openComment.mode === "approve"
-                  ? "Optional comment to send to the submitter…"
-                  : "Required — explain why this is being rejected."
-              }
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              style={{ width: "100%" }}
-            />
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
+        <CenteredModal
+          title={openComment.mode === "approve" ? "Approve submission" : "Reject submission"}
+          onClose={() => setOpenComment(null)}
+          maxWidth={420}
+          footer={
+            <>
               <button type="button" className="s7-btn s7-btn--ghost" onClick={() => setOpenComment(null)}>
                 Cancel
               </button>
@@ -667,9 +638,22 @@ function ApprovalsTab({
               >
                 Confirm
               </button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        >
+          <textarea
+            className="s7-textarea"
+            rows={3}
+            placeholder={
+              openComment.mode === "approve"
+                ? "Optional comment to send to the submitter…"
+                : "Required — explain why this is being rejected."
+            }
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            style={{ width: "100%" }}
+          />
+        </CenteredModal>
       ) : null}
     </section>
   );

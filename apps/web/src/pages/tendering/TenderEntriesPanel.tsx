@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { EmptyState } from "@project-ops/ui";
+import { CenteredModal, EmptyState } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { requiresAssignee, requiresDueDate } from "./addEntryFieldVisibility";
 import {
@@ -616,43 +616,41 @@ function AddEntryModal({
   const canSubmit = !submitting && bodyValid && dueDateValid && assigneeValid;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Add entry"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.45)",
-        zIndex: 70,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 16
-      }}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onCancel();
-      }}
+    <CenteredModal
+      title="New entry"
+      onClose={onCancel}
+      busy={submitting}
+      maxWidth={520}
+      footer={
+        <>
+          <button
+            type="button"
+            className="s7-btn s7-btn--ghost"
+            onClick={onCancel}
+            disabled={submitting}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="s7-btn s7-btn--primary"
+            disabled={!canSubmit}
+            onClick={() => {
+              if (canSubmit) onSubmit();
+            }}
+          >
+            {submitting ? "Saving…" : "Save"}
+          </button>
+        </>
+      }
     >
       <form
         onSubmit={(event) => {
           event.preventDefault();
           if (canSubmit) onSubmit();
         }}
-        style={{
-          background: "#fff",
-          padding: 20,
-          borderRadius: 8,
-          width: "100%",
-          maxWidth: 520,
-          boxShadow: "0 12px 32px rgba(0,0,0,0.2)",
-          display: "flex",
-          flexDirection: "column",
-          gap: 12
-        }}
+        style={{ display: "flex", flexDirection: "column", gap: 12 }}
       >
-        <h4 style={{ margin: 0 }}>New entry</h4>
-
         <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
           <span>Type</span>
           <select
@@ -730,26 +728,8 @@ function AddEntryModal({
             </select>
           </label>
         ) : null}
-
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          <button
-            type="button"
-            className="s7-btn s7-btn--ghost"
-            onClick={onCancel}
-            disabled={submitting}
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className="s7-btn s7-btn--primary"
-            disabled={!canSubmit}
-          >
-            {submitting ? "Saving…" : "Save"}
-          </button>
-        </div>
       </form>
-    </div>
+    </CenteredModal>
   );
 }
 

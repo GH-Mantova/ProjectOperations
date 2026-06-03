@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 
 export type ProviderKey = "anthropic" | "openai" | "gemini" | "groq";
@@ -216,60 +217,14 @@ function KeyEditModal({
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.4)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 200
-      }}
-      onClick={onClose}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "#FFFFFF",
-          borderRadius: 8,
-          padding: 20,
-          minWidth: 420,
-          maxWidth: 540,
-          boxShadow: "0 10px 30px rgba(0,0,0,0.2)"
-        }}
-      >
-        <h3 style={{ margin: 0, fontFamily: "'Syne', 'Outfit', sans-serif", fontSize: 18 }}>
-          {providerLabel} API Key
-        </h3>
-        <p style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 6 }}>
-          The key is validated against the provider before being saved (5-second timeout).
-          Keys are encrypted at rest with AES-256-GCM and never displayed back.
-        </p>
-        <input
-          type="password"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder="API key"
-          autoFocus
-          disabled={submitting}
-          style={{
-            width: "100%",
-            padding: 10,
-            fontSize: 14,
-            fontFamily: "ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace",
-            border: "1px solid var(--border-subtle, rgba(0,0,0,0.16))",
-            borderRadius: 6,
-            marginTop: 8,
-            boxSizing: "border-box"
-          }}
-        />
-        {error ? (
-          <div style={{ color: "#B91C1C", fontSize: 13, marginTop: 8 }}>{error}</div>
-        ) : null}
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+    <CenteredModal
+      title={`${providerLabel} API Key`}
+      subtitle="The key is validated against the provider before being saved (5-second timeout). Keys are encrypted at rest with AES-256-GCM and never displayed back."
+      onClose={onClose}
+      busy={submitting}
+      maxWidth={540}
+      footer={
+        <>
           <button type="button" onClick={onClose} disabled={submitting} style={ghostBtn()}>
             Cancel
           </button>
@@ -281,9 +236,31 @@ function KeyEditModal({
           >
             {submitting ? "Validating…" : "Test and save"}
           </button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <input
+        type="password"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="API key"
+        autoFocus
+        disabled={submitting}
+        style={{
+          width: "100%",
+          padding: 10,
+          fontSize: 14,
+          fontFamily: "ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace",
+          border: "1px solid var(--border-subtle, rgba(0,0,0,0.16))",
+          borderRadius: 6,
+          marginTop: 8,
+          boxSizing: "border-box"
+        }}
+      />
+      {error ? (
+        <div style={{ color: "#B91C1C", fontSize: 13, marginTop: 8 }}>{error}</div>
+      ) : null}
+    </CenteredModal>
   );
 }
 

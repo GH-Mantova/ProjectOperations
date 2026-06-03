@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
-import { EmptyState, Skeleton } from "@project-ops/ui";
+import { CenteredModal, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 
 type Worker = { id: string; firstName: string; lastName: string; role: string };
@@ -587,15 +587,13 @@ function ReturnTimesheetModal({
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.55)", display: "grid", placeItems: "center", zIndex: 100 }}
-      onClick={onClose}
+    <CenteredModal
+      title="Return timesheet"
+      onClose={onClose}
+      busy={submitting}
+      maxWidth={520}
     >
-      <div className="s7-card" style={{ width: "min(520px, 92vw)", padding: 24 }} onClick={(e) => e.stopPropagation()}>
-        <h2 className="s7-type-section-title" style={{ margin: 0 }}>Return timesheet</h2>
-        <dl style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: "6px 16px", margin: "12px 0" }}>
+      <dl style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: "6px 16px", margin: "12px 0" }}>
           <dt style={{ color: "var(--text-muted)" }}>Worker</dt>
           <dd style={{ margin: 0 }}>{timesheet.workerProfile.firstName} {timesheet.workerProfile.lastName}</dd>
           <dt style={{ color: "var(--text-muted)" }}>Project</dt>
@@ -644,8 +642,7 @@ function ReturnTimesheetModal({
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </CenteredModal>
   );
 }
 

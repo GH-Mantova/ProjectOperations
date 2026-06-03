@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CenteredModal } from "@project-ops/ui";
 
 type CascadeCounts = {
   scopeItems?: number;
@@ -59,83 +60,13 @@ export function ConfirmRevertDialog({
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={onCancel}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        zIndex: 1100,
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center"
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "#fff",
-          borderRadius: 10,
-          padding: 24,
-          width: "min(500px, 92vw)",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.18)"
-        }}
-      >
-        <h3 style={{ margin: "0 0 8px", fontSize: 16, color: "#DC2626" }}>
-          Revert project to tender?
-        </h3>
-        <p style={{ margin: "0 0 12px", fontSize: 13, color: "#4B5563" }}>
-          <strong>{projectNumber}</strong> — {projectName} will be{" "}
-          <strong>permanently deleted</strong> and the source tender{" "}
-          <strong>{tenderNumber}</strong> will be reset to{" "}
-          <strong>CONTRACT_ISSUED</strong> status so it can be converted again.
-        </p>
-
-        {cascadeLines.length > 0 ? (
-          <div
-            style={{
-              background: "#FEF2F2",
-              border: "1px solid #FECACA",
-              borderRadius: 6,
-              padding: "8px 12px",
-              marginBottom: 12,
-              fontSize: 13
-            }}
-          >
-            <strong>This will permanently delete:</strong>
-            <ul style={{ margin: "4px 0 0", paddingLeft: 20 }}>
-              {cascadeLines.map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-
-        <div style={{ marginBottom: 12 }}>
-          <label
-            style={{ display: "block", fontSize: 13, color: "#4B5563", marginBottom: 4 }}
-          >
-            Type <strong>{projectNumber}</strong> to confirm:
-          </label>
-          <input
-            type="text"
-            value={typed}
-            onChange={(e) => setTyped(e.target.value)}
-            autoFocus
-            style={{
-              width: "100%",
-              padding: "6px 10px",
-              border: "1px solid #D1D5DB",
-              borderRadius: 6,
-              fontSize: 14,
-              boxSizing: "border-box"
-            }}
-          />
-        </div>
-
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+    <CenteredModal
+      title="Revert project to tender?"
+      onClose={onCancel}
+      busy={busy}
+      maxWidth={500}
+      footer={
+        <>
           <button
             type="button"
             onClick={onCancel}
@@ -168,8 +99,57 @@ export function ConfirmRevertDialog({
           >
             {busy ? "Reverting…" : "Revert to Tender"}
           </button>
+        </>
+      }
+    >
+      <p style={{ margin: "0 0 12px", fontSize: 13, color: "#4B5563" }}>
+        <strong>{projectNumber}</strong> — {projectName} will be{" "}
+        <strong>permanently deleted</strong> and the source tender{" "}
+        <strong>{tenderNumber}</strong> will be reset to{" "}
+        <strong>CONTRACT_ISSUED</strong> status so it can be converted again.
+      </p>
+
+      {cascadeLines.length > 0 ? (
+        <div
+          style={{
+            background: "#FEF2F2",
+            border: "1px solid #FECACA",
+            borderRadius: 6,
+            padding: "8px 12px",
+            marginBottom: 12,
+            fontSize: 13
+          }}
+        >
+          <strong>This will permanently delete:</strong>
+          <ul style={{ margin: "4px 0 0", paddingLeft: 20 }}>
+            {cascadeLines.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
         </div>
+      ) : null}
+
+      <div style={{ marginBottom: 12 }}>
+        <label
+          style={{ display: "block", fontSize: 13, color: "#4B5563", marginBottom: 4 }}
+        >
+          Type <strong>{projectNumber}</strong> to confirm:
+        </label>
+        <input
+          type="text"
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+          autoFocus
+          style={{
+            width: "100%",
+            padding: "6px 10px",
+            border: "1px solid #D1D5DB",
+            borderRadius: 6,
+            fontSize: 14,
+            boxSizing: "border-box"
+          }}
+        />
       </div>
-    </div>
+    </CenteredModal>
   );
 }

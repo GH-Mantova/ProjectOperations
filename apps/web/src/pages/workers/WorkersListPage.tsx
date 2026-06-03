@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { EmptyState, Skeleton } from "@project-ops/ui";
+import { CenteredModal, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 
 type WorkerRow = {
@@ -278,33 +278,14 @@ function AddWorkerModal({ onClose, onCreated }: { onClose: () => void; onCreated
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="add-worker-title"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15, 23, 42, 0.55)",
-        display: "grid",
-        placeItems: "center",
-        zIndex: 100
-      }}
-      onClick={onClose}
+    <CenteredModal
+      title="Add worker"
+      subtitle="Create the HR profile. Mobile login access is provisioned separately."
+      onClose={onClose}
+      busy={submitting}
+      maxWidth={560}
     >
-      <div
-        className="s7-card"
-        style={{ width: "min(560px, 92vw)", padding: 24, maxHeight: "90vh", overflowY: "auto" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 id="add-worker-title" className="s7-type-section-title" style={{ margin: 0 }}>
-          Add worker
-        </h2>
-        <p style={{ color: "var(--text-muted)", margin: "6px 0 16px" }}>
-          Create the HR profile. Mobile login access is provisioned separately.
-        </p>
-
-        <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Field label="First name*">
               <input
@@ -417,8 +398,7 @@ function AddWorkerModal({ onClose, onCreated }: { onClose: () => void; onCreated
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </CenteredModal>
   );
 }
 

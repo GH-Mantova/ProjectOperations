@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { EmptyState, Skeleton } from "@project-ops/ui";
+import { CenteredModal, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { QualificationsSection } from "./QualificationsSection";
 import { AvailabilitySection } from "./AvailabilitySection";
@@ -303,81 +303,76 @@ function EditWorkerModal({
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15, 23, 42, 0.55)",
-        display: "grid",
-        placeItems: "center",
-        zIndex: 100
-      }}
-      onClick={onClose}
+    <CenteredModal
+      title="Edit worker"
+      onClose={onClose}
+      busy={submitting}
+      maxWidth={560}
+      footer={
+        <>
+          <button type="button" className="s7-btn s7-btn--ghost" onClick={onClose} disabled={submitting}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="s7-btn s7-btn--primary"
+            disabled={submitting}
+            onClick={() => {
+              const fakeEvent = { preventDefault: () => {} } as FormEvent;
+              void handleSubmit(fakeEvent);
+            }}
+          >
+            {submitting ? "Saving…" : "Save changes"}
+          </button>
+        </>
+      }
     >
-      <div
-        className="s7-card"
-        style={{ width: "min(560px, 92vw)", padding: 24, maxHeight: "90vh", overflowY: "auto" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="s7-type-section-title" style={{ margin: 0 }}>Edit worker</h2>
-        <form onSubmit={handleSubmit} style={{ marginTop: 16 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Labeled label="First name">
-              <input className="s7-input" required value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} />
+      <form onSubmit={handleSubmit}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <Labeled label="First name">
+            <input className="s7-input" required value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} />
+          </Labeled>
+          <Labeled label="Last name">
+            <input className="s7-input" required value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} />
+          </Labeled>
+          <Labeled label="Preferred name">
+            <input className="s7-input" value={form.preferredName} onChange={(e) => setForm({ ...form, preferredName: e.target.value })} />
+          </Labeled>
+          <Labeled label="Role">
+            <input className="s7-input" required value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} />
+          </Labeled>
+          <Labeled label="Phone">
+            <input className="s7-input" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+          </Labeled>
+          <Labeled label="Email">
+            <input className="s7-input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+          </Labeled>
+          <Labeled label="Emergency contact name">
+            <input className="s7-input" value={form.emergencyContactName} onChange={(e) => setForm({ ...form, emergencyContactName: e.target.value })} />
+          </Labeled>
+          <Labeled label="Emergency contact phone">
+            <input className="s7-input" value={form.emergencyContactPhone} onChange={(e) => setForm({ ...form, emergencyContactPhone: e.target.value })} />
+          </Labeled>
+          <Labeled label="Licence number">
+            <input className="s7-input" value={form.licenceNumber} onChange={(e) => setForm({ ...form, licenceNumber: e.target.value })} />
+          </Labeled>
+          <Labeled label="Licence class">
+            <input className="s7-input" value={form.licenceClass} onChange={(e) => setForm({ ...form, licenceClass: e.target.value })} />
+          </Labeled>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <Labeled label="Ticket numbers">
+              <input className="s7-input" value={form.ticketNumbers} onChange={(e) => setForm({ ...form, ticketNumbers: e.target.value })} />
             </Labeled>
-            <Labeled label="Last name">
-              <input className="s7-input" required value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} />
-            </Labeled>
-            <Labeled label="Preferred name">
-              <input className="s7-input" value={form.preferredName} onChange={(e) => setForm({ ...form, preferredName: e.target.value })} />
-            </Labeled>
-            <Labeled label="Role">
-              <input className="s7-input" required value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} />
-            </Labeled>
-            <Labeled label="Phone">
-              <input className="s7-input" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-            </Labeled>
-            <Labeled label="Email">
-              <input className="s7-input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-            </Labeled>
-            <Labeled label="Emergency contact name">
-              <input className="s7-input" value={form.emergencyContactName} onChange={(e) => setForm({ ...form, emergencyContactName: e.target.value })} />
-            </Labeled>
-            <Labeled label="Emergency contact phone">
-              <input className="s7-input" value={form.emergencyContactPhone} onChange={(e) => setForm({ ...form, emergencyContactPhone: e.target.value })} />
-            </Labeled>
-            <Labeled label="Licence number">
-              <input className="s7-input" value={form.licenceNumber} onChange={(e) => setForm({ ...form, licenceNumber: e.target.value })} />
-            </Labeled>
-            <Labeled label="Licence class">
-              <input className="s7-input" value={form.licenceClass} onChange={(e) => setForm({ ...form, licenceClass: e.target.value })} />
-            </Labeled>
-            <div style={{ gridColumn: "1 / -1" }}>
-              <Labeled label="Ticket numbers">
-                <input className="s7-input" value={form.ticketNumbers} onChange={(e) => setForm({ ...form, ticketNumbers: e.target.value })} />
-              </Labeled>
-            </div>
           </div>
+        </div>
 
-          {error ? (
-            <div role="alert" style={{ background: "#FCEBEB", color: "#A32D2D", padding: "8px 12px", borderRadius: 6, marginTop: 12, fontSize: 13 }}>
-              {error}
-            </div>
-          ) : null}
-
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
-            <button type="button" className="s7-btn s7-btn--ghost" onClick={onClose} disabled={submitting}>
-              Cancel
-            </button>
-            <button type="submit" className="s7-btn s7-btn--primary" disabled={submitting}>
-              {submitting ? "Saving…" : "Save changes"}
-            </button>
+        {error ? (
+          <div role="alert" style={{ background: "#FCEBEB", color: "#A32D2D", padding: "8px 12px", borderRadius: 6, marginTop: 12, fontSize: 13 }}>
+            {error}
           </div>
-        </form>
-      </div>
-    </div>
+        ) : null}
+      </form>
+    </CenteredModal>
   );
 }
 
@@ -583,81 +578,65 @@ function ProvisionMobileAccessModal({
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15, 23, 42, 0.55)",
-        display: "grid",
-        placeItems: "center",
-        zIndex: 100
-      }}
-      onClick={onClose}
+    <CenteredModal
+      title="Provision mobile access"
+      onClose={onClose}
+      busy={submitting}
+      maxWidth={480}
     >
-      <div
-        className="s7-card"
-        style={{ width: "min(480px, 92vw)", padding: 24 }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="s7-type-section-title" style={{ margin: 0 }}>
-          Provision mobile access
-        </h2>
-        <p style={{ color: "var(--text-muted)", margin: "8px 0" }}>
-          This will create a login account for <strong>{workerName}</strong>. They will be required to reset their
-          password on first login.
-        </p>
-        <form onSubmit={submit}>
-          <label style={{ display: "block", marginTop: 12 }}>
-            <span className="s7-type-label">Temporary password (min 8 chars)</span>
-            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-              <input
-                className="s7-input"
-                type={showPassword ? "text" : "password"}
-                value={tempPassword}
-                onChange={(e) => setTempPassword(e.target.value)}
-                minLength={8}
-                required
-                style={{ flex: 1 }}
-                autoFocus
-              />
-              <button
-                type="button"
-                className="s7-btn s7-btn--ghost s7-btn--sm"
-                onClick={() => setShowPassword((s) => !s)}
-              >
-                {showPassword ? "Hide" : "Show"}
-              </button>
-            </div>
-          </label>
-
-          {error ? (
-            <div
-              role="alert"
-              style={{
-                background: "#FCEBEB",
-                color: "#A32D2D",
-                padding: "8px 12px",
-                borderRadius: 6,
-                marginTop: 12,
-                fontSize: 13
-              }}
+      <p style={{ color: "var(--text-muted)", margin: "8px 0" }}>
+        This will create a login account for <strong>{workerName}</strong>. They will be required to reset their
+        password on first login.
+      </p>
+      <form onSubmit={submit}>
+        <label style={{ display: "block", marginTop: 12 }}>
+          <span className="s7-type-label">Temporary password (min 8 chars)</span>
+          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+            <input
+              className="s7-input"
+              type={showPassword ? "text" : "password"}
+              value={tempPassword}
+              onChange={(e) => setTempPassword(e.target.value)}
+              minLength={8}
+              required
+              style={{ flex: 1 }}
+              autoFocus
+            />
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={() => setShowPassword((s) => !s)}
             >
-              {error}
-            </div>
-          ) : null}
-
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
-            <button type="button" className="s7-btn s7-btn--ghost" onClick={onClose} disabled={submitting}>
-              Cancel
-            </button>
-            <button type="submit" className="s7-btn s7-btn--primary" disabled={submitting}>
-              {submitting ? "Provisioning…" : "Provision access"}
+              {showPassword ? "Hide" : "Show"}
             </button>
           </div>
-        </form>
-      </div>
-    </div>
+        </label>
+
+        {error ? (
+          <div
+            role="alert"
+            style={{
+              background: "#FCEBEB",
+              color: "#A32D2D",
+              padding: "8px 12px",
+              borderRadius: 6,
+              marginTop: 12,
+              fontSize: 13
+            }}
+          >
+            {error}
+          </div>
+        ) : null}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+          <button type="button" className="s7-btn s7-btn--ghost" onClick={onClose} disabled={submitting}>
+            Cancel
+          </button>
+          <button type="submit" className="s7-btn s7-btn--primary" disabled={submitting}>
+            {submitting ? "Provisioning…" : "Provision access"}
+          </button>
+        </div>
+      </form>
+    </CenteredModal>
   );
 }

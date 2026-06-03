@@ -1,4 +1,5 @@
 import { FormEvent, useMemo, useState } from "react";
+import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 
 type ProjectStatus = "MOBILISING" | "ACTIVE" | "PRACTICAL_COMPLETION" | "DEFECTS" | "CLOSED";
@@ -84,112 +85,94 @@ export function AdvanceStatusModal({ project, onClose, onSaved }: Props) {
     }
   }
 
+  const subtitle = `${project.projectNumber} is currently ${STATUS_LABEL[current] ?? current}.`;
+
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="advance-status-title"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15, 23, 42, 0.55)",
-        display: "grid",
-        placeItems: "center",
-        zIndex: 100
-      }}
-      onClick={onClose}
+    <CenteredModal
+      title="Advance status"
+      subtitle={subtitle}
+      onClose={onClose}
+      busy={submitting}
+      maxWidth={480}
     >
-      <div
-        className="s7-card"
-        style={{ width: "min(480px, 92vw)", padding: 24 }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 id="advance-status-title" className="s7-type-section-title" style={{ margin: 0 }}>
-          Advance status
-        </h2>
-        <p style={{ color: "var(--text-muted)", margin: "6px 0 16px" }}>
-          {project.projectNumber} is currently <strong>{STATUS_LABEL[current] ?? current}</strong>.
+      {!next ? (
+        <p style={{ color: "var(--text-muted)" }}>
+          This project is closed. No further transitions are available.
         </p>
-
-        {!next ? (
-          <p style={{ color: "var(--text-muted)" }}>
-            This project is closed. No further transitions are available.
+      ) : (
+        <form onSubmit={handleSubmit}>
+          <p style={{ marginTop: 0 }}>
+            Move status to <strong>{STATUS_LABEL[next]}</strong>?
           </p>
-        ) : (
-          <form onSubmit={handleSubmit}>
-            <p style={{ marginTop: 0 }}>
-              Move status to <strong>{STATUS_LABEL[next]}</strong>?
-            </p>
 
-            {requiredField === "actualStartDate" ? (
-              <label style={{ display: "block", marginBottom: 12 }}>
-                <span className="s7-type-label">Actual start date</span>
-                <input
-                  type="date"
-                  className="s7-input"
-                  value={actualStartDate}
-                  onChange={(e) => setActualStartDate(e.target.value)}
-                  required
-                  style={{ marginTop: 4, width: "100%" }}
-                />
-              </label>
-            ) : null}
+          {requiredField === "actualStartDate" ? (
+            <label style={{ display: "block", marginBottom: 12 }}>
+              <span className="s7-type-label">Actual start date</span>
+              <input
+                type="date"
+                className="s7-input"
+                value={actualStartDate}
+                onChange={(e) => setActualStartDate(e.target.value)}
+                required
+                style={{ marginTop: 4, width: "100%" }}
+              />
+            </label>
+          ) : null}
 
-            {requiredField === "practicalCompletionDate" ? (
-              <label style={{ display: "block", marginBottom: 12 }}>
-                <span className="s7-type-label">Practical completion date</span>
-                <input
-                  type="date"
-                  className="s7-input"
-                  value={practicalCompletionDate}
-                  onChange={(e) => setPracticalCompletionDate(e.target.value)}
-                  required
-                  style={{ marginTop: 4, width: "100%" }}
-                />
-              </label>
-            ) : null}
+          {requiredField === "practicalCompletionDate" ? (
+            <label style={{ display: "block", marginBottom: 12 }}>
+              <span className="s7-type-label">Practical completion date</span>
+              <input
+                type="date"
+                className="s7-input"
+                value={practicalCompletionDate}
+                onChange={(e) => setPracticalCompletionDate(e.target.value)}
+                required
+                style={{ marginTop: 4, width: "100%" }}
+              />
+            </label>
+          ) : null}
 
-            {requiredField === "closedDate" ? (
-              <label style={{ display: "block", marginBottom: 12 }}>
-                <span className="s7-type-label">Closed date</span>
-                <input
-                  type="date"
-                  className="s7-input"
-                  value={closedDate}
-                  onChange={(e) => setClosedDate(e.target.value)}
-                  required
-                  style={{ marginTop: 4, width: "100%" }}
-                />
-              </label>
-            ) : null}
+          {requiredField === "closedDate" ? (
+            <label style={{ display: "block", marginBottom: 12 }}>
+              <span className="s7-type-label">Closed date</span>
+              <input
+                type="date"
+                className="s7-input"
+                value={closedDate}
+                onChange={(e) => setClosedDate(e.target.value)}
+                required
+                style={{ marginTop: 4, width: "100%" }}
+              />
+            </label>
+          ) : null}
 
-            {error ? (
-              <div
-                role="alert"
-                style={{
-                  background: "#FCEBEB",
-                  color: "#A32D2D",
-                  padding: "8px 12px",
-                  borderRadius: 6,
-                  marginBottom: 12,
-                  fontSize: 13
-                }}
-              >
-                {error}
-              </div>
-            ) : null}
-
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button type="button" className="s7-button s7-button--ghost" onClick={onClose} disabled={submitting}>
-                Cancel
-              </button>
-              <button type="submit" className="s7-button s7-button--primary" disabled={submitting}>
-                {submitting ? "Saving…" : `Move to ${STATUS_LABEL[next]}`}
-              </button>
+          {error ? (
+            <div
+              role="alert"
+              style={{
+                background: "#FCEBEB",
+                color: "#A32D2D",
+                padding: "8px 12px",
+                borderRadius: 6,
+                marginBottom: 12,
+                fontSize: 13
+              }}
+            >
+              {error}
             </div>
-          </form>
-        )}
-      </div>
-    </div>
+          ) : null}
+
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <button type="button" className="s7-button s7-button--ghost" onClick={onClose} disabled={submitting}>
+              Cancel
+            </button>
+            <button type="submit" className="s7-button s7-button--primary" disabled={submitting}>
+              {submitting ? "Saving…" : `Move to ${STATUS_LABEL[next]}`}
+            </button>
+          </div>
+        </form>
+      )}
+    </CenteredModal>
   );
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 
 type ProjectOption = {
@@ -96,96 +97,98 @@ export function NewContractModal({ onClose }: { onClose: () => void }) {
   const availableProjects = projects.filter((p) => !p.hasContract);
 
   return (
-    <div className="slide-over-overlay" role="dialog" aria-modal="true" aria-label="Create contract" onClick={onClose}>
-      <div className="s7-card" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
-        <h2 className="s7-type-section-heading" style={{ marginTop: 0 }}>New contract</h2>
-
-        {loading ? (
-          <p style={{ color: "var(--text-muted)" }}>Loading projects…</p>
-        ) : (
-          <>
-            <label className="estimate-editor__field">
-              <span>Project</span>
-              <select
-                className="s7-input"
-                value={projectId}
-                onChange={(e) => setProjectId(e.target.value)}
-                autoFocus
-              >
-                <option value="">Select a project…</option>
-                {availableProjects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.projectNumber} — {p.name}
-                    {p.clientName ? ` · ${p.clientName}` : ""}
-                  </option>
-                ))}
-              </select>
-              {projects.length > 0 && availableProjects.length === 0 ? (
-                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                  All existing projects already have contracts.
-                </span>
-              ) : null}
-            </label>
-
-            <label className="estimate-editor__field">
-              <span>Contract value (ex GST)</span>
-              <input
-                className="s7-input"
-                type="number"
-                step="0.01"
-                min="0"
-                value={contractValue}
-                onChange={(e) => setContractValue(e.target.value)}
-                placeholder="0.00"
-              />
-            </label>
-
-            <label className="estimate-editor__field">
-              <span>Retention %</span>
-              <input
-                className="s7-input"
-                type="number"
-                step="0.1"
-                min="0"
-                max="100"
-                value={retentionPct}
-                onChange={(e) => setRetentionPct(e.target.value)}
-              />
-            </label>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <label className="estimate-editor__field">
-                <span>Start date</span>
-                <input className="s7-input" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-              </label>
-              <label className="estimate-editor__field">
-                <span>End date</span>
-                <input className="s7-input" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-              </label>
-            </div>
-
-            <label className="estimate-editor__field">
-              <span>Notes</span>
-              <textarea
-                className="s7-input"
-                rows={3}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Optional"
-              />
-            </label>
-          </>
-        )}
-
-        {error ? <p style={{ color: "var(--status-danger)", marginTop: 8 }}>{error}</p> : null}
-
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+    <CenteredModal
+      title="New contract"
+      onClose={onClose}
+      busy={saving}
+      maxWidth={520}
+      footer={
+        <>
           <button type="button" className="s7-btn s7-btn--ghost" onClick={onClose}>Cancel</button>
           <button type="button" className="s7-btn s7-btn--primary" onClick={() => void submit()} disabled={saving}>
             {saving ? "Creating…" : "Create contract"}
           </button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      {loading ? (
+        <p style={{ color: "var(--text-muted)" }}>Loading projects…</p>
+      ) : (
+        <>
+          <label className="estimate-editor__field">
+            <span>Project</span>
+            <select
+              className="s7-input"
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
+              autoFocus
+            >
+              <option value="">Select a project…</option>
+              {availableProjects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.projectNumber} — {p.name}
+                  {p.clientName ? ` · ${p.clientName}` : ""}
+                </option>
+              ))}
+            </select>
+            {projects.length > 0 && availableProjects.length === 0 ? (
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                All existing projects already have contracts.
+              </span>
+            ) : null}
+          </label>
+
+          <label className="estimate-editor__field">
+            <span>Contract value (ex GST)</span>
+            <input
+              className="s7-input"
+              type="number"
+              step="0.01"
+              min="0"
+              value={contractValue}
+              onChange={(e) => setContractValue(e.target.value)}
+              placeholder="0.00"
+            />
+          </label>
+
+          <label className="estimate-editor__field">
+            <span>Retention %</span>
+            <input
+              className="s7-input"
+              type="number"
+              step="0.1"
+              min="0"
+              max="100"
+              value={retentionPct}
+              onChange={(e) => setRetentionPct(e.target.value)}
+            />
+          </label>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <label className="estimate-editor__field">
+              <span>Start date</span>
+              <input className="s7-input" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            </label>
+            <label className="estimate-editor__field">
+              <span>End date</span>
+              <input className="s7-input" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            </label>
+          </div>
+
+          <label className="estimate-editor__field">
+            <span>Notes</span>
+            <textarea
+              className="s7-input"
+              rows={3}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Optional"
+            />
+          </label>
+        </>
+      )}
+
+      {error ? <p style={{ color: "var(--status-danger)", marginTop: 8 }}>{error}</p> : null}
+    </CenteredModal>
   );
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { DraftBanner, SaveDraftButton, useFormDraft } from "../../drafts";
 
@@ -278,30 +279,13 @@ function AddModal({
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        zIndex: 1100,
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center"
-      }}
+    <CenteredModal
+      title={mode === "leave" ? "Add leave" : "Add unavailability"}
+      onClose={onClose}
+      busy={submitting}
+      maxWidth={440}
     >
-      <form
-        onClick={(e) => e.stopPropagation()}
-        onSubmit={submit}
-        className="s7-card"
-        style={{ padding: 18, width: "min(440px, 92vw)" }}
-      >
-        <h3 className="s7-type-section-heading" style={{ margin: "0 0 12px" }}>
-          {mode === "leave" ? "Add leave" : "Add unavailability"}
-        </h3>
-
+      <form onSubmit={submit}>
         {hasDraft ? (
           <DraftBanner
             userId={user?.id ?? null}
@@ -405,6 +389,6 @@ function AddModal({
           </div>
         </div>
       </form>
-    </div>
+    </CenteredModal>
   );
 }

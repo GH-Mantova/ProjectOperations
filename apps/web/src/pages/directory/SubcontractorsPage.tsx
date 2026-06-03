@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { ContactsTab } from "../../components/contacts/ContactsTab";
 
@@ -806,23 +807,14 @@ function DocumentUploadModal({
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
-      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1100, display: "flex", justifyContent: "center", alignItems: "center" }}
+    <CenteredModal
+      title="Upload document"
+      subtitle="Records the document metadata. The actual file lives in SharePoint and is uploaded separately for now."
+      onClose={onClose}
+      busy={busy}
+      maxWidth={440}
     >
-      <form
-        onSubmit={submit}
-        onClick={(e) => e.stopPropagation()}
-        className="s7-card"
-        style={{ padding: 20, width: "min(440px, 90vw)" }}
-      >
-        <h3 className="s7-type-section-heading" style={{ margin: "0 0 12px" }}>Upload document</h3>
-        <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 12px" }}>
-          Records the document metadata. The actual file lives in SharePoint and
-          is uploaded separately for now.
-        </p>
+      <form onSubmit={submit}>
         <label style={{ fontSize: 12, display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 }}>
           <span>Type *</span>
           <select
@@ -862,7 +854,7 @@ function DocumentUploadModal({
           <button type="submit" className="s7-btn s7-btn--primary" disabled={busy}>{busy ? "Saving…" : "Save"}</button>
         </div>
       </form>
-    </div>
+    </CenteredModal>
   );
 }
 
@@ -979,30 +971,13 @@ function CreateSubcontractorModal({
   const isPrivate = form.businessType === "private_person";
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        zIndex: 1000,
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center"
-      }}
+    <CenteredModal
+      title="New directory entry"
+      onClose={onClose}
+      busy={submitting}
+      maxWidth={560}
     >
-      <form
-        onSubmit={submit}
-        onClick={(e) => e.stopPropagation()}
-        className="s7-card"
-        style={{ padding: 20, width: "min(560px, 90vw)", maxHeight: "90vh", overflow: "auto" }}
-      >
-        <h3 className="s7-type-section-heading" style={{ margin: "0 0 12px" }}>
-          New directory entry
-        </h3>
-
+      <form onSubmit={submit}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <label style={{ fontSize: 12, display: "flex", flexDirection: "column", gap: 2, gridColumn: "1 / -1" }}>
             <span>{isPrivate ? "Full name" : "Legal name"} *</span>
@@ -1118,6 +1093,6 @@ function CreateSubcontractorModal({
           </button>
         </div>
       </form>
-    </div>
+    </CenteredModal>
   );
 }

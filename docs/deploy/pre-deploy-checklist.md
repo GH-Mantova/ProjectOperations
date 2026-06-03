@@ -202,6 +202,11 @@ Single App Registration covers SSO, SharePoint, and Mail.Send.
       corresponding repo secrets (e.g. `PROD_ENTRA_CLIENT_ID`,
       `PROD_ENTRA_TENANT_ID`) and reference them in the workflow
 - [ ] Branch protection on `main` confirms reviewer required and CI must pass
+- [ ] Action versions pinned to Node 24-compatible releases ahead of GitHub's
+      2026-06-16 Node 20 → 24 force-migration deadline (PR #69 — bumps
+      `actions/checkout`, `actions/setup-node`, `pnpm/action-setup`,
+      `actions/upload-artifact`, plus `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true`
+      in each workflow's top-level `env:`)
 
 ## 7. Smoke test (post-deploy, pre-handoff)
 

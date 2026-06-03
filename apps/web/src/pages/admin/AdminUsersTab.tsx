@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import {
+  copyTextToClipboard,
+  performAdminResetPassword,
+  ResetPasswordError
+} from "./resetUserPassword";
 
 type Row = {
   id: string;
@@ -22,6 +27,8 @@ export function AdminUsersTab() {
   const [error, setError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
+  const [resetting, setResetting] = useState<Row | null>(null);
+  const [resetResult, setResetResult] = useState<{ user: Row; temporaryPassword: string } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const viewerIsSuper = useMemo(() => {
@@ -150,6 +157,21 @@ export function AdminUsersTab() {
                         <button
                           type="button"
                           className="s7-btn s7-btn--ghost s7-btn--sm"
+                          disabled={isSelf || !r.isActive}
+                          title={
+                            isSelf
+                              ? "Use the standard reset flow for your own account"
+                              : !r.isActive
+                                ? "Reactivate the user before resetting their password"
+                                : undefined
+                          }
+                          onClick={() => setResetting(r)}
+                        >
+                          Reset password
+                        </button>
+                        <button
+                          type="button"
+                          className="s7-btn s7-btn--ghost s7-btn--sm"
                           disabled={isSelf}
                           title={isSelf ? "Cannot deactivate your own account" : undefined}
                           onClick={() => void toggleActive(r)}
@@ -189,6 +211,30 @@ export function AdminUsersTab() {
             await load();
             showToast("User updated");
           }}
+        />
+      ) : null}
+      {resetting ? (
+        <ResetPasswordConfirmModal
+          user={resetting}
+          onClose={() => setResetting(null)}
+          onSuccess={(temporaryPassword) => {
+            const user = resetting;
+            setResetting(null);
+            setResetResult({ user, temporaryPassword });
+          }}
+          onError={(message) => {
+            setResetting(null);
+            setError(message);
+            showToast("Reset failed");
+          }}
+        />
+      ) : null}
+      {resetResult ? (
+        <ResetPasswordResultModal
+          user={resetResult.user}
+          temporaryPassword={resetResult.temporaryPassword}
+          onClose={() => setResetResult(null)}
+          onCopied={() => showToast("Copied to clipboard")}
         />
       ) : null}
     </section>
@@ -285,6 +331,133 @@ function UserFormModal({
         </>
       ) : null}
       {error ? <p style={{ color: "var(--status-danger)" }}>{error}</p> : null}
+    </CenteredModal>
+  );
+}
+
+function ResetPasswordConfirmModal({
+  user,
+  onClose,
+  onSuccess,
+  onError
+}: {
+  user: Row;
+  onClose: () => void;
+  onSuccess: (temporaryPassword: string) => void;
+  onError: (message: string) => void;
+}) {
+  const { authFetch } = useAuth();
+  const [submitting, setSubmitting] = useState(false);
+
+  const confirm = async () => {
+    setSubmitting(true);
+    try {
+      const result = await performAdminResetPassword(authFetch, user.id);
+      onSuccess(result.temporaryPassword);
+    } catch (err) {
+      const message =
+        err instanceof ResetPasswordError ? err.message : (err as Error).message;
+      onError(message || "Reset failed.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <CenteredModal
+      title={`Reset password for ${user.firstName} ${user.lastName}?`}
+      onClose={onClose}
+      busy={submitting}
+      maxWidth={460}
+      dataTestId="reset-password-confirm"
+      footer={
+        <>
+          <button type="button" className="s7-btn s7-btn--ghost" onClick={onClose} disabled={submitting}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="s7-btn s7-btn--primary"
+            onClick={() => void confirm()}
+            disabled={submitting}
+          >
+            {submitting ? "Resetting…" : "Reset password"}
+          </button>
+        </>
+      }
+    >
+      <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5 }}>
+        We'll generate a temporary password for <strong>{user.email}</strong>. Share it with
+        them through a secure channel — they'll be prompted to change it the next time they
+        sign in.
+      </p>
+    </CenteredModal>
+  );
+}
+
+function ResetPasswordResultModal({
+  user,
+  temporaryPassword,
+  onClose,
+  onCopied
+}: {
+  user: Row;
+  temporaryPassword: string;
+  onClose: () => void;
+  onCopied: () => void;
+}) {
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+
+  const handleCopy = async () => {
+    const ok = await copyTextToClipboard(temporaryPassword);
+    if (ok) {
+      setCopyState("copied");
+      onCopied();
+    } else {
+      setCopyState("failed");
+    }
+  };
+
+  return (
+    <CenteredModal
+      title={`Temporary password for ${user.firstName} ${user.lastName}`}
+      onClose={onClose}
+      maxWidth={460}
+      dataTestId="reset-password-result"
+      footer={
+        <>
+          <button type="button" className="s7-btn s7-btn--ghost" onClick={() => void handleCopy()}>
+            {copyState === "copied" ? "Copied" : copyState === "failed" ? "Copy failed" : "Copy to clipboard"}
+          </button>
+          <button type="button" className="s7-btn s7-btn--primary" onClick={onClose}>
+            Done
+          </button>
+        </>
+      }
+    >
+      <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5 }}>
+        Share this password with <strong>{user.email}</strong> through a secure channel. They'll
+        be prompted to change it the next time they sign in. The password is shown once — you
+        can't retrieve it later.
+      </p>
+      <pre
+        data-testid="reset-password-result-value"
+        style={{
+          marginTop: 16,
+          marginBottom: 0,
+          padding: "10px 12px",
+          background: "var(--surface-muted, #F6F6F6)",
+          border: "1px solid var(--border, #e5e7eb)",
+          borderRadius: 6,
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+          fontSize: 14,
+          userSelect: "all",
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-all"
+        }}
+      >
+        {temporaryPassword}
+      </pre>
     </CenteredModal>
   );
 }

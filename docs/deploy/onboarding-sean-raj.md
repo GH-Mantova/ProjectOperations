@@ -22,7 +22,7 @@ On first login, SSO auto-provisions an ERP user record with the default
 - **Raj** → Tendering Editor + Estimator
 
 If, for any reason, SSO is disabled on the day (Marco's call), Marco generates a
-temporary password via the Reset Password admin UI (shipped in PR-48) and shares
+temporary password via the Reset Password admin UI (PR-48 — backend landed in PR #291 as WIP; UI / tests / audit log are tracked as PR-48 follow-up) and shares
 it via the agreed channel.
 
 ## Login URL

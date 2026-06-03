@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-06-03 05:21 AEST
+Last updated: 2026-06-03 06:07 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -393,7 +393,7 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
    client-filter sidebar with stars / PRIMARY / info-icon; new Client
    Detail side-drawer surfaced from both panels.
 
-🔲 Tender SharePoint folder auto-creation + 11 canonical document categories (PR-64 queued)
+🔧 Tender SharePoint folder auto-creation + 11 canonical document categories (PR-64 OPENED 2026-06-03 — feat/tender-folders-and-document-categories)
    On tender create, ensure-folder at
    `Documents/1. Operations/1. Tenders/{tenderNumber}/` plus 11 sub-folders
    (Tender Documents / Drawings / Specifications / Bill of Quantities /

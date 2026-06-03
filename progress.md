@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-06-02 07:57 AEST
+Last updated: 2026-06-03 01:19 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -7536,3 +7536,116 @@ Detail: Backend scaffold for the admin "reset user password" flow:
   audit-log entry are NOT in this PR. Tracked as 🚧 partial on the
   roadmap; follow-up PR-48 finalisation will close those gaps.
 Status: OPEN — do NOT auto-merge; explicitly WIP per the PR title.
+
+## 2026-06-02 — PR #291 MERGED (as WIP)
+GitHub PR: #291 (https://github.com/GH-Mantova/edit/ProjectOperations/pull/291)
+Type: Feature WIP (§2 — admin reset-password backend scaffold)
+Branch: feat/admin-reset-password
+Detail: Squash-merged as intentional WIP per the PR title. Backend
+  scaffold landed (admin-users module + endpoint + permissions wiring);
+  UI, tests, and the audit-log entry are still outstanding and tracked
+  as PR-48 follow-up.
+Status: COMPLETE (merged as WIP)
+
+## 2026-06-02 — PR #292 MERGED
+GitHub PR: #292 (https://github.com/GH-Mantova/ProjectOperations/pull/292)
+Type: Feature (§4 Integrations — OutlookEmailProvider hardening)
+Branch: feat/outlook-categorised-errors
+Detail: Adds categorised error surfaces to OutlookEmailProvider (auth /
+  rate-limit / quota / config / network / unknown) using the same
+  sanitiseProviderError pattern as PR #131 / #135. Introduces the
+  AZURE_MAIL_* environment variable family (AZURE_MAIL_TENANT_ID,
+  AZURE_MAIL_CLIENT_ID, AZURE_MAIL_CLIENT_SECRET, AZURE_MAIL_FROM)
+  consumed by the provider on initialisation. Includes the PR-61
+  CodeQL fix-forward (js/xss-through-exception suppression on the
+  sanitised catch path).
+Status: COMPLETE (merged)
+
+## 2026-06-02 — PR #294 MERGED
+GitHub PR: #294 (https://github.com/GH-Mantova/ProjectOperations/pull/294)
+Type: Chore (repo hygiene — pr-prompts archive)
+Branch: chore/tidy-pr-prompts
+Detail: Archived 28 stale pr-prompt drafts to docs/pr-prompts/archive/.
+  No code change; no schema; no env.
+Status: COMPLETE (merged)
+
+## 2026-06-02 — PR #295 MERGED
+GitHub PR: #295 (https://github.com/GH-Mantova/ProjectOperations/pull/295)
+Type: Docs (roadmap + progress catch-up)
+Branch: chore/roadmap-progress-catchup-2026-06-02
+Detail: Mid-day catch-up covering PRs #286-#291. Marked the Quote scope
+  grouped-mode drag reorder and the Sites detail page as ✅, the migration
+  drift reconciliation as ✅, and the admin reset-password roadmap line as
+  partial. Did NOT cover PRs #292-#299, the in-flight PR-62/63/64 work,
+  the new future commitments, or the deploy-topology decisions — those are
+  closed by PR-65 (this PR).
+Status: COMPLETE (merged)
+
+## 2026-06-02 — PR #296 MERGED
+GitHub PR: #296 (https://github.com/GH-Mantova/ProjectOperations/pull/296)
+Type: Docs (API — Swagger decorators on SchedulerController)
+Branch: chore/swagger-scheduler-controller
+Detail: Added @ApiOperation / @ApiResponse / @ApiQuery decorators across
+  SchedulerController endpoints to bring the module up to the CLAUDE.md
+  "every new endpoint must have Swagger decorators" rule. No behaviour
+  change; Swagger UI now lists every Scheduler endpoint with full schema.
+Status: COMPLETE (merged)
+
+## 2026-06-02 — PR #297 MERGED
+GitHub PR: #297 (https://github.com/GH-Mantova/ProjectOperations/pull/297)
+Type: Docs (JSDoc on directory module public exports)
+Branch: chore/jsdoc-directory-module
+Detail: Added JSDoc blocks to every public export in the directory module
+  (services, controllers, DTOs). No behaviour change; IDE / Swagger
+  documentation surface now richer for the directory polymorphic
+  CLIENT / SUBCONTRACTOR / SUPPLIER paths.
+Status: COMPLETE (merged)
+
+## 2026-06-02 — PR #298 MERGED
+GitHub PR: #298 (https://github.com/GH-Mantova/ProjectOperations/pull/298)
+Type: Test (FormsService unit tests)
+Branch: test/forms-service-units
+Detail: Adds unit-test coverage for FormsService submission pipeline.
+  Mock-Prisma pattern; no integration tests added in this PR.
+Status: COMPLETE (merged)
+
+## 2026-06-02 — PR #299 MERGED
+GitHub PR: #299 (https://github.com/GH-Mantova/ProjectOperations/pull/299)
+Type: UX (§5A.3 — Tender delete-confirm modal migrated to CenteredModal)
+Branch: feat/centeredmodal-tender-delete
+Detail: First module migrated to the new shared CenteredModal component
+  (per the system-wide modal sweep tracked as PR-62). Tender ConfirmDelete
+  dialog now uses CenteredModal — same cascade-preflight content, new
+  centred presentation + escape / backdrop handling. The wider sweep
+  across every module ships in PR-62.
+Status: COMPLETE (merged)
+
+## 2026-06-03 — In-flight PRs (overnight watcher queue)
+The watcher daemon (scripts/pr-watcher/) is processing three large PRs
+overnight following the merges above:
+
+- **PR-62** — system-wide CenteredModal migration sweep across every
+  modal in every module. Watcher-driven; uses PR #299's pattern.
+  Status: MERGED as PR #300 (24 modals — "continuation needed";
+  remaining modals tracked as PR-62 follow-up).
+
+- **PR-63** — Team panel rebuilt as a single "Assigned estimator"
+  dropdown (replacing the multi-tile layout); Activity panel gains a
+  client-filter sidebar with stars / PRIMARY / info-icon affordances;
+  new Client Detail side-drawer. Also appends a roadmap line for the
+  admin role-tagging UI commitment captured in conversation today.
+  Status: QUEUED (no branch / PR yet — prompt still in watcher queue
+  at time of PR-65 cut).
+
+- **PR-64** — Tender SharePoint folder auto-creation at the
+  initialservices.sharepoint.com/sites/Initialservices > Documents >
+  "1. Operations/1. Tenders/{tenderNumber}/" path on tender create.
+  Introduces 11 canonical document categories (Tender Documents /
+  Drawings / Specifications / Bill of Quantities / Quotes — Subcontractor
+  or Supplier / Submissions / Correspondence / Compliance & WHS /
+  Asbestos / Site Photos / Other) and routes uploads into the matching
+  sub-folder by selected category. Adds the SHAREPOINT_SITE_HOSTNAME /
+  SHAREPOINT_SITE_PATH / SHAREPOINT_LIBRARY_NAME / SHAREPOINT_TENDERS_ROOT
+  environment variables.
+  Status: QUEUED (no branch / PR yet — prompt still in watcher queue
+  at time of PR-65 cut).

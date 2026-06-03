@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-06-02 07:57 AEST
+Last updated: 2026-06-03 01:19 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -382,6 +382,25 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     discipline reorder now ships via @dnd-kit using the existing
     reorder endpoint; cross-discipline drag is rejected at drop time.
     Flat-mode reorder unchanged.)
+
+🔧 System-wide CenteredModal migration
+   — First module (Tender delete-confirm) ✅ PR #299 (2026-06-02).
+   — Wider sweep across 24 modals ✅ PR #300 (2026-06-03); remaining
+     modals (continuation) 🔲 PR-62 follow-up.
+
+🔲 Tender Detail: Team panel rebuilt + Activity client-filter sidebar + Client Detail drawer (PR-63 queued)
+   Team panel → single "Assigned estimator" dropdown; Activity panel →
+   client-filter sidebar with stars / PRIMARY / info-icon; new Client
+   Detail side-drawer surfaced from both panels.
+
+🔲 Tender SharePoint folder auto-creation + 11 canonical document categories (PR-64 queued)
+   On tender create, ensure-folder at
+   `Documents/1. Operations/1. Tenders/{tenderNumber}/` plus 11 sub-folders
+   (Tender Documents / Drawings / Specifications / Bill of Quantities /
+   Quotes — Subcontractor or Supplier / Submissions / Correspondence /
+   Compliance & WHS / Asbestos / Site Photos / Other). Uploads route by
+   selected category. New env vars: SHAREPOINT_SITE_HOSTNAME,
+   SHAREPOINT_SITE_PATH, SHAREPOINT_LIBRARY_NAME, SHAREPOINT_TENDERS_ROOT.
 
 🔲 Clarification types — add Call/Email/Meeting/Note as first-class types
    (TenderClarificationNote.noteType column exists from PR #72 migration.
@@ -1032,10 +1051,11 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
      email noise on every PR because Azure secrets weren't configured.
      Re-enable on:push when production deployment is ready, after
      tendering sign-off (§5A) and Azure secret configuration.)
-⏸️  Auto folder creation (SharePoint, Tender → Jobs Won → Lost → Archived
-    with T/A-YYMMDD-## naming)
-    (Discussed 2026-05-02, deferred until 5A.1 + 5A.2 complete.
-     Status-driven SharePoint folder reorganisation.)
+🔧 Auto folder creation (SharePoint)
+   — Tender folder auto-create + 11 canonical categories: PR-64 in-flight (§5A.3).
+   — Jobs Won mirror at `1. Operations/2. Jobs won/{jobNumber}/` on
+     tender→job conversion (same 11 categories): 🔲 follow-up.
+   — Lost / Archived status-driven re-org: 🔲 follow-up.
 ⏸️  Estimating window restructure (scope item card → "Add new" group
     population, persistent expandable scope frame, per-grouping filter)
     (Discussed 2026-05-02, deferred until 5A.1 + 5A.2 complete.
@@ -1101,6 +1121,55 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     today — the fix is structural defence-in-depth at the API
     boundary. 12 new tests verify no raw text reaches the thrown
     message across script/HTML/keyword/network/unknown shapes.
+✅  OutlookEmailProvider categorised errors + AZURE_MAIL_* env vars — PR #292 (2026-06-02)
+    Closed by PR #292. Extends the sanitiseProviderError pattern to the
+    Outlook mail provider with 6 categories (auth / rate-limit / quota /
+    config / network / unknown). Introduces the AZURE_MAIL_* env var
+    family (AZURE_MAIL_TENANT_ID / AZURE_MAIL_CLIENT_ID /
+    AZURE_MAIL_CLIENT_SECRET / AZURE_MAIL_FROM) consumed at provider
+    init. Includes the PR-61 CodeQL fix-forward.
+✅  Swagger decorators on SchedulerController — PR #296 (2026-06-02)
+    @ApiOperation / @ApiResponse / @ApiQuery added to every Scheduler
+    endpoint. Brings the module to the CLAUDE.md "every new endpoint
+    must have Swagger decorators" rule.
+✅  JSDoc on directory module public exports — PR #297 (2026-06-02)
+    Public exports of the directory module (services, controllers, DTOs)
+    now carry JSDoc blocks. No behavioural change.
+✅  FormsService unit-test coverage — PR #298 (2026-06-02)
+    New unit-test suite for the FormsService submission pipeline using
+    the mock-Prisma pattern. No integration tests added in this PR.
+⏸️  PR watcher — periodic directory rescan
+    Belt-and-braces fallback for fs.watch failures (hit today). Every
+    5 minutes the watcher should rescan docs/pr-prompts/ for any new
+    *-ready.md files the fs.watch event missed. Today an fs.watch miss
+    silently swallowed a queued prompt until manually re-saved.
+⏸️  PR watcher — fix start-nightly.ps1 DEP0190 crash
+    PowerShell's `$ErrorActionPreference = "Stop"` combined with the
+    `2>&1 | Tee-Object` pipeline treats Node's DEP0190 deprecation
+    stderr line as a NativeCommandError and kills the watcher. Fix:
+    either `--no-deprecation` on the node invocation, OR
+    `$ErrorActionPreference = "Continue"` around the node call, OR
+    redirect stderr to a separate file (preferred for forensics).
+⏸️  PR watcher — single-instance guard hardening
+    When the watcher is killed without graceful shutdown, orphan
+    `claude.exe` subprocesses accumulate (Marco hit 14 zombies today).
+    The next watcher start should detect and reap any orphan claude
+    children rooted at the previous watcher PID before launching new
+    work.
+⏸️  deploy.yml — quiet the no-op runs on non-main pushes
+    Currently a `if: github.ref == 'refs/heads/main'` (or similar)
+    job-level condition causes the workflow to register a run on every
+    non-main push then immediately fail it with 0s duration. Cosmetic
+    but noisy in the Checks tab. Follow-up PR: short-circuit the
+    workflow at the top so non-main pushes return success instead of
+    a 0-second failure.
+⏸️  GitHub Actions Node 20 → Node 24 migration
+    GitHub forces Node 24 on JavaScript actions from 2026-06-16 and
+    removes Node 20 on 2026-09-16. PR to bump `actions/checkout`,
+    `actions/setup-node`, and `pnpm/action-setup` to versions that
+    support Node 24, or set
+    `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` env on the workflows as
+    a stop-gap until the action versions are pinned forward.
 ⏸️  Form drafts — Phase 2 (admin CRUD wiring)
     (Phase 1 shipped foundation + 6 user-facing forms in PR #111. ~20
      admin CRUD pages — UsersPage, RolesPage, SubcontractorsPage modals,
@@ -1506,6 +1575,19 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
      or expired — e.g. cannot allocate worker without asbestos_b licence
      to an asbestos removal job. IS legal obligation.)
 
+🔲 Admin: user roles + access levels UI — replace the current admin/users window
+   Replace the current /admin/users page with a tag- or tick-box-based
+   UI that lets system admin / super-admin assign worker roles and
+   access levels per user. Current UX is not how Marco wants role
+   management to work (captured 2026-06-02 during the PR-63 Team / Activity
+   redesign work). Companion of PR-48 admin reset-password.
+
+🔲 PR-48 follow-up — Admin reset-password UI + tests + audit log
+   PR #291 landed the backend scaffold (admin-users module + endpoint +
+   permissions wiring) as intentional WIP. Outstanding: the admin UI
+   surface, unit + integration tests, and the audit-log entry on
+   password reset. Closes the PR-48 thread.
+
 🔲 Automated timesheet → payroll export
     (approved timesheets → CSV export for payroll system.
      Amy currently processing manually. High operational impact.)
@@ -1604,6 +1686,24 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
 ---
 
 ## CHANGELOG
+
+### 2026-06-03 — Documentation sync (PR-65)
+Captures the late-day 2026-06-02 work that PR #295's catch-up did not
+cover: PRs #292 / #294 / #295 / #296 / #297 / #298 / #299 logged to
+progress.md; PR #291 MERGED-as-WIP recorded; PR-62 / PR-63 / PR-64
+recorded as in-flight; SharePoint auto-folder roadmap line flipped from
+⏸ to 🔧 with the Jobs Won mirror called out; OutlookEmailProvider
+hardening + AZURE_MAIL_* env vars logged; deploy-topology decision
+recorded in `docs/deploy/pre-deploy-checklist.md`; SharePoint env vars +
+canonical document categories added to CLAUDE.md; watcher hardening,
+deploy.yml noise, Node 24 deprecation, admin role-tagging UI, and PR-48
+completion all added as roadmap entries.
+
+### 2026-06-02 — 2026-06-02 PR cluster (PRs #286-#299)
+Twelve PRs landed today across docs (#286, #294, #295, #296, #297),
+§5A.3 (#287, #288, #299), §4 integrations (#292), §6 deploy-blocker fix
+(#289), dev tooling (#290), §2 admin (#291 WIP), and §13 forms test
+coverage (#298). PR #295 caught up #286-#291; PR-65 closes the rest.
 
 ### 2026-05-29 — §5A PR D shipped: unified communications panel (PR #260)
 Replaced the three Overview-tab panels (Activity timeline, Clarifications &

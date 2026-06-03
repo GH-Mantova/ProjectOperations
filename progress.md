@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-06-02 07:57 AEST
+Last updated: 2026-06-03 01:10 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -7536,3 +7536,32 @@ Detail: Backend scaffold for the admin "reset user password" flow:
   audit-log entry are NOT in this PR. Tracked as 🚧 partial on the
   roadmap; follow-up PR-48 finalisation will close those gaps.
 Status: OPEN — do NOT auto-merge; explicitly WIP per the PR title.
+
+## 2026-06-03 — PR OPENED — admin reset-password completion
+GitHub PR: TBD (created via this branch)
+Type: Feature completion (§2 — admin reset-password — closes PR-48 scope)
+Branch: feat/admin-reset-password-ux-complete
+Detail: Completes the work PR #291 left WIP. Adds the admin UI in
+  `apps/web/src/pages/admin/AdminUsersTab.tsx` (Reset password action
+  per row → CenteredModal confirm → on success a second CenteredModal
+  showing the temporary password with a Copy-to-clipboard button and
+  Done close). Wires it to the existing POST
+  `/admin/users/:id/reset-password` endpoint — no contract changes.
+  Adds `apps/api/src/modules/admin-users/__tests__/admin-users.integration.spec.ts`
+  exercising the controller→service→audit-service path through a
+  TestingModule (PrismaService + AuditService mocked, real
+  PasswordService) — 6 scenarios covering happy path, non-admin 403,
+  self-reset 400, missing target 404, admin-on-admin 403, and the
+  no-temp-password-in-audit-metadata guarantee. Notes:
+  - PR #291 actually already shipped the audit emission with action
+    `user.password_reset_by_admin` (constant
+    `USER_PASSWORD_RESET_BY_ADMIN`) — not `ADMIN_RESET_PASSWORD` as
+    the original Cowork prompt assumed. We test against the
+    already-shipped constant to keep audit-history filters stable.
+  - The web workspace has no jsdom/@testing-library set up, so the
+    web logic test exercises the extracted `performAdminResetPassword`
+    helper + `copyTextToClipboard` rather than rendering the modal.
+  - `docs/deploy/onboarding-sean-raj.md` updated — the "shipped in
+    PR-48" claim is replaced with the actual flow description.
+Status: OPEN — do NOT auto-merge per the PR prompt (Marco wants to
+  visually smoke the reset flow before merging).

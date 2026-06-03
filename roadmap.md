@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-06-02 07:57 AEST
+Last updated: 2026-06-03 01:10 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -1322,6 +1322,17 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
      captures the residual schema delta so a fresh DB replays
      identical to the live dev schema. Unblocks the pre-deploy
      checklist; production migrate deploy is now safe to run.)
+
+✅  Admin reset-password — UI + integration tests + audit verification (2026-06-03)
+    (PR #291 shipped the backend scaffold (endpoint + tier rules +
+     temp-password generator + audit emission). This PR completes the
+     feature: per-row "Reset password" action in AdminUsersTab, a
+     CenteredModal confirm dialog, a follow-up CenteredModal showing
+     the temporary password with a Copy-to-clipboard button, plus 6
+     integration scenarios that pin down the controller→service→audit
+     contract. The onboarding doc that wrongly claimed "shipped in
+     PR-48" is corrected with the actual flow description. Branch:
+     feat/admin-reset-password-ux-complete.)
 
 ⏸️  Document Prisma .dll harmless-stale cases in troubleshooting doc
     (docs/troubleshooting/prisma-windows-engine-lock.md created in

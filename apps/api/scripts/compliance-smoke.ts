@@ -105,7 +105,10 @@ async function main() {
     assert(tender.tenderClients?.length === 2, "Tender should include two linked tender clients.");
 
     const tenderDocument = await api.post(`/api/v1/tenders/${tender.id}/documents`).send({
-      category: "Clarifications",
+      // PR-64 enforces the canonical 11-entry category list. "Clarifications"
+      // (the legacy value) is no longer accepted; clarification docs map
+      // onto "Correspondence" semantically (RFIs, replies, meeting notes).
+      category: "Correspondence",
       title: "Compliance Tender Scope",
       description: "Tender document created by smoke runner.",
       fileName: `compliance-tender-${now}.pdf`,

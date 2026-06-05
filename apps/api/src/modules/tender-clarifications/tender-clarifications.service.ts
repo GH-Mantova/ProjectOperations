@@ -1,17 +1,21 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
+import { AuditService } from "../audit/audit.service";
 
 const DIRECTIONS = ["sent", "received"] as const;
 type Direction = (typeof DIRECTIONS)[number];
 
 @Injectable()
 export class TenderClarificationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService
+  ) {}
 
-  async list(tenderId: string) {
+  async list(tenderId: string, clientId?: string) {
     await this.requireTender(tenderId);
     return this.prisma.tenderClarificationNote.findMany({
-      where: { tenderId },
+      where: { tenderId, ...(clientId ? { clientId } : {}) },
       include: { createdBy: { select: { id: true, firstName: true, lastName: true } } },
       orderBy: { occurredAt: "desc" }
     });
@@ -20,7 +24,13 @@ export class TenderClarificationsService {
   async create(
     tenderId: string,
     actorId: string,
-    dto: { direction: string; text: string; date?: string | null; noteType?: string }
+    dto: {
+      direction: string;
+      text: string;
+      date?: string | null;
+      noteType?: string;
+      clientId?: string | null;
+    }
   ) {
     await this.requireTender(tenderId);
     if (!DIRECTIONS.includes(dto.direction as Direction)) {
@@ -43,6 +53,14 @@ export class TenderClarificationsService {
       occurredAt = new Date();
     }
 
+    if (dto.clientId) {
+      const client = await this.prisma.client.findUnique({
+        where: { id: dto.clientId },
+        select: { id: true }
+      });
+      if (!client) throw new BadRequestException("clientId does not match a known client.");
+    }
+
     return this.prisma.tenderClarificationNote.create({
       data: {
         tenderId,
@@ -50,7 +68,8 @@ export class TenderClarificationsService {
         noteType: dto.noteType ?? "note",
         text: clean,
         occurredAt,
-        createdById: actorId
+        createdById: actorId,
+        clientId: dto.clientId ?? null
       },
       include: { createdBy: { select: { id: true, firstName: true, lastName: true } } }
     });
@@ -59,13 +78,25 @@ export class TenderClarificationsService {
   async update(
     tenderId: string,
     id: string,
-    dto: { direction?: string; text?: string; date?: string | null; noteType?: string }
+    dto: {
+      direction?: string;
+      text?: string;
+      date?: string | null;
+      noteType?: string;
+      clientId?: string | null;
+    }
   ) {
     const existing = await this.prisma.tenderClarificationNote.findUnique({ where: { id } });
     if (!existing || existing.tenderId !== tenderId) {
       throw new NotFoundException("Clarification not found on this tender.");
     }
-    const data: { direction?: string; text?: string; occurredAt?: Date; noteType?: string } = {};
+    const data: {
+      direction?: string;
+      text?: string;
+      occurredAt?: Date;
+      noteType?: string;
+      clientId?: string | null;
+    } = {};
     if (dto.direction !== undefined) {
       if (!DIRECTIONS.includes(dto.direction as Direction)) {
         throw new BadRequestException(`direction must be one of ${DIRECTIONS.join(", ")}.`);
@@ -85,6 +116,16 @@ export class TenderClarificationsService {
       data.occurredAt = parsed;
     }
     if (dto.noteType !== undefined) data.noteType = dto.noteType;
+    if (dto.clientId !== undefined) {
+      if (dto.clientId) {
+        const client = await this.prisma.client.findUnique({
+          where: { id: dto.clientId },
+          select: { id: true }
+        });
+        if (!client) throw new BadRequestException("clientId does not match a known client.");
+      }
+      data.clientId = dto.clientId ?? null;
+    }
     return this.prisma.tenderClarificationNote.update({
       where: { id },
       data,
@@ -92,12 +133,19 @@ export class TenderClarificationsService {
     });
   }
 
-  async remove(tenderId: string, id: string) {
+  async remove(tenderId: string, id: string, actorId?: string) {
     const existing = await this.prisma.tenderClarificationNote.findUnique({ where: { id } });
     if (!existing || existing.tenderId !== tenderId) {
       throw new NotFoundException("Clarification not found on this tender.");
     }
     await this.prisma.tenderClarificationNote.delete({ where: { id } });
+    await this.auditService.write({
+      actorId,
+      action: "COMM_ENTRY_DELETED",
+      entityType: "CommEntry",
+      entityId: id,
+      metadata: { tenderId }
+    });
     return { id };
   }
 

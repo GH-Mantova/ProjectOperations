@@ -237,6 +237,11 @@ Run these against the live URLs before sending the invite to Sean and Raj.
 - [ ] Run the full smoke from
       [`tendering-smoke-test-plan.md`](./tendering-smoke-test-plan.md)
       Phase 1 against the live URL
+- [ ] §5A.3 (PR-63a) — after PR-63b frontend lands, Sean / Raj exercise the
+      Team panel: `PATCH /api/v1/tenders/:id/assigned-estimator`, the
+      `?clientId=` filter on `GET /tenders/:id/clarification-notes`, the
+      DELETE on the same endpoint, and `GET /api/v1/users?role=estimator`
+      (used to populate the assignee dropdown).
 
 ## 8. Rollback plan
 

@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
@@ -19,8 +19,15 @@ export class UsersController {
   @Get()
   @RequirePermissions("users.view")
   @ApiOperation({ summary: "List users" })
-  list(@Query() query: PaginationQueryDto) {
-    return this.usersService.list(query);
+  @ApiQuery({
+    name: "role",
+    required: false,
+    type: String,
+    description:
+      "Filter by role name (case-insensitive). Used by the Team panel dropdown to list estimators."
+  })
+  list(@Query() query: PaginationQueryDto, @Query("role") role?: string) {
+    return this.usersService.list(query, role);
   }
 
   @Post()

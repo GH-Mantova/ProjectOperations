@@ -30,16 +30,26 @@ export class UsersService {
     private readonly auditService: AuditService
   ) {}
 
-  async list(query: PaginationQueryDto) {
+  async list(query: PaginationQueryDto, role?: string) {
     const skip = (query.page - 1) * query.pageSize;
+    const where = role
+      ? {
+          userRoles: {
+            some: {
+              role: { name: { equals: role, mode: "insensitive" as const } }
+            }
+          }
+        }
+      : {};
     const [items, total] = await this.prisma.$transaction([
       this.prisma.user.findMany({
+        where,
         include: userInclude,
         orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
         skip,
         take: query.pageSize
       }),
-      this.prisma.user.count()
+      this.prisma.user.count({ where })
     ]);
 
     return {

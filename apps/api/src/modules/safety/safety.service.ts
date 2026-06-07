@@ -64,6 +64,29 @@ type CreateHazardInput = {
 
 type UpdateHazardInput = Partial<CreateHazardInput> & { status?: string };
 
+/**
+ * Service layer for the safety module — incident reports and hazard
+ * observations (Forms & Compliance).
+ *
+ * Incident numbers are auto-issued as `IS-INC###` and hazard numbers as
+ * `IS-HAZ###`, both backed by dedicated sequence tables (`SafetyIncidentNumberSequence`
+ * and `HazardNumberSequence`) incremented inside a transaction so concurrent
+ * creates never collide. The current reporter is taken from the JWT actor
+ * (mandatory — there is no "system reporter" path); witness names persist as
+ * a `string[]` on the incident record rather than as related User rows so
+ * external/site witnesses can be captured without requiring a user account.
+ * `documentPaths` is a parallel `string[]` of SharePoint-relative paths to
+ * supporting evidence (photos, statements, MoM) — the safety module stores
+ * paths only, the SharePoint adapter is responsible for upload/retrieval.
+ *
+ * Create flows fire-and-forget a notification fan-out via
+ * {@link NotificationsService} to all users holding the `safety.admin`
+ * permission (plus the assignee for hazards), and additionally enqueue an
+ * email via {@link EmailService} for `critical`-severity incidents.
+ * Notification failures are caught and logged but never bubble to the
+ * caller — reporting an incident must always succeed even if downstream
+ * notification plumbing is unavailable.
+ */
 @Injectable()
 export class SafetyService {
   private readonly logger = new Logger(SafetyService.name);
@@ -75,6 +98,18 @@ export class SafetyService {
   ) {}
 
   // ─── Incidents ──────────────────────────────────────────────────────────
+  /**
+   * List safety incidents with optional filters and pagination.
+   *
+   * Page size is clamped to `[1, 100]` (default 25) and page to `>= 1`
+   * (default 1). Results are ordered by `incidentDate` descending and
+   * include reporter, tender, and project relations.
+   *
+   * @param filters - optional `status` / `severity` / `type` filters plus
+   *   `page` / `limit` for pagination.
+   * @returns `{ items, total, page, pageSize }` — `total` is the unfiltered
+   *   count for the same `where` clause.
+   */
   async listIncidents(filters: {
     status?: string;
     severity?: string;
@@ -105,6 +140,14 @@ export class SafetyService {
     return { items, total, page, pageSize };
   }
 
+  /**
+   * Fetch a single incident by id, with reporter, closer, tender, and
+   * project relations populated.
+   *
+   * @param id - incident UUID.
+   * @returns the incident row with relations.
+   * @throws NotFoundException — when no incident matches `id`.
+   */
   async getIncident(id: string) {
     const row = await this.prisma.safetyIncident.findUnique({
       where: { id },
@@ -119,6 +162,27 @@ export class SafetyService {
     return row;
   }
 
+  /**
+   * Create a new safety incident.
+   *
+   * Auto-issues the next `IS-INC###` number from the sequence table, sets
+   * `reportedById` to the JWT actor (mandatory — there is no anonymous
+   * reporter path), trims `location` and `description`, and persists
+   * `witnesses` and `documentPaths` as `string[]` arrays. After the row
+   * commits, fires-and-forgets a notification fan-out to all `safety.admin`
+   * users plus a `critical`-only email; notification failures never bubble.
+   *
+   * @param input - incident payload. `incidentType` must be one of
+   *   `near_miss | first_aid | medical_treatment | lost_time |
+   *   dangerous_occurrence | property_damage`; `severity` must be one of
+   *   `low | medium | high | critical`. `location` and `description` are
+   *   required and must be non-empty after trimming.
+   * @param actorId - JWT subject id of the reporting user; persisted as
+   *   `reportedById`.
+   * @returns the created incident row.
+   * @throws BadRequestException — when `incidentType` / `severity` is invalid
+   *   or `location` / `description` is empty.
+   */
   async createIncident(input: CreateIncidentInput, actorId: string) {
     this.assert(INCIDENT_TYPES, "incidentType", input.incidentType);
     this.assert(INCIDENT_SEVERITIES, "severity", input.severity);
@@ -147,6 +211,25 @@ export class SafetyService {
     return created;
   }
 
+  /**
+   * Partially update an incident.
+   *
+   * Validates `incidentType` / `severity` / `status` enum values when
+   * present, then applies only the supplied fields. `incidentDate` is
+   * re-parsed to a `Date`; `witnesses` and `documentPaths` arrays fully
+   * replace the existing values (no merge). Closing via this method sets
+   * `status: "closed"` but does NOT populate `closedAt` / `closedById` —
+   * use {@link closeIncident} for the audited close path.
+   *
+   * @param id - incident UUID to update.
+   * @param input - partial payload; any field set to `undefined` is left
+   *   untouched.
+   * @returns the updated incident row.
+   * @throws BadRequestException — when an enum field carries an invalid
+   *   value.
+   * @throws NotFoundException — when `id` does not match an existing
+   *   incident.
+   */
   async updateIncident(id: string, input: UpdateIncidentInput) {
     this.assert(INCIDENT_TYPES, "incidentType", input.incidentType);
     this.assert(INCIDENT_SEVERITIES, "severity", input.severity);
@@ -173,6 +256,20 @@ export class SafetyService {
     return this.prisma.safetyIncident.update({ where: { id }, data });
   }
 
+  /**
+   * Close an incident — sets `status: "closed"`, stamps `closedAt` to now,
+   * and records the closer via `closedById`.
+   *
+   * Requires `safety.admin`. Re-closing an already-closed incident
+   * overwrites `closedAt` / `closedById` (no idempotency guard).
+   *
+   * @param id - incident UUID to close.
+   * @param actorId - JWT subject id of the closing user; persisted as
+   *   `closedById`.
+   * @returns the updated incident row.
+   * @throws NotFoundException — when `id` does not match an existing
+   *   incident.
+   */
   async closeIncident(id: string, actorId: string) {
     await this.requireIncident(id);
     return this.prisma.safetyIncident.update({
@@ -182,6 +279,18 @@ export class SafetyService {
   }
 
   // ─── Hazards ────────────────────────────────────────────────────────────
+  /**
+   * List hazard observations with optional filters and pagination.
+   *
+   * Page size is clamped to `[1, 100]` (default 25) and page to `>= 1`
+   * (default 1). Results are ordered by `observationDate` descending and
+   * include reporter, assignee, tender, and project relations.
+   *
+   * @param filters - optional `status` / `riskLevel` / `type` filters plus
+   *   `page` / `limit` for pagination.
+   * @returns `{ items, total, page, pageSize }` — `total` is the unfiltered
+   *   count for the same `where` clause.
+   */
   async listHazards(filters: {
     status?: string;
     riskLevel?: string;
@@ -213,6 +322,14 @@ export class SafetyService {
     return { items, total, page, pageSize };
   }
 
+  /**
+   * Fetch a single hazard observation by id, with reporter, assignee,
+   * tender, and project relations populated.
+   *
+   * @param id - hazard observation UUID.
+   * @returns the hazard row with relations.
+   * @throws NotFoundException — when no hazard matches `id`.
+   */
   async getHazard(id: string) {
     const row = await this.prisma.hazardObservation.findUnique({
       where: { id },
@@ -227,6 +344,28 @@ export class SafetyService {
     return row;
   }
 
+  /**
+   * Create a new hazard observation.
+   *
+   * Auto-issues the next `IS-HAZ###` number from the sequence table, sets
+   * `reportedById` to the JWT actor (mandatory), parses `dueDate` to a
+   * `Date` when supplied, and persists `documentPaths` as a `string[]` of
+   * SharePoint-relative paths. After commit, fires-and-forgets a
+   * notification fan-out to all `safety.admin` users plus the assignee
+   * (de-duplicated); notification failures never bubble. No email is sent
+   * for hazards regardless of risk level.
+   *
+   * @param input - hazard payload. `hazardType` must be one of `physical |
+   *   chemical | biological | ergonomic | electrical | fire | environmental
+   *   | other`; `riskLevel` must be one of `low | medium | high | extreme`.
+   *   `location` and `description` are required and must be non-empty after
+   *   trimming.
+   * @param actorId - JWT subject id of the reporting user; persisted as
+   *   `reportedById`.
+   * @returns the created hazard row.
+   * @throws BadRequestException — when `hazardType` / `riskLevel` is invalid
+   *   or `location` / `description` is empty.
+   */
   async createHazard(input: CreateHazardInput, actorId: string) {
     this.assert(HAZARD_TYPES, "hazardType", input.hazardType);
     this.assert(HAZARD_RISK_LEVELS, "riskLevel", input.riskLevel);
@@ -262,6 +401,26 @@ export class SafetyService {
     return created;
   }
 
+  /**
+   * Partially update a hazard observation.
+   *
+   * Validates `hazardType` / `riskLevel` / `status` enum values when
+   * present, then applies only the supplied fields. `observationDate` is
+   * re-parsed to a `Date` when provided; `dueDate` accepts an explicit
+   * `null` to clear it (distinct from `undefined`, which leaves the value
+   * untouched). `documentPaths` fully replaces the existing array (no
+   * merge). Closing via this method sets `status: "closed"` but does NOT
+   * stamp `closedAt` — use {@link closeHazard} for the audited close path.
+   *
+   * @param id - hazard UUID to update.
+   * @param input - partial payload; any field set to `undefined` is left
+   *   untouched.
+   * @returns the updated hazard row.
+   * @throws BadRequestException — when an enum field carries an invalid
+   *   value.
+   * @throws NotFoundException — when `id` does not match an existing
+   *   hazard.
+   */
   async updateHazard(id: string, input: UpdateHazardInput) {
     this.assert(HAZARD_TYPES, "hazardType", input.hazardType);
     this.assert(HAZARD_RISK_LEVELS, "riskLevel", input.riskLevel);
@@ -287,6 +446,19 @@ export class SafetyService {
     return this.prisma.hazardObservation.update({ where: { id }, data });
   }
 
+  /**
+   * Close a hazard observation — sets `status: "closed"` and stamps
+   * `closedAt` to now.
+   *
+   * Requires `safety.admin`. Unlike incidents, hazards do not record a
+   * `closedBy` user. Re-closing an already-closed hazard overwrites
+   * `closedAt`.
+   *
+   * @param id - hazard UUID to close.
+   * @returns the updated hazard row.
+   * @throws NotFoundException — when `id` does not match an existing
+   *   hazard.
+   */
   async closeHazard(id: string) {
     await this.requireHazard(id);
     return this.prisma.hazardObservation.update({
@@ -296,6 +468,19 @@ export class SafetyService {
   }
 
   // ─── Dashboard ──────────────────────────────────────────────────────────
+  /**
+   * Build the safety dashboard summary.
+   *
+   * Runs five queries in parallel: open-incidents grouped by severity,
+   * open-hazards grouped by risk level, overdue-hazard count (open hazards
+   * whose `dueDate` is in the past), the 5 most-recently-created incidents,
+   * and the 5 most-recently-created hazards.
+   *
+   * @returns `{ openIncidents: { total, bySeverity }, openHazards: { total,
+   *   byRiskLevel }, overdueHazards, recentIncidents, recentHazards }`.
+   *   `bySeverity` / `byRiskLevel` are sparse objects keyed by the values
+   *   actually present — absent keys mean zero, not missing.
+   */
   async dashboard() {
     const now = new Date();
     const [openIncidents, openHazards, overdueHazards, recentIncidents, recentHazards] = await Promise.all([

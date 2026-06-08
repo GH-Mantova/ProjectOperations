@@ -11,6 +11,11 @@ permissions:
 on:
   workflow_dispatch:
 
+env:
+  # Opt-in to Node 24 runtime for JavaScript actions ahead of GitHub's
+  # 2026-06-16 Node 20 → 24 force-migration deadline.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   deploy:
     name: Build and deploy
@@ -22,9 +27,9 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v4.2.2
+      - uses: pnpm/action-setup@v4.0.0
+      - uses: actions/setup-node@v4.1.0
         with: { node-version: '22', cache: 'pnpm' }
       - run: pnpm install --frozen-lockfile
       - name: Generate Prisma client

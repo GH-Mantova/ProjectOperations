@@ -64,6 +64,7 @@ sign-off via `tendering-smoke-test-plan.md`.
 - [ ] Pre-launch tag cut: `git tag pre-tendering-launch-<YYYYMMDD>` and pushed
       to origin (used for rollback — see section 8)
 - [ ] `pnpm build` and `pnpm lint` pass locally against `main`
+- [ ] Watcher hardening (fs.watch rescan + DEP0190 wrapper fix + zombie warning) shipped in PR #305
 
 ## 2. Azure App Service — API environment variables
 

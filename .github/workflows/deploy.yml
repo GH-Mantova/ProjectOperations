@@ -3,15 +3,13 @@ name: Deploy
 permissions:
   contents: read
 
-# DISABLED — manual trigger only. See on: block below.
-# Re-enable on: push when production deployment is ready.
+# Triggered ONLY by workflow_dispatch (manual). Push events do NOT
+# trigger this workflow. Re-enable on: push: { branches: [main] }
+# only after Azure secrets are configured and ready for live deploy.
+# See progress.md 2026-04-27 + pre-deploy-checklist.md §6 for context.
 
 on:
   workflow_dispatch:
-    # Manual-only until production deployment is wired up.
-    # Re-enable push trigger after Azure secrets are configured
-    # and tendering module is signed off (roadmap §5A).
-    # See progress.md 2026-04-27 for context.
 
 env:
   # Opt-in to Node 24 runtime for JavaScript actions ahead of GitHub's
@@ -21,6 +19,12 @@ env:
 jobs:
   deploy:
     name: Build and deploy
+    # Defensive guard: GitHub has been registering 0s phantom push runs
+    # against this workflow file (likely stale workflow metadata). This
+    # condition makes any non-dispatch run skip cleanly (no red X). When
+    # on: push is re-enabled per pre-deploy-checklist.md §6, this gate
+    # should be widened or removed.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.2.2

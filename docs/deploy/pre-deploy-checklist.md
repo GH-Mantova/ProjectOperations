@@ -64,6 +64,7 @@ sign-off via `tendering-smoke-test-plan.md`.
 - [ ] Pre-launch tag cut: `git tag pre-tendering-launch-<YYYYMMDD>` and pushed
       to origin (used for rollback — see section 8)
 - [ ] `pnpm build` and `pnpm lint` pass locally against `main`
+- [ ] Watcher hardening (fs.watch rescan + DEP0190 wrapper fix + zombie warning) shipped in PR #305
 
 ## 2. Azure App Service — API environment variables
 
@@ -186,6 +187,10 @@ Single App Registration covers SSO, SharePoint, and Mail.Send.
 - [ ] `.github/workflows/deploy.yml` re-enabled to `on: push: main`
       (currently `workflow_dispatch` only — per roadmap §6 line 986).
       Switch back to `workflow_dispatch` if a hot rollback is needed mid-test.
+      When re-enabling `on: push`, also widen or remove the job-level
+      `if: github.event_name == 'workflow_dispatch'` guard added in PR #306
+      (defensive gate that turned phantom 0s push-triggered runs into clean
+      skipped runs — see that PR for the diagnosis).
 - [ ] Repository secrets present and current — `.github/workflows/deploy.yml`
       reads these exact names; using any other name = silent build/deploy
       failure:

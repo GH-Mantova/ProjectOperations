@@ -1,0 +1,106 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "dev: all (api + web)",
+      "type": "npm",
+      "script": "dev",
+      "problemMatcher": [],
+      "isBackground": true,
+      "presentation": { "panel": "dedicated", "reveal": "always", "clear": true },
+      "detail": "pnpm dev — starts NestJS API and Vite web in parallel."
+    },
+    {
+      "label": "dev: api only",
+      "type": "npm",
+      "script": "dev:api",
+      "problemMatcher": [],
+      "isBackground": true,
+      "presentation": { "panel": "dedicated", "reveal": "always" },
+      "detail": "pnpm dev:api"
+    },
+    {
+      "label": "dev: web only",
+      "type": "npm",
+      "script": "dev:web",
+      "problemMatcher": [],
+      "isBackground": true,
+      "presentation": { "panel": "dedicated", "reveal": "always" },
+      "detail": "pnpm dev:web"
+    },
+    {
+      "label": "build",
+      "type": "npm",
+      "script": "build",
+      "problemMatcher": ["$tsc"],
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": { "panel": "dedicated", "reveal": "silent" },
+      "detail": "pnpm build — full monorepo build."
+    },
+    {
+      "label": "lint",
+      "type": "npm",
+      "script": "lint",
+      "problemMatcher": ["$eslint-stylish"],
+      "presentation": { "panel": "dedicated", "reveal": "silent" },
+      "detail": "pnpm lint"
+    },
+    {
+      "label": "test: api (serial)",
+      "type": "npm",
+      "script": "test:api:serial",
+      "problemMatcher": [],
+      "group": "test",
+      "presentation": { "panel": "dedicated", "reveal": "always" },
+      "detail": "pnpm test:api:serial — required for DB-touching tests."
+    },
+    {
+      "label": "test: web (logic)",
+      "type": "npm",
+      "script": "test:web:logic",
+      "problemMatcher": [],
+      "group": "test",
+      "presentation": { "panel": "dedicated", "reveal": "silent" },
+      "detail": "pnpm test:web:logic"
+    },
+    {
+      "label": "compliance: smoke",
+      "type": "npm",
+      "script": "compliance:smoke",
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated", "reveal": "always", "clear": true },
+      "detail": "Full compliance smoke runner — run before opening any PR."
+    },
+    {
+      "label": "prisma: generate",
+      "type": "npm",
+      "script": "prisma:generate",
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated", "reveal": "silent" },
+      "detail": "pnpm prisma:generate"
+    },
+    {
+      "label": "prisma: migrate (dev)",
+      "type": "npm",
+      "script": "prisma:migrate",
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated", "reveal": "always" },
+      "detail": "DANGER on main — only run on a section branch."
+    },
+    {
+      "label": "seed",
+      "type": "npm",
+      "script": "seed",
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated", "reveal": "always" },
+      "detail": "pnpm seed — idempotent, safe to re-run."
+    },
+    {
+      "label": "ship checklist (build + lint + smoke)",
+      "dependsOn": ["build", "lint", "compliance: smoke"],
+      "dependsOrder": "sequence",
+      "problemMatcher": [],
+      "detail": "The PR-checklist tasks chained — run this before merging."
+    }
+  ]
+}

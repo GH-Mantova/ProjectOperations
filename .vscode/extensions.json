@@ -1,0 +1,19 @@
+{
+  "recommendations": [
+    "anthropic.claude-code",
+    "ms-vscode.vscode-node-azure-pack",
+    "Prisma.prisma",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "ms-playwright.playwright",
+    "github.vscode-github-actions",
+    "ms-ossdata.vscode-postgresql",
+    "github.copilot",
+    "github.copilot-chat"
+  ],
+  "unwantedRecommendations": [
+    "saoudrizwan.claude-dev",
+    "continue.continue",
+    "codeium.codeium"
+  ]
+}

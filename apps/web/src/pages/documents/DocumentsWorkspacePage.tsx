@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { resolveContextRailLabel } from "./contextRailLabels";
 
 type DocumentItem = {
   id: string;
@@ -28,6 +29,10 @@ type DocumentItem = {
     webUrl: string;
     sizeBytes?: number | null;
     mimeType?: string | null;
+  } | null;
+  entitySummary?: {
+    title: string;
+    status: string;
   } | null;
 };
 
@@ -252,17 +257,24 @@ export function DocumentsWorkspacePage() {
                         <ul className="docs-tree__entities">
                           {Array.from(entities.entries()).map(([entityId, docs]) => {
                             const active = selectedContext !== "all" && selectedContext.type === type && selectedContext.id === entityId;
-                            const firstDoc = docs[0];
-                            const pathHint = firstDoc.folderLink?.relativePath.split("/").slice(-2, -1)[0] ?? entityId.slice(0, 10);
+                            const railLabel = resolveContextRailLabel(docs[0], entityId);
+                            const titleAttr = railLabel.subLabel
+                              ? `${railLabel.label} — ${railLabel.subLabel}`
+                              : railLabel.label;
                             return (
                               <li key={entityId}>
                                 <button
                                   type="button"
                                   className={active ? "docs-tree__item docs-tree__item--active" : "docs-tree__item"}
                                   onClick={() => setSelectedContext({ type, id: entityId })}
-                                  title={entityId}
+                                  title={titleAttr}
                                 >
-                                  <span>{pathHint}</span>
+                                  <span className="docs-tree__item-text">
+                                    <span className="docs-tree__item-label">{railLabel.label}</span>
+                                    {railLabel.subLabel ? (
+                                      <span className="docs-tree__item-sublabel">{railLabel.subLabel}</span>
+                                    ) : null}
+                                  </span>
                                   <span className="sched-hierarchy__count">{docs.length}</span>
                                 </button>
                               </li>

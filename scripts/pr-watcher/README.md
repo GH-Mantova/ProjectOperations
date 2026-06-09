@@ -121,6 +121,28 @@ The detection regex matches common usage/rate-limit message shapes:
 `usage limit`, `rate limit`, `429`, `quota exceeded`, `credit balance`,
 `monthly usage`, etc.
 
+## Periodic rescan
+
+`fs.watch` can silently drop events on Windows (especially over network
+shares or after a long idle period). To survive that, the watcher walks
+`docs/pr-prompts/` every **5 minutes** and queues any `-ready.md` file it
+finds that isn't already queued or in flight. Rescan-sourced enqueues are
+tagged in the log as `source: rescan`, so they're distinguishable from
+fs.watch events (`source: watch`) and the startup directory walk
+(`source: startup-scan`).
+
+## Zombie processes
+
+On startup (Windows only), the watcher enumerates running `claude.exe`
+processes and **warns** if any are present from a previous watcher run
+(orphans from a kill, a crash, or a Task Scheduler restart). It does
+**not** auto-kill them — you may have intentionally-launched `claude`
+sessions that aren't the watcher's. To clean them up:
+
+```powershell
+Get-Process claude | Stop-Process -Force
+```
+
 ## Nightly mode (Windows Task Scheduler)
 
 Use `scripts/pr-watcher/start-nightly.ps1` as a wrapper. It:

@@ -29,6 +29,14 @@ import {
 import { JobQueryDto } from "./dto/job-query.dto";
 import { JobsService } from "./jobs.service";
 
+/**
+ * HTTP surface for jobs and their nested resources — stages, activities,
+ * issues, variations, progress entries, and the closeout transition. All
+ * routes are protected by JWT + the {@link PermissionsGuard}. Read routes
+ * require `jobs.view`; mutating routes require `jobs.manage`. The
+ * tender-sourced creation path lives on {@link TenderConversionController}
+ * instead.
+ */
 @ApiTags("Jobs")
 @ApiBearerAuth()
 @Controller("jobs")
@@ -36,6 +44,7 @@ import { JobsService } from "./jobs.service";
 export class JobsController {
   constructor(private readonly service: JobsService) {}
 
+  /** Paginated list of active (non-archived) jobs; `q` filters by job number, name, or client. */
   @Get()
   @RequirePermissions("jobs.view")
   @ApiOperation({ summary: "List jobs" })
@@ -49,6 +58,7 @@ export class JobsController {
     return this.service.list(query);
   }
 
+  /** Paginated list of archived jobs (closeout `archivedAt` is set). Same `q` filter as the main list. */
   @Get("archive")
   @RequirePermissions("jobs.view")
   @ApiOperation({ summary: "List archived jobs with read-only historical visibility" })
@@ -62,6 +72,7 @@ export class JobsController {
     return this.service.listArchive(query);
   }
 
+  /** Create a job without a tender source; canonical `jobNumber` generated server-side if omitted. */
   @Post()
   @RequirePermissions("jobs.manage")
   @ApiOperation({
@@ -75,6 +86,7 @@ export class JobsController {
     return this.service.createJob(dto, actor.sub);
   }
 
+  /** Full job detail including stages, activities, issues, variations, progress entries, status history, closeout, and attached documents. */
   @Get(":id")
   @RequirePermissions("jobs.view")
   @ApiOperation({ summary: "Get job detail" })
@@ -85,6 +97,7 @@ export class JobsController {
     return this.service.getById(id);
   }
 
+  /** Patch a job's editable header fields; status changes go through the status route. Rejected on archived jobs. */
   @Patch(":id")
   @RequirePermissions("jobs.manage")
   @ApiOperation({ summary: "Update a job" })
@@ -96,6 +109,7 @@ export class JobsController {
     return this.service.updateJob(id, dto, actor.sub);
   }
 
+  /** Transition a job to a new status; writes a JobStatusHistory row alongside the update. Rejected on archived jobs. */
   @Patch(":id/status")
   @RequirePermissions("jobs.manage")
   @ApiOperation({ summary: "Update job status" })
@@ -107,6 +121,7 @@ export class JobsController {
     return this.service.updateStatus(id, dto, actor.sub);
   }
 
+  /** Append a new stage to a job. */
   @Post(":id/stages")
   @RequirePermissions("jobs.manage")
   @ApiOperation({ summary: "Create job stage" })
@@ -118,6 +133,7 @@ export class JobsController {
     return this.service.createStage(id, dto, actor.sub);
   }
 
+  /** Patch a stage, scoped to its job parent. */
   @Patch(":id/stages/:stageId")
   @RequirePermissions("jobs.manage")
   @ApiOperation({ summary: "Update job stage" })
@@ -135,6 +151,7 @@ export class JobsController {
     return this.service.updateStage(id, stageId, dto, actor.sub);
   }
 
+  /** Create an activity under a stage; the stage must belong to the same job. */
   @Post(":id/activities")
   @RequirePermissions("jobs.manage")
   @ApiOperation({ summary: "Create job activity" })
@@ -146,6 +163,7 @@ export class JobsController {
     return this.service.createActivity(id, dto, actor.sub);
   }
 
+  /** Patch an activity, scoped to its job parent; can move activities between stages within the same job. */
   @Patch(":id/activities/:activityId")
   @RequirePermissions("jobs.manage")
   @ApiOperation({ summary: "Update job activity" })
@@ -163,6 +181,7 @@ export class JobsController {
     return this.service.updateActivity(id, activityId, dto, actor.sub);
   }
 
+  /** Raise a new issue against a job; the caller is stamped as `reportedById`. */
   @Post(":id/issues")
   @RequirePermissions("jobs.manage")
   @ApiOperation({ summary: "Create job issue" })
@@ -174,6 +193,7 @@ export class JobsController {
     return this.service.createIssue(id, dto, actor.sub);
   }
 
+  /** Patch an issue, scoped to its job parent. */
   @Patch(":id/issues/:issueId")
   @RequirePermissions("jobs.manage")
   @ApiOperation({ summary: "Update job issue" })
@@ -191,6 +211,7 @@ export class JobsController {
     return this.service.updateIssue(id, issueId, dto, actor.sub);
   }
 
+  /** Create a variation; `reference` must be unique within the job. */
   @Post(":id/variations")
   @RequirePermissions("jobs.manage")
   @ApiOperation({ summary: "Create job variation" })
@@ -202,6 +223,7 @@ export class JobsController {
     return this.service.createVariation(id, dto, actor.sub);
   }
 
+  /** Patch a variation, scoped to its job parent; uniqueness on `reference` re-checked only if it changes. */
   @Patch(":id/variations/:variationId")
   @RequirePermissions("jobs.manage")
   @ApiOperation({ summary: "Update job variation" })
@@ -219,6 +241,7 @@ export class JobsController {
     return this.service.updateVariation(id, variationId, dto, actor.sub);
   }
 
+  /** Append a progress or daily-note entry; the caller is stamped as the author. */
   @Post(":id/progress-entries")
   @RequirePermissions("jobs.manage")
   @ApiOperation({ summary: "Create job progress or daily note entry" })
@@ -234,6 +257,7 @@ export class JobsController {
     return this.service.createProgressEntry(id, dto, actor.sub);
   }
 
+  /** Upsert the job's closeout record; transitions the job into its final state and gates future writes via `readOnlyFrom`. */
   @Patch(":id/closeout")
   @RequirePermissions("jobs.manage")
   @ApiOperation({ summary: "Create or update job closeout and archive state" })

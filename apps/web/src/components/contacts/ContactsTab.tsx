@@ -223,7 +223,19 @@ export function ContactsTab({
                   <td style={{ padding: "6px 8px", fontSize: 12 }}>{c.role ?? "—"}</td>
                   <td style={{ padding: "6px 8px", fontSize: 12 }}>{c.phone ?? "—"}</td>
                   <td style={{ padding: "6px 8px", fontSize: 12 }}>{c.mobile ?? "—"}</td>
-                  <td style={{ padding: "6px 8px", fontSize: 12 }}>{c.email ?? "—"}</td>
+                  <td
+                    style={{
+                      padding: "6px 8px",
+                      fontSize: 12,
+                      maxWidth: 220,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap"
+                    }}
+                    title={c.email ?? undefined}
+                  >
+                    {c.email ?? "—"}
+                  </td>
                   <td style={{ padding: "6px 8px", display: "flex", gap: 4 }}>
                     {c.isPrimary ? (
                       <span

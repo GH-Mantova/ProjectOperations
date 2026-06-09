@@ -7,6 +7,11 @@ import { NewDashboardModal } from "../dashboards/NewDashboardModal";
 import { useUserDashboards, useUserDashboardsActions } from "../dashboards/userDashboards";
 import { PersonaProvider } from "../personas/PersonaContext";
 import { PersonaWindow } from "../personas/PersonaWindow";
+import {
+  COMPLIANCE_BADGE_TOOLTIP,
+  countComplianceAlerts,
+  type ComplianceDashboardData
+} from "../pages/compliance/complianceCounts";
 
 type NavItem = {
   to: string;
@@ -615,12 +620,21 @@ export function ShellLayout() {
 // and renders a coloured pill next to the nav label. Renders nothing when the
 // underlying value is zero so the sidebar stays clean.
 
-function SidebarPill({ count, tone }: { count: number; tone: "danger" | "warning" }) {
+function SidebarPill({
+  count,
+  tone,
+  title
+}: {
+  count: number;
+  tone: "danger" | "warning";
+  title?: string;
+}) {
   if (count <= 0) return null;
   const bg = tone === "danger" ? "#dc2626" : "#f97316";
   return (
     <span
       aria-label={`${count} alerts`}
+      title={title}
       style={{
         marginLeft: "auto",
         background: bg,
@@ -675,16 +689,8 @@ function SidebarComplianceBadge() {
       try {
         const res = await authFetch("/compliance/dashboard");
         if (!res.ok || cancelled) return;
-        const body = await res.json();
-        const all = [
-          ...(body.licences ?? []),
-          ...(body.insurances ?? []),
-          ...(body.qualifications ?? [])
-        ];
-        const alerts = all.filter(
-          (r: { status: string }) => r.status === "expired" || r.status === "expiring_7" || r.status === "expiring_30"
-        ).length;
-        if (!cancelled) setCount(alerts);
+        const body = (await res.json()) as ComplianceDashboardData;
+        if (!cancelled) setCount(countComplianceAlerts(body));
       } catch {
         // best-effort polling
       }
@@ -696,5 +702,5 @@ function SidebarComplianceBadge() {
       window.clearInterval(id);
     };
   }, [authFetch, isAuthenticated]);
-  return <SidebarPill count={count} tone="warning" />;
+  return <SidebarPill count={count} tone="warning" title={COMPLIANCE_BADGE_TOOLTIP} />;
 }

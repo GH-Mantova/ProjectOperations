@@ -72,10 +72,26 @@ Log file: $LogFile
 Add-Content -Path $LogFile -Value $banner
 Write-Host $banner
 
-# Stream output to BOTH console and log file
-node "$RepoRoot\scripts\pr-watcher\index.mjs" 2>&1 | Tee-Object -FilePath $LogFile -Append
-
-$exit = $LASTEXITCODE
+# Stream output to BOTH console and log file.
+#
+# Defence in depth against Node's stderr-as-error pitfall:
+#   1. `--no-deprecation` silences DEP0190 (and any future deprecation
+#      warnings) at the source. Without it, Node prints the warning to
+#      stderr, the `2>&1` pipeline merges it into stdout for Tee-Object,
+#      and PowerShell's `$ErrorActionPreference = "Stop"` treats the
+#      stderr line as a NativeCommandError and kills the wrapper.
+#   2. Flip `$ErrorActionPreference` to "Continue" for just the node
+#      invocation, so any future stderr-as-error glitch (or a deprecation
+#      Node decides not to honour --no-deprecation for) doesn't take down
+#      the wrapper. The original preference is restored in `finally`.
+$prevErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    node --no-deprecation "$RepoRoot\scripts\pr-watcher\index.mjs" 2>&1 | Tee-Object -FilePath $LogFile -Append
+    $exit = $LASTEXITCODE
+} finally {
+    $ErrorActionPreference = $prevErrorActionPreference
+}
 $footer = "[$(Get-Date -Format o)] Watcher exited with code $exit"
 Add-Content -Path $LogFile -Value $footer
 Write-Host $footer

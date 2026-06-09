@@ -17,15 +17,24 @@ high-risk for regression.
 
 **Routes (frontend):**
 - `/tenders` — `TenderingPage` (Kanban pipeline default + Register toggle)
-- `/tenders/:id` — `TenderDetailPage` (60/40 split, sticky rail, activity
-  timeline, inline note/clarification/follow-up forms)
+- `/tenders/:id` — `TenderDetailPage` showing the **Overview** tab (sticky
+  rail, activity & communications panel, inline note/clarification/follow-up
+  forms)
+- `/tenders/:id/scope` — `TenderDetailPage` showing the **Scope of Works**
+  tab (cards-as-tabs per discipline, 12-column item table, embedded
+  estimate fields)
+- `/tenders/:id/quote` — `TenderDetailPage` showing the **Quote** tab
+  (versions list + quote editor)
 - `/tenders/dashboard` — `DashboardV2TenderLayout` (PR #43)
 - `/tenders/clients` — `TenderClientsPage`
 - `/tenders/contacts` — `TenderContactsPage`
 - `/tenders/settings` — `TenderingSettingsPage`
 - `/tenders/reports` — Reports view
-- Tender Detail tabs (internal React state, not URL — PHASE 6 known item):
-  Overview, Scope, Estimate, Quote, Clarifications, Documents, Activity
+- **Tender Detail surface: exactly 3 tabs** — Overview / Scope of Works /
+  Quote. The tab is URL-driven (the 3 routes above all mount
+  `TenderDetailPage`); switching tabs navigates. There is **no** standalone
+  Estimate, Clarifications, Documents, or Activity tab — those surfaces
+  were merged in as described below.
 
 **API endpoints (key):**
 - `GET/POST/PATCH/DELETE /api/v1/tenders` — CRUD
@@ -137,13 +146,19 @@ high-risk for regression.
       `wasteNotes` at the bottom
 - [ ] Cutting / Waste both have shared notes blocks at card bottom (PR B1.7)
 
-### Estimate tab
-- [ ] Estimate editor (latest version per PR #34 / #37 / #102 etc)
-- [ ] Estimate items with cost-line groups: Labour, Plant, Cutting, Waste,
-      Equip, Assumption
-- [ ] Locks / unlocks; locked estimate hides edit affordances
-- [ ] Estimate export to Excel (PR #45)
-- [ ] Provisional sums (PR #46) priced correctly
+### Estimate (embedded in Scope of Works — no standalone tab)
+The Estimate sub-mode was merged INTO Scope of Works during the B-chain
+reshape. Each scope item carries its labour + plant + dimensions + waste
+inline, and the per-row `$ total` is computed from labour + plant per
+PR B1.7.1. There is no separate Estimate tab in the UI — verify these
+behaviours from inside `/tenders/:id/scope`:
+- [ ] Per-item MEN / DAYS row + Plant button + B4a dimensions (Length /
+      Height / Depth / Material / Density / SQM / M³ / Tonnes) + Waste
+      row are present on the expanded item
+- [ ] Per-row `$ total` on collapsed header (PR B1.7.1) — matches the
+      "with markup" footer subtotal
+- [ ] Waste removed from item total (PR B1.7.2) — waste lives in its
+      dedicated subtable, not in the row dollar figure
 - [ ] Other-discipline rows apply markup (PR B2 bonus fix)
 - [ ] Card-header summaries with override highlight + proportional
       cost appropriation (PR #239)
@@ -152,14 +167,25 @@ high-risk for regression.
 - [ ] Plant summary one line per variant (PR #258, fix-forward of #251)
 - [ ] Person-days renamed to Labour days; plant duration formula
       correct (PR #246)
+- [ ] Estimate export to Excel from the scope surface (PR #45;
+      `POST /api/v1/tenders/:id/estimate/export`)
+- [ ] Provisional sums (PR #46) priced correctly (entered via Quote
+      editor → Provisional Sums sub-tab)
 
-### Clarifications
-- [ ] Six clarification types with colour badges (Phase 1 complete)
-- [ ] Call/Email/Meeting/Note as first-class types (PR #72 migration,
-      §5A.3 follow-up)
-- [ ] Inline create + reply flow
-- [ ] Unified Comms Panel (PR #260 / ADR-0001) — replaces legacy
-      endpoints (PR #29 / #270 deprecation)
+### Clarifications (collapsed into Overview "Activity & communications" — no standalone tab)
+Per PR #260 + ADR-0001 the legacy Clarifications surface was unified
+with Notes / Follow-ups / Activity into a single `TenderEntry`-backed
+feed rendered inside the Overview tab. The standalone `/clarifications`
+tab was removed and the legacy endpoints (PR #29 / #270) deprecated.
+Verify from `/tenders/:id` (Overview):
+- [ ] Single "Activity & communications" panel with a type dropdown
+      that drives conditional fields (PR #267 covers the modal tests)
+- [ ] Six clarification types still available with colour badges
+      (Phase 1 complete)
+- [ ] Call / Email / Meeting / Note as first-class types (PR #72
+      migration, §5A.3 follow-up)
+- [ ] Inline create + reply flow against `POST /api/v1/tender-entries`
+- [ ] Filter chips on the panel (PR #265 tests)
 - [ ] Saved filter presets per Marco's S5A.3 mention
 
 ### Tender Entries / Comms
@@ -230,7 +256,9 @@ high-risk for regression.
 
 **Comms / clarifications:**
 - #29 / #270 — Deprecate legacy comms endpoints
-- #260 — Unified communications panel (5A)
+- #260 — Unified communications panel (5A): **collapsed the standalone
+  Clarifications tab into the Overview "Activity & communications" panel**
+  backed by `TenderEntry`; the old standalone tab no longer exists
 - #33 — ADR-0001 unified tender comms panel (doc)
 - #263 — Swagger on TenderEntries
 - #264 / #265 / #267 / #269 — TenderEntries panel + modal tests
@@ -289,9 +317,14 @@ high-risk for regression.
   after dragging.
 - **Activity timeline** — PR #303 added team-as-estimator and
   client-filtered activity. Test as a non-estimator user too.
-- **Tender Detail tabs use internal state, not URL (PHASE 6 item)** —
-  share-a-link-to-Estimate-tab doesn't work; tab always opens to Overview
-  on refresh. Expected behaviour for now.
+- **Tender Detail surface is exactly 3 tabs — canonical** — Overview /
+  Scope of Works / Quote, URL-driven (`/tenders/:id`, `/tenders/:id/scope`,
+  `/tenders/:id/quote`). Any review or older spec that expects a separate
+  Estimate or Clarifications tab is reading stale documentation: Estimate
+  was merged into Scope items (PR B1.7.1) and Clarifications was collapsed
+  into the Overview "Activity & communications" panel (PR #260 / ADR-0001).
+  See the Estimate and Clarifications sections above for the
+  current-surface checklist.
 
 ## Edge cases worth probing
 

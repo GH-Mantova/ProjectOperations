@@ -7,9 +7,17 @@ import { CurrentUser } from "../../common/auth/current-user.decorator";
 import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
 import { GanttService } from "./gantt.service";
 
-// Standalone controller so the dashboard widget can hit a non-:id path. The
-// projects/:projectId routes already own the parameterised Gantt CRUD; this
-// is the cross-project timeline summary used by ops_project_timeline.
+/**
+ * Standalone controller for the cross-project timeline widget on the
+ * dashboard.
+ *
+ * Exists separately from `GanttController` (which owns `projects/:projectId/
+ * gantt/*` task CRUD) so the dashboard widget can hit a non-parameterised
+ * path. Used by `ops_project_timeline`. Results are team-scoped: super-users
+ * see all active projects, everyone else sees only the projects where they
+ * are PM, supervisor, estimator, or WHS officer — the scoping is enforced
+ * inside {@link GanttService.activeTimeline}.
+ */
 @ApiTags("Project Timeline")
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -17,6 +25,14 @@ import { GanttService } from "./gantt.service";
 export class ProjectsTimelineController {
   constructor(private readonly gantt: GanttService) {}
 
+  /**
+   * Return one timeline row per active project the caller can see.
+   *
+   * Active = status in `MOBILISING / ACTIVE / PRACTICAL_COMPLETION / DEFECTS`
+   * (CLOSED is excluded). Each row carries the planned start (falling back to
+   * the actual start) and the planned end (falling back to the practical
+   * completion date) for bar rendering.
+   */
   @Get()
   @RequirePermissions("projects.view")
   @ApiOperation({

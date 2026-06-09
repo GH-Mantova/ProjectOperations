@@ -47,13 +47,13 @@ jobs:
       BYOK_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.2.2
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v4.0.0
         with:
           version: 10.0.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4.1.0
         with:
           node-version: 22
           cache: pnpm
@@ -82,7 +82,7 @@ jobs:
       - name: Run Tendering browser smoke
         run: pnpm exec playwright test tests/e2e/tendering.spec.ts --reporter=list,html
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4.4.0
         if: ${{ !cancelled() && hashFiles('playwright-report/**') != '' }}
         with:
           name: playwright-report

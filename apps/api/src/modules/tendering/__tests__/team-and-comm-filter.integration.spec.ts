@@ -15,10 +15,17 @@ function makeTenderingService(prismaOverrides: Record<string, unknown> = {}) {
     user: { findUnique: jest.fn() },
     ...prismaOverrides
   };
+  // PR-64 added a 4th constructor argument: SharePointService.
+  // This test doesn't exercise tender-create / duplicate, so a no-op mock
+  // of the methods the service might call is sufficient.
+  const sharePoint = {
+    ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined)
+  };
   const service = new TenderingService(
     prisma as never,
     audit as never,
-    { sendNotificationEmail: jest.fn() } as never
+    { sendNotificationEmail: jest.fn() } as never,
+    sharePoint as never
   );
   return { service, prisma, audit };
 }

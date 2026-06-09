@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-06-03 05:21 AEST
+Last updated: 2026-06-03 06:33 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -393,7 +393,7 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
    client-filter sidebar with stars / PRIMARY / info-icon; new Client
    Detail side-drawer surfaced from both panels.
 
-🔲 Tender SharePoint folder auto-creation + 11 canonical document categories (PR-64 queued)
+🔧 Tender SharePoint folder auto-creation + 11 canonical document categories (PR-64 OPENED 2026-06-03 — feat/tender-folders-and-document-categories)
    On tender create, ensure-folder at
    `Documents/1. Operations/1. Tenders/{tenderNumber}/` plus 11 sub-folders
    (Tender Documents / Drawings / Specifications / Bill of Quantities /
@@ -1163,13 +1163,15 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     but noisy in the Checks tab. Follow-up PR: short-circuit the
     workflow at the top so non-main pushes return success instead of
     a 0-second failure.
-⏸️  GitHub Actions Node 20 → Node 24 migration
-    GitHub forces Node 24 on JavaScript actions from 2026-06-16 and
-    removes Node 20 on 2026-09-16. PR to bump `actions/checkout`,
-    `actions/setup-node`, and `pnpm/action-setup` to versions that
-    support Node 24, or set
-    `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` env on the workflows as
-    a stop-gap until the action versions are pinned forward.
+✅  GitHub Actions Node 20 → Node 24 migration — PR #69 (2026-06-03)
+    Pre-empted the 2026-06-16 force-migration deadline. Bumped
+    `actions/checkout` → v4.2.2, `actions/setup-node` → v4.1.0,
+    `pnpm/action-setup` → v4.0.0, `actions/upload-artifact` → v4.4.0
+    across `ci.yml`, `deploy.yml`, and `playwright.yml`. Added
+    `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` to each workflow's
+    top-level `env:` (playwright.yml already had it) as a belt-and-braces
+    cover for `pnpm/action-setup` which doesn't yet ship a Node 24
+    native release.
 ⏸️  Form drafts — Phase 2 (admin CRUD wiring)
     (Phase 1 shipped foundation + 6 user-facing forms in PR #111. ~20
      admin CRUD pages — UsersPage, RolesPage, SubcontractorsPage modals,

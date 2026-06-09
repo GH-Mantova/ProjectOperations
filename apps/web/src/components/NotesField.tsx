@@ -8,6 +8,7 @@ import {
   type CSSProperties,
   type KeyboardEvent
 } from "react";
+import { CenteredModal } from "@project-ops/ui";
 
 // PR B1.7 — reusable notes input with an inline 4-row textarea + an
 // "expand to modal" button (bottom-right) for longer entry. Used by
@@ -96,19 +97,10 @@ export function NotesField({
     window.setTimeout(() => inlineRef.current?.focus(), 0);
   };
 
-  // Escape inside the modal cancels (no save).
+  // Focus the modal textarea on open. Escape is handled by CenteredModal.
   useEffect(() => {
     if (!modalOpen) return;
-    const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        closeModal(false);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    // Focus the modal textarea on open.
     window.setTimeout(() => modalTextareaRef.current?.focus(), 0);
-    return () => window.removeEventListener("keydown", onKey);
   }, [modalOpen]);
 
   const handleModalKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -187,49 +179,13 @@ export function NotesField({
       </button>
 
       {modalOpen ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby={label ? labelId : undefined}
-          onClick={() => closeModal(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.45)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 9000
-          }}
-        >
-          <div
-            className="s7-card"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "min(720px, 90vw)",
-              padding: 20,
-              display: "flex",
-              flexDirection: "column",
-              gap: 12
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h3 style={{ margin: 0, fontSize: 16 }}>{label ?? "Notes"}</h3>
-              <span style={{ fontSize: 11, color: "var(--text-muted, #6b7280)" }}>
-                ⌘/Ctrl + Enter to save · Esc to cancel
-              </span>
-            </div>
-            <textarea
-              ref={modalTextareaRef}
-              className="s7-textarea"
-              rows={16}
-              value={modalDraft}
-              onChange={(e) => setModalDraft(e.target.value)}
-              onKeyDown={handleModalKey}
-              style={{ width: "100%", minHeight: 320 }}
-              placeholder={placeholder}
-            />
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <CenteredModal
+          title={label ?? "Notes"}
+          subtitle="⌘/Ctrl + Enter to save · Esc to cancel"
+          onClose={() => closeModal(false)}
+          maxWidth={720}
+          footer={
+            <>
               <button
                 type="button"
                 className="s7-btn s7-btn--ghost"
@@ -244,9 +200,20 @@ export function NotesField({
               >
                 Save
               </button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        >
+          <textarea
+            ref={modalTextareaRef}
+            className="s7-textarea"
+            rows={16}
+            value={modalDraft}
+            onChange={(e) => setModalDraft(e.target.value)}
+            onKeyDown={handleModalKey}
+            style={{ width: "100%", minHeight: 320 }}
+            placeholder={placeholder}
+          />
+        </CenteredModal>
       ) : null}
     </div>
   );

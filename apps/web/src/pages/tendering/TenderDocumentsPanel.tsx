@@ -1,5 +1,10 @@
 import { useRef, useState, type DragEvent } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import {
+  DEFAULT_DOCUMENT_CATEGORY,
+  DOCUMENT_CATEGORIES,
+  type DocumentCategory
+} from "../../lib/document-categories";
 
 const ACCEPTED = [".pdf", ".docx", ".doc", ".xlsx", ".xls", ".dwg", ".png", ".jpg", ".jpeg"];
 const MAX_BYTES = 100 * 1024 * 1024;
@@ -47,12 +52,16 @@ export function TenderDocumentsPanel({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // PR-64 — the selected category is appended to every file in the
+  // current upload batch. Routing happens server-side: the API drops
+  // each file into the matching SharePoint subfolder under the tender.
+  const [category, setCategory] = useState<DocumentCategory>(DEFAULT_DOCUMENT_CATEGORY);
 
   const uploadFile = async (file: File) => {
     if (file.size > MAX_BYTES) throw new Error(`${file.name} exceeds the 100 MB limit.`);
     const form = new FormData();
     form.append("file", file);
-    form.append("category", "tender");
+    form.append("category", category);
     form.append("title", file.name);
     form.append("fileName", file.name);
     form.append("mimeType", file.type || "application/octet-stream");
@@ -114,6 +123,42 @@ export function TenderDocumentsPanel({
           {documents.length} uploaded
         </span>
       </div>
+
+      {canManage ? (
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 8,
+            fontSize: 13,
+            color: "var(--text-muted)"
+          }}
+        >
+          <span>Category</span>
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value as DocumentCategory)}
+            disabled={uploading}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 6,
+              border: "1px solid var(--surface-border)",
+              background: "var(--surface-base)",
+              color: "var(--text-strong)",
+              fontSize: 13,
+              minHeight: 32
+            }}
+            aria-label="Document category"
+          >
+            {DOCUMENT_CATEGORIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
 
       {canManage ? (
         <div

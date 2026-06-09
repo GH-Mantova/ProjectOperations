@@ -1073,7 +1073,7 @@ async function main() {
       where: { id: "seed-tender-document-1" },
       update: {
         tenderId: tender.id,
-        category: "Submission",
+        category: "Submissions",
         title: "Tender submission",
         folderLinkId: tenderFolder.id,
         fileLinkId: tenderFile.id
@@ -1081,7 +1081,7 @@ async function main() {
       create: {
         id: "seed-tender-document-1",
         tenderId: tender.id,
-        category: "Submission",
+        category: "Submissions",
         title: "Tender submission",
         folderLinkId: tenderFolder.id,
         fileLinkId: tenderFile.id
@@ -1094,7 +1094,7 @@ async function main() {
         linkedEntityType: "Tender",
         linkedEntityId: tender.id,
         module: "tendering",
-        category: "Submission",
+        category: "Submissions",
         title: "Tender submission",
         folderLinkId: tenderFolder.id,
         fileLinkId: tenderFile.id
@@ -1104,7 +1104,7 @@ async function main() {
         linkedEntityType: "Tender",
         linkedEntityId: tender.id,
         module: "tendering",
-        category: "Submission",
+        category: "Submissions",
         title: "Tender submission",
         folderLinkId: tenderFolder.id,
         fileLinkId: tenderFile.id
@@ -1530,7 +1530,7 @@ async function main() {
       where: { id: "seed-tender-document-bgs-drawing-1" },
       update: {
         tenderId: bgsTender.id,
-        category: "tender",
+        category: "Drawings",
         title: "Demolition Plan — Level 1",
         folderLinkId: bgsDrawingFolder.id,
         fileLinkId: bgsDrawingFile.id
@@ -1538,7 +1538,7 @@ async function main() {
       create: {
         id: "seed-tender-document-bgs-drawing-1",
         tenderId: bgsTender.id,
-        category: "tender",
+        category: "Drawings",
         title: "Demolition Plan — Level 1",
         folderLinkId: bgsDrawingFolder.id,
         fileLinkId: bgsDrawingFile.id
@@ -1633,7 +1633,7 @@ async function main() {
       where: { id: "seed-tender-document-bgs-asbestos-register" },
       update: {
         tenderId: bgsTender.id,
-        category: "tender",
+        category: "Asbestos",
         title: "Asbestos Register / Hazmat Survey",
         folderLinkId: bgsDrawingFolder.id,
         fileLinkId: bgsRegisterFile.id
@@ -1641,7 +1641,7 @@ async function main() {
       create: {
         id: "seed-tender-document-bgs-asbestos-register",
         tenderId: bgsTender.id,
-        category: "tender",
+        category: "Asbestos",
         title: "Asbestos Register / Hazmat Survey",
         folderLinkId: bgsDrawingFolder.id,
         fileLinkId: bgsRegisterFile.id
@@ -2349,19 +2349,19 @@ async function main() {
         {
           id: "seed-tpl-doc-demolition-plan",
           tenderId: templateTender.id,
-          category: "tender",
+          category: "Drawings",
           title: "Demolition Plan — Ground Floor (DA-100 Rev C)"
         },
         {
           id: "seed-tpl-doc-services-layout",
           tenderId: templateTender.id,
-          category: "tender",
+          category: "Drawings",
           title: "Services Layout — Hydraulic + Electrical (ME-200 Rev B)"
         },
         {
           id: "seed-tpl-doc-asbestos-register",
           tenderId: templateTender.id,
-          category: "tender",
+          category: "Asbestos",
           title: "Asbestos Register / Hazmat Survey — Building A (Rev 2, March 2026)"
         }
       ]
@@ -2642,7 +2642,7 @@ async function main() {
       where: { id: "seed-tender-document-2" },
       update: {
         tenderId: convertedTender.id,
-        category: "Award",
+        category: "Correspondence",
         title: "Award letter",
         folderLinkId: convertedTenderFolder.id,
         fileLinkId: convertedTenderFile.id
@@ -2650,7 +2650,7 @@ async function main() {
       create: {
         id: "seed-tender-document-2",
         tenderId: convertedTender.id,
-        category: "Award",
+        category: "Correspondence",
         title: "Award letter",
         folderLinkId: convertedTenderFolder.id,
         fileLinkId: convertedTenderFile.id

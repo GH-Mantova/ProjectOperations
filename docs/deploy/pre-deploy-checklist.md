@@ -45,11 +45,10 @@ sign-off via `tendering-smoke-test-plan.md`.
 > [`tendering-smoke-test-plan.md`](./tendering-smoke-test-plan.md).
 
 > Dependencies: this checklist assumes **PR #289 (migration drift fix)**,
-> **PR-51 (Azure Mail.Send)**, and **PR #292 (OutlookEmailProvider
-> categorised errors + AZURE_MAIL_* env vars)** are merged into `main`.
-> PR-64 (Tender SharePoint folder auto-creation + 11 document categories)
-> is highly recommended before handoff so Sean / Raj see the production
-> folder layout. If any of these are still open, stop and merge them first.
+> **PR-51 (Azure Mail.Send)**, **PR #292 (OutlookEmailProvider
+> categorised errors + AZURE_MAIL_* env vars)**, and **PR-64 (Tender
+> SharePoint folder auto-creation + 11 document categories)** are merged
+> into `main`. If any are still open, stop and merge them first.
 
 ---
 
@@ -64,6 +63,7 @@ sign-off via `tendering-smoke-test-plan.md`.
 - [ ] Pre-launch tag cut: `git tag pre-tendering-launch-<YYYYMMDD>` and pushed
       to origin (used for rollback — see section 8)
 - [ ] `pnpm build` and `pnpm lint` pass locally against `main`
+- [ ] Watcher hardening (fs.watch rescan + DEP0190 wrapper fix + zombie warning) shipped in PR #305
 
 ## 2. Azure App Service — API environment variables
 
@@ -102,6 +102,27 @@ restart the App Service so values take effect.
 - [ ] `SHAREPOINT_SITE_PATH=/sites/Initialservices`
 - [ ] `SHAREPOINT_LIBRARY_NAME=Documents`
 - [ ] `SHAREPOINT_TENDERS_ROOT=1. Operations/1. Tenders`
+
+> **Bootstrap (PR-64):** On first SharePoint call after restart the API
+> resolves the site ID via `GET /sites/{hostname}:{path}` and the drive
+> ID via `GET /sites/{siteId}/drives?$filter=name eq '{libraryName}'`,
+> then caches both for the process lifetime. If the legacy
+> `SHAREPOINT_SITE_ID` / `SHAREPOINT_LIBRARY_ID` env vars are set, they
+> win and no Graph resolution happens. The Microsoft Entra app
+> registration needs `Sites.ReadWrite.All` (already in scope per PR-51).
+>
+> **Jobs-won folder pattern is roadmap-parked.** PR-64 only wires the
+> Tender root (`1. Operations/1. Tenders/…`). The mirror pattern under
+> `1. Operations/2. Jobs won/{jobNumber}/{category}/` lands in a follow-up
+> tied to the tender → job conversion event.
+
+> **Section 7 smoke-test addendum (PR-64):** after Sean / Raj log in,
+> exercise: (a) create a fresh tender and confirm the 11 category
+> subfolders appear under `1. Operations/1. Tenders/{tenderNumber}/`;
+> (b) upload one document per category from the Tender Documents panel
+> and confirm each lands in the matching subfolder; (c) delete a document
+> and confirm the DB row goes but the SharePoint file remains (current
+> behaviour — out of scope for PR-64).
 
 ### M365 SSO
 
@@ -186,6 +207,10 @@ Single App Registration covers SSO, SharePoint, and Mail.Send.
 - [ ] `.github/workflows/deploy.yml` re-enabled to `on: push: main`
       (currently `workflow_dispatch` only — per roadmap §6 line 986).
       Switch back to `workflow_dispatch` if a hot rollback is needed mid-test.
+      When re-enabling `on: push`, also widen or remove the job-level
+      `if: github.event_name == 'workflow_dispatch'` guard added in PR #306
+      (defensive gate that turned phantom 0s push-triggered runs into clean
+      skipped runs — see that PR for the diagnosis).
 - [ ] Repository secrets present and current — `.github/workflows/deploy.yml`
       reads these exact names; using any other name = silent build/deploy
       failure:
@@ -202,6 +227,11 @@ Single App Registration covers SSO, SharePoint, and Mail.Send.
       corresponding repo secrets (e.g. `PROD_ENTRA_CLIENT_ID`,
       `PROD_ENTRA_TENANT_ID`) and reference them in the workflow
 - [ ] Branch protection on `main` confirms reviewer required and CI must pass
+- [ ] Action versions pinned to Node 24-compatible releases ahead of GitHub's
+      2026-06-16 Node 20 → 24 force-migration deadline (PR #69 — bumps
+      `actions/checkout`, `actions/setup-node`, `pnpm/action-setup`,
+      `actions/upload-artifact`, plus `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true`
+      in each workflow's top-level `env:`)
 
 ## 7. Smoke test (post-deploy, pre-handoff)
 

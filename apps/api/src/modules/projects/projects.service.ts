@@ -26,6 +26,37 @@ const VALID_TRANSITIONS: Record<ProjectStatus, ProjectStatus[]> = {
   CLOSED: []
 };
 
+/**
+ * Service layer for the projects module (§8 Jobs and Delivery).
+ *
+ * Owns the full project lifecycle: manual create, list + getById, partial
+ * updates (with field-level perm gating on contractValue), the linear status
+ * transition graph (MOBILISING → ACTIVE → PRACTICAL_COMPLETION → DEFECTS →
+ * CLOSED) plus reopen, the activity feed, conversion from a source tender
+ * (snapshot + scope-item flatten), and the revert-to-tender cascade that
+ * undoes that conversion.
+ *
+ * Project numbers are allocated under a `FOR UPDATE` row lock on the
+ * `project_number_sequences` singleton, then formatted as `IS-P{padded}`.
+ *
+ * Audit + activity invariants: every write path emits an `AuditLog` entry
+ * via {@link AuditService} and a `ProjectActivityLog` row keyed to a
+ * `ProjectActivityAction` enum value (PROJECT_CREATED, CONTRACT_VALUE_CHANGED,
+ * BUDGET_CHANGED, TEAM_CHANGED, STATUS_CHANGED). Notifications fire to PM /
+ * supervisor on team-assignment and status-change events; status changes
+ * additionally send an email via the {@link EmailService} (fire-and-forget,
+ * void-awaited, errors swallowed by the email service so the write path stays
+ * fast).
+ *
+ * Revert-to-tender semantics (see `revert-to-tender.spec.ts`): the project
+ * row is hard-deleted with Prisma cascading scopeItems, milestones,
+ * activityLog, allocations, preStartChecklists, timesheets, contract, and
+ * ganttTasks. Optional-FK rows (safetyIncidents, hazardObservations,
+ * tenderDocumentLink) are explicitly nullified instead of deleted so they
+ * survive the revert. The source tender's status is reset to
+ * `CONTRACT_ISSUED` and the audit log entry is written inside the same
+ * transaction so it rolls back on failure.
+ */
 @Injectable()
 export class ProjectsService {
   constructor(
@@ -36,6 +67,12 @@ export class ProjectsService {
   ) {}
 
   // ── Numbering ─────────────────────────────────────────────────────────
+  /**
+   * Preview the next project number without consuming the sequence.
+   *
+   * Returns `{ nextNumber: "IS-P{padded}" }` based on `lastNumber + 1` from
+   * the singleton sequence row. Does NOT bump the sequence — pure UI affordance.
+   */
   async previewNextNumber() {
     const row = await this.prisma.projectNumberSequence.findUnique({ where: { id: 1 } });
     const next = (row?.lastNumber ?? 0) + 1;
@@ -58,6 +95,15 @@ export class ProjectsService {
   }
 
   // ── Listing / fetching ────────────────────────────────────────────────
+  /**
+   * Paginated list of projects with optional filters.
+   *
+   * `query.status` accepts a comma-separated list of `ProjectStatus` values
+   * (e.g. `"ACTIVE,DEFECTS"`); `query.search` is a case-insensitive
+   * `projectNumber OR name` match. `page` defaults to 1, `limit` defaults to
+   * 25 and is clamped to [1, 100]. `Decimal` fields (`contractValue`) are
+   * returned stringified to preserve precision.
+   */
   async list(query: ListProjectsQueryDto) {
     const page = Math.max(1, Number(query.page ?? 1));
     const limit = Math.min(100, Math.max(1, Number(query.limit ?? 25)));
@@ -110,6 +156,16 @@ export class ProjectsService {
     };
   }
 
+  /**
+   * Fetch a single project by id with the full delivery context.
+   *
+   * Loads client, source tender summary, the four team-role users (PM,
+   * supervisor, estimator, WHS officer), all scope items ordered by
+   * scopeCode, all milestones ordered by order, and the 10 most recent
+   * activity entries with their author. `Decimal` fields are stringified and
+   * `variance = budget - actualCost` is computed and returned alongside.
+   * Throws `NotFoundException` when the project does not exist.
+   */
   async getById(id: string) {
     const record = await this.prisma.project.findUnique({
       where: { id },
@@ -142,6 +198,16 @@ export class ProjectsService {
   }
 
   // ── Manual create (projects.admin) ────────────────────────────────────
+  /**
+   * Manually create a project (no source tender).
+   *
+   * Validates the client exists, then inside a single transaction allocates
+   * the next project number under a row lock, creates the project, and
+   * writes a `PROJECT_CREATED` activity entry with `source: "manual"`.
+   * Post-commit: writes the audit log and (if a PM is assigned) fires a
+   * notification to the PM. Returns the same shape as {@link getById}.
+   * Throws `BadRequestException` if the client is not found.
+   */
   async createManual(dto: CreateProjectDto, actor: ActorContext) {
     const client = await this.prisma.client.findUnique({ where: { id: dto.clientId } });
     if (!client) throw new BadRequestException("Client not found.");
@@ -196,6 +262,22 @@ export class ProjectsService {
   }
 
   // ── Update (projects.manage; contractValue requires projects.admin) ──
+  /**
+   * Apply a partial update to a project.
+   *
+   * Field-level permission: `dto.contractValue` requires `projects.admin` and
+   * throws `ForbiddenException` otherwise. All other writable fields are
+   * gated only by `projects.manage` (enforced at the controller). Team
+   * disconnects are handled explicitly via Prisma `disconnect: true` when the
+   * payload is `null`.
+   *
+   * Activity log emission: changes to contractValue, budget, or any of the
+   * four team roles generate `CONTRACT_VALUE_CHANGED`, `BUDGET_CHANGED`, or
+   * `TEAM_CHANGED` entries in a single `createMany` batch with before/after
+   * details. An audit log is always written with the change count.
+   *
+   * Throws `NotFoundException` if the project does not exist.
+   */
   async update(id: string, dto: UpdateProjectDto, actor: ActorContext) {
     const existing = await this.prisma.project.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException("Project not found.");
@@ -273,6 +355,26 @@ export class ProjectsService {
   }
 
   // ── Status transitions ────────────────────────────────────────────────
+  /**
+   * Move a project to the next status (or reopen a closed one).
+   *
+   * Transition graph (see `VALID_TRANSITIONS`):
+   *  - `MOBILISING → ACTIVE` — requires `actualStartDate` in payload or
+   *    already set on the project.
+   *  - `ACTIVE → PRACTICAL_COMPLETION` — requires `practicalCompletionDate`
+   *    in payload.
+   *  - `PRACTICAL_COMPLETION → DEFECTS` — no extra date required.
+   *  - `DEFECTS → CLOSED` — requires `closedDate` in payload.
+   *  - `CLOSED → MOBILISING` — reopen, ONLY allowed if the actor has
+   *    `projects.admin` (else `ForbiddenException`).
+   *
+   * A no-op (same status) returns the current project unchanged. Any other
+   * transition throws `BadRequestException`.
+   *
+   * Side effects: `STATUS_CHANGED` activity entry, audit log entry, fire-and-
+   * forget email notification (errors swallowed by EmailService), and an
+   * in-app notification to PM and supervisor (deduplicated by Set).
+   */
   async transitionStatus(id: string, dto: ProjectStatusDto, actor: ActorContext) {
     const existing = await this.prisma.project.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException("Project not found.");
@@ -367,6 +469,13 @@ export class ProjectsService {
   }
 
   // ── Activity feed ────────────────────────────────────────────────────
+  /**
+   * Paginated reverse-chronological activity feed for a single project.
+   *
+   * Includes the author user (id + name) on each row. `page` is floored at 1,
+   * `limit` is clamped to [1, 100]. Returns the standard
+   * `{ items, total, page, limit }` envelope.
+   */
   async activity(id: string, page: number, limit: number) {
     const safePage = Math.max(1, page);
     const safeLimit = Math.min(100, Math.max(1, limit));
@@ -387,6 +496,29 @@ export class ProjectsService {
   }
 
   // ── Tender → Project conversion ──────────────────────────────────────
+  /**
+   * Convert an AWARDED tender into a project (one-shot, idempotent guard).
+   *
+   * Preconditions: tender exists, is in `AWARDED` status, and has no existing
+   * project pointing at it (else `ConflictException` with the existing
+   * project id + number).
+   *
+   * Conversion steps inside a single transaction:
+   *  1. Allocate the next project number under a row lock.
+   *  2. Snapshot the entire estimate (markup, notes, every item with all
+   *     line types and assumptions, decimals stringified) into
+   *     `estimateSnapshot` JSON.
+   *  3. Flatten each estimate line into a `ProjectScopeItem` row with a
+   *     pointer back to the source line id.
+   *  4. Compute `contractValue` (tender.estimatedValue if set, else summed
+   *     estimate total) and `budget` (always summed estimate total).
+   *  5. Re-parent the tender's document links to the new project.
+   *  6. Write a `PROJECT_CREATED` activity entry with `source: "tender"`.
+   *
+   * Post-commit: PM notification (if assigned) and audit log entry.
+   * Site address is seeded with `TBC` placeholders since tenders don't carry
+   * a structured site address — operator is expected to fill these in.
+   */
   async convertFromTender(tenderId: string, actor: ActorContext) {
     const tender = await this.prisma.tender.findUnique({
       where: { id: tenderId },
@@ -616,6 +748,20 @@ export class ProjectsService {
   }
 
   // ── Revert to Tender ───────────────────────────────────────────────
+  /**
+   * Preflight summary for revert-to-tender (read-only).
+   *
+   * Returns project info, the source tender pointer, and a `cascadeCounts`
+   * map containing the row count for every child relation that will be
+   * cascaded or nullified by {@link revertToTender}: scopeItems, milestones,
+   * activityLog, allocations, preStartChecklists, timesheets, ganttTasks,
+   * safetyIncidents, hazardObservations, documents, and contracts. Intended
+   * for a confirmation dialog before the operator triggers the destructive
+   * revert.
+   *
+   * Throws `BadRequestException` if the project has no source tender,
+   * `NotFoundException` if the project does not exist.
+   */
   async revertToTenderPreflight(projectId: string) {
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
@@ -662,6 +808,28 @@ export class ProjectsService {
     };
   }
 
+  /**
+   * Execute the revert-to-tender cascade (destructive, transactional).
+   *
+   * Covered by `revert-to-tender.spec.ts`. Inside a single transaction:
+   *  1. Nullify `safetyIncident.projectId` and `hazardObservation.projectId`
+   *     (these use optional FKs and would otherwise block delete).
+   *  2. Unlink `tenderDocumentLink.projectId` so doc rows survive and revert
+   *     to being tender-scoped.
+   *  3. Hard-delete the project — Prisma cascades scopeItems, milestones,
+   *     activityLog, allocations, preStartChecklists, timesheets, contract,
+   *     and ganttTasks.
+   *  4. Reset the source tender's status back to `CONTRACT_ISSUED`.
+   *  5. Write the audit log entry inside the same transaction so it rolls
+   *     back on failure (vs. the AuditService write paths used elsewhere).
+   *
+   * Returns `{ success, tenderId, revertedAt, cascadeCounts }`. The
+   * `cascadeCounts` snapshot is captured BEFORE the transaction runs so it
+   * reflects what was destroyed.
+   *
+   * Throws `BadRequestException` if the project has no source tender,
+   * `NotFoundException` if the project does not exist.
+   */
   async revertToTender(projectId: string, actorId: string) {
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },

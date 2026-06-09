@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { ContractStatus, VariationStatus } from "@prisma/client";
 import { IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, Min } from "class-validator";
 import { Type } from "class-transformer";
@@ -121,6 +121,10 @@ export class ContractsController {
   // ── Variations ───────────────────────────────────────────────────────
   @Get(":id/variations")
   @RequirePermissions("finance.view")
+  @ApiOperation({ summary: "List variations for a contract, ordered by auto-assigned variation number." })
+  @ApiParam({ name: "id", description: "Contract id." })
+  @ApiResponse({ status: 200, description: "Variations for the contract." })
+  @ApiResponse({ status: 404, description: "Contract not found." })
   listVariations(@Param("id") id: string) {
     return this.service.listVariations(id);
   }
@@ -153,12 +157,21 @@ export class ContractsController {
   // ── Progress claims ──────────────────────────────────────────────────
   @Get(":id/claims")
   @RequirePermissions("finance.view")
+  @ApiOperation({ summary: "List progress claims for a contract, most recent claim month first." })
+  @ApiParam({ name: "id", description: "Contract id." })
+  @ApiResponse({ status: 200, description: "Progress-claim headers for the contract." })
+  @ApiResponse({ status: 404, description: "Contract not found." })
   listClaims(@Param("id") id: string) {
     return this.service.listClaims(id);
   }
 
   @Get(":id/claims/:claimId")
   @RequirePermissions("finance.view")
+  @ApiOperation({ summary: "Get a progress claim with line items and contract context." })
+  @ApiParam({ name: "id", description: "Contract id." })
+  @ApiParam({ name: "claimId", description: "Progress-claim id." })
+  @ApiResponse({ status: 200, description: "Claim with line items and contract." })
+  @ApiResponse({ status: 404, description: "Claim not found for this contract." })
   getClaim(@Param("id") id: string, @Param("claimId") claimId: string) {
     return this.service.getClaim(id, claimId);
   }
@@ -195,6 +208,15 @@ export class ContractsController {
 
   @Post(":id/claims/:claimId/submit")
   @RequirePermissions("finance.manage")
+  @ApiOperation({
+    summary:
+      "Submit a DRAFT claim. Sets status=SUBMITTED with submissionDate=now and fires a claim.submitted notification email."
+  })
+  @ApiParam({ name: "id", description: "Contract id." })
+  @ApiParam({ name: "claimId", description: "Progress-claim id (must be DRAFT)." })
+  @ApiResponse({ status: 200, description: "Claim transitioned to SUBMITTED." })
+  @ApiResponse({ status: 400, description: "Claim is not in DRAFT status." })
+  @ApiResponse({ status: 404, description: "Claim not found for this contract." })
   submitClaim(@Param("id") id: string, @Param("claimId") claimId: string) {
     return this.service.submitClaim(id, claimId);
   }
@@ -212,6 +234,15 @@ export class ContractsController {
 
   @Post(":id/claims/:claimId/pay")
   @RequirePermissions("finance.admin")
+  @ApiOperation({
+    summary:
+      "Record payment on an APPROVED claim. Sets status=PAID with totalPaid and paidDate."
+  })
+  @ApiParam({ name: "id", description: "Contract id." })
+  @ApiParam({ name: "claimId", description: "Progress-claim id (must be APPROVED)." })
+  @ApiResponse({ status: 200, description: "Claim transitioned to PAID." })
+  @ApiResponse({ status: 400, description: "Claim is not in APPROVED status." })
+  @ApiResponse({ status: 404, description: "Claim not found for this contract." })
   payClaim(
     @Param("id") id: string,
     @Param("claimId") claimId: string,

@@ -16,6 +16,10 @@ import {
   UpsertMaintenancePlanDto
 } from "./dto/maintenance.dto";
 
+/**
+ * One row of the asset utilisation report — totals for a single asset over
+ * the requested window. Returned by {@link MaintenanceService.assetUtilisation}.
+ */
 export interface AssetUtilisationRow {
   assetId: string;
   assetName: string;
@@ -46,6 +50,21 @@ const maintenanceAssetInclude = {
   }
 } as const;
 
+/**
+ * Service layer for §12 Maintenance — assets and the records that hang off
+ * them (plans, events, inspections, breakdowns, status history) plus the
+ * asset utilisation report consumed by §7 plant/equipment reporting.
+ *
+ * Every write goes through {@link AuditService} and (for asset status
+ * changes) through a single Prisma transaction so the asset row and its
+ * status-history entry stay in lockstep. Read responses are enriched with a
+ * derived `maintenanceSummary` produced by {@link buildMaintenanceSummary},
+ * which drives the scheduler's WARN / BLOCK signalling.
+ *
+ * Asset utilisation pulls hours allocated from `ShiftAssetAssignment` —
+ * the scheduler is the system of record for asset time, so
+ * `ProjectAllocation` (calendar-day grain) is intentionally not used.
+ */
 @Injectable()
 export class MaintenanceService {
   constructor(
@@ -53,6 +72,14 @@ export class MaintenanceService {
     private readonly auditService: AuditService
   ) {}
 
+  /**
+   * List assets with derived maintenance summary, paginated. Filters by
+   * asset id or status when supplied. Runs the page query and total count
+   * in a single Prisma transaction.
+   *
+   * @param query - optional `assetId` / `status` plus pagination
+   * @returns `{ items, total, page, pageSize }`
+   */
   async dashboard(query: MaintenanceQueryDto) {
     const where = {
       ...(query.assetId ? { id: query.assetId } : {}),
@@ -81,6 +108,13 @@ export class MaintenanceService {
     };
   }
 
+  /**
+   * List all maintenance plans (any status) ordered by `nextDueAt` then
+   * `createdAt`, with a minimal asset summary. Used by the Operations
+   * dashboard's "Upcoming maintenance" widget.
+   *
+   * @returns all plans, each carrying `{ id, assetCode, name }` for its asset
+   */
   async listPlans() {
     return this.prisma.assetMaintenancePlan.findMany({
       orderBy: [{ nextDueAt: "asc" }, { createdAt: "desc" }],
@@ -90,6 +124,18 @@ export class MaintenanceService {
     });
   }
 
+  /**
+   * Create or update a maintenance plan for an asset. Pass `id` to update,
+   * `undefined` to create. Defaults: `warningDays = 7`,
+   * `blockWhenOverdue = true`, `status = "ACTIVE"`. Writes a
+   * `maintenance.plan.create` or `maintenance.plan.update` audit entry.
+   *
+   * @param id - existing plan id, or `undefined` to create
+   * @param dto - plan fields
+   * @param actorId - audit actor (user id)
+   * @returns the persisted plan
+   * @throws NotFoundException — when `dto.assetId` does not match an asset
+   */
   async upsertPlan(id: string | undefined, dto: UpsertMaintenancePlanDto, actorId?: string) {
     await this.requireAsset(dto.assetId);
 
@@ -131,6 +177,19 @@ export class MaintenanceService {
     return record;
   }
 
+  /**
+   * Create or update a maintenance event. Pass `id` to update, `undefined`
+   * to create. When the event is linked to a plan (`maintenancePlanId`) and
+   * has a `completedAt`, the parent plan's `lastCompletedAt` is set to that
+   * timestamp and `nextDueAt` is rolled forward by `intervalDays`. Writes a
+   * `maintenance.event.create` or `maintenance.event.update` audit entry.
+   *
+   * @param id - existing event id, or `undefined` to create
+   * @param dto - event fields
+   * @param actorId - audit actor (user id)
+   * @returns the persisted event
+   * @throws NotFoundException — when `dto.assetId` does not match an asset
+   */
   async upsertEvent(id: string | undefined, dto: UpsertMaintenanceEventDto, actorId?: string) {
     await this.requireAsset(dto.assetId);
 
@@ -178,6 +237,19 @@ export class MaintenanceService {
     return record;
   }
 
+  /**
+   * Create or update an inspection record. Pass `id` to update, `undefined`
+   * to create. Default `status` is `PASS`. A `FAIL` flips the derived
+   * maintenance state to `UNAVAILABLE` and the scheduler impact to `BLOCK`.
+   * Writes a `maintenance.inspection.create` or
+   * `maintenance.inspection.update` audit entry.
+   *
+   * @param id - existing inspection id, or `undefined` to create
+   * @param dto - inspection fields
+   * @param actorId - audit actor (user id)
+   * @returns the persisted inspection
+   * @throws NotFoundException — when `dto.assetId` does not match an asset
+   */
   async upsertInspection(id: string | undefined, dto: UpsertInspectionDto, actorId?: string) {
     await this.requireAsset(dto.assetId);
 
@@ -211,6 +283,20 @@ export class MaintenanceService {
     return record;
   }
 
+  /**
+   * Create or update a breakdown record. Pass `id` to update, `undefined`
+   * to create. Defaults: `severity = "MEDIUM"`, `status = "OPEN"`. Any
+   * non-`RESOLVED` breakdown forces the derived maintenance state to
+   * `UNAVAILABLE` and the scheduler impact to `BLOCK`. Writes a
+   * `maintenance.breakdown.create` or `maintenance.breakdown.update` audit
+   * entry.
+   *
+   * @param id - existing breakdown id, or `undefined` to create
+   * @param dto - breakdown fields
+   * @param actorId - audit actor (user id)
+   * @returns the persisted breakdown
+   * @throws NotFoundException — when `dto.assetId` does not match an asset
+   */
   async upsertBreakdown(id: string | undefined, dto: UpsertBreakdownDto, actorId?: string) {
     await this.requireAsset(dto.assetId);
 
@@ -248,6 +334,21 @@ export class MaintenanceService {
     return record;
   }
 
+  /**
+   * Change an asset's status and append a row to its status history. The
+   * asset update and history insert run in a single Prisma transaction, so
+   * the two cannot diverge. The from/to statuses are captured in audit
+   * metadata under `maintenance.asset-status.update`. After the write, the
+   * full asset detail is re-read so the caller gets a refreshed
+   * `maintenanceSummary`.
+   *
+   * @param assetId - asset id whose status is changing
+   * @param dto - new status plus optional note
+   * @param actorId - audit actor (user id)
+   * @returns asset detail with updated summary
+   * @throws NotFoundException — when the asset does not exist
+   * @throws ConflictException — when the asset already has the requested status
+   */
   async updateAssetStatus(assetId: string, dto: UpdateAssetStatusDto, actorId?: string) {
     const asset = await this.requireAsset(assetId);
 
@@ -287,6 +388,15 @@ export class MaintenanceService {
     return this.getAssetMaintenance(assetId);
   }
 
+  /**
+   * Load full maintenance detail for one asset — plans, events,
+   * inspections, breakdowns, status history and computed
+   * `maintenanceSummary`.
+   *
+   * @param assetId - asset id to load
+   * @returns asset with related collections and derived summary
+   * @throws NotFoundException — when the asset does not exist
+   */
   async getAssetMaintenance(assetId: string) {
     const asset = await this.prisma.asset.findUnique({
       where: { id: assetId },
@@ -303,12 +413,28 @@ export class MaintenanceService {
     };
   }
 
-  // §7 plant/equipment utilisation reporting. Hours allocated come from
-  // ShiftAssetAssignment (the scheduler model that already tracks asset ↔
-  // shift links with startAt / endAt timestamps). Hours available is a
-  // pure calendar count of Mon-Fri × 8h between from/to UTC. ProjectAllocation
-  // is intentionally not used here — its start/end are calendar days not
-  // hours, and the scheduler is the system of record for actual asset time.
+  /**
+   * §7 plant/equipment utilisation report — per-asset hours allocated vs
+   * hours available across an inclusive UTC date range.
+   *
+   * Hours allocated come from `ShiftAssetAssignment` (the scheduler model
+   * that already tracks asset ↔ shift links with startAt / endAt
+   * timestamps); each matching shift is clamped to the window before being
+   * summed. Hours available is a pure calendar count of Mon-Fri × 8h
+   * between `from` and `to` UTC. `ProjectAllocation` is intentionally not
+   * used — its start/end are calendar days not hours, and the scheduler is
+   * the system of record for actual asset time.
+   *
+   * The range is normalised to UTC day bounds (start at 00:00:00.000, end
+   * at 23:59:59.999) so single-day queries (from == to) still include every
+   * shift that lands on that day, matching the payroll-export pattern.
+   *
+   * Rows are sorted by `utilisationRate` DESC then `assetName` ASC.
+   *
+   * @param query - inclusive `from`/`to` ISO dates plus optional asset/category filter
+   * @returns one row per matching asset
+   * @throws BadRequestException — when from/to are invalid or `to` < `from`
+   */
   async assetUtilisation(query: AssetUtilisationQueryDto): Promise<AssetUtilisationRow[]> {
     const rangeStart = new Date(query.from);
     const rangeEnd = new Date(query.to);

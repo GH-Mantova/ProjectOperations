@@ -29,10 +29,46 @@ type UpsertTaskInput = {
   sortOrder?: number;
 };
 
+/**
+ * Service layer for the project Gantt surface plus the cross-project
+ * dashboard timeline widget.
+ *
+ * Owns:
+ *  - Task CRUD scoped to a single project (`list`, `create`, `update`,
+ *    `remove`) with team-level access enforcement (`requireProjectAccess`).
+ *  - One-shot scope-driven task generation (`generateFromScope`) that
+ *    produces one task per discipline from the source tender's scope items,
+ *    stacked sequentially from the project's planned start date.
+ *  - The dashboard timeline summary (`activeTimeline`) listing one row per
+ *    active project the requesting user can see, scoped by team membership.
+ *
+ * Access policy is `requireProjectAccess`: super-users see all projects;
+ * everyone else only sees projects where they are on the team (PM,
+ * supervisor, estimator, WHS officer, or creator). Missing access surfaces
+ * as `NotFoundException` rather than `ForbiddenException` to avoid leaking
+ * project existence.
+ *
+ * Date invariants on task writes:
+ *  - Create requires both `startDate` and `endDate`, and `endDate` must be
+ *    on or after `startDate`.
+ *  - Update re-validates the EFFECTIVE start/end pair (incoming where
+ *    provided, existing otherwise) so a partial PATCH cannot invert the bar.
+ *  - `progress` is clamped to [0, 100] on update.
+ *
+ * Dependencies are stored as a string array of upstream task ids on the
+ * task row. Critical-path computation is not currently implemented in the
+ * service — the array drives dependency arrows in the UI only.
+ */
 @Injectable()
 export class GanttService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * List Gantt tasks for the project, ordered by `sortOrder` then
+   * `startDate`. Includes the assigned user join (id + name).
+   *
+   * @throws NotFoundException when the user has no team access to the project.
+   */
   async list(projectId: string, user: { sub: string; isSuperUser?: boolean }) {
     await this.requireProjectAccess(projectId, user);
     return this.prisma.ganttTask.findMany({
@@ -42,6 +78,18 @@ export class GanttService {
     });
   }
 
+  /**
+   * Create a Gantt task on the project.
+   *
+   * Validates: `title` is required and trimmed; `startDate` and `endDate`
+   * are required, parseable, and ordered (`endDate >= startDate`). When
+   * `colour` is omitted, falls back to {@link DISCIPLINE_COLOURS}[discipline]
+   * if a discipline is provided, otherwise `null`. `dependencies` defaults
+   * to an empty array, `progress` to 0, `sortOrder` to 0.
+   *
+   * @throws BadRequestException on missing/invalid fields.
+   * @throws NotFoundException when the user has no team access to the project.
+   */
   async create(
     projectId: string,
     input: UpsertTaskInput,
@@ -75,6 +123,18 @@ export class GanttService {
     });
   }
 
+  /**
+   * Partially update a Gantt task.
+   *
+   * The (projectId, taskId) pair is scoped so updates cannot cross project
+   * boundaries. `progress` is clamped to [0, 100]. Effective start/end are
+   * computed from incoming-or-existing values and re-validated so a partial
+   * PATCH cannot invert the bar.
+   *
+   * @throws NotFoundException if the task does not belong to the project, or
+   *         if the user has no team access.
+   * @throws BadRequestException on invalid date or inverted bar.
+   */
   async update(
     projectId: string,
     taskId: string,
@@ -112,6 +172,17 @@ export class GanttService {
     return this.prisma.ganttTask.update({ where: { id: taskId }, data });
   }
 
+  /**
+   * Delete a Gantt task by (projectId, taskId).
+   *
+   * Returns `{ id }` of the deleted task. Does NOT cascade to other tasks
+   * that list this task as a dependency — the dependencies array is left
+   * dangling and the UI is responsible for treating missing ids as broken
+   * links.
+   *
+   * @throws NotFoundException if the task does not belong to the project, or
+   *         if the user has no team access.
+   */
   async remove(
     projectId: string,
     taskId: string,
@@ -124,12 +195,22 @@ export class GanttService {
     return { id: taskId };
   }
 
-  // Auto-generate one task per discipline that has scope items.
-  // Duration is the sum of "days" values in scope item measurements when
-  // available; otherwise falls back to a 5-business-day default per discipline.
-  // Tasks are stacked sequentially starting from project.plannedStartDate
-  // (or today) so the timeline is non-overlapping out of the box — the user
-  // is expected to drag bars after generation to reflect actual sequencing.
+  /**
+   * Auto-generate one Gantt task per discipline from the source-tender scope.
+   *
+   * Duration per discipline is the SUM of `days` values across scope items
+   * tagged with that discipline; scope items missing a `days` value
+   * contribute the 5-day default. Tasks are stacked sequentially starting
+   * from `project.plannedStartDate` (or today if unset) so the timeline is
+   * non-overlapping out of the box. Operators are expected to drag bars
+   * after generation to reflect actual sequencing.
+   *
+   * @throws NotFoundException when the project does not exist (or the user
+   *         has no team access).
+   * @throws BadRequestException when the project has no source tender, the
+   *         source tender has no scope items, or no scope items carry a
+   *         discipline tag.
+   */
   async generateFromScope(projectId: string, user: { sub: string; isSuperUser?: boolean }) {
     await this.requireProjectAccess(projectId, user);
     const project = await this.prisma.project.findUnique({
@@ -190,10 +271,16 @@ export class GanttService {
     return { created };
   }
 
-  // Active-projects timeline used by the dashboard widget. Returns one bar per
-  // active project the requesting user can see — super-users see all; others
-  // see only projects where they're on the team (PM, supervisor, estimator,
-  // WHS officer). This matches the team-scoping the rest of the app applies.
+  /**
+   * One-row-per-active-project summary for the dashboard timeline widget.
+   *
+   * Active = status in `MOBILISING / ACTIVE / PRACTICAL_COMPLETION / DEFECTS`
+   * (CLOSED is excluded). Team-scoped: super-users see all; others see only
+   * projects where they are PM, supervisor, estimator, or WHS officer. Each
+   * row uses `plannedStartDate` falling back to `actualStartDate` for the
+   * bar start, and `plannedEndDate` falling back to `practicalCompletionDate`
+   * for the bar end. Sorted ascending by `plannedStartDate`.
+   */
   async activeTimeline(
     requestingUser: { sub: string; isSuperUser?: boolean }
   ): Promise<
@@ -246,9 +333,16 @@ export class GanttService {
     }));
   }
 
-  // Project access check used before reading or writing Gantt tasks. Super-users
-  // have global access; everyone else must be on the project team. Throws 404
-  // (not 403) when the user can't see the project, to avoid leaking existence.
+  /**
+   * Verify the user can access this project, used as a guard before any
+   * Gantt task read or write.
+   *
+   * Super-users have global access. Everyone else must be on the project
+   * team — defined as PM, supervisor, estimator, WHS officer, or the user
+   * who created the project. Missing access surfaces as
+   * `NotFoundException` (not 403) to avoid leaking existence of projects
+   * the caller can't see.
+   */
   async requireProjectAccess(
     projectId: string,
     requestingUser: { sub: string; isSuperUser?: boolean }

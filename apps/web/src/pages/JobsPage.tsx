@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AppCard } from "@project-ops/ui";
+import { AppCard, EmptyState } from "@project-ops/ui";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 
@@ -1150,7 +1150,37 @@ export function JobsPage() {
                   })}
                 </tbody>
               </table>
-              {!visibleJobs.length ? <p className="muted-text">No jobs match the current filters.</p> : null}
+              {!visibleJobs.length ? (
+                jobs.length === 0 ? (
+                  <EmptyState
+                    heading="No jobs yet"
+                    subtext="Jobs land here once a tender is awarded and converted."
+                    action={
+                      <Link to="/tenders" className="s7-btn s7-btn--primary">
+                        View tenders
+                      </Link>
+                    }
+                  />
+                ) : (
+                  <EmptyState
+                    heading="No jobs match your current filters"
+                    subtext="Try a broader search or clear filters to see every job."
+                    action={
+                      <button
+                        type="button"
+                        className="s7-btn s7-btn--secondary"
+                        onClick={() => {
+                          setSearch("");
+                          setStatusFilter("ALL");
+                          setWorkFilter("ALL");
+                        }}
+                      >
+                        Clear filters
+                      </button>
+                    }
+                  />
+                )
+              ) : null}
             </div>
           </div>
         </AppCard>

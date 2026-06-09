@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { COMPLIANCE_BADGE_TOOLTIP, countComplianceAlerts } from "./complianceCounts";
 
 type ExpiryRow = {
   id: string;
@@ -127,6 +128,8 @@ export function CompliancePage() {
     return { expired, expiring7, expiring30, blocked: blocked.length };
   }, [allRows, blocked.length]);
 
+  const sidebarBadgeCount = useMemo(() => countComplianceAlerts(data), [data]);
+
   const unblock = async (id: string) => {
     if (!isAdmin) return;
     const response = await authFetch(`/compliance/subcontractors/${id}/block`, {
@@ -143,9 +146,28 @@ export function CompliancePage() {
   return (
     <div style={{ padding: 20 }}>
       <header style={{ marginBottom: 16 }}>
-        <h1 className="s7-type-page-heading" style={{ margin: 0 }}>Compliance</h1>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <h1 className="s7-type-page-heading" style={{ margin: 0 }}>Compliance</h1>
+          {sidebarBadgeCount > 0 ? (
+            <span
+              data-testid="compliance-alert-badge"
+              title={COMPLIANCE_BADGE_TOOLTIP}
+              aria-label={`${sidebarBadgeCount} compliance alerts`}
+              style={{
+                background: "#f97316",
+                color: "#fff",
+                fontSize: 11,
+                fontWeight: 600,
+                padding: "2px 8px",
+                borderRadius: 999
+              }}
+            >
+              {sidebarBadgeCount} {sidebarBadgeCount === 1 ? "alert" : "alerts"}
+            </span>
+          ) : null}
+        </div>
         <p style={{ color: "var(--text-muted)", margin: "4px 0 0", fontSize: 13 }}>
-          Licence, insurance and qualification expiry tracking.
+          {COMPLIANCE_BADGE_TOOLTIP} Use the filters below to widen the look-ahead window.
         </p>
       </header>
 

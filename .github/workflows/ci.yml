@@ -13,6 +13,9 @@ env:
   # Deterministic 32-byte hex key used solely for CI tests. Real
   # production keys live in Azure Key Vault and are never committed.
   BYOK_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  # Opt-in to Node 24 runtime for JavaScript actions ahead of GitHub's
+  # 2026-06-16 Node 20 → 24 force-migration deadline.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   api:
@@ -33,9 +36,9 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v4.2.2
+      - uses: pnpm/action-setup@v4.0.0
+      - uses: actions/setup-node@v4.1.0
         with: { node-version: '22', cache: 'pnpm' }
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @project-ops/api exec puppeteer browsers install chrome
@@ -69,9 +72,9 @@ jobs:
     name: Web — lint, logic tests, build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v4.2.2
+      - uses: pnpm/action-setup@v4.0.0
+      - uses: actions/setup-node@v4.1.0
         with: { node-version: '22', cache: 'pnpm' }
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @project-ops/web lint

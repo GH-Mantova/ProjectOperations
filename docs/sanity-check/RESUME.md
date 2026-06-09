@@ -135,6 +135,7 @@ pnpm test:tendering:e2e:reuse
 ## Open known risks
 
 - F0-01 — RESOLVED 2026-06-09 (pr-135 returned no-drift; pr-144 cleaned up superseded tender_entries.client_id draft folder + matching frontend WIP files).
+- F1B-01 — RESOLVED 2026-06-09 (`docs/module-reference-tendering-reconciliation` updates `05-tendering-estimating.md` to reflect the actual 3-tab surface: Estimate merged into Scope of Works per PR B1.7.1; Clarifications collapsed into Overview "Activity & communications" panel per PR #260).
 - **Tendering Assistant fresh-conversation smoke from re-seeded state** is the §5A.1 gate. UI wiring confirmed; need actual AI provider + a chat exchange to complete.
 - **CenteredModal sweep** — PR #300 swept 24 modals + PR #313 added 2 more. Spot-checked one (no findings); need to identify and click the 2 PR #313 migrations specifically.
 - **Job ID canonicalisation** — PR #210 normalised to J-YYYY-NNN. Re-seed should produce J-2026-NNN format only — verify in Phase 1E when looking at Jobs.

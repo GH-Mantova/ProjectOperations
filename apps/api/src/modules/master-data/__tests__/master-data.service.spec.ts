@@ -6,7 +6,7 @@
 // paymentTermsDay/paymentTermsType invariants from PR #277 only — this spec
 // adds broad coverage across every public method without touching it.
 
-import { BadRequestException, ConflictException } from "@nestjs/common";
+import { BadRequestException, ConflictException, NotFoundException } from "@nestjs/common";
 import { MasterDataService } from "../master-data.service";
 
 type AsyncMock = jest.Mock<Promise<unknown>, unknown[]>;
@@ -30,7 +30,8 @@ function tableCRUD() {
     findUnique: jest.fn().mockResolvedValue(null) as AsyncMock,
     count: jest.fn().mockResolvedValue(0) as AsyncMock,
     create: jest.fn(passthroughCreate) as AsyncMock,
-    update: jest.fn(passthroughUpdate) as AsyncMock
+    update: jest.fn(passthroughUpdate) as AsyncMock,
+    delete: jest.fn().mockResolvedValue(undefined) as AsyncMock
   };
 }
 
@@ -593,6 +594,66 @@ describe("MasterDataService — getSite", () => {
 
     const tenders = (result as { tenders: Array<{ projects?: unknown }> }).tenders;
     expect(tenders[0].projects).toBeUndefined();
+  });
+});
+
+describe("MasterDataService — deleteSite", () => {
+  it("deletes a site with no linked tenders or jobs and writes audit", async () => {
+    const { service, prisma, audit } = makeService();
+    prisma.site.findUnique.mockResolvedValueOnce({
+      id: "site-1",
+      _count: { tenders: 0, jobs: 0 }
+    });
+
+    await service.deleteSite("site-1", "user-1");
+
+    expect(prisma.site.findUnique).toHaveBeenCalledWith({
+      where: { id: "site-1" },
+      include: { _count: { select: { tenders: true, jobs: true } } }
+    });
+    expect(prisma.site.delete).toHaveBeenCalledWith({ where: { id: "site-1" } });
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "masterdata.site.delete",
+        entityType: "Site",
+        entityId: "site-1",
+        actorId: "user-1"
+      })
+    );
+  });
+
+  it("throws ConflictException with tender count when tenders are linked", async () => {
+    const { service, prisma } = makeService();
+    prisma.site.findUnique.mockResolvedValueOnce({
+      id: "site-1",
+      _count: { tenders: 3, jobs: 0 }
+    });
+
+    const err = await service.deleteSite("site-1").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect((err as Error).message).toContain("3 linked tender(s)");
+    expect(prisma.site.delete).not.toHaveBeenCalled();
+  });
+
+  it("throws ConflictException with job count when jobs are linked", async () => {
+    const { service, prisma } = makeService();
+    prisma.site.findUnique.mockResolvedValueOnce({
+      id: "site-1",
+      _count: { tenders: 0, jobs: 2 }
+    });
+
+    const err = await service.deleteSite("site-1").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect((err as Error).message).toContain("2 linked job(s)");
+    expect(prisma.site.delete).not.toHaveBeenCalled();
+  });
+
+  it("throws NotFoundException when the site does not exist", async () => {
+    const { service, prisma } = makeService();
+    prisma.site.findUnique.mockResolvedValueOnce(null);
+
+    await expect(service.deleteSite("missing")).rejects.toBeInstanceOf(NotFoundException);
+    expect(prisma.site.delete).not.toHaveBeenCalled();
   });
 });
 

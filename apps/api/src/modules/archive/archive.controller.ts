@@ -6,6 +6,16 @@ import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { ArchiveService } from "./archive.service";
 import { ArchiveQueryDto } from "./dto/archive-query.dto";
 
+/**
+ * HTTP surface for the §16 closeout/archive module. Exposes a paginated list
+ * of closed and archived jobs plus a full read-only export of any single
+ * archived job. The archive is intentionally **read-only** — there are no
+ * POST/PATCH/DELETE routes here. Mutation of closeout state happens via the
+ * jobs module; this controller only surfaces the resulting snapshot for
+ * search, compliance review, and download.
+ *
+ * All routes require `jobs.view` and a valid JWT.
+ */
 @ApiTags("Archive")
 @ApiBearerAuth()
 @Controller("archive")
@@ -13,6 +23,16 @@ import { ArchiveQueryDto } from "./dto/archive-query.dto";
 export class ArchiveController {
   constructor(private readonly service: ArchiveService) {}
 
+  /**
+   * List archived and closed jobs with filters and pagination.
+   *
+   * Default status semantics return both CLOSED and ARCHIVED jobs — set
+   * `status=ARCHIVED` to restrict to jobs that have been formally archived
+   * (i.e. have a non-null `closeout.archivedAt`).
+   *
+   * @param query - search, client, year, status, page, and pageSize filters
+   * @returns paginated `{ items, total, page, pageSize }` envelope of summary rows
+   */
   @Get()
   @RequirePermissions("jobs.view")
   @ApiOperation({ summary: "List archived and closed jobs with filters and pagination" })
@@ -48,6 +68,20 @@ export class ArchiveController {
     return this.service.list(query);
   }
 
+  /**
+   * Export a full read-only archive record for a job, including closeout,
+   * stages, activities, issues, variations, status history, linked documents,
+   * and form submissions.
+   *
+   * The returned payload is a point-in-time snapshot intended for compliance
+   * download, audit, and offline review. No related rows are modified by this
+   * call; if the underlying job is later edited via other modules, a fresh
+   * export will reflect those changes.
+   *
+   * @param jobId - id of the job to export (any status — not restricted to archived)
+   * @returns full nested job record with related entities and document/form-submission projections
+   * @throws NotFoundException — when no job exists with the given id
+   */
   @Get(":jobId/export")
   @RequirePermissions("jobs.view")
   @ApiOperation({

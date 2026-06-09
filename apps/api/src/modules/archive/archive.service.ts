@@ -3,10 +3,40 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ArchiveQueryDto } from "./dto/archive-query.dto";
 
+/**
+ * Service layer for the §16 closeout/archive module — read-only views over
+ * jobs that have reached the CLOSED or ARCHIVED state.
+ *
+ * The archive does not mutate any underlying data: state transitions onto a
+ * job (CLOSED → ARCHIVED) are owned by the jobs/closeout modules. The two
+ * methods here simply project that state into:
+ *
+ *  1. A paginated summary list keyed on the linked `JobCloseout` row, and
+ *  2. A full nested export including stages, activities, issues, variations,
+ *     progress entries, status history, linked documents, and form
+ *     submissions.
+ *
+ * Filter semantics:
+ *  - `status=ARCHIVED` is stricter than `status=CLOSED` — ARCHIVED requires a
+ *    non-null `closeout.archivedAt`; CLOSED matches both CLOSED and ARCHIVED
+ *    closeout rows.
+ *  - `year` matches jobs by `closeout.archivedAt` when set, falling back to
+ *    `closeout.createdAt` when the job is closed but not yet archived. This
+ *    keeps the year filter useful during the close → archive window.
+ */
 @Injectable()
 export class ArchiveService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * List archived/closed jobs with search, client, year, and status filters.
+   * Orders by `updatedAt desc` and returns a flat `{ items, total, page,
+   * pageSize }` envelope where each item carries the closeout-derived status
+   * and dates rather than the raw job status.
+   *
+   * @param query - validated filter and pagination parameters
+   * @returns paginated envelope of summary rows
+   */
   async list(query: ArchiveQueryDto) {
     const where = this.buildWhere(query);
     const skip = (query.page - 1) * query.pageSize;
@@ -41,6 +71,24 @@ export class ArchiveService {
     };
   }
 
+  /**
+   * Build the full read-only archive export for a single job.
+   *
+   * Includes the job header (client, site, PM, supervisor), all stages and
+   * activities, the issues/variations/progressEntries/statusHistory streams,
+   * the closeout record (with checklist JSON and archiver identity), every
+   * `DocumentLink` whose linked entity is this job (with file/folder
+   * projections), and every `FormSubmission` for the job (with values,
+   * attachments, and signatures projected to flat shapes).
+   *
+   * The export is a point-in-time snapshot — no rows are written. The job is
+   * not required to be CLOSED or ARCHIVED; callers needing that gate must
+   * enforce it themselves.
+   *
+   * @param jobId - id of the job to export
+   * @returns nested snapshot suitable for compliance download and audit review
+   * @throws NotFoundException — when no job exists with the given id
+   */
   async export(jobId: string) {
     const job = await this.prisma.job.findUnique({
       where: { id: jobId },

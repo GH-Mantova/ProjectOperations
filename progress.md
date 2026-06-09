@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-06-03 05:21 AEST
+Last updated: 2026-06-03 06:07 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -7678,3 +7678,80 @@ overnight following the merges above:
   environment variables.
   Status: QUEUED (no branch / PR yet — prompt still in watcher queue
   at time of PR-65 cut).
+
+## 2026-06-03 — PR-64 OPENED (feat/tender-folders-and-document-categories)
+
+Tender SharePoint folder auto-creation + 11 canonical document categories
++ upload routing — single PR (backend + frontend + migration).
+
+What landed:
+
+- `DOCUMENT_CATEGORIES` canonical list (11 entries, source of truth at
+  `apps/api/src/modules/tender-documents/tender-document-categories.ts`,
+  mirror at `apps/web/src/lib/document-categories.ts`).
+  `normaliseDocumentCategory()` runtime helper + `isDocumentCategory()`
+  type guard.
+- SharePoint adapter gains `resolveSiteId` / `resolveDriveId`. Mock
+  returns deterministic synthetic IDs; Graph calls
+  `GET /sites/{hostname}:{path}` and `GET /sites/{siteId}/drives` and
+  picks the drive matching `SHAREPOINT_LIBRARY_NAME`.
+- `SharePointService.getResolvedConfig()` lazy-resolves site/drive IDs
+  with promise-cache, falling back to explicit `SHAREPOINT_SITE_ID` /
+  `SHAREPOINT_LIBRARY_ID` overrides when set (back-compat).
+- `SharePointService.ensureTenderFolderStructure(tender)` walks the
+  configured tenders root, creates the tender folder, then creates one
+  subfolder per canonical category. Best-effort per-category — a single
+  Graph hiccup logs a warning and continues.
+- `SharePointService.ensureTenderCategoryFolder(tender, category)` —
+  idempotent single-folder lazy-create for uploads on tenders that
+  pre-date this PR.
+- `TenderingService.create` and `.duplicate` call
+  `ensureTenderFolderStructure` after the tender row commits. Wrapped
+  in try/catch — a SharePoint outage never rolls back the tender row.
+- `TenderDocumentsService.create` now resolves the target folder via
+  `ensureTenderCategoryFolder(tender, dto.category)` so every upload
+  lands under the matching category subfolder.
+- `CreateTenderDocumentDto.category` is now `@IsIn(DOCUMENT_CATEGORIES)`
+  with Swagger enum metadata. Free-text categories return 400.
+- Frontend `TenderDocumentsPanel` adds a category dropdown (defaults to
+  "Other"). The hardcoded `"tender"` payload is gone.
+- Migration `20260603055000_normalise_document_categories` maps every
+  legacy `tender_document_links.category` value onto a canonical entry
+  (`tender` → `Tender Documents`, `Submission` → `Submissions`,
+  `Award`/`Award letter` → `Correspondence`, plus the obvious aliases).
+  Unknown values fall back to `Other`. `document_links` is intentionally
+  untouched per the PR scope.
+- Seed updated so a fresh `pnpm seed` produces canonical
+  `tender_document_links` values directly (no relied-on migration step
+  to fix seed output).
+
+Env vars (new in `.env.example`):
+
+- `SHAREPOINT_SITE_HOSTNAME` (default `initialservices.sharepoint.com`)
+- `SHAREPOINT_SITE_PATH` (default `/sites/Initialservices`)
+- `SHAREPOINT_LIBRARY_NAME` (default `Documents`)
+- `SHAREPOINT_TENDERS_ROOT` (default `Project Operations/Tenders` for
+  dev/mock; production wants `1. Operations/1. Tenders`)
+
+Pre-deploy checklist updated to (a) note the bootstrap behaviour
+(site/drive resolved once at first call and cached), (b) reference the
+Jobs-won mirror pattern as roadmap-parked for a follow-up tied to the
+tender→job conversion event, (c) add a Section-7 smoke-test addendum
+for Sean / Raj to exercise the 11 category folders.
+
+Verification:
+
+- `pnpm prisma:generate` ✓
+- `prisma migrate deploy` applied `20260603055000_normalise_document_categories` ✓
+- `pnpm --filter @project-ops/api build` ✓
+- `pnpm --filter @project-ops/api test:serial` → 1048/1054 ✓
+  (6 skipped — pre-existing)
+- `pnpm --filter @project-ops/web test:logic` ✓
+- `pnpm lint` ✓ (API + web)
+
+Do NOT auto-merge — Marco needs to (a) smoke-test the mock-mode folder
+structure, (b) confirm the env-var docs read sensibly, (c) verify the
+existing handler tests (drawing tools / asbestos register) still pass
+with normalised categories.
+
+Status: OPENED (awaiting review by GH-Mantova)

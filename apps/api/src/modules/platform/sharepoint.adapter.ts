@@ -41,6 +41,15 @@ export type DownloadFileBytesInput = {
   fileId: string;
 };
 
+// PR-64 — Resolve a SharePoint site ID from its hostname + server-relative
+// path. Mock impl returns a deterministic synthetic ID so the rest of the
+// stack treats mock and live the same way.
+export type ResolveSiteInput = { hostname: string; sitePath: string };
+// PR-64 — Resolve a drive (library) ID by display name within a site.
+// Used to look up the configured document library (e.g. "Documents") once
+// at bootstrap and cache the resulting drive ID.
+export type ResolveDriveInput = { siteId: string; libraryName: string };
+
 export interface SharePointAdapter {
   ensureFolder(input: EnsureFolderInput): Promise<EnsureFolderResult>;
   uploadFile(input: UploadFileInput): Promise<UploadFileResult>;
@@ -50,6 +59,11 @@ export interface SharePointAdapter {
   // document preview, AI document analysis, etc.). Throws
   // SharePointFileNotFoundError if fileId doesn't exist.
   downloadFileBytes(input: DownloadFileBytesInput): Promise<Buffer>;
+  // PR-64 — Lazy site/library ID resolution from human-readable
+  // hostname/path/library-name. Called once by SharePointService and
+  // cached. Throws if the configured site or library can't be found.
+  resolveSiteId(input: ResolveSiteInput): Promise<string>;
+  resolveDriveId(input: ResolveDriveInput): Promise<string>;
 }
 
 // Typed error so callers can distinguish "file legitimately doesn't
@@ -145,5 +159,18 @@ export class MockSharePointAdapter implements SharePointAdapter {
       throw new SharePointFileNotFoundError(input.fileId, input.siteId, input.driveId);
     }
     return readFile(targetPath);
+  }
+
+  // Deterministic synthetic IDs so repeated calls with the same input
+  // return the same value — SharePointService caches the resolved IDs,
+  // but tests that construct a fresh adapter expect stable output.
+  async resolveSiteId(input: ResolveSiteInput): Promise<string> {
+    const key = `${input.hostname}|${input.sitePath}`;
+    return `mock-site-${Buffer.from(key).toString("hex").slice(0, 12)}`;
+  }
+
+  async resolveDriveId(input: ResolveDriveInput): Promise<string> {
+    const key = `${input.siteId}|${input.libraryName}`;
+    return `mock-drive-${Buffer.from(key).toString("hex").slice(0, 12)}`;
   }
 }

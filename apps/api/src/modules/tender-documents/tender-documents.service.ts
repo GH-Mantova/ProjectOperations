@@ -33,15 +33,13 @@ export class TenderDocumentsService {
       throw new NotFoundException("Tender not found.");
     }
 
-    const folderPath = `Project Operations/Tendering/${tender.tenderNumber}_${this.slugify(tender.title)}`;
-    const folder = await this.sharePointService.ensureFolder(
-      {
-        name: tender.title,
-        relativePath: folderPath,
-        module: "tendering",
-        linkedEntityType: "Tender",
-        linkedEntityId: tenderId
-      },
+    // PR-64 — Route uploads into the category subfolder under the
+    // tender's canonical SharePoint root. ensureTenderCategoryFolder is
+    // idempotent and creates the folder lazily for tenders that pre-date
+    // PR-64 (or that partially failed at create-time).
+    const folder = await this.sharePointService.ensureTenderCategoryFolder(
+      { id: tenderId, tenderNumber: tender.tenderNumber },
+      dto.category,
       actorId
     );
 
@@ -162,9 +160,5 @@ export class TenderDocumentsService {
       metadata: { tenderId, title: document.title }
     });
     return { id: documentId };
-  }
-
-  private slugify(value: string) {
-    return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
   }
 }

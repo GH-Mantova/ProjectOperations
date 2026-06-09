@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { NotesField, OverrideField, TooltipSelect, type TooltipSelectOption } from "../../components";
 import { computeDerivedDimensions, isDimensionOverride } from "./scopeItemDimensions";
@@ -428,27 +429,25 @@ export function ScopeQuantitiesTable({
       ) : null}
 
       {deleteWarning ? (
-        <div
-          className="slide-over-overlay"
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setDeleteWarning(null)}
-        >
-          <div className="s7-card" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ marginTop: 0 }}>Delete {deleteWarning.wbsCode}?</h3>
-            <p style={{ color: "var(--text-muted)" }}>
-              This item has a linked estimate entry. The scope item will be deleted but the estimate line will remain.
-            </p>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
+        <CenteredModal
+          title={`Delete ${deleteWarning.wbsCode}?`}
+          onClose={() => setDeleteWarning(null)}
+          maxWidth={460}
+          footer={
+            <>
               <button type="button" className="s7-btn s7-btn--ghost" onClick={() => setDeleteWarning(null)}>
                 Cancel
               </button>
               <button type="button" className="s7-btn s7-btn--primary" onClick={() => void finalDelete(deleteWarning)}>
                 Delete scope item only
               </button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        >
+          <p style={{ color: "var(--text-muted)" }}>
+            This item has a linked estimate entry. The scope item will be deleted but the estimate line will remain.
+          </p>
+        </CenteredModal>
       ) : null}
     </section>
   );

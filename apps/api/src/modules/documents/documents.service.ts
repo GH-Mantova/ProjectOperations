@@ -96,6 +96,49 @@ export class DocumentsService {
     };
   }
 
+  async getDocumentsForSite(
+    siteId: string,
+    actor: AuthenticatedUser,
+    opts?: { skip?: number; take?: number }
+  ) {
+    const skip = opts?.skip ?? 0;
+    const take = opts?.take ?? 50;
+
+    const jobs = await this.prisma.job.findMany({
+      where: { siteId },
+      select: { id: true }
+    });
+    const jobIds = jobs.map((job) => job.id);
+
+    if (jobIds.length === 0) {
+      return { items: [], total: 0, skip, take };
+    }
+
+    const where: Prisma.DocumentLinkWhereInput = {
+      linkedEntityType: "Job",
+      linkedEntityId: { in: jobIds }
+    };
+
+    const roleNames = await this.getActorRoles(actor.sub);
+    const allItems = await this.prisma.documentLink.findMany({
+      where,
+      include: documentInclude,
+      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }]
+    });
+
+    const visibleItems = allItems.filter((item) =>
+      this.canAccessDocument(item, actor.permissions, roleNames, "view")
+    );
+    const pagedItems = visibleItems.slice(skip, skip + take);
+
+    return {
+      items: await Promise.all(pagedItems.map((item) => this.enrichDocument(item))),
+      total: visibleItems.length,
+      skip,
+      take
+    };
+  }
+
   async listForEntity(linkedEntityType: string, linkedEntityId: string, actor: AuthenticatedUser) {
     const response = await this.list(
       {

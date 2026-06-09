@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+
+type FetchError = { status: number; message: string };
 
 type SiteAddress = {
   line1: string;
@@ -43,19 +45,30 @@ function formatDate(iso: string | null): string {
 
 export function FieldAllocationsPage() {
   const { authFetch } = useAuth();
+  const navigate = useNavigate();
   const [allocations, setAllocations] = useState<Allocation[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<FetchError | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const response = await authFetch("/field/my-allocations");
-        if (!response.ok) throw new Error(await response.text());
+        if (!response.ok) {
+          let message = response.statusText;
+          try {
+            const body = (await response.json()) as { message?: string };
+            if (body && typeof body.message === "string") message = body.message;
+          } catch {
+            // body was not JSON — keep the statusText
+          }
+          if (!cancelled) setError({ status: response.status, message });
+          return;
+        }
         const data = (await response.json()) as Allocation[];
         if (!cancelled) setAllocations(data);
       } catch (err) {
-        if (!cancelled) setError((err as Error).message);
+        if (!cancelled) setError({ status: 0, message: (err as Error).message });
       }
     })();
     return () => {
@@ -64,9 +77,36 @@ export function FieldAllocationsPage() {
   }, [authFetch]);
 
   if (error) {
+    if (error.status === 403) {
+      return (
+        <div className="field-card" role="alert">
+          <EmptyState
+            icon="🔒"
+            heading="Mobile access not provisioned"
+            subtext={
+              error.message ||
+              "Your account isn't linked to a worker profile yet. Contact your office administrator to enable mobile access."
+            }
+            action={
+              <button
+                type="button"
+                className="field-btn"
+                onClick={() => navigate("/")}
+              >
+                Back to web view
+              </button>
+            }
+          />
+        </div>
+      );
+    }
     return (
-      <div className="field-card" role="alert" style={{ color: "#A32D2D" }}>
-        {error}
+      <div className="field-card" role="alert">
+        <EmptyState
+          icon="⚠️"
+          heading="Couldn't load allocations"
+          subtext={error.message || "Something went wrong loading your allocations. Pull down to refresh or try again later."}
+        />
       </div>
     );
   }

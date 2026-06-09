@@ -9,7 +9,7 @@ import {
   Query,
   UseGuards
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiPropertyOptional, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiPropertyOptional, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { IsBoolean, IsIn, IsOptional, IsString } from "class-validator";
 import { Type } from "class-transformer";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
@@ -120,6 +120,10 @@ export class ContactsController {
   /** Fetch a single contact by id, or 404. */
   @Get(":id")
   @RequirePermissions("directory.view")
+  @ApiOperation({ summary: "Fetch a single contact by id." })
+  @ApiParam({ name: "id", description: "Contact id to fetch" })
+  @ApiResponse({ status: 200, description: "Contact found." })
+  @ApiResponse({ status: 404, description: "Contact not found." })
   get(@Param("id") id: string) {
     return this.service.get(id);
   }
@@ -136,6 +140,14 @@ export class ContactsController {
   /** Patch a contact; supplying `organisationType` + `organisationId` together reassigns it to a different organisation. */
   @Patch(":id")
   @RequirePermissions("directory.manage")
+  @ApiOperation({
+    summary:
+      "Patch a contact. Supplying organisationType + organisationId together reassigns the contact to a different organisation."
+  })
+  @ApiParam({ name: "id", description: "Contact id to update" })
+  @ApiResponse({ status: 200, description: "Updated contact." })
+  @ApiResponse({ status: 400, description: "Invalid destination organisationType on reassignment." })
+  @ApiResponse({ status: 404, description: "Contact or destination organisation not found." })
   update(@Param("id") id: string, @Body() dto: UpdateContactDto) {
     return this.service.update(id, dto as never);
   }

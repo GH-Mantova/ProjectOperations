@@ -181,6 +181,50 @@ async function persistMockFileBytes(itemId: string, content: Buffer): Promise<vo
   await writeFile(join(dir, itemId), content);
 }
 
+// Allocates a canonical J-YYYY-NNN job number for a seeded job, idempotently.
+// Mirrors JobNumberService.generate() since the seed runs outside Nest DI.
+//
+// Two wrinkles the production service doesn't have to handle:
+//   1. Re-running the seed must reuse the previous number rather than burn
+//      a fresh sequence slot — look up by stable seed id first.
+//   2. Other seed modules (e.g. seed-initial-services.ts) hardcode canonical
+//      IDs in their fixtures and don't touch JobNumberSequence, so the
+//      sequence row can lag behind reality on a fresh reset. We compute
+//      next = max(rows-for-year, sequence.lastNumber) + 1 to skip past
+//      any pre-allocated IDs, then push the sequence forward so production
+//      allocations don't collide either.
+async function allocateSeedJobNumber(
+  seedId: string,
+  year: number
+): Promise<string> {
+  const existing = await prisma.job.findUnique({
+    where: { id: seedId },
+    select: { jobNumber: true }
+  });
+  if (existing) return existing.jobNumber;
+
+  const prefix = `J-${year}-`;
+  const usedRows = await prisma.job.findMany({
+    where: { jobNumber: { startsWith: prefix } },
+    select: { jobNumber: true }
+  });
+  let maxUsed = 0;
+  for (const row of usedRows) {
+    const parsed = parseInt(row.jobNumber.slice(prefix.length), 10);
+    if (Number.isFinite(parsed) && parsed > maxUsed) maxUsed = parsed;
+  }
+  const sequenceRow = await prisma.jobNumberSequence.findUnique({ where: { year } });
+  const next = Math.max(maxUsed, sequenceRow?.lastNumber ?? 0) + 1;
+
+  await prisma.jobNumberSequence.upsert({
+    where: { year },
+    update: { lastNumber: next },
+    create: { year, lastNumber: next }
+  });
+
+  return `${prefix}${String(next).padStart(3, "0")}`;
+}
+
 async function main() {
   await prisma.healthcheckSeedMarker.upsert({
     where: { name: "foundation" },
@@ -2657,8 +2701,9 @@ async function main() {
       }
     });
 
+    const convertedJobNumber = await allocateSeedJobNumber("seed-job-converted", 2026);
     const job = await prisma.job.upsert({
-      where: { jobNumber: "JOB-2026-001" },
+      where: { id: "seed-job-converted" },
       update: {
         name: "North precinct services package",
         description: "Converted awarded tender for live delivery planning.",
@@ -2670,7 +2715,8 @@ async function main() {
         supervisorId: supervisorUser?.id
       },
       create: {
-        jobNumber: "JOB-2026-001",
+        id: "seed-job-converted",
+        jobNumber: convertedJobNumber,
         name: "North precinct services package",
         description: "Converted awarded tender for live delivery planning.",
         clientId: clientA.id,
@@ -3417,17 +3463,18 @@ async function main() {
       }
     });
 
+    const jobFolderRelativePath = `Project Operations/Jobs/${job.jobNumber}_north-precinct-services-package`;
     const jobFolder = await prisma.sharePointFolderLink.upsert({
       where: {
         siteId_driveId_itemId: {
           siteId: "project-operations-site",
           driveId: "project-operations-library",
-          itemId: "mock-folder-job-job-2026-001"
+          itemId: "mock-folder-seed-job-converted"
         }
       },
       update: {
         name: job.name,
-        relativePath: "Project Operations/Jobs/JOB-2026-001_north-precinct-services-package",
+        relativePath: jobFolderRelativePath,
         module: "jobs",
         linkedEntityType: "Job",
         linkedEntityId: job.id
@@ -3435,9 +3482,9 @@ async function main() {
       create: {
         siteId: "project-operations-site",
         driveId: "project-operations-library",
-        itemId: "mock-folder-job-job-2026-001",
+        itemId: "mock-folder-seed-job-converted",
         name: job.name,
-        relativePath: "Project Operations/Jobs/JOB-2026-001_north-precinct-services-package",
+        relativePath: jobFolderRelativePath,
         module: "jobs",
         linkedEntityType: "Job",
         linkedEntityId: job.id
@@ -3677,8 +3724,9 @@ async function main() {
       }
     });
 
+    const archivedJobNumber = await allocateSeedJobNumber("seed-job-archived", 2025);
     const archivedJob = await prisma.job.upsert({
-      where: { jobNumber: "JOB-2025-099" },
+      where: { id: "seed-job-archived" },
       update: {
         name: "South precinct closeout package",
         description: "Historical archived job for closeout and archive visibility.",
@@ -3689,7 +3737,8 @@ async function main() {
         supervisorId: supervisorUser?.id ?? null
       },
       create: {
-        jobNumber: "JOB-2025-099",
+        id: "seed-job-archived",
+        jobNumber: archivedJobNumber,
         name: "South precinct closeout package",
         description: "Historical archived job for closeout and archive visibility.",
         clientId: clientB.id,

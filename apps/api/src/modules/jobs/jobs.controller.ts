@@ -1,5 +1,12 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiResponse,
+  ApiTags
+} from "@nestjs/swagger";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
@@ -32,6 +39,12 @@ export class JobsController {
   @Get()
   @RequirePermissions("jobs.view")
   @ApiOperation({ summary: "List jobs" })
+  @ApiQuery({ name: "q", required: false, description: "Free-text search across job name and reference" })
+  @ApiQuery({ name: "page", required: false, description: "Page number (1-based)" })
+  @ApiQuery({ name: "pageSize", required: false, description: "Page size (max 100)" })
+  @ApiQuery({ name: "limit", required: false, description: "Alias for pageSize (max 100)" })
+  @ApiResponse({ status: 200, description: "Paginated list of jobs." })
+  @ApiResponse({ status: 400, description: "Invalid query parameters." })
   list(@Query() query: JobQueryDto) {
     return this.service.list(query);
   }
@@ -39,6 +52,12 @@ export class JobsController {
   @Get("archive")
   @RequirePermissions("jobs.view")
   @ApiOperation({ summary: "List archived jobs with read-only historical visibility" })
+  @ApiQuery({ name: "q", required: false, description: "Free-text search across job name and reference" })
+  @ApiQuery({ name: "page", required: false, description: "Page number (1-based)" })
+  @ApiQuery({ name: "pageSize", required: false, description: "Page size (max 100)" })
+  @ApiQuery({ name: "limit", required: false, description: "Alias for pageSize (max 100)" })
+  @ApiResponse({ status: 200, description: "Paginated list of archived (closed-out) jobs." })
+  @ApiResponse({ status: 400, description: "Invalid query parameters." })
   listArchive(@Query() query: JobQueryDto) {
     return this.service.listArchive(query);
   }
@@ -49,6 +68,9 @@ export class JobsController {
     summary:
       "Create a job manually (without a tender source). The frontend NewJobSlideOver modal calls this. Tender-sourced jobs continue to flow through the convert-to-job endpoint."
   })
+  @ApiResponse({ status: 201, description: "Created job." })
+  @ApiResponse({ status: 400, description: "Validation failed (missing/invalid fields)." })
+  @ApiResponse({ status: 404, description: "Referenced client, site or contact not found." })
   create(@Body() dto: CreateJobDto, @CurrentUser() actor: { sub: string }) {
     return this.service.createJob(dto, actor.sub);
   }
@@ -56,6 +78,9 @@ export class JobsController {
   @Get(":id")
   @RequirePermissions("jobs.view")
   @ApiOperation({ summary: "Get job detail" })
+  @ApiParam({ name: "id", description: "Job id" })
+  @ApiResponse({ status: 200, description: "Job detail with stages, activities, issues and variations." })
+  @ApiResponse({ status: 404, description: "Job not found." })
   getById(@Param("id") id: string) {
     return this.service.getById(id);
   }
@@ -63,6 +88,10 @@ export class JobsController {
   @Patch(":id")
   @RequirePermissions("jobs.manage")
   @ApiOperation({ summary: "Update a job" })
+  @ApiParam({ name: "id", description: "Job id to update" })
+  @ApiResponse({ status: 200, description: "Updated job." })
+  @ApiResponse({ status: 400, description: "Validation failed (missing/invalid fields)." })
+  @ApiResponse({ status: 404, description: "Job not found." })
   update(@Param("id") id: string, @Body() dto: UpdateJobDto, @CurrentUser() actor: { sub: string }) {
     return this.service.updateJob(id, dto, actor.sub);
   }
@@ -70,6 +99,10 @@ export class JobsController {
   @Patch(":id/status")
   @RequirePermissions("jobs.manage")
   @ApiOperation({ summary: "Update job status" })
+  @ApiParam({ name: "id", description: "Job id whose status is being updated" })
+  @ApiResponse({ status: 200, description: "Updated job status." })
+  @ApiResponse({ status: 400, description: "Invalid status transition or payload." })
+  @ApiResponse({ status: 404, description: "Job not found." })
   updateStatus(@Param("id") id: string, @Body() dto: UpdateJobStatusDto, @CurrentUser() actor: { sub: string }) {
     return this.service.updateStatus(id, dto, actor.sub);
   }
@@ -77,6 +110,10 @@ export class JobsController {
   @Post(":id/stages")
   @RequirePermissions("jobs.manage")
   @ApiOperation({ summary: "Create job stage" })
+  @ApiParam({ name: "id", description: "Job id the stage belongs to" })
+  @ApiResponse({ status: 201, description: "Created job stage." })
+  @ApiResponse({ status: 400, description: "Validation failed (missing/invalid fields)." })
+  @ApiResponse({ status: 404, description: "Job not found." })
   createStage(@Param("id") id: string, @Body() dto: CreateJobStageDto, @CurrentUser() actor: { sub: string }) {
     return this.service.createStage(id, dto, actor.sub);
   }
@@ -84,6 +121,11 @@ export class JobsController {
   @Patch(":id/stages/:stageId")
   @RequirePermissions("jobs.manage")
   @ApiOperation({ summary: "Update job stage" })
+  @ApiParam({ name: "id", description: "Job id the stage belongs to" })
+  @ApiParam({ name: "stageId", description: "Stage id to update" })
+  @ApiResponse({ status: 200, description: "Updated job stage." })
+  @ApiResponse({ status: 400, description: "Validation failed (missing/invalid fields)." })
+  @ApiResponse({ status: 404, description: "Job or stage not found." })
   updateStage(
     @Param("id") id: string,
     @Param("stageId") stageId: string,
@@ -96,6 +138,10 @@ export class JobsController {
   @Post(":id/activities")
   @RequirePermissions("jobs.manage")
   @ApiOperation({ summary: "Create job activity" })
+  @ApiParam({ name: "id", description: "Job id the activity belongs to" })
+  @ApiResponse({ status: 201, description: "Created job activity." })
+  @ApiResponse({ status: 400, description: "Validation failed (missing/invalid fields)." })
+  @ApiResponse({ status: 404, description: "Job not found." })
   createActivity(@Param("id") id: string, @Body() dto: CreateJobActivityDto, @CurrentUser() actor: { sub: string }) {
     return this.service.createActivity(id, dto, actor.sub);
   }
@@ -103,6 +149,11 @@ export class JobsController {
   @Patch(":id/activities/:activityId")
   @RequirePermissions("jobs.manage")
   @ApiOperation({ summary: "Update job activity" })
+  @ApiParam({ name: "id", description: "Job id the activity belongs to" })
+  @ApiParam({ name: "activityId", description: "Activity id to update" })
+  @ApiResponse({ status: 200, description: "Updated job activity." })
+  @ApiResponse({ status: 400, description: "Validation failed (missing/invalid fields)." })
+  @ApiResponse({ status: 404, description: "Job or activity not found." })
   updateActivity(
     @Param("id") id: string,
     @Param("activityId") activityId: string,
@@ -115,6 +166,10 @@ export class JobsController {
   @Post(":id/issues")
   @RequirePermissions("jobs.manage")
   @ApiOperation({ summary: "Create job issue" })
+  @ApiParam({ name: "id", description: "Job id the issue belongs to" })
+  @ApiResponse({ status: 201, description: "Created job issue." })
+  @ApiResponse({ status: 400, description: "Validation failed (missing/invalid fields)." })
+  @ApiResponse({ status: 404, description: "Job not found." })
   createIssue(@Param("id") id: string, @Body() dto: CreateJobIssueDto, @CurrentUser() actor: { sub: string }) {
     return this.service.createIssue(id, dto, actor.sub);
   }
@@ -122,6 +177,11 @@ export class JobsController {
   @Patch(":id/issues/:issueId")
   @RequirePermissions("jobs.manage")
   @ApiOperation({ summary: "Update job issue" })
+  @ApiParam({ name: "id", description: "Job id the issue belongs to" })
+  @ApiParam({ name: "issueId", description: "Issue id to update" })
+  @ApiResponse({ status: 200, description: "Updated job issue." })
+  @ApiResponse({ status: 400, description: "Validation failed (missing/invalid fields)." })
+  @ApiResponse({ status: 404, description: "Job or issue not found." })
   updateIssue(
     @Param("id") id: string,
     @Param("issueId") issueId: string,
@@ -134,6 +194,10 @@ export class JobsController {
   @Post(":id/variations")
   @RequirePermissions("jobs.manage")
   @ApiOperation({ summary: "Create job variation" })
+  @ApiParam({ name: "id", description: "Job id the variation belongs to" })
+  @ApiResponse({ status: 201, description: "Created job variation." })
+  @ApiResponse({ status: 400, description: "Validation failed (missing/invalid fields)." })
+  @ApiResponse({ status: 404, description: "Job not found." })
   createVariation(@Param("id") id: string, @Body() dto: CreateJobVariationDto, @CurrentUser() actor: { sub: string }) {
     return this.service.createVariation(id, dto, actor.sub);
   }
@@ -141,6 +205,11 @@ export class JobsController {
   @Patch(":id/variations/:variationId")
   @RequirePermissions("jobs.manage")
   @ApiOperation({ summary: "Update job variation" })
+  @ApiParam({ name: "id", description: "Job id the variation belongs to" })
+  @ApiParam({ name: "variationId", description: "Variation id to update" })
+  @ApiResponse({ status: 200, description: "Updated job variation." })
+  @ApiResponse({ status: 400, description: "Validation failed (missing/invalid fields)." })
+  @ApiResponse({ status: 404, description: "Job or variation not found." })
   updateVariation(
     @Param("id") id: string,
     @Param("variationId") variationId: string,
@@ -153,6 +222,10 @@ export class JobsController {
   @Post(":id/progress-entries")
   @RequirePermissions("jobs.manage")
   @ApiOperation({ summary: "Create job progress or daily note entry" })
+  @ApiParam({ name: "id", description: "Job id the progress entry belongs to" })
+  @ApiResponse({ status: 201, description: "Created job progress entry." })
+  @ApiResponse({ status: 400, description: "Validation failed (missing/invalid fields)." })
+  @ApiResponse({ status: 404, description: "Job not found." })
   createProgress(
     @Param("id") id: string,
     @Body() dto: CreateJobProgressEntryDto,
@@ -164,6 +237,10 @@ export class JobsController {
   @Patch(":id/closeout")
   @RequirePermissions("jobs.manage")
   @ApiOperation({ summary: "Create or update job closeout and archive state" })
+  @ApiParam({ name: "id", description: "Job id to close out / archive" })
+  @ApiResponse({ status: 200, description: "Job closeout payload after update." })
+  @ApiResponse({ status: 400, description: "Validation failed (missing/invalid fields)." })
+  @ApiResponse({ status: 404, description: "Job not found." })
   closeout(@Param("id") id: string, @Body() dto: CloseoutJobDto, @CurrentUser() actor: { sub: string }) {
     return this.service.closeoutJob(id, dto, actor.sub);
   }

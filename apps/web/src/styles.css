@@ -3555,6 +3555,33 @@ textarea {
   color: var(--brand-primary-dark, #004449);
 }
 
+.docs-tree__item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.docs-tree__item-label {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.docs-tree__item-sublabel {
+  font-size: 11px;
+  color: var(--text-secondary, #6B7280);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.docs-tree__item--active .docs-tree__item-sublabel {
+  color: var(--brand-primary-dark, #004449);
+  opacity: 0.75;
+}
+
 .docs-tree__group {
   margin-top: 8px;
 }

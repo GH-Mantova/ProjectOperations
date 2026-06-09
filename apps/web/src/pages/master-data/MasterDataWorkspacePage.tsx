@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ContactsTab } from "../../components/contacts/ContactsTab";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { resolveMasterDataTab, type MasterDataTab } from "./master-data-tab-helpers";
 
-type Tab = "clients" | "sites" | "workers";
+type Tab = MasterDataTab;
 
 type Client = {
   id: string;
@@ -40,17 +41,30 @@ const STATUS_CLASS: Record<string, string> = {
 
 export function MasterDataWorkspacePage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const { authFetch } = useAuth();
-  const initialTab = (searchParams.get("tab") as Tab | null) ?? "clients";
-  const [tab, setTab] = useState<Tab>(initialTab === "workers" ? "clients" : initialTab);
+  const resolution = resolveMasterDataTab(searchParams);
+  const isWorkersRedirect = resolution.kind === "redirect";
+  const redirectTo = resolution.kind === "redirect" ? resolution.to : null;
 
   useEffect(() => {
+    if (redirectTo) {
+      navigate(redirectTo, { replace: true });
+    }
+  }, [redirectTo, navigate]);
+
+  const [tab, setTab] = useState<Tab>(resolution.kind === "tab" ? resolution.tab : "clients");
+
+  useEffect(() => {
+    if (isWorkersRedirect) return;
     if (tab !== searchParams.get("tab")) {
       const next = new URLSearchParams(searchParams);
       next.set("tab", tab);
       setSearchParams(next, { replace: true });
     }
-  }, [tab, searchParams, setSearchParams]);
+  }, [tab, searchParams, setSearchParams, isWorkersRedirect]);
+
+  if (isWorkersRedirect) return null;
 
   return (
     <div className="mdata-page">

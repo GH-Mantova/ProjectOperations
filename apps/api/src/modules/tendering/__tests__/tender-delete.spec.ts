@@ -19,11 +19,19 @@ function mockEmail() {
   return { sendNotificationEmail: jest.fn() };
 }
 
+function mockSharePoint() {
+  return {
+    ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined),
+    ensureTenderCategoryFolder: jest.fn().mockResolvedValue(undefined)
+  };
+}
+
 function makeService(prisma: ReturnType<typeof mockPrisma>, audit: ReturnType<typeof mockAudit>) {
   return new TenderingService(
     prisma as never,
     audit as never,
-    mockEmail() as never
+    mockEmail() as never,
+    mockSharePoint() as never
   );
 }
 

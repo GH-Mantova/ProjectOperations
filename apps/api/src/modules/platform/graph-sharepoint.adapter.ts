@@ -7,6 +7,8 @@ import {
   DownloadFileBytesInput,
   EnsureFolderInput,
   EnsureFolderResult,
+  ResolveDriveInput,
+  ResolveSiteInput,
   SharePointAdapter,
   SharePointFileNotFoundError,
   UploadFileInput,
@@ -147,6 +149,55 @@ export class GraphSharePointAdapter implements SharePointAdapter {
     }
     const arrayBuffer = await res.arrayBuffer();
     return Buffer.from(arrayBuffer);
+  }
+
+  // PR-64 — Look up the site ID for a SharePoint site via
+  // `GET /sites/{hostname}:{sitePath}`. Called once by
+  // SharePointService and cached.
+  async resolveSiteId(input: ResolveSiteInput): Promise<string> {
+    try {
+      const client = this.getClient();
+      const normalisedPath = input.sitePath.startsWith("/") ? input.sitePath : `/${input.sitePath}`;
+      const api = `/sites/${input.hostname}:${normalisedPath}`;
+      const result = (await client.api(api).select("id").get()) as { id?: string };
+      if (!result.id) {
+        throw new Error(`Graph /sites/${input.hostname}:${normalisedPath} returned no id.`);
+      }
+      return result.id;
+    } catch (error) {
+      this.logAndThrow("resolveSiteId", error, {
+        hostname: input.hostname,
+        sitePath: input.sitePath
+      });
+    }
+  }
+
+  // PR-64 — Find the drive (library) ID matching the configured
+  // library name. The site's default "Documents" library is the
+  // expected production target; this lets the operator change the name
+  // without code changes.
+  async resolveDriveId(input: ResolveDriveInput): Promise<string> {
+    try {
+      const client = this.getClient();
+      const api = `/sites/${input.siteId}/drives`;
+      const result = (await client.api(api).select("id,name").get()) as {
+        value?: Array<{ id?: string; name?: string }>;
+      };
+      const drives = result.value ?? [];
+      const match = drives.find((d) => d.name === input.libraryName);
+      if (!match?.id) {
+        const available = drives.map((d) => d.name ?? "?").join(", ");
+        throw new Error(
+          `Library "${input.libraryName}" not found on site ${input.siteId}. Available drives: ${available || "(none)"}.`
+        );
+      }
+      return match.id;
+    } catch (error) {
+      this.logAndThrow("resolveDriveId", error, {
+        siteId: input.siteId,
+        libraryName: input.libraryName
+      });
+    }
   }
 
   private getClient(): Client {

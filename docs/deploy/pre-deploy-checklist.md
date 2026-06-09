@@ -45,11 +45,10 @@ sign-off via `tendering-smoke-test-plan.md`.
 > [`tendering-smoke-test-plan.md`](./tendering-smoke-test-plan.md).
 
 > Dependencies: this checklist assumes **PR #289 (migration drift fix)**,
-> **PR-51 (Azure Mail.Send)**, and **PR #292 (OutlookEmailProvider
-> categorised errors + AZURE_MAIL_* env vars)** are merged into `main`.
-> PR-64 (Tender SharePoint folder auto-creation + 11 document categories)
-> is highly recommended before handoff so Sean / Raj see the production
-> folder layout. If any of these are still open, stop and merge them first.
+> **PR-51 (Azure Mail.Send)**, **PR #292 (OutlookEmailProvider
+> categorised errors + AZURE_MAIL_* env vars)**, and **PR-64 (Tender
+> SharePoint folder auto-creation + 11 document categories)** are merged
+> into `main`. If any are still open, stop and merge them first.
 
 ---
 
@@ -103,6 +102,27 @@ restart the App Service so values take effect.
 - [ ] `SHAREPOINT_SITE_PATH=/sites/Initialservices`
 - [ ] `SHAREPOINT_LIBRARY_NAME=Documents`
 - [ ] `SHAREPOINT_TENDERS_ROOT=1. Operations/1. Tenders`
+
+> **Bootstrap (PR-64):** On first SharePoint call after restart the API
+> resolves the site ID via `GET /sites/{hostname}:{path}` and the drive
+> ID via `GET /sites/{siteId}/drives?$filter=name eq '{libraryName}'`,
+> then caches both for the process lifetime. If the legacy
+> `SHAREPOINT_SITE_ID` / `SHAREPOINT_LIBRARY_ID` env vars are set, they
+> win and no Graph resolution happens. The Microsoft Entra app
+> registration needs `Sites.ReadWrite.All` (already in scope per PR-51).
+>
+> **Jobs-won folder pattern is roadmap-parked.** PR-64 only wires the
+> Tender root (`1. Operations/1. Tenders/…`). The mirror pattern under
+> `1. Operations/2. Jobs won/{jobNumber}/{category}/` lands in a follow-up
+> tied to the tender → job conversion event.
+
+> **Section 7 smoke-test addendum (PR-64):** after Sean / Raj log in,
+> exercise: (a) create a fresh tender and confirm the 11 category
+> subfolders appear under `1. Operations/1. Tenders/{tenderNumber}/`;
+> (b) upload one document per category from the Tender Documents panel
+> and confirm each lands in the matching subfolder; (c) delete a document
+> and confirm the DB row goes but the SharePoint file remains (current
+> behaviour — out of scope for PR-64).
 
 ### M365 SSO
 

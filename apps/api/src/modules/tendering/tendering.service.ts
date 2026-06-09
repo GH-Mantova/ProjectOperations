@@ -1,8 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { EmailService } from "../email/email.service";
+import { SharePointService } from "../platform/sharepoint.service";
 import { QuickEditDto, TenderQueryDto, TenderSortField } from "./dto/tender-query.dto";
 import {
   CreateTenderActivityDto,
@@ -87,10 +88,16 @@ const tenderInclude = {
 
 @Injectable()
 export class TenderingService {
+  private readonly logger = new Logger(TenderingService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
-    private readonly email: EmailService
+    private readonly email: EmailService,
+    // PR-64 — auto-provisions the per-tender SharePoint folder structure
+    // (1. Operations/1. Tenders/{tenderNumber}/{category}) on create
+    // and duplicate. Provided by PlatformModule, already imported above.
+    private readonly sharePoint: SharePointService
   ) {}
 
   async list(query: TenderQueryDto) {
@@ -565,6 +572,8 @@ export class TenderingService {
       metadata: { tenderNumber: tender.tenderNumber }
     });
 
+    await this.provisionTenderFolders(tender, actorId);
+
     return tender;
   }
 
@@ -618,7 +627,29 @@ export class TenderingService {
       metadata: { sourceTenderId: id, tenderNumber: tender.tenderNumber }
     });
 
+    await this.provisionTenderFolders(tender, actorId);
+
     return tender;
+  }
+
+  // PR-64 — best-effort SharePoint folder provisioning on tender create
+  // / duplicate. Wraps SharePointService.ensureTenderFolderStructure so a
+  // Graph outage or misconfigured site can never roll back the tender
+  // row that was already committed. Uploads later re-ensure the specific
+  // category folder they need, so missed folders self-heal on first use.
+  private async provisionTenderFolders(
+    tender: { id: string; tenderNumber: string },
+    actorId?: string
+  ): Promise<void> {
+    try {
+      await this.sharePoint.ensureTenderFolderStructure(tender, actorId);
+    } catch (err) {
+      this.logger.warn(
+        `Tender folder provisioning failed for ${tender.tenderNumber}: ${
+          err instanceof Error ? err.message : String(err)
+        }. Folders will be created lazily on first upload.`
+      );
+    }
   }
 
   private async generateDuplicateNumber(sourceNumber: string): Promise<string> {

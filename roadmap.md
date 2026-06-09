@@ -393,7 +393,7 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
    client-filter sidebar with stars / PRIMARY / info-icon; new Client
    Detail side-drawer surfaced from both panels.
 
-🔲 Tender SharePoint folder auto-creation + 11 canonical document categories (PR-64 queued)
+🔧 Tender SharePoint folder auto-creation + 11 canonical document categories (PR-64 OPENED 2026-06-03 — feat/tender-folders-and-document-categories)
    On tender create, ensure-folder at
    `Documents/1. Operations/1. Tenders/{tenderNumber}/` plus 11 sub-folders
    (Tender Documents / Drawings / Specifications / Bill of Quantities /

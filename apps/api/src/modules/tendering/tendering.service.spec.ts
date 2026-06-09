@@ -8,7 +8,8 @@ describe("TenderingService", () => {
         tender: { findFirst: jest.fn(), create: jest.fn() }
       } as never,
       { write: jest.fn() } as never,
-      { sendNotificationEmail: jest.fn() } as never
+      { sendNotificationEmail: jest.fn() } as never,
+      { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never
     );
 
     await expect(
@@ -35,7 +36,8 @@ describe("TenderingService", () => {
     const service = new TenderingService(
       prisma as never,
       { write: jest.fn() } as never,
-      { sendNotificationEmail: jest.fn() } as never
+      { sendNotificationEmail: jest.fn() } as never,
+      { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never
     );
 
     return expect(
@@ -63,7 +65,8 @@ describe("TenderingService", () => {
         }
       } as never,
       { write: jest.fn() } as never,
-      { sendNotificationEmail: jest.fn() } as never
+      { sendNotificationEmail: jest.fn() } as never,
+      { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never
     );
 
     const result = await service.previewImport([
@@ -82,7 +85,8 @@ describe("TenderingService", () => {
     const service = new TenderingService(
       {} as never,
       { write: jest.fn() } as never,
-      { sendNotificationEmail: jest.fn() } as never
+      { sendNotificationEmail: jest.fn() } as never,
+      { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never
     );
 
     const addNoteSpy = jest.spyOn(service, "addNote").mockResolvedValue({ id: "tender-1" } as never);
@@ -110,7 +114,8 @@ describe("TenderingService", () => {
     const service = new TenderingService(
       {} as never,
       { write: jest.fn() } as never,
-      { sendNotificationEmail: jest.fn() } as never
+      { sendNotificationEmail: jest.fn() } as never,
+      { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never
     );
 
     await expect(

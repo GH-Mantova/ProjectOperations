@@ -264,6 +264,28 @@ function isJobNumberUniqueViolation(err: unknown): boolean {
   return false;
 }
 
+/**
+ * Service layer for the jobs module (§8 Jobs and Delivery). Covers the
+ * full delivery lifecycle: job CRUD, stages, activities, issues,
+ * variations, progress entries, status history, and closeout / archive.
+ * Also exposes the tender → job conversion path
+ * ({@link awardTenderClient} → {@link issueContract} →
+ * {@link convertTenderToJob}) plus the archived-job reuse and lifecycle
+ * rollback flows used by {@link TenderConversionController}.
+ *
+ * Mutating calls flow through {@link ensureNotReadOnly} so that once a
+ * job's closeout sets `readOnlyFrom`, writes are rejected with 403 — the
+ * archive is intentionally append-only. Every write also writes a row to
+ * `AuditLog` via {@link AuditService} and pokes
+ * {@link NotificationsService.refreshLiveFollowUps} so the activity feed
+ * stays current.
+ *
+ * Job numbers are canonical `J-YYYY-NNN`. Creation accepts an optional
+ * supplied number (validated via {@link JobNumberService.validate}) and
+ * otherwise generates one via {@link JobNumberService.generate}; both
+ * creation paths translate Prisma P2002 races into 409
+ * {@link ConflictException} via {@link isJobNumberUniqueViolation}.
+ */
 @Injectable()
 export class JobsService {
   constructor(
@@ -274,6 +296,12 @@ export class JobsService {
     private readonly jobNumberService: JobNumberService
   ) {}
 
+  /**
+   * Paginated list of active (non-archived) jobs ordered by `createdAt`
+   * desc. Excludes any job whose `closeout.archivedAt` is set; jobs with
+   * no closeout row are also included. `q` does case-insensitive matches
+   * on `jobNumber`, `name`, and `client.name`.
+   */
   async list(query: JobQueryDto) {
     const activeJobWhere: Prisma.JobWhereInput = {
       OR: [{ closeout: { is: null } }, { closeout: { is: { archivedAt: null } } }]
@@ -310,6 +338,12 @@ export class JobsService {
     };
   }
 
+  /**
+   * Paginated list of archived jobs (those with `closeout.archivedAt` set)
+   * ordered by `updatedAt` desc. Surface used by the Archive route to
+   * expose read-only historical jobs. Same `q` search semantics as
+   * {@link list}.
+   */
   async listArchive(query: JobQueryDto) {
     const where: Prisma.JobWhereInput = {
       closeout: {
@@ -348,6 +382,15 @@ export class JobsService {
     };
   }
 
+  /**
+   * Full job detail with the standard {@link jobInclude} graph (client,
+   * site, source tender, PM/supervisor, stages → activities → shifts,
+   * issues, variations, progress entries, status history, closeout) plus
+   * any {@link DocumentLink} rows attached to this job (sorted newest
+   * first).
+   *
+   * @throws NotFoundException When no job with `id` exists.
+   */
   async getById(id: string) {
     const job = await this.requireJob(id);
 
@@ -470,6 +513,14 @@ export class JobsService {
     return this.getById(created.id);
   }
 
+  /**
+   * Patch a job's editable fields (name, description, site assignment,
+   * PM/supervisor). Status changes go through {@link updateStatus};
+   * `jobNumber` and `clientId` are immutable on this path.
+   *
+   * @throws ForbiddenException When the job is archived (read-only).
+   * @throws NotFoundException When the job does not exist.
+   */
   async updateJob(id: string, dto: UpdateJobDto, actorId?: string) {
     await this.ensureNotReadOnly(id);
     await this.requireJob(id);
@@ -497,6 +548,15 @@ export class JobsService {
     return this.getById(id);
   }
 
+  /**
+   * Transition a job to a new status. Updates `job.status` and writes a
+   * {@link JobStatusHistory} row capturing `fromStatus`, `toStatus`, the
+   * optional `note`, and `actorId` — both inside the same transaction so
+   * the history is always consistent with the job's current status.
+   *
+   * @throws ForbiddenException When the job is archived (read-only).
+   * @throws NotFoundException When the job does not exist.
+   */
   async updateStatus(id: string, dto: UpdateJobStatusDto, actorId?: string) {
     await this.ensureNotReadOnly(id);
     const job = await this.requireJob(id);
@@ -534,6 +594,14 @@ export class JobsService {
     return this.getById(id);
   }
 
+  /**
+   * Append a new stage to a job. `stageOrder` defaults to 0 and `status`
+   * defaults to `"PLANNED"`. `startDate` / `endDate` are parsed from ISO
+   * strings when provided.
+   *
+   * @throws ForbiddenException When the job is archived (read-only).
+   * @throws NotFoundException When the job does not exist.
+   */
   async createStage(jobId: string, dto: CreateJobStageDto, actorId?: string) {
     await this.ensureNotReadOnly(jobId);
     await this.requireJob(jobId);
@@ -562,6 +630,15 @@ export class JobsService {
     return this.getById(jobId);
   }
 
+  /**
+   * Patch a stage, scoped to its job parent. Each field is overwritten
+   * with the supplied value; date fields are re-parsed and reset to
+   * `null` when omitted.
+   *
+   * @throws ForbiddenException When the job is archived (read-only).
+   * @throws NotFoundException When the stage doesn't exist or doesn't
+   *   belong to `jobId`.
+   */
   async updateStage(jobId: string, stageId: string, dto: UpdateJobStageDto, actorId?: string) {
     await this.ensureNotReadOnly(jobId);
     const stage = await this.requireStage(jobId, stageId);
@@ -590,6 +667,15 @@ export class JobsService {
     return this.getById(jobId);
   }
 
+  /**
+   * Create an activity under a stage. `activityOrder` defaults to 0,
+   * `status` defaults to `"PLANNED"`. The stage must belong to the same
+   * job — the parent linkage is validated before insert.
+   *
+   * @throws ForbiddenException When the job is archived (read-only).
+   * @throws NotFoundException When the job or stage does not exist (the
+   *   latter scoped to `jobId`).
+   */
   async createActivity(jobId: string, dto: CreateJobActivityDto, actorId?: string) {
     await this.ensureNotReadOnly(jobId);
     await this.requireJob(jobId);
@@ -621,6 +707,15 @@ export class JobsService {
     return this.getById(jobId);
   }
 
+  /**
+   * Patch an activity, scoped to its job parent. Activities can be moved
+   * between stages by supplying a different `jobStageId`; the target
+   * stage is verified to belong to the same job.
+   *
+   * @throws ForbiddenException When the job is archived (read-only).
+   * @throws NotFoundException When the activity or target stage doesn't
+   *   exist or doesn't belong to `jobId`.
+   */
   async updateActivity(jobId: string, activityId: string, dto: UpdateJobActivityDto, actorId?: string) {
     await this.ensureNotReadOnly(jobId);
     const activity = await this.requireActivity(jobId, activityId);
@@ -652,6 +747,14 @@ export class JobsService {
     return this.getById(jobId);
   }
 
+  /**
+   * Raise a new issue against a job. `severity` defaults to `"MEDIUM"`,
+   * `status` to `"OPEN"`. `reportedById` is stamped from `actorId` so
+   * the caller is always recorded as the reporter.
+   *
+   * @throws ForbiddenException When the job is archived (read-only).
+   * @throws NotFoundException When the job does not exist.
+   */
   async createIssue(jobId: string, dto: CreateJobIssueDto, actorId?: string) {
     await this.ensureNotReadOnly(jobId);
     await this.requireJob(jobId);
@@ -680,6 +783,14 @@ export class JobsService {
     return this.getById(jobId);
   }
 
+  /**
+   * Patch an issue, scoped to its job parent. `reportedById` is
+   * preserved from creation and is not overwritten on update.
+   *
+   * @throws ForbiddenException When the job is archived (read-only).
+   * @throws NotFoundException When the issue doesn't exist or doesn't
+   *   belong to `jobId`.
+   */
   async updateIssue(jobId: string, issueId: string, dto: UpdateJobIssueDto, actorId?: string) {
     await this.ensureNotReadOnly(jobId);
     const issue = await this.requireIssue(jobId, issueId);
@@ -707,6 +818,16 @@ export class JobsService {
     return this.getById(jobId);
   }
 
+  /**
+   * Create a job variation. `reference` is enforced unique within a job
+   * via {@link ensureUniqueVariationReference}. `amount` is parsed into
+   * a `Prisma.Decimal` when supplied; `status` defaults to `"PROPOSED"`.
+   *
+   * @throws ForbiddenException When the job is archived (read-only).
+   * @throws NotFoundException When the job does not exist.
+   * @throws ConflictException When the variation `reference` is already
+   *   in use on this job.
+   */
   async createVariation(jobId: string, dto: CreateJobVariationDto, actorId?: string) {
     await this.ensureNotReadOnly(jobId);
     await this.requireJob(jobId);
@@ -737,6 +858,17 @@ export class JobsService {
     return this.getById(jobId);
   }
 
+  /**
+   * Patch a variation, scoped to its job parent. If `reference` is
+   * changed it is re-checked for uniqueness within the job; if
+   * unchanged the check is skipped.
+   *
+   * @throws ForbiddenException When the job is archived (read-only).
+   * @throws NotFoundException When the variation doesn't exist or
+   *   doesn't belong to `jobId`.
+   * @throws ConflictException When the new `reference` collides with
+   *   another variation on this job.
+   */
   async updateVariation(jobId: string, variationId: string, dto: UpdateJobVariationDto, actorId?: string) {
     await this.ensureNotReadOnly(jobId);
     const variation = await this.requireVariation(jobId, variationId);
@@ -769,6 +901,15 @@ export class JobsService {
     return this.getById(jobId);
   }
 
+  /**
+   * Append a progress or daily-note entry to a job. `entryType` defaults
+   * to `"PROGRESS"`; `entryDate` is required and parsed from an ISO
+   * string. `authorUserId` is stamped from `actorId` so authorship is
+   * always preserved.
+   *
+   * @throws ForbiddenException When the job is archived (read-only).
+   * @throws NotFoundException When the job does not exist.
+   */
   async createProgressEntry(jobId: string, dto: CreateJobProgressEntryDto, actorId?: string) {
     await this.ensureNotReadOnly(jobId);
     await this.requireJob(jobId);
@@ -797,6 +938,22 @@ export class JobsService {
     return this.getById(jobId);
   }
 
+  /**
+   * Upsert the job's closeout record and stamp the job into its final
+   * state. `status` defaults to `"CLOSED"`; `archivedAt` and
+   * `readOnlyFrom` default to "now". For closeouts that land in
+   * `"CLOSED"` or `"ARCHIVED"` the job's own status is forced to
+   * `"COMPLETE"`. The transaction also writes a {@link JobStatusHistory}
+   * row capturing the transition.
+   *
+   * Once `readOnlyFrom` is in the past the job is gated by
+   * {@link ensureNotReadOnly} on every subsequent write call. This
+   * method itself does not enforce read-only — closeout is the
+   * transition that creates the read-only state, and re-runs are
+   * allowed so the closeout record can be re-saved by admins.
+   *
+   * @throws NotFoundException When the job does not exist.
+   */
   async closeoutJob(jobId: string, dto: CloseoutJobDto, actorId?: string) {
     const job = await this.requireJob(jobId);
     const closeoutStatus = dto.status ?? "CLOSED";
@@ -856,6 +1013,16 @@ export class JobsService {
     return this.getById(jobId);
   }
 
+  /**
+   * Mark a tender client as the winner of the tender. First clears
+   * `isAwarded` from any other tender client on the same tender (only
+   * one can be awarded at a time), then flips the supplied client's
+   * `isAwarded` flag and moves the tender into `"AWARDED"` status — all
+   * inside one transaction.
+   *
+   * @throws NotFoundException When the tender or the tender client does
+   *   not exist (the latter scoped to `tenderId`).
+   */
   async awardTenderClient(tenderId: string, tenderClientId: string, actorId?: string) {
     const tender = await this.requireTender(tenderId);
     const targetClient = tender.tenderClients.find((item) => item.id === tenderClientId);
@@ -896,6 +1063,17 @@ export class JobsService {
     return this.requireTender(tenderId);
   }
 
+  /**
+   * Issue a contract against the previously-awarded tender client.
+   * `contractIssuedAt` defaults to "now". Sets `contractIssued = true`
+   * on the tender client and transitions the tender to
+   * `"CONTRACT_ISSUED"`.
+   *
+   * @throws NotFoundException When the tender or the supplied tender
+   *   client does not exist.
+   * @throws BadRequestException When the supplied tender client has
+   *   not been awarded — only the awarded client can sign a contract.
+   */
   async issueContract(tenderId: string, dto: IssueTenderContractDto, actorId?: string) {
     const tender = await this.requireTender(tenderId);
     const targetClient = tender.tenderClients.find((item) => item.id === dto.tenderClientId);
@@ -940,6 +1118,36 @@ export class JobsService {
     return this.requireTender(tenderId);
   }
 
+  /**
+   * Convert an awarded-and-contracted tender into a brand-new job.
+   * Resolves a canonical job number via {@link JobNumberService}
+   * (validating supplied or generating fresh — see {@link createJob}
+   * for the same semantics), provisions a SharePoint folder under
+   * `Project Operations/Jobs/{jobNumber}_{slug(name)}`, and creates the
+   * job + {@link JobConversion} bridge row + a {@link SearchEntry}
+   * inside one transaction. Selected tender documents are copied
+   * forward as {@link DocumentLink} rows pointing at the same
+   * SharePoint folder/file links. The source tender is transitioned to
+   * `"CONVERTED"`.
+   *
+   * Document carry-forward modes:
+   *   - `carryTenderDocuments = false` → no documents carried.
+   *   - `carryTenderDocuments = true`, no IDs → all tender documents carried.
+   *   - `carryTenderDocuments = true`, with IDs → only the listed
+   *     documents are carried (all IDs must belong to this tender).
+   *
+   * @throws NotFoundException When the tender doesn't exist.
+   * @throws ConflictException When the tender already has a source job,
+   *   or when a job with the resolved `jobNumber` already exists (incl.
+   *   the P2002 race during the transaction — the error payload then
+   *   includes `archivedJobId` and `isArchived` so the UI can offer the
+   *   reuse-archived flow).
+   * @throws BadRequestException When the tender isn't in
+   *   `"CONTRACT_ISSUED"`, no awarded-and-contracted client is found,
+   *   `tenderDocumentIds` is supplied without `carryTenderDocuments`,
+   *   any supplied document ID doesn't belong to this tender, or the
+   *   supplied `jobNumber` fails canonical validation.
+   */
   async convertTenderToJob(tenderId: string, dto: ConvertTenderToJobDto, actorId?: string) {
     const tender = await this.requireTender(tenderId);
 
@@ -1120,6 +1328,27 @@ export class JobsService {
     return this.getById(job.id);
   }
 
+  /**
+   * Reopen an archived job and attach it to a fresh tender conversion
+   * as a new stage. Reuses the existing job row (its `jobNumber` is
+   * unchanged, so no P2002 race is possible on this path) but: clears
+   * its closeout to `"REOPENED"` with null `archivedAt` / `readOnlyFrom`,
+   * sets status `"ACTIVE"`, links it to the new tender via
+   * {@link JobConversion}, and inserts a new {@link JobStage} named
+   * `dto.stageName` so the new work has its own home. Document
+   * carry-forward semantics match {@link convertTenderToJob}.
+   *
+   * The archived job is looked up by `archivedJobId` when supplied,
+   * else by case-insensitive `jobNumber` match restricted to archived
+   * rows.
+   *
+   * @throws NotFoundException When the tender doesn't exist.
+   * @throws ConflictException When the tender already has a source
+   *   job, or when no reusable archived job matches the lookup.
+   * @throws BadRequestException When no awarded-and-contracted client
+   *   is found, or document carry-forward inputs are inconsistent
+   *   (same rules as {@link convertTenderToJob}).
+   */
   async reuseArchivedJobConversion(tenderId: string, dto: ReuseArchivedJobConversionDto, actorId?: string) {
     const tender = await this.requireTender(tenderId);
 
@@ -1290,6 +1519,26 @@ export class JobsService {
     return this.getById(job.id);
   }
 
+  /**
+   * Move a tender backwards through its lifecycle to `dto.targetStage`
+   * (one of `DRAFT` / `IN_PROGRESS` / `SUBMITTED` / `AWARDED` /
+   * `CONTRACT_ISSUED`). Clears award + contract flags on every tender
+   * client first, then — for the `AWARDED` and `CONTRACT_ISSUED`
+   * targets only — re-applies them on the supplied
+   * `dto.tenderClientId` (falling back to the previously-awarded or
+   * first-listed client). Existing `contractIssuedAt` is preserved
+   * when rolling back to `CONTRACT_ISSUED`.
+   *
+   * If the tender already has a `sourceJob`, that job is archived
+   * (closeout status `"ARCHIVED"`, `archivedAt = now`) and detached
+   * from the tender (`sourceTenderId = null`) so future conversions
+   * don't collide. The {@link JobConversion} bridge row is removed.
+   *
+   * @throws NotFoundException When the tender or the supplied tender
+   *   client (for award-path targets) does not exist.
+   * @throws BadRequestException When `AWARDED` / `CONTRACT_ISSUED` is
+   *   requested but no client is supplied or resolvable.
+   */
   async rollbackTenderLifecycle(tenderId: string, dto: RollbackTenderLifecycleDto, actorId?: string) {
     const tender = await this.requireTender(tenderId);
     const requiresAwardPath = dto.targetStage === "AWARDED" || dto.targetStage === "CONTRACT_ISSUED";

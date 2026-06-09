@@ -18,7 +18,7 @@
 //   - You opt in by renaming to docs/pr-prompts/pr-NN-{slug}-ready.md
 //   - The watcher fires, runs the prompt, then moves the file out
 
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync, watch as fsWatch } from "node:fs";
 import {
   mkdir,
@@ -40,6 +40,13 @@ const PAUSED_DIR = path.join(PROMPT_DIR, "paused");
 
 const READY_PATTERN = /^pr-.*-ready\.md$/i;
 const DEBOUNCE_MS = 800;
+
+// Periodic rescan interval. fs.watch can silently drop events on Windows
+// (especially over network shares or after long idle periods), so we walk
+// the directory every N minutes as a belt-and-braces fallback. Rescan-
+// sourced enqueues are tagged in the log so they're distinguishable from
+// fs.watch events.
+const RESCAN_INTERVAL_MS = 5 * 60 * 1000;
 
 // Safety caps — tweak via env
 const MAX_TURNS = Number(process.env.PR_WATCHER_MAX_TURNS ?? 120);
@@ -146,13 +153,14 @@ function debouncedEnqueue(name) {
   debouncers.set(name, timer);
 }
 
-function enqueue(name) {
+function enqueue(name, { source = "watch" } = {}) {
   const filePath = path.join(PROMPT_DIR, name);
   if (!existsSync(filePath)) return;
   if (seen.has(name)) return;
   seen.add(name);
   queue.push(filePath);
-  log("queue", `${name} (depth: ${queue.length}${running ? ", busy" : ""})`);
+  const tail = `depth: ${queue.length}${running ? ", busy" : ""}, source: ${source}`;
+  log("queue", `${name} (${tail})`);
   drain();
 }
 
@@ -493,10 +501,60 @@ async function scanExisting() {
   try {
     const entries = await readdir(PROMPT_DIR);
     for (const name of entries) {
-      if (isReady(name)) enqueue(name);
+      if (isReady(name)) enqueue(name, { source: "startup-scan" });
     }
   } catch (err) {
     log("error", `initial scan: ${err.message}`);
+  }
+}
+
+// Periodic rescan — fallback for fs.watch events lost by the OS. Walks
+// the watched directory and queues any -ready.md file not already seen.
+// The `seen` Set covers both queued and in-flight prompts, so the dedupe
+// in `enqueue` makes this safely idempotent.
+async function rescan() {
+  if (queuePaused) return;
+  try {
+    const entries = await readdir(PROMPT_DIR);
+    for (const name of entries) {
+      if (isReady(name) && !seen.has(name)) {
+        enqueue(name, { source: "rescan" });
+      }
+    }
+  } catch (err) {
+    log("error", `rescan: ${err.message}`);
+  }
+}
+
+// Warn about claude.exe processes that survived a previous watcher run.
+// Windows only — `tasklist` isn't on Linux/macOS. We don't auto-kill: the
+// user may have intentionally-launched claude sessions that aren't ours.
+function warnOnOrphanClaudeProcesses() {
+  if (process.platform !== "win32") return;
+  try {
+    const out = execFileSync(
+      "tasklist",
+      ["/FI", "IMAGENAME eq claude.exe", "/FO", "CSV", "/NH"],
+      { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] },
+    );
+    const pids = [];
+    for (const line of out.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      // CSV row: "claude.exe","12345","Console","1","45,000 K"
+      const m = trimmed.match(/^"claude\.exe","(\d+)"/i);
+      if (m) pids.push(Number(m[1]));
+    }
+    if (pids.length > 0) {
+      log(
+        "WARN",
+        `Found ${pids.length} orphan claude.exe processes from previous watcher runs. PIDs: ${pids.join(", ")}. Run \`Get-Process claude | Stop-Process -Force\` to clean up.`,
+      );
+    }
+  } catch (err) {
+    // Most likely: tasklist returned no matches (it exits 0 with empty
+    // output) or isn't on PATH. Either way, not fatal.
+    log("watcher", `orphan check skipped: ${err.message}`);
   }
 }
 
@@ -511,6 +569,7 @@ async function scanExisting() {
   log("watcher", `auto-merge:  ${AUTO_MERGE ? "ON" : "OFF"}`);
   log("watcher", `merge-tmout: ${MERGE_TIMEOUT_MS / 60000} min`);
   log("watcher", `poll-every:  ${POLL_INTERVAL_MS / 1000} s`);
+  log("watcher", `rescan:      ${RESCAN_INTERVAL_MS / 60000} min`);
   if (STOP_AT_TIMESTAMP !== null) {
     const cutoffIso = new Date(STOP_AT_TIMESTAMP).toISOString();
     const minsFromNow = Math.round((STOP_AT_TIMESTAMP - Date.now()) / 60000);
@@ -518,6 +577,8 @@ async function scanExisting() {
   } else {
     log("watcher", `stop-at:     (none — runs until queue empty or SIGINT)`);
   }
+
+  warnOnOrphanClaudeProcesses();
 
   await scanExisting();
 
@@ -528,8 +589,11 @@ async function scanExisting() {
 
   watcher.on("error", (err) => log("error", `fs.watch: ${err.message}`));
 
+  const rescanTimer = setInterval(rescan, RESCAN_INTERVAL_MS);
+
   process.on("SIGINT", () => {
     log("watcher", "shutting down (SIGINT)");
+    clearInterval(rescanTimer);
     watcher.close();
     process.exit(0);
   });

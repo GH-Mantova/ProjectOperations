@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  ParseIntPipe,
   Post,
   Query,
   UploadedFile,
@@ -10,7 +11,7 @@ import {
   UseInterceptors
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
@@ -46,6 +47,23 @@ export class DocumentsController {
     @CurrentUser() actor: AuthenticatedUser
   ) {
     return this.service.listForEntity(linkedEntityType, linkedEntityId, actor);
+  }
+
+  @Get("sites/:siteId/documents")
+  @RequirePermissions("documents.view")
+  @ApiOperation({
+    summary: "List documents rolled up across all jobs linked to a site"
+  })
+  @ApiQuery({ name: "skip", required: false, type: Number })
+  @ApiQuery({ name: "take", required: false, type: Number })
+  @ApiResponse({ status: 200, description: "Paginated rollup of documents for the site's linked jobs" })
+  listForSite(
+    @Param("siteId") siteId: string,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Query("skip", new ParseIntPipe({ optional: true })) skip?: number,
+    @Query("take", new ParseIntPipe({ optional: true })) take?: number
+  ) {
+    return this.service.getDocumentsForSite(siteId, actor, { skip, take });
   }
 
   @Get(":id")

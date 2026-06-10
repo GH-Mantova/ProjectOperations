@@ -82,6 +82,9 @@ jobs:
       - name: Run Tendering browser smoke
         run: pnpm exec playwright test tests/e2e/tendering.spec.ts --reporter=list,html
 
+      - name: Run PR-acceptance E2E suite
+        run: pnpm exec playwright test tests/e2e/pr-acceptance --project=chromium --reporter=list,html
+
       - uses: actions/upload-artifact@v4.4.0
         if: ${{ !cancelled() && hashFiles('playwright-report/**') != '' }}
         with:

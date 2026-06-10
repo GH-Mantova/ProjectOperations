@@ -47,7 +47,7 @@ Leave the terminal open. The watcher prints one line per event:
 
 ```
 [2026-05-29T12:01:33Z] [watcher] watching C:\ProjectOperations2\docs\pr-prompts
-[2026-05-29T12:01:33Z] [watcher] pattern: pr-*-ready.md
+[2026-05-29T12:01:33Z] [watcher] pattern: (pr|rev)-*-ready.md
 [2026-05-29T12:04:11Z] [queue] pr-15-hide-duplicate-quote-preview-block-ready.md (depth: 1)
 [2026-05-29T12:04:11Z] [start] pr-15-hide-duplicate-quote-preview-block-ready.md (max-turns=120)
 ...
@@ -209,12 +209,28 @@ When `PR_WATCHER_AUTO_REVIEW=true`, the watcher polls GitHub every
 For each new PR it finds, it writes a review prompt file:
 
 ```
-docs/pr-prompts/pr-{N}-auto-review-ready.md
+docs/pr-prompts/rev-{N}-ready.md
 ```
+
+The `rev-` prefix distinguishes machine-generated review jobs from your
+hand-staged `pr-NN-{slug}-ready.md` authoring prompts at a glance.
+
+**Back-compat:** any `pr-{N}-auto-review-ready.md` file already on disk from
+a previous watcher run is still detected and treated as a review job. No
+manual rename needed.
 
 The normal `fs.watch` + queue machinery picks it up like any other prompt, so
 reviews serialize with authoring jobs — a review never runs concurrently with
 a coding agent.
+
+### Review-priority queue
+
+Review jobs jump the queue. When a `rev-*-ready.md` file arrives, it is
+inserted at the front of the in-memory queue (after any other review jobs
+already waiting), rather than pushed to the back. The currently-running job is
+never interrupted; the **next free slot** goes to a verdict rather than another
+authoring job. Rationale: review verdicts unblock Marco's merges, while
+authoring jobs can safely wait one slot.
 
 ### Reviewed-set seeding
 

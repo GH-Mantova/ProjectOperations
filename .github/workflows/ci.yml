@@ -86,7 +86,8 @@ jobs:
         with: { node-version: '22' }
       - run: node scripts/pr-gates/pr-gates.mjs
         env:
-          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
 
   web:
     name: Web — lint, logic tests, build

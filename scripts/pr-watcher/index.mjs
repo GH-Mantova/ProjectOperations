@@ -57,8 +57,9 @@ const MAX_TURNS = Number(process.env.PR_WATCHER_MAX_TURNS ?? 120);
 const CLAUDE_BIN = process.env.PR_WATCHER_CLAUDE_BIN ?? "claude";
 const GH_BIN = process.env.PR_WATCHER_GH_BIN ?? "gh";
 
-// Auto-merge polling
-const AUTO_MERGE = process.env.PR_WATCHER_AUTO_MERGE !== "false"; // default ON
+// Auto-merge polling — opt-in only. The review-gated workflow runs with this
+// OFF. Enable with PR_WATCHER_AUTO_MERGE=true for unattended chain runs only.
+const AUTO_MERGE = process.env.PR_WATCHER_AUTO_MERGE === "true"; // default OFF
 const MERGE_TIMEOUT_MS =
   Number(process.env.PR_WATCHER_MERGE_TIMEOUT_MIN ?? 90) * 60 * 1000;
 const POLL_INTERVAL_MS =

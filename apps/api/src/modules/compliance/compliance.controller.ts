@@ -136,6 +136,9 @@ export class ComplianceController {
    */
   @Get("workers/:workerProfileId/qualifications")
   @RequirePermissions("compliance.view")
+  @ApiOperation({ summary: "List a worker's qualifications with derived status." })
+  @ApiResponse({ status: 200, description: "Worker qualifications." })
+  @ApiResponse({ status: 404, description: "Worker profile not found." })
   listQualifications(@Param("workerProfileId") workerProfileId: string) {
     return this.service.listQualifications(workerProfileId);
   }
@@ -157,6 +160,7 @@ export class ComplianceController {
    */
   @Post("workers/:workerProfileId/qualifications")
   @RequirePermissions("compliance.manage")
+  @ApiOperation({ summary: "Create a qualification on a worker." })
   @ApiResponse({ status: 201, description: "Qualification created." })
   createQualification(
     @Param("workerProfileId") workerProfileId: string,
@@ -183,6 +187,9 @@ export class ComplianceController {
    */
   @Patch("workers/:workerProfileId/qualifications/:qualId")
   @RequirePermissions("compliance.manage")
+  @ApiOperation({ summary: "Partially update a worker's qualification." })
+  @ApiResponse({ status: 200, description: "Updated qualification." })
+  @ApiResponse({ status: 404, description: "Qualification not found." })
   patchQualification(
     @Param("workerProfileId") workerProfileId: string,
     @Param("qualId") qualId: string,
@@ -206,6 +213,9 @@ export class ComplianceController {
    */
   @Delete("workers/:workerProfileId/qualifications/:qualId")
   @RequirePermissions("compliance.manage")
+  @ApiOperation({ summary: "Delete a worker's qualification." })
+  @ApiResponse({ status: 200, description: "Deleted qualification ID." })
+  @ApiResponse({ status: 404, description: "Qualification not found." })
   deleteQualification(
     @Param("workerProfileId") workerProfileId: string,
     @Param("qualId") qualId: string

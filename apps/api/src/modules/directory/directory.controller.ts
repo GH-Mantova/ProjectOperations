@@ -287,6 +287,8 @@ export class DirectoryController {
   /** Attach a contact to a subcontractor; demotes any other primary contact on the same parent if `isPrimary` is set. */
   @Post("directory/:id/contacts")
   @RequirePermissions("directory.manage")
+  @ApiOperation({ summary: "Add a contact to a subcontractor." })
+  @ApiResponse({ status: 201, description: "Contact added." })
   addContact(
     @Param("id") id: string,
     @Body() dto: UpsertContactDto,
@@ -298,6 +300,9 @@ export class DirectoryController {
   /** Patch a contact, scoped to its subcontractor parent. */
   @Patch("directory/:id/contacts/:contactId")
   @RequirePermissions("directory.manage")
+  @ApiOperation({ summary: "Update a subcontractor contact." })
+  @ApiResponse({ status: 200, description: "Updated contact." })
+  @ApiResponse({ status: 404, description: "Contact not found." })
   patchContact(
     @Param("id") id: string,
     @Param("contactId") contactId: string,
@@ -309,6 +314,9 @@ export class DirectoryController {
   /** Hard-delete a contact, scoped to its subcontractor parent. */
   @Delete("directory/:id/contacts/:contactId")
   @RequirePermissions("directory.manage")
+  @ApiOperation({ summary: "Delete a subcontractor contact." })
+  @ApiResponse({ status: 200, description: "Contact deleted." })
+  @ApiResponse({ status: 404, description: "Contact not found." })
   deleteContact(@Param("id") id: string, @Param("contactId") contactId: string) {
     return this.service.deleteContact(id, contactId);
   }
@@ -317,6 +325,8 @@ export class DirectoryController {
   /** Attach a licence to a subcontractor; date strings are parsed server-side. */
   @Post("directory/:id/licences")
   @RequirePermissions("directory.manage")
+  @ApiOperation({ summary: "Add a licence to a subcontractor." })
+  @ApiResponse({ status: 201, description: "Licence added." })
   addSubLicence(@Param("id") id: string, @Body() dto: UpsertLicenceDto) {
     return this.service.addLicence({ subcontractorId: id }, dto as never);
   }
@@ -324,6 +334,9 @@ export class DirectoryController {
   /** Patch a licence, scoped to its subcontractor parent; returns the row with refreshed `status`. */
   @Patch("directory/:id/licences/:licenceId")
   @RequirePermissions("directory.manage")
+  @ApiOperation({ summary: "Update a subcontractor licence." })
+  @ApiResponse({ status: 200, description: "Updated licence." })
+  @ApiResponse({ status: 404, description: "Licence not found." })
   patchSubLicence(
     @Param("id") id: string,
     @Param("licenceId") licenceId: string,
@@ -335,6 +348,9 @@ export class DirectoryController {
   /** Hard-delete a licence, scoped to its subcontractor parent. */
   @Delete("directory/:id/licences/:licenceId")
   @RequirePermissions("directory.manage")
+  @ApiOperation({ summary: "Delete a subcontractor licence." })
+  @ApiResponse({ status: 200, description: "Licence deleted." })
+  @ApiResponse({ status: 404, description: "Licence not found." })
   deleteSubLicence(@Param("id") id: string, @Param("licenceId") licenceId: string) {
     return this.service.deleteLicence({ subcontractorId: id }, licenceId);
   }
@@ -343,6 +359,8 @@ export class DirectoryController {
   /** Attach an insurance row to a subcontractor; `expiryDate` parsed server-side. */
   @Post("directory/:id/insurances")
   @RequirePermissions("directory.manage")
+  @ApiOperation({ summary: "Add an insurance row to a subcontractor." })
+  @ApiResponse({ status: 201, description: "Insurance added." })
   addSubInsurance(@Param("id") id: string, @Body() dto: UpsertInsuranceDto) {
     return this.service.addInsurance({ subcontractorId: id }, dto as never);
   }
@@ -350,6 +368,9 @@ export class DirectoryController {
   /** Patch an insurance row, scoped to its subcontractor parent; returns the row with refreshed `status`. */
   @Patch("directory/:id/insurances/:insuranceId")
   @RequirePermissions("directory.manage")
+  @ApiOperation({ summary: "Update a subcontractor insurance row." })
+  @ApiResponse({ status: 200, description: "Updated insurance." })
+  @ApiResponse({ status: 404, description: "Insurance not found." })
   patchSubInsurance(
     @Param("id") id: string,
     @Param("insuranceId") insuranceId: string,
@@ -361,6 +382,9 @@ export class DirectoryController {
   /** Hard-delete an insurance row, scoped to its subcontractor parent. */
   @Delete("directory/:id/insurances/:insuranceId")
   @RequirePermissions("directory.manage")
+  @ApiOperation({ summary: "Delete a subcontractor insurance row." })
+  @ApiResponse({ status: 200, description: "Insurance deleted." })
+  @ApiResponse({ status: 404, description: "Insurance not found." })
   deleteSubInsurance(@Param("id") id: string, @Param("insuranceId") insuranceId: string) {
     return this.service.deleteInsurance({ subcontractorId: id }, insuranceId);
   }
@@ -369,6 +393,8 @@ export class DirectoryController {
   /** Create a credit application on a subcontractor; `direction` is required. */
   @Post("directory/:id/credit-applications")
   @RequirePermissions("directory.manage")
+  @ApiOperation({ summary: "Create a credit application on a subcontractor." })
+  @ApiResponse({ status: 201, description: "Credit application created." })
   addSubCreditApp(
     @Param("id") id: string,
     @Body() dto: UpsertCreditApplicationDto,
@@ -380,6 +406,9 @@ export class DirectoryController {
   /** Patch a credit application on a subcontractor; status transitions enforced against `directory.admin` and `finance.manage`. */
   @Patch("directory/:id/credit-applications/:appId")
   @RequirePermissions("directory.manage")
+  @ApiOperation({ summary: "Update a subcontractor credit application." })
+  @ApiResponse({ status: 200, description: "Updated credit application." })
+  @ApiResponse({ status: 404, description: "Credit application not found." })
   patchSubCreditApp(
     @Param("id") id: string,
     @Param("appId") appId: string,
@@ -401,6 +430,8 @@ export class DirectoryController {
   /** Attach a document metadata row to a subcontractor; `uploadedById` is taken from the caller. */
   @Post("directory/:id/documents")
   @RequirePermissions("directory.manage")
+  @ApiOperation({ summary: "Add a document metadata row to a subcontractor." })
+  @ApiResponse({ status: 201, description: "Document added." })
   addDoc(
     @Param("id") id: string,
     @Body() dto: UpsertDocumentDto,
@@ -412,6 +443,9 @@ export class DirectoryController {
   /** Patch a document metadata row, scoped to its subcontractor parent. */
   @Patch("directory/:id/documents/:docId")
   @RequirePermissions("directory.manage")
+  @ApiOperation({ summary: "Update a subcontractor document metadata row." })
+  @ApiResponse({ status: 200, description: "Updated document." })
+  @ApiResponse({ status: 404, description: "Document not found." })
   patchDoc(
     @Param("id") id: string,
     @Param("docId") docId: string,
@@ -423,6 +457,9 @@ export class DirectoryController {
   /** Hard-delete a document metadata row; the underlying file in storage is not touched. */
   @Delete("directory/:id/documents/:docId")
   @RequirePermissions("directory.manage")
+  @ApiOperation({ summary: "Delete a subcontractor document metadata row." })
+  @ApiResponse({ status: 200, description: "Document deleted." })
+  @ApiResponse({ status: 404, description: "Document not found." })
   deleteDoc(@Param("id") id: string, @Param("docId") docId: string) {
     return this.service.deleteDocument(id, docId);
   }
@@ -431,6 +468,8 @@ export class DirectoryController {
   /** Attach a licence to a client (polymorphic owner = `clientId`). */
   @Post("clients/:clientId/licences")
   @RequirePermissions("directory.manage")
+  @ApiOperation({ summary: "Add a licence to a client." })
+  @ApiResponse({ status: 201, description: "Licence added." })
   addClientLicence(@Param("clientId") clientId: string, @Body() dto: UpsertLicenceDto) {
     return this.service.addLicence({ clientId }, dto as never);
   }
@@ -438,6 +477,9 @@ export class DirectoryController {
   /** Patch a licence, scoped to its client parent. */
   @Patch("clients/:clientId/licences/:licenceId")
   @RequirePermissions("directory.manage")
+  @ApiOperation({ summary: "Update a client licence." })
+  @ApiResponse({ status: 200, description: "Updated licence." })
+  @ApiResponse({ status: 404, description: "Licence not found." })
   patchClientLicence(
     @Param("clientId") clientId: string,
     @Param("licenceId") licenceId: string,
@@ -449,6 +491,9 @@ export class DirectoryController {
   /** Hard-delete a licence, scoped to its client parent. */
   @Delete("clients/:clientId/licences/:licenceId")
   @RequirePermissions("directory.manage")
+  @ApiOperation({ summary: "Delete a client licence." })
+  @ApiResponse({ status: 200, description: "Licence deleted." })
+  @ApiResponse({ status: 404, description: "Licence not found." })
   deleteClientLicence(
     @Param("clientId") clientId: string,
     @Param("licenceId") licenceId: string
@@ -459,6 +504,8 @@ export class DirectoryController {
   /** Attach an insurance row to a client. */
   @Post("clients/:clientId/insurances")
   @RequirePermissions("directory.manage")
+  @ApiOperation({ summary: "Add an insurance row to a client." })
+  @ApiResponse({ status: 201, description: "Insurance added." })
   addClientInsurance(@Param("clientId") clientId: string, @Body() dto: UpsertInsuranceDto) {
     return this.service.addInsurance({ clientId }, dto as never);
   }
@@ -466,6 +513,9 @@ export class DirectoryController {
   /** Patch an insurance row, scoped to its client parent. */
   @Patch("clients/:clientId/insurances/:insuranceId")
   @RequirePermissions("directory.manage")
+  @ApiOperation({ summary: "Update a client insurance row." })
+  @ApiResponse({ status: 200, description: "Updated insurance." })
+  @ApiResponse({ status: 404, description: "Insurance not found." })
   patchClientInsurance(
     @Param("clientId") clientId: string,
     @Param("insuranceId") insuranceId: string,
@@ -477,6 +527,9 @@ export class DirectoryController {
   /** Hard-delete an insurance row, scoped to its client parent. */
   @Delete("clients/:clientId/insurances/:insuranceId")
   @RequirePermissions("directory.manage")
+  @ApiOperation({ summary: "Delete a client insurance row." })
+  @ApiResponse({ status: 200, description: "Insurance deleted." })
+  @ApiResponse({ status: 404, description: "Insurance not found." })
   deleteClientInsurance(
     @Param("clientId") clientId: string,
     @Param("insuranceId") insuranceId: string
@@ -487,6 +540,8 @@ export class DirectoryController {
   /** Create a credit application on a client; `direction` is required. */
   @Post("clients/:clientId/credit-applications")
   @RequirePermissions("directory.manage")
+  @ApiOperation({ summary: "Create a credit application on a client." })
+  @ApiResponse({ status: 201, description: "Credit application created." })
   addClientCreditApp(
     @Param("clientId") clientId: string,
     @Body() dto: UpsertCreditApplicationDto,
@@ -498,6 +553,9 @@ export class DirectoryController {
   /** Patch a credit application on a client; status transitions enforced against `directory.admin` and `finance.manage`. */
   @Patch("clients/:clientId/credit-applications/:appId")
   @RequirePermissions("directory.manage")
+  @ApiOperation({ summary: "Update a client credit application." })
+  @ApiResponse({ status: 200, description: "Updated credit application." })
+  @ApiResponse({ status: 404, description: "Credit application not found." })
   patchClientCreditApp(
     @Param("clientId") clientId: string,
     @Param("appId") appId: string,

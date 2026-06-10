@@ -107,11 +107,15 @@ export class ClientQuotesController {
   // ── Cost lines CRUD ─────────────────────────────────────────────────
   @Get(":quoteId/cost-lines")
   @RequirePermissions("tenders.view")
+  @ApiOperation({ summary: "List cost lines for a client quote." })
+  @ApiResponse({ status: 200, description: "Cost lines." })
   listCostLines(@Param("tenderId") tenderId: string, @Param("quoteId") quoteId: string) {
     return this.service.listCostLines(tenderId, quoteId);
   }
   @Post(":quoteId/cost-lines")
   @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Create a cost line on a client quote." })
+  @ApiResponse({ status: 201, description: "Cost line created." })
   createCostLine(
     @Param("tenderId") tenderId: string,
     @Param("quoteId") quoteId: string,
@@ -121,6 +125,9 @@ export class ClientQuotesController {
   }
   @Patch(":quoteId/cost-lines/:lineId")
   @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Update a cost line on a client quote." })
+  @ApiResponse({ status: 200, description: "Updated cost line." })
+  @ApiResponse({ status: 404, description: "Cost line not found." })
   updateCostLine(
     @Param("tenderId") tenderId: string,
     @Param("quoteId") quoteId: string,
@@ -131,6 +138,9 @@ export class ClientQuotesController {
   }
   @Delete(":quoteId/cost-lines/:lineId")
   @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Delete a cost line from a client quote." })
+  @ApiResponse({ status: 200, description: "Deleted cost line ID." })
+  @ApiResponse({ status: 404, description: "Cost line not found." })
   deleteCostLine(
     @Param("tenderId") tenderId: string,
     @Param("quoteId") quoteId: string,
@@ -140,6 +150,8 @@ export class ClientQuotesController {
   }
   @Post(":quoteId/cost-lines/reorder")
   @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Bulk reorder cost lines on a client quote." })
+  @ApiResponse({ status: 200, description: "Reordered cost lines." })
   reorderCostLines(
     @Param("tenderId") tenderId: string,
     @Param("quoteId") quoteId: string,
@@ -151,11 +163,15 @@ export class ClientQuotesController {
   // ── Provisional lines CRUD ─────────────────────────────────────────
   @Get(":quoteId/provisional-lines")
   @RequirePermissions("tenders.view")
+  @ApiOperation({ summary: "List provisional lines for a client quote." })
+  @ApiResponse({ status: 200, description: "Provisional lines." })
   listProvisional(@Param("tenderId") tenderId: string, @Param("quoteId") quoteId: string) {
     return this.service.listProvisional(tenderId, quoteId);
   }
   @Post(":quoteId/provisional-lines")
   @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Create a provisional line on a client quote." })
+  @ApiResponse({ status: 201, description: "Provisional line created." })
   createProvisional(
     @Param("tenderId") tenderId: string,
     @Param("quoteId") quoteId: string,
@@ -165,6 +181,9 @@ export class ClientQuotesController {
   }
   @Patch(":quoteId/provisional-lines/:lineId")
   @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Update a provisional line on a client quote." })
+  @ApiResponse({ status: 200, description: "Updated provisional line." })
+  @ApiResponse({ status: 404, description: "Provisional line not found." })
   updateProvisional(
     @Param("tenderId") tenderId: string,
     @Param("quoteId") quoteId: string,
@@ -175,6 +194,9 @@ export class ClientQuotesController {
   }
   @Delete(":quoteId/provisional-lines/:lineId")
   @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Delete a provisional line from a client quote." })
+  @ApiResponse({ status: 200, description: "Deleted provisional line ID." })
+  @ApiResponse({ status: 404, description: "Provisional line not found." })
   deleteProvisional(
     @Param("tenderId") tenderId: string,
     @Param("quoteId") quoteId: string,
@@ -186,11 +208,15 @@ export class ClientQuotesController {
   // ── Cost options CRUD ──────────────────────────────────────────────
   @Get(":quoteId/cost-options")
   @RequirePermissions("tenders.view")
+  @ApiOperation({ summary: "List cost options for a client quote." })
+  @ApiResponse({ status: 200, description: "Cost options." })
   listOptions(@Param("tenderId") tenderId: string, @Param("quoteId") quoteId: string) {
     return this.service.listOptions(tenderId, quoteId);
   }
   @Post(":quoteId/cost-options")
   @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Create a cost option on a client quote." })
+  @ApiResponse({ status: 201, description: "Cost option created." })
   createOption(
     @Param("tenderId") tenderId: string,
     @Param("quoteId") quoteId: string,
@@ -200,6 +226,9 @@ export class ClientQuotesController {
   }
   @Patch(":quoteId/cost-options/:lineId")
   @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Update a cost option on a client quote." })
+  @ApiResponse({ status: 200, description: "Updated cost option." })
+  @ApiResponse({ status: 404, description: "Cost option not found." })
   updateOption(
     @Param("tenderId") tenderId: string,
     @Param("quoteId") quoteId: string,
@@ -210,6 +239,9 @@ export class ClientQuotesController {
   }
   @Delete(":quoteId/cost-options/:lineId")
   @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Delete a cost option from a client quote." })
+  @ApiResponse({ status: 200, description: "Deleted cost option ID." })
+  @ApiResponse({ status: 404, description: "Cost option not found." })
   deleteOption(
     @Param("tenderId") tenderId: string,
     @Param("quoteId") quoteId: string,
@@ -221,11 +253,15 @@ export class ClientQuotesController {
   // ── Assumptions CRUD ───────────────────────────────────────────────
   @Get(":quoteId/assumptions")
   @RequirePermissions("tenders.view")
+  @ApiOperation({ summary: "List assumptions for a client quote." })
+  @ApiResponse({ status: 200, description: "Quote assumptions." })
   listAssumptions(@Param("tenderId") tenderId: string, @Param("quoteId") quoteId: string) {
     return this.service.listAssumptions(tenderId, quoteId);
   }
   @Post(":quoteId/assumptions")
   @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Create an assumption on a client quote." })
+  @ApiResponse({ status: 201, description: "Assumption created." })
   createAssumption(
     @Param("tenderId") tenderId: string,
     @Param("quoteId") quoteId: string,
@@ -235,6 +271,9 @@ export class ClientQuotesController {
   }
   @Patch(":quoteId/assumptions/:id")
   @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Update an assumption on a client quote." })
+  @ApiResponse({ status: 200, description: "Updated assumption." })
+  @ApiResponse({ status: 404, description: "Assumption not found." })
   updateAssumption(
     @Param("tenderId") tenderId: string,
     @Param("quoteId") quoteId: string,
@@ -245,6 +284,9 @@ export class ClientQuotesController {
   }
   @Delete(":quoteId/assumptions/:id")
   @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Delete an assumption from a client quote." })
+  @ApiResponse({ status: 200, description: "Deleted assumption ID." })
+  @ApiResponse({ status: 404, description: "Assumption not found." })
   deleteAssumption(
     @Param("tenderId") tenderId: string,
     @Param("quoteId") quoteId: string,
@@ -254,6 +296,8 @@ export class ClientQuotesController {
   }
   @Post(":quoteId/assumptions/copy-from-tender")
   @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Copy assumptions from the parent tender to a client quote." })
+  @ApiResponse({ status: 201, description: "Assumptions copied." })
   copyAssumptions(@Param("tenderId") tenderId: string, @Param("quoteId") quoteId: string) {
     return this.service.copyAssumptionsFromTender(tenderId, quoteId);
   }
@@ -261,11 +305,15 @@ export class ClientQuotesController {
   // ── Exclusions CRUD ────────────────────────────────────────────────
   @Get(":quoteId/exclusions")
   @RequirePermissions("tenders.view")
+  @ApiOperation({ summary: "List exclusions for a client quote." })
+  @ApiResponse({ status: 200, description: "Quote exclusions." })
   listExclusions(@Param("tenderId") tenderId: string, @Param("quoteId") quoteId: string) {
     return this.service.listExclusions(tenderId, quoteId);
   }
   @Post(":quoteId/exclusions")
   @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Create an exclusion on a client quote." })
+  @ApiResponse({ status: 201, description: "Exclusion created." })
   createExclusion(
     @Param("tenderId") tenderId: string,
     @Param("quoteId") quoteId: string,
@@ -275,6 +323,9 @@ export class ClientQuotesController {
   }
   @Patch(":quoteId/exclusions/:id")
   @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Update an exclusion on a client quote." })
+  @ApiResponse({ status: 200, description: "Updated exclusion." })
+  @ApiResponse({ status: 404, description: "Exclusion not found." })
   updateExclusion(
     @Param("tenderId") tenderId: string,
     @Param("quoteId") quoteId: string,
@@ -285,6 +336,9 @@ export class ClientQuotesController {
   }
   @Delete(":quoteId/exclusions/:id")
   @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Delete an exclusion from a client quote." })
+  @ApiResponse({ status: 200, description: "Deleted exclusion ID." })
+  @ApiResponse({ status: 404, description: "Exclusion not found." })
   deleteExclusion(
     @Param("tenderId") tenderId: string,
     @Param("quoteId") quoteId: string,
@@ -294,6 +348,8 @@ export class ClientQuotesController {
   }
   @Post(":quoteId/exclusions/copy-from-tender")
   @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Copy exclusions from the parent tender to a client quote." })
+  @ApiResponse({ status: 201, description: "Exclusions copied." })
   copyExclusions(@Param("tenderId") tenderId: string, @Param("quoteId") quoteId: string) {
     return this.service.copyExclusionsFromTender(tenderId, quoteId);
   }

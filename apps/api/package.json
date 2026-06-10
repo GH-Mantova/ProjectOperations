@@ -10,6 +10,7 @@
     "lint": "eslint \"src/**/*.ts\"",
     "test": "jest",
     "test:serial": "jest --runInBand",
+    "test:canonical": "jest --config jest.config.ts --testRegex 'test/canonical/.*\\.spec\\.ts$' --testPathIgnorePatterns '/node_modules/' --runInBand",
     "compliance:smoke": "ts-node --transpile-only scripts/compliance-smoke.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",

@@ -10,6 +10,10 @@
 // On CI failure or timeout, the watcher pauses ALL remaining queued prompts
 // by moving them to paused/ so they don't run on a broken state.
 //
+// NEW (auto-review mode): polls GitHub for newly-opened PRs and writes a
+// review prompt file for each. The queue's existing serialization runs the
+// review like any other prompt — reviews never race with authoring jobs.
+//
 // Usage:
 //   node scripts/pr-watcher/index.mjs
 //
@@ -19,7 +23,7 @@
 //   - The watcher fires, runs the prompt, then moves the file out
 
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, watch as fsWatch } from "node:fs";
+import { existsSync, unlinkSync, watch as fsWatch } from "node:fs";
 import {
   mkdir,
   readdir,
@@ -59,6 +63,19 @@ const MERGE_TIMEOUT_MS =
   Number(process.env.PR_WATCHER_MERGE_TIMEOUT_MIN ?? 90) * 60 * 1000;
 const POLL_INTERVAL_MS =
   Number(process.env.PR_WATCHER_POLL_INTERVAL_SEC ?? 60) * 1000;
+
+// Auto-review: poll GitHub for newly-opened PRs and enqueue a review
+// prompt for each. The poller only WRITES prompt files — execution goes
+// through the normal queue, so reviews serialize with authoring jobs.
+const AUTO_REVIEW = process.env.PR_WATCHER_AUTO_REVIEW === "true"; // default OFF
+const REVIEW_POLL_INTERVAL_MS =
+  Number(process.env.PR_WATCHER_REVIEW_POLL_SEC ?? 90) * 1000;
+const REVIEW_MIN_AGE_MS =
+  Number(process.env.PR_WATCHER_REVIEW_MIN_AGE_MIN ?? 2) * 60 * 1000;
+const REVIEWED_STATE_FILE = path.join(__dirname, ".reviewed-prs.json");
+
+// Lockfile — prevents two watcher instances from fighting over the queue.
+const LOCK_FILE = path.join(__dirname, ".watcher.lock");
 
 // Nightly cutoff (HH:MM, 24-hour, local). Past this, the watcher refuses to
 // start a NEW prompt and exits cleanly. The in-flight prompt (if any)
@@ -140,6 +157,10 @@ async function ensureDirs() {
 
 function isReady(name) {
   return READY_PATTERN.test(name);
+}
+
+function isReviewJob(name) {
+  return /-auto-review-ready\.md$/i.test(name);
 }
 
 function debouncedEnqueue(name) {
@@ -318,6 +339,162 @@ async function syncMain() {
   }
 }
 
+// --- Lockfile helpers ---
+
+async function acquireLock() {
+  if (existsSync(LOCK_FILE)) {
+    let pid = null;
+    try {
+      const content = await readFile(LOCK_FILE, "utf-8");
+      pid = Number(content.trim());
+    } catch {
+      // unreadable lockfile — treat as stale
+    }
+    if (pid && !Number.isNaN(pid)) {
+      let alive = false;
+      try {
+        process.kill(pid, 0);
+        alive = true;
+      } catch {
+        // ESRCH = process does not exist (stale lockfile)
+      }
+      if (alive) {
+        log("WARN", `another watcher instance appears to be running (PID ${pid}). Exiting to avoid queue conflicts.`);
+        process.exit(0);
+      }
+      log("watcher", `stale lockfile (PID ${pid} not found) — overwriting`);
+    }
+  }
+  await writeFile(LOCK_FILE, String(process.pid), "utf-8");
+}
+
+function releaseLock() {
+  try {
+    unlinkSync(LOCK_FILE);
+  } catch {
+    // best-effort
+  }
+}
+
+// --- Reviewed-set helpers (auto-review) ---
+
+async function loadReviewedSet() {
+  const set = new Set();
+  try {
+    const raw = await readFile(REVIEWED_STATE_FILE, "utf-8");
+    const data = JSON.parse(raw);
+    if (Array.isArray(data.reviewed)) {
+      for (const n of data.reviewed) {
+        if (typeof n === "number") set.add(n);
+      }
+    }
+  } catch (err) {
+    if (err.code !== "ENOENT") {
+      log("review", `warning: could not load reviewed-set (${err.message}) — starting empty`);
+    }
+  }
+  return set;
+}
+
+async function saveReviewedSet(set) {
+  const tmp = REVIEWED_STATE_FILE + ".tmp";
+  const data = JSON.stringify({ reviewed: [...set].sort((a, b) => a - b) }, null, 2);
+  try {
+    await writeFile(tmp, data, "utf-8");
+    await rename(tmp, REVIEWED_STATE_FILE);
+  } catch (err) {
+    // Retry once — Windows can intermittently throw EPERM on same-volume rename
+    log("review", `state save failed (${err.message}), retrying...`);
+    try {
+      await writeFile(tmp, data, "utf-8");
+      await rename(tmp, REVIEWED_STATE_FILE);
+    } catch (err2) {
+      log("review", `state save failed again (${err2.message}) — continuing (worst case: duplicate review next tick)`);
+    }
+  }
+}
+
+// On first enable, seed the reviewed-set with all recent PRs so we never
+// auto-review historical work. Only PRs that appear AFTER this point get
+// a review prompt written for them.
+async function seedReviewedSet(set) {
+  log("review", "seeding reviewed-set with recent PRs (open + merged, limit 50)...");
+  try {
+    const prs = await runGh(
+      ["pr", "list", "--state", "all", "--limit", "50", "--json", "number"],
+      { json: true },
+    );
+    for (const pr of prs) {
+      set.add(pr.number);
+    }
+    log("review", `reviewed-set seeded with ${set.size} PR(s) — only new PRs will be auto-reviewed`);
+  } catch (err) {
+    log("review", `warning: seed failed (${err.message}) — continuing without seed (may review historical PRs)`);
+  }
+  await saveReviewedSet(set);
+  return set;
+}
+
+// Render the review prompt template, replacing {{PR_NUMBER}} and {{PR_TITLE}}.
+function renderTemplate(template, prNumber, prTitle) {
+  return template
+    .replaceAll("{{PR_NUMBER}}", String(prNumber))
+    .replaceAll("{{PR_TITLE}}", prTitle);
+}
+
+let reviewTemplate = null;
+const REVIEW_TEMPLATE_FILE = path.join(__dirname, "review-prompt-template.md");
+
+async function loadReviewTemplate() {
+  try {
+    reviewTemplate = await readFile(REVIEW_TEMPLATE_FILE, "utf-8");
+    return true;
+  } catch (err) {
+    log("review", `warning: could not load review template (${err.message}) — auto-review disabled`);
+    return false;
+  }
+}
+
+// Poll GitHub for newly-opened PRs and write a review prompt for each.
+// This function only WRITES files — the normal queue drain handles execution.
+let reviewedSet = null;
+
+async function pollForNewPrs() {
+  if (queuePaused) return;
+  let prs;
+  try {
+    prs = await runGh(
+      ["pr", "list", "--state", "open", "--json", "number,title,isDraft,createdAt,baseRefName"],
+      { json: true },
+    );
+  } catch (err) {
+    log("review", `poll failed: ${err.message} — will retry next tick`);
+    return;
+  }
+
+  const now = Date.now();
+  for (const pr of prs) {
+    if (pr.isDraft) continue;
+    if (pr.baseRefName !== "main") continue;
+    if (reviewedSet.has(pr.number)) continue;
+    const age = now - new Date(pr.createdAt).getTime();
+    if (age < REVIEW_MIN_AGE_MS) continue; // grace period — authoring agent may still be finishing
+
+    const promptName = `pr-${pr.number}-auto-review-ready.md`;
+    const promptPath = path.join(PROMPT_DIR, promptName);
+    const body = renderTemplate(reviewTemplate, pr.number, pr.title);
+    try {
+      await writeFile(promptPath, body, "utf-8");
+    } catch (err) {
+      log("review", `could not write prompt for PR #${pr.number}: ${err.message}`);
+      continue;
+    }
+    reviewedSet.add(pr.number);
+    await saveReviewedSet(reviewedSet);
+    log("review", `enqueued review for PR #${pr.number} ("${pr.title}") → ${promptName}`);
+  }
+}
+
 async function drain() {
   if (running || queue.length === 0 || queuePaused) return;
 
@@ -391,12 +568,15 @@ async function drain() {
     ].join("\n");
     let logBody = header + agentOutput;
 
+    // Review job failures must not freeze the authoring pipeline.
+    const reviewJob = isReviewJob(name);
+
     // Agent failed. Two failure shapes:
     //   (a) Usage / rate limit — transient, will recover. Keep prompt
     //       queued, write a soft-halt log next to it, exit watcher cleanly.
     //       On next start (after the limit resets), it gets picked up again.
-    //   (b) Real failure — move to failed/ with the log. If auto-merge mode,
-    //       pause downstream; in review-only mode, continue to next.
+    //   (b) Real failure — move to failed/ with the log. If auto-merge mode
+    //       and NOT a review job, pause downstream; otherwise continue.
     if (code !== 0) {
       if (isUsageLimitError(agentOutput)) {
         // (a) Soft halt — usage/rate limit detected
@@ -426,7 +606,8 @@ async function drain() {
         log("error", `move failed: ${err.message}`);
       }
       seen.delete(name);
-      if (AUTO_MERGE) {
+      // Review job failures do not pause the authoring pipeline.
+      if (AUTO_MERGE && !reviewJob) {
         await pauseQueue(`agent exited ${code} on ${name}`);
         running = false;
         return;
@@ -436,9 +617,11 @@ async function drain() {
       return;
     }
 
-    // Agent succeeded — try to extract PR number and wait for merge
+    // Agent succeeded — for review jobs skip the entire AUTO_MERGE block.
+    // A review job's output mentions the PR it reviewed; running auto-merge
+    // on that number would violate the manual-review gate.
     let mergeReport = "";
-    if (AUTO_MERGE) {
+    if (AUTO_MERGE && !reviewJob) {
       const prNumber = extractPrNumber(agentOutput);
       if (prNumber == null) {
         mergeReport = `\n\n---\n[watcher] no PR number found in agent output — skipping auto-merge\n`;
@@ -559,6 +742,7 @@ function warnOnOrphanClaudeProcesses() {
 }
 
 (async () => {
+  await acquireLock();
   await ensureDirs();
   log("watcher", `repo:        ${REPO_ROOT}`);
   log("watcher", `watching     ${PROMPT_DIR}`);
@@ -570,6 +754,7 @@ function warnOnOrphanClaudeProcesses() {
   log("watcher", `merge-tmout: ${MERGE_TIMEOUT_MS / 60000} min`);
   log("watcher", `poll-every:  ${POLL_INTERVAL_MS / 1000} s`);
   log("watcher", `rescan:      ${RESCAN_INTERVAL_MS / 60000} min`);
+  log("watcher", `auto-review: ${AUTO_REVIEW ? "ON" : "OFF"}`);
   if (STOP_AT_TIMESTAMP !== null) {
     const cutoffIso = new Date(STOP_AT_TIMESTAMP).toISOString();
     const minsFromNow = Math.round((STOP_AT_TIMESTAMP - Date.now()) / 60000);
@@ -591,10 +776,24 @@ function warnOnOrphanClaudeProcesses() {
 
   const rescanTimer = setInterval(rescan, RESCAN_INTERVAL_MS);
 
+  // Auto-review: load template, seed reviewed-set, start poll loop
+  let reviewPollTimer = null;
+  if (AUTO_REVIEW) {
+    const templateOk = await loadReviewTemplate();
+    if (templateOk) {
+      reviewedSet = await loadReviewedSet();
+      reviewedSet = await seedReviewedSet(reviewedSet);
+      reviewPollTimer = setInterval(pollForNewPrs, REVIEW_POLL_INTERVAL_MS);
+      log("review", `poll-every:  ${REVIEW_POLL_INTERVAL_MS / 1000} s, min-age: ${REVIEW_MIN_AGE_MS / 60000} min`);
+    }
+  }
+
   process.on("SIGINT", () => {
     log("watcher", "shutting down (SIGINT)");
     clearInterval(rescanTimer);
+    if (reviewPollTimer) clearInterval(reviewPollTimer);
     watcher.close();
+    releaseLock();
     process.exit(0);
   });
 })();

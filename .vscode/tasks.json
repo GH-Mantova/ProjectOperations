@@ -101,6 +101,26 @@
       "dependsOrder": "sequence",
       "problemMatcher": [],
       "detail": "The PR-checklist tasks chained — run this before merging."
+    },
+    {
+      "label": "PR Watcher (auto-review)",
+      "type": "shell",
+      "command": "node scripts/pr-watcher/index.mjs",
+      "options": {
+        "env": {
+          "PR_WATCHER_AUTO_REVIEW": "true"
+        }
+      },
+      "runOptions": {
+        "runOn": "folderOpen"
+      },
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "problemMatcher": [],
+      "detail": "Polls GitHub for new PRs and auto-fires pr-fix-reviewer. Ctrl+C in the pane to stop. Only runs in trusted workspaces."
     }
   ]
 }

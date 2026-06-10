@@ -68,6 +68,9 @@ Env vars override the defaults:
 | `PR_WATCHER_MERGE_TIMEOUT_MIN` | `90` | Max wait for a PR to merge after CI starts. |
 | `PR_WATCHER_POLL_INTERVAL_SEC` | `60` | How often to poll PR state during merge wait. |
 | `PR_WATCHER_STOP_AT` | _(unset)_ | Nightly cutoff `HH:MM` (24-hour, local). Past this, watcher won't start a new prompt and exits cleanly with code 0. In-flight prompt finishes. |
+| `PR_WATCHER_AUTO_REVIEW` | `false` | Set to `"true"` to poll GitHub for new PRs and auto-fire reviews. |
+| `PR_WATCHER_REVIEW_POLL_SEC` | `90` | How often (seconds) to poll GitHub for new PRs to review. |
+| `PR_WATCHER_REVIEW_MIN_AGE_MIN` | `2` | Grace period (minutes) — skip PRs younger than this. Gives the authoring agent time to finish post-PR steps before the reviewer fires. |
 
 Example:
 
@@ -198,6 +201,76 @@ Move-Item C:\ProjectOperations2\docs\pr-prompts\failed\pr-15-foo-ready.md `
 # Or abandon
 Remove-Item C:\ProjectOperations2\docs\pr-prompts\failed\pr-15-foo-ready.md*
 ```
+
+## Auto-review mode
+
+When `PR_WATCHER_AUTO_REVIEW=true`, the watcher polls GitHub every
+`PR_WATCHER_REVIEW_POLL_SEC` seconds for open, non-draft PRs targeting `main`.
+For each new PR it finds, it writes a review prompt file:
+
+```
+docs/pr-prompts/pr-{N}-auto-review-ready.md
+```
+
+The normal `fs.watch` + queue machinery picks it up like any other prompt, so
+reviews serialize with authoring jobs — a review never runs concurrently with
+a coding agent.
+
+### Reviewed-set seeding
+
+On startup (first time `AUTO_REVIEW` is enabled), the watcher fetches the 50
+most recent PRs (open + merged) via `gh pr list --state all --limit 50` and
+adds them all to a local reviewed-set stored in
+`scripts/pr-watcher/.reviewed-prs.json`. Only PRs that appear **after** the
+watcher starts get auto-reviewed. Re-enabling on an existing repo never reviews
+historical work.
+
+The state file is written atomically (temp file + rename) and is `.gitignore`d
+— it's machine-local.
+
+### Do-not-merge guarantee
+
+Review jobs skip the `AUTO_MERGE` block entirely. A review job's output
+mentions the PR it reviewed, but the watcher never tries to merge it — Marco
+merges manually after reading the verdict in `docs/pr-reviews/`.
+
+If a review job fails, the watcher moves the prompt to `failed/` as normal but
+**does not pause the authoring pipeline**. A broken review job is isolated.
+
+### Verdict files
+
+The reviewer writes its output to `docs/pr-reviews/pr-{N}-review.md`. If the
+verdict is `FIX` or `BLOCK`, a second file lands in
+`docs/pr-prompts/needs-marco/pr-{N}-review-{fix|block}.md` so it surfaces in
+the normal escalation funnel.
+
+### Double-start guard
+
+The watcher writes a lockfile (`scripts/pr-watcher/.watcher.lock`) containing
+its PID at startup. If the lockfile already exists and the recorded PID is
+alive (`process.kill(pid, 0)`), the new instance logs a warning and exits
+cleanly. A stale lockfile (dead PID) is overwritten and the new instance
+continues normally.
+
+### VS Code auto-start
+
+The `.vscode/tasks.json` task `PR Watcher (auto-review)` launches the watcher
+with `PR_WATCHER_AUTO_REVIEW=true` automatically when the folder opens.
+**VS Code only runs folder-open tasks in trusted workspaces** — if you see a
+"This workspace is not trusted" banner, click "Trust Workspace" first.
+
+### First-enable runbook
+
+1. Merge this PR.
+2. Open `C:\ProjectOperations2` in VS Code (trusted workspace).
+3. The `PR Watcher (auto-review)` task starts automatically in a dedicated
+   terminal pane. It seeds the reviewed-set and then watches for new PRs.
+4. Open any new non-draft PR targeting `main`. After the `REVIEW_MIN_AGE_MIN`
+   grace period (default 2 min), a review prompt file appears and the queue
+   fires the reviewer.
+5. Check `docs/pr-reviews/pr-{N}-review.md` for the verdict. Marco merges.
+
+To stop: Ctrl+C in the watcher terminal pane.
 
 ## What it doesn't do
 

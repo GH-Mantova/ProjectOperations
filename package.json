@@ -16,6 +16,7 @@
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
     "test:api:serial": "pnpm --filter @project-ops/api test:serial",
+    "test:canonical": "pnpm --filter @project-ops/api test:canonical",
     "test:web:logic": "pnpm --filter @project-ops/web test:logic",
     "test:tendering:e2e": "playwright test tests/e2e/tendering.spec.ts",
     "test:tendering:e2e:reuse": "playwright test tests/e2e/tendering.spec.ts --config=playwright.reuse.config.ts",

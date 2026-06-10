@@ -602,14 +602,14 @@ describe("MasterDataService — deleteSite", () => {
     const { service, prisma, audit } = makeService();
     prisma.site.findUnique.mockResolvedValueOnce({
       id: "site-1",
-      _count: { tenders: 0, jobs: 0 }
+      _count: { tenders: 0, jobs: 0, formSubmissions: 0 }
     });
 
     await service.deleteSite("site-1", "user-1");
 
     expect(prisma.site.findUnique).toHaveBeenCalledWith({
       where: { id: "site-1" },
-      include: { _count: { select: { tenders: true, jobs: true } } }
+      include: { _count: { select: { tenders: true, jobs: true, formSubmissions: true } } }
     });
     expect(prisma.site.delete).toHaveBeenCalledWith({ where: { id: "site-1" } });
     expect(audit.write).toHaveBeenCalledWith(
@@ -645,6 +645,19 @@ describe("MasterDataService — deleteSite", () => {
     const err = await service.deleteSite("site-1").catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ConflictException);
     expect((err as Error).message).toContain("2 linked job(s)");
+    expect(prisma.site.delete).not.toHaveBeenCalled();
+  });
+
+  it("throws ConflictException with form submission count when form submissions are linked", async () => {
+    const { service, prisma } = makeService();
+    prisma.site.findUnique.mockResolvedValueOnce({
+      id: "site-1",
+      _count: { tenders: 0, jobs: 0, formSubmissions: 2 }
+    });
+
+    const err = await service.deleteSite("site-1").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect((err as Error).message).toContain("2 linked form submission(s)");
     expect(prisma.site.delete).not.toHaveBeenCalled();
   });
 

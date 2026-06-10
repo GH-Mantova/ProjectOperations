@@ -1,9 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { IsIn, IsOptional, IsString } from "class-validator";
-import {
-  DOCUMENT_CATEGORIES,
-  DocumentCategory
-} from "../tender-document-categories";
+import { DOCUMENT_CATEGORIES } from "../tender-document-categories";
+import type { DocumentCategory } from "../tender-document-categories";
 
 export class CreateTenderDocumentDto {
   // PR-64 — constrained to the canonical 11-category list. The frontend

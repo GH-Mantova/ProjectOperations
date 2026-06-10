@@ -3,11 +3,10 @@ import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { EnsureSharePointFolderDto } from "./dto/sharepoint-folder.dto";
-import { InjectSharePointAdapter, SharePointAdapter } from "./sharepoint.adapter";
-import {
-  DOCUMENT_CATEGORIES,
-  DocumentCategory
-} from "../tender-documents/tender-document-categories";
+import { InjectSharePointAdapter } from "./sharepoint.adapter";
+import type { SharePointAdapter } from "./sharepoint.adapter";
+import { DOCUMENT_CATEGORIES } from "../tender-documents/tender-document-categories";
+import type { DocumentCategory } from "../tender-documents/tender-document-categories";
 
 // PR-64 — Runtime-resolved SharePoint coordinates. `getResolvedConfig`
 // returns these, lazy-resolving siteId/driveId from

@@ -1,6 +1,6 @@
 import { Controller, Get, Header, Param, Res, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiProduces, ApiResponse, ApiTags } from "@nestjs/swagger";
-import { Response } from "express";
+import type { Response } from "express";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";

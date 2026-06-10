@@ -157,8 +157,8 @@ Local dev URLs:
 ## TypeScript rules
 
 - `strict: true` is enforced globally — no exceptions
-- `moduleResolution` target: `Bundler` for web app, `NodeNext` for API
-  (base currently uses legacy `Node` — fix on sight in new files)
+- `moduleResolution`: `NodeNext` for API (`apps/api/tsconfig.json`), `Bundler` for web app (`apps/web/tsconfig.json`); base sets no `moduleResolution` — apps pin their own
+- `baseUrl` is not set; `paths` in `tsconfig.base.json` resolve relative to repo root
 - No `any` types on component props or function signatures in new code
 - `forceConsistentCasingInFileNames: true` — honour this on all new files
 - Path aliases defined in `tsconfig.base.json` — use them, don't use relative `../../`

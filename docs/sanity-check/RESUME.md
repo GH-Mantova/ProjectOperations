@@ -12,7 +12,7 @@ App is up at http://localhost:5173 with seeded DB. Login `admin@projectops.local
 
 3 findings reports written so far:
 - `findings/2026-06-09-phase-0-schema-drift/REPORT.md` (CRITICAL)
-- `findings/2026-06-09-phase-1a-master-data/REPORT.md`
+- `findings/2026-06-09-phase-1a-master-data/REPORT.md` (F1A-01 **RESOLVED** by pr-138a + pr-138b + pr-138c)
 - `findings/2026-06-09-phase-1b-tendering-core/REPORT.md` (also covers Phase 1C UI wiring)
 
 ---

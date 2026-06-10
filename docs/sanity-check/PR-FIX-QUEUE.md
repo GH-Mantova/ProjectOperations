@@ -29,10 +29,9 @@ Each entry is sized for one PR prompt suitable for the autonomous PR-watcher. Se
 - **Scope:** In `apps/web/src/pages/field/MyAllocationsPage.tsx` (or wherever the data fetch lives), catch the 403 Forbidden response from `/api/v1/field/my-allocations`. Render a styled empty/error state with the existing `EmptyState` component (icon + heading "Mobile access not provisioned" + body "Contact your office administrator to link a worker profile" + CTA "Back to web view" pointing at `/`). Don't render the raw JSON.
 - **Reference:** `findings/2026-06-09-phase-3-system-smoke/REPORT.md`
 
-### PR-Q-04 (CONCERN) — Sites detail page completeness check vs PR #288 changelog
-- **Finding:** F1A-01
-- **Branch:** `chore/sites-detail-page-audit`
-- **Scope:** Spike — open `/sites/site-001` against a fixture with at least 1 linked tender + 1 linked project + 1 linked document. Verify whether the KPI strip + tabs (Overview/Tenders/Projects/Documents) are conditionally rendered or genuinely missing. If conditionally rendered, note in the module reference doc. If genuinely missing, plan a follow-up implementation PR.
+### PR-Q-04 (RESOLVED) — Sites detail page completeness check vs PR #288 changelog
+- **Finding:** F1A-01 — **RESOLVED** by pr-138a (DELETE endpoint) + pr-138b (documents rollup endpoint) + pr-138c (frontend: KPI strip, Overview/Tenders/Projects/Documents tabs, Delete confirm).
+- **Branch:** `feat/sites-detail-tabs-and-kpi` (closed by this PR)
 - **Reference:** `findings/2026-06-09-phase-1a-master-data/REPORT.md`
 
 ## Tier 3 — polish, can wait

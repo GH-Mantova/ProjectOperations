@@ -15,7 +15,7 @@
 | F0-01 | **CRITICAL** | Platform / Prisma | Schema drift between `schema.prisma` and 102 migration files | `findings/2026-06-09-phase-0-schema-drift/REPORT.md` |
 | F1E-01 | **HIGH** | Seed / Jobs | Job ID canonicalisation regression — legacy `JOB-YYYY-NNN` format alongside canonical `J-YYYY-NNN` | `findings/2026-06-09-phase-1e-job-id-format-regression/REPORT.md` |
 | F3-01 | **CONCERN** | Field / Mobile | `/field/allocations` shows raw JSON 403 to admin user instead of a styled error state | `findings/2026-06-09-phase-3-system-smoke/REPORT.md` |
-| F1A-01 | **CONCERN** | Sites | Sites detail page (`/sites/:id`) may not match PR #288 changelog (missing KPI strip + tabs) | `findings/2026-06-09-phase-1a-master-data/REPORT.md` |
+| F1A-01 | **RESOLVED** | Sites | Sites detail page (`/sites/:id`) now ships KPI strip, Overview/Tenders/Projects/Documents tabs, and Delete button (pr-138a DELETE endpoint + pr-138b documents rollup + this frontend PR) | `findings/2026-06-09-phase-1a-master-data/REPORT.md` |
 | F1B-01 | **CONCERN** | Tendering | Estimate tab merged into Scope of Works — needs roadmap/module-reference doc reconciliation | `findings/2026-06-09-phase-1b-tendering-core/REPORT.md` |
 | F1A-02 | **MINOR** | Master data | `?tab=workers` URL silently rewrites to `?tab=clients` | `findings/2026-06-09-phase-1a-master-data/REPORT.md` |
 | F1A-04 | **MINOR** | Clients | Email column truncates in client contacts tab without tooltip | `findings/2026-06-09-phase-1a-master-data/REPORT.md` |

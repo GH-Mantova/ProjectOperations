@@ -78,6 +78,30 @@ const MONTH_ABBREVIATIONS = [
  * token. Time is stripped before parsing to keep date-only inputs timezone-
  * agnostic.
  */
+export type SiteTab = "overview" | "tenders" | "projects" | "documents";
+
+const SITE_TABS: readonly SiteTab[] = ["overview", "tenders", "projects", "documents"] as const;
+
+/**
+ * Resolves the `?tab=…` query string for the Sites detail page. Unknown
+ * or missing values fall back to `overview` so external/legacy links keep
+ * landing somewhere sensible.
+ */
+export function resolveSiteTab(raw: string | null | undefined): SiteTab {
+  if (!raw) return "overview";
+  return (SITE_TABS as readonly string[]).includes(raw) ? (raw as SiteTab) : "overview";
+}
+
+/**
+ * Format a count for the KPI strip. Caps at "999+" to keep card width
+ * stable when a busy site rolls up thousands of documents.
+ */
+export function formatKpiCount(value: number): string {
+  if (!Number.isFinite(value) || value < 0) return "0";
+  if (value >= 1000) return "999+";
+  return String(Math.trunc(value));
+}
+
 export function formatSiteDate(iso: string | null | undefined): string {
   if (!iso) return "—";
   const trimmed = iso.trim();

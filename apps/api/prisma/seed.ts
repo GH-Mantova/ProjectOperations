@@ -325,9 +325,22 @@ async function main() {
     }
   });
 
+  const viewerRole = await prisma.role.upsert({
+    where: { name: "Viewer" },
+    update: {
+      description: "Read-only access across all modules",
+      isSystem: true
+    },
+    create: {
+      name: "Viewer",
+      description: "Read-only access across all modules",
+      isSystem: true
+    }
+  });
+
   await prisma.rolePermission.deleteMany({
     where: {
-      roleId: { in: [adminRole.id, plannerRole.id, fieldRole.id] }
+      roleId: { in: [adminRole.id, plannerRole.id, fieldRole.id, viewerRole.id] }
     }
   });
 
@@ -440,6 +453,16 @@ async function main() {
     ]
   });
 
+  // Viewer role: only permissions whose code ends in ".view" — picked up
+  // automatically as new modules add view permissions to the registry.
+  const viewerPermissions = permissions.filter((p) => p.code.endsWith(".view"));
+  await prisma.rolePermission.createMany({
+    data: viewerPermissions.map((p) => ({
+      roleId: viewerRole.id,
+      permissionId: p.id
+    }))
+  });
+
   // Only the dev/test admin is seeded here. The real Initial Services staff
   // roster is populated in seed-initial-services.ts with stable IDs and
   // granular roles (Project Manager / Senior Estimator / WHS Officer / Accounts
@@ -488,6 +511,21 @@ async function main() {
       }
     }
   });
+
+  // Canonical test viewer — stable minimal-grant user for CP-18 permission 403 tests.
+  const viewerUser = await prisma.user.upsert({
+    where: { email: "viewer@projectops.local" },
+    update: { firstName: "Vera", lastName: "Viewer", isActive: true },
+    create: {
+      email: "viewer@projectops.local",
+      firstName: "Vera",
+      lastName: "Viewer",
+      isActive: true,
+      passwordHash: hashPassword("Password123!")
+    }
+  });
+  await prisma.userRole.deleteMany({ where: { userId: viewerUser.id } });
+  await prisma.userRole.create({ data: { userId: viewerUser.id, roleId: viewerRole.id } });
 
   const adminUser = await prisma.user.findUnique({
     where: { email: "admin@projectops.local" }

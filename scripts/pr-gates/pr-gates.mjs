@@ -1,14 +1,27 @@
 #!/usr/bin/env node
 // PR diff gates (CP-09..CP-13, CP-17). Node built-ins only, ASCII-only output.
-// Diffs HEAD against the merge-base with origin/main. PR body arrives via PR_BODY.
+// Diffs HEAD against the merge-base with origin/main.
 //
-// A PR declares legitimate exceptions with marker lines in its body:
+// PR body source (in priority order):
+//   1. CI: PR_NUMBER env var set  -> fetched live via `gh pr view` using GH_TOKEN.
+//          Fetching live means re-runs and body edits always see the current body.
+//   2. Local: PR_BODY env var     -> used as-is (for local sanity runs).
+//   If neither is set the body is treated as empty (all GATE-ALLOW checks pass).
+//
+// A PR declares legitimate exceptions with marker lines in its body (column 0):
 //   GATE-ALLOW: migrations
 //   GATE-ALLOW: env-vars
 //   GATE-ALLOW: dependencies
 //
-// Scope gate (opt-in): a fenced ```gate-scope block in the body, one regex per
-// line; every changed file must match at least one regex.
+// Scope gate (opt-in): a fenced gate-scope block at column 0 in the body, one
+// regex per line; every changed file must match at least one regex.
+// The opening fence MUST be a line starting at column 0 exactly as:
+//   ```gate-scope
+// Indented or quoted examples do NOT activate the gate.
+//
+// Standing rule for PR authors: never place a column-0 gate-scope fence or
+// column-0 GATE-ALLOW: lines as documentation in a PR body. Indent examples by
+// at least one space so they cannot activate the parsers above.
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -17,7 +30,24 @@ function git(...args) {
   return execFileSync("git", args, { encoding: "utf8" });
 }
 
-const prBody = process.env.PR_BODY || "";
+let prBody;
+const prNumber = process.env.PR_NUMBER;
+if (prNumber) {
+  try {
+    prBody = execFileSync(
+      "gh",
+      ["pr", "view", prNumber, "--json", "body", "-q", ".body"],
+      { encoding: "utf8" }
+    );
+  } catch (err) {
+    process.stderr.write(
+      `pr-gates: failed to fetch PR body for #${prNumber}: ${err.message}\n`
+    );
+    process.exit(1);
+  }
+} else {
+  prBody = process.env.PR_BODY || "";
+}
 const allows = new Set(
   [...prBody.matchAll(/^GATE-ALLOW: (migrations|env-vars|dependencies)\s*$/gm)].map(
     (m) => m[1]
@@ -136,7 +166,9 @@ function report(level, gate, name, detail) {
 
 // CP-09/CP-10 - declared scope (opt-in)
 {
-  const block = prBody.match(/```gate-scope\r?\n([\s\S]*?)```/);
+  // Opening fence must be at column 0 (^```gate-scope). Indented/quoted examples
+  // inside PR body documentation cannot activate this gate.
+  const block = prBody.match(/^```gate-scope[ \t]*\r?\n([\s\S]*?)^```/m);
   if (!block) {
     report("SKIP", "CP-09/10", "scope", "no gate-scope block declared (opt-in)");
   } else {

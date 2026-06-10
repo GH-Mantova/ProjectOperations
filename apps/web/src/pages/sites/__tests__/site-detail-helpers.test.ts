@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatKpiCount,
   formatSiteAddress,
   formatSiteDate,
   projectStatusBadgeClass,
+  resolveSiteTab,
   tenderStatusBadgeClass
 } from "../site-detail-helpers";
 
@@ -121,5 +123,41 @@ describe("formatSiteDate", () => {
 
   it("returns the original string when parsing fails", () => {
     expect(formatSiteDate("not-a-date")).toBe("not-a-date");
+  });
+});
+
+describe("resolveSiteTab", () => {
+  it("returns the matching tab when known", () => {
+    expect(resolveSiteTab("overview")).toBe("overview");
+    expect(resolveSiteTab("tenders")).toBe("tenders");
+    expect(resolveSiteTab("projects")).toBe("projects");
+    expect(resolveSiteTab("documents")).toBe("documents");
+  });
+
+  it("falls back to overview for missing or unknown values", () => {
+    expect(resolveSiteTab(null)).toBe("overview");
+    expect(resolveSiteTab(undefined)).toBe("overview");
+    expect(resolveSiteTab("")).toBe("overview");
+    expect(resolveSiteTab("foo")).toBe("overview");
+  });
+});
+
+describe("formatKpiCount", () => {
+  it("renders zero and small counts as-is", () => {
+    expect(formatKpiCount(0)).toBe("0");
+    expect(formatKpiCount(1)).toBe("1");
+    expect(formatKpiCount(42)).toBe("42");
+    expect(formatKpiCount(999)).toBe("999");
+  });
+
+  it("caps four-digit-and-up counts at 999+", () => {
+    expect(formatKpiCount(1000)).toBe("999+");
+    expect(formatKpiCount(15234)).toBe("999+");
+  });
+
+  it("guards against negative or non-finite values", () => {
+    expect(formatKpiCount(-3)).toBe("0");
+    expect(formatKpiCount(Number.NaN)).toBe("0");
+    expect(formatKpiCount(Number.POSITIVE_INFINITY)).toBe("0");
   });
 });

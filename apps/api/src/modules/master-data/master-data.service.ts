@@ -269,24 +269,30 @@ export class MasterDataService {
   }
 
   /**
-   * Delete a site by id, refusing the delete when the site has linked tenders
-   * or linked jobs (jobs are "projects" in the delivery domain). Returns 409
-   * Conflict with a message listing the blocking entity counts so the caller
-   * can unlink/delete them first. No cascade — referential history is preserved.
+   * Delete a site by id, refusing the delete when the site has linked tenders,
+   * linked jobs (jobs are "projects" in the delivery domain), or linked form
+   * submissions (WHS/compliance evidence — incidents, hazard observations,
+   * safety checks — whose audit trail would be broken if the site link were
+   * nulled). Returns 409 Conflict with a message listing the blocking entity
+   * counts so the caller can unlink/delete them first. No cascade — referential
+   * history is preserved.
    *
    * @throws NotFoundException When no site with that id exists.
-   * @throws ConflictException When the site has linked tenders or jobs.
+   * @throws ConflictException When the site has linked tenders, jobs, or form submissions.
    */
   async deleteSite(id: string, actorId?: string): Promise<void> {
     const site = await this.prisma.site.findUnique({
       where: { id },
-      include: { _count: { select: { tenders: true, jobs: true } } }
+      include: { _count: { select: { tenders: true, jobs: true, formSubmissions: true } } }
     });
     if (!site) throw new NotFoundException(`Site ${id} not found`);
 
     const blockers: string[] = [];
     if (site._count.tenders > 0) blockers.push(`${site._count.tenders} linked tender(s)`);
     if (site._count.jobs > 0) blockers.push(`${site._count.jobs} linked job(s)`);
+    if (site._count.formSubmissions > 0) {
+      blockers.push(`${site._count.formSubmissions} linked form submission(s)`);
+    }
 
     if (blockers.length > 0) {
       throw new ConflictException(

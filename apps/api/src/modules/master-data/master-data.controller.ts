@@ -58,14 +58,14 @@ export class MasterDataController {
   @Post("sites") @RequirePermissions("masterdata.manage") createSite(@Body() dto: UpsertSiteDto, @CurrentUser() actor: { sub: string }) { return this.service.upsertSite(undefined, dto, actor.sub); }
   /** Patch an existing site by id; rejects renames that collide. */
   @Patch("sites/:id") @RequirePermissions("masterdata.manage") updateSite(@Param("id") id: string, @Body() dto: UpsertSiteDto, @CurrentUser() actor: { sub: string }) { return this.service.upsertSite(id, dto, actor.sub); }
-  /** Delete a site; refuses (409) if linked tenders or jobs exist. */
+  /** Delete a site; refuses (409) if linked tenders, jobs, or form submissions exist. */
   @Delete("sites/:id")
   @RequirePermissions("masterdata.manage")
   @HttpCode(204)
-  @ApiOperation({ summary: "Delete a site (refuses if linked tenders or jobs exist)." })
+  @ApiOperation({ summary: "Delete a site (refuses if linked tenders, jobs, or form submissions exist)." })
   @ApiResponse({ status: 204, description: "Site deleted" })
   @ApiResponse({ status: 404, description: "Site not found" })
-  @ApiResponse({ status: 409, description: "Site has linked tenders or jobs" })
+  @ApiResponse({ status: 409, description: "Site has linked tenders, jobs, or form submissions" })
   deleteSite(@Param("id") id: string, @CurrentUser() actor: { sub: string }) { return this.service.deleteSite(id, actor.sub); }
 
   /** Paginated list of resource types. */

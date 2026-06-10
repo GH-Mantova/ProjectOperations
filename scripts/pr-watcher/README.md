@@ -64,7 +64,7 @@ Env vars override the defaults:
 |---|---|---|
 | `PR_WATCHER_MAX_TURNS` | `120` | Agent hard cap per run. Bump for big PRs. |
 | `PR_WATCHER_CLAUDE_BIN` | `claude` | Override if `claude` isn't on PATH. |
-| `PR_WATCHER_AUTO_MERGE` | `true` | Set to `"false"` to skip auto-merge and leave PRs for review. |
+| `PR_WATCHER_AUTO_MERGE` | `false` | Auto-merge is **opt-in**. Set to `"true"` only for unattended chain runs. The review-gated workflow leaves this off so every PR waits for Marco's manual merge. |
 | `PR_WATCHER_MERGE_TIMEOUT_MIN` | `90` | Max wait for a PR to merge after CI starts. |
 | `PR_WATCHER_POLL_INTERVAL_SEC` | `60` | How often to poll PR state during merge wait. |
 | `PR_WATCHER_STOP_AT` | _(unset)_ | Nightly cutoff `HH:MM` (24-hour, local). Past this, watcher won't start a new prompt and exits cleanly with code 0. In-flight prompt finishes. |

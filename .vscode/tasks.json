@@ -108,7 +108,8 @@
       "command": "node scripts/pr-watcher/index.mjs",
       "options": {
         "env": {
-          "PR_WATCHER_AUTO_REVIEW": "true"
+          "PR_WATCHER_AUTO_REVIEW": "true",
+          "PR_WATCHER_AUTO_MERGE": "false"
         }
       },
       "runOptions": {

@@ -42,7 +42,7 @@ const FAILED_DIR = path.join(PROMPT_DIR, "failed");
 const BLOCKED_DIR = path.join(PROMPT_DIR, "blocked");
 const PAUSED_DIR = path.join(PROMPT_DIR, "paused");
 
-const READY_PATTERN = /^pr-.*-ready\.md$/i;
+const READY_PATTERN = /^(pr|rev)-.*-ready\.md$/i;
 const DEBOUNCE_MS = 800;
 
 // Periodic rescan interval. fs.watch can silently drop events on Windows
@@ -161,7 +161,8 @@ function isReady(name) {
 }
 
 function isReviewJob(name) {
-  return /-auto-review-ready\.md$/i.test(name);
+  // rev-NNN-ready.md (new convention) or legacy pr-NNN-auto-review-ready.md
+  return /^rev-/i.test(name) || /-auto-review-ready\.md$/i.test(name);
 }
 
 function debouncedEnqueue(name) {
@@ -180,7 +181,18 @@ function enqueue(name, { source = "watch" } = {}) {
   if (!existsSync(filePath)) return;
   if (seen.has(name)) return;
   seen.add(name);
-  queue.push(filePath);
+  if (isReviewJob(name)) {
+    // Verdicts unblock Marco's merges; insert after any review jobs already at
+    // the front so the currently-running authoring job is never interrupted but
+    // the next free slot goes to verdicts rather than more authoring work.
+    let insertAt = 0;
+    while (insertAt < queue.length && isReviewJob(path.basename(queue[insertAt]))) {
+      insertAt++;
+    }
+    queue.splice(insertAt, 0, filePath);
+  } else {
+    queue.push(filePath);
+  }
   const tail = `depth: ${queue.length}${running ? ", busy" : ""}, source: ${source}`;
   log("queue", `${name} (${tail})`);
   drain();
@@ -481,7 +493,7 @@ async function pollForNewPrs() {
     const age = now - new Date(pr.createdAt).getTime();
     if (age < REVIEW_MIN_AGE_MS) continue; // grace period — authoring agent may still be finishing
 
-    const promptName = `pr-${pr.number}-auto-review-ready.md`;
+    const promptName = `rev-${pr.number}-ready.md`;
     const promptPath = path.join(PROMPT_DIR, promptName);
     const body = renderTemplate(reviewTemplate, pr.number, pr.title);
     try {
@@ -747,7 +759,7 @@ function warnOnOrphanClaudeProcesses() {
   await ensureDirs();
   log("watcher", `repo:        ${REPO_ROOT}`);
   log("watcher", `watching     ${PROMPT_DIR}`);
-  log("watcher", `pattern:     pr-*-ready.md`);
+  log("watcher", `pattern:     (pr|rev)-*-ready.md`);
   log("watcher", `claude:      ${CLAUDE_BIN}`);
   log("watcher", `gh:          ${GH_BIN}`);
   log("watcher", `max-turns:   ${MAX_TURNS}`);

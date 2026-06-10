@@ -136,6 +136,8 @@ export class SafetyController {
    */
   @Get("incidents")
   @RequirePermissions("safety.view")
+  @ApiOperation({ summary: "List safety incidents with optional filters and pagination." })
+  @ApiResponse({ status: 200, description: "Paginated incidents list." })
   listIncidents(@Query() q: ListIncidentsQuery) {
     return this.service.listIncidents(q);
   }
@@ -151,6 +153,9 @@ export class SafetyController {
    */
   @Get("incidents/:id")
   @RequirePermissions("safety.view")
+  @ApiOperation({ summary: "Get a safety incident by ID." })
+  @ApiResponse({ status: 200, description: "Incident record." })
+  @ApiResponse({ status: 404, description: "Incident not found." })
   getIncident(@Param("id") id: string) {
     return this.service.getIncident(id);
   }
@@ -169,6 +174,8 @@ export class SafetyController {
    */
   @Post("incidents")
   @RequirePermissions("safety.manage")
+  @ApiOperation({ summary: "Create a safety incident report." })
+  @ApiResponse({ status: 201, description: "Incident created." })
   createIncident(@Body() dto: CreateIncidentDto, @CurrentUser() actor: { sub: string }) {
     return this.service.createIncident(dto as never, actor.sub);
   }
@@ -187,6 +194,9 @@ export class SafetyController {
    */
   @Patch("incidents/:id")
   @RequirePermissions("safety.manage")
+  @ApiOperation({ summary: "Partially update a safety incident." })
+  @ApiResponse({ status: 200, description: "Updated incident." })
+  @ApiResponse({ status: 404, description: "Incident not found." })
   patchIncident(@Param("id") id: string, @Body() dto: UpdateIncidentDto) {
     return this.service.updateIncident(id, dto as never);
   }
@@ -204,6 +214,9 @@ export class SafetyController {
    */
   @Post("incidents/:id/close")
   @RequirePermissions("safety.admin")
+  @ApiOperation({ summary: "Close a safety incident (stamps closedAt and closedById)." })
+  @ApiResponse({ status: 200, description: "Incident closed." })
+  @ApiResponse({ status: 404, description: "Incident not found." })
   closeIncident(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
     return this.service.closeIncident(id, actor.sub);
   }
@@ -220,6 +233,8 @@ export class SafetyController {
    */
   @Get("hazards")
   @RequirePermissions("safety.view")
+  @ApiOperation({ summary: "List hazard observations with optional filters and pagination." })
+  @ApiResponse({ status: 200, description: "Paginated hazards list." })
   listHazards(@Query() q: ListHazardsQuery) {
     return this.service.listHazards(q);
   }
@@ -235,6 +250,9 @@ export class SafetyController {
    */
   @Get("hazards/:id")
   @RequirePermissions("safety.view")
+  @ApiOperation({ summary: "Get a hazard observation by ID." })
+  @ApiResponse({ status: 200, description: "Hazard record." })
+  @ApiResponse({ status: 404, description: "Hazard not found." })
   getHazard(@Param("id") id: string) {
     return this.service.getHazard(id);
   }
@@ -253,6 +271,8 @@ export class SafetyController {
    */
   @Post("hazards")
   @RequirePermissions("safety.manage")
+  @ApiOperation({ summary: "Create a hazard observation." })
+  @ApiResponse({ status: 201, description: "Hazard created." })
   createHazard(@Body() dto: CreateHazardDto, @CurrentUser() actor: { sub: string }) {
     return this.service.createHazard(dto as never, actor.sub);
   }
@@ -272,6 +292,9 @@ export class SafetyController {
    */
   @Patch("hazards/:id")
   @RequirePermissions("safety.manage")
+  @ApiOperation({ summary: "Partially update a hazard observation." })
+  @ApiResponse({ status: 200, description: "Updated hazard." })
+  @ApiResponse({ status: 404, description: "Hazard not found." })
   patchHazard(@Param("id") id: string, @Body() dto: UpdateHazardDto) {
     return this.service.updateHazard(id, dto as never);
   }
@@ -288,6 +311,9 @@ export class SafetyController {
    */
   @Post("hazards/:id/close")
   @RequirePermissions("safety.admin")
+  @ApiOperation({ summary: "Close a hazard observation (stamps closedAt)." })
+  @ApiResponse({ status: 200, description: "Hazard closed." })
+  @ApiResponse({ status: 404, description: "Hazard not found." })
   closeHazard(@Param("id") id: string) {
     return this.service.closeHazard(id);
   }

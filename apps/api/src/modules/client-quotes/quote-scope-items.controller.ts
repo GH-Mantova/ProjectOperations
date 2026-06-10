@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { IsArray, IsBoolean, IsInt, IsOptional, IsString, Min } from "class-validator";
 import { Type } from "class-transformer";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
@@ -37,12 +37,16 @@ export class QuoteScopeItemsController {
 
   @Get()
   @RequirePermissions("tenders.view")
+  @ApiOperation({ summary: "List scope items for a quote." })
+  @ApiResponse({ status: 200, description: "Quote scope items." })
   list(@Param("tenderId") tenderId: string, @Param("quoteId") quoteId: string) {
     return this.service.list(tenderId, quoteId);
   }
 
   @Post()
   @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Create a scope item on a quote." })
+  @ApiResponse({ status: 201, description: "Scope item created." })
   create(
     @Param("tenderId") tenderId: string,
     @Param("quoteId") quoteId: string,
@@ -53,6 +57,9 @@ export class QuoteScopeItemsController {
 
   @Patch(":itemId")
   @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Update a quote scope item." })
+  @ApiResponse({ status: 200, description: "Updated scope item." })
+  @ApiResponse({ status: 404, description: "Scope item not found." })
   update(
     @Param("tenderId") tenderId: string,
     @Param("quoteId") quoteId: string,
@@ -64,6 +71,9 @@ export class QuoteScopeItemsController {
 
   @Delete(":itemId")
   @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Delete a quote scope item." })
+  @ApiResponse({ status: 200, description: "Deleted scope item ID." })
+  @ApiResponse({ status: 404, description: "Scope item not found." })
   remove(
     @Param("tenderId") tenderId: string,
     @Param("quoteId") quoteId: string,
@@ -74,6 +84,8 @@ export class QuoteScopeItemsController {
 
   @Post("reorder")
   @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Bulk reorder quote scope items." })
+  @ApiResponse({ status: 200, description: "Reordered scope items." })
   reorder(
     @Param("tenderId") tenderId: string,
     @Param("quoteId") quoteId: string,

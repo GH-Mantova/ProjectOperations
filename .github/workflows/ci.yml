@@ -67,6 +67,26 @@ jobs:
           JWT_ACCESS_SECRET: ci-access-secret
           JWT_REFRESH_SECRET: ci-refresh-secret
           SHAREPOINT_MODE: mock
+      - run: pnpm test:canonical
+        env:
+          DATABASE_URL: postgresql://project_ops:project_ops@localhost:5432/project_operations?schema=public
+          JWT_ACCESS_SECRET: ci-access-secret
+          JWT_REFRESH_SECRET: ci-refresh-secret
+          SHAREPOINT_MODE: mock
+
+  pr-gates:
+    name: PR gates — diff checks (CP-09–13, CP-17)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4.1.0
+        with: { node-version: '22' }
+      - run: node scripts/pr-gates/pr-gates.mjs
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
 
   web:
     name: Web — lint, logic tests, build

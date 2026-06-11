@@ -275,7 +275,8 @@ test.describe("Batch 2 — Tendering pipeline + register (PRs #16, #28-#30, #43,
     await expect(followUpRow.getByRole("button", { name: "Done", exact: true })).toBeVisible();
     await followUpRow.getByRole("button", { name: "Done", exact: true }).click();
     await expect(followUpRow.getByRole("button", { name: "Open", exact: true })).toBeVisible();
-    // Residue: the 8 created entries remain — the panel exposes no delete UI.
+    // Residue: the 8 created entries remain — PR-63b's delete affordance is
+    // deliberately not exercised here to keep this spec's scope unchanged.
   });
 
   test("entries view toggle Feed ↔ Tabs persists across a reload", async ({ page }) => {
@@ -294,35 +295,37 @@ test.describe("Batch 2 — Tendering pipeline + register (PRs #16, #28-#30, #43,
     await expect(page.getByRole("tab", { name: "My Tasks", exact: true })).toBeVisible();
   });
 
-  // ── Detail: client card scoring ────────────────────────────────────────────
+  // ── Detail: client scoring (Client Detail drawer) ─────────────────────────
 
   test("client card expands, 4-star rating persists after reload, win-rate line renders", async ({ page }) => {
+    // §5A.3 (PR-63b) — client rows moved from the Team panel to the Activity
+    // sidebar; the editable rating lives in the Client Detail drawer behind
+    // the row's info icon.
     await openTenderDetail(page, "IS-T001");
-    // Anchored regex avoids the "Remove Queensland Transport…" button.
-    await page.getByRole("button", { name: /^Queensland Transport Infrastructure/ }).click();
-    const ratingGroup = page.getByRole("radiogroup", {
+    const infoButton = page.getByRole("button", {
+      name: "Queensland Transport Infrastructure details"
+    });
+    await infoButton.click();
+    const drawer = page.getByTestId("client-detail-drawer");
+    const ratingGroup = drawer.getByRole("radiogroup", {
       name: "Queensland Transport Infrastructure preference score"
     });
     await expect(ratingGroup).toBeVisible();
     await ratingGroup.getByRole("radio", { name: "4 stars" }).click();
-    // Saving triggers a tender refetch which remounts the row collapsed —
-    // wait for the collapse, re-expand, then assert the score stuck.
+    // Saving triggers a tender refetch which remounts the overview (the
+    // drawer closes) — wait for that, reopen, then assert the score stuck.
     await expect(ratingGroup).not.toBeVisible();
-    await page.getByRole("button", { name: /^Queensland Transport Infrastructure/ }).click();
+    await infoButton.click();
     await expect(ratingGroup.getByRole("radio", { name: "4 stars" })).toBeChecked();
 
     await page.reload();
-    await page.getByRole("button", { name: /^Queensland Transport Infrastructure/ }).click();
-    await expect(
-      page
-        .getByRole("radiogroup", { name: "Queensland Transport Infrastructure preference score" })
-        .getByRole("radio", { name: "4 stars" })
-    ).toBeChecked();
+    await infoButton.click();
+    await expect(ratingGroup.getByRole("radio", { name: "4 stars" })).toBeChecked();
     // Win-rate line renders its correct state: the "% win rate (N won of M
     // quoted)" line when the client has computed quote history, otherwise the
     // documented "No tender history yet" fallback (seed has no quote history).
     await expect(
-      page.getByText(/% win rate \(\d+ won of \d+ quoted\)|No tender history yet/).first()
+      drawer.getByText(/% win rate \(\d+ won of \d+ quoted\)|No tender history yet/).first()
     ).toBeVisible();
   });
 

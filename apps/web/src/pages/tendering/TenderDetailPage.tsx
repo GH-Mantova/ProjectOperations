@@ -5,13 +5,12 @@ import { useAuth } from "../../auth/AuthContext";
 import { QuoteTab } from "./QuoteTab";
 import { AddClientModal } from "./AddClientModal";
 import { TenderDocumentsPanel } from "./TenderDocumentsPanel";
-import { TenderClientNotesSection } from "./TenderClientNotesSection";
 import { TenderEntriesPanel } from "./TenderEntriesPanel";
+import { TeamEstimatorPanel } from "./TeamEstimatorPanel";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { ConvertToProjectModal } from "./ConvertToProjectModal";
 import { ScopeCardsTab } from "./scope-cards/ScopeCardsTab";
 import { AssumptionsExclusionsFloatingEditor } from "./AssumptionsExclusionsFloatingEditor";
-import { ClientStarRating } from "../../components/ClientStarRating";
 
 type TenderDetail = {
   id: string;
@@ -29,6 +28,7 @@ type TenderDetail = {
   createdAt: string;
   updatedAt: string;
   estimator?: { id: string; firstName: string; lastName: string } | null;
+  assignedEstimatorId?: string | null;
   tenderClients: Array<{
     id: string;
     client: {
@@ -552,101 +552,11 @@ export function TenderDetailPage() {
                 />
               </section>
 
-              <section className="s7-card">
-                <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>Team</h3>
-                <div className="tender-detail__team">
-                  {tender.estimator ? (
-                    <div className="tender-detail__team-row">
-                      <span className="tender-detail__avatar">{tender.estimator.firstName[0]}{tender.estimator.lastName[0]}</span>
-                      <div>
-                        <strong>{tender.estimator.firstName} {tender.estimator.lastName}</strong>
-                        <p className="s7-type-label">Estimator</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <p style={{ color: "var(--text-muted)" }}>No estimator assigned.</p>
-                  )}
-                </div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 16, marginBottom: 6 }}>
-                  <h4 className="s7-type-card-title" style={{ margin: 0 }}>Clients</h4>
-                  {canManageTenders ? (
-                    <button
-                      type="button"
-                      className="s7-btn s7-btn--ghost s7-btn--sm"
-                      onClick={() => setAddClientOpen(true)}
-                    >
-                      + Add client
-                    </button>
-                  ) : null}
-                </div>
-                {clientMsg ? (
-                  <p style={{ color: "var(--status-danger)", fontSize: 12, margin: "4px 0" }}>{clientMsg}</p>
-                ) : null}
-                {tender.tenderClients.length === 0 ? (
-                  <p style={{ color: "var(--text-muted)" }}>No clients linked.</p>
-                ) : (
-                  <ul className="tender-detail__clients" style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
-                    {tender.tenderClients.map((tc) => {
-                      const canRemove = canManageTenders && tender.tenderClients.length > 1;
-                      return (
-                        <ExpandableClientRow
-                          key={tc.id}
-                          tenderId={tender.id}
-                          clientId={tc.client.id}
-                          clientName={tc.client.name}
-                          preferenceScore={tc.client.preferenceScore ?? null}
-                          winCount={tc.client.winCount ?? 0}
-                          tenderCount={tc.client.tenderCount ?? 0}
-                          winRate={tc.client.winRate ?? null}
-                          contact={tc.contact ?? null}
-                          relationshipType={tc.relationshipType ?? null}
-                          isAwarded={tc.isAwarded}
-                          contractIssued={tc.contractIssued}
-                          canManage={canManageTenders}
-                          canManageClients={canManageTenders}
-                          onScoreChange={async (next) => {
-                            try {
-                              const response = await authFetch(
-                                `/master-data/clients/${tc.client.id}`,
-                                {
-                                  method: "PATCH",
-                                  body: JSON.stringify({
-                                    name: tc.client.name,
-                                    preferenceScore: next
-                                  })
-                                }
-                              );
-                              if (!response.ok) throw new Error(await response.text());
-                              await reload();
-                            } catch (err) {
-                              setClientMsg((err as Error).message);
-                            }
-                          }}
-                          canRemove={canRemove}
-                          onRemove={async () => {
-                            if (!canRemove) {
-                              setClientMsg("A tender must have at least one client.");
-                              return;
-                            }
-                            if (!window.confirm(`Remove ${tc.client.name} from this tender?`)) return;
-                            try {
-                              const response = await authFetch(
-                                `/tenders/${tender.id}/clients/${tc.client.id}`,
-                                { method: "DELETE" }
-                              );
-                              if (!response.ok) throw new Error(await response.text());
-                              setClientMsg(null);
-                              await reload();
-                            } catch (err) {
-                              setClientMsg((err as Error).message);
-                            }
-                          }}
-                        />
-                      );
-                    })}
-                  </ul>
-                )}
-              </section>
+              <TeamEstimatorPanel
+                tenderId={tender.id}
+                assignedEstimatorId={tender.assignedEstimatorId ?? null}
+                canManage={canManageTenders}
+              />
             </div>
 
             <section className="s7-card">
@@ -708,7 +618,62 @@ export function TenderDetailPage() {
               </section>
             ) : null}
 
-            <TenderEntriesPanel tenderId={tender.id} />
+            {clientMsg ? (
+              <p style={{ color: "var(--status-danger)", fontSize: 12, margin: "4px 0" }}>{clientMsg}</p>
+            ) : null}
+            <TenderEntriesPanel
+              tenderId={tender.id}
+              canManage={canManageTenders}
+              canRemoveClients={canManageTenders && tender.tenderClients.length > 1}
+              clients={tender.tenderClients.map((tc) => ({
+                tenderClientId: tc.id,
+                clientId: tc.client.id,
+                name: tc.client.name,
+                preferenceScore: tc.client.preferenceScore ?? null,
+                relationshipType: tc.relationshipType ?? null,
+                isAwarded: tc.isAwarded,
+                contractIssued: tc.contractIssued,
+                winCount: tc.client.winCount ?? 0,
+                tenderCount: tc.client.tenderCount ?? 0,
+                winRate: tc.client.winRate ?? null,
+                contact: tc.contact ?? null
+              }))}
+              onAddClient={() => setAddClientOpen(true)}
+              onScoreChange={async (clientId, next) => {
+                const tc = tender.tenderClients.find((row) => row.client.id === clientId);
+                if (!tc) return;
+                try {
+                  const response = await authFetch(`/master-data/clients/${clientId}`, {
+                    method: "PATCH",
+                    body: JSON.stringify({ name: tc.client.name, preferenceScore: next })
+                  });
+                  if (!response.ok) throw new Error(await response.text());
+                  setClientMsg(null);
+                  await reload();
+                } catch (err) {
+                  setClientMsg((err as Error).message);
+                }
+              }}
+              onRemoveClient={async (clientId) => {
+                const tc = tender.tenderClients.find((row) => row.client.id === clientId);
+                if (!tc) return;
+                if (tender.tenderClients.length <= 1) {
+                  setClientMsg("A tender must have at least one client.");
+                  return;
+                }
+                if (!window.confirm(`Remove ${tc.client.name} from this tender?`)) return;
+                try {
+                  const response = await authFetch(`/tenders/${tender.id}/clients/${clientId}`, {
+                    method: "DELETE"
+                  });
+                  if (!response.ok) throw new Error(await response.text());
+                  setClientMsg(null);
+                  await reload();
+                } catch (err) {
+                  setClientMsg((err as Error).message);
+                }
+              }}
+            />
           </div>
         )}
 
@@ -807,135 +772,6 @@ export function TenderDetailPage() {
         />
       )}
     </div>
-  );
-}
-
-function ExpandableClientRow({
-  tenderId,
-  clientId,
-  clientName,
-  preferenceScore,
-  winCount,
-  tenderCount,
-  winRate,
-  contact,
-  relationshipType,
-  isAwarded,
-  contractIssued,
-  canManage,
-  canManageClients,
-  onScoreChange,
-  canRemove,
-  onRemove
-}: {
-  tenderId: string;
-  clientId: string;
-  clientName: string;
-  preferenceScore: number | null;
-  winCount: number;
-  tenderCount: number;
-  winRate: string | null;
-  contact: { id: string; firstName: string; lastName: string; email?: string | null } | null;
-  relationshipType: string | null;
-  isAwarded: boolean;
-  contractIssued: boolean;
-  canManage: boolean;
-  canManageClients: boolean;
-  onScoreChange: (score: number) => void;
-  canRemove: boolean;
-  onRemove: () => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const winRateDisplay = winRate !== null && winRate !== undefined ? Number(winRate) : null;
-  return (
-    <li className="tender-detail__client-row" style={{ position: "relative", width: "100%" }}>
-      <button
-        type="button"
-        className="tender-detail__client-header"
-        onClick={() => setExpanded((prev) => !prev)}
-        aria-expanded={expanded}
-        style={{ background: "transparent", border: "none", width: "100%", padding: 0, paddingRight: canManage ? 24 : 0, textAlign: "left", color: "inherit" }}
-      >
-        <span className="tender-detail__client-caret" aria-hidden>{expanded ? "▾" : "▸"}</span>
-        <span>
-          <strong>{clientName}</strong>
-          {relationshipType ? <span className="tender-detail__client-tag" style={{ marginLeft: 6 }}>{relationshipType}</span> : null}
-          {isAwarded ? <span className="s7-badge s7-badge--active" style={{ marginLeft: 6 }}>Awarded</span> : null}
-          {contractIssued ? <span className="s7-badge s7-badge--info" style={{ marginLeft: 6 }}>Contract</span> : null}
-          <span style={{ marginLeft: 8, display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <ClientStarRating score={preferenceScore} readOnly size="sm" ariaLabel={`${clientName} preference`} />
-            {tenderCount > 0 && winRateDisplay !== null ? (
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                {winRateDisplay.toFixed(0)}% win
-              </span>
-            ) : null}
-          </span>
-        </span>
-        <span />
-      </button>
-      {canManage ? (
-        <button
-          type="button"
-          aria-label={`Remove ${clientName}`}
-          title={canRemove ? `Remove ${clientName}` : "A tender must have at least one client"}
-          disabled={!canRemove}
-          onClick={(e) => {
-            e.stopPropagation();
-            onRemove();
-          }}
-          style={{
-            position: "absolute",
-            top: 4,
-            right: 6,
-            background: "transparent",
-            border: "none",
-            cursor: canRemove ? "pointer" : "not-allowed",
-            color: "var(--text-muted)",
-            fontSize: 18,
-            lineHeight: 1,
-            padding: "2px 6px",
-            opacity: canRemove ? 1 : 0.4
-          }}
-        >
-          ×
-        </button>
-      ) : null}
-      {expanded ? (
-        <div style={{ marginTop: 8 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Preference:</span>
-              <ClientStarRating
-                score={preferenceScore}
-                readOnly={!canManageClients}
-                onChange={canManageClients ? onScoreChange : undefined}
-                ariaLabel={`${clientName} preference score`}
-              />
-            </div>
-            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              {tenderCount > 0 && winRateDisplay !== null
-                ? `${winRateDisplay.toFixed(0)}% win rate (${winCount} won of ${tenderCount} quoted)`
-                : "No tender history yet"}
-            </span>
-          </div>
-          {contact ? (
-            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              <strong style={{ color: "inherit" }}>
-                {contact.firstName} {contact.lastName}
-              </strong>
-              {contact.email ? (
-                <div>
-                  <a href={`mailto:${contact.email}`}>{contact.email}</a>
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>No contact on file.</p>
-          )}
-          <TenderClientNotesSection tenderId={tenderId} clientId={clientId} canManage={canManage} />
-        </div>
-      ) : null}
-    </li>
   );
 }
 

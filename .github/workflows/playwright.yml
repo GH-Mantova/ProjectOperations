@@ -83,7 +83,7 @@ jobs:
         run: pnpm exec playwright test tests/e2e/tendering.spec.ts --reporter=list,html
 
       - name: Run PR-acceptance E2E suite
-        run: pnpm exec playwright test tests/e2e/pr-acceptance --project=chromium --reporter=list,html
+        run: pnpm exec playwright test tests/e2e/pr-acceptance --project=chromium --reporter=list,html --workers=1
 
       - uses: actions/upload-artifact@v4.4.0
         if: ${{ !cancelled() && hashFiles('playwright-report/**') != '' }}

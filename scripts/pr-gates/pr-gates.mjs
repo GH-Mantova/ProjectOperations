@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// PR diff gates (CP-09..CP-13, CP-17). Node built-ins only, ASCII-only output.
+// PR diff gates (CP-09..CP-13, CP-17, CP-22). Node built-ins only, ASCII-only output.
 // Diffs HEAD against the merge-base with origin/main.
 //
 // PR body source (in priority order):
@@ -22,6 +22,13 @@
 // Standing rule for PR authors: never place a column-0 gate-scope fence or
 // column-0 GATE-ALLOW: lines as documentation in a PR body. Indent examples by
 // at least one space so they cannot activate the parsers above.
+//
+// Verification-checklist gate (CP-22): if the body has a "## Verification"
+// heading, every checkbox in that section (until the next "## " heading or
+// EOF) must be checked ("- [x]"). Unchecked boxes ("- [ ]") FAIL the gate.
+// Only the Verification section is scanned - "## Test plan" and other
+// sections may legitimately keep unchecked post-merge items. No Verification
+// section -> SKIP.
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -182,6 +189,41 @@ function report(level, gate, name, detail) {
       report("PASS", "CP-09/10", "scope", `${changedFiles.length} file(s) in scope`);
     } else {
       report("FAIL", "CP-09/10", "scope", `out of declared scope: ${strays.join(", ")}`);
+    }
+  }
+}
+
+// CP-22 - verification checklist (only the "## Verification" section is scanned)
+{
+  const lines = prBody.split(/\r?\n/);
+  const start = lines.findIndex((l) => /^##\s+Verification\s*$/.test(l));
+  if (start === -1) {
+    report("SKIP", "CP-22", "verification-checklist", "no Verification section");
+  } else {
+    let end = lines.length;
+    for (let i = start + 1; i < lines.length; i++) {
+      if (/^##\s/.test(lines[i])) {
+        end = i;
+        break;
+      }
+    }
+    const section = lines.slice(start + 1, end);
+    const unchecked = section.filter((l) => /^\s*-\s\[ \]/.test(l));
+    const checked = section.filter((l) => /^\s*-\s\[[xX]\]/.test(l));
+    if (unchecked.length === 0) {
+      report(
+        "PASS",
+        "CP-22",
+        "verification-checklist",
+        `${checked.length} checkbox(es) checked, none unchecked`
+      );
+    } else {
+      report(
+        "FAIL",
+        "CP-22",
+        "verification-checklist",
+        `unchecked: ${unchecked.map((l) => l.trim()).join(" | ")}`
+      );
     }
   }
 }

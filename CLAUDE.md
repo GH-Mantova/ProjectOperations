@@ -2,6 +2,7 @@
 
 You are working on the `GH-Mantova/ProjectOperations` repository.
 Read this file fully before doing anything. Follow every rule here for every task.
+Before diagnosing any operational, CI, git, or database issue, check docs/lessons-learned/incident-ledger.md for a matching entry — known issues have documented playbooks.
 
 ---
 

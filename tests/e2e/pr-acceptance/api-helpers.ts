@@ -203,6 +203,137 @@ export async function listCuttingItems(
   );
 }
 
+/* ────────────────────────────────────────────────────────────────────────────
+ * Batch 6 — delivery fixtures. No projects or contracts exist in seed data
+ * (projects are only born by converting a tender), so batch 6 creates its own
+ * tender → project fixtures through the same REST API the UI calls and tears
+ * them down with the revert-to-tender cascade (which also deletes any
+ * contract/allocations via Prisma cascade) followed by a tender hard-delete.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+export const B6_PREFIX = "E2E-B6";
+
+export type B6Fixture = {
+  tenderId: string;
+  tenderNumber: string;
+  projectId: string | null;
+  projectNumber: string | null;
+};
+
+/** Creates a tender (with an awarded client-001 link) at the given status. */
+export async function createFixtureTender(
+  request: APIRequestContext,
+  token: string,
+  status: "AWARDED" | "CONTRACT_ISSUED",
+  slug: string
+): Promise<{ tenderId: string; tenderNumber: string }> {
+  const tenderNumber = `${B6_PREFIX}-${slug}-${Date.now()}`;
+  const created = await apiFetch<{ id: string }>(request, token, "POST", "/tenders", {
+    tenderNumber,
+    title: `${B6_PREFIX} fixture — ${slug}`,
+    status,
+    tenderClients: [{ clientId: "client-001", isAwarded: true }]
+  });
+  return { tenderId: created.id, tenderNumber };
+}
+
+/** Creates an AWARDED fixture tender and converts it into a project. */
+export async function createFixtureProject(
+  request: APIRequestContext,
+  token: string,
+  slug: string
+): Promise<B6Fixture> {
+  const { tenderId, tenderNumber } = await createFixtureTender(request, token, "AWARDED", slug);
+  const project = await apiFetch<{ id: string; projectNumber: string }>(
+    request,
+    token,
+    "POST",
+    `/tenders/${tenderId}/convert`
+  );
+  return { tenderId, tenderNumber, projectId: project.id, projectNumber: project.projectNumber };
+}
+
+/**
+ * Best-effort teardown: revert the project (cascade-deletes scope, gantt
+ * tasks, allocations, and contract; resets the tender), then hard-delete the
+ * tender. Tolerates a project that was already reverted by the test itself.
+ */
+export async function destroyFixture(
+  request: APIRequestContext,
+  token: string,
+  fixture: { tenderId: string; projectId?: string | null }
+): Promise<void> {
+  if (fixture.projectId) {
+    await apiDeleteQuiet(request, token, `/projects/${fixture.projectId}/revert-to-tender`);
+  }
+  await apiDeleteQuiet(request, token, `/tenders/${fixture.tenderId}`);
+}
+
+/**
+ * Clears B6 fixtures orphaned by a previous CRASHED run (normal runs clean up
+ * in finally blocks). Reverts any leftover fixture projects first so their
+ * tenders can be hard-deleted.
+ */
+export async function purgeB6Fixtures(
+  request: APIRequestContext,
+  token: string
+): Promise<void> {
+  const projects = await apiFetch<{ items: Array<{ id: string; name: string }> }>(
+    request,
+    token,
+    "GET",
+    `/projects?limit=100&search=${encodeURIComponent(B6_PREFIX)}`
+  );
+  for (const project of projects.items) {
+    if (project.name.startsWith(B6_PREFIX)) {
+      await apiDeleteQuiet(request, token, `/projects/${project.id}/revert-to-tender`);
+    }
+  }
+  const tenders = await apiFetch<{ items: Array<{ id: string; tenderNumber: string }> }>(
+    request,
+    token,
+    "GET",
+    "/tenders?page=1&pageSize=100"
+  );
+  for (const tender of tenders.items) {
+    if (tender.tenderNumber.startsWith(B6_PREFIX)) {
+      await apiDeleteQuiet(request, token, `/tenders/${tender.id}`);
+    }
+  }
+}
+
+/** Resolves a seeded tender's id from its tender number. */
+export async function findTenderId(
+  request: APIRequestContext,
+  token: string,
+  tenderNumber: string
+): Promise<string> {
+  const body = await apiFetch<{ items: Array<{ id: string; tenderNumber: string }> }>(
+    request,
+    token,
+    "GET",
+    "/tenders?page=1&pageSize=100"
+  );
+  const match = body.items.find((t) => t.tenderNumber === tenderNumber);
+  expect(match, `tender ${tenderNumber} not found in first 100 rows`).toBeTruthy();
+  return match!.id;
+}
+
+/** Allocates a worker profile to a project (used to seed the overlap warning). */
+export async function allocateWorkerToProject(
+  request: APIRequestContext,
+  token: string,
+  projectId: string,
+  workerProfileId: string,
+  startDate: string
+): Promise<void> {
+  await apiFetch(request, token, "POST", `/projects/${projectId}/allocations`, {
+    type: "WORKER",
+    workerProfileId,
+    startDate
+  });
+}
+
 /** Parses the LAST dollar amount in a text blob (line totals render after rates). */
 export function lastMoney(text: string | null): number {
   const all = [...(text ?? "").matchAll(/\$([\d,]+(?:\.\d+)?)/g)];

@@ -122,6 +122,14 @@
       },
       "problemMatcher": [],
       "detail": "Polls GitHub for new PRs and auto-fires pr-fix-reviewer. Ctrl+C in the pane to stop. Only runs in trusted workspaces."
+    },
+    {
+      "label": "branch: prune (remote + local)",
+      "type": "shell",
+      "command": "pwsh -NoProfile -File scripts/branch-prune.ps1; git fetch --prune; git branch --merged main | Select-String -NotMatch 'main' | ForEach-Object { git branch -d $_.ToString().Trim() }",
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated", "reveal": "always" },
+      "detail": "Deletes remote branches with merged PRs (skips open PRs + main), then prunes local merged branches. NEVER run while the watcher is mid-job."
     }
   ]
 }

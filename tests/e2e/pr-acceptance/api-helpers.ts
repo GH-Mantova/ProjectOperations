@@ -1,5 +1,5 @@
 import { expect, type APIRequestContext } from "@playwright/test";
-import { ADMIN } from "./helpers";
+import { ADMIN, FIELD_WORKER } from "./helpers";
 
 /**
  * Batch 3 — thin API fixture layer. The Scope of Works tables render many
@@ -22,6 +22,19 @@ export async function apiToken(request: APIRequestContext): Promise<string> {
     data: { email: ADMIN.email, password: ADMIN.password }
   });
   expect(res.ok(), `POST /auth/login → ${res.status()}`).toBeTruthy();
+  return ((await res.json()) as { accessToken: string }).accessToken;
+}
+
+/**
+ * Token for the seeded field worker (Sean Lattin / wp-user-admin). The /field
+ * timesheet + pre-start endpoints resolve the worker profile from the CALLER,
+ * so worker-side fixtures must authenticate as Sean, not ADMIN.
+ */
+export async function fieldWorkerToken(request: APIRequestContext): Promise<string> {
+  const res = await request.post(`${API_BASE}/auth/login`, {
+    data: { email: FIELD_WORKER.email, password: FIELD_WORKER.password }
+  });
+  expect(res.ok(), `POST /auth/login (field worker) → ${res.status()}`).toBeTruthy();
   return ((await res.json()) as { accessToken: string }).accessToken;
 }
 
@@ -317,6 +330,118 @@ export async function findTenderId(
   const match = body.items.find((t) => t.tenderNumber === tenderNumber);
   expect(match, `tender ${tenderNumber} not found in first 100 rows`).toBeTruthy();
   return match!.id;
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Batch 7 — field/mobile fixtures. The seed links admin@projectops.local to
+ * WorkerProfile `wp-user-admin` (Sean Lattin) but seeds no project
+ * allocations, so the field surface (allocations, pre-starts, timesheets)
+ * starts empty. Batch 7 creates its own tender → project fixture (B6 pattern)
+ * and allocates the admin's worker profile to it. Timesheets and pre-starts
+ * cascade-delete with the project on revert, so teardown is the same
+ * revert + tender hard-delete used by batch 6.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+export const B7_PREFIX = "E2E-B7";
+
+/** Seeded worker profile linked to the admin login (Sean Lattin). */
+export const WP_ADMIN_ID = "wp-user-admin";
+
+/** Creates an AWARDED B7 fixture tender and converts it into a project. */
+export async function createB7FixtureProject(
+  request: APIRequestContext,
+  token: string,
+  slug: string
+): Promise<B6Fixture> {
+  const tenderNumber = `${B7_PREFIX}-${slug}-${Date.now()}`;
+  const created = await apiFetch<{ id: string }>(request, token, "POST", "/tenders", {
+    tenderNumber,
+    title: `${B7_PREFIX} fixture — ${slug}`,
+    status: "AWARDED",
+    tenderClients: [{ clientId: "client-001", isAwarded: true }]
+  });
+  const project = await apiFetch<{ id: string; projectNumber: string }>(
+    request,
+    token,
+    "POST",
+    `/tenders/${created.id}/convert`
+  );
+  return { tenderId: created.id, tenderNumber, projectId: project.id, projectNumber: project.projectNumber };
+}
+
+/** Allocates a worker to a project and returns the allocation id. */
+export async function createWorkerAllocation(
+  request: APIRequestContext,
+  token: string,
+  projectId: string,
+  workerProfileId: string,
+  startDate: string
+): Promise<string> {
+  const body = await apiFetch<{ allocation: { id: string } }>(
+    request,
+    token,
+    "POST",
+    `/projects/${projectId}/allocations`,
+    { type: "WORKER", workerProfileId, startDate }
+  );
+  return body.allocation.id;
+}
+
+/** Creates a timesheet on an allocation and submits it (status SUBMITTED). */
+export async function createSubmittedTimesheet(
+  request: APIRequestContext,
+  token: string,
+  allocationId: string,
+  date: string,
+  description: string,
+  hours = 8
+): Promise<string> {
+  const created = await apiFetch<{ id: string }>(request, token, "POST", "/field/timesheets", {
+    allocationId,
+    date,
+    hoursWorked: hours,
+    breakMinutes: 30,
+    description
+  });
+  await apiFetch(request, token, "POST", `/field/timesheets/${created.id}/submit`);
+  return created.id;
+}
+
+export async function approveTimesheet(
+  request: APIRequestContext,
+  token: string,
+  timesheetId: string
+): Promise<void> {
+  await apiFetch(request, token, "POST", `/field/timesheets/${timesheetId}/approve`);
+}
+
+/** Clears B7 fixtures orphaned by a previous CRASHED run (mirrors purgeB6Fixtures). */
+export async function purgeB7Fixtures(
+  request: APIRequestContext,
+  token: string
+): Promise<void> {
+  const projects = await apiFetch<{ items: Array<{ id: string; name: string }> }>(
+    request,
+    token,
+    "GET",
+    `/projects?limit=100&search=${encodeURIComponent(B7_PREFIX)}`
+  );
+  for (const project of projects.items) {
+    if (project.name.startsWith(B7_PREFIX)) {
+      await apiDeleteQuiet(request, token, `/projects/${project.id}/revert-to-tender`);
+    }
+  }
+  const tenders = await apiFetch<{ items: Array<{ id: string; tenderNumber: string }> }>(
+    request,
+    token,
+    "GET",
+    "/tenders?page=1&pageSize=100"
+  );
+  for (const tender of tenders.items) {
+    if (tender.tenderNumber.startsWith(B7_PREFIX)) {
+      await apiDeleteQuiet(request, token, `/tenders/${tender.id}`);
+    }
+  }
 }
 
 /** Allocates a worker profile to a project (used to seed the overlap warning). */

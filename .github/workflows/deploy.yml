@@ -19,13 +19,18 @@ env:
 jobs:
   deploy:
     name: Build and deploy
-    # Defensive guard: GitHub has been registering 0s phantom push runs
-    # against this workflow file (likely stale workflow metadata). This
-    # condition makes any non-dispatch run skip cleanly (no red X). When
+    # Defensive guard: keeps any non-dispatch run skipping cleanly. When
     # on: push is re-enabled per pre-deploy-checklist.md §6, this gate
-    # should be widened or removed.
+    # should be widened or removed. (The 0s phantom push failures this
+    # was added for were actually caused by `secrets` in a step-level
+    # `if:` — invalid context, see LL-11 — fixed via HAS_PROD_DATABASE_URL.)
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    env:
+      # `secrets` is not available in step-level `if:` expressions —
+      # referencing it there fails workflow-file validation and produced
+      # a 0s failed run on every push (LL-11). Evaluate it here instead.
+      HAS_PROD_DATABASE_URL: ${{ secrets.PROD_DATABASE_URL != '' }}
     steps:
       - uses: actions/checkout@v4.2.2
       - uses: pnpm/action-setup@v4.0.0
@@ -35,7 +40,7 @@ jobs:
       - name: Generate Prisma client
         run: pnpm --filter @project-ops/api exec prisma generate
       - name: Run database migrations
-        if: ${{ secrets.PROD_DATABASE_URL != '' }}
+        if: ${{ env.HAS_PROD_DATABASE_URL == 'true' }}
         run: pnpm --filter @project-ops/api exec prisma migrate deploy
         env:
           DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}

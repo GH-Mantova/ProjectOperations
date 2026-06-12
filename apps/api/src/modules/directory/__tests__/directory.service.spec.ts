@@ -337,6 +337,48 @@ describe("DirectoryService.create", () => {
     });
   });
 
+  it("defaults prequalStatus to 'pending' and categories to [] when omitted (modal/curl minimal payload)", async () => {
+    const { service, mocks } = makeService();
+    await service.create(
+      { name: "Minimal Co", businessType: "company", entityType: "subcontractor" },
+      "actor-1",
+      true
+    );
+    const passed = mocks.sub.create.mock.calls[0][0].data as AnyDto;
+    expect(passed.prequalStatus).toBe("pending");
+    expect(passed.categories).toEqual([]);
+  });
+
+  it("normalizes null categories to [] instead of passing NULL to the non-nullable column", async () => {
+    const { service, mocks } = makeService();
+    await service.create(
+      { ...VALID_CREATE_BASE, categories: null },
+      "actor-1",
+      true
+    );
+    const passed = mocks.sub.create.mock.calls[0][0].data as AnyDto;
+    expect(passed.categories).toEqual([]);
+  });
+
+  it("passes through an explicit valid prequalStatus and categories untouched", async () => {
+    const { service, mocks } = makeService();
+    await service.create(
+      { ...VALID_CREATE_BASE, prequalStatus: "approved", categories: ["electrical"] },
+      "actor-1",
+      true
+    );
+    const passed = mocks.sub.create.mock.calls[0][0].data as AnyDto;
+    expect(passed.prequalStatus).toBe("approved");
+    expect(passed.categories).toEqual(["electrical"]);
+  });
+
+  it("still rejects an invalid prequalStatus when one is supplied", async () => {
+    const { service } = makeService();
+    await expect(
+      service.create({ ...VALID_CREATE_BASE, prequalStatus: "bogus" }, "actor-1", true)
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it("uses '—' as lastName when private_person name has no space", async () => {
     const { service, mocks } = makeService();
     await service.create(
@@ -368,6 +410,22 @@ describe("DirectoryService.update", () => {
     const passed = mocks.sub.update.mock.calls[0][0].data as AnyDto;
     expect(passed.tradingName).toBe("T");
     expect(passed.bankAccountNumber).toBeUndefined();
+  });
+
+  it("treats an explicit null categories patch as clear ([]), not a NULL write", async () => {
+    const { service, mocks } = makeService();
+    mocks.sub.findUnique.mockResolvedValueOnce({ id: "sub-1" });
+    await service.update("sub-1", { categories: null }, true);
+    const passed = mocks.sub.update.mock.calls[0][0].data as AnyDto;
+    expect(passed.categories).toEqual([]);
+  });
+
+  it("leaves categories untouched when omitted from the patch", async () => {
+    const { service, mocks } = makeService();
+    mocks.sub.findUnique.mockResolvedValueOnce({ id: "sub-1" });
+    await service.update("sub-1", { tradingName: "T" }, true);
+    const passed = mocks.sub.update.mock.calls[0][0].data as AnyDto;
+    expect(passed.categories).toBeUndefined();
   });
 });
 

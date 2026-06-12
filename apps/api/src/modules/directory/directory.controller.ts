@@ -43,7 +43,10 @@ class UpsertSubcontractorDto {
   @IsOptional() @IsBoolean() gstRegistered?: boolean;
   @IsOptional() @IsString() website?: string | null;
   @IsOptional() @IsString() entityType?: string;
+  @ApiPropertyOptional({ type: [String], description: "Work categories. Optional — defaults to [] on create." })
   @IsOptional() @IsArray() @IsString({ each: true }) categories?: string[];
+
+  @ApiPropertyOptional({ description: "Prequalification status. Optional — new entries default to 'pending' (prequal workflow entry state)." })
   @IsOptional() @IsString() prequalStatus?: string;
   @IsOptional() @IsString() prequalNotes?: string | null;
   @IsOptional() @IsBoolean() swmsOnFile?: boolean;

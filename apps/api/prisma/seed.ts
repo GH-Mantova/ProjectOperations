@@ -32,7 +32,7 @@ function hashPassword(password: string) {
   return `${salt}:${derivedKey}`;
 }
 
-// PR #146 — synthetic 2-page demolition drawing PDF for IS-T020 demo
+// PR #146 — synthetic 2-page demolition drawing PDF for T260512-BRIS-Rev1 demo
 // tender. Output is bland by design; ships in repo so the seed is
 // hermetic. For richer demo material see roadmap.md PHASE 6 entry.
 // Pdfkit's stream-to-buffer flow uses event listeners, so wrap in
@@ -181,48 +181,58 @@ async function persistMockFileBytes(itemId: string, content: Buffer): Promise<vo
   await writeFile(join(dir, itemId), content);
 }
 
-// Allocates a canonical J-YYYY-NNN job number for a seeded job, idempotently.
-// Mirrors JobNumberService.generate() since the seed runs outside Nest DI.
-//
-// Two wrinkles the production service doesn't have to handle:
-//   1. Re-running the seed must reuse the previous number rather than burn
-//      a fresh sequence slot — look up by stable seed id first.
-//   2. Other seed modules (e.g. seed-initial-services.ts) hardcode canonical
-//      IDs in their fixtures and don't touch JobNumberSequence, so the
-//      sequence row can lag behind reality on a fresh reset. We compute
-//      next = max(rows-for-year, sequence.lastNumber) + 1 to skip past
-//      any pre-allocated IDs, then push the sequence forward so production
-//      allocations don't collide either.
+// G5 — derives the 4-letter slug embedded in a canonical tender/job number
+// literal (T260520-ACME-Rev1 -> ACME).
+function slugOfNumber(number: string): string {
+  return number.split("-")[1];
+}
+
+// G5 — YYMMDD date stamp for "today" in Brisbane local time (UTC+10, no DST).
+function brisbaneStamp(): string {
+  const parts = new Intl.DateTimeFormat("en-AU", {
+    timeZone: "Australia/Brisbane",
+    year: "2-digit",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date());
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("year")}${get("month")}${get("day")}`;
+}
+
+// Allocates a canonical J{YYMMDD}-{SLUG}-{NNN} job number for a seeded job,
+// idempotently. Mirrors JobNumberService.generate() since the seed runs
+// outside Nest DI: NNN is the client's all-time job count + 1, and same-day
+// collisions get a -2/-3 suffix. Re-running the seed reuses the previous
+// number via the stable seed id lookup, so allocation happens once per DB.
+// JobNumberSequence is intentionally no longer touched (retired by G5; the
+// per-client sequence is computed from the jobs table on demand).
 async function allocateSeedJobNumber(
   seedId: string,
-  year: number
-): Promise<string> {
+  clientId: string,
+  clientName: string
+): Promise<{ jobNumber: string; clientSlugSnapshot: string }> {
   const existing = await prisma.job.findUnique({
     where: { id: seedId },
-    select: { jobNumber: true }
+    select: { jobNumber: true, clientSlugSnapshot: true }
   });
-  if (existing) return existing.jobNumber;
-
-  const prefix = `J-${year}-`;
-  const usedRows = await prisma.job.findMany({
-    where: { jobNumber: { startsWith: prefix } },
-    select: { jobNumber: true }
-  });
-  let maxUsed = 0;
-  for (const row of usedRows) {
-    const parsed = parseInt(row.jobNumber.slice(prefix.length), 10);
-    if (Number.isFinite(parsed) && parsed > maxUsed) maxUsed = parsed;
+  if (existing) {
+    return {
+      jobNumber: existing.jobNumber,
+      clientSlugSnapshot: existing.clientSlugSnapshot ?? slugOfNumber(existing.jobNumber)
+    };
   }
-  const sequenceRow = await prisma.jobNumberSequence.findUnique({ where: { year } });
-  const next = Math.max(maxUsed, sequenceRow?.lastNumber ?? 0) + 1;
 
-  await prisma.jobNumberSequence.upsert({
-    where: { year },
-    update: { lastNumber: next },
-    create: { year, lastNumber: next }
-  });
+  const slug = clientName.replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase() || "XXXX";
+  const count = await prisma.job.count({ where: { clientId } });
+  const base = `J${brisbaneStamp()}-${slug}-${String(count + 1).padStart(3, "0")}`;
 
-  return `${prefix}${String(next).padStart(3, "0")}`;
+  let candidate = base;
+  let suffix = 1;
+  while (await prisma.job.findUnique({ where: { jobNumber: candidate }, select: { id: true } })) {
+    suffix += 1;
+    candidate = `${base}-${suffix}`;
+  }
+  return { jobNumber: candidate, clientSlugSnapshot: slug };
 }
 
 async function main() {
@@ -233,7 +243,7 @@ async function main() {
   });
 
   // One-time cleanup: the legacy TEN-2026-### seed tenders were renamed to
-  // IS-T009..IS-T014. On any DB that ran the old seed, those rows still exist
+  // T260501-ACME-Rev1..T260508-ACME-Rev1. On any DB that ran the old seed, those rows still exist
   // and their JobConversion records block the new seed's upserts. Deleting
   // them (and letting Prisma cascade their children) restores idempotency
   // on upgrade. No-op on clean DBs.
@@ -998,7 +1008,7 @@ async function main() {
     });
 
     const tender = await prisma.tender.upsert({
-      where: { tenderNumber: "IS-T009" },
+      where: { tenderNumber: "T260501-ACME-Rev1" },
       update: {
         title: "Gateway civil works package",
         status: "SUBMITTED",
@@ -1011,7 +1021,9 @@ async function main() {
         notes: "Seed tender with multiple linked clients."
       },
       create: {
-        tenderNumber: "IS-T009",
+        tenderNumber: "T260501-ACME-Rev1",
+        revisionNumber: 1,
+        clientSlugSnapshot: "ACME",
         title: "Gateway civil works package",
         status: "SUBMITTED",
         estimatorUserId: estimatorUser.id,
@@ -1104,7 +1116,7 @@ async function main() {
       },
       update: {
         name: tender.title,
-        relativePath: "Project Operations/Tendering/IS-T009_gateway-civil-works-package",
+        relativePath: "Project Operations/Tendering/T260501-ACME-Rev1_gateway-civil-works-package",
         module: "tendering",
         linkedEntityType: "Tender",
         linkedEntityId: tender.id
@@ -1114,7 +1126,7 @@ async function main() {
         driveId: "project-operations-library",
         itemId: "mock-folder-tendering-ten-2026-001",
         name: tender.title,
-        relativePath: "Project Operations/Tendering/IS-T009_gateway-civil-works-package",
+        relativePath: "Project Operations/Tendering/T260501-ACME-Rev1_gateway-civil-works-package",
         module: "tendering",
         linkedEntityType: "Tender",
         linkedEntityId: tender.id
@@ -1194,7 +1206,7 @@ async function main() {
     });
 
     const convertedTender = await prisma.tender.upsert({
-      where: { tenderNumber: "IS-T010" },
+      where: { tenderNumber: "T260410-ACME-Rev1" },
       update: {
         title: "North precinct services package",
         status: "CONVERTED",
@@ -1207,7 +1219,9 @@ async function main() {
         notes: "Seed tender that has progressed through award, contract, and job conversion."
       },
       create: {
-        tenderNumber: "IS-T010",
+        tenderNumber: "T260410-ACME-Rev1",
+        revisionNumber: 1,
+        clientSlugSnapshot: "ACME",
         title: "North precinct services package",
         status: "CONVERTED",
         estimatorUserId: estimatorUser.id,
@@ -1248,7 +1262,9 @@ async function main() {
 
     const extraTenderSeeds = [
       {
-        tenderNumber: "IS-T011",
+        tenderNumber: "T260505-NORT-Rev1",
+        revisionNumber: 1,
+        clientSlugSnapshot: "NORT",
         title: "Riverside drainage remediation",
         status: "DRAFT" as const,
         dueDate: new Date("2026-06-12T00:00:00.000Z"),
@@ -1269,7 +1285,9 @@ async function main() {
         }
       },
       {
-        tenderNumber: "IS-T012",
+        tenderNumber: "T260506-ACME-Rev1",
+        revisionNumber: 1,
+        clientSlugSnapshot: "ACME",
         title: "Airport services trenching package",
         status: "IN_PROGRESS" as const,
         dueDate: new Date("2026-05-05T00:00:00.000Z"),
@@ -1294,7 +1312,9 @@ async function main() {
         }
       },
       {
-        tenderNumber: "IS-T013",
+        tenderNumber: "T260507-NORT-Rev1",
+        revisionNumber: 1,
+        clientSlugSnapshot: "NORT",
         title: "Western corridor traffic switch",
         status: "SUBMITTED" as const,
         dueDate: new Date("2026-04-22T00:00:00.000Z"),
@@ -1319,7 +1339,9 @@ async function main() {
         }
       },
       {
-        tenderNumber: "IS-T014",
+        tenderNumber: "T260508-ACME-Rev1",
+        revisionNumber: 1,
+        clientSlugSnapshot: "ACME",
         title: "North yard rehabilitation package",
         status: "SUBMITTED" as const,
         dueDate: new Date("2026-04-20T00:00:00.000Z"),
@@ -1357,6 +1379,8 @@ async function main() {
         },
         create: {
           tenderNumber: seedTender.tenderNumber,
+          revisionNumber: 1,
+          clientSlugSnapshot: slugOfNumber(seedTender.tenderNumber),
           title: seedTender.title,
           status: seedTender.status,
           estimatorUserId: estimatorUser.id,
@@ -1427,7 +1451,7 @@ async function main() {
       });
     }
 
-    // ── IS-T020 — Brisbane Grammar School demo tender ──────────────────────
+    // ── T260512-BRIS-Rev1 — Brisbane Grammar School demo tender ──────────────────────
     // Walk-through tender for the Monday presentation. Has scope across all
     // four disciplines (DEM/CIV/ASB/Other), a ClientQuote with cost lines,
     // multiple clarifications using the new typed log, and a follow-up.
@@ -1491,7 +1515,7 @@ async function main() {
     })();
 
     const bgsTender = await prisma.tender.upsert({
-      where: { tenderNumber: "IS-T020" },
+      where: { tenderNumber: "T260512-BRIS-Rev1" },
       update: {
         title: "Brisbane Grammar School — Science Block refurbishment",
         status: "IN_PROGRESS",
@@ -1504,7 +1528,9 @@ async function main() {
         notes: "Internal strip-out + asbestos removal + civil works for new science wing. Demo tender for Raj walk-through."
       },
       create: {
-        tenderNumber: "IS-T020",
+        tenderNumber: "T260512-BRIS-Rev1",
+        revisionNumber: 1,
+        clientSlugSnapshot: "BRIS",
         title: "Brisbane Grammar School — Science Block refurbishment",
         status: "IN_PROGRESS",
         estimatorUserId: estimatorUser.id,
@@ -1528,7 +1554,7 @@ async function main() {
       }
     });
 
-    // PR #146 — IS-T020 demo drawing for Tendering Assistant smoke
+    // PR #146 — T260512-BRIS-Rev1 demo drawing for Tendering Assistant smoke
     // testing. The mock SharePoint adapter persists bytes locally; this
     // seed mirrors the upload write-path so smoke tests have something
     // to read regardless of whether anyone has uploaded via the UI.
@@ -1545,7 +1571,7 @@ async function main() {
       },
       update: {
         name: "Drawings",
-        relativePath: "Project Operations/Tendering/IS-T020_brisbane-grammar-school/Drawings",
+        relativePath: "Project Operations/Tendering/T260512-BRIS-Rev1_brisbane-grammar-school/Drawings",
         module: "tendering",
         linkedEntityType: "Tender",
         linkedEntityId: bgsTender.id
@@ -1555,7 +1581,7 @@ async function main() {
         driveId: "project-operations-library",
         itemId: bgsDrawingFolderItemId,
         name: "Drawings",
-        relativePath: "Project Operations/Tendering/IS-T020_brisbane-grammar-school/Drawings",
+        relativePath: "Project Operations/Tendering/T260512-BRIS-Rev1_brisbane-grammar-school/Drawings",
         module: "tendering",
         linkedEntityType: "Tender",
         linkedEntityId: bgsTender.id
@@ -1571,7 +1597,7 @@ async function main() {
       scale: "1:100",
       revision: "A",
       date: "20.05.2026",
-      project: "IS-T020 Brisbane Grammar School Science Block",
+      project: "T260512-BRIS-Rev1 Brisbane Grammar School Science Block",
       client: "Brisbane Grammar School"
     });
     const bgsDrawingSizeBytes = bgsDrawingBytes.byteLength;
@@ -1635,7 +1661,7 @@ async function main() {
     // it lands alongside the drawings.
     const bgsRegisterFileItemId = "mock-file-tender-bgs-t020-asbestos-register";
     const bgsRegisterBytes = await generateSyntheticAsbestosRegister({
-      project: "IS-T020 Brisbane Grammar School Science Block",
+      project: "T260512-BRIS-Rev1 Brisbane Grammar School Science Block",
       client: "Brisbane Grammar School",
       surveyDate: "15.04.2026",
       rows: [
@@ -2007,7 +2033,7 @@ async function main() {
       ]
     });
 
-    // Assumptions and exclusions on the IS-T020 quote — populates the demo
+    // Assumptions and exclusions on the T260512-BRIS-Rev1 quote — populates the demo
     // tender so Raj can walk through both tabs without seeing empty state.
     await prisma.quoteAssumption.deleteMany({ where: { quoteId: bgsQuote.id } });
     await prisma.quoteAssumption.createMany({
@@ -2061,7 +2087,7 @@ async function main() {
       ]
     });
 
-    // ── IS-T100 — Full-Feature Template Tender ────────────────────────────
+    // ── T260520-ACME-Rev1 — Full-Feature Template Tender ────────────────────────────
     // A reference tender the owner copies when building real quotes.
     // Exercises every quote feature: all 4 discipline groups, provisional
     // sums, cost options, linked assumptions, exclusions, referenced
@@ -2069,7 +2095,7 @@ async function main() {
     // assumptionMode=linked, all show-flags ON.
     const templateTenderId = "seed-tender-template-100";
     const templateTender = await prisma.tender.upsert({
-      where: { tenderNumber: "IS-T100" },
+      where: { tenderNumber: "T260520-ACME-Rev1" },
       update: {
         title: "TEMPLATE — Full-Feature Reference Quote",
         status: "DRAFT",
@@ -2080,7 +2106,9 @@ async function main() {
       },
       create: {
         id: templateTenderId,
-        tenderNumber: "IS-T100",
+        tenderNumber: "T260520-ACME-Rev1",
+        revisionNumber: 1,
+        clientSlugSnapshot: "ACME",
         title: "TEMPLATE — Full-Feature Reference Quote",
         status: "DRAFT",
         estimatorUserId: estimatorUser.id,
@@ -2458,7 +2486,7 @@ async function main() {
         tenderId: templateTender.id,
         clientId: clientA.id,
         revision: 1,
-        quoteRef: "IS-T100-R1",
+        quoteRef: "T260520-ACME-Rev1-R1",
         status: "DRAFT",
         assumptionMode: "linked",
         detailLevel: "detailed",
@@ -2646,7 +2674,7 @@ async function main() {
       ]
     });
 
-    console.log("  ✓ IS-T100 template tender + full-feature quote seeded");
+    console.log("  ✓ T260520-ACME-Rev1 template tender + full-feature quote seeded");
 
     const gatewaySite = await prisma.site.findFirst({
       where: { code: "GATEWAY" }
@@ -2673,7 +2701,7 @@ async function main() {
       },
       update: {
         name: convertedTender.title,
-        relativePath: "Project Operations/Tendering/IS-T010_north-precinct-services-package",
+        relativePath: "Project Operations/Tendering/T260410-ACME-Rev1_north-precinct-services-package",
         module: "tendering",
         linkedEntityType: "Tender",
         linkedEntityId: convertedTender.id
@@ -2683,7 +2711,7 @@ async function main() {
         driveId: "project-operations-library",
         itemId: "mock-folder-tendering-ten-2026-002",
         name: convertedTender.title,
-        relativePath: "Project Operations/Tendering/IS-T010_north-precinct-services-package",
+        relativePath: "Project Operations/Tendering/T260410-ACME-Rev1_north-precinct-services-package",
         module: "tendering",
         linkedEntityType: "Tender",
         linkedEntityId: convertedTender.id
@@ -2739,7 +2767,8 @@ async function main() {
       }
     });
 
-    const convertedJobNumber = await allocateSeedJobNumber("seed-job-converted", 2026);
+    const { jobNumber: convertedJobNumber, clientSlugSnapshot: convertedJobSlug } =
+      await allocateSeedJobNumber("seed-job-converted", clientA.id, clientA.name);
     const job = await prisma.job.upsert({
       where: { id: "seed-job-converted" },
       update: {
@@ -2755,6 +2784,7 @@ async function main() {
       create: {
         id: "seed-job-converted",
         jobNumber: convertedJobNumber,
+        clientSlugSnapshot: convertedJobSlug,
         name: "North precinct services package",
         description: "Converted awarded tender for live delivery planning.",
         clientId: clientA.id,
@@ -3762,7 +3792,8 @@ async function main() {
       }
     });
 
-    const archivedJobNumber = await allocateSeedJobNumber("seed-job-archived", 2025);
+    const { jobNumber: archivedJobNumber, clientSlugSnapshot: archivedJobSlug } =
+      await allocateSeedJobNumber("seed-job-archived", clientB.id, clientB.name);
     const archivedJob = await prisma.job.upsert({
       where: { id: "seed-job-archived" },
       update: {
@@ -3777,6 +3808,7 @@ async function main() {
       create: {
         id: "seed-job-archived",
         jobNumber: archivedJobNumber,
+        clientSlugSnapshot: archivedJobSlug,
         name: "South precinct closeout package",
         description: "Historical archived job for closeout and archive visibility.",
         clientId: clientB.id,

@@ -1048,7 +1048,7 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
   const tenderSeeds: TenderSeed[] = [
     {
       id: "tender-001",
-      tenderNumber: "IS-T001",
+      tenderNumber: "T260310-QUEE-Rev1",
       title: "Ipswich Motorway Stage 4 — Earthworks Package",
       description: "Bulk earthworks, cut and fill, embankment formation and drainage for the Stage 4 corridor extension between Darra and Wacol.",
       status: "AWARDED",
@@ -1073,7 +1073,7 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
     },
     {
       id: "tender-002",
-      tenderNumber: "IS-T002",
+      tenderNumber: "T260317-SUNC-Rev1",
       title: "Maroochydore Precinct — Civil Works",
       description: "Carpark formation, kerb and channel, stormwater infrastructure, and pavement works for the mixed-use precinct.",
       status: "SUBMITTED",
@@ -1094,7 +1094,7 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
     },
     {
       id: "tender-003",
-      tenderNumber: "IS-T003",
+      tenderNumber: "T260324-BRIS-Rev1",
       title: "Sandgate Stormwater Upgrade — Stage 1",
       description: "Replacement of 450mm RCP drainage lines, headwall construction, and tie-in works along Brighton Road corridor.",
       status: "AWARDED",
@@ -1115,7 +1115,7 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
     },
     {
       id: "tender-004",
-      tenderNumber: "IS-T004",
+      tenderNumber: "T260331-PACI-Rev1",
       title: "Eagle Farm Industrial — Hardstand Expansion",
       description: "12,000m² hardstand expansion including subgrade preparation, base course, and asphalt surfacing.",
       status: "IN_PROGRESS",
@@ -1136,7 +1136,7 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
     },
     {
       id: "tender-005",
-      tenderNumber: "IS-T005",
+      tenderNumber: "T260407-GOLD-Rev1",
       title: "Coomera River Revetment — Emergency Works",
       description: "Emergency bank stabilisation and rock revetment works following flood damage to 300m of river bank.",
       status: "DRAFT",
@@ -1157,7 +1157,7 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
     },
     {
       id: "tender-006",
-      tenderNumber: "IS-T006",
+      tenderNumber: "T260414-SUNC-Rev1",
       title: "Capalaba Retail Carpark Reconstruction",
       description: "Carpark reconstruction including pavement removal, new base course, and linemarking.",
       status: "LOST",
@@ -1178,7 +1178,7 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
     },
     {
       id: "tender-007",
-      tenderNumber: "IS-T007",
+      tenderNumber: "T260421-QUEE-Rev1",
       title: "Toowoomba Range — Service Road Stabilisation",
       description: "Subgrade stabilisation, pavement rehabilitation, and line marking for 4.2km of service road.",
       status: "IN_PROGRESS",
@@ -1199,7 +1199,7 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
     },
     {
       id: "tender-008",
-      tenderNumber: "IS-T008",
+      tenderNumber: "T260428-BRIS-Rev1",
       title: "Brisbane City Council — Lane Cove Kerb Renewal",
       description: "Kerb and channel renewal along Lane Cove precinct streets.",
       status: "WITHDRAWN",
@@ -1226,10 +1226,16 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       ? daysAgo(Math.max(seed.awardedDaysAgo - 14, 0))
       : daysFromNow(45);
 
+    // G5 — canonical T{YYMMDD}-{SLUG}-Rev{N}; slug snapshot derived from
+    // the number literal so bump-revision works on seeded tenders.
+    const slugSnapshot = seed.tenderNumber.split("-")[1];
+
     await prisma.tender.upsert({
       where: { id: seed.id },
       update: {
         tenderNumber: seed.tenderNumber,
+        revisionNumber: 1,
+        clientSlugSnapshot: slugSnapshot,
         title: seed.title,
         description: seed.description,
         status: seed.status,
@@ -1244,6 +1250,8 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       create: {
         id: seed.id,
         tenderNumber: seed.tenderNumber,
+        revisionNumber: 1,
+        clientSlugSnapshot: slugSnapshot,
         title: seed.title,
         description: seed.description,
         status: seed.status,
@@ -1373,7 +1381,7 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
   const jobSeeds: JobSeed[] = [
     {
       id: "job-001",
-      jobNumber: "J-2025-001",
+      jobNumber: "J260315-QUEE-001",
       name: "Ipswich Motorway Stage 4 — Earthworks",
       description: "Bulk earthworks package for the Stage 4 corridor extension between Darra and Wacol.",
       tenderId: "tender-001",
@@ -1474,7 +1482,7 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
     },
     {
       id: "job-002",
-      jobNumber: "J-2025-002",
+      jobNumber: "J260328-BRIS-001",
       name: "Sandgate Stormwater Upgrade — Stage 1",
       description: "Replacement of 450mm RCP drainage lines, headwall construction, and tie-in works along Brighton Road corridor.",
       tenderId: "tender-003",
@@ -1553,10 +1561,14 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
   ];
 
   for (const job of jobSeeds) {
+    // G5 — canonical J{YYMMDD}-{SLUG}-{NNN}; slug snapshot from the literal.
+    const jobSlugSnapshot = job.jobNumber.split("-")[1];
+
     await prisma.job.upsert({
       where: { id: job.id },
       update: {
         jobNumber: job.jobNumber,
+        clientSlugSnapshot: jobSlugSnapshot,
         name: job.name,
         description: job.description,
         clientId: job.clientId,
@@ -1569,6 +1581,7 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       create: {
         id: job.id,
         jobNumber: job.jobNumber,
+        clientSlugSnapshot: jobSlugSnapshot,
         name: job.name,
         description: job.description,
         clientId: job.clientId,
@@ -2443,17 +2456,17 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
   };
 
   const documentSeeds: DocumentSeed[] = [
-    { id: "doc-j001-contract", module: "jobs", category: "Contract", title: "Contract — Ipswich Motorway Stage 4.pdf", linkedEntityType: "Job", linkedEntityId: "job-001", folderKey: "is-folder-job-001", folderRelativePath: "Project Operations/Jobs/J-2025-001_ipswich-motorway-stage-4", fileKey: "is-file-j001-contract", fileName: "contract-ipswich-motorway-stage-4.pdf", versionLabel: "v1", versionNumber: 1, documentFamilyKey: "is-family-j001-contract", secondaryEntity: { type: "Tender", id: "tender-001" } },
-    { id: "doc-j001-programme", module: "jobs", category: "Programme", title: "Programme — J-2025-001 Rev B.xlsx", linkedEntityType: "Job", linkedEntityId: "job-001", folderKey: "is-folder-job-001", folderRelativePath: "Project Operations/Jobs/J-2025-001_ipswich-motorway-stage-4", fileKey: "is-file-j001-programme", fileName: "programme-j-2025-001-rev-b.xlsx", versionLabel: "v2", versionNumber: 2, documentFamilyKey: "is-family-j001-programme" },
-    { id: "doc-j001-semp", module: "jobs", category: "Environmental", title: "Site Environmental Management Plan.pdf", linkedEntityType: "Job", linkedEntityId: "job-001", folderKey: "is-folder-job-001", folderRelativePath: "Project Operations/Jobs/J-2025-001_ipswich-motorway-stage-4", fileKey: "is-file-j001-semp", fileName: "semp.pdf", versionLabel: "v1", versionNumber: 1, documentFamilyKey: "is-family-j001-semp", secondaryEntity: { type: "Site", id: "site-001" } },
-    { id: "doc-j001-swms", module: "jobs", category: "SWMS", title: "SWMS — Earthworks and Excavation.pdf", linkedEntityType: "Job", linkedEntityId: "job-001", folderKey: "is-folder-job-001", folderRelativePath: "Project Operations/Jobs/J-2025-001_ipswich-motorway-stage-4", fileKey: "is-file-j001-swms", fileName: "swms-earthworks.pdf", versionLabel: "v1", versionNumber: 1, documentFamilyKey: "is-family-j001-swms" },
-    { id: "doc-j001-geotech", module: "jobs", category: "Geotechnical", title: "Geotechnical Report — Darra to Wacol.pdf", linkedEntityType: "Job", linkedEntityId: "job-001", folderKey: "is-folder-job-001", folderRelativePath: "Project Operations/Jobs/J-2025-001_ipswich-motorway-stage-4", fileKey: "is-file-j001-geotech", fileName: "geotech-darra-wacol.pdf", versionLabel: "v1", versionNumber: 1, documentFamilyKey: "is-family-j001-geotech", secondaryEntity: { type: "Site", id: "site-001" } },
-    { id: "doc-j002-contract", module: "jobs", category: "Contract", title: "Contract — Sandgate Stormwater Stage 1.pdf", linkedEntityType: "Job", linkedEntityId: "job-002", folderKey: "is-folder-job-002", folderRelativePath: "Project Operations/Jobs/J-2025-002_sandgate-stormwater-stage-1", fileKey: "is-file-j002-contract", fileName: "contract-sandgate-stormwater-stage-1.pdf", versionLabel: "v1", versionNumber: 1, documentFamilyKey: "is-family-j002-contract", secondaryEntity: { type: "Tender", id: "tender-003" } },
-    { id: "doc-j002-programme", module: "jobs", category: "Programme", title: "Programme — J-2025-002 Rev A.xlsx", linkedEntityType: "Job", linkedEntityId: "job-002", folderKey: "is-folder-job-002", folderRelativePath: "Project Operations/Jobs/J-2025-002_sandgate-stormwater-stage-1", fileKey: "is-file-j002-programme", fileName: "programme-j-2025-002-rev-a.xlsx", versionLabel: "v1", versionNumber: 1, documentFamilyKey: "is-family-j002-programme" },
-    { id: "doc-j002-swms", module: "jobs", category: "SWMS", title: "SWMS — Pipe Laying and Confined Space.pdf", linkedEntityType: "Job", linkedEntityId: "job-002", folderKey: "is-folder-job-002", folderRelativePath: "Project Operations/Jobs/J-2025-002_sandgate-stormwater-stage-1", fileKey: "is-file-j002-swms", fileName: "swms-pipe-laying.pdf", versionLabel: "v1", versionNumber: 1, documentFamilyKey: "is-family-j002-swms" },
-    { id: "doc-j002-asbuilt", module: "jobs", category: "As-built", title: "As-built Drawings — Chainage 0-150m.pdf", linkedEntityType: "Job", linkedEntityId: "job-002", folderKey: "is-folder-job-002", folderRelativePath: "Project Operations/Jobs/J-2025-002_sandgate-stormwater-stage-1", fileKey: "is-file-j002-asbuilt", fileName: "asbuilt-ch-0-150.pdf", versionLabel: "v1", versionNumber: 1, documentFamilyKey: "is-family-j002-asbuilt" },
-    { id: "doc-t002-submission", module: "tendering", category: "Submission", title: "Tender Submission — Maroochydore Precinct.pdf", linkedEntityType: "Tender", linkedEntityId: "tender-002", folderKey: "is-folder-tender-002", folderRelativePath: "Project Operations/Tendering/IS-T002_maroochydore-precinct-civil-works", fileKey: "is-file-t002-submission", fileName: "tender-submission-maroochydore.pdf", versionLabel: "v1", versionNumber: 1, documentFamilyKey: "is-family-t002-submission" },
-    { id: "doc-t004-pricing", module: "tendering", category: "Pricing", title: "Pricing Schedule — Eagle Farm Hardstand.xlsx", linkedEntityType: "Tender", linkedEntityId: "tender-004", folderKey: "is-folder-tender-004", folderRelativePath: "Project Operations/Tendering/IS-T004_eagle-farm-hardstand", fileKey: "is-file-t004-pricing", fileName: "pricing-eagle-farm-hardstand.xlsx", versionLabel: "v1", versionNumber: 1, documentFamilyKey: "is-family-t004-pricing" },
+    { id: "doc-j001-contract", module: "jobs", category: "Contract", title: "Contract — Ipswich Motorway Stage 4.pdf", linkedEntityType: "Job", linkedEntityId: "job-001", folderKey: "is-folder-job-001", folderRelativePath: "Project Operations/Jobs/J260315-QUEE-001_ipswich-motorway-stage-4", fileKey: "is-file-j001-contract", fileName: "contract-ipswich-motorway-stage-4.pdf", versionLabel: "v1", versionNumber: 1, documentFamilyKey: "is-family-j001-contract", secondaryEntity: { type: "Tender", id: "tender-001" } },
+    { id: "doc-j001-programme", module: "jobs", category: "Programme", title: "Programme — J260315-QUEE-001 Rev B.xlsx", linkedEntityType: "Job", linkedEntityId: "job-001", folderKey: "is-folder-job-001", folderRelativePath: "Project Operations/Jobs/J260315-QUEE-001_ipswich-motorway-stage-4", fileKey: "is-file-j001-programme", fileName: "programme-j260315-quee-001-rev-b.xlsx", versionLabel: "v2", versionNumber: 2, documentFamilyKey: "is-family-j001-programme" },
+    { id: "doc-j001-semp", module: "jobs", category: "Environmental", title: "Site Environmental Management Plan.pdf", linkedEntityType: "Job", linkedEntityId: "job-001", folderKey: "is-folder-job-001", folderRelativePath: "Project Operations/Jobs/J260315-QUEE-001_ipswich-motorway-stage-4", fileKey: "is-file-j001-semp", fileName: "semp.pdf", versionLabel: "v1", versionNumber: 1, documentFamilyKey: "is-family-j001-semp", secondaryEntity: { type: "Site", id: "site-001" } },
+    { id: "doc-j001-swms", module: "jobs", category: "SWMS", title: "SWMS — Earthworks and Excavation.pdf", linkedEntityType: "Job", linkedEntityId: "job-001", folderKey: "is-folder-job-001", folderRelativePath: "Project Operations/Jobs/J260315-QUEE-001_ipswich-motorway-stage-4", fileKey: "is-file-j001-swms", fileName: "swms-earthworks.pdf", versionLabel: "v1", versionNumber: 1, documentFamilyKey: "is-family-j001-swms" },
+    { id: "doc-j001-geotech", module: "jobs", category: "Geotechnical", title: "Geotechnical Report — Darra to Wacol.pdf", linkedEntityType: "Job", linkedEntityId: "job-001", folderKey: "is-folder-job-001", folderRelativePath: "Project Operations/Jobs/J260315-QUEE-001_ipswich-motorway-stage-4", fileKey: "is-file-j001-geotech", fileName: "geotech-darra-wacol.pdf", versionLabel: "v1", versionNumber: 1, documentFamilyKey: "is-family-j001-geotech", secondaryEntity: { type: "Site", id: "site-001" } },
+    { id: "doc-j002-contract", module: "jobs", category: "Contract", title: "Contract — Sandgate Stormwater Stage 1.pdf", linkedEntityType: "Job", linkedEntityId: "job-002", folderKey: "is-folder-job-002", folderRelativePath: "Project Operations/Jobs/J260328-BRIS-001_sandgate-stormwater-stage-1", fileKey: "is-file-j002-contract", fileName: "contract-sandgate-stormwater-stage-1.pdf", versionLabel: "v1", versionNumber: 1, documentFamilyKey: "is-family-j002-contract", secondaryEntity: { type: "Tender", id: "tender-003" } },
+    { id: "doc-j002-programme", module: "jobs", category: "Programme", title: "Programme — J260328-BRIS-001 Rev A.xlsx", linkedEntityType: "Job", linkedEntityId: "job-002", folderKey: "is-folder-job-002", folderRelativePath: "Project Operations/Jobs/J260328-BRIS-001_sandgate-stormwater-stage-1", fileKey: "is-file-j002-programme", fileName: "programme-j260328-bris-001-rev-a.xlsx", versionLabel: "v1", versionNumber: 1, documentFamilyKey: "is-family-j002-programme" },
+    { id: "doc-j002-swms", module: "jobs", category: "SWMS", title: "SWMS — Pipe Laying and Confined Space.pdf", linkedEntityType: "Job", linkedEntityId: "job-002", folderKey: "is-folder-job-002", folderRelativePath: "Project Operations/Jobs/J260328-BRIS-001_sandgate-stormwater-stage-1", fileKey: "is-file-j002-swms", fileName: "swms-pipe-laying.pdf", versionLabel: "v1", versionNumber: 1, documentFamilyKey: "is-family-j002-swms" },
+    { id: "doc-j002-asbuilt", module: "jobs", category: "As-built", title: "As-built Drawings — Chainage 0-150m.pdf", linkedEntityType: "Job", linkedEntityId: "job-002", folderKey: "is-folder-job-002", folderRelativePath: "Project Operations/Jobs/J260328-BRIS-001_sandgate-stormwater-stage-1", fileKey: "is-file-j002-asbuilt", fileName: "asbuilt-ch-0-150.pdf", versionLabel: "v1", versionNumber: 1, documentFamilyKey: "is-family-j002-asbuilt" },
+    { id: "doc-t002-submission", module: "tendering", category: "Submission", title: "Tender Submission — Maroochydore Precinct.pdf", linkedEntityType: "Tender", linkedEntityId: "tender-002", folderKey: "is-folder-tender-002", folderRelativePath: "Project Operations/Tendering/T260317-SUNC-Rev1_maroochydore-precinct-civil-works", fileKey: "is-file-t002-submission", fileName: "tender-submission-maroochydore.pdf", versionLabel: "v1", versionNumber: 1, documentFamilyKey: "is-family-t002-submission" },
+    { id: "doc-t004-pricing", module: "tendering", category: "Pricing", title: "Pricing Schedule — Eagle Farm Hardstand.xlsx", linkedEntityType: "Tender", linkedEntityId: "tender-004", folderKey: "is-folder-tender-004", folderRelativePath: "Project Operations/Tendering/T260331-PACI-Rev1_eagle-farm-hardstand", fileKey: "is-file-t004-pricing", fileName: "pricing-eagle-farm-hardstand.xlsx", versionLabel: "v1", versionNumber: 1, documentFamilyKey: "is-family-t004-pricing" },
     { id: "doc-a001-registration", module: "assets", category: "Registration", title: "CAT 320 Registration Certificate.pdf", linkedEntityType: "Asset", linkedEntityId: "asset-001", folderKey: "is-folder-asset-001", folderRelativePath: "Project Operations/Assets/IS-A001_cat-320-excavator/Documents", fileKey: "is-file-a001-registration", fileName: "cat-320-registration.pdf", versionLabel: "v1", versionNumber: 1, documentFamilyKey: "is-family-a001-registration" },
     { id: "doc-a001-service", module: "assets", category: "Maintenance", title: "CAT 320 Service Record.pdf", linkedEntityType: "Asset", linkedEntityId: "asset-001", folderKey: "is-folder-asset-001", folderRelativePath: "Project Operations/Assets/IS-A001_cat-320-excavator/Documents", fileKey: "is-file-a001-service", fileName: "cat-320-service-record.pdf", versionLabel: "v1", versionNumber: 1, documentFamilyKey: "is-family-a001-service" },
     { id: "doc-a002-registration", module: "assets", category: "Registration", title: "Komatsu PC210 Registration Certificate.pdf", linkedEntityType: "Asset", linkedEntityId: "asset-002", folderKey: "is-folder-asset-002", folderRelativePath: "Project Operations/Assets/IS-A002_komatsu-pc210-excavator/Documents", fileKey: "is-file-a002-registration", fileName: "komatsu-pc210-registration.pdf", versionLabel: "v1", versionNumber: 1, documentFamilyKey: "is-family-a002-registration" },
@@ -3550,6 +3563,22 @@ export async function seedBusinessDirectoryDemos(prisma: PrismaClient): Promise<
   }
 }
 
+// Highest numeric suffix among issued safety numbers (e.g. "IS-INC018" -> 18).
+// Mirrors allocateSeedJobNumber in seed.ts: a persistent local DB can hold
+// residue incidents/hazards created via the API far above the seed fixtures,
+// so the sequence floor must never reset below what's already issued —
+// otherwise every subsequent create collides on the unique number column
+// until the sequence climbs past the residue.
+function maxIssuedNumber(numbers: string[], prefix: string): number {
+  let max = 0;
+  for (const value of numbers) {
+    if (!value.startsWith(prefix)) continue;
+    const parsed = parseInt(value.slice(prefix.length), 10);
+    if (Number.isFinite(parsed) && parsed > max) max = parsed;
+  }
+  return max;
+}
+
 export async function seedSafetyDemos(prisma: PrismaClient): Promise<void> {
   const admin = await prisma.user.findUnique({ where: { email: "admin@projectops.local" } });
   if (!admin) return;
@@ -3623,11 +3652,19 @@ export async function seedSafetyDemos(prisma: PrismaClient): Promise<void> {
     });
   }
 
-  // Bump the sequence so the next created incident is IS-INC003.
+  // Bump the sequence so the next created incident follows both the seed
+  // fixtures (IS-INC002) and any residue incidents already issued on this DB.
+  const incidentRows = await prisma.safetyIncident.findMany({
+    select: { incidentNumber: true }
+  });
+  const incidentLast = Math.max(
+    maxIssuedNumber(incidentRows.map((r) => r.incidentNumber), "IS-INC"),
+    2
+  );
   await prisma.safetyIncidentNumberSequence.upsert({
     where: { id: 1 },
-    update: { lastNumber: 2 },
-    create: { id: 1, lastNumber: 2 }
+    update: { lastNumber: incidentLast },
+    create: { id: 1, lastNumber: incidentLast }
   });
 
   const hazards: Array<{
@@ -3712,9 +3749,18 @@ export async function seedSafetyDemos(prisma: PrismaClient): Promise<void> {
     });
   }
 
+  // Same floor rule as incidents: seed fixtures end at IS-HAZ003, but never
+  // reset below residue hazards already issued on this DB.
+  const hazardRows = await prisma.hazardObservation.findMany({
+    select: { hazardNumber: true }
+  });
+  const hazardLast = Math.max(
+    maxIssuedNumber(hazardRows.map((r) => r.hazardNumber), "IS-HAZ"),
+    3
+  );
   await prisma.hazardNumberSequence.upsert({
     where: { id: 1 },
-    update: { lastNumber: 3 },
-    create: { id: 1, lastNumber: 3 }
+    update: { lastNumber: hazardLast },
+    create: { id: 1, lastNumber: hazardLast }
   });
 }

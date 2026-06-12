@@ -145,4 +145,38 @@ describe("Canonical CP-08 — pnpm seed is idempotent", () => {
       );
     }
   });
+
+  // Row counts alone miss sequence regressions (LL-26): a re-seed that resets
+  // a number sequence below already-issued numbers leaves counts intact but
+  // breaks every subsequent create with unique-constraint collisions.
+  it("safety number sequences are never left below the highest issued number", async () => {
+    const maxSuffix = (numbers: string[], prefix: string): number =>
+      numbers.reduce((max, value) => {
+        if (!value.startsWith(prefix)) return max;
+        const parsed = parseInt(value.slice(prefix.length), 10);
+        return Number.isFinite(parsed) && parsed > max ? parsed : max;
+      }, 0);
+
+    const incidents = await prisma.safetyIncident.findMany({
+      select: { incidentNumber: true }
+    });
+    const incidentSeq = await prisma.safetyIncidentNumberSequence.findUnique({
+      where: { id: 1 }
+    });
+    expect(incidentSeq).not.toBeNull();
+    expect(incidentSeq!.lastNumber).toBeGreaterThanOrEqual(
+      maxSuffix(incidents.map((r) => r.incidentNumber), "IS-INC")
+    );
+
+    const hazards = await prisma.hazardObservation.findMany({
+      select: { hazardNumber: true }
+    });
+    const hazardSeq = await prisma.hazardNumberSequence.findUnique({
+      where: { id: 1 }
+    });
+    expect(hazardSeq).not.toBeNull();
+    expect(hazardSeq!.lastNumber).toBeGreaterThanOrEqual(
+      maxSuffix(hazards.map((r) => r.hazardNumber), "IS-HAZ")
+    );
+  });
 });

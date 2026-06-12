@@ -156,6 +156,12 @@ export function TenderDetailPage() {
   const [deletePreflight, setDeletePreflight] = useState<{ _count: Record<string, number> } | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [aeEditorOpen, setAeEditorOpen] = useState(false);
+  // G5 — "Mark as new revision" confirm flow.
+  const [bumpOpen, setBumpOpen] = useState(false);
+  const [bumpReason, setBumpReason] = useState("");
+  const [bumpBusy, setBumpBusy] = useState(false);
+  const [bumpError, setBumpError] = useState<string | null>(null);
+  const [bumpToast, setBumpToast] = useState<string | null>(null);
 
   // Alt+A toggles the Assumptions & Exclusions floating editor (not on Quote tab)
   const aeEditorOpenRef = useRef(aeEditorOpen);
@@ -301,6 +307,32 @@ export function TenderDetailPage() {
     }
   };
 
+  // G5 — "Mark as new revision" bumps Rev{N} on the canonical tender number.
+  const bumpRevision = async () => {
+    if (!tender) return;
+    setBumpBusy(true);
+    setBumpError(null);
+    try {
+      const response = await authFetch(`/tenders/${tender.id}/bump-revision`, {
+        method: "POST",
+        body: JSON.stringify(bumpReason.trim() ? { reason: bumpReason.trim() } : {})
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error((body as { message?: string }).message ?? "Could not bump the revision.");
+      }
+      const updated = (await response.json()) as { tenderNumber: string };
+      setBumpOpen(false);
+      setBumpReason("");
+      setBumpToast(`Tender is now ${updated.tenderNumber}`);
+      await reload();
+    } catch (err) {
+      setBumpError((err as Error).message);
+    } finally {
+      setBumpBusy(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="tender-detail">
@@ -374,6 +406,19 @@ export function TenderDetailPage() {
                 disabled={duplicating}
               >
                 {duplicating ? "Duplicating…" : "Duplicate"}
+              </button>
+            ) : null}
+            {canManageTenders ? (
+              <button
+                type="button"
+                className="s7-btn s7-btn--secondary s7-btn--sm"
+                onClick={() => {
+                  setBumpError(null);
+                  setBumpReason("");
+                  setBumpOpen(true);
+                }}
+              >
+                Mark as new revision
               </button>
             ) : null}
             {canManageTenders ? (
@@ -732,6 +777,77 @@ export function TenderDetailPage() {
             navigate(`/projects/${result.projectId}`);
           }}
         />
+      ) : null}
+
+      {bumpOpen ? (
+        <div
+          className="slide-over-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Mark as new revision"
+          onClick={() => setBumpOpen(false)}
+        >
+          <div className="slide-over" onClick={(event) => event.stopPropagation()} style={{ maxWidth: 420 }}>
+            <header className="slide-over__header">
+              <div>
+                <h2 className="s7-type-section-heading" style={{ margin: 0 }}>Mark as new revision</h2>
+                <p className="slide-over__subtitle">
+                  {tender.tenderNumber} will become Rev{" "}
+                  {/* next rev is server-computed; this is informational */}
+                  {(tender.tenderNumber.match(/-Rev(\d+)/) ? Number(tender.tenderNumber.match(/-Rev(\d+)/)![1]) + 1 : 2)}.
+                  The tender itself is unchanged — only its number moves.
+                </p>
+              </div>
+            </header>
+            <div className="slide-over__body tender-form">
+              {bumpError ? <div className="login-card__error" role="alert">{bumpError}</div> : null}
+              <label className="tender-form__field">
+                <span className="s7-type-label">Reason (optional, recorded in the audit log)</span>
+                <input
+                  className="s7-input"
+                  value={bumpReason}
+                  onChange={(event) => setBumpReason(event.target.value)}
+                  placeholder="e.g. Client issued amended scope"
+                />
+              </label>
+              <footer className="slide-over__footer">
+                <button type="button" className="s7-btn s7-btn--ghost" onClick={() => setBumpOpen(false)}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--primary"
+                  onClick={() => void bumpRevision()}
+                  disabled={bumpBusy}
+                >
+                  {bumpBusy ? "Bumping…" : "Mark as new revision"}
+                </button>
+              </footer>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {bumpToast ? (
+        <div
+          role="status"
+          style={{
+            position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 70,
+            background: "var(--surface-raised, #1f2937)", color: "var(--text-primary, #fff)",
+            padding: "10px 16px", borderRadius: 8, boxShadow: "0 2px 8px rgba(0,0,0,0.25)"
+          }}
+          onAnimationEnd={() => setBumpToast(null)}
+        >
+          {bumpToast}
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={() => setBumpToast(null)}
+            style={{ marginLeft: 12, background: "none", border: "none", color: "inherit", cursor: "pointer" }}
+          >
+            ✕
+          </button>
+        </div>
       ) : null}
 
       {deleteConfirmOpen && tender ? (

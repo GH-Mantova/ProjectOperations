@@ -13,7 +13,7 @@
  *      |                                                     | client-side rollback exists to assert
  * #257 | Edit field + Save → persists, reload confirms       | CONVERT → "internal note persists across reopen"
  * #257 | Generate Quote button still works in view mode      | CONVERT → "Generate Quote toggles export panel"
- * #256 | Open IS-T100-R1 — Acme Infrastructure → Quote tab   | CONVERT → setup of every test here
+ * #256 | Open T260520-ACME-Rev1-R1 — Acme Infrastructure → Quote tab   | CONVERT → setup of every test here
  * #256 | View mode: ONE tab strip, no floating Edit,         | CONVERT (adapted) — the view-mode preview block
  *      | no Recalculate on Cost Summary                      | was removed outright; asserted as ZERO strips in
  *      |                                                     | view mode, ONE in edit mode, Recalculate count 0
@@ -39,7 +39,7 @@
  * #72  | Drag quote-scope item in flat mode, order persists  | SKIP — pixel-level drag-and-drop assertion (flaky
  *      |                                                     | per conventions; @dnd-kit pointer simulation)
  * #62  | Quote versions panel + "Add quote for client"       | CONVERT → "view mode" + "+ Add quote for client
- *      |                                                     | offered for quote-less client (IS-T001)"
+ *      |                                                     | offered for quote-less client (T260310-QUEE-Rev1)"
  * #62  | Get suggestion → rationale (preference + win rate)  | CONVERT → "Get suggestion returns rationale"
  * #62  | Send quote → modal prefill, status SENT, QuoteEmail | SKIP — requires real email send (live
  *      |                                                     | integration); sending would also flip the seeded
@@ -56,7 +56,7 @@
  * #45  | Export PDF → 3-page template, Page X of Y footer    | SKIP — PDF layout parsing out of scope; the
  *      |                                                     | download-fires half is converted under #61
  * #45  | Export Excel → 3-sheet workbook, totals match       | CONVERT (partial) → Excel download event +
- *      |                                                     | IS_Estimate_IS-T100.xlsx filename; workbook
+ *      |                                                     | IS_Estimate_T260520-ACME-Rev1.xlsx filename; workbook
  *      |                                                     | contents not parsed (out of scope)
  * #45  | Provisional-sum item in PDF + orange Excel row      | SKIP — binary contents, out of scope
  * #45  | Export twice → two EstimateExport rows (type+user)  | CONVERT (partial) → Export history list shows
@@ -67,10 +67,10 @@
  *   • "New revision" bumps the quote ref and supersedes the prior revision.
  *   • Client scoring stars render for the quote's client (read-only render
  *     here; interactive rating already covered by batch2 "client card star
- *     rating" on IS-T001).
+ *     rating" on T260310-QUEE-Rev1).
  *
  * Residue notes (conventions: no UI delete exists → documented):
- *   • Export tests append EstimateExport rows on IS-T100 each run (export
+ *   • Export tests append EstimateExport rows on T260520-ACME-Rev1 each run (export
  *     history has no delete UI).
  *   • The revision test restores seed state itself: the created R2 is deleted
  *     and the seeded R1 is PATCHed back to DRAFT via the API fixture layer
@@ -95,7 +95,7 @@ async function openQuoteTab(page: Page, tenderNumber: string) {
 }
 
 /**
- * Restores the seeded IS-T100 quote state: removes revision residue (R2+)
+ * Restores the seeded T260520-ACME-Rev1 quote state: removes revision residue (R2+)
  * from crashed runs and resets the seeded R1 back to DRAFT (creating a
  * revision marks it SUPERSEDED server-side and deletion does not undo that).
  */
@@ -132,11 +132,11 @@ test.describe("Batch 4 — Quotes (PRs #45, #46, #61, #62, #72, #242, #254, #256
     request
   }) => {
     await resetTemplateQuote(request, await apiToken(request));
-    await openQuoteTab(page, "IS-T100");
+    await openQuoteTab(page, "T260520-ACME-Rev1");
 
     // PR #62 — "Quote versions" panel with the per-client version row.
     await expect(page.getByText("Acme Infrastructure", { exact: true })).toBeVisible();
-    await expect(page.getByText("IS-T100-R1", { exact: true })).toBeVisible();
+    await expect(page.getByText("T260520-ACME-Rev1-R1", { exact: true })).toBeVisible();
     await expect(page.getByText("DRAFT", { exact: true })).toBeVisible();
 
     // PR #257 — view mode: Edit present, Save/Cancel absent.
@@ -158,20 +158,20 @@ test.describe("Batch 4 — Quotes (PRs #45, #46, #61, #62, #72, #242, #254, #256
     await expect(page.getByRole("button", { name: "Generate Quote", exact: true })).toBeVisible();
   });
 
-  test("client scoring stars render on the IS-T100 client card (Overview)", async ({ page }) => {
+  test("client scoring stars render on the T260520-ACME-Rev1 client card (Overview)", async ({ page }) => {
     await page.goto("/tenders");
     await page.getByRole("tab", { name: "Register", exact: true }).click();
-    await page.getByPlaceholder("Search number, title, or client").fill("IS-T100");
-    await page.getByText("IS-T100", { exact: true }).click();
+    await page.getByPlaceholder("Search number, title, or client").fill("T260520-ACME-Rev1");
+    await page.getByText("T260520-ACME-Rev1", { exact: true }).click();
     await expect(page.getByRole("tab", { name: "Overview", exact: true })).toBeVisible();
     // PR #62 — read-only preference stars on the collapsed client row.
     await expect(page.getByLabel("Acme Infrastructure preference", { exact: true })).toBeVisible();
   });
 
-  test("+ Add quote for client is offered for a linked client without quotes (IS-T001)", async ({
+  test("+ Add quote for client is offered for a linked client without quotes (T260310-QUEE-Rev1)", async ({
     page
   }) => {
-    await openQuoteTab(page, "IS-T001");
+    await openQuoteTab(page, "T260310-QUEE-Rev1");
     await expect(
       page.getByRole("button", { name: "+ Add quote for client", exact: true })
     ).toBeVisible();
@@ -182,11 +182,11 @@ test.describe("Batch 4 — Quotes (PRs #45, #46, #61, #62, #72, #242, #254, #256
   test("Edit opens ONE canonical editor strip; all 8 tabs render their structure; Cancel closes", async ({
     page
   }) => {
-    await openQuoteTab(page, "IS-T100");
+    await openQuoteTab(page, "T260520-ACME-Rev1");
     await page.getByRole("button", { name: "Edit", exact: true }).click();
 
     // Editor appears beneath the version row; row swaps Edit → Save + Cancel.
-    await expect(page.getByText(/Editing IS-T100-R1 — Acme Infrastructure/)).toBeVisible();
+    await expect(page.getByText(/Editing T260520-ACME-Rev1-R1 — Acme Infrastructure/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Save", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Cancel", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
@@ -275,7 +275,7 @@ test.describe("Batch 4 — Quotes (PRs #45, #46, #61, #62, #72, #242, #254, #256
 
     // Preview — text projection of the seeded full-feature quote.
     await page.getByRole("button", { name: "Preview", exact: true }).click();
-    await expect(page.getByText(/IS-T100-R1 — Revision 1/)).toBeVisible();
+    await expect(page.getByText(/T260520-ACME-Rev1-R1 — Revision 1/)).toBeVisible();
     await expect(page.getByRole("heading", { name: "Cost summary" })).toBeVisible();
     await expect(page.getByText(/^Demolition\) Internal strip-out/)).toBeVisible();
     await expect(page.getByText("Client-facing total:")).toBeVisible();
@@ -289,7 +289,7 @@ test.describe("Batch 4 — Quotes (PRs #45, #46, #61, #62, #72, #242, #254, #256
 
     // Cancel closes the editor and restores the Edit button.
     await page.getByRole("button", { name: "Cancel", exact: true }).click();
-    await expect(page.getByText(/Editing IS-T100-R1/)).toHaveCount(0);
+    await expect(page.getByText(/Editing T260520-ACME-Rev1-R1/)).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible();
   });
 
@@ -299,16 +299,16 @@ test.describe("Batch 4 — Quotes (PRs #45, #46, #61, #62, #72, #242, #254, #256
     page
   }) => {
     const note = `e2e-b4-note-${Date.now()}`;
-    await openQuoteTab(page, "IS-T100");
+    await openQuoteTab(page, "T260520-ACME-Rev1");
     await page.getByRole("button", { name: "Edit", exact: true }).click();
-    await expect(page.getByText(/Editing IS-T100-R1/)).toBeVisible();
+    await expect(page.getByText(/Editing T260520-ACME-Rev1-R1/)).toBeVisible();
 
     const noteField = page.getByPlaceholder("e.g. Preferred client -5%");
     await noteField.fill(note);
     // Blur commits the per-field PATCH (the editor autosaves field-by-field).
     await page.getByText("Base total:").click();
     await page.getByRole("button", { name: "Save", exact: true }).click();
-    await expect(page.getByText(/Editing IS-T100-R1/)).toHaveCount(0);
+    await expect(page.getByText(/Editing T260520-ACME-Rev1-R1/)).toHaveCount(0);
 
     // Reopen — the persisted value comes back from the server.
     await page.getByRole("button", { name: "Edit", exact: true }).click();
@@ -326,9 +326,9 @@ test.describe("Batch 4 — Quotes (PRs #45, #46, #61, #62, #72, #242, #254, #256
   // ── Client adjustment suggestion (PR #62) ──────────────────────────────────
 
   test("Get suggestion returns a client adjustment rationale", async ({ page }) => {
-    await openQuoteTab(page, "IS-T100");
+    await openQuoteTab(page, "T260520-ACME-Rev1");
     await page.getByRole("button", { name: "Edit", exact: true }).click();
-    await expect(page.getByText(/Editing IS-T100-R1/)).toBeVisible();
+    await expect(page.getByText(/Editing T260520-ACME-Rev1-R1/)).toBeVisible();
     await page.getByRole("button", { name: "Get suggestion", exact: true }).click();
     // Rationale line, e.g. "Suggested: +0% — no preference set; win rate …".
     await expect(page.getByText(/Suggested: [+-]?\d+(\.\d+)?%/)).toBeVisible();
@@ -337,7 +337,7 @@ test.describe("Batch 4 — Quotes (PRs #45, #46, #61, #62, #72, #242, #254, #256
 
   // ── Revisions (PR #62 redesign / batch prompt) ─────────────────────────────
 
-  test("New revision bumps the quote ref to IS-T100-R2 and supersedes R1", async ({
+  test("New revision bumps the quote ref to T260520-ACME-Rev1-R2 and supersedes R1", async ({
     page,
     request
   }) => {
@@ -345,18 +345,18 @@ test.describe("Batch 4 — Quotes (PRs #45, #46, #61, #62, #72, #242, #254, #256
     await resetTemplateQuote(request, token);
 
     try {
-      await openQuoteTab(page, "IS-T100");
-      await expect(page.getByText("IS-T100-R1", { exact: true })).toBeVisible();
+      await openQuoteTab(page, "T260520-ACME-Rev1");
+      await expect(page.getByText("T260520-ACME-Rev1-R1", { exact: true })).toBeVisible();
       await page.getByRole("button", { name: "New revision", exact: true }).click();
 
       // The new revision becomes the latest row (label bumped) and opens in
       // edit mode — close the editor before inspecting the history.
-      await expect(page.getByText("IS-T100-R2", { exact: true })).toBeVisible();
+      await expect(page.getByText("T260520-ACME-Rev1-R2", { exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Cancel", exact: true }).click();
 
       // Prior revision collapses under the toggle, marked SUPERSEDED.
       await page.getByRole("button", { name: /Prior revisions \(1\)/ }).click();
-      await expect(page.getByText("IS-T100-R1", { exact: true })).toBeVisible();
+      await expect(page.getByText("T260520-ACME-Rev1-R1", { exact: true })).toBeVisible();
       await expect(page.getByText("SUPERSEDED", { exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "View", exact: true })).toBeVisible();
     } finally {
@@ -370,7 +370,7 @@ test.describe("Batch 4 — Quotes (PRs #45, #46, #61, #62, #72, #242, #254, #256
   test("Generate Quote toggles the export panel; PDF + Excel downloads fire; history records both", async ({
     page
   }) => {
-    await openQuoteTab(page, "IS-T100");
+    await openQuoteTab(page, "T260520-ACME-Rev1");
 
     // PR #256/#257 — works in view mode, toggles the panel.
     await page.getByRole("button", { name: "Generate Quote", exact: true }).click();
@@ -390,7 +390,7 @@ test.describe("Batch 4 — Quotes (PRs #45, #46, #61, #62, #72, #242, #254, #256
     const pdfDownloadPromise = page.waitForEvent("download");
     await page.getByRole("button", { name: "Download PDF quote", exact: true }).click();
     const pdfDownload = await pdfDownloadPromise;
-    expect(pdfDownload.suggestedFilename()).toBe("IS_Quote_IS-T100.pdf");
+    expect(pdfDownload.suggestedFilename()).toBe("IS_Quote_T260520-ACME-Rev1.pdf");
     await expect(page.getByText("PDF quote generated")).toBeVisible();
     await expect(historyRows.first().getByText("PDF", { exact: true })).toBeVisible();
 
@@ -398,7 +398,7 @@ test.describe("Batch 4 — Quotes (PRs #45, #46, #61, #62, #72, #242, #254, #256
     const excelDownloadPromise = page.waitForEvent("download");
     await page.getByRole("button", { name: "Download Excel", exact: true }).click();
     const excelDownload = await excelDownloadPromise;
-    expect(excelDownload.suggestedFilename()).toBe("IS_Estimate_IS-T100.xlsx");
+    expect(excelDownload.suggestedFilename()).toBe("IS_Estimate_T260520-ACME-Rev1.xlsx");
     await expect(page.getByText("Excel workbook generated")).toBeVisible();
     await expect(historyRows.first().getByText("Excel", { exact: true })).toBeVisible();
 
@@ -413,10 +413,10 @@ test.describe("Batch 4 — Quotes (PRs #45, #46, #61, #62, #72, #242, #254, #256
   });
 
   test("version row PDF button downloads the per-revision quote PDF", async ({ page }) => {
-    await openQuoteTab(page, "IS-T100");
+    await openQuoteTab(page, "T260520-ACME-Rev1");
     const downloadPromise = page.waitForEvent("download");
     await page.getByRole("button", { name: "PDF", exact: true }).click();
     const download = await downloadPromise;
-    expect(download.suggestedFilename()).toBe("IS_Quote_IS-T100-R1.pdf");
+    expect(download.suggestedFilename()).toBe("IS_Quote_T260520-ACME-Rev1-R1.pdf");
   });
 });

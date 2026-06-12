@@ -692,6 +692,10 @@ model LookupValue {
 model Tender {
   id                 String                    @id @default(cuid())
   tenderNumber       String                    @unique @map("tender_number")
+  // G5 — canonical T{YYMMDD}-{SLUG}-Rev{N}: revision counter + slug frozen
+  // at creation (nullable for rows older than the backfill migration).
+  revisionNumber     Int                       @default(1) @map("revision_number")
+  clientSlugSnapshot String?                   @map("client_slug_snapshot")
   title              String
   description        String?
   estimatorUserId    String?                   @map("estimator_user_id")
@@ -892,6 +896,8 @@ model TenderDocumentLink {
 model Job {
   id               String             @id @default(cuid())
   jobNumber        String             @unique @map("job_number")
+  // G5 — canonical J{YYMMDD}-{SLUG}-{NNN}: slug frozen at creation.
+  clientSlugSnapshot String?          @map("client_slug_snapshot")
   name             String
   description      String?
   clientId         String             @map("client_id")
@@ -2602,7 +2608,7 @@ model CuttingSheetItem {
   // required. Per-card subtable became canonical in B4b; the
   // transition window is closed. createCuttingItem now rejects
   // missing cardId at the service layer; the migration deleted the
-  // 2 known pre-B4b orphan rows on IS-T020 before applying the
+  // 2 known pre-B4b orphan rows on T260512-BRIS-Rev1 before applying the
   // NOT NULL constraint. onDelete behaviour changed from SetNull
   // (which would now violate the NOT NULL constraint) to Cascade —
   // deleting a scope card removes its cutting rows.
@@ -2867,9 +2873,11 @@ model ContractNumberSequence {
   @@map("contract_number_sequences")
 }
 
-// PR B05 — per-year sequence backing canonical job numbers (J-YYYY-NNN).
-// One row per calendar year; the row is the lock target for atomic
-// generation via upsert+increment inside a transaction.
+// LEGACY (PR B05) — per-year sequence behind the retired J-YYYY-NNN
+// format. G5 numbers (J{YYMMDD}-{SLUG}-{NNN}) compute the per-client
+// sequence from the jobs table on demand; this table is no longer read
+// or incremented. Kept so nothing breaks on import — drop in a
+// follow-up cleanup PR.
 model JobNumberSequence {
   year       Int @id
   lastNumber Int @default(0) @map("last_number")

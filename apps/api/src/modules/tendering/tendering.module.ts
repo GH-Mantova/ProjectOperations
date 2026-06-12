@@ -3,6 +3,7 @@ import { AuditModule } from "../audit/audit.module";
 import { PlatformModule } from "../platform/platform.module";
 import { ProjectsModule } from "../projects/projects.module";
 import { TenderingController } from "./tendering.controller";
+import { TenderNumberService } from "./tender-number.service";
 import { TenderingService } from "./tendering.service";
 import { TenderClientNotesController } from "./tender-client-notes.controller";
 import { TenderClientNotesService } from "./tender-client-notes.service";
@@ -43,6 +44,7 @@ import { ClarificationProposalsService } from "./scope/clarification-proposals.s
   ],
   providers: [
     TenderingService,
+    TenderNumberService,
     TenderClientNotesService,
     TenderEntriesService,
     ScopeOfWorksService,

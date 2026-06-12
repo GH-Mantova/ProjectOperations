@@ -122,6 +122,8 @@ const USAGE_LIMIT_PATTERNS = [
   /credit\s*balance/i,
   /insufficient\s*credits/i,
   /monthly\s*usage/i,
+  /hit your limit/i, // LL-28: "You've hit your limit" misfiled ~47 prompts as hard failures
+
   /max(?:imum)?\s*requests?/i,
   /quota\s*(?:exceeded|exhausted)/i,
   /\b429\b/,

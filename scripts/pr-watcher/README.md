@@ -122,7 +122,7 @@ was halted gets picked up first.
 
 The detection regex matches common usage/rate-limit message shapes:
 `usage limit`, `rate limit`, `429`, `quota exceeded`, `credit balance`,
-`monthly usage`, etc.
+`monthly usage`, etc. Also `hit your limit` (added per ledger LL-28, which misfiled ~47 prompts as hard failures); relatedly, the "branch: prune" VS Code task now runs on Windows PowerShell 5.1 and uses a gone-upstream sweep so squash-merged local branches are pruned too.
 
 ## Periodic rescan
 

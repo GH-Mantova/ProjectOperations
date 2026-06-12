@@ -12,7 +12,7 @@ import { ADMIN, FIELD_WORKER } from "./helpers";
 
 export const API_BASE = "http://127.0.0.1:3000/api/v1";
 
-/** Deterministic seed IDs for the IS-T100 template tender (apps/api/prisma/seed.ts). */
+/** Deterministic seed IDs for the T260520-ACME-Rev1 template tender (apps/api/prisma/seed.ts). */
 export const TEMPLATE_TENDER_ID = "seed-tender-template-100";
 export const TEMPLATE_CARD_DEM = `${TEMPLATE_TENDER_ID}-card-DEM`;
 export const TEMPLATE_CARD_CIV = `${TEMPLATE_TENDER_ID}-card-CIV`;
@@ -240,14 +240,20 @@ export async function createFixtureTender(
   status: "AWARDED" | "CONTRACT_ISSUED",
   slug: string
 ): Promise<{ tenderId: string; tenderNumber: string }> {
-  const tenderNumber = `${B6_PREFIX}-${slug}-${Date.now()}`;
-  const created = await apiFetch<{ id: string }>(request, token, "POST", "/tenders", {
-    tenderNumber,
-    title: `${B6_PREFIX} fixture — ${slug}`,
-    status,
-    tenderClients: [{ clientId: "client-001", isAwarded: true }]
-  });
-  return { tenderId: created.id, tenderNumber };
+  // G5 — tender numbers are server-generated (T{YYMMDD}-{SLUG}-Rev{N});
+  // fixtures are identified by their B6-prefixed TITLE instead.
+  const created = await apiFetch<{ id: string; tenderNumber: string }>(
+    request,
+    token,
+    "POST",
+    "/tenders",
+    {
+      title: `${B6_PREFIX} fixture — ${slug}`,
+      status,
+      tenderClients: [{ clientId: "client-001", isAwarded: true }]
+    }
+  );
+  return { tenderId: created.id, tenderNumber: created.tenderNumber };
 }
 
 /** Creates an AWARDED fixture tender and converts it into a project. */
@@ -302,14 +308,14 @@ export async function purgeB6Fixtures(
       await apiDeleteQuiet(request, token, `/projects/${project.id}/revert-to-tender`);
     }
   }
-  const tenders = await apiFetch<{ items: Array<{ id: string; tenderNumber: string }> }>(
+  const tenders = await apiFetch<{ items: Array<{ id: string; title: string }> }>(
     request,
     token,
     "GET",
     "/tenders?page=1&pageSize=100"
   );
   for (const tender of tenders.items) {
-    if (tender.tenderNumber.startsWith(B6_PREFIX)) {
+    if (tender.title.startsWith(B6_PREFIX)) {
       await apiDeleteQuiet(request, token, `/tenders/${tender.id}`);
     }
   }

@@ -50,11 +50,14 @@ export class UsersService {
    */
   async list(query: PaginationQueryDto, role?: string) {
     const skip = (query.page - 1) * query.pageSize;
+    // `contains` rather than `equals`: callers filter by role *family*
+    // (the Team panel sends role=estimator and must match the seeded
+    // "Senior Estimator" role).
     const where = role
       ? {
           userRoles: {
             some: {
-              role: { name: { equals: role, mode: "insensitive" as const } }
+              role: { name: { contains: role, mode: "insensitive" as const } }
             }
           }
         }

@@ -165,6 +165,59 @@ function isReviewJob(name) {
   return /^rev-/i.test(name) || /-auto-review-ready\.md$/i.test(name);
 }
 
+// Pull the PR number out of a review-job filename. Supports both the
+// rev-NNN-ready.md convention and the legacy pr-NNN-auto-review-ready.md.
+function reviewJobPrNumber(name) {
+  const m =
+    name.match(/^rev-(\d+)-ready\.md$/i) ??
+    name.match(/^pr-(\d+)-auto-review-ready\.md$/i);
+  return m ? Number(m[1]) : null;
+}
+
+// Mirror a finished review verdict into a PR comment so it's readable from
+// the GitHub mobile app (the verdict file in docs/pr-reviews/ is local-only).
+// Best-effort: any failure logs and returns — the verdict FILE remains the
+// source of truth and the review job never fails over the mirror step.
+//
+// Gates safety: PR comments are NOT scanned by the gates — pr-gates.mjs
+// reads only the PR body (`gh pr view --json body`). Verdict content can
+// safely contain checklist text or GATE-ALLOW mentions without tripping
+// CP-22/CP-09 on re-runs.
+async function mirrorVerdictToPr(name) {
+  const prNumber = reviewJobPrNumber(name);
+  if (prNumber == null) {
+    log("review", `verdict mirror skipped: no PR number in job name "${name}"`);
+    return;
+  }
+  const verdictRel = `docs/pr-reviews/pr-${prNumber}-review.md`;
+  const verdictPath = path.join(REPO_ROOT, "docs", "pr-reviews", `pr-${prNumber}-review.md`);
+  let verdict;
+  try {
+    verdict = await readFile(verdictPath, "utf-8");
+  } catch {
+    log("review", `verdict mirror skipped: ${verdictRel} not found`);
+    return;
+  }
+  // ASCII-only header — the comment passes through a shell-spawned gh on
+  // Windows (spawn shell:true), where non-ASCII can mangle.
+  const header = `[watcher verdict] mirrored from ${verdictRel}\n\n`;
+  // --body-file with a temp file avoids quoting hell entirely.
+  const tmpFile = path.join(__dirname, `.verdict-comment-${prNumber}.tmp.md`);
+  try {
+    await writeFile(tmpFile, header + verdict, "utf-8");
+    await runGh(["pr", "comment", String(prNumber), "--body-file", tmpFile]);
+    log("review", `verdict mirrored to PR #${prNumber} as a comment`);
+  } catch (err) {
+    log("review", `verdict mirror failed: ${err.message}`);
+  } finally {
+    try {
+      unlinkSync(tmpFile);
+    } catch {
+      // best-effort cleanup
+    }
+  }
+}
+
 function debouncedEnqueue(name) {
   if (!isReady(name)) return;
   if (queuePaused) return; // ignore new files while paused
@@ -630,7 +683,15 @@ async function drain() {
       return;
     }
 
-    // Agent succeeded — for review jobs skip the entire AUTO_MERGE block.
+    // Agent succeeded — review jobs mirror their verdict file into a PR
+    // comment (remote-ops: readable from the GitHub mobile app). Restarting
+    // the watcher mid-job can rarely re-run a review and post a duplicate
+    // comment — accepted, simpler than tracking mirrored PRs in state.
+    if (reviewJob) {
+      await mirrorVerdictToPr(name);
+    }
+
+    // For review jobs skip the entire AUTO_MERGE block.
     // A review job's output mentions the PR it reviewed; running auto-merge
     // on that number would violate the manual-review gate.
     let mergeReport = "";

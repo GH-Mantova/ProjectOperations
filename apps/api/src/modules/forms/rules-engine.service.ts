@@ -7,6 +7,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 // is shape-agnostic at evaluation time; consumers can layer DTO-validation on
 // top if they want stricter input checking.
 
+/** Comparison operators a single Condition may use against a field value. */
 export type ConditionOperator =
   | "equals"
   | "not_equals"
@@ -20,6 +21,10 @@ export type ConditionOperator =
   | "is_one_of"
   | "is_not_one_of";
 
+/**
+ * A single comparison: the stored value at `fieldKey` is tested with
+ * `operator` against `value` (and `value2` for the "between" operator).
+ */
 export interface Condition {
   id?: string;
   fieldKey: string;
@@ -28,11 +33,13 @@ export interface Condition {
   value2?: unknown;
 }
 
+/** Recursive AND/OR grouping of Conditions and nested ConditionGroups. */
 export interface ConditionGroup {
   logic: "AND" | "OR";
   conditions: Array<Condition | ConditionGroup>;
 }
 
+/** Action kinds a matched rule may emit (UI effects plus server-side record creation/notifications). */
 export type RuleActionType =
   | "show"
   | "hide"
@@ -49,6 +56,11 @@ export type RuleActionType =
   | "add_repeating_row"
   | "remove_repeating_row";
 
+/**
+ * One effect emitted by a matched rule. UI action types are interpreted by
+ * the client; `create_record` and `send_notification` are executed
+ * server-side by FormsEngineService after submit.
+ */
 export interface RuleAction {
   type: RuleActionType;
   target?: string;
@@ -58,6 +70,11 @@ export interface RuleAction {
   notificationMessage?: string;
 }
 
+/**
+ * The rule shape stored on FormField.conditions / .actions: when
+ * `conditionGroup` evaluates true for the given trigger, every action in
+ * `actions` applies.
+ */
 export interface FieldRule {
   id?: string;
   trigger: "on_change" | "on_load" | "on_submit";
@@ -65,6 +82,7 @@ export interface FieldRule {
   actions: RuleAction[];
 }
 
+/** Per-field validation constraint stored in FormField.validations. */
 export interface ValidationRule {
   type: "min" | "max" | "min_length" | "max_length" | "regex" | "email" | "phone";
   value?: unknown;
@@ -90,6 +108,17 @@ function isEmpty(v: unknown): boolean {
   return false;
 }
 
+/**
+ * Stateless evaluator for the JSON form-rule contract.
+ *
+ * Contract: rules are FieldRule objects (trigger + ConditionGroup +
+ * RuleAction[]) stored as JSON on fields/sections. Condition groups are
+ * all-pass for AND and any-pass for OR (evaluated eagerly, no
+ * short-circuit); an empty/missing group evaluates to true. Comparisons
+ * are deliberately loose ("5" == 5) because values originate from text
+ * inputs; unknown operators log a warning and evaluate false. The only
+ * DB access is checkComplianceGates (worker qualification lookups).
+ */
 @Injectable()
 export class RulesEngineService {
   private readonly logger = new Logger(RulesEngineService.name);
@@ -98,6 +127,16 @@ export class RulesEngineService {
 
   // ── Evaluation ─────────────────────────────────────────────────────────
 
+  /**
+   * Evaluate one Condition against the current value map.
+   *
+   * Equality is loose (==) by design; numeric operators coerce both sides
+   * and return false when either side is not a finite number.
+   *
+   * @param condition - the comparison to run
+   * @param values - fieldKey to current value map
+   * @returns true when the condition holds; false for unknown operators (with a warning log)
+   */
   evaluateCondition(condition: Condition, values: ValueMap): boolean {
     const actual = values[condition.fieldKey];
     const expected = condition.value;
@@ -144,6 +183,15 @@ export class RulesEngineService {
     }
   }
 
+  /**
+   * Recursively evaluate a ConditionGroup.
+   *
+   * AND requires every child to pass, OR requires at least one. All
+   * children are evaluated eagerly (no short-circuit). An empty or
+   * missing group means "no constraint" and returns true.
+   *
+   * @returns the boolean result of the group
+   */
   evaluateConditionGroup(group: ConditionGroup, values: ValueMap): boolean {
     if (!group || !Array.isArray(group.conditions) || group.conditions.length === 0) {
       // Empty group ≡ no constraint ≡ true. This matches the natural reading
@@ -156,6 +204,16 @@ export class RulesEngineService {
     return group.logic === "OR" ? evals.some(Boolean) : evals.every(Boolean);
   }
 
+  /**
+   * Decide whether a field is visible given its rules and current values.
+   *
+   * Rules are scanned in order; the first matched rule containing a
+   * "hide" action hides the field, the first containing "show" keeps it
+   * visible (short-circuit on first show/hide hit). Default is visible.
+   *
+   * @param fieldConditions - FieldRule[] from FormField.conditions; undefined/empty means always visible
+   * @returns true when the field should be rendered
+   */
   evaluateFieldVisibility(
     fieldConditions: FieldRule[] | undefined,
     values: ValueMap
@@ -175,6 +233,17 @@ export class RulesEngineService {
     return true;
   }
 
+  /**
+   * Decide whether a field is required given its base flag and rules.
+   *
+   * Unlike visibility, ALL matched rules are applied in order — a later
+   * "unrequire" overrides an earlier "require" and vice versa (no
+   * short-circuit). Starts from the field's static isRequired flag.
+   *
+   * @param isRequiredBase - the field's static isRequired flag
+   * @param fieldConditions - FieldRule[] from FormField.conditions
+   * @returns the final required state
+   */
   evaluateFieldRequired(
     isRequiredBase: boolean,
     fieldConditions: FieldRule[] | undefined,
@@ -194,6 +263,13 @@ export class RulesEngineService {
 
   // ── Form-wide on_submit collection ─────────────────────────────────────
 
+  /**
+   * Gather every action from on_submit-triggered rules whose condition
+   * group matches the submitted values, across all sections/fields.
+   *
+   * @param template - template version with sections/fields (field.actions holds FieldRule[])
+   * @returns a flat RuleAction[] in document order; empty when nothing matches
+   */
   collectOnSubmitActions(
     template: { sections?: Array<{ fields?: Array<{ actions?: unknown }> }> },
     values: ValueMap
@@ -218,6 +294,16 @@ export class RulesEngineService {
 
   // ── Validation ─────────────────────────────────────────────────────────
 
+  /**
+   * Validate submitted values against required state, field types and
+   * per-field ValidationRules.
+   *
+   * Hidden fields are skipped entirely. At most one error is reported per
+   * field (first failure wins). Invalid regex patterns in validations are
+   * silently ignored.
+   *
+   * @returns `{ valid, errors }` where errors maps fieldKey to a human-readable message
+   */
   validateValues(
     template: {
       sections?: Array<{
@@ -307,6 +393,17 @@ export class RulesEngineService {
   // most common one is "asbestos work plan can only be submitted by someone
   // holding a current asbestos_a or asbestos_b worker qualification".
 
+  /**
+   * Run Initial Services business gates that can block a submission.
+   *
+   * Currently: templates in the "asbestos" category require the submitter
+   * to hold a current (unexpired) asbestos_a or asbestos_b qualification.
+   * Anonymous submitters (null submittedById) pass unconditionally.
+   *
+   * @param template - template category plus optional settings payload
+   * @param submittedById - user id of the submitter, or null
+   * @returns `{ passed, failures }` — failures lists human-readable gate messages
+   */
   async checkComplianceGates(
     template: { category: string; settings?: unknown },
     submittedById: string | null

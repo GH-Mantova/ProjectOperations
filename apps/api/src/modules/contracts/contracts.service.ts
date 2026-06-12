@@ -19,6 +19,16 @@ const VARIATION_TRANSITIONS: Record<VariationStatus, VariationStatus[]> = {
   APPROVED: []
 };
 
+/**
+ * Business logic for contracts, variations, and progress claims (Module 7).
+ *
+ * Auto-assigns sequential IS-C### / IS-V### / IS-PC### numbers from
+ * dedicated sequence tables, enforces variation status transitions
+ * (RECEIVED→PRICED→SUBMITTED→APPROVED) and claim transitions
+ * (DRAFT→SUBMITTED→APPROVED→PAID), and runs a daily cron that sends claim
+ * cut-off reminders (in-app notification + email) one week before each
+ * client's cut-off date, rolled back to the preceding QLD work day.
+ */
 @Injectable()
 export class ContractsService {
   private readonly logger = new Logger(ContractsService.name);
@@ -30,6 +40,16 @@ export class ContractsService {
   ) {}
 
   // ── Contracts ────────────────────────────────────────────────────────
+  /**
+   * List contracts with project + client info, filterable by status and
+   * projectId.
+   *
+   * `limit` takes precedence over `pageSize`; the effective page size is
+   * clamped to 1–100 and defaults to 20.
+   *
+   * @param filter - status / projectId filters plus page, pageSize, limit
+   * @returns { items, total, page, pageSize, limit } newest first
+   */
   async listContracts(filter: {
     status?: ContractStatus;
     projectId?: string;
@@ -58,6 +78,14 @@ export class ContractsService {
     return { items, total, page, pageSize, limit: pageSize };
   }
 
+  /**
+   * Get a contract with project/client, variations (by variation number),
+   * and progress-claim headers (most recent claim month first).
+   *
+   * @param id - contract id
+   * @returns the full contract aggregate
+   * @throws NotFoundException when the contract does not exist
+   */
   async getContract(id: string) {
     const contract = await this.prisma.contract.findUnique({
       where: { id },
@@ -71,6 +99,18 @@ export class ContractsService {
     return contract;
   }
 
+  /**
+   * Create the single contract for a project with an auto-assigned
+   * sequential IS-C### contract number.
+   *
+   * retentionPct defaults to 0 when omitted.
+   *
+   * @param actorId - user id stored as createdById
+   * @param dto - projectId, contractValue, optional retentionPct / dates / notes
+   * @returns the created contract with project and client included
+   * @throws NotFoundException when the project does not exist
+   * @throws ConflictException when the project already has a contract
+   */
   async createContract(
     actorId: string,
     dto: { projectId: string; contractValue: number; retentionPct?: number; startDate?: string; endDate?: string; notes?: string }
@@ -94,6 +134,20 @@ export class ContractsService {
     });
   }
 
+  /**
+   * Update a contract; only actors holding `finance.admin` may change
+   * contractValue after creation.
+   *
+   * Passing null for startDate / endDate clears the field; undefined
+   * leaves it unchanged.
+   *
+   * @param id - contract id
+   * @param actor - acting user id + permission set used for the finance.admin check
+   * @param dto - partial contract fields
+   * @returns the updated contract
+   * @throws NotFoundException when the contract does not exist
+   * @throws BadRequestException when contractValue is changed without finance.admin
+   */
   async updateContract(
     id: string,
     actor: Actor,
@@ -118,6 +172,13 @@ export class ContractsService {
   }
 
   // ── Variations ───────────────────────────────────────────────────────
+  /**
+   * List variations for a contract ordered by variation number.
+   *
+   * @param contractId - contract id (must exist)
+   * @returns the contract's variations
+   * @throws NotFoundException when the contract does not exist
+   */
   async listVariations(contractId: string) {
     await this.requireContract(contractId);
     return this.prisma.variation.findMany({
@@ -126,6 +187,18 @@ export class ContractsService {
     });
   }
 
+  /**
+   * Create a variation on a contract with an auto-assigned sequential
+   * IS-V### number; status starts at RECEIVED.
+   *
+   * receivedDate defaults to now when omitted.
+   *
+   * @param contractId - contract id (must exist)
+   * @param actorId - user id stored as createdById
+   * @param dto - description plus optional requestedBy / pricedAmount / receivedDate / notes
+   * @returns the created variation
+   * @throws NotFoundException when the contract does not exist
+   */
   async createVariation(
     contractId: string,
     actorId: string,
@@ -147,6 +220,21 @@ export class ContractsService {
     });
   }
 
+  /**
+   * Update a variation, enforcing the one-way status flow
+   * RECEIVED→PRICED→SUBMITTED→APPROVED.
+   *
+   * Side effect: when transitioning to APPROVED and an active DRAFT claim
+   * exists for the contract, a new "Variation" line item is appended to
+   * that claim — but only if approvedAmount is set on the variation.
+   *
+   * @param contractId - contract the variation must belong to
+   * @param variationId - variation id to update
+   * @param dto - partial variation fields including optional status change
+   * @returns the updated variation
+   * @throws NotFoundException when the variation is missing or on another contract
+   * @throws BadRequestException when the status transition is not allowed
+   */
   async updateVariation(
     contractId: string,
     variationId: string,
@@ -209,6 +297,13 @@ export class ContractsService {
   }
 
   // ── Progress claims ──────────────────────────────────────────────────
+  /**
+   * List progress claims for a contract, most recent claim month first.
+   *
+   * @param contractId - contract id (must exist)
+   * @returns progress-claim records without line items
+   * @throws NotFoundException when the contract does not exist
+   */
   async listClaims(contractId: string) {
     await this.requireContract(contractId);
     return this.prisma.progressClaim.findMany({
@@ -217,6 +312,14 @@ export class ContractsService {
     });
   }
 
+  /**
+   * Get a progress claim with line items (by sortOrder) and its contract.
+   *
+   * @param contractId - contract the claim must belong to
+   * @param claimId - progress-claim id
+   * @returns the claim with lineItems and contract included
+   * @throws NotFoundException when the claim is missing or on another contract
+   */
   async getClaim(contractId: string, claimId: string) {
     const claim = await this.prisma.progressClaim.findUnique({
       where: { id: claimId },
@@ -226,6 +329,23 @@ export class ContractsService {
     return claim;
   }
 
+  /**
+   * Create a DRAFT progress claim for a month with an auto-assigned
+   * sequential IS-PC### number.
+   *
+   * claimMonth is normalised to the first of the month (UTC). Line items
+   * are auto-populated from the linked tender's scope-discipline subtotals
+   * (DEM/CIV/ASB at marked-up estimate prices, Other at provisional sums),
+   * with previouslyClaimed rolled up from APPROVED/PAID claims, plus one
+   * line per APPROVED variation not already on a prior claim.
+   *
+   * @param contractId - contract id (must exist)
+   * @param actorId - user id stored as createdById
+   * @param dto - claimMonth as an ISO date string
+   * @returns the created DRAFT claim with line items
+   * @throws NotFoundException when the contract does not exist
+   * @throws ConflictException when a claim already exists for this contract + month
+   */
   async createClaim(contractId: string, actorId: string, dto: { claimMonth: string }) {
     const contract = await this.prisma.contract.findUnique({
       where: { id: contractId },
@@ -308,6 +428,20 @@ export class ContractsService {
     });
   }
 
+  /**
+   * Update a claim line item and recompute the claim's totalClaimed.
+   *
+   * thisClaimPct triggers a server-side amount calculation
+   * (contractValue × pct / 100, 2 d.p.); thisClaimAmount overrides the
+   * amount and clears the pct. If both are sent, the amount wins.
+   *
+   * @param contractId - contract the claim must belong to
+   * @param claimId - progress-claim id
+   * @param itemId - line item id
+   * @param dto - thisClaimPct, thisClaimAmount, and/or description
+   * @returns the full claim after totals are recomputed
+   * @throws NotFoundException when the line item is missing or not on this claim/contract
+   */
   async updateClaimItem(
     contractId: string,
     claimId: string,
@@ -349,6 +483,18 @@ export class ContractsService {
     return this.getClaim(contractId, claimId);
   }
 
+  /**
+   * Submit a DRAFT claim: sets status=SUBMITTED with submissionDate=now.
+   *
+   * Side effect: fires a claim.submitted notification email
+   * (fire-and-forget — failures do not roll back the status change).
+   *
+   * @param contractId - contract the claim must belong to
+   * @param claimId - progress-claim id
+   * @returns the claim transitioned to SUBMITTED
+   * @throws NotFoundException when the claim is missing or on another contract
+   * @throws BadRequestException when the claim is not in DRAFT status
+   */
   async submitClaim(contractId: string, claimId: string) {
     const claim = await this.getClaim(contractId, claimId);
     if (claim.status !== ClaimStatus.DRAFT) {
@@ -367,6 +513,17 @@ export class ContractsService {
     return updated;
   }
 
+  /**
+   * Approve a SUBMITTED claim, computing
+   * retentionHeld = totalApproved × contract.retentionPct / 100 (2 d.p.).
+   *
+   * @param contractId - contract the claim must belong to
+   * @param claimId - progress-claim id
+   * @param dto - totalApproved amount
+   * @returns the claim transitioned to APPROVED
+   * @throws NotFoundException when the claim is missing or on another contract
+   * @throws BadRequestException when the claim is not in SUBMITTED status
+   */
   async approveClaim(contractId: string, claimId: string, dto: { totalApproved: number }) {
     const claim = await this.getClaim(contractId, claimId);
     if (claim.status !== ClaimStatus.SUBMITTED) {
@@ -384,6 +541,17 @@ export class ContractsService {
     });
   }
 
+  /**
+   * Record payment on an APPROVED claim: sets status=PAID with totalPaid
+   * and paidDate.
+   *
+   * @param contractId - contract the claim must belong to
+   * @param claimId - progress-claim id
+   * @param dto - totalPaid amount and paidDate ISO string
+   * @returns the claim transitioned to PAID
+   * @throws NotFoundException when the claim is missing or on another contract
+   * @throws BadRequestException when the claim is not in APPROVED status
+   */
   async payClaim(contractId: string, claimId: string, dto: { totalPaid: number; paidDate: string }) {
     const claim = await this.getClaim(contractId, claimId);
     if (claim.status !== ClaimStatus.APPROVED) {
@@ -410,6 +578,19 @@ export class ContractsService {
     }
   }
 
+  /**
+   * Send claim cut-off reminders for ACTIVE contracts whose client has a
+   * configured claimCutoffDay.
+   *
+   * The next cut-off date is rolled back to the preceding QLD work day
+   * (weekends/public holidays) and a reminder fires only when that adjusted
+   * date is exactly 7 days from `today`. Creates an in-app notification for
+   * the client's claimReminderUser (falling back to the seeded Accounts
+   * owner `user-supervisor-002`) and, when the reminder user has an email,
+   * sends a fire-and-forget claim.cutoff_reminder email.
+   *
+   * @param today - reference date used for the 7-day-out check (injected for testability)
+   */
   async checkClaimCutoffs(today: Date) {
     // Find contracts with active projects whose client has a configured cut-off.
     const contracts = await this.prisma.contract.findMany({

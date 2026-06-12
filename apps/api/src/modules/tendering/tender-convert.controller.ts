@@ -8,6 +8,13 @@ import { ProjectsService } from "../projects/projects.service";
 
 type RequestUser = { sub: string; permissions: string[] };
 
+/**
+ * REST controller for the tender → project conversion endpoint.
+ *
+ * Requires JWT + `tenderconversion.manage`. Thin wrapper: all
+ * conversion logic (number allocation, snapshots, document moves,
+ * notifications) lives in ProjectsService.convertFromTender.
+ */
 @ApiTags("Tender Conversion")
 @ApiBearerAuth()
 @Controller("tenders")
@@ -15,6 +22,16 @@ type RequestUser = { sub: string; permissions: string[] };
 export class TenderConvertController {
   constructor(private readonly projects: ProjectsService) {}
 
+  /**
+   * Convert an AWARDED tender into a Project.
+   *
+   * Allocates the next IS-P### number under a row lock, snapshots the
+   * estimate (rates + line items), flattens scope, moves tender
+   * documents, and notifies the assigned PM.
+   *
+   * @param id - tender id to convert
+   * @returns the created project with full detail payload (201)
+   */
   @Post(":id/convert")
   @RequirePermissions("tenderconversion.manage")
   @ApiOperation({

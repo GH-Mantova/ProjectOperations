@@ -32,6 +32,17 @@ import {
 } from "./dto/estimates.dto";
 import { EstimatesService } from "./estimates.service";
 
+/**
+ * REST endpoints for the estimating module: the global rate library
+ * (labour/plant/waste/cutting/core-hole/fuel/enclosure/other/density)
+ * and the per-tender estimate with its scope items, cost lines and
+ * assumptions.
+ *
+ * Permission gating: `estimates.view` for reads, `estimates.manage` for
+ * tender-estimate edits, `estimates.admin` for rate-library writes and
+ * estimate unlock. Mutating endpoints return the full refreshed estimate
+ * so the client can re-render without a follow-up GET.
+ */
 @ApiTags("Estimates")
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -43,6 +54,11 @@ export class EstimatesController {
   //  Rate library — labour
   // ──────────────────────────────────────────────────────────────
 
+  /**
+   * List labour rates (rate library).
+   *
+   * @returns labour rates, active first then by sortOrder/role
+   */
   @Get("estimate-rates/labour")
   @RequirePermissions("estimates.view")
   @ApiOperation({ summary: "List labour rates (rate library)" })
@@ -51,6 +67,12 @@ export class EstimatesController {
     return this.service.listLabourRates();
   }
 
+  /**
+   * Create a labour rate.
+   *
+   * @param dto - role plus day/night/weekend rates
+   * @returns the created rate (audited)
+   */
   @Post("estimate-rates/labour")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Create a labour rate" })
@@ -59,6 +81,11 @@ export class EstimatesController {
     return this.service.upsertLabourRate(undefined, dto, actor.sub);
   }
 
+  /**
+   * Update a labour rate.
+   *
+   * @returns the updated rate (audited)
+   */
   @Patch("estimate-rates/labour/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Update a labour rate" })
@@ -67,6 +94,11 @@ export class EstimatesController {
     return this.service.upsertLabourRate(id, dto, actor.sub);
   }
 
+  /**
+   * Delete a labour rate (hard delete, audited).
+   *
+   * @returns `{ id }` of the deleted rate
+   */
   @Delete("estimate-rates/labour/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Delete a labour rate" })
@@ -79,6 +111,11 @@ export class EstimatesController {
   //  Rate library — plant
   // ──────────────────────────────────────────────────────────────
 
+  /**
+   * List plant rates (rate library).
+   *
+   * @returns plant rates, active first then by sortOrder/item
+   */
   @Get("estimate-rates/plant")
   @RequirePermissions("estimates.view")
   @ApiOperation({ summary: "List plant rates (rate library)" })
@@ -86,6 +123,12 @@ export class EstimatesController {
     return this.service.listPlantRates();
   }
 
+  /**
+   * Create a plant rate.
+   *
+   * @param dto - plant item, unit (defaults "day"), rate and optional fuelRate
+   * @returns the created rate (audited)
+   */
   @Post("estimate-rates/plant")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Create a plant rate" })
@@ -93,6 +136,11 @@ export class EstimatesController {
     return this.service.upsertPlantRate(undefined, dto, actor.sub);
   }
 
+  /**
+   * Update a plant rate.
+   *
+   * @returns the updated rate (audited)
+   */
   @Patch("estimate-rates/plant/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Update a plant rate" })
@@ -100,6 +148,11 @@ export class EstimatesController {
     return this.service.upsertPlantRate(id, dto, actor.sub);
   }
 
+  /**
+   * Delete a plant rate (hard delete, audited).
+   *
+   * @returns `{ id }` of the deleted rate
+   */
   @Delete("estimate-rates/plant/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Delete a plant rate" })
@@ -111,6 +164,11 @@ export class EstimatesController {
   //  Rate library — waste
   // ──────────────────────────────────────────────────────────────
 
+  /**
+   * List waste rates (rate library).
+   *
+   * @returns waste rates, active first then by sortOrder/wasteType/facility
+   */
   @Get("estimate-rates/waste")
   @RequirePermissions("estimates.view")
   @ApiOperation({ summary: "List waste rates (rate library)" })
@@ -118,6 +176,12 @@ export class EstimatesController {
     return this.service.listWasteRates();
   }
 
+  /**
+   * Create a waste rate.
+   *
+   * @param dto - waste type/facility plus per-tonne and per-load rates
+   * @returns the created rate (audited)
+   */
   @Post("estimate-rates/waste")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Create a waste rate" })
@@ -125,6 +189,11 @@ export class EstimatesController {
     return this.service.upsertWasteRate(undefined, dto, actor.sub);
   }
 
+  /**
+   * Update a waste rate.
+   *
+   * @returns the updated rate (audited)
+   */
   @Patch("estimate-rates/waste/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Update a waste rate" })
@@ -132,6 +201,11 @@ export class EstimatesController {
     return this.service.upsertWasteRate(id, dto, actor.sub);
   }
 
+  /**
+   * Delete a waste rate (hard delete, audited).
+   *
+   * @returns `{ id }` of the deleted rate
+   */
   @Delete("estimate-rates/waste/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Delete a waste rate" })
@@ -143,6 +217,11 @@ export class EstimatesController {
   //  Rate library — cutting
   // ──────────────────────────────────────────────────────────────
 
+  /**
+   * List cutting rates (rate library).
+   *
+   * @returns cutting rates ordered by equipment/material/elevation/depth
+   */
   @Get("estimate-rates/cutting")
   @RequirePermissions("estimates.view")
   @ApiOperation({ summary: "List cutting rates (rate library)" })
@@ -150,6 +229,12 @@ export class EstimatesController {
     return this.service.listCuttingRates();
   }
 
+  /**
+   * Create a cutting rate.
+   *
+   * @param dto - equipment/elevation/material/depth combo with rate per metre
+   * @returns the created rate (audited)
+   */
   @Post("estimate-rates/cutting")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Create a cutting rate" })
@@ -157,6 +242,11 @@ export class EstimatesController {
     return this.service.upsertCuttingRate(undefined, dto, actor.sub);
   }
 
+  /**
+   * Update a cutting rate.
+   *
+   * @returns the updated rate (audited)
+   */
   @Patch("estimate-rates/cutting/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Update a cutting rate" })
@@ -164,6 +254,11 @@ export class EstimatesController {
     return this.service.upsertCuttingRate(id, dto, actor.sub);
   }
 
+  /**
+   * Delete a cutting rate (hard delete, audited).
+   *
+   * @returns `{ id }` of the deleted rate
+   */
   @Delete("estimate-rates/cutting/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Delete a cutting rate" })
@@ -175,6 +270,11 @@ export class EstimatesController {
   //  Rate library — core holes
   // ──────────────────────────────────────────────────────────────
 
+  /**
+   * List concrete core-hole drilling rates ($/hole by diameter).
+   *
+   * @returns core-hole rates, active first then by diameter
+   */
   @Get("estimate-rates/core-holes")
   @RequirePermissions("estimates.view")
   @ApiOperation({ summary: "List concrete core-hole drilling rates ($/hole by diameter)" })
@@ -182,6 +282,12 @@ export class EstimatesController {
     return this.service.listCoreHoleRates();
   }
 
+  /**
+   * Create a core-hole rate.
+   *
+   * @param dto - diameter in mm and rate per hole
+   * @returns the created rate (audited)
+   */
   @Post("estimate-rates/core-holes")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Create a core-hole rate" })
@@ -189,6 +295,11 @@ export class EstimatesController {
     return this.service.upsertCoreHoleRate(undefined, dto, actor.sub);
   }
 
+  /**
+   * Update a core-hole rate.
+   *
+   * @returns the updated rate (audited)
+   */
   @Patch("estimate-rates/core-holes/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Update a core-hole rate" })
@@ -196,6 +307,11 @@ export class EstimatesController {
     return this.service.upsertCoreHoleRate(id, dto, actor.sub);
   }
 
+  /**
+   * Delete a core-hole rate (hard delete, audited).
+   *
+   * @returns `{ id }` of the deleted rate
+   */
   @Delete("estimate-rates/core-holes/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Delete a core-hole rate" })
@@ -207,6 +323,11 @@ export class EstimatesController {
   //  Rate library — fuel
   // ──────────────────────────────────────────────────────────────
 
+  /**
+   * List fuel rates (rate library).
+   *
+   * @returns fuel rates, active first then by sortOrder/item
+   */
   @Get("estimate-rates/fuel")
   @RequirePermissions("estimates.view")
   @ApiOperation({ summary: "List fuel rates (rate library)" })
@@ -214,6 +335,12 @@ export class EstimatesController {
     return this.service.listFuelRates();
   }
 
+  /**
+   * Create a fuel rate.
+   *
+   * @param dto - item, unit and rate
+   * @returns the created rate (audited)
+   */
   @Post("estimate-rates/fuel")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Create a fuel rate" })
@@ -221,6 +348,11 @@ export class EstimatesController {
     return this.service.upsertFuelRate(undefined, dto, actor.sub);
   }
 
+  /**
+   * Update a fuel rate.
+   *
+   * @returns the updated rate (audited)
+   */
   @Patch("estimate-rates/fuel/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Update a fuel rate" })
@@ -228,6 +360,11 @@ export class EstimatesController {
     return this.service.upsertFuelRate(id, dto, actor.sub);
   }
 
+  /**
+   * Delete a fuel rate (hard delete, audited).
+   *
+   * @returns `{ id }` of the deleted rate
+   */
   @Delete("estimate-rates/fuel/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Delete a fuel rate" })
@@ -239,6 +376,11 @@ export class EstimatesController {
   //  Rate library — enclosure
   // ──────────────────────────────────────────────────────────────
 
+  /**
+   * List asbestos enclosure rates (rate library).
+   *
+   * @returns enclosure rates, active first then by sortOrder/type
+   */
   @Get("estimate-rates/enclosure")
   @RequirePermissions("estimates.view")
   @ApiOperation({ summary: "List asbestos enclosure rates (rate library)" })
@@ -246,6 +388,12 @@ export class EstimatesController {
     return this.service.listEnclosureRates();
   }
 
+  /**
+   * Create an enclosure rate.
+   *
+   * @param dto - enclosure type, unit and rate
+   * @returns the created rate (audited)
+   */
   @Post("estimate-rates/enclosure")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Create an enclosure rate" })
@@ -253,6 +401,11 @@ export class EstimatesController {
     return this.service.upsertEnclosureRate(undefined, dto, actor.sub);
   }
 
+  /**
+   * Update an enclosure rate.
+   *
+   * @returns the updated rate (audited)
+   */
   @Patch("estimate-rates/enclosure/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Update an enclosure rate" })
@@ -260,6 +413,11 @@ export class EstimatesController {
     return this.service.upsertEnclosureRate(id, dto, actor.sub);
   }
 
+  /**
+   * Delete an enclosure rate (hard delete, audited).
+   *
+   * @returns `{ id }` of the deleted rate
+   */
   @Delete("estimate-rates/enclosure/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Delete an enclosure rate" })
@@ -271,6 +429,11 @@ export class EstimatesController {
   //  Rate library — cutting-sheet "other" rates
   // ──────────────────────────────────────────────────────────────
 
+  /**
+   * List cutting-sheet other-rate catalogue.
+   *
+   * @returns other-rates, active first then by sortOrder/description
+   */
   @Get("estimate-rates/other-rates")
   @RequirePermissions("estimates.view")
   @ApiOperation({ summary: "List cutting-sheet other-rate catalogue" })
@@ -279,6 +442,12 @@ export class EstimatesController {
     return this.service.listOtherRates();
   }
 
+  /**
+   * Create an other-rate.
+   *
+   * @param dto - description, unit and rate
+   * @returns the created rate (audited)
+   */
   @Post("estimate-rates/other-rates")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Create an other-rate" })
@@ -287,6 +456,11 @@ export class EstimatesController {
     return this.service.upsertOtherRate(undefined, dto, actor.sub);
   }
 
+  /**
+   * Update an other-rate.
+   *
+   * @returns the updated rate (audited)
+   */
   @Patch("estimate-rates/other-rates/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Update an other-rate" })
@@ -295,6 +469,12 @@ export class EstimatesController {
     return this.service.upsertOtherRate(id, dto, actor.sub);
   }
 
+  /**
+   * Delete an other-rate (403 if referenced by cutting lines).
+   *
+   * @returns `{ id }` of the deleted rate
+   * @throws ForbiddenException when cutting-sheet lines reference the rate
+   */
   @Delete("estimate-rates/other-rates/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Delete an other-rate (403 if referenced by cutting lines)" })
@@ -307,6 +487,11 @@ export class EstimatesController {
   //  Rate library — material densities
   // ──────────────────────────────────────────────────────────────
 
+  /**
+   * List material densities (rate library).
+   *
+   * @returns densities, active first then by category/material name
+   */
   @Get("estimate-rates/material-densities")
   @RequirePermissions("estimates.view")
   @ApiOperation({ summary: "List material densities (rate library)" })
@@ -315,6 +500,12 @@ export class EstimatesController {
     return this.service.listMaterialDensities();
   }
 
+  /**
+   * Create a material density.
+   *
+   * @param dto - material name, density value, unit and optional category/notes
+   * @returns the created density (audited)
+   */
   @Post("estimate-rates/material-densities")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Create a material density" })
@@ -323,6 +514,11 @@ export class EstimatesController {
     return this.service.upsertMaterialDensity(undefined, dto, actor.sub);
   }
 
+  /**
+   * Update a material density.
+   *
+   * @returns the updated density (audited)
+   */
   @Patch("estimate-rates/material-densities/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Update a material density" })
@@ -331,6 +527,11 @@ export class EstimatesController {
     return this.service.upsertMaterialDensity(id, dto, actor.sub);
   }
 
+  /**
+   * Soft-delete a material density (sets active = false).
+   *
+   * @returns `{ id }` of the deactivated density
+   */
   @Delete("estimate-rates/material-densities/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Soft-delete a material density (sets active = false)" })
@@ -343,6 +544,12 @@ export class EstimatesController {
   //  Estimate lifecycle (one per tender)
   // ──────────────────────────────────────────────────────────────
 
+  /**
+   * Get the estimate for a tender (includes items, lines, assumptions).
+   *
+   * @returns the estimate, or null when none has been created yet
+   * @throws NotFoundException when the tender does not exist
+   */
   @Get("tenders/:tenderId/estimate")
   @RequirePermissions("estimates.view")
   @ApiOperation({ summary: "Get the estimate for a tender (includes items, lines, assumptions)" })
@@ -351,6 +558,12 @@ export class EstimatesController {
     return this.service.getEstimate(tenderId);
   }
 
+  /**
+   * Create the estimate for a tender (idempotent).
+   *
+   * @returns the existing estimate when present, otherwise a new one with 30% default markup
+   * @throws NotFoundException when the tender does not exist
+   */
   @Post("tenders/:tenderId/estimate")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Create the estimate for a tender (idempotent)" })
@@ -359,6 +572,17 @@ export class EstimatesController {
     return this.service.createEstimate(tenderId, actor.sub);
   }
 
+  /**
+   * Update estimate-level fields (markup, notes).
+   *
+   * Upsert behaviour: if no estimate exists yet, one is created on the
+   * fly with the patched values.
+   *
+   * @param dto - optional markup and notes
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the tender does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   @Patch("tenders/:tenderId/estimate")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Update estimate-level fields (markup, notes)" })
@@ -370,6 +594,12 @@ export class EstimatesController {
     return this.service.updateEstimate(tenderId, dto, actor.sub);
   }
 
+  /**
+   * Lock an estimate (prevents further edits; typically after submission).
+   *
+   * @returns the estimate with lockedAt/lockedById set
+   * @throws NotFoundException when the estimate does not exist
+   */
   @Post("tenders/:tenderId/estimate/lock")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Lock an estimate (prevents further edits; typically after submission)" })
@@ -377,6 +607,12 @@ export class EstimatesController {
     return this.service.lockEstimate(tenderId, actor.sub);
   }
 
+  /**
+   * Unlock an estimate (admin only).
+   *
+   * @returns the estimate with lock fields cleared
+   * @throws NotFoundException when the estimate does not exist
+   */
   @Post("tenders/:tenderId/estimate/unlock")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Unlock an estimate (admin only)" })
@@ -384,6 +620,12 @@ export class EstimatesController {
     return this.service.unlockEstimate(tenderId, actor.sub);
   }
 
+  /**
+   * Server-authoritative totals for the tender estimate.
+   *
+   * @returns per-item and overall totals `{ labour, equip, plant, waste, cutting, subtotal, price }` plus markupAmount; zeroed shape when no estimate exists
+   * @throws NotFoundException when the tender does not exist
+   */
   @Get("tenders/:tenderId/estimate/summary")
   @RequirePermissions("estimates.view")
   @ApiOperation({ summary: "Server-authoritative totals for the tender estimate" })
@@ -399,6 +641,14 @@ export class EstimatesController {
   //  Items
   // ──────────────────────────────────────────────────────────────
 
+  /**
+   * Add a scope item to the estimate.
+   *
+   * @param dto - code, title, markup and provisional-sum fields
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   @Post("tenders/:tenderId/estimate/items")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Add a scope item to the estimate" })
@@ -410,6 +660,13 @@ export class EstimatesController {
     return this.service.addItem(tenderId, dto, actor.sub);
   }
 
+  /**
+   * Update a scope item.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate or item does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   @Patch("tenders/:tenderId/estimate/items/:itemId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Update a scope item" })
@@ -422,6 +679,13 @@ export class EstimatesController {
     return this.service.updateItem(tenderId, itemId, dto, actor.sub);
   }
 
+  /**
+   * Delete a scope item (cascades to lines and assumptions).
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate or item does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   @Delete("tenders/:tenderId/estimate/items/:itemId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Delete a scope item (cascades to lines and assumptions)" })
@@ -437,6 +701,13 @@ export class EstimatesController {
   //  Labour lines
   // ──────────────────────────────────────────────────────────────
 
+  /**
+   * Add a labour line to a scope item.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate or item does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   @Post("tenders/:tenderId/estimate/items/:itemId/labour")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Add a labour line to a scope item" })
@@ -449,6 +720,13 @@ export class EstimatesController {
     return this.service.addLabourLine(tenderId, itemId, dto, actor.sub);
   }
 
+  /**
+   * Update a labour line.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate, item or line does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   @Patch("tenders/:tenderId/estimate/items/:itemId/labour/:lineId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Update a labour line" })
@@ -462,6 +740,13 @@ export class EstimatesController {
     return this.service.updateLabourLine(tenderId, itemId, lineId, dto, actor.sub);
   }
 
+  /**
+   * Delete a labour line.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate, item or line does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   @Delete("tenders/:tenderId/estimate/items/:itemId/labour/:lineId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Delete a labour line" })
@@ -478,6 +763,13 @@ export class EstimatesController {
   //  Plant lines
   // ──────────────────────────────────────────────────────────────
 
+  /**
+   * Add a plant line to a scope item.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate or item does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   @Post("tenders/:tenderId/estimate/items/:itemId/plant")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Add a plant line to a scope item" })
@@ -490,6 +782,13 @@ export class EstimatesController {
     return this.service.addPlantLine(tenderId, itemId, dto, actor.sub);
   }
 
+  /**
+   * Update a plant line.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate, item or line does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   @Patch("tenders/:tenderId/estimate/items/:itemId/plant/:lineId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Update a plant line" })
@@ -503,6 +802,13 @@ export class EstimatesController {
     return this.service.updatePlantLine(tenderId, itemId, lineId, dto, actor.sub);
   }
 
+  /**
+   * Delete a plant line.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate, item or line does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   @Delete("tenders/:tenderId/estimate/items/:itemId/plant/:lineId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Delete a plant line" })
@@ -519,6 +825,13 @@ export class EstimatesController {
   //  Equipment hire & subcontractor lines
   // ──────────────────────────────────────────────────────────────
 
+  /**
+   * Add an equipment/subcontractor line to a scope item.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate or item does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   @Post("tenders/:tenderId/estimate/items/:itemId/equip")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Add an equipment/subcontractor line to a scope item" })
@@ -531,6 +844,13 @@ export class EstimatesController {
     return this.service.addEquipLine(tenderId, itemId, dto, actor.sub);
   }
 
+  /**
+   * Update an equipment/subcontractor line.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate, item or line does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   @Patch("tenders/:tenderId/estimate/items/:itemId/equip/:lineId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Update an equipment/subcontractor line" })
@@ -544,6 +864,13 @@ export class EstimatesController {
     return this.service.updateEquipLine(tenderId, itemId, lineId, dto, actor.sub);
   }
 
+  /**
+   * Delete an equipment/subcontractor line.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate, item or line does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   @Delete("tenders/:tenderId/estimate/items/:itemId/equip/:lineId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Delete an equipment/subcontractor line" })
@@ -560,6 +887,13 @@ export class EstimatesController {
   //  Waste lines
   // ──────────────────────────────────────────────────────────────
 
+  /**
+   * Add a waste line to a scope item.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate or item does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   @Post("tenders/:tenderId/estimate/items/:itemId/waste")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Add a waste line to a scope item" })
@@ -572,6 +906,13 @@ export class EstimatesController {
     return this.service.addWasteLine(tenderId, itemId, dto, actor.sub);
   }
 
+  /**
+   * Update a waste line.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate, item or line does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   @Patch("tenders/:tenderId/estimate/items/:itemId/waste/:lineId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Update a waste line" })
@@ -585,6 +926,13 @@ export class EstimatesController {
     return this.service.updateWasteLine(tenderId, itemId, lineId, dto, actor.sub);
   }
 
+  /**
+   * Delete a waste line.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate, item or line does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   @Delete("tenders/:tenderId/estimate/items/:itemId/waste/:lineId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Delete a waste line" })
@@ -601,6 +949,13 @@ export class EstimatesController {
   //  Cutting lines
   // ──────────────────────────────────────────────────────────────
 
+  /**
+   * Add a cutting line to a scope item.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate or item does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   @Post("tenders/:tenderId/estimate/items/:itemId/cutting")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Add a cutting line to a scope item" })
@@ -613,6 +968,13 @@ export class EstimatesController {
     return this.service.addCuttingLine(tenderId, itemId, dto, actor.sub);
   }
 
+  /**
+   * Update a cutting line.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate, item or line does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   @Patch("tenders/:tenderId/estimate/items/:itemId/cutting/:lineId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Update a cutting line" })
@@ -626,6 +988,13 @@ export class EstimatesController {
     return this.service.updateCuttingLine(tenderId, itemId, lineId, dto, actor.sub);
   }
 
+  /**
+   * Delete a cutting line.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate, item or line does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   @Delete("tenders/:tenderId/estimate/items/:itemId/cutting/:lineId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Delete a cutting line" })
@@ -642,6 +1011,13 @@ export class EstimatesController {
   //  Assumptions
   // ──────────────────────────────────────────────────────────────
 
+  /**
+   * Add an assumption to a scope item.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate or item does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   @Post("tenders/:tenderId/estimate/items/:itemId/assumptions")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Add an assumption to a scope item" })
@@ -654,6 +1030,13 @@ export class EstimatesController {
     return this.service.addAssumption(tenderId, itemId, dto, actor.sub);
   }
 
+  /**
+   * Update an assumption.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate, item or assumption does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   @Patch("tenders/:tenderId/estimate/items/:itemId/assumptions/:lineId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Update an assumption" })
@@ -667,6 +1050,13 @@ export class EstimatesController {
     return this.service.updateAssumption(tenderId, itemId, lineId, dto, actor.sub);
   }
 
+  /**
+   * Delete an assumption.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate, item or assumption does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   @Delete("tenders/:tenderId/estimate/items/:itemId/assumptions/:lineId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Delete an assumption" })

@@ -14,6 +14,15 @@ import {
 
 type Actor = { sub: string; permissions: string[]; isSuperUser?: boolean };
 
+/**
+ * Business logic for worker leave, unavailability, and the scheduler's
+ * availability overlay.
+ *
+ * Create operations enforce ownership: the actor must own the worker
+ * profile (via internalUserId) or be a super-user — `resources.manage`
+ * alone is not enough to lodge records for another worker. Self-approval
+ * of leave is blocked even for admins. No audit entries are written.
+ */
 @Injectable()
 export class WorkerAvailabilityService {
   constructor(private readonly prisma: PrismaService) {}
@@ -42,6 +51,19 @@ export class WorkerAvailabilityService {
 
   // ── Leaves ───────────────────────────────────────────────────────────────
 
+  /**
+   * Create a leave request; status defaults to PENDING (schema default).
+   *
+   * The actor must own the worker profile or be a super-user; the actor is
+   * recorded as requestedById.
+   *
+   * @param dto - workerProfileId, leaveType, startDate/endDate, optional notes
+   * @param actor - authenticated user (sub + isSuperUser flag)
+   * @returns the created WorkerLeave record
+   * @throws BadRequestException when endDate is before startDate
+   * @throws NotFoundException when the worker does not exist
+   * @throws ForbiddenException when lodging for another worker without super-user
+   */
   async createLeave(dto: CreateWorkerLeaveDto, actor: Actor) {
     const start = new Date(dto.startDate);
     const end = new Date(dto.endDate);
@@ -62,6 +84,13 @@ export class WorkerAvailabilityService {
     });
   }
 
+  /**
+   * List leave requests, newest startDate first, with worker, approver,
+   * and requester names included.
+   *
+   * @param workerProfileId - optional filter to a single worker
+   * @returns WorkerLeave records of all statuses
+   */
   async listLeaves(workerProfileId?: string) {
     return this.prisma.workerLeave.findMany({
       where: workerProfileId ? { workerProfileId } : {},
@@ -74,6 +103,20 @@ export class WorkerAvailabilityService {
     });
   }
 
+  /**
+   * Set a leave request's status (approve / decline / cancel).
+   *
+   * Self-approval is blocked even for admins; cancelling one's own request
+   * is allowed. On APPROVED, approvedById/approvedAt are stamped with the
+   * actor and now; any other status resets both to null.
+   *
+   * @param id - leave request id
+   * @param dto - new status and optional notes (falls back to existing notes)
+   * @param actor - authenticated user performing the change
+   * @returns the updated WorkerLeave record
+   * @throws NotFoundException when the leave request does not exist
+   * @throws ForbiddenException when approving one's own leave request
+   */
   async setLeaveStatus(id: string, dto: UpdateWorkerLeaveStatusDto, actor: Actor) {
     const existing = await this.prisma.workerLeave.findUnique({
       where: { id },
@@ -102,6 +145,13 @@ export class WorkerAvailabilityService {
     });
   }
 
+  /**
+   * Hard-delete a leave request.
+   *
+   * @param id - leave request id
+   * @returns { id } of the deleted record
+   * @throws NotFoundException when the leave request does not exist
+   */
   async deleteLeave(id: string) {
     const existing = await this.prisma.workerLeave.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException("Leave request not found.");
@@ -111,6 +161,19 @@ export class WorkerAvailabilityService {
 
   // ── Unavailability ───────────────────────────────────────────────────────
 
+  /**
+   * Create an unavailability block (RDO, training, hold), optionally
+   * recurring weekly on recurringDay (0=Sun..6=Sat) within its date range.
+   *
+   * The actor must own the worker profile or be a super-user.
+   *
+   * @param dto - workerProfileId, reason, startDate/endDate, optional recurringDay
+   * @param actor - authenticated user (sub + isSuperUser flag)
+   * @returns the created WorkerUnavailability record
+   * @throws BadRequestException when endDate is before startDate
+   * @throws NotFoundException when the worker does not exist
+   * @throws ForbiddenException when lodging for another worker without super-user
+   */
   async createUnavailability(dto: CreateWorkerUnavailabilityDto, actor: Actor) {
     const start = new Date(dto.startDate);
     const end = new Date(dto.endDate);
@@ -130,6 +193,13 @@ export class WorkerAvailabilityService {
     });
   }
 
+  /**
+   * List unavailability blocks, newest startDate first, with worker names
+   * included.
+   *
+   * @param workerProfileId - optional filter to a single worker
+   * @returns WorkerUnavailability records (recurrence NOT expanded here)
+   */
   async listUnavailability(workerProfileId?: string) {
     return this.prisma.workerUnavailability.findMany({
       where: workerProfileId ? { workerProfileId } : {},
@@ -140,6 +210,13 @@ export class WorkerAvailabilityService {
     });
   }
 
+  /**
+   * Hard-delete an unavailability block.
+   *
+   * @param id - unavailability block id
+   * @returns { id } of the deleted record
+   * @throws NotFoundException when the block does not exist
+   */
   async deleteUnavailability(id: string) {
     const existing = await this.prisma.workerUnavailability.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException("Unavailability not found.");
@@ -152,6 +229,19 @@ export class WorkerAvailabilityService {
   // Approved leave + ad-hoc unavailability + weekly-recurring days expanded
   // to concrete instances within the requested window.
 
+  /**
+   * Build the scheduler calendar overlay for a date window: a flat list of
+   * bars (kind "leave" or "unavailability") to stack onto worker rows.
+   *
+   * Only APPROVED leave is included; unavailability of any kind overlapping
+   * the window is included. Weekly-recurring unavailability is expanded
+   * into one-day bars (id suffixed `::YYYY-MM-DD`) for each matching UTC
+   * day-of-week, capped to the [from, to] window.
+   *
+   * @param query - from/to ISO dates and optional workerProfileId filter
+   * @returns leave bars followed by unavailability bars
+   * @throws BadRequestException when to is before from
+   */
   async overlay(query: AvailabilityRangeQueryDto) {
     const from = new Date(query.from);
     const to = new Date(query.to);
@@ -257,6 +347,19 @@ export class WorkerAvailabilityService {
 
   // Conflict check used by the scheduler before assigning a worker to a shift.
   // Returns any leave or unavailability that overlaps the proposed shift window.
+  /**
+   * Conflict check used by the scheduler before assigning a worker to a
+   * shift.
+   *
+   * Builds the overlay for the shift window and returns any leave or
+   * unavailability bars that overlap [startAt, endAt].
+   *
+   * @param workerProfileId - worker to check
+   * @param startAt - proposed shift start
+   * @param endAt - proposed shift end
+   * @returns overlapping overlay bars (empty when the worker is clear)
+   * @throws BadRequestException when endAt is before startAt
+   */
   async conflictsForShift(workerProfileId: string, startAt: Date, endAt: Date) {
     const overlay = await this.overlay({
       from: startAt.toISOString(),

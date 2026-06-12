@@ -53,6 +53,16 @@ export type QuoteProposalEdits = Partial<{
   assumptions: QuoteAssumptionProposal[];
 }>;
 
+/**
+ * Stores and decides AI-generated quote-content proposals (§5A.1 PR E),
+ * mirroring EstimateProposalsService.
+ *
+ * Proposals live in tool_result message metadata under the
+ * "propose_quote_content" toolName discriminator. Accepting appends
+ * cost-line / exclusion / assumption rows to the target ClientQuote,
+ * which must belong to the conversation's tender and be in DRAFT
+ * status. Ownership is enforced via the conversation's userId.
+ */
 @Injectable()
 export class QuoteProposalsService {
   private readonly logger = new Logger(QuoteProposalsService.name);
@@ -64,6 +74,17 @@ export class QuoteProposalsService {
   // shape to match the propose_scope_items / propose_estimate_items
   // store and frontend-card patterns. The array always has length 1
   // today — bulk-quoteId proposing isn't a workflow Marco needs.
+  /**
+   * Persists a propose_quote_content tool call as a tool_call +
+   * tool_result conversation-message pair in one transaction. The tool
+   * supplies a single proposal (one quoteId per call) but it is stored
+   * as a length-1 array to match the other proposal stores. Also bumps
+   * the conversation's updatedAt.
+   *
+   * @param toolUseId - provider tool_use id stored for provenance
+   * @param args - the tool arguments (quoteId + optional content blocks)
+   * @returns the tool_result message and the stored proposal array
+   */
   async storeQuoteProposals(
     conversationId: string,
     toolUseId: string,
@@ -113,6 +134,18 @@ export class QuoteProposalsService {
     return { message, proposals };
   }
 
+  /**
+   * Accepts one pending proposal: validates the target ClientQuote
+   * (must exist, belong to the conversation's tender, and be DRAFT),
+   * appends cost-line / exclusion / assumption rows after the current
+   * max sortOrder per list (cost lines default price 0 when unset),
+   * then flips the proposal to "accepted" with the created row ids.
+   *
+   * @param edits - optional content-array overrides merged over the stored proposal before commit
+   * @returns the ids of every created cost line, exclusion, and assumption row
+   * @throws NotFoundException when the message, proposal index, or ClientQuote is not found
+   * @throws BadRequestException when the proposal is already decided, the conversation has no tender context, the quote belongs to another tender, or the quote is not DRAFT
+   */
   async acceptQuoteProposal(
     userId: string,
     messageId: string,
@@ -266,6 +299,13 @@ export class QuoteProposalsService {
     return { acceptedCostLineIds, acceptedExclusionIds, acceptedAssumptionIds };
   }
 
+  /**
+   * Rejects one pending proposal — metadata-only status flip with a
+   * decidedAt timestamp; no quote rows are written.
+   *
+   * @throws NotFoundException when the message or proposal index is not found
+   * @throws BadRequestException when the proposal is already decided
+   */
   async rejectQuoteProposal(
     userId: string,
     messageId: string,
@@ -292,6 +332,14 @@ export class QuoteProposalsService {
     });
   }
 
+  /**
+   * Accepts every pending proposal on the message by calling
+   * acceptQuoteProposal per index. Individual failures are logged and
+   * counted rather than aborting the batch.
+   *
+   * @returns `{ accepted, failed }` counts
+   * @throws NotFoundException when the message is not found or not owned by the user
+   */
   async acceptAllPending(
     userId: string,
     messageId: string
@@ -314,6 +362,13 @@ export class QuoteProposalsService {
     return { accepted, failed };
   }
 
+  /**
+   * Rejects every pending proposal on the message in a single metadata
+   * update (no write occurs when nothing is pending).
+   *
+   * @returns `{ rejected }` count
+   * @throws NotFoundException when the message is not found or not owned by the user
+   */
   async rejectAllPending(userId: string, messageId: string): Promise<{ rejected: number }> {
     const { message, metadata } = await this.loadProposalMessage(userId, messageId);
     let rejected = 0;

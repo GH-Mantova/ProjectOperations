@@ -47,6 +47,15 @@ class ReorderDto {
   @IsArray() order!: ReorderEntryDto[];
 }
 
+/**
+ * Tender-level waste disposal CRUD + reorder endpoints.
+ *
+ * JWT-guarded; reads require `estimates.view`, writes require
+ * `estimates.manage`. Write bodies arrive as `unknown` and are
+ * shape-asserted at the controller boundary (CodeQL taint
+ * sanitisation) before being cast to their DTOs. truckDays and
+ * lineTotal are always derived server-side.
+ */
 @ApiTags("Scope of Works — Waste")
 @ApiBearerAuth()
 @Controller("tenders/:tenderId/scope/waste")
@@ -63,6 +72,14 @@ export class ScopeWasteController {
     }
   }
 
+  /**
+   * List waste disposal rows on the tender. Optional ?cardId= filter (PR B3 per-card) or ?discipline= (legacy whole-tender).
+   *
+   * @param tenderId - tender to list waste rows for
+   * @param discipline - optional discipline filter
+   * @param cardId - optional scope-card filter; when supplied, cardless legacy rows are excluded
+   * @returns waste rows ordered by discipline, sortOrder, createdAt
+   */
   @Get()
   @RequirePermissions("estimates.view")
   @ApiOperation({
@@ -77,6 +94,15 @@ export class ScopeWasteController {
     return this.service.list(tenderId, { discipline, cardId });
   }
 
+  /**
+   * Create a waste row. truckDays + lineTotal are derived server-side.
+   *
+   * @param tenderId - tender the row belongs to
+   * @param dto - body asserted to be an object, then cast to UpsertWasteDto
+   * @param actor - JWT principal; `sub` recorded as createdById
+   * @returns the created ScopeWasteItem row
+   * @throws BadRequestException when the body is invalid or description/discipline/cardId is missing
+   */
   @Post()
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Create a waste row. truckDays + lineTotal are derived server-side." })
@@ -89,6 +115,16 @@ export class ScopeWasteController {
     return this.service.create(tenderId, actor.sub, dto as UpsertWasteDto);
   }
 
+  /**
+   * Partial update of a waste row. Re-derives truckDays + lineTotal.
+   *
+   * @param tenderId - tender the row must belong to
+   * @param itemId - waste row to update
+   * @param dto - body asserted to be an object, then cast to UpsertWasteDto
+   * @returns the updated ScopeWasteItem row
+   * @throws BadRequestException when the body is not a JSON object
+   * @throws NotFoundException when the row is missing or belongs to another tender
+   */
   @Patch(":itemId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Partial update of a waste row. Re-derives truckDays + lineTotal." })
@@ -101,6 +137,14 @@ export class ScopeWasteController {
     return this.service.update(tenderId, itemId, dto as UpsertWasteDto);
   }
 
+  /**
+   * Delete a waste row.
+   *
+   * @param tenderId - tender the row must belong to
+   * @param itemId - waste row to delete
+   * @returns `{ deleted: true }`
+   * @throws NotFoundException when the row is missing or belongs to another tender
+   */
   @Delete(":itemId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Delete a waste row." })
@@ -108,6 +152,14 @@ export class ScopeWasteController {
     return this.service.remove(tenderId, itemId);
   }
 
+  /**
+   * Bulk update sortOrder across multiple waste rows.
+   *
+   * @param tenderId - tender scoping the updateMany so foreign rows are untouched
+   * @param dto - body asserted to be an object, then cast to ReorderDto
+   * @returns `{ reordered }` — count of entries submitted
+   * @throws BadRequestException when the body is not a JSON object
+   */
   @Post("reorder")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Bulk update sortOrder across multiple waste rows." })
@@ -121,6 +173,13 @@ export class ScopeWasteController {
 // "Sum from above" endpoint can sit naturally under
 //   POST /tenders/:tenderId/scope/cards/:cardId/waste/sum-from-above
 // Shares the same ScopeWasteService instance.
+/**
+ * Per-card waste controller (PR B3) — hosts the "Sum from above"
+ * aggregator under the per-card path. Shares the same ScopeWasteService
+ * instance as ScopeWasteController.
+ *
+ * JWT-guarded; the single endpoint requires `estimates.manage`.
+ */
 @ApiTags("Scope of Works — Waste")
 @ApiBearerAuth()
 @Controller("tenders/:tenderId/scope/cards/:cardId/waste")
@@ -128,6 +187,15 @@ export class ScopeWasteController {
 export class ScopeCardWasteController {
   constructor(private readonly service: ScopeWasteService) {}
 
+  /**
+   * PR B3 — aggregate scope items (wasteIncluded=true) by (wasteGroup, wasteItem, unit) and write/replace autoSummed waste rows for the card. Manual rows preserved.
+   *
+   * @param tenderId - tender owning the card
+   * @param cardId - scope card whose autoSummed rows are regenerated
+   * @param actor - JWT principal; `sub` recorded as createdById on new rows
+   * @returns `{ replaced, created }` row counts
+   * @throws NotFoundException when the card is missing or belongs to another tender
+   */
   @Post("sum-from-above")
   @RequirePermissions("estimates.manage")
   @ApiOperation({

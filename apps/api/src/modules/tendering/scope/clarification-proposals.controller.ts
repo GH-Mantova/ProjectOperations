@@ -44,6 +44,15 @@ class RejectClarificationProposalDto {
   proposalIndex!: number;
 }
 
+/**
+ * Accept/reject endpoints for AI-generated clarifications proposals
+ * (new_rfi / new_note / rfi_response kinds) stored on tool_result
+ * conversation messages.
+ *
+ * All routes are JWT-guarded and require the `ai.persona.tendering`
+ * permission (class-level). Accept writes the matching clarification
+ * record; reject only flips status in message metadata.
+ */
 @ApiTags("Clarification Proposals")
 @ApiBearerAuth()
 @Controller("personas/tendering/clarification-proposals")
@@ -52,6 +61,16 @@ class RejectClarificationProposalDto {
 export class ClarificationProposalsController {
   constructor(private readonly proposals: ClarificationProposalsService) {}
 
+  /**
+   * Accept a single AI clarifications proposal — writes a TenderClarification (new_rfi), TenderClarificationNote (new_note), or updates an existing RFI with a response + flips to CLOSED (rfi_response). Optional edits override fields before commit.
+   *
+   * @param messageId - tool_result conversation message holding the proposals
+   * @param dto - proposalIndex plus kind-aware optional edits (only the stored kind's fields apply)
+   * @param actor - JWT principal; must own the conversation
+   * @returns `{ ok: true, acceptedRecord }` — the id + kind of the row created/updated
+   * @throws NotFoundException when the message, proposal index, or target RFI is not found
+   * @throws BadRequestException when the proposal is already decided, the conversation has no tender context, or the target RFI is invalid
+   */
   @Post(":messageId/accept")
   @HttpCode(200)
   @ApiOperation({
@@ -74,6 +93,16 @@ export class ClarificationProposalsController {
     return { ok: true, acceptedRecord };
   }
 
+  /**
+   * Reject a single AI clarifications proposal — updates status only, no DB write to clarifications.
+   *
+   * @param messageId - tool_result conversation message holding the proposals
+   * @param dto - proposalIndex to reject
+   * @param actor - JWT principal; must own the conversation
+   * @returns `{ ok: true }`
+   * @throws NotFoundException when the message or proposal index is not found
+   * @throws BadRequestException when the proposal is already decided
+   */
   @Post(":messageId/reject")
   @HttpCode(200)
   @ApiOperation({
@@ -89,6 +118,14 @@ export class ClarificationProposalsController {
     return { ok: true };
   }
 
+  /**
+   * Accept all pending clarifications proposals in this message — iterates and reports counts.
+   *
+   * @param messageId - tool_result conversation message holding the proposals
+   * @param actor - JWT principal; must own the conversation
+   * @returns `{ ok: true, accepted, failed }` — per-proposal failures are counted, not thrown
+   * @throws NotFoundException when the message is not found or not owned by the actor
+   */
   @Post(":messageId/accept-all")
   @HttpCode(200)
   @ApiOperation({
@@ -103,6 +140,14 @@ export class ClarificationProposalsController {
     return { ok: true, ...result };
   }
 
+  /**
+   * Reject all pending clarifications proposals in this message — single update, no clarifications writes.
+   *
+   * @param messageId - tool_result conversation message holding the proposals
+   * @param actor - JWT principal; must own the conversation
+   * @returns `{ ok: true, rejected }`
+   * @throws NotFoundException when the message is not found or not owned by the actor
+   */
   @Post(":messageId/reject-all")
   @HttpCode(200)
   @ApiOperation({

@@ -40,6 +40,13 @@ const submissionInclude = {
   signatures: true
 } as const;
 
+/**
+ * Persistence layer for form templates, versions and raw submissions.
+ *
+ * Templates are immutable-by-version: edits always create a new
+ * FormTemplateVersion rather than mutating fields in place. Every write
+ * method records an audit entry via AuditService.
+ */
 @Injectable()
 export class FormsService {
   constructor(
@@ -47,6 +54,12 @@ export class FormsService {
     private readonly auditService: AuditService
   ) {}
 
+  /**
+   * List form templates filtered by name/code search and status.
+   *
+   * @param query - q matches name or code (case-insensitive); status is exact
+   * @returns paginated `{ items, total, page, pageSize }`, newest first
+   */
   async listTemplates(query: FormsQueryDto) {
     const where: Prisma.FormTemplateWhereInput = {
       ...(query.q
@@ -74,6 +87,13 @@ export class FormsService {
     return { items, total, page: query.page, pageSize: query.pageSize };
   }
 
+  /**
+   * Get a form template with all versions, sections, fields and rules.
+   *
+   * @param id - form template id
+   * @returns the template, versions ordered newest first
+   * @throws NotFoundException when the template does not exist
+   */
   async getTemplate(id: string) {
     const template = await this.prisma.formTemplate.findUnique({
       where: { id },
@@ -87,6 +107,16 @@ export class FormsService {
     return template;
   }
 
+  /**
+   * Create a new form template together with version 1 in one transaction.
+   *
+   * Writes a `forms.template.create` audit entry after the transaction commits.
+   *
+   * @param dto - template metadata plus sections/fields/rules for the first version
+   * @param actorId - user id recorded against the audit entry
+   * @returns the freshly created template via getTemplate
+   * @throws ConflictException when a template with the same name or code exists
+   */
   async createTemplate(dto: UpsertFormTemplateDto, actorId?: string) {
     const existing = await this.prisma.formTemplate.findFirst({
       where: {
@@ -112,6 +142,18 @@ export class FormsService {
     return this.getTemplate(template.id);
   }
 
+  /**
+   * Append the next version to an existing template.
+   *
+   * Also updates template-level metadata (name, code, status, scopes) from
+   * the dto, then writes a `forms.template.version.create` audit entry.
+   *
+   * @param templateId - existing template id
+   * @param dto - full template payload used for both metadata and the new version
+   * @param actorId - user id recorded against the audit entry
+   * @returns the template with all versions via getTemplate
+   * @throws NotFoundException when the template does not exist
+   */
   async createNextVersion(templateId: string, dto: UpsertFormTemplateDto, actorId?: string) {
     await this.requireTemplate(templateId);
 
@@ -130,6 +172,12 @@ export class FormsService {
     return this.getTemplate(template.id);
   }
 
+  /**
+   * List form submissions filtered by summary/template-name search and status.
+   *
+   * @param query - q matches submission summary or template name; status is exact
+   * @returns paginated `{ items, total, page, pageSize }`, most recently submitted first
+   */
   async listSubmissions(query: FormsQueryDto) {
     const where: Prisma.FormSubmissionWhereInput = {
       ...(query.q
@@ -157,6 +205,16 @@ export class FormsService {
     return { items, total, page: query.page, pageSize: query.pageSize };
   }
 
+  /**
+   * Get a submission with values, attachments, signatures and entity links.
+   *
+   * Also resolves DocumentLink rows pointed at this submission and returns
+   * them as a derived `documents` array on the response.
+   *
+   * @param id - submission id
+   * @returns the submission plus `documents`
+   * @throws NotFoundException when the submission does not exist
+   */
   async getSubmission(id: string) {
     const submission = await this.prisma.formSubmission.findUnique({
       where: { id },
@@ -185,6 +243,20 @@ export class FormsService {
     };
   }
 
+  /**
+   * Create a submission against a specific template version.
+   *
+   * Enforces presence of every field flagged isRequired, then persists
+   * values/attachments/signatures in one create. Writes a
+   * `forms.submission.create` audit entry. Status defaults to "SUBMITTED".
+   *
+   * @param versionId - template version being submitted against
+   * @param dto - field values plus optional attachments, signatures and entity links
+   * @param actorId - recorded as submittedById and on the audit entry
+   * @returns the created submission with full includes
+   * @throws NotFoundException when the template version does not exist
+   * @throws ConflictException when a required field key is absent from dto.values
+   */
   async submit(versionId: string, dto: SubmitFormDto, actorId?: string) {
     const version = await this.requireVersion(versionId);
     const fields = version.sections.flatMap((section) => section.fields);

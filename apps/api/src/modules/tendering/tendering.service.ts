@@ -86,6 +86,17 @@ const tenderInclude = {
   }
 } as const;
 
+/**
+ * Core tendering domain service: tender CRUD, status lifecycle, filter
+ * presets, activities (notes/clarifications/follow-ups), CSV import,
+ * and duplication.
+ *
+ * Cross-cutting behaviour: every mutation writes an AuditService entry;
+ * status transitions pin submittedAt/wonAt/lostAt + ratesSnapshotAt and
+ * drive per-client win/tender scoring (guarded by tenderScoreCounted);
+ * create/duplicate provision SharePoint folders best-effort; the first
+ * SUBMITTED transition fires a detached notification email.
+ */
 @Injectable()
 export class TenderingService {
   private readonly logger = new Logger(TenderingService.name);
@@ -100,6 +111,15 @@ export class TenderingService {
     private readonly sharePoint: SharePointService
   ) {}
 
+  /**
+   * List tenders with filters, search, and sort.
+   *
+   * Default sort (no sortBy) is dueDate ascending then createdAt
+   * descending. The probability filter maps Hot ≥70, Warm 30-69, Cold <30.
+   *
+   * @param query - paging, search, filter, and sort options
+   * @returns { items, total, page, pageSize }
+   */
   async list(query: TenderQueryDto) {
     const where = this.buildTenderWhere(query);
     const orderBy = this.buildTenderOrderBy(query.sortBy, query.sortDir);
@@ -207,6 +227,19 @@ export class TenderingService {
     }
   }
 
+  /**
+   * Bulk update the status of up to 50 tenders in a single transaction.
+   *
+   * Applies the same lifecycle-date pinning as updateStatus (submittedAt,
+   * wonAt, lostAt, ratesSnapshotAt) and updates client win/tender scores
+   * outside the transaction. Writes one audit entry for the whole batch.
+   *
+   * @param tenderIds - up to 50 tender ids (duplicates de-duped)
+   * @param status - target status applied to every tender
+   * @returns { updated: count, tenders: [{ id, tenderNumber, status }] }
+   * @throws BadRequestException when tenderIds is empty or exceeds 50
+   * @throws NotFoundException when any id does not exist
+   */
   async bulkUpdateStatus(tenderIds: string[], status: string, actorId?: string) {
     if (!tenderIds.length) {
       throw new BadRequestException("tenderIds must not be empty.");
@@ -284,6 +317,16 @@ export class TenderingService {
     };
   }
 
+  /**
+   * Patch a limited set of tender fields and log a single change-summary note.
+   *
+   * Only fields that actually differ are written. If nothing changed,
+   * returns the current detail without writing a note or audit entry.
+   *
+   * @param dto - any of status, probability, dueDate, value, assignedEstimatorId (writes legacy estimator relation), description, notes
+   * @returns the full tender detail after the write
+   * @throws NotFoundException when the tender does not exist
+   */
   async quickEdit(id: string, dto: QuickEditDto, actorId?: string) {
     const existing = await this.prisma.tender.findUnique({ where: { id } });
     if (!existing) {
@@ -375,6 +418,15 @@ export class TenderingService {
   // (TenderEstimator relation): that field represents the historical
   // estimator-of-record, while `assignedEstimatorId` is the team-level
   // assignment used by the new Team panel. Pass `null` to clear.
+  /**
+   * Assign (or clear) the team-level estimator on a tender.
+   *
+   * Writes an audit entry recording the previous and new assignee.
+   *
+   * @param userId - user to assign, or null to clear the assignment
+   * @returns the updated tender (no relations included)
+   * @throws NotFoundException when the tender or assignee user does not exist
+   */
   async setAssignedEstimator(tenderId: string, userId: string | null, actorId?: string) {
     const existing = await this.prisma.tender.findUnique({
       where: { id: tenderId },
@@ -408,6 +460,11 @@ export class TenderingService {
     return updated;
   }
 
+  /**
+   * List saved filter presets for a user, default-first then by name.
+   *
+   * @returns the user's TenderFilterPreset rows
+   */
   async listFilterPresets(userId: string) {
     return this.prisma.tenderFilterPreset.findMany({
       where: { userId },
@@ -415,6 +472,16 @@ export class TenderingService {
     });
   }
 
+  /**
+   * Save a filter preset for a user.
+   *
+   * If isDefault is set, any existing default preset for the user is
+   * cleared first.
+   *
+   * @param dto - preset name, filters JSON, and optional isDefault flag
+   * @returns the created preset
+   * @throws ConflictException when a preset with the same name already exists for the user
+   */
   async createFilterPreset(userId: string, dto: CreateTenderFilterPresetDto) {
     if (dto.isDefault) {
       await this.prisma.tenderFilterPreset.updateMany({
@@ -439,6 +506,16 @@ export class TenderingService {
     }
   }
 
+  /**
+   * Update a saved filter preset owned by the user.
+   *
+   * Promoting a preset to default demotes any other default first.
+   *
+   * @param dto - partial name / filters / isDefault changes
+   * @returns the updated preset
+   * @throws NotFoundException when the preset does not exist or belongs to another user
+   * @throws ConflictException when renaming collides with an existing preset name
+   */
   async updateFilterPreset(userId: string, id: string, dto: UpdateTenderFilterPresetDto) {
     const existing = await this.prisma.tenderFilterPreset.findFirst({ where: { id, userId } });
     if (!existing) {
@@ -467,6 +544,12 @@ export class TenderingService {
     }
   }
 
+  /**
+   * Delete a saved filter preset owned by the user.
+   *
+   * @returns { id } of the deleted preset
+   * @throws NotFoundException when the preset does not exist or belongs to another user
+   */
   async deleteFilterPreset(userId: string, id: string) {
     const existing = await this.prisma.tenderFilterPreset.findFirst({ where: { id, userId } });
     if (!existing) {
@@ -476,6 +559,13 @@ export class TenderingService {
     return { id };
   }
 
+  /**
+   * Get a tender with the full relation set (clients, notes,
+   * clarifications, snapshots, follow-ups, outcomes, documents, source job).
+   *
+   * @returns the tender detail
+   * @throws NotFoundException when the tender does not exist
+   */
   async getById(id: string) {
     const tender = await this.prisma.tender.findUnique({
       where: { id },
@@ -489,6 +579,15 @@ export class TenderingService {
     return tender;
   }
 
+  /**
+   * Hard-delete a tender; related records are removed by DB cascade.
+   *
+   * Writes the audit entry (with cascade counts) BEFORE the delete so
+   * the metadata survives the row removal.
+   *
+   * @returns { id, tenderNumber, cascadedCounts }
+   * @throws NotFoundException when the tender does not exist
+   */
   async delete(id: string, actorId: string) {
     const tender = await this.prisma.tender.findUnique({
       where: { id },
@@ -531,6 +630,12 @@ export class TenderingService {
     };
   }
 
+  /**
+   * Return cascade counts so the UI can show what a delete will remove.
+   *
+   * @returns tender summary fields plus _count of related records
+   * @throws NotFoundException when the tender does not exist
+   */
   async deletePreflight(id: string) {
     const tender = await this.prisma.tender.findUnique({
       where: { id },
@@ -555,6 +660,18 @@ export class TenderingService {
     return tender;
   }
 
+  /**
+   * Create a tender with optional nested clients, notes, clarifications,
+   * pricing snapshots, follow-ups, and outcomes.
+   *
+   * Writes an audit entry and provisions the per-tender SharePoint
+   * folder structure best-effort (a Graph failure never rolls back the row).
+   *
+   * @param dto - full tender payload
+   * @returns the created tender with all relations
+   * @throws ConflictException when the tender number already exists
+   * @throws BadRequestException when more than one client is marked awarded
+   */
   async create(dto: UpsertTenderDto, actorId?: string) {
     await this.ensureUniqueTenderNumber(dto.tenderNumber);
     this.validateAwardedClients(dto.tenderClients ?? []);
@@ -577,6 +694,17 @@ export class TenderingService {
     return tender;
   }
 
+  /**
+   * Duplicate a tender: copies fields and client links, resets lifecycle.
+   *
+   * The copy gets status DRAFT, tender number "{source}-COPY{n}",
+   * "(copy)" title suffix, isAwarded/contractIssued reset to false, and
+   * fresh SharePoint folders. Notes, clarifications, snapshots,
+   * follow-ups, and outcomes are NOT copied.
+   *
+   * @returns the newly created tender with all relations
+   * @throws NotFoundException when the source tender does not exist
+   */
   async duplicate(id: string, actorId?: string) {
     const source = await this.prisma.tender.findUnique({
       where: { id },
@@ -664,6 +792,18 @@ export class TenderingService {
     return `${sourceNumber}-COPY${Date.now()}`;
   }
 
+  /**
+   * Update only the tender status, driving the lifecycle side effects.
+   *
+   * First SUBMITTED pins submittedAt + ratesSnapshotAt; first win
+   * (AWARDED/CONTRACT_ISSUED/CONVERTED) pins wonAt; first LOST pins
+   * lostAt (each backfills submittedAt if missing). Updates client
+   * win/tender scores once per tender (tenderScoreCounted guard) and
+   * fires a detached email on the first SUBMITTED transition.
+   *
+   * @returns the updated tender with relations
+   * @throws NotFoundException when the tender does not exist
+   */
   async updateStatus(id: string, status: string, actorId?: string) {
     const existing = await this.prisma.tender.findUnique({ where: { id } });
     if (!existing) {
@@ -739,6 +879,13 @@ export class TenderingService {
     return tender;
   }
 
+  /**
+   * Update only the probability of a tender; writes an audit entry.
+   *
+   * @param probability - 0-100, or null to clear
+   * @returns the updated tender with relations
+   * @throws NotFoundException when the tender does not exist
+   */
   async updateProbability(id: string, probability: number | null, actorId?: string) {
     const existing = await this.prisma.tender.findUnique({ where: { id } });
     if (!existing) {
@@ -759,6 +906,20 @@ export class TenderingService {
     return tender;
   }
 
+  /**
+   * Full upsert-style update of a tender.
+   *
+   * Replace semantics: ALL nested collections (clients, notes,
+   * clarifications, pricing snapshots, follow-ups, outcomes) are
+   * deleted and re-created from the payload inside one transaction —
+   * omitting a collection clears it.
+   *
+   * @param dto - full tender payload (same shape as create)
+   * @returns the updated tender with relations
+   * @throws NotFoundException when the tender does not exist
+   * @throws ConflictException when changing to an existing tender number
+   * @throws BadRequestException when more than one client is marked awarded
+   */
   async update(id: string, dto: UpsertTenderDto, actorId?: string) {
     const existing = await this.prisma.tender.findUnique({ where: { id } });
     if (!existing) {
@@ -868,6 +1029,12 @@ export class TenderingService {
     return tender;
   }
 
+  /**
+   * Add a tender note (legacy write path; also used by addActivity).
+   *
+   * @returns the full tender detail after the write
+   * @throws NotFoundException when the tender does not exist
+   */
   async addNote(tenderId: string, dto: CreateTenderNoteDto, actorId?: string) {
     await this.ensureTenderExists(tenderId);
 
@@ -890,6 +1057,12 @@ export class TenderingService {
     return this.getById(tenderId);
   }
 
+  /**
+   * Add a tender clarification (legacy write path; also used by addActivity).
+   *
+   * @returns the full tender detail after the write
+   * @throws NotFoundException when the tender does not exist
+   */
   async addClarification(tenderId: string, dto: CreateTenderClarificationDto, actorId?: string) {
     await this.ensureTenderExists(tenderId);
 
@@ -914,6 +1087,12 @@ export class TenderingService {
     return this.getById(tenderId);
   }
 
+  /**
+   * Add a tender follow-up (legacy write path; also used by addActivity).
+   *
+   * @returns the full tender detail after the write
+   * @throws NotFoundException when the tender does not exist
+   */
   async addFollowUp(tenderId: string, dto: CreateTenderFollowUpDto, actorId?: string) {
     await this.ensureTenderExists(tenderId);
 
@@ -938,11 +1117,31 @@ export class TenderingService {
     return this.getById(tenderId);
   }
 
+  /**
+   * List the unified activity feed for a tender.
+   *
+   * Merges notes, clarifications, and follow-ups into one normalised
+   * shape, sorted newest-first by dueAt/updatedAt/createdAt.
+   *
+   * @returns activity rows with composite ids ("note:{id}", "clarification:{id}", "follow-up:{id}")
+   * @throws NotFoundException when the tender does not exist
+   */
   async listActivities(tenderId: string) {
     const tender = await this.getById(tenderId);
     return this.mapTenderActivities(tender);
   }
 
+  /**
+   * Create a unified tender activity, routed by activityType.
+   *
+   * NOTE/INTERNAL_NOTE → tender note; CLARIFICATION → clarification;
+   * FOLLOW_UP/CALL/MEETING/SUBMISSION_TASK/TASK → follow-up (requires
+   * dueAt).
+   *
+   * @returns the full tender detail after the write
+   * @throws BadRequestException when the type is unsupported or a follow-up type lacks dueAt
+   * @throws NotFoundException when the tender does not exist
+   */
   async addActivity(tenderId: string, dto: CreateTenderActivityDto, actorId?: string) {
     const normalizedType = dto.activityType.toUpperCase();
 
@@ -990,6 +1189,18 @@ export class TenderingService {
     throw new BadRequestException("Unsupported tender activity type.");
   }
 
+  /**
+   * Update a clarification or follow-up activity in place.
+   *
+   * Note activities cannot be updated. Empty-string dueAt clears a
+   * clarification due date; empty-string assignedUserId clears a
+   * follow-up assignee.
+   *
+   * @param activityId - composite "{type}:{sourceId}" identifier
+   * @returns the full tender detail after the write
+   * @throws BadRequestException when the id is malformed or the type is not updatable
+   * @throws NotFoundException when the tender does not exist
+   */
   async updateActivity(tenderId: string, activityId: string, dto: UpdateTenderActivityDto, actorId?: string) {
     await this.ensureTenderExists(tenderId);
 
@@ -1045,6 +1256,15 @@ export class TenderingService {
     throw new BadRequestException("This tender activity type cannot be updated yet.");
   }
 
+  /**
+   * Preview tender import rows from CSV text without writing anything.
+   *
+   * A row is valid when it has a tender number + title and the number
+   * does not already exist (case-insensitive).
+   *
+   * @param csvText - header row + data rows; naive comma split (no quoted-field support)
+   * @returns { totalRows, rows: [{ rowNumber, tenderNumber, title, clientNames, status, duplicate, valid }] }
+   */
   async previewImport(csvText: string) {
     const rows = this.parseImportCsv(csvText);
     const existingNumbers = await this.findExistingTenderNumbers(rows.map((row) => row.tenderNumber).filter(Boolean));
@@ -1063,6 +1283,17 @@ export class TenderingService {
     };
   }
 
+  /**
+   * Create tenders from CSV text via the standard create() path
+   * (audit entries + SharePoint folders per row).
+   *
+   * Rows missing a number/title, duplicating an existing number, or
+   * matching no linked clients are skipped with a reason instead of
+   * failing the batch.
+   *
+   * @param csvText - header row + data rows; naive comma split (no quoted-field support)
+   * @returns { createdCount, createdIds, skipped: [{ tenderNumber, reason }] }
+   */
   async commitImport(csvText: string, actorId?: string) {
     const rows = this.parseImportCsv(csvText);
     const createdIds: string[] = [];

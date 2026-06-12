@@ -48,6 +48,16 @@ const submissionDetailInclude = {
   signatures: true
 } as const;
 
+/**
+ * Orchestrates the worker-facing form lifecycle: draft -> submit ->
+ * approval chain -> approved/rejected, plus triggered side effects.
+ *
+ * On submit it validates values via RulesEngineService, enforces
+ * compliance gates, can auto-create safety incidents / hazard
+ * observations / asset breakdowns, dispatches notifications
+ * (fire-and-forget) and writes audit entries. Failed on_submit actions
+ * are logged and swallowed — they never fail the submission.
+ */
 @Injectable()
 export class FormsEngineService {
   private readonly logger = new Logger(FormsEngineService.name);
@@ -61,6 +71,19 @@ export class FormsEngineService {
 
   // ── Draft creation ────────────────────────────────────────────────────
 
+  /**
+   * Create a draft submission against the latest version of a template.
+   *
+   * Best-effort auto-population: if the user has an active (clocked-on)
+   * timesheet, project/timesheet/allocation/PM/supervisor ids are copied
+   * into the draft's context; otherwise context is left empty.
+   *
+   * @param templateId - template to draft against
+   * @param userId - submitter; stored as submittedById
+   * @returns the draft submission with full detail includes
+   * @throws NotFoundException when the template does not exist
+   * @throws BadRequestException when the template has no versions
+   */
   async createDraft(templateId: string, userId: string) {
     // Find latest active version of the template — engine consumers always
     // submit against the most recently published version unless they're
@@ -122,6 +145,19 @@ export class FormsEngineService {
 
   // ── Update values + return live field state ────────────────────────────
 
+  /**
+   * Persist draft values (partial PATCH semantics) and return live field state.
+   *
+   * Values are upserted per (submissionId, fieldKey); fields not present in
+   * the payload keep their stored values. Unknown field keys are ignored.
+   *
+   * @param submissionId - draft owned by userId
+   * @param values - map of fieldKey to raw value, shaped per field type
+   * @returns `{ fieldVisibility, fieldRequired }` evaluated over all stored values
+   * @throws NotFoundException when the submission or its version does not exist
+   * @throws ForbiddenException when the draft belongs to another user
+   * @throws BadRequestException when the submission is not in draft status
+   */
   async updateValues(submissionId: string, userId: string, values: ValueMap) {
     const submission = await this.requireOwnedDraft(submissionId, userId);
     const template = await this.loadTemplateForVersion(submission.templateVersionId);
@@ -170,6 +206,21 @@ export class FormsEngineService {
 
   // ── Submit pipeline ────────────────────────────────────────────────────
 
+  /**
+   * Run the full submit pipeline for an owned draft.
+   *
+   * Steps: validate values; check compliance gates; mark submitted with
+   * optional GPS; execute on_submit actions (record creation,
+   * notifications — failures logged, not thrown); create the approval
+   * chain and notify the first approver if configured; write a
+   * `forms.submission.submitted` audit entry.
+   *
+   * @param gpsLat - optional latitude captured at submit; null when omitted
+   * @param gpsLng - optional longitude captured at submit; null when omitted
+   * @returns the submission with full detail includes
+   * @throws UnprocessableEntityException when validation or a compliance gate fails
+   * @throws NotFoundException / ForbiddenException / BadRequestException per draft-ownership checks
+   */
   async submitForm(
     submissionId: string,
     userId: string,
@@ -231,6 +282,19 @@ export class FormsEngineService {
 
   // ── Approve / Reject / Resubmit ────────────────────────────────────────
 
+  /**
+   * Approve the lowest-numbered pending step of a submission's chain.
+   *
+   * If further steps remain, the next assignee is notified; otherwise the
+   * submission moves to `approved` and the submitter is notified. Steps with
+   * no assignee can be approved by anyone holding the permission, and the
+   * approver is recorded as the assignee.
+   *
+   * @param comment - optional comment stored on the step
+   * @returns the submission with full detail includes
+   * @throws BadRequestException when no pending approval step exists
+   * @throws ForbiddenException when the step is assigned to a different user
+   */
   async approveStep(submissionId: string, approverId: string, comment?: string) {
     const pending = await this.prisma.formApproval.findFirst({
       where: { submissionId, status: "pending" },
@@ -301,6 +365,17 @@ export class FormsEngineService {
     return this.getSubmissionDetail(submissionId);
   }
 
+  /**
+   * Reject the lowest-numbered pending step and move the submission to `rejected`.
+   *
+   * The comment is mandatory and is relayed to the submitter via a warning
+   * notification (fire-and-forget).
+   *
+   * @param comment - rejection reason; must be non-blank
+   * @returns the submission with full detail includes
+   * @throws BadRequestException when the comment is blank or no pending step exists
+   * @throws ForbiddenException when the step is assigned to a different user
+   */
   async rejectStep(submissionId: string, approverId: string, comment: string) {
     if (!comment?.trim()) {
       throw new BadRequestException("A comment is required when rejecting a submission.");
@@ -349,6 +424,18 @@ export class FormsEngineService {
     return this.getSubmissionDetail(submissionId);
   }
 
+  /**
+   * Return a rejected submission to draft so its owner can fix and resubmit.
+   *
+   * Deletes all approval rows and resets status in one transaction. The
+   * prior submittedAt stamp is intentionally left in place — the next
+   * submit overwrites it.
+   *
+   * @returns the submission with full detail includes
+   * @throws NotFoundException when the submission does not exist
+   * @throws ForbiddenException when the submission belongs to another user
+   * @throws BadRequestException when the submission is not in rejected status
+   */
   async resubmit(submissionId: string, userId: string) {
     const submission = await this.prisma.formSubmission.findUnique({ where: { id: submissionId } });
     if (!submission) throw new NotFoundException("Submission not found.");
@@ -372,6 +459,12 @@ export class FormsEngineService {
 
   // ── Listing + analytics ────────────────────────────────────────────────
 
+  /**
+   * List a user's own submissions, optionally filtered by status/template.
+   *
+   * @param opts - optional exact-match status and templateId filters
+   * @returns submissions with template + approvals, most recently updated first
+   */
   async getMySubmissions(userId: string, opts: { status?: string; templateId?: string } = {}) {
     return this.prisma.formSubmission.findMany({
       where: {
@@ -387,6 +480,13 @@ export class FormsEngineService {
     });
   }
 
+  /**
+   * List pending approval steps explicitly assigned to a user.
+   *
+   * Role-assigned steps with no assignedToId are NOT returned here.
+   *
+   * @returns pending FormApproval rows with submission detail, earliest due first
+   */
   async getPendingApprovalsFor(userId: string) {
     return this.prisma.formApproval.findMany({
       where: { assignedToId: userId, status: "pending" },
@@ -399,6 +499,15 @@ export class FormsEngineService {
     });
   }
 
+  /**
+   * Aggregate submission counts and a status breakdown for dashboards.
+   *
+   * Note: overdueApprovals is a global count of pending approvals past
+   * their dueAt — it ignores the from/to/templateId filters.
+   *
+   * @param filters - optional submittedAt date range and templateId
+   * @returns `{ totalSubmissions, byStatus, overdueApprovals }`
+   */
   async getAnalytics(filters: { from?: string; to?: string; templateId?: string } = {}) {
     const where: Prisma.FormSubmissionWhereInput = {
       ...(filters.from ? { submittedAt: { gte: new Date(filters.from) } } : {}),
@@ -423,6 +532,14 @@ export class FormsEngineService {
 
   // ── Detail helpers ─────────────────────────────────────────────────────
 
+  /**
+   * Fetch a submission with the full detail include set (template version,
+   * sections/fields, values, approvals, triggered records, attachments,
+   * signatures).
+   *
+   * @returns the submission detail payload
+   * @throws NotFoundException when the submission does not exist
+   */
   async getSubmissionDetail(submissionId: string) {
     const sub = await this.prisma.formSubmission.findUnique({
       where: { id: submissionId },

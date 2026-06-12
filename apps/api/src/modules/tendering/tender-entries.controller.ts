@@ -58,6 +58,14 @@ class UpdateTenderEntryDto {
   @IsOptional() @IsIn([...TENDER_ENTRY_STATUSES]) status?: string;
 }
 
+/**
+ * REST controller for unified tender communication entries
+ * (notes, RFIs, emails, calls, meetings, follow-ups, reminders, tasks)
+ * under /tenders/:tenderId/entries.
+ *
+ * JWT + permission gated: reads need `tenders.view`, writes need
+ * `tenders.manage`. Deletion is a soft-delete (status → 'cancelled').
+ */
 @ApiTags("Tender Entries")
 @ApiBearerAuth()
 @Controller("tenders/:tenderId/entries")
@@ -65,6 +73,17 @@ class UpdateTenderEntryDto {
 export class TenderEntriesController {
   constructor(private readonly service: TenderEntriesService) {}
 
+  /**
+   * List unified communication entries for a tender (newest first).
+   *
+   * @param tenderId - tender id whose entries are listed
+   * @param type - optional filter to a single entry type
+   * @param assigneeId - optional filter by assignee user id
+   * @param status - optional filter (open | done | cancelled)
+   * @param from - optional ISO lower bound on createdAt
+   * @param to - optional ISO upper bound on createdAt
+   * @returns entries with author + assignee metadata
+   */
   @Get()
   @RequirePermissions("tenders.view")
   @ApiOperation({ summary: "List unified communication entries for a tender (newest first)" })
@@ -93,6 +112,15 @@ export class TenderEntriesController {
     return this.service.list(tenderId, { type, assigneeId, status, from, to });
   }
 
+  /**
+   * Create a unified communication entry on a tender.
+   *
+   * Task entries assigned to another user trigger a notification +
+   * email (best-effort) in the service layer.
+   *
+   * @param dto - type, body (required), optional subject/dueDate/assigneeId/status
+   * @returns the created entry with author + assignee metadata
+   */
   @Post()
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Create a unified communication entry on a tender" })
@@ -112,6 +140,13 @@ export class TenderEntriesController {
     return this.service.create(tenderId, dto, actor.sub);
   }
 
+  /**
+   * Update an entry — body, subject, due date, assignee, status, or type.
+   *
+   * @param entryId - entry id (must belong to the tender)
+   * @param dto - partial entry fields to change
+   * @returns the updated entry with author + assignee metadata
+   */
   @Patch(":entryId")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Update an entry — body, subject, due date, assignee, status, or type" })
@@ -133,6 +168,14 @@ export class TenderEntriesController {
     return this.service.update(tenderId, entryId, dto, actor.sub);
   }
 
+  /**
+   * Soft-delete an entry by setting status='cancelled'.
+   *
+   * Idempotent: cancelling an already-cancelled entry is a no-op.
+   *
+   * @param entryId - entry id (must belong to the tender)
+   * @returns { id, status }
+   */
   @Delete(":entryId")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Soft-delete an entry by setting status='cancelled'" })

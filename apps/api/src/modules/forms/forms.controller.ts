@@ -7,6 +7,12 @@ import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { FormsQueryDto, SubmitFormDto, UpsertFormTemplateDto } from "./dto/forms.dto";
 import { FormsService } from "./forms.service";
 
+/**
+ * REST endpoints for form template authoring and raw submission CRUD.
+ *
+ * All routes require a JWT plus `forms.view` (reads) or `forms.manage`
+ * (writes) permission. Thin pass-through to FormsService — no logic here.
+ */
 @ApiTags("Forms")
 @ApiBearerAuth()
 @Controller("forms")
@@ -14,6 +20,12 @@ import { FormsService } from "./forms.service";
 export class FormsController {
   constructor(private readonly service: FormsService) {}
 
+  /**
+   * List form templates.
+   *
+   * @param query - optional q/status filters plus page/pageSize
+   * @returns paginated `{ items, total, page, pageSize }` of templates with versions
+   */
   @Get("templates")
   @RequirePermissions("forms.view")
   @ApiOperation({ summary: "List form templates" })
@@ -21,6 +33,13 @@ export class FormsController {
     return this.service.listTemplates(query);
   }
 
+  /**
+   * Get form template with versions.
+   *
+   * @param id - form template id
+   * @returns the template with all versions, sections, fields and rules
+   * @throws NotFoundException when the template does not exist
+   */
   @Get("templates/:id")
   @RequirePermissions("forms.view")
   @ApiOperation({ summary: "Get form template with versions" })
@@ -28,6 +47,13 @@ export class FormsController {
     return this.service.getTemplate(id);
   }
 
+  /**
+   * Create form template and version 1.
+   *
+   * @param dto - template metadata plus sections/fields/rules for version 1
+   * @returns the created template with its versions
+   * @throws ConflictException when the template name or code already exists
+   */
   @Post("templates")
   @RequirePermissions("forms.manage")
   @ApiOperation({ summary: "Create form template and version 1" })
@@ -35,6 +61,14 @@ export class FormsController {
     return this.service.createTemplate(dto, actor.sub);
   }
 
+  /**
+   * Create next version for existing form template.
+   *
+   * @param id - existing template id
+   * @param dto - full template payload; metadata is updated and a new version is appended
+   * @returns the template with its versions, newest first
+   * @throws NotFoundException when the template does not exist
+   */
   @Post("templates/:id/versions")
   @RequirePermissions("forms.manage")
   @ApiOperation({ summary: "Create next version for existing form template" })
@@ -42,6 +76,12 @@ export class FormsController {
     return this.service.createNextVersion(id, dto, actor.sub);
   }
 
+  /**
+   * List form submissions.
+   *
+   * @param query - optional q/status filters plus page/pageSize
+   * @returns paginated `{ items, total, page, pageSize }` of submissions
+   */
   @Get("submissions")
   @RequirePermissions("forms.view")
   @ApiOperation({ summary: "List form submissions" })
@@ -49,6 +89,13 @@ export class FormsController {
     return this.service.listSubmissions(query);
   }
 
+  /**
+   * Get form submission.
+   *
+   * @param id - submission id
+   * @returns the submission with values, attachments, signatures and linked documents
+   * @throws NotFoundException when the submission does not exist
+   */
   @Get("submissions/:id")
   @RequirePermissions("forms.view")
   @ApiOperation({ summary: "Get form submission" })
@@ -56,6 +103,15 @@ export class FormsController {
     return this.service.getSubmission(id);
   }
 
+  /**
+   * Submit a form against a specific template version.
+   *
+   * @param versionId - template version to submit against
+   * @param dto - field values, attachments, signatures and optional entity links
+   * @returns the created submission with full detail includes
+   * @throws NotFoundException when the template version does not exist
+   * @throws ConflictException when a required field is missing from the payload
+   */
   @Post("versions/:versionId/submissions")
   @RequirePermissions("forms.manage")
   @ApiOperation({ summary: "Submit a form against a specific template version" })

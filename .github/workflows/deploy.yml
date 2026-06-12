@@ -3,13 +3,37 @@ name: Deploy
 permissions:
   contents: read
 
-# Triggered ONLY by workflow_dispatch (manual). Push events do NOT
-# trigger this workflow. Re-enable on: push: { branches: [main] }
-# only after Azure secrets are configured and ready for live deploy.
-# See progress.md 2026-04-27 + pre-deploy-checklist.md §6 for context.
+# Production deploy pipeline (G11 hardening, pr-174):
+#
+#   install → prisma generate → migrate deploy (prod DB, fails on drift)
+#   → build (web bundle gets VITE_* SSO vars baked in) → self-contained
+#   API bundle + smoke probe → deploy API (App Service) → API health gate
+#   (poll /health, 12×10s, fail loudly on red) → deploy web (SWA)
+#   → SWA reachability gate (root must return 200).
+#
+# VARIANT NOTE: this is the health-gate-only variant, NOT slot+swap.
+# The workflow authenticates with publish profiles only — slot swap
+# requires `az` CLI credentials (service principal / OIDC) plus a
+# Standard+ App Service plan and a slot publish profile, none of which
+# exist yet. Until then a bad deploy IS live until rolled back, but the
+# health gate fails the run loudly so it is never silently broken.
+# Follow-up (Marco, portal): upgrade plan tier, create `staging` slot,
+# add slot publish profile + AZURE_CREDENTIALS, then convert the API
+# deploy to deploy-to-slot → health-gate → swap.
+#
+# Triggers: push to main (re-enabled 2026-06-12 per
+# pre-deploy-checklist.md §6 — secrets are configured and the pipeline
+# has deployed green) + workflow_dispatch for manual/rollback runs.
+# Rapid merges queue (concurrency group), never race or cancel.
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
 
 env:
   # Opt-in to Node 24 runtime for JavaScript actions ahead of GitHub's
@@ -19,12 +43,6 @@ env:
 jobs:
   deploy:
     name: Build and deploy
-    # Defensive guard: keeps any non-dispatch run skipping cleanly. When
-    # on: push is re-enabled per pre-deploy-checklist.md §6, this gate
-    # should be widened or removed. (The 0s phantom push failures this
-    # was added for were actually caused by `secrets` in a step-level
-    # `if:` — invalid context, see LL-11 — fixed via HAS_PROD_DATABASE_URL.)
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     env:
       # `secrets` is not available in step-level `if:` expressions —
@@ -39,14 +57,28 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Generate Prisma client
         run: pnpm --filter @project-ops/api exec prisma generate
+      # This is a production pipeline: deploying code without running
+      # migrations ships code ahead of schema (CP-07's failure class).
+      # Fail loudly instead of silently skipping.
+      - name: Require PROD_DATABASE_URL
+        if: ${{ env.HAS_PROD_DATABASE_URL != 'true' }}
+        run: |
+          echo "::error::PROD_DATABASE_URL secret is not set — refusing to deploy code without running migrations against the production database."
+          exit 1
       - name: Run database migrations
-        if: ${{ env.HAS_PROD_DATABASE_URL == 'true' }}
         run: pnpm --filter @project-ops/api exec prisma migrate deploy
         env:
           DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+      # Vite bakes VITE_* vars into the bundle at BUILD time — setting
+      # them in the SWA portal does nothing (pre-deploy-checklist.md §3).
+      # msal.config.ts disables SSO if VITE_ENTRA_* are empty, so this is
+      # inert until the PROD_ENTRA_* repo secrets are created.
       - run: pnpm build:azure
         env:
           VITE_API_BASE_URL: ${{ secrets.PROD_API_BASE_URL }}
+          VITE_SSO_ENABLED: 'true'
+          VITE_ENTRA_CLIENT_ID: ${{ secrets.PROD_ENTRA_CLIENT_ID }}
+          VITE_ENTRA_TENANT_ID: ${{ secrets.PROD_ENTRA_TENANT_ID }}
       # apps/api/node_modules are pnpm workspace symlinks into the repo-root
       # store — copying apps/api alone ships broken links and the app
       # crash-loops with MODULE_NOT_FOUND (G11). Build a self-contained
@@ -65,14 +97,54 @@ jobs:
           node -e "require('./deploy-api/node_modules/@nestjs/config/package.json'); console.log('bundle deps OK')"
           node -e "require('./deploy-api/node_modules/.prisma/client/package.json'); console.log('prisma client OK')"
           test -f deploy-api/dist/src/main.js && echo "dist entry OK"
-      - uses: azure/webapps-deploy@v3
+      - name: Deploy API to App Service
+        uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ secrets.AZURE_API_APP_NAME }}
           publish-profile: ${{ secrets.AZURE_API_PUBLISH_PROFILE }}
           package: deploy-api
-      - uses: Azure/static-web-apps-deploy@v1
+      - name: API health gate
+        env:
+          PROD_API_BASE_URL: ${{ secrets.PROD_API_BASE_URL }}
+        run: |
+          HEALTH_URL="${PROD_API_BASE_URL%/}/health"
+          echo "Polling API health endpoint (12 attempts, 10s apart)"
+          for i in $(seq 1 12); do
+            code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 10 "$HEALTH_URL" || echo "000")
+            echo "Attempt $i/12: HTTP $code"
+            if [ "$code" = "200" ]; then
+              echo "API health gate PASSED"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::API health gate FAILED — /api/v1/health never returned 200 after 12 attempts. The deployed API is unhealthy; check App Service Log stream (see runbook §4 troubleshooting / MODULE_NOT_FOUND playbook)."
+          exit 1
+      - name: Deploy web to Static Web Apps
+        id: swa-deploy
+        uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_TOKEN }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: upload
           app_location: apps/web/dist
+      - name: Static Web App reachability gate
+        env:
+          SWA_URL: ${{ steps.swa-deploy.outputs.static_web_app_url }}
+        run: |
+          if [ -z "$SWA_URL" ]; then
+            echo "::error::SWA deploy step returned no static_web_app_url output — cannot verify the deployment."
+            exit 1
+          fi
+          echo "Polling Static Web App root (6 attempts, 10s apart)"
+          for i in $(seq 1 6); do
+            code=$(curl -sSL -o /dev/null -w "%{http_code}" --max-time 10 "$SWA_URL" || echo "000")
+            echo "Attempt $i/6: HTTP $code"
+            if [ "$code" = "200" ]; then
+              echo "SWA reachability gate PASSED"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::SWA reachability gate FAILED — the Static Web App root never returned 200 after 6 attempts."
+          exit 1

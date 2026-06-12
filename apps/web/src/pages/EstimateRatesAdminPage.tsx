@@ -1,4 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode
+} from "react";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../auth/AuthContext";
 
@@ -615,20 +625,38 @@ function EditableRateRow<T extends { id: string }>({
     () => Object.fromEntries(columns.map((c) => [c.key, String((row as unknown as Record<string, unknown>)[c.key] ?? "")]))
   );
   const trRef = useRef<HTMLTableRowElement | null>(null);
+  const focusColRef = useRef(0);
 
   useEffect(() => {
+    // Never clobber an in-progress draft: `columns` is a fresh array each
+    // parent render, so without the guard any parent re-render (e.g. the
+    // `saving` flag flipping) would wipe what the user has typed.
+    if (editing) return;
     setDraft(Object.fromEntries(columns.map((c) => [c.key, String((row as unknown as Record<string, unknown>)[c.key] ?? "")])));
-  }, [row, columns]);
+  }, [row, columns, editing]);
 
-  const enterEdit = () => {
+  const enterEdit = (e: MouseEvent<HTMLTableRowElement>) => {
     if (!canAdmin || editing) return;
+    const cell = (e.target as HTMLElement).closest("td");
+    const cellIndex = cell?.parentElement ? Array.from(cell.parentElement.children).indexOf(cell) : 0;
+    focusColRef.current = cellIndex >= 0 && cellIndex < columns.length ? cellIndex : 0;
     setEditing(true);
-    requestAnimationFrame(() => {
-      const firstInput = trRef.current?.querySelector<HTMLInputElement>("input");
-      firstInput?.focus();
-      firstInput?.select();
-    });
   };
+
+  // LL-27: this focus must be synchronous (layout effect) and must target the
+  // CLICKED cell's input. The previous requestAnimationFrame focused the FIRST
+  // input with select-all after an async delay, so input arriving in that
+  // window (Playwright fill's focus→insertText gap, or a fast user typing
+  // right after clicking the Day cell) was stolen by the Role/Description
+  // input and replaced its selected text — persisting e.g. "601" into the
+  // labour rate's role column while the day rate stayed unchanged.
+  useLayoutEffect(() => {
+    if (!editing) return;
+    const inputs = trRef.current?.querySelectorAll<HTMLInputElement>("input");
+    const target = inputs?.[focusColRef.current] ?? inputs?.[0];
+    target?.focus();
+    target?.select();
+  }, [editing]);
 
   const commit = async () => {
     const dirty = columns.some(

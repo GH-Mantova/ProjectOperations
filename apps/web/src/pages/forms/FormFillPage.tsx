@@ -654,7 +654,7 @@ function FieldRender({
   }
 
   return (
-    <div>
+    <div data-testid={`form-fill-${field.fieldKey.replace(/_/g, "-")}`}>
       <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
         {field.label}
         {required ? <span style={{ color: "#FEAA6D", marginLeft: 4 }}>*</span> : null}
@@ -1092,6 +1092,7 @@ function SignaturePad({ value, onChange }: { value: string | null; onChange: (v:
     <div>
       <canvas
         ref={canvasRef}
+        data-testid="form-fill-signature-canvas"
         width={600}
         height={160}
         style={{

@@ -170,6 +170,7 @@ function SortableFieldRow({
         role="switch"
         aria-checked={on}
         className={on ? "toggle-pill on" : "toggle-pill"}
+        data-testid={`widget-field-toggle-${id.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase()}`}
         onClick={onToggle}
       />
     </li>
@@ -191,6 +192,7 @@ function FieldRenderer({
         <span className="widget-settings-popover__field-label">{field.label}</span>
         <select
           className="s7-input s7-input--sm"
+          data-testid={`widget-setting-${field.key.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase()}`}
           value={typeof value === "string" ? value : String(field.defaultValue ?? "")}
           onChange={(e) => onChange(e.target.value)}
         >
@@ -209,6 +211,7 @@ function FieldRenderer({
         <input
           type="number"
           className="s7-input s7-input--sm"
+          data-testid={`widget-setting-${field.key.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase()}`}
           min={field.min}
           max={field.max}
           step={field.step ?? 1}

@@ -19,7 +19,9 @@ required.
    ```
 4. **On success** (exit 0): the prompt + a `.log` of the agent's full
    stdout/stderr move to `docs/pr-prompts/processed/`.
-5. **On failure** (non-zero exit): both move to `docs/pr-prompts/failed/`.
+5. **On failure** (non-zero exit): both move to `docs/pr-prompts/failed/`,
+   plus a `{name}.report.md` with the failure evidence (see "Failure
+   quarantine" below). Transient failures get one automatic retry first.
 
 If you drop multiple `-ready.md` files at once, they're queued — only one
 agent runs at a time, so branches never trample each other.
@@ -56,6 +58,17 @@ Leave the terminal open. The watcher prints one line per event:
 
 Ctrl+C to stop.
 
+## Upgrading to v2 — restart required
+
+**A running watcher does not pick up code changes.** After merging a watcher
+upgrade, stop the running instance (Ctrl+C in its terminal pane) and start it
+again. Until you restart, the old code keeps running from memory — every v2
+behaviour below is invisible to an already-running v1 process.
+
+All v2 behaviours are **opt-in via env**; the old invocation with no new env
+vars behaves identically to v1 (modulo the deterministic queue order, which
+only changes the order of simultaneously-queued prompts).
+
 ## Configuration
 
 Env vars override the defaults:
@@ -64,13 +77,19 @@ Env vars override the defaults:
 |---|---|---|
 | `PR_WATCHER_MAX_TURNS` | `120` | Agent hard cap per run. Bump for big PRs. |
 | `PR_WATCHER_CLAUDE_BIN` | `claude` | Override if `claude` isn't on PATH. |
-| `PR_WATCHER_AUTO_MERGE` | `false` | Auto-merge is **opt-in**. Set to `"true"` only for unattended chain runs. The review-gated workflow leaves this off so every PR waits for Marco's manual merge. |
+| `PR_WATCHER_GH_BIN` | `gh` | Override if `gh` isn't on PATH. |
+| `PR_WATCHER_AUTO_MERGE` | `false` | **Legacy** blanket flag. `"true"` maps to `PR_WATCHER_AUTO_MERGE_POLICY=all` when no explicit policy is set. Prefer the policy var. |
+| `PR_WATCHER_AUTO_MERGE_POLICY` | `off` | `off` \| `all` \| `tests-docs`. See the policy matrix below. |
 | `PR_WATCHER_MERGE_TIMEOUT_MIN` | `90` | Max wait for a PR to merge after CI starts. |
 | `PR_WATCHER_POLL_INTERVAL_SEC` | `60` | How often to poll PR state during merge wait. |
 | `PR_WATCHER_STOP_AT` | _(unset)_ | Nightly cutoff `HH:MM` (24-hour, local). Past this, watcher won't start a new prompt and exits cleanly with code 0. In-flight prompt finishes. |
 | `PR_WATCHER_AUTO_REVIEW` | `false` | Set to `"true"` to poll GitHub for new PRs and auto-fire reviews. |
 | `PR_WATCHER_REVIEW_POLL_SEC` | `90` | How often (seconds) to poll GitHub for new PRs to review. |
 | `PR_WATCHER_REVIEW_MIN_AGE_MIN` | `2` | Grace period (minutes) — skip PRs younger than this. Gives the authoring agent time to finish post-PR steps before the reviewer fires. |
+| `PR_WATCHER_AUTO_UPDATE` | `false` | Set to `"true"` to auto-run `gh pr update-branch` on your open PRs that are BEHIND main. Conflicting PRs are skipped. |
+| `PR_WATCHER_UPDATE_POLL_SEC` | `120` | How often (seconds) the auto-update poll runs. |
+| `PR_WATCHER_TRANSIENT_PATTERNS` | _(built-in list)_ | Comma-separated regex bodies (case-insensitive) that mark a failure as transient → one automatic retry. Defaults: `cache.{0,40}\b400\b`, `ECONNRESET`, `Workspace still starting`, `runner.{0,5}lost`. |
+| `PR_WATCHER_DRY_RUN` | `false` | Set to `"true"` to log every decision (queue, deps, policy, update-branch) without spawning `claude`, running any mutating `gh` command, or consuming prompt files. Read-only `gh` calls still run, so decisions reflect live repo state. |
 
 Example:
 
@@ -78,6 +97,94 @@ Example:
 $env:PR_WATCHER_MAX_TURNS = "200"
 node C:\ProjectOperations2\scripts\pr-watcher\index.mjs
 ```
+
+## Dependency gating (prompt front-matter)
+
+A prompt may declare dependencies as HTML comments **at the very top of the
+file** (before any other content; blank lines are allowed between them):
+
+```markdown
+<!-- watcher: requires-merged: 380, 379 -->
+<!-- watcher: requires-file-on-main: tests/e2e/pr-acceptance/helpers.ts -->
+
+# The actual prompt starts here…
+```
+
+| Directive | Meaning |
+|---|---|
+| `requires-merged: N[, N…]` | Every listed PR must have state `MERGED` (`gh pr view N --json state`). |
+| `requires-file-on-main: path` | The path must exist on `origin/main` (checked after a `git fetch origin main`). One path per directive; repeat the line for multiple files. |
+
+Before running the prompt, the watcher checks every directive. If **any** is
+unmet, the prompt is **deferred**: a `[deps]` log line explains why, the file
+is NOT consumed, and it is re-checked on the next periodic rescan (every
+5 minutes). A `gh`/`git` error during the check counts as unmet (fail closed).
+
+Parsing stops at the first non-blank line that isn't a `<!-- watcher: … -->`
+comment, so directives buried mid-file are ignored. A prompt with no
+front-matter behaves exactly as before. Unknown `watcher:` keys are ignored.
+
+## Auto-merge policy matrix
+
+`PR_WATCHER_AUTO_MERGE_POLICY` controls what happens after an authoring agent
+opens a PR:
+
+| Policy | Behaviour |
+|---|---|
+| `off` (default) | No merge handling at all. Marco merges everything. |
+| `all` | Legacy blanket mode: enable auto-merge (squash) on every PR the agent opens, wait for merge, sync main. CI red → quarantine; timeout/closed → `blocked/` + queue pause. |
+| `tests-docs` | Auto-merge (squash) **only when ALL of**: checks green; diff touches ONLY `tests/**` and/or `docs/**` (via `gh pr view --json files`); no migration files anywhere in the diff; verdict file `docs/pr-reviews/pr-{N}-review.md` exists and starts a line with `VERDICT: MERGE`. Anything else stays open for Marco (prompt still files to `processed/` — the agent's work succeeded). |
+
+Under `tests-docs`, a non-qualifying diff is detected immediately (no
+waiting). A qualifying diff polls until checks are green **and** the MERGE
+verdict file appears, up to `PR_WATCHER_MERGE_TIMEOUT_MIN`; a timeout hands
+the PR to Marco rather than blocking the queue.
+
+Review jobs (`rev-*`) always skip merge handling entirely, under every policy.
+
+## Auto-update-branch
+
+With `PR_WATCHER_AUTO_UPDATE=true`, every `PR_WATCHER_UPDATE_POLL_SEC` seconds
+the watcher lists your open PRs (`gh pr list --author @me`) and runs
+`gh pr update-branch N` on any with merge state `BEHIND`. PRs with conflicts
+(`DIRTY`) are skipped with a log line — update-branch can't resolve conflicts;
+those need a human rebase.
+
+## Failure quarantine and transient retry
+
+When a prompt run exits non-zero (and isn't a usage-limit soft-halt), or its
+PR's CI lands red under an auto-merge policy:
+
+1. **Transient check**: if the failure output matches a transient signature
+   (`PR_WATCHER_TRANSIENT_PATTERNS`), the prompt gets **one** automatic
+   retry — it stays in `docs/pr-prompts/` and re-enters the queue.
+2. **Quarantine** (no signature match, or second failure): the prompt moves
+   to `docs/pr-prompts/failed/` with two siblings:
+   - `{name}.log` — full agent output (existing behaviour)
+   - `{name}.report.md` — last 50 lines of agent output, the PR number if one
+     was opened, and `gh pr checks` output for the failing checks
+3. Retry counts are in-memory per prompt name; restarting the watcher resets
+   them (the restart itself is the manual intervention).
+
+## Heartbeat
+
+While an agent is running, the watcher appends a line to
+`scripts/pr-watcher/heartbeat.log` every 60 seconds:
+
+```
+[2026-06-12T08:14:02.113Z] pr-201-foo-ready.md elapsed=420s last: <snippet of the agent's last output line>
+```
+
+LL-25: silence ≠ hang — glance at the heartbeat to tell a thinking agent from
+a dead one. The log self-truncates to its last 500 lines.
+
+## Queue order
+
+`rev-*` review jobs always jump to the front (verdicts unblock merges).
+Everything else runs in **lexicographic filename order** — your numbering IS
+the ordering, so `pr-201-…` runs before `pr-210-…` regardless of which file
+landed in the directory first. Combined with front-matter dependency gating,
+this makes multi-prompt weekend waves deterministic.
 
 ## Optional: root npm script
 
@@ -93,8 +200,9 @@ Then `pnpm pr:watch` from anywhere in the repo starts it.
 
 - **One agent at a time.** Two `-ready.md` files dropped together are
   queued, not raced. Branches don't collide.
-- **No auto-merge.** Current prompts already instruct the agent to open the
-  PR but NOT auto-merge. Owner verifies live and merges manually.
+- **No auto-merge by default.** `PR_WATCHER_AUTO_MERGE_POLICY` defaults to
+  `off` — every PR waits for Marco. See the policy matrix above before
+  enabling `tests-docs` or `all`.
 - **Cost cap.** `--max-turns` is the hard stop. A thrashing agent dies at
   the cap instead of burning the budget.
 - **Failure isolation.** A failed run moves the prompt to `failed/` so the

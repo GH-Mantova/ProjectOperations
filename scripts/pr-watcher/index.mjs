@@ -14,6 +14,17 @@
 // review prompt file for each. The queue's existing serialization runs the
 // review like any other prompt — reviews never race with authoring jobs.
 //
+// NEW (v2 — all opt-in via env, defaults preserve v1 behaviour):
+//   - Dependency gating via prompt front-matter (requires-merged /
+//     requires-file-on-main) — unmet deps defer the prompt, re-checked
+//     on the periodic rescan.
+//   - Auto-update-branch (PR_WATCHER_AUTO_UPDATE) for BEHIND PRs.
+//   - Policy auto-merge (PR_WATCHER_AUTO_MERGE_POLICY=tests-docs|all|off).
+//   - Failure quarantine with .report.md + one transient-signature retry.
+//   - Heartbeat log while an agent runs (heartbeat.log, 60s cadence).
+//   - Deterministic queue order: rev-* first, then lexicographic.
+//   - Dry-run mode (PR_WATCHER_DRY_RUN) — decisions logged, nothing executed.
+//
 // Usage:
 //   node scripts/pr-watcher/index.mjs
 //
@@ -57,9 +68,24 @@ const MAX_TURNS = Number(process.env.PR_WATCHER_MAX_TURNS ?? 120);
 const CLAUDE_BIN = process.env.PR_WATCHER_CLAUDE_BIN ?? "claude";
 const GH_BIN = process.env.PR_WATCHER_GH_BIN ?? "gh";
 
-// Auto-merge polling — opt-in only. The review-gated workflow runs with this
-// OFF. Enable with PR_WATCHER_AUTO_MERGE=true for unattended chain runs only.
-const AUTO_MERGE = process.env.PR_WATCHER_AUTO_MERGE === "true"; // default OFF
+// Auto-merge policy — opt-in only. The review-gated workflow runs with this
+// OFF. Values:
+//   off        — never auto-merge (default)
+//   all        — auto-merge every PR the agent opens (legacy blanket mode)
+//   tests-docs — auto-merge ONLY tests/** + docs/**-touching PRs with green
+//                checks and a MERGE verdict file; everything else waits for Marco
+// Back-compat: PR_WATCHER_AUTO_MERGE=true (old blanket flag) maps to "all"
+// when no explicit policy is set.
+const AUTO_MERGE_POLICY = (() => {
+  const raw = (process.env.PR_WATCHER_AUTO_MERGE_POLICY ?? "").trim().toLowerCase();
+  if (raw === "all" || raw === "tests-docs" || raw === "off") return raw;
+  if (raw) {
+    console.log(`[startup] [WARN] unknown PR_WATCHER_AUTO_MERGE_POLICY "${raw}" — using "off"`);
+    return "off";
+  }
+  return process.env.PR_WATCHER_AUTO_MERGE === "true" ? "all" : "off";
+})();
+const AUTO_MERGE = AUTO_MERGE_POLICY !== "off";
 const MERGE_TIMEOUT_MS =
   Number(process.env.PR_WATCHER_MERGE_TIMEOUT_MIN ?? 90) * 60 * 1000;
 const POLL_INTERVAL_MS =
@@ -74,6 +100,55 @@ const REVIEW_POLL_INTERVAL_MS =
 const REVIEW_MIN_AGE_MS =
   Number(process.env.PR_WATCHER_REVIEW_MIN_AGE_MIN ?? 2) * 60 * 1000;
 const REVIEWED_STATE_FILE = path.join(__dirname, ".reviewed-prs.json");
+
+// Auto-update-branch: each poll, bring the watcher account's open PRs that
+// are BEHIND main up to date via `gh pr update-branch`. Conflicting PRs are
+// skipped (update-branch can't resolve conflicts). Opt-in.
+const AUTO_UPDATE = process.env.PR_WATCHER_AUTO_UPDATE === "true"; // default OFF
+const UPDATE_POLL_INTERVAL_MS =
+  Number(process.env.PR_WATCHER_UPDATE_POLL_SEC ?? 120) * 1000;
+
+// Dry-run: log every decision (queue, deps, policy, update-branch, merge)
+// but never spawn claude and never run a MUTATING gh/git command. Read-only
+// gh calls (pr list/view/checks) still run so decisions reflect live state.
+// Prompt files are never consumed in dry-run.
+const DRY_RUN = process.env.PR_WATCHER_DRY_RUN === "true"; // default OFF
+
+// Heartbeat — while an agent runs, append a line to heartbeat.log every
+// 60s (LL-25: silence ≠ hang — give Marco evidence the agent is alive).
+const HEARTBEAT_FILE = path.join(__dirname, "heartbeat.log");
+const HEARTBEAT_INTERVAL_MS = 60 * 1000;
+const HEARTBEAT_MAX_LINES = 500;
+
+// Transient-failure signatures — a failed run whose output matches one of
+// these gets ONE automatic retry before quarantine. Override the defaults
+// with PR_WATCHER_TRANSIENT_PATTERNS (comma-separated regex bodies, applied
+// case-insensitive).
+const TRANSIENT_PATTERNS = (() => {
+  const raw = (process.env.PR_WATCHER_TRANSIENT_PATTERNS ?? "").trim();
+  const sources = raw
+    ? raw.split(",").map((s) => s.trim()).filter(Boolean)
+    : ["cache.{0,40}\\b400\\b", "ECONNRESET", "Workspace still starting", "runner.{0,5}lost"];
+  const compiled = [];
+  for (const src of sources) {
+    try {
+      compiled.push(new RegExp(src, "i"));
+    } catch (err) {
+      console.log(`[startup] [WARN] bad transient pattern "${src}" skipped: ${err.message}`);
+    }
+  }
+  return compiled;
+})();
+
+export function isTransientFailure(text) {
+  if (!text) return false;
+  const tail = text.length > 16384 ? text.slice(-16384) : text;
+  return TRANSIENT_PATTERNS.some((re) => re.test(tail));
+}
+
+// One retry per prompt name, tracked in memory. A watcher restart resets
+// counts — acceptable: the restart itself is the manual intervention.
+const retryCounts = new Map();
 
 // Lockfile — prevents two watcher instances from fighting over the queue.
 const LOCK_FILE = path.join(__dirname, ".watcher.lock");
@@ -246,15 +321,26 @@ function enqueue(name, { source = "watch" } = {}) {
     }
     queue.splice(insertAt, 0, filePath);
   } else {
-    queue.push(filePath);
+    // Authoring jobs run in lexicographic filename order (numbering =
+    // ordering), always after any review jobs waiting at the front.
+    let insertAt = 0;
+    while (insertAt < queue.length && isReviewJob(path.basename(queue[insertAt]))) {
+      insertAt++;
+    }
+    while (insertAt < queue.length && path.basename(queue[insertAt]) <= name) {
+      insertAt++;
+    }
+    queue.splice(insertAt, 0, filePath);
   }
   const tail = `depth: ${queue.length}${running ? ", busy" : ""}, source: ${source}`;
   log("queue", `${name} (${tail})`);
   drain();
 }
 
-// Run `gh` and return parsed JSON or raw stdout.
-function runGh(args, { json = false } = {}) {
+// Run `gh` and return parsed JSON or raw stdout. With allowNonZero, a
+// non-zero exit still resolves stdout (gh pr checks exits 8 when any check
+// is failing — exactly the case where we want its output for a report).
+function runGh(args, { json = false, allowNonZero = false } = {}) {
   return new Promise((resolve, reject) => {
     const out = [];
     const err = [];
@@ -268,7 +354,7 @@ function runGh(args, { json = false } = {}) {
     child.on("close", (code) => {
       const stdout = Buffer.concat(out).toString("utf-8");
       const stderr = Buffer.concat(err).toString("utf-8");
-      if (code !== 0) {
+      if (code !== 0 && !allowNonZero) {
         const e = new Error(`gh ${args.join(" ")} exited ${code}: ${stderr.trim()}`);
         e.code = code;
         e.stderr = stderr;
@@ -285,6 +371,200 @@ function runGh(args, { json = false } = {}) {
       }
     });
   });
+}
+
+// Run `git` and resolve stdout, reject on non-zero exit.
+function runGit(args) {
+  return new Promise((resolve, reject) => {
+    const out = [];
+    const err = [];
+    const child = spawn("git", args, { cwd: REPO_ROOT, shell: true });
+    child.stdout.on("data", (c) => out.push(c));
+    child.stderr.on("data", (c) => err.push(c));
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code !== 0) {
+        return reject(
+          new Error(`git ${args.join(" ")} exited ${code}: ${Buffer.concat(err).toString("utf-8").trim()}`),
+        );
+      }
+      resolve(Buffer.concat(out).toString("utf-8"));
+    });
+  });
+}
+
+// --- Dependency gating (front-matter) ---
+//
+// Prompts may declare dependencies as HTML comments at the very top:
+//   <!-- watcher: requires-merged: 380, 379 -->
+//   <!-- watcher: requires-file-on-main: tests/e2e/pr-acceptance/helpers.ts -->
+// Parsing stops at the first line that isn't blank or a watcher comment, so
+// the directives must come before any prompt content.
+export function parseWatcherFrontMatter(body) {
+  const deps = { requiresMerged: [], requiresFilesOnMain: [] };
+  for (const line of body.split(/\r?\n/)) {
+    const t = line.trim();
+    if (t === "") continue;
+    const m = t.match(/^<!--\s*watcher:\s*([a-z-]+)\s*:\s*(.+?)\s*-->$/i);
+    if (!m) break;
+    const key = m[1].toLowerCase();
+    const value = m[2];
+    if (key === "requires-merged") {
+      for (const part of value.split(",")) {
+        const n = Number(part.trim());
+        if (Number.isInteger(n) && n > 0) deps.requiresMerged.push(n);
+      }
+    } else if (key === "requires-file-on-main") {
+      deps.requiresFilesOnMain.push(value.trim());
+    }
+    // Unknown watcher keys are ignored (forward-compat).
+  }
+  return deps;
+}
+
+// Returns a list of human-readable unmet-dependency reasons (empty = go).
+// A gh/git error counts as unmet — fail closed, re-check next rescan.
+async function unmetDependencies(deps) {
+  const unmet = [];
+  for (const n of deps.requiresMerged) {
+    try {
+      const data = await runGh(["pr", "view", String(n), "--json", "state"], { json: true });
+      if (data.state !== "MERGED") unmet.push(`PR #${n} is ${data.state} (needs MERGED)`);
+    } catch (err) {
+      unmet.push(`PR #${n} state check failed: ${err.message}`);
+    }
+  }
+  if (deps.requiresFilesOnMain.length > 0) {
+    try {
+      await runGit(["fetch", "origin", "main"]);
+    } catch (err) {
+      log("deps", `git fetch failed (${err.message}) — checking against last-fetched origin/main`);
+    }
+    for (const file of deps.requiresFilesOnMain) {
+      try {
+        await runGit(["cat-file", "-e", `origin/main:${file}`]);
+      } catch {
+        unmet.push(`file "${file}" not on origin/main`);
+      }
+    }
+  }
+  return unmet;
+}
+
+// --- Heartbeat ---
+
+let heartbeatTimer = null;
+
+function stopHeartbeat() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+}
+
+function startHeartbeat(name, getLastLine) {
+  stopHeartbeat();
+  const startedMs = Date.now();
+  heartbeatTimer = setInterval(async () => {
+    const elapsedSec = Math.round((Date.now() - startedMs) / 1000);
+    const snippet = (getLastLine() ?? "").slice(0, 160);
+    const line = `[${ts()}] ${name} elapsed=${elapsedSec}s last: ${snippet}`;
+    try {
+      let lines = [];
+      try {
+        lines = (await readFile(HEARTBEAT_FILE, "utf-8")).split(/\r?\n/).filter(Boolean);
+      } catch {
+        // no heartbeat file yet
+      }
+      lines.push(line);
+      if (lines.length > HEARTBEAT_MAX_LINES) lines = lines.slice(-HEARTBEAT_MAX_LINES);
+      await writeFile(HEARTBEAT_FILE, lines.join("\n") + "\n", "utf-8");
+    } catch (err) {
+      log("heartbeat", `write failed: ${err.message}`);
+    }
+  }, HEARTBEAT_INTERVAL_MS);
+}
+
+// --- Policy auto-merge helpers ---
+
+// tests-docs policy: the diff must touch ONLY tests/** and/or docs/**, and
+// must not contain migration files.
+export function classifyPolicyFiles(files) {
+  const paths = (files ?? []).map((f) => (typeof f === "string" ? f : f.path));
+  if (paths.length === 0) return { ok: false, reason: "empty diff" };
+  const migration = paths.find((p) => /(^|\/)migrations\//.test(p));
+  if (migration) return { ok: false, reason: `migration file: ${migration}` };
+  const outside = paths.find((p) => !/^(tests|docs)\//.test(p));
+  if (outside) return { ok: false, reason: `outside tests/ or docs/: ${outside}` };
+  return { ok: true };
+}
+
+// The reviewer writes docs/pr-reviews/pr-{N}-review.md with the verdict on
+// the first line: "VERDICT: MERGE" (or FIX / BLOCK). Only MERGE approves.
+async function verdictApproves(prNumber) {
+  const verdictPath = path.join(REPO_ROOT, "docs", "pr-reviews", `pr-${prNumber}-review.md`);
+  try {
+    const content = await readFile(verdictPath, "utf-8");
+    return /^VERDICT:\s*MERGE\b/m.test(content);
+  } catch {
+    return false;
+  }
+}
+
+// --- Failure quarantine ---
+
+// Write docs/pr-prompts/failed/{name}.report.md: last 50 lines of agent
+// output, PR number (if one opened), and `gh pr checks` output.
+async function writeQuarantineReport(name, agentOutput, prNumber) {
+  const tailLines = agentOutput.split(/\r?\n/).filter((l) => l.trim()).slice(-50);
+  let checksSection = "(no PR number detected — no checks to report)";
+  if (prNumber != null) {
+    try {
+      const out = await runGh(["pr", "checks", String(prNumber)], { allowNonZero: true });
+      checksSection = out.trim() || "(gh pr checks returned no output)";
+    } catch (err) {
+      checksSection = `gh pr checks failed: ${err.message}`;
+    }
+  }
+  const report = [
+    `# Quarantine report — ${name}`,
+    "",
+    `Written: ${ts()}`,
+    `PR: ${prNumber != null ? `#${prNumber}` : "(none detected in agent output)"}`,
+    `Retries used: ${retryCounts.get(name) ?? 0}`,
+    "",
+    "## Check status (`gh pr checks`)",
+    "",
+    "```",
+    checksSection,
+    "```",
+    "",
+    "## Last 50 lines of agent output",
+    "",
+    "```",
+    ...tailLines,
+    "```",
+    "",
+  ].join("\n");
+  try {
+    await writeFile(path.join(FAILED_DIR, `${name}.report.md`), report, "utf-8");
+    log("quarantine", `report written: failed/${name}.report.md`);
+  } catch (err) {
+    log("error", `quarantine report write failed: ${err.message}`);
+  }
+}
+
+// ONE automatic retry when the failure looks transient. Returns true when
+// the prompt was re-queued (file stays in docs/pr-prompts/).
+function maybeRetryTransient(name, matchText) {
+  const count = retryCounts.get(name) ?? 0;
+  if (count >= 1) return false;
+  if (!isTransientFailure(matchText)) return false;
+  retryCounts.set(name, count + 1);
+  log("retry", `${name}: transient failure signature matched — retrying once (attempt 2)`);
+  seen.delete(name);
+  enqueue(name, { source: "transient-retry" });
+  return true;
 }
 
 // Extract a PR number from the agent's combined stdout/stderr output.
@@ -344,6 +624,91 @@ async function waitForMerge(prNumber, promptName) {
   }
 
   return { ok: false, reason: "timeout" };
+}
+
+// tests-docs policy merge loop. Returns:
+//   { ok: true }                          — merged
+//   { ok: false, marco: true, reason }    — doesn't qualify / timed out → Marco
+//   { ok: false, ci: true, reason, check }— CI red → quarantine path
+//   { ok: false, reason }                 — closed without merge
+async function waitForPolicyMerge(prNumber) {
+  // Static gate first: a diff outside tests/** + docs/** (or containing
+  // migrations) never qualifies — hand to Marco immediately, no waiting.
+  let filesData;
+  try {
+    filesData = await runGh(["pr", "view", String(prNumber), "--json", "files"], { json: true });
+  } catch (err) {
+    return { ok: false, marco: true, reason: `files query failed: ${err.message}` };
+  }
+  const cls = classifyPolicyFiles(filesData.files ?? []);
+  if (!cls.ok) {
+    return { ok: false, marco: true, reason: cls.reason };
+  }
+
+  const startedAt = Date.now();
+  let mergeEnabled = false;
+  while (Date.now() - startedAt < MERGE_TIMEOUT_MS) {
+    let data;
+    try {
+      data = await runGh(
+        ["pr", "view", String(prNumber), "--json", "state,statusCheckRollup,mergedAt"],
+        { json: true },
+      );
+    } catch (err) {
+      log("merge", `gh pr view failed: ${err.message} — retrying in ${POLL_INTERVAL_MS / 1000}s`);
+      await sleep(POLL_INTERVAL_MS);
+      continue;
+    }
+
+    if (data.state === "MERGED") {
+      log("merge", `PR #${prNumber} merged at ${data.mergedAt} (policy: tests-docs)`);
+      return { ok: true };
+    }
+    if (data.state === "CLOSED") {
+      return { ok: false, reason: "closed-without-merge" };
+    }
+
+    const checks = data.statusCheckRollup ?? [];
+    const failed = checks.find(
+      (c) => c.conclusion === "FAILURE" || c.conclusion === "CANCELLED" || c.conclusion === "TIMED_OUT",
+    );
+    if (failed) {
+      return {
+        ok: false,
+        ci: true,
+        reason: `ci-${failed.conclusion.toLowerCase()}`,
+        check: failed.name ?? "(unknown)",
+      };
+    }
+
+    const allGreen =
+      checks.length > 0 &&
+      checks.every((c) => ["SUCCESS", "NEUTRAL", "SKIPPED"].includes(c.conclusion));
+
+    if (!mergeEnabled && allGreen && (await verdictApproves(prNumber))) {
+      if (DRY_RUN) {
+        log("dry-run", `PR #${prNumber}: all tests-docs conditions met — would enable auto-merge`);
+        return { ok: false, marco: true, reason: "dry-run: auto-merge not executed" };
+      }
+      try {
+        log("merge", `PR #${prNumber}: tests-docs policy satisfied — enabling auto-merge`);
+        await runGh(["pr", "merge", String(prNumber), "--auto", "--squash", "--delete-branch"]);
+        mergeEnabled = true;
+      } catch (err) {
+        log("merge", `auto-merge enable failed for PR #${prNumber}: ${err.message}`);
+      }
+    }
+
+    await sleep(POLL_INTERVAL_MS);
+  }
+
+  return {
+    ok: false,
+    marco: true,
+    reason: mergeEnabled
+      ? "timeout after auto-merge enabled"
+      : "timeout waiting for green checks + MERGE verdict",
+  };
 }
 
 // Move all queued + on-disk -ready.md files into paused/.
@@ -549,6 +914,10 @@ async function pollForNewPrs() {
     if (age < REVIEW_MIN_AGE_MS) continue; // grace period — authoring agent may still be finishing
 
     const promptName = `rev-${pr.number}-ready.md`;
+    if (DRY_RUN) {
+      log("dry-run", `would write review prompt ${promptName} for PR #${pr.number} ("${pr.title}")`);
+      continue;
+    }
     const promptPath = path.join(PROMPT_DIR, promptName);
     const body = renderTemplate(reviewTemplate, pr.number, pr.title);
     try {
@@ -560,6 +929,40 @@ async function pollForNewPrs() {
     reviewedSet.add(pr.number);
     await saveReviewedSet(reviewedSet);
     log("review", `enqueued review for PR #${pr.number} ("${pr.title}") → ${promptName}`);
+  }
+}
+
+// Auto-update-branch: bring our own open PRs that fell BEHIND main up to
+// date. Conflicting PRs (mergeStateStatus DIRTY) are skipped — update-branch
+// can't resolve conflicts; those need a human rebase.
+async function pollForBehindPrs() {
+  if (queuePaused) return;
+  let prs;
+  try {
+    prs = await runGh(
+      ["pr", "list", "--author", "@me", "--state", "open", "--json", "number,title,mergeStateStatus"],
+      { json: true },
+    );
+  } catch (err) {
+    log("update", `poll failed: ${err.message} — will retry next tick`);
+    return;
+  }
+  for (const pr of prs) {
+    if (pr.mergeStateStatus === "DIRTY") {
+      log("update", `PR #${pr.number} has conflicts — skipping update-branch`);
+      continue;
+    }
+    if (pr.mergeStateStatus !== "BEHIND") continue;
+    if (DRY_RUN) {
+      log("dry-run", `PR #${pr.number} is BEHIND — would run gh pr update-branch ${pr.number}`);
+      continue;
+    }
+    try {
+      await runGh(["pr", "update-branch", String(pr.number)]);
+      log("update", `PR #${pr.number} branch updated (was BEHIND)`);
+    } catch (err) {
+      log("update", `update-branch failed for PR #${pr.number}: ${err.message}`);
+    }
   }
 }
 
@@ -590,9 +993,34 @@ async function drain() {
     return;
   }
 
+  // Dependency gating: unmet front-matter dependencies defer the prompt.
+  // The file is NOT consumed — it leaves `seen` so the periodic rescan
+  // re-checks it on the next walk.
+  const deps = parseWatcherFrontMatter(promptBody);
+  if (deps.requiresMerged.length > 0 || deps.requiresFilesOnMain.length > 0) {
+    const unmet = await unmetDependencies(deps);
+    if (unmet.length > 0) {
+      log("deps", `${name} deferred: ${unmet.join("; ")} — re-check next rescan`);
+      seen.delete(name);
+      running = false;
+      drain();
+      return;
+    }
+    log("deps", `${name}: all dependencies met (merged: [${deps.requiresMerged.join(", ")}], files: ${deps.requiresFilesOnMain.length})`);
+  }
+
+  if (DRY_RUN) {
+    log("dry-run", `${name}: would run ${CLAUDE_BIN} --print --max-turns ${MAX_TURNS} (${promptBody.length} bytes); file NOT consumed`);
+    // Keep `name` in `seen` so dry-run doesn't re-log the same prompt forever.
+    running = false;
+    drain();
+    return;
+  }
+
   log("start", `${name} (max-turns=${MAX_TURNS})`);
   const startedAt = ts();
   const chunks = [];
+  let lastLine = "";
 
   const child = spawn(
     CLAUDE_BIN,
@@ -613,16 +1041,26 @@ async function drain() {
   child.stdin.write(promptBody);
   child.stdin.end();
 
+  const trackLastLine = (c) => {
+    const lines = c.toString("utf-8").split(/\r?\n/).filter((l) => l.trim());
+    if (lines.length > 0) lastLine = lines[lines.length - 1];
+  };
+
   child.stdout.on("data", (c) => {
     process.stdout.write(c);
     chunks.push(c);
+    trackLastLine(c);
   });
   child.stderr.on("data", (c) => {
     process.stderr.write(c);
     chunks.push(c);
+    trackLastLine(c);
   });
 
+  startHeartbeat(name, () => lastLine);
+
   child.on("close", async (code) => {
+    stopHeartbeat();
     const endedAt = ts();
     const agentOutput = Buffer.concat(chunks).toString("utf-8");
     const header = [
@@ -663,7 +1101,15 @@ async function drain() {
         process.exit(2);
       }
 
-      // (b) Real failure — move to failed/ and either pause or continue
+      // Transient failure? One automatic retry — prompt stays in place.
+      if (maybeRetryTransient(name, agentOutput)) {
+        running = false;
+        drain();
+        return;
+      }
+
+      // (b) Real failure — quarantine: move to failed/ with .log + report,
+      // then either pause or continue
       const dest = path.join(FAILED_DIR, name);
       const logDest = path.join(FAILED_DIR, `${name}.log`);
       try {
@@ -673,6 +1119,7 @@ async function drain() {
       } catch (err) {
         log("error", `move failed: ${err.message}`);
       }
+      await writeQuarantineReport(name, agentOutput, extractPrNumber(agentOutput));
       seen.delete(name);
       // Review job failures do not pause the authoring pipeline.
       if (AUTO_MERGE && !reviewJob) {
@@ -703,11 +1150,46 @@ async function drain() {
         mergeReport = `\n\n---\n[watcher] no PR number found in agent output — skipping auto-merge\n`;
         log("merge", `${name}: no PR number in output, skipping auto-merge`);
       } else {
-        log("merge", `${name}: opened PR #${prNumber}, waiting for merge…`);
-        const result = await waitForMerge(prNumber, name);
+        log("merge", `${name}: opened PR #${prNumber}, policy=${AUTO_MERGE_POLICY}, waiting…`);
+        const result =
+          AUTO_MERGE_POLICY === "tests-docs"
+            ? await waitForPolicyMerge(prNumber)
+            : await waitForMerge(prNumber, name);
         mergeReport = `\n\n---\n[watcher] merge result for PR #${prNumber}: ${JSON.stringify(result)}\n`;
-        if (!result.ok) {
-          // Move to blocked/ + pause downstream
+
+        if (!result.ok && result.marco) {
+          // tests-docs: PR doesn't qualify for auto-merge — leave it open for
+          // Marco, file the prompt as processed (the agent's work succeeded).
+          log("merge", `${name}: PR #${prNumber} stays for Marco (${result.reason})`);
+        } else if (!result.ok && (result.ci || result.reason?.startsWith("ci-"))) {
+          // CI landed red — failure quarantine (one transient retry first).
+          let checksOut = "";
+          try {
+            checksOut = await runGh(["pr", "checks", String(prNumber)], { allowNonZero: true });
+          } catch (err) {
+            checksOut = err.message;
+          }
+          if (maybeRetryTransient(name, `${result.reason} ${result.check ?? ""}\n${checksOut}`)) {
+            running = false;
+            drain();
+            return;
+          }
+          const dest = path.join(FAILED_DIR, name);
+          const logDest = path.join(FAILED_DIR, `${name}.log`);
+          try {
+            await rename(filePath, dest);
+            await writeFile(logDest, logBody + mergeReport);
+            log("FAIL", `${name} → failed/ (PR #${prNumber} CI red: ${result.reason} on ${result.check ?? "?"})`);
+          } catch (err) {
+            log("error", `move failed: ${err.message}`);
+          }
+          await writeQuarantineReport(name, agentOutput, prNumber);
+          seen.delete(name);
+          await pauseQueue(`PR #${prNumber} CI red: ${result.reason}`);
+          running = false;
+          return;
+        } else if (!result.ok) {
+          // Timeout / closed-without-merge — move to blocked/ + pause downstream
           const dest = path.join(BLOCKED_DIR, name);
           const logDest = path.join(BLOCKED_DIR, `${name}.log`);
           try {
@@ -721,12 +1203,13 @@ async function drain() {
           await pauseQueue(`PR #${prNumber} blocked: ${result.reason}`);
           running = false;
           return;
-        }
-        // Merged — sync local main before next prompt
-        try {
-          await syncMain();
-        } catch (err) {
-          log("sync", `WARNING: main sync failed: ${err.message} — next prompt may run on stale base`);
+        } else {
+          // Merged — sync local main before next prompt
+          try {
+            await syncMain();
+          } catch (err) {
+            log("sync", `WARNING: main sync failed: ${err.message} — next prompt may run on stale base`);
+          }
         }
       }
     }
@@ -749,6 +1232,7 @@ async function drain() {
   });
 
   child.on("error", (err) => {
+    stopHeartbeat();
     log("error", `spawn failed: ${err.message}`);
     seen.delete(name);
     running = false;
@@ -817,7 +1301,7 @@ function warnOnOrphanClaudeProcesses() {
   }
 }
 
-(async () => {
+async function main() {
   await acquireLock();
   await ensureDirs();
   log("watcher", `repo:        ${REPO_ROOT}`);
@@ -826,11 +1310,16 @@ function warnOnOrphanClaudeProcesses() {
   log("watcher", `claude:      ${CLAUDE_BIN}`);
   log("watcher", `gh:          ${GH_BIN}`);
   log("watcher", `max-turns:   ${MAX_TURNS}`);
-  log("watcher", `auto-merge:  ${AUTO_MERGE ? "ON" : "OFF"}`);
+  log("watcher", `merge-pol:   ${AUTO_MERGE_POLICY}`);
   log("watcher", `merge-tmout: ${MERGE_TIMEOUT_MS / 60000} min`);
   log("watcher", `poll-every:  ${POLL_INTERVAL_MS / 1000} s`);
   log("watcher", `rescan:      ${RESCAN_INTERVAL_MS / 60000} min`);
   log("watcher", `auto-review: ${AUTO_REVIEW ? "ON" : "OFF"}`);
+  log("watcher", `auto-update: ${AUTO_UPDATE ? `ON (every ${UPDATE_POLL_INTERVAL_MS / 1000} s)` : "OFF"}`);
+  log("watcher", `transient:   ${TRANSIENT_PATTERNS.length} retry signature(s)`);
+  if (DRY_RUN) {
+    log("watcher", `dry-run:     ON — no claude runs, no mutating gh calls, no file moves`);
+  }
   if (STOP_AT_TIMESTAMP !== null) {
     const cutoffIso = new Date(STOP_AT_TIMESTAMP).toISOString();
     const minsFromNow = Math.round((STOP_AT_TIMESTAMP - Date.now()) / 60000);
@@ -864,12 +1353,27 @@ function warnOnOrphanClaudeProcesses() {
     }
   }
 
+  // Auto-update-branch poll loop
+  let updatePollTimer = null;
+  if (AUTO_UPDATE) {
+    updatePollTimer = setInterval(pollForBehindPrs, UPDATE_POLL_INTERVAL_MS);
+    pollForBehindPrs(); // immediate first pass
+  }
+
   process.on("SIGINT", () => {
     log("watcher", "shutting down (SIGINT)");
     clearInterval(rescanTimer);
     if (reviewPollTimer) clearInterval(reviewPollTimer);
+    if (updatePollTimer) clearInterval(updatePollTimer);
+    stopHeartbeat();
     watcher.close();
     releaseLock();
     process.exit(0);
   });
-})();
+}
+
+// Only start the daemon when executed directly. Importing this module (the
+// unit-style logic tests do `await import(...)`) must NOT start a watcher.
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main();
+}

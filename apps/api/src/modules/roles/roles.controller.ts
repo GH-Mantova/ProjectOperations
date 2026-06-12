@@ -9,6 +9,13 @@ import { CreateRoleDto } from "./dto/create-role.dto";
 import { RolesService } from "./roles.service";
 import { UpdateRoleDto } from "./dto/update-role.dto";
 
+/**
+ * HTTP endpoints for role administration (list, create, update).
+ *
+ * All routes require a valid JWT and per-route permissions via
+ * PermissionsGuard. Mutations forward the acting user (JWT `sub`) so the
+ * service can attribute audit entries.
+ */
 @ApiTags("Roles")
 @ApiBearerAuth()
 @Controller("roles")
@@ -16,6 +23,15 @@ import { UpdateRoleDto } from "./dto/update-role.dto";
 export class RolesController {
   constructor(private readonly rolesService: RolesService) {}
 
+  /**
+   * List roles.
+   *
+   * Requires `roles.view`. Returns a paginated envelope of roles with
+   * their permissions flattened onto each item.
+   *
+   * @param query - page / pageSize pagination options
+   * @returns paginated `{ items, total, page, pageSize }` of roles
+   */
   @Get()
   @RequirePermissions("roles.view")
   @ApiOperation({ summary: "List roles" })
@@ -23,6 +39,16 @@ export class RolesController {
     return this.rolesService.list(query);
   }
 
+  /**
+   * Create a role.
+   *
+   * Requires `roles.create`. Optionally links permissions at creation
+   * time via `permissionIds`.
+   *
+   * @param dto - role name, description, isSystem flag and optional permission ids
+   * @param actor - JWT payload of the acting user (`sub` = user id)
+   * @returns the created role with its rolePermissions included
+   */
   @Post()
   @RequirePermissions("roles.create")
   @ApiOperation({ summary: "Create a role" })
@@ -30,6 +56,17 @@ export class RolesController {
     return this.rolesService.create(dto, actor.sub);
   }
 
+  /**
+   * Update a role.
+   *
+   * Requires `roles.update`. Supplying `permissionIds` replaces the
+   * role's entire permission set.
+   *
+   * @param roleId - id of the role to update
+   * @param dto - partial role fields (name, description, isSystem, permissionIds)
+   * @param actor - JWT payload of the acting user (`sub` = user id)
+   * @returns the updated role with its rolePermissions included
+   */
   @Patch(":id")
   @RequirePermissions("roles.update")
   @ApiOperation({ summary: "Update a role" })

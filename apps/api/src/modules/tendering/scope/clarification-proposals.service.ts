@@ -54,12 +54,33 @@ export type ClarificationProposalEdits =
   | Partial<NewNoteProposal>
   | Partial<RfiResponseProposal>;
 
+/**
+ * Stores and decides AI-generated clarifications proposals (§5A.1 PR F),
+ * mirroring QuoteProposalsService.
+ *
+ * Proposals live in tool_result message metadata under the
+ * "propose_clarifications" toolName discriminator, keeping them isolated
+ * from scope/estimate/quote proposal rows. Accepting writes a
+ * TenderClarification (new_rfi), a TenderClarificationNote (new_note),
+ * or closes an existing RFI with a response (rfi_response). Ownership
+ * is enforced via the conversation's userId.
+ */
 @Injectable()
 export class ClarificationProposalsService {
   private readonly logger = new Logger(ClarificationProposalsService.name);
 
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Persists a propose_clarifications tool call as a tool_call +
+   * tool_result conversation-message pair in one transaction, with all
+   * proposals starting at "pending". Also bumps the conversation's
+   * updatedAt.
+   *
+   * @param toolUseId - provider tool_use id stored for provenance
+   * @param args - the tool arguments containing the kind-discriminated proposals
+   * @returns the tool_result message and the stored proposal array
+   */
   async storeClarificationProposals(
     conversationId: string,
     toolUseId: string,
@@ -109,6 +130,18 @@ export class ClarificationProposalsService {
     return { message, proposals };
   }
 
+  /**
+   * Accepts one pending proposal according to its kind: creates an OPEN
+   * TenderClarification (new_rfi), creates a TenderClarificationNote
+   * (new_note), or writes a response onto an existing un-answered RFI of
+   * the same tender and flips it to CLOSED (rfi_response). The proposal
+   * is then marked "accepted" with the created/updated record's id.
+   *
+   * @param edits - kind-aware field overrides merged over the stored proposal before commit
+   * @returns the AcceptedClarificationRecord (kind + row id)
+   * @throws NotFoundException when the message, proposal index, or target RFI is not found
+   * @throws BadRequestException when the proposal is already decided, the conversation has no tender context, the RFI belongs to another tender, or the RFI already has a response
+   */
   async acceptClarificationProposal(
     userId: string,
     messageId: string,
@@ -218,6 +251,13 @@ export class ClarificationProposalsService {
     return acceptedRecord;
   }
 
+  /**
+   * Rejects one pending proposal — metadata-only status flip with a
+   * decidedAt timestamp; no clarification rows are written.
+   *
+   * @throws NotFoundException when the message or proposal index is not found
+   * @throws BadRequestException when the proposal is already decided
+   */
   async rejectClarificationProposal(
     userId: string,
     messageId: string,
@@ -244,6 +284,14 @@ export class ClarificationProposalsService {
     });
   }
 
+  /**
+   * Accepts every pending proposal on the message by calling
+   * acceptClarificationProposal per index. Individual failures are
+   * logged and counted rather than aborting the batch.
+   *
+   * @returns `{ accepted, failed }` counts
+   * @throws NotFoundException when the message is not found or not owned by the user
+   */
   async acceptAllPending(
     userId: string,
     messageId: string
@@ -266,6 +314,13 @@ export class ClarificationProposalsService {
     return { accepted, failed };
   }
 
+  /**
+   * Rejects every pending proposal on the message in a single metadata
+   * update (no write occurs when nothing is pending).
+   *
+   * @returns `{ rejected }` count
+   * @throws NotFoundException when the message is not found or not owned by the user
+   */
   async rejectAllPending(userId: string, messageId: string): Promise<{ rejected: number }> {
     const { message, metadata } = await this.loadProposalMessage(userId, messageId);
     let rejected = 0;

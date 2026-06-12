@@ -29,10 +29,16 @@ export const DEFAULT_ROLE_BY_DISCIPLINE: Record<Discipline, string> = {
   Other: "Demolition labourer"
 };
 
+/** Display/sort order of disciplines (DEM → CIV → ASB → Other), copied from the DTO's DISCIPLINES tuple. */
 export const DISCIPLINE_ORDER: Discipline[] = [...DISCIPLINES];
 
 // ── Types ────────────────────────────────────────────────────────────
 
+/**
+ * One plant cell from a scope item's plantItems JSONB array. Only
+ * entries with a plantRateId contribute to the plant total; qty
+ * defaults to 1 and days to 0 when omitted.
+ */
 export type ScopePlantEntryInput = {
   columnIndex?: number;
   plantRateId?: string | null;
@@ -40,6 +46,7 @@ export type ScopePlantEntryInput = {
   days?: number | null;
 };
 
+/** Canonical pricing fields of a scope item, as consumed by computeScopeItemTotal. */
 export type ScopeItemPricingInput = {
   discipline: Discipline;
   men: number | null;
@@ -48,6 +55,7 @@ export type ScopeItemPricingInput = {
   provisionalAmount: number | null;
 };
 
+/** Pre-built rate lookups (see buildRateMaps) so pricing stays a pure function. */
 export type RateMaps = {
   /** Maps discipline → day rate in $/man-day. */
   labourRateByDiscipline: Map<Discipline, number>;
@@ -55,6 +63,7 @@ export type RateMaps = {
   plantRateById: Map<string, number>;
 };
 
+/** Per-row pricing result in dollars; values are NOT rounded here (caller rounds for display). */
 export type ScopeItemTotals = {
   labour: number;
   plant: number;

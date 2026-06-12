@@ -15,6 +15,10 @@ import {
 // row type lists them as available (so a `plant-only` row doesn't show
 // empty cells for "men" etc.).
 
+/**
+ * Columns that are always rendered for every row type — never part of
+ * the optional ScopeViewConfig column set.
+ */
 export const REQUIRED_COLUMNS = ["wbsCode", "description", "rowType"] as const;
 
 const COLUMNS_BY_ROW_TYPE: Record<string, string[]> = {
@@ -45,6 +49,15 @@ const ROW_TYPES_BY_DISCIPLINE: Record<Discipline, string[]> = {
 // Legacy aliases acceptable on any discipline the matrix allows.
 const LEGACY_ROW_TYPES = new Set(["demolition", "cutting", "asbestos", "excavation", "waste", "general"]);
 
+/**
+ * Validates that a rowType is allowed for the given discipline per the
+ * server-authoritative matrix, accepting legacy row-type aliases on any
+ * discipline.
+ *
+ * @param discipline - discipline code keyed into ROW_TYPES_BY_DISCIPLINE
+ * @param rowType - row type to validate
+ * @throws BadRequestException when the discipline is unknown or the rowType is not allowed for it
+ */
 export function assertRowTypeForDiscipline(discipline: Discipline, rowType: string): void {
   const allowed = ROW_TYPES_BY_DISCIPLINE[discipline];
   if (!allowed) throw new BadRequestException(`Unknown discipline "${discipline}".`);
@@ -55,6 +68,13 @@ export function assertRowTypeForDiscipline(discipline: Discipline, rowType: stri
   );
 }
 
+/**
+ * Resolves the available + required column sets for a row type.
+ *
+ * @param rowType - row type keyed into COLUMNS_BY_ROW_TYPE (legacy aliases included)
+ * @returns `{ available, required }` column-name arrays
+ * @throws BadRequestException when the rowType is unknown
+ */
 export function columnsForRowType(rowType: string) {
   const available = COLUMNS_BY_ROW_TYPE[rowType];
   if (!available) {
@@ -274,6 +294,15 @@ export type CoreHoleRateResult =
       elevationMultiplier: number;
     };
 
+/**
+ * Core hole rate resolver — spec Part 3.2. Returns isPOA=true for
+ * diameters > 650mm (manual pricing); undersize diameters round up to
+ * 32mm; between-listed diameters round up to the next available row.
+ *
+ * @param prisma - Prisma service used for the EstimateCoreHoleRate lookup
+ * @param input - diameterMm plus optional elevation/method for multipliers
+ * @returns a CoreHoleRateResult, or null when no active rate row matches
+ */
 export async function resolveCoreHoleRate(
   prisma: PrismaService,
   input: { diameterMm: number; elevation?: string | null; method?: string | null }
@@ -300,16 +329,41 @@ export async function resolveCoreHoleRate(
   };
 }
 
+/**
+ * Service behind the Scope of Works redesign: column availability, the
+ * per-(tender × discipline) view config, the cutting-items sheet with
+ * server-side Cutrite rate resolution, and the tender pricing summary.
+ *
+ * All pricing (ratePerM / ratePerHole / lineTotal) is derived
+ * server-side on create/update — clients never submit calculated
+ * values.
+ */
 @Injectable()
 export class ScopeRedesignService {
   constructor(private readonly prisma: PrismaService) {}
 
   // ── Columns ──────────────────────────────────────────────────────────
+  /**
+   * Returns the available + required columns for a row type.
+   *
+   * @param rowType - row type to look up
+   * @returns `{ available, required }` column-name arrays
+   * @throws BadRequestException when the rowType is unknown
+   */
   getColumnsForRowType(rowType: string) {
     return columnsForRowType(rowType);
   }
 
   // ── View config ──────────────────────────────────────────────────────
+  /**
+   * Returns the stored optional-column set for (tender × discipline),
+   * falling back to the union of the discipline's row-type columns
+   * (minus required columns) when no config row exists.
+   *
+   * @returns `{ tenderId, discipline, columns }`
+   * @throws NotFoundException when the tender does not exist
+   * @throws BadRequestException when the discipline is unknown
+   */
   async getViewConfig(tenderId: string, discipline: string) {
     await this.requireTender(tenderId);
     this.assertDiscipline(discipline);
@@ -330,6 +384,15 @@ export class ScopeRedesignService {
     };
   }
 
+  /**
+   * Upserts the optional-column set for (tender × discipline),
+   * filtering out non-string / empty entries before persisting.
+   *
+   * @param columns - column names to store; cleaned of empty/non-string values
+   * @returns the upserted ScopeViewConfig row
+   * @throws NotFoundException when the tender does not exist
+   * @throws BadRequestException when the discipline is unknown
+   */
   async upsertViewConfig(tenderId: string, discipline: string, columns: string[]) {
     await this.requireTender(tenderId);
     this.assertDiscipline(discipline);
@@ -342,6 +405,14 @@ export class ScopeRedesignService {
   }
 
   // ── Cutting sheet items ──────────────────────────────────────────────
+  /**
+   * Lists cutting sheet items for a tender, ordered by wbsRef then
+   * sortOrder, with the `otherRate` relation included.
+   *
+   * @param options - optional `cardId` to scope to one card; omitted → whole-tender list
+   * @returns cutting items for the tender (optionally one card)
+   * @throws NotFoundException when the tender does not exist
+   */
   async listCuttingItems(tenderId: string, options?: { cardId?: string }) {
     await this.requireTender(tenderId);
     // PR B4b — when cardId is supplied, scope the list to a single
@@ -357,6 +428,17 @@ export class ScopeRedesignService {
     });
   }
 
+  /**
+   * Creates a cutting sheet item with server-derived pricing
+   * (ratePerM / ratePerHole / lineTotal via the Cutrite resolvers).
+   * Rows always default autoCopied=false — only copyFromAbove sets it.
+   *
+   * @param actorId - recorded as createdById
+   * @param dto - raw inputs; cardId is required and must belong to the tender
+   * @returns the created item with its `otherRate` relation
+   * @throws BadRequestException when wbsRef/cardId is missing or itemType is invalid
+   * @throws NotFoundException when the tender or scope card is not found
+   */
   async createCuttingItem(
     tenderId: string,
     actorId: string,
@@ -442,6 +524,16 @@ export class ScopeRedesignService {
     });
   }
 
+  /**
+   * Partially updates a cutting item, merging the patch over the
+   * existing row and re-running the full pricing derivation so
+   * ratePerM / ratePerHole / lineTotal stay consistent.
+   *
+   * @param dto - partial patch; undefined fields keep their existing values
+   * @returns the updated item with its `otherRate` relation
+   * @throws NotFoundException when the item is missing or belongs to another tender
+   * @throws BadRequestException when the patched itemType is invalid
+   */
   async updateCuttingItem(
     tenderId: string,
     itemId: string,
@@ -532,6 +624,12 @@ export class ScopeRedesignService {
     });
   }
 
+  /**
+   * Hard-deletes a cutting item after verifying it belongs to the tender.
+   *
+   * @returns `{ id }` of the deleted item
+   * @throws NotFoundException when the item is missing or belongs to another tender
+   */
   async deleteCuttingItem(tenderId: string, itemId: string) {
     const existing = await this.prisma.cuttingSheetItem.findUnique({ where: { id: itemId } });
     if (!existing || existing.tenderId !== tenderId) throw new NotFoundException("Cutting item not found.");
@@ -660,6 +758,15 @@ export class ScopeRedesignService {
   }
 
   // ── Summary ──────────────────────────────────────────────────────────
+  /**
+   * Computes the tender pricing rollup: per-discipline scope-item
+   * subtotals (markup resolved per card via markupOverride ?? tender
+   * markup), the cutting subtotal, waste totals by discipline, and the
+   * combined tenderPrice. Excluded scope items are skipped.
+   *
+   * @returns per-discipline buckets plus `cutting`, `waste`, and `tenderPrice`
+   * @throws NotFoundException when the tender does not exist
+   */
   async summary(tenderId: string) {
     await this.requireTender(tenderId);
     // PR B1.7.2 — per-discipline subtotals now go through the same

@@ -37,6 +37,19 @@ function nthWeekdayOfMonth(year: number, month: number, weekday: number, n: numb
   return 1 + offset + (n - 1) * 7;
 }
 
+/**
+ * Compute the set of Queensland public holidays for a year as ISO
+ * `YYYY-MM-DD` strings.
+ *
+ * Covers New Year's Day, Australia Day, Good Friday / Easter Saturday /
+ * Easter Monday (Meeus/Jones/Butcher Easter algorithm, UTC arithmetic),
+ * Anzac Day, QLD Labour Day (first Monday of May), King's Birthday (first
+ * Monday of October), Christmas Day, and Boxing Day. Fixed-date holidays
+ * are not substituted when they fall on a weekend.
+ *
+ * @param year - calendar year to compute holidays for
+ * @returns a Set of ISO date strings for that year's QLD public holidays
+ */
 export function qldPublicHolidays(year: number): Set<string> {
   const set = new Set<string>();
   set.add(isoDate(year, 1, 1)); // New Year's Day
@@ -62,6 +75,16 @@ export function qldPublicHolidays(year: number): Set<string> {
   return set;
 }
 
+/**
+ * Check whether a date is a Queensland public holiday.
+ *
+ * Despite the name, only the QLD holiday table is consulted; other
+ * states' holidays are not considered. The comparison uses the date's
+ * UTC year/month/day components.
+ *
+ * @param date - the date to test
+ * @returns true when the date's UTC calendar day is in the QLD holiday set
+ */
 export function isAustralianPublicHoliday(date: Date): boolean {
   const set = qldPublicHolidays(date.getUTCFullYear());
   const iso = isoDate(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());

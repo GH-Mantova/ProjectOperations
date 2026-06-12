@@ -4,6 +4,11 @@ import { AuditService } from "../audit/audit.service";
 import { EmailService } from "../email/email.service";
 import { NotificationsService } from "../platform/notifications.service";
 
+/**
+ * Allowed entry types for the unified tender communication log.
+ * follow_up / self_reminder / task require a due date; task also
+ * requires an assignee.
+ */
 export const TENDER_ENTRY_TYPES = [
   "note",
   "rfi",
@@ -16,6 +21,7 @@ export const TENDER_ENTRY_TYPES = [
 ] as const;
 export type TenderEntryType = (typeof TENDER_ENTRY_TYPES)[number];
 
+/** Allowed entry statuses; 'cancelled' doubles as the soft-delete marker. */
 export const TENDER_ENTRY_STATUSES = ["open", "done", "cancelled"] as const;
 export type TenderEntryStatus = (typeof TENDER_ENTRY_STATUSES)[number];
 
@@ -51,6 +57,14 @@ export type UpdateTenderEntryInput = {
   status?: string | null;
 };
 
+/**
+ * Service for the unified tender communication log (TenderEntry rows).
+ *
+ * Every mutation writes an audit entry. Creating a 'task' entry
+ * assigned to someone other than the author dispatches an in-app
+ * notification and an email best-effort (failures are logged, never
+ * thrown). Removal is a soft-delete via status='cancelled'.
+ */
 @Injectable()
 export class TenderEntriesService {
   private readonly logger = new Logger(TenderEntriesService.name);
@@ -62,6 +76,14 @@ export class TenderEntriesService {
     private readonly email: EmailService
   ) {}
 
+  /**
+   * List entries for a tender, newest first, with optional filters.
+   *
+   * @param query - optional type / assigneeId / status / createdAt range filters
+   * @returns entries including author + assignee (id, firstName, lastName)
+   * @throws NotFoundException when the tender does not exist
+   * @throws BadRequestException when type or status filter value is invalid
+   */
   async list(tenderId: string, query: ListTenderEntriesQuery) {
     await this.ensureTenderExists(tenderId);
 
@@ -97,6 +119,18 @@ export class TenderEntriesService {
     });
   }
 
+  /**
+   * Create an entry on a tender; status defaults to 'open'.
+   *
+   * follow_up / self_reminder / task types require a due date; task
+   * also requires an assignee. A task assigned to another user fires a
+   * best-effort notification + email after the write.
+   *
+   * @param dto - type, body (required, trimmed), optional subject/dueDate/assigneeId/status
+   * @returns the created entry with author + assignee metadata
+   * @throws NotFoundException when the tender does not exist
+   * @throws BadRequestException on invalid type/status, empty body, missing conditional fields, or unknown/inactive assignee
+   */
   async create(tenderId: string, dto: CreateTenderEntryInput, actorId: string) {
     await this.ensureTenderExists(tenderId);
     const type = this.assertType(dto.type);
@@ -214,6 +248,18 @@ export class TenderEntriesService {
     }
   }
 
+  /**
+   * Partially update an entry; conditional-field rules are re-validated
+   * against the merged (existing + patch) state.
+   *
+   * Null dueDate/assigneeId clears the field; the body can be changed
+   * but never cleared.
+   *
+   * @param dto - partial entry fields
+   * @returns the updated entry with author + assignee metadata
+   * @throws NotFoundException when the entry is not on this tender
+   * @throws BadRequestException on invalid type/status, empty body, missing conditional fields, or unknown/inactive assignee
+   */
   async update(tenderId: string, entryId: string, dto: UpdateTenderEntryInput, actorId: string) {
     const existing = await this.requireEntry(tenderId, entryId);
 
@@ -265,6 +311,13 @@ export class TenderEntriesService {
     return record;
   }
 
+  /**
+   * Soft-delete an entry by setting status='cancelled'; writes an audit
+   * entry. Idempotent — already-cancelled entries return without writing.
+   *
+   * @returns { id, status }
+   * @throws NotFoundException when the entry is not on this tender
+   */
   async remove(tenderId: string, entryId: string, actorId: string) {
     const existing = await this.requireEntry(tenderId, entryId);
     if (existing.status === "cancelled") {

@@ -52,6 +52,16 @@ export type ProposalEdits = Partial<{
   notes: string;
 }>;
 
+/**
+ * Stores and decides AI-generated scope-item proposals.
+ *
+ * Proposals live in the metadata of a tool_result ConversationMessage
+ * (status pending/accepted/rejected). Accepting a proposal writes a
+ * confirmed ScopeOfWorksItem (creating the discipline's scope card from
+ * defaults if none exists) and stamps the accepted scope-item id back
+ * into the message metadata. Ownership is enforced by matching the
+ * conversation's userId against the caller.
+ */
 @Injectable()
 export class ProposalsService {
   private readonly logger = new Logger(ProposalsService.name);
@@ -62,6 +72,16 @@ export class ProposalsService {
   // The AI's tool call (with arguments) becomes a tool_call row; this method
   // creates the matching tool_result row that the UI renders as proposal
   // cards. Status starts at "pending" for every proposal.
+  /**
+   * Persists an AI propose_scope_items tool call as a tool_call +
+   * tool_result conversation-message pair in one transaction, with every
+   * proposal starting at status "pending". Also bumps the conversation's
+   * updatedAt.
+   *
+   * @param toolUseId - provider tool_use id stored for provenance
+   * @param args - the tool arguments containing the proposed items
+   * @returns the tool_result message and the stored proposal array
+   */
   async storeProposals(
     conversationId: string,
     toolUseId: string,
@@ -110,6 +130,20 @@ export class ProposalsService {
     return { message, proposals };
   }
 
+  /**
+   * Accepts one pending proposal: creates a confirmed, aiProposed
+   * ScopeOfWorksItem on the conversation's tender (looking up or
+   * creating the discipline's first scope card from defaults), then
+   * flips the proposal to "accepted" in the message metadata.
+   *
+   * The wbsCode is `{discipline}{itemNumber}` where itemNumber is the
+   * current count of items on that discipline's cards + 1.
+   *
+   * @param edits - optional field overrides merged over the stored proposal before commit
+   * @returns `{ scopeItemId }` of the created scope item
+   * @throws NotFoundException when the message or proposal index is not found
+   * @throws BadRequestException when the proposal is already decided or the conversation has no tender context
+   */
   async acceptProposal(
     userId: string,
     messageId: string,
@@ -211,6 +245,13 @@ export class ProposalsService {
     return { scopeItemId: scopeItem.id };
   }
 
+  /**
+   * Rejects one pending proposal — metadata-only status flip with a
+   * decidedAt timestamp; nothing is written to scope_of_works_items.
+   *
+   * @throws NotFoundException when the message or proposal index is not found
+   * @throws BadRequestException when the proposal is already decided
+   */
   async rejectProposal(
     userId: string,
     messageId: string,
@@ -237,6 +278,14 @@ export class ProposalsService {
     });
   }
 
+  /**
+   * Accepts every pending proposal on the message by calling
+   * acceptProposal per index. Individual failures are logged and
+   * counted rather than aborting the batch.
+   *
+   * @returns `{ accepted, failed }` counts
+   * @throws NotFoundException when the message is not found or not owned by the user
+   */
   async acceptAllPending(
     userId: string,
     messageId: string
@@ -259,6 +308,13 @@ export class ProposalsService {
     return { accepted, failed };
   }
 
+  /**
+   * Rejects every pending proposal on the message in a single metadata
+   * update (no write occurs when nothing is pending).
+   *
+   * @returns `{ rejected }` count
+   * @throws NotFoundException when the message is not found or not owned by the user
+   */
   async rejectAllPending(userId: string, messageId: string): Promise<{ rejected: number }> {
     const { message, metadata } = await this.loadProposalMessage(userId, messageId);
     let rejected = 0;

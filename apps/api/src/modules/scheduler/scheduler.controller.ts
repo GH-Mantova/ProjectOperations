@@ -14,6 +14,14 @@ import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { SchedulerService } from "./scheduler.service";
 import { AssignAssetDto, AssignWorkerDto, CreateShiftDto, SchedulerQueryDto, UpdateShiftDto } from "./dto/scheduler.dto";
 
+/**
+ * REST endpoints for the scheduler workspace: shift CRUD and
+ * worker/asset assignment management.
+ *
+ * Requires `scheduler.view` for the workspace read and
+ * `scheduler.manage` for all mutations. Thin pass-through to
+ * SchedulerService, which refreshes scheduling conflicts on every write.
+ */
 @ApiTags("Scheduler")
 @ApiBearerAuth()
 @Controller("scheduler")
@@ -21,6 +29,12 @@ import { AssignAssetDto, AssignWorkerDto, CreateShiftDto, SchedulerQueryDto, Upd
 export class SchedulerController {
   constructor(private readonly service: SchedulerService) {}
 
+  /**
+   * Get scheduler workspace data.
+   *
+   * @param query - view/mode hints plus page/pageSize (echoed back, not used to slice data)
+   * @returns `{ items: { jobs, workers, assets, shifts }, total, page, pageSize }`
+   */
   @Get("workspace")
   @RequirePermissions("scheduler.view")
   @ApiOperation({ summary: "Get scheduler workspace data" })
@@ -35,6 +49,14 @@ export class SchedulerController {
     return this.service.workspace(query);
   }
 
+  /**
+   * Create shift.
+   *
+   * @param dto - job/stage/activity refs, title, start/end, status, lead and notes
+   * @returns the created shift with conflicts re-evaluated
+   * @throws NotFoundException when the job activity is missing or belongs to a different job
+   * @throws BadRequestException when endAt is not after startAt
+   */
   @Post("shifts")
   @RequirePermissions("scheduler.manage")
   @ApiOperation({ summary: "Create shift" })
@@ -45,6 +67,15 @@ export class SchedulerController {
     return this.service.createShift(dto, actor.sub);
   }
 
+  /**
+   * Update shift.
+   *
+   * @param shiftId - shift to update
+   * @param dto - replacement shift fields (full update, not a sparse patch)
+   * @returns the updated shift with conflicts re-evaluated
+   * @throws NotFoundException when the shift does not exist
+   * @throws BadRequestException when endAt is not after startAt
+   */
   @Patch("shifts/:shiftId")
   @RequirePermissions("scheduler.manage")
   @ApiOperation({ summary: "Update shift" })
@@ -56,6 +87,15 @@ export class SchedulerController {
     return this.service.updateShift(shiftId, dto, actor.sub);
   }
 
+  /**
+   * Assign worker to shift.
+   *
+   * @param shiftId - target shift
+   * @param dto - workerId plus optional roleLabel
+   * @returns the shift with refreshed assignments and conflicts
+   * @throws NotFoundException when the shift does not exist
+   * @throws ConflictException when the worker is already assigned to this shift
+   */
   @Post("shifts/:shiftId/workers")
   @RequirePermissions("scheduler.manage")
   @ApiOperation({ summary: "Assign worker to shift" })
@@ -68,6 +108,14 @@ export class SchedulerController {
     return this.service.assignWorker(shiftId, dto, actor.sub);
   }
 
+  /**
+   * Remove worker from shift.
+   *
+   * Idempotent — removing an assignment that does not exist is a no-op.
+   *
+   * @returns the shift with refreshed assignments and conflicts
+   * @throws NotFoundException when the shift does not exist
+   */
   @Delete("shifts/:shiftId/workers/:workerId")
   @RequirePermissions("scheduler.manage")
   @ApiOperation({ summary: "Remove worker from shift" })
@@ -79,6 +127,15 @@ export class SchedulerController {
     return this.service.unassignWorker(shiftId, workerId, actor.sub);
   }
 
+  /**
+   * Assign asset to shift.
+   *
+   * @param shiftId - target shift
+   * @param dto - assetId to assign
+   * @returns the shift with refreshed assignments and conflicts
+   * @throws NotFoundException when the shift does not exist
+   * @throws ConflictException when the asset is already assigned to this shift
+   */
   @Post("shifts/:shiftId/assets")
   @RequirePermissions("scheduler.manage")
   @ApiOperation({ summary: "Assign asset to shift" })
@@ -91,6 +148,14 @@ export class SchedulerController {
     return this.service.assignAsset(shiftId, dto, actor.sub);
   }
 
+  /**
+   * Remove asset from shift.
+   *
+   * Idempotent — removing an assignment that does not exist is a no-op.
+   *
+   * @returns the shift with refreshed assignments and conflicts
+   * @throws NotFoundException when the shift does not exist
+   */
   @Delete("shifts/:shiftId/assets/:assetId")
   @RequirePermissions("scheduler.manage")
   @ApiOperation({ summary: "Remove asset from shift" })

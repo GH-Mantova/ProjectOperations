@@ -56,6 +56,16 @@ function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+/**
+ * Business logic for the estimating module: rate-library CRUD and the
+ * per-tender estimate aggregate (scope items, cost lines, assumptions,
+ * lock state and server-authoritative totals).
+ *
+ * Cross-cutting behaviour: every write records an audit entry; all
+ * estimate mutations are blocked with ForbiddenException once the
+ * estimate is locked; mutating methods return the full re-fetched
+ * estimate rather than just the touched row.
+ */
 @Injectable()
 export class EstimatesService {
   constructor(
@@ -67,11 +77,22 @@ export class EstimatesService {
   //  Rate library
   // ──────────────────────────────────────────────────────────────
 
+  /**
+   * List labour rates, active first then by sortOrder and role.
+   *
+   * @returns all EstimateLabourRate rows
+   */
   listLabourRates() {
     return this.prisma.estimateLabourRate.findMany({
       orderBy: [{ isActive: "desc" }, { sortOrder: "asc" }, { role: "asc" }]
     });
   }
+  /**
+   * Create (id undefined) or update (id given) a labour rate; audited.
+   *
+   * @param id - existing rate id for update, undefined for create
+   * @returns the created/updated rate row
+   */
   async upsertLabourRate(id: string | undefined, dto: UpsertLabourRateDto, actorId?: string) {
     const data = {
       role: dto.role,
@@ -92,6 +113,11 @@ export class EstimatesService {
     });
     return record;
   }
+  /**
+   * Hard-delete a labour rate; audited.
+   *
+   * @returns `{ id }` of the deleted rate
+   */
   async deleteLabourRate(id: string, actorId?: string) {
     await this.prisma.estimateLabourRate.delete({ where: { id } });
     await this.auditService.write({
@@ -103,11 +129,22 @@ export class EstimatesService {
     return { id };
   }
 
+  /**
+   * List plant rates, active first then by sortOrder and item.
+   *
+   * @returns all EstimatePlantRate rows
+   */
   listPlantRates() {
     return this.prisma.estimatePlantRate.findMany({
       orderBy: [{ isActive: "desc" }, { sortOrder: "asc" }, { item: "asc" }]
     });
   }
+  /**
+   * Create (id undefined) or update (id given) a plant rate; audited.
+   * Unit defaults to "day", fuelRate to 0.
+   *
+   * @returns the created/updated rate row
+   */
   async upsertPlantRate(id: string | undefined, dto: UpsertPlantRateDto, actorId?: string) {
     const data = {
       item: dto.item,
@@ -128,6 +165,11 @@ export class EstimatesService {
     });
     return record;
   }
+  /**
+   * Hard-delete a plant rate; audited.
+   *
+   * @returns `{ id }` of the deleted rate
+   */
   async deletePlantRate(id: string, actorId?: string) {
     await this.prisma.estimatePlantRate.delete({ where: { id } });
     await this.auditService.write({
@@ -139,11 +181,22 @@ export class EstimatesService {
     return { id };
   }
 
+  /**
+   * List waste rates, active first then by sortOrder, wasteType and facility.
+   *
+   * @returns all EstimateWasteRate rows
+   */
   listWasteRates() {
     return this.prisma.estimateWasteRate.findMany({
       orderBy: [{ isActive: "desc" }, { sortOrder: "asc" }, { wasteType: "asc" }, { facility: "asc" }]
     });
   }
+  /**
+   * Create (id undefined) or update (id given) a waste rate; audited.
+   * Unit defaults to "tonne", loadRate to 0.
+   *
+   * @returns the created/updated rate row
+   */
   async upsertWasteRate(id: string | undefined, dto: UpsertWasteRateDto, actorId?: string) {
     const data = {
       wasteType: dto.wasteType,
@@ -166,6 +219,11 @@ export class EstimatesService {
     });
     return record;
   }
+  /**
+   * Hard-delete a waste rate; audited.
+   *
+   * @returns `{ id }` of the deleted rate
+   */
   async deleteWasteRate(id: string, actorId?: string) {
     await this.prisma.estimateWasteRate.delete({ where: { id } });
     await this.auditService.write({
@@ -177,6 +235,11 @@ export class EstimatesService {
     return { id };
   }
 
+  /**
+   * List cutting rates ordered by equipment, material, elevation and depth.
+   *
+   * @returns all EstimateCuttingRate rows
+   */
   listCuttingRates() {
     return this.prisma.estimateCuttingRate.findMany({
       orderBy: [
@@ -188,6 +251,11 @@ export class EstimatesService {
       ]
     });
   }
+  /**
+   * Create (id undefined) or update (id given) a cutting rate; audited.
+   *
+   * @returns the created/updated rate row
+   */
   async upsertCuttingRate(id: string | undefined, dto: UpsertCuttingRateDto, actorId?: string) {
     const data = {
       equipment: dto.equipment,
@@ -209,6 +277,11 @@ export class EstimatesService {
     });
     return record;
   }
+  /**
+   * Hard-delete a cutting rate; audited.
+   *
+   * @returns `{ id }` of the deleted rate
+   */
   async deleteCuttingRate(id: string, actorId?: string) {
     await this.prisma.estimateCuttingRate.delete({ where: { id } });
     await this.auditService.write({
@@ -220,11 +293,21 @@ export class EstimatesService {
     return { id };
   }
 
+  /**
+   * List core-hole rates, active first then by diameter.
+   *
+   * @returns all EstimateCoreHoleRate rows
+   */
   listCoreHoleRates() {
     return this.prisma.estimateCoreHoleRate.findMany({
       orderBy: [{ isActive: "desc" }, { diameterMm: "asc" }]
     });
   }
+  /**
+   * Create (id undefined) or update (id given) a core-hole rate; audited.
+   *
+   * @returns the created/updated rate row
+   */
   async upsertCoreHoleRate(id: string | undefined, dto: UpsertCoreHoleRateDto, actorId?: string) {
     const data = {
       diameterMm: dto.diameterMm,
@@ -242,6 +325,11 @@ export class EstimatesService {
     });
     return record;
   }
+  /**
+   * Hard-delete a core-hole rate; audited.
+   *
+   * @returns `{ id }` of the deleted rate
+   */
   async deleteCoreHoleRate(id: string, actorId?: string) {
     await this.prisma.estimateCoreHoleRate.delete({ where: { id } });
     await this.auditService.write({
@@ -253,11 +341,21 @@ export class EstimatesService {
     return { id };
   }
 
+  /**
+   * List fuel rates, active first then by sortOrder and item.
+   *
+   * @returns all EstimateFuelRate rows
+   */
   listFuelRates() {
     return this.prisma.estimateFuelRate.findMany({
       orderBy: [{ isActive: "desc" }, { sortOrder: "asc" }, { item: "asc" }]
     });
   }
+  /**
+   * Create (id undefined) or update (id given) a fuel rate; audited.
+   *
+   * @returns the created/updated rate row
+   */
   async upsertFuelRate(id: string | undefined, dto: UpsertFuelRateDto, actorId?: string) {
     const data = {
       item: dto.item,
@@ -277,6 +375,11 @@ export class EstimatesService {
     });
     return record;
   }
+  /**
+   * Hard-delete a fuel rate; audited.
+   *
+   * @returns `{ id }` of the deleted rate
+   */
   async deleteFuelRate(id: string, actorId?: string) {
     await this.prisma.estimateFuelRate.delete({ where: { id } });
     await this.auditService.write({
@@ -288,11 +391,21 @@ export class EstimatesService {
     return { id };
   }
 
+  /**
+   * List enclosure rates, active first then by sortOrder and type.
+   *
+   * @returns all EstimateEnclosureRate rows
+   */
   listEnclosureRates() {
     return this.prisma.estimateEnclosureRate.findMany({
       orderBy: [{ isActive: "desc" }, { sortOrder: "asc" }, { enclosureType: "asc" }]
     });
   }
+  /**
+   * Create (id undefined) or update (id given) an enclosure rate; audited.
+   *
+   * @returns the created/updated rate row
+   */
   async upsertEnclosureRate(id: string | undefined, dto: UpsertEnclosureRateDto, actorId?: string) {
     const data = {
       enclosureType: dto.enclosureType,
@@ -312,6 +425,11 @@ export class EstimatesService {
     });
     return record;
   }
+  /**
+   * Hard-delete an enclosure rate; audited.
+   *
+   * @returns `{ id }` of the deleted rate
+   */
   async deleteEnclosureRate(id: string, actorId?: string) {
     await this.prisma.estimateEnclosureRate.delete({ where: { id } });
     await this.auditService.write({
@@ -324,11 +442,21 @@ export class EstimatesService {
   }
 
   // Material density — lookup table for density by material name
+  /**
+   * List material densities, active first then by category and name.
+   *
+   * @returns all EstimateMaterialDensity rows
+   */
   listMaterialDensities() {
     return this.prisma.estimateMaterialDensity.findMany({
       orderBy: [{ isActive: "desc" }, { category: "asc" }, { materialName: "asc" }]
     });
   }
+  /**
+   * Create (id undefined) or update (id given) a material density; audited.
+   *
+   * @returns the created/updated density row
+   */
   async upsertMaterialDensity(id: string | undefined, dto: UpsertMaterialDensityDto, actorId?: string) {
     const data = {
       materialName: dto.materialName,
@@ -350,6 +478,12 @@ export class EstimatesService {
     });
     return record;
   }
+  /**
+   * Soft-delete a material density — sets isActive false rather than
+   * removing the row; audited as a delete.
+   *
+   * @returns `{ id }` of the deactivated density
+   */
   async deleteMaterialDensity(id: string, actorId?: string) {
     await this.prisma.estimateMaterialDensity.update({
       where: { id },
@@ -366,11 +500,21 @@ export class EstimatesService {
 
   // Other rates — flat-fee / unit-priced cutting-sheet catalogue
   // (establishment fees, saw-blade changes, etc).
+  /**
+   * List cutting-sheet other-rates, active first then by sortOrder and description.
+   *
+   * @returns all CuttingOtherRate rows
+   */
   listOtherRates() {
     return this.prisma.cuttingOtherRate.findMany({
       orderBy: [{ isActive: "desc" }, { sortOrder: "asc" }, { description: "asc" }]
     });
   }
+  /**
+   * Create (id undefined) or update (id given) an other-rate; audited.
+   *
+   * @returns the created/updated rate row
+   */
   async upsertOtherRate(id: string | undefined, dto: UpsertOtherRateDto, actorId?: string) {
     const data = {
       description: dto.description,
@@ -390,6 +534,13 @@ export class EstimatesService {
     });
     return record;
   }
+  /**
+   * Hard-delete an other-rate after confirming no cutting-sheet items
+   * reference it; audited.
+   *
+   * @returns `{ id }` of the deleted rate
+   * @throws ForbiddenException when cuttingSheetItem rows still reference the rate
+   */
   async deleteOtherRate(id: string, actorId?: string) {
     const usage = await this.prisma.cuttingSheetItem.count({ where: { otherRateId: id } });
     if (usage > 0) {
@@ -436,12 +587,28 @@ export class EstimatesService {
     }
   }
 
+  /**
+   * Get a tender's estimate with all items, lines and assumptions.
+   *
+   * @returns the estimate, or null when none has been created yet
+   * @throws NotFoundException when the tender does not exist
+   */
   async getEstimate(tenderId: string) {
     await this.requireTender(tenderId);
     const existing = await this.getEstimateForTender(tenderId);
     return existing ?? null;
   }
 
+  /**
+   * Create the estimate for a tender, idempotently.
+   *
+   * Returns the existing estimate untouched when one is already present;
+   * otherwise creates one with the 30% default markup and writes an
+   * `estimates.create` audit entry.
+   *
+   * @returns the estimate with full includes
+   * @throws NotFoundException when the tender does not exist
+   */
   async createEstimate(tenderId: string, actorId?: string) {
     await this.requireTender(tenderId);
     const existing = await this.getEstimateForTender(tenderId);
@@ -459,6 +626,17 @@ export class EstimatesService {
     return this.requireEstimate(tenderId);
   }
 
+  /**
+   * Patch estimate-level fields (markup, notes) with upsert semantics.
+   *
+   * When no estimate exists yet, one is created on the fly with the
+   * patched values (markup defaults to 30). The lock check only applies
+   * to existing estimates. Audited as create or update accordingly.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the tender does not exist
+   * @throws ForbiddenException when an existing estimate is locked
+   */
   async updateEstimate(tenderId: string, dto: UpdateEstimateDto, actorId?: string) {
     // PR B2 — upsert behaviour. Fresh tenders have no TenderEstimate
     // row until one is explicitly created; the scope-of-works markup
@@ -498,6 +676,14 @@ export class EstimatesService {
     return this.requireEstimate(tenderId);
   }
 
+  /**
+   * Lock an estimate, stamping lockedAt and lockedById; audited.
+   *
+   * Locking is idempotent — re-locking refreshes the timestamp.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate does not exist
+   */
   async lockEstimate(tenderId: string, actorId?: string) {
     const estimate = await this.requireEstimate(tenderId);
     await this.prisma.tenderEstimate.update({
@@ -513,6 +699,12 @@ export class EstimatesService {
     return this.requireEstimate(tenderId);
   }
 
+  /**
+   * Unlock an estimate, clearing lockedAt and lockedById; audited.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate does not exist
+   */
   async unlockEstimate(tenderId: string, actorId?: string) {
     const estimate = await this.requireEstimate(tenderId);
     await this.prisma.tenderEstimate.update({
@@ -532,6 +724,16 @@ export class EstimatesService {
   //  Items (scope items)
   // ──────────────────────────────────────────────────────────────
 
+  /**
+   * Add a scope item to a tender's estimate; audited.
+   *
+   * When itemNumber is omitted it is derived as (count of existing items
+   * with the same code) + 1. Item markup defaults to 30%.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   async addItem(tenderId: string, dto: UpsertEstimateItemDto, actorId?: string) {
     const estimate = await this.requireEstimate(tenderId);
     this.ensureNotLocked(estimate);
@@ -561,6 +763,13 @@ export class EstimatesService {
     return this.requireEstimate(tenderId);
   }
 
+  /**
+   * Sparse-update a scope item (only defined dto fields are written); audited.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate or item does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   async updateItem(tenderId: string, itemId: string, dto: UpdateEstimateItemDto, actorId?: string) {
     const estimate = await this.requireEstimate(tenderId);
     this.ensureNotLocked(estimate);
@@ -584,6 +793,13 @@ export class EstimatesService {
     return this.requireEstimate(tenderId);
   }
 
+  /**
+   * Delete a scope item (DB cascade removes its lines and assumptions); audited.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate or item does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   async deleteItem(tenderId: string, itemId: string, actorId?: string) {
     const estimate = await this.requireEstimate(tenderId);
     this.ensureNotLocked(estimate);
@@ -609,6 +825,13 @@ export class EstimatesService {
   //  Line items
   // ──────────────────────────────────────────────────────────────
 
+  /**
+   * Add a labour line (qty x days x rate; shift defaults "Day") to an item; audited.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate or item does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   async addLabourLine(tenderId: string, itemId: string, dto: UpsertLabourLineDto, actorId?: string) {
     const estimate = await this.requireEstimate(tenderId);
     this.ensureNotLocked(estimate);
@@ -632,6 +855,13 @@ export class EstimatesService {
     });
     return this.requireEstimate(tenderId);
   }
+  /**
+   * Sparse-update a labour line; audited.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate, item or line does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   async updateLabourLine(tenderId: string, itemId: string, lineId: string, dto: UpdateLabourLineDto, actorId?: string) {
     const estimate = await this.requireEstimate(tenderId);
     this.ensureNotLocked(estimate);
@@ -652,6 +882,13 @@ export class EstimatesService {
     });
     return this.requireEstimate(tenderId);
   }
+  /**
+   * Delete a labour line; audited.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate, item or line does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   async deleteLabourLine(tenderId: string, itemId: string, lineId: string, actorId?: string) {
     const estimate = await this.requireEstimate(tenderId);
     this.ensureNotLocked(estimate);
@@ -670,6 +907,13 @@ export class EstimatesService {
     if (!line || line.itemId !== itemId) throw new NotFoundException("Labour line not found on this item.");
   }
 
+  /**
+   * Add a plant line (qty x days x rate) to an item; audited.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate or item does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   async addPlantLine(tenderId: string, itemId: string, dto: UpsertPlantLineDto, actorId?: string) {
     const estimate = await this.requireEstimate(tenderId);
     this.ensureNotLocked(estimate);
@@ -693,6 +937,13 @@ export class EstimatesService {
     });
     return this.requireEstimate(tenderId);
   }
+  /**
+   * Sparse-update a plant line; audited.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate, item or line does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   async updatePlantLine(tenderId: string, itemId: string, lineId: string, dto: UpdatePlantLineDto, actorId?: string) {
     const estimate = await this.requireEstimate(tenderId);
     this.ensureNotLocked(estimate);
@@ -713,6 +964,13 @@ export class EstimatesService {
     });
     return this.requireEstimate(tenderId);
   }
+  /**
+   * Delete a plant line; audited.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate, item or line does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   async deletePlantLine(tenderId: string, itemId: string, lineId: string, actorId?: string) {
     const estimate = await this.requireEstimate(tenderId);
     this.ensureNotLocked(estimate);
@@ -731,6 +989,14 @@ export class EstimatesService {
     if (!line || line.itemId !== itemId) throw new NotFoundException("Plant line not found on this item.");
   }
 
+  /**
+   * Add an equipment/subcontractor line (qty x duration x rate; period
+   * defaults "Day") to an item; audited.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate or item does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   async addEquipLine(tenderId: string, itemId: string, dto: UpsertEquipLineDto, actorId?: string) {
     const estimate = await this.requireEstimate(tenderId);
     this.ensureNotLocked(estimate);
@@ -754,6 +1020,13 @@ export class EstimatesService {
     });
     return this.requireEstimate(tenderId);
   }
+  /**
+   * Sparse-update an equipment/subcontractor line; audited.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate, item or line does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   async updateEquipLine(tenderId: string, itemId: string, lineId: string, dto: UpdateEquipLineDto, actorId?: string) {
     const estimate = await this.requireEstimate(tenderId);
     this.ensureNotLocked(estimate);
@@ -774,6 +1047,13 @@ export class EstimatesService {
     });
     return this.requireEstimate(tenderId);
   }
+  /**
+   * Delete an equipment/subcontractor line; audited.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate, item or line does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   async deleteEquipLine(tenderId: string, itemId: string, lineId: string, actorId?: string) {
     const estimate = await this.requireEstimate(tenderId);
     this.ensureNotLocked(estimate);
@@ -792,6 +1072,13 @@ export class EstimatesService {
     if (!line || line.itemId !== itemId) throw new NotFoundException("Equipment line not found on this item.");
   }
 
+  /**
+   * Add a waste line (tonnes x tonRate + loads x loadRate) to an item; audited.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate or item does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   async addWasteLine(tenderId: string, itemId: string, dto: UpsertWasteLineDto, actorId?: string) {
     const estimate = await this.requireEstimate(tenderId);
     this.ensureNotLocked(estimate);
@@ -817,6 +1104,13 @@ export class EstimatesService {
     });
     return this.requireEstimate(tenderId);
   }
+  /**
+   * Sparse-update a waste line; audited.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate, item or line does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   async updateWasteLine(tenderId: string, itemId: string, lineId: string, dto: UpdateWasteLineDto, actorId?: string) {
     const estimate = await this.requireEstimate(tenderId);
     this.ensureNotLocked(estimate);
@@ -839,6 +1133,13 @@ export class EstimatesService {
     });
     return this.requireEstimate(tenderId);
   }
+  /**
+   * Delete a waste line; audited.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate, item or line does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   async deleteWasteLine(tenderId: string, itemId: string, lineId: string, actorId?: string) {
     const estimate = await this.requireEstimate(tenderId);
     this.ensureNotLocked(estimate);
@@ -857,6 +1158,13 @@ export class EstimatesService {
     if (!line || line.itemId !== itemId) throw new NotFoundException("Waste line not found on this item.");
   }
 
+  /**
+   * Add a cutting line (qty x rate, typed by cuttingType) to an item; audited.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate or item does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   async addCuttingLine(tenderId: string, itemId: string, dto: UpsertCuttingLineDto, actorId?: string) {
     const estimate = await this.requireEstimate(tenderId);
     this.ensureNotLocked(estimate);
@@ -885,6 +1193,13 @@ export class EstimatesService {
     });
     return this.requireEstimate(tenderId);
   }
+  /**
+   * Sparse-update a cutting line; audited.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate, item or line does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   async updateCuttingLine(tenderId: string, itemId: string, lineId: string, dto: UpdateCuttingLineDto, actorId?: string) {
     const estimate = await this.requireEstimate(tenderId);
     this.ensureNotLocked(estimate);
@@ -910,6 +1225,13 @@ export class EstimatesService {
     });
     return this.requireEstimate(tenderId);
   }
+  /**
+   * Delete a cutting line; audited.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate, item or line does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   async deleteCuttingLine(tenderId: string, itemId: string, lineId: string, actorId?: string) {
     const estimate = await this.requireEstimate(tenderId);
     this.ensureNotLocked(estimate);
@@ -928,6 +1250,13 @@ export class EstimatesService {
     if (!line || line.itemId !== itemId) throw new NotFoundException("Cutting line not found on this item.");
   }
 
+  /**
+   * Add a free-text assumption to an item; audited.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate or item does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   async addAssumption(tenderId: string, itemId: string, dto: UpsertAssumptionDto, actorId?: string) {
     const estimate = await this.requireEstimate(tenderId);
     this.ensureNotLocked(estimate);
@@ -943,6 +1272,13 @@ export class EstimatesService {
     });
     return this.requireEstimate(tenderId);
   }
+  /**
+   * Sparse-update an assumption; audited.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate, item or assumption does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   async updateAssumption(tenderId: string, itemId: string, lineId: string, dto: UpdateAssumptionDto, actorId?: string) {
     const estimate = await this.requireEstimate(tenderId);
     this.ensureNotLocked(estimate);
@@ -959,6 +1295,13 @@ export class EstimatesService {
     });
     return this.requireEstimate(tenderId);
   }
+  /**
+   * Delete an assumption; audited.
+   *
+   * @returns the full refreshed estimate
+   * @throws NotFoundException when the estimate, item or assumption does not exist
+   * @throws ForbiddenException when the estimate is locked
+   */
   async deleteAssumption(tenderId: string, itemId: string, lineId: string, actorId?: string) {
     const estimate = await this.requireEstimate(tenderId);
     this.ensureNotLocked(estimate);
@@ -981,6 +1324,18 @@ export class EstimatesService {
   //  Summary / totals (server authoritative)
   // ──────────────────────────────────────────────────────────────
 
+  /**
+   * Compute server-authoritative per-item and overall totals.
+   *
+   * Provisional items pass through at provisionalAmount with no markup
+   * (subtotal = price so rolled-up markupAmount stays accurate). Normal
+   * items sum labour/equip/plant/waste/cutting lines, then apply the
+   * item-level markup percentage. All figures rounded to 2dp.
+   *
+   * @returns `{ estimateId, markup, locked, items, totals, markupAmount }`;
+   *          a zeroed shape with estimateId null when no estimate exists
+   * @throws NotFoundException when the tender does not exist
+   */
   async summary(tenderId: string) {
     await this.requireTender(tenderId);
     const estimate = await this.getEstimateForTender(tenderId);

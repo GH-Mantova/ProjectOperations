@@ -37,6 +37,14 @@ class RejectProposalDto {
   proposalIndex!: number;
 }
 
+/**
+ * Accept/reject endpoints for AI-generated scope-item proposals stored
+ * on tool_result conversation messages.
+ *
+ * All routes are JWT-guarded and require the `ai.persona.tendering`
+ * permission (class-level). Accepting writes scope_of_works_items rows;
+ * rejecting only flips proposal status in message metadata.
+ */
 @ApiTags("Scope Proposals")
 @ApiBearerAuth()
 @Controller("personas/tendering/proposals")
@@ -45,6 +53,16 @@ class RejectProposalDto {
 export class ProposalsController {
   constructor(private readonly proposals: ProposalsService) {}
 
+  /**
+   * Accept a single AI scope proposal — writes to scope_of_works_items, updates proposal status. Optional edits override fields before commit.
+   *
+   * @param messageId - tool_result conversation message holding the proposals
+   * @param dto - proposalIndex plus optional field edits applied before commit
+   * @param actor - JWT principal; must own the conversation
+   * @returns `{ ok: true, scopeItemId }`
+   * @throws NotFoundException when the message or proposal index is not found
+   * @throws BadRequestException when the proposal is already decided or the conversation has no tender context
+   */
   @Post(":messageId/accept")
   @HttpCode(200)
   @ApiOperation({
@@ -62,6 +80,16 @@ export class ProposalsController {
     return { ok: true, scopeItemId: result.scopeItemId };
   }
 
+  /**
+   * Reject a single AI scope proposal — updates status only, no DB write to scope_of_works_items.
+   *
+   * @param messageId - tool_result conversation message holding the proposals
+   * @param dto - proposalIndex to reject
+   * @param actor - JWT principal; must own the conversation
+   * @returns `{ ok: true }`
+   * @throws NotFoundException when the message or proposal index is not found
+   * @throws BadRequestException when the proposal is already decided
+   */
   @Post(":messageId/reject")
   @HttpCode(200)
   @ApiOperation({
@@ -77,6 +105,14 @@ export class ProposalsController {
     return { ok: true };
   }
 
+  /**
+   * Accept all pending proposals in this message — iterates and reports counts.
+   *
+   * @param messageId - tool_result conversation message holding the proposals
+   * @param actor - JWT principal; must own the conversation
+   * @returns `{ ok: true, accepted, failed }` — per-proposal failures are counted, not thrown
+   * @throws NotFoundException when the message is not found or not owned by the actor
+   */
   @Post(":messageId/accept-all")
   @HttpCode(200)
   @ApiOperation({
@@ -91,6 +127,14 @@ export class ProposalsController {
     return { ok: true, ...result };
   }
 
+  /**
+   * Reject all pending proposals in this message — single update, no scope items written.
+   *
+   * @param messageId - tool_result conversation message holding the proposals
+   * @param actor - JWT principal; must own the conversation
+   * @returns `{ ok: true, rejected }`
+   * @throws NotFoundException when the message is not found or not owned by the actor
+   */
   @Post(":messageId/reject-all")
   @HttpCode(200)
   @ApiOperation({

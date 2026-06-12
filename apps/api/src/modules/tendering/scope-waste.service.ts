@@ -27,10 +27,29 @@ type UpsertWasteDto = {
 // truckDays and lineTotal are derived server-side so the UI only submits
 // raw inputs — never a calculated value. Rule: 3 loads per truck day,
 // rounded up to the nearest half-day.
+/**
+ * CRUD + aggregation service for ScopeWasteItem rows.
+ *
+ * truckDays and lineTotal are always derived server-side (3 loads per
+ * truck day, rounded up to the nearest half-day; line total bills
+ * against tonnes or m³ depending on the row's unit) — the UI only ever
+ * submits raw inputs. The sumFromAbove aggregator owns autoSummed=true
+ * rows; manual rows stay autoSummed=false.
+ */
 @Injectable()
 export class ScopeWasteService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Lists waste rows for a tender, optionally filtered by discipline
+   * and/or cardId, ordered by discipline, sortOrder, createdAt.
+   *
+   * When cardId is supplied, only rows attached to that card are
+   * returned — cardless legacy rows are deliberately excluded.
+   *
+   * @param opts - optional `discipline` and/or `cardId` filters
+   * @returns matching ScopeWasteItem rows
+   */
   async list(tenderId: string, opts?: { discipline?: string; cardId?: string }) {
     return this.prisma.scopeWasteItem.findMany({
       where: {
@@ -45,6 +64,16 @@ export class ScopeWasteService {
     });
   }
 
+  /**
+   * Creates a manual waste row (autoSummed=false) with server-derived
+   * truckDays + lineTotal. Numeric DTO fields are narrowed before being
+   * fed into Prisma.Decimal constructors.
+   *
+   * @param actorId - recorded as createdById
+   * @param dto - raw inputs; description, discipline, and cardId are required
+   * @returns the created ScopeWasteItem row
+   * @throws BadRequestException when description, discipline, or cardId is missing/blank
+   */
   async create(tenderId: string, actorId: string, dto: UpsertWasteDto) {
     if (!dto.description) throw new BadRequestException("description is required.");
     if (!dto.discipline) throw new BadRequestException("discipline is required.");
@@ -103,6 +132,15 @@ export class ScopeWasteService {
     });
   }
 
+  /**
+   * Partially updates a waste row; DTO values win over existing values
+   * when present, and truckDays + lineTotal are always re-derived from
+   * the merged result.
+   *
+   * @param dto - partial patch; undefined fields keep their existing values
+   * @returns the updated ScopeWasteItem row
+   * @throws NotFoundException when the row is missing or belongs to another tender
+   */
   async update(tenderId: string, id: string, dto: UpsertWasteDto) {
     const existing = await this.prisma.scopeWasteItem.findUnique({ where: { id } });
     if (!existing || existing.tenderId !== tenderId) {
@@ -146,6 +184,12 @@ export class ScopeWasteService {
     return this.prisma.scopeWasteItem.update({ where: { id }, data });
   }
 
+  /**
+   * Hard-deletes a waste row after verifying it belongs to the tender.
+   *
+   * @returns `{ deleted: true }`
+   * @throws NotFoundException when the row is missing or belongs to another tender
+   */
   async remove(tenderId: string, id: string) {
     const existing = await this.prisma.scopeWasteItem.findUnique({ where: { id } });
     if (!existing || existing.tenderId !== tenderId) {
@@ -155,6 +199,14 @@ export class ScopeWasteService {
     return { deleted: true };
   }
 
+  /**
+   * Bulk-updates sortOrder in a single transaction. Each updateMany is
+   * scoped to the tender, so entries pointing at foreign rows silently
+   * affect zero rows rather than erroring.
+   *
+   * @param entries - (itemId, sortOrder) pairs to apply
+   * @returns `{ reordered }` — count of entries submitted (not rows actually changed)
+   */
   async reorder(tenderId: string, entries: Array<{ itemId: string; sortOrder: number }>) {
     await this.prisma.$transaction(
       entries.map((e) =>

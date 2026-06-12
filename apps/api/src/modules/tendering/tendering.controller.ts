@@ -47,6 +47,14 @@ class BumpTenderRevisionDto {
 }
 import { TenderingService } from "./tendering.service";
 
+/**
+ * REST controller for the core tender CRUD + lifecycle surface under /tenders.
+ *
+ * All routes require a JWT and are permission-gated: reads need
+ * `tenders.view`, writes need `tenders.manage` (filter presets are
+ * per-user, so preset writes only need `tenders.view`). All mutations
+ * delegate to TenderingService, which writes audit entries.
+ */
 @ApiTags("Tendering")
 @ApiBearerAuth()
 @Controller("tenders")
@@ -54,6 +62,12 @@ import { TenderingService } from "./tendering.service";
 export class TenderingController {
   constructor(private readonly service: TenderingService) {}
 
+  /**
+   * List tenders with filters, search, and sort.
+   *
+   * @param query - paging, free-text search, status/estimator/client/discipline/value/due-date/probability filters, and sort options
+   * @returns paged result: { items, total, page, pageSize }
+   */
   @Get()
   @RequirePermissions("tenders.view")
   @ApiOperation({ summary: "List tenders with filters, search, and sort" })
@@ -73,6 +87,12 @@ export class TenderingController {
     return this.service.list(query);
   }
 
+  /**
+   * Bulk update the status of up to 50 tenders in a single transaction.
+   *
+   * @param dto - tenderIds (max 50) and the target status
+   * @returns { updated: count, tenders: affected rows (id, tenderNumber, status) }
+   */
   @Post("bulk-status")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Bulk update the status of up to 50 tenders in a single transaction" })
@@ -81,6 +101,11 @@ export class TenderingController {
     return this.service.bulkUpdateStatus(dto.tenderIds, dto.status, actor.sub);
   }
 
+  /**
+   * List saved filter presets for the current user.
+   *
+   * @returns presets ordered default-first, then by name
+   */
   @Get("filter-presets")
   @RequirePermissions("tenders.view")
   @ApiOperation({ summary: "List saved filter presets for the current user" })
@@ -88,6 +113,12 @@ export class TenderingController {
     return this.service.listFilterPresets(actor.sub);
   }
 
+  /**
+   * Save a filter preset for the current user.
+   *
+   * @param dto - preset name, filters JSON, and optional isDefault flag
+   * @returns the created preset
+   */
   @Post("filter-presets")
   @RequirePermissions("tenders.view")
   @ApiOperation({ summary: "Save a filter preset for the current user" })
@@ -95,6 +126,13 @@ export class TenderingController {
     return this.service.createFilterPreset(actor.sub, dto);
   }
 
+  /**
+   * Update a saved filter preset.
+   *
+   * @param id - preset id (must belong to the current user)
+   * @param dto - partial preset fields to change
+   * @returns the updated preset
+   */
   @Patch("filter-presets/:id")
   @RequirePermissions("tenders.view")
   @ApiOperation({ summary: "Update a saved filter preset" })
@@ -106,6 +144,12 @@ export class TenderingController {
     return this.service.updateFilterPreset(actor.sub, id, dto);
   }
 
+  /**
+   * Delete a saved filter preset.
+   *
+   * @param id - preset id (must belong to the current user)
+   * @returns { id } of the deleted preset
+   */
   @Delete("filter-presets/:id")
   @RequirePermissions("tenders.view")
   @ApiOperation({ summary: "Delete a saved filter preset" })
@@ -113,6 +157,15 @@ export class TenderingController {
     return this.service.deleteFilterPreset(actor.sub, id);
   }
 
+  /**
+   * Create a tender.
+   *
+   * Also provisions the per-tender SharePoint folder structure
+   * (best-effort) and writes an audit entry.
+   *
+   * @param dto - full tender payload including optional nested clients, notes, clarifications, snapshots, follow-ups, and outcomes
+   * @returns the created tender with all relations included
+   */
   @Post()
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Create a tender" })
@@ -156,6 +209,15 @@ export class TenderingController {
     return this.service.addFollowUp(id, dto, actor.sub);
   }
 
+  /**
+   * List unified tender activities.
+   *
+   * Merges notes, clarifications, and follow-ups into one normalised
+   * activity feed sorted newest-first.
+   *
+   * @param id - tender id
+   * @returns array of activity rows with composite ids like "note:{id}"
+   */
   @Get(":id/activities")
   @RequirePermissions("tenders.view")
   @ApiOperation({ summary: "List unified tender activities" })
@@ -163,6 +225,15 @@ export class TenderingController {
     return this.service.listActivities(id);
   }
 
+  /**
+   * Create a unified tender activity.
+   *
+   * Routes to the underlying note / clarification / follow-up table
+   * based on activityType; follow-up-like types require a due date.
+   *
+   * @param dto - activityType, title, optional details/status/dueAt/assignee
+   * @returns the full tender detail after the write
+   */
   @Post(":id/activities")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Create a unified tender activity" })
@@ -170,6 +241,15 @@ export class TenderingController {
     return this.service.addActivity(id, dto, actor.sub);
   }
 
+  /**
+   * Update a unified tender activity.
+   *
+   * Only clarification and follow-up activities can be updated; the
+   * activityId encodes the source table ("clarification:{id}" / "follow-up:{id}").
+   *
+   * @param activityId - composite "{type}:{sourceId}" identifier
+   * @returns the full tender detail after the write
+   */
   @Patch(":id/activities/:activityId")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Update a unified tender activity" })
@@ -182,6 +262,12 @@ export class TenderingController {
     return this.service.updateActivity(id, activityId, dto, actor.sub);
   }
 
+  /**
+   * Preview tender import rows from CSV text.
+   *
+   * @param dto - { csvText } in the documented import column format
+   * @returns per-row validity, including duplicate tender-number flags
+   */
   @Post("import/preview")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Preview tender import rows from CSV text" })
@@ -189,6 +275,15 @@ export class TenderingController {
     return this.service.previewImport(dto.csvText);
   }
 
+  /**
+   * Create tenders from CSV text.
+   *
+   * Invalid rows (missing number/title, duplicate number, no matching
+   * clients) are skipped with a reason rather than failing the batch.
+   *
+   * @param dto - { csvText } in the documented import column format
+   * @returns { createdCount, createdIds, skipped: [{ tenderNumber, reason }] }
+   */
   @Post("import/commit")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Create tenders from CSV text" })
@@ -196,6 +291,12 @@ export class TenderingController {
     return this.service.commitImport(dto.csvText, actor.sub);
   }
 
+  /**
+   * Get tender detail.
+   *
+   * @param id - tender id
+   * @returns the tender with all relations (clients, notes, clarifications, snapshots, follow-ups, outcomes, documents, source job)
+   */
   @Get(":id")
   @RequirePermissions("tenders.view")
   @ApiOperation({ summary: "Get tender detail" })
@@ -203,6 +304,16 @@ export class TenderingController {
     return this.service.getById(id);
   }
 
+  /**
+   * Update a tender.
+   *
+   * Full upsert semantics: nested collections (clients, notes,
+   * clarifications, snapshots, follow-ups, outcomes) are deleted and
+   * re-created from the payload, not merged.
+   *
+   * @param dto - full tender payload (same shape as create)
+   * @returns the updated tender with all relations
+   */
   @Patch(":id")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Update a tender" })
@@ -210,6 +321,12 @@ export class TenderingController {
     return this.service.update(id, dto, actor.sub);
   }
 
+  /**
+   * Returns cascade counts so the UI can show what will be deleted.
+   *
+   * @param id - tender id
+   * @returns tender summary plus _count of related quotes, scope, documents, exports, and clients
+   */
   @Get(":id/delete-preflight")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Returns cascade counts so the UI can show what will be deleted" })
@@ -218,6 +335,15 @@ export class TenderingController {
     return this.service.deletePreflight(id);
   }
 
+  /**
+   * Hard-delete a tender and all related records (quotes, scope, documents, exports).
+   *
+   * The audit entry is written BEFORE the delete so the cascade counts
+   * survive even though the rows are gone.
+   *
+   * @param id - tender id
+   * @returns { id, tenderNumber, cascadedCounts }
+   */
   @Delete(":id")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Hard-delete a tender and all related records (quotes, scope, documents, exports)" })
@@ -227,6 +353,16 @@ export class TenderingController {
     return this.service.delete(id, actor.sub);
   }
 
+  /**
+   * Mark a tender as a new revision — bumps Rev{N} on the canonical tender number.
+   *
+   * The tender number becomes T{YYMMDD}-{SLUG}-Rev{N+1}; the row id is
+   * unchanged.
+   *
+   * @param id - tender id
+   * @param dto - optional { reason } recorded in the audit trail
+   * @returns the updated tender with the bumped revision number
+   */
   @Post(":id/bump-revision")
   @RequirePermissions("tenders.manage")
   @ApiOperation({
@@ -243,6 +379,16 @@ export class TenderingController {
     return this.service.bumpRevision(id, dto.reason, actor.sub);
   }
 
+  /**
+   * Duplicate a tender (copies fields and clients, resets lifecycle dates and outcomes).
+   *
+   * The copy gets status DRAFT, a fresh canonical tender number
+   * (T{YYMMDD}-{SLUG}-Rev1 stamped with today's date), a "(copy)" title
+   * suffix, and a fresh SharePoint folder structure.
+   *
+   * @param id - source tender id
+   * @returns the newly created tender copy
+   */
   @Post(":id/duplicate")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Duplicate a tender (copies fields and clients, resets lifecycle dates and outcomes)" })
@@ -251,6 +397,16 @@ export class TenderingController {
     return this.service.duplicate(id, actor.sub);
   }
 
+  /**
+   * Update only the stage/status of a tender (used by the Kanban drag-drop flow).
+   *
+   * Side effects: pins submittedAt/wonAt/lostAt and the rates snapshot
+   * on first transition, updates client win/tender scoring, and sends a
+   * fire-and-forget email on the first SUBMITTED transition.
+   *
+   * @param dto - { status } target value
+   * @returns the updated tender with relations
+   */
   @Patch(":id/status")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Update only the stage/status of a tender (used by the Kanban drag-drop flow)" })
@@ -264,6 +420,12 @@ export class TenderingController {
     return this.service.updateStatus(id, dto.status, actor.sub);
   }
 
+  /**
+   * Update only the probability of a tender (preserves all related records).
+   *
+   * @param dto - probability 0-100, or null to clear
+   * @returns the updated tender with relations
+   */
   @Patch(":id/probability")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Update only the probability of a tender (preserves all related records)" })
@@ -275,6 +437,14 @@ export class TenderingController {
     return this.service.updateProbability(id, dto.probability ?? null, actor.sub);
   }
 
+  /**
+   * Assign (or clear) the team-level estimator on a tender — used by the Team panel.
+   *
+   * Distinct from the legacy estimator-of-record (estimatorUserId).
+   *
+   * @param dto - { userId } to assign, or null to clear
+   * @returns the updated tender
+   */
   @Patch(":id/assigned-estimator")
   @RequirePermissions("tenders.manage")
   @ApiOperation({
@@ -290,6 +460,15 @@ export class TenderingController {
     return this.service.setAssignedEstimator(id, dto.userId ?? null, actor.sub);
   }
 
+  /**
+   * Patch a limited set of tender fields in one call and log a single activity entry.
+   *
+   * Only changed fields are written; the change summary is recorded as
+   * a tender note and an audit entry.
+   *
+   * @param dto - any of status, probability, dueDate, value, assignedEstimatorId, description, notes
+   * @returns the full tender detail after the write
+   */
   @Patch(":id/quick-edit")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Patch a limited set of tender fields in one call and log a single activity entry" })

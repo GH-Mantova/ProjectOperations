@@ -5,6 +5,12 @@ import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { PermissionsService } from "./permissions.service";
 
+/**
+ * Read-only HTTP endpoints for the permission catalogue.
+ *
+ * Permissions are code-defined in the permission registry and synced to
+ * the database at startup — there are no create/update routes here.
+ */
 @ApiTags("Permissions")
 @ApiBearerAuth()
 @Controller("permissions")
@@ -12,6 +18,14 @@ import { PermissionsService } from "./permissions.service";
 export class PermissionsController {
   constructor(private readonly permissionsService: PermissionsService) {}
 
+  /**
+   * List registered permissions.
+   *
+   * Requires the `permissions.view` permission. Returns the full,
+   * unpaginated permission list ordered by module then code.
+   *
+   * @returns all Permission records
+   */
   @Get()
   @RequirePermissions("permissions.view")
   @ApiOperation({ summary: "List registered permissions" })

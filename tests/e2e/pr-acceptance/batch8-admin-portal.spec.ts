@@ -11,8 +11,9 @@
  * to 9 tabs today — the test asserts the current 9-tab surface.
  *
  * Residue: none. The persistence test reads the current Day rate, bumps it,
- * then restores the value it read. After a crashed run the baseline simply
- * becomes the bumped value; `pnpm seed` restores the canonical rates.
+ * then restores the value it read — the restore runs in a `finally` block so
+ * a mid-test failure still puts the seeded value back (LL-27). After a
+ * crashed run `pnpm seed` restores the canonical rates.
  */
 
 import { expect, test } from "@playwright/test";
@@ -106,22 +107,29 @@ test.describe("Batch 8 — Admin & portal (PRs #219, #26, #29)", () => {
     // a time; the add-row inputs sit outside the table).
     const editingRow = page.getByRole("row").filter({ has: page.getByRole("spinbutton") });
 
-    await row.click();
-    await expect(editingRow).toHaveCount(1);
-    await editingRow.getByRole("spinbutton").first().fill(String(bumped));
-    await editingRow.getByRole("spinbutton").first().press("Enter");
-    await expect(page.getByRole("row", { name: /Machine operator/ })).toContainText(fmt(bumped));
+    const setDayRate = async (target: number) => {
+      // Click the Day cell specifically — focus must land in that cell's
+      // input (LL-27: the old code focused the Role input regardless).
+      await page.getByRole("row", { name: /Machine operator/ }).getByRole("cell").nth(1).click();
+      await expect(editingRow).toHaveCount(1);
+      await editingRow.getByRole("spinbutton").first().fill(String(target));
+      await editingRow.getByRole("spinbutton").first().press("Enter");
+      // The row must leave edit mode BEFORE the formatted value is asserted
+      // (LL-27: the missing guard in the original failure).
+      await expect(editingRow).toHaveCount(0);
+      await expect(page.getByRole("row", { name: /Machine operator/ })).toContainText(fmt(target));
+    };
 
-    await page.reload();
-    const reloaded = page.getByRole("row", { name: /Machine operator/ });
-    await expect(reloaded).toContainText(fmt(bumped));
-
-    // Restore the value read at the start of the test.
-    await reloaded.click();
-    await expect(editingRow).toHaveCount(1);
-    await editingRow.getByRole("spinbutton").first().fill(String(original));
-    await editingRow.getByRole("spinbutton").first().press("Enter");
-    await expect(page.getByRole("row", { name: /Machine operator/ })).toContainText(fmt(original));
+    try {
+      await setDayRate(bumped);
+      await page.reload();
+      await expect(page.getByRole("row", { name: /Machine operator/ })).toContainText(fmt(bumped));
+    } finally {
+      // Restore the value read at the start of the test even if an assertion
+      // above failed mid-edit; reload first to clear any wedged edit state.
+      await page.reload();
+      await setDayRate(original);
+    }
   });
 
   test("admin settings page renders all section tabs for an admin (prompt-directed)", async ({

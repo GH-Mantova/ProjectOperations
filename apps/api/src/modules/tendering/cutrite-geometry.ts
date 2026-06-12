@@ -10,6 +10,7 @@
 //
 // Pure module: no Prisma, no NestJS, no I/O.
 
+/** Default density for reinforced concrete, in kg/m³. */
 export const DEFAULT_DENSITY_CONCRETE_KG_PER_M3 = 2400;
 
 function assertPositiveFinite(value: number, name: string): void {
@@ -38,6 +39,7 @@ function round(value: number, decimals: number): number {
   return Math.round(value * factor) / factor;
 }
 
+/** Rectangular block dimensions, all in metres and all required > 0. */
 export interface BlockDimensions {
   lengthM: number;
   widthM: number;
@@ -64,6 +66,7 @@ export function computeBlockWeight(
   return round(volumeM3 * densityKgPerM3, 1);
 }
 
+/** Input for computeGhostCutLengthMetres: cut-out length/width in metres. */
 export interface GhostCutInput {
   lengthM: number;
   widthM: number;

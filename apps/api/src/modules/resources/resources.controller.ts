@@ -12,6 +12,15 @@ import {
   UpsertWorkerRoleSuitabilityDto
 } from "./dto/resources.dto";
 
+/**
+ * REST endpoints for scheduler-facing resource data under /resources:
+ * workers, availability windows, role suitabilities, and shift role
+ * requirements.
+ *
+ * All routes require a JWT plus either `resources.view` (reads) or
+ * `resources.manage` (writes). Mutations pass the acting user's id to the
+ * service so every change is audit-logged.
+ */
 @ApiTags("Resources")
 @ApiBearerAuth()
 @Controller("resources")
@@ -19,6 +28,12 @@ import {
 export class ResourcesController {
   constructor(private readonly service: ResourcesService) {}
 
+  /**
+   * List workers with competencies, availability, and role suitability.
+   *
+   * @param query - free-text q, competencyId filter, page and pageSize
+   * @returns paginated workers with eager-loaded related records
+   */
   @Get("workers")
   @RequirePermissions("resources.view")
   @ApiOperation({ summary: "List workers with competencies, availability, and role suitability" })
@@ -31,10 +46,24 @@ export class ResourcesController {
   @ApiOperation({ summary: "Get a single worker with full competencies, availability, suitability, and assigned-shift detail" })
   @ApiResponse({ status: 200, description: "Worker detail record with eager-loaded competencies, availability windows, role suitabilities, and assigned shifts (each including job, activity, and conflicts)." })
   @ApiResponse({ status: 404, description: "Worker not found." })
+  /**
+   * Get a single worker with full competencies, availability, suitability,
+   * and assigned-shift detail.
+   *
+   * @param id - worker id
+   * @returns the worker with shift assignments including job, activity, and conflicts
+   * @throws NotFoundException when the worker does not exist
+   */
   getWorker(@Param("id") id: string) {
     return this.service.getWorker(id);
   }
 
+  /**
+   * Create availability window.
+   *
+   * @param dto - workerId, startAt/endAt, optional status (defaults AVAILABLE) and notes
+   * @returns the created availability window
+   */
   @Post("availability-windows")
   @RequirePermissions("resources.manage")
   @ApiOperation({ summary: "Create availability window" })
@@ -42,6 +71,13 @@ export class ResourcesController {
     return this.service.upsertAvailabilityWindow(undefined, dto, actor.sub);
   }
 
+  /**
+   * Update availability window.
+   *
+   * @param id - availability window id
+   * @param dto - replacement window fields
+   * @returns the updated availability window
+   */
   @Patch("availability-windows/:id")
   @RequirePermissions("resources.manage")
   @ApiOperation({ summary: "Update availability window" })
@@ -49,6 +85,13 @@ export class ResourcesController {
     return this.service.upsertAvailabilityWindow(id, dto, actor.sub);
   }
 
+  /**
+   * Create role suitability.
+   *
+   * @param dto - workerId, roleLabel, optional suitability (defaults SUITABLE) and notes
+   * @returns the created role suitability record
+   * @throws ConflictException when the worker already has suitability for that role
+   */
   @Post("role-suitabilities")
   @RequirePermissions("resources.manage")
   @ApiOperation({ summary: "Create role suitability" })
@@ -56,6 +99,13 @@ export class ResourcesController {
     return this.service.upsertWorkerRoleSuitability(undefined, dto, actor.sub);
   }
 
+  /**
+   * Update role suitability.
+   *
+   * @param id - role suitability id
+   * @param dto - replacement suitability fields
+   * @returns the updated role suitability record
+   */
   @Patch("role-suitabilities/:id")
   @RequirePermissions("resources.manage")
   @ApiOperation({ summary: "Update role suitability" })
@@ -63,6 +113,12 @@ export class ResourcesController {
     return this.service.upsertWorkerRoleSuitability(id, dto, actor.sub);
   }
 
+  /**
+   * List shift role requirements.
+   *
+   * @param shiftId - shift id whose requirements to list
+   * @returns requirements with competency included, oldest first
+   */
   @Get("shifts/:shiftId/requirements")
   @RequirePermissions("resources.view")
   @ApiOperation({ summary: "List shift role requirements" })
@@ -70,6 +126,14 @@ export class ResourcesController {
     return this.service.listShiftRequirements(shiftId);
   }
 
+  /**
+   * Create shift role requirement.
+   *
+   * @param shiftId - shift the requirement belongs to
+   * @param dto - roleLabel, optional competencyId, requiredCount (defaults 1)
+   * @returns the full requirement list for the shift after the create
+   * @throws NotFoundException when the shift does not exist
+   */
   @Post("shifts/:shiftId/requirements")
   @RequirePermissions("resources.manage")
   @ApiOperation({ summary: "Create shift role requirement" })
@@ -81,6 +145,15 @@ export class ResourcesController {
     return this.service.upsertShiftRequirement(shiftId, undefined, dto, actor.sub);
   }
 
+  /**
+   * Update shift role requirement.
+   *
+   * @param shiftId - shift the requirement belongs to
+   * @param id - requirement id to update
+   * @param dto - replacement requirement fields
+   * @returns the full requirement list for the shift after the update
+   * @throws NotFoundException when the shift does not exist
+   */
   @Patch("shifts/:shiftId/requirements/:id")
   @RequirePermissions("resources.manage")
   @ApiOperation({ summary: "Update shift role requirement" })

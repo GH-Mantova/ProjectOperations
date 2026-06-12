@@ -64,6 +64,15 @@ class RejectQuoteProposalDto {
   proposalIndex!: number;
 }
 
+/**
+ * Accept/reject endpoints for AI-generated quote-content proposals
+ * (cost lines / exclusions / assumptions) stored on tool_result
+ * conversation messages.
+ *
+ * All routes are JWT-guarded and require the `ai.persona.tendering`
+ * permission (class-level). Accepting writes rows into the target
+ * DRAFT ClientQuote; rejecting only flips status in message metadata.
+ */
 @ApiTags("Quote Proposals")
 @ApiBearerAuth()
 @Controller("personas/tendering/quote-proposals")
@@ -72,6 +81,16 @@ class RejectQuoteProposalDto {
 export class QuoteProposalsController {
   constructor(private readonly proposals: QuoteProposalsService) {}
 
+  /**
+   * Accept a single AI quote-content proposal — writes one row per cost line / exclusion / assumption into the target ClientQuote. Optional edits override fields before commit.
+   *
+   * @param messageId - tool_result conversation message holding the proposals
+   * @param dto - proposalIndex plus optional costLines/exclusions/assumptions edits
+   * @param actor - JWT principal; must own the conversation
+   * @returns `{ ok, acceptedCostLineIds, acceptedExclusionIds, acceptedAssumptionIds }`
+   * @throws NotFoundException when the message, proposal index, or target ClientQuote is not found
+   * @throws BadRequestException when the proposal is already decided, the conversation has no tender context, the quote belongs to another tender, or the quote is not DRAFT
+   */
   @Post(":messageId/accept")
   @HttpCode(200)
   @ApiOperation({
@@ -97,6 +116,16 @@ export class QuoteProposalsController {
     return { ok: true, ...result };
   }
 
+  /**
+   * Reject a single AI quote-content proposal — updates status only, no DB write to the quote.
+   *
+   * @param messageId - tool_result conversation message holding the proposals
+   * @param dto - proposalIndex to reject
+   * @param actor - JWT principal; must own the conversation
+   * @returns `{ ok: true }`
+   * @throws NotFoundException when the message or proposal index is not found
+   * @throws BadRequestException when the proposal is already decided
+   */
   @Post(":messageId/reject")
   @HttpCode(200)
   @ApiOperation({
@@ -112,6 +141,14 @@ export class QuoteProposalsController {
     return { ok: true };
   }
 
+  /**
+   * Accept all pending quote-content proposals in this message — iterates and reports counts.
+   *
+   * @param messageId - tool_result conversation message holding the proposals
+   * @param actor - JWT principal; must own the conversation
+   * @returns `{ ok: true, accepted, failed }` — per-proposal failures are counted, not thrown
+   * @throws NotFoundException when the message is not found or not owned by the actor
+   */
   @Post(":messageId/accept-all")
   @HttpCode(200)
   @ApiOperation({
@@ -126,6 +163,14 @@ export class QuoteProposalsController {
     return { ok: true, ...result };
   }
 
+  /**
+   * Reject all pending quote-content proposals in this message — single update, no quote writes.
+   *
+   * @param messageId - tool_result conversation message holding the proposals
+   * @param actor - JWT principal; must own the conversation
+   * @returns `{ ok: true, rejected }`
+   * @throws NotFoundException when the message is not found or not owned by the actor
+   */
   @Post(":messageId/reject-all")
   @HttpCode(200)
   @ApiOperation({

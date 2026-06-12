@@ -20,6 +20,14 @@ class CreateTenderClientNoteDto {
   @IsOptional() @IsDateString() occurredAt?: string;
 }
 
+/**
+ * REST controller for per-client interaction notes on a tender, under
+ * /tenders/:tenderId/clients/:clientId/notes.
+ *
+ * JWT + permission gated: reads need `tenders.view`, writes need
+ * `tenders.manage`. The client must be linked to the tender via
+ * TenderClient or every route 404s.
+ */
 @ApiTags("Tender Client Notes")
 @ApiBearerAuth()
 @Controller("tenders/:tenderId/clients/:clientId/notes")
@@ -27,6 +35,11 @@ class CreateTenderClientNoteDto {
 export class TenderClientNotesController {
   constructor(private readonly service: TenderClientNotesService) {}
 
+  /**
+   * List per-client notes on this tender (newest first).
+   *
+   * @returns notes array with createdBy metadata, ordered by occurredAt desc
+   */
   @Get()
   @RequirePermissions("tenders.view")
   @ApiOperation({ summary: "List per-client notes on this tender (newest first)" })
@@ -35,6 +48,12 @@ export class TenderClientNotesController {
     return this.service.list(tenderId, clientId);
   }
 
+  /**
+   * Log a per-client interaction (note, call, email, meeting, site visit).
+   *
+   * @param dto - body (required), optional noteType (defaults to "note"), subject, occurredAt (defaults to now)
+   * @returns the created note with createdBy metadata
+   */
   @Post()
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Log a per-client interaction (note, call, email, meeting, site visit)" })
@@ -48,6 +67,12 @@ export class TenderClientNotesController {
     return this.service.create(tenderId, clientId, dto, actor.sub);
   }
 
+  /**
+   * Delete a per-client note (hard delete).
+   *
+   * @param noteId - note id (must belong to this tender + client pair)
+   * @returns { id } of the deleted note
+   */
   @Delete(":noteId")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Delete a per-client note" })

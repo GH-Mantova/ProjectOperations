@@ -11,6 +11,13 @@ export type CreateTenderClientNoteInput = {
   occurredAt?: string | null;
 };
 
+/**
+ * Service for per-client interaction notes (TenderClientNote rows)
+ * scoped to a (tender, client) link.
+ *
+ * Every method first verifies the client is linked to the tender via
+ * TenderClient. Create and delete write audit entries.
+ */
 @Injectable()
 export class TenderClientNotesService {
   constructor(
@@ -18,6 +25,12 @@ export class TenderClientNotesService {
     private readonly audit: AuditService
   ) {}
 
+  /**
+   * List notes for a (tender, client) pair, newest occurredAt first.
+   *
+   * @returns notes including createdBy (id, firstName, lastName)
+   * @throws NotFoundException when the client is not linked to the tender
+   */
   async list(tenderId: string, clientId: string) {
     await this.ensureTenderClient(tenderId, clientId);
     return this.prisma.tenderClientNote.findMany({
@@ -29,6 +42,16 @@ export class TenderClientNotesService {
     });
   }
 
+  /**
+   * Create a note on a (tender, client) pair; writes an audit entry.
+   *
+   * noteType defaults to "note"; occurredAt defaults to now.
+   *
+   * @param dto - body (required), optional noteType/subject/occurredAt
+   * @returns the created note with createdBy metadata
+   * @throws NotFoundException when the client is not linked to the tender
+   * @throws BadRequestException when the body is blank or noteType is invalid
+   */
   async create(tenderId: string, clientId: string, dto: CreateTenderClientNoteInput, actorId?: string) {
     await this.ensureTenderClient(tenderId, clientId);
     if (!dto.body || !dto.body.trim()) {
@@ -62,6 +85,12 @@ export class TenderClientNotesService {
     return record;
   }
 
+  /**
+   * Hard-delete a note; writes an audit entry after deletion.
+   *
+   * @returns { id } of the deleted note
+   * @throws NotFoundException when the client is not linked to the tender, or the note does not belong to this (tender, client) pair
+   */
   async remove(tenderId: string, clientId: string, noteId: string, actorId?: string) {
     await this.ensureTenderClient(tenderId, clientId);
     const existing = await this.prisma.tenderClientNote.findUnique({ where: { id: noteId } });

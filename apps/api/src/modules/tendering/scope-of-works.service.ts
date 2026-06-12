@@ -26,6 +26,17 @@ import {
 // Accept `unknown` and explicitly narrow: numbers + finite-numeric strings
 // pass; arrays, objects, NaN, Infinity, and non-numeric strings return
 // null. Exported for direct testing.
+/**
+ * Defensively convert an unknown value to a Prisma.Decimal, or null.
+ *
+ * Finite numbers and finite-numeric strings convert (strings are passed
+ * to Prisma.Decimal verbatim after trimming to preserve source
+ * precision); existing Decimals pass through; null/undefined, empty
+ * strings, NaN, Infinity, arrays, and objects return null.
+ *
+ * @param value - untrusted DTO field value
+ * @returns a Prisma.Decimal, or null when the value is not numeric
+ */
 export function toDecimal(value: unknown): Prisma.Decimal | null {
   if (value === null || value === undefined) return null;
   if (value instanceof Prisma.Decimal) return value;
@@ -53,6 +64,15 @@ export function toDecimal(value: unknown): Prisma.Decimal | null {
 // clears the alert. The helper inside toDecimal still does the same
 // check — this is belt-and-braces, not a replacement.
 // See: https://codeql.github.com/codeql-query-help/javascript/js-type-confusion-through-parameter-tampering/
+/**
+ * Narrow an unknown value to a finite number, or null.
+ *
+ * Finite numbers pass through; numeric strings are trimmed and parsed;
+ * empty strings, NaN, Infinity, and all other types return null.
+ *
+ * @param value - untrusted DTO field value
+ * @returns a finite number, or null when the value is not numeric
+ */
 export function narrowToNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
@@ -165,11 +185,29 @@ function deriveDimensionFields(
   return base;
 }
 
+/**
+ * Service for the per-tender scope sheet: site-context header, scope
+ * items (manual + AI-proposed drafts), and scope cards.
+ *
+ * Cross-cutting behaviour: confirming a draft item auto-creates an
+ * EstimateItem with labour/plant/cutting/core-hole/waste lines (skipped
+ * silently when the estimate is locked); pricing on list reads comes
+ * from the pure computeScopeItemTotal helper with per-card markup
+ * resolution (card.markupOverride ?? tenderEstimate.markup ?? 30).
+ * No audit writes in this service.
+ */
 @Injectable()
 export class ScopeOfWorksService {
   constructor(private readonly prisma: PrismaService) {}
 
   // ── Header ────────────────────────────────────────────────────────────
+  /**
+   * Get the scope sheet site-context header, creating an empty one on
+   * first access (lazy creation).
+   *
+   * @returns the existing or newly created header row
+   * @throws NotFoundException when the tender does not exist
+   */
   async getHeader(tenderId: string) {
     await this.requireTender(tenderId);
     const existing = await this.prisma.scopeOfWorksHeader.findUnique({ where: { tenderId } });
@@ -179,6 +217,16 @@ export class ScopeOfWorksService {
     });
   }
 
+  /**
+   * Upsert the scope sheet site-context header.
+   *
+   * All header fields are written from the DTO each call — omitted
+   * fields overwrite with undefined/null rather than being preserved.
+   *
+   * @param dto - site address/contact, access constraints, start date, duration, special conditions
+   * @returns the updated (or newly created) header
+   * @throws NotFoundException when the tender does not exist
+   */
   async updateHeader(tenderId: string, dto: UpdateScopeHeaderDto) {
     await this.requireTender(tenderId);
     const existing = await this.prisma.scopeOfWorksHeader.findUnique({ where: { tenderId } });
@@ -201,6 +249,18 @@ export class ScopeOfWorksService {
   }
 
   // ── Items: list ───────────────────────────────────────────────────────
+  /**
+   * List scope items sorted DEM → CIV → ASB → Other with per-row
+   * pricing and a per-discipline summary.
+   *
+   * Each row gets lineTotal / lineTotalWithMarkup from
+   * computeScopeItemTotal using active rate cards and the effective
+   * markup (card.markupOverride ?? tenderEstimate.markup ?? 30).
+   * Excluded items are omitted from summary totals but still listed.
+   *
+   * @returns { items, summary: [{ discipline, itemCount, totalValue }] }
+   * @throws NotFoundException when the tender does not exist
+   */
   async listItems(tenderId: string) {
     await this.requireTender(tenderId);
     // PR A2.5 — card.discipline is now authoritative. Include the card on
@@ -260,6 +320,19 @@ export class ScopeOfWorksService {
   }
 
   // ── Items: create manual row ──────────────────────────────────────────
+  /**
+   * Create a manually entered (confirmed, non-AI) scope item.
+   *
+   * itemNumber is the next number within the discipline; an incoming
+   * wbsCode is honoured only when it matches the flat `{discipline}{n}`
+   * pattern, otherwise auto-assigned. The item attaches to the first
+   * card for the discipline, creating one on demand.
+   *
+   * @param dto - discipline, rowType, description, plus optional dimension/labour/plant fields
+   * @returns the created scope item
+   * @throws NotFoundException when the tender does not exist
+   * @throws BadRequestException when the discipline is unknown or the rowType is invalid for it
+   */
   async createItem(tenderId: string, dto: CreateScopeItemDto, actorId: string) {
     await this.requireTender(tenderId);
     const discipline = dto.discipline;
@@ -292,6 +365,17 @@ export class ScopeOfWorksService {
   }
 
   // ── Items: partial update (inline cell edits) ────────────────────────
+  /**
+   * Partial update of a scope item (inline cell edits).
+   *
+   * A draft → confirmed status transition additionally creates an
+   * EstimateItem from the row's fields. Dimension fields are persisted
+   * exactly as sent — no server-side derivation (PR B4a.5).
+   *
+   * @param dto - any subset of scope item fields
+   * @returns { scopeItem, estimateItem } — estimateItem null unless a draft→confirmed transition occurred
+   * @throws NotFoundException when the item is not on this tender
+   */
   async updateItem(tenderId: string, itemId: string, dto: UpdateScopeItemDto, actorId: string) {
     if (dto.rowType) {
       const existing = await this.prisma.scopeOfWorksItem.findUnique({
@@ -330,6 +414,15 @@ export class ScopeOfWorksService {
     return { scopeItem: estimateItem ? await this.prisma.scopeOfWorksItem.findUnique({ where: { id: itemId }, include: { card: true } }) : updated, estimateItem };
   }
 
+  /**
+   * Hard-delete a scope item.
+   *
+   * Any linked EstimateItem is left in place — the response carries a
+   * warning string so the UI can tell the user.
+   *
+   * @returns { deleted: true, warning: string | null }
+   * @throws NotFoundException when the item is not on this tender
+   */
   async deleteItem(tenderId: string, itemId: string) {
     const existing = await this.prisma.scopeOfWorksItem.findUnique({ where: { id: itemId } });
     if (!existing || existing.tenderId !== tenderId) {
@@ -344,6 +437,14 @@ export class ScopeOfWorksService {
     };
   }
 
+  /**
+   * Bulk-update sortOrder across scope items in one transaction.
+   *
+   * @param dto - { order: [{ itemId, sortOrder }] }
+   * @returns { updated: count } (0 for an empty order array)
+   * @throws NotFoundException when the tender does not exist
+   * @throws BadRequestException when any itemId is not on this tender (lists invalid ids)
+   */
   async reorder(tenderId: string, dto: ReorderScopeItemsDto) {
     await this.requireTender(tenderId);
     if (dto.order.length === 0) return { updated: 0 };
@@ -368,6 +469,16 @@ export class ScopeOfWorksService {
     return { updated: dto.order.length };
   }
 
+  /**
+   * Confirm a draft (AI-proposed) scope item and create its EstimateItem.
+   *
+   * Idempotent: already-confirmed items return unchanged with
+   * estimateItem null. EstimateItem creation is skipped (null) when the
+   * tender estimate is locked.
+   *
+   * @returns { scopeItem, estimateItem }
+   * @throws NotFoundException when the item is not on this tender
+   */
   async confirmItem(tenderId: string, itemId: string, actorId: string) {
     const existing = await this.prisma.scopeOfWorksItem.findUnique({ where: { id: itemId } });
     if (!existing || existing.tenderId !== tenderId) {
@@ -386,6 +497,13 @@ export class ScopeOfWorksService {
     return { scopeItem: reloaded, estimateItem };
   }
 
+  /**
+   * Mark a scope item as excluded; no estimate line is created and the
+   * row no longer contributes to summary totals.
+   *
+   * @returns the updated scope item with status "excluded"
+   * @throws NotFoundException when the item is not on this tender
+   */
   async excludeItem(tenderId: string, itemId: string) {
     const existing = await this.prisma.scopeOfWorksItem.findUnique({ where: { id: itemId } });
     if (!existing || existing.tenderId !== tenderId) {
@@ -397,6 +515,13 @@ export class ScopeOfWorksService {
     });
   }
 
+  /**
+   * Confirm every draft scope item on the tender sequentially, creating
+   * an EstimateItem for each (unless the estimate is locked).
+   *
+   * @returns { confirmed: total drafts processed, estimates: [{ scopeItemId, estimateItemId }] }
+   * @throws NotFoundException when the tender does not exist
+   */
   async confirmAllDrafts(tenderId: string, actorId: string) {
     await this.requireTender(tenderId);
     const drafts = await this.prisma.scopeOfWorksItem.findMany({
@@ -419,6 +544,19 @@ export class ScopeOfWorksService {
   }
 
   // ── Estimate item auto-create ────────────────────────────────────────
+  /**
+   * Materialise a confirmed scope item into an EstimateItem with
+   * labour, plant, cutting, core-hole, and waste lines derived from the
+   * row's legacy fields.
+   *
+   * Returns null without throwing when the scope item is not confirmed
+   * or the tender estimate is locked. Creates the TenderEstimate
+   * (markup 30) on first use and links the scope item via
+   * estimateItemId.
+   *
+   * @param scopeItem - the confirmed row with its card included (card.discipline drives the code/role)
+   * @returns the created EstimateItem, or null when skipped
+   */
   async createEstimateItemFromScope(
     scopeItem: Prisma.ScopeOfWorksItemGetPayload<{ include: { card: true } }>,
     tenderId: string,
@@ -757,6 +895,16 @@ export class ScopeOfWorksService {
     });
   }
 
+  /**
+   * Patch the user-supplied card-header summary overrides.
+   *
+   * Each field is independently optional: undefined leaves the stored
+   * value untouched, null clears it (falls back to the computed value).
+   *
+   * @param patch - any of peakCrewOverride, labourDaysOverride, plantSummaryOverride, durationOverride
+   * @returns the updated card
+   * @throws NotFoundException when the tender or card does not exist
+   */
   async updateCardHeaderOverrides(
     tenderId: string,
     cardId: string,
@@ -785,6 +933,19 @@ export class ScopeOfWorksService {
     });
   }
 
+  /**
+   * Compute the auto-derived card-header summary and return it
+   * alongside any stored user overrides.
+   *
+   * peakCrew = max(men); labourDays = total person-days / peakCrew;
+   * plant entries are grouped by rate-card category with per-variant
+   * peakQty and peakDays (= qty-days / peakQty); duration =
+   * max(labourDays, longest plant peakDays). Excluded items are
+   * ignored; day values round to 1 decimal place.
+   *
+   * @returns { computed: { peakCrew, labourDays, plantSummary, duration }, overrides }
+   * @throws NotFoundException when the tender or card does not exist
+   */
   async getCardSummary(tenderId: string, cardId: string) {
     await this.requireTender(tenderId);
     const card = await this.prisma.scopeCard.findFirst({

@@ -18,6 +18,11 @@
 // Lives server-side; an identical mirror ships at
 // apps/web/src/pages/tendering/scopeItemDimensions.ts for live preview.
 
+/**
+ * Raw Quantification inputs for a scope item: length/height/depth in
+ * metres, density in t/m³ (or kg/m² for the sheet-material fallback),
+ * plus optional explicit overrides for the three derived fields.
+ */
 export type DimensionInput = {
   length?: number | null;
   height?: number | null;
@@ -28,6 +33,7 @@ export type DimensionInput = {
   tonnes?: number | null; // explicit override
 };
 
+/** Derived dimension values; null means "could not be derived / cleared". */
 export type DerivedDimensions = {
   sqm: number | null;
   m3: number | null;
@@ -45,6 +51,20 @@ function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+/**
+ * Derive sqm / m³ / tonnes from raw dimension inputs, honouring
+ * explicit overrides.
+ *
+ * Chain: sqm = sqm ?? L×H; m3 = m3 ?? sqm×depth; tonnes = tonnes ??
+ * (m³>0 ? m³×density : sqm>0 ? sqm×density/1000 : null) — the sqm
+ * fallback treats density as kg/m² for sheet materials. Explicit
+ * overrides are respected verbatim, INCLUDING explicit 0 (cleared vs
+ * zeroed is deliberate). Negative or non-finite factor inputs are
+ * treated as absent; any leg with insufficient inputs is null.
+ *
+ * @param input - raw dimensions plus optional sqm/m3/tonnes overrides
+ * @returns { sqm, m3, tonnes } each rounded to 2 decimal places or null
+ */
 export function computeDerivedDimensions(input: DimensionInput): DerivedDimensions {
   const length = pos(input.length);
   const height = pos(input.height);

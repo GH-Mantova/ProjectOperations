@@ -15,6 +15,10 @@
 
 import { IS_DISCIPLINE_CODES, type IsDisciplineCode } from "../../personas/definitions/disciplines";
 
+/**
+ * Default attributes for the first ScopeCard created per discipline:
+ * discipline code, friendly card name, sort position, and cardNumber.
+ */
 export type ScopeCardDefault = {
   discipline: IsDisciplineCode;
   name: string;
@@ -26,6 +30,13 @@ export type ScopeCardDefault = {
 // first card per discipline. Code that creates additional cards in the
 // same (tender, discipline) computes cardNumber dynamically via
 // MAX(card_number) + 1 in ScopeOfWorksService.createCard().
+/**
+ * The four default scope cards (DEM, CIV, ASB, Other) created per
+ * tender at seed / migration / tender-creation time.
+ *
+ * cardNumber is always 1 here — additional cards in the same
+ * (tender, discipline) get MAX(card_number) + 1 at creation time.
+ */
 export const SCOPE_CARD_DEFAULTS: readonly ScopeCardDefault[] = [
   { discipline: "DEM", name: "Demolition", sortOrder: 0, cardNumber: 1 },
   { discipline: "CIV", name: "Civil works", sortOrder: 1, cardNumber: 1 },

@@ -22,6 +22,14 @@ const userInclude = {
   }
 } as const;
 
+/**
+ * Business logic for user administration and account lookups.
+ *
+ * Emails are always normalised to lowercase, passwords are hashed via
+ * PasswordService before storage, mutations write audit entries, and all
+ * outward-facing results are sanitised through `toSafeUser` so the
+ * password hash never leaves the service.
+ */
 @Injectable()
 export class UsersService {
   constructor(
@@ -30,6 +38,16 @@ export class UsersService {
     private readonly auditService: AuditService
   ) {}
 
+  /**
+   * List users ordered by last name then first name, with pagination.
+   *
+   * When `role` is provided, only users holding a role whose name equals
+   * the value (case-insensitive exact match) are returned.
+   *
+   * @param query - page / pageSize pagination options
+   * @param role - optional role name filter
+   * @returns `{ items, total, page, pageSize }` where items are safe user shapes
+   */
   async list(query: PaginationQueryDto, role?: string) {
     const skip = (query.page - 1) * query.pageSize;
     // `contains` rather than `equals`: callers filter by role *family*
@@ -63,6 +81,17 @@ export class UsersService {
     };
   }
 
+  /**
+   * Create a user with a hashed password and optional role assignments.
+   *
+   * The email is lowercased before the uniqueness check and storage.
+   * Writes a `users.create` audit entry after creation.
+   *
+   * @param input - email, names, plaintext password and optional role ids
+   * @param actorId - id of the acting user, stamped as createdBy/updatedBy
+   * @returns the created user without its password hash
+   * @throws ConflictException when a user with the same email already exists
+   */
   async create(input: CreateUserDto, actorId?: string) {
     const existing = await this.prisma.user.findUnique({ where: { email: input.email.toLowerCase() } });
 
@@ -98,6 +127,20 @@ export class UsersService {
     return this.toSafeUser(user);
   }
 
+  /**
+   * Partially update a user; only fields present in the DTO are applied.
+   *
+   * Supplying `roleIds` replaces the entire role set (delete-then-create,
+   * not transactional with the user update). A new password is re-hashed.
+   * Writes a `users.activation` audit entry when `isActive` is toggled,
+   * otherwise `users.update`.
+   *
+   * @param userId - id of the user to update
+   * @param input - partial fields (email, names, password, isActive, roleIds)
+   * @param actorId - id of the acting user, stamped as updatedBy
+   * @returns the updated user without its password hash
+   * @throws NotFoundException when the user does not exist
+   */
   async update(userId: string, input: UpdateUserDto, actorId?: string) {
     await this.ensureUserExists(userId);
 
@@ -135,6 +178,15 @@ export class UsersService {
     return this.toSafeUser(user);
   }
 
+  /**
+   * Fetch a user by id with roles and role permissions eagerly loaded.
+   *
+   * Returns the raw Prisma record (including the password hash) — callers
+   * must sanitise with `toSafeUser` before exposing it.
+   *
+   * @param userId - id of the user to fetch
+   * @returns the user with relations, or null when not found
+   */
   findByIdWithRelations(userId: string) {
     return this.prisma.user.findUnique({
       where: { id: userId },
@@ -142,6 +194,15 @@ export class UsersService {
     });
   }
 
+  /**
+   * Fetch a user by email (lowercased) with roles and permissions loaded.
+   *
+   * Intended for authentication flows — the returned record includes the
+   * password hash, so it must never be returned to clients directly.
+   *
+   * @param email - email address; normalised to lowercase before lookup
+   * @returns the user with relations, or null when not found
+   */
   findByEmailWithSecurity(email: string) {
     return this.prisma.user.findUnique({
       where: { email: email.toLowerCase() },
@@ -149,6 +210,12 @@ export class UsersService {
     });
   }
 
+  /**
+   * Flatten a user's roles into a deduplicated array of permission codes.
+   *
+   * @param user - user shape carrying userRoles -> role -> rolePermissions
+   * @returns unique permission code strings across all of the user's roles
+   */
   flattenPermissions(user: {
     userRoles: Array<{
       role: { rolePermissions: Array<{ permission: { code: string } }> };
@@ -159,6 +226,17 @@ export class UsersService {
     ];
   }
 
+  /**
+   * Map a user record (with relations) to a client-safe shape.
+   *
+   * Strips the password hash, flattens roles to `{ id, name, description }`
+   * summaries and includes the deduplicated permission code list. Missing
+   * `isSuperUser` coerces to false.
+   *
+   * @param user - user record including userRoles with role permissions
+   * @param permissions - optional precomputed permission codes; defaults to `flattenPermissions(user)`
+   * @returns sanitised user object with `roles` and `permissions` arrays
+   */
   toSafeUser(
     user: {
       id: string;

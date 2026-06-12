@@ -105,6 +105,14 @@ class RejectEstimateProposalDto {
   proposalIndex!: number;
 }
 
+/**
+ * Accept/reject endpoints for AI-generated estimate-item proposals
+ * stored on tool_result conversation messages.
+ *
+ * All routes are JWT-guarded and require the `ai.persona.tendering`
+ * permission (class-level). Accepting writes an estimate_items row plus
+ * its cost lines; rejecting only flips status in message metadata.
+ */
 @ApiTags("Estimate Proposals")
 @ApiBearerAuth()
 @Controller("personas/tendering/estimate-proposals")
@@ -113,6 +121,16 @@ class RejectEstimateProposalDto {
 export class EstimateProposalsController {
   constructor(private readonly proposals: EstimateProposalsService) {}
 
+  /**
+   * Accept a single AI estimate proposal — writes one estimate_items row plus its labour/plant/cutting/waste lines. Optional edits override fields before commit.
+   *
+   * @param messageId - tool_result conversation message holding the proposals
+   * @param dto - proposalIndex plus optional field/line-array edits applied before commit
+   * @param actor - JWT principal; must own the conversation
+   * @returns `{ ok: true, estimateItemId }`
+   * @throws NotFoundException when the message or proposal index is not found
+   * @throws BadRequestException when the proposal is already decided, the conversation has no tender context, or the estimate is locked
+   */
   @Post(":messageId/accept")
   @HttpCode(200)
   @ApiOperation({
@@ -135,6 +153,16 @@ export class EstimateProposalsController {
     return { ok: true, estimateItemId: result.estimateItemId };
   }
 
+  /**
+   * Reject a single AI estimate proposal — updates status only, no DB write to estimate_items.
+   *
+   * @param messageId - tool_result conversation message holding the proposals
+   * @param dto - proposalIndex to reject
+   * @param actor - JWT principal; must own the conversation
+   * @returns `{ ok: true }`
+   * @throws NotFoundException when the message or proposal index is not found
+   * @throws BadRequestException when the proposal is already decided
+   */
   @Post(":messageId/reject")
   @HttpCode(200)
   @ApiOperation({
@@ -150,6 +178,14 @@ export class EstimateProposalsController {
     return { ok: true };
   }
 
+  /**
+   * Accept all pending estimate proposals in this message — iterates and reports counts.
+   *
+   * @param messageId - tool_result conversation message holding the proposals
+   * @param actor - JWT principal; must own the conversation
+   * @returns `{ ok: true, accepted, failed }` — per-proposal failures are counted, not thrown
+   * @throws NotFoundException when the message is not found or not owned by the actor
+   */
   @Post(":messageId/accept-all")
   @HttpCode(200)
   @ApiOperation({
@@ -164,6 +200,14 @@ export class EstimateProposalsController {
     return { ok: true, ...result };
   }
 
+  /**
+   * Reject all pending estimate proposals in this message — single update, no estimate items written.
+   *
+   * @param messageId - tool_result conversation message holding the proposals
+   * @param actor - JWT principal; must own the conversation
+   * @returns `{ ok: true, rejected }`
+   * @throws NotFoundException when the message is not found or not owned by the actor
+   */
   @Post(":messageId/reject-all")
   @HttpCode(200)
   @ApiOperation({

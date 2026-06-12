@@ -26,12 +26,25 @@ function mockSharePoint() {
   };
 }
 
+function mockTenderNumbers() {
+  return {
+    generate: jest.fn().mockResolvedValue({
+      tenderNumber: "T260612-ACME-Rev1",
+      clientSlugSnapshot: "ACME",
+      revisionNumber: 1
+    }),
+    bumpRevision: jest.fn(),
+    validate: jest.fn(() => null)
+  };
+}
+
 function makeService(prisma: ReturnType<typeof mockPrisma>, audit: ReturnType<typeof mockAudit>) {
   return new TenderingService(
     prisma as never,
     audit as never,
     mockEmail() as never,
-    mockSharePoint() as never
+    mockSharePoint() as never,
+    mockTenderNumbers() as never
   );
 }
 
@@ -48,7 +61,7 @@ describe("TenderingService.delete", () => {
     });
     prisma.tender.findUnique.mockResolvedValue({
       id: "t-1",
-      tenderNumber: "IS-T001",
+      tenderNumber: "T260310-QUEE-Rev1",
       title: "Test",
       status: "DRAFT",
       _count: { clientQuotes: 2, scopeItems: 5, scopeCards: 1, tenderDocuments: 0, estimateExports: 0, tenderClients: 1, tenderNotes: 0, clarifications: 0 }
@@ -68,7 +81,7 @@ describe("TenderingService.delete", () => {
         entityType: "Tender",
         entityId: "t-1",
         metadata: expect.objectContaining({
-          tenderNumber: "IS-T001",
+          tenderNumber: "T260310-QUEE-Rev1",
           status: "DRAFT"
         })
       })
@@ -76,7 +89,7 @@ describe("TenderingService.delete", () => {
     expect(prisma.tender.delete).toHaveBeenCalledWith({ where: { id: "t-1" } });
     expect(result).toEqual({
       id: "t-1",
-      tenderNumber: "IS-T001",
+      tenderNumber: "T260310-QUEE-Rev1",
       cascadedCounts: expect.objectContaining({ clientQuotes: 2 })
     });
   });
@@ -102,14 +115,14 @@ describe("TenderingService.deletePreflight", () => {
 
     prisma.tender.findUnique.mockResolvedValue({
       id: "t-1",
-      tenderNumber: "IS-T001",
+      tenderNumber: "T260310-QUEE-Rev1",
       title: "Test",
       status: "AWARDED",
       _count: { clientQuotes: 3, scopeItems: 10, scopeCards: 2, tenderDocuments: 1, estimateExports: 2, tenderClients: 1 }
     });
 
     const result = await service.deletePreflight("t-1");
-    expect(result.tenderNumber).toBe("IS-T001");
+    expect(result.tenderNumber).toBe("T260310-QUEE-Rev1");
     expect(result.status).toBe("AWARDED");
     expect(result._count.clientQuotes).toBe(3);
   });

@@ -10,8 +10,12 @@ Auto-fired by the PR-watcher. Operating rules for this headless run:
 2. Write the verdict to docs/pr-reviews/pr-{{PR_NUMBER}}-review.md
    (create the folder if needed). Verdict line first: MERGE / FIX / BLOCK,
    then findings. Plain ASCII.
+   Use that RELATIVE path verbatim — never reconstruct it as an absolute
+   Windows path (mangled absolutes have created junk folders at repo root).
 3. Do NOT merge, close, or comment on the PR. Do NOT modify any branch.
    The verdict file is the only output. Marco merges.
+   (Division of labour: the WATCHER mirrors your finished verdict file into
+   a PR comment afterwards — that is its job, never yours.)
 4. If verdict is FIX or BLOCK, also write
    docs/pr-prompts/needs-marco/pr-{{PR_NUMBER}}-review-fix.md or
    docs/pr-prompts/needs-marco/pr-{{PR_NUMBER}}-review-block.md

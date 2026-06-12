@@ -52,7 +52,7 @@ test.describe("Batch 6 — Scheduler workspace (PR #18)", () => {
       "true"
     );
     await expect(page.getByText("All jobs", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: /J-2025-001/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /J260315-QUEE-001/ })).toBeVisible();
 
     // Prev / Today round-trip in week view.
     const weekLabel = async () => (await page.getByText(/–.*\d{4}/).first().textContent()) ?? "";

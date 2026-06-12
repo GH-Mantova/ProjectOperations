@@ -693,6 +693,7 @@ export function TenderingPage() {
 
       <NewTenderSlideOver
         open={newOpen}
+        clients={clients}
         onClose={() => setNewOpen(false)}
         onCreated={(id) => {
           setNewOpen(false);
@@ -2035,14 +2036,15 @@ function TenderCard({ tender, onOpen, onDelete, canManage }: TenderCardProps) {
 
 type NewTenderSlideOverProps = {
   open: boolean;
+  clients: ClientOption[];
   onClose: () => void;
   onCreated: (tenderId: string) => void;
 };
 
-function NewTenderSlideOver({ open, onClose, onCreated }: NewTenderSlideOverProps) {
+function NewTenderSlideOver({ open, clients, onClose, onCreated }: NewTenderSlideOverProps) {
   const { authFetch } = useAuth();
   const [form, setForm] = useState({
-    tenderNumber: "",
+    clientId: "",
     title: "",
     description: "",
     estimatedValue: "",
@@ -2065,7 +2067,7 @@ function NewTenderSlideOver({ open, onClose, onCreated }: NewTenderSlideOverProp
   useEffect(() => {
     if (open) {
       setForm({
-        tenderNumber: "",
+        clientId: "",
         title: "",
         description: "",
         estimatedValue: "",
@@ -2080,17 +2082,19 @@ function NewTenderSlideOver({ open, onClose, onCreated }: NewTenderSlideOverProp
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!form.tenderNumber.trim() || !form.title.trim()) {
-      setError("Tender number and title are required.");
+    if (!form.clientId || !form.title.trim()) {
+      setError("Client and title are required.");
       return;
     }
     setSubmitting(true);
     setError(null);
     try {
+      // G5 — the tender number is generated server-side from the primary
+      // client (T{YYMMDD}-{SLUG}-Rev{N}); no number is sent from the form.
       const payload: Record<string, unknown> = {
-        tenderNumber: form.tenderNumber.trim(),
         title: form.title.trim(),
-        status: form.status
+        status: form.status,
+        tenderClients: [{ clientId: form.clientId, relationshipType: "PRIMARY" }]
       };
       if (form.description.trim()) payload.description = form.description.trim();
       if (form.estimatedValue.trim()) payload.estimatedValue = form.estimatedValue.trim();
@@ -2129,15 +2133,22 @@ function NewTenderSlideOver({ open, onClose, onCreated }: NewTenderSlideOverProp
         <form onSubmit={submit} className="slide-over__body tender-form">
           {error ? <div className="login-card__error" role="alert">{error}</div> : null}
           <label className="tender-form__field">
-            <span className="s7-type-label">Tender number</span>
-            <input
-              className="s7-input"
-              value={form.tenderNumber}
-              onChange={(event) => setForm((current) => ({ ...current, tenderNumber: event.target.value }))}
-              placeholder="IS-T009"
+            <span className="s7-type-label">Client</span>
+            <select
+              className="s7-select"
+              value={form.clientId}
+              onChange={(event) => setForm((current) => ({ ...current, clientId: event.target.value }))}
               required
-            />
+            >
+              <option value="">Select a client…</option>
+              {clients.map((client) => (
+                <option key={client.id} value={client.id}>{client.name}</option>
+              ))}
+            </select>
           </label>
+          <p className="s7-type-label" style={{ opacity: 0.7, margin: 0 }}>
+            Tender number is auto-generated on save (T{"{YYMMDD}"}-{"{CLIENT}"}-Rev1).
+          </p>
           <label className="tender-form__field">
             <span className="s7-type-label">Title</span>
             <input

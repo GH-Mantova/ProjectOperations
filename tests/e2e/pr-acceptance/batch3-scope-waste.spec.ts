@@ -2,7 +2,7 @@
  * Batch 3 — Scope of Works waste subtable (PRs #72, #176, #179, #180)
  *
  * Covers the per-card waste disposal subtable on the DEM card of the
- * seeded IS-T100 template tender: the manual-row disposal cascade
+ * seeded T260520-ACME-Rev1 template tender: the manual-row disposal cascade
  * (Group → Type → Facility narrowing with rate/unit auto-fill) and the
  * "Sum from above" aggregator (AUTO rows, one per (group, item),
  * regeneration confirm dialog, manual-row preservation).

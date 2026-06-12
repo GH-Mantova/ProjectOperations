@@ -25,7 +25,14 @@ function makeTenderingService(prismaOverrides: Record<string, unknown> = {}) {
     prisma as never,
     audit as never,
     { sendNotificationEmail: jest.fn() } as never,
-    sharePoint as never
+    sharePoint as never,
+    {
+      generate: jest.fn().mockResolvedValue({
+        tenderNumber: "T260612-ACME-Rev1",
+        clientSlugSnapshot: "ACME",
+        revisionNumber: 1
+      })
+    } as never
   );
   return { service, prisma, audit };
 }

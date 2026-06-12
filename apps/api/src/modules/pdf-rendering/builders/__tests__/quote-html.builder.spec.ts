@@ -16,7 +16,7 @@ function basePayload(
   return {
     tender: {
       id: "t-1",
-      tenderNumber: "IS-T020",
+      tenderNumber: "T260512-BRIS-Rev1",
       title: "Demo Demolition Project",
       status: "SUBMITTED",
       value: "50000",
@@ -140,7 +140,7 @@ describe("Quote HTML builder", () => {
   it("produces valid HTML with key sections", () => {
     const html = buildQuoteHtml(basePayload());
     expect(html).toContain("<!DOCTYPE html>");
-    expect(html).toContain("IS-T020");
+    expect(html).toContain("T260512-BRIS-Rev1");
     expect(html).toContain("Cost Summary");
     expect(html).toContain("Scope of Works");
     expect(html).toContain("TERMS AND CONDITIONS");
@@ -241,10 +241,10 @@ describe("Quote HTML builder", () => {
   });
 
   it("provides a header template with branding, quote ref, and document control", () => {
-    const header = headerTemplate("IS-T020");
+    const header = headerTemplate("T260512-BRIS-Rev1");
     expect(header).toContain("INITIAL SERVICES");
     expect(header).toContain("Demolition Licence: 2328018");
-    expect(header).toContain("Quote No. IS-T020");
+    expect(header).toContain("Quote No. T260512-BRIS-Rev1");
     expect(header).toContain("data:image/png;base64,");
     expect(header).toContain("Electronic document");
     expect(header).toContain("Uncontrolled when printed");
@@ -286,7 +286,7 @@ describe("Quote HTML → PDF (integration)", () => {
     const html = buildQuoteHtml(basePayload());
     const buf = await renderer.renderHtmlToPdf(html, {
       displayHeaderFooter: true,
-      headerHtml: headerTemplate("IS-T020"),
+      headerHtml: headerTemplate("T260512-BRIS-Rev1"),
       footerHtml: footerTemplate(),
       margin: { top: "35mm", bottom: "22mm" },
     });

@@ -23,7 +23,7 @@ export const FIELD_WORKER = {
 };
 
 /** Seeded tender used across batch specs. */
-export const SEED_TENDER_NUMBER = "IS-T100";
+export const SEED_TENDER_NUMBER = "T260520-ACME-Rev1";
 
 /** Seeded client ID. */
 export const SEED_CLIENT_ID = "client-001";

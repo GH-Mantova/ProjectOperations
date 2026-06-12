@@ -41,7 +41,7 @@ const PROJECT_ROW = {
   name: "Test Project",
   status: "MOBILISING",
   sourceTenderId: "t-1",
-  sourceTender: { id: "t-1", tenderNumber: "IS-T001", title: "Test Tender", status: "AWARDED" },
+  sourceTender: { id: "t-1", tenderNumber: "T260310-QUEE-Rev1", title: "Test Tender", status: "AWARDED" },
   _count: {
     scopeItems: 5,
     milestones: 2,
@@ -67,7 +67,7 @@ describe("ProjectsService.revertToTenderPreflight", () => {
     const result = await service.revertToTenderPreflight("p-1");
 
     expect(result.projectNumber).toBe("IS-P001");
-    expect(result.sourceTender?.tenderNumber).toBe("IS-T001");
+    expect(result.sourceTender?.tenderNumber).toBe("T260310-QUEE-Rev1");
     expect(result.cascadeCounts.scopeItems).toBe(5);
     expect(result.cascadeCounts.ganttTasks).toBe(4);
     expect(result.cascadeCounts.contracts).toBe(1);

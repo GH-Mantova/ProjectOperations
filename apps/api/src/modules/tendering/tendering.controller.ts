@@ -38,6 +38,13 @@ class SetAssignedEstimatorDto {
   @IsString()
   userId!: string | null;
 }
+
+class BumpTenderRevisionDto {
+  /** Optional reason recorded in the audit log entry. */
+  @IsOptional()
+  @IsString()
+  reason?: string;
+}
 import { TenderingService } from "./tendering.service";
 
 @ApiTags("Tendering")
@@ -218,6 +225,22 @@ export class TenderingController {
   @ApiResponse({ status: 404, description: "Tender not found." })
   delete(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
     return this.service.delete(id, actor.sub);
+  }
+
+  @Post(":id/bump-revision")
+  @RequirePermissions("tenders.manage")
+  @ApiOperation({
+    summary:
+      "Mark a tender as a new revision — bumps Rev{N} on the canonical tender number (T{YYMMDD}-{SLUG}-Rev{N}); the row id is unchanged"
+  })
+  @ApiResponse({ status: 201, description: "Updated tender with the bumped revision number." })
+  @ApiResponse({ status: 404, description: "Tender not found." })
+  bumpRevision(
+    @Param("id") id: string,
+    @Body() dto: BumpTenderRevisionDto,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.bumpRevision(id, dto.reason, actor.sub);
   }
 
   @Post(":id/duplicate")

@@ -71,6 +71,8 @@ async function main() {
     const supervisor = users.items.find((user) => user.email === "supervisor@projectops.local") ?? users.items[1];
 
     const tenderCreateResponse = await api.post("/api/v1/tenders").send({
+      // G5 — tender numbers are server-generated (T{YYMMDD}-{SLUG}-Rev{N});
+      // this supplied value is intentionally ignored by the API.
       tenderNumber: `TEN-COMP-${now}`,
       title: `Compliance Tender ${now}`,
       description: "Automated compliance smoke tender.",
@@ -128,9 +130,9 @@ async function main() {
     }).expect(200);
 
     const conversionResponse = await api.post(`/api/v1/tenders/${tender.id}/convert-to-job`).send({
-      // PR B05 — omit jobNumber so the server generates a canonical
-      // J-YYYY-NNN via JobNumberService. The previous JOB-COMP-${now}
-      // format is now rejected by the validator.
+      // G5 — job numbers are always server-generated as canonical
+      // J{YYMMDD}-{SLUG}-{NNN} via JobNumberService; callers can no
+      // longer supply one.
       name: `Compliance Job ${now}`,
       description: "Automated conversion target job.",
       siteId: sites.items[0].id,

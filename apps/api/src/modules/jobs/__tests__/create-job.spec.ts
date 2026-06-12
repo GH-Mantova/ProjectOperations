@@ -1,5 +1,5 @@
-// PR B05 — specs for createJob covering the canonical job-number
-// generation, validation, pre-check 409, P2002 race 409, and the
+// Specs for createJob covering G5 server-generated job numbers
+// (J{YYMMDD}-{SLUG}-{NNN}), the pre-check 409, P2002 race 409, and the
 // long-standing happy/error paths from B02.
 //
 // Mocks Prisma + JobNumberService and drives the service directly.
@@ -11,22 +11,25 @@ import { JobsService } from "../jobs.service";
 
 type AsyncMock = jest.Mock<Promise<unknown>, unknown[]>;
 
+const GENERATED = { jobNumber: "J260612-ACME-001", clientSlugSnapshot: "ACME" };
+
 function buildMocks(opts: {
   clientExists?: boolean;
   siteExists?: boolean;
   jobNumberTaken?: boolean;
   createdJob?: { id: string; jobNumber: string };
   jobCreateImpl?: (...args: unknown[]) => Promise<unknown>;
-  generatorOutput?: string;
+  generatorOutput?: { jobNumber: string; clientSlugSnapshot: string };
 } = {}) {
+  const generated = opts.generatorOutput ?? GENERATED;
   const clientFindUnique: AsyncMock = jest.fn(async () =>
-    opts.clientExists === false ? null : { id: "client-1" }
+    opts.clientExists === false ? null : { id: "client-1", name: "Acme Infrastructure" }
   );
   const siteFindUnique: AsyncMock = jest.fn(async () =>
     opts.siteExists === false ? null : { id: "site-1" }
   );
   const jobFindUnique: AsyncMock = jest.fn();
-  const createdJob = opts.createdJob ?? { id: "job-new", jobNumber: "J-2026-100" };
+  const createdJob = opts.createdJob ?? { id: "job-new", jobNumber: generated.jobNumber };
   // First call is the jobNumber uniqueness pre-check; subsequent calls
   // (the requireJob inside getById) return the row.
   jobFindUnique
@@ -48,14 +51,7 @@ function buildMocks(opts: {
   const sharepoint = {};
   const notifications = {};
   const jobNumberService = {
-    generate: jest.fn(async () => opts.generatorOutput ?? "J-2026-500"),
-    validate: jest.fn((value: string) => {
-      if (!value) return "Job number is required.";
-      if (!/^J-\d{4}-\d{3}$/.test(value)) {
-        return `Job number "${value}" is not in canonical format J-YYYY-NNN.`;
-      }
-      return null;
-    })
+    generate: jest.fn(async () => generated)
   };
 
   const service = new JobsService(
@@ -70,20 +66,21 @@ function buildMocks(opts: {
 }
 
 const validDto = {
-  jobNumber: "J-2026-100",
   name: "Manual Test Job",
   clientId: "client-1",
   status: "PLANNING"
 };
 
-describe("JobsService.createJob (PR B05 — canonical IDs + race-fix)", () => {
-  it("happy path: creates the job, writes audit, returns the row", async () => {
+describe("JobsService.createJob (G5 — server-generated canonical IDs + race-fix)", () => {
+  it("happy path: creates the job with the generated number + slug, writes audit", async () => {
     const { service, mocks } = buildMocks();
     const result = await service.createJob(validDto, "user-1");
     expect(result).toBeDefined();
+    expect(mocks.jobNumberService.generate).toHaveBeenCalledWith("client-1", "Acme Infrastructure");
     expect(mocks.jobCreate).toHaveBeenCalledTimes(1);
     const data = (mocks.jobCreate.mock.calls[0]?.[0] as { data: Record<string, unknown> }).data;
-    expect(data.jobNumber).toBe("J-2026-100");
+    expect(data.jobNumber).toBe("J260612-ACME-001");
+    expect(data.clientSlugSnapshot).toBe("ACME");
     expect(data.name).toBe("Manual Test Job");
     expect(data.clientId).toBe("client-1");
     expect(data.status).toBe("PLANNING");
@@ -97,12 +94,12 @@ describe("JobsService.createJob (PR B05 — canonical IDs + race-fix)", () => {
   it("trims string inputs and defaults status to PLANNING when omitted", async () => {
     const { service, mocks } = buildMocks();
     await service.createJob(
-      { jobNumber: "  J-2026-101 ", name: "  Trim Me  ", clientId: "client-1" },
+      { name: "  Trim Me  ", clientId: " client-1 " },
       "user-1"
     );
     const data = (mocks.jobCreate.mock.calls[0]?.[0] as { data: Record<string, unknown> }).data;
-    expect(data.jobNumber).toBe("J-2026-101");
     expect(data.name).toBe("Trim Me");
+    expect(data.clientId).toBe("client-1");
     expect(data.status).toBe("PLANNING");
   });
 
@@ -118,6 +115,7 @@ describe("JobsService.createJob (PR B05 — canonical IDs + race-fix)", () => {
     const { service, mocks } = buildMocks({ clientExists: false });
     await expect(service.createJob(validDto, "user-1")).rejects.toBeInstanceOf(NotFoundException);
     expect(mocks.jobCreate).not.toHaveBeenCalled();
+    expect(mocks.jobNumberService.generate).not.toHaveBeenCalled();
     expect(mocks.auditWrite).not.toHaveBeenCalled();
   });
 
@@ -135,46 +133,10 @@ describe("JobsService.createJob (PR B05 — canonical IDs + race-fix)", () => {
     expect(mocks.jobCreate).not.toHaveBeenCalled();
   });
 
-  it("throws ConflictException when jobNumber is already taken (pre-check)", async () => {
+  it("throws ConflictException when the generated jobNumber is already taken (pre-check)", async () => {
     const { service, mocks } = buildMocks({ jobNumberTaken: true });
     await expect(service.createJob(validDto, "user-1")).rejects.toBeInstanceOf(ConflictException);
     expect(mocks.jobCreate).not.toHaveBeenCalled();
-  });
-
-  it("persists canonical J-YYYY-NNN jobNumber verbatim when supplied", async () => {
-    const { service, mocks } = buildMocks();
-    await service.createJob({ ...validDto, jobNumber: "J-2026-200" }, "user-1");
-    const data = (mocks.jobCreate.mock.calls[0]?.[0] as { data: Record<string, unknown> }).data;
-    expect(data.jobNumber).toMatch(/^J-\d{4}-\d{3}$/);
-    expect(data.jobNumber).toBe("J-2026-200");
-  });
-
-  // B05 — generator
-  it("server-generates jobNumber when caller omits it", async () => {
-    const { service, mocks } = buildMocks({ generatorOutput: "J-2026-038" });
-    const { jobNumber: _ignored, ...dtoWithoutNumber } = validDto;
-    await service.createJob(dtoWithoutNumber, "user-1");
-    expect(mocks.jobNumberService.generate).toHaveBeenCalledTimes(1);
-    const data = (mocks.jobCreate.mock.calls[0]?.[0] as { data: Record<string, unknown> }).data;
-    expect(data.jobNumber).toBe("J-2026-038");
-  });
-
-  it("server-generates when caller sends empty/whitespace jobNumber", async () => {
-    const { service, mocks } = buildMocks({ generatorOutput: "J-2026-039" });
-    await service.createJob({ ...validDto, jobNumber: "   " }, "user-1");
-    expect(mocks.jobNumberService.generate).toHaveBeenCalledTimes(1);
-    const data = (mocks.jobCreate.mock.calls[0]?.[0] as { data: Record<string, unknown> }).data;
-    expect(data.jobNumber).toBe("J-2026-039");
-  });
-
-  // B05 — validation
-  it("rejects non-canonical supplied jobNumber with 400 (legacy JOB- prefix)", async () => {
-    const { service, mocks } = buildMocks();
-    await expect(
-      service.createJob({ ...validDto, jobNumber: "JOB-2026-001" }, "user-1")
-    ).rejects.toBeInstanceOf(BadRequestException);
-    expect(mocks.jobCreate).not.toHaveBeenCalled();
-    expect(mocks.jobNumberService.generate).not.toHaveBeenCalled();
   });
 
   // B02.1 — P2002 race fix

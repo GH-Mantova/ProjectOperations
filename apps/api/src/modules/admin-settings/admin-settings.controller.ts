@@ -30,6 +30,7 @@ export class AdminSettingsController {
   @Get("notifications")
   @RequirePermissions("platform.admin")
   @ApiOperation({ summary: "List all notification trigger configs ordered enabled-first then alphabetical." })
+  @ApiResponse({ status: 200, description: "List all notification trigger configs ordered enabled-first then alphabetical." })
   listTriggers() {
     return this.service.listTriggers();
   }
@@ -37,6 +38,7 @@ export class AdminSettingsController {
   @Patch("notifications/:trigger")
   @RequirePermissions("platform.admin")
   @ApiOperation({ summary: "Update a trigger's isEnabled / deliveryMethod / recipients. 404 if trigger is not in the catalogue." })
+  @ApiResponse({ status: 200, description: "Update a trigger's isEnabled / deliveryMethod / recipients. 404 if trigger is not in the catalogue." })
   updateTrigger(@Param("trigger") trigger: string, @Body() dto: UpdateTriggerDto) {
     return this.service.updateTrigger(trigger, dto);
   }
@@ -44,6 +46,7 @@ export class AdminSettingsController {
   @Get("email")
   @RequirePermissions("platform.admin")
   @ApiOperation({ summary: "Get the email provider config singleton. Creates one on first access." })
+  @ApiResponse({ status: 200, description: "Get the email provider config singleton. Creates one on first access." })
   getEmailConfig() {
     return this.service.getEmailConfig();
   }
@@ -51,6 +54,7 @@ export class AdminSettingsController {
   @Patch("email")
   @RequirePermissions("platform.admin")
   @ApiOperation({ summary: "Update the email provider config." })
+  @ApiResponse({ status: 200, description: "Update the email provider config." })
   updateEmailConfig(@Body() dto: UpdateEmailConfigDto, @CurrentUser() actor: { sub: string }) {
     return this.service.updateEmailConfig(actor.sub, dto);
   }
@@ -69,6 +73,7 @@ export class AdminSettingsController {
   @Get("users")
   @RequirePermissions("platform.admin")
   @ApiOperation({ summary: "All active users with first role name — used by the notification recipient picker." })
+  @ApiResponse({ status: 200, description: "All active users with first role name — used by the notification recipient picker." })
   listUsers() {
     return this.service.listUsersForRecipientPicker();
   }

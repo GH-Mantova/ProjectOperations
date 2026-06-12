@@ -97,6 +97,7 @@ export class QuoteScopeItemsController {
   @Post("reset")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Wipe the quote's scope items and rebuild from current scope+waste+cutting." })
+  @ApiResponse({ status: 201, description: "Wipe the quote's scope items and rebuild from current scope+waste+cutting." })
   reset(@Param("tenderId") tenderId: string, @Param("quoteId") quoteId: string) {
     return this.service.rebuild(tenderId, quoteId, "reset");
   }
@@ -104,6 +105,7 @@ export class QuoteScopeItemsController {
   @Post("push-from-scope")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Append any scope/cutting/waste rows not already linked to this quote." })
+  @ApiResponse({ status: 201, description: "Append any scope/cutting/waste rows not already linked to this quote." })
   push(@Param("tenderId") tenderId: string, @Param("quoteId") quoteId: string) {
     return this.service.rebuild(tenderId, quoteId, "push");
   }

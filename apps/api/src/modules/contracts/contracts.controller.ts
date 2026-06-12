@@ -101,6 +101,7 @@ export class ContractsController {
   @Get()
   @RequirePermissions("finance.view")
   @ApiOperation({ summary: "List contracts with project + client info, filterable by status / projectId." })
+  @ApiResponse({ status: 200, description: "List contracts with project + client info, filterable by status / projectId." })
   list(@Query() q: ListContractsQuery) {
     return this.service.listContracts({
       status: q.status,
@@ -121,6 +122,7 @@ export class ContractsController {
   @Get(":id")
   @RequirePermissions("finance.view")
   @ApiOperation({ summary: "Full contract with variations and progress-claim headers." })
+  @ApiResponse({ status: 200, description: "Full contract with variations and progress-claim headers." })
   get(@Param("id") id: string) {
     return this.service.getContract(id);
   }
@@ -153,6 +155,7 @@ export class ContractsController {
   @Patch(":id")
   @RequirePermissions("finance.manage")
   @ApiOperation({ summary: "Update contract. contractValue changes require finance.admin." })
+  @ApiResponse({ status: 200, description: "Update contract. contractValue changes require finance.admin." })
   update(@Param("id") id: string, @Body() dto: UpdateContractDto, @CurrentUser() user: AuthenticatedUser) {
     return this.service.updateContract(id, actor(user), dto);
   }
@@ -186,6 +189,7 @@ export class ContractsController {
   @Post(":id/variations")
   @RequirePermissions("finance.manage")
   @ApiOperation({ summary: "Add a variation (status=RECEIVED). Auto-assigned IS-V### number." })
+  @ApiResponse({ status: 201, description: "Add a variation (status=RECEIVED). Auto-assigned IS-V### number." })
   createVariation(
     @Param("id") id: string,
     @Body() dto: CreateVariationDto,
@@ -200,6 +204,7 @@ export class ContractsController {
     summary:
       "Update a variation. Status transitions enforced RECEIVED→PRICED→SUBMITTED→APPROVED. Approved variations auto-append to the active DRAFT claim if one exists."
   })
+  @ApiResponse({ status: 200, description: "Update a variation. Status transitions enforced RECEIVED→PRICED→SUBMITTED→APPROVED. Approved variations auto-append to the active DRAFT claim if one exists." })
   /**
    * Update a variation. Status transitions enforced
    * RECEIVED→PRICED→SUBMITTED→APPROVED. Approved variations auto-append to
@@ -288,6 +293,7 @@ export class ContractsController {
     summary:
       "Update a line item. thisClaimPct triggers server-side $ calculation; thisClaimAmount overrides and clears pct."
   })
+  @ApiResponse({ status: 200, description: "Update a line item. thisClaimPct triggers server-side $ calculation; thisClaimAmount overrides and clears pct." })
   /**
    * Update a line item. thisClaimPct triggers server-side $ calculation;
    * thisClaimAmount overrides and clears pct.
@@ -336,6 +342,7 @@ export class ContractsController {
   @Post(":id/claims/:claimId/approve")
   @RequirePermissions("finance.admin")
   @ApiOperation({ summary: "Approve a submitted claim. retentionHeld = totalApproved × contract.retentionPct / 100." })
+  @ApiResponse({ status: 201, description: "Approve a submitted claim. retentionHeld = totalApproved × contract.retentionPct / 100." })
   /**
    * Approve a submitted claim. retentionHeld = totalApproved × contract.retentionPct / 100.
    *

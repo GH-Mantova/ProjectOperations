@@ -34,6 +34,7 @@ export class DocumentsController {
   @Get()
   @RequirePermissions("documents.view")
   @ApiOperation({ summary: "List SharePoint-backed documents with filters and access checks" })
+  @ApiResponse({ status: 200, description: "List SharePoint-backed documents with filters and access checks." })
   list(@Query() query: DocumentsQueryDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.service.list(query, actor);
   }
@@ -41,6 +42,7 @@ export class DocumentsController {
   @Get("entity/:linkedEntityType/:linkedEntityId")
   @RequirePermissions("documents.view")
   @ApiOperation({ summary: "List documents linked to a specific entity" })
+  @ApiResponse({ status: 200, description: "List documents linked to a specific entity." })
   listForEntity(
     @Param("linkedEntityType") linkedEntityType: string,
     @Param("linkedEntityId") linkedEntityId: string,
@@ -69,6 +71,7 @@ export class DocumentsController {
   @Get(":id")
   @RequirePermissions("documents.view")
   @ApiOperation({ summary: "Get document detail with version history and access rules" })
+  @ApiResponse({ status: 200, description: "Get document detail with version history and access rules." })
   getById(@Param("id") id: string, @CurrentUser() actor: AuthenticatedUser) {
     return this.service.getById(id, actor);
   }
@@ -76,6 +79,7 @@ export class DocumentsController {
   @Get(":id/open-link")
   @RequirePermissions("documents.view")
   @ApiOperation({ summary: "Get open-link URL for a document" })
+  @ApiResponse({ status: 200, description: "Get open-link URL for a document." })
   getOpenLink(@Param("id") id: string, @CurrentUser() actor: AuthenticatedUser) {
     return this.service.getOpenLink(id, actor);
   }
@@ -83,6 +87,7 @@ export class DocumentsController {
   @Get(":id/download")
   @RequirePermissions("documents.view")
   @ApiOperation({ summary: "Get download URL for a document" })
+  @ApiResponse({ status: 200, description: "Get download URL for a document." })
   getDownloadLink(@Param("id") id: string, @CurrentUser() actor: AuthenticatedUser) {
     return this.service.getDownloadLink(id, actor);
   }
@@ -92,6 +97,7 @@ export class DocumentsController {
   @UseInterceptors(FileInterceptor("file"))
   @ApiConsumes("multipart/form-data", "application/json")
   @ApiOperation({ summary: "Create and register a SharePoint-backed document link (optional multipart file upload)" })
+  @ApiResponse({ status: 201, description: "Create and register a SharePoint-backed document link (optional multipart file upload)." })
   create(
     @Body() dto: CreateDocumentDto,
     @CurrentUser() actor: AuthenticatedUser,
@@ -105,6 +111,7 @@ export class DocumentsController {
   @UseInterceptors(FileInterceptor("file"))
   @ApiConsumes("multipart/form-data", "application/json")
   @ApiOperation({ summary: "Create a new version of an existing document (optional multipart file upload)" })
+  @ApiResponse({ status: 201, description: "Create a new version of an existing document (optional multipart file upload)." })
   createVersion(
     @Param("id") id: string,
     @Body() dto: CreateDocumentVersionDto,

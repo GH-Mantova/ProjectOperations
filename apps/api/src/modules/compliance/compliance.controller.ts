@@ -77,6 +77,7 @@ export class ComplianceController {
   @Get("dashboard")
   @RequirePermissions("compliance.view")
   @ApiOperation({ summary: "Expiring licences, insurances, and qualifications within 30 days." })
+  @ApiResponse({ status: 200, description: "Expiring licences, insurances, and qualifications within 30 days." })
   dashboard() {
     return this.service.getExpiringItems(30);
   }
@@ -99,6 +100,7 @@ export class ComplianceController {
   @Get("expiring")
   @RequirePermissions("compliance.view")
   @ApiOperation({ summary: "Expiring items within `days` (default 30, max 90)." })
+  @ApiResponse({ status: 200, description: "Expiring items within `days` (default 30, max 90)." })
   @ApiQuery({ name: "days", required: false })
   expiring(@Query() q: ExpiringQuery) {
     return this.service.getExpiringItems(q.days ?? 30);
@@ -117,6 +119,7 @@ export class ComplianceController {
   @Get("blocked-subcontractors")
   @RequirePermissions("compliance.view")
   @ApiOperation({ summary: "Subcontractors currently blocked from engagement on compliance grounds." })
+  @ApiResponse({ status: 200, description: "Subcontractors currently blocked from engagement on compliance grounds." })
   blockedSubcontractors() {
     return this.service.listBlockedSubcontractors();
   }
@@ -283,6 +286,7 @@ export class ComplianceController {
   @Post("alerts/send-now")
   @RequirePermissions("compliance.admin")
   @ApiOperation({ summary: "Manually trigger the daily expiry-alert pass right now." })
+  @ApiResponse({ status: 201, description: "Manually trigger the daily expiry-alert pass right now." })
   async sendNow() {
     const sent = await this.service.checkAndSendExpiryAlerts();
     return { sent };
@@ -307,6 +311,7 @@ export class ComplianceController {
   @Patch("subcontractors/:id/block")
   @RequirePermissions("compliance.admin")
   @ApiOperation({ summary: "Manually toggle a subcontractor's compliance block." })
+  @ApiResponse({ status: 200, description: "Manually toggle a subcontractor's compliance block." })
   block(@Param("id") id: string, @Body() dto: BlockDto) {
     if (dto.blocked && !dto.reason) {
       throw new BadRequestException("reason is required when blocking.");

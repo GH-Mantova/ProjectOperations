@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
-import { ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
@@ -25,6 +25,7 @@ export class PortalAuthController {
   constructor(private readonly authService: PortalAuthService) {}
 
   @ApiOperation({ summary: "Portal user login" })
+  @ApiResponse({ status: 201, description: "Portal user login." })
   @UseGuards(PortalRateLimitGuard)
   @Post("auth/login")
   login(@Body() body: PortalLoginDto) {
@@ -32,6 +33,7 @@ export class PortalAuthController {
   }
 
   @ApiOperation({ summary: "Refresh portal access token" })
+  @ApiResponse({ status: 201, description: "Refresh portal access token." })
   @UseGuards(PortalRateLimitGuard)
   @Post("auth/refresh")
   refresh(@Body() body: PortalRefreshDto) {
@@ -39,12 +41,14 @@ export class PortalAuthController {
   }
 
   @ApiOperation({ summary: "Logout portal session" })
+  @ApiResponse({ status: 201, description: "Logout portal session." })
   @Post("auth/logout")
   logout(@Body() body: PortalRefreshDto) {
     return this.authService.logout(body.refreshToken);
   }
 
   @ApiOperation({ summary: "Accept portal invitation" })
+  @ApiResponse({ status: 201, description: "Accept portal invitation." })
   @UseGuards(PortalRateLimitGuard)
   @Post("auth/accept-invite")
   acceptInvite(@Body() body: PortalAcceptInviteDto) {
@@ -52,6 +56,7 @@ export class PortalAuthController {
   }
 
   @ApiOperation({ summary: "Request portal password reset" })
+  @ApiResponse({ status: 201, description: "Request portal password reset." })
   @UseGuards(PortalRateLimitGuard)
   @Post("auth/request-reset")
   requestReset(@Body() body: PortalRequestResetDto) {
@@ -59,6 +64,7 @@ export class PortalAuthController {
   }
 
   @ApiOperation({ summary: "Reset portal password" })
+  @ApiResponse({ status: 201, description: "Reset portal password." })
   @UseGuards(PortalRateLimitGuard)
   @Post("auth/reset-password")
   resetPassword(@Body() body: PortalResetPasswordDto) {
@@ -66,6 +72,7 @@ export class PortalAuthController {
   }
 
   @ApiOperation({ summary: "Get current portal user" })
+  @ApiResponse({ status: 200, description: "Get current portal user." })
   @UseGuards(PortalJwtGuard)
   @Get("auth/me")
   me(@PortalUser() user: PortalUserPayload) {
@@ -73,6 +80,7 @@ export class PortalAuthController {
   }
 
   @ApiOperation({ summary: "Create portal invitation (staff only)" })
+  @ApiResponse({ status: 201, description: "Create portal invitation (staff only)." })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions("portal.invite")
   @Post("invites")

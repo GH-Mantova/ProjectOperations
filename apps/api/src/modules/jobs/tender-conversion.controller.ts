@@ -1,5 +1,5 @@
 import { Body, Controller, Param, Patch, Post, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
@@ -32,6 +32,7 @@ export class TenderConversionController {
   @Patch(":tenderId/award")
   @RequirePermissions("tenderconversion.manage")
   @ApiOperation({ summary: "Award a tender client" })
+  @ApiResponse({ status: 200, description: "Award a tender client." })
   award(
     @Param("tenderId") tenderId: string,
     @Body() dto: AwardTenderClientDto,
@@ -44,6 +45,7 @@ export class TenderConversionController {
   @Patch(":tenderId/contract")
   @RequirePermissions("tenderconversion.manage")
   @ApiOperation({ summary: "Issue contract from awarded tender client" })
+  @ApiResponse({ status: 200, description: "Issue contract from awarded tender client." })
   issueContract(
     @Param("tenderId") tenderId: string,
     @Body() dto: IssueTenderContractDto,
@@ -56,6 +58,7 @@ export class TenderConversionController {
   @Post(":tenderId/convert-to-job")
   @RequirePermissions("tenderconversion.manage")
   @ApiOperation({ summary: "Convert a contracted awarded tender to a job" })
+  @ApiResponse({ status: 201, description: "Convert a contracted awarded tender to a job." })
   convert(
     @Param("tenderId") tenderId: string,
     @Body() dto: ConvertTenderToJobDto,
@@ -68,6 +71,7 @@ export class TenderConversionController {
   @Post(":tenderId/convert-to-job/reuse-archived")
   @RequirePermissions("tenderconversion.manage")
   @ApiOperation({ summary: "Reuse an archived job conversion as a new stage" })
+  @ApiResponse({ status: 201, description: "Reuse an archived job conversion as a new stage." })
   reuseArchived(
     @Param("tenderId") tenderId: string,
     @Body() dto: ReuseArchivedJobConversionDto,
@@ -80,6 +84,7 @@ export class TenderConversionController {
   @Patch(":tenderId/rollback-lifecycle")
   @RequirePermissions("tenderconversion.manage")
   @ApiOperation({ summary: "Roll back a converted or contracted tender to Awarded or Contract" })
+  @ApiResponse({ status: 200, description: "Roll back a converted or contracted tender to Awarded or Contract." })
   rollbackLifecycle(
     @Param("tenderId") tenderId: string,
     @Body() dto: RollbackTenderLifecycleDto,

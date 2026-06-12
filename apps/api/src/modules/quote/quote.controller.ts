@@ -66,6 +66,7 @@ export class QuoteController {
   @Patch("tandc")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Replace the clauses array. Used by the auto-save on each textarea blur." })
+  @ApiResponse({ status: 200, description: "Replace the clauses array. Used by the auto-save on each textarea blur." })
   updateTandC(@Param("tenderId") tenderId: string, @Body() dto: UpdateTandCDto) {
     return this.service.updateTandC(tenderId, dto.clauses as TcClause[]);
   }
@@ -73,6 +74,7 @@ export class QuoteController {
   @Post("tandc/reset")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Reset all clauses to the IS standard text from tc-text.const." })
+  @ApiResponse({ status: 201, description: "Reset all clauses to the IS standard text from tc-text.const." })
   resetAllTandC(@Param("tenderId") tenderId: string) {
     return this.service.resetAllTandC(tenderId);
   }
@@ -94,6 +96,7 @@ export class QuoteController {
     summary:
       "List assumptions ordered by sortOrder. If none exist, pre-seeds the IS standard assumption list on first read."
   })
+  @ApiResponse({ status: 200, description: "List assumptions ordered by sortOrder. If none exist, pre-seeds the IS standard assumption list on first read." })
   listAssumptions(@Param("tenderId") tenderId: string) {
     return this.service.listAssumptions(tenderId);
   }
@@ -101,6 +104,7 @@ export class QuoteController {
   @Post("assumptions")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Add an assumption row." })
+  @ApiResponse({ status: 201, description: "Add an assumption row." })
   createAssumption(@Param("tenderId") tenderId: string, @Body() dto: CreateTextDto) {
     return this.service.createAssumption(tenderId, dto.text, dto.sortOrder);
   }
@@ -108,6 +112,7 @@ export class QuoteController {
   @Patch("assumptions/:id")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Edit an assumption's text or sortOrder (used by auto-save on blur)." })
+  @ApiResponse({ status: 200, description: "Edit an assumption's text or sortOrder (used by auto-save on blur)." })
   updateAssumption(
     @Param("tenderId") tenderId: string,
     @Param("id") id: string,
@@ -119,6 +124,7 @@ export class QuoteController {
   @Delete("assumptions/:id")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Hard-delete an assumption row." })
+  @ApiResponse({ status: 200, description: "Hard-delete an assumption row." })
   deleteAssumption(@Param("tenderId") tenderId: string, @Param("id") id: string) {
     return this.service.deleteAssumption(tenderId, id);
   }
@@ -126,6 +132,7 @@ export class QuoteController {
   @Post("assumptions/reorder")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Bulk sortOrder update for drag-and-drop reorder." })
+  @ApiResponse({ status: 201, description: "Bulk sortOrder update for drag-and-drop reorder." })
   reorderAssumptions(@Param("tenderId") tenderId: string, @Body() dto: ReorderDto) {
     return this.service.reorderAssumptions(tenderId, dto.order);
   }
@@ -137,6 +144,7 @@ export class QuoteController {
     summary:
       "List exclusions ordered by sortOrder. Pre-seeds the IS standard exclusion list on first read."
   })
+  @ApiResponse({ status: 200, description: "List exclusions ordered by sortOrder. Pre-seeds the IS standard exclusion list on first read." })
   listExclusions(@Param("tenderId") tenderId: string) {
     return this.service.listExclusions(tenderId);
   }
@@ -144,6 +152,7 @@ export class QuoteController {
   @Post("exclusions")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Add an exclusion row." })
+  @ApiResponse({ status: 201, description: "Add an exclusion row." })
   createExclusion(@Param("tenderId") tenderId: string, @Body() dto: CreateTextDto) {
     return this.service.createExclusion(tenderId, dto.text, dto.sortOrder);
   }
@@ -151,6 +160,7 @@ export class QuoteController {
   @Patch("exclusions/:id")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Edit an exclusion's text or sortOrder." })
+  @ApiResponse({ status: 200, description: "Edit an exclusion's text or sortOrder." })
   updateExclusion(
     @Param("tenderId") tenderId: string,
     @Param("id") id: string,
@@ -162,6 +172,7 @@ export class QuoteController {
   @Delete("exclusions/:id")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Hard-delete an exclusion row." })
+  @ApiResponse({ status: 200, description: "Hard-delete an exclusion row." })
   deleteExclusion(@Param("tenderId") tenderId: string, @Param("id") id: string) {
     return this.service.deleteExclusion(tenderId, id);
   }
@@ -169,6 +180,7 @@ export class QuoteController {
   @Post("exclusions/reorder")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Bulk sortOrder update for drag-and-drop reorder." })
+  @ApiResponse({ status: 201, description: "Bulk sortOrder update for drag-and-drop reorder." })
   reorderExclusions(@Param("tenderId") tenderId: string, @Body() dto: ReorderDto) {
     return this.service.reorderExclusions(tenderId, dto.order);
   }
@@ -180,6 +192,7 @@ export class QuoteController {
     summary:
       "List past PDF/Excel exports for this tender (most recent first, capped at 20). PDF/Excel generation itself lives at /tenders/:id/export/pdf and /export/excel."
   })
+  @ApiResponse({ status: 200, description: "List past PDF/Excel exports for this tender (most recent first, capped at 20). PDF/Excel generation itself lives at /tenders/:id/export/pdf and /export/excel." })
   listExports(@Param("tenderId") tenderId: string) {
     return this.service.listExports(tenderId);
   }

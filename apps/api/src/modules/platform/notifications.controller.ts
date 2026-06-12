@@ -22,6 +22,7 @@ export class NotificationsController {
   @Get("me")
   @RequirePermissions("notifications.view")
   @ApiOperation({ summary: "List notifications for the current user" })
+  @ApiResponse({ status: 200, description: "List notifications for the current user." })
   myNotifications(@CurrentUser() actor: { sub: string }) {
     return this.notificationsService.listForUser(actor.sub);
   }
@@ -29,6 +30,7 @@ export class NotificationsController {
   @Post()
   @RequirePermissions("notifications.manage")
   @ApiOperation({ summary: "Create a notification" })
+  @ApiResponse({ status: 201, description: "Create a notification." })
   create(@Body() dto: CreateNotificationDto, @CurrentUser() actor: { sub: string }) {
     return this.notificationsService.create(dto, actor.sub);
   }
@@ -36,6 +38,7 @@ export class NotificationsController {
   @Post("follow-ups/manual")
   @RequirePermissions("notifications.manage")
   @ApiOperation({ summary: "Create a manual shared coordination follow-up" })
+  @ApiResponse({ status: 201, description: "Create a manual shared coordination follow-up." })
   createManualFollowUp(@Body() dto: CreateManualFollowUpDto, @CurrentUser() actor: { sub: string }) {
     return this.notificationsService.createManualFollowUp(dto, actor.sub);
   }
@@ -43,6 +46,7 @@ export class NotificationsController {
   @Get("follow-ups/shared")
   @RequirePermissions("notifications.view")
   @ApiOperation({ summary: "List shared live follow-up notifications" })
+  @ApiResponse({ status: 200, description: "List shared live follow-up notifications." })
   sharedFollowUps(@CurrentUser() actor: { sub: string }) {
     return this.notificationsService.listSharedFollowUps(actor.sub);
   }
@@ -50,6 +54,7 @@ export class NotificationsController {
   @Post("follow-ups/sync")
   @RequirePermissions("notifications.manage")
   @ApiOperation({ summary: "Sync shared live follow-up notifications" })
+  @ApiResponse({ status: 201, description: "Sync shared live follow-up notifications." })
   syncFollowUps(@Body() dto: SyncFollowUpNotificationsDto, @CurrentUser() actor: { sub: string }) {
     return this.notificationsService.syncFollowUps(dto, actor.sub);
   }
@@ -57,6 +62,7 @@ export class NotificationsController {
   @Patch("follow-ups/:id/triage")
   @RequirePermissions("notifications.manage")
   @ApiOperation({ summary: "Update shared live follow-up triage state" })
+  @ApiResponse({ status: 200, description: "Update shared live follow-up triage state." })
   triageFollowUp(
     @Param("id") id: string,
     @Body() dto: TriageFollowUpNotificationDto,
@@ -68,6 +74,7 @@ export class NotificationsController {
   @Patch("follow-ups/:id/assign")
   @RequirePermissions("notifications.manage")
   @ApiOperation({ summary: "Reassign shared live follow-up ownership" })
+  @ApiResponse({ status: 200, description: "Reassign shared live follow-up ownership." })
   assignFollowUp(
     @Param("id") id: string,
     @Body() dto: AssignFollowUpNotificationDto,
@@ -79,6 +86,7 @@ export class NotificationsController {
   @Patch("follow-ups/:id/resolve")
   @RequirePermissions("notifications.manage")
   @ApiOperation({ summary: "Resolve a manual shared coordination follow-up" })
+  @ApiResponse({ status: 200, description: "Resolve a manual shared coordination follow-up." })
   resolveManualFollowUp(
     @Param("id") id: string,
     @Body() dto: ResolveManualFollowUpDto,
@@ -90,6 +98,7 @@ export class NotificationsController {
   @Patch("follow-ups/:id/accept-handoff")
   @RequirePermissions("notifications.manage")
   @ApiOperation({ summary: "Accept a manual execution handoff and transfer activity ownership" })
+  @ApiResponse({ status: 200, description: "Accept a manual execution handoff and transfer activity ownership." })
   acceptManualHandoff(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
     return this.notificationsService.acceptManualHandoff(id, actor.sub);
   }
@@ -97,6 +106,7 @@ export class NotificationsController {
   @Patch("follow-ups/:id/accept-escalation")
   @RequirePermissions("notifications.manage")
   @ApiOperation({ summary: "Accept a manual execution escalation and claim activity ownership" })
+  @ApiResponse({ status: 200, description: "Accept a manual execution escalation and claim activity ownership." })
   acceptManualEscalation(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
     return this.notificationsService.acceptManualEscalation(id, actor.sub);
   }
@@ -104,6 +114,7 @@ export class NotificationsController {
   @Patch(":id/read")
   @RequirePermissions("notifications.manage")
   @ApiOperation({ summary: "Mark a notification as read" })
+  @ApiResponse({ status: 200, description: "Mark a notification as read." })
   markRead(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
     return this.notificationsService.markRead(id, actor.sub);
   }

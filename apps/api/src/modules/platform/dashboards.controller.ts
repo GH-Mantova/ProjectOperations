@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
@@ -17,6 +17,7 @@ export class DashboardsController {
   @Get()
   @RequirePermissions("dashboards.view")
   @ApiOperation({ summary: "List dashboard definitions and widgets" })
+  @ApiResponse({ status: 200, description: "List dashboard definitions and widgets." })
   list(@CurrentUser() actor: { sub: string }) {
     return this.dashboardsService.list(actor.sub);
   }
@@ -24,6 +25,7 @@ export class DashboardsController {
   @Get(":id/render")
   @RequirePermissions("dashboards.view")
   @ApiOperation({ summary: "Render a dashboard with live widget data" })
+  @ApiResponse({ status: 200, description: "Render a dashboard with live widget data." })
   render(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
     return this.dashboardsService.render(id, actor.sub);
   }
@@ -31,6 +33,7 @@ export class DashboardsController {
   @Post()
   @RequirePermissions("dashboards.manage")
   @ApiOperation({ summary: "Create a dashboard" })
+  @ApiResponse({ status: 201, description: "Create a dashboard." })
   create(@Body() dto: CreateDashboardDto, @CurrentUser() actor: { sub: string }) {
     return this.dashboardsService.create(dto, actor.sub);
   }
@@ -38,6 +41,7 @@ export class DashboardsController {
   @Patch(":id")
   @RequirePermissions("dashboards.manage")
   @ApiOperation({ summary: "Update a dashboard and its widgets" })
+  @ApiResponse({ status: 200, description: "Update a dashboard and its widgets." })
   update(@Param("id") id: string, @Body() dto: UpdateDashboardDto, @CurrentUser() actor: { sub: string }) {
     return this.dashboardsService.update(id, dto, actor.sub);
   }

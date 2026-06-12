@@ -72,6 +72,7 @@ export class GlobalListsController {
 
   @Get(":slug/items")
   @ApiOperation({ summary: "Return only the items array for a list — used by dropdowns." })
+  @ApiResponse({ status: 200, description: "Return only the items array for a list — used by dropdowns." })
   async getItems(@Param("slug") slug: string) {
     const resolved = await this.service.getBySlug(slug);
     return resolved.items;
@@ -112,6 +113,7 @@ export class GlobalListsController {
     summary:
       "Archive a list item (never hard-deleted). Archived items keep resolving on existing records but disappear from dropdowns."
   })
+  @ApiResponse({ status: 200, description: "Archive a list item (never hard-deleted). Archived items keep resolving on existing records but disappear from dropdowns." })
   archiveItem(
     @Param("slug") slug: string,
     @Param("itemId") itemId: string,

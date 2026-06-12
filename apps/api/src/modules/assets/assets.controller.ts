@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
@@ -29,6 +29,7 @@ export class AssetsController {
   @Get("categories")
   @RequirePermissions("assets.view")
   @ApiOperation({ summary: "List asset categories" })
+  @ApiResponse({ status: 200, description: "List asset categories." })
   listCategories() {
     return this.service.listCategories();
   }
@@ -43,6 +44,7 @@ export class AssetsController {
   @Post("categories")
   @RequirePermissions("assets.manage")
   @ApiOperation({ summary: "Create asset category" })
+  @ApiResponse({ status: 201, description: "Create asset category." })
   createCategory(@Body() dto: UpsertAssetCategoryDto, @CurrentUser() actor: { sub: string }) {
     return this.service.upsertCategory(undefined, dto, actor.sub);
   }
@@ -58,6 +60,7 @@ export class AssetsController {
   @Patch("categories/:id")
   @RequirePermissions("assets.manage")
   @ApiOperation({ summary: "Update asset category" })
+  @ApiResponse({ status: 200, description: "Update asset category." })
   updateCategory(@Param("id") id: string, @Body() dto: UpsertAssetCategoryDto, @CurrentUser() actor: { sub: string }) {
     return this.service.upsertCategory(id, dto, actor.sub);
   }
@@ -71,6 +74,7 @@ export class AssetsController {
   @Get()
   @RequirePermissions("assets.view")
   @ApiOperation({ summary: "List assets with assignment visibility" })
+  @ApiResponse({ status: 200, description: "List assets with assignment visibility." })
   listAssets(@Query() query: AssetsQueryDto) {
     return this.service.listAssets(query);
   }
@@ -85,6 +89,7 @@ export class AssetsController {
   @Get(":id")
   @RequirePermissions("assets.view")
   @ApiOperation({ summary: "Get asset detail including job and shift visibility" })
+  @ApiResponse({ status: 200, description: "Get asset detail including job and shift visibility." })
   getAsset(@Param("id") id: string) {
     return this.service.getAsset(id);
   }
@@ -99,6 +104,7 @@ export class AssetsController {
   @Post()
   @RequirePermissions("assets.manage")
   @ApiOperation({ summary: "Create asset" })
+  @ApiResponse({ status: 201, description: "Create asset." })
   createAsset(@Body() dto: UpsertAssetDto, @CurrentUser() actor: { sub: string }) {
     return this.service.upsertAsset(undefined, dto, actor.sub);
   }
@@ -114,6 +120,7 @@ export class AssetsController {
   @Patch(":id")
   @RequirePermissions("assets.manage")
   @ApiOperation({ summary: "Update asset" })
+  @ApiResponse({ status: 200, description: "Update asset." })
   updateAsset(@Param("id") id: string, @Body() dto: UpsertAssetDto, @CurrentUser() actor: { sub: string }) {
     return this.service.upsertAsset(id, dto, actor.sub);
   }

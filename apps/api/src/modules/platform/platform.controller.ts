@@ -1,5 +1,5 @@
 import { Controller, Get, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
@@ -15,6 +15,7 @@ export class PlatformController {
   @Get("config")
   @RequirePermissions("sharepoint.view")
   @ApiOperation({ summary: "Get platform foundation configuration" })
+  @ApiResponse({ status: 200, description: "Get platform foundation configuration." })
   getConfig() {
     return {
       sharePoint: this.sharePointService.getConfiguration()

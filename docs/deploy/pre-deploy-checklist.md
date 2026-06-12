@@ -204,13 +204,12 @@ Single App Registration covers SSO, SharePoint, and Mail.Send.
 
 ## 6. GitHub Actions
 
-- [ ] `.github/workflows/deploy.yml` re-enabled to `on: push: main`
-      (currently `workflow_dispatch` only — per roadmap §6 line 986).
-      Switch back to `workflow_dispatch` if a hot rollback is needed mid-test.
-      When re-enabling `on: push`, also widen or remove the job-level
-      `if: github.event_name == 'workflow_dispatch'` guard added in PR #306
-      (defensive gate that turned phantom 0s push-triggered runs into clean
-      skipped runs — see that PR for the diagnosis).
+- [x] `.github/workflows/deploy.yml` re-enabled to `on: push: main`
+      (done in pr-174 / G11 hardening, 2026-06-12 — the job-level
+      `if: github.event_name == 'workflow_dispatch'` guard from PR #306 was
+      removed at the same time; `workflow_dispatch` remains available for
+      manual/rollback runs. Switch back to `workflow_dispatch`-only if a hot
+      rollback is needed mid-test).
 - [ ] Repository secrets present and current — `.github/workflows/deploy.yml`
       reads these exact names; using any other name = silent build/deploy
       failure:

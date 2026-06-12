@@ -19,7 +19,7 @@
 | G8 | Rates-admin inline-edit save race (LL-27) — Raj's daily surface | HIGH | pr-169 | in flight |
 | G9 | CRM interaction logging redesign | MEDIUM | pr-63b | in flight |
 | G10 | Seed safety sequences (LL-26) — hygiene before prod seeding patterns are copied | MEDIUM | pr-168 | in flight |
-| G11 | No staging slot / post-deploy health gate | MEDIUM | pr-174 | staged |
+| G11 | No staging slot / post-deploy health gate | MEDIUM | pr-174 | shipped (health-gate-only variant — slot+swap needs Standard+ tier + az credentials, Marco portal follow-up) |
 
 ## 2. PR firing order (the weekend plan)
 
@@ -56,7 +56,7 @@ Watcher modes: **review-gated** (task default, auto-merge OFF — verdicts pile 
 
 ## 5. Pilot operating model
 
-- Continuous deploy of main stays ON — the gate stack (build/lint/unit → canonical → gates → e2e → review) is the safety net; pr-174 adds the staging-slot health gate so a bad deploy never swaps in.
+- Continuous deploy of main stays ON — `deploy.yml` triggers on every push to main (re-enabled by pr-174) with a `deploy-main` concurrency queue so rapid merges serialize. The gate stack (build/lint/unit → canonical → gates → e2e → review) is the safety net before merge; after deploy, pr-174's health gates poll `…/api/v1/health` (12×10s) and the SWA root, failing the run loudly on red. NOTE: this is the health-gate-only variant — slot+swap (bad deploy never goes live) requires a Standard+ App Service plan, a `staging` slot publish profile, and `az` login credentials (service principal/OIDC), none of which exist yet. Until Marco provisions those, a red deploy is live until rolled back (checklist §8), but it is never silent.
 - Feedback loop: Sean/Raj report → Marco files one line in `docs/pilot-feedback.md` (create on first item) → Cowork turns items into watcher prompts → normal pipeline. Target turnaround for small UX items: same-day.
 - Dev continues per roadmap on the same main; field/safety/etc. modules ship dark for pilot users (permissions already scope what they see).
 - Weekly: branch prune task, ledger review, dependabot glance.

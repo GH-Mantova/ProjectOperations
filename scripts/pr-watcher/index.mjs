@@ -400,15 +400,30 @@ function runGit(args) {
 //   <!-- watcher: requires-file-on-main: tests/e2e/pr-acceptance/helpers.ts -->
 // Parsing stops at the first line that isn't blank or a watcher comment, so
 // the directives must come before any prompt content.
+// Parses one trimmed line as a watcher directive using plain string ops
+// (no regex — CodeQL js/polynomial-redos). Returns { key, value } or null.
+function parseWatcherDirective(t) {
+  if (!t.startsWith("<!--") || !t.endsWith("-->")) return null;
+  const inner = t.slice(4, -3).trim();
+  if (!inner.toLowerCase().startsWith("watcher:")) return null;
+  const rest = inner.slice("watcher:".length);
+  const colon = rest.indexOf(":");
+  if (colon === -1) return null;
+  const key = rest.slice(0, colon).trim().toLowerCase();
+  if (key === "" || ![...key].every((c) => (c >= "a" && c <= "z") || c === "-")) return null;
+  const value = rest.slice(colon + 1).trim();
+  if (value === "") return null;
+  return { key, value };
+}
+
 export function parseWatcherFrontMatter(body) {
   const deps = { requiresMerged: [], requiresFilesOnMain: [] };
-  for (const line of body.split(/\r?\n/)) {
+  for (const line of body.split("\n")) {
     const t = line.trim();
     if (t === "") continue;
-    const m = t.match(/^<!--\s*watcher:\s*([a-z-]+)\s*:\s*(.+?)\s*-->$/i);
-    if (!m) break;
-    const key = m[1].toLowerCase();
-    const value = m[2];
+    const directive = parseWatcherDirective(t);
+    if (!directive) break;
+    const { key, value } = directive;
     if (key === "requires-merged") {
       for (const part of value.split(",")) {
         const n = Number(part.trim());

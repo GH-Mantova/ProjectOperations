@@ -958,7 +958,18 @@ function CreateSubcontractorModal({
           physicalSuburb: form.physicalSuburb || null
         })
       });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) {
+        const text = await response.text();
+        let message = `Create failed (${response.status}).`;
+        try {
+          const parsed = JSON.parse(text) as { message?: string | string[] };
+          if (Array.isArray(parsed.message)) message = parsed.message.join(" ");
+          else if (parsed.message) message = parsed.message;
+        } catch {
+          if (text) message = text;
+        }
+        throw new Error(message);
+      }
       const created = (await response.json()) as { id: string };
       onCreated(created.id);
     } catch (e2) {

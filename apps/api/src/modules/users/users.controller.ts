@@ -4,8 +4,8 @@ import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
-import { PaginationQueryDto } from "../../common/dto/pagination-query.dto";
 import { CreateUserDto } from "./dto/create-user.dto";
+import { ListUsersQueryDto } from "./dto/list-users-query.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
 import { UsersService } from "./users.service";
 
@@ -24,10 +24,10 @@ export class UsersController {
     required: false,
     type: String,
     description:
-      "Filter by role name (case-insensitive). Used by the Team panel dropdown to list estimators."
+      "Filter to users whose role name contains this value (case-insensitive). Used by the Team panel dropdown to list estimators."
   })
-  list(@Query() query: PaginationQueryDto, @Query("role") role?: string) {
-    return this.usersService.list(query, role);
+  list(@Query() query: ListUsersQueryDto) {
+    return this.usersService.list(query, query.role);
   }
 
   @Post()

@@ -295,6 +295,20 @@ test.describe("Batch 2 — Tendering pipeline + register (PRs #16, #28-#30, #43,
     await expect(page.getByRole("tab", { name: "My Tasks", exact: true })).toBeVisible();
   });
 
+  // ── Detail: Team panel estimator dropdown ──────────────────────────────────
+
+  test("Team panel estimator dropdown populates from /users?role=estimator", async ({ page }) => {
+    // §5A.3 follow-up — guards the GET /users?role= contract: the param must
+    // pass query validation and the role filter must match the seeded
+    // "Senior Estimator" role (substring, case-insensitive).
+    await openTenderDetail(page, "IS-T005");
+    const dropdown = page.getByRole("combobox", { name: "Assigned estimator" });
+    await expect(dropdown).toBeVisible();
+    await expect(
+      dropdown.locator("option", { hasText: "Raj Pudasaini" })
+    ).toHaveCount(1);
+  });
+
   // ── Detail: client scoring (Client Detail drawer) ─────────────────────────
 
   test("client card expands, 4-star rating persists after reload, win-rate line renders", async ({ page }) => {

@@ -194,7 +194,7 @@ describe("§5A.3 backend — team-as-estimator + client-filtered activity", () =
   });
 
   describe("GET /users?role=estimator", () => {
-    it("filters users to those carrying the named role (case-insensitive)", async () => {
+    it("filters users to those whose role name contains the value (case-insensitive)", async () => {
       const { service, prisma } = makeUsersService();
       const userRow = {
         id: "u-9",
@@ -223,9 +223,11 @@ describe("§5A.3 backend — team-as-estimator + client-filtered activity", () =
 
       const result = await service.list({ page: 1, pageSize: 10 } as never, "estimator");
 
+      // contains (not equals): role=estimator must also match the seeded
+      // "Senior Estimator" role — see UsersService.list.
       const expectedWhere = {
         userRoles: {
-          some: { role: { name: { equals: "estimator", mode: "insensitive" } } }
+          some: { role: { name: { contains: "estimator", mode: "insensitive" } } }
         }
       };
       expect(prisma.user.findMany).toHaveBeenCalledWith(

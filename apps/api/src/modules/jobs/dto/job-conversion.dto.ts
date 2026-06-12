@@ -30,10 +30,9 @@ export class IssueTenderContractDto {
  * job from a contracted, awarded tender. `name` is required; the rest
  * default off the tender (e.g. `description`) or stay null.
  *
- * `jobNumber` (PR B05) is canonical `J-YYYY-NNN`: omit to let the server
- * generate one via {@link JobNumberService.generate}, or supply one
- * that matches the canonical regex. Legacy `JOB-YYYY-NNN` inputs are
- * rejected with 400.
+ * Job numbers are server-generated (G5 canonical `J{YYMMDD}-{SLUG}-{NNN}`
+ * via {@link JobNumberService.generate}) from the awarded client and are
+ * not accepted from callers.
  *
  * Document carry-forward (`carryTenderDocuments` +
  * `tenderDocumentIds`):
@@ -45,10 +44,6 @@ export class IssueTenderContractDto {
  *     documents are carried (all IDs must belong to this tender).
  */
 export class ConvertTenderToJobDto {
-  @IsOptional()
-  @IsString()
-  jobNumber?: string;
-
   @IsString()
   name!: string;
 

@@ -90,21 +90,21 @@ test.describe("Batch 6 — Projects + Jobs (PRs #17, #39, #40, #242, #250, #267,
     await expect(page.getByRole("heading", { name: "Delivery workspace" })).toBeVisible();
 
     // Cards view (default) renders canonical job numbers.
-    await expect(page.getByText("J-2025-001", { exact: true })).toBeVisible();
-    await expect(page.getByText("J-2025-002", { exact: true })).toBeVisible();
+    await expect(page.getByText("J260315-QUEE-001", { exact: true })).toBeVisible();
+    await expect(page.getByText("J260328-BRIS-001", { exact: true })).toBeVisible();
     // CP-21 UI twin: zero legacy JOB- prefixed ids anywhere on the register.
     await expect(page.getByText(/JOB-\d/)).toHaveCount(0);
 
     // Table view toggle.
     await page.getByRole("tab", { name: "Table", exact: true }).click();
     await expect(page.getByRole("columnheader", { name: "Job #" })).toBeVisible();
-    await expect(page.getByRole("cell", { name: "J-2025-001", exact: true })).toBeVisible();
+    await expect(page.getByRole("cell", { name: "J260315-QUEE-001", exact: true })).toBeVisible();
     await expect(page.getByText(/JOB-\d/)).toHaveCount(0);
 
     // Search filter narrows.
     await page.getByPlaceholder("Search by number, name, client, site").fill("Sandgate");
-    await expect(page.getByRole("cell", { name: "J-2025-002", exact: true })).toBeVisible();
-    await expect(page.getByRole("cell", { name: "J-2025-001", exact: true })).toBeHidden();
+    await expect(page.getByRole("cell", { name: "J260328-BRIS-001", exact: true })).toBeVisible();
+    await expect(page.getByRole("cell", { name: "J260315-QUEE-001", exact: true })).toBeHidden();
   });
 
   test("job detail — 7 tabs, overview KPIs, activity completion toggle round-trip (PR #17)", async ({
@@ -112,7 +112,7 @@ test.describe("Batch 6 — Projects + Jobs (PRs #17, #39, #40, #242, #250, #267,
   }) => {
     await page.goto("/jobs");
     await page.getByText("Ipswich Motorway Stage 4 — Earthworks", { exact: true }).first().click();
-    await expect(page.getByText("J-2025-001", { exact: true })).toBeVisible();
+    await expect(page.getByText("J260315-QUEE-001", { exact: true })).toBeVisible();
 
     for (const tab of [
       /^Overview$/,
@@ -158,10 +158,10 @@ test.describe("Batch 6 — Projects + Jobs (PRs #17, #39, #40, #242, #250, #267,
   }) => {
     const token = await apiToken(request);
 
-    // AWARDED (seeded IS-T001): button hidden.
-    const awardedId = await findTenderId(request, token, "IS-T001");
+    // AWARDED (seeded T260310-QUEE-Rev1): button hidden.
+    const awardedId = await findTenderId(request, token, "T260310-QUEE-Rev1");
     await page.goto(`/tenders/${awardedId}`);
-    await expect(page.getByText("IS-T001")).toBeVisible();
+    await expect(page.getByText("T260310-QUEE-Rev1")).toBeVisible();
     await expect(page.getByRole("button", { name: "Convert to project →" })).toHaveCount(0);
 
     // CONTRACT_ISSUED fixture: button visible, modal opens, but the convert
@@ -476,7 +476,7 @@ test.describe("Batch 6 — Projects + Jobs (PRs #17, #39, #40, #242, #250, #267,
     request
   }) => {
     const token = await apiToken(request);
-    const tenderId = await findTenderId(request, token, "IS-T001");
+    const tenderId = await findTenderId(request, token, "T260310-QUEE-Rev1");
     await page.goto(`/tenders/${tenderId}`);
     await page.getByRole("button", { name: "+ Add entry" }).click();
 

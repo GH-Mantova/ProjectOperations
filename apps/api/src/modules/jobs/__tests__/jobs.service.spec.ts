@@ -23,7 +23,7 @@ import { JobsService } from "../jobs.service";
 
 const jobRow = (overrides: Record<string, unknown> = {}) => ({
   id: "job-1",
-  jobNumber: "J-2026-001",
+  jobNumber: "J260612-ACME-001",
   name: "Demo Job",
   status: "ACTIVE",
   clientId: "client-1",
@@ -117,7 +117,7 @@ function buildService(extraPrisma: Record<string, unknown> = {}) {
   };
   const notifications = { refreshLiveFollowUps };
   const jobNumberService = {
-    generate: jest.fn().mockResolvedValue("J-2026-001"),
+    generate: jest.fn().mockResolvedValue({ jobNumber: "J260612-ACME-001", clientSlugSnapshot: "ACME" }),
     validate: jest.fn().mockReturnValue(null)
   };
 

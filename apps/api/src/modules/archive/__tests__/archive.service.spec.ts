@@ -1,4 +1,4 @@
-// Mock-based unit tests for ArchiveService.
+﻿// Mock-based unit tests for ArchiveService.
 // Mirrors PR #283 (ProjectsService), PR #298 (FormsService),
 // PR #310 (EstimatesService), PR #311 (SchedulerService),
 // PR #322 (AllocationsService).
@@ -46,7 +46,7 @@ function makeQuery(overrides: Partial<ArchiveQueryDto> = {}): ArchiveQueryDto {
 function jobRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "job-1",
-    jobNumber: "J-2026-001",
+    jobNumber: "J260612-ACME-001",
     name: "Ipswich Earthworks",
     status: "ACTIVE",
     client: { id: "client-1", name: "QLD Transport" },
@@ -60,9 +60,9 @@ function jobRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-// ─── list() ────────────────────────────────────────────────────────────────
+// â”€â”€â”€ list() â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-describe("ArchiveService.list — happy path + mapping", () => {
+describe("ArchiveService.list â€” happy path + mapping", () => {
   it("returns mapped items, total, page, pageSize from the transaction result", async () => {
     const prisma = makePrisma();
     const row = jobRow();
@@ -76,7 +76,7 @@ describe("ArchiveService.list — happy path + mapping", () => {
       items: [
         {
           id: "job-1",
-          jobNumber: "J-2026-001",
+          jobNumber: "J260612-ACME-001",
           name: "Ipswich Earthworks",
           clientName: "QLD Transport",
           closedAt: "2026-03-01T00:00:00.000Z",
@@ -170,9 +170,9 @@ describe("ArchiveService.list — happy path + mapping", () => {
   });
 });
 
-// ─── list() — buildWhere status branches ────────────────────────────────────
+// â”€â”€â”€ list() â€” buildWhere status branches â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-describe("ArchiveService.list — status filter branches", () => {
+describe("ArchiveService.list â€” status filter branches", () => {
   it("default (no status) filters by closeout.status in [CLOSED, ARCHIVED]", async () => {
     const prisma = makePrisma();
     const service = makeService(prisma);
@@ -220,9 +220,9 @@ describe("ArchiveService.list — status filter branches", () => {
   });
 });
 
-// ─── list() — buildWhere search / clientId / year filters ──────────────────
+// â”€â”€â”€ list() â€” buildWhere search / clientId / year filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-describe("ArchiveService.list — composite filters", () => {
+describe("ArchiveService.list â€” composite filters", () => {
   it("adds search OR over jobNumber, name, and client.name (case-insensitive)", async () => {
     const prisma = makePrisma();
     const service = makeService(prisma);
@@ -314,12 +314,12 @@ describe("ArchiveService.list — composite filters", () => {
   });
 });
 
-// ─── export() ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ export() â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function fullJobRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "job-1",
-    jobNumber: "J-2026-001",
+    jobNumber: "J260612-ACME-001",
     name: "Ipswich Earthworks",
     description: "Earthworks for Stage 4",
     status: "ARCHIVED",
@@ -375,7 +375,7 @@ function documentRow(overrides: Record<string, unknown> = {}) {
     documentFamilyKey: "fam-1",
     isCurrentVersion: true,
     fileLink: { name: "site-plan.pdf", webUrl: "https://sp/site-plan.pdf" },
-    folderLink: { relativePath: "Jobs/J-2026-001/Drawings" },
+    folderLink: { relativePath: "Jobs/J260612-ACME-001/Drawings" },
     createdAt: new Date("2026-02-01"),
     updatedAt: new Date("2026-02-02"),
     ...overrides
@@ -419,7 +419,7 @@ function submissionRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe("ArchiveService.export — 404 + short-circuit", () => {
+describe("ArchiveService.export â€” 404 + short-circuit", () => {
   it("throws NotFoundException when job is missing", async () => {
     const prisma = makePrisma();
     prisma.job.findUnique.mockResolvedValue(null);
@@ -472,7 +472,7 @@ describe("ArchiveService.export — 404 + short-circuit", () => {
   });
 });
 
-describe("ArchiveService.export — happy path + mapping", () => {
+describe("ArchiveService.export â€” happy path + mapping", () => {
   it("returns the full snapshot with summary, closeout, checklist, and related lists", async () => {
     const prisma = makePrisma();
     prisma.job.findUnique.mockResolvedValue(fullJobRow());
@@ -485,7 +485,7 @@ describe("ArchiveService.export — happy path + mapping", () => {
     expect(result.summary).toEqual(
       expect.objectContaining({
         id: "job-1",
-        jobNumber: "J-2026-001",
+        jobNumber: "J260612-ACME-001",
         name: "Ipswich Earthworks",
         status: "ARCHIVED",
         client: { id: "client-1", name: "QLD Transport" },
@@ -517,7 +517,7 @@ describe("ArchiveService.export — happy path + mapping", () => {
         title: "Site Plan",
         fileName: "site-plan.pdf",
         webUrl: "https://sp/site-plan.pdf",
-        folderPath: "Jobs/J-2026-001/Drawings"
+        folderPath: "Jobs/J260612-ACME-001/Drawings"
       })
     ]);
   });

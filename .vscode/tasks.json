@@ -126,10 +126,10 @@
     {
       "label": "branch: prune (remote + local)",
       "type": "shell",
-      "command": "pwsh -NoProfile -File scripts/branch-prune.ps1; git fetch --prune; git branch --merged main | Select-String -NotMatch 'main' | ForEach-Object { git branch -d $_.ToString().Trim() }",
+      "command": "powershell -NoProfile -File scripts/branch-prune.ps1; git fetch --prune; git branch -vv | Select-String ': gone]' | ForEach-Object { git branch -D ($_.ToString().Trim() -split '\\s+')[0] }",
       "problemMatcher": [],
       "presentation": { "panel": "dedicated", "reveal": "always" },
-      "detail": "Deletes remote branches with merged PRs (skips open PRs + main), then prunes local merged branches. NEVER run while the watcher is mid-job."
+      "detail": "Deletes remote branches with merged PRs (skips open PRs + main), then force-deletes local branches whose upstream is gone (catches squash-merged branches). Uses Windows PowerShell 5.1. NEVER run while the watcher is mid-job."
     }
   ]
 }

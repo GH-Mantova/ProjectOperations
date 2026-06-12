@@ -122,7 +122,7 @@ was halted gets picked up first.
 
 The detection regex matches common usage/rate-limit message shapes:
 `usage limit`, `rate limit`, `429`, `quota exceeded`, `credit balance`,
-`monthly usage`, etc.
+`monthly usage`, etc. Also `hit your limit` (added per ledger LL-28, which misfiled ~47 prompts as hard failures); relatedly, the "branch: prune" VS Code task now runs on Windows PowerShell 5.1 and uses a gone-upstream sweep so squash-merged local branches are pruned too.
 
 ## Periodic rescan
 
@@ -259,6 +259,31 @@ The reviewer writes its output to `docs/pr-reviews/pr-{N}-review.md`. If the
 verdict is `FIX` or `BLOCK`, a second file lands in
 `docs/pr-prompts/needs-marco/pr-{N}-review-{fix|block}.md` so it surfaces in
 the normal escalation funnel.
+
+### Verdict mirroring
+
+When a review job exits 0, the watcher mirrors the verdict file
+(`docs/pr-reviews/pr-{N}-review.md`) into a PR comment via
+`gh pr comment {N} --body-file <temp>`, prefixed with an ASCII
+`[watcher verdict]` header line. This makes the verdict readable from the
+GitHub mobile app, so the remote workflow (notification → read verdict →
+checks green → merge) needs no local file access.
+
+- **What posts**: the full verdict file content, only after the review job
+  succeeds and only if the verdict file exists. The review agent itself still
+  never comments — the watcher posts after the fact.
+- **Failure behaviour**: best-effort. A missing verdict file or a failed
+  `gh pr comment` logs a `[review]` warning and continues; the review job is
+  never failed over the mirror step. The verdict file stays the source of
+  truth.
+- **Idempotency**: no mirrored-state tracking. Restarting the watcher
+  mid-review can rarely re-run the job and post a duplicate comment —
+  accepted as harmless.
+- **Gates safety**: PR comments are not scanned by the gates (pr-gates reads
+  only the PR body), so verdict text containing checklist or GATE-ALLOW
+  wording cannot trip CP-22/CP-09 on gate re-runs.
+- **Restart required**: a running watcher must be restarted to pick up this
+  behaviour.
 
 ### Double-start guard
 

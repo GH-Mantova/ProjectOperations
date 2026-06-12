@@ -15,7 +15,7 @@
  *      |                                                     | panel
  * ─────────────────────────────────────────────────────────────────────────────
  * Extra conversions mandated by the batch prompt (§6 seed coverage):
- *   • The IS-T100 Overview Documents panel lists the 3 seeded reference
+ *   • The T260520-ACME-Rev1 Overview Documents panel lists the 3 seeded reference
  *     documents (TenderDocumentLink rows from apps/api/prisma/seed.ts).
  *   • Upload area + category selector render for managers.
  *   • SHAREPOINT_MODE=mock: "Open" on a doc without a live webUrl shows the
@@ -33,12 +33,12 @@ const SEEDED_TENDER_DOCS = [
   "Asbestos Register / Hazmat Survey — Building A (Rev 2, March 2026)"
 ];
 
-/** Opens IS-T100's Overview tab (the Documents panel host) via the register. */
+/** Opens T260520-ACME-Rev1's Overview tab (the Documents panel host) via the register. */
 async function openTemplateTenderOverview(page: Page) {
   await page.goto("/tenders");
   await page.getByRole("tab", { name: "Register", exact: true }).click();
-  await page.getByPlaceholder("Search number, title, or client").fill("IS-T100");
-  await page.getByText("IS-T100", { exact: true }).click();
+  await page.getByPlaceholder("Search number, title, or client").fill("T260520-ACME-Rev1");
+  await page.getByText("T260520-ACME-Rev1", { exact: true }).click();
   await expect(page.getByRole("tab", { name: "Overview", exact: true })).toBeVisible();
 }
 
@@ -47,7 +47,7 @@ test.describe("Batch 4 — Tender documents (PRs #22, #341)", () => {
     await loginAsAdmin(page);
   });
 
-  test("IS-T100 Overview lists the 3 seeded reference documents with Open buttons", async ({
+  test("T260520-ACME-Rev1 Overview lists the 3 seeded reference documents with Open buttons", async ({
     page
   }) => {
     await openTemplateTenderOverview(page);
@@ -99,12 +99,12 @@ test.describe("Batch 4 — Tender documents (PRs #22, #341)", () => {
     await expect(page.getByText("Assets", { exact: true }).first()).toBeVisible();
 
     // Tender context: code + tender name (seeded doc-t002-submission).
-    await expect(page.getByText("IS-T002", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("T260317-SUNC-Rev1", { exact: true }).first()).toBeVisible();
     await expect(
       page.getByText("Maroochydore Precinct — Civil Works", { exact: true }).first()
     ).toBeVisible();
 
     // Job context: code from doc-j001-* seeds.
-    await expect(page.getByText("J-2025-001", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("J260315-QUEE-001", { exact: true }).first()).toBeVisible();
   });
 });

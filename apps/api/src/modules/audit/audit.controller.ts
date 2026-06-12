@@ -1,5 +1,5 @@
 import { Controller, Get, Query, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
@@ -31,6 +31,7 @@ export class AuditController {
   @Get()
   @RequirePermissions("audit.view")
   @ApiOperation({ summary: "List audit logs" })
+  @ApiResponse({ status: 200, description: "List audit logs." })
   list(@Query() query: PaginationQueryDto) {
     return this.auditService.list(query);
   }

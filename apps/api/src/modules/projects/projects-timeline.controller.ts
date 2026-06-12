@@ -1,5 +1,5 @@
 import { Controller, Get, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
@@ -38,6 +38,7 @@ export class ProjectsTimelineController {
   @ApiOperation({
     summary: "Active projects with planned start/end for the timeline widget (team-scoped)."
   })
+  @ApiResponse({ status: 200, description: "Active projects with planned start/end for the timeline widget (team-scoped)." })
   list(@CurrentUser() user: AuthenticatedUser) {
     return this.gantt.activeTimeline(user);
   }

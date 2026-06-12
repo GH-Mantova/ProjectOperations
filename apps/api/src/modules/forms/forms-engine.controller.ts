@@ -8,7 +8,7 @@ import {
   Query,
   UseGuards
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
@@ -52,6 +52,7 @@ export class FormsEngineController {
     summary:
       "Create a draft submission for a template. Auto-populates context from the user's active timesheet."
   })
+  @ApiResponse({ status: 201, description: "Create a draft submission for a template. Auto-populates context from the user's active timesheet." })
   createDraft(@Body() body: CreateDraftDto, @CurrentUser() user: AuthenticatedUser) {
     return this.engine.createDraft(body.templateId, user.sub);
   }
@@ -72,6 +73,7 @@ export class FormsEngineController {
     summary:
       "Save draft values. Returns live field visibility + required state so the client can re-render the form without a page reload."
   })
+  @ApiResponse({ status: 200, description: "Save draft values. Returns live field visibility + required state so the client can re-render the form without a page reload." })
   updateValues(
     @Param("id") id: string,
     @Body() body: UpdateSubmissionValuesDto,
@@ -97,6 +99,7 @@ export class FormsEngineController {
     summary:
       "Submit a draft. Runs validation, compliance gates, on_submit actions (auto-record creation, notifications), and starts the approval chain if configured."
   })
+  @ApiResponse({ status: 201, description: "Submit a draft. Runs validation, compliance gates, on_submit actions (auto-record creation, notifications), and starts the approval chain if configured." })
   submit(
     @Param("id") id: string,
     @Body() body: SubmitSubmissionDto,
@@ -117,6 +120,7 @@ export class FormsEngineController {
   @Post("submissions/:id/approve")
   @RequirePermissions("forms.approve")
   @ApiOperation({ summary: "Approve the next pending step in this submission's approval chain." })
+  @ApiResponse({ status: 201, description: "Approve the next pending step in this submission's approval chain." })
   approve(
     @Param("id") id: string,
     @Body() body: ApproveSubmissionDto,
@@ -139,6 +143,7 @@ export class FormsEngineController {
   @ApiOperation({
     summary: "Reject the next pending step. Comment is required and is sent to the submitter."
   })
+  @ApiResponse({ status: 201, description: "Reject the next pending step. Comment is required and is sent to the submitter." })
   reject(
     @Param("id") id: string,
     @Body() body: RejectSubmissionDto,
@@ -161,6 +166,7 @@ export class FormsEngineController {
   @ApiOperation({
     summary: "Move a rejected submission back to draft so the worker can fix and resubmit."
   })
+  @ApiResponse({ status: 201, description: "Move a rejected submission back to draft so the worker can fix and resubmit." })
   resubmit(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.engine.resubmit(id, user.sub);
   }
@@ -175,6 +181,9 @@ export class FormsEngineController {
   @Get("my-submissions")
   @RequirePermissions("forms.submit")
   @ApiOperation({ summary: "List the current user's submissions." })
+  @ApiResponse({ status: 200, description: "List the current user's submissions." })
+  @ApiQuery({ name: "status", required: false, type: String })
+  @ApiQuery({ name: "templateId", required: false, type: String })
   mySubmissions(
     @Query("status") status: string | undefined,
     @Query("templateId") templateId: string | undefined,
@@ -191,6 +200,7 @@ export class FormsEngineController {
   @Get("pending-approvals")
   @RequirePermissions("forms.approve")
   @ApiOperation({ summary: "List approval steps assigned to the current user that are pending." })
+  @ApiResponse({ status: 200, description: "List approval steps assigned to the current user that are pending." })
   pendingApprovals(@CurrentUser() user: AuthenticatedUser) {
     return this.engine.getPendingApprovalsFor(user.sub);
   }
@@ -208,6 +218,10 @@ export class FormsEngineController {
   @ApiOperation({
     summary: "Aggregated submission counts, status breakdown, and overdue approval count."
   })
+  @ApiResponse({ status: 200, description: "Aggregated submission counts, status breakdown, and overdue approval count." })
+  @ApiQuery({ name: "from", required: false, type: String, description: "ISO date lower bound on submittedAt" })
+  @ApiQuery({ name: "to", required: false, type: String, description: "ISO date upper bound on submittedAt" })
+  @ApiQuery({ name: "templateId", required: false, type: String })
   analytics(
     @Query("from") from: string | undefined,
     @Query("to") to: string | undefined,

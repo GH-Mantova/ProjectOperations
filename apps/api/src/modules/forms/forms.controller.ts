@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
@@ -29,6 +29,7 @@ export class FormsController {
   @Get("templates")
   @RequirePermissions("forms.view")
   @ApiOperation({ summary: "List form templates" })
+  @ApiResponse({ status: 200, description: "List form templates." })
   listTemplates(@Query() query: FormsQueryDto) {
     return this.service.listTemplates(query);
   }
@@ -43,6 +44,7 @@ export class FormsController {
   @Get("templates/:id")
   @RequirePermissions("forms.view")
   @ApiOperation({ summary: "Get form template with versions" })
+  @ApiResponse({ status: 200, description: "Get form template with versions." })
   getTemplate(@Param("id") id: string) {
     return this.service.getTemplate(id);
   }
@@ -57,6 +59,7 @@ export class FormsController {
   @Post("templates")
   @RequirePermissions("forms.manage")
   @ApiOperation({ summary: "Create form template and version 1" })
+  @ApiResponse({ status: 201, description: "Create form template and version 1." })
   createTemplate(@Body() dto: UpsertFormTemplateDto, @CurrentUser() actor: { sub: string }) {
     return this.service.createTemplate(dto, actor.sub);
   }
@@ -72,6 +75,7 @@ export class FormsController {
   @Post("templates/:id/versions")
   @RequirePermissions("forms.manage")
   @ApiOperation({ summary: "Create next version for existing form template" })
+  @ApiResponse({ status: 201, description: "Create next version for existing form template." })
   createVersion(@Param("id") id: string, @Body() dto: UpsertFormTemplateDto, @CurrentUser() actor: { sub: string }) {
     return this.service.createNextVersion(id, dto, actor.sub);
   }
@@ -85,6 +89,7 @@ export class FormsController {
   @Get("submissions")
   @RequirePermissions("forms.view")
   @ApiOperation({ summary: "List form submissions" })
+  @ApiResponse({ status: 200, description: "List form submissions." })
   listSubmissions(@Query() query: FormsQueryDto) {
     return this.service.listSubmissions(query);
   }
@@ -99,6 +104,7 @@ export class FormsController {
   @Get("submissions/:id")
   @RequirePermissions("forms.view")
   @ApiOperation({ summary: "Get form submission" })
+  @ApiResponse({ status: 200, description: "Get form submission." })
   getSubmission(@Param("id") id: string) {
     return this.service.getSubmission(id);
   }
@@ -115,6 +121,7 @@ export class FormsController {
   @Post("versions/:versionId/submissions")
   @RequirePermissions("forms.manage")
   @ApiOperation({ summary: "Submit a form against a specific template version" })
+  @ApiResponse({ status: 201, description: "Submit a form against a specific template version." })
   submit(@Param("versionId") versionId: string, @Body() dto: SubmitFormDto, @CurrentUser() actor: { sub: string }) {
     return this.service.submit(versionId, dto, actor.sub);
   }

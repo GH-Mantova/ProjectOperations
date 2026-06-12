@@ -8,7 +8,7 @@ import {
   Redirect,
   UseGuards
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
@@ -30,6 +30,7 @@ export class XeroController {
     summary:
       "Mint a CSRF-resistant state token and return the Xero consent URL (admin opens it in a new tab)."
   })
+  @ApiResponse({ status: 200, description: "Mint a CSRF-resistant state token and return the Xero consent URL (admin opens it in a new tab)." })
   connect(@CurrentUser() user: AuthenticatedUser) {
     return this.service.getConsentUrl(user.sub);
   }
@@ -45,6 +46,9 @@ export class XeroController {
     summary:
       "OAuth callback target. Validates the state token before exchanging the code, then redirects to /admin/settings."
   })
+  @ApiResponse({ status: 302, description: "Redirect to /admin/settings with a `xero` status query param." })
+  @ApiQuery({ name: "code", required: false, type: String, description: "OAuth authorization code; missing code redirects with ?xero=missing_code" })
+  @ApiQuery({ name: "state", required: false, type: String, description: "CSRF state token; missing/invalid state redirects with an error param" })
   @Redirect()
   async callback(@Query("code") code: string, @Query("state") state: string | undefined) {
     if (!code) {
@@ -69,6 +73,7 @@ export class XeroController {
     summary:
       "Programmatic callback handler — finishes the OAuth flow with the full callback URL. Use when the frontend captures the redirect."
   })
+  @ApiResponse({ status: 201, description: "Programmatic callback handler — finishes the OAuth flow with the full callback URL. Use when the frontend captures the redirect." })
   postCallback(@Body() body: XeroCallbackDto, @CurrentUser() user: AuthenticatedUser) {
     // Pull the state out of the callback URL so the service can verify it
     // even when the admin posts the URL directly from the SPA.
@@ -81,6 +86,7 @@ export class XeroController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions("platform.admin")
   @ApiOperation({ summary: "Current Xero connection status (tenant, scopes, expiry)." })
+  @ApiResponse({ status: 200, description: "Current Xero connection status (tenant, scopes, expiry)." })
   status() {
     return this.service.getStatus();
   }
@@ -89,6 +95,7 @@ export class XeroController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions("platform.admin")
   @ApiOperation({ summary: "Drop the stored Xero connection (forces a re-consent next time)." })
+  @ApiResponse({ status: 201, description: "Drop the stored Xero connection (forces a re-consent next time)." })
   disconnect() {
     return this.service.disconnect();
   }
@@ -100,6 +107,7 @@ export class XeroController {
     summary:
       "Push a single client to Xero as a contact (creates if no xeroContactId, otherwise updates)."
   })
+  @ApiResponse({ status: 201, description: "Push a single client to Xero as a contact (creates if no xeroContactId, otherwise updates)." })
   syncContact(@Param("clientId") clientId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.syncContact(clientId, user.sub);
   }
@@ -108,6 +116,7 @@ export class XeroController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions("directory.admin")
   @ApiOperation({ summary: "Push every active client to Xero. Returns per-client results." })
+  @ApiResponse({ status: 201, description: "Push every active client to Xero. Returns per-client results." })
   syncAllContacts(@CurrentUser() user: AuthenticatedUser) {
     return this.service.syncAllContacts(user.sub);
   }
@@ -119,6 +128,7 @@ export class XeroController {
     summary:
       "Push a DRAFT invoice into Xero from a progress claim. Client must already be synced to a Xero contact."
   })
+  @ApiResponse({ status: 201, description: "Push a DRAFT invoice into Xero from a progress claim. Client must already be synced to a Xero contact." })
   createInvoice(@Param("claimId") claimId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.createInvoiceFromProgressClaim(claimId, user.sub);
   }
@@ -127,6 +137,8 @@ export class XeroController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions("platform.admin")
   @ApiOperation({ summary: "Recent Xero sync activity (last 50 by default)." })
+  @ApiResponse({ status: 200, description: "Recent Xero sync activity (last 50 by default)." })
+  @ApiQuery({ name: "limit", required: false, type: String, description: "Max rows to return (default 50)" })
   syncLogs(@Query("limit") limit?: string) {
     return this.service.listSyncLogs(limit ? Number(limit) : undefined);
   }

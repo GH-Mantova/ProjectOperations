@@ -10,7 +10,7 @@ import {
   UseInterceptors
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
@@ -28,6 +28,7 @@ export class TenderDocumentsController {
   @Get()
   @RequirePermissions("tenderdocuments.view")
   @ApiOperation({ summary: "List tender documents" })
+  @ApiResponse({ status: 200, description: "List tender documents." })
   list(@Param("tenderId") tenderId: string) {
     return this.service.list(tenderId);
   }
@@ -37,6 +38,7 @@ export class TenderDocumentsController {
   @UseInterceptors(FileInterceptor("file"))
   @ApiConsumes("multipart/form-data", "application/json")
   @ApiOperation({ summary: "Create a tender-linked document (optional multipart file upload)" })
+  @ApiResponse({ status: 201, description: "Create a tender-linked document (optional multipart file upload)." })
   create(
     @Param("tenderId") tenderId: string,
     @Body() dto: CreateTenderDocumentDto,
@@ -49,6 +51,7 @@ export class TenderDocumentsController {
   @Delete(":documentId")
   @RequirePermissions("tenderdocuments.manage")
   @ApiOperation({ summary: "Delete a tender-linked document (removes the DB row; SharePoint file is left in place)" })
+  @ApiResponse({ status: 200, description: "Delete a tender-linked document (removes the DB row; SharePoint file is left in place)." })
   remove(
     @Param("tenderId") tenderId: string,
     @Param("documentId") documentId: string,

@@ -9,7 +9,7 @@ import {
   Query,
   UseGuards
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
@@ -54,6 +54,7 @@ export class WorkerAvailabilityController {
     summary:
       "Calendar overlay: approved leave + unavailability (recurring expanded) within a date window."
   })
+  @ApiResponse({ status: 200, description: "Calendar overlay: approved leave + unavailability (recurring expanded) within a date window." })
   overlay(@Query() query: AvailabilityRangeQueryDto) {
     return this.service.overlay(query);
   }
@@ -62,6 +63,8 @@ export class WorkerAvailabilityController {
   @Get("leaves")
   @RequirePermissions("resources.view")
   @ApiOperation({ summary: "List worker leave requests." })
+  @ApiResponse({ status: 200, description: "List worker leave requests." })
+  @ApiQuery({ name: "workerProfileId", required: false, type: String, description: "Filter to a single worker" })
   /**
    * List worker leave requests.
    *
@@ -78,6 +81,7 @@ export class WorkerAvailabilityController {
     summary:
       "Create a worker leave request (status defaults to PENDING). Workers self-serve for their own profile; super-users may lodge for any worker."
   })
+  @ApiResponse({ status: 201, description: "Create a worker leave request (status defaults to PENDING). Workers self-serve for their own profile; super-users may lodge for any worker." })
   /**
    * Create a worker leave request (status defaults to PENDING). Workers
    * self-serve for their own profile; super-users may lodge for any worker.
@@ -97,6 +101,7 @@ export class WorkerAvailabilityController {
   @ApiOperation({
     summary: "Approve, decline, or cancel a leave request. Self-approval is rejected."
   })
+  @ApiResponse({ status: 200, description: "Approve, decline, or cancel a leave request. Self-approval is rejected." })
   /**
    * Approve, decline, or cancel a leave request. Self-approval is rejected.
    *
@@ -117,6 +122,7 @@ export class WorkerAvailabilityController {
   @Delete("leaves/:id")
   @RequirePermissions("resources.manage")
   @ApiOperation({ summary: "Delete a leave request." })
+  @ApiResponse({ status: 200, description: "Delete a leave request." })
   /**
    * Delete a leave request.
    *
@@ -132,6 +138,8 @@ export class WorkerAvailabilityController {
   @Get("unavailability")
   @RequirePermissions("resources.view")
   @ApiOperation({ summary: "List worker unavailability blocks (RDOs, training, holds)." })
+  @ApiResponse({ status: 200, description: "List worker unavailability blocks (RDOs, training, holds)." })
+  @ApiQuery({ name: "workerProfileId", required: false, type: String, description: "Filter to a single worker" })
   /**
    * List worker unavailability blocks (RDOs, training, holds).
    *
@@ -148,6 +156,7 @@ export class WorkerAvailabilityController {
     summary:
       "Create a worker unavailability block. recurringDay (0–6) for weekly recurrence. Workers self-serve; super-users may lodge for any worker."
   })
+  @ApiResponse({ status: 201, description: "Create a worker unavailability block. recurringDay (0–6) for weekly recurrence. Workers self-serve; super-users may lodge for any worker." })
   /**
    * Create a worker unavailability block. recurringDay (0–6) for weekly
    * recurrence. Workers self-serve; super-users may lodge for any worker.
@@ -168,6 +177,7 @@ export class WorkerAvailabilityController {
   @Delete("unavailability/:id")
   @RequirePermissions("resources.manage")
   @ApiOperation({ summary: "Delete a worker unavailability block." })
+  @ApiResponse({ status: 200, description: "Delete a worker unavailability block." })
   /**
    * Delete a worker unavailability block.
    *

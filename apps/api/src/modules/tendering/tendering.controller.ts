@@ -71,6 +71,7 @@ export class TenderingController {
   @Get()
   @RequirePermissions("tenders.view")
   @ApiOperation({ summary: "List tenders with filters, search, and sort" })
+  @ApiResponse({ status: 200, description: "List tenders with filters, search, and sort." })
   @ApiQuery({ name: "q", required: false, description: "Search across tender number, title, and client names" })
   @ApiQuery({ name: "status", required: false, description: "Comma-separated list of statuses" })
   @ApiQuery({ name: "estimatorId", required: false })
@@ -109,6 +110,7 @@ export class TenderingController {
   @Get("filter-presets")
   @RequirePermissions("tenders.view")
   @ApiOperation({ summary: "List saved filter presets for the current user" })
+  @ApiResponse({ status: 200, description: "List saved filter presets for the current user." })
   listPresets(@CurrentUser() actor: { sub: string }) {
     return this.service.listFilterPresets(actor.sub);
   }
@@ -122,6 +124,7 @@ export class TenderingController {
   @Post("filter-presets")
   @RequirePermissions("tenders.view")
   @ApiOperation({ summary: "Save a filter preset for the current user" })
+  @ApiResponse({ status: 201, description: "Save a filter preset for the current user." })
   createPreset(@Body() dto: CreateTenderFilterPresetDto, @CurrentUser() actor: { sub: string }) {
     return this.service.createFilterPreset(actor.sub, dto);
   }
@@ -136,6 +139,7 @@ export class TenderingController {
   @Patch("filter-presets/:id")
   @RequirePermissions("tenders.view")
   @ApiOperation({ summary: "Update a saved filter preset" })
+  @ApiResponse({ status: 200, description: "Update a saved filter preset." })
   updatePreset(
     @Param("id") id: string,
     @Body() dto: UpdateTenderFilterPresetDto,
@@ -153,6 +157,7 @@ export class TenderingController {
   @Delete("filter-presets/:id")
   @RequirePermissions("tenders.view")
   @ApiOperation({ summary: "Delete a saved filter preset" })
+  @ApiResponse({ status: 200, description: "Delete a saved filter preset." })
   deletePreset(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
     return this.service.deleteFilterPreset(actor.sub, id);
   }
@@ -169,6 +174,7 @@ export class TenderingController {
   @Post()
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Create a tender" })
+  @ApiResponse({ status: 201, description: "Create a tender." })
   create(@Body() dto: UpsertTenderDto, @CurrentUser() actor: { sub: string }) {
     return this.service.create(dto, actor.sub);
   }
@@ -181,6 +187,7 @@ export class TenderingController {
   @Post(":id/notes")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "[DEPRECATED] Add a tender note", deprecated: true })
+  @ApiResponse({ status: 201, description: "[DEPRECATED] Add a tender note." })
   addNote(@Param("id") id: string, @Body() dto: CreateTenderNoteDto, @CurrentUser() actor: { sub: string }) {
     return this.service.addNote(id, dto, actor.sub);
   }
@@ -193,6 +200,7 @@ export class TenderingController {
   @Post(":id/clarifications")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "[DEPRECATED] Add a tender clarification", deprecated: true })
+  @ApiResponse({ status: 201, description: "[DEPRECATED] Add a tender clarification." })
   addClarification(@Param("id") id: string, @Body() dto: CreateTenderClarificationDto, @CurrentUser() actor: { sub: string }) {
     return this.service.addClarification(id, dto, actor.sub);
   }
@@ -205,6 +213,7 @@ export class TenderingController {
   @Post(":id/follow-ups")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "[DEPRECATED] Add a tender follow-up", deprecated: true })
+  @ApiResponse({ status: 201, description: "[DEPRECATED] Add a tender follow-up." })
   addFollowUp(@Param("id") id: string, @Body() dto: CreateTenderFollowUpDto, @CurrentUser() actor: { sub: string }) {
     return this.service.addFollowUp(id, dto, actor.sub);
   }
@@ -221,6 +230,7 @@ export class TenderingController {
   @Get(":id/activities")
   @RequirePermissions("tenders.view")
   @ApiOperation({ summary: "List unified tender activities" })
+  @ApiResponse({ status: 200, description: "List unified tender activities." })
   listActivities(@Param("id") id: string) {
     return this.service.listActivities(id);
   }
@@ -237,6 +247,7 @@ export class TenderingController {
   @Post(":id/activities")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Create a unified tender activity" })
+  @ApiResponse({ status: 201, description: "Create a unified tender activity." })
   addActivity(@Param("id") id: string, @Body() dto: CreateTenderActivityDto, @CurrentUser() actor: { sub: string }) {
     return this.service.addActivity(id, dto, actor.sub);
   }
@@ -253,6 +264,7 @@ export class TenderingController {
   @Patch(":id/activities/:activityId")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Update a unified tender activity" })
+  @ApiResponse({ status: 200, description: "Update a unified tender activity." })
   updateActivity(
     @Param("id") id: string,
     @Param("activityId") activityId: string,
@@ -271,6 +283,7 @@ export class TenderingController {
   @Post("import/preview")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Preview tender import rows from CSV text" })
+  @ApiResponse({ status: 201, description: "Preview tender import rows from CSV text." })
   previewImport(@Body() dto: PreviewTenderImportDto) {
     return this.service.previewImport(dto.csvText);
   }
@@ -287,6 +300,7 @@ export class TenderingController {
   @Post("import/commit")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Create tenders from CSV text" })
+  @ApiResponse({ status: 201, description: "Create tenders from CSV text." })
   commitImport(@Body() dto: PreviewTenderImportDto, @CurrentUser() actor: { sub: string }) {
     return this.service.commitImport(dto.csvText, actor.sub);
   }
@@ -300,6 +314,7 @@ export class TenderingController {
   @Get(":id")
   @RequirePermissions("tenders.view")
   @ApiOperation({ summary: "Get tender detail" })
+  @ApiResponse({ status: 200, description: "Get tender detail." })
   getById(@Param("id") id: string) {
     return this.service.getById(id);
   }
@@ -317,6 +332,7 @@ export class TenderingController {
   @Patch(":id")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Update a tender" })
+  @ApiResponse({ status: 200, description: "Update a tender." })
   update(@Param("id") id: string, @Body() dto: UpsertTenderDto, @CurrentUser() actor: { sub: string }) {
     return this.service.update(id, dto, actor.sub);
   }
@@ -429,6 +445,7 @@ export class TenderingController {
   @Patch(":id/probability")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Update only the probability of a tender (preserves all related records)" })
+  @ApiResponse({ status: 200, description: "Update only the probability of a tender (preserves all related records)." })
   updateProbability(
     @Param("id") id: string,
     @Body() dto: UpdateTenderProbabilityDto,

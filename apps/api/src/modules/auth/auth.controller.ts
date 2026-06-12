@@ -16,12 +16,14 @@ export class AuthController {
 
   @Post("login")
   @ApiOperation({ summary: "Login with email and password" })
+  @ApiResponse({ status: 201, description: "Login with email and password." })
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
   }
 
   @Post("entra")
   @ApiOperation({ summary: "Exchange a Microsoft Entra ID token for an internal application session" })
+  @ApiResponse({ status: 201, description: "Exchange a Microsoft Entra ID token for an internal application session." })
   loginWithEntra(@Body() dto: EntraLoginDto) {
     return this.authService.loginWithEntra(dto);
   }
@@ -37,6 +39,7 @@ export class AuthController {
 
   @Post("refresh")
   @ApiOperation({ summary: "Refresh access and refresh tokens" })
+  @ApiResponse({ status: 201, description: "Refresh access and refresh tokens." })
   refresh(@Body() dto: RefreshTokenDto) {
     return this.authService.refresh(dto);
   }
@@ -55,6 +58,7 @@ export class AuthController {
 
   @Get("config")
   @ApiOperation({ summary: "Get public login configuration for the active authentication mode" })
+  @ApiResponse({ status: 200, description: "Get public login configuration for the active authentication mode." })
   getLoginConfiguration() {
     return this.authService.getLoginConfiguration();
   }
@@ -63,6 +67,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: "Get current authenticated user" })
+  @ApiResponse({ status: 200, description: "Get current authenticated user." })
   me(@CurrentUser() user: { sub: string }) {
     return this.authService.me(user.sub);
   }

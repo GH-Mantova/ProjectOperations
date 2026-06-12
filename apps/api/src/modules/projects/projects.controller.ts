@@ -9,7 +9,7 @@ import {
   Query,
   UseGuards
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
@@ -68,6 +68,7 @@ export class ProjectsController {
   @Get()
   @RequirePermissions("projects.view")
   @ApiOperation({ summary: "List projects with status / client / PM / search filters + pagination" })
+  @ApiResponse({ status: 200, description: "List projects with status / client / PM / search filters + pagination." })
   list(@Query() query: ListProjectsQueryDto) {
     return this.service.list(query);
   }
@@ -83,6 +84,7 @@ export class ProjectsController {
   @Get(":id")
   @RequirePermissions("projects.view")
   @ApiOperation({ summary: "Get a single project with team, scope items, milestones, last 10 activity entries, and variance" })
+  @ApiResponse({ status: 200, description: "Get a single project with team, scope items, milestones, last 10 activity entries, and variance." })
   getById(@Param("id") id: string) {
     return this.service.getById(id);
   }
@@ -98,6 +100,7 @@ export class ProjectsController {
   @Post()
   @RequirePermissions("projects.admin")
   @ApiOperation({ summary: "Manually create a project (no source tender)" })
+  @ApiResponse({ status: 201, description: "Manually create a project (no source tender)." })
   create(@Body() dto: CreateProjectDto, @CurrentUser() actor: RequestUser) {
     return this.service.createManual(dto, { userId: actor.sub, permissions: new Set(actor.permissions ?? []) });
   }
@@ -114,6 +117,7 @@ export class ProjectsController {
   @Patch(":id")
   @RequirePermissions("projects.manage")
   @ApiOperation({ summary: "Update project fields, team, budget, and actuals. contractValue additionally requires projects.admin." })
+  @ApiResponse({ status: 200, description: "Update project fields, team, budget, and actuals. contractValue additionally requires projects.admin." })
   update(
     @Param("id") id: string,
     @Body() dto: UpdateProjectDto,
@@ -158,10 +162,13 @@ export class ProjectsController {
   @Get(":id/activity")
   @RequirePermissions("projects.view")
   @ApiOperation({ summary: "Paginated reverse-chronological activity log for this project" })
+  @ApiResponse({ status: 200, description: "Paginated reverse-chronological activity log for this project." })
+  @ApiQuery({ name: "page", required: false, type: String, description: "Page number (default 1)" })
+  @ApiQuery({ name: "limit", required: false, type: String, description: "Page size (default 25, clamped to [1, 100])" })
   activity(
     @Param("id") id: string,
-    @Query("page") page = "1",
-    @Query("limit") limit = "25"
+    @Query("page") page: string = "1",
+    @Query("limit") limit: string = "25"
   ) {
     return this.service.activity(id, Number(page) || 1, Number(limit) || 25);
   }

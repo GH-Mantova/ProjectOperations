@@ -13,7 +13,7 @@ import {
   Res,
   UseGuards
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import type { Response } from "express";
 import { AiProvidersService } from "../ai-providers/ai-providers.service";
 import { sanitiseProviderError } from "../ai-providers/error-sanitiser";
@@ -97,6 +97,7 @@ export class PersonasController {
       "Resolves the persona+sub-mode for the given `url` query param (path + optional ?detail= search). Returns 200 + null when no persona matches, when the URL is missing, or when the caller lacks the persona's required permission — so the floating window can gracefully not render. Authentication required."
   })
   @ApiResponse({ status: 200, description: "Active persona + subMode summary, or null." })
+  @ApiQuery({ name: "url", required: false, type: String, description: "Path + optional ?detail= search" })
   async activeForRoute(
     @Query("url") url: string | undefined,
     @CurrentUser() actor: AuthenticatedUser | undefined
@@ -308,6 +309,9 @@ export class PersonasController {
       "Returns up to `limit` conversations matching (user, personaSlug, subMode, contextKey), ordered by updatedAt desc. Each row includes a 200-char preview of the user's first message."
   })
   @ApiResponse({ status: 200, description: "Array of conversation summaries." })
+  @ApiQuery({ name: "subMode", required: false, type: String })
+  @ApiQuery({ name: "contextKey", required: false, type: String })
+  @ApiQuery({ name: "limit", required: false, type: String, description: "Max conversations to return (default 20)" })
   async listConversations(
     @Param("slug") slug: string,
     @Query("subMode") subMode: string | undefined,

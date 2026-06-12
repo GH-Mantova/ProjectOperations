@@ -97,6 +97,7 @@ export class ScopeRedesignController {
     summary:
       "Available + required columns for a given rowType. Server is source of truth for column availability."
   })
+  @ApiResponse({ status: 200, description: "Available + required columns for a given rowType. Server is source of truth for column availability." })
   @ApiQuery({ name: "rowType", description: "e.g. demolition, asbestos-removal, waste-disposal" })
   getColumns(@Query("rowType") rowType: string) {
     return this.service.getColumnsForRowType(rowType);
@@ -114,6 +115,7 @@ export class ScopeRedesignController {
   @Get("view-config")
   @RequirePermissions("estimates.view")
   @ApiOperation({ summary: "Get the user-chosen optional column set for (tender × discipline). Defaults when unset." })
+  @ApiResponse({ status: 200, description: "Get the user-chosen optional column set for (tender × discipline). Defaults when unset." })
   @ApiQuery({ name: "discipline", enum: ["SO", "Str", "Asb", "Civ", "Prv"] })
   getViewConfig(@Param("tenderId") tenderId: string, @Query("discipline") discipline: string) {
     return this.service.getViewConfig(tenderId, discipline);
@@ -131,6 +133,7 @@ export class ScopeRedesignController {
   @Patch("view-config")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Upsert the optional column set for (tender × discipline)." })
+  @ApiResponse({ status: 200, description: "Upsert the optional column set for (tender × discipline)." })
   patchViewConfig(@Param("tenderId") tenderId: string, @Body() rawDto: unknown) {
     this.assertObjectBody(rawDto);
     const dto = rawDto as unknown as UpsertViewConfigDto;
@@ -151,6 +154,7 @@ export class ScopeRedesignController {
     summary:
       "List concrete cutting items on the tender, ordered by WBS ref then sort order. PR B4b — optional ?cardId= filter scopes the list to a single scope card."
   })
+  @ApiResponse({ status: 200, description: "List concrete cutting items on the tender, ordered by WBS ref then sort order. PR B4b — optional ?cardId= filter scopes the list to a single scope card." })
   @ApiQuery({ name: "cardId", required: false, type: String })
   listCuttingItems(
     @Param("tenderId") tenderId: string,
@@ -199,6 +203,7 @@ export class ScopeRedesignController {
   @Patch("cutting-items/:itemId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Patch a cutting item. Re-runs rate lookup + lineTotal if pricing fields changed." })
+  @ApiResponse({ status: 200, description: "Patch a cutting item. Re-runs rate lookup + lineTotal if pricing fields changed." })
   updateCuttingItem(
     @Param("tenderId") tenderId: string,
     @Param("itemId") itemId: string,
@@ -219,6 +224,7 @@ export class ScopeRedesignController {
   @Delete("cutting-items/:itemId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Hard-delete a cutting item." })
+  @ApiResponse({ status: 200, description: "Hard-delete a cutting item." })
   deleteCuttingItem(@Param("tenderId") tenderId: string, @Param("itemId") itemId: string) {
     return this.service.deleteCuttingItem(tenderId, itemId);
   }
@@ -236,6 +242,7 @@ export class ScopeRedesignController {
     summary:
       "Per-discipline subtotals (server-calculated), cutting total, and tender price. Frontend displays only."
   })
+  @ApiResponse({ status: 200, description: "Per-discipline subtotals (server-calculated), cutting total, and tender price. Frontend displays only." })
   summary(@Param("tenderId") tenderId: string) {
     return this.service.summary(tenderId);
   }

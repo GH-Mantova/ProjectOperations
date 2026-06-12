@@ -107,6 +107,7 @@ export class ContactsController {
   @Get()
   @RequirePermissions("directory.view")
   @ApiOperation({ summary: "List contacts across CLIENT, SUBCONTRACTOR, SUPPLIER organisations." })
+  @ApiResponse({ status: 200, description: "List contacts across CLIENT, SUBCONTRACTOR, SUPPLIER organisations." })
   @ApiQuery({ name: "organisationType", required: false })
   @ApiQuery({ name: "organisationId", required: false })
   @ApiQuery({ name: "isActive", required: false })
@@ -156,6 +157,7 @@ export class ContactsController {
   @Delete(":id")
   @RequirePermissions("directory.manage")
   @ApiOperation({ summary: "Soft delete — sets isActive=false." })
+  @ApiResponse({ status: 200, description: "Soft delete — sets isActive=false." })
   remove(@Param("id") id: string) {
     return this.service.softDelete(id);
   }

@@ -48,6 +48,7 @@ export class FieldController {
   @ApiOperation({
     summary: "List active + upcoming allocations for the signed-in worker. Includes project meta, site address, scope codes, and PM contact."
   })
+  @ApiResponse({ status: 200, description: "List active + upcoming allocations for the signed-in worker. Includes project meta, site address, scope codes, and PM contact." })
   myAllocations(@CurrentUser() user: RequestUser) {
     return this.service.myAllocations(ctx(user));
   }
@@ -64,6 +65,7 @@ export class FieldController {
   @Get("pre-starts")
   @RequirePermissions("field.view")
   @ApiOperation({ summary: "List my pre-start checklists (paginated, newest first)." })
+  @ApiResponse({ status: 200, description: "List my pre-start checklists (paginated, newest first)." })
   listPreStarts(@Query() query: FieldListQueryDto, @CurrentUser() user: RequestUser) {
     return this.service.listPreStarts(query, ctx(user));
   }
@@ -80,6 +82,7 @@ export class FieldController {
   @Get("pre-starts/:id")
   @RequirePermissions("field.view")
   @ApiOperation({ summary: "Get a pre-start checklist. Workers can only read their own; field.manage can read any." })
+  @ApiResponse({ status: 200, description: "Get a pre-start checklist. Workers can only read their own; field.manage can read any." })
   getPreStart(@Param("id") id: string, @CurrentUser() user: RequestUser) {
     return this.service.getPreStart(id, ctx(user));
   }
@@ -102,6 +105,7 @@ export class FieldController {
     summary:
       "Submit a DRAFT pre-start. Requires fitForWork = true and workerSignature. Writes PRESTART_SUBMITTED activity log and notifies the PM."
   })
+  @ApiResponse({ status: 201, description: "Submit a DRAFT pre-start. Requires fitForWork = true and workerSignature. Writes PRESTART_SUBMITTED activity log and notifies the PM." })
   submitPreStart(@Param("id") id: string, @CurrentUser() user: RequestUser) {
     return this.service.submitPreStart(id, ctx(user));
   }
@@ -110,6 +114,7 @@ export class FieldController {
   @Get("timesheets")
   @RequirePermissions("field.view")
   @ApiOperation({ summary: "List my timesheets (paginated, newest first)." })
+  @ApiResponse({ status: 200, description: "List my timesheets (paginated, newest first)." })
   listTimesheets(@Query() query: FieldListQueryDto, @CurrentUser() user: RequestUser) {
     return this.service.listTimesheets(query, ctx(user));
   }
@@ -119,6 +124,7 @@ export class FieldController {
   @ApiOperation({
     summary: "List all SUBMITTED timesheets awaiting approval across all workers (oldest first)."
   })
+  @ApiResponse({ status: 200, description: "List all SUBMITTED timesheets awaiting approval across all workers (oldest first)." })
   listPendingTimesheets(@Query() query: FieldListQueryDto) {
     return this.service.listPendingTimesheets(query);
   }
@@ -128,6 +134,7 @@ export class FieldController {
   @ApiOperation({
     summary: "List all timesheets across all workers with status / worker / project / date filters."
   })
+  @ApiResponse({ status: 200, description: "List all timesheets across all workers with status / worker / project / date filters." })
   listAllTimesheets(@Query() query: ManageTimesheetQueryDto) {
     return this.service.listAllTimesheets(query);
   }
@@ -155,6 +162,7 @@ export class FieldController {
     summary:
       "Aggregated timesheet summary: total approved hours, counts by status, byWorker/byProject breakdowns, and oldest pending date."
   })
+  @ApiResponse({ status: 200, description: "Aggregated timesheet summary: total approved hours, counts by status, byWorker/byProject breakdowns, and oldest pending date." })
   timesheetSummary(@Query() query: TimesheetSummaryQueryDto) {
     return this.service.timesheetSummary(query);
   }
@@ -176,6 +184,7 @@ export class FieldController {
   @Get("location-consent")
   @RequirePermissions("field.view")
   @ApiOperation({ summary: "Get the current worker's GPS clock-on consent status." })
+  @ApiResponse({ status: 200, description: "Get the current worker's GPS clock-on consent status." })
   getLocationConsent(@CurrentUser() user: RequestUser) {
     return this.service.getLocationConsent(ctx(user));
   }
@@ -186,6 +195,7 @@ export class FieldController {
     summary:
       "Set the worker's GPS clock-on consent. consent=false stops new captures immediately."
   })
+  @ApiResponse({ status: 201, description: "Set the worker's GPS clock-on consent. consent=false stops new captures immediately." })
   setLocationConsent(@Body() dto: WorkerLocationConsentDto, @CurrentUser() user: RequestUser) {
     return this.service.setLocationConsent(ctx(user), dto.consent);
   }
@@ -201,6 +211,7 @@ export class FieldController {
   @Patch("timesheets/:id")
   @RequirePermissions("field.view")
   @ApiOperation({ summary: "Update a DRAFT timesheet." })
+  @ApiResponse({ status: 200, description: "Update a DRAFT timesheet." })
   updateTimesheet(
     @Param("id") id: string,
     @Body() dto: UpdateTimesheetDto,
@@ -215,6 +226,7 @@ export class FieldController {
     summary:
       "Submit a DRAFT timesheet. Writes TIMESHEET_SUBMITTED activity log and notifies the PM."
   })
+  @ApiResponse({ status: 201, description: "Submit a DRAFT timesheet. Writes TIMESHEET_SUBMITTED activity log and notifies the PM." })
   submitTimesheet(@Param("id") id: string, @CurrentUser() user: RequestUser) {
     return this.service.submitTimesheet(id, ctx(user));
   }
@@ -225,6 +237,7 @@ export class FieldController {
     summary:
       "Approve a submitted timesheet (PM / WHS / Admin). Notifies the worker if an internal login is linked."
   })
+  @ApiResponse({ status: 201, description: "Approve a submitted timesheet (PM / WHS / Admin). Notifies the worker if an internal login is linked." })
   approveTimesheet(@Param("id") id: string, @CurrentUser() user: RequestUser) {
     return this.service.approveTimesheet(id, ctx(user));
   }

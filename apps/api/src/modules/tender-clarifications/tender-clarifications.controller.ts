@@ -61,6 +61,7 @@ export class TenderClarificationsController {
   @Patch(":id")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Update a clarification note (direction, text, date)." })
+  @ApiResponse({ status: 200, description: "Update a clarification note (direction, text, date)." })
   update(
     @Param("tenderId") tenderId: string,
     @Param("id") id: string,

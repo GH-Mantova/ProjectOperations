@@ -1,5 +1,5 @@
 import { Controller, Get, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
@@ -29,6 +29,7 @@ export class PermissionsController {
   @Get()
   @RequirePermissions("permissions.view")
   @ApiOperation({ summary: "List registered permissions" })
+  @ApiResponse({ status: 200, description: "List registered permissions." })
   list() {
     return this.permissionsService.list();
   }

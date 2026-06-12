@@ -214,6 +214,7 @@ export class DirectoryController {
   @Get("directory")
   @RequirePermissions("directory.view")
   @ApiOperation({ summary: "List subcontractors/suppliers with filters + expiry alerts count." })
+  @ApiResponse({ status: 200, description: "List subcontractors/suppliers with filters + expiry alerts count." })
   @ApiQuery({ name: "type", required: false })
   @ApiQuery({ name: "category", required: false })
   @ApiQuery({ name: "status", required: false })
@@ -242,6 +243,7 @@ export class DirectoryController {
   @Get("directory/:id")
   @RequirePermissions("directory.view")
   @ApiOperation({ summary: "Full subcontractor record with contacts, licences, insurances, docs, credit apps." })
+  @ApiResponse({ status: 200, description: "Full subcontractor record with contacts, licences, insurances, docs, credit apps." })
   get(@Param("id") id: string, @Req() req: AuthedRequest) {
     return this.service.get(id, hasPermission(req, "directory.finance"));
   }
@@ -250,6 +252,7 @@ export class DirectoryController {
   @Post("directory")
   @RequirePermissions("directory.manage")
   @ApiOperation({ summary: "Create a subcontractor/supplier entry. Auto-creates primary contact for private_person." })
+  @ApiResponse({ status: 201, description: "Create a subcontractor/supplier entry. Auto-creates primary contact for private_person." })
   create(
     @Body() dto: UpsertSubcontractorDto,
     @CurrentUser() actor: { sub: string },
@@ -262,6 +265,7 @@ export class DirectoryController {
   @Patch("directory/:id")
   @RequirePermissions("directory.manage")
   @ApiOperation({ summary: "Update subcontractor/supplier fields. Bank details require directory.finance." })
+  @ApiResponse({ status: 200, description: "Update subcontractor/supplier fields. Bank details require directory.finance." })
   update(@Param("id") id: string, @Body() dto: UpsertSubcontractorDto, @Req() req: AuthedRequest) {
     return this.service.update(id, dto as never, hasPermission(req, "directory.finance"));
   }
@@ -270,6 +274,7 @@ export class DirectoryController {
   @Delete("directory/:id")
   @RequirePermissions("directory.admin")
   @ApiOperation({ summary: "Soft-delete (set isActive=false)." })
+  @ApiResponse({ status: 200, description: "Soft-delete (set isActive=false)." })
   remove(@Param("id") id: string) {
     return this.service.softDelete(id);
   }
@@ -278,6 +283,7 @@ export class DirectoryController {
   @Patch("directory/:id/prequal")
   @RequirePermissions("directory.admin")
   @ApiOperation({ summary: "Update prequalification status + notes." })
+  @ApiResponse({ status: 200, description: "Update prequalification status + notes." })
   updatePrequal(
     @Param("id") id: string,
     @Body() dto: UpdatePrequalDto,

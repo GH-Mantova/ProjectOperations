@@ -1,7 +1,8 @@
 import { registerAs } from "@nestjs/config";
 
 export const appConfig = registerAs("app", () => ({
-  port: Number(process.env.API_PORT ?? 3000),
+  // Azure App Service injects PORT; API_PORT remains the local-dev override.
+  port: Number(process.env.PORT ?? process.env.API_PORT ?? 3000),
   apiPrefix: process.env.API_PREFIX ?? "api/v1",
   corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
   databaseUrl:

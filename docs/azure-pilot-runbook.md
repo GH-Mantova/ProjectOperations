@@ -50,6 +50,10 @@ Watcher modes: **review-gated** (task default, auto-merge OFF — verdicts pile 
 6. SharePoint: upload a tender document; verify it lands in the live site path.
 7. Backups: confirm the Flexible Server's automated backups are on (7-day minimum) and note the restore procedure in this doc.
 
+### Troubleshooting
+
+- **`Application Error` page + `Error: Cannot find module '@nestjs/config'` (MODULE_NOT_FOUND) in Log stream** — the deployed artifact was not self-contained: `apps/api/node_modules` are pnpm workspace symlinks into the repo-root store, which break when the directory is copied. Fixed in `deploy.yml` by shipping a `pnpm deploy --prod --legacy --config.node-linker=hoisted` bundle (`deploy-api/`, physical node_modules + regenerated Prisma client) with a pre-deploy `require()` smoke probe. If this recurs, check the "Smoke-probe bundle before deploy" step in the failed run first.
+
 ## 5. Pilot operating model
 
 - Continuous deploy of main stays ON — the gate stack (build/lint/unit → canonical → gates → e2e → review) is the safety net; pr-174 adds the staging-slot health gate so a bad deploy never swaps in.

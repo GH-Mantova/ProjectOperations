@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { AppCard } from "@project-ops/ui";
+import { AppCard, EmptyState } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 
 type ArchiveItem = {
@@ -203,13 +203,7 @@ export function ArchivePage() {
                 Loading archive...
               </td>
             </tr>
-          ) : items.length === 0 ? (
-            <tr>
-              <td colSpan={6} className="muted-text">
-                No archived jobs match the current filters.
-              </td>
-            </tr>
-          ) : (
+          ) : items.length === 0 ? null : (
             items.map((item) => (
               <tr key={item.id}>
                 <td>{item.jobNumber}</td>
@@ -235,6 +229,47 @@ export function ArchivePage() {
           )}
         </tbody>
       </table>
+
+      {!loading && items.length === 0 ? (
+        search || clientId || year !== "" || status !== "ALL" ? (
+          <EmptyState
+            icon="🗃️"
+            heading="No archive entries match your current filters"
+            subtext="Try a broader search or clear the filters to see every closed and archived job."
+            action={
+              <button
+                type="button"
+                className="s7-btn s7-btn--secondary"
+                style={{ minHeight: 44 }}
+                onClick={() => {
+                  setSearch("");
+                  setClientId("");
+                  setYear("");
+                  setStatus("ALL");
+                  setPage(1);
+                }}
+              >
+                Clear filters
+              </button>
+            }
+          />
+        ) : (
+          <EmptyState
+            icon="🗃️"
+            heading="Nothing archived yet"
+            subtext="Closed-out jobs land here once they're archived from the Jobs board."
+            action={
+              <Link
+                to="/jobs"
+                className="s7-btn s7-btn--primary"
+                style={{ minHeight: 44, display: "inline-flex", alignItems: "center" }}
+              >
+                Go to Jobs
+              </Link>
+            }
+          />
+        )
+      ) : null}
 
       {total > PAGE_SIZE ? (
         <div className="pagination" style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center" }}>

@@ -13,7 +13,7 @@ import {
   XAxis,
   YAxis
 } from "recharts";
-import { Skeleton } from "@project-ops/ui";
+import { Skeleton, TOOLTIP_CONTENT_STYLE, TOOLTIP_ITEM_STYLE, TOOLTIP_LABEL_STYLE } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { isComplianceTender, useTenders, type TenderForDashboard } from "../hooks";
 import { LIST_ROW_HEIGHT_PX, GRID_ROW_HEIGHT_PX, periodStart, resolvePeriod, type AggregationOp, type WidgetProps } from "../types";
@@ -272,9 +272,13 @@ export function DueThisWeekPanel(props: WidgetProps) {
                   <strong className="td-v2__tnum">{t.tenderNumber}</strong>
                 ) : null}
                 <div className="td-v2__row-body">
-                  <div className="td-v2__row-title">{titleBits.join(" — ") || t.title}</div>
+                  <div className="td-v2__row-title" title={titleBits.join(" — ") || t.title}>
+                    {titleBits.join(" — ") || t.title}
+                  </div>
                   {metaBits.length > 0 ? (
-                    <div className="td-v2__row-meta">{metaBits.join(" · ")}</div>
+                    <div className="td-v2__row-meta" title={metaBits.join(" · ")}>
+                      {metaBits.join(" · ")}
+                    </div>
                   ) : null}
                 </div>
                 {visible.has("daysUntilDue") ? (
@@ -409,8 +413,14 @@ export function FollowUpQueuePanel(props: WidgetProps) {
                   onClick={() => navigate(`/tenders/${tender.id}`)}
                   style={{ cursor: "pointer" }}
                 >
-                  <div className="td-v2__row-title">{titleBits.join(" — ") || tender.title}</div>
-                  {metaBits.length > 0 ? <div className="td-v2__row-meta">{metaBits.join(" · ")}</div> : null}
+                  <div className="td-v2__row-title" title={titleBits.join(" — ") || tender.title}>
+                    {titleBits.join(" — ") || tender.title}
+                  </div>
+                  {metaBits.length > 0 ? (
+                    <div className="td-v2__row-meta" title={metaBits.join(" · ")}>
+                      {metaBits.join(" · ")}
+                    </div>
+                  ) : null}
                 </div>
                 {visible.has("probability") ? (
                   <span
@@ -515,7 +525,7 @@ export function WinRateChart(props: WidgetProps) {
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle, rgba(0,0,0,0.08))" />
               <XAxis dataKey="label" tick={{ fontSize: 12, fill: "var(--text-muted)" }} />
               <YAxis tick={{ fontSize: 12, fill: "var(--text-muted)" }} allowDecimals={false} domain={[0, "auto"]} />
-              <Tooltip contentStyle={{ fontSize: 12 }} />
+              <Tooltip contentStyle={TOOLTIP_CONTENT_STYLE} labelStyle={TOOLTIP_LABEL_STYLE} itemStyle={TOOLTIP_ITEM_STYLE} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               <Bar dataKey="submitted" name="Submitted" fill="#94A3B8" radius={[3, 3, 0, 0]} />
               <Bar dataKey="won" name="Won" fill="#FEAA6D" radius={[3, 3, 0, 0]} />
@@ -560,7 +570,12 @@ export function PipelineByEstimatorDonut(props: WidgetProps) {
                   <Cell key={slice.name} fill={IS_PALETTE[index % IS_PALETTE.length]} />
                 ))}
               </Pie>
-              <Tooltip formatter={(value) => formatSlice(Number(value))} contentStyle={{ fontSize: 12 }} />
+              <Tooltip
+                formatter={(value) => formatSlice(Number(value))}
+                contentStyle={TOOLTIP_CONTENT_STYLE}
+                labelStyle={TOOLTIP_LABEL_STYLE}
+                itemStyle={TOOLTIP_ITEM_STYLE}
+              />
               <Legend wrapperStyle={{ fontSize: 12 }} />
             </PieChart>
           </ResponsiveContainer>
@@ -606,8 +621,14 @@ export function RecentWinsPanel(props: WidgetProps) {
             return (
               <li key={t.id} className="td-v2__row" onClick={() => navigate(`/tenders/${t.id}`)}>
                 <div className="td-v2__row-body">
-                  <div className="td-v2__row-title">{titleBits.join(" — ") || t.title}</div>
-                  {metaBits.length > 0 ? <div className="td-v2__row-meta">{metaBits.join(" · ")}</div> : null}
+                  <div className="td-v2__row-title" title={titleBits.join(" — ") || t.title}>
+                    {titleBits.join(" — ") || t.title}
+                  </div>
+                  {metaBits.length > 0 ? (
+                    <div className="td-v2__row-meta" title={metaBits.join(" · ")}>
+                      {metaBits.join(" · ")}
+                    </div>
+                  ) : null}
                 </div>
                 {visible.has("value") ? (
                   <strong style={{ color: "#FEAA6D", fontWeight: 500, whiteSpace: "nowrap" }}>

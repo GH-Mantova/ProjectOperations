@@ -8329,20 +8329,22 @@ textarea {
   color: var(--text-primary);
 }
 
-/* Canvas widget wrapper — drag handle always visible (faintly), settings icon
-   reveals on hover. Drag handle baseline opacity makes the affordance obvious
-   in edit mode without cluttering the card. */
+/* Canvas widget wrapper — chrome (period pill, settings, drag) hidden until
+   hover/focus, same affordance as the resize handles. The previous always-on
+   0.5-opacity overlay sat on top of widget titles and KPI labels at narrow
+   viewports (visible collision at ≤1024px). */
 .td-canvas__slot-chrome {
   position: absolute;
   top: 10px;
   right: 10px;
   display: flex;
   gap: 4px;
-  opacity: 0.5;
+  opacity: 0;
   transition: opacity 120ms ease;
   z-index: 5;
 }
 .td-canvas__slot:hover .td-canvas__slot-chrome,
+.td-canvas__slot:focus-within .td-canvas__slot-chrome,
 .td-canvas__slot--dragging .td-canvas__slot-chrome { opacity: 1; }
 .td-canvas__slot-icon {
   width: 26px;

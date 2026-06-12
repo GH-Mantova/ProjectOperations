@@ -1,4 +1,5 @@
 import { execSync } from "node:child_process";
+import { scryptSync } from "node:crypto";
 import { join } from "node:path";
 import { PrismaClient } from "@prisma/client";
 
@@ -178,5 +179,142 @@ describe("Canonical CP-08 — pnpm seed is idempotent", () => {
     expect(hazardSeq!.lastNumber).toBeGreaterThanOrEqual(
       maxSuffix(hazards.map((r) => r.hazardNumber), "IS-HAZ")
     );
+  });
+});
+
+// G3 (pr-173) — pnpm seed:prod provisions reference data + SSO-only staff
+// users and never creates demo entities. Runs against a scratch schema in the
+// same local server so the dev database is untouched.
+describe("Canonical CP-08 — pnpm seed:prod is idempotent and demo-free", () => {
+  const devUrl =
+    process.env.DATABASE_URL ??
+    "postgresql://project_ops:project_ops@localhost:5432/project_operations?schema=public";
+  const SCRATCH_SCHEMA = "cp08_seed_prod_scratch";
+  const scratchUrl = devUrl.includes("schema=")
+    ? devUrl.replace(/schema=[^&]+/, `schema=${SCRATCH_SCHEMA}`)
+    : `${devUrl}${devUrl.includes("?") ? "&" : "?"}schema=${SCRATCH_SCHEMA}`;
+  let scratch: PrismaClient;
+
+  const runProdSeed = () =>
+    execSync("pnpm seed:prod", {
+      cwd: repoRoot,
+      stdio: "inherit",
+      env: { ...process.env, DATABASE_URL: scratchUrl }
+    });
+
+  beforeAll(() => {
+    execSync("pnpm --filter @project-ops/api exec prisma db push --skip-generate", {
+      cwd: repoRoot,
+      stdio: "inherit",
+      env: { ...process.env, DATABASE_URL: scratchUrl }
+    });
+    scratch = new PrismaClient({ datasources: { db: { url: scratchUrl } } });
+  });
+
+  afterAll(async () => {
+    await scratch.$disconnect();
+    const admin = new PrismaClient({ datasources: { db: { url: devUrl } } });
+    await admin.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${SCRATCH_SCHEMA}" CASCADE`);
+    await admin.$disconnect();
+  });
+
+  it("creates reference data + 3 SSO-only users, zero demo rows, stable across two runs", async () => {
+    const counts = async () => ({
+      user: await scratch.user.count(),
+      userRole: await scratch.userRole.count(),
+      workerProfile: await scratch.workerProfile.count(),
+      role: await scratch.role.count(),
+      permission: await scratch.permission.count(),
+      rolePermission: await scratch.rolePermission.count(),
+      estimateLabourRate: await scratch.estimateLabourRate.count(),
+      estimatePlantRate: await scratch.estimatePlantRate.count(),
+      estimateCuttingRate: await scratch.estimateCuttingRate.count(),
+      cuttingOtherRate: await scratch.cuttingOtherRate.count(),
+      estimateMaterialDensity: await scratch.estimateMaterialDensity.count(),
+      globalList: await scratch.globalList.count(),
+      globalListItem: await scratch.globalListItem.count(),
+      lookupValue: await scratch.lookupValue.count(),
+      formTemplate: await scratch.formTemplate.count(),
+      notificationTriggerConfig: await scratch.notificationTriggerConfig.count(),
+      persona: await scratch.persona.count(),
+      client: await scratch.client.count(),
+      contact: await scratch.contact.count(),
+      site: await scratch.site.count(),
+      tender: await scratch.tender.count(),
+      worker: await scratch.worker.count(),
+      job: await scratch.job.count(),
+      formSubmission: await scratch.formSubmission.count()
+    });
+
+    runProdSeed();
+    const first = await counts();
+    runProdSeed();
+    const second = await counts();
+    expect(second).toEqual(first);
+
+    // Reference layer present.
+    expect(first.permission).toBeGreaterThan(0);
+    expect(first.role).toBeGreaterThanOrEqual(10);
+    expect(first.estimateLabourRate).toBeGreaterThan(0);
+    expect(first.estimateCuttingRate).toBeGreaterThan(0);
+    expect(first.cuttingOtherRate).toBeGreaterThan(0);
+    expect(first.estimateMaterialDensity).toBeGreaterThan(0);
+    expect(first.globalList).toBeGreaterThan(0);
+    expect(first.globalListItem).toBeGreaterThan(0);
+    expect(first.formTemplate).toBeGreaterThan(0);
+    expect(first.notificationTriggerConfig).toBeGreaterThan(0);
+    expect(first.persona).toBeGreaterThan(0);
+
+    // Exactly the Section-1 pilot users; Marco carries Admin + WHS Officer.
+    expect(first.user).toBe(3);
+    expect(first.userRole).toBe(4);
+    expect(first.workerProfile).toBe(3);
+
+    // Zero demo entities.
+    expect(first.client).toBe(0);
+    expect(first.contact).toBe(0);
+    expect(first.site).toBe(0);
+    expect(first.tender).toBe(0);
+    expect(first.worker).toBe(0);
+    expect(first.job).toBe(0);
+    expect(first.formSubmission).toBe(0);
+
+    const users = await scratch.user.findMany({
+      select: { email: true, ssoOnly: true, isSuperUser: true, passwordHash: true }
+    });
+    expect(users.every((u) => u.ssoOnly)).toBe(true);
+    expect(users.every((u) => u.email.endsWith("@initialservices.net"))).toBe(true);
+    expect(users.find((u) => u.email === "sean@initialservices.net")?.isSuperUser).toBe(true);
+
+    // The shared dev password must not unlock any prod account.
+    for (const u of users) {
+      const [salt, derivedKey] = u.passwordHash.split(":");
+      expect(salt).toBeTruthy();
+      expect(scryptSync("Password123!", salt, 64).toString("hex")).not.toBe(derivedKey);
+    }
+  });
+
+  it("refuses (non-zero exit) when the target database contains dev seed users", async () => {
+    await scratch.user.create({
+      data: {
+        id: "cp08-dev-pollution",
+        email: "admin@projectops.local",
+        firstName: "Alex",
+        lastName: "Admin",
+        isActive: true,
+        passwordHash: "deadbeef:deadbeef"
+      }
+    });
+    try {
+      expect(() =>
+        execSync("pnpm seed:prod", {
+          cwd: repoRoot,
+          stdio: "pipe",
+          env: { ...process.env, DATABASE_URL: scratchUrl }
+        })
+      ).toThrow();
+    } finally {
+      await scratch.user.delete({ where: { id: "cp08-dev-pollution" } });
+    }
   });
 });

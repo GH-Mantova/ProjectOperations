@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-06-03 06:33 AEST
+Last updated: 2026-06-12 08:53 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -2463,3 +2463,17 @@ Dry-run by default; `--commit` to write. Idempotent by
 parser — no new dep. 25 unit tests on the pure helpers.
 The script is one-shot — not part of the normal startup
 path and not exposed in the UI.
+
+### 2026-06-12 — §1+§2+§8 Production seed split + real-user provisioning (G3)
+
+Pilot blocker G3 (docs/azure-pilot-runbook.md): the seed is now split
+into composable layers. `seed:reference` (rates incl. Cutrite matrix +
+Other, material densities, lookups, global lists, form templates,
+permissions/roles), `seed:users:prod` (Sean / Raj / Marco as SSO-only
+InternalUsers — `ssoOnly: true`, random unloggable password hash),
+`seed:demo` (today's full dev dataset). `pnpm seed` is unchanged
+(reference + demo + dev users); `pnpm seed:prod` = reference +
+users:prod only, requires explicit DATABASE_URL, and exits non-zero
+if the target DB contains dev seed users (@projectops.local).
+CP-08 gains a seed:prod idempotency + zero-demo-rows case running
+against a scratch schema.

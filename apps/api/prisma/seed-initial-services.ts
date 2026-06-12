@@ -28,7 +28,7 @@ function hashPassword(password: string): string {
   return `${salt}:${derivedKey}`;
 }
 
-export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<void> {
+export async function seedOperationalRoles(prisma: PrismaClient) {
   const [adminRole, plannerRole, fieldRole] = await Promise.all([
     prisma.role.findUniqueOrThrow({ where: { name: "Admin" } }),
     prisma.role.findUniqueOrThrow({ where: { name: "Planner" } }),
@@ -216,11 +216,29 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
   // Field Worker role — given to provisioned mobile users only. Access is
   // restricted to the field worker app (their own allocations, pre-starts,
   // timesheets, and project documents).
-  await seedRoleWithPermissions(
+  const fieldWorkerRole = await seedRoleWithPermissions(
     "Field Worker",
     "Mobile field access — own allocations, pre-starts, timesheets, documents.",
     ["field.view", "notifications.view", "safety.view", "safety.manage"]
   );
+
+  return {
+    adminRole,
+    plannerRole,
+    fieldRole,
+    viewerRole,
+    projectManagerRole,
+    seniorEstimatorRole,
+    whsOfficerRole,
+    accountsRole,
+    warehouseManagerRole,
+    fieldWorkerRole
+  };
+}
+
+export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<void> {
+  const { adminRole, projectManagerRole, seniorEstimatorRole, accountsRole, warehouseManagerRole } =
+    await seedOperationalRoles(prisma);
 
   type UserSeed = {
     id: string;

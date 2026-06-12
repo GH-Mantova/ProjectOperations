@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-06-03 06:07 AEST
+Last updated: 2026-06-12 08:53 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -7755,3 +7755,30 @@ existing handler tests (drawing tools / asbestos register) still pass
 with normalised categories.
 
 Status: OPENED (awaiting review by GH-Mantova)
+
+## 2026-06-12 — feat/prod-seed-split OPENED (G3 — production seed split + real-user provisioning)
+
+Detail: Seed split into composable layers per pilot blocker G3
+(docs/azure-pilot-runbook.md). New `seed:reference` (permissions/roles
+from registry + operational roles, lookups, all 7 rate types incl.
+Cutrite matrix + Other, material densities, global lists, form
+templates, notification trigger configs, persona registry),
+`seed:users:prod` (Sean isSuperUser / Raj Senior Estimator / Marco
+Admin + WHS Officer — SSO-only with `ssoOnly: true` and a random
+unloggable password hash), `seed:demo` (today's full dev dataset).
+`pnpm seed` behaviour unchanged — same code, same order, refactored
+into shared modules. `pnpm seed:prod` = reference + prod users only;
+requires explicit DATABASE_URL (no dev fallback) and exits non-zero
+when the target DB contains dev seed users (@projectops.local guard).
+
+Files: apps/api/prisma/seed-reference.ts (new — extracted from seed.ts),
+seed-users-prod.ts (new), seed-prod.ts / seed-reference-run.ts /
+seed-users-prod-run.ts (new entries), seed.ts (rewired),
+seed-initial-services.ts (seedOperationalRoles extracted),
+apps/api/package.json + package.json (scripts), README.md,
+test/canonical/CP-08-seed-idempotency.spec.ts (seed:prod cases —
+scratch schema, counts stable, zero demo rows, guard).
+
+Verification: CP-08 4/4 (seed ×2 idempotent, seed:prod ×2 idempotent on
+scratch schema `cp08_seed_prod_scratch`, dev DB untouched), build, lint,
+test:api:serial, canonical, compliance:smoke — all green.

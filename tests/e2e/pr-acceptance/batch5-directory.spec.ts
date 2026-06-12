@@ -14,10 +14,11 @@
  * scope | Subcontractor prequalification status badges       | CONVERT → "directory list badges"
  * scope | Licence/insurance expiry badges on seeded data     | CONVERT → "expiry badges"
  * scope | Private Person hides ABN + auto primary contact    | CONVERT → "private person lifecycle".
- *       |                                                    | NOTE: the modal's submit currently 400s
- *       |                                                    | (POST /directory requires prequalStatus,
- *       |                                                    | modal omits it) — entity created via the
- *       |                                                    | API instead; bug flagged in PR follow-up
+ *       |                                                    | Entity created via the API (the
+ *       |                                                    | auto-contact is API behaviour); the
+ *       |                                                    | modal submit path is covered by
+ *       |                                                    | "create entry via modal" below
+ * G4    | "+ New entry" modal submit (was 400/500 — fixed)   | CONVERT → "create entry via modal"
  * scope | Credit application flow as far as UI permits       | CONVERT (partial) → "private person
  *       |                                                    | lifecycle" uploads a Credit application
  *       |                                                    | document record; the draft→submitted→…
@@ -131,21 +132,17 @@ test.describe("Batch 5 — Directory & workers legacy (PR #19 + batch scope)", (
     await expect(modal.getByText("Trading name", { exact: true })).toBeHidden();
     await modal.getByRole("button", { name: "Cancel", exact: true }).click();
 
-    // Submitting this modal currently 400s: POST /directory requires
-    // prequalStatus and CreateSubcontractorModal never sends it (bug —
-    // flagged in the PR follow-up section). Create the entity through the
-    // same REST API instead (api-helpers pattern from batch 3); the
-    // private_person auto-contact is API behaviour, so it still exercises
-    // the real code path.
+    // Create the entity through the REST API (api-helpers pattern from
+    // batch 3) — the private_person auto-contact is API behaviour, so this
+    // exercises the real code path. The modal submit path itself is covered
+    // by the "create entry via modal" test. prequalStatus and categories are
+    // deliberately omitted to pin the server-side defaults (pending / []).
     const personName = `E2e Person${Date.now()}`;
     const token = await apiToken(request);
     await apiFetch(request, token, "POST", "/directory", {
       name: personName,
       businessType: "private_person",
-      entityType: "subcontractor",
-      prequalStatus: "pending",
-      // Scalar list has no DB default — omitting it is a null violation (500).
-      categories: []
+      entityType: "subcontractor"
     });
 
     // Detail panel opens on the new entry, pending prequal.
@@ -186,6 +183,35 @@ test.describe("Batch 5 — Directory & workers legacy (PR #19 + batch scope)", (
     await page.getByRole("button", { name: "Deactivate", exact: true }).click();
     await expect(page.getByRole("heading", { name: personName })).toBeHidden();
     await expect(page.getByRole("row", { name: personName })).toBeHidden();
+  });
+
+  test("create entry via + New entry modal — happy path (G4 pilot blocker)", async ({
+    page
+  }) => {
+    // Deactivate cleanup fires window.confirm.
+    page.on("dialog", (dialog) => void dialog.accept());
+
+    await openDirectory(page);
+    await page.getByRole("button", { name: "+ New entry" }).click();
+    const modal = page.getByRole("dialog");
+
+    // Minimal fields only — prequalStatus is not user-facing and categories
+    // is left empty; the API defaults them (pending / []). This was the
+    // exact payload that 400'd before the fix.
+    const companyName = `E2e Modal Co ${Date.now()}`;
+    await modal.getByLabel(/Legal name/).fill(companyName);
+    await modal.getByRole("button", { name: "Create", exact: true }).click();
+
+    // onCreated opens the detail panel on the new entry with the server-side
+    // default prequal state.
+    await expect(page.getByRole("heading", { name: companyName })).toBeVisible();
+    await expect(page.getByText("Prequalification pending — review required")).toBeVisible();
+
+    // Cleanup via UI soft delete (phase 5 convention — hidden from the
+    // Active-only default view).
+    await page.getByRole("button", { name: "Deactivate", exact: true }).click();
+    await expect(page.getByRole("heading", { name: companyName })).toBeHidden();
+    await expect(page.getByRole("row", { name: companyName })).toBeHidden();
   });
 
   test("workers legacy page renders KPI strip and search", async ({ page }) => {

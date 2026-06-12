@@ -1,14 +1,25 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { CenteredModal, EmptyState } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { requiresAssignee, requiresDueDate } from "./addEntryFieldVisibility";
+import type { FilterChip, TenderEntryType } from "./tenderEntriesFilters";
 import {
-  matchesChip,
-  type FilterChip,
-  type TenderEntryType
-} from "./tenderEntriesFilters";
+  buildCommCreateBody,
+  clientEntryCounts,
+  commEntriesPath,
+  feedSubtitle,
+  isCommType,
+  mergeFeed,
+  performDeleteFeedItem,
+  visibleFeed,
+  type CommEntry,
+  type FeedItem
+} from "./activityClientFilter";
+import { ClientDetailDrawer, isPrimaryClient, PrimaryTag, type ActivityClient } from "./ClientDetailDrawer";
+import { ClientStarRating } from "../../components/ClientStarRating";
 
 export type { TenderEntryType } from "./tenderEntriesFilters";
+export type { ActivityClient } from "./ClientDetailDrawer";
 
 export type TenderEntryStatus = "open" | "done" | "cancelled";
 
@@ -48,6 +59,22 @@ const TYPE_PALETTE: Record<TenderEntryType, string> = {
   follow_up: "#27AE60",
   self_reminder: "#D35400",
   task: "#C0392B"
+};
+
+const COMM_PALETTE: Record<string, string> = {
+  note: "#95A5A6",
+  email: "#8E44AD",
+  call: "#3498DB",
+  meeting: "#F39C12",
+  response: "#005B61"
+};
+
+const COMM_LABEL: Record<string, string> = {
+  note: "Note",
+  email: "Email",
+  call: "Call",
+  meeting: "Meeting",
+  response: "Response"
 };
 
 const TABS_GROUP_ORDER: Array<{ key: FilterChip; label: string }> = [
@@ -104,6 +131,7 @@ type DraftEntry = {
   body: string;
   dueDate: string;
   assigneeId: string;
+  clientId: string;
 };
 
 const EMPTY_DRAFT: DraftEntry = {
@@ -111,13 +139,35 @@ const EMPTY_DRAFT: DraftEntry = {
   subject: "",
   body: "",
   dueDate: "",
-  assigneeId: ""
+  assigneeId: "",
+  clientId: ""
 };
 
-export function TenderEntriesPanel({ tenderId }: { tenderId: string }) {
+export function TenderEntriesPanel({
+  tenderId,
+  clients = [],
+  canManage = false,
+  canRemoveClients = false,
+  onAddClient,
+  onScoreChange,
+  onRemoveClient
+}: {
+  tenderId: string;
+  clients?: ActivityClient[];
+  canManage?: boolean;
+  canRemoveClients?: boolean;
+  onAddClient?: () => void;
+  onScoreChange?: (clientId: string, score: number) => void;
+  onRemoveClient?: (clientId: string) => void;
+}) {
   const { authFetch, user } = useAuth();
   const [entries, setEntries] = useState<TenderEntry[]>([]);
+  const [comms, setComms] = useState<CommEntry[]>([]);
+  const [filteredComms, setFilteredComms] = useState<CommEntry[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [drawerClientId, setDrawerClientId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [filterLoading, setFilterLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [chip, setChip] = useState<FilterChip>("all");
   const [view, setView] = useState<"feed" | "tabs">(() => readStoredView());
@@ -128,14 +178,27 @@ export function TenderEntriesPanel({ tenderId }: { tenderId: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [users, setUsers] = useState<AssignableUser[]>([]);
   const [usersLoaded, setUsersLoaded] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<FeedItem<TenderEntry> | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const showToast = useCallback((message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 3000);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await authFetch(`/tenders/${tenderId}/entries`);
-      if (!response.ok) throw new Error(await response.text());
-      setEntries((await response.json()) as TenderEntry[]);
+      const [entriesRes, commsRes] = await Promise.all([
+        authFetch(`/tenders/${tenderId}/entries`),
+        authFetch(commEntriesPath(tenderId))
+      ]);
+      if (!entriesRes.ok) throw new Error(await entriesRes.text());
+      if (!commsRes.ok) throw new Error(await commsRes.text());
+      setEntries((await entriesRes.json()) as TenderEntry[]);
+      setComms((await commsRes.json()) as CommEntry[]);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -147,22 +210,57 @@ export function TenderEntriesPanel({ tenderId }: { tenderId: string }) {
     void load();
   }, [load]);
 
+  // Server-side client filter (PR-63a): refetch comm entries scoped to the
+  // selected client rather than filtering the already-loaded list.
+  useEffect(() => {
+    if (selectedClientId === null) {
+      setFilteredComms([]);
+      return;
+    }
+    let cancelled = false;
+    setFilterLoading(true);
+    (async () => {
+      try {
+        const response = await authFetch(commEntriesPath(tenderId, selectedClientId));
+        if (!response.ok) throw new Error(await response.text());
+        const body = (await response.json()) as CommEntry[];
+        if (!cancelled) setFilteredComms(body);
+      } catch (err) {
+        if (!cancelled) setError((err as Error).message);
+      } finally {
+        if (!cancelled) setFilterLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch, tenderId, selectedClientId]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(VIEW_STORAGE_KEY, view);
   }, [view]);
 
   const currentUserId = user?.id ?? null;
+  const activeChip = view === "feed" ? chip : tabsActive;
 
-  const filteredFeed = useMemo(
-    () => entries.filter((entry) => matchesChip(entry, chip, currentUserId)),
-    [entries, chip, currentUserId]
+  const feed = useMemo(
+    () =>
+      selectedClientId === null
+        ? mergeFeed(entries, comms)
+        : mergeFeed([] as TenderEntry[], filteredComms),
+    [entries, comms, filteredComms, selectedClientId]
   );
 
-  const tabsEntries = useMemo(
-    () => entries.filter((entry) => matchesChip(entry, tabsActive, currentUserId)),
-    [entries, tabsActive, currentUserId]
+  const visible = useMemo(
+    () => visibleFeed(feed, { chip: activeChip, currentUserId, selectedClientId }),
+    [feed, activeChip, currentUserId, selectedClientId]
   );
+
+  const counts = useMemo(() => clientEntryCounts(comms), [comms]);
+  const allCount = entries.length + comms.length;
+  const selectedClient = clients.find((c) => c.clientId === selectedClientId) ?? null;
+  const drawerClient = clients.find((c) => c.clientId === drawerClientId) ?? null;
 
   const ensureUsersLoaded = useCallback(async () => {
     if (usersLoaded) return;
@@ -183,11 +281,14 @@ export function TenderEntriesPanel({ tenderId }: { tenderId: string }) {
     }
   }, [authFetch, usersLoaded]);
 
-  const openAdd = useCallback(() => {
-    setDraft(EMPTY_DRAFT);
-    setAddOpen(true);
-    void ensureUsersLoaded();
-  }, [ensureUsersLoaded]);
+  const openAdd = useCallback(
+    (preselectedClientId?: string) => {
+      setDraft({ ...EMPTY_DRAFT, clientId: preselectedClientId ?? "" });
+      setAddOpen(true);
+      void ensureUsersLoaded();
+    },
+    [ensureUsersLoaded]
+  );
 
   const closeAdd = useCallback(() => {
     setAddOpen(false);
@@ -199,6 +300,39 @@ export function TenderEntriesPanel({ tenderId }: { tenderId: string }) {
       setError("Body is required.");
       return;
     }
+
+    // Client-linked entries are stored as comm entries (clarification notes)
+    // so the sidebar's per-client filter and counts pick them up.
+    if (draft.clientId && isCommType(draft.type)) {
+      setSubmitting(true);
+      setError(null);
+      try {
+        const response = await authFetch(commEntriesPath(tenderId), {
+          method: "POST",
+          body: JSON.stringify(
+            buildCommCreateBody({
+              type: draft.type,
+              subject: draft.subject,
+              body: draft.body,
+              clientId: draft.clientId
+            })
+          )
+        });
+        if (!response.ok) throw new Error(await response.text());
+        const created = (await response.json()) as CommEntry;
+        setComms((current) => [created, ...current]);
+        if (selectedClientId === draft.clientId) {
+          setFilteredComms((current) => [created, ...current]);
+        }
+        closeAdd();
+      } catch (err) {
+        setError((err as Error).message);
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
     if (requiresDueDate(draft.type) && !draft.dueDate) {
       setError("This entry type needs a due date.");
       return;
@@ -253,7 +387,7 @@ export function TenderEntriesPanel({ tenderId }: { tenderId: string }) {
     } finally {
       setSubmitting(false);
     }
-  }, [authFetch, closeAdd, draft, tenderId, user, users]);
+  }, [authFetch, closeAdd, draft, selectedClientId, tenderId, user, users]);
 
   const toggleStatus = useCallback(
     async (entry: TenderEntry) => {
@@ -278,6 +412,54 @@ export function TenderEntriesPanel({ tenderId }: { tenderId: string }) {
     [authFetch, tenderId]
   );
 
+  const confirmDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+    const target = deleteTarget;
+    setDeleteBusy(true);
+    // Optimistic removal — restore on failure.
+    if (target.kind === "comm") {
+      setComms((current) => current.filter((c) => c.id !== target.id));
+      setFilteredComms((current) => current.filter((c) => c.id !== target.id));
+    } else {
+      setEntries((current) => current.filter((e) => e.id !== target.id));
+    }
+    setDeleteTarget(null);
+    try {
+      await performDeleteFeedItem(authFetch, tenderId, target);
+      showToast("Entry deleted.");
+    } catch (err) {
+      if (target.kind === "comm") {
+        setComms((current) => [target.comm, ...current]);
+        if (selectedClientId && target.comm.clientId === selectedClientId) {
+          setFilteredComms((current) => [target.comm, ...current]);
+        }
+      } else {
+        setEntries((current) => [target.entry, ...current]);
+      }
+      showToast(`Delete failed: ${(err as Error).message}`);
+    } finally {
+      setDeleteBusy(false);
+    }
+  }, [authFetch, deleteTarget, selectedClientId, showToast, tenderId]);
+
+  const deleteLabel =
+    deleteTarget?.kind === "comm"
+      ? (COMM_LABEL[deleteTarget.comm.noteType] ?? "comm").toLowerCase()
+      : deleteTarget
+        ? TYPE_LABEL[deleteTarget.entry.type].toLowerCase()
+        : "";
+
+  const list = (items: Array<FeedItem<TenderEntry>>) =>
+    renderList({
+      loading: loading || filterLoading,
+      items,
+      clients,
+      statusBusyId,
+      canManage,
+      onToggleStatus: toggleStatus,
+      onDelete: (item) => setDeleteTarget(item)
+    });
+
   return (
     <section className="s7-card" data-testid="tender-entries-panel">
       <div
@@ -292,7 +474,7 @@ export function TenderEntriesPanel({ tenderId }: { tenderId: string }) {
           <button
             type="button"
             className="s7-btn s7-btn--primary s7-btn--sm"
-            onClick={openAdd}
+            onClick={() => openAdd(selectedClientId ?? undefined)}
           >
             + Add entry
           </button>
@@ -304,56 +486,350 @@ export function TenderEntriesPanel({ tenderId }: { tenderId: string }) {
       ) : null}
 
       {view === "feed" ? (
-        <>
-          <FilterChips active={chip} onChange={setChip} />
-          {renderList({
-            loading,
-            entries: filteredFeed,
-            statusBusyId,
-            onToggleStatus: toggleStatus
-          })}
-        </>
+        <FilterChips active={chip} onChange={setChip} />
       ) : (
-        <>
-          <TabStrip active={tabsActive} onChange={setTabsActive} />
-          {renderList({
-            loading,
-            entries: tabsEntries,
-            statusBusyId,
-            onToggleStatus: toggleStatus
-          })}
-        </>
+        <TabStrip active={tabsActive} onChange={setTabsActive} />
       )}
+
+      <div
+        className="tender-entries__layout"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "200px minmax(0, 1fr)",
+          gap: 16,
+          marginTop: 12,
+          alignItems: "start"
+        }}
+      >
+        <ClientFilterSidebar
+          clients={clients}
+          counts={counts}
+          allCount={allCount}
+          selectedClientId={selectedClientId}
+          canManage={canManage}
+          onSelect={setSelectedClientId}
+          onInfo={setDrawerClientId}
+          onAddClient={onAddClient}
+        />
+        <div>
+          <p
+            data-testid="tender-entries-subtitle"
+            style={{ margin: "0 0 8px", fontSize: 12, color: "#6B7280" }}
+          >
+            {feedSubtitle(visible.length, selectedClient?.name ?? null)}
+          </p>
+          {list(visible)}
+        </div>
+      </div>
 
       {addOpen ? (
         <AddEntryModal
           draft={draft}
           users={users}
+          clients={clients}
           submitting={submitting}
           onChange={setDraft}
           onCancel={closeAdd}
           onSubmit={submitAdd}
         />
       ) : null}
+
+      {deleteTarget ? (
+        <CenteredModal
+          title="Delete entry"
+          subtitle={`Delete this ${deleteLabel} entry? This cannot be undone.`}
+          onClose={() => setDeleteTarget(null)}
+          busy={deleteBusy}
+          dataTestId="delete-entry-confirm"
+          footer={
+            <>
+              <button
+                type="button"
+                className="s7-btn s7-btn--ghost"
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleteBusy}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="s7-btn s7-btn--primary"
+                style={{ background: "var(--status-danger, #C0392B)" }}
+                onClick={() => void confirmDelete()}
+                disabled={deleteBusy}
+              >
+                Delete
+              </button>
+            </>
+          }
+        >
+          <span />
+        </CenteredModal>
+      ) : null}
+
+      {drawerClient ? (
+        <ClientDetailDrawer
+          client={drawerClient}
+          canManage={canManage}
+          canRemove={canRemoveClients}
+          onClose={() => setDrawerClientId(null)}
+          onScoreChange={(score) => onScoreChange?.(drawerClient.clientId, score)}
+          onLogInteraction={() => {
+            setDrawerClientId(null);
+            openAdd(drawerClient.clientId);
+          }}
+          onRemove={() => {
+            setDrawerClientId(null);
+            onRemoveClient?.(drawerClient.clientId);
+          }}
+        />
+      ) : null}
+
+      {toast ? (
+        <div
+          role="status"
+          style={{
+            position: "fixed",
+            bottom: 24,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "#1F2937",
+            color: "#fff",
+            padding: "8px 16px",
+            borderRadius: 8,
+            fontSize: 13,
+            zIndex: 1100,
+            boxShadow: "0 2px 8px rgba(0,0,0,0.25)"
+          }}
+        >
+          {toast}
+        </div>
+      ) : null}
     </section>
+  );
+}
+
+function ClientFilterSidebar({
+  clients,
+  counts,
+  allCount,
+  selectedClientId,
+  canManage,
+  onSelect,
+  onInfo,
+  onAddClient
+}: {
+  clients: ActivityClient[];
+  counts: Record<string, number>;
+  allCount: number;
+  selectedClientId: string | null;
+  canManage: boolean;
+  onSelect: (clientId: string | null) => void;
+  onInfo: (clientId: string) => void;
+  onAddClient?: () => void;
+}) {
+  return (
+    <aside data-testid="client-filter-sidebar">
+      <p className="s7-type-label" style={{ margin: "0 0 6px", textTransform: "uppercase", fontSize: 11 }}>
+        Filter by client
+      </p>
+      <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+        <li>
+          <button
+            type="button"
+            onClick={() => onSelect(null)}
+            aria-pressed={selectedClientId === null}
+            style={sidebarRowStyle(selectedClientId === null)}
+          >
+            <ListIcon />
+            <span style={{ flex: 1, textAlign: "left" }}>All clients</span>
+            <CountBadge count={allCount} />
+          </button>
+        </li>
+        {clients.map((client) => {
+          const isSelected = selectedClientId === client.clientId;
+          return (
+            <li key={client.clientId} style={{ display: "flex", alignItems: "stretch", gap: 2 }}>
+              <button
+                type="button"
+                onClick={() => onSelect(client.clientId)}
+                aria-pressed={isSelected}
+                title={client.name}
+                style={{ ...sidebarRowStyle(isSelected), flex: 1, minWidth: 0 }}
+              >
+                {isPrimaryClient(client) ? <PrimaryTag /> : null}
+                <ClientStarRating
+                  score={client.preferenceScore}
+                  readOnly
+                  size="sm"
+                  ariaLabel={`${client.name} preference`}
+                />
+                <span
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    textAlign: "left",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap"
+                  }}
+                >
+                  {client.name}
+                </span>
+                <CountBadge count={counts[client.clientId] ?? 0} />
+              </button>
+              <button
+                type="button"
+                aria-label={`${client.name} details`}
+                title={`${client.name} details`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onInfo(client.clientId);
+                }}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  cursor: "pointer",
+                  color: "#6B7280",
+                  padding: "0 4px",
+                  display: "flex",
+                  alignItems: "center",
+                  minWidth: 24
+                }}
+              >
+                <InfoIcon />
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {canManage && onAddClient ? (
+        <button
+          type="button"
+          className="s7-btn s7-btn--ghost s7-btn--sm"
+          onClick={onAddClient}
+          style={{ marginTop: 8, fontSize: 12 }}
+        >
+          + Add client
+        </button>
+      ) : null}
+    </aside>
+  );
+}
+
+function sidebarRowStyle(selected: boolean): CSSProperties {
+  return {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    width: "100%",
+    padding: "6px 8px",
+    borderRadius: 6,
+    fontSize: 13,
+    cursor: "pointer",
+    border: selected ? "1px solid #2563EB" : "1px solid transparent",
+    background: selected ? "#fff" : "var(--surface-secondary, #F3F4F6)",
+    color: selected ? "var(--text-primary, #111827)" : "#6B7280",
+    fontWeight: selected ? 500 : 400
+  };
+}
+
+function CountBadge({ count }: { count: number }) {
+  return (
+    <span
+      style={{
+        background: "#E5E7EB",
+        color: "#374151",
+        borderRadius: 999,
+        padding: "0 6px",
+        fontSize: 11,
+        fontWeight: 600,
+        lineHeight: "16px"
+      }}
+    >
+      {count}
+    </span>
+  );
+}
+
+function ListIcon() {
+  return (
+    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden>
+      <line x1="8" y1="6" x2="21" y2="6" />
+      <line x1="8" y1="12" x2="21" y2="12" />
+      <line x1="8" y1="18" x2="21" y2="18" />
+      <circle cx="4" cy="6" r="1" />
+      <circle cx="4" cy="12" r="1" />
+      <circle cx="4" cy="18" r="1" />
+    </svg>
+  );
+}
+
+function InfoIcon() {
+  return (
+    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden>
+      <circle cx="12" cy="12" r="9" />
+      <line x1="12" y1="11" x2="12" y2="16" />
+      <line x1="12" y1="8" x2="12" y2="8.01" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+    </svg>
+  );
+}
+
+function DeleteButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      style={{
+        border: "none",
+        background: "transparent",
+        cursor: "pointer",
+        color: "#9CA3AF",
+        padding: 4,
+        display: "flex",
+        alignItems: "center"
+      }}
+    >
+      <TrashIcon />
+    </button>
   );
 }
 
 function renderList({
   loading,
-  entries,
+  items,
+  clients,
   statusBusyId,
-  onToggleStatus
+  canManage,
+  onToggleStatus,
+  onDelete
 }: {
   loading: boolean;
-  entries: TenderEntry[];
+  items: Array<FeedItem<TenderEntry>>;
+  clients: ActivityClient[];
   statusBusyId: string | null;
+  canManage: boolean;
   onToggleStatus: (entry: TenderEntry) => void;
+  onDelete: (item: FeedItem<TenderEntry>) => void;
 }) {
   if (loading) {
     return <p style={{ marginTop: 12, color: "#6B7280" }}>Loading…</p>;
   }
-  if (entries.length === 0) {
+  if (items.length === 0) {
     return (
       <EmptyState
         heading="No entries"
@@ -367,20 +843,32 @@ function renderList({
       style={{
         listStyle: "none",
         padding: 0,
-        margin: "12px 0 0",
+        margin: 0,
         display: "flex",
         flexDirection: "column",
         gap: 10
       }}
     >
-      {entries.map((entry) => (
-        <EntryRow
-          key={entry.id}
-          entry={entry}
-          busy={statusBusyId === entry.id}
-          onToggleStatus={() => onToggleStatus(entry)}
-        />
-      ))}
+      {items.map((item) =>
+        item.kind === "entry" ? (
+          <EntryRow
+            key={`entry-${item.id}`}
+            entry={item.entry}
+            busy={statusBusyId === item.id}
+            canDelete={canManage}
+            onToggleStatus={() => onToggleStatus(item.entry)}
+            onDelete={() => onDelete(item)}
+          />
+        ) : (
+          <CommRow
+            key={`comm-${item.id}`}
+            comm={item.comm}
+            clientName={clients.find((c) => c.clientId === item.comm.clientId)?.name ?? null}
+            canDelete={canManage}
+            onDelete={() => onDelete(item)}
+          />
+        )
+      )}
     </ul>
   );
 }
@@ -388,11 +876,15 @@ function renderList({
 function EntryRow({
   entry,
   busy,
-  onToggleStatus
+  canDelete,
+  onToggleStatus,
+  onDelete
 }: {
   entry: TenderEntry;
   busy: boolean;
+  canDelete: boolean;
   onToggleStatus: () => void;
+  onDelete: () => void;
 }) {
   const palette = TYPE_PALETTE[entry.type];
   const hasStatusControls = entry.type === "task" || entry.type === "follow_up" || entry.type === "self_reminder";
@@ -434,7 +926,10 @@ function EntryRow({
           </span>
           {entry.subject ? <strong style={{ fontSize: 14 }}>{entry.subject}</strong> : null}
         </div>
-        <span style={{ fontSize: 12, color: "#6B7280" }}>{formatDateTime(entry.createdAt)}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <span style={{ fontSize: 12, color: "#6B7280" }}>{formatDateTime(entry.createdAt)}</span>
+          {canDelete ? <DeleteButton label="Delete entry" onClick={onDelete} /> : null}
+        </div>
       </div>
       <p style={{ margin: "6px 0 0", whiteSpace: "pre-wrap" }}>{entry.body}</p>
       <div
@@ -491,6 +986,82 @@ function EntryRow({
             {entry.status === "done" ? "Done" : entry.status === "cancelled" ? "Cancelled" : "Open"}
           </button>
         ) : null}
+      </div>
+    </li>
+  );
+}
+
+function CommRow({
+  comm,
+  clientName,
+  canDelete,
+  onDelete
+}: {
+  comm: CommEntry;
+  clientName: string | null;
+  canDelete: boolean;
+  onDelete: () => void;
+}) {
+  const palette = COMM_PALETTE[comm.noteType] ?? "#95A5A6";
+  return (
+    <li
+      className="tender-entries__item"
+      data-testid="tender-comm-row"
+      style={{
+        borderLeft: `4px solid ${palette}`,
+        background: "var(--surface-card, #fff)",
+        padding: "10px 12px",
+        borderRadius: 6,
+        boxShadow: "0 1px 2px rgba(0,0,0,0.04)"
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 8,
+          flexWrap: "wrap"
+        }}
+      >
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span
+            style={{
+              background: palette,
+              color: "#fff",
+              padding: "2px 8px",
+              borderRadius: 999,
+              fontSize: 11,
+              fontWeight: 600,
+              textTransform: "uppercase",
+              letterSpacing: "0.04em"
+            }}
+          >
+            {COMM_LABEL[comm.noteType] ?? comm.noteType}
+          </span>
+          {clientName ? (
+            <span
+              style={{
+                background: "#DBEAFE",
+                color: "#1E40AF",
+                padding: "2px 8px",
+                borderRadius: 999,
+                fontSize: 11
+              }}
+            >
+              {clientName}
+            </span>
+          ) : null}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <span style={{ fontSize: 12, color: "#6B7280" }}>{formatDateTime(comm.occurredAt)}</span>
+          {canDelete ? <DeleteButton label="Delete entry" onClick={onDelete} /> : null}
+        </div>
+      </div>
+      <p style={{ margin: "6px 0 0", whiteSpace: "pre-wrap" }}>{comm.text}</p>
+      <div style={{ marginTop: 8, fontSize: 12, color: "#6B7280", display: "flex", gap: 8 }}>
+        {comm.createdBy ? <span>— {formatPerson(comm.createdBy)}</span> : null}
+        <span style={{ textTransform: "capitalize" }}>{comm.direction}</span>
       </div>
     </li>
   );
@@ -596,6 +1167,7 @@ function TabStrip({
 function AddEntryModal({
   draft,
   users,
+  clients,
   submitting,
   onChange,
   onCancel,
@@ -603,13 +1175,15 @@ function AddEntryModal({
 }: {
   draft: DraftEntry;
   users: AssignableUser[];
+  clients: ActivityClient[];
   submitting: boolean;
   onChange: (next: DraftEntry) => void;
   onCancel: () => void;
   onSubmit: () => void;
 }) {
-  const needsDueDate = requiresDueDate(draft.type);
-  const needsAssignee = requiresAssignee(draft.type);
+  const clientLinked = !!draft.clientId && isCommType(draft.type);
+  const needsDueDate = !clientLinked && requiresDueDate(draft.type);
+  const needsAssignee = !clientLinked && requiresAssignee(draft.type);
   const bodyValid = draft.body.trim().length > 0;
   const dueDateValid = !needsDueDate || !!draft.dueDate;
   const assigneeValid = !needsAssignee || !!draft.assigneeId;
@@ -662,7 +1236,8 @@ function AddEntryModal({
                 ...draft,
                 type: nextType,
                 dueDate: requiresDueDate(nextType) ? draft.dueDate : "",
-                assigneeId: requiresAssignee(nextType) ? draft.assigneeId : ""
+                assigneeId: requiresAssignee(nextType) ? draft.assigneeId : "",
+                clientId: isCommType(nextType) ? draft.clientId : ""
               });
             }}
           >
@@ -676,6 +1251,24 @@ function AddEntryModal({
             <option value="task">Task</option>
           </select>
         </label>
+
+        {isCommType(draft.type) && clients.length > 0 ? (
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+            <span>Client (optional)</span>
+            <select
+              className="s7-select"
+              value={draft.clientId}
+              onChange={(event) => onChange({ ...draft, clientId: event.target.value })}
+            >
+              <option value="">No client link</option>
+              {clients.map((client) => (
+                <option key={client.clientId} value={client.clientId}>
+                  {client.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
           <span>Subject (optional)</span>

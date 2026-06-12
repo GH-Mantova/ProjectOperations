@@ -3563,6 +3563,22 @@ export async function seedBusinessDirectoryDemos(prisma: PrismaClient): Promise<
   }
 }
 
+// Highest numeric suffix among issued safety numbers (e.g. "IS-INC018" -> 18).
+// Mirrors allocateSeedJobNumber in seed.ts: a persistent local DB can hold
+// residue incidents/hazards created via the API far above the seed fixtures,
+// so the sequence floor must never reset below what's already issued —
+// otherwise every subsequent create collides on the unique number column
+// until the sequence climbs past the residue.
+function maxIssuedNumber(numbers: string[], prefix: string): number {
+  let max = 0;
+  for (const value of numbers) {
+    if (!value.startsWith(prefix)) continue;
+    const parsed = parseInt(value.slice(prefix.length), 10);
+    if (Number.isFinite(parsed) && parsed > max) max = parsed;
+  }
+  return max;
+}
+
 export async function seedSafetyDemos(prisma: PrismaClient): Promise<void> {
   const admin = await prisma.user.findUnique({ where: { email: "admin@projectops.local" } });
   if (!admin) return;
@@ -3636,11 +3652,19 @@ export async function seedSafetyDemos(prisma: PrismaClient): Promise<void> {
     });
   }
 
-  // Bump the sequence so the next created incident is IS-INC003.
+  // Bump the sequence so the next created incident follows both the seed
+  // fixtures (IS-INC002) and any residue incidents already issued on this DB.
+  const incidentRows = await prisma.safetyIncident.findMany({
+    select: { incidentNumber: true }
+  });
+  const incidentLast = Math.max(
+    maxIssuedNumber(incidentRows.map((r) => r.incidentNumber), "IS-INC"),
+    2
+  );
   await prisma.safetyIncidentNumberSequence.upsert({
     where: { id: 1 },
-    update: { lastNumber: 2 },
-    create: { id: 1, lastNumber: 2 }
+    update: { lastNumber: incidentLast },
+    create: { id: 1, lastNumber: incidentLast }
   });
 
   const hazards: Array<{
@@ -3725,9 +3749,18 @@ export async function seedSafetyDemos(prisma: PrismaClient): Promise<void> {
     });
   }
 
+  // Same floor rule as incidents: seed fixtures end at IS-HAZ003, but never
+  // reset below residue hazards already issued on this DB.
+  const hazardRows = await prisma.hazardObservation.findMany({
+    select: { hazardNumber: true }
+  });
+  const hazardLast = Math.max(
+    maxIssuedNumber(hazardRows.map((r) => r.hazardNumber), "IS-HAZ"),
+    3
+  );
   await prisma.hazardNumberSequence.upsert({
     where: { id: 1 },
-    update: { lastNumber: 3 },
-    create: { id: 1, lastNumber: 3 }
+    update: { lastNumber: hazardLast },
+    create: { id: 1, lastNumber: hazardLast }
   });
 }

@@ -58,10 +58,10 @@
  *   • PR #29 rates-admin item needs an admin-pages batch (5 or 8) to claim it.
  *
  * Residue notes (conventions: no UI delete exists → documented):
- *   • "entries of every type" leaves 8 tender entries on IS-T008 per run
+ *   • "entries of every type" leaves 8 tender entries on T260428-BRIS-Rev1 per run
  *     (unique e2e-b2-* subjects; TenderEntriesPanel has no delete control).
  *   • "client card star rating" pins client-001 preferenceScore to 4 (idempotent).
- *   • "quick edit slide-over" pins IS-T005 dueDate to 2031-03-15 (idempotent).
+ *   • "quick edit slide-over" pins T260407-GOLD-Rev1 dueDate to 2031-03-15 (idempotent).
  */
 
 import { expect, test, type Page } from "@playwright/test";
@@ -93,16 +93,16 @@ test.describe("Batch 2 — Tendering pipeline + register (PRs #16, #28-#30, #43,
     await openRegister(page);
     // Search narrows to the Ipswich tender only.
     await page.getByPlaceholder("Search number, title, or client").fill("Ipswich");
-    await expect(page.getByText("IS-T001", { exact: true })).toBeVisible();
-    await expect(page.getByText("IS-T002", { exact: true })).not.toBeVisible();
+    await expect(page.getByText("T260310-QUEE-Rev1", { exact: true })).toBeVisible();
+    await expect(page.getByText("T260317-SUNC-Rev1", { exact: true })).not.toBeVisible();
     // Clear search, open advanced filters and apply a Min $ that only the
     // $4.25M Ipswich tender clears — individual + combined behaviour.
     await page.getByPlaceholder("Search number, title, or client").fill("");
     await page.getByRole("button", { name: "More filters", exact: true }).click();
     await expect(page.getByText("Min $", { exact: true })).toBeVisible();
     await page.getByLabel("Min $").fill("4000000");
-    await expect(page.getByText("IS-T001", { exact: true })).toBeVisible();
-    await expect(page.getByText("IS-T005", { exact: true })).not.toBeVisible();
+    await expect(page.getByText("T260310-QUEE-Rev1", { exact: true })).toBeVisible();
+    await expect(page.getByText("T260407-GOLD-Rev1", { exact: true })).not.toBeVisible();
   });
 
   test("register column header cycles sort asc → desc with arrow indicator", async ({ page }) => {
@@ -162,8 +162,8 @@ test.describe("Batch 2 — Tendering pipeline + register (PRs #16, #28-#30, #43,
 
   test("bulk select shows action bar with Change status stages and Export CSV", async ({ page }) => {
     await openRegister(page);
-    await page.getByRole("checkbox", { name: "Select tender IS-T006" }).check();
-    await page.getByRole("checkbox", { name: "Select tender IS-T008" }).check();
+    await page.getByRole("checkbox", { name: "Select tender T260414-SUNC-Rev1" }).check();
+    await page.getByRole("checkbox", { name: "Select tender T260428-BRIS-Rev1" }).check();
     await expect(page.getByText("2 tenders selected")).toBeVisible();
     // Stage listbox opens with the canonical labels. The actual status
     // mutation is intentionally not executed — it would rewrite seed
@@ -179,10 +179,10 @@ test.describe("Batch 2 — Tendering pipeline + register (PRs #16, #28-#30, #43,
 
   test("quick edit slide-over opens from row hover and saves a due date", async ({ page }) => {
     await openRegister(page);
-    await page.getByPlaceholder("Search number, title, or client").fill("IS-T005");
-    await expect(page.getByText("IS-T005", { exact: true })).toBeVisible();
-    await page.getByText("IS-T005", { exact: true }).hover();
-    await page.getByRole("button", { name: "Quick edit IS-T005" }).click();
+    await page.getByPlaceholder("Search number, title, or client").fill("T260407-GOLD-Rev1");
+    await expect(page.getByText("T260407-GOLD-Rev1", { exact: true })).toBeVisible();
+    await page.getByText("T260407-GOLD-Rev1", { exact: true }).hover();
+    await page.getByRole("button", { name: "Quick edit T260407-GOLD-Rev1" }).click();
 
     const dialog = page.getByRole("dialog", { name: "Quick edit tender" });
     await expect(dialog).toBeVisible();
@@ -196,7 +196,7 @@ test.describe("Batch 2 — Tendering pipeline + register (PRs #16, #28-#30, #43,
   // ── Pipeline: stage movement without drag-and-drop ────────────────────────
 
   test("stage movement via detail status select reflects in register, then reverts", async ({ page }) => {
-    await openTenderDetail(page, "IS-T005");
+    await openTenderDetail(page, "T260407-GOLD-Rev1");
     // Move Draft → Estimating using the header status select (the UI-control
     // alternative to kanban drag-and-drop, which conventions skip as flaky).
     // NOTE: bare getByText("Estimating") would match the hidden <option>
@@ -206,13 +206,13 @@ test.describe("Batch 2 — Tendering pipeline + register (PRs #16, #28-#30, #43,
 
     // The register row reflects the new stage.
     await openRegister(page);
-    await page.getByPlaceholder("Search number, title, or client").fill("IS-T005");
+    await page.getByPlaceholder("Search number, title, or client").fill("T260407-GOLD-Rev1");
     await expect(
-      page.getByRole("row", { name: /IS-T005/ }).getByText("Estimating", { exact: true })
+      page.getByRole("row", { name: /T260407-GOLD-Rev1/ }).getByText("Estimating", { exact: true })
     ).toBeVisible();
 
     // Revert to Draft so the suite is re-runnable.
-    await page.getByText("IS-T005", { exact: true }).click();
+    await page.getByText("T260407-GOLD-Rev1", { exact: true }).click();
     await page.getByLabel("Change tender status").selectOption({ label: "Draft" });
     await expect(page.getByLabel("Change tender status")).toHaveValue("DRAFT");
   });
@@ -220,7 +220,7 @@ test.describe("Batch 2 — Tendering pipeline + register (PRs #16, #28-#30, #43,
   // ── Detail: overview info cards ────────────────────────────────────────────
 
   test("overview shows the 5 info cards including rate snapshot state", async ({ page }) => {
-    await openTenderDetail(page, "IS-T001");
+    await openTenderDetail(page, "T260310-QUEE-Rev1");
     for (const label of ["Stage", "Value", "Probability", "Due date", "Rate snapshot"]) {
       await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
     }
@@ -232,7 +232,7 @@ test.describe("Batch 2 — Tendering pipeline + register (PRs #16, #28-#30, #43,
 
   test("entries panel creates an entry of every type and renders its badge", async ({ page }) => {
     const run = Date.now();
-    await openTenderDetail(page, "IS-T008");
+    await openTenderDetail(page, "T260428-BRIS-Rev1");
     await expect(page.getByText("Activity & communications")).toBeVisible();
 
     const entryTypes: Array<{ label: string; needsDueDate: boolean; needsAssignee: boolean }> = [
@@ -280,7 +280,7 @@ test.describe("Batch 2 — Tendering pipeline + register (PRs #16, #28-#30, #43,
   });
 
   test("entries view toggle Feed ↔ Tabs persists across a reload", async ({ page }) => {
-    await openTenderDetail(page, "IS-T008");
+    await openTenderDetail(page, "T260428-BRIS-Rev1");
     await expect(page.getByText("Activity & communications")).toBeVisible();
     // Switch to Tabs — the grouped tab strip appears.
     await page.getByRole("button", { name: "Tabs", exact: true }).click();
@@ -301,7 +301,7 @@ test.describe("Batch 2 — Tendering pipeline + register (PRs #16, #28-#30, #43,
     // §5A.3 (PR-63b) — client rows moved from the Team panel to the Activity
     // sidebar; the editable rating lives in the Client Detail drawer behind
     // the row's info icon.
-    await openTenderDetail(page, "IS-T001");
+    await openTenderDetail(page, "T260310-QUEE-Rev1");
     const infoButton = page.getByRole("button", {
       name: "Queensland Transport Infrastructure details"
     });
@@ -332,15 +332,15 @@ test.describe("Batch 2 — Tendering pipeline + register (PRs #16, #28-#30, #43,
   // ── Detail: delete dialog cascade ──────────────────────────────────────────
 
   test("delete dialog lists client-link cascade and cancels cleanly", async ({ page }) => {
-    await openTenderDetail(page, "IS-T005");
+    await openTenderDetail(page, "T260407-GOLD-Rev1");
     await page.getByRole("button", { name: "Delete", exact: true }).click();
-    await expect(page.getByText("Delete Tender IS-T005?")).toBeVisible();
+    await expect(page.getByText("Delete Tender T260407-GOLD-Rev1?")).toBeVisible();
     await expect(page.getByText("The following will also be deleted:")).toBeVisible();
     await expect(page.getByText(/\d+ client link\(s\)/)).toBeVisible();
     // Cancel — nothing is deleted.
     await page.getByRole("button", { name: "Cancel", exact: true }).click();
-    await expect(page.getByText("Delete Tender IS-T005?")).not.toBeVisible();
-    await expect(page.getByText("IS-T005", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Delete Tender T260407-GOLD-Rev1?")).not.toBeVisible();
+    await expect(page.getByText("T260407-GOLD-Rev1", { exact: true }).first()).toBeVisible();
   });
 
   // ── Tendering dashboard ────────────────────────────────────────────────────

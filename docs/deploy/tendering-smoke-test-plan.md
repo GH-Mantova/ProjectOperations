@@ -11,8 +11,8 @@ or move on.
 Preconditions:
 
 - You've logged in via SSO and have the right role (Tendering Editor minimum).
-- Seeded Initial Services data is present — `IS-T020` and friends are
-  visible in the tender list.
+- Seeded Initial Services data is present — `T260512-BRIS-Rev1` and friends
+  are visible in the tender list.
 - The companion checklist has been ticked through to section 7.
 
 Bug-report format and channel are in

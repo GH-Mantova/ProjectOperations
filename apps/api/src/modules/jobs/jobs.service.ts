@@ -280,10 +280,9 @@ function isJobNumberUniqueViolation(err: unknown): boolean {
  * {@link NotificationsService.refreshLiveFollowUps} so the activity feed
  * stays current.
  *
- * Job numbers are canonical `J-YYYY-NNN`. Creation accepts an optional
- * supplied number (validated via {@link JobNumberService.validate}) and
- * otherwise generates one via {@link JobNumberService.generate}; both
- * creation paths translate Prisma P2002 races into 409
+ * Job numbers are canonical `J{YYMMDD}-{SLUG}-{NNN}` (G5) and always
+ * server-generated via {@link JobNumberService.generate} from the job's
+ * client; both creation paths translate Prisma P2002 races into 409
  * {@link ConflictException} via {@link isJobNumberUniqueViolation}.
  */
 @Injectable()
@@ -416,11 +415,9 @@ export class JobsService {
    * PR B05 — manual job creation. The frontend's `NewJobSlideOver`
    * modal (apps/web/src/pages/jobs/JobsListPage.tsx) POSTs here.
    *
-   * Job number resolution:
-   *   - omitted/empty -> server generates via JobNumberService
-   *     (canonical J-YYYY-NNN, per-year sequence, Brisbane TZ)
-   *   - supplied -> validated against the canonical regex; non-canonical
-   *     supplied numbers are rejected with 400
+   * Job numbers are always server-generated via JobNumberService
+   * (G5 canonical J{YYMMDD}-{SLUG}-{NNN}, per-client sequence, Brisbane
+   * TZ date stamp) — callers cannot supply one.
    *
    * Race protection (B02.1): the explicit findUnique pre-check gives a
    * friendly 409 in the common case; the try/catch on prisma.job.create
@@ -437,27 +434,22 @@ export class JobsService {
     if (!dto.name?.trim()) throw new BadRequestException("name is required.");
     if (!dto.clientId?.trim()) throw new BadRequestException("clientId is required.");
 
-    // Resolve jobNumber: server-generate when caller omits, validate when supplied.
-    let jobNumber: string;
-    const supplied = dto.jobNumber?.trim();
-    if (!supplied) {
-      jobNumber = await this.jobNumberService.generate();
-    } else {
-      const validationError = this.jobNumberService.validate(supplied);
-      if (validationError) {
-        throw new BadRequestException(validationError);
-      }
-      jobNumber = supplied;
-    }
-
     const clientId = dto.clientId.trim();
 
     // FK validation: client must exist (controlled 404 instead of FK 500).
+    // The name feeds the G5 slug in the generated job number.
     const client = await this.prisma.client.findUnique({
       where: { id: clientId },
-      select: { id: true }
+      select: { id: true, name: true }
     });
     if (!client) throw new NotFoundException("Client not found.");
+
+    // G5 — job numbers are server-generated (J{YYMMDD}-{SLUG}-{NNN});
+    // callers can no longer supply one.
+    const { jobNumber, clientSlugSnapshot } = await this.jobNumberService.generate(
+      clientId,
+      client.name
+    );
 
     if (dto.siteId) {
       const site = await this.prisma.site.findUnique({
@@ -482,6 +474,7 @@ export class JobsService {
       created = await this.prisma.job.create({
         data: {
           jobNumber,
+          clientSlugSnapshot,
           name: dto.name.trim(),
           description: dto.description?.trim() || null,
           clientId,
@@ -1144,9 +1137,8 @@ export class JobsService {
    *   reuse-archived flow).
    * @throws BadRequestException When the tender isn't in
    *   `"CONTRACT_ISSUED"`, no awarded-and-contracted client is found,
-   *   `tenderDocumentIds` is supplied without `carryTenderDocuments`,
-   *   any supplied document ID doesn't belong to this tender, or the
-   *   supplied `jobNumber` fails canonical validation.
+   *   `tenderDocumentIds` is supplied without `carryTenderDocuments`, or
+   *   any supplied document ID doesn't belong to this tender.
    */
   async convertTenderToJob(tenderId: string, dto: ConvertTenderToJobDto, actorId?: string) {
     const tender = await this.requireTender(tenderId);
@@ -1171,21 +1163,13 @@ export class JobsService {
       );
     }
 
-    // PR B05 — same generator/validation semantics as createJob. If the
-    // frontend conversion modal is still sending a legacy JOB-YYYY-NNN
-    // number, validate() rejects it with 400 telling the caller to
-    // either omit or send canonical.
-    let resolvedJobNumber: string;
-    const suppliedJobNumber = dto.jobNumber?.trim();
-    if (!suppliedJobNumber) {
-      resolvedJobNumber = await this.jobNumberService.generate();
-    } else {
-      const validationError = this.jobNumberService.validate(suppliedJobNumber);
-      if (validationError) {
-        throw new BadRequestException(validationError);
-      }
-      resolvedJobNumber = suppliedJobNumber;
-    }
+    // G5 — job numbers are server-generated from the awarded client
+    // (J{YYMMDD}-{SLUG}-{NNN}); callers can no longer supply one.
+    const { jobNumber: resolvedJobNumber, clientSlugSnapshot } =
+      await this.jobNumberService.generate(
+        awardedContractedClient.clientId,
+        awardedContractedClient.client?.name ?? ""
+      );
 
     const existingJob = await this.prisma.job.findFirst({
       where: {
@@ -1239,6 +1223,7 @@ export class JobsService {
       const createdJob = await tx.job.create({
         data: {
           jobNumber: resolvedJobNumber,
+          clientSlugSnapshot,
           name: dto.name,
           description: dto.description ?? tender.description ?? null,
           clientId: awardedContractedClient.clientId,

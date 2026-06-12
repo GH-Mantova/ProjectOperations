@@ -2,6 +2,16 @@ import { BadRequestException } from "@nestjs/common";
 import { TenderingService } from "./tendering.service";
 
 describe("TenderingService", () => {
+  const tenderNumberServiceMock = () => ({
+    generate: jest.fn().mockResolvedValue({
+      tenderNumber: "T260612-ACME-Rev1",
+      clientSlugSnapshot: "ACME",
+      revisionNumber: 1
+    }),
+    bumpRevision: jest.fn(),
+    validate: jest.fn(() => null)
+  });
+
   it("rejects more than one awarded tender client", async () => {
     const service = new TenderingService(
       {
@@ -9,7 +19,8 @@ describe("TenderingService", () => {
       } as never,
       { write: jest.fn() } as never,
       { sendNotificationEmail: jest.fn() } as never,
-      { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never
+      { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never,
+      tenderNumberServiceMock() as never
     );
 
     await expect(
@@ -37,7 +48,8 @@ describe("TenderingService", () => {
       prisma as never,
       { write: jest.fn() } as never,
       { sendNotificationEmail: jest.fn() } as never,
-      { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never
+      { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never,
+      tenderNumberServiceMock() as never
     );
 
     return expect(
@@ -66,7 +78,8 @@ describe("TenderingService", () => {
       } as never,
       { write: jest.fn() } as never,
       { sendNotificationEmail: jest.fn() } as never,
-      { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never
+      { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never,
+      tenderNumberServiceMock() as never
     );
 
     const result = await service.previewImport([
@@ -86,7 +99,8 @@ describe("TenderingService", () => {
       {} as never,
       { write: jest.fn() } as never,
       { sendNotificationEmail: jest.fn() } as never,
-      { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never
+      { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never,
+      tenderNumberServiceMock() as never
     );
 
     const addNoteSpy = jest.spyOn(service, "addNote").mockResolvedValue({ id: "tender-1" } as never);
@@ -115,7 +129,8 @@ describe("TenderingService", () => {
       {} as never,
       { write: jest.fn() } as never,
       { sendNotificationEmail: jest.fn() } as never,
-      { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never
+      { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never,
+      tenderNumberServiceMock() as never
     );
 
     await expect(

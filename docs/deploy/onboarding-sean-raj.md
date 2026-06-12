@@ -51,7 +51,7 @@ generates noise in the logs.
 You're the gate on the look of the **quote PDFs**. Concretely:
 
 - Drive these tenders:
-  - **`IS-T020`** — the seeded full-feature template tender. Has every section
+  - **`T260512-BRIS-Rev1`** — the seeded full-feature template tender. Has every section
     populated so the PDF exercises every block.
   - **Plus 1-2 you create from scratch**, ideally modelled on real recent jobs
     so the visual edge cases (long client names, multi-line scope, big tables)
@@ -63,7 +63,7 @@ You're the gate on the look of the **quote PDFs**. Concretely:
   - Branding / typography / colour drift from the reference
   - Cosmetic but client-facing — anything you wouldn't put in front of a client
 
-**How to flag**: screenshot + the tender code (e.g. `IS-T020`) + one-line
+**How to flag**: screenshot + the tender code (e.g. `T260512-BRIS-Rev1`) + one-line
 description of what's wrong. Send via the channel in "How to report bugs"
 below.
 

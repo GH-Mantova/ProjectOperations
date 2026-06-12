@@ -38,6 +38,13 @@ class SetAssignedEstimatorDto {
   @IsString()
   userId!: string | null;
 }
+
+class BumpTenderRevisionDto {
+  /** Optional reason recorded in the audit log entry. */
+  @IsOptional()
+  @IsString()
+  reason?: string;
+}
 import { TenderingService } from "./tendering.service";
 
 /**
@@ -347,10 +354,37 @@ export class TenderingController {
   }
 
   /**
+   * Mark a tender as a new revision — bumps Rev{N} on the canonical tender number.
+   *
+   * The tender number becomes T{YYMMDD}-{SLUG}-Rev{N+1}; the row id is
+   * unchanged.
+   *
+   * @param id - tender id
+   * @param dto - optional { reason } recorded in the audit trail
+   * @returns the updated tender with the bumped revision number
+   */
+  @Post(":id/bump-revision")
+  @RequirePermissions("tenders.manage")
+  @ApiOperation({
+    summary:
+      "Mark a tender as a new revision — bumps Rev{N} on the canonical tender number (T{YYMMDD}-{SLUG}-Rev{N}); the row id is unchanged"
+  })
+  @ApiResponse({ status: 201, description: "Updated tender with the bumped revision number." })
+  @ApiResponse({ status: 404, description: "Tender not found." })
+  bumpRevision(
+    @Param("id") id: string,
+    @Body() dto: BumpTenderRevisionDto,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.bumpRevision(id, dto.reason, actor.sub);
+  }
+
+  /**
    * Duplicate a tender (copies fields and clients, resets lifecycle dates and outcomes).
    *
-   * The copy gets status DRAFT, a "-COPY{n}" tender number, "(copy)"
-   * title suffix, and a fresh SharePoint folder structure.
+   * The copy gets status DRAFT, a fresh canonical tender number
+   * (T{YYMMDD}-{SLUG}-Rev1 stamped with today's date), a "(copy)" title
+   * suffix, and a fresh SharePoint folder structure.
    *
    * @param id - source tender id
    * @returns the newly created tender copy

@@ -2,7 +2,7 @@
  * Batch 3 — Concrete cutting sheet (PRs #37, #44, #60)
  *
  * Covers the per-card cutting subtable on the CIV card of the seeded
- * IS-T100 template tender (CIV is used instead of DEM so this file can't
+ * T260520-ACME-Rev1 template tender (CIV is used instead of DEM so this file can't
  * contend with the waste/items spec files running against DEM):
  *   • saw cuts — equipment gates elevation/method (Roadsaw Floor-only,
  *     Inverted never offered for saws), Cutrite rate resolution, the

@@ -175,7 +175,7 @@ export class AiProvidersService {
   // the user is in one of these AND a contextKey is present, the system
   // prompt is prefixed with a "Current tender context" block so the
   // model knows the tender's display code (what the user calls it,
-  // e.g. "IS-T020") AND its database CUID (what tools require as
+  // e.g. "T260512-BRIS-Rev1") AND its database CUID (what tools require as
   // tenderId). The "register" sub-mode is the list view, not
   // tender-scoped — no injection.
   private static readonly TENDER_SCOPED_SUB_MODES: ReadonlySet<string> = new Set([

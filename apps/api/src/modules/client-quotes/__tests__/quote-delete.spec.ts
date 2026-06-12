@@ -34,7 +34,7 @@ describe("ClientQuotesService.delete", () => {
     prisma.clientQuote.findUnique.mockResolvedValue({
       id: "q-1",
       tenderId: "t-1",
-      quoteRef: "IS-T001",
+      quoteRef: "T260310-QUEE-Rev1",
       status: "DRAFT"
     });
     prisma.clientQuote.delete.mockResolvedValue({});
@@ -61,7 +61,7 @@ describe("ClientQuotesService.delete", () => {
     prisma.clientQuote.findUnique.mockResolvedValue({
       id: "q-2",
       tenderId: "t-1",
-      quoteRef: "IS-T001-R2",
+      quoteRef: "T260310-QUEE-Rev1-R2",
       status: "SENT"
     });
     prisma.clientQuote.delete.mockResolvedValue({});
@@ -79,7 +79,7 @@ describe("ClientQuotesService.delete", () => {
     prisma.clientQuote.findUnique.mockResolvedValue({
       id: "q-3",
       tenderId: "t-1",
-      quoteRef: "IS-T001-R3",
+      quoteRef: "T260310-QUEE-Rev1-R3",
       status: "SUPERSEDED"
     });
     prisma.clientQuote.delete.mockResolvedValue({});
@@ -107,7 +107,7 @@ describe("ClientQuotesService.delete", () => {
     prisma.clientQuote.findUnique.mockResolvedValue({
       id: "q-1",
       tenderId: "t-OTHER",
-      quoteRef: "IS-T002",
+      quoteRef: "T260317-SUNC-Rev1",
       status: "DRAFT"
     });
 

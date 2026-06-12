@@ -541,7 +541,7 @@ describe("AiProvidersService.resolveSystemPrompt", () => {
 
   // PR #144 — tender context injection.
   describe("tender context injection (PR #144)", () => {
-    const tender = { id: "cuid-xyz", tenderNumber: "IS-T020", title: "School Refurb" };
+    const tender = { id: "cuid-xyz", tenderNumber: "T260512-BRIS-Rev1", title: "School Refurb" };
 
     it("injects tender context when sub-mode is tender-detail and contextKey resolves", async () => {
       const service = new AiProvidersService(
@@ -556,7 +556,7 @@ describe("AiProvidersService.resolveSystemPrompt", () => {
         "cuid-xyz"
       );
       expect(prompt).toContain("Current tender context");
-      expect(prompt).toContain("IS-T020");
+      expect(prompt).toContain("T260512-BRIS-Rev1");
       expect(prompt).toContain("cuid-xyz");
       expect(prompt).toContain("School Refurb");
       expect(prompt).toContain("pass the **CUID**");
@@ -576,7 +576,7 @@ describe("AiProvidersService.resolveSystemPrompt", () => {
           subMode,
           "cuid-xyz"
         );
-        expect(prompt).toContain("IS-T020");
+        expect(prompt).toContain("T260512-BRIS-Rev1");
         expect(prompt).toContain("cuid-xyz");
       }
     );
@@ -594,7 +594,7 @@ describe("AiProvidersService.resolveSystemPrompt", () => {
         "cuid-xyz"
       );
       expect(prompt).not.toContain("Current tender context");
-      expect(prompt).not.toContain("IS-T020");
+      expect(prompt).not.toContain("T260512-BRIS-Rev1");
     });
 
     it("does NOT inject tender context when contextKey is null", async () => {
@@ -668,7 +668,7 @@ describe("AiProvidersService.resolveSystemPrompt", () => {
 
     it("handles tender with null title (omits the dash-quote suffix)", async () => {
       const service = new AiProvidersService(
-        buildPrismaMock({ tenderRow: { id: "cuid-xyz", tenderNumber: "IS-T020", title: null } }),
+        buildPrismaMock({ tenderRow: { id: "cuid-xyz", tenderNumber: "T260512-BRIS-Rev1", title: null } }),
         buildPlatformConfig(),
         buildEncryption()
       );
@@ -678,7 +678,7 @@ describe("AiProvidersService.resolveSystemPrompt", () => {
         "tender-detail",
         "cuid-xyz"
       );
-      expect(prompt).toContain("**IS-T020**.");
+      expect(prompt).toContain("**T260512-BRIS-Rev1**.");
       expect(prompt).not.toContain('"null"');
     });
   });

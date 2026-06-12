@@ -30,7 +30,7 @@ describe("ListTenderQuotesHandler", () => {
     const prisma = buildPrismaMock([
       {
         id: "q-1",
-        quoteRef: "IS-T020-Q1",
+        quoteRef: "T260512-BRIS-Rev1-Q1",
         revision: 1,
         status: "DRAFT",
         detailLevel: "detailed",
@@ -48,7 +48,7 @@ describe("ListTenderQuotesHandler", () => {
     };
     expect(payload.tenderId).toBe("tender-1");
     expect(payload.quotes).toHaveLength(1);
-    expect(payload.quotes[0]?.quoteRef).toBe("IS-T020-Q1");
+    expect(payload.quotes[0]?.quoteRef).toBe("T260512-BRIS-Rev1-Q1");
     expect(payload.quotes[0]?.client.name).toBe("Acme Pty Ltd");
   });
 
@@ -96,7 +96,7 @@ describe("ListTenderQuotesHandler", () => {
     const prisma = buildPrismaMock([
       {
         id: "q-1",
-        quoteRef: "IS-T020-Q1",
+        quoteRef: "T260512-BRIS-Rev1-Q1",
         revision: 1,
         status: "DRAFT",
         detailLevel: "detailed",

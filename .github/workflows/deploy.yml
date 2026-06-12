@@ -47,11 +47,29 @@ jobs:
       - run: pnpm build:azure
         env:
           VITE_API_BASE_URL: ${{ secrets.PROD_API_BASE_URL }}
+      # apps/api/node_modules are pnpm workspace symlinks into the repo-root
+      # store — copying apps/api alone ships broken links and the app
+      # crash-loops with MODULE_NOT_FOUND (G11). Build a self-contained
+      # bundle instead: --legacy because the API has no workspace:* deps
+      # (inject-workspace-packages not needed), node-linker=hoisted so
+      # node_modules are physical files (symlinks do not survive zip deploy).
+      - name: Create self-contained API bundle
+        run: pnpm --filter @project-ops/api deploy --prod --legacy --config.node-linker=hoisted deploy-api
+      # The bundle's node_modules come from a fresh install, so the Prisma
+      # client generated earlier (root store) is not in it. Regenerate
+      # against the bundled schema; output lands in deploy-api/node_modules.
+      - name: Generate Prisma client into bundle
+        run: pnpm --filter @project-ops/api exec prisma generate --schema ../../deploy-api/prisma/schema.prisma
+      - name: Smoke-probe bundle before deploy
+        run: |
+          node -e "require('./deploy-api/node_modules/@nestjs/config/package.json'); console.log('bundle deps OK')"
+          node -e "require('./deploy-api/node_modules/.prisma/client/package.json'); console.log('prisma client OK')"
+          test -f deploy-api/dist/src/main.js && echo "dist entry OK"
       - uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ secrets.AZURE_API_APP_NAME }}
           publish-profile: ${{ secrets.AZURE_API_PUBLISH_PROFILE }}
-          package: apps/api
+          package: deploy-api
       - uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_TOKEN }}

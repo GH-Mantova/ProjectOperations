@@ -43,6 +43,15 @@ const assetInclude = {
   }
 } as const;
 
+/**
+ * Business logic for assets and asset categories (Module 11).
+ *
+ * Enforces uniqueness of category names and asset codes/serial numbers,
+ * writes an audit entry on every create/update, and derives a per-asset
+ * maintenance summary (COMPLIANT / DUE_SOON / OVERDUE / IN_MAINTENANCE /
+ * UNAVAILABLE) plus a scheduler impact (NONE / WARN / BLOCK) from active
+ * maintenance plans, open breakdowns, failed inspections, and asset status.
+ */
 @Injectable()
 export class AssetsService {
   constructor(
@@ -50,12 +59,29 @@ export class AssetsService {
     private readonly auditService: AuditService
   ) {}
 
+  /**
+   * List all asset categories ordered by name ascending.
+   *
+   * @returns every AssetCategory record, active or not
+   */
   async listCategories() {
     return this.prisma.assetCategory.findMany({
       orderBy: { name: "asc" }
     });
   }
 
+  /**
+   * Create (id undefined) or update (id given) an asset category.
+   *
+   * Writes an `assets.category.create` / `assets.category.update` audit
+   * entry after the database write.
+   *
+   * @param id - existing category id, or undefined to create
+   * @param dto - category fields; isActive defaults to true
+   * @param actorId - acting user id recorded in the audit entry
+   * @returns the created or updated category record
+   * @throws ConflictException when another category already has the same name
+   */
   async upsertCategory(id: string | undefined, dto: UpsertAssetCategoryDto, actorId?: string) {
     const existing = await this.prisma.assetCategory.findFirst({
       where: {
@@ -97,6 +123,16 @@ export class AssetsService {
     return record;
   }
 
+  /**
+   * List assets with full related data, filtered and paginated.
+   *
+   * Free-text `q` matches name, assetCode, serialNumber, homeBase, or
+   * currentLocation (case-insensitive). Each item is enriched with a
+   * derived maintenanceSummary.
+   *
+   * @param query - q / categoryId / status filters plus page and pageSize
+   * @returns { items, total, page, pageSize }
+   */
   async listAssets(query: AssetsQueryDto) {
     const where: Prisma.AssetWhereInput = {
       ...(query.q
@@ -137,6 +173,17 @@ export class AssetsService {
     };
   }
 
+  /**
+   * Get a single asset with maintenance, inspection, breakdown, and shift
+   * assignment history.
+   *
+   * Adds linkedJobs (deduplicated from shift assignments), a derived
+   * maintenanceSummary, and DocumentLink records linked to the asset.
+   *
+   * @param id - asset id
+   * @returns the asset with linkedJobs, maintenanceSummary, and documents
+   * @throws NotFoundException when the asset does not exist
+   */
   async getAsset(id: string) {
     const asset = await this.prisma.asset.findUnique({
       where: { id },
@@ -173,6 +220,19 @@ export class AssetsService {
     };
   }
 
+  /**
+   * Create (id undefined) or update (id given) an asset.
+   *
+   * Rejects duplicate assetCode or serialNumber across other assets, writes
+   * an `assets.create` / `assets.update` audit entry, and returns the full
+   * asset detail via getAsset. Status defaults to AVAILABLE when omitted.
+   *
+   * @param id - existing asset id, or undefined to create
+   * @param dto - asset fields
+   * @param actorId - acting user id recorded in the audit entry
+   * @returns the full asset detail (same shape as getAsset)
+   * @throws ConflictException when assetCode or serialNumber already exists
+   */
   async upsertAsset(id: string | undefined, dto: UpsertAssetDto, actorId?: string) {
     const duplicate = await this.prisma.asset.findFirst({
       where: {

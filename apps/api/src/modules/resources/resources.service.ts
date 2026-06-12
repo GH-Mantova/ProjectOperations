@@ -8,6 +8,13 @@ import {
   UpsertWorkerRoleSuitabilityDto
 } from "./dto/resources.dto";
 
+/**
+ * Business logic for scheduler resource data (Module 10): workers,
+ * availability windows, role suitabilities, and shift role requirements.
+ *
+ * Every mutation writes an audit entry under the `resources.*` action
+ * namespace via AuditService.
+ */
 @Injectable()
 export class ResourcesService {
   constructor(
@@ -15,6 +22,17 @@ export class ResourcesService {
     private readonly auditService: AuditService
   ) {}
 
+  /**
+   * Get a single worker with full competencies, availability windows,
+   * role suitabilities, and shift assignments.
+   *
+   * Shift assignments include job, activity, and conflict detail, ordered
+   * most recently assigned first.
+   *
+   * @param workerId - worker id
+   * @returns the worker with all related records eager-loaded
+   * @throws NotFoundException when the worker does not exist
+   */
   async getWorker(workerId: string) {
     const worker = await this.prisma.worker.findUnique({
       where: { id: workerId },
@@ -43,6 +61,16 @@ export class ResourcesService {
     return worker;
   }
 
+  /**
+   * List workers with competencies, availability windows, and role
+   * suitabilities, filtered and paginated.
+   *
+   * Free-text `q` matches firstName, lastName, or employeeCode
+   * (case-insensitive); competencyId restricts to workers holding it.
+   *
+   * @param query - q / competencyId filters plus page and pageSize
+   * @returns { items, total, page, pageSize } ordered by last then first name
+   */
   async listWorkers(query: ResourcesQueryDto) {
     const where = {
       ...(query.q
@@ -84,6 +112,18 @@ export class ResourcesService {
     return { items, total, page: query.page, pageSize: query.pageSize };
   }
 
+  /**
+   * Create (id undefined) or update (id given) an availability window.
+   *
+   * Status defaults to AVAILABLE when omitted. Writes a
+   * `resources.availability.create` / `.update` audit entry. No overlap
+   * validation is performed against existing windows.
+   *
+   * @param id - existing window id, or undefined to create
+   * @param dto - workerId, startAt/endAt ISO strings, optional status and notes
+   * @param actorId - acting user id recorded in the audit entry
+   * @returns the created or updated availability window
+   */
   async upsertAvailabilityWindow(id: string | undefined, dto: UpsertAvailabilityWindowDto, actorId?: string) {
     const record = id
       ? await this.prisma.availabilityWindow.update({
@@ -116,6 +156,19 @@ export class ResourcesService {
     return record;
   }
 
+  /**
+   * Create (id undefined) or update (id given) a worker role suitability.
+   *
+   * Creation rejects duplicates per worker + roleLabel; updates skip that
+   * check. Suitability defaults to SUITABLE. Writes a
+   * `resources.role-suitability.create` / `.update` audit entry.
+   *
+   * @param id - existing suitability id, or undefined to create
+   * @param dto - workerId, roleLabel, optional suitability and notes
+   * @param actorId - acting user id recorded in the audit entry
+   * @returns the created or updated suitability record
+   * @throws ConflictException when creating and the worker already has suitability for that role
+   */
   async upsertWorkerRoleSuitability(id: string | undefined, dto: UpsertWorkerRoleSuitabilityDto, actorId?: string) {
     if (!id) {
       const existing = await this.prisma.workerRoleSuitability.findFirst({
@@ -156,6 +209,16 @@ export class ResourcesService {
     return record;
   }
 
+  /**
+   * List role requirements for a shift, oldest first, with competency
+   * included.
+   *
+   * Does not verify the shift exists — an unknown shiftId returns an
+   * empty array.
+   *
+   * @param shiftId - shift id whose requirements to list
+   * @returns ShiftRoleRequirement records for the shift
+   */
   async listShiftRequirements(shiftId: string) {
     return this.prisma.shiftRoleRequirement.findMany({
       where: { shiftId },
@@ -164,6 +227,20 @@ export class ResourcesService {
     });
   }
 
+  /**
+   * Create (id undefined) or update (id given) a shift role requirement.
+   *
+   * requiredCount defaults to 1. Writes a
+   * `resources.shift-requirement.create` / `.update` audit entry with the
+   * shiftId in metadata, then returns the shift's full requirement list.
+   *
+   * @param shiftId - shift the requirement belongs to (must exist)
+   * @param id - existing requirement id, or undefined to create
+   * @param dto - roleLabel, optional competencyId and requiredCount
+   * @param actorId - acting user id recorded in the audit entry
+   * @returns all requirements for the shift after the write
+   * @throws NotFoundException when the shift does not exist
+   */
   async upsertShiftRequirement(shiftId: string, id: string | undefined, dto: UpsertShiftRoleRequirementDto, actorId?: string) {
     const shift = await this.prisma.shift.findUnique({ where: { id: shiftId } });
     if (!shift) {

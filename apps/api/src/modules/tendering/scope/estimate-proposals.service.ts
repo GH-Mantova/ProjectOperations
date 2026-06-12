@@ -65,12 +65,33 @@ export type EstimateProposalEdits = Partial<{
   wasteLines: EstimateWasteLineProposal[];
 }>;
 
+/**
+ * Stores and decides AI-generated estimate-item proposals (§5A.1 PR D),
+ * mirroring ProposalsService for scope items.
+ *
+ * Proposals live in tool_result message metadata under the
+ * "propose_estimate_items" toolName discriminator. Accepting writes an
+ * EstimateItem plus its labour/plant/cutting/waste lines onto the
+ * tender's TenderEstimate (created with 30% markup if absent); locked
+ * estimates refuse accepts. Ownership is enforced via the
+ * conversation's userId.
+ */
 @Injectable()
 export class EstimateProposalsService {
   private readonly logger = new Logger(EstimateProposalsService.name);
 
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Persists a propose_estimate_items tool call as a tool_call +
+   * tool_result conversation-message pair in one transaction, with all
+   * proposals starting at "pending". Also bumps the conversation's
+   * updatedAt.
+   *
+   * @param toolUseId - provider tool_use id stored for provenance
+   * @param args - the tool arguments containing the proposed estimate items
+   * @returns the tool_result message and the stored proposal array
+   */
   async storeEstimateProposals(
     conversationId: string,
     toolUseId: string,
@@ -124,6 +145,19 @@ export class EstimateProposalsService {
     return { message, proposals };
   }
 
+  /**
+   * Accepts one pending proposal: finds or creates the tender's
+   * TenderEstimate (default 30% markup), creates the EstimateItem with
+   * the next contiguous itemNumber within (estimate, code), creates its
+   * labour/plant/cutting/waste lines (sortOrder = array index), then
+   * flips the proposal to "accepted" in the message metadata. Titles
+   * longer than 200 characters are truncated.
+   *
+   * @param edits - optional field/line-array overrides merged over the stored proposal before commit
+   * @returns `{ estimateItemId }` of the created item
+   * @throws NotFoundException when the message or proposal index is not found
+   * @throws BadRequestException when the proposal is already decided, the conversation has no tender context, or the estimate is locked
+   */
   async acceptEstimateProposal(
     userId: string,
     messageId: string,
@@ -296,6 +330,13 @@ export class EstimateProposalsService {
     return { estimateItemId: item.id };
   }
 
+  /**
+   * Rejects one pending proposal — metadata-only status flip with a
+   * decidedAt timestamp; nothing is written to estimate_items.
+   *
+   * @throws NotFoundException when the message or proposal index is not found
+   * @throws BadRequestException when the proposal is already decided
+   */
   async rejectEstimateProposal(
     userId: string,
     messageId: string,
@@ -322,6 +363,14 @@ export class EstimateProposalsService {
     });
   }
 
+  /**
+   * Accepts every pending proposal on the message by calling
+   * acceptEstimateProposal per index. Individual failures are logged
+   * and counted rather than aborting the batch.
+   *
+   * @returns `{ accepted, failed }` counts
+   * @throws NotFoundException when the message is not found or not owned by the user
+   */
   async acceptAllPending(
     userId: string,
     messageId: string
@@ -344,6 +393,13 @@ export class EstimateProposalsService {
     return { accepted, failed };
   }
 
+  /**
+   * Rejects every pending proposal on the message in a single metadata
+   * update (no write occurs when nothing is pending).
+   *
+   * @returns `{ rejected }` count
+   * @throws NotFoundException when the message is not found or not owned by the user
+   */
   async rejectAllPending(userId: string, messageId: string): Promise<{ rejected: number }> {
     const { message, metadata } = await this.loadProposalMessage(userId, messageId);
     let rejected = 0;

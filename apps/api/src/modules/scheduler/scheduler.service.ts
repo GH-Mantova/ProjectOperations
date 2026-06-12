@@ -106,6 +106,15 @@ const refreshShiftInclude = {
   }
 } as const;
 
+/**
+ * Shift planning service: workspace aggregation, shift CRUD and
+ * worker/asset assignment with automatic conflict detection.
+ *
+ * Every mutation re-derives the shift's SchedulingConflict rows
+ * (overlaps, availability, role coverage/suitability, competency and
+ * asset-maintenance checks), writes an audit entry, and refreshes live
+ * follow-up notifications.
+ */
 @Injectable()
 export class SchedulerService {
   constructor(
@@ -114,6 +123,16 @@ export class SchedulerService {
     private readonly notificationsService: NotificationsService
   ) {}
 
+  /**
+   * Load the full scheduler workspace in one shot.
+   *
+   * Fetches ALL jobs (with stages/activities/shifts), workers, assets and
+   * shifts — query.page/pageSize are echoed back but no pagination is
+   * applied; total reflects the shift count.
+   *
+   * @param query - view/mode/pagination hints from the client
+   * @returns `{ items: { jobs, workers, assets, shifts }, total, page, pageSize }`
+   */
   async workspace(query: SchedulerQueryDto) {
     const [jobs, workers, assets, shifts] = await Promise.all([
       this.prisma.job.findMany({
@@ -230,6 +249,18 @@ export class SchedulerService {
     };
   }
 
+  /**
+   * Create a shift under a job activity.
+   *
+   * Stage defaults to the activity's stage when not supplied; status
+   * defaults to PLANNED. Refreshes conflicts, writes a
+   * `scheduler.shift.create` audit entry and refreshes follow-ups.
+   *
+   * @param dto - shift fields; jobActivityId must belong to dto.jobId
+   * @returns the created shift with full includes
+   * @throws NotFoundException when the activity is missing or on a different job
+   * @throws BadRequestException when endAt is not after startAt
+   */
   async createShift(dto: CreateShiftDto, actorId?: string) {
     const activity = await this.prisma.jobActivity.findUnique({
       where: { id: dto.jobActivityId }
@@ -275,6 +306,17 @@ export class SchedulerService {
     return this.getShift(shift.id);
   }
 
+  /**
+   * Replace a shift's fields (full update; status falls back to the
+   * existing value when omitted).
+   *
+   * Refreshes conflicts, writes a `scheduler.shift.update` audit entry
+   * and refreshes follow-ups.
+   *
+   * @returns the updated shift with full includes
+   * @throws NotFoundException when the shift does not exist
+   * @throws BadRequestException when endAt is not after startAt
+   */
   async updateShift(shiftId: string, dto: UpdateShiftDto, actorId?: string) {
     const existing = await this.requireShift(shiftId);
 
@@ -310,6 +352,17 @@ export class SchedulerService {
     return this.getShift(updated.id);
   }
 
+  /**
+   * Assign a worker (optionally with a role label) to a shift.
+   *
+   * Any create failure (including unknown workerId) is surfaced as a
+   * ConflictException. Refreshes conflicts, audits
+   * `scheduler.worker.assign` and refreshes follow-ups.
+   *
+   * @returns the shift with full includes
+   * @throws NotFoundException when the shift does not exist
+   * @throws ConflictException when the assignment create fails (duplicate or bad workerId)
+   */
   async assignWorker(shiftId: string, dto: AssignWorkerDto, actorId?: string) {
     await this.requireShift(shiftId);
 
@@ -341,6 +394,17 @@ export class SchedulerService {
     return this.getShift(shiftId);
   }
 
+  /**
+   * Assign an asset to a shift.
+   *
+   * Any create failure (including unknown assetId) is surfaced as a
+   * ConflictException. Refreshes conflicts, audits
+   * `scheduler.asset.assign` and refreshes follow-ups.
+   *
+   * @returns the shift with full includes
+   * @throws NotFoundException when the shift does not exist
+   * @throws ConflictException when the assignment create fails (duplicate or bad assetId)
+   */
   async assignAsset(shiftId: string, dto: AssignAssetDto, actorId?: string) {
     await this.requireShift(shiftId);
 
@@ -371,6 +435,15 @@ export class SchedulerService {
     return this.getShift(shiftId);
   }
 
+  /**
+   * Remove a worker assignment from a shift (no-op when not assigned).
+   *
+   * Refreshes conflicts, audits `scheduler.worker.unassign` and refreshes
+   * follow-ups even when nothing was deleted.
+   *
+   * @returns the shift with full includes
+   * @throws NotFoundException when the shift does not exist
+   */
   async unassignWorker(shiftId: string, workerId: string, actorId?: string) {
     await this.prisma.shiftWorkerAssignment.deleteMany({
       where: { shiftId, workerId }
@@ -387,6 +460,15 @@ export class SchedulerService {
     return this.getShift(shiftId);
   }
 
+  /**
+   * Remove an asset assignment from a shift (no-op when not assigned).
+   *
+   * Refreshes conflicts, audits `scheduler.asset.unassign` and refreshes
+   * follow-ups even when nothing was deleted.
+   *
+   * @returns the shift with full includes
+   * @throws NotFoundException when the shift does not exist
+   */
   async unassignAsset(shiftId: string, assetId: string, actorId?: string) {
     await this.prisma.shiftAssetAssignment.deleteMany({
       where: { shiftId, assetId }
@@ -403,6 +485,13 @@ export class SchedulerService {
     return this.getShift(shiftId);
   }
 
+  /**
+   * Fetch a single shift with the full include set (assignments,
+   * requirements, conflicts).
+   *
+   * @returns the shift
+   * @throws NotFoundException when the shift does not exist
+   */
   async getShift(shiftId: string) {
     return this.requireShift(shiftId);
   }

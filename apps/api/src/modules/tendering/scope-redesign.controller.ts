@@ -57,6 +57,16 @@ export class UpdateCuttingItemDto {
   @IsOptional() @IsInt() sortOrder?: number | null;
 }
 
+/**
+ * Tender-level Scope of Works redesign endpoints: column availability,
+ * per-discipline view config, the cutting-items CRUD, and the summary
+ * rollup.
+ *
+ * All routes require JWT auth; reads are gated by `estimates.view`,
+ * writes by `estimates.manage`. Write bodies are taken as `unknown` and
+ * shape-asserted at the controller boundary (CodeQL taint sanitisation)
+ * before being cast to their DTOs.
+ */
 @ApiTags("Scope of Works — redesign")
 @ApiBearerAuth()
 @Controller("tenders/:tenderId/scope")
@@ -74,6 +84,13 @@ export class ScopeRedesignController {
     }
   }
 
+  /**
+   * Available + required columns for a given rowType. Server is source of truth for column availability.
+   *
+   * @param rowType - scope row type, e.g. "demolition", "waste-disposal"
+   * @returns `{ available, required }` column-name arrays
+   * @throws BadRequestException when the rowType is unknown
+   */
   @Get("columns")
   @RequirePermissions("estimates.view")
   @ApiOperation({
@@ -85,6 +102,15 @@ export class ScopeRedesignController {
     return this.service.getColumnsForRowType(rowType);
   }
 
+  /**
+   * Get the user-chosen optional column set for (tender × discipline). Defaults when unset.
+   *
+   * @param tenderId - tender owning the view config
+   * @param discipline - one of the legacy 5-code values declared on the @ApiQuery enum
+   * @returns `{ tenderId, discipline, columns }`
+   * @throws NotFoundException when the tender does not exist
+   * @throws BadRequestException when the discipline is unknown
+   */
   @Get("view-config")
   @RequirePermissions("estimates.view")
   @ApiOperation({ summary: "Get the user-chosen optional column set for (tender × discipline). Defaults when unset." })
@@ -93,6 +119,15 @@ export class ScopeRedesignController {
     return this.service.getViewConfig(tenderId, discipline);
   }
 
+  /**
+   * Upsert the optional column set for (tender × discipline).
+   *
+   * @param tenderId - tender owning the view config
+   * @param rawDto - body asserted to be an object, then cast to UpsertViewConfigDto
+   * @returns the upserted ScopeViewConfig row
+   * @throws BadRequestException when the body is not a JSON object or the discipline is unknown
+   * @throws NotFoundException when the tender does not exist
+   */
   @Patch("view-config")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Upsert the optional column set for (tender × discipline)." })
@@ -102,6 +137,14 @@ export class ScopeRedesignController {
     return this.service.upsertViewConfig(tenderId, dto.discipline, dto.columns);
   }
 
+  /**
+   * List concrete cutting items on the tender, ordered by WBS ref then sort order. PR B4b — optional ?cardId= filter scopes the list to a single scope card.
+   *
+   * @param tenderId - tender to list cutting items for
+   * @param cardId - optional scope-card filter; omitted → whole-tender list
+   * @returns cutting items with their `otherRate` relation included
+   * @throws NotFoundException when the tender does not exist
+   */
   @Get("cutting-items")
   @RequirePermissions("estimates.view")
   @ApiOperation({
@@ -116,6 +159,16 @@ export class ScopeRedesignController {
     return this.service.listCuttingItems(tenderId, { cardId });
   }
 
+  /**
+   * Add a saw-cut or core-hole. Rate is looked up from the Cutrite matrix and lineTotal is calculated server-side.
+   *
+   * @param tenderId - tender the item belongs to
+   * @param dto - body asserted to be an object, then cast to CreateCuttingItemDto (cardId required)
+   * @param actor - JWT principal; `sub` recorded as createdById
+   * @returns the created item with resolved rate and lineTotal
+   * @throws BadRequestException when the body is invalid, wbsRef/cardId missing, or itemType unknown
+   * @throws NotFoundException when the tender or scope card does not exist
+   */
   @Post("cutting-items")
   @RequirePermissions("estimates.manage")
   @ApiOperation({
@@ -133,6 +186,16 @@ export class ScopeRedesignController {
     return this.service.createCuttingItem(tenderId, actor.sub, dto as unknown as CreateCuttingItemDto);
   }
 
+  /**
+   * Patch a cutting item. Re-runs rate lookup + lineTotal if pricing fields changed.
+   *
+   * @param tenderId - tender the item must belong to
+   * @param itemId - cutting item to update
+   * @param dto - body asserted to be an object, then cast to UpdateCuttingItemDto
+   * @returns the updated item with re-derived pricing
+   * @throws BadRequestException when the body is not a JSON object or itemType is invalid
+   * @throws NotFoundException when the item is missing or belongs to another tender
+   */
   @Patch("cutting-items/:itemId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Patch a cutting item. Re-runs rate lookup + lineTotal if pricing fields changed." })
@@ -145,6 +208,14 @@ export class ScopeRedesignController {
     return this.service.updateCuttingItem(tenderId, itemId, dto as UpdateCuttingItemDto);
   }
 
+  /**
+   * Hard-delete a cutting item.
+   *
+   * @param tenderId - tender the item must belong to
+   * @param itemId - cutting item to delete
+   * @returns `{ id }` of the deleted item
+   * @throws NotFoundException when the item is missing or belongs to another tender
+   */
   @Delete("cutting-items/:itemId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Hard-delete a cutting item." })
@@ -152,6 +223,13 @@ export class ScopeRedesignController {
     return this.service.deleteCuttingItem(tenderId, itemId);
   }
 
+  /**
+   * Per-discipline subtotals (server-calculated), cutting total, and tender price. Frontend displays only.
+   *
+   * @param tenderId - tender to summarise
+   * @returns per-discipline buckets plus `cutting`, `waste`, and `tenderPrice` totals
+   * @throws NotFoundException when the tender does not exist
+   */
   @Get("summary")
   @RequirePermissions("estimates.view")
   @ApiOperation({
@@ -167,6 +245,13 @@ export class ScopeRedesignController {
 // Mounted at the per-card path so "Copy from above" sits naturally under
 //   POST /tenders/:tenderId/scope/cards/:cardId/cutting/copy-from-above
 // Shares the same ScopeRedesignService instance.
+/**
+ * Per-card cutting controller (PR B4b) — hosts the "Copy from above"
+ * aggregator under the per-card path. Sibling of ScopeCardWasteController
+ * and shares the same ScopeRedesignService instance.
+ *
+ * JWT-guarded; the single endpoint requires `estimates.manage`.
+ */
 @ApiTags("Scope of Works — Cutting")
 @ApiBearerAuth()
 @Controller("tenders/:tenderId/scope/cards/:cardId/cutting")
@@ -174,6 +259,15 @@ export class ScopeRedesignController {
 export class ScopeCardCuttingController {
   constructor(private readonly service: ScopeRedesignService) {}
 
+  /**
+   * PR B4b — read scope items on the card where cuttingIncluded=true and create/replace autoCopied=true saw-cut rows. Manual rows + core-hole + other-rate rows preserved.
+   *
+   * @param tenderId - tender owning the card
+   * @param cardId - scope card whose saw-cut rows are regenerated
+   * @param actor - JWT principal; `sub` recorded as createdById on new rows
+   * @returns `{ replaced, created, warnings }` — warnings flag computed depth > 2000mm
+   * @throws NotFoundException when the card is missing or belongs to another tender
+   */
   @Post("copy-from-above")
   @RequirePermissions("estimates.manage")
   @ApiOperation({

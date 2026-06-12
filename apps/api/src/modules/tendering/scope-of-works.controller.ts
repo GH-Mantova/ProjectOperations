@@ -18,6 +18,15 @@ import { ScopeOfWorksService } from "./scope-of-works.service";
 
 type RequestUser = { sub: string };
 
+/**
+ * REST controller for the per-tender scope sheet under
+ * /tenders/:tenderId/scope — header, scope items, and scope cards.
+ *
+ * JWT + permission gated: reads need `estimates.view`, writes need
+ * `estimates.manage`. Every @Body() handler accepts `unknown` and runs
+ * assertObjectBody before casting (CodeQL parameter-tampering
+ * mitigation); ValidationPipe still applies per-field validation after.
+ */
 @ApiTags("Scope of Works")
 @ApiBearerAuth()
 @Controller("tenders/:tenderId/scope")
@@ -42,6 +51,11 @@ export class ScopeOfWorksController {
   }
 
   // ── Header ────────────────────────────────────────────────────────────
+  /**
+   * Get the site context header for the scope sheet (lazily created).
+   *
+   * @returns the existing header, or a freshly created empty one
+   */
   @Get("header")
   @RequirePermissions("estimates.view")
   @ApiOperation({ summary: "Get the site context header for the scope sheet (lazily created)." })
@@ -49,6 +63,12 @@ export class ScopeOfWorksController {
     return this.service.getHeader(tenderId);
   }
 
+  /**
+   * Update the site context header (auto-saved from the collapsible form).
+   *
+   * @param dto - site address/contact, access constraints, start date, duration, special conditions
+   * @returns the updated (or newly created) header
+   */
   @Patch("header")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Update the site context header (auto-saved from the collapsible form)." })
@@ -59,6 +79,11 @@ export class ScopeOfWorksController {
   }
 
   // ── Items ─────────────────────────────────────────────────────────────
+  /**
+   * List scope items sorted DEM → CIV → ASB → Other with per-discipline summary totals.
+   *
+   * @returns { items: rows with lineTotal/lineTotalWithMarkup, summary: per-discipline counts + totals }
+   */
   @Get("items")
   @RequirePermissions("estimates.view")
   @ApiOperation({
@@ -68,6 +93,12 @@ export class ScopeOfWorksController {
     return this.service.listItems(tenderId);
   }
 
+  /**
+   * Create a confirmed scope item. Auto-assigns wbsCode and itemNumber within the discipline.
+   *
+   * @param dto - discipline, rowType, description, plus optional dimension/labour/plant fields
+   * @returns the created scope item
+   */
   @Post("items")
   @RequirePermissions("estimates.manage")
   @ApiOperation({
@@ -84,6 +115,13 @@ export class ScopeOfWorksController {
     return this.service.createItem(tenderId, dto as unknown as CreateScopeItemDto, actor.sub);
   }
 
+  /**
+   * Partial update of any scope item field. Transitioning status from
+   * draft → confirmed triggers estimate item creation.
+   *
+   * @param dto - any subset of scope item fields
+   * @returns { scopeItem, estimateItem } — estimateItem is null unless a draft→confirmed transition occurred
+   */
   @Patch("items/:itemId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({
@@ -100,6 +138,12 @@ export class ScopeOfWorksController {
     return this.service.updateItem(tenderId, itemId, dto as UpdateScopeItemDto, actor.sub);
   }
 
+  /**
+   * Hard delete the scope item. Returns a warning string when the item
+   * had a linked estimate line (the estimate line is NOT removed).
+   *
+   * @returns { deleted: true, warning: string | null }
+   */
   @Delete("items/:itemId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({
@@ -110,6 +154,12 @@ export class ScopeOfWorksController {
     return this.service.deleteItem(tenderId, itemId);
   }
 
+  /**
+   * Bulk update of sortOrder across multiple scope items.
+   *
+   * @param dto - { order: [{ itemId, sortOrder }] }
+   * @returns { updated: count }
+   */
   @Post("items/reorder")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Bulk update of sortOrder across multiple scope items." })
@@ -118,6 +168,13 @@ export class ScopeOfWorksController {
     return this.service.reorder(tenderId, dto as unknown as ReorderScopeItemsDto);
   }
 
+  /**
+   * Confirm a draft (AI-proposed) scope item. Creates an EstimateItem + lines from the row's fields.
+   *
+   * Idempotent: confirming an already-confirmed item returns it with estimateItem null.
+   *
+   * @returns { scopeItem, estimateItem }
+   */
   @Post("items/:itemId/confirm")
   @RequirePermissions("estimates.manage")
   @ApiOperation({
@@ -132,6 +189,11 @@ export class ScopeOfWorksController {
     return this.service.confirmItem(tenderId, itemId, actor.sub);
   }
 
+  /**
+   * Exclude an AI-proposed scope item. Does not create an estimate line.
+   *
+   * @returns the scope item with status "excluded"
+   */
   @Post("items/:itemId/exclude")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Exclude an AI-proposed scope item. Does not create an estimate line." })
@@ -139,6 +201,11 @@ export class ScopeOfWorksController {
     return this.service.excludeItem(tenderId, itemId);
   }
 
+  /**
+   * Confirm every draft scope item on the tender in one call. Creates estimate lines for each.
+   *
+   * @returns { confirmed: count, estimates: [{ scopeItemId, estimateItemId }] }
+   */
   @Post("items/confirm-all")
   @RequirePermissions("estimates.manage")
   @ApiOperation({
@@ -149,6 +216,11 @@ export class ScopeOfWorksController {
   }
 
   // ── Cards (PR B1) ─────────────────────────────────────────────────────
+  /**
+   * List scope cards for the tender with item counts. Ordered by sortOrder (user-controlled).
+   *
+   * @returns card summaries including itemCount and markupOverride as plain number | null
+   */
   @Get("cards")
   @RequirePermissions("estimates.view")
   @ApiOperation({
@@ -158,6 +230,12 @@ export class ScopeOfWorksController {
     return this.service.listCards(tenderId);
   }
 
+  /**
+   * Create a new scope card. cardNumber auto-assigned as MAX(cardNumber)+1 in (tenderId, discipline).
+   *
+   * @param dto - { name, discipline }
+   * @returns the created card (placed at the end of the tab row)
+   */
   @Post("cards")
   @RequirePermissions("estimates.manage")
   @ApiOperation({
@@ -173,6 +251,18 @@ export class ScopeOfWorksController {
     return this.service.createCard(tenderId, actor.sub, dto as unknown as CreateScopeCardDto);
   }
 
+  /**
+   * Update a scope card — dispatches to ONE service operation per call.
+   *
+   * Precedence when multiple fields are sent: discipline >
+   * plantColumnCount > cutting/waste notes > markupOverride > header
+   * overrides > name. Discipline change cascades item wbsCode +
+   * cutting/waste wbsRef rewrites.
+   *
+   * @param rawDto - exactly one logical field group from UpdateScopeCardDto
+   * @returns shape varies by operation (card, or cascade summary for discipline change)
+   * @throws BadRequestException when no recognised field is provided
+   */
   @Patch("cards/:cardId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({
@@ -225,6 +315,11 @@ export class ScopeOfWorksController {
     );
   }
 
+  /**
+   * Compute auto-derived card-header summary values + return any user overrides.
+   *
+   * @returns { computed: { peakCrew, labourDays, plantSummary, duration }, overrides: {...} }
+   */
   @Get("cards/:cardId/summary")
   @RequirePermissions("estimates.view")
   @ApiOperation({ summary: "Compute auto-derived card-header summary values + return any user overrides." })
@@ -236,6 +331,11 @@ export class ScopeOfWorksController {
     return this.service.getCardSummary(tenderId, cardId);
   }
 
+  /**
+   * Reset every card's markupOverride to null in one call.
+   *
+   * @returns { cardsReset: count of cards that actually had an override }
+   */
   @Post("markup/reset-all")
   @RequirePermissions("estimates.manage")
   @ApiOperation({
@@ -246,6 +346,11 @@ export class ScopeOfWorksController {
     return this.service.resetAllCardMarkup(tenderId);
   }
 
+  /**
+   * Delete a scope card. 409 if the card has scope items — move or delete items first.
+   *
+   * @returns nothing (204)
+   */
   @Delete("cards/:cardId")
   @HttpCode(204)
   @RequirePermissions("estimates.manage")
@@ -261,6 +366,12 @@ export class ScopeOfWorksController {
     await this.service.deleteCard(tenderId, cardId);
   }
 
+  /**
+   * Bulk-update card sortOrder. Each card receives sortOrder = its index in cardIds.
+   *
+   * @param rawDto - { cardIds: ordered array of card ids on this tender }
+   * @returns nothing (204)
+   */
   @Post("cards/reorder")
   @HttpCode(204)
   @RequirePermissions("estimates.manage")
@@ -274,6 +385,13 @@ export class ScopeOfWorksController {
     await this.service.reorderCards(tenderId, dto.cardIds);
   }
 
+  /**
+   * Create a scope item inside a specific card.
+   * wbsCode = `${discipline}${cardNumber}.${itemNumber}` with itemNumber per-card.
+   *
+   * @param dto - optional description and rowType (defaults to "general-labour")
+   * @returns the created scope item with parent card included
+   */
   @Post("cards/:cardId/items")
   @RequirePermissions("estimates.manage")
   @ApiOperation({

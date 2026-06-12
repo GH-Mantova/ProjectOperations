@@ -65,7 +65,7 @@
  */
 
 import { expect, test, type Page } from "@playwright/test";
-import { loginAsAdmin } from "./helpers";
+import { loginAsAdmin, SEED_TENDER_NUMBER } from "./helpers";
 
 /** Opens the Register view of /tenders. */
 async function openRegister(page: Page) {
@@ -301,7 +301,7 @@ test.describe("Batch 2 — Tendering pipeline + register (PRs #16, #28-#30, #43,
     // §5A.3 follow-up — guards the GET /users?role= contract: the param must
     // pass query validation and the role filter must match the seeded
     // "Senior Estimator" role (substring, case-insensitive).
-    await openTenderDetail(page, "IS-T005");
+    await openTenderDetail(page, SEED_TENDER_NUMBER);
     const dropdown = page.getByRole("combobox", { name: "Assigned estimator" });
     await expect(dropdown).toBeVisible();
     await expect(

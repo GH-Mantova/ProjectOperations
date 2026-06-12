@@ -70,13 +70,13 @@ function buildService() {
 // ─── list ──────────────────────────────────────────────────────────────────
 
 describe("UsersService.list", () => {
-  it("builds a case-insensitive role filter shared by query and count", async () => {
+  it("builds a case-insensitive role substring filter shared by query and count", async () => {
     const { service, prisma } = buildService();
 
     await service.list(PAGE, "Estimator");
 
     const where = {
-      userRoles: { some: { role: { name: { equals: "Estimator", mode: "insensitive" } } } }
+      userRoles: { some: { role: { name: { contains: "Estimator", mode: "insensitive" } } } }
     };
     expect((prisma.user as { findMany: jest.Mock }).findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where, orderBy: [{ lastName: "asc" }, { firstName: "asc" }] })

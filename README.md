@@ -125,7 +125,13 @@ Details:
 - API docs: [http://localhost:3000/api/docs](http://localhost:3000/api/docs)
 - Health: [http://localhost:3000/api/v1/health](http://localhost:3000/api/v1/health)
 
-## Seed login
+## Seeding
+
+- `pnpm seed` — full dev seed (reference data + demo dataset + dev login users). Idempotent.
+- `pnpm seed:prod` — production provisioning: reference data (rates, densities, lookups, global lists, form templates, permissions/roles) + the three SSO-only pilot staff accounts. Creates zero demo entities, requires an explicit `DATABASE_URL`, and refuses to run against a database that contains dev seed users.
+- `pnpm seed:reference` / `pnpm seed:users:prod` / `pnpm seed:demo` — the individual layers.
+
+## Seed login (dev only)
 
 - Email: `admin@projectops.local`
 - Password: `Password123!`

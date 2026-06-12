@@ -175,8 +175,9 @@ export class DirectoryService {
 
   /**
    * Create a subcontractor/supplier. Validates `businessType`, `entityType`,
-   * and `prequalStatus` against their fixed vocabularies and enforces the
-   * Xero `paymentTermsDay` / `paymentTermsType` pair invariant.
+   * and `prequalStatus` (optional — defaults to `"pending"`) against their
+   * fixed vocabularies and enforces the Xero `paymentTermsDay` /
+   * `paymentTermsType` pair invariant. `categories` defaults to `[]`.
    *
    * When `businessType === "private_person"` a primary {@link Contact} is
    * auto-created from the entity `name` (split on the first space). Bank
@@ -189,10 +190,18 @@ export class DirectoryService {
     if (!dto.name || typeof dto.name !== "string") throw new BadRequestException("name is required.");
     this.validateEnum("businessType", dto.businessType, BUSINESS_TYPES, true);
     this.validateEnum("entityType", dto.entityType, ENTITY_TYPES, true);
-    this.validateEnum("prequalStatus", dto.prequalStatus, PREQUAL_STATUSES, true);
+    this.validateEnum("prequalStatus", dto.prequalStatus, PREQUAL_STATUSES, false);
     this.assertPaymentTermsPair(dto);
 
     const data = stripBankFromInput(dto, canEditBank);
+    // New entries enter the prequalification workflow at "pending" unless the
+    // caller explicitly sets a status. The categories column is a non-nullable
+    // String[] with no DB default — anything other than an array would insert
+    // NULL and fail the null constraint (500).
+    if (data.prequalStatus === undefined || data.prequalStatus === null || data.prequalStatus === "") {
+      data.prequalStatus = "pending";
+    }
+    if (!Array.isArray(data.categories)) data.categories = [];
     const entity = await this.prisma.subcontractorSupplier.create({
       data: {
         ...(data as Record<string, unknown>),
@@ -238,6 +247,9 @@ export class DirectoryService {
     this.assertPaymentTermsPair(dto);
     await this.requireEntity(id);
     const data = stripBankFromInput(dto, canEditBank);
+    // categories is a non-nullable String[] — a null in the PATCH body would
+    // violate the null constraint (500). Treat explicit null as "clear".
+    if (data.categories === null) data.categories = [];
     return this.prisma.subcontractorSupplier.update({ where: { id }, data: data as never });
   }
 

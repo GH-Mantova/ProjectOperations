@@ -7,6 +7,8 @@ coverage
 .env.local
 .env.*.local
 apps/api/generated
+# Self-contained API bundle produced by deploy.yml (pnpm deploy output)
+/deploy-api/
 apps/api/dist/
 apps/web/dist/
 # PR #146 — local mock storage for SharePoint adapter (dev-only file persistence).

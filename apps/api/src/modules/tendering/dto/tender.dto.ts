@@ -106,8 +106,12 @@ export class PreviewTenderImportDto {
 }
 
 export class UpsertTenderDto {
-  @IsString()
-  tenderNumber!: string;
+  /**
+   * G5 — tender numbers are server-generated (T{YYMMDD}-{SLUG}-Rev{N}).
+   * Ignored on create/update; only the CSV import path persists a supplied
+   * value (historical register numbers).
+   */
+  @IsOptional() @IsString() tenderNumber?: string;
   @IsString()
   title!: string;
   @IsOptional() @IsString() description?: string;

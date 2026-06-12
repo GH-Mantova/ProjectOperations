@@ -510,7 +510,7 @@ The arrangement is \*\*per quote\*\*, not per tender. Each client has their own 
 
 Example:
 
-\- Tender IS-T020 has Calculation Sheet with 4 cards (DEM/DEM/ASB/Other)
+\- Tender T260512-BRIS-Rev1 has Calculation Sheet with 4 cards (DEM/DEM/ASB/Other)
 
 \- Client A receives Quote #1 — arrangement collapses all cards to summary-only, no line items shown
 
@@ -920,7 +920,7 @@ versa) is genuinely new UI on top of the existing data layer.
  (… 18 more tenders, all with quote_count = 0)
 ```
 
-Only IS-T020 has a quote. 19 of 20 sampled tenders have zero
+Only T260512-BRIS-Rev1 has a quote. 19 of 20 sampled tenders have zero
 quotes (typical for early-stage tenders). C-chain demo data
 generation may want to seed quotes against more tenders to
 showcase the arrangement UI populated.
@@ -929,7 +929,7 @@ showcase the arrangement UI populated.
 
 8 clients total. 5 seed clients (`client-001` … `client-005`) +
 3 cuid-style additions (Brisbane Grammar School is the one with an
-ABN — that's IS-T020's tender client).
+ABN — that's T260512-BRIS-Rev1's tender client).
 
 #### 2.3 TenderClient inventory
 
@@ -964,7 +964,7 @@ client's quote to view/build.
 exists but hasn't been used in dev yet. C1 will populate this on
 quote creation.
 
-#### 2.5 IS-T020 scope state
+#### 2.5 T260512-BRIS-Rev1 scope state
 
 ```
  cards
@@ -1075,7 +1075,7 @@ required. Existing Quote tab can be progressively replaced.
 
 ### 6. Out-of-scope notes captured during discovery
 
-- **Demo data thin on the Quote side.** Only IS-T020 has a quote; only 3 cost lines + 1 provisional line + 7 exclusions + 4 assumptions across the whole dev DB. C1's demo prep may want a seed-data PR adding 2-3 more quotes to populate the arrangement screen visually.
+- **Demo data thin on the Quote side.** Only T260512-BRIS-Rev1 has a quote; only 3 cost lines + 1 provisional line + 7 exclusions + 4 assumptions across the whole dev DB. C1's demo prep may want a seed-data PR adding 2-3 more quotes to populate the arrangement screen visually.
 - **TenderClient model is rich** — has `isAwarded`, `contractIssued`, `relationshipType`, etc. The arrangement screen's client picker may want to surface "awarded" / "primary" status to help estimators distinguish the awarded client from also-rans. Not in scope for C1 but worth a UX note.
 - **`assumptionMode` on `ClientQuote`** has values `"free"` and (presumably) `"linked"`. The current `QuoteAssumption` model supports both modes (optional FK to `QuoteCostLine`). C3's "collapse / hide" UI should respect this — linked assumptions probably auto-hide when their cost line is hidden, which is a non-trivial UX detail to confirm with estimators.
 - **`generatedPdfPath` on `ClientQuote`** suggests PDFs are cached. D1 should think about cache invalidation when arrangement changes.
@@ -1123,7 +1123,7 @@ summary table); 1 verification-pending (B04); 3 still open
 - **Backend + data confirmed OK:**
   - `GET /jobs/:id` exists at `JobsController:45` (`getById(@Param('id') id)` → `service.getById`).
   - `jobs.service.ts:332` (`getById`) wraps `requireJob(id)` (line 1251) which uses the rich `jobInclude` (line 92) — includes `stages`, `issues`, `variations`, `progressEntries`, `statusHistory`, etc. Shape matches the `JobDetail` type in the component.
-  - DB has `job-001` (`SELECT id, job_number, name, status FROM jobs WHERE id='job-001'` → exists, `J-2025-001 / Ipswich Motorway Stage 4 — Earthworks / ACTIVE`).
+  - DB has `job-001` (`SELECT id, job_number, name, status FROM jobs WHERE id='job-001'` → exists, `J260315-QUEE-001 / Ipswich Motorway Stage 4 — Earthworks / ACTIVE`).
 - **Hypotheses:**
   - **H1** (most likely): a render-time exception inside one of the nested sections (`StageSection` / `ActivitySection` / etc.) crashes the React tree silently. No error boundary above `JobDetailPage`, so the whole route renders blank. Likely a nested field — e.g. `activity.owner` is null and code dereferences `.firstName`.
   - **H2**: `authFetch` returns a 401 (expired token) → `response.ok=false` → throws → `setError("Job not found.")` → renders `EmptyState`. But Marco said BLANK, not "Job not found", so H2 is unlikely unless the EmptyState component itself crashes (it doesn't — used everywhere).
@@ -1277,7 +1277,7 @@ summary table); 1 verification-pending (B04); 3 still open
   context but are superseded by what shipped.
 - **Where it lives:** `apps/api/prisma/seed-initial-services.ts` (seed uses `J-2025-NNN`) + compliance smoke harness (uses `JOB-COMP-<epoch>`) + runtime job-number generator (uses `JOB-YYYY-NNN`). The runtime generator is in `JobsService.generateJobNumber` or similar — wasn't located explicitly but inferred from `JOB-2026-001` data and `ProjectNumberSequence` schema model precedent (`apps/api/prisma/schema.prisma:1847`).
 - **Evidence:** DB probe (38 rows) confirmed three coexisting formats:
-  - `J-2025-001`, `J-2025-002` — 2 seed records
+  - `J260315-QUEE-001`, `J260328-BRIS-001` — 2 seed records
   - `JOB-2025-099` — 1 seed record
   - `JOB-2026-001` — 1 runtime-created (the most recent non-compliance row)
   - `JOB-COMP-<epoch>` — 33 compliance-smoke records
@@ -1335,9 +1335,9 @@ summary table); 1 verification-pending (B04); 3 still open
   3. **Copy-tender flow:** when duplicating a tender, reset `is_awarded=false` on the copy's `TenderClient` rows so the next award fires fresh — OR explicitly do NOT re-run bumpWinCount during copy.
 - **Smoke test (after fix):**
   1. Reset Brisbane Grammar School: `UPDATE clients SET win_count=1, win_rate=100 WHERE id='cmonoidor00riubccwps0j96a';`
-  2. Re-trigger the bug: duplicate IS-T020 (the AWARDED parent)
-  3. Verify the new IS-T020-COPY-2 does NOT bump winCount again; client still shows `win_count=1, tender_count=2, win_rate=50`.
-  4. Award IS-T020-COPY-2 explicitly → winCount=2, tenderCount=2, winRate=100. Correct.
+  2. Re-trigger the bug: duplicate T260512-BRIS-Rev1 (the AWARDED parent)
+  3. Verify the new T260512-BRIS-Rev1-COPY-2 does NOT bump winCount again; client still shows `win_count=1, tender_count=2, win_rate=50`.
+  4. Award T260512-BRIS-Rev1-COPY-2 explicitly → winCount=2, tenderCount=2, winRate=100. Correct.
 - **Open questions for MAIN:** does the Copy-tender flow today preserve AWARDED status on the copy, or reset it? If it preserves, fix step 3 is mandatory; if it resets, step 3 is moot.
 - **Dependencies:** None.
 

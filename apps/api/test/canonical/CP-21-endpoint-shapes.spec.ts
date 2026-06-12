@@ -51,17 +51,17 @@ const SHAPE_TABLE: ShapeRow[] = [
     }
   },
   {
-    name: "Tenders list contains the seeded IS-T100 tender",
-    path: "/api/v1/tenders?q=IS-T100",
+    name: "Tenders list contains the seeded T260520-ACME-Rev1 tender",
+    path: "/api/v1/tenders?q=T260520-ACME-Rev1",
     assert: (res) => {
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body.items)).toBe(true);
       const numbers = res.body.items.map((t: { tenderNumber: string }) => t.tenderNumber);
-      expect(numbers).toContain("IS-T100");
+      expect(numbers).toContain("T260520-ACME-Rev1");
     }
   },
   {
-    name: "Jobs list uses canonical J-YYYY-NNN job numbers (guards F1E-01 / PR #339)",
+    name: "Jobs list uses canonical J{YYMMDD}-{SLUG}-{NNN} job numbers (G5, supersedes F1E-01 / PR #339)",
     path: "/api/v1/jobs",
     assert: (res) => {
       expect(res.status).toBe(200);
@@ -69,7 +69,20 @@ const SHAPE_TABLE: ShapeRow[] = [
       expect(res.body.items.length).toBeGreaterThanOrEqual(1);
       const offenders = res.body.items
         .map((j: { jobNumber: string }) => j.jobNumber)
-        .filter((n: string) => !/^J-\d{4}-\d{3}$/.test(n));
+        .filter((n: string) => !/^J\d{6}-[A-Z0-9]{1,4}-\d{3,}(-\d+)?$/.test(n));
+      expect(offenders).toEqual([]);
+    }
+  },
+  {
+    name: "Tenders list uses canonical T{YYMMDD}-{SLUG}-Rev{N} tender numbers (G5)",
+    path: "/api/v1/tenders?page=1&pageSize=100",
+    assert: (res) => {
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.items)).toBe(true);
+      expect(res.body.items.length).toBeGreaterThanOrEqual(1);
+      const offenders = res.body.items
+        .map((t: { tenderNumber: string }) => t.tenderNumber)
+        .filter((n: string) => !/^T\d{6}-[A-Z0-9]{1,4}-Rev\d+(-\d+)?$/.test(n));
       expect(offenders).toEqual([]);
     }
   }

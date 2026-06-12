@@ -643,7 +643,7 @@ describe("ScopeOfWorksService.getCardSummary — category grouping + labourDays 
     ]);
   });
 
-  it("computes labourDays = totalPersonDays / peakCrew (IS-T100 DEM scenario)", async () => {
+  it("computes labourDays = totalPersonDays / peakCrew (T260520-ACME-Rev1 DEM scenario)", async () => {
     const { prisma } = buildPrismaMock({
       scopeCardFindFirst: {
         ...cardBase,

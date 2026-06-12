@@ -50,7 +50,7 @@ export class ArchiveController {
         items: [
           {
             id: "job-001",
-            jobNumber: "J-2025-001",
+            jobNumber: "J260315-QUEE-001",
             name: "Ipswich Motorway Stage 4 — Earthworks",
             clientName: "Queensland Transport Infrastructure",
             closedAt: "2026-03-01T00:00:00.000Z",

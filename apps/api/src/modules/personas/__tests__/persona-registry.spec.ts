@@ -141,7 +141,7 @@ describe("persona-registry", () => {
 
       it("real tender IDs that look like the excluded value still match", () => {
         // Sanity: exclusion is exact-match, not substring.
-        expect(findPersonaForRoute("/tenders/IS-T020")?.subMode.name).toBe("tender-detail");
+        expect(findPersonaForRoute("/tenders/T260512-BRIS-Rev1")?.subMode.name).toBe("tender-detail");
         expect(findPersonaForRoute("/tenders/dashboardx")?.subMode.name).toBe("tender-detail");
         expect(findPersonaForRoute("/tenders/dashboard-2026")?.subMode.name).toBe("tender-detail");
       });

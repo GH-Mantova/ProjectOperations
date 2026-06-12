@@ -24,14 +24,12 @@ export class UpdateJobDto {
 }
 
 /**
- * Payload for `POST /jobs` — manual job creation without a tender source
- * (PR B05). `jobNumber` is optional: omit to let the server generate a
- * canonical `J-YYYY-NNN` via {@link JobNumberService.generate}; when
- * supplied, it's validated against the canonical pattern. `status`
- * defaults to `"PLANNING"`. `name` and `clientId` are required.
+ * Payload for `POST /jobs` — manual job creation without a tender source.
+ * Job numbers are server-generated (G5 canonical `J{YYMMDD}-{SLUG}-{NNN}`
+ * via {@link JobNumberService.generate}) and not accepted from callers.
+ * `status` defaults to `"PLANNING"`. `name` and `clientId` are required.
  */
 export class CreateJobDto {
-  @IsOptional() @IsString() jobNumber?: string;
   @IsString() name!: string;
   @IsString() clientId!: string;
   @IsOptional() @IsString() status?: string;

@@ -400,7 +400,6 @@ type NewJobSlideOverProps = {
 function NewJobSlideOver({ open, onClose, onCreated, clients, sites }: NewJobSlideOverProps) {
   const { authFetch } = useAuth();
   const [form, setForm] = useState({
-    jobNumber: "",
     name: "",
     description: "",
     clientId: "",
@@ -422,7 +421,7 @@ function NewJobSlideOver({ open, onClose, onCreated, clients, sites }: NewJobSli
 
   useEffect(() => {
     if (open) {
-      setForm({ jobNumber: "", name: "", description: "", clientId: "", siteId: "", status: "PLANNING" });
+      setForm({ name: "", description: "", clientId: "", siteId: "", status: "PLANNING" });
       setError(null);
     }
   }, [open]);
@@ -431,15 +430,15 @@ function NewJobSlideOver({ open, onClose, onCreated, clients, sites }: NewJobSli
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!form.jobNumber.trim() || !form.name.trim() || !form.clientId) {
-      setError("Job number, name, and client are required.");
+    if (!form.name.trim() || !form.clientId) {
+      setError("Name and client are required.");
       return;
     }
     setSubmitting(true);
     setError(null);
     try {
+      // G5 — job numbers are server-generated (J{YYMMDD}-{SLUG}-{NNN}).
       const payload: Record<string, unknown> = {
-        jobNumber: form.jobNumber.trim(),
         name: form.name.trim(),
         clientId: form.clientId,
         status: form.status
@@ -479,10 +478,9 @@ function NewJobSlideOver({ open, onClose, onCreated, clients, sites }: NewJobSli
         </header>
         <form onSubmit={submit} className="slide-over__body tender-form">
           {error ? <div className="login-card__error" role="alert">{error}</div> : null}
-          <label className="tender-form__field">
-            <span className="s7-type-label">Job number</span>
-            <input className="s7-input" value={form.jobNumber} onChange={(event) => setForm({ ...form, jobNumber: event.target.value })} placeholder="J-2025-003" required />
-          </label>
+          <p className="s7-type-label" style={{ opacity: 0.7, margin: 0 }}>
+            Job number is auto-generated on save (J{"{YYMMDD}"}-{"{CLIENT}"}-{"{NNN}"}).
+          </p>
           <label className="tender-form__field">
             <span className="s7-type-label">Name</span>
             <input className="s7-input" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />

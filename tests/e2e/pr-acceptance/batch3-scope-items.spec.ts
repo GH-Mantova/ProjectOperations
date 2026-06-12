@@ -2,7 +2,7 @@
  * Batch 3 — Scope of Works item cards (PRs #43, #44, #60, #72, #175, #176, #180, #241)
  *
  * Covers the scope-item card surface of the Scope of Works tab on the
- * seeded IS-T100 template tender: discipline card tabs, per-item $ totals
+ * seeded T260520-ACME-Rev1 template tender: discipline card tabs, per-item $ totals
  * and footer consistency (B1.7.x), the B4a dimension-derivation chain
  * (L/H/D/density → sqm/m³/tonnes with explicit overrides), editable
  * classification cells, and plant pills.
@@ -14,7 +14,7 @@
  * into L/H/D is listed in the PR follow-up as testid-blocked.
  *
  * Residue: none — every fixture item is deleted in a finally block, and
- * `pnpm seed` fully resets IS-T100 scope items regardless.
+ * `pnpm seed` fully resets T260520-ACME-Rev1 scope items regardless.
  */
 
 import { expect, test, type Page } from "@playwright/test";

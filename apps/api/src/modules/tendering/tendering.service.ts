@@ -4,6 +4,8 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { EmailService } from "../email/email.service";
 import { SharePointService } from "../platform/sharepoint.service";
+import { TenderNumberService } from "./tender-number.service";
+import { clientSlug, FALLBACK_SLUG } from "../../common/id-format/client-slug";
 import { QuickEditDto, TenderQueryDto, TenderSortField } from "./dto/tender-query.dto";
 import {
   CreateTenderActivityDto,
@@ -97,7 +99,8 @@ export class TenderingService {
     // PR-64 — auto-provisions the per-tender SharePoint folder structure
     // (1. Operations/1. Tenders/{tenderNumber}/{category}) on create
     // and duplicate. Provided by PlatformModule, already imported above.
-    private readonly sharePoint: SharePointService
+    private readonly sharePoint: SharePointService,
+    private readonly tenderNumberService: TenderNumberService
   ) {}
 
   async list(query: TenderQueryDto) {
@@ -555,12 +558,41 @@ export class TenderingService {
     return tender;
   }
 
-  async create(dto: UpsertTenderDto, actorId?: string) {
-    await this.ensureUniqueTenderNumber(dto.tenderNumber);
+  /**
+   * G5 — tender numbers are server-generated (T{YYMMDD}-{SLUG}-Rev{N});
+   * any caller-supplied tenderNumber is ignored except for the CSV import
+   * path, which passes `preserveSuppliedNumber` to keep historical numbers
+   * from the imported register.
+   */
+  async create(
+    dto: UpsertTenderDto,
+    actorId?: string,
+    options?: { preserveSuppliedNumber?: boolean }
+  ) {
     this.validateAwardedClients(dto.tenderClients ?? []);
 
+    const primaryClientName = await this.resolvePrimaryClientName(dto.tenderClients ?? []);
+
+    let numbering: { tenderNumber: string; clientSlugSnapshot: string; revisionNumber: number };
+    const supplied = dto.tenderNumber?.trim();
+    if (options?.preserveSuppliedNumber && supplied) {
+      await this.ensureUniqueTenderNumber(supplied);
+      numbering = {
+        tenderNumber: supplied,
+        clientSlugSnapshot: clientSlug(primaryClientName ?? "") || FALLBACK_SLUG,
+        revisionNumber: 1
+      };
+    } else {
+      numbering = await this.tenderNumberService.generate(primaryClientName);
+    }
+
     const tender = await this.prisma.tender.create({
-      data: this.toTenderCreateInput(dto, actorId),
+      data: {
+        ...this.toTenderCreateInput(dto, actorId),
+        tenderNumber: numbering.tenderNumber,
+        revisionNumber: numbering.revisionNumber,
+        clientSlugSnapshot: numbering.clientSlugSnapshot
+      },
       include: tenderInclude
     });
 
@@ -588,11 +620,21 @@ export class TenderingService {
       throw new NotFoundException("Tender not found.");
     }
 
-    const newNumber = await this.generateDuplicateNumber(source.tenderNumber);
+    // G5 — duplicates get a fresh canonical number (today's date stamp, Rev1)
+    // derived from the source tender's primary client.
+    const primaryClientName = await this.resolvePrimaryClientName(
+      source.tenderClients.map((item) => ({
+        clientId: item.clientId,
+        relationshipType: item.relationshipType ?? undefined
+      }))
+    );
+    const numbering = await this.tenderNumberService.generate(primaryClientName);
 
     const tender = await this.prisma.tender.create({
       data: {
-        tenderNumber: newNumber,
+        tenderNumber: numbering.tenderNumber,
+        revisionNumber: numbering.revisionNumber,
+        clientSlugSnapshot: numbering.clientSlugSnapshot,
         title: `${source.title} (copy)`,
         description: source.description,
         status: "DRAFT",
@@ -652,16 +694,48 @@ export class TenderingService {
     }
   }
 
-  private async generateDuplicateNumber(sourceNumber: string): Promise<string> {
-    for (let suffix = 1; suffix <= 99; suffix += 1) {
-      const candidate = `${sourceNumber}-COPY${suffix > 1 ? suffix : ""}`;
-      const existing = await this.prisma.tender.findFirst({
-        where: { tenderNumber: candidate },
-        select: { id: true }
-      });
-      if (!existing) return candidate;
-    }
-    return `${sourceNumber}-COPY${Date.now()}`;
+  /**
+   * Resolves the primary client's company name from a tender-clients input
+   * list: the first entry whose relationshipType contains "primary"
+   * (case-insensitive — seeds use "PRIMARY", compliance smoke uses
+   * "Primary Bidder"), else the first entry. Null when the list is empty.
+   */
+  private async resolvePrimaryClientName(
+    tenderClients: Array<{ clientId: string; relationshipType?: string }>
+  ): Promise<string | null> {
+    if (!tenderClients.length) return null;
+    const primary =
+      tenderClients.find((item) => /primary/i.test(item.relationshipType ?? "")) ?? tenderClients[0];
+    const client = await this.prisma.client.findUnique({
+      where: { id: primary.clientId },
+      select: { name: true }
+    });
+    return client?.name ?? null;
+  }
+
+  /**
+   * G5 — "Mark as new revision": bumps Rev{N} on the tender number (row id
+   * stays stable; date stamp and slug are reused from creation). Writes a
+   * TENDER_REVISION_BUMPED-style audit entry with old/new numbers.
+   */
+  async bumpRevision(id: string, reason: string | undefined, actorId?: string) {
+    await this.ensureTenderExists(id);
+    const result = await this.tenderNumberService.bumpRevision(id);
+
+    await this.auditService.write({
+      actorId,
+      action: "tenders.bump-revision",
+      entityType: "Tender",
+      entityId: id,
+      metadata: {
+        oldNumber: result.previousTenderNumber,
+        newNumber: result.tenderNumber,
+        revisionNumber: result.revisionNumber,
+        reason: reason ?? null
+      }
+    });
+
+    return this.getById(id);
   }
 
   async updateStatus(id: string, status: string, actorId?: string) {
@@ -765,10 +839,8 @@ export class TenderingService {
       throw new NotFoundException("Tender not found.");
     }
 
-    if (dto.tenderNumber !== existing.tenderNumber) {
-      await this.ensureUniqueTenderNumber(dto.tenderNumber, id);
-    }
-
+    // G5 — tender numbers are immutable through update; renames happen only
+    // via the bump-revision action. Any tenderNumber in the payload is ignored.
     this.validateAwardedClients(dto.tenderClients ?? []);
 
     await this.prisma.$transaction(async (tx) => {
@@ -1088,6 +1160,7 @@ export class TenderingService {
 
       const tender = await this.create(
         {
+          // CSV import keeps historical register numbers (preserveSuppliedNumber).
           tenderNumber: row.tenderNumber,
           title: row.title,
           description: row.description,
@@ -1109,7 +1182,8 @@ export class TenderingService {
             ? [{ details: row.followUpDetails, dueAt: row.followUpDueAt, status: "OPEN" }]
             : undefined
         },
-        actorId
+        actorId,
+        { preserveSuppliedNumber: true }
       );
 
       createdIds.push(tender.id);
@@ -1285,9 +1359,11 @@ export class TenderingService {
     return new Set(existing.map((item) => item.tenderNumber.toLowerCase()));
   }
 
-  private toTenderCreateInput(dto: UpsertTenderDto, actorId?: string): Prisma.TenderCreateInput {
+  private toTenderCreateInput(
+    dto: UpsertTenderDto,
+    actorId?: string
+  ): Omit<Prisma.TenderCreateInput, "tenderNumber"> {
     return {
-      tenderNumber: dto.tenderNumber,
       title: dto.title,
       description: dto.description,
       status: dto.status ?? "DRAFT",
@@ -1360,7 +1436,6 @@ export class TenderingService {
 
   private toTenderUpdateInput(dto: UpsertTenderDto): Prisma.TenderUpdateInput {
     return {
-      tenderNumber: dto.tenderNumber,
       title: dto.title,
       description: dto.description,
       status: dto.status ?? "DRAFT",

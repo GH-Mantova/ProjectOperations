@@ -6,16 +6,16 @@ describe("JobsService", () => {
     refreshLiveFollowUps: jest.fn()
   };
 
-  // PR B05 — JobsService now takes a JobNumberService dependency.
-  // None of these existing tests exercise the generator path; the
-  // validator is invoked from convertTenderToJob's path so we provide
-  // a permissive default that accepts any input.
+  // JobsService takes a JobNumberService dependency. G5 — numbers are
+  // always server-generated; the mock returns the canonical
+  // {jobNumber, clientSlugSnapshot} shape.
   const jobNumberServiceMock = {
-    generate: jest.fn(async () => "J-2026-999"),
+    generate: jest.fn(async () => ({
+      jobNumber: "J260612-ACME-999",
+      clientSlugSnapshot: "ACME"
+    })),
     validate: jest.fn(() => null),
-    format: jest.fn(
-      (year: number, n: number) => `J-${year}-${String(n).padStart(3, "0")}`
-    )
+    format: jest.fn()
   };
 
   it("rejects contract issuance for a non-awarded tender client", async () => {
@@ -418,7 +418,6 @@ describe("JobsService", () => {
       service.convertTenderToJob(
         "tender-1",
         {
-          jobNumber: "JOB-001",
           name: "Converted job"
         },
         "user-1"
@@ -544,40 +543,15 @@ describe("JobsService", () => {
     ).rejects.toMatchObject({ status: 400 });
   });
 
-  it("convertTenderToJob: rejects non-canonical supplied jobNumber with 400", async () => {
-    const strictValidator = {
-      generate: jest.fn(async () => "J-2026-001"),
-      validate: jest.fn((v: string) =>
-        /^J-\d{4}-\d{3}$/.test(v) ? null : `Job number "${v}" is not in canonical format J-YYYY-NNN.`
-      ),
-      format: jest.fn()
-    };
-    const service = new JobsService(
-      {
-        tender: { findUnique: jest.fn().mockResolvedValue(convertibleTender()) }
-      } as never,
-      { write: jest.fn() } as never,
-      { ensureFolder: jest.fn() } as never,
-      notificationsServiceMock as never,
-      strictValidator as never
-    );
-
-    await expect(
-      service.convertTenderToJob(
-        "tender-1",
-        { jobNumber: "JOB-2026-001", name: "Converted" },
-        "user-1"
-      )
-    ).rejects.toMatchObject({ status: 400 });
-    expect(strictValidator.generate).not.toHaveBeenCalled();
-  });
-
-  it("convertTenderToJob: server-generates jobNumber when caller omits it", async () => {
-    const generator = jest.fn(async () => "J-2026-042");
+  it("convertTenderToJob: server-generates the canonical jobNumber", async () => {
+    const generator = jest.fn(async () => ({
+      jobNumber: "J260612-ACME-042",
+      clientSlugSnapshot: "ACME"
+    }));
     const sharepointMock = { ensureFolder: jest.fn().mockResolvedValue({ id: "folder-1" }) };
     const txMock = jest.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
       callback({
-        job: { create: jest.fn().mockResolvedValue({ id: "job-new", jobNumber: "J-2026-042", name: "Converted" }) },
+        job: { create: jest.fn().mockResolvedValue({ id: "job-new", jobNumber: "J260612-ACME-042", name: "Converted" }) },
         jobConversion: { create: jest.fn() },
         sharePointFolderLink: { update: jest.fn() },
         documentLink: { createMany: jest.fn() },
@@ -590,7 +564,7 @@ describe("JobsService", () => {
         tender: { findUnique: jest.fn().mockResolvedValue(convertibleTender()) },
         job: {
           findFirst: jest.fn().mockResolvedValue(null),
-          findUnique: jest.fn().mockResolvedValue({ id: "job-new", jobNumber: "J-2026-042" })
+          findUnique: jest.fn().mockResolvedValue({ id: "job-new", jobNumber: "J260612-ACME-042" })
         },
         documentLink: { findMany: jest.fn().mockResolvedValue([]) },
         $transaction: txMock
@@ -610,7 +584,7 @@ describe("JobsService", () => {
     expect(generator).toHaveBeenCalledTimes(1);
     // ensureFolder's relativePath should use the generated number.
     const folderArg = sharepointMock.ensureFolder.mock.calls[0]?.[0] as { relativePath: string };
-    expect(folderArg.relativePath).toContain("J-2026-042");
+    expect(folderArg.relativePath).toContain("J260612-ACME-042");
   });
 
   it("convertTenderToJob: translates P2002 race inside the transaction into 409", async () => {
@@ -633,7 +607,11 @@ describe("JobsService", () => {
       { write: jest.fn() } as never,
       { ensureFolder: jest.fn().mockResolvedValue({ id: "folder-1" }) } as never,
       notificationsServiceMock as never,
-      { generate: jest.fn(async () => "J-2026-099"), validate: jest.fn(() => null), format: jest.fn() } as never
+      {
+        generate: jest.fn(async () => ({ jobNumber: "J260612-ACME-099", clientSlugSnapshot: "ACME" })),
+        validate: jest.fn(() => null),
+        format: jest.fn()
+      } as never
     );
 
     await expect(

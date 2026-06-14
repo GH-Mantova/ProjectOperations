@@ -151,7 +151,7 @@ function CustomiseRow({
   const isOverridden = widget.config.period != null && widget.config.period !== globalPeriod;
 
   return (
-    <li className="customise-panel__row">
+    <li className="customise-panel__row" data-testid={`customise-row-${widget.type.replace(/_/g, "-")}`}>
       <div className="customise-panel__row-main">
         <div className="customise-panel__row-info">
           <div className="customise-panel__row-title">{meta?.name ?? widget.type}</div>

@@ -433,6 +433,7 @@ function SortableWidget({
       }}
       style={style}
       className={classes.join(" ")}
+      data-testid={`widget-${entry.type.replace(/_/g, "-")}`}
     >
       <div className="td-canvas__slot-chrome">
         <PeriodOverridePill

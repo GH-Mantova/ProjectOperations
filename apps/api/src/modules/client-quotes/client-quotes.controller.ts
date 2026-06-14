@@ -48,6 +48,7 @@ export class ClientQuotesController {
   @Get()
   @RequirePermissions("tenders.view")
   @ApiOperation({ summary: "List all client quotes for a tender, grouped by client/revision" })
+  @ApiResponse({ status: 200, description: "List all client quotes for a tender, grouped by client/revision." })
   list(@Param("tenderId") tenderId: string) {
     return this.service.listByTender(tenderId);
   }
@@ -69,6 +70,7 @@ export class ClientQuotesController {
   @Get(":quoteId")
   @RequirePermissions("tenders.view")
   @ApiOperation({ summary: "Get a ClientQuote with all related lines, options, assumptions, exclusions" })
+  @ApiResponse({ status: 200, description: "Get a ClientQuote with all related lines, options, assumptions, exclusions." })
   getOne(@Param("tenderId") tenderId: string, @Param("quoteId") quoteId: string) {
     return this.service.getOne(tenderId, quoteId);
   }
@@ -76,6 +78,7 @@ export class ClientQuotesController {
   @Patch(":quoteId")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Update quote-level fields (adjustment, mode, status, toggles)" })
+  @ApiResponse({ status: 200, description: "Update quote-level fields (adjustment, mode, status, toggles)." })
   update(
     @Param("tenderId") tenderId: string,
     @Param("quoteId") quoteId: string,
@@ -100,6 +103,7 @@ export class ClientQuotesController {
   @Get(":quoteId/summary")
   @RequirePermissions("tenders.view")
   @ApiOperation({ summary: "Server-computed totals incl. adjustment — adjustment is INTERNAL ONLY" })
+  @ApiResponse({ status: 200, description: "Server-computed totals incl. adjustment — adjustment is INTERNAL ONLY." })
   summary(@Param("tenderId") tenderId: string, @Param("quoteId") quoteId: string) {
     return this.service.summary(tenderId, quoteId);
   }
@@ -358,6 +362,7 @@ export class ClientQuotesController {
   @Get("client-suggestion/:clientId")
   @RequirePermissions("tenders.view")
   @ApiOperation({ summary: "Suggested adjustment % for a client, based on preferenceScore + winRate" })
+  @ApiResponse({ status: 200, description: "Suggested adjustment % for a client, based on preferenceScore + winRate." })
   suggestion(@Param("clientId") clientId: string) {
     return this.service.suggestion(clientId);
   }
@@ -366,6 +371,7 @@ export class ClientQuotesController {
   @Get(":quoteId/pdf")
   @RequirePermissions("tenders.view")
   @ApiOperation({ summary: "Stream a per-quote PDF (uses clientFacingTotal; adjustment never rendered)" })
+  @ApiResponse({ status: 200, description: "Stream a per-quote PDF (uses clientFacingTotal; adjustment never rendered)." })
   @Header("Cache-Control", "no-store")
   async renderPdf(
     @Param("tenderId") tenderId: string,
@@ -384,6 +390,7 @@ export class ClientQuotesController {
   @Post(":quoteId/send")
   @RequirePermissions("tenders.manage")
   @ApiOperation({ summary: "Send the quote via Outlook; optionally attaches the PDF. Marks quote SENT." })
+  @ApiResponse({ status: 201, description: "Send the quote via Outlook; optionally attaches the PDF. Marks quote SENT." })
   async send(
     @Param("tenderId") tenderId: string,
     @Param("quoteId") quoteId: string,

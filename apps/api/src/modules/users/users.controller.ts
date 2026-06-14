@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
@@ -37,6 +37,7 @@ export class UsersController {
   @Get()
   @RequirePermissions("users.view")
   @ApiOperation({ summary: "List users" })
+  @ApiResponse({ status: 200, description: "List users." })
   @ApiQuery({
     name: "role",
     required: false,
@@ -61,6 +62,7 @@ export class UsersController {
   @Post()
   @RequirePermissions("users.create")
   @ApiOperation({ summary: "Create a user" })
+  @ApiResponse({ status: 201, description: "Create a user." })
   create(@Body() dto: CreateUserDto, @CurrentUser() actor: { sub: string }) {
     return this.usersService.create(dto, actor.sub);
   }
@@ -79,6 +81,7 @@ export class UsersController {
   @Patch(":id")
   @RequirePermissions("users.update")
   @ApiOperation({ summary: "Update a user" })
+  @ApiResponse({ status: 200, description: "Update a user." })
   update(
     @Param("id") userId: string,
     @Body() dto: UpdateUserDto,

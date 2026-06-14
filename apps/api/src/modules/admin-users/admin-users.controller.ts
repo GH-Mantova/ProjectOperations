@@ -56,6 +56,7 @@ export class AdminUsersController {
     summary:
       "Update a user. Admins cannot modify Admins / Super Users. Cannot deactivate your own account."
   })
+  @ApiResponse({ status: 200, description: "Update a user. Admins cannot modify Admins / Super Users. Cannot deactivate your own account." })
   update(
     @Param("userId") userId: string,
     @Body() dto: UpdateUserDto,
@@ -66,6 +67,7 @@ export class AdminUsersController {
 
   @Delete(":userId")
   @ApiOperation({ summary: "Soft-delete (deactivate) a user. Same tier rules as PATCH." })
+  @ApiResponse({ status: 200, description: "Soft-delete (deactivate) a user. Same tier rules as PATCH." })
   deactivate(@Param("userId") userId: string, @CurrentUser() actor: { sub: string }) {
     return this.service.deactivate(actor.sub, userId);
   }

@@ -149,6 +149,7 @@ export class GanttController {
   @ApiOperation({
     summary: "Generate Gantt tasks from the project's source-tender scope. One task per discipline."
   })
+  @ApiResponse({ status: 201, description: "Generate Gantt tasks from the project's source-tender scope. One task per discipline." })
   generate(@Param("projectId") projectId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.generateFromScope(projectId, user);
   }

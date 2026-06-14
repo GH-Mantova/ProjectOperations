@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
@@ -35,6 +35,7 @@ export class RolesController {
   @Get()
   @RequirePermissions("roles.view")
   @ApiOperation({ summary: "List roles" })
+  @ApiResponse({ status: 200, description: "List roles." })
   list(@Query() query: PaginationQueryDto) {
     return this.rolesService.list(query);
   }
@@ -52,6 +53,7 @@ export class RolesController {
   @Post()
   @RequirePermissions("roles.create")
   @ApiOperation({ summary: "Create a role" })
+  @ApiResponse({ status: 201, description: "Create a role." })
   create(@Body() dto: CreateRoleDto, @CurrentUser() actor: { sub: string }) {
     return this.rolesService.create(dto, actor.sub);
   }
@@ -70,6 +72,7 @@ export class RolesController {
   @Patch(":id")
   @RequirePermissions("roles.update")
   @ApiOperation({ summary: "Update a role" })
+  @ApiResponse({ status: 200, description: "Update a role." })
   update(
     @Param("id") roleId: string,
     @Body() dto: UpdateRoleDto,

@@ -119,6 +119,7 @@ export class EstimatesController {
   @Get("estimate-rates/plant")
   @RequirePermissions("estimates.view")
   @ApiOperation({ summary: "List plant rates (rate library)" })
+  @ApiResponse({ status: 200, description: "List plant rates (rate library)." })
   listPlantRates() {
     return this.service.listPlantRates();
   }
@@ -132,6 +133,7 @@ export class EstimatesController {
   @Post("estimate-rates/plant")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Create a plant rate" })
+  @ApiResponse({ status: 201, description: "Create a plant rate." })
   createPlantRate(@Body() dto: UpsertPlantRateDto, @CurrentUser() actor: { sub: string }) {
     return this.service.upsertPlantRate(undefined, dto, actor.sub);
   }
@@ -144,6 +146,7 @@ export class EstimatesController {
   @Patch("estimate-rates/plant/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Update a plant rate" })
+  @ApiResponse({ status: 200, description: "Update a plant rate." })
   updatePlantRate(@Param("id") id: string, @Body() dto: UpsertPlantRateDto, @CurrentUser() actor: { sub: string }) {
     return this.service.upsertPlantRate(id, dto, actor.sub);
   }
@@ -156,6 +159,7 @@ export class EstimatesController {
   @Delete("estimate-rates/plant/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Delete a plant rate" })
+  @ApiResponse({ status: 200, description: "Delete a plant rate." })
   deletePlantRate(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
     return this.service.deletePlantRate(id, actor.sub);
   }
@@ -172,6 +176,7 @@ export class EstimatesController {
   @Get("estimate-rates/waste")
   @RequirePermissions("estimates.view")
   @ApiOperation({ summary: "List waste rates (rate library)" })
+  @ApiResponse({ status: 200, description: "List waste rates (rate library)." })
   listWasteRates() {
     return this.service.listWasteRates();
   }
@@ -185,6 +190,7 @@ export class EstimatesController {
   @Post("estimate-rates/waste")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Create a waste rate" })
+  @ApiResponse({ status: 201, description: "Create a waste rate." })
   createWasteRate(@Body() dto: UpsertWasteRateDto, @CurrentUser() actor: { sub: string }) {
     return this.service.upsertWasteRate(undefined, dto, actor.sub);
   }
@@ -197,6 +203,7 @@ export class EstimatesController {
   @Patch("estimate-rates/waste/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Update a waste rate" })
+  @ApiResponse({ status: 200, description: "Update a waste rate." })
   updateWasteRate(@Param("id") id: string, @Body() dto: UpsertWasteRateDto, @CurrentUser() actor: { sub: string }) {
     return this.service.upsertWasteRate(id, dto, actor.sub);
   }
@@ -209,6 +216,7 @@ export class EstimatesController {
   @Delete("estimate-rates/waste/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Delete a waste rate" })
+  @ApiResponse({ status: 200, description: "Delete a waste rate." })
   deleteWasteRate(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
     return this.service.deleteWasteRate(id, actor.sub);
   }
@@ -225,6 +233,7 @@ export class EstimatesController {
   @Get("estimate-rates/cutting")
   @RequirePermissions("estimates.view")
   @ApiOperation({ summary: "List cutting rates (rate library)" })
+  @ApiResponse({ status: 200, description: "List cutting rates (rate library)." })
   listCuttingRates() {
     return this.service.listCuttingRates();
   }
@@ -238,6 +247,7 @@ export class EstimatesController {
   @Post("estimate-rates/cutting")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Create a cutting rate" })
+  @ApiResponse({ status: 201, description: "Create a cutting rate." })
   createCuttingRate(@Body() dto: UpsertCuttingRateDto, @CurrentUser() actor: { sub: string }) {
     return this.service.upsertCuttingRate(undefined, dto, actor.sub);
   }
@@ -250,6 +260,7 @@ export class EstimatesController {
   @Patch("estimate-rates/cutting/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Update a cutting rate" })
+  @ApiResponse({ status: 200, description: "Update a cutting rate." })
   updateCuttingRate(@Param("id") id: string, @Body() dto: UpsertCuttingRateDto, @CurrentUser() actor: { sub: string }) {
     return this.service.upsertCuttingRate(id, dto, actor.sub);
   }
@@ -262,6 +273,7 @@ export class EstimatesController {
   @Delete("estimate-rates/cutting/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Delete a cutting rate" })
+  @ApiResponse({ status: 200, description: "Delete a cutting rate." })
   deleteCuttingRate(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
     return this.service.deleteCuttingRate(id, actor.sub);
   }
@@ -278,6 +290,7 @@ export class EstimatesController {
   @Get("estimate-rates/core-holes")
   @RequirePermissions("estimates.view")
   @ApiOperation({ summary: "List concrete core-hole drilling rates ($/hole by diameter)" })
+  @ApiResponse({ status: 200, description: "List concrete core-hole drilling rates ($/hole by diameter)." })
   listCoreHoleRates() {
     return this.service.listCoreHoleRates();
   }
@@ -291,6 +304,7 @@ export class EstimatesController {
   @Post("estimate-rates/core-holes")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Create a core-hole rate" })
+  @ApiResponse({ status: 201, description: "Create a core-hole rate." })
   createCoreHoleRate(@Body() dto: UpsertCoreHoleRateDto, @CurrentUser() actor: { sub: string }) {
     return this.service.upsertCoreHoleRate(undefined, dto, actor.sub);
   }
@@ -303,6 +317,7 @@ export class EstimatesController {
   @Patch("estimate-rates/core-holes/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Update a core-hole rate" })
+  @ApiResponse({ status: 200, description: "Update a core-hole rate." })
   updateCoreHoleRate(@Param("id") id: string, @Body() dto: UpsertCoreHoleRateDto, @CurrentUser() actor: { sub: string }) {
     return this.service.upsertCoreHoleRate(id, dto, actor.sub);
   }
@@ -315,6 +330,7 @@ export class EstimatesController {
   @Delete("estimate-rates/core-holes/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Delete a core-hole rate" })
+  @ApiResponse({ status: 200, description: "Delete a core-hole rate." })
   deleteCoreHoleRate(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
     return this.service.deleteCoreHoleRate(id, actor.sub);
   }
@@ -331,6 +347,7 @@ export class EstimatesController {
   @Get("estimate-rates/fuel")
   @RequirePermissions("estimates.view")
   @ApiOperation({ summary: "List fuel rates (rate library)" })
+  @ApiResponse({ status: 200, description: "List fuel rates (rate library)." })
   listFuelRates() {
     return this.service.listFuelRates();
   }
@@ -344,6 +361,7 @@ export class EstimatesController {
   @Post("estimate-rates/fuel")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Create a fuel rate" })
+  @ApiResponse({ status: 201, description: "Create a fuel rate." })
   createFuelRate(@Body() dto: UpsertFuelRateDto, @CurrentUser() actor: { sub: string }) {
     return this.service.upsertFuelRate(undefined, dto, actor.sub);
   }
@@ -356,6 +374,7 @@ export class EstimatesController {
   @Patch("estimate-rates/fuel/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Update a fuel rate" })
+  @ApiResponse({ status: 200, description: "Update a fuel rate." })
   updateFuelRate(@Param("id") id: string, @Body() dto: UpsertFuelRateDto, @CurrentUser() actor: { sub: string }) {
     return this.service.upsertFuelRate(id, dto, actor.sub);
   }
@@ -368,6 +387,7 @@ export class EstimatesController {
   @Delete("estimate-rates/fuel/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Delete a fuel rate" })
+  @ApiResponse({ status: 200, description: "Delete a fuel rate." })
   deleteFuelRate(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
     return this.service.deleteFuelRate(id, actor.sub);
   }
@@ -384,6 +404,7 @@ export class EstimatesController {
   @Get("estimate-rates/enclosure")
   @RequirePermissions("estimates.view")
   @ApiOperation({ summary: "List asbestos enclosure rates (rate library)" })
+  @ApiResponse({ status: 200, description: "List asbestos enclosure rates (rate library)." })
   listEnclosureRates() {
     return this.service.listEnclosureRates();
   }
@@ -397,6 +418,7 @@ export class EstimatesController {
   @Post("estimate-rates/enclosure")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Create an enclosure rate" })
+  @ApiResponse({ status: 201, description: "Create an enclosure rate." })
   createEnclosureRate(@Body() dto: UpsertEnclosureRateDto, @CurrentUser() actor: { sub: string }) {
     return this.service.upsertEnclosureRate(undefined, dto, actor.sub);
   }
@@ -409,6 +431,7 @@ export class EstimatesController {
   @Patch("estimate-rates/enclosure/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Update an enclosure rate" })
+  @ApiResponse({ status: 200, description: "Update an enclosure rate." })
   updateEnclosureRate(@Param("id") id: string, @Body() dto: UpsertEnclosureRateDto, @CurrentUser() actor: { sub: string }) {
     return this.service.upsertEnclosureRate(id, dto, actor.sub);
   }
@@ -421,6 +444,7 @@ export class EstimatesController {
   @Delete("estimate-rates/enclosure/:id")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Delete an enclosure rate" })
+  @ApiResponse({ status: 200, description: "Delete an enclosure rate." })
   deleteEnclosureRate(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
     return this.service.deleteEnclosureRate(id, actor.sub);
   }
@@ -586,6 +610,7 @@ export class EstimatesController {
   @Patch("tenders/:tenderId/estimate")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Update estimate-level fields (markup, notes)" })
+  @ApiResponse({ status: 200, description: "Update estimate-level fields (markup, notes)." })
   updateEstimate(
     @Param("tenderId") tenderId: string,
     @Body() dto: UpdateEstimateDto,
@@ -603,6 +628,7 @@ export class EstimatesController {
   @Post("tenders/:tenderId/estimate/lock")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Lock an estimate (prevents further edits; typically after submission)" })
+  @ApiResponse({ status: 201, description: "Lock an estimate (prevents further edits; typically after submission)." })
   lockEstimate(@Param("tenderId") tenderId: string, @CurrentUser() actor: { sub: string }) {
     return this.service.lockEstimate(tenderId, actor.sub);
   }
@@ -616,6 +642,7 @@ export class EstimatesController {
   @Post("tenders/:tenderId/estimate/unlock")
   @RequirePermissions("estimates.admin")
   @ApiOperation({ summary: "Unlock an estimate (admin only)" })
+  @ApiResponse({ status: 201, description: "Unlock an estimate (admin only)." })
   unlockEstimate(@Param("tenderId") tenderId: string, @CurrentUser() actor: { sub: string }) {
     return this.service.unlockEstimate(tenderId, actor.sub);
   }
@@ -652,6 +679,7 @@ export class EstimatesController {
   @Post("tenders/:tenderId/estimate/items")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Add a scope item to the estimate" })
+  @ApiResponse({ status: 201, description: "Add a scope item to the estimate." })
   addItem(
     @Param("tenderId") tenderId: string,
     @Body() dto: UpsertEstimateItemDto,
@@ -670,6 +698,7 @@ export class EstimatesController {
   @Patch("tenders/:tenderId/estimate/items/:itemId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Update a scope item" })
+  @ApiResponse({ status: 200, description: "Update a scope item." })
   updateItem(
     @Param("tenderId") tenderId: string,
     @Param("itemId") itemId: string,
@@ -689,6 +718,7 @@ export class EstimatesController {
   @Delete("tenders/:tenderId/estimate/items/:itemId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Delete a scope item (cascades to lines and assumptions)" })
+  @ApiResponse({ status: 200, description: "Delete a scope item (cascades to lines and assumptions)." })
   deleteItem(
     @Param("tenderId") tenderId: string,
     @Param("itemId") itemId: string,
@@ -711,6 +741,7 @@ export class EstimatesController {
   @Post("tenders/:tenderId/estimate/items/:itemId/labour")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Add a labour line to a scope item" })
+  @ApiResponse({ status: 201, description: "Add a labour line to a scope item." })
   addLabourLine(
     @Param("tenderId") tenderId: string,
     @Param("itemId") itemId: string,
@@ -730,6 +761,7 @@ export class EstimatesController {
   @Patch("tenders/:tenderId/estimate/items/:itemId/labour/:lineId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Update a labour line" })
+  @ApiResponse({ status: 200, description: "Update a labour line." })
   updateLabourLine(
     @Param("tenderId") tenderId: string,
     @Param("itemId") itemId: string,
@@ -750,6 +782,7 @@ export class EstimatesController {
   @Delete("tenders/:tenderId/estimate/items/:itemId/labour/:lineId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Delete a labour line" })
+  @ApiResponse({ status: 200, description: "Delete a labour line." })
   deleteLabourLine(
     @Param("tenderId") tenderId: string,
     @Param("itemId") itemId: string,
@@ -773,6 +806,7 @@ export class EstimatesController {
   @Post("tenders/:tenderId/estimate/items/:itemId/plant")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Add a plant line to a scope item" })
+  @ApiResponse({ status: 201, description: "Add a plant line to a scope item." })
   addPlantLine(
     @Param("tenderId") tenderId: string,
     @Param("itemId") itemId: string,
@@ -792,6 +826,7 @@ export class EstimatesController {
   @Patch("tenders/:tenderId/estimate/items/:itemId/plant/:lineId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Update a plant line" })
+  @ApiResponse({ status: 200, description: "Update a plant line." })
   updatePlantLine(
     @Param("tenderId") tenderId: string,
     @Param("itemId") itemId: string,
@@ -812,6 +847,7 @@ export class EstimatesController {
   @Delete("tenders/:tenderId/estimate/items/:itemId/plant/:lineId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Delete a plant line" })
+  @ApiResponse({ status: 200, description: "Delete a plant line." })
   deletePlantLine(
     @Param("tenderId") tenderId: string,
     @Param("itemId") itemId: string,
@@ -835,6 +871,7 @@ export class EstimatesController {
   @Post("tenders/:tenderId/estimate/items/:itemId/equip")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Add an equipment/subcontractor line to a scope item" })
+  @ApiResponse({ status: 201, description: "Add an equipment/subcontractor line to a scope item." })
   addEquipLine(
     @Param("tenderId") tenderId: string,
     @Param("itemId") itemId: string,
@@ -854,6 +891,7 @@ export class EstimatesController {
   @Patch("tenders/:tenderId/estimate/items/:itemId/equip/:lineId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Update an equipment/subcontractor line" })
+  @ApiResponse({ status: 200, description: "Update an equipment/subcontractor line." })
   updateEquipLine(
     @Param("tenderId") tenderId: string,
     @Param("itemId") itemId: string,
@@ -874,6 +912,7 @@ export class EstimatesController {
   @Delete("tenders/:tenderId/estimate/items/:itemId/equip/:lineId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Delete an equipment/subcontractor line" })
+  @ApiResponse({ status: 200, description: "Delete an equipment/subcontractor line." })
   deleteEquipLine(
     @Param("tenderId") tenderId: string,
     @Param("itemId") itemId: string,
@@ -897,6 +936,7 @@ export class EstimatesController {
   @Post("tenders/:tenderId/estimate/items/:itemId/waste")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Add a waste line to a scope item" })
+  @ApiResponse({ status: 201, description: "Add a waste line to a scope item." })
   addWasteLine(
     @Param("tenderId") tenderId: string,
     @Param("itemId") itemId: string,
@@ -916,6 +956,7 @@ export class EstimatesController {
   @Patch("tenders/:tenderId/estimate/items/:itemId/waste/:lineId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Update a waste line" })
+  @ApiResponse({ status: 200, description: "Update a waste line." })
   updateWasteLine(
     @Param("tenderId") tenderId: string,
     @Param("itemId") itemId: string,
@@ -936,6 +977,7 @@ export class EstimatesController {
   @Delete("tenders/:tenderId/estimate/items/:itemId/waste/:lineId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Delete a waste line" })
+  @ApiResponse({ status: 200, description: "Delete a waste line." })
   deleteWasteLine(
     @Param("tenderId") tenderId: string,
     @Param("itemId") itemId: string,
@@ -959,6 +1001,7 @@ export class EstimatesController {
   @Post("tenders/:tenderId/estimate/items/:itemId/cutting")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Add a cutting line to a scope item" })
+  @ApiResponse({ status: 201, description: "Add a cutting line to a scope item." })
   addCuttingLine(
     @Param("tenderId") tenderId: string,
     @Param("itemId") itemId: string,
@@ -978,6 +1021,7 @@ export class EstimatesController {
   @Patch("tenders/:tenderId/estimate/items/:itemId/cutting/:lineId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Update a cutting line" })
+  @ApiResponse({ status: 200, description: "Update a cutting line." })
   updateCuttingLine(
     @Param("tenderId") tenderId: string,
     @Param("itemId") itemId: string,
@@ -998,6 +1042,7 @@ export class EstimatesController {
   @Delete("tenders/:tenderId/estimate/items/:itemId/cutting/:lineId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Delete a cutting line" })
+  @ApiResponse({ status: 200, description: "Delete a cutting line." })
   deleteCuttingLine(
     @Param("tenderId") tenderId: string,
     @Param("itemId") itemId: string,
@@ -1021,6 +1066,7 @@ export class EstimatesController {
   @Post("tenders/:tenderId/estimate/items/:itemId/assumptions")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Add an assumption to a scope item" })
+  @ApiResponse({ status: 201, description: "Add an assumption to a scope item." })
   addAssumption(
     @Param("tenderId") tenderId: string,
     @Param("itemId") itemId: string,
@@ -1040,6 +1086,7 @@ export class EstimatesController {
   @Patch("tenders/:tenderId/estimate/items/:itemId/assumptions/:lineId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Update an assumption" })
+  @ApiResponse({ status: 200, description: "Update an assumption." })
   updateAssumption(
     @Param("tenderId") tenderId: string,
     @Param("itemId") itemId: string,
@@ -1060,6 +1107,7 @@ export class EstimatesController {
   @Delete("tenders/:tenderId/estimate/items/:itemId/assumptions/:lineId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Delete an assumption" })
+  @ApiResponse({ status: 200, description: "Delete an assumption." })
   deleteAssumption(
     @Param("tenderId") tenderId: string,
     @Param("itemId") itemId: string,

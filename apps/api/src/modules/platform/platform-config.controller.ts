@@ -94,6 +94,7 @@ export class PlatformConfigController {
   @Post("test-anthropic")
   @RequirePermissions("platform.admin")
   @ApiOperation({ summary: "Make a tiny live call to Anthropic to verify the configured key." })
+  @ApiResponse({ status: 201, description: "Make a tiny live call to Anthropic to verify the configured key." })
   testAnthropic() {
     return this.service.testAnthropicKey();
   }
@@ -101,6 +102,7 @@ export class PlatformConfigController {
   @Post("test-gemini")
   @RequirePermissions("platform.admin")
   @ApiOperation({ summary: "Make a tiny live call to Google Gemini to verify the configured key." })
+  @ApiResponse({ status: 201, description: "Make a tiny live call to Google Gemini to verify the configured key." })
   testGemini() {
     return this.service.testGeminiKey();
   }
@@ -108,6 +110,7 @@ export class PlatformConfigController {
   @Post("test-groq")
   @RequirePermissions("platform.admin")
   @ApiOperation({ summary: "Make a tiny live call to Groq to verify the configured key." })
+  @ApiResponse({ status: 201, description: "Make a tiny live call to Groq to verify the configured key." })
   testGroq() {
     return this.service.testGroqKey();
   }
@@ -115,6 +118,7 @@ export class PlatformConfigController {
   @Post("test-openai")
   @RequirePermissions("platform.admin")
   @ApiOperation({ summary: "Make a tiny live call to OpenAI to verify the configured key." })
+  @ApiResponse({ status: 201, description: "Make a tiny live call to OpenAI to verify the configured key." })
   testOpenAi() {
     return this.service.testOpenAiKey();
   }

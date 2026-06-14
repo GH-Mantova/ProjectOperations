@@ -17,6 +17,7 @@ export class SharePointController {
   @Get("folders")
   @RequirePermissions("sharepoint.view")
   @ApiOperation({ summary: "List tracked SharePoint folders" })
+  @ApiResponse({ status: 200, description: "List tracked SharePoint folders." })
   listFolders() {
     return this.sharePointService.listFolders();
   }
@@ -24,6 +25,7 @@ export class SharePointController {
   @Post("folders/ensure")
   @RequirePermissions("sharepoint.manage")
   @ApiOperation({ summary: "Ensure a SharePoint folder exists through the configured adapter" })
+  @ApiResponse({ status: 201, description: "Ensure a SharePoint folder exists through the configured adapter." })
   ensureFolder(@Body() dto: EnsureSharePointFolderDto, @CurrentUser() actor: { sub: string }) {
     return this.sharePointService.ensureFolder(dto, actor.sub);
   }

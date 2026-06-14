@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { IsString } from "class-validator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
@@ -20,6 +20,7 @@ export class TenderClientsController {
   @Get()
   @RequirePermissions("tenders.view")
   @ApiOperation({ summary: "List clients linked to a tender with basic contact info." })
+  @ApiResponse({ status: 200, description: "List clients linked to a tender with basic contact info." })
   list(@Param("tenderId") tenderId: string) {
     return this.service.listClients(tenderId);
   }
@@ -56,6 +57,8 @@ export class TenderClientSearchController {
     summary:
       "Search active clients by name (case-insensitive contains match). Returns up to 10. Used by the Overview Add-client modal."
   })
+  @ApiResponse({ status: 200, description: "Search active clients by name (case-insensitive contains match). Returns up to 10. Used by the Overview Add-client modal." })
+  @ApiQuery({ name: "q", required: false, type: String, description: "Client name search term" })
   search(@Query("q") q?: string) {
     return this.service.searchClients(q ?? "");
   }

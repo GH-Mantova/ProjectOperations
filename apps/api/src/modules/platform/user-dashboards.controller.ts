@@ -44,6 +44,7 @@ export class UserDashboardsController {
 
   @Patch(":id")
   @ApiOperation({ summary: "Update dashboard name and/or config (widget order, visibility, filters, periods)" })
+  @ApiResponse({ status: 200, description: "Update dashboard name and/or config (widget order, visibility, filters, periods)." })
   update(
     @CurrentUser() actor: { sub: string },
     @Param("id") id: string,
@@ -65,6 +66,7 @@ export class UserDashboardsController {
 
   @Post(":id/default")
   @ApiOperation({ summary: "Mark this dashboard as the default for its slug for the current user" })
+  @ApiResponse({ status: 201, description: "Mark this dashboard as the default for its slug for the current user." })
   setDefault(@CurrentUser() actor: { sub: string }, @Param("id") id: string) {
     return this.service.setDefault(actor.sub, id);
   }

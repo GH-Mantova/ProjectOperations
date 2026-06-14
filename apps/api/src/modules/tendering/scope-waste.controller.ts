@@ -1,5 +1,5 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { IsArray, IsIn, IsInt, IsNumber, IsOptional, IsString, Min } from "class-validator";
 import { Type } from "class-transformer";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
@@ -86,6 +86,9 @@ export class ScopeWasteController {
     summary:
       "List waste disposal rows on the tender. Optional ?cardId= filter (PR B3 per-card) or ?discipline= (legacy whole-tender)."
   })
+  @ApiResponse({ status: 200, description: "List waste disposal rows on the tender. Optional ?cardId= filter (PR B3 per-card) or ?discipline= (legacy whole-tender)." })
+  @ApiQuery({ name: "discipline", required: false, type: String, description: "Discipline filter (legacy whole-tender)" })
+  @ApiQuery({ name: "cardId", required: false, type: String, description: "Scope-card filter; excludes cardless legacy rows" })
   list(
     @Param("tenderId") tenderId: string,
     @Query("discipline") discipline?: string,
@@ -106,6 +109,7 @@ export class ScopeWasteController {
   @Post()
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Create a waste row. truckDays + lineTotal are derived server-side." })
+  @ApiResponse({ status: 201, description: "Create a waste row. truckDays + lineTotal are derived server-side." })
   create(
     @Param("tenderId") tenderId: string,
     @Body() dto: unknown,
@@ -128,6 +132,7 @@ export class ScopeWasteController {
   @Patch(":itemId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Partial update of a waste row. Re-derives truckDays + lineTotal." })
+  @ApiResponse({ status: 200, description: "Partial update of a waste row. Re-derives truckDays + lineTotal." })
   update(
     @Param("tenderId") tenderId: string,
     @Param("itemId") itemId: string,
@@ -148,6 +153,7 @@ export class ScopeWasteController {
   @Delete(":itemId")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Delete a waste row." })
+  @ApiResponse({ status: 200, description: "Delete a waste row." })
   remove(@Param("tenderId") tenderId: string, @Param("itemId") itemId: string) {
     return this.service.remove(tenderId, itemId);
   }
@@ -163,6 +169,7 @@ export class ScopeWasteController {
   @Post("reorder")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Bulk update sortOrder across multiple waste rows." })
+  @ApiResponse({ status: 201, description: "Bulk update sortOrder across multiple waste rows." })
   reorder(@Param("tenderId") tenderId: string, @Body() dto: unknown) {
     this.assertObjectBody(dto);
     return this.service.reorder(tenderId, (dto as unknown as ReorderDto).order);
@@ -202,6 +209,7 @@ export class ScopeCardWasteController {
     summary:
       "PR B3 — aggregate scope items (wasteIncluded=true) by (wasteGroup, wasteItem, unit) and write/replace autoSummed waste rows for the card. Manual rows preserved."
   })
+  @ApiResponse({ status: 201, description: "PR B3 — aggregate scope items (wasteIncluded=true) by (wasteGroup, wasteItem, unit) and write/replace autoSummed waste rows for the card. Manual rows preserved." })
   sumFromAbove(
     @Param("tenderId") tenderId: string,
     @Param("cardId") cardId: string,

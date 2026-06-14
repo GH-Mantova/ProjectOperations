@@ -83,7 +83,12 @@ export class MasterDataController {
   @ApiResponse({ status: 200, description: "Paginated sites." })
   listSites(@Query() q: MasterDataQueryDto) { return this.service.listSites(q); }
   /** Get one site with its linked tenders + de-duplicated projects, or 404. */
-  @Get("sites/:id") @RequirePermissions("masterdata.view") @ApiOperation({ summary: "Get a site with its linked tenders and projects." }) getSite(@Param("id") id: string) { return this.service.getSite(id); }
+  @Get("sites/:id")
+  @RequirePermissions("masterdata.view")
+  @ApiOperation({ summary: "Get a site with its linked tenders and projects." })
+  @ApiResponse({ status: 200, description: "Site with its linked tenders and projects." })
+  @ApiResponse({ status: 404, description: "Site not found." })
+  getSite(@Param("id") id: string) { return this.service.getSite(id); }
   /** Create a site; rejects duplicate names. */
   @Post("sites")
   @RequirePermissions("masterdata.manage")
@@ -257,6 +262,7 @@ export class MasterDataController {
   @Get("references")
   @RequirePermissions("masterdata.view")
   @ApiOperation({ summary: "Reference data for master-data forms" })
+  @ApiResponse({ status: 200, description: "Reference data for master-data forms." })
   async references() {
     const [clients, resourceTypes, competencies, workers] = await Promise.all([
       this.service.listClients({ page: 1, pageSize: 100 }),

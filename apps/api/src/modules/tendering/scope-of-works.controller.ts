@@ -59,6 +59,7 @@ export class ScopeOfWorksController {
   @Get("header")
   @RequirePermissions("estimates.view")
   @ApiOperation({ summary: "Get the site context header for the scope sheet (lazily created)." })
+  @ApiResponse({ status: 200, description: "Get the site context header for the scope sheet (lazily created)." })
   getHeader(@Param("tenderId") tenderId: string) {
     return this.service.getHeader(tenderId);
   }
@@ -89,6 +90,7 @@ export class ScopeOfWorksController {
   @ApiOperation({
     summary: "List scope items sorted DEM → CIV → ASB → Other with per-discipline summary totals."
   })
+  @ApiResponse({ status: 200, description: "List scope items sorted DEM → CIV → ASB → Other with per-discipline summary totals." })
   list(@Param("tenderId") tenderId: string) {
     return this.service.listItems(tenderId);
   }
@@ -128,6 +130,7 @@ export class ScopeOfWorksController {
     summary:
       "Partial update of any scope item field. Transitioning status from draft → confirmed triggers estimate item creation."
   })
+  @ApiResponse({ status: 200, description: "Partial update of any scope item field. Transitioning status from draft → confirmed triggers estimate item creation." })
   update(
     @Param("tenderId") tenderId: string,
     @Param("itemId") itemId: string,
@@ -150,6 +153,7 @@ export class ScopeOfWorksController {
     summary:
       "Hard delete the scope item. Returns a warning string when the item had a linked estimate line (the estimate line is NOT removed)."
   })
+  @ApiResponse({ status: 200, description: "Hard delete the scope item. Returns a warning string when the item had a linked estimate line (the estimate line is NOT removed)." })
   remove(@Param("tenderId") tenderId: string, @Param("itemId") itemId: string) {
     return this.service.deleteItem(tenderId, itemId);
   }
@@ -163,6 +167,7 @@ export class ScopeOfWorksController {
   @Post("items/reorder")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Bulk update of sortOrder across multiple scope items." })
+  @ApiResponse({ status: 201, description: "Bulk update of sortOrder across multiple scope items." })
   reorder(@Param("tenderId") tenderId: string, @Body() dto: unknown) {
     this.assertObjectBody(dto);
     return this.service.reorder(tenderId, dto as unknown as ReorderScopeItemsDto);
@@ -197,6 +202,7 @@ export class ScopeOfWorksController {
   @Post("items/:itemId/exclude")
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Exclude an AI-proposed scope item. Does not create an estimate line." })
+  @ApiResponse({ status: 201, description: "Exclude an AI-proposed scope item. Does not create an estimate line." })
   exclude(@Param("tenderId") tenderId: string, @Param("itemId") itemId: string) {
     return this.service.excludeItem(tenderId, itemId);
   }
@@ -211,6 +217,7 @@ export class ScopeOfWorksController {
   @ApiOperation({
     summary: "Confirm every draft scope item on the tender in one call. Creates estimate lines for each."
   })
+  @ApiResponse({ status: 201, description: "Confirm every draft scope item on the tender in one call. Creates estimate lines for each." })
   confirmAll(@Param("tenderId") tenderId: string, @CurrentUser() actor: RequestUser) {
     return this.service.confirmAllDrafts(tenderId, actor.sub);
   }
@@ -226,6 +233,7 @@ export class ScopeOfWorksController {
   @ApiOperation({
     summary: "List scope cards for the tender with item counts. Ordered by sortOrder (user-controlled)."
   })
+  @ApiResponse({ status: 200, description: "List scope cards for the tender with item counts. Ordered by sortOrder (user-controlled)." })
   listCards(@Param("tenderId") tenderId: string) {
     return this.service.listCards(tenderId);
   }
@@ -269,6 +277,7 @@ export class ScopeOfWorksController {
     summary:
       "Update a scope card. Pass `name` to rename, `discipline` to change discipline (cascades item wbsCode + cutting/waste wbsRef updates), or `plantColumnCount` to grow/shrink the Plant column count (PR B1.6)."
   })
+  @ApiResponse({ status: 200, description: "Update a scope card. Pass `name` to rename, `discipline` to change discipline (cascades item wbsCode + cutting/waste wbsRef updates), or `plantColumnCount` to grow/shrink the Plant column count (PR B1.6)." })
   updateCard(
     @Param("tenderId") tenderId: string,
     @Param("cardId") cardId: string,
@@ -376,6 +385,7 @@ export class ScopeOfWorksController {
   @HttpCode(204)
   @RequirePermissions("estimates.manage")
   @ApiOperation({ summary: "Bulk-update card sortOrder. Each card receives sortOrder = its index in cardIds." })
+  @ApiResponse({ status: 204, description: "Bulk-update card sortOrder. Each card receives sortOrder = its index in cardIds." })
   async reorderCards(
     @Param("tenderId") tenderId: string,
     @Body() rawDto: unknown

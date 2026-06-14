@@ -37,6 +37,7 @@ export class ResourcesController {
   @Get("workers")
   @RequirePermissions("resources.view")
   @ApiOperation({ summary: "List workers with competencies, availability, and role suitability" })
+  @ApiResponse({ status: 200, description: "List workers with competencies, availability, and role suitability." })
   listWorkers(@Query() query: ResourcesQueryDto) {
     return this.service.listWorkers(query);
   }
@@ -67,6 +68,7 @@ export class ResourcesController {
   @Post("availability-windows")
   @RequirePermissions("resources.manage")
   @ApiOperation({ summary: "Create availability window" })
+  @ApiResponse({ status: 201, description: "Create availability window." })
   createAvailability(@Body() dto: UpsertAvailabilityWindowDto, @CurrentUser() actor: { sub: string }) {
     return this.service.upsertAvailabilityWindow(undefined, dto, actor.sub);
   }
@@ -81,6 +83,7 @@ export class ResourcesController {
   @Patch("availability-windows/:id")
   @RequirePermissions("resources.manage")
   @ApiOperation({ summary: "Update availability window" })
+  @ApiResponse({ status: 200, description: "Update availability window." })
   updateAvailability(@Param("id") id: string, @Body() dto: UpsertAvailabilityWindowDto, @CurrentUser() actor: { sub: string }) {
     return this.service.upsertAvailabilityWindow(id, dto, actor.sub);
   }
@@ -95,6 +98,7 @@ export class ResourcesController {
   @Post("role-suitabilities")
   @RequirePermissions("resources.manage")
   @ApiOperation({ summary: "Create role suitability" })
+  @ApiResponse({ status: 201, description: "Create role suitability." })
   createSuitability(@Body() dto: UpsertWorkerRoleSuitabilityDto, @CurrentUser() actor: { sub: string }) {
     return this.service.upsertWorkerRoleSuitability(undefined, dto, actor.sub);
   }
@@ -109,6 +113,7 @@ export class ResourcesController {
   @Patch("role-suitabilities/:id")
   @RequirePermissions("resources.manage")
   @ApiOperation({ summary: "Update role suitability" })
+  @ApiResponse({ status: 200, description: "Update role suitability." })
   updateSuitability(@Param("id") id: string, @Body() dto: UpsertWorkerRoleSuitabilityDto, @CurrentUser() actor: { sub: string }) {
     return this.service.upsertWorkerRoleSuitability(id, dto, actor.sub);
   }
@@ -122,6 +127,7 @@ export class ResourcesController {
   @Get("shifts/:shiftId/requirements")
   @RequirePermissions("resources.view")
   @ApiOperation({ summary: "List shift role requirements" })
+  @ApiResponse({ status: 200, description: "List shift role requirements." })
   listShiftRequirements(@Param("shiftId") shiftId: string) {
     return this.service.listShiftRequirements(shiftId);
   }
@@ -137,6 +143,7 @@ export class ResourcesController {
   @Post("shifts/:shiftId/requirements")
   @RequirePermissions("resources.manage")
   @ApiOperation({ summary: "Create shift role requirement" })
+  @ApiResponse({ status: 201, description: "Create shift role requirement." })
   createShiftRequirement(
     @Param("shiftId") shiftId: string,
     @Body() dto: UpsertShiftRoleRequirementDto,
@@ -157,6 +164,7 @@ export class ResourcesController {
   @Patch("shifts/:shiftId/requirements/:id")
   @RequirePermissions("resources.manage")
   @ApiOperation({ summary: "Update shift role requirement" })
+  @ApiResponse({ status: 200, description: "Update shift role requirement." })
   updateShiftRequirement(
     @Param("shiftId") shiftId: string,
     @Param("id") id: string,

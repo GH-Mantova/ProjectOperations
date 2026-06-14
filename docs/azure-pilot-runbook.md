@@ -42,7 +42,7 @@ Watcher modes: **review-gated** (task default, auto-merge OFF — verdicts pile 
 
 ## 4. First-deploy verification (in order, ~30 min)
 
-1. `GET https://<api>/api/v1/health` → 200.
+1. `GET https://<api>/api/v1/health` → 200 with the enriched body `{ status, service, db, version, commit, uptimeSec, timestamp }` — confirm `db: "up"` and that `version` matches the deployed `apps/api/package.json` (`commit` shows the deployed SHA once the workflow injects `GIT_SHA`; `"unknown"` until then). `GET …/api/v1/health/ready` → 200 — this readiness endpoint returns **503** when the DB is unreachable and is what pr-174's deploy gate should poll instead of `/health`.
 2. `prisma migrate deploy` ran clean in the deploy logs (102+ migrations on a fresh DB).
 3. Run prod seed (`pnpm seed:prod` — exists after pr-173): reference data only. Verify rates admin shows the Cutrite matrix + 9 tabs, lookups populated, ZERO demo clients/tenders.
 4. SSO: each of the three real accounts logs in; roles per Section 1 (Sean Super User, Raj Senior Estimator, Marco Admin+WHS). Confirm the seed/dev local-login users do NOT exist.

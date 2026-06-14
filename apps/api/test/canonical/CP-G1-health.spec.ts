@@ -19,13 +19,23 @@ describe("Canonical CP-G1 — /health liveness", () => {
     await app.close();
   });
 
-  it("GET /api/v1/health returns 200 with status: ok", async () => {
+  it("GET /api/v1/health returns 200 with enriched body", async () => {
     const res = await request(app.getHttpServer()).get("/api/v1/health");
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({
       status: "ok",
-      service: "project-operations-api"
+      service: "project-operations-api",
+      db: "up"
     });
+    expect(typeof res.body.version).toBe("string");
+    expect(typeof res.body.commit).toBe("string");
+    expect(typeof res.body.uptimeSec).toBe("number");
     expect(typeof res.body.timestamp).toBe("string");
+  });
+
+  it("GET /api/v1/health/ready returns 200 when the database is reachable", async () => {
+    const res = await request(app.getHttpServer()).get("/api/v1/health/ready");
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ status: "ok", db: "up" });
   });
 });

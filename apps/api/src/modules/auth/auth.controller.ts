@@ -1,7 +1,9 @@
 import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { Throttle, ThrottlerGuard } from "@nestjs/throttler";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
+import { authThrottleRefreshLimit, authThrottleTtlMs } from "./auth-throttle.config";
 import { AuthService } from "./auth.service";
 import { EntraLoginDto } from "./dto/entra-login.dto";
 import { LoginDto } from "./dto/login.dto";
@@ -9,42 +11,58 @@ import { RefreshTokenDto } from "./dto/refresh-token.dto";
 import { ResetPasswordDto } from "./dto/reset-password.dto";
 import { SsoLoginDto } from "./dto/sso-login.dto";
 
+const THROTTLED_RESPONSE = {
+  status: 429,
+  description:
+    "Too many requests from this IP within the configured window. Retry-After header indicates when to retry."
+} as const;
+
 @ApiTags("Auth")
 @Controller("auth")
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post("login")
+  @UseGuards(ThrottlerGuard)
   @ApiOperation({ summary: "Login with email and password" })
   @ApiResponse({ status: 201, description: "Login with email and password." })
+  @ApiResponse(THROTTLED_RESPONSE)
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
   }
 
   @Post("entra")
+  @UseGuards(ThrottlerGuard)
   @ApiOperation({ summary: "Exchange a Microsoft Entra ID token for an internal application session" })
   @ApiResponse({ status: 201, description: "Exchange a Microsoft Entra ID token for an internal application session." })
+  @ApiResponse(THROTTLED_RESPONSE)
   loginWithEntra(@Body() dto: EntraLoginDto) {
     return this.authService.loginWithEntra(dto);
   }
 
   @Post("sso")
+  @UseGuards(ThrottlerGuard)
   @ApiOperation({ summary: "Microsoft 365 SSO login with auto-provisioning for first-time users" })
   @ApiResponse({ status: 201, description: "SSO token exchanged; returns accessToken, refreshToken, and user (same envelope as /auth/login)." })
   @ApiResponse({ status: 401, description: "Microsoft identity token is invalid or expired." })
   @ApiResponse({ status: 403, description: "Account exists but is deactivated, or no lowest-privilege role is configured for auto-provisioning." })
+  @ApiResponse(THROTTLED_RESPONSE)
   loginWithSso(@Body() dto: SsoLoginDto) {
     return this.authService.loginWithSso(dto);
   }
 
   @Post("refresh")
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: authThrottleRefreshLimit, ttl: authThrottleTtlMs } })
   @ApiOperation({ summary: "Refresh access and refresh tokens" })
   @ApiResponse({ status: 201, description: "Refresh access and refresh tokens." })
+  @ApiResponse(THROTTLED_RESPONSE)
   refresh(@Body() dto: RefreshTokenDto) {
     return this.authService.refresh(dto);
   }
 
   @Post("reset-password")
+  @UseGuards(ThrottlerGuard)
   @ApiOperation({
     summary:
       "Set a new password using the short-lived tempToken returned by /auth/login when requiresPasswordReset is true."
@@ -52,6 +70,7 @@ export class AuthController {
   @ApiResponse({ status: 201, description: "Password updated; returns normal accessToken + refreshToken envelope." })
   @ApiResponse({ status: 400, description: "Password reset is not required for this account." })
   @ApiResponse({ status: 401, description: "Reset token is invalid or has expired." })
+  @ApiResponse(THROTTLED_RESPONSE)
   resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto);
   }

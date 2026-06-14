@@ -1,4 +1,5 @@
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { TOOLTIP_CONTENT_STYLE, TOOLTIP_ITEM_STYLE, TOOLTIP_LABEL_STYLE } from "./chartTooltipStyle";
 
 type LinePoint = { label: string; value: number };
 
@@ -53,13 +54,9 @@ export function LineChartWidget({ title, data, color, unit, yAxisFormatter, tool
                       ? `${value} ${unit}`
                       : String(value)
                 }
-                contentStyle={{
-                  background: "var(--surface-tooltip, #111827)",
-                  color: "var(--text-on-dark, #ffffff)",
-                  borderRadius: 6,
-                  border: "none",
-                  fontSize: 12
-                }}
+                contentStyle={TOOLTIP_CONTENT_STYLE}
+                labelStyle={TOOLTIP_LABEL_STYLE}
+                itemStyle={TOOLTIP_ITEM_STYLE}
               />
               <Line type="monotone" dataKey="value" stroke={stroke} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
             </LineChart>

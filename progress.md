@@ -7756,6 +7756,49 @@ with normalised categories.
 
 Status: OPENED (awaiting review by GH-Mantova)
 
+## 2026-06-12 — UX bundle OPENED (fix/ux-bundle-404-empty-states-tooltips)
+
+[Fix/§1 UX] UX bundle — 404 page, empty states, tooltip contrast, plus
+two re-verified legacy dashboard findings (reconciliation backlog
+pr-94, pr-131, pr-132, pr-76, pr-95, pr-97).
+
+- **Explicit 404 page (pr-94)** — `apps/web/src/pages/NotFoundPage.tsx`
+  replaces the silent `*` → `/` redirect in App.tsx. Empty-state
+  pattern (404 glyph, heading, unmatched path echo, 44px
+  Back-to-dashboard CTA on `--brand-primary`).
+- **ArchivePage empty state (pr-131)** — shared `EmptyState` with two
+  branches: "Nothing archived yet" + Go to Jobs CTA (unfiltered) vs
+  "No archive entries match your current filters" + Clear filters CTA.
+- **CompliancePage empty state (pr-132)** — "All current" success
+  state (empty = good, no CTA) vs filter-empty with Show all CTA that
+  resets type/entity/show-expired.
+- **Chart tooltip contrast (pr-76)** — canonical tooltip style
+  constants in `packages/ui/src/charts/chartTooltipStyle.ts`
+  (re-exported from `@project-ops/ui`): `--surface-card` background,
+  `--text-primary` text, `--border-default` border, `--radius-md`.
+  Applied to BarChartWidget, LineChartWidget, DonutChartWidget and the
+  two Recharts tooltips in `dashboards/widgets/tendering.tsx`
+  (WinRateChart, PipelineByEstimatorDonut). Kills the dark-on-dark
+  `--surface-tooltip` box; series colour stays on the legend swatch.
+- **pr-95 re-verification (REAL, fixed)** — the fixed 12-15 char cut
+  predating dashboard-v2 is gone, but at 1024px the tendering widget
+  rows still squeeze titles to ~3 chars. Fixed per the original hard
+  rule: `title=` hover reveal on row title + meta in Due this week,
+  Follow-up queue, Recent wins.
+- **pr-97 re-verification (REAL, fixed)** — collision re-manifested in
+  dashboard-v2: the absolutely-positioned slot chrome (period pill +
+  settings/drag) sat at 0.5 opacity over KPI labels and panel titles
+  at ≤1024px. Fixed in styles.css: chrome opacity 0 until
+  hover/focus-within (same affordance as resize handles).
+
+Roadmap: three PHASE-6 deferred items flipped to ✅ (404 page, KPI
+collision, tender title truncation).
+
+Browser smoke at 1024×800: 404 page, archive + compliance empty
+states (both branches), donut tooltip dark-on-white, chrome no longer
+overlapping KPI labels.
+
+Status: OPENED (awaiting review by GH-Mantova)
 ## 2026-06-12 — feat/prod-seed-split OPENED (G3 — production seed split + real-user provisioning)
 
 Detail: Seed split into composable layers per pilot blocker G3

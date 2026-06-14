@@ -1,4 +1,5 @@
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
+import { TOOLTIP_CONTENT_STYLE, TOOLTIP_ITEM_STYLE, TOOLTIP_LABEL_STYLE } from "./chartTooltipStyle";
 
 type DonutSlice = { label: string; value: number; color?: string };
 
@@ -66,13 +67,9 @@ export function DonutChartWidget({ title, data }: DonutChartWidgetProps) {
               </Pie>
               <Tooltip
                 formatter={(value) => String(value)}
-                contentStyle={{
-                  background: "var(--surface-tooltip, #111827)",
-                  color: "var(--text-on-dark, #ffffff)",
-                  borderRadius: 6,
-                  border: "none",
-                  fontSize: 12
-                }}
+                contentStyle={TOOLTIP_CONTENT_STYLE}
+                labelStyle={TOOLTIP_LABEL_STYLE}
+                itemStyle={TOOLTIP_ITEM_STYLE}
               />
               <Legend
                 verticalAlign="bottom"

@@ -5,6 +5,7 @@ import { runDraftPurgeJob } from "./drafts";
 import { LoginPage } from "./pages/LoginPage";
 import { ShellLayout } from "./components/ShellLayout";
 import { DashboardPlaceholderPage } from "./pages/DashboardPlaceholderPage";
+import { NotFoundPage } from "./pages/NotFoundPage";
 import { UsersPage } from "./pages/UsersPage";
 import { RolesPage } from "./pages/RolesPage";
 import { PermissionsPage } from "./pages/PermissionsPage";
@@ -231,7 +232,7 @@ export function App() {
             <Route path="/archive/:jobId" element={<ArchiveDetailPage />} />
           </Route>
         </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </PortalAuthProvider>
     </AuthProvider>

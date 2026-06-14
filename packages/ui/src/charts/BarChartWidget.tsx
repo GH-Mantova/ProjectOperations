@@ -1,4 +1,5 @@
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { TOOLTIP_CONTENT_STYLE, TOOLTIP_ITEM_STYLE, TOOLTIP_LABEL_STYLE } from "./chartTooltipStyle";
 
 type BarPoint = { label: string; value: number };
 
@@ -55,13 +56,9 @@ export function BarChartWidget({ title, data, color, unit, yAxisFormatter, toolt
                       ? `${value} ${unit}`
                       : String(value)
                 }
-                contentStyle={{
-                  background: "var(--surface-tooltip, #111827)",
-                  color: "var(--text-on-dark, #ffffff)",
-                  borderRadius: 6,
-                  border: "none",
-                  fontSize: 12
-                }}
+                contentStyle={TOOLTIP_CONTENT_STYLE}
+                labelStyle={TOOLTIP_LABEL_STYLE}
+                itemStyle={TOOLTIP_ITEM_STYLE}
               />
               <Bar dataKey="value" fill={fill} radius={[4, 4, 0, 0]} />
             </BarChart>

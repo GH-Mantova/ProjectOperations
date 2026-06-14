@@ -1207,7 +1207,9 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
      whether pnpm dev:api should set up proper signal handling, or
      whether the run script should use a process manager that
      propagates SIGTERM correctly.)
-⏸️  Replace catch-all redirect with explicit 404 page in App.tsx
+✅  Replace catch-all redirect with explicit 404 page in App.tsx
+    — closed by the UX bundle PR, 2026-06-12. NotFoundPage renders the
+    unmatched path with a Back-to-dashboard CTA.
     (App.tsx currently has <Route path="*" element={<Navigate to="/"
      replace />} /> which silently bounces unknown URLs to operations
      overview. Better: render a proper "Page not found" component
@@ -1289,7 +1291,12 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     mention remains in tender-scope-drafting.service.ts:20 as the
     historical audit trail.
 
-⏸️  Dashboard KPI card title/period-selector layout collision (CRITICAL)
+✅  Dashboard KPI card title/period-selector layout collision (CRITICAL)
+    — closed by the UX bundle PR, 2026-06-12. Re-verified post
+    dashboard-v2: still real — the absolutely-positioned slot chrome
+    (period pill + settings/drag icons) sat at 0.5 opacity on top of
+    KPI labels and panel titles at ≤1024px. Fixed by hiding the chrome
+    until hover/focus-within (same affordance as the resize handles).
     (Chat1 dashboard screenshot batch 2026-05-03 — visible overlap
      at narrow viewports.)
 
@@ -1297,7 +1304,13 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     (Chat1 dashboard 2026-05-03 — two patterns coexist; pick one
      and migrate.)
 
-⏸️  Tender title truncation in dashboard lists (~12-15 char ellipsis)
+✅  Tender title truncation in dashboard lists (~12-15 char ellipsis)
+    — closed by the UX bundle PR, 2026-06-12. Re-verified post
+    dashboard-v2: the fixed 12-15 char cut is gone (flexible CSS
+    ellipsis with min-width:0), but narrow slots at ≤1024px still
+    squeeze titles to a few characters. Fixed per the hard rule: every
+    truncated row title/meta in the tendering widgets (Due this week,
+    Follow-up queue, Recent wins) now carries title= hover reveal.
     (Chat1 dashboard 2026-05-03 — truncation point too aggressive.)
 
 ⏸️  Scheduler week view weekend clipping at narrow viewports

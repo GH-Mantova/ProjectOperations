@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { EmptyState } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { COMPLIANCE_BADGE_TOOLTIP, countComplianceAlerts } from "./complianceCounts";
 
@@ -225,7 +226,34 @@ export function CompliancePage() {
       {loading ? (
         <p style={{ color: "var(--text-muted)" }}>Loading…</p>
       ) : filteredRows.length === 0 ? (
-        <p style={{ color: "var(--text-muted)" }}>No items match the current filters.</p>
+        allRows.length === 0 ? (
+          // Empty = good here: nothing is expiring or at risk in the window.
+          <EmptyState
+            icon="✅"
+            heading="All current"
+            subtext="No licences, insurances, or qualifications need attention. Items will appear here as their expiry approaches."
+          />
+        ) : (
+          <EmptyState
+            icon="🛡️"
+            heading="No items match your current filter"
+            subtext="Widen the type or entity filter, or include expired items, to see everything in the look-ahead window."
+            action={
+              <button
+                type="button"
+                className="s7-btn s7-btn--secondary"
+                style={{ minHeight: 44 }}
+                onClick={() => {
+                  setTypeFilter("all");
+                  setEntityFilter("all");
+                  setShowExpired(true);
+                }}
+              >
+                Show all
+              </button>
+            }
+          />
+        )
       ) : (
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>

@@ -74,7 +74,7 @@ Result: watcher had already paused safely (LL-13) — no damage, but the run was
 **LL-18 | 2026-06-11 | `pnpm test:canonical` picks up untracked specs on a WIP branch.**
 Standing guard: scope with `--testPathPattern` when verifying a specific PR's specs.
 
-**LL-19 | 2026-06-11 | Reviewer context staleness: #348 status table outdated; #350 review hardcoded a wrong future PR number (open one-line fix in `.claude/agents/pr-fix-reviewer.md` line ~89: "As of PR #352" → "#350"); #351 review misattributed the originating prompt from an open IDE file.**
+**LL-19 | 2026-06-11 | Reviewer context staleness: #348 status table outdated; #350 review hardcoded a wrong future PR number (one-line fix in `.claude/agents/pr-fix-reviewer.md` line ~89: "As of PR #352" → "#350" — RESOLVED, line now reads #350 on main); #351 review misattributed the originating prompt from an open IDE file.**
 Standing guard: treat reviewer narrative context (status tables, cross-PR claims) as advisory; only its evidence-backed findings on THE PR under review are the verdict. Fold the line-89 fix into the next tooling PR.
 
 ## Prompt-writing lessons (for PR prompt authors)
@@ -109,12 +109,22 @@ Root cause: async `requestAnimationFrame` focus delay created a focus-steal wind
 **LL-29 | 2026-06-12 | Turn-capped agent left a live migration applied to the dev DB with all code uncommitted.**
 pr-172 v1 died at max-turns AFTER applying its number-format migration to the shared dev DB (seed tenders renumbered) but BEFORE any commit — leaving DB and code in different universes. Discovered and repaired by the pr-180 agent mid-job (migration inverted per LL-07 playbook, sources stashed as `palette-deflake pre-flight 2026-06-12`, reseeded). Standing guards: (1) heavy prompts use checkpoint commits, and migrations are COMMITTED before being APPLIED (172a pattern); (2) after any max-turns/killed run, check `prisma migrate status` + `git status` before assuming a clean environment; (3) "stale watcher" calls have now been wrong three times (LL-25 ×3) — agents doing repair/composition are disk- and CPU-invisible; the only reliable signals are per-command timeouts, self-pause escalations, and completed-work artifacts. Patience beats process tables.
 
+**LL-30 | 2026-06-12 | Agent scope contamination — three variants in one day.**
+Variant A (PR #373): stash-harvest applied stashes created on an older main → dragged a stale `package.json`/`pnpm-lock.yaml` into the branch → unexplained react-router-dom downgrade. Variant B (PR #375): new e2e test asserted tender `IS-T005`, which existed only in the agent's local DB (live-smoke residue), not in the canonical seed → CI-only failure. Variant C (PR #380): broad `git add` swept five untracked operational docs belonging to another PR into the commit. Standing guards (now standard in every prompt): stage by explicit path, never `git add -A`; paste `git diff origin/main --name-only` in the PR body with every file accounted for; run a fresh `pnpm seed` before local e2e verification; stash-salvage prompts must diff dependency manifests against main and restore them before committing.
+
+## Build / deploy
+
+**LL-31 | 2026-06-12 | pnpm version double-pin breaks every pinning workflow (PR #380).**
+Adding `"packageManager"` to package.json while `pnpm/action-setup` steps still pin `version:` makes the action fail at setup ("Multiple versions of pnpm specified") in EVERY workflow that pins. Fix: remove the `version:` keys. Standing guard: `packageManager` in package.json is the single source of truth; no `version:` keys in any `pnpm/action-setup` block; pnpm version bumps must be justified in the PR body.
+
+**LL-32 | 2026-06-12 | Azure Postgres DSN host must be the FQDN (first deploy).**
+`prisma migrate deploy` failed P1001 because the connection string used the resource/short name (`projectoperations-prod`) as host. Root cause: Flexible Server hosts are always `<server-name>.postgres.database.azure.com`, and `?sslmode=require` is mandatory. Symptom signature in CI: P1001 "Can't reach database server" failing at ~1s. Related signature: App Service shows `Application Error` and Log stream shows MODULE_NOT_FOUND = non-self-contained pnpm artifact (workspace deps missing — fixed by PR #380's self-contained bundle). Standing guard: prod `DATABASE_URL` host is the FQDN with `?sslmode=require`; a ~1s P1001 in CI means a malformed DSN, not a network outage.
+
 ---
 
 ## Open items (check before starting related work)
 
 - LL-11 deploy.yml failing on every main push — diagnosed 2026-06-12 (secrets-in-if validation failure); fix PR open from `fix/deploy-workflow`, close this item when merged + next main push shows no phantom run.
-- LL-19 one-line factual fix in pr-fix-reviewer.md.
 - LL-07 parked decision: disposable DB for smoke runs vs CP-G5 post-smoke check.
 - F2-02 documents access-rule test — `test.todo` marker in CP-18 spec (parked by Marco).
 - Offline/PWA e2e items — candidate batch 9 (skipped in batch 7 by design).

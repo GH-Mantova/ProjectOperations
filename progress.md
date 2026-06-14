@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-06-12 08:53 AEST
+Last updated: 2026-06-12 11:47 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -7782,3 +7782,32 @@ scratch schema, counts stable, zero demo rows, guard).
 Verification: CP-08 4/4 (seed ×2 idempotent, seed:prod ×2 idempotent on
 scratch schema `cp08_seed_prod_scratch`, dev DB untouched), build, lint,
 test:api:serial, canonical, compliance:smoke — all green.
+
+## 2026-06-12 — feat/auth-rate-limit OPENED (auth hardening — rate-limit login + uniform auth errors)
+
+Detail: Pilot-exposure hardening for the staff auth endpoints.
+@nestjs/throttler 6.5.0 applied per-route (NOT global) to
+login/entra/sso/reset-password (default 5/min/IP) and refresh (own
+bucket, 30/min/IP). Limits env-driven at request time
+(AUTH_THROTTLE_TTL seconds, AUTH_THROTTLE_LIMIT,
+AUTH_THROTTLE_REFRESH_LIMIT) — production = defaults, CI/e2e lifted
+to 1000 in playwright.yml. 429 returns the house error shape via the
+existing ApiExceptionFilter plus Retry-After. Tracker keys on first
+X-Forwarded-For hop (same resolution as PortalRateLimitGuard) so the
+Azure front end doesn't collapse all users into one bucket.
+LocalAuthProvider made timing-equivalent: unknown email / inactive /
+SSO-only (no usable hash) / wrong password all run exactly one scrypt
+verify (fallback hash when needed) and return the identical
+"Invalid credentials." — no user enumeration for pr-173's SSO-only
+users. Swagger 429 responses on all throttled routes.
+
+Files: apps/api/src/modules/auth/auth-throttle.config.ts (new),
+auth-throttle.spec.ts (new), local-auth.provider.spec.ts (new),
+auth.controller.ts, auth.module.ts, local-auth.provider.ts,
+apps/api/package.json + pnpm-lock.yaml (throttler dep), .env.example,
+.github/workflows/playwright.yml (CI throttle exemption), progress.md.
+
+Verification: build, lint, test:api:serial (1751 passed),
+compliance:smoke, pr-acceptance e2e chromium serial with CI env
+values; live proof against dist server — 5×401 then 429 +
+Retry-After on /auth/login, refresh bucket independent (401 not 429).

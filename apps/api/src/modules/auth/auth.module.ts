@@ -1,7 +1,14 @@
 import { Module } from "@nestjs/common";
 import { JwtModule } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
+import { ThrottlerModule } from "@nestjs/throttler";
 import { AuditModule } from "../audit/audit.module";
+import {
+  AUTH_THROTTLE_ERROR_MESSAGE,
+  authThrottleLoginLimit,
+  authThrottleTracker,
+  authThrottleTtlMs
+} from "./auth-throttle.config";
 import { PasswordService } from "../../common/security/password.service";
 import { UsersModule } from "../users/users.module";
 import { AuthProviderService } from "./auth-provider.service";
@@ -18,6 +25,11 @@ import { LocalAuthProvider } from "./local-auth.provider";
       useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>("auth.accessSecret", "replace-me-access")
       })
+    }),
+    ThrottlerModule.forRoot({
+      throttlers: [{ ttl: authThrottleTtlMs, limit: authThrottleLoginLimit }],
+      errorMessage: AUTH_THROTTLE_ERROR_MESSAGE,
+      getTracker: (req) => authThrottleTracker(req)
     }),
     UsersModule,
     AuditModule

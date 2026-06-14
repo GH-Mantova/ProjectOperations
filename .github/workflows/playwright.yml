@@ -38,6 +38,10 @@ jobs:
       JWT_REFRESH_SECRET: replace-me-refresh
       JWT_ACCESS_TTL: 15m
       JWT_REFRESH_TTL: 7d
+      # E2E suites log in many times per minute from one IP — lift the auth
+      # throttle far above the production defaults (5 login / 30 refresh per min).
+      AUTH_THROTTLE_LIMIT: 1000
+      AUTH_THROTTLE_REFRESH_LIMIT: 1000
       SHAREPOINT_MODE: mock
       SHAREPOINT_SITE_ID: project-operations-site
       SHAREPOINT_LIBRARY_ID: project-operations-library

@@ -132,24 +132,40 @@ test.describe("Batch 6 — Projects + Jobs (PRs #17, #39, #40, #242, #250, #267,
     }
 
     // Toggle one activity's completion and cycle it back to its original
-    // status (NOT_STARTED → IN_PROGRESS → COMPLETE → NOT_STARTED).
+    // status (NOT_STARTED → IN_PROGRESS → COMPLETE → NOT_STARTED). The toggle
+    // is optimistic but the test waits for each PATCH response to land before
+    // reading the next aria-label snapshot — otherwise a fast second click can
+    // race the first request's confirmation and the loop captures stale state.
     await page.getByRole("tab", { name: /^Stages & Activities/ }).click();
     let toggle = page.getByRole("button", { name: /^Toggle activity status/ }).first();
     if ((await toggle.count()) === 0 || !(await toggle.isVisible())) {
       await page.getByRole("button", { expanded: false }).first().click();
       toggle = page.getByRole("button", { name: /^Toggle activity status/ }).first();
     }
+    await expect(toggle).toBeVisible({ timeout: 10_000 });
+    await expect(toggle).toBeEnabled();
+    const TOGGLE_TIMEOUT = 15_000;
+    const isActivityPatch = (r: import("@playwright/test").Response) =>
+      /\/jobs\/[^/]+\/activities\/[^/]+/.test(r.url()) && r.request().method() === "PATCH";
+
+    const clickAndAwaitPatch = async () => {
+      const responsePromise = page.waitForResponse(isActivityPatch, { timeout: TOGGLE_TIMEOUT });
+      await toggle.click();
+      const response = await responsePromise;
+      expect(response.ok()).toBe(true);
+    };
+
     const original = (await toggle.getAttribute("aria-label")) ?? "";
-    await toggle.click();
-    await expect(toggle).not.toHaveAttribute("aria-label", original);
+    await clickAndAwaitPatch();
+    await expect(toggle).not.toHaveAttribute("aria-label", original, { timeout: TOGGLE_TIMEOUT });
     // Cycle back to the original status (at most two more advances).
     for (let i = 0; i < 2; i += 1) {
       const current = (await toggle.getAttribute("aria-label")) ?? "";
       if (current === original) break;
-      await toggle.click();
-      await expect(toggle).not.toHaveAttribute("aria-label", current);
+      await clickAndAwaitPatch();
+      await expect(toggle).not.toHaveAttribute("aria-label", current, { timeout: TOGGLE_TIMEOUT });
     }
-    await expect(toggle).toHaveAttribute("aria-label", original);
+    await expect(toggle).toHaveAttribute("aria-label", original, { timeout: TOGGLE_TIMEOUT });
   });
 
   test("convert button hidden at AWARDED, visible at CONTRACT_ISSUED — where the API refuses it (PR #242, drift)", async ({

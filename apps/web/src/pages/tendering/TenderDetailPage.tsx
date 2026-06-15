@@ -5,6 +5,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { QuoteTab } from "./QuoteTab";
 import { AddClientModal } from "./AddClientModal";
 import { TenderDocumentsPanel } from "./TenderDocumentsPanel";
+import { CorrespondencePanel } from "../../components/correspondence/CorrespondencePanel";
 import { TenderEntriesPanel } from "./TenderEntriesPanel";
 import { TeamEstimatorPanel } from "./TeamEstimatorPanel";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
@@ -616,6 +617,10 @@ export function TenderDetailPage() {
                 onDocumentsChanged={() => void reload()}
                 canManage={canManageTenders}
               />
+            </section>
+
+            <section className="s7-card">
+              <CorrespondencePanel ownerKind="tender" ownerId={tender.id} />
             </section>
 
             {estimateSummary && estimateSummary.estimateId ? (

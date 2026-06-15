@@ -89,6 +89,7 @@ model User {
   createdQuotes              ClientQuote[]             @relation("QuoteCreatedBy")
   sentQuotes                 ClientQuote[]             @relation("QuoteSentBy")
   sentQuoteEmails            QuoteEmail[]              @relation("QuoteEmailSentBy")
+  sentCorrespondence         CorrespondenceMessage[]   @relation("CorrespondenceSentBy")
   tenderFilterPresets        TenderFilterPreset[]
   scopeWasteItemsCreated     ScopeWasteItem[]          @relation("ScopeWasteItemCreatedBy")
   scopeCardsCreated          ScopeCard[]               @relation("ScopeCardCreatedBy")
@@ -468,6 +469,7 @@ model Client {
   portalUsers         ClientPortalUser[]
   portalInvites       PortalInvite[]
   clarificationNotes  TenderClarificationNote[] @relation("ClientTenderClarificationNotes")
+  correspondences     CorrespondenceThread[]    @relation("ClientCorrespondence")
 
   @@unique([name])
   @@index([status])
@@ -746,6 +748,7 @@ model Tender {
   wasteItems         ScopeWasteItem[]
   safetyIncidents    SafetyIncident[]
   hazardObservations HazardObservation[]
+  correspondences    CorrespondenceThread[]    @relation("TenderCorrespondence")
 
   @@index([status])
   @@index([estimatorUserId])
@@ -923,6 +926,7 @@ model Job {
   statusHistory    JobStatusHistory[]
   formSubmissions  FormSubmission[]
   closeout         JobCloseout?
+  correspondences  CorrespondenceThread[] @relation("JobCorrespondence")
 
   @@index([clientId])
   @@index([status])
@@ -3623,3 +3627,63 @@ model ConversationMessage {
   @@index([conversationId, createdAt])
   @@map("conversation_messages")
 }
+
+// ─── Correspondence Hub (PR #215) ────────────────────────────────────────────
+// Email threads attached to records (clients, tenders, jobs). Mock-mode first;
+// live Microsoft Graph adapter is a follow-up (requires Mail.Read scopes).
+
+model CorrespondenceThread {
+  id           String  @id @default(cuid())
+  // Polymorphic owner: exactly one of clientId/tenderId/jobId is set.
+  clientId     String? @map("client_id")
+  tenderId     String? @map("tender_id")
+  jobId        String? @map("job_id")
+  subject      String
+  // Stable token embedded in outbound subjects (e.g. "[ref:abc123]") so
+  // inbound replies can be matched back to the originating thread even when
+  // the user's mail client strips/changes other headers.
+  referenceKey String  @unique @map("reference_key")
+  // Convenience denorm: address(es) initially seeded with the thread for
+  // recipient lookup when the thread is created against a non-user address.
+  participants String[] @default([])
+  lastMessageAt DateTime @default(now()) @map("last_message_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  client   Client?  @relation("ClientCorrespondence", fields: [clientId], references: [id], onDelete: Cascade)
+  tender   Tender?  @relation("TenderCorrespondence", fields: [tenderId], references: [id], onDelete: Cascade)
+  job      Job?     @relation("JobCorrespondence", fields: [jobId], references: [id], onDelete: Cascade)
+  messages CorrespondenceMessage[]
+
+  @@index([clientId])
+  @@index([tenderId])
+  @@index([jobId])
+  @@index([lastMessageAt])
+  @@map("correspondence_threads")
+}
+
+model CorrespondenceMessage {
+  id          String   @id @default(cuid())
+  threadId    String   @map("thread_id")
+  direction   String   // "outbound" | "inbound"
+  fromAddress String   @map("from_address")
+  toAddresses String[] @map("to_addresses")
+  ccAddresses String[] @default([]) @map("cc_addresses")
+  subject     String
+  bodyText    String   @map("body_text")
+  bodyHtml    String?  @map("body_html")
+  // Provider message id (mock generates a stable cuid; live Graph supplies its
+  // immutable id) — used for de-duplication when inbound mail is re-polled.
+  externalId  String?  @unique @map("external_id")
+  sentAt      DateTime? @map("sent_at")
+  receivedAt  DateTime? @map("received_at")
+  sentById    String?   @map("sent_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  thread CorrespondenceThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  sentBy User?                @relation("CorrespondenceSentBy", fields: [sentById], references: [id], onDelete: SetNull)
+
+  @@index([threadId, createdAt])
+  @@map("correspondence_messages")
+}
+

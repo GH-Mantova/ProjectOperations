@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { ErrorBoundary } from "../../components/ErrorBoundary";
+import { CorrespondencePanel } from "../../components/correspondence/CorrespondencePanel";
 
 type JobActivity = {
   id: string;
@@ -629,6 +630,12 @@ export function JobDetailPage() {
         </section>
         </ErrorBoundary>
       ) : null}
+
+      <ErrorBoundary sectionName="Correspondence">
+        <section className="s7-card">
+          <CorrespondencePanel ownerKind="job" ownerId={job.id} />
+        </section>
+      </ErrorBoundary>
     </div>
   );
 }

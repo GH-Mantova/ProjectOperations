@@ -1,5 +1,6 @@
 import { CenteredModal } from "@project-ops/ui";
 import { ClientStarRating } from "../../components/ClientStarRating";
+import { CorrespondencePanel } from "../../components/correspondence/CorrespondencePanel";
 
 export type ActivityClient = {
   tenderClientId: string;
@@ -137,6 +138,10 @@ export function ClientDetailDrawer({
             </button>
           </div>
         ) : null}
+
+        <div style={{ borderTop: "1px solid var(--surface-border, #e5e5e5)", paddingTop: 12 }}>
+          <CorrespondencePanel ownerKind="client" ownerId={client.clientId} />
+        </div>
       </div>
     </CenteredModal>
   );

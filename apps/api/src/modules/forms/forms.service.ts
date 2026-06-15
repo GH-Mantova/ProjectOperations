@@ -24,7 +24,15 @@ const templateInclude = {
 const submissionInclude = {
   templateVersion: {
     include: {
-      template: true
+      template: true,
+      sections: {
+        orderBy: { sectionOrder: "asc" },
+        include: {
+          fields: {
+            orderBy: { fieldOrder: "asc" }
+          }
+        }
+      }
     }
   },
   job: true,

@@ -221,9 +221,9 @@ function SsoButton({ onError, onStart, onEnd, disabled, pending }: SsoButtonProp
     try {
       // Use redirect (not popup) — on Static Web Apps the popup→opener token
       // handoff hangs with BrowserAuthError: timed_out. The response is
-      // picked up by SsoRedirectHandler via instance.handleRedirectPromise()
-      // when the user returns to the app. We don't call onEnd() here because
-      // loginRedirect navigates away and never resolves on this page.
+      // consumed in main.tsx via consumeSsoRedirect() BEFORE React renders,
+      // so the returning user lands authenticated. We don't call onEnd() here
+      // because loginRedirect navigates away and never resolves on this page.
       await instance.loginRedirect(loginRequest);
     } catch (err) {
       onError((err as Error).message || "Microsoft sign-in failed.");

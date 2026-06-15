@@ -183,6 +183,29 @@ export function DashboardCanvas({
     updateConfig(next);
   };
 
+  // Apply filters + fields in a single merged write. Two separate updates would
+  // race the React 18 batch on a stale closure of `active.config` and lose the
+  // first write — see PR #391 widget-settings stale-closure bug.
+  const applyWidgetSettings = (
+    widgetId: string,
+    payload: { filters?: WidgetFilters; fields?: string[] }
+  ) => {
+    if (!active) return;
+    const next: UserDashboardConfig = {
+      ...active.config,
+      widgets: active.config.widgets.map((w) => {
+        if (w.id !== widgetId) return w;
+        const mergedConfig: WidgetSubConfig = {
+          ...w.config,
+          ...(payload.filters !== undefined ? { filters: payload.filters } : {}),
+          ...(payload.fields !== undefined ? { fields: payload.fields } : {})
+        };
+        return { ...w, config: mergedConfig };
+      })
+    };
+    updateConfig(next);
+  };
+
   const updateWidgetSpan = (widgetId: string, colSpan: number, rowSpan: number) => {
     if (!active) return;
     const next: UserDashboardConfig = {
@@ -303,12 +326,7 @@ export function DashboardCanvas({
                     }
                     onCloseSettings={() => setOpenSettingsId(null)}
                     onConfigChange={(nextSub) => updateWidgetConfig(entry.id, nextSub)}
-                    onFiltersChange={(nextFilters) =>
-                      updateWidgetConfig(entry.id, { ...entry.config, filters: nextFilters })
-                    }
-                    onFieldsChange={(fields) =>
-                      updateWidgetConfig(entry.id, { ...entry.config, fields })
-                    }
+                    onApplySettings={(payload) => applyWidgetSettings(entry.id, payload)}
                     onResize={(colSpan, rowSpan) => updateWidgetSpan(entry.id, colSpan, rowSpan)}
                   />
                 );
@@ -339,8 +357,7 @@ function SortableWidget({
   onOpenSettings,
   onCloseSettings,
   onConfigChange,
-  onFiltersChange,
-  onFieldsChange,
+  onApplySettings,
   onResize
 }: {
   entry: WidgetConfigEntry;
@@ -350,8 +367,7 @@ function SortableWidget({
   onOpenSettings: () => void;
   onCloseSettings: () => void;
   onConfigChange: (next: WidgetSubConfig) => void;
-  onFiltersChange: (next: WidgetFilters) => void;
-  onFieldsChange: (fields: string[]) => void;
+  onApplySettings: (payload: { filters?: WidgetFilters; fields?: string[] }) => void;
   onResize: (colSpan: number, rowSpan: number) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({
@@ -481,8 +497,7 @@ function SortableWidget({
         <WidgetSettingsPopover
           meta={meta}
           entry={entry}
-          onApplyFilters={(nextFilters) => onFiltersChange(nextFilters)}
-          onApplyFields={(fields) => onFieldsChange(fields)}
+          onApply={onApplySettings}
           onClose={onCloseSettings}
         />
       ) : null}

@@ -13,18 +13,11 @@
  * #43 | Set ten_active_pipeline_kpi aggregation to Max      | CONVERT → "active pipeline KPI aggregation"
  * #33 | ⚙ on Pipeline-by-estimator → uncheck                | CONVERT → "pipeline-by-estimator filter"
  * #33 | ⚙ on Win-rate chart → period changes title          | CONVERT → "win-rate chart period title"
- * #33 | ⚙ on Follow-up queue → set thresholds               | still-SKIP — PRODUCT BUG: Apply on widgets
- *     |                                                     | with both configSchema and fieldSchema drops
- *     |                                                     | the filter changes (stale-closure last-writer-
- *     |                                                     | wins in DashboardCanvas onApplyFilters/
- *     |                                                     | onApplyFields); found by this batch's first
- *     |                                                     | run; see docs/pr-prompts/needs-marco/
- *     |                                                     | pr-batch9a-widget-settings-stale-closure.md.
- *     |                                                     | Column-toggle half CONVERTed →
- *     |                                                     | "follow-up queue column toggle"
- * #33 | ⚙ on Recent wins → 30 days / maxRows trim           | still-SKIP — same stale-closure bug (Recent
- *     |                                                     | wins also carries fieldSchema). Column-toggle
- *     |                                                     | half CONVERTed → "recent wins column toggle"
+ * #33 | ⚙ on Follow-up queue → set thresholds               | CONVERT → "follow-up queue thresholds + column"
+ *     |                                                     | (fixed by [Fix/§12] stale-closure merge — both
+ *     |                                                     | filter + field write in one merged update).
+ * #33 | ⚙ on Recent wins → 30 days / maxRows trim           | CONVERT → "recent wins period/maxRows + column"
+ *     |                                                     | (same fix — single merged onApply payload).
  * #32 | Widget row: click period pill → Last 12 months      | CONVERT → "customise period pill"
  * #7b | FormFillPage wizard inputs (batch 7 follow-up)      | still-SKIP — page crashes before any
  *     |                                                     | field renders: GET /forms/submissions/:id
@@ -114,38 +107,50 @@ test.describe("Batch 9a — testid-enabled widget settings & period pills (PRs #
     await expect(widget.getByText("Win rate — last 6 months")).toBeVisible();
   });
 
-  // NOTE: the thresholds half of PR #33's follow-up-queue item is still-SKIP —
-  // Apply drops filter changes on widgets that also carry a fieldSchema (see
-  // the triage table / needs-marco escalation). Column toggles DO persist.
-  test("follow-up queue: ⚙ estimator column toggle persists (PRs #33, #43)", async ({ page }) => {
+  // Regression for the stale-closure last-writer-wins bug — Apply now merges
+  // filter + field changes in a single write, so both halves persist after one
+  // Apply click and survive a reload.
+  test("follow-up queue: ⚙ days threshold + estimator column toggle both persist in one Apply (PRs #33, #43)", async ({ page }) => {
     await openTenderDashboard(page);
     const widget = widgetCard(page, "ten-follow-up-queue");
     await expect(widget).toBeVisible();
 
     let popover = await openSettings(page, widget);
-    // The thresholds inputs are at least reachable and editable in the draft.
-    await popover.getByTestId("widget-setting-days-threshold").fill("1");
-    await expect(popover.getByTestId("widget-setting-days-threshold")).toHaveValue("1");
+    const thresholdInput = popover.getByTestId("widget-setting-days-threshold");
+    const initialThreshold = (await thresholdInput.inputValue()) || "0";
+    await thresholdInput.fill("1");
 
-    // Estimator column defaults to hidden — switch it on. Self-heal first in
-    // case a previously failed run left it visible.
     const estimatorToggle = popover.getByTestId("widget-field-toggle-estimator");
     if ((await estimatorToggle.getAttribute("aria-checked")) === "true") {
       await estimatorToggle.click();
     }
     await expect(estimatorToggle).toHaveAttribute("aria-checked", "false");
     await estimatorToggle.click();
+
+    // Single Apply click — both filter and field must persist together.
     await applyAndSave(page, popover);
 
-    // Persisted: reopening shows the toggled column.
     popover = await openSettings(page, widget);
+    await expect(popover.getByTestId("widget-setting-days-threshold")).toHaveValue("1");
     await expect(popover.getByTestId("widget-field-toggle-estimator")).toHaveAttribute(
       "aria-checked",
       "true"
     );
 
-    // Revert to the registry default (estimator hidden).
+    // Survives a full reload (config persisted server-side, not just in memory).
+    await page.keyboard.press("Escape").catch(() => {});
+    await page.reload();
+    await page.waitForLoadState("networkidle");
+    popover = await openSettings(page, widget);
+    await expect(popover.getByTestId("widget-setting-days-threshold")).toHaveValue("1");
+    await expect(popover.getByTestId("widget-field-toggle-estimator")).toHaveAttribute(
+      "aria-checked",
+      "true"
+    );
+
+    // Revert to registry defaults (estimator hidden, threshold to its initial value).
     await popover.getByTestId("widget-field-toggle-estimator").click();
+    await popover.getByTestId("widget-setting-days-threshold").fill(initialThreshold);
     await applyAndSave(page, popover);
   });
 
@@ -179,39 +184,44 @@ test.describe("Batch 9a — testid-enabled widget settings & period pills (PRs #
     await expect(popover.getByRole("checkbox").first()).not.toBeChecked();
   });
 
-  // NOTE: the "30 days / maxRows trim" half of PR #33's recent-wins item is
-  // still-SKIP — same stale-closure Apply bug (Recent wins carries a
-  // fieldSchema too). Column toggles DO persist.
-  test("recent wins: ⚙ tender-number column toggle persists (PR #33)", async ({ page }) => {
+  // Regression for the stale-closure Apply bug — period + maxRows changes AND
+  // a field toggle all land in a single merged write.
+  test("recent wins: ⚙ period + maxRows + tender-number column toggle all persist in one Apply (PR #33)", async ({ page }) => {
     await openTenderDashboard(page);
     const widget = widgetCard(page, "ten-recent-wins");
     await expect(widget).toBeVisible();
 
     let popover = await openSettings(page, widget);
-    // Period / max-rows inputs are reachable and editable in the draft.
-    await popover.getByTestId("widget-setting-period").selectOption("30d");
-    await popover.getByTestId("widget-setting-max-rows").fill("1");
-    await expect(popover.getByTestId("widget-setting-max-rows")).toHaveValue("1");
+    const periodSelect = popover.getByTestId("widget-setting-period");
+    const maxRowsInput = popover.getByTestId("widget-setting-max-rows");
+    const initialPeriod = await periodSelect.inputValue();
+    const initialMaxRows = (await maxRowsInput.inputValue()) || "5";
 
-    // Tender # column defaults to hidden — switch it on. Self-heal first in
-    // case a previously failed run left it visible.
+    await periodSelect.selectOption("30d");
+    await maxRowsInput.fill("1");
+
     const tenderNumberToggle = popover.getByTestId("widget-field-toggle-tender-number");
     if ((await tenderNumberToggle.getAttribute("aria-checked")) === "true") {
       await tenderNumberToggle.click();
     }
     await expect(tenderNumberToggle).toHaveAttribute("aria-checked", "false");
     await tenderNumberToggle.click();
+
+    // Single Apply — filters (period/maxRows) AND fields (column toggle) survive.
     await applyAndSave(page, popover);
 
-    // Persisted: reopening shows the toggled column.
     popover = await openSettings(page, widget);
+    await expect(popover.getByTestId("widget-setting-period")).toHaveValue("30d");
+    await expect(popover.getByTestId("widget-setting-max-rows")).toHaveValue("1");
     await expect(popover.getByTestId("widget-field-toggle-tender-number")).toHaveAttribute(
       "aria-checked",
       "true"
     );
 
-    // Revert to the registry default (tender # hidden).
+    // Revert to registry defaults.
     await popover.getByTestId("widget-field-toggle-tender-number").click();
+    await popover.getByTestId("widget-setting-period").selectOption(initialPeriod || "7d");
+    await popover.getByTestId("widget-setting-max-rows").fill(initialMaxRows);
     await applyAndSave(page, popover);
   });
 

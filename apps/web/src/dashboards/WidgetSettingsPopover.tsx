@@ -19,15 +19,19 @@ import { useAuth } from "../auth/AuthContext";
 import { resolveVisibleFields } from "./types";
 import type { ConfigField, WidgetConfigEntry, WidgetFilters, WidgetMeta } from "./types";
 
+type ApplyPayload = {
+  filters?: WidgetFilters;
+  fields?: string[];
+};
+
 type Props = {
   meta: WidgetMeta;
   entry: WidgetConfigEntry;
-  onApplyFilters: (next: WidgetFilters) => void;
-  onApplyFields: (fields: string[]) => void;
+  onApply: (next: ApplyPayload) => void;
   onClose: () => void;
 };
 
-export function WidgetSettingsPopover({ meta, entry, onApplyFilters, onApplyFields, onClose }: Props) {
+export function WidgetSettingsPopover({ meta, entry, onApply, onClose }: Props) {
   const [draftFilters, setDraftFilters] = useState<WidgetFilters>(entry.config.filters ?? {});
   const [draftFields, setDraftFields] = useState<string[]>(() => resolveVisibleFields(meta, entry));
   const ref = useRef<HTMLDivElement | null>(null);
@@ -74,8 +78,10 @@ export function WidgetSettingsPopover({ meta, entry, onApplyFilters, onApplyFiel
   };
 
   const apply = () => {
-    if (schema.length > 0) onApplyFilters(draftFilters);
-    if (hasFieldSchema) onApplyFields(draftFields);
+    const payload: ApplyPayload = {};
+    if (schema.length > 0) payload.filters = draftFilters;
+    if (hasFieldSchema) payload.fields = draftFields;
+    onApply(payload);
     onClose();
   };
 

@@ -1,8 +1,6 @@
 import { useEffect, type ReactElement } from "react";
 import { Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
-import { SsoRedirectHandler } from "./auth/SsoRedirectHandler";
-import { isSsoEnabled } from "./auth/msal.config";
 import { runDraftPurgeJob } from "./drafts";
 import { LoginPage } from "./pages/LoginPage";
 import { ShellLayout } from "./components/ShellLayout";
@@ -125,7 +123,6 @@ export function App() {
   return (
     <AuthProvider>
       <DraftPurgeRunner />
-      {isSsoEnabled ? <SsoRedirectHandler /> : null}
       {/* PR F FIX 1 — OfflineProvider scoped to /field/* only. Desktop and
           portal routes are online-only, so they don't need the IndexedDB
           outbox / online-state listeners running for every navigation. */}

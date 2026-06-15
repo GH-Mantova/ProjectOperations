@@ -6,6 +6,7 @@ import { PublicClientApplication } from "@azure/msal-browser";
 import { MsalProvider } from "@azure/msal-react";
 import { registerSW } from "virtual:pwa-register";
 import { App } from "./App";
+import { consumeSsoRedirect } from "./auth/consumeSsoRedirect";
 import { isSsoEnabled, msalConfig } from "./auth/msal.config";
 import "./styles/tokens.css";
 import "./styles.css";
@@ -42,6 +43,18 @@ const tree = (
   </React.StrictMode>
 );
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  msalInstance ? <MsalProvider instance={msalInstance}>{tree}</MsalProvider> : tree
-);
+// Process any pending MSAL redirect BEFORE we render. Otherwise the router
+// renders first, the protected route sees `isAuthenticated === false`, and
+// navigates to /login — clearing the auth response from the URL before
+// MSAL can consume it. consumeSsoRedirect seeds localStorage so AuthContext
+// reads an authenticated state on its very first render.
+async function bootstrap() {
+  if (msalInstance) {
+    await consumeSsoRedirect(msalInstance);
+  }
+  ReactDOM.createRoot(document.getElementById("root")!).render(
+    msalInstance ? <MsalProvider instance={msalInstance}>{tree}</MsalProvider> : tree
+  );
+}
+
+void bootstrap();

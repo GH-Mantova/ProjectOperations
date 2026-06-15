@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useMsal } from "@azure/msal-react";
 import { useAuth } from "../auth/AuthContext";
@@ -12,35 +12,12 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [ssoSubmitting, setSsoSubmitting] = useState(false);
-  const [silentSsoPending, setSilentSsoPending] = useState(isSsoEnabled && !isAuthenticated);
   const [resetMode, setResetMode] = useState<{ tempToken: string } | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
   if (isAuthenticated) {
     return <Navigate to="/" replace />;
-  }
-
-  if (silentSsoPending && isSsoEnabled) {
-    return (
-      <>
-        <SilentSsoRunner
-          onSuccess={loginWithSso}
-          onSettled={() => setSilentSsoPending(false)}
-        />
-        <div className="login-page">
-          <div className="login-card" role="main" aria-busy="true">
-            <div className="login-card__brand">
-              <span className="login-card__logo" aria-hidden>PO</span>
-              <div>
-                <h1 className="login-card__title">Project Ops</h1>
-                <p className="login-card__subtitle">Signing you in…</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </>
-    );
   }
 
   const submit = async (event: React.FormEvent) => {
@@ -224,43 +201,6 @@ export function LoginPage() {
       </div>
     </div>
   );
-}
-
-type SilentSsoRunnerProps = {
-  onSuccess: (idToken: string) => Promise<void>;
-  onSettled: () => void;
-};
-
-function SilentSsoRunner({ onSuccess, onSettled }: SilentSsoRunnerProps) {
-  const { instance } = useMsal();
-  const attempted = useRef(false);
-
-  useEffect(() => {
-    if (attempted.current) return;
-    attempted.current = true;
-    let cancelled = false;
-    (async () => {
-      try {
-        const result = await instance.ssoSilent(loginRequest);
-        if (cancelled) return;
-        if (!result.idToken) {
-          throw new Error("ssoSilent returned no ID token");
-        }
-        await onSuccess(result.idToken);
-      } catch (err) {
-        if (import.meta.env.DEV) {
-          console.debug("[sso] silent sign-in skipped", err);
-        }
-      } finally {
-        if (!cancelled) onSettled();
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [instance, onSuccess, onSettled]);
-
-  return null;
 }
 
 type SsoButtonProps = {

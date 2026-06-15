@@ -122,7 +122,7 @@ jobs:
           exit 1
       - name: Deploy web to Static Web Apps
         id: swa-deploy
-        uses: Azure/static-web-apps-deploy@v1
+        uses: Azure/static-web-apps-deploy@4d27395796ac319302594769cfe812bd207490b1  # commit dated 2024-09-11 "Update action.yml (#27)"; pinned off floating @v1 — see PR body
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_TOKEN }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}

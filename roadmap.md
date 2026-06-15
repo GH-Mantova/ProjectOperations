@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-06-12 08:53 AEST
+Last updated: 2026-06-14 22:13 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -383,17 +383,19 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     reorder endpoint; cross-discipline drag is rejected at drop time.
     Flat-mode reorder unchanged.)
 
-🔧 System-wide CenteredModal migration
+✅ System-wide CenteredModal migration
    — First module (Tender delete-confirm) ✅ PR #299 (2026-06-02).
-   — Wider sweep across 24 modals ✅ PR #300 (2026-06-03); remaining
-     modals (continuation) 🔲 PR-62 follow-up.
+   — Wider sweep across 24 modals ✅ PR #300 (2026-06-03); continuation
+     sweep ✅ PR #313 (2026-06-05).
 
-🔲 Tender Detail: Team panel rebuilt + Activity client-filter sidebar + Client Detail drawer (PR-63 queued)
-   Team panel → single "Assigned estimator" dropdown; Activity panel →
-   client-filter sidebar with stars / PRIMARY / info-icon; new Client
-   Detail side-drawer surfaced from both panels.
+✅ Tender Detail: Team panel rebuilt + Activity client-filter sidebar + Client Detail drawer
+   Backend ✅ PR #303 (2026-06-03 — PR-63a). Frontend ✅ PR #365
+   (2026-06-12 — Team-as-estimator panel, activity client filter,
+   Client Detail drawer).
 
-🔧 Tender SharePoint folder auto-creation + 11 canonical document categories (PR-64 OPENED 2026-06-03 — feat/tender-folders-and-document-categories)
+✅ Estimator dropdown 400 (whitelist role on users list + substring match) — PR #375 (2026-06-12).
+
+✅ Tender SharePoint folder auto-creation + 11 canonical document categories — PR #304 (2026-06-03 — feat/tender-folders-and-document-categories)
    On tender create, ensure-folder at
    `Documents/1. Operations/1. Tenders/{tenderNumber}/` plus 11 sub-folders
    (Tender Documents / Drawings / Specifications / Bill of Quantities /
@@ -461,6 +463,10 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
 
 🔲 Tendering module signed off by Raj + Sean
    → Gate: nothing in Phase 6+ starts until this sign-off is received
+   → 5A.3 workflow-review gate status (2026-06-15): supporting components
+     shipped (Team-as-estimator #365, SharePoint folder + categories #304,
+     estimator dropdown fix #375, CenteredModal sweep #300/#313).
+     Awaiting Raj's live sign-off during the pilot walkthrough.
 
 ---
 
@@ -1712,6 +1718,36 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
 ---
 
 ## CHANGELOG
+
+### 2026-06-15 — Reconciliation with main (PRs #301–#392)
+Roadmap status reconciled with `git log origin/main` after the weekend
+pilot push. Items flipped to ✅ (see body of roadmap for the in-place
+edits):
+
+- §5A.3 tendering components: Team-as-estimator panel (#365), SharePoint
+  folder auto-create + 11 canonical categories (#304), estimator dropdown
+  400 fix (#375), CenteredModal sweep (#300 + continuation #313).
+- Phase 5 canonical + e2e test programme: canonical suites and Phase 5
+  batches 2–9 e2e (#346–#364, #372, #389, #391, #392).
+- Pilot G-series: G3 production seed split + SSO-only real-user
+  provisioning (#383); G4 directory create fix (#371); G11 deploy
+  hardening — self-contained API artifact (#380) + post-deploy health
+  gates / on:push re-enable (#384); health endpoint enrichment with DB
+  reachability + version stamp (#387); auth hardening — rate-limit on
+  login + uniform auth errors (#388).
+- Platform: M365 SSO exposure (#365 + Entra app registration completed
+  this session); tender/job number formats T{YYMMDD}-{SLUG}-Rev{N} /
+  J{YYMMDD}-{SLUG}-{NNN} (#373); UX bundle — 404 page, empty states,
+  tooltip contrast + two re-verified dashboard fixes (#385); JSDoc sweep
+  across 12 remaining modules (#376); Swagger / DTO burn-down + audit
+  sweep (#353, #390); PR-watcher v2 — deps, auto-update-branch, policy
+  auto-merge, quarantine (#382); seed safety-sequence floor fix (#368);
+  react-router security bump (#367).
+
+Phase 7 and Phase 8 items remain OPEN — not touched by this
+reconciliation. §5C Forms Engine UI remains deferred/open. The §5A.3
+workflow-review gate is recorded as "components shipped; awaiting Raj's
+live sign-off during pilot" against the Tendering sign-off line above.
 
 ### 2026-06-03 — Documentation sync (PR-65)
 Captures the late-day 2026-06-02 work that PR #295's catch-up did not

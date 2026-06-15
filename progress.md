@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-06-12 11:47 AEST
+Last updated: 2026-06-14 22:13 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -7854,3 +7854,566 @@ Verification: build, lint, test:api:serial (1751 passed),
 compliance:smoke, pr-acceptance e2e chromium serial with CI env
 values; live proof against dist server — 5×401 then 429 +
 Retry-After on /auth/login, refresh bucket independent (401 not 429).
+
+
+## 2026-06-15 — Catch-up: PRs #301–#392 reconciled
+
+Auto-generated from `git log origin/main` to close the gap between the
+last hand-written entry (PR #300) and current HEAD. Each entry uses the
+squash-merge subject verbatim as the detail. Hand-written OPENED notes
+above (e.g. PRs #383, #385, #388) are preserved; the MERGED entries
+below record their final landing on `main` alongside every other PR in
+the range.
+
+## 2026-06-03 — PR #302 MERGED
+GitHub PR: #302 (https://github.com/GH-Mantova/ProjectOperations/pull/302)
+Type: PR
+Detail: [Docs] Documentation sync — PRs #286-#299 + in-flight + future commitments
+Status: MERGED
+
+## 2026-06-03 — PR #301 MERGED
+GitHub PR: #301 (https://github.com/GH-Mantova/ProjectOperations/pull/301)
+Type: PR
+Detail: [§2] Admin reset password — complete (UI + integration tests + audit verification)
+Status: MERGED
+
+## 2026-06-03 — PR #303 MERGED
+GitHub PR: #303 (https://github.com/GH-Mantova/ProjectOperations/pull/303)
+Type: PR
+Detail: [§5A.3] Team-as-estimator + client-filtered activity — backend (PR-63a)
+Status: MERGED
+
+## 2026-06-05 — PR #312 MERGED
+GitHub PR: #312 (https://github.com/GH-Mantova/ProjectOperations/pull/312)
+Type: PR
+Detail: [Perf] Vite manualChunks — code-split web bundle
+Status: MERGED
+
+## 2026-06-05 — PR #311 MERGED
+GitHub PR: #311 (https://github.com/GH-Mantova/ProjectOperations/pull/311)
+Type: PR
+Detail: [Test] Unit tests for SchedulerService (mock-based)
+Status: MERGED
+
+## 2026-06-08 — PR #332 MERGED
+GitHub PR: #332 (https://github.com/GH-Mantova/ProjectOperations/pull/332)
+Type: PR
+Detail: [Chore] VS Code workspace config — .vscode/ folder for tasks, debug, extensions, settings
+Status: MERGED
+
+## 2026-06-08 — PR #331 MERGED
+GitHub PR: #331 (https://github.com/GH-Mantova/ProjectOperations/pull/331)
+Type: PR
+Detail: [Test] Unit tests for ResourcesService (mock-based)
+Status: MERGED
+
+## 2026-06-08 — PR #305 MERGED
+GitHub PR: #305 (https://github.com/GH-Mantova/ProjectOperations/pull/305)
+Type: PR
+Detail: [Dev tooling] PR watcher hardening: rescan + DEP0190 + zombie guard
+Status: MERGED
+
+## 2026-06-08 — PR #306 MERGED
+GitHub PR: #306 (https://github.com/GH-Mantova/ProjectOperations/pull/306)
+Type: PR
+Detail: [CI] deploy.yml: kill cosmetic phantom failures on non-main pushes
+Status: MERGED
+
+## 2026-06-08 — PR #307 MERGED
+GitHub PR: #307 (https://github.com/GH-Mantova/ProjectOperations/pull/307)
+Type: PR
+Detail: [CI] Bump actions to Node 24-compatible versions (2026-06-16 deadline)
+Status: MERGED
+
+## 2026-06-09 — PR #308 MERGED
+GitHub PR: #308 (https://github.com/GH-Mantova/ProjectOperations/pull/308)
+Type: PR
+Detail: [Docs] Swagger decorators on JobsController
+Status: MERGED
+
+## 2026-06-09 — PR #309 MERGED
+GitHub PR: #309 (https://github.com/GH-Mantova/ProjectOperations/pull/309)
+Type: PR
+Detail: [Docs] JSDoc on public exports in jobs module
+Status: MERGED
+
+## 2026-06-09 — PR #316 MERGED
+GitHub PR: #316 (https://github.com/GH-Mantova/ProjectOperations/pull/316)
+Type: PR
+Detail: [Docs] JSDoc on archive module public exports
+Status: MERGED
+
+## 2026-06-09 — PR #317 MERGED
+GitHub PR: #317 (https://github.com/GH-Mantova/ProjectOperations/pull/317)
+Type: PR
+Detail: [Docs] JSDoc on maintenance module public exports
+Status: MERGED
+
+## 2026-06-09 — PR #318 MERGED
+GitHub PR: #318 (https://github.com/GH-Mantova/ProjectOperations/pull/318)
+Type: PR
+Detail: [Docs] Swagger decorators on ContractsController
+Status: MERGED
+
+## 2026-06-09 — PR #319 MERGED
+GitHub PR: #319 (https://github.com/GH-Mantova/ProjectOperations/pull/319)
+Type: PR
+Detail: [Docs] Swagger decorators on ContactsController
+Status: MERGED
+
+## 2026-06-09 — PR #320 MERGED
+GitHub PR: #320 (https://github.com/GH-Mantova/ProjectOperations/pull/320)
+Type: PR
+Detail: [Docs] JSDoc on safety module public exports
+Status: MERGED
+
+## 2026-06-09 — PR #321 MERGED
+GitHub PR: #321 (https://github.com/GH-Mantova/ProjectOperations/pull/321)
+Type: PR
+Detail: [Docs] JSDoc on compliance module public exports
+Status: MERGED
+
+## 2026-06-09 — PR #324 MERGED
+GitHub PR: #324 (https://github.com/GH-Mantova/ProjectOperations/pull/324)
+Type: PR
+Detail: [Docs] JSDoc on projects module public exports
+Status: MERGED
+
+## 2026-06-09 — PR #325 MERGED
+GitHub PR: #325 (https://github.com/GH-Mantova/ProjectOperations/pull/325)
+Type: PR
+Detail: [Docs] JSDoc on allocations module public exports
+Status: MERGED
+
+## 2026-06-09 — PR #310 MERGED
+GitHub PR: #310 (https://github.com/GH-Mantova/ProjectOperations/pull/310)
+Type: PR
+Detail: [Test] Unit tests for JobsService (mock-based)
+Status: MERGED
+
+## 2026-06-09 — PR #314 MERGED
+GitHub PR: #314 (https://github.com/GH-Mantova/ProjectOperations/pull/314)
+Type: PR
+Detail: [Test] Unit tests for PermissionsService (mock-based)
+Status: MERGED
+
+## 2026-06-09 — PR #315 MERGED
+GitHub PR: #315 (https://github.com/GH-Mantova/ProjectOperations/pull/315)
+Type: PR
+Detail: [Test] Unit tests for EstimatesService (mock-based)
+Status: MERGED
+
+## 2026-06-09 — PR #322 MERGED
+GitHub PR: #322 (https://github.com/GH-Mantova/ProjectOperations/pull/322)
+Type: PR
+Detail: [Test] Unit tests for AllocationsService (mock-based) — gap fill
+Status: MERGED
+
+## 2026-06-09 — PR #323 MERGED
+GitHub PR: #323 (https://github.com/GH-Mantova/ProjectOperations/pull/323)
+Type: PR
+Detail: [Test] Unit tests for ArchiveService (mock-based)
+Status: MERGED
+
+## 2026-06-09 — PR #326 MERGED
+GitHub PR: #326 (https://github.com/GH-Mantova/ProjectOperations/pull/326)
+Type: PR
+Detail: [Test] Unit tests for AvailabilityService (mock-based)
+Status: MERGED
+
+## 2026-06-09 — PR #328 MERGED
+GitHub PR: #328 (https://github.com/GH-Mantova/ProjectOperations/pull/328)
+Type: PR
+Detail: [Test] Unit tests for DirectoryService (mock-based)
+Status: MERGED
+
+## 2026-06-09 — PR #313 MERGED
+GitHub PR: #313 (https://github.com/GH-Mantova/ProjectOperations/pull/313)
+Type: PR
+Detail: [§5A.3 UX] CenteredModal sweep continuation — 2 modals
+Status: MERGED
+
+## 2026-06-09 — PR #327 MERGED
+GitHub PR: #327 (https://github.com/GH-Mantova/ProjectOperations/pull/327)
+Type: PR
+Detail: [UX] Empty state on JobsPage
+Status: MERGED
+
+## 2026-06-09 — PR #304 MERGED
+GitHub PR: #304 (https://github.com/GH-Mantova/ProjectOperations/pull/304)
+Type: PR
+Detail: [§3/§5A.3] Auto-create tender SharePoint folders + canonical document categories
+Status: MERGED
+
+## 2026-06-09 — PR #329 MERGED
+GitHub PR: #329 (https://github.com/GH-Mantova/ProjectOperations/pull/329)
+Type: PR
+Detail: [Test] Unit tests for MasterDataService (mock-based)
+Status: MERGED
+
+## 2026-06-09 — PR #330 MERGED
+GitHub PR: #330 (https://github.com/GH-Mantova/ProjectOperations/pull/330)
+Type: PR
+Detail: [Test] Unit tests for AssetsService (mock-based)
+Status: MERGED
+
+## 2026-06-09 — PR #333 MERGED
+GitHub PR: #333 (https://github.com/GH-Mantova/ProjectOperations/pull/333)
+Type: PR
+Detail: [Chore/§5] Delete superseded tender_entries.client_id draft + close F0-01
+Status: MERGED
+
+## 2026-06-09 — PR #334 MERGED
+GitHub PR: #334 (https://github.com/GH-Mantova/ProjectOperations/pull/334)
+Type: PR
+Detail: docs(sanity-check): commit 2026-06-09 sanity-check folder to version control
+Status: MERGED
+
+## 2026-06-09 — PR #335 MERGED
+GitHub PR: #335 (https://github.com/GH-Mantova/ProjectOperations/pull/335)
+Type: PR
+Detail: [Fix/§4 UX] Tooltip on truncated client-contacts email column
+Status: MERGED
+
+## 2026-06-09 — PR #336 MERGED
+GitHub PR: #336 (https://github.com/GH-Mantova/ProjectOperations/pull/336)
+Type: PR
+Detail: [Docs/§5] Module-reference Tendering reconciliation (sanity-check F1B-01)
+Status: MERGED
+
+## 2026-06-09 — PR #337 MERGED
+GitHub PR: #337 (https://github.com/GH-Mantova/ProjectOperations/pull/337)
+Type: PR
+Detail: [Fix/§4 UX] /master-data?tab=workers redirects to /resources (sanity-check F1A-02)
+Status: MERGED
+
+## 2026-06-09 — PR #338 MERGED
+GitHub PR: #338 (https://github.com/GH-Mantova/ProjectOperations/pull/338)
+Type: PR
+Detail: [Fix/§X3 UX] Field/Mobile 403 -> styled empty state (sanity-check F3-01)
+Status: MERGED
+
+## 2026-06-09 — PR #339 MERGED
+GitHub PR: #339 (https://github.com/GH-Mantova/ProjectOperations/pull/339)
+Type: PR
+Detail: [Fix/§8] Seed produces canonical J-YYYY-NNN Job IDs only (sanity-check F1E-01)
+Status: MERGED
+
+## 2026-06-09 — PR #340 MERGED
+GitHub PR: #340 (https://github.com/GH-Mantova/ProjectOperations/pull/340)
+Type: PR
+Detail: [Fix/§13 UX] Compliance sidebar badge count matches page default (sanity-check F3-02)
+Status: MERGED
+
+## 2026-06-09 — PR #341 MERGED
+GitHub PR: #341 (https://github.com/GH-Mantova/ProjectOperations/pull/341)
+Type: PR
+Detail: [Fix/§14 UX] Documents context rail shows parent record code/name (sanity-check F3-03)
+Status: MERGED
+
+## 2026-06-10 — PR #342 MERGED
+GitHub PR: #342 (https://github.com/GH-Mantova/ProjectOperations/pull/342)
+Type: PR
+Detail: [Feat/§4 API] DELETE /master-data/sites/:id endpoint (sanity-check F1A-01 split 1/3)
+Status: MERGED
+
+## 2026-06-10 — PR #343 MERGED
+GitHub PR: #343 (https://github.com/GH-Mantova/ProjectOperations/pull/343)
+Type: PR
+Detail: [Feat/§4+§14 API] Site documents rollup endpoint (sanity-check F1A-01 split 2/3)
+Status: MERGED
+
+## 2026-06-10 — PR #344 MERGED
+GitHub PR: #344 (https://github.com/GH-Mantova/ProjectOperations/pull/344)
+Type: PR
+Detail: [Feat/§4 UX] Sites detail tabs + KPI + Delete (sanity-check F1A-01 split 3/3)
+Status: MERGED
+
+## 2026-06-10 — PR #345 MERGED
+GitHub PR: #345 (https://github.com/GH-Mantova/ProjectOperations/pull/345)
+Type: PR
+Detail: [Fix/§4 API] deleteSite guards against linked FormSubmissions (closes F2-01)
+Status: MERGED
+
+## 2026-06-10 — PR #346 MERGED
+GitHub PR: #346 (https://github.com/GH-Mantova/ProjectOperations/pull/346)
+Type: PR
+Detail: [Chore/§1] Canonical tests foundation batch — Phase 3a (CP-G1, CP-G2, CP-07, CP-G5)
+Status: MERGED
+
+## 2026-06-10 — PR #347 MERGED
+GitHub PR: #347 (https://github.com/GH-Mantova/ProjectOperations/pull/347)
+Type: PR
+Detail: [Chore/§1] Canonical tests batch B — Phase 3b (CP-01, CP-21, CP-G4)
+Status: MERGED
+
+## 2026-06-10 — PR #348 MERGED
+GitHub PR: #348 (https://github.com/GH-Mantova/ProjectOperations/pull/348)
+Type: PR
+Detail: [Chore/§1+§2] Canonical tests batch C — Phase 3c (CP-08 + PR diff gates CP-09–13, CP-17)
+Status: MERGED
+
+## 2026-06-10 — PR #349 MERGED
+GitHub PR: #349 (https://github.com/GH-Mantova/ProjectOperations/pull/349)
+Type: PR
+Detail: [Feat/§X3] PR-watcher auto-review — poll GitHub, enqueue pr-fix-reviewer runs
+Status: MERGED
+
+## 2026-06-10 — PR #350 MERGED
+GitHub PR: #350 (https://github.com/GH-Mantova/ProjectOperations/pull/350)
+Type: PR
+Detail: [Chore/§2] Gates hardening + reviewer CI-failure protocol (PR #348 lessons)
+Status: MERGED
+
+## 2026-06-10 — PR #351 MERGED
+GitHub PR: #351 (https://github.com/GH-Mantova/ProjectOperations/pull/351)
+Type: PR
+Detail: [Fix/§X3] Watcher auto-merge defaults OFF — opt-in only (PR #350 incident)
+Status: MERGED
+
+## 2026-06-10 — PR #352 MERGED
+GitHub PR: #352 (https://github.com/GH-Mantova/ProjectOperations/pull/352)
+Type: PR
+Detail: [Chore/§1+§8] Canonical tests Phase 4 — viewer seed user + CP-18 permission 403s
+Status: MERGED
+
+## 2026-06-10 — PR #353 MERGED
+GitHub PR: #353 (https://github.com/GH-Mantova/ProjectOperations/pull/353)
+Type: PR
+Detail: [Chore/§1] Swagger decorator burn-down — CP-01 KNOWN_GAPS 94 → 0
+Status: MERGED
+
+## 2026-06-10 — PR #354 MERGED
+GitHub PR: #354 (https://github.com/GH-Mantova/ProjectOperations/pull/354)
+Type: PR
+Detail: [Fix/§1] tsconfig modernisation — NodeNext (api) + Bundler (web), drop baseUrl
+Status: MERGED
+
+## 2026-06-11 — PR #355 MERGED
+GitHub PR: #355 (https://github.com/GH-Mantova/ProjectOperations/pull/355)
+Type: PR
+Detail: [Fix/§X3] Watcher QoL — rev- prefix + review-priority queue
+Status: MERGED
+
+## 2026-06-11 — PR #356 MERGED
+GitHub PR: #356 (https://github.com/GH-Mantova/ProjectOperations/pull/356)
+Type: PR
+Detail: [Test/§1+§2+§15] Phase 5 batch 1 — foundation (auth, shell, dashboards)
+Status: MERGED
+
+## 2026-06-11 — PR #357 MERGED
+GitHub PR: #357 (https://github.com/GH-Mantova/ProjectOperations/pull/357)
+Type: PR
+Detail: [Test/§5] Phase 5 batch 2 — tendering pipeline + register (14 converted / 8 covered / 18 skipped)
+Status: MERGED
+
+## 2026-06-11 — PR #358 MERGED
+GitHub PR: #358 (https://github.com/GH-Mantova/ProjectOperations/pull/358)
+Type: PR
+Detail: [Test/§5] Phase 5 batch 3 — Scope of Works (19 converted / 2 covered / 25 skipped)
+Status: MERGED
+
+## 2026-06-11 — PR #359 MERGED
+GitHub PR: #359 (https://github.com/GH-Mantova/ProjectOperations/pull/359)
+Type: PR
+Detail: [Test/§5+§6] Phase 5 batch 4 — quotes + tender documents (18 converted / 2 covered / 14 skipped)
+Status: MERGED
+
+## 2026-06-11 — PR #360 MERGED
+GitHub PR: #360 (https://github.com/GH-Mantova/ProjectOperations/pull/360)
+Type: PR
+Detail: [Test/SS4] Phase 5 batch 5 - master data + directory (17 converted / 23 covered / 20 skipped)
+Status: MERGED
+
+## 2026-06-11 — PR #361 MERGED
+GitHub PR: #361 (https://github.com/GH-Mantova/ProjectOperations/pull/361)
+Type: PR
+Detail: [Test/S7+S8+S9] Phase 5 batch 6 - delivery (17 converted / 0 covered / 0 skipped)
+Status: MERGED
+
+## 2026-06-11 — PR #362 MERGED
+GitHub PR: #362 (https://github.com/GH-Mantova/ProjectOperations/pull/362)
+Type: PR
+Detail: [Test/§10+§13+§X3] Phase 5 batch 7 — field + safety + compliance (15 converted / 8 covered / 15 skipped)
+Status: MERGED
+
+## 2026-06-11 — PR #363 MERGED
+GitHub PR: #363 (https://github.com/GH-Mantova/ProjectOperations/pull/363)
+Type: PR
+Detail: [Chore/§2+§X3] Hygiene — CP-22 verification gate, prune task, ledger pointer, reviewer fix
+Status: MERGED
+
+## 2026-06-12 — PR #364 MERGED
+GitHub PR: #364 (https://github.com/GH-Mantova/ProjectOperations/pull/364)
+Type: PR
+Detail: [Test/§14+§15+§16] Phase 5 batch 8 — long-tail sweep (23 converted / 3 covered / 14 skipped)
+Status: MERGED
+
+## 2026-06-12 — PR #366 MERGED
+GitHub PR: #366 (https://github.com/GH-Mantova/ProjectOperations/pull/366)
+Type: PR
+Detail: [Fix/S2] deploy.yml: remove secrets context from step-level if (LL-11 root cause)
+Status: MERGED
+
+## 2026-06-12 — PR #369 MERGED
+GitHub PR: #369 (https://github.com/GH-Mantova/ProjectOperations/pull/369)
+Type: PR
+Detail: [Fix/§5 UX] Labour-rate inline-edit focus-steal routed input to wrong field (LL-27)
+Status: MERGED
+
+## 2026-06-12 — PR #365 MERGED
+GitHub PR: #365 (https://github.com/GH-Mantova/ProjectOperations/pull/365)
+Type: PR
+Detail: [Feat/§5A.3] Team-as-estimator + client-filtered activity — frontend (PR-63b)
+Status: MERGED
+
+## 2026-06-12 — PR #371 MERGED
+GitHub PR: #371 (https://github.com/GH-Mantova/ProjectOperations/pull/371)
+Type: PR
+Detail: [Fix/§4] Directory "+ New entry" 400/500 — default prequalStatus + categories on create (pilot G4)
+Status: MERGED
+
+## 2026-06-12 — PR #372 MERGED
+GitHub PR: #372 (https://github.com/GH-Mantova/ProjectOperations/pull/372)
+Type: PR
+Detail: [Test/§1] De-flake Ctrl+K palette test — assert durable empty-query states, not transient hint copy
+Status: MERGED
+
+## 2026-06-12 — PR #367 MERGED
+GitHub PR: #367 (https://github.com/GH-Mantova/ProjectOperations/pull/367)
+Type: PR
+Detail: [Chore/§1] Bump react-router-dom 7.13.2 -> 7.15.0 — clears Dependabot alerts #34-#37
+Status: MERGED
+
+## 2026-06-12 — PR #368 MERGED
+GitHub PR: #368 (https://github.com/GH-Mantova/ProjectOperations/pull/368)
+Type: PR
+Detail: [Fix/§8+§13] Seed safety-sequence floor — never reset below issued numbers (LL-26)
+Status: MERGED
+
+## 2026-06-12 — PR #370 MERGED
+GitHub PR: #370 (https://github.com/GH-Mantova/ProjectOperations/pull/370)
+Type: PR
+Detail: [Fix/§X3] Tooling nits — prune task PS 5.1 + gone-upstream sweep, watcher limit pattern (LL-28)
+Status: MERGED
+
+## 2026-06-12 — PR #373 MERGED
+GitHub PR: #373 (https://github.com/GH-Mantova/ProjectOperations/pull/373)
+Type: PR
+Detail: [Feat/§5+§8] Tender & job number formats — T{YYMMDD}-{SLUG}-Rev{N} / J{YYMMDD}-{SLUG}-{NNN} spec (pr-77)
+Status: MERGED
+
+## 2026-06-12 — PR #374 MERGED
+GitHub PR: #374 (https://github.com/GH-Mantova/ProjectOperations/pull/374)
+Type: PR
+Detail: [Feat/§X3] Watcher mirrors review verdicts into PR comments (remote-ops enabler)
+Status: MERGED
+
+## 2026-06-12 — PR #377 MERGED
+GitHub PR: #377 (https://github.com/GH-Mantova/ProjectOperations/pull/377)
+Type: PR
+Detail: [Test/§5+§7] Unit tests batch 1 — commercial services (Quote, Contracts, TenderClients, TenderClarifications, TenderDocuments top-up)
+Status: MERGED
+
+## 2026-06-12 — PR #378 MERGED
+GitHub PR: #378 (https://github.com/GH-Mantova/ProjectOperations/pull/378)
+Type: PR
+Detail: [Fix/SX3] dev-start.bat - loud not-on-main banner + schema drift advisory
+Status: MERGED
+
+## 2026-06-12 — PR #379 MERGED
+GitHub PR: #379 (https://github.com/GH-Mantova/ProjectOperations/pull/379)
+Type: PR
+Detail: [Docs] Commit operational docs - incident ledger, runbooks, strategies, reconciliation
+Status: MERGED
+
+## 2026-06-12 — PR #376 MERGED
+GitHub PR: #376 (https://github.com/GH-Mantova/ProjectOperations/pull/376)
+Type: PR
+Detail: [Chore/§1] JSDoc sweep — 12 remaining modules (forms, scheduler, tendering, estimates, audit, users, roles, permissions, assets, resources, contracts, workers)
+Status: MERGED
+
+## 2026-06-12 — PR #375 MERGED
+GitHub PR: #375 (https://github.com/GH-Mantova/ProjectOperations/pull/375)
+Type: PR
+Detail: [Fix/§5A.3] Estimator dropdown 400 — whitelist role on users list query + substring role match
+Status: MERGED
+
+## 2026-06-12 — PR #380 MERGED
+GitHub PR: #380 (https://github.com/GH-Mantova/ProjectOperations/pull/380)
+Type: PR
+Detail: [Fix/§2] Deploy a self-contained API artifact — pnpm workspace deps missing on App Service (G11)
+Status: MERGED
+
+## 2026-06-12 — PR #381 MERGED
+GitHub PR: #381 (https://github.com/GH-Mantova/ProjectOperations/pull/381)
+Type: PR
+Detail: [Test/S2+S13] Unit tests batch 2 - platform services + web syncManager
+Status: MERGED
+
+## 2026-06-12 — PR #382 MERGED
+GitHub PR: #382 (https://github.com/GH-Mantova/ProjectOperations/pull/382)
+Type: PR
+Detail: [Tooling] PR-watcher v2 — deps, auto-update-branch, policy auto-merge, quarantine
+Status: MERGED
+
+## 2026-06-12 — PR #383 MERGED
+GitHub PR: #383 (https://github.com/GH-Mantova/ProjectOperations/pull/383)
+Type: PR
+Detail: [Feat/§1+§2+§8] Production seed split + SSO-only real-user provisioning (G3)
+Status: MERGED
+
+## 2026-06-15 — PR #387 MERGED
+GitHub PR: #387 (https://github.com/GH-Mantova/ProjectOperations/pull/387)
+Type: PR
+Detail: [Feat/§2] Health endpoint enrichment — DB reachability + version stamp
+Status: MERGED
+
+## 2026-06-15 — PR #388 MERGED
+GitHub PR: #388 (https://github.com/GH-Mantova/ProjectOperations/pull/388)
+Type: PR
+Detail: [Feat/§2] Auth hardening — rate-limit login + uniform auth errors (pilot exposure)
+Status: MERGED
+
+## 2026-06-15 — PR #386 MERGED
+GitHub PR: #386 (https://github.com/GH-Mantova/ProjectOperations/pull/386)
+Type: PR
+Detail: [Docs] Incident ledger — LL-30 scope contamination, LL-31 pnpm double-pin, LL-32 Azure DSN FQDN
+Status: MERGED
+
+## 2026-06-15 — PR #392 MERGED
+GitHub PR: #392 (https://github.com/GH-Mantova/ProjectOperations/pull/392)
+Type: PR
+Detail: test: batch 9b — command palette / search-index specs close the Phase 5 parking lot
+Status: MERGED
+
+## 2026-06-15 — PR #389 MERGED
+GitHub PR: #389 (https://github.com/GH-Mantova/ProjectOperations/pull/389)
+Type: PR
+Detail: [Test/S2] Permission matrix suite - role x endpoint authorization coverage
+Status: MERGED
+
+## 2026-06-15 — PR #385 MERGED
+GitHub PR: #385 (https://github.com/GH-Mantova/ProjectOperations/pull/385)
+Type: PR
+Detail: [Fix/§1 UX] UX bundle — 404 page, empty states, tooltip contrast + two re-verified dashboard fixes
+Status: MERGED
+
+## 2026-06-15 — PR #391 MERGED
+GitHub PR: #391 (https://github.com/GH-Mantova/ProjectOperations/pull/391)
+Type: PR
+Detail: [Test/§13+§15] Batch 9a — testid enablement + widget-settings specs (4 converted / 2 partial / 4 still-skipped)
+Status: MERGED
+
+## 2026-06-15 — PR #390 MERGED
+GitHub PR: #390 (https://github.com/GH-Mantova/ProjectOperations/pull/390)
+Type: PR
+Detail: [Chore/§2] Swagger + DTO audit sweep — close decorator gaps across all controllers
+Status: MERGED
+
+## 2026-06-15 — PR #384 MERGED
+GitHub PR: #384 (https://github.com/GH-Mantova/ProjectOperations/pull/384)
+Type: PR
+Detail: [Feat/§2] Deploy hardening — post-deploy health gates + on:push re-enable (G11)
+Status: MERGED
+

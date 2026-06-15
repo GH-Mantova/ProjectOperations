@@ -28,8 +28,23 @@ export default defineConfig({
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         navigateFallback: "/index.html",
-        navigateFallbackDenylist: [/^\/api/],
+        // Never let the SW intercept the auth redirect — Entra returns the
+        // response either as ?code=&state= or in the fragment (#), and any
+        // navigation to login.microsoftonline.com must hit the network.
+        // Without these, the cached index.html shell can swallow the redirect
+        // and MSAL never sees the response, causing "Connecting to
+        // Microsoft…" to hang.
+        navigateFallbackDenylist: [
+          /^\/api/,
+          /[?&](code|state|error|error_description|session_state)=/,
+          /login\.microsoftonline\.com/
+        ],
         runtimeCaching: [
+          {
+            // Bypass the cache entirely for Microsoft identity endpoints.
+            urlPattern: /^https:\/\/login\.microsoftonline\.com\/.*/i,
+            handler: "NetworkOnly"
+          },
           {
             urlPattern: /^https?:\/\/[^/]+\/api\/.*/i,
             handler: "NetworkFirst",

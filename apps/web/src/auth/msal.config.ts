@@ -16,7 +16,10 @@ export const msalConfig: Configuration = {
     redirectUri: typeof window !== "undefined" ? window.location.origin : "/"
   },
   cache: {
-    cacheLocation: "sessionStorage"
+    // localStorage survives service-worker activations and reloads on SWA;
+    // sessionStorage can be lost mid-redirect on some browsers when the
+    // top-frame Entra round-trip swaps tabs/contexts.
+    cacheLocation: "localStorage"
   }
 };
 

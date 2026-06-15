@@ -402,6 +402,51 @@ describe("FormsService.getSubmission", () => {
       })
     );
   });
+
+  it("includes templateVersion sections and nested fields so FormFillPage can render", async () => {
+    const { service, prisma } = buildService();
+    const submissionWithSections = submissionRow({
+      id: "sub-shape",
+      templateVersion: {
+        id: "ver-1",
+        template: templateRow(),
+        sections: [
+          {
+            id: "sec-1",
+            title: "Main",
+            sectionOrder: 1,
+            fields: [
+              { id: "fld-1", sectionId: "sec-1", fieldKey: "notes", fieldOrder: 1 }
+            ]
+          }
+        ]
+      }
+    });
+    prisma.formSubmission.findUnique.mockResolvedValueOnce(submissionWithSections);
+
+    const result = await service.getSubmission("sub-shape");
+
+    expect(prisma.formSubmission.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: expect.objectContaining({
+          templateVersion: expect.objectContaining({
+            include: expect.objectContaining({
+              sections: expect.objectContaining({
+                orderBy: { sectionOrder: "asc" },
+                include: expect.objectContaining({
+                  fields: expect.objectContaining({
+                    orderBy: { fieldOrder: "asc" }
+                  })
+                })
+              })
+            })
+          })
+        })
+      })
+    );
+    expect(result.templateVersion.sections).toHaveLength(1);
+    expect(result.templateVersion.sections[0].fields[0].fieldKey).toBe("notes");
+  });
 });
 
 describe("FormsService.submit", () => {

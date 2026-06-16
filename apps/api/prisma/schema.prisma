@@ -126,6 +126,11 @@ model User {
   // removal so we don't leave orphan chats behind.
   conversations           Conversation[]
 
+  // PR-216 — calendar sync (mock-mode) records the events the adapter
+  // has "pushed" to the user's calendar so re-runs can update or
+  // cancel them deterministically.
+  calendarSyncedEvents    CalendarSyncedEvent[]     @relation("CalendarSyncedEventUser")
+
   @@index([isActive])
   @@map("users")
 }
@@ -3687,3 +3692,39 @@ model CorrespondenceMessage {
   @@map("correspondence_messages")
 }
 
+// PR-216 — Calendar Sync (mock-mode). One row per (user, source item)
+// recording the "external" event the adapter would have written to
+// the user's calendar. Mock adapter stores everything here so the
+// flow can be tested end-to-end without Microsoft Graph. The live
+// Graph adapter (follow-up) would also keep this row as the local
+// ledger / idempotency key, with externalEventId pointing at the
+// Graph event id.
+model CalendarSyncedEvent {
+  id              String   @id @default(cuid())
+  userId          String   @map("user_id")
+  // 'shift' for now. Extensible (e.g. 'site-visit', 'job-milestone')
+  // without a schema change.
+  sourceType      String   @map("source_type")
+  sourceId        String   @map("source_id")
+  // Mock-generated UUID stand-in for the Graph event id. Stable across
+  // re-syncs so update semantics work.
+  externalEventId String   @map("external_event_id")
+  title           String
+  startAt         DateTime @map("start_at")
+  endAt           DateTime @map("end_at")
+  location        String?
+  // 'active' | 'cancelled'. Cancelled means the source item no longer
+  // matches the sync filter (shift deleted, status moved away from
+  // PLANNED/IN_PROGRESS, etc.) — the row is kept so the live adapter
+  // can emit a Graph cancellation against externalEventId.
+  status          String   @default("active")
+  lastSyncedAt    DateTime @default(now()) @map("last_synced_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  user User @relation("CalendarSyncedEventUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sourceType, sourceId])
+  @@index([userId, status])
+  @@map("calendar_synced_events")
+}

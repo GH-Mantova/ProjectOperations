@@ -27,6 +27,7 @@ import { JobDetailPage } from "./pages/jobs/JobDetailPage";
 import { ProjectsListPage } from "./pages/projects/ProjectsListPage";
 import { ProjectDetailPage } from "./pages/projects/ProjectDetailPage";
 import { SchedulerWorkspacePage } from "./pages/scheduler/SchedulerWorkspacePage";
+import { CalendarSyncPage } from "./pages/calendar/CalendarSyncPage";
 import { WorkersListPage } from "./pages/workers/WorkersListPage";
 import { WorkerDetailPage } from "./pages/workers/WorkerDetailPage";
 import { AssetsListPage } from "./pages/assets/AssetsListPage";
@@ -171,6 +172,7 @@ export function App() {
               }
             />
             <Route path="/scheduler" element={<SchedulerWorkspacePage />} />
+            <Route path="/account/calendar-sync" element={<CalendarSyncPage />} />
             <Route path="/tenders" element={<TenderingPage />} />
             <Route path="/tenders/dashboard" element={<TenderingDashboardPage />} />
             {/* Codex-era /pipeline + /workspace + /create wrappers were

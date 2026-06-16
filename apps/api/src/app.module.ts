@@ -39,6 +39,7 @@ import { RolesModule } from "./modules/roles/roles.module";
 import { SecurityModule } from "./modules/security/security.module";
 import { SchedulerModule } from "./modules/scheduler/scheduler.module";
 import { CorrespondenceModule } from "./modules/correspondence/correspondence.module";
+import { CalendarModule } from "./modules/calendar/calendar.module";
 import { TenderClarificationsModule } from "./modules/tender-clarifications/tender-clarifications.module";
 import { TenderClientsModule } from "./modules/tender-clients/tender-clients.module";
 import { TenderingModule } from "./modules/tendering/tendering.module";
@@ -87,6 +88,7 @@ import { FieldModule } from "./modules/field/field.module";
     ComplianceModule,
     SafetyModule,
     SchedulerModule,
+    CalendarModule,
     ProjectsModule,
     QuoteModule,
     CorrespondenceModule,

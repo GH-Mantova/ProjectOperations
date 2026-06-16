@@ -41,6 +41,7 @@ export const permissionRegistry = [
   { code: "jobs.manage", module: "jobs", description: "Create and manage jobs" },
   { code: "scheduler.view", module: "scheduler", description: "View scheduler workspace" },
   { code: "scheduler.manage", module: "scheduler", description: "Create shifts and manage assignments" },
+  { code: "calendar.sync", module: "scheduler", description: "Sync schedulable items to the user's calendar (PR-216 mock-mode)" },
   { code: "tenderconversion.manage", module: "tendering", description: "Award tenders, issue contracts, and convert tenders to jobs" },
   { code: "estimates.view", module: "tendering", description: "View tender estimates and rate library" },
   { code: "estimates.manage", module: "tendering", description: "Create and update tender estimates" },

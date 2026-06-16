@@ -183,6 +183,7 @@ const NAV_GROUPS: NavGroup[] = [
       },
       { to: "/jobs", label: "Jobs", icon: ICON_JOBS },
       { to: "/scheduler", label: "Scheduler", icon: ICON_SCHEDULER },
+      { to: "/account/calendar-sync", label: "Calendar Sync", icon: ICON_SCHEDULER },
       {
         to: "/sites",
         label: "Sites",
@@ -297,6 +298,7 @@ const BREADCRUMBS: Record<string, string> = {
   "/documents": "Documents",
   "/archive": "Archive",
   "/account": "My account",
+  "/account/calendar-sync": "Calendar Sync",
   "/notifications": "Notifications",
   "/dashboards": "Dashboards",
   "/admin/users": "Users",

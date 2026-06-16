@@ -140,12 +140,43 @@ function report(level, gate, name, detail) {
   }
 }
 
-// CP-17 - DTO validation decorators
+// CP-17 - DTO validation decorators on REQUEST-INPUT DTOs only.
+// A DTO class is "input" iff a controller binds it via @Body() / @Query() /
+// @Param() as the parameter's TYPE. Output/response DTOs (returned from
+// handlers, used only for Swagger typing) are not flagged - they carry no
+// runtime input to validate.
 {
   const dtoFiles = presentFiles.filter((f) =>
     /^apps\/api\/src\/.*\/dto\/[^/]+\.ts$/.test(f)
   );
+
+  // Build the set of class names used as request input across the whole API
+  // by scanning every *.controller.ts under apps/api/src for parameter
+  // bindings of the form `@Body|Query|Param(...) name: ClassName`. The
+  // string-key forms `@Body('field') f: string` don't match because the type
+  // is a primitive (lowercase).
+  const inputClasses = new Set();
+  if (dtoFiles.length > 0) {
+    const controllerFiles = git("ls-files", "apps/api/src")
+      .split("\n")
+      .filter((f) => f.endsWith(".controller.ts"));
+    const inputRe =
+      /@(?:Body|Query|Param)\([^)]*\)\s*\w+\s*:\s*([A-Z]\w+)/g;
+    for (const cf of controllerFiles) {
+      let content;
+      try {
+        content = readFileSync(cf, "utf8");
+      } catch {
+        continue;
+      }
+      for (const m of content.matchAll(inputRe)) {
+        inputClasses.add(m[1]);
+      }
+    }
+  }
+
   const flagged = [];
+  let inputDtosChecked = 0;
   for (const file of dtoFiles) {
     let content;
     try {
@@ -153,20 +184,37 @@ function report(level, gate, name, detail) {
     } catch {
       continue;
     }
-    const declaresClass = /\bclass\s+\w+/.test(content);
+    const classNames = [...content.matchAll(/\bclass\s+(\w+)/g)].map((m) => m[1]);
+    if (classNames.length === 0) continue;
     const hasValidatorDecorator = /@(Is\w+|Validate\w*|Type)\(/.test(content);
-    if (declaresClass && !hasValidatorDecorator) flagged.push(file);
+    for (const name of classNames) {
+      if (!inputClasses.has(name)) continue;
+      inputDtosChecked += 1;
+      if (!hasValidatorDecorator) flagged.push(`${file}:${name}`);
+    }
   }
   if (dtoFiles.length === 0) {
     report("PASS", "CP-17", "dto-validation", "no DTO files changed");
+  } else if (inputDtosChecked === 0) {
+    report(
+      "PASS",
+      "CP-17",
+      "dto-validation",
+      `${dtoFiles.length} DTO file(s) changed, no request-input DTOs (output-only)`
+    );
   } else if (flagged.length === 0) {
-    report("PASS", "CP-17", "dto-validation", `${dtoFiles.length} DTO file(s) checked`);
+    report(
+      "PASS",
+      "CP-17",
+      "dto-validation",
+      `${inputDtosChecked} input DTO class(es) checked`
+    );
   } else {
     report(
       "FAIL",
       "CP-17",
       "dto-validation",
-      `class without class-validator decorators: ${flagged.join(", ")}`
+      `input DTO class without class-validator decorators: ${flagged.join(", ")}`
     );
   }
 }

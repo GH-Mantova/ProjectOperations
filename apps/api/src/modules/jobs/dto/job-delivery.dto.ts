@@ -95,8 +95,23 @@ export class CreateJobActivityDto {
   @IsOptional() @IsString() ownerUserId?: string;
 }
 
-/** Payload for `PATCH /jobs/:id/activities/:activityId`. Shape mirrors {@link CreateJobActivityDto}. */
-export class UpdateJobActivityDto extends CreateJobActivityDto {}
+/**
+ * Payload for `PATCH /jobs/:id/activities/:activityId`. All fields optional —
+ * unlike {@link CreateJobActivityDto}, partial updates are supported so a
+ * caller can flip just `status` (e.g. the JobDetailPage activity toggle)
+ * without re-supplying `jobStageId` and `name`. Supplying a different
+ * `jobStageId` still moves the activity between stages.
+ */
+export class UpdateJobActivityDto {
+  @IsOptional() @IsString() jobStageId?: string;
+  @IsOptional() @IsString() name?: string;
+  @IsOptional() @IsString() description?: string;
+  @IsOptional() @Type(() => Number) @IsInt() activityOrder?: number;
+  @IsOptional() @IsString() status?: string;
+  @IsOptional() @IsDateString() plannedDate?: string;
+  @IsOptional() @IsString() notes?: string;
+  @IsOptional() @IsString() ownerUserId?: string;
+}
 
 /**
  * Payload for `POST /jobs/:id/issues` (create — `title` required) and

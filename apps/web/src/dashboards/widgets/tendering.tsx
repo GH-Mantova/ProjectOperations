@@ -585,6 +585,143 @@ export function PipelineByEstimatorDonut(props: WidgetProps) {
   );
 }
 
+export function WinRateByClientBar(props: WidgetProps) {
+  const { tenders, isLoading } = useCleanTenders();
+  const period = filterString(props.config.filters?.period, "12m");
+  const maxRows = filterNumber(props.config.filters?.maxRows, 8);
+  const metric = filterString(props.config.filters?.metric, "rate");
+  const cutoff = periodToCutoff(period);
+
+  type Row = { name: string; won: number; lost: number; resolved: number; rate: number; valueWon: number };
+  const byClient = new Map<string, Row>();
+  for (const t of tenders) {
+    const client = t.tenderClients[0]?.client;
+    if (!client) continue;
+    const wonInPeriod = t.wonAt && new Date(t.wonAt) >= cutoff;
+    const lostInPeriod = t.lostAt && new Date(t.lostAt) >= cutoff;
+    if (!wonInPeriod && !lostInPeriod) continue;
+    const row = byClient.get(client.id) ?? { name: client.name, won: 0, lost: 0, resolved: 0, rate: 0, valueWon: 0 };
+    if (wonInPeriod) {
+      row.won += 1;
+      row.valueWon += Number(t.estimatedValue ?? 0);
+    }
+    if (lostInPeriod) row.lost += 1;
+    byClient.set(client.id, row);
+  }
+  const rows = Array.from(byClient.values())
+    .map((r) => {
+      r.resolved = r.won + r.lost;
+      r.rate = r.resolved > 0 ? Math.round((r.won / r.resolved) * 100) : 0;
+      return r;
+    })
+    .sort((a, b) => (metric === "value" ? b.valueWon - a.valueWon : b.rate - a.rate))
+    .slice(0, maxRows);
+
+  const dataKey = metric === "value" ? "valueWon" : "rate";
+  const seriesName = metric === "value" ? "Value won" : "Win rate";
+
+  return (
+    <PanelCard title="Win rate by client">
+      {isLoading ? (
+        <Skeleton width="100%" height={220} />
+      ) : rows.length === 0 ? (
+        <EmptyNote>No resolved tenders in the selected period.</EmptyNote>
+      ) : (
+        <div style={{ width: "100%", height: 220 }}>
+          <ResponsiveContainer>
+            <BarChart data={rows} layout="vertical" margin={{ top: 8, right: 16, bottom: 8, left: 16 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle, rgba(0,0,0,0.08))" />
+              <XAxis
+                type="number"
+                tick={{ fontSize: 12, fill: "var(--text-muted)" }}
+                domain={metric === "value" ? [0, "auto"] : [0, 100]}
+                tickFormatter={(v) => (metric === "value" ? formatCompactCurrency(Number(v)) : `${v}%`)}
+              />
+              <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 12, fill: "var(--text-muted)" }} />
+              <Tooltip
+                formatter={(value) => (metric === "value" ? formatCurrency(Number(value)) : `${value}%`)}
+                contentStyle={TOOLTIP_CONTENT_STYLE}
+                labelStyle={TOOLTIP_LABEL_STYLE}
+                itemStyle={TOOLTIP_ITEM_STYLE}
+              />
+              <Bar dataKey={dataKey} name={seriesName} fill="#FEAA6D" radius={[0, 3, 3, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </PanelCard>
+  );
+}
+
+function labelForOutcome(raw: string): string {
+  const cleaned = raw.replace(/[_-]+/g, " ").trim();
+  if (!cleaned) return "Unspecified";
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1).toLowerCase();
+}
+
+export function LossReasonsDonut(props: WidgetProps) {
+  const { tenders, isLoading } = useCleanTenders();
+  const period = filterString(props.config.filters?.period, "12m");
+  const chartType = filterString(props.config.filters?.chartType, "donut");
+  const cutoff = periodToCutoff(period);
+
+  const counts = new Map<string, number>();
+  for (const t of tenders) {
+    if (!t.lostAt || new Date(t.lostAt) < cutoff) continue;
+    const outcomes = t.outcomes ?? [];
+    if (outcomes.length === 0) {
+      counts.set("Unspecified", (counts.get("Unspecified") ?? 0) + 1);
+      continue;
+    }
+    for (const o of outcomes) {
+      const label = labelForOutcome(o.outcomeType);
+      counts.set(label, (counts.get(label) ?? 0) + 1);
+    }
+  }
+  const rows = Array.from(counts.entries())
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
+
+  return (
+    <PanelCard title="Loss reasons">
+      {isLoading ? (
+        <Skeleton width="100%" height={220} />
+      ) : rows.length === 0 ? (
+        <EmptyNote>No losses in the selected period.</EmptyNote>
+      ) : (
+        <div style={{ width: "100%", height: 220 }}>
+          <ResponsiveContainer>
+            {chartType === "bar" ? (
+              <BarChart data={rows} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle, rgba(0,0,0,0.08))" />
+                <XAxis dataKey="name" tick={{ fontSize: 12, fill: "var(--text-muted)" }} />
+                <YAxis tick={{ fontSize: 12, fill: "var(--text-muted)" }} allowDecimals={false} />
+                <Tooltip contentStyle={TOOLTIP_CONTENT_STYLE} labelStyle={TOOLTIP_LABEL_STYLE} itemStyle={TOOLTIP_ITEM_STYLE} />
+                <Bar dataKey="value" name="Lost tenders" fill="#FEAA6D" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            ) : (
+              <PieChart>
+                <Pie data={rows} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={45} outerRadius={80} paddingAngle={2}>
+                  {rows.map((slice, index) => (
+                    <Cell key={slice.name} fill={IS_PALETTE[index % IS_PALETTE.length]} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  formatter={(value) => `${value} lost`}
+                  contentStyle={TOOLTIP_CONTENT_STYLE}
+                  labelStyle={TOOLTIP_LABEL_STYLE}
+                  itemStyle={TOOLTIP_ITEM_STYLE}
+                />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+              </PieChart>
+            )}
+          </ResponsiveContainer>
+        </div>
+      )}
+    </PanelCard>
+  );
+}
+
 const RECENT_WINS_DEFAULT_FIELDS = ["clientName", "projectName", "value", "estimator", "wonDate"];
 
 export function RecentWinsPanel(props: WidgetProps) {

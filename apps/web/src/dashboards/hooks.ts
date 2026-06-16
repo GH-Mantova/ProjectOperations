@@ -21,6 +21,7 @@ export type TenderForDashboard = {
     client?: { id: string; name: string } | null;
   }>;
   tenderNotes: Array<{ body?: string; createdAt?: string | null }>;
+  outcomes?: Array<{ outcomeType: string; notes?: string | null; recordedAt?: string | null }>;
 };
 
 export type JobForDashboard = {

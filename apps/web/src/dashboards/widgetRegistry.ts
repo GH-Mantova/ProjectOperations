@@ -102,6 +102,8 @@ import {
   SafetySummaryWidget
 } from "./widgets/safety";
 import { ProjectTimelineWidget } from "./widgets/projectTimeline";
+import { CustomBuilderWidget } from "./CustomBuilderWidget";
+import { CUSTOM_WIDGET_TYPE } from "./customWidget";
 
 const TENDER_STAGE_OPTIONS = [
   { value: "DRAFT", label: "Identified" },
@@ -483,6 +485,26 @@ export const WIDGETS: WidgetMeta[] = [
     defaultColSpan: 2,
     defaultRowSpan: 1,
     component: SafetySummaryWidget
+  },
+
+  // ── Custom (user-built) ───────────────────────────────────
+  // Holds user-defined widgets created via the dashboard builder. The
+  // configSchema is empty because the builder writes a synthetic filters
+  // bag ({dataSource, metric, chartType, ...}); the widget itself parses
+  // and validates that bag.
+  {
+    type: CUSTOM_WIDGET_TYPE,
+    name: "Custom widget",
+    category: "custom",
+    size: "half",
+    description: "A user-built widget — pick a data source, metric, and chart type.",
+    defaultColSpan: 2,
+    defaultRowSpan: 2,
+    minColSpan: 1,
+    minRowSpan: 1,
+    maxColSpan: 4,
+    maxRowSpan: 4,
+    component: CustomBuilderWidget
   },
 
   // ── Project timeline ──────────────────────────────────────

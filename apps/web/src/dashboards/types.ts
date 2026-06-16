@@ -58,7 +58,8 @@ export type WidgetCategory =
   | "maintenance"
   | "forms"
   | "compliance"
-  | "safety";
+  | "safety"
+  | "custom";
 
 export type WidgetProps = {
   config: WidgetSubConfig;

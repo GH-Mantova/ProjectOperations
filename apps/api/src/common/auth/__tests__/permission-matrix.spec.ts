@@ -87,6 +87,10 @@ const ROWS: MatrixRow[] = [
   { group: "long-tail", method: "post", path: "/forms/templates", permission: "forms.manage", body: {}, viewer: 403 },
   { group: "long-tail", method: "post", path: "/estimate-rates/labour", permission: "estimates.admin", body: {}, viewer: 403 },
   { group: "long-tail", method: "post", path: "/projects", permission: "projects.admin", body: {}, viewer: 403 },
+  // PR-217 F2 fix: next-number preview was previously open to any authenticated
+  // user (missed PermissionsGuard decorator). Now gated by projects.view.
+  // Viewer's 17 seeded view codes intentionally exclude projects.view, so 403.
+  { group: "projects", method: "get", path: "/projects/next-number", permission: "projects.view", viewer: 403, admin: true },
   { group: "long-tail", method: "patch", path: `/tenders/${MISSING}/award`, permission: "tenderconversion.manage", body: {}, viewer: 403 },
   { group: "long-tail", method: "get", path: "/admin/settings/notifications", permission: "platform.admin", viewer: 403 },
   { group: "long-tail", method: "post", path: "/documents", permission: "documents.manage", body: {}, viewer: 403 },

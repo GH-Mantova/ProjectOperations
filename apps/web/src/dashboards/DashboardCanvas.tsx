@@ -26,6 +26,7 @@ import {
   type WidgetSubConfig
 } from "./types";
 import { CustomisePanel } from "./CustomisePanel";
+import { CustomWidgetBuilderModal } from "./CustomWidgetBuilderModal";
 import { DashboardSwitcher } from "./DashboardSwitcher";
 import { WidgetSettingsPopover } from "./WidgetSettingsPopover";
 import { useUserDashboardsActions } from "./userDashboards";
@@ -59,6 +60,7 @@ export function DashboardCanvas({
   const [active, setActive] = useState<UserDashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [customiseOpen, setCustomiseOpen] = useState(false);
+  const [builderOpen, setBuilderOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [openSettingsId, setOpenSettingsId] = useState<string | null>(null);
   const saveTimerRef = useRef<number | null>(null);
@@ -206,6 +208,16 @@ export function DashboardCanvas({
     updateConfig(next);
   };
 
+  const addWidget = (entry: WidgetConfigEntry) => {
+    if (!active) return;
+    const nextOrder = active.config.widgets.reduce((max, w) => Math.max(max, w.order), -1) + 1;
+    const next: UserDashboardConfig = {
+      ...active.config,
+      widgets: [...active.config.widgets, { ...entry, order: nextOrder }]
+    };
+    updateConfig(next);
+  };
+
   const updateWidgetSpan = (widgetId: string, colSpan: number, rowSpan: number) => {
     if (!active) return;
     const next: UserDashboardConfig = {
@@ -280,9 +292,19 @@ export function DashboardCanvas({
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {actions}
           {active ? (
-            <button type="button" className="s7-btn s7-btn--secondary s7-btn--sm" onClick={() => setCustomiseOpen(true)}>
-              Customise
-            </button>
+            <>
+              <button
+                type="button"
+                className="s7-btn s7-btn--secondary s7-btn--sm"
+                onClick={() => setBuilderOpen(true)}
+                data-testid="add-custom-widget-button"
+              >
+                + Add widget
+              </button>
+              <button type="button" className="s7-btn s7-btn--secondary s7-btn--sm" onClick={() => setCustomiseOpen(true)}>
+                Customise
+              </button>
+            </>
           ) : null}
         </div>
       </header>
@@ -343,6 +365,14 @@ export function DashboardCanvas({
           dashboard={active}
           saving={saving}
           onSave={saveFromPanel}
+        />
+      ) : null}
+
+      {active ? (
+        <CustomWidgetBuilderModal
+          open={builderOpen}
+          onClose={() => setBuilderOpen(false)}
+          onCreate={addWidget}
         />
       ) : null}
     </div>

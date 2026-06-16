@@ -143,6 +143,7 @@ AZURE_MAIL_TENANT_ID=            # live mail only
 AZURE_MAIL_CLIENT_ID=            # live mail only
 AZURE_MAIL_CLIENT_SECRET=        # live mail only
 AZURE_MAIL_FROM=                 # live mail only — sender mailbox
+CALENDAR_MODE=mock               # 'mock' or 'live' (Graph calendar — follow-up)
 VITE_API_BASE_URL=http://localhost:3000/api/v1
 CORS_ORIGIN=http://localhost:5173
 ```

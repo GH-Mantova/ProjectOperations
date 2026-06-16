@@ -27,8 +27,7 @@ type RequestUser = { sub: string; permissions: string[] };
  * routes layer additional `@RequirePermissions` decorators on top.
  *
  * Permission model:
- *  - `projects.view` — list, getById, activity, next-number (next-number is
- *    public to authenticated users for UI convenience).
+ *  - `projects.view` — list, getById, activity, next-number.
  *  - `projects.manage` — update, status transition.
  *  - `projects.admin` — manual create, contractValue updates, reopen from CLOSED.
  *  - `tenders.manage` — revert-to-tender preflight and execution.
@@ -52,6 +51,7 @@ export class ProjectsController {
    * sequence — purely for UI affordance on the "create project" form.
    */
   @Get("next-number")
+  @RequirePermissions("projects.view")
   @ApiOperation({ summary: "Preview the next project number without consuming it (UI convenience)" })
   @ApiResponse({ status: 200, description: "Next project number, e.g. IS-P042." })
   nextNumber() {

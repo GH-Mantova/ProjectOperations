@@ -421,6 +421,24 @@ describe("JobsService.updateActivity", () => {
       )
     ).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  // Regression for the job activity status toggle (see PR rev-404). The
+  // JobDetailPage toggle sends only `{status}` — when `UpdateJobActivityDto`
+  // re-required `jobStageId`/`name` from the create DTO and the service
+  // unconditionally called `requireStage`, the PATCH 400'd / 404'd. The
+  // partial update must succeed and must NOT touch `jobStageId`.
+  it("applies a status-only partial update without resolving a stage", async () => {
+    const { service, prisma } = buildService();
+    const stageFindUnique = (prisma.jobStage as { findUnique: jest.Mock }).findUnique;
+    await service.updateActivity("job-1", "act-1", { status: "IN_PROGRESS" } as never, "user-1");
+    expect(stageFindUnique).not.toHaveBeenCalled();
+    expect((prisma.jobActivity as { update: jest.Mock }).update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "act-1" },
+        data: expect.objectContaining({ status: "IN_PROGRESS", jobStageId: undefined })
+      })
+    );
+  });
 });
 
 // ─── createIssue / updateIssue ─────────────────────────────────────────────

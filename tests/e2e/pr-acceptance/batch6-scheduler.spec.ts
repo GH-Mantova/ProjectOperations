@@ -96,29 +96,65 @@ test.describe("Batch 6 — Scheduler workspace (PR #18)", () => {
         .getByRole("listitem")
         .filter({ hasText: name })
         .filter({ has: page.getByRole("button", { name: "Remove" }) });
-    await expect(slideOver.getByRole("heading", { name: SEED_SHIFT })).toBeVisible();
-    await expect(slideOver.getByRole("heading", { name: "Workers (1)" })).toBeVisible();
-    await expect(assignmentRow("Mia Turner")).toHaveCount(1);
-    await expect(slideOver.getByRole("heading", { name: "Assets (1)" })).toBeVisible();
-    await expect(assignmentRow("Excavator 1")).toHaveCount(1);
 
-    // Assign a worker, then remove them again (restores seeded state).
+    // The slide-over renders the assignment counts from the parent's already-
+    // loaded shift list — but on slower runs the parent state can finish
+    // hydrating after the dialog mounts. Give the seeded "Workers (1)" /
+    // "Assets (1)" headings an explicit bounded timeout instead of the
+    // default, and only after the dialog itself is on screen.
+    const ASGN_TIMEOUT = 15_000;
+    const SHIFT_MUTATION = (r: import("@playwright/test").Response) =>
+      /\/scheduler\/shifts\/[^/]+\/(workers|assets)/.test(r.url()) &&
+      ["POST", "DELETE"].includes(r.request().method());
+
+    await expect(slideOver).toBeVisible({ timeout: ASGN_TIMEOUT });
+    await expect(slideOver.getByRole("heading", { name: SEED_SHIFT })).toBeVisible({
+      timeout: ASGN_TIMEOUT
+    });
+    await expect(slideOver.getByRole("heading", { name: "Workers (1)" })).toBeVisible({
+      timeout: ASGN_TIMEOUT
+    });
+    await expect(assignmentRow("Mia Turner")).toHaveCount(1, { timeout: ASGN_TIMEOUT });
+    await expect(slideOver.getByRole("heading", { name: "Assets (1)" })).toBeVisible({
+      timeout: ASGN_TIMEOUT
+    });
+    await expect(assignmentRow("Excavator 1")).toHaveCount(1, { timeout: ASGN_TIMEOUT });
+
+    // Assign a worker, then remove them again (restores seeded state). Wait
+    // on the POST/DELETE response before reading the next heading count so
+    // the test never reads stale state from the previous request's render.
     const workerSelect = slideOver.getByRole("combobox").filter({ hasText: "Assign worker…" });
     await workerSelect.selectOption({ label: "Jack Sorensen · Supervisor" });
+    const addWorkerResp = page.waitForResponse(SHIFT_MUTATION, { timeout: ASGN_TIMEOUT });
     await slideOver.getByRole("button", { name: "Add", exact: true }).first().click();
-    await expect(slideOver.getByRole("heading", { name: "Workers (2)" })).toBeVisible();
-    await expect(assignmentRow("Jack Sorensen")).toHaveCount(1);
+    await addWorkerResp;
+    await expect(slideOver.getByRole("heading", { name: "Workers (2)" })).toBeVisible({
+      timeout: ASGN_TIMEOUT
+    });
+    await expect(assignmentRow("Jack Sorensen")).toHaveCount(1, { timeout: ASGN_TIMEOUT });
+    const removeWorkerResp = page.waitForResponse(SHIFT_MUTATION, { timeout: ASGN_TIMEOUT });
     await assignmentRow("Jack Sorensen").getByRole("button", { name: "Remove" }).click();
-    await expect(slideOver.getByRole("heading", { name: "Workers (1)" })).toBeVisible();
-    await expect(assignmentRow("Jack Sorensen")).toHaveCount(0);
+    await removeWorkerResp;
+    await expect(slideOver.getByRole("heading", { name: "Workers (1)" })).toBeVisible({
+      timeout: ASGN_TIMEOUT
+    });
+    await expect(assignmentRow("Jack Sorensen")).toHaveCount(0, { timeout: ASGN_TIMEOUT });
 
     // Assign an asset, then remove it again.
     const assetSelect = slideOver.getByRole("combobox").filter({ hasText: "Assign asset…" });
     await assetSelect.selectOption({ label: "Toyota HiLux ute — MCV 123 · IS-A009" });
+    const addAssetResp = page.waitForResponse(SHIFT_MUTATION, { timeout: ASGN_TIMEOUT });
     await slideOver.getByRole("button", { name: "Add", exact: true }).last().click();
-    await expect(slideOver.getByRole("heading", { name: "Assets (2)" })).toBeVisible();
+    await addAssetResp;
+    await expect(slideOver.getByRole("heading", { name: "Assets (2)" })).toBeVisible({
+      timeout: ASGN_TIMEOUT
+    });
+    const removeAssetResp = page.waitForResponse(SHIFT_MUTATION, { timeout: ASGN_TIMEOUT });
     await assignmentRow("Toyota HiLux ute — MCV 123").getByRole("button", { name: "Remove" }).click();
-    await expect(slideOver.getByRole("heading", { name: "Assets (1)" })).toBeVisible();
+    await removeAssetResp;
+    await expect(slideOver.getByRole("heading", { name: "Assets (1)" })).toBeVisible({
+      timeout: ASGN_TIMEOUT
+    });
 
     // Seeded notes render.
     await expect(slideOver.getByText("Initial mobilisation shift")).toBeVisible();

@@ -97,6 +97,7 @@ model User {
   subcontractorDocsUploaded  SubcontractorDocument[]   @relation("SubDocUploadedBy")
   creditAppsCreated          CreditApplication[]       @relation("CreditAppCreator")
   creditAppsReviewed         CreditApplication[]       @relation("CreditAppReviewer")
+  supplierCreditEntries      SupplierCreditEntry[]     @relation("SupplierCreditEntryCreator")
   contactsCreated            Contact[]                 @relation("ContactCreatedBy")
   clientsAsClaimReminder     Client[]                  @relation("ClaimReminderUser")
   qualificationsCreated      WorkerQualification[]     @relation("QualificationCreatedBy")
@@ -3122,6 +3123,7 @@ model SubcontractorSupplier {
   licences           EntityLicence[]         @relation("SubLicences")
   insurances         EntityInsurance[]       @relation("SubInsurances")
   creditApplications CreditApplication[]     @relation("SubCreditApps")
+  creditEntries      SupplierCreditEntry[]   @relation("SupplierCreditEntries")
 
   @@index([entityType])
   @@index([prequalStatus])
@@ -3207,6 +3209,30 @@ model CreditApplication {
   @@index([clientId])
   @@index([subcontractorId])
   @@map("credit_applications")
+}
+
+// Transactional ledger of charges / payments against a supplier's credit
+// account. The headline limit (`creditLimit`) and approval flag
+// (`creditApproved`) live on SubcontractorSupplier — this table records the
+// movements that determine the *current balance* and *remaining credit*.
+// Amounts are stored unsigned; `entryType` carries the sign (charge = owed
+// to supplier, payment = paid).
+model SupplierCreditEntry {
+  id              String                @id @default(cuid())
+  subcontractorId String                @map("subcontractor_id")
+  subcontractor   SubcontractorSupplier @relation("SupplierCreditEntries", fields: [subcontractorId], references: [id], onDelete: Cascade)
+  entryDate       DateTime              @map("entry_date")
+  entryType       String                @map("entry_type") // "charge" | "payment"
+  amount          Decimal               @db.Decimal(12, 2)
+  reference       String?
+  note            String?
+  createdAt       DateTime              @default(now()) @map("created_at")
+  createdById     String                @map("created_by_id")
+  createdBy       User                  @relation("SupplierCreditEntryCreator", fields: [createdById], references: [id])
+
+  @@index([subcontractorId])
+  @@index([entryDate])
+  @@map("supplier_credit_entries")
 }
 
 model SubcontractorDocument {

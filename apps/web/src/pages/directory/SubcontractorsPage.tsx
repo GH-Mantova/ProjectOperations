@@ -390,7 +390,7 @@ function SubcontractorDetail({
   const [detail, setDetail] = useState<SubcontractorDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<"overview" | "contacts" | "documents">("overview");
+  const [tab, setTab] = useState<"overview" | "contacts" | "documents" | "credit">("overview");
   const [docModalOpen, setDocModalOpen] = useState(false);
 
   const load = useCallback(async () => {
@@ -540,6 +540,15 @@ function SubcontractorDetail({
         >
           Documents ({detail.documents.length})
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "credit"}
+          className={tab === "credit" ? "tender-detail__tab tender-detail__tab--active" : "tender-detail__tab"}
+          onClick={() => setTab("credit")}
+        >
+          Credit
+        </button>
       </nav>
 
       {tab === "contacts" ? (
@@ -561,6 +570,8 @@ function SubcontractorDetail({
           onAddClick={() => setDocModalOpen(true)}
           onDelete={deleteDocument}
         />
+      ) : tab === "credit" ? (
+        <CreditLedgerTab subcontractorId={detail.id} canManage={canManage} />
       ) : (
         <>
       <Section title="Contact">
@@ -698,6 +709,250 @@ function SubcontractorDetail({
           }}
         />
       ) : null}
+    </div>
+  );
+}
+
+type CreditEntry = {
+  id: string;
+  entryDate: string;
+  entryType: string;
+  amount: number;
+  reference: string | null;
+  note: string | null;
+};
+
+type CreditLedger = {
+  creditLimit: number | null;
+  creditApproved: boolean;
+  balance: number;
+  remaining: number | null;
+  entries: CreditEntry[];
+};
+
+function fmtMoney(n: number | null | undefined): string {
+  if (n === null || n === undefined) return "—";
+  return n.toLocaleString("en-AU", { style: "currency", currency: "AUD" });
+}
+
+function CreditLedgerTab({ subcontractorId, canManage }: { subcontractorId: string; canManage: boolean }) {
+  const { authFetch } = useAuth();
+  const [ledger, setLedger] = useState<CreditLedger | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState<{ entryType: "charge" | "payment"; amount: string; entryDate: string; reference: string; note: string }>(
+    { entryType: "charge", amount: "", entryDate: new Date().toISOString().slice(0, 10), reference: "", note: "" }
+  );
+  const [submitting, setSubmitting] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await authFetch(`/directory/${subcontractorId}/credit-ledger`);
+      if (!response.ok) throw new Error(await response.text());
+      setLedger((await response.json()) as CreditLedger);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, [authFetch, subcontractorId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const submit = async () => {
+    const amt = Number(form.amount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      setError("Amount must be a positive number.");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      const response = await authFetch(`/directory/${subcontractorId}/credit-ledger`, {
+        method: "POST",
+        body: JSON.stringify({
+          entryType: form.entryType,
+          amount: amt,
+          entryDate: form.entryDate || undefined,
+          reference: form.reference || null,
+          note: form.note || null
+        })
+      });
+      if (!response.ok) throw new Error(await response.text());
+      setShowForm(false);
+      setForm({ entryType: "charge", amount: "", entryDate: new Date().toISOString().slice(0, 10), reference: "", note: "" });
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div style={{ marginTop: 12 }}>
+        <div className="s7-skeleton" style={{ height: 80, marginBottom: 8, background: "var(--surface-muted, #f3f4f6)", borderRadius: 6 }} aria-hidden="true" />
+        <div className="s7-skeleton" style={{ height: 200, background: "var(--surface-muted, #f3f4f6)", borderRadius: 6 }} aria-hidden="true" />
+      </div>
+    );
+  }
+
+  if (!ledger) {
+    return (
+      <div style={{ marginTop: 12 }}>
+        <p style={{ color: "var(--status-danger)", fontSize: 13 }}>{error ?? "Could not load credit ledger."}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8, marginBottom: 12 }}>
+        <SummaryTile label="Credit limit" value={fmtMoney(ledger.creditLimit)} />
+        <SummaryTile label="Current balance" value={fmtMoney(ledger.balance)} />
+        <SummaryTile
+          label="Remaining"
+          value={fmtMoney(ledger.remaining)}
+          tone={ledger.remaining !== null && ledger.remaining < 0 ? "danger" : undefined}
+        />
+        <SummaryTile label="Credit approved" value={ledger.creditApproved ? "Yes" : "No"} />
+      </div>
+
+      {error ? <p style={{ color: "var(--status-danger)", fontSize: 12, margin: "0 0 8px" }}>{error}</p> : null}
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
+          {ledger.entries.length} entr{ledger.entries.length === 1 ? "y" : "ies"}
+        </div>
+        {canManage ? (
+          <button
+            type="button"
+            className="s7-btn s7-btn--primary s7-btn--sm"
+            style={{ minHeight: 44 }}
+            onClick={() => setShowForm((s) => !s)}
+          >
+            {showForm ? "Cancel" : "+ Add entry"}
+          </button>
+        ) : null}
+      </div>
+
+      {showForm ? (
+        <div className="s7-card" style={{ padding: 12, marginBottom: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
+          <label style={{ fontSize: 12 }}>
+            Type
+            <select
+              value={form.entryType}
+              onChange={(e) => setForm((f) => ({ ...f, entryType: e.target.value as "charge" | "payment" }))}
+              style={{ width: "100%", minHeight: 44 }}
+            >
+              <option value="charge">Charge (we owe)</option>
+              <option value="payment">Payment (we paid)</option>
+            </select>
+          </label>
+          <label style={{ fontSize: 12 }}>
+            Amount (AUD)
+            <input
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={form.amount}
+              onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
+              style={{ width: "100%", minHeight: 44 }}
+            />
+          </label>
+          <label style={{ fontSize: 12 }}>
+            Date
+            <input
+              type="date"
+              value={form.entryDate}
+              onChange={(e) => setForm((f) => ({ ...f, entryDate: e.target.value }))}
+              style={{ width: "100%", minHeight: 44 }}
+            />
+          </label>
+          <label style={{ fontSize: 12 }}>
+            Reference
+            <input
+              type="text"
+              value={form.reference}
+              placeholder="Invoice/PO no."
+              onChange={(e) => setForm((f) => ({ ...f, reference: e.target.value }))}
+              style={{ width: "100%", minHeight: 44 }}
+            />
+          </label>
+          <label style={{ fontSize: 12, gridColumn: "1 / -1" }}>
+            Note
+            <input
+              type="text"
+              value={form.note}
+              onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
+              style={{ width: "100%", minHeight: 44 }}
+            />
+          </label>
+          <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              className="s7-btn s7-btn--primary s7-btn--sm"
+              disabled={submitting}
+              style={{ minHeight: 44 }}
+              onClick={() => void submit()}
+            >
+              {submitting ? "Saving…" : "Save entry"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {ledger.entries.length === 0 ? (
+        <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>
+          No ledger entries yet. Add charges as invoices are raised and payments as they are made.
+        </p>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead style={{ background: "var(--surface-muted, #f6f6f6)" }}>
+              <tr>
+                {["Date", "Type", "Amount", "Reference", "Note"].map((h) => (
+                  <th key={h} style={{ padding: "6px 8px", textAlign: "left", fontSize: 10, textTransform: "uppercase", color: "var(--text-muted)" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {ledger.entries.map((e) => (
+                <tr key={e.id} style={{ borderTop: "1px solid var(--border, #e5e7eb)" }}>
+                  <td style={{ padding: "6px 8px" }}>{fmtDate(e.entryDate)}</td>
+                  <td style={{ padding: "6px 8px", textTransform: "capitalize" }}>{e.entryType}</td>
+                  <td style={{ padding: "6px 8px", color: e.entryType === "charge" ? "var(--status-warning, #b45309)" : "var(--status-success, #047857)" }}>
+                    {e.entryType === "charge" ? "+" : "−"}{fmtMoney(e.amount)}
+                  </td>
+                  <td style={{ padding: "6px 8px", color: "var(--text-muted)" }}>{e.reference ?? "—"}</td>
+                  <td style={{ padding: "6px 8px", color: "var(--text-muted)" }}>{e.note ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SummaryTile({ label, value, tone }: { label: string; value: string; tone?: "danger" }) {
+  return (
+    <div
+      className="s7-card"
+      style={{
+        padding: 10,
+        borderColor: tone === "danger" ? "var(--status-danger)" : undefined
+      }}
+    >
+      <div style={{ fontSize: 10, textTransform: "uppercase", color: "var(--text-muted)", letterSpacing: 0.4 }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 600, color: tone === "danger" ? "var(--status-danger)" : undefined }}>{value}</div>
     </div>
   );
 }

@@ -81,24 +81,42 @@ test.describe("Batch 6 — Contracts (PRs #58, #59)", () => {
       }
 
       // Variations: add one, walk RECEIVED → PRICED → SUBMITTED → APPROVED.
+      // Each transition issues an API call; the test waits on the matching
+      // response before asserting the next status badge so the bounded timeout
+      // doesn't expire while the request is still in flight.
+      const VAR_TIMEOUT = 15_000;
+      const isVariationsCall = (r: import("@playwright/test").Response) =>
+        /\/variations(?:\/[^/]+(?:\/[a-z]+)?)?$/.test(r.url()) &&
+        ["POST", "PATCH", "PUT"].includes(r.request().method());
+
       await page.getByRole("button", { name: /^Variations \(0\)$/ }).click();
       await expect(page.getByText("No variations yet.")).toBeVisible();
       await page.getByRole("button", { name: "+ Add variation" }).click();
       await page.getByPlaceholder("Variation description").fill("e2e-b6 extra rock excavation");
+      const createResponse = page.waitForResponse(isVariationsCall, { timeout: VAR_TIMEOUT });
       await page.getByRole("button", { name: "Add", exact: true }).click();
-      await expect(page.getByRole("cell", { name: "e2e-b6 extra rock excavation" })).toBeVisible();
-      await expect(page.getByText("RECEIVED", { exact: true })).toBeVisible();
+      await createResponse;
+      await expect(page.getByRole("cell", { name: "e2e-b6 extra rock excavation" })).toBeVisible({
+        timeout: VAR_TIMEOUT
+      });
+      await expect(page.getByText("RECEIVED", { exact: true })).toBeVisible({ timeout: VAR_TIMEOUT });
 
       page.once("dialog", (d) => void d.accept("5000")); // Priced amount $
+      const pricedResponse = page.waitForResponse(isVariationsCall, { timeout: VAR_TIMEOUT });
       await page.getByRole("button", { name: "Mark priced" }).click();
-      await expect(page.getByText("PRICED", { exact: true })).toBeVisible();
+      await pricedResponse;
+      await expect(page.getByText("PRICED", { exact: true })).toBeVisible({ timeout: VAR_TIMEOUT });
 
+      const submittedResponse = page.waitForResponse(isVariationsCall, { timeout: VAR_TIMEOUT });
       await page.getByRole("button", { name: "Submit", exact: true }).click();
-      await expect(page.getByText("SUBMITTED", { exact: true })).toBeVisible();
+      await submittedResponse;
+      await expect(page.getByText("SUBMITTED", { exact: true })).toBeVisible({ timeout: VAR_TIMEOUT });
 
       page.once("dialog", (d) => void d.accept("5000")); // Approved amount $
+      const approvedResponse = page.waitForResponse(isVariationsCall, { timeout: VAR_TIMEOUT });
       await page.getByRole("button", { name: "Mark approved" }).click();
-      await expect(page.getByText("APPROVED", { exact: true })).toBeVisible();
+      await approvedResponse;
+      await expect(page.getByText("APPROVED", { exact: true })).toBeVisible({ timeout: VAR_TIMEOUT });
 
       // Approved variation feeds the revised contract value on Overview.
       await page.getByRole("button", { name: "Overview", exact: true }).click();

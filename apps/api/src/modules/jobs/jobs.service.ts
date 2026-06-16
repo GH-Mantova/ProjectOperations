@@ -712,7 +712,9 @@ export class JobsService {
   async updateActivity(jobId: string, activityId: string, dto: UpdateJobActivityDto, actorId?: string) {
     await this.ensureNotReadOnly(jobId);
     const activity = await this.requireActivity(jobId, activityId);
-    await this.requireStage(jobId, dto.jobStageId);
+    if (dto.jobStageId !== undefined) {
+      await this.requireStage(jobId, dto.jobStageId);
+    }
 
     await this.prisma.jobActivity.update({
       where: { id: activity.id },
@@ -722,9 +724,9 @@ export class JobsService {
         description: dto.description,
         activityOrder: dto.activityOrder,
         status: dto.status,
-        plannedDate: dto.plannedDate ? new Date(dto.plannedDate) : null,
+        plannedDate: dto.plannedDate ? new Date(dto.plannedDate) : undefined,
         notes: dto.notes,
-        ownerUserId: dto.ownerUserId ?? null
+        ownerUserId: dto.ownerUserId
       }
     });
 

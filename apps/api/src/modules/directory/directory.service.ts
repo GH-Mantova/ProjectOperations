@@ -764,6 +764,81 @@ export class DirectoryService {
     return d;
   }
 
+  // ─── Supplier credit ledger (PR-212b) ───────────────────────────────────
+  /**
+   * List ledger entries for a supplier along with computed balance summary.
+   * Returns `creditLimit` (headline from `SubcontractorSupplier`), the
+   * current `balance` (sum of charges minus payments — positive = owed to
+   * supplier), and `remaining` (= creditLimit − balance, null when no
+   * limit is configured).
+   *
+   * @throws NotFoundException When the supplier does not exist.
+   */
+  async listCreditEntries(subId: string) {
+    const entity = await this.prisma.subcontractorSupplier.findUnique({
+      where: { id: subId },
+      select: { id: true, creditLimit: true, creditApproved: true }
+    });
+    if (!entity) throw new NotFoundException("Directory entry not found.");
+    const entries = await this.prisma.supplierCreditEntry.findMany({
+      where: { subcontractorId: subId },
+      orderBy: { entryDate: "desc" }
+    });
+    const balance = computeCreditBalance(entries);
+    const creditLimit = entity.creditLimit === null ? null : Number(entity.creditLimit);
+    const remaining = creditLimit === null ? null : Number((creditLimit - balance).toFixed(2));
+    return {
+      creditLimit,
+      creditApproved: entity.creditApproved,
+      balance,
+      remaining,
+      entries: entries.map((e) => ({ ...e, amount: Number(e.amount) }))
+    };
+  }
+
+  /**
+   * Add a charge or payment entry to a supplier's credit ledger.
+   * `entryType` must be `"charge"` or `"payment"`; `amount` must be a
+   * positive number. `entryDate` accepts ISO strings.
+   *
+   * @throws NotFoundException When the supplier does not exist.
+   * @throws BadRequestException On invalid `entryType`, missing/negative
+   *   `amount`, or invalid date.
+   */
+  async addCreditEntry(
+    subId: string,
+    actorId: string,
+    dto: {
+      entryType?: string;
+      amount?: number | string;
+      entryDate?: string | Date | null;
+      reference?: string | null;
+      note?: string | null;
+    }
+  ) {
+    await this.requireEntity(subId);
+    if (dto.entryType !== "charge" && dto.entryType !== "payment") {
+      throw new BadRequestException("entryType must be 'charge' or 'payment'.");
+    }
+    const amountNum = typeof dto.amount === "string" ? Number(dto.amount) : dto.amount;
+    if (typeof amountNum !== "number" || !Number.isFinite(amountNum) || amountNum <= 0) {
+      throw new BadRequestException("amount must be a positive number.");
+    }
+    const entryDate = this.parseDate(dto.entryDate) ?? new Date();
+    const created = await this.prisma.supplierCreditEntry.create({
+      data: {
+        subcontractorId: subId,
+        entryType: dto.entryType,
+        amount: amountNum,
+        entryDate,
+        reference: dto.reference ?? null,
+        note: dto.note ?? null,
+        createdById: actorId
+      }
+    });
+    return { ...created, amount: Number(created.amount) };
+  }
+
   private enforceCreditTransition(prev: string, next: string, canAdmin: boolean, canApprove: boolean) {
     if (prev === next) return;
     const isAllowed = (p: string, n: string) =>
@@ -785,3 +860,22 @@ export class DirectoryService {
  * outside this module that need to render badges or validate input.
  */
 export const DIRECTORY_LICENCE_STATUSES = LICENCE_STATUSES;
+
+/**
+ * Sum a supplier's credit ledger entries to a single balance.
+ * Convention: charges add to the balance (we owe the supplier), payments
+ * subtract. Returned as a number rounded to two decimals. Exported so the
+ * web/UI layer and tests can reuse the same reconciliation rule.
+ */
+export function computeCreditBalance(
+  entries: Array<{ entryType: string; amount: unknown }>
+): number {
+  let total = 0;
+  for (const e of entries) {
+    const amt = typeof e.amount === "number" ? e.amount : Number(e.amount);
+    if (!Number.isFinite(amt)) continue;
+    if (e.entryType === "charge") total += amt;
+    else if (e.entryType === "payment") total -= amt;
+  }
+  return Number(total.toFixed(2));
+}

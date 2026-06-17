@@ -1,5 +1,5 @@
 import { BadRequestException } from "@nestjs/common";
-import { DirectoryService } from "./directory.service";
+import { DirectoryService, computeCreditBalance } from "./directory.service";
 
 type AnyDto = Record<string, unknown>;
 
@@ -190,6 +190,39 @@ describe("DirectoryService — Xero alignment (PR-40)", () => {
           paymentTermsType: null
         })
       });
+    });
+  });
+
+  describe("computeCreditBalance (PR-212b ledger)", () => {
+    it("returns 0 for an empty ledger", () => {
+      expect(computeCreditBalance([])).toBe(0);
+    });
+
+    it("sums charges minus payments and rounds to 2dp", () => {
+      const entries = [
+        { entryType: "charge", amount: 1000.5 },
+        { entryType: "payment", amount: 200 },
+        { entryType: "charge", amount: 49.49 },
+        { entryType: "payment", amount: 100 }
+      ];
+      expect(computeCreditBalance(entries)).toBe(749.99);
+    });
+
+    it("coerces decimal/string amounts and ignores unknown entryType", () => {
+      const entries = [
+        { entryType: "charge", amount: "500.00" },
+        { entryType: "payment", amount: "150.25" },
+        { entryType: "adjustment", amount: 999 }
+      ];
+      expect(computeCreditBalance(entries)).toBe(349.75);
+    });
+
+    it("can go negative when payments exceed charges (overpayment / credit balance)", () => {
+      const entries = [
+        { entryType: "charge", amount: 100 },
+        { entryType: "payment", amount: 250 }
+      ];
+      expect(computeCreditBalance(entries)).toBe(-150);
     });
   });
 });

@@ -12,7 +12,7 @@ import { UpdateAllocationDto } from "./dto/update-allocation.dto";
  * Authenticated principal shape extracted from the JWT — only `sub` (the user
  * id) is consumed by this controller so the type is intentionally narrow.
  */
-type RequestUser = { sub: string };
+type RequestUser = { sub: string; permissions?: string[]; isSuperUser?: boolean };
 
 /**
  * HTTP surface for the §9 Scheduler allocations module — the worker- and
@@ -103,24 +103,39 @@ export class AllocationsController {
   @RequirePermissions("resources.manage")
   @ApiOperation({
     summary:
-      "Create a worker or asset allocation on a project. For WORKER allocations, overlapping allocations on other active/mobilising projects are surfaced as warnings (no hard block). The competency gate is evaluated against Project.requiredQualifications and returned on every response — soft-warn only: the allocation is still created when the worker fails the gate, and an AuditLog row is written capturing the allocator."
+      "Create a worker or asset allocation. Overlap warnings (worker only) are returned, never blocking. The competency gate is enforced for WORKER targets: if the worker lacks a Project.requiredQualifications entry the allocation is blocked with 409 unless the request carries an override { reason } and the actor holds resources.manage / super-user — in which case a CompetencyOverride row + AuditLog entry are written."
   })
   @ApiResponse({
     status: 201,
     description:
-      "{ allocation, warnings: [{ projectId, projectNumber, projectName, startDate, endDate }], competency: { allowed, missing[], expired[], expiringSoon[] } }"
+      "{ allocation, warnings, competency, overrideApplied }"
   })
   @ApiResponse({
     status: 400,
-    description: "Type/target mismatch (WORKER requires workerProfileId, ASSET requires assetId)."
+    description: "Type/target mismatch, invalid date order, or override supplied with an empty reason."
   })
-  @ApiResponse({ status: 404, description: "Project not found." })
+  @ApiResponse({
+    status: 403,
+    description: "Override supplied by an actor without override authority (needs resources.manage or super-user)."
+  })
+  @ApiResponse({
+    status: 404,
+    description: "Project not found."
+  })
+  @ApiResponse({
+    status: 409,
+    description: "Competency gate blocked — payload contains the missing/expired qualType codes for the UI to render."
+  })
   create(
     @Param("projectId") projectId: string,
     @Body() dto: CreateAllocationDto,
     @CurrentUser() actor: RequestUser
   ) {
-    return this.service.create(projectId, dto, { userId: actor.sub });
+    return this.service.create(projectId, dto, {
+      userId: actor.sub,
+      permissions: actor.permissions ?? [],
+      isSuperUser: actor.isSuperUser ?? false
+    });
   }
 
   /**

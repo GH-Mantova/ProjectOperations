@@ -26,6 +26,7 @@ type ProjectDetail = {
   siteAddressSuburb: string;
   siteAddressState: string;
   siteAddressPostcode: string;
+  requiredQualifications: string[];
   estimateSnapshot: { snapshotAt?: string; estimate?: unknown };
   client: { id: string; name: string };
   sourceTender: { id: string; tenderNumber: string; title: string } | null;
@@ -248,7 +249,7 @@ export function ProjectDetailPage() {
       {tab === "scope" && <ScopeTab project={project} />}
       {tab === "schedule" && <ScheduleTab project={project} />}
       {tab === "documents" && <DocumentsTab project={project} />}
-      {tab === "team" && <TeamTab project={project} />}
+      {tab === "team" && <TeamTab project={project} onProjectUpdated={() => void reload()} />}
       {tab === "activity" && <ActivityTab projectId={project.id} initial={project.activityLog} />}
 
       {advanceOpen ? (
@@ -651,12 +652,17 @@ type AssetAllocation = {
 };
 type AllocationsResponse = { workers: WorkerAllocation[]; assets: AssetAllocation[] };
 
-function TeamTab({ project }: { project: ProjectDetail }) {
+function TeamTab({ project, onProjectUpdated }: { project: ProjectDetail; onProjectUpdated: () => void }) {
   const { authFetch, user } = useAuth();
   const canManageResources = useMemo(
     () => user?.permissions.includes("resources.manage") ?? false,
     [user]
   );
+  const canManageProject = useMemo(
+    () => user?.permissions.includes("projects.manage") ?? (user?.isSuperUser ?? false),
+    [user]
+  );
+  const [reqQualsModalOpen, setReqQualsModalOpen] = useState(false);
   const [data, setData] = useState<AllocationsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -712,6 +718,43 @@ function TeamTab({ project }: { project: ProjectDetail }) {
           {error}
         </div>
       ) : null}
+
+      <section className="s7-card">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <h3 className="s7-type-section-heading" style={{ margin: 0 }}>Required qualifications</h3>
+          {canManageProject ? (
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={() => setReqQualsModalOpen(true)}
+            >
+              Edit
+            </button>
+          ) : null}
+        </div>
+        <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--text-muted)" }}>
+          Workers without these qualifications are blocked from allocation. Admins can override with a reason.
+        </p>
+        <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {project.requiredQualifications.length === 0 ? (
+            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>None — gate inactive for this project.</span>
+          ) : (
+            project.requiredQualifications.map((code) => (
+              <span
+                key={code}
+                style={{
+                  background: "#F1EFE8",
+                  borderRadius: 12,
+                  padding: "4px 10px",
+                  fontSize: 13
+                }}
+              >
+                {code}
+              </span>
+            ))
+          )}
+        </div>
+      </section>
 
       <section className="s7-card">
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -864,6 +907,19 @@ function TeamTab({ project }: { project: ProjectDetail }) {
         />
       ) : null}
 
+      {reqQualsModalOpen ? (
+        <RequiredQualificationsModal
+          projectId={project.id}
+          initial={project.requiredQualifications}
+          onClose={() => setReqQualsModalOpen(false)}
+          onSaved={() => {
+            setReqQualsModalOpen(false);
+            setToast("Required qualifications updated");
+            onProjectUpdated();
+          }}
+        />
+      ) : null}
+
       {toast ? (
         <div
           role="status"
@@ -892,6 +948,12 @@ type WorkerSearchRow = {
   role: string;
 };
 
+type CompetencyBlock = {
+  missing: string[];
+  expired: string[];
+  requiredQualifications: string[];
+};
+
 function AllocateWorkerModal({
   projectId,
   onClose,
@@ -901,7 +963,9 @@ function AllocateWorkerModal({
   onClose: () => void;
   onAllocated: () => void;
 }) {
-  const { authFetch } = useAuth();
+  const { authFetch, user } = useAuth();
+  const canOverride =
+    (user?.isSuperUser ?? false) || (user?.permissions.includes("resources.manage") ?? false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<WorkerSearchRow[]>([]);
   const [selected, setSelected] = useState<WorkerSearchRow | null>(null);
@@ -915,6 +979,8 @@ function AllocateWorkerModal({
     Array<{ projectId: string; projectNumber: string; projectName: string; startDate: string; endDate: string | null }> | null
   >(null);
   const [forceSubmit, setForceSubmit] = useState(false);
+  const [competencyBlock, setCompetencyBlock] = useState<CompetencyBlock | null>(null);
+  const [overrideReason, setOverrideReason] = useState("");
 
   useEffect(() => {
     if (!query.trim()) {
@@ -941,10 +1007,14 @@ function AllocateWorkerModal({
 
   async function submit() {
     if (!selected) return;
+    if (competencyBlock && overrideReason.trim().length === 0) {
+      setError("An override reason is required to allocate this worker.");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
-      const body: Record<string, string> = {
+      const body: Record<string, unknown> = {
         type: "WORKER",
         workerProfileId: selected.id,
         startDate
@@ -952,12 +1022,30 @@ function AllocateWorkerModal({
       if (roleOnProject.trim()) body.roleOnProject = roleOnProject.trim();
       if (endDate) body.endDate = endDate;
       if (notes.trim()) body.notes = notes.trim();
+      if (competencyBlock && overrideReason.trim()) {
+        body.override = { reason: overrideReason.trim() };
+      }
 
       const response = await authFetch(`/projects/${projectId}/allocations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
       });
+      if (response.status === 409) {
+        const blockPayload = (await response.json().catch(() => ({}))) as {
+          error?: string;
+          competency?: { missing?: string[]; expired?: string[] };
+          requiredQualifications?: string[];
+        };
+        if (blockPayload?.error === "COMPETENCY_GATE_BLOCKED") {
+          setCompetencyBlock({
+            missing: blockPayload.competency?.missing ?? [],
+            expired: blockPayload.competency?.expired ?? [],
+            requiredQualifications: blockPayload.requiredQualifications ?? []
+          });
+          return;
+        }
+      }
       if (!response.ok) throw new Error(await response.text());
       const payload = (await response.json()) as {
         allocation: unknown;
@@ -1081,6 +1169,57 @@ function AllocateWorkerModal({
               </div>
             ) : null}
 
+            {competencyBlock ? (
+              <div
+                role="alert"
+                aria-live="assertive"
+                style={{
+                  background: "#FCEBEB",
+                  color: "#A32D2D",
+                  padding: "12px 14px",
+                  borderRadius: 6,
+                  marginTop: 12,
+                  fontSize: 13
+                }}
+              >
+                <strong>Competency gate blocked allocation.</strong>{" "}
+                {selected.firstName} {selected.lastName} is missing required qualifications for this project.
+                {competencyBlock.missing.length > 0 ? (
+                  <div style={{ marginTop: 6 }}>
+                    <strong>Missing:</strong>{" "}
+                    {competencyBlock.missing.join(", ")}
+                  </div>
+                ) : null}
+                {competencyBlock.expired.length > 0 ? (
+                  <div style={{ marginTop: 6 }}>
+                    <strong>Expired:</strong>{" "}
+                    {competencyBlock.expired.join(", ")}
+                  </div>
+                ) : null}
+                {canOverride ? (
+                  <div style={{ marginTop: 10 }}>
+                    <label style={{ display: "block" }}>
+                      <span className="s7-type-label" style={{ color: "#A32D2D" }}>
+                        Override reason* (logged to audit)
+                      </span>
+                      <textarea
+                        className="s7-input"
+                        rows={2}
+                        value={overrideReason}
+                        onChange={(e) => setOverrideReason(e.target.value)}
+                        style={{ width: "100%", minHeight: 44 }}
+                        placeholder="e.g. Induction scheduled tomorrow morning, urgent crew shortfall."
+                      />
+                    </label>
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 8, fontStyle: "italic" }}>
+                    You do not have permission to override the competency gate.
+                  </div>
+                )}
+              </div>
+            ) : null}
+
             {error ? (
               <div role="alert" style={{ background: "#FCEBEB", color: "#A32D2D", padding: "8px 12px", borderRadius: 6, marginTop: 12, fontSize: 13 }}>
                 {error}
@@ -1091,8 +1230,22 @@ function AllocateWorkerModal({
               <button type="button" className="s7-btn s7-btn--ghost" onClick={onClose} disabled={submitting}>
                 Cancel
               </button>
-              <button type="button" className="s7-btn s7-btn--primary" onClick={() => void submit()} disabled={submitting}>
-                {submitting ? "Allocating…" : pendingWarnings && pendingWarnings.length > 0 ? "Allocate anyway" : "Allocate"}
+              <button
+                type="button"
+                className="s7-btn s7-btn--primary"
+                onClick={() => void submit()}
+                disabled={
+                  submitting ||
+                  (competencyBlock !== null && (!canOverride || overrideReason.trim().length === 0))
+                }
+              >
+                {submitting
+                  ? "Allocating…"
+                  : competencyBlock
+                    ? "Allocate with override"
+                    : pendingWarnings && pendingWarnings.length > 0
+                      ? "Allocate anyway"
+                      : "Allocate"}
               </button>
             </div>
           </>
@@ -1559,6 +1712,146 @@ function AddGanttTaskModal({
           </button>
         </div>
       </form>
+    </CenteredModal>
+  );
+}
+
+function RequiredQualificationsModal({
+  projectId,
+  initial,
+  onClose,
+  onSaved
+}: {
+  projectId: string;
+  initial: string[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { authFetch } = useAuth();
+  const [codes, setCodes] = useState<string[]>(initial);
+  const [draft, setDraft] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  function addCode() {
+    const next = draft.trim();
+    if (next.length === 0) return;
+    if (codes.includes(next)) {
+      setDraft("");
+      return;
+    }
+    setCodes([...codes, next]);
+    setDraft("");
+  }
+
+  function removeCode(code: string) {
+    setCodes(codes.filter((c) => c !== code));
+  }
+
+  async function submit() {
+    setSubmitting(true);
+    setErr(null);
+    try {
+      const response = await authFetch(`/projects/${projectId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requiredQualifications: codes })
+      });
+      if (!response.ok) throw new Error(await response.text());
+      onSaved();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <CenteredModal title="Required qualifications" onClose={onClose} busy={submitting} maxWidth={520}>
+      <p style={{ margin: "4px 0 12px", color: "var(--text-muted)", fontSize: 13 }}>
+        Workers without a non-expired qualification matching each code listed below will be blocked
+        from allocation. Codes are matched against the worker's <code>qualType</code> values.
+      </p>
+
+      <div style={{ display: "flex", gap: 8 }}>
+        <input
+          className="s7-input"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="e.g. white_card"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              addCode();
+            }
+          }}
+          style={{ flex: 1, minHeight: 44 }}
+        />
+        <button type="button" className="s7-btn s7-btn--ghost" onClick={addCode} style={{ minHeight: 44 }}>
+          Add
+        </button>
+      </div>
+
+      <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 8, minHeight: 44 }}>
+        {codes.length === 0 ? (
+          <span style={{ color: "var(--text-muted)", fontSize: 13 }}>
+            No required qualifications. The competency gate will be inactive for this project.
+          </span>
+        ) : (
+          codes.map((code) => (
+            <span
+              key={code}
+              style={{
+                background: "#F1EFE8",
+                borderRadius: 12,
+                padding: "4px 10px",
+                fontSize: 13,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6
+              }}
+            >
+              {code}
+              <button
+                type="button"
+                onClick={() => removeCode(code)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "var(--text-muted)",
+                  fontSize: 16,
+                  lineHeight: 1,
+                  padding: 0
+                }}
+                aria-label={`Remove ${code}`}
+              >
+                ×
+              </button>
+            </span>
+          ))
+        )}
+      </div>
+
+      {err ? (
+        <div role="alert" style={{ background: "#FCEBEB", color: "#A32D2D", padding: "8px 12px", borderRadius: 6, marginTop: 12, fontSize: 13 }}>
+          {err}
+        </div>
+      ) : null}
+
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+        <button type="button" className="s7-btn s7-btn--ghost" onClick={onClose} disabled={submitting}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="s7-btn s7-btn--primary"
+          onClick={() => void submit()}
+          disabled={submitting}
+        >
+          {submitting ? "Saving…" : "Save"}
+        </button>
+      </div>
     </CenteredModal>
   );
 }

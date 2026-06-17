@@ -304,6 +304,19 @@ export class ProjectsService {
     if (dto.supervisorId !== undefined) data.supervisor = dto.supervisorId ? { connect: { id: dto.supervisorId } } : { disconnect: true };
     if (dto.estimatorId !== undefined) data.estimator = dto.estimatorId ? { connect: { id: dto.estimatorId } } : { disconnect: true };
     if (dto.whsOfficerId !== undefined) data.whsOfficer = dto.whsOfficerId ? { connect: { id: dto.whsOfficerId } } : { disconnect: true };
+    if (dto.requiredQualifications !== undefined) {
+      // Normalise: trim, drop empties, de-duplicate, preserve order. The
+      // column is a String[] of qualType codes consumed by the competency
+      // gate; whitespace/blank entries would silently break the gate.
+      const seen = new Set<string>();
+      data.requiredQualifications = dto.requiredQualifications
+        .map((code) => (typeof code === "string" ? code.trim() : ""))
+        .filter((code) => {
+          if (code.length === 0 || seen.has(code)) return false;
+          seen.add(code);
+          return true;
+        });
+    }
 
     const updated = await this.prisma.project.update({ where: { id }, data });
 

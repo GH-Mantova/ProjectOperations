@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException
+} from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CompetencyGateResult } from "../compliance/competency-gate";
@@ -10,16 +16,17 @@ import { UpdateAllocationDto } from "./dto/update-allocation.dto";
 
 /**
  * Acting principal context threaded through writes that touch audit /
- * activity-log surfaces. `userId` is the system user id of the allocator.
+ * activity-log surfaces. `userId` is the system user id of the allocator;
+ * `permissions` carries the JWT-granted permission codes and `isSuperUser`
+ * is the root-tier bypass — together they decide whether the actor may
+ * override the competency gate.
  */
-type ActorContext = { userId: string };
+type ActorContext = {
+  userId: string;
+  permissions?: ReadonlyArray<string>;
+  isSuperUser?: boolean;
+};
 
-/**
- * Pre-built "all clear" competency verdict returned for ASSET allocations and
- * for WORKER allocations where the worker id is somehow absent. Sharing one
- * frozen-shape object keeps the response schema uniform across all create
- * paths so the UI never has to special-case a missing `competency` field.
- */
 const EMPTY_COMPETENCY: CompetencyGateResult = {
   allowed: true,
   missing: [],
@@ -28,10 +35,20 @@ const EMPTY_COMPETENCY: CompetencyGateResult = {
 };
 
 /**
- * Render a date in Australian-readable `DD Mmm YYYY` form (e.g. `08 Jun 2026`)
- * for use in outbound notification email bodies. Uses the host server's
- * local time — acceptable for human-facing scheduling copy.
+ * Permission codes whose holders may override a blocked competency gate.
+ * SuperUser bypasses regardless. `resources.manage` is the same code that
+ * gates the POST route itself; we re-check it at the service layer to keep
+ * the rule explicit and to defend against the controller-level permission
+ * matrix drifting.
  */
+const COMPETENCY_OVERRIDE_PERMISSIONS = ["resources.manage"] as const;
+
+function canOverrideCompetencyGate(actor: ActorContext): boolean {
+  if (actor.isSuperUser) return true;
+  const granted = actor.permissions ?? [];
+  return COMPETENCY_OVERRIDE_PERMISSIONS.some((code) => granted.includes(code));
+}
+
 function formatDateDdMmmYyyy(date: Date): string {
   const day = String(date.getDate()).padStart(2, "0");
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -39,52 +56,31 @@ function formatDateDdMmmYyyy(date: Date): string {
 }
 
 /**
- * Service layer for the §9 Scheduler allocations module — the worker- and
- * asset-to-project assignments that drive crew rostering and equipment
- * scheduling.
+ * Service layer for the §9 Scheduler allocations module.
  *
- * Invariants enforced here (NOT at the controller layer):
- *  - Type/target pairing: a WORKER allocation MUST carry `workerProfileId`
- *    and MUST NOT carry `assetId`; ASSET is the mirror. Mixed payloads are
- *    rejected with 400. The schema permits both columns nullable, so this is
- *    a service-level invariant rather than a database constraint.
- *  - Date order: `endDate`, when present, MUST be on or after `startDate`.
- *    `endDate === null` represents an open-ended allocation.
- *  - Overlap surfacing (WORKER only, never blocking): on create, the service
- *    queries all other allocations for the same `workerProfileId` on
- *    DIFFERENT projects whose status is `MOBILISING` or `ACTIVE` and whose
- *    window intersects the proposed window. The overlapping rows are
- *    returned as `warnings` for the UI — the create itself always succeeds.
- *    Conflict resolution is a human/scheduler call, not an API decision.
- *  - Competency gate (WORKER only, never blocking): the worker's quals are
- *    checked against `Project.requiredQualifications` via
- *    {@link ComplianceService.checkWorkerCompetency}. The verdict is always
- *    returned, but when the worker is missing or expired on a required qual
- *    an `AuditLog` row of action `allocation.unqualified_override` is
- *    written capturing the allocator, the qual gaps, and the project — this
- *    is the after-the-fact accountability trail for the soft-warn policy.
- *  - Activity log: every successful create writes a `ProjectActivityLog`
- *    row (`WORKER_ALLOCATED` or `ASSET_ALLOCATED`). Updates and deletes
- *    intentionally do NOT — allocation rows are operational and the create
- *    event is sufficient lineage.
- *  - Immutable fields on update: `type`, `workerProfileId`, `assetId` are
- *    never patchable. Only `roleOnProject`, `startDate`, `endDate`, `notes`
- *    are mutable.
- *  - Project scoping on the row id: every update/delete re-checks that the
- *    allocation belongs to the project in the URL and returns 404 otherwise,
- *    defending against cross-project id-guessing.
+ * Competency-gate enforcement (this PR — block + logged override):
+ *  - For WORKER targets the gate runs BEFORE the allocation insert (the
+ *    earlier soft-warn path ran it after). If the worker holds the project's
+ *    `requiredQualifications`, the allocation is created and a verdict is
+ *    returned.
+ *  - If the gate would block (missing or expired qualType codes) and the
+ *    request carries no `override`, the service throws a 409 with a
+ *    machine-readable list of the gaps so the UI can name them. The
+ *    allocation row is NOT created.
+ *  - If the request carries an `override` and the actor holds override
+ *    authority (SuperUser or `resources.manage`), the allocation IS
+ *    created and a `CompetencyOverride` row is persisted alongside a
+ *    `allocation.unqualified_override` AuditLog entry, capturing who
+ *    overrode what and why.
+ *  - An `override` payload from an unauthorised actor is rejected with 403;
+ *    an `override` payload with a missing/blank `reason` is rejected at the
+ *    DTO layer with 400. An `override` payload supplied when the gate
+ *    actually passes is silently ignored (no override row written).
  *
- * Side effects on WORKER create:
- *  - Best-effort notification email via {@link EmailService.sendNotificationEmail}
- *    (fire-and-forget: the email service swallows its own failures so a mail
- *    outage cannot fail the allocation).
- *  - In-app notification via {@link NotificationsService.create} when the
- *    worker has a linked internal user account.
- *
- * NOTE on availability windows: this service does NOT consult
- * `WorkerAvailability` today — overlap warnings are derived only from other
- * `ProjectAllocation` rows. If/when availability gating is added it belongs
- * here, alongside the existing overlap query.
+ * Other invariants (unchanged from prior PRs): type/target pairing
+ * (WORKER↔workerProfileId, ASSET↔assetId), date order, overlap warnings
+ * (WORKER only, never blocking, returned in `warnings`), activity log,
+ * best-effort email + in-app notification, immutable fields on update.
  */
 @Injectable()
 export class AllocationsService {
@@ -95,18 +91,6 @@ export class AllocationsService {
     private readonly compliance: ComplianceService
   ) {}
 
-  /**
-   * Return all allocations for a project, split into worker and asset
-   * groups for direct rendering by the UI.
-   *
-   * Rows are ordered by `startDate` ascending, then `createdAt` ascending
-   * so deterministic ties (two allocations starting the same day) keep a
-   * stable presentation order. The asset shape renames `assetCode` →
-   * `assetNumber` and flattens `category.name` → `category` so the response
-   * matches the asset display convention used elsewhere in the UI.
-   *
-   * @throws NotFoundException when the project does not exist.
-   */
   async listForProject(projectId: string) {
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
@@ -159,38 +143,16 @@ export class AllocationsService {
   }
 
   /**
-   * Create a worker or asset allocation on a project, with overlap warnings
-   * and a soft-warn competency verdict for WORKER targets.
+   * Create a worker or asset allocation. See class-level JSDoc for the full
+   * contract including the competency-gate enforcement + override path.
    *
-   * Sequence:
-   *  1. Resolve the project (404 if absent) — also pulls the
-   *     `requiredQualifications` array needed for the competency check.
-   *  2. Validate type/target pairing (WORKER ↔ workerProfileId, ASSET ↔
-   *     assetId — mixed payloads rejected with 400).
-   *  3. Validate date order (endDate ≥ startDate when both present).
-   *  4. For WORKER allocations: find overlapping allocations on OTHER
-   *     `MOBILISING`/`ACTIVE` projects and collect them as warnings. Never
-   *     blocks the create.
-   *  5. Insert the allocation row.
-   *  6. Write a `ProjectActivityLog` row (`WORKER_ALLOCATED` or
-   *     `ASSET_ALLOCATED`).
-   *  7. For WORKER allocations: fire a best-effort notification email and,
-   *     if the worker is linked to an internal user, create an in-app
-   *     notification.
-   *  8. For WORKER allocations: run the competency gate; when it flags
-   *     missing or expired quals, write an `AuditLog`
-   *     (`allocation.unqualified_override`) capturing the allocator.
-   *
-   * The activity log and audit log writes are intentionally OUTSIDE a
-   * transaction with the allocation insert — the allocation is the source
-   * of truth and downstream audit/log gaps are tolerable; surfacing an
-   * error to the user mid-flow would be worse.
-   *
-   * @returns `{ allocation, warnings, competency }` — warnings is `[]` for
-   *          ASSET allocations and for WORKER allocations with no overlap;
-   *          competency is the `EMPTY_COMPETENCY` shape for ASSET targets.
    * @throws BadRequestException on type/target mismatch or invalid date order.
    * @throws NotFoundException when the project does not exist.
+   * @throws ConflictException when the competency gate blocks the worker and
+   *         no `override` is supplied. Response payload includes a
+   *         `competency` field listing the missing/expired qualType codes.
+   * @throws ForbiddenException when an `override` is supplied by an actor
+   *         lacking override authority.
    */
   async create(projectId: string, dto: CreateAllocationDto, actor: ActorContext) {
     const project = await this.prisma.project.findUnique({
@@ -213,6 +175,44 @@ export class AllocationsService {
     const endDate = dto.endDate ? new Date(dto.endDate) : null;
     if (endDate && endDate < startDate) {
       throw new BadRequestException("endDate must be on or after startDate.");
+    }
+
+    // Competency gate runs BEFORE the insert so a blocked allocation never
+    // creates a row. ASSET allocations skip the gate (no quals to evaluate).
+    let competency: CompetencyGateResult = EMPTY_COMPETENCY;
+    if (dto.type === "WORKER" && dto.workerProfileId) {
+      competency = await this.compliance.checkWorkerCompetency(
+        dto.workerProfileId,
+        project.requiredQualifications
+      );
+    }
+
+    const gateBlocks =
+      dto.type === "WORKER" &&
+      (competency.missing.length > 0 || competency.expired.length > 0);
+
+    if (gateBlocks) {
+      if (!dto.override) {
+        throw new ConflictException({
+          error: "COMPETENCY_GATE_BLOCKED",
+          message:
+            "Worker is missing required qualifications. Allocation blocked — submit an override with a reason to proceed.",
+          competency,
+          projectId: project.id,
+          projectNumber: project.projectNumber,
+          requiredQualifications: project.requiredQualifications
+        });
+      }
+      if (!canOverrideCompetencyGate(actor)) {
+        throw new ForbiddenException(
+          "Overriding the competency gate requires resources.manage or super-user."
+        );
+      }
+      const trimmedReason = dto.override.reason?.trim() ?? "";
+      if (trimmedReason.length === 0) {
+        // Defence-in-depth: DTO validator rejects empty strings already.
+        throw new BadRequestException("Override reason is required.");
+      }
     }
 
     const warnings: Array<{
@@ -292,7 +292,6 @@ export class AllocationsService {
     });
 
     if (dto.type === "WORKER") {
-      // Fire-and-forget email; sendNotificationEmail swallows its own errors.
       void this.email.sendNotificationEmail({
         trigger: "worker.allocated",
         subject: `Worker allocated — ${targetName} on ${project.projectNumber}`,
@@ -314,22 +313,23 @@ export class AllocationsService {
       );
     }
 
-    // Soft-warn competency gate: surface a structured verdict on every
-    // allocation response so the UI can show a warning. The allocation is
-    // never blocked — when the gate flags missing/expired quals we write an
-    // AuditLog row capturing who allocated the unqualified worker.
-    const isWorkerAllocation = allocation.type === "WORKER" && !!allocation.workerProfileId;
-    const competency: CompetencyGateResult = isWorkerAllocation
-      ? await this.compliance.checkWorkerCompetency(
-          allocation.workerProfileId!,
-          project.requiredQualifications
-        )
-      : EMPTY_COMPETENCY;
+    // Persist the override row + audit log when the gate was blocked AND the
+    // caller overrode it. Order matters: allocation row first (insert above),
+    // then override row referencing it, then audit log. Outside a transaction
+    // intentionally — see prior history; the allocation is the source of truth.
+    if (gateBlocks && dto.override) {
+      await this.prisma.competencyOverride.create({
+        data: {
+          allocationId: allocation.id,
+          projectId: project.id,
+          workerProfileId: dto.workerProfileId!,
+          missingQualTypes: competency.missing,
+          expiredQualTypes: competency.expired,
+          reason: dto.override.reason.trim(),
+          overriddenById: actor.userId
+        }
+      });
 
-    if (
-      isWorkerAllocation &&
-      (competency.missing.length > 0 || competency.expired.length > 0)
-    ) {
       await this.prisma.auditLog.create({
         data: {
           actorId: actor.userId,
@@ -343,32 +343,21 @@ export class AllocationsService {
             requiredQualifications: project.requiredQualifications,
             missing: competency.missing,
             expired: competency.expired,
-            expiringSoon: competency.expiringSoon
+            expiringSoon: competency.expiringSoon,
+            reason: dto.override.reason.trim()
           } satisfies Prisma.InputJsonValue
         }
       });
     }
 
-    return { allocation, warnings, competency };
+    return {
+      allocation,
+      warnings,
+      competency,
+      overrideApplied: gateBlocks && !!dto.override
+    };
   }
 
-  /**
-   * Update the mutable subset of an allocation: `roleOnProject`,
-   * `startDate`, `endDate`, `notes`. `type`, `workerProfileId`, and
-   * `assetId` are immutable — a re-target is a delete + create.
-   *
-   * Date order is re-validated against EFFECTIVE values (the incoming value
-   * if provided, otherwise the stored value) so a partial PATCH that
-   * supplies only `startDate` cannot push it past the stored `endDate` and
-   * vice versa. Overlap warnings and competency re-checks are NOT re-run on
-   * update — those are decisions made at allocation time and re-evaluating
-   * them on every PATCH would create noisy false alarms when only `notes`
-   * changes.
-   *
-   * @throws NotFoundException when the allocation id does not belong to the
-   *         project in the URL.
-   * @throws BadRequestException when the effective `endDate < startDate`.
-   */
   async update(projectId: string, allocId: string, dto: UpdateAllocationDto) {
     const existing = await this.prisma.projectAllocation.findUnique({ where: { id: allocId } });
     if (!existing || existing.projectId !== projectId) {
@@ -392,18 +381,6 @@ export class AllocationsService {
     });
   }
 
-  /**
-   * Hard-delete an allocation. No activity log entry is written —
-   * allocations are operational scheduling records, not audit-critical,
-   * and the create/update events provide sufficient lineage. The row is
-   * removed unconditionally; downstream rows that reference allocations
-   * (timesheets etc.) rely on FK cascade or nullification at the schema
-   * level, not on application logic here.
-   *
-   * @returns `{ deleted: true }` on success.
-   * @throws NotFoundException when the allocation id does not belong to the
-   *         project in the URL.
-   */
   async remove(projectId: string, allocId: string) {
     const existing = await this.prisma.projectAllocation.findUnique({ where: { id: allocId } });
     if (!existing || existing.projectId !== projectId) {

@@ -80,6 +80,16 @@ const ROWS: MatrixRow[] = [
   { group: "long-tail", method: "post", path: "/scheduler/shifts", permission: "scheduler.manage", body: {}, viewer: 403 },
   { group: "long-tail", method: "post", path: "/contracts", permission: "finance.manage", body: {}, viewer: 403 },
   { group: "long-tail", method: "post", path: "/workers", permission: "resources.manage", body: {}, viewer: 403 },
+  // PR-188b F4: leave / unavailability writes were previously gated by
+  // `resources.view`, which Viewer holds. Now require `resources.manage` so a
+  // read-only Viewer cannot lodge leave or unavailability for any worker.
+  { group: "long-tail", method: "post", path: "/workers/leaves", permission: "resources.manage", body: {}, viewer: 403 },
+  { group: "long-tail", method: "post", path: "/workers/unavailability", permission: "resources.manage", body: {}, viewer: 403 },
+  // PR-188b F1: global-list creation was previously open to any authenticated
+  // JWT (JwtAuthGuard only). Now gated by `masterdata.manage`. Viewer's seeded
+  // 17 .view codes intentionally exclude masterdata.manage, so 403.
+  { group: "long-tail", method: "post", path: "/lists", permission: "masterdata.manage", body: {}, viewer: 403 },
+  { group: "long-tail", method: "post", path: "/lists/worker_status/items", permission: "masterdata.manage", body: {}, viewer: 403 },
   { group: "long-tail", method: "post", path: "/directory", permission: "directory.manage", body: {}, viewer: 403 },
   { group: "long-tail", method: "post", path: "/assets", permission: "assets.manage", body: {}, viewer: 403 },
   { group: "long-tail", method: "post", path: "/maintenance/plans", permission: "maintenance.manage", body: {}, viewer: 403 },
@@ -179,17 +189,8 @@ describe("Permission matrix — role × endpoint authorization", () => {
     }
   });
 
-  // ── KNOWN-FAIL cells (see docs/pr-prompts/needs-marco/pr-188-authz-findings.md F1) ──
-  // Global lists creation is open to any authenticated user (JwtAuthGuard only,
-  // no PermissionsGuard). Asserting the read-only-Viewer expectation (403) would
-  // fail today AND mutate the seeded DB, so these stay skipped until Marco
-  // decides whether creation should be permission-gated.
-
-  it.skip("KNOWN-FAIL F1: POST /lists — viewer expected 403, currently 201 (creates a global list)", () => {
-    /* intentionally skipped — see pr-188-authz-findings.md */
-  });
-
-  it.skip("KNOWN-FAIL F1: POST /lists/:slug/items — viewer expected 403, currently 201 (adds an item)", () => {
-    /* intentionally skipped — see pr-188-authz-findings.md */
-  });
+  // PR-188b: F1 (global list creation) and F4 (worker leave / unavailability
+  // writes) are now gated by `masterdata.manage` and `resources.manage`
+  // respectively. The previously-skipped KNOWN-FAIL cells are covered by the
+  // /lists and /workers/leaves rows in the long-tail matrix above.
 });

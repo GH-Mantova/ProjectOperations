@@ -192,6 +192,12 @@ export async function seedPermissionsAndCoreRoles(prisma: PrismaClient) {
         roleId: plannerRole.id,
         permissionId: permissionIdByCode.get("projects.manage")!
       },
+      // PR-188b F1: gate /lists creation behind masterdata.manage.
+      // Planner role already manages lookups, so grant it here.
+      {
+        roleId: plannerRole.id,
+        permissionId: permissionIdByCode.get("masterdata.manage")!
+      },
       {
         roleId: fieldRole.id,
         permissionId: permissionIdByCode.get("permissions.view")!

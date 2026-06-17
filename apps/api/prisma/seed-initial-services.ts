@@ -105,6 +105,7 @@ export async function seedOperationalRoles(prisma: PrismaClient) {
     "Project delivery — jobs, scheduling, and resource coordination.",
     [
       ...baseView,
+      "masterdata.manage",
       "jobs.view",
       "jobs.manage",
       "resources.view",
@@ -135,6 +136,7 @@ export async function seedOperationalRoles(prisma: PrismaClient) {
     "Tendering and estimating — full control of rate library and tender pricing.",
     [
       ...baseView,
+      "masterdata.manage",
       "tenders.view",
       "tenders.manage",
       "tenderdocuments.view",
@@ -156,6 +158,7 @@ export async function seedOperationalRoles(prisma: PrismaClient) {
     "Work Health & Safety + commercial compliance — forms, audits, document control.",
     [
       ...baseView,
+      "masterdata.manage",
       "forms.view",
       "forms.manage",
       "documents.view",
@@ -180,6 +183,7 @@ export async function seedOperationalRoles(prisma: PrismaClient) {
     "Accounts payable / receivable — tender + job visibility, contract lifecycle access.",
     [
       ...baseView,
+      "masterdata.manage",
       "tenders.view",
       "tenderdocuments.view",
       "tenderconversion.manage",
@@ -201,6 +205,7 @@ export async function seedOperationalRoles(prisma: PrismaClient) {
     "Assets and maintenance — warehouse + equipment lifecycle.",
     [
       ...baseView,
+      "masterdata.manage",
       "assets.view",
       "assets.manage",
       "maintenance.view",

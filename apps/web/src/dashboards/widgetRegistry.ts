@@ -73,9 +73,11 @@ import {
   AvgLeadTimeKpi,
   DueThisWeekPanel,
   FollowUpQueuePanel,
+  LossReasonsDonut,
   PipelineByEstimatorDonut,
   RecentWinsPanel,
   SubmittedMtdKpi,
+  WinRateByClientBar,
   WinRateChart,
   WinRateYtdKpi
 } from "./widgets/tendering";
@@ -378,6 +380,65 @@ export const WIDGETS: WidgetMeta[] = [
       { key: "estimatorIds", label: "Estimator filter", type: "multiselect", dynamicOptions: "estimators" }
     ],
     component: RecentWinsPanel
+  },
+  {
+    type: "ten_win_rate_by_client",
+    name: "Win rate by client",
+    category: "tendering",
+    size: "half",
+    description: "Per-client win rate (or value won) for resolved tenders in the selected period.",
+    configSchema: [
+      {
+        key: "period",
+        label: "Period",
+        type: "select",
+        options: [
+          { value: "90d", label: "Last 90 days" },
+          { value: "6m", label: "Last 6 months" },
+          { value: "12m", label: "Last 12 months" }
+        ]
+      },
+      {
+        key: "metric",
+        label: "Show",
+        type: "select",
+        options: [
+          { value: "rate", label: "Win rate (%)" },
+          { value: "value", label: "Value won ($)" }
+        ]
+      },
+      { key: "maxRows", label: "Max clients", type: "number", min: 3, max: 20, step: 1, defaultValue: 8 }
+    ],
+    component: WinRateByClientBar
+  },
+  {
+    type: "ten_loss_reasons",
+    name: "Loss reasons",
+    category: "tendering",
+    size: "half",
+    description: "Distribution of recorded outcomes for lost tenders in the selected period.",
+    configSchema: [
+      {
+        key: "period",
+        label: "Period",
+        type: "select",
+        options: [
+          { value: "90d", label: "Last 90 days" },
+          { value: "6m", label: "Last 6 months" },
+          { value: "12m", label: "Last 12 months" }
+        ]
+      },
+      {
+        key: "chartType",
+        label: "Chart",
+        type: "select",
+        options: [
+          { value: "donut", label: "Donut" },
+          { value: "bar", label: "Bar" }
+        ]
+      }
+    ],
+    component: LossReasonsDonut
   },
 
   // ── Jobs ──────────────────────────────────────────────────

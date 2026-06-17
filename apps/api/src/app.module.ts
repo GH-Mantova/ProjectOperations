@@ -27,6 +27,7 @@ import { SafetyModule } from "./modules/safety/safety.module";
 import { MasterDataModule } from "./modules/master-data/master-data.module";
 import { PdfRenderingModule } from "./modules/pdf-rendering/pdf-rendering.module";
 import { PermissionsModule } from "./modules/permissions/permissions.module";
+import { PilotFeedbackModule } from "./modules/pilot-feedback/pilot-feedback.module";
 import { PersonasModule } from "./modules/personas/personas.module";
 import { PlatformModule } from "./modules/platform/platform.module";
 import { PortalModule } from "./modules/portal/portal.module";
@@ -74,6 +75,7 @@ import { FieldModule } from "./modules/field/field.module";
     EstimatesModule,
     PdfRenderingModule,
     PermissionsModule,
+    PilotFeedbackModule,
     PersonasModule,
     PlatformModule,
     ResourcesModule,

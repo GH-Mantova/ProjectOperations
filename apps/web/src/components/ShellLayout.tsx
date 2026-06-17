@@ -3,6 +3,7 @@ import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { NotificationsDropdown } from "./NotificationsDropdown";
 import { CommandPalette } from "./CommandPalette";
+import { FeedbackButton } from "./FeedbackButton";
 import { NewDashboardModal } from "../dashboards/NewDashboardModal";
 import { useUserDashboards, useUserDashboardsActions } from "../dashboards/userDashboards";
 import { PersonaProvider } from "../personas/PersonaContext";
@@ -588,6 +589,7 @@ export function ShellLayout() {
             >
               {ICON_SEARCH}
             </button>
+            <FeedbackButton />
             <button
               type="button"
               className="shell__topbar-avatar"

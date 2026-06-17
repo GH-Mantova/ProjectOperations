@@ -108,6 +108,7 @@ model User {
   hazardsAssigned            HazardObservation[]       @relation("HazardAssignee")
   personaInstructionUpdates  PersonaCompanyInstruction[] @relation("PersonaInstructionUpdater")
   personaSettings            UserPersonaSettings[]
+  pilotFeedback              PilotFeedback[]           @relation("PilotFeedbackUser")
 
   // §5A.1 PR 9 — per-user encrypted AI provider keys (BYOK). Storage format
   // is "<iv-base64>:<authTag-base64>:<ciphertext-base64>" produced by
@@ -3753,4 +3754,24 @@ model CalendarSyncedEvent {
   @@unique([userId, sourceType, sourceId])
   @@index([userId, status])
   @@map("calendar_synced_events")
+}
+
+// PR-193b — In-app pilot feedback capture. Any logged-in user can submit a
+// short note tied to the route they were on; admins read/triage the list.
+// Intentionally light — no notifications, no attachments (follow-up).
+model PilotFeedback {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  user      User     @relation("PilotFeedbackUser", fields: [userId], references: [id], onDelete: Cascade)
+  route     String
+  // 'bug' | 'idea' | 'question' | 'other' — validated at the API boundary.
+  category  String
+  message   String
+  // 'new' | 'triaged' | 'done'.
+  status    String   @default("new")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([status, createdAt])
+  @@index([userId])
+  @@map("pilot_feedback")
 }

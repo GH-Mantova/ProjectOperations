@@ -171,6 +171,20 @@ class UpsertCreditApplicationDto {
  * `documentType` and `name` are required on create. The actual file lives
  * wherever `filePath` points (SharePoint adapter).
  */
+/**
+ * Payload for adding a credit ledger entry on a supplier. `entryType` must
+ * be `"charge"` (we owe the supplier) or `"payment"` (we paid them).
+ * `amount` is positive; the sign is carried by `entryType`. `entryDate`
+ * accepts ISO strings — defaults to "now" when omitted.
+ */
+class CreateCreditEntryDto {
+  @IsIn(["charge", "payment"]) entryType!: string;
+  @Type(() => Number) @IsNumber() amount!: number;
+  @IsOptional() @IsString() entryDate?: string;
+  @IsOptional() @IsString() reference?: string | null;
+  @IsOptional() @IsString() note?: string | null;
+}
+
 class UpsertDocumentDto {
   @IsOptional() @IsString() documentType?: string;
   @IsOptional() @IsString() name?: string;
@@ -433,6 +447,31 @@ export class DirectoryController {
       hasPermission(req, "directory.admin"),
       hasPermission(req, "finance.manage")
     );
+  }
+
+  // ─── Subcontractor credit ledger (PR-212b) ──────────────────────────────
+  /** List ledger entries for a supplier plus computed balance and remaining credit. */
+  @Get("directory/:id/credit-ledger")
+  @RequirePermissions("directory.view")
+  @ApiOperation({ summary: "List supplier credit ledger entries with computed balance and remaining credit." })
+  @ApiResponse({ status: 200, description: "Ledger entries + creditLimit, balance, remaining." })
+  @ApiResponse({ status: 404, description: "Supplier not found." })
+  listCreditLedger(@Param("id") id: string) {
+    return this.service.listCreditEntries(id);
+  }
+
+  /** Add a charge or payment to a supplier's credit ledger. */
+  @Post("directory/:id/credit-ledger")
+  @RequirePermissions("directory.manage")
+  @ApiOperation({ summary: "Add a charge or payment to a supplier's credit ledger." })
+  @ApiResponse({ status: 201, description: "Ledger entry created." })
+  @ApiResponse({ status: 404, description: "Supplier not found." })
+  addCreditLedgerEntry(
+    @Param("id") id: string,
+    @Body() dto: CreateCreditEntryDto,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.addCreditEntry(id, actor.sub, dto);
   }
 
   // ─── Subcontractor documents ────────────────────────────────────────────

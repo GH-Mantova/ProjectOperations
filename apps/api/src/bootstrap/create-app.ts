@@ -36,18 +36,58 @@ export async function createApp() {
   const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup("api/docs", app, swaggerDocument);
 
-  const webDistPath = resolveWebDistPath();
+  const isProduction = (process.env.NODE_ENV ?? "development") === "production";
 
-  if (webDistPath) {
-    app.useStaticAssets(webDistPath);
+  if (isProduction) {
+    const webDistPath = resolveWebDistPath();
+
+    if (webDistPath) {
+      app.useStaticAssets(webDistPath);
+
+      const httpAdapter = app.getHttpAdapter().getInstance();
+      httpAdapter.get(/^\/(?!api(?:\/|$)).*/, (_request: unknown, response: { sendFile: (path: string) => void }) => {
+        response.sendFile(join(webDistPath, "index.html"));
+      });
+    }
+  } else {
+    const helper = renderDevHelper(corsOrigin, "/api/docs");
 
     const httpAdapter = app.getHttpAdapter().getInstance();
-    httpAdapter.get(/^\/(?!api(?:\/|$)).*/, (_request: unknown, response: { sendFile: (path: string) => void }) => {
-      response.sendFile(join(webDistPath, "index.html"));
-    });
+    httpAdapter.get(
+      /^\/(?!api(?:\/|$)).*/,
+      (_request: unknown, response: { status: (code: number) => { type: (t: string) => { send: (b: string) => void } } }) => {
+        response.status(200).type("text/html").send(helper);
+      }
+    );
   }
 
   return app;
+}
+
+export function renderDevHelper(viteUrl: string, swaggerUrl: string) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Project Operations API (dev)</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 4rem auto; padding: 0 1rem; color: #1f2937; }
+  h1 { margin-bottom: 0.25rem; }
+  p { line-height: 1.5; }
+  code { background: #f3f4f6; padding: 0.1rem 0.35rem; border-radius: 4px; }
+  .links a { display: inline-block; margin-right: 1rem; }
+</style>
+</head>
+<body>
+<h1>API dev server</h1>
+<p>You are hitting the NestJS API on <code>:3000</code>. The frontend is served separately by Vite.</p>
+<p class="links">
+  <a href="${viteUrl}">Open frontend (Vite) →</a>
+  <a href="${swaggerUrl}">Open API docs →</a>
+</p>
+<p>In development, the API does not serve <code>apps/web/dist</code>, so you will never see a stale built frontend here.</p>
+</body>
+</html>`;
 }
 
 function resolveWebDistPath() {

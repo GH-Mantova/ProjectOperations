@@ -1304,7 +1304,10 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     KPI labels and panel titles at ≤1024px. Fixed by hiding the chrome
     until hover/focus-within (same affordance as the resize handles).
     (Chat1 dashboard screenshot batch 2026-05-03 — visible overlap
-     at narrow viewports.)
+     at narrow viewports.) — further hardened 2026-06-18 (PR-97): bumped
+    the widget-header right-padding reservation from 56px to 168px and
+    capped the period select at 130px max-width with title ellipsis, so
+    the chrome no longer overlaps titles when revealed on hover.
 
 ⏸️  Job ID naming inconsistency (JOB-COMP-{epoch} vs JOB-2026-001)
     (Chat1 dashboard 2026-05-03 — two patterns coexist; pick one

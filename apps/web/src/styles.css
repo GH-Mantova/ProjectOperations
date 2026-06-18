@@ -8219,11 +8219,22 @@ textarea {
 }
 /* Reserve space at the top-right for the chrome pills (period override +
    drag handle + settings) so widget titles never run under them. The chrome
-   sits at top:10/right:10 with up to ~140px of pills, hence 160px right pad
-   on the immediate widget child header. Widgets can override per-class. */
+   sits at top:10/right:10 with the period select (max-width 130px) + two
+   26px icons + 4px gaps + 10px right offset ≈ 200px when revealed. Reserve
+   168px so titles ellipsis cleanly instead of colliding at narrow viewports. */
 .td-canvas__slot > * > :first-child,
 .td-canvas__slot .s7-card > :first-child {
-  padding-right: 56px;
+  padding-right: 168px;
+  min-width: 0;
+}
+/* Title elements inside the reserved header should truncate rather than push
+   siblings under the chrome. */
+.td-canvas__slot > * > :first-child > :first-child,
+.td-canvas__slot .s7-card > :first-child > :first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* Per-widget-size minimum heights so resized widgets stop collapsing under
    their content. Resize handles can grow them larger but never below these. */

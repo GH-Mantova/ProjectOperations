@@ -22,16 +22,19 @@ import type {
 // keeps these rows isolated from scope / estimate / quote proposals.
 const TOOL_NAME = "propose_clarifications";
 
+/** Lifecycle status of a stored clarifications proposal. */
 export type ClarificationProposalStatus = "pending" | "accepted" | "rejected";
 
 // `acceptedRecord` captures the id + kind of the row created (or
 // updated, for rfi_response) on accept. Used by the frontend to surface
 // a "view in clarifications" deep link.
+/** Kind + row id of the clarifications record created/updated on accept. */
 export type AcceptedClarificationRecord =
   | { kind: "new_rfi"; rfiId: string }
   | { kind: "new_note"; noteId: string }
   | { kind: "rfi_response"; rfiId: string };
 
+/** One AI clarifications proposal as persisted on a tool_result message. */
 export type StoredClarificationProposal = {
   index: number;
   proposal: ClarificationProposalInput;
@@ -40,6 +43,7 @@ export type StoredClarificationProposal = {
   decidedAt?: string;
 };
 
+/** Shape of the tool_result message metadata for clarifications proposals. */
 export type ClarificationProposalsMetadata = {
   toolUseId: string;
   toolName: typeof TOOL_NAME;
@@ -49,6 +53,7 @@ export type ClarificationProposalsMetadata = {
 // Edits are kind-aware: the user can tweak only the fields that
 // belong to the proposal's kind. The frontend constrains this; the
 // service merges shallowly within the proposal-of-correct-kind shape.
+/** Kind-aware optional edits applied to a clarifications proposal at accept time. */
 export type ClarificationProposalEdits =
   | Partial<NewRfiProposal>
   | Partial<NewNoteProposal>

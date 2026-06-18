@@ -16,12 +16,14 @@ import {
 import { Type } from "class-transformer";
 
 // PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
+/** Canonical 4-code discipline tuple (DEM/CIV/ASB/Other). */
 export const DISCIPLINES = ["DEM", "CIV", "ASB", "Other"] as const;
 // Row-type slugs accepted by the API. The first six entries are the legacy
 // names (kept so historical rows keep passing validation); the rest are the
 // new canonical slugs introduced with the scope redesign and match the
 // system `row-types` GlobalList. Discipline × row-type is enforced
 // separately in the service.
+/** Accepted row-type slugs (legacy + canonical redesign names). */
 export const ROW_TYPES = [
   "demolition",
   "cutting",
@@ -36,13 +38,19 @@ export const ROW_TYPES = [
   "plant-only",
   "general-labour"
 ] as const;
+/** Lifecycle statuses for a scope item. */
 export const STATUSES = ["draft", "confirmed", "excluded"] as const;
+/** Shift tags accepted on labour-bearing scope items. */
 export const SHIFTS = ["Day", "Night", "Weekend"] as const;
 
+/** Union of the four canonical discipline codes. */
 export type Discipline = (typeof DISCIPLINES)[number];
+/** Union of accepted row-type slugs (legacy + redesign). */
 export type RowType = (typeof ROW_TYPES)[number];
+/** Union of scope item lifecycle statuses. */
 export type ScopeStatus = (typeof STATUSES)[number];
 
+/** PATCH body for the scope sheet site-context header. */
 export class UpdateScopeHeaderDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) siteAddress?: string | null;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(120) siteContactName?: string | null;
@@ -161,12 +169,14 @@ class ScopeItemFieldsBase {
   measurements?: unknown;
 }
 
+/** Body for creating a scope item (discipline + rowType + description required). */
 export class CreateScopeItemDto extends ScopeItemFieldsBase {
   @ApiProperty({ enum: DISCIPLINES }) @IsIn(DISCIPLINES as unknown as string[]) discipline!: Discipline;
   @ApiProperty({ enum: ROW_TYPES }) @IsIn(ROW_TYPES as unknown as string[]) rowType!: RowType;
   @ApiProperty() @IsString() @MaxLength(500) description!: string;
 }
 
+/** Partial-update body for a scope item (any subset of fields). */
 export class UpdateScopeItemDto extends ScopeItemFieldsBase {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) description?: string;
   @ApiPropertyOptional({ enum: STATUSES }) @IsOptional() @IsIn(STATUSES as unknown as string[]) status?: ScopeStatus;
@@ -174,11 +184,13 @@ export class UpdateScopeItemDto extends ScopeItemFieldsBase {
   @ApiPropertyOptional() @IsOptional() @IsInt() sortOrder?: number;
 }
 
+/** One (itemId, sortOrder) pair for the scope item reorder endpoint. */
 export class ReorderEntryDto {
   @ApiProperty() @IsString() itemId!: string;
   @ApiProperty() @IsInt() @Min(0) sortOrder!: number;
 }
 
+/** Body for the scope item bulk-reorder endpoint. */
 export class ReorderScopeItemsDto {
   @ApiProperty({ type: [ReorderEntryDto] })
   @IsArray()
@@ -189,6 +201,7 @@ export class ReorderScopeItemsDto {
 }
 
 // ── PR B1 — Scope card DTOs ──────────────────────────────────────────────
+/** Body for creating a scope card (name + discipline). */
 export class CreateScopeCardDto {
   @ApiProperty({ description: "Display name (free-form, max 200 chars)." })
   @IsString() @MaxLength(200) name!: string;
@@ -197,6 +210,7 @@ export class CreateScopeCardDto {
   @IsIn(DISCIPLINES as unknown as string[]) discipline!: Discipline;
 }
 
+/** Partial-update body for a scope card; controller dispatches one op per call. */
 export class UpdateScopeCardDto {
   @ApiPropertyOptional({ description: "New display name (rename)." })
   @IsOptional() @IsString() @MaxLength(200) name?: string;
@@ -259,6 +273,7 @@ export class UpdateScopeCardDto {
 // "+ Add row" button after B1.6). rowType is optional and defaults to
 // "general-labour" when omitted because the canonical 12-column table
 // no longer surfaces a row-type concept.
+/** Body for creating a scope item inside a specific card (discipline derived from card). */
 export class CreateScopeItemInCardDto {
   @ApiPropertyOptional({ description: "Initial description (defaults to empty string)." })
   @IsOptional() @IsString() @MaxLength(500) description?: string;
@@ -267,6 +282,7 @@ export class CreateScopeItemInCardDto {
   @IsOptional() @IsIn(ROW_TYPES as unknown as string[]) rowType?: RowType;
 }
 
+/** Body for the scope card bulk-reorder endpoint (cardIds in display order). */
 export class ReorderScopeCardsDto {
   @ApiProperty({ type: [String], description: "Card IDs in desired display order; each gets sortOrder = its index." })
   @IsArray()

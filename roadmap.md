@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-06-18 03:35 AEST
+Last updated: 2026-06-18 22:17 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -2550,3 +2550,64 @@ Per-user permission overrides are *not* in scope: the Prisma schema has
 no `UserPermission` model, so granting permissions outside of role
 assignment would need a schema migration. Logged as a follow-up rather
 than guessed at.
+
+### 2026-06-19 — Doc reconcile (PRs #393–#431 catch-up)
+
+Since the last reconcile (PR #393, 2026-06-15, which caught up #301–#392),
+the following landed on `main` and are now reflected in progress.md. None
+change phase-level status in the table of contents — Phases §1–§4 remain
+✅ COMPLETE, §5A remains the active gate, §5C remains the queued follow-up.
+
+**Pilot-blocker work (✅ COMPLETE):**
+- ✅ SSO on Static Web Apps — redirect flow + PWA-safe auth (#397, #398, #406)
+- ✅ SWA navigationFallback for deep-link routing (#409)
+- ✅ Azure static-web-apps-deploy pin off floating @v1 (#407)
+- ✅ Stale built frontend no longer served on API port in dev (#411)
+- ✅ SSO go-live learnings docs (#410)
+
+**Phase 2 (Auth / Users / Roles / Audit) — additions ✅ COMPLETE:**
+- ✅ authz F1 (global lists) + F4 (worker leave/unavailability) gated (#416)
+- ✅ authz F2 (/projects/next-number) gated (#402)
+- ✅ Admin user-roles + access-levels UI — role→permission matrix (#429)
+
+**Phase 8 / Phase 10 — additions ✅ COMPLETE:**
+- ✅ Competency gate enforce with logged override (#425)
+
+**Phase 3 / Phase 9 — additions ✅ COMPLETE:**
+- ✅ Correspondence Hub — mock-mode email threading on records (#400)
+- ✅ Calendar Sync — mock-mode shift→calendar adapter (#401)
+- ✅ Supplier credit ledger with running balance (#414)
+
+**Phase 13 / Phase 15 — additions ✅ COMPLETE:**
+- ✅ Custom dashboard widget builder — pick source/metric/chart (#399)
+- ✅ Tender win-rate-by-client + loss-reasons widgets (#413)
+- ✅ Widget settings Apply — persist filters + fields together (#395)
+- ✅ FormFillPage crash — include sections/fields in getSubmission (#394)
+- ✅ Job activity toggle — partial PATCH (#404)
+- ✅ Pilot feedback capture (PR-193b) (#412)
+
+**Quality / a11y / UX — ✅ COMPLETE:**
+- ✅ Dashboard widget title/period-selector layout collision (#428)
+- ✅ ProjectDetailPage tabs ARIA + range input label (#430)
+- ✅ Flaky batch6 e2e specs hardened (#403)
+- ✅ CP-17 gate scope-narrowed to request-input DTOs (#405)
+
+**Docs / API hygiene — ✅ COMPLETE:**
+- ✅ JSDoc sweep across forms, scheduler, estimates, audit, roles,
+  permissions, assets, contracts, resources, workers (#417–#424, #426, #427)
+- ✅ Vitest + jsdom + Testing Library wired into @project-ops/ui (#415)
+
+**Tooling — ✅ COMPLETE:**
+- ✅ Watcher child-PID reaping + lockfile + daytime launcher (#431)
+- ✅ vite bumped via dependabot (#408)
+
+**Still open / NOT yet merged (do not mark complete):**
+- 🔧 IN PROGRESS — JSDoc tendering / users (PR #432, #437) and
+  `.td-v2__row-title` 2-line clamp (PR #433), `packages/ui` design-system
+  tsup build (PR #436), merge-queue self-heal (PR #435). All open at the
+  time of this reconcile.
+
+**Convention rule (added to CLAUDE.md in the same PR).** To stop the
+recurring "Last updated:" merge conflict on roadmap.md / progress.md,
+feature/fix PRs must not edit those headers or restate status. A
+periodic doc-reconcile PR (like this one) owns those files going forward.

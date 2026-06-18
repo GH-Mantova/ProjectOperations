@@ -27,11 +27,12 @@ import {
  * REST endpoints for worker leave and unavailability under /workers
  * (leaves, unavailability, and the scheduler's availability overlay).
  *
- * Routes require a JWT; create routes only need `resources.view` so
- * workers can self-serve, with ownership enforced in the service (a
- * non-super-user may only lodge records for their own linked worker
- * profile). Status changes and deletes need `resources.manage`, and the
- * overlay needs `scheduler.view`.
+ * Routes require a JWT. List/read routes use `resources.view`. Create,
+ * status-change, and delete routes require `resources.manage` (PR-188b
+ * authz hardening — a read-only Viewer must not be able to lodge leave
+ * or unavailability against any worker). Service-layer ownership rules
+ * still apply: a non-super-user may only lodge records for their own
+ * linked worker profile. The overlay needs `scheduler.view`.
  */
 @ApiTags("Worker Availability")
 @ApiBearerAuth()
@@ -76,7 +77,7 @@ export class WorkerAvailabilityController {
   }
 
   @Post("leaves")
-  @RequirePermissions("resources.view")
+  @RequirePermissions("resources.manage")
   @ApiOperation({
     summary:
       "Create a worker leave request (status defaults to PENDING). Workers self-serve for their own profile; super-users may lodge for any worker."
@@ -151,7 +152,7 @@ export class WorkerAvailabilityController {
   }
 
   @Post("unavailability")
-  @RequirePermissions("resources.view")
+  @RequirePermissions("resources.manage")
   @ApiOperation({
     summary:
       "Create a worker unavailability block. recurringDay (0–6) for weekly recurrence. Workers self-serve; super-users may lodge for any worker."

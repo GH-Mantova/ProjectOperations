@@ -3,8 +3,9 @@
 Generated from controller source (`@Controller`, `@UseGuards`, `@RequirePermissions` decorators) on the
 `test/permission-matrix` branch. This is the **expected** behaviour contract; the serial suite
 `apps/api/src/common/auth/__tests__/permission-matrix.spec.ts` asserts the high-value route groups live
-against a seeded database. Cells marked KNOWN-FAIL document divergence between intent and current behaviour
-— see `docs/pr-prompts/needs-marco/pr-188-authz-findings.md`.
+against a seeded database. F1 (global-list creation) and F4 (worker leave / unavailability writes) from
+`docs/pr-prompts/needs-marco/pr-188-authz-findings.md` were tightened in PR-188b — F1 is now gated by
+`masterdata.manage` and F4 by `resources.manage`. The matrix below reflects the post-PR-188b state.
 
 ## Roles used
 
@@ -383,15 +384,15 @@ against a seeded database. Cells marked KNOWN-FAIL document divergence between i
 | GET | `/forms/submissions/:id` | `forms.view` | 200 | 200 | 401 |  |
 | POST | `/forms/versions/:versionId/submissions` | `forms.manage` | 200 | 403 | 401 |  |
 
-### `modules/global-lists/global-lists.controller.ts` — guards: JwtAuthGuard
+### `modules/global-lists/global-lists.controller.ts` — guards: JwtAuthGuard, PermissionsGuard
 
 | Method | Path | Required permission | Admin | Viewer | Anon | Notes |
 |---|---|---|---|---|---|---|
 | GET | `/lists` | — | 200 | 200 | 401 |  |
 | GET | `/lists/:slug` | — | 200 | 200 | 401 |  |
 | GET | `/lists/:slug/items` | — | 200 | 200 | 401 |  |
-| POST | `/lists` | — | 200 | 200 (KNOWN-FAIL) | 401 | KNOWN-FAIL — any authenticated user may create a global list (intentional 'free-for-all' per code comment; conflicts with read-only Viewer intent). See pr-188-authz-findings.md. |
-| POST | `/lists/:slug/items` | — | 200 | 200 (KNOWN-FAIL) | 401 | KNOWN-FAIL — any authenticated user may add items. See pr-188-authz-findings.md. |
+| POST | `/lists` | `masterdata.manage` | 200 | 403 | 401 | PR-188b F1: gated by `masterdata.manage`. Viewer does not hold this code. |
+| POST | `/lists/:slug/items` | `masterdata.manage` | 200 | 403 | 401 | PR-188b F1: gated by `masterdata.manage`. Viewer does not hold this code. |
 | PATCH | `/lists/:slug/items/:itemId` | — | 200 | 200 | 401 | Creator-or-admin enforced in service. |
 | DELETE | `/lists/:slug/items/:itemId` | — | 200 | 200 | 401 | Creator-or-admin enforced in service. |
 | POST | `/lists/:slug/items/reorder` | — | 200 | 200 | 401 | System lists require platform.admin (service check); user lists free-for-all. |
@@ -899,11 +900,11 @@ against a seeded database. Cells marked KNOWN-FAIL document divergence between i
 |---|---|---|---|---|---|---|
 | GET | `/workers/availability/overlay` | `scheduler.view` | 200 | 200 | 401 |  |
 | GET | `/workers/leaves` | `resources.view` | 200 | 200 | 401 |  |
-| POST | `/workers/leaves` | `resources.view` | 200 | 200 ✎ | 401 |  |
+| POST | `/workers/leaves` | `resources.manage` | 200 | 403 | 401 | PR-188b F4: tightened from `resources.view` to `resources.manage` so a read-only Viewer cannot lodge leave. |
 | PATCH | `/workers/leaves/:id/status` | `resources.manage` | 200 | 403 | 401 |  |
 | DELETE | `/workers/leaves/:id` | `resources.manage` | 200 | 403 | 401 |  |
 | GET | `/workers/unavailability` | `resources.view` | 200 | 200 | 401 |  |
-| POST | `/workers/unavailability` | `resources.view` | 200 | 200 ✎ | 401 |  |
+| POST | `/workers/unavailability` | `resources.manage` | 200 | 403 | 401 | PR-188b F4: tightened from `resources.view` to `resources.manage` so a read-only Viewer cannot lodge unavailability. |
 | DELETE | `/workers/unavailability/:id` | `resources.manage` | 200 | 403 | 401 |  |
 
 ### `modules/workers/workers.controller.ts` — guards: JwtAuthGuard, PermissionsGuard
@@ -942,8 +943,9 @@ against a seeded database. Cells marked KNOWN-FAIL document divergence between i
 | Roles / permissions admin | 4 | admin, viewer, anon |
 | Master data writes | 4 | admin, viewer, anon |
 | Archive | 2 | admin, viewer, anon |
-| Long tail (one row per module × 20) | 20 | viewer (403/200), anon (401) |
-| KNOWN-FAIL (global lists creation) | 2 | skipped — documented in pr-188-authz-findings.md |
+| Long tail (one row per module × 20+) | 20+ | viewer (403/200), anon (401) |
+| PR-188b F1 (global list creation) | 2 | viewer (403), anon (401) — gated by `masterdata.manage` |
+| PR-188b F4 (worker leave / unavailability writes) | 2 | viewer (403), anon (401) — gated by `resources.manage` |
 
 Admin write assertions never mutate seeded data: POST rows send empty bodies (DTO validation rejects with 400
 after the guards pass — all four top-level create DTOs have required fields), PATCH/DELETE rows target

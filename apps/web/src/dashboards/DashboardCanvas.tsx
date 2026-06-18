@@ -608,6 +608,8 @@ function PeriodOverridePill({
         border: "1px solid",
         borderRadius: 999,
         cursor: "pointer",
+        maxWidth: 130,
+        textOverflow: "ellipsis",
         background: isOverride ? "#FEAA6D" : "var(--surface-card, white)",
         color: isOverride ? "#242424" : "var(--text-muted, #6B7280)",
         borderColor: isOverride ? "#FEAA6D" : "var(--border-subtle, rgba(0,0,0,0.12))"

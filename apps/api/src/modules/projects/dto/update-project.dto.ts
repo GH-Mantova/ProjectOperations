@@ -1,4 +1,5 @@
 import {
+  IsArray,
   IsDateString,
   IsIn,
   IsNumberString,
@@ -51,6 +52,18 @@ export class UpdateProjectDto {
   @IsOptional() @IsString() estimatorId?: string | null;
   /** FK to the WHS Officer User, or `null` to unassign. Emits `TEAM_CHANGED` activity. */
   @IsOptional() @IsString() whsOfficerId?: string | null;
+
+  /**
+   * Required qualification codes (qualType strings) for any worker allocated
+   * to this project. Drives the competency gate: missing/expired entries on
+   * the worker's `WorkerQualification` set block the allocation unless an
+   * authorised actor supplies an override with a reason. Replaces the list
+   * wholesale — pass `[]` to clear.
+   */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  requiredQualifications?: string[];
 }
 
 const STATUSES = ["MOBILISING", "ACTIVE", "PRACTICAL_COMPLETION", "DEFECTS", "CLOSED"] as const;

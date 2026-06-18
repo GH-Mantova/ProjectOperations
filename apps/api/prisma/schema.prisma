@@ -70,6 +70,7 @@ model User {
   projectsCreated            Project[]                 @relation("ProjectCreatedBy")
   projectActivityLogs        ProjectActivityLog[]
   projectAllocationsCreated  ProjectAllocation[]       @relation("ProjectAllocationCreatedBy")
+  competencyOverrides        CompetencyOverride[]      @relation("CompetencyOverrideActor")
   approvedTimesheets         Timesheet[]               @relation("TimesheetApprover")
   rejectedTimesheets         Timesheet[]               @relation("TimesheetRejecter")
   approvedWorkerLeaves       WorkerLeave[]             @relation("WorkerLeaveApprover")
@@ -2083,6 +2084,7 @@ model ProjectAllocation {
   createdBy          User                 @relation("ProjectAllocationCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   preStartChecklists PreStartChecklist[]
   timesheets         Timesheet[]
+  competencyOverrides CompetencyOverride[]
   createdAt          DateTime             @default(now()) @map("created_at")
   updatedAt          DateTime             @updatedAt @map("updated_at")
 
@@ -2090,6 +2092,40 @@ model ProjectAllocation {
   @@index([workerProfileId, startDate])
   @@index([assetId, startDate])
   @@map("project_allocations")
+}
+
+// ── Competency gate override (PR-279 enforcement) ─────────────────────────
+// When the gate would block a worker→project allocation (worker missing or
+// holding only expired copies of a required qualType on Project.requiredQualifications),
+// an authorised allocator (Admin/SuperUser or holder of resources.manage) can
+// proceed by supplying an override payload with a mandatory reason. Each row
+// here is the authoritative record of one such override — keyed to the
+// allocation it unblocked, listing the qual codes that were missing/expired
+// at decision time. An AuditLog row of action `allocation.unqualified_override`
+// is written in parallel to keep the org-wide audit trail intact.
+
+model CompetencyOverride {
+  id                String           @id @default(cuid())
+  allocationId      String           @map("allocation_id")
+  allocation        ProjectAllocation @relation(fields: [allocationId], references: [id], onDelete: Cascade)
+  projectId         String           @map("project_id")
+  workerProfileId   String           @map("worker_profile_id")
+  // Snapshot of the qualType codes the gate flagged at override time. Stored
+  // as arrays (not joined to Competency rows) because requiredQualifications
+  // itself is a String[] of qualType codes, and a code may not have a matching
+  // Competency catalog row.
+  missingQualTypes  String[]         @default([]) @map("missing_qual_types")
+  expiredQualTypes  String[]         @default([]) @map("expired_qual_types")
+  reason            String
+  overriddenById    String           @map("overridden_by_id")
+  overriddenBy      User             @relation("CompetencyOverrideActor", fields: [overriddenById], references: [id], onDelete: Restrict)
+  createdAt         DateTime         @default(now()) @map("created_at")
+
+  @@index([allocationId])
+  @@index([projectId])
+  @@index([workerProfileId])
+  @@index([overriddenById])
+  @@map("competency_overrides")
 }
 
 // ── Field Worker Experience (PR #41) ──────────────────────────────────────

@@ -12,6 +12,7 @@ type MockPrisma = {
   };
   projectActivityLog: { create: jest.Mock };
   auditLog: { create: jest.Mock };
+  competencyOverride: { create: jest.Mock };
 };
 
 function makePrisma(): MockPrisma {
@@ -25,7 +26,8 @@ function makePrisma(): MockPrisma {
       delete: jest.fn().mockResolvedValue({})
     },
     projectActivityLog: { create: jest.fn().mockResolvedValue({}) },
-    auditLog: { create: jest.fn().mockResolvedValue({}) }
+    auditLog: { create: jest.fn().mockResolvedValue({}) },
+    competencyOverride: { create: jest.fn().mockResolvedValue({}) }
   };
 }
 
@@ -48,7 +50,9 @@ function allowResult(): CompetencyGateResult {
   return { allowed: true, missing: [], expired: [], expiringSoon: [] };
 }
 
-const ACTOR = { userId: "user-1" };
+const ACTOR = { userId: "user-1", permissions: ["resources.manage"], isSuperUser: false };
+const ACTOR_NO_OVERRIDE = { userId: "user-2", permissions: [], isSuperUser: false };
+const ACTOR_SUPER = { userId: "user-3", permissions: [], isSuperUser: true };
 
 function projectRow(overrides: Partial<{ requiredQualifications: string[] }> = {}) {
   return {
@@ -102,8 +106,8 @@ const ASSET_DTO = {
   notes: null
 };
 
-describe("AllocationsService.create — competency gate (soft warn + audit)", () => {
-  it("1. WORKER, no required quals → allowed, no audit", async () => {
+describe("AllocationsService.create — competency gate (block + logged override)", () => {
+  it("1. WORKER, no required quals → allowed, no audit, no override row", async () => {
     const prisma = makePrisma();
     prisma.project.findUnique.mockResolvedValue(projectRow());
     prisma.projectAllocation.create.mockResolvedValue(workerAllocationRow());
@@ -112,11 +116,13 @@ describe("AllocationsService.create — competency gate (soft warn + audit)", ()
     const result = await service.create("p-1", WORKER_DTO as never, ACTOR);
 
     expect(result.competency).toEqual(allowResult());
+    expect(result.overrideApplied).toBe(false);
     expect(compliance.checkWorkerCompetency).toHaveBeenCalledWith("w-1", []);
     expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    expect(prisma.competencyOverride.create).not.toHaveBeenCalled();
   });
 
-  it("2. WORKER holds all required quals → allowed, no audit", async () => {
+  it("2. WORKER holds all required quals → allowed, no audit, no override row", async () => {
     const prisma = makePrisma();
     prisma.project.findUnique.mockResolvedValue(
       projectRow({ requiredQualifications: ["asbestos_b", "white_card"] })
@@ -131,14 +137,14 @@ describe("AllocationsService.create — competency gate (soft warn + audit)", ()
 
     expect(result.competency.allowed).toBe(true);
     expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    expect(prisma.competencyOverride.create).not.toHaveBeenCalled();
   });
 
-  it("3. WORKER missing a required qual → soft-warn + audit row, allocation still created", async () => {
+  it("3. WORKER missing a required qual, NO override → 409 ConflictException; allocation NOT created", async () => {
     const prisma = makePrisma();
     prisma.project.findUnique.mockResolvedValue(
       projectRow({ requiredQualifications: ["asbestos_b"] })
     );
-    prisma.projectAllocation.create.mockResolvedValue(workerAllocationRow());
     const gateResult: CompetencyGateResult = {
       allowed: false,
       missing: ["asbestos_b"],
@@ -147,31 +153,18 @@ describe("AllocationsService.create — competency gate (soft warn + audit)", ()
     };
     const { service } = makeService(prisma, jest.fn().mockResolvedValue(gateResult));
 
-    const result = await service.create("p-1", WORKER_DTO as never, ACTOR);
-
-    expect(result.allocation).toBeDefined();
-    expect(result.competency).toEqual(gateResult);
-    expect(prisma.auditLog.create).toHaveBeenCalledTimes(1);
-    expect(prisma.auditLog.create).toHaveBeenCalledWith({
-      data: {
-        actorId: "user-1",
-        action: "allocation.unqualified_override",
-        entityType: "ProjectAllocation",
-        entityId: "alloc-1",
-        metadata: {
-          projectId: "p-1",
-          projectNumber: "IS-P001",
-          workerProfileId: "w-1",
-          requiredQualifications: ["asbestos_b"],
-          missing: ["asbestos_b"],
-          expired: [],
-          expiringSoon: []
-        }
-      }
+    await expect(
+      service.create("p-1", WORKER_DTO as never, ACTOR)
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ error: "COMPETENCY_GATE_BLOCKED" })
     });
+
+    expect(prisma.projectAllocation.create).not.toHaveBeenCalled();
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    expect(prisma.competencyOverride.create).not.toHaveBeenCalled();
   });
 
-  it("4. WORKER has an expired qual → soft-warn + audit row", async () => {
+  it("4. WORKER expired qual + valid override + resources.manage → allocation + override row + audit", async () => {
     const prisma = makePrisma();
     prisma.project.findUnique.mockResolvedValue(
       projectRow({ requiredQualifications: ["white_card"] })
@@ -185,16 +178,33 @@ describe("AllocationsService.create — competency gate (soft warn + audit)", ()
     };
     const { service } = makeService(prisma, jest.fn().mockResolvedValue(gateResult));
 
-    const result = await service.create("p-1", WORKER_DTO as never, ACTOR);
+    const result = await service.create(
+      "p-1",
+      { ...WORKER_DTO, override: { reason: "Site induction tomorrow, urgent crew need" } } as never,
+      ACTOR
+    );
 
-    expect(result.competency).toEqual(gateResult);
+    expect(result.allocation).toBeDefined();
+    expect(result.overrideApplied).toBe(true);
+    expect(prisma.competencyOverride.create).toHaveBeenCalledTimes(1);
+    expect(prisma.competencyOverride.create).toHaveBeenCalledWith({
+      data: {
+        allocationId: "alloc-1",
+        projectId: "p-1",
+        workerProfileId: "w-1",
+        missingQualTypes: [],
+        expiredQualTypes: ["white_card"],
+        reason: "Site induction tomorrow, urgent crew need",
+        overriddenById: "user-1"
+      }
+    });
     expect(prisma.auditLog.create).toHaveBeenCalledTimes(1);
-    expect(prisma.auditLog.create.mock.calls[0][0].data.metadata.expired).toEqual([
-      "white_card"
-    ]);
+    const auditMeta = prisma.auditLog.create.mock.calls[0][0].data.metadata;
+    expect(auditMeta.expired).toEqual(["white_card"]);
+    expect(auditMeta.reason).toBe("Site induction tomorrow, urgent crew need");
   });
 
-  it("5. WORKER has an expiringSoon-only qual → allowed, NO audit row", async () => {
+  it("5. WORKER expiringSoon-only → allowed (no block, no override row)", async () => {
     const prisma = makePrisma();
     prisma.project.findUnique.mockResolvedValue(
       projectRow({ requiredQualifications: ["first_aid"] })
@@ -212,32 +222,104 @@ describe("AllocationsService.create — competency gate (soft warn + audit)", ()
 
     expect(result.competency).toEqual(gateResult);
     expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    expect(prisma.competencyOverride.create).not.toHaveBeenCalled();
   });
 
-  it("6. WORKER both missing AND expiringSoon → audit row written (missing dominates)", async () => {
+  it("6. WORKER blocked, override supplied by actor WITHOUT resources.manage → 403 Forbidden", async () => {
     const prisma = makePrisma();
     prisma.project.findUnique.mockResolvedValue(
-      projectRow({ requiredQualifications: ["asbestos_b", "first_aid"] })
+      projectRow({ requiredQualifications: ["asbestos_b"] })
+    );
+    const gateResult: CompetencyGateResult = {
+      allowed: false,
+      missing: ["asbestos_b"],
+      expired: [],
+      expiringSoon: []
+    };
+    const { service } = makeService(prisma, jest.fn().mockResolvedValue(gateResult));
+
+    await expect(
+      service.create(
+        "p-1",
+        { ...WORKER_DTO, override: { reason: "trying anyway" } } as never,
+        ACTOR_NO_OVERRIDE
+      )
+    ).rejects.toThrow(/resources\.manage|super-user/i);
+
+    expect(prisma.projectAllocation.create).not.toHaveBeenCalled();
+    expect(prisma.competencyOverride.create).not.toHaveBeenCalled();
+  });
+
+  it("7. WORKER blocked, super-user override → succeeds without resources.manage", async () => {
+    const prisma = makePrisma();
+    prisma.project.findUnique.mockResolvedValue(
+      projectRow({ requiredQualifications: ["asbestos_b"] })
     );
     prisma.projectAllocation.create.mockResolvedValue(workerAllocationRow());
     const gateResult: CompetencyGateResult = {
       allowed: false,
       missing: ["asbestos_b"],
       expired: [],
-      expiringSoon: ["first_aid"]
+      expiringSoon: []
     };
     const { service } = makeService(prisma, jest.fn().mockResolvedValue(gateResult));
 
-    const result = await service.create("p-1", WORKER_DTO as never, ACTOR);
+    const result = await service.create(
+      "p-1",
+      { ...WORKER_DTO, override: { reason: "exec call" } } as never,
+      ACTOR_SUPER
+    );
 
-    expect(result.competency.allowed).toBe(false);
-    expect(prisma.auditLog.create).toHaveBeenCalledTimes(1);
-    const metadata = prisma.auditLog.create.mock.calls[0][0].data.metadata;
-    expect(metadata.missing).toEqual(["asbestos_b"]);
-    expect(metadata.expiringSoon).toEqual(["first_aid"]);
+    expect(result.overrideApplied).toBe(true);
+    expect(prisma.competencyOverride.create).toHaveBeenCalledTimes(1);
+    expect(prisma.competencyOverride.create.mock.calls[0][0].data.overriddenById).toBe("user-3");
   });
 
-  it("7. ASSET allocation → empty competency, ComplianceService NOT called, no audit", async () => {
+  it("8. WORKER blocked, override with whitespace-only reason → 400 BadRequest", async () => {
+    const prisma = makePrisma();
+    prisma.project.findUnique.mockResolvedValue(
+      projectRow({ requiredQualifications: ["asbestos_b"] })
+    );
+    const gateResult: CompetencyGateResult = {
+      allowed: false,
+      missing: ["asbestos_b"],
+      expired: [],
+      expiringSoon: []
+    };
+    const { service } = makeService(prisma, jest.fn().mockResolvedValue(gateResult));
+
+    await expect(
+      service.create(
+        "p-1",
+        { ...WORKER_DTO, override: { reason: "   " } } as never,
+        ACTOR
+      )
+    ).rejects.toThrow(/reason is required/i);
+
+    expect(prisma.projectAllocation.create).not.toHaveBeenCalled();
+    expect(prisma.competencyOverride.create).not.toHaveBeenCalled();
+  });
+
+  it("9. WORKER override supplied when gate PASSES → ignored, no override row", async () => {
+    const prisma = makePrisma();
+    prisma.project.findUnique.mockResolvedValue(
+      projectRow({ requiredQualifications: ["white_card"] })
+    );
+    prisma.projectAllocation.create.mockResolvedValue(workerAllocationRow());
+    const { service } = makeService(prisma, jest.fn().mockResolvedValue(allowResult()));
+
+    const result = await service.create(
+      "p-1",
+      { ...WORKER_DTO, override: { reason: "belt + braces" } } as never,
+      ACTOR
+    );
+
+    expect(result.overrideApplied).toBe(false);
+    expect(prisma.competencyOverride.create).not.toHaveBeenCalled();
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("10. ASSET allocation → empty competency, ComplianceService NOT called, no override row", async () => {
     const prisma = makePrisma();
     prisma.project.findUnique.mockResolvedValue(
       projectRow({ requiredQualifications: ["asbestos_b"] })
@@ -249,10 +331,10 @@ describe("AllocationsService.create — competency gate (soft warn + audit)", ()
 
     expect(result.competency).toEqual(allowResult());
     expect(compliance.checkWorkerCompetency).not.toHaveBeenCalled();
-    expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    expect(prisma.competencyOverride.create).not.toHaveBeenCalled();
   });
 
-  it("8. invalid date range throws before competency check (gate not invoked)", async () => {
+  it("11. invalid date range throws before competency check (gate not invoked)", async () => {
     const prisma = makePrisma();
     prisma.project.findUnique.mockResolvedValue(projectRow());
     const { service, compliance } = makeService(prisma);
@@ -267,7 +349,7 @@ describe("AllocationsService.create — competency gate (soft warn + audit)", ()
 
     expect(compliance.checkWorkerCompetency).not.toHaveBeenCalled();
     expect(prisma.projectAllocation.create).not.toHaveBeenCalled();
-    expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    expect(prisma.competencyOverride.create).not.toHaveBeenCalled();
   });
 });
 

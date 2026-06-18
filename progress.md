@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-06-14 22:13 AEST
+Last updated: 2026-06-18 03:35 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -8417,3 +8417,9 @@ Type: PR
 Detail: [Feat/§2] Deploy hardening — post-deploy health gates + on:push re-enable (G11)
 Status: MERGED
 
+
+## 2026-06-18 — feat/admin-user-roles-ui
+GitHub PR: (pending)
+Type: PR
+Detail: [Feat/§2] Admin user-roles + access-levels UI — read-only role→permission matrix tab (replaces "Coming soon" stub) and tier-restriction banner on the users tab; reuses existing /roles + /permissions endpoints (no schema/migration). Per-user permission overrides noted as follow-up (no UserPermission model in schema).
+Status: OPEN

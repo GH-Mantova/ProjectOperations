@@ -6,6 +6,8 @@ import { Type } from "class-transformer";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
+import { PermissionsGuard } from "../../common/auth/permissions.guard";
+import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { GlobalListsService } from "./global-lists.service";
 
 const ADMIN_PERMISSION = "platform.admin";
@@ -48,7 +50,7 @@ function toActor(actor: AuthenticatedUser) {
 @ApiTags("Global Lists")
 @ApiBearerAuth()
 @Controller("lists")
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class GlobalListsController {
   constructor(private readonly service: GlobalListsService) {}
 
@@ -79,16 +81,20 @@ export class GlobalListsController {
   }
 
   @Post()
-  @ApiOperation({ summary: "Create a new STATIC list. DYNAMIC lists are system-only." })
+  @RequirePermissions("masterdata.manage")
+  @ApiOperation({ summary: "Create a new STATIC list. DYNAMIC lists are system-only. Requires masterdata.manage." })
   @ApiResponse({ status: 201, description: "Created list." })
+  @ApiResponse({ status: 403, description: "Caller does not hold masterdata.manage." })
   @ApiResponse({ status: 409, description: "Name or slug already exists." })
   create(@Body() dto: CreateListDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.service.createList(actor.sub, dto);
   }
 
   @Post(":slug/items")
-  @ApiOperation({ summary: "Add an item to a STATIC list." })
+  @RequirePermissions("masterdata.manage")
+  @ApiOperation({ summary: "Add an item to a STATIC list. Requires masterdata.manage." })
   @ApiResponse({ status: 201, description: "Created (or unarchived if value previously existed archived)." })
+  @ApiResponse({ status: 403, description: "Caller does not hold masterdata.manage." })
   @ApiResponse({ status: 409, description: "Value already exists in list (or is archived and owned by another user)." })
   createItem(@Param("slug") slug: string, @Body() dto: CreateItemDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.service.createItem(slug, toActor(actor), dto);

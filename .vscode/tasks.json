@@ -103,25 +103,16 @@
       "detail": "The PR-checklist tasks chained — run this before merging."
     },
     {
-      "label": "PR Watcher (auto-review)",
+      "label": "PR Watcher (v2)",
       "type": "shell",
-      "command": "node scripts/pr-watcher/index.mjs",
-      "options": {
-        "env": {
-          "PR_WATCHER_AUTO_REVIEW": "true",
-          "PR_WATCHER_AUTO_MERGE": "false"
-        }
-      },
-      "runOptions": {
-        "runOn": "folderOpen"
-      },
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pr-watcher/start-watcher.ps1",
       "isBackground": true,
       "presentation": {
         "reveal": "always",
         "panel": "dedicated"
       },
       "problemMatcher": [],
-      "detail": "Polls GitHub for new PRs and auto-fires pr-fix-reviewer. Ctrl+C in the pane to stop. Only runs in trusted workspaces."
+      "detail": "Starts the v2 PR watcher via start-watcher.ps1 — pre-flights (main branch + clean tree + gh/claude on PATH), single-instance guard (refuses if another watcher is already running), and child-process reaping (kills only PIDs the watcher itself spawned; never Marco's interactive Claude sessions). Env defaults: AUTO_REVIEW=true, AUTO_UPDATE=true, AUTO_MERGE_POLICY=tests-docs, MAX_TURNS=240. Ctrl+C in the pane to stop."
     },
     {
       "label": "branch: prune (remote + local)",

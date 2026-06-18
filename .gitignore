@@ -59,6 +59,7 @@ reference-templates/
 scripts/pr-watcher/.reviewed-prs.json
 scripts/pr-watcher/.reviewed-prs.json.tmp
 scripts/pr-watcher/.watcher.lock
+scripts/pr-watcher/.watcher-children.json
 
 # PR-prompt watcher bookkeeping� never commit these.
 # The watcher creates and moves files between these folders to track state;

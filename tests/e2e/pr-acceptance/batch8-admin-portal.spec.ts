@@ -152,9 +152,11 @@ test.describe("Batch 8 — Admin & portal (PRs #219, #26, #29)", () => {
       await expect(sections.getByRole("button", { name: label })).toBeVisible();
     }
 
-    // Tab switch renders the section content.
+    // Tab switch renders the section content: the role → permission matrix
+    // shipped in PR #429 replaced the prior "Coming soon." placeholder.
     await sections.getByRole("button", { name: "Permissions" }).click();
-    await expect(page.getByText("Coming soon.").first()).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Roles & permissions" })).toBeVisible();
+    await expect(page.getByTestId("roles-permissions-matrix")).toBeVisible();
   });
 
   test("viewer is redirected away from admin settings (prompt-directed)", async ({ page }) => {

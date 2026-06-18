@@ -11,64 +11,156 @@ import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { PaginationQueryDto } from "../../common/dto/pagination-query.dto";
 import { ContractsService } from "./contracts.service";
 
+/**
+ * Body for `POST /contracts` — create the single contract for a project.
+ *
+ * One contract per project is enforced server-side. The contract number
+ * is auto-assigned (IS-C###) and not accepted from the client.
+ */
 class CreateContractDto {
+  /** Project id this contract is being created against. */
   @IsString() projectId!: string;
+  /** Headline contract value in AUD. */
   @Type(() => Number) @IsNumber() contractValue!: number;
+  /** Retention percentage withheld on each approved claim. Defaults to 0 when omitted. */
   @IsOptional() @Type(() => Number) @IsNumber() retentionPct?: number;
+  /** Contract start date (ISO 8601). */
   @IsOptional() @IsDateString() startDate?: string;
+  /** Contract end date (ISO 8601). */
   @IsOptional() @IsDateString() endDate?: string;
+  /** Free-text notes attached to the contract. */
   @IsOptional() @IsString() notes?: string;
 }
 
+/**
+ * Body for `PATCH /contracts/:id` — partial update of a contract.
+ *
+ * Changing `contractValue` requires the `finance.admin` permission;
+ * passing `null` for `startDate` / `endDate` / `notes` clears those
+ * fields while `undefined` leaves them unchanged.
+ */
 class UpdateContractDto {
+  /** New headline contract value. Requires finance.admin. */
   @IsOptional() @Type(() => Number) @IsNumber() contractValue?: number;
+  /** New retention percentage. */
   @IsOptional() @Type(() => Number) @IsNumber() retentionPct?: number;
+  /** New start date, or null to clear. */
   @IsOptional() @IsDateString() startDate?: string | null;
+  /** New end date, or null to clear. */
   @IsOptional() @IsDateString() endDate?: string | null;
+  /** New contract status. */
   @IsOptional() @IsIn(Object.values(ContractStatus)) status?: ContractStatus;
+  /** Replacement notes, or null to clear. */
   @IsOptional() @IsString() notes?: string | null;
 }
 
+/**
+ * Body for `POST /contracts/:id/variations` — add a variation in RECEIVED status.
+ *
+ * `receivedDate` defaults to the server time when omitted. The variation
+ * number (IS-V###) is auto-assigned.
+ */
 class CreateVariationDto {
+  /** Description of the variation as it will appear on the claim line item. */
   @IsString() description!: string;
+  /** Client / contact who requested the variation. */
   @IsOptional() @IsString() requestedBy?: string;
+  /** Initial priced amount (AUD) — only required to progress beyond RECEIVED. */
   @IsOptional() @Type(() => Number) @IsNumber() pricedAmount?: number;
+  /** Date the variation was received (ISO 8601). Defaults to now. */
   @IsOptional() @IsDateString() receivedDate?: string;
+  /** Free-text notes attached to the variation. */
   @IsOptional() @IsString() notes?: string;
 }
 
+/**
+ * Body for `PATCH /contracts/:id/variations/:variationId` — update a variation.
+ *
+ * Status transitions are one-way and enforced server-side:
+ * RECEIVED → PRICED → SUBMITTED → APPROVED. Transitioning to APPROVED
+ * with an approvedAmount auto-appends a Variation line item to the
+ * contract's active DRAFT claim, if one exists.
+ */
 class UpdateVariationDto {
+  /** Updated description. */
   @IsOptional() @IsString() description?: string;
+  /** Next status (must be the immediate successor of the current status). */
   @IsOptional() @IsIn(Object.values(VariationStatus)) status?: VariationStatus;
+  /** Priced amount (AUD). */
   @IsOptional() @Type(() => Number) @IsNumber() pricedAmount?: number;
+  /** Final approved amount (AUD) — drives the auto-appended claim line on APPROVED. */
   @IsOptional() @Type(() => Number) @IsNumber() approvedAmount?: number;
+  /** Date the variation was priced (ISO 8601). */
   @IsOptional() @IsDateString() pricedDate?: string;
+  /** Date the variation was submitted to the client (ISO 8601). */
   @IsOptional() @IsDateString() submittedDate?: string;
+  /** Date the client approved the variation (ISO 8601). */
   @IsOptional() @IsDateString() approvedDate?: string;
+  /** Replacement notes, or null to clear. */
   @IsOptional() @IsString() notes?: string | null;
 }
 
+/**
+ * Body for `POST /contracts/:id/claims` — create a DRAFT progress claim.
+ *
+ * `claimMonth` is normalised server-side to the first of the month in
+ * UTC. Auto-populates line items from the linked tender's scope
+ * subtotals plus APPROVED variations not yet claimed.
+ */
 class CreateClaimDto {
+  /** Month being claimed (ISO 8601 date). Normalised to the first of the month, UTC. */
   @IsDateString() claimMonth!: string;
 }
 
+/**
+ * Body for `PATCH /contracts/:id/claims/:claimId/items/:itemId` — update a claim line.
+ *
+ * If `thisClaimPct` is sent, the amount is calculated server-side as
+ * contractValue × pct / 100 (2 d.p.). If `thisClaimAmount` is sent, it
+ * overrides any pct and clears the stored pct. When both are sent, the
+ * direct amount wins.
+ */
 class UpdateClaimItemDto {
+  /** Percent complete on this line for this claim. */
   @IsOptional() @Type(() => Number) @IsNumber() thisClaimPct?: number;
+  /** Direct amount override (AUD) — clears thisClaimPct. */
   @IsOptional() @Type(() => Number) @IsNumber() thisClaimAmount?: number;
+  /** Updated line description. */
   @IsOptional() @IsString() description?: string;
 }
 
+/**
+ * Body for `POST /contracts/:id/claims/:claimId/approve` — approve a SUBMITTED claim.
+ *
+ * `retentionHeld` is computed server-side as
+ * `totalApproved × contract.retentionPct / 100` (2 d.p.).
+ */
 class ApproveClaimDto {
+  /** Client-approved total for the claim (AUD). */
   @Type(() => Number) @IsNumber() totalApproved!: number;
 }
 
+/**
+ * Body for `POST /contracts/:id/claims/:claimId/pay` — record payment on an APPROVED claim.
+ */
 class PayClaimDto {
+  /** Total paid by the client (AUD). */
   @Type(() => Number) @IsNumber() totalPaid!: number;
+  /** Date the payment was received (ISO 8601). */
   @IsDateString() paidDate!: string;
 }
 
+/**
+ * Query string for `GET /contracts` — list contracts with optional filters.
+ *
+ * Inherits standard `page` / `pageSize` / `limit` semantics from
+ * PaginationQueryDto (limit takes precedence over pageSize; effective
+ * page size is clamped 1–100, default 20).
+ */
 class ListContractsQuery extends PaginationQueryDto {
+  /** Filter to a single contract status. */
   @IsOptional() @IsIn(Object.values(ContractStatus)) status?: ContractStatus;
+  /** Filter to contracts on a single project. */
   @IsOptional() @IsString() projectId?: string;
 }
 

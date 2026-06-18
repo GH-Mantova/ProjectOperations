@@ -242,17 +242,60 @@ tagged in the log as `source: rescan`, so they're distinguishable from
 fs.watch events (`source: watch`) and the startup directory walk
 (`source: startup-scan`).
 
-## Zombie processes
+## Child-process reaping (no orphan `claude.exe`)
 
-On startup (Windows only), the watcher enumerates running `claude.exe`
-processes and **warns** if any are present from a previous watcher run
-(orphans from a kill, a crash, or a Task Scheduler restart). It does
-**not** auto-kill them — you may have intentionally-launched `claude`
-sessions that aren't the watcher's. To clean them up:
+The watcher records every `claude` child it spawns into
+`scripts/pr-watcher/.watcher-children.json` (gitignored) and removes the
+entry when the child exits cleanly. On shutdown — `SIGINT`, `SIGTERM`, or a
+direct `process.exit()` — the watcher kills the **current** child and its
+whole process tree before exiting (`taskkill /PID <pid> /T /F` on Windows,
+process-group `SIGTERM` on POSIX). On the **next** startup it reads the
+sidecar file and terminates any tracked PIDs that survived (then clears
+it). This is what prevents orphan `claude.exe` accumulation across
+Ctrl+C / kill / crash cycles (LL-33).
 
-```powershell
-Get-Process claude | Stop-Process -Force
-```
+**Hard safety guarantee:** the watcher only ever terminates PIDs it spawned
+itself and recorded in the sidecar. It **never** enumerates `claude`
+processes by image name and **never** runs `taskkill /IM claude.exe` or
+`Get-Process claude | Stop-Process`. Marco's interactive Claude Code and
+Cowork sessions are not the watcher's children and are never touched.
+
+The Windows-only informational orphan scan still runs at startup and logs
+the count of any `claude.exe` processes it sees — purely informational,
+since by image name alone we cannot distinguish a leaked watcher child
+from an interactive session. Inspect manually if you suspect a leak.
+
+## Single-instance guard
+
+The lockfile (`scripts/pr-watcher/.watcher.lock`) holds the PID of the
+running watcher. On startup:
+
+- If the PID is alive **and** its command line matches
+  `node ... pr-watcher/index.mjs` (i.e. it really is another watcher), the
+  new instance logs and exits 0.
+- If the PID is alive but is NOT a watcher (PID reuse by an unrelated
+  process), the lockfile is overwritten and the new instance continues.
+- If the PID is dead, the lockfile is overwritten as before.
+
+The lockfile is removed on graceful shutdown (`SIGINT`, `SIGTERM`, clean
+`exit`).
+
+## Daytime launcher (VS Code task)
+
+`scripts/pr-watcher/start-watcher.ps1` is the manual / VS Code entry point,
+mirroring `start-nightly.ps1` minus the `STOP_AT` cutoff. It runs the same
+pre-flight: refuse unless `git branch --show-current` is `main` AND
+`git status --porcelain` is empty; refuse if another watcher node process
+is already running; refuse if `gh` or `claude` are not on PATH. It then
+sets the v2 env defaults (`PR_WATCHER_AUTO_REVIEW=true`,
+`PR_WATCHER_AUTO_UPDATE=true`,
+`PR_WATCHER_AUTO_MERGE_POLICY=tests-docs`, `PR_WATCHER_MAX_TURNS=240`) and
+runs `node --no-deprecation scripts/pr-watcher/index.mjs`, with
+`$ErrorActionPreference = "Continue"` around the node call so a stray
+stderr line cannot kill the wrapper.
+
+The launcher is pure ASCII (LL-22). The VS Code task `PR Watcher (v2)`
+runs it via `powershell -NoProfile -ExecutionPolicy Bypass -File`.
 
 ## Nightly mode (Windows Task Scheduler)
 

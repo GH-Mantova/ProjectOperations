@@ -153,6 +153,13 @@ const retryCounts = new Map();
 // Lockfile — prevents two watcher instances from fighting over the queue.
 const LOCK_FILE = path.join(__dirname, ".watcher.lock");
 
+// Child-process sidecar — tracks PIDs of `claude` children the watcher
+// SPAWNED ITSELF, so we can kill exactly those (and only those) on shutdown
+// and never touch interactive Claude Code / Cowork sessions started outside
+// the watcher. Single-threaded queue means this normally holds 0 or 1 PIDs;
+// we use a list anyway to stay forward-compatible.
+const CHILDREN_FILE = path.join(__dirname, ".watcher-children.json");
+
 // Nightly cutoff (HH:MM, 24-hour, local). Past this, the watcher refuses to
 // start a NEW prompt and exits cleanly. The in-flight prompt (if any)
 // finishes normally. Unset = no cutoff. Example: "06:00" stops new prompts
@@ -789,6 +796,39 @@ async function syncMain() {
 
 // --- Lockfile helpers ---
 
+// Read the command line for a PID. Returns "" if it cannot be determined
+// (assume the worst → caller treats as "matches" to fail safe).
+function readProcessCommandLine(pid) {
+  try {
+    if (process.platform === "win32") {
+      const out = execFileSync(
+        "powershell",
+        [
+          "-NoProfile",
+          "-Command",
+          `(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CommandLine`,
+        ],
+        { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] },
+      );
+      return out.trim();
+    }
+    const out = execFileSync("ps", ["-p", String(pid), "-o", "command="], {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return out.trim();
+  } catch {
+    return "";
+  }
+}
+
+function isWatcherNodeProcess(pid) {
+  const cmd = readProcessCommandLine(pid);
+  if (!cmd) return true; // fail safe — assume it IS a watcher
+  // Match `node ... pr-watcher/index.mjs` or `node ... pr-watcher\index.mjs`.
+  return /node/i.test(cmd) && /pr-watcher[\\/]index\.mjs/i.test(cmd);
+}
+
 async function acquireLock() {
   if (existsSync(LOCK_FILE)) {
     let pid = null;
@@ -807,10 +847,14 @@ async function acquireLock() {
         // ESRCH = process does not exist (stale lockfile)
       }
       if (alive) {
-        log("WARN", `another watcher instance appears to be running (PID ${pid}). Exiting to avoid queue conflicts.`);
-        process.exit(0);
+        if (isWatcherNodeProcess(pid)) {
+          log("WARN", `another watcher instance is running (PID ${pid}, node + pr-watcher/index.mjs). Exiting cleanly to avoid queue conflicts.`);
+          process.exit(0);
+        }
+        log("watcher", `lockfile PID ${pid} is alive but is NOT a watcher process — overwriting`);
+      } else {
+        log("watcher", `stale lockfile (PID ${pid} not found) — overwriting`);
       }
-      log("watcher", `stale lockfile (PID ${pid} not found) — overwriting`);
     }
   }
   await writeFile(LOCK_FILE, String(process.pid), "utf-8");
@@ -821,6 +865,100 @@ function releaseLock() {
     unlinkSync(LOCK_FILE);
   } catch {
     // best-effort
+  }
+}
+
+// --- Child-process reaper ---
+//
+// SAFETY (LL-33): the watcher only ever kills PIDs it spawned ITSELF and
+// recorded in CHILDREN_FILE. It never enumerates `claude` processes by name
+// and never calls taskkill /IM claude.exe — Marco's interactive Claude Code
+// and Cowork sessions must never be killed by the watcher.
+
+async function readTrackedChildren() {
+  try {
+    const raw = await readFile(CHILDREN_FILE, "utf-8");
+    const data = JSON.parse(raw);
+    if (Array.isArray(data.pids)) {
+      return data.pids.filter((n) => typeof n === "number" && n > 0);
+    }
+  } catch {
+    // missing / unreadable / unparsable → empty list
+  }
+  return [];
+}
+
+async function writeTrackedChildren(pids) {
+  try {
+    await writeFile(CHILDREN_FILE, JSON.stringify({ pids }, null, 2), "utf-8");
+  } catch (err) {
+    log("reaper", `could not write children file: ${err.message}`);
+  }
+}
+
+async function recordChildPid(pid) {
+  const pids = await readTrackedChildren();
+  if (!pids.includes(pid)) pids.push(pid);
+  await writeTrackedChildren(pids);
+}
+
+async function removeChildPid(pid) {
+  const pids = (await readTrackedChildren()).filter((p) => p !== pid);
+  await writeTrackedChildren(pids);
+}
+
+// Kill ONE specific PID and its whole process tree. Safe: only call with a
+// PID we recorded as one of OUR spawned children.
+function killProcessTree(pid) {
+  try {
+    if (process.platform === "win32") {
+      execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], {
+        stdio: ["ignore", "ignore", "ignore"],
+      });
+    } else {
+      try {
+        process.kill(-pid, "SIGTERM");
+      } catch {
+        process.kill(pid, "SIGTERM");
+      }
+    }
+  } catch {
+    // already gone / not ours anymore — best-effort
+  }
+}
+
+// On startup, kill the SPECIFIC PIDs the previous watcher run left behind.
+// Only PIDs in CHILDREN_FILE — never enumerate claude.exe by name.
+async function reapPreviousChildren() {
+  const pids = await readTrackedChildren();
+  if (pids.length === 0) return;
+  log("reaper", `previous watcher run left ${pids.length} tracked child PID(s): ${pids.join(", ")}`);
+  for (const pid of pids) {
+    let alive = false;
+    try {
+      process.kill(pid, 0);
+      alive = true;
+    } catch {
+      // dead already
+    }
+    if (alive) {
+      log("reaper", `killing leftover child PID ${pid} (+ process tree)`);
+      killProcessTree(pid);
+    } else {
+      log("reaper", `tracked PID ${pid} already gone`);
+    }
+  }
+  await writeTrackedChildren([]);
+}
+
+// Reference to the currently-running spawned child (or null). Updated by the
+// drain loop and read by shutdown handlers.
+let currentChild = null;
+
+function killCurrentChildTree() {
+  if (currentChild && currentChild.pid) {
+    log("reaper", `terminating current child PID ${currentChild.pid} (+ tree) before exit`);
+    killProcessTree(currentChild.pid);
   }
 }
 
@@ -1053,6 +1191,11 @@ async function drain() {
     },
   );
 
+  currentChild = child;
+  if (child.pid) {
+    await recordChildPid(child.pid);
+  }
+
   child.stdin.write(promptBody);
   child.stdin.end();
 
@@ -1076,6 +1219,8 @@ async function drain() {
 
   child.on("close", async (code) => {
     stopHeartbeat();
+    if (child.pid) await removeChildPid(child.pid);
+    if (currentChild === child) currentChild = null;
     const endedAt = ts();
     const agentOutput = Buffer.concat(chunks).toString("utf-8");
     const header = [
@@ -1246,8 +1391,10 @@ async function drain() {
     drain();
   });
 
-  child.on("error", (err) => {
+  child.on("error", async (err) => {
     stopHeartbeat();
+    if (child.pid) await removeChildPid(child.pid);
+    if (currentChild === child) currentChild = null;
     log("error", `spawn failed: ${err.message}`);
     seen.delete(name);
     running = false;
@@ -1284,9 +1431,13 @@ async function rescan() {
   }
 }
 
-// Warn about claude.exe processes that survived a previous watcher run.
-// Windows only — `tasklist` isn't on Linux/macOS. We don't auto-kill: the
-// user may have intentionally-launched claude sessions that aren't ours.
+// Informational scan for stray claude.exe processes. We do NOT auto-kill —
+// Marco runs interactive Claude Code / Cowork sessions whose PIDs are
+// indistinguishable from a leaked watcher child by image name alone. The
+// only PIDs the watcher ever terminates are the ones it spawned itself and
+// recorded in CHILDREN_FILE (reapPreviousChildren / killCurrentChildTree).
+// This warning is purely informational: surface the count so Marco can
+// decide whether to clean them up by hand.
 function warnOnOrphanClaudeProcesses() {
   if (process.platform !== "win32") return;
   try {
@@ -1299,19 +1450,16 @@ function warnOnOrphanClaudeProcesses() {
     for (const line of out.split(/\r?\n/)) {
       const trimmed = line.trim();
       if (!trimmed) continue;
-      // CSV row: "claude.exe","12345","Console","1","45,000 K"
       const m = trimmed.match(/^"claude\.exe","(\d+)"/i);
       if (m) pids.push(Number(m[1]));
     }
     if (pids.length > 0) {
       log(
         "WARN",
-        `Found ${pids.length} orphan claude.exe processes from previous watcher runs. PIDs: ${pids.join(", ")}. Run \`Get-Process claude | Stop-Process -Force\` to clean up.`,
+        `found ${pids.length} claude.exe process(es) running (PIDs: ${pids.join(", ")}). These may be interactive sessions — NOT auto-killed. Inspect manually if you suspect leaks.`,
       );
     }
   } catch (err) {
-    // Most likely: tasklist returned no matches (it exits 0 with empty
-    // output) or isn't on PATH. Either way, not fatal.
     log("watcher", `orphan check skipped: ${err.message}`);
   }
 }
@@ -1344,6 +1492,7 @@ async function main() {
   }
 
   warnOnOrphanClaudeProcesses();
+  await reapPreviousChildren();
 
   await scanExisting();
 
@@ -1375,15 +1524,35 @@ async function main() {
     pollForBehindPrs(); // immediate first pass
   }
 
-  process.on("SIGINT", () => {
-    log("watcher", "shutting down (SIGINT)");
+  let shuttingDown = false;
+  const shutdown = (signal) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    log("watcher", `shutting down (${signal})`);
     clearInterval(rescanTimer);
     if (reviewPollTimer) clearInterval(reviewPollTimer);
     if (updatePollTimer) clearInterval(updatePollTimer);
     stopHeartbeat();
-    watcher.close();
+    try {
+      watcher.close();
+    } catch {
+      // best-effort
+    }
+    killCurrentChildTree();
     releaseLock();
     process.exit(0);
+  };
+
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("exit", () => {
+    // Last-ditch: only runs on a clean event-loop drain. We've usually
+    // already gone through `shutdown(...)`, but if something called
+    // process.exit() directly we still want to kill our tracked child.
+    if (!shuttingDown) {
+      killCurrentChildTree();
+      releaseLock();
+    }
   });
 }
 

@@ -122,6 +122,9 @@ Adding `"packageManager"` to package.json while `pnpm/action-setup` steps still 
 
 ---
 
+**LL-33 | 2026-06-18 | Orphan `claude.exe` processes accumulated across watcher Ctrl+C / kill cycles.**
+Root cause: the watcher spawned `claude` children but had no shutdown handler to terminate them — SIGINT only cleared its own timers, so headless `claude --print` runs survived as orphans. The only "cleanup" guidance was a `Get-Process claude | Stop-Process -Force` snippet in the README, which would have killed Marco's interactive Claude Code / Cowork sessions too. Fix: the watcher now records every spawned child's PID into `scripts/pr-watcher/.watcher-children.json`, installs SIGINT/SIGTERM/exit handlers that `taskkill /PID <pid> /T /F` the tracked child + its tree before exiting, and on startup reaps any tracked PIDs the previous run left behind. Standing guard: never kill `claude` by image name — only by PIDs the watcher itself recorded as its own children; the README's image-name kill snippet is removed.
+
 ## Open items (check before starting related work)
 
 - LL-11 deploy.yml failing on every main push — diagnosed 2026-06-12 (secrets-in-if validation failure); fix PR open from `fix/deploy-workflow`, close this item when merged + next main push shows no phantom run.

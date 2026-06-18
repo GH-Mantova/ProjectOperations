@@ -71,6 +71,11 @@ export function AdminUsersTab() {
     return viewerIsSuper ? roles : roles.filter((r) => r.name !== "Admin");
   }, [roles, viewerIsSuper]);
 
+  const lockedCount = useMemo(() => {
+    if (viewerIsSuper) return 0;
+    return rows.filter((r) => r.isSuperUser || r.role?.name === "Admin").length;
+  }, [rows, viewerIsSuper]);
+
   const toggleActive = async (row: Row) => {
     const next = !row.isActive;
     const label = next ? "Reactivate" : "Deactivate";
@@ -100,6 +105,27 @@ export function AdminUsersTab() {
       </div>
 
       {error ? <p style={{ color: "var(--status-danger)" }}>{error}</p> : null}
+
+      {!viewerIsSuper && lockedCount > 0 ? (
+        <div
+          role="note"
+          data-testid="admin-tier-banner"
+          style={{
+            margin: "0 0 12px",
+            padding: "8px 12px",
+            borderRadius: 6,
+            background: "rgba(254,170,109,0.12)",
+            border: "1px solid #FEAA6D",
+            fontSize: 12,
+            color: "var(--text)"
+          }}
+        >
+          <strong>Tier restriction.</strong> Accounts marked 🔒 are Admins or Super Users —
+          only Super Users can change their role, reset their password, or deactivate them.
+          You'll see a lock icon on those rows.
+        </div>
+      ) : null}
+
       {toast ? (
         <div
           role="status"
@@ -150,7 +176,13 @@ export function AdminUsersTab() {
                   </td>
                   <td style={{ padding: "8px 10px", textAlign: "right" }}>
                     {locked ? (
-                      <span title="Managed by Super User" style={{ color: "var(--text-muted)", fontSize: 12 }}>🔒</span>
+                      <span
+                        title="Admins and Super Users can only be modified by a Super User"
+                        aria-label="Locked — manageable only by a Super User"
+                        style={{ color: "var(--text-muted)", fontSize: 12 }}
+                      >
+                        🔒
+                      </span>
                     ) : (
                       <div style={{ display: "inline-flex", gap: 4 }}>
                         <button type="button" className="s7-btn s7-btn--ghost s7-btn--sm" onClick={() => setEditing(r)}>Edit</button>

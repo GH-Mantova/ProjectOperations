@@ -230,27 +230,57 @@ export function ProjectDetailPage() {
         </div>
       </header>
 
-      <nav className="admin-page__tabs" role="tablist">
-        {(["overview", "scope", "schedule", "documents", "team", "activity"] as Tab[]).map((key) => (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            aria-selected={tab === key}
-            className={tab === key ? "admin-page__tab admin-page__tab--active" : "admin-page__tab"}
-            onClick={() => setTab(key)}
-          >
-            {key[0].toUpperCase() + key.slice(1)}
-          </button>
-        ))}
+      <nav className="admin-page__tabs" role="tablist" aria-label="Project sections">
+        {(["overview", "scope", "schedule", "documents", "team", "activity"] as Tab[]).map((key) => {
+          const isActive = tab === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              id={`project-tab-${key}`}
+              aria-selected={isActive}
+              aria-controls={`project-tabpanel-${key}`}
+              tabIndex={isActive ? 0 : -1}
+              className={isActive ? "admin-page__tab admin-page__tab--active" : "admin-page__tab"}
+              onClick={() => setTab(key)}
+            >
+              {key[0].toUpperCase() + key.slice(1)}
+            </button>
+          );
+        })}
       </nav>
 
-      {tab === "overview" && <OverviewTab project={project} />}
-      {tab === "scope" && <ScopeTab project={project} />}
-      {tab === "schedule" && <ScheduleTab project={project} />}
-      {tab === "documents" && <DocumentsTab project={project} />}
-      {tab === "team" && <TeamTab project={project} onProjectUpdated={() => void reload()} />}
-      {tab === "activity" && <ActivityTab projectId={project.id} initial={project.activityLog} />}
+      {tab === "overview" && (
+        <div role="tabpanel" id="project-tabpanel-overview" aria-labelledby="project-tab-overview">
+          <OverviewTab project={project} />
+        </div>
+      )}
+      {tab === "scope" && (
+        <div role="tabpanel" id="project-tabpanel-scope" aria-labelledby="project-tab-scope">
+          <ScopeTab project={project} />
+        </div>
+      )}
+      {tab === "schedule" && (
+        <div role="tabpanel" id="project-tabpanel-schedule" aria-labelledby="project-tab-schedule">
+          <ScheduleTab project={project} />
+        </div>
+      )}
+      {tab === "documents" && (
+        <div role="tabpanel" id="project-tabpanel-documents" aria-labelledby="project-tab-documents">
+          <DocumentsTab project={project} />
+        </div>
+      )}
+      {tab === "team" && (
+        <div role="tabpanel" id="project-tabpanel-team" aria-labelledby="project-tab-team">
+          <TeamTab project={project} onProjectUpdated={() => void reload()} />
+        </div>
+      )}
+      {tab === "activity" && (
+        <div role="tabpanel" id="project-tabpanel-activity" aria-labelledby="project-tab-activity">
+          <ActivityTab projectId={project.id} initial={project.activityLog} />
+        </div>
+      )}
 
       {advanceOpen ? (
         <AdvanceStatusModal
@@ -472,25 +502,39 @@ function ScheduleTab({ project }: { project: ProjectDetail }) {
       <section className="s7-card">
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 12 }}>
           <h3 className="s7-type-section-heading" style={{ margin: 0 }}>Schedule</h3>
-          <div role="tablist" style={{ display: "inline-flex", gap: 4, marginLeft: 8 }}>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === "gantt"}
-              className={view === "gantt" ? "s7-btn s7-btn--secondary s7-btn--sm" : "s7-btn s7-btn--ghost s7-btn--sm"}
-              onClick={() => setView("gantt")}
-            >
-              Gantt
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === "list"}
-              className={view === "list" ? "s7-btn s7-btn--secondary s7-btn--sm" : "s7-btn s7-btn--ghost s7-btn--sm"}
-              onClick={() => setView("list")}
-            >
-              List
-            </button>
+          <div role="tablist" aria-label="Schedule view" style={{ display: "inline-flex", gap: 4, marginLeft: 8 }}>
+            {(() => {
+              const ganttActive = view === "gantt";
+              const listActive = view === "list";
+              return (
+                <>
+                  <button
+                    type="button"
+                    role="tab"
+                    id="schedule-tab-gantt"
+                    aria-selected={ganttActive}
+                    aria-controls="schedule-tabpanel-gantt"
+                    tabIndex={ganttActive ? 0 : -1}
+                    className={ganttActive ? "s7-btn s7-btn--secondary s7-btn--sm" : "s7-btn s7-btn--ghost s7-btn--sm"}
+                    onClick={() => setView("gantt")}
+                  >
+                    Gantt
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    id="schedule-tab-list"
+                    aria-selected={listActive}
+                    aria-controls="schedule-tabpanel-list"
+                    tabIndex={listActive ? 0 : -1}
+                    className={listActive ? "s7-btn s7-btn--secondary s7-btn--sm" : "s7-btn s7-btn--ghost s7-btn--sm"}
+                    onClick={() => setView("list")}
+                  >
+                    List
+                  </button>
+                </>
+              );
+            })()}
           </div>
           {view === "gantt" ? (
             <div style={{ display: "inline-flex", gap: 4, marginLeft: 8 }}>
@@ -1576,6 +1620,10 @@ function GanttListView({
                   value={t.progress}
                   onChange={(e) => void setProgress(t.id, Number(e.target.value))}
                   disabled={!canManage}
+                  aria-label={`Progress for ${t.title}`}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={t.progress}
                   style={{ width: 100 }}
                 />
                 <span style={{ marginLeft: 6, color: "var(--text-muted)" }}>{t.progress}%</span>

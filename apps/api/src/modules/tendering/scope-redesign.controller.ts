@@ -38,6 +38,7 @@ class CreateCuttingItemDto {
 
 // Exported so the B4b.1 contract spec can assert that cardId is no
 // longer a declared property on this DTO (silent-no-op prevention).
+/** Partial-update body for PATCH /tenders/:tenderId/scope/cutting-items/:itemId. */
 export class UpdateCuttingItemDto {
   @IsOptional() @IsString() wbsRef?: string;
   @IsOptional() @IsString() description?: string | null;

@@ -27,8 +27,10 @@ import { type IsDisciplineCode } from "../../personas/definitions/disciplines";
 // rows from the legacy scope-proposals rows (which lack toolName).
 const TOOL_NAME = "propose_estimate_items";
 
+/** Lifecycle status of a stored estimate-item proposal. */
 export type EstimateProposalStatus = "pending" | "accepted" | "rejected";
 
+/** One AI estimate-item proposal as persisted on a tool_result message. */
 export type StoredEstimateProposal = {
   index: number;
   code: IsDisciplineCode;
@@ -46,12 +48,14 @@ export type StoredEstimateProposal = {
   decidedAt?: string;
 };
 
+/** Shape of the tool_result message metadata for estimate proposals. */
 export type EstimateProposalsMetadata = {
   toolUseId: string;
   toolName: typeof TOOL_NAME;
   proposals: StoredEstimateProposal[];
 };
 
+/** Optional field/line edits applied to an estimate proposal at accept time. */
 export type EstimateProposalEdits = Partial<{
   code: IsDisciplineCode;
   title: string;

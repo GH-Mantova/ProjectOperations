@@ -51,6 +51,7 @@ class TenderFollowUpInputDto {
   @IsOptional() @IsString() assignedUserId?: string;
 }
 
+/** Body for creating a unified tender activity entry. */
 export class CreateTenderActivityDto {
   @IsString()
   activityType!: string;
@@ -64,6 +65,7 @@ export class CreateTenderActivityDto {
   @IsOptional() @IsString() assignedUserId?: string;
 }
 
+/** Partial-update body for a unified tender activity entry. */
 export class UpdateTenderActivityDto {
   @IsOptional() @IsString() title?: string;
   @IsOptional() @IsString() details?: string;
@@ -78,11 +80,13 @@ class TenderOutcomeInputDto {
   @IsOptional() @IsString() notes?: string;
 }
 
+/** Body for the legacy tender-note write endpoint. */
 export class CreateTenderNoteDto {
   @IsString()
   body!: string;
 }
 
+/** Body for the legacy tender-clarification write endpoint. */
 export class CreateTenderClarificationDto {
   @IsString()
   subject!: string;
@@ -91,6 +95,7 @@ export class CreateTenderClarificationDto {
   @IsOptional() @IsDateString() dueDate?: string;
 }
 
+/** Body for the legacy tender follow-up write endpoint. */
 export class CreateTenderFollowUpDto {
   @IsDateString()
   dueAt!: string;
@@ -100,11 +105,13 @@ export class CreateTenderFollowUpDto {
   @IsOptional() @IsString() assignedUserId?: string;
 }
 
+/** Body for the tender CSV import preview / commit endpoints. */
 export class PreviewTenderImportDto {
   @IsString()
   csvText!: string;
 }
 
+/** Full tender create/update payload with nested collections. */
 export class UpsertTenderDto {
   /**
    * G5 — tender numbers are server-generated (T{YYMMDD}-{SLUG}-Rev{N}).

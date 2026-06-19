@@ -23,8 +23,10 @@ const DEFAULT_ROW_TYPE_BY_DISCIPLINE: Record<IsDisciplineCode, string> = {
   Other: "general-labour"
 };
 
+/** Lifecycle status of a stored scope-item proposal. */
 export type ProposalStatus = "pending" | "accepted" | "rejected";
 
+/** One AI scope-item proposal as persisted on a tool_result message. */
 export type StoredProposal = {
   index: number;
   discipline: IsDisciplineCode;
@@ -38,11 +40,13 @@ export type StoredProposal = {
   decidedAt?: string;
 };
 
+/** Shape of the tool_result message metadata for scope-item proposals. */
 export type ProposalsMetadata = {
   toolUseId: string;
   proposals: StoredProposal[];
 };
 
+/** Optional field edits applied to a scope-item proposal at accept time. */
 export type ProposalEdits = Partial<{
   discipline: IsDisciplineCode;
   title: string;

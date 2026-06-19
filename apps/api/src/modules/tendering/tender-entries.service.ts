@@ -19,10 +19,12 @@ export const TENDER_ENTRY_TYPES = [
   "self_reminder",
   "task"
 ] as const;
+/** Union of accepted tender entry types. */
 export type TenderEntryType = (typeof TENDER_ENTRY_TYPES)[number];
 
 /** Allowed entry statuses; 'cancelled' doubles as the soft-delete marker. */
 export const TENDER_ENTRY_STATUSES = ["open", "done", "cancelled"] as const;
+/** Union of accepted tender entry statuses. */
 export type TenderEntryStatus = (typeof TENDER_ENTRY_STATUSES)[number];
 
 const TYPES_REQUIRING_DUE_DATE: ReadonlySet<TenderEntryType> = new Set([
@@ -31,6 +33,7 @@ const TYPES_REQUIRING_DUE_DATE: ReadonlySet<TenderEntryType> = new Set([
   "task"
 ]);
 
+/** Optional filters for the tender entries list endpoint. */
 export type ListTenderEntriesQuery = {
   type?: string;
   assigneeId?: string;
@@ -39,6 +42,7 @@ export type ListTenderEntriesQuery = {
   to?: string;
 };
 
+/** Service-level input shape for creating a tender entry. */
 export type CreateTenderEntryInput = {
   type: string;
   subject?: string | null;
@@ -48,6 +52,7 @@ export type CreateTenderEntryInput = {
   status?: string | null;
 };
 
+/** Service-level partial-update shape for a tender entry. */
 export type UpdateTenderEntryInput = {
   type?: string;
   subject?: string | null;

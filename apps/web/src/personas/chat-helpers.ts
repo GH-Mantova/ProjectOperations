@@ -210,6 +210,8 @@ export type SSEChunk =
   | { type: "error"; error: string }
   | { type: "done" }
   | { type: "conversation"; conversationId: string }
+  | { type: "tool_use_started"; toolUseId: string; name: string }
+  | { type: "tool_use_completed"; toolUseId: string; name: string }
   | { type: "proposals"; messageId: string; proposals: ChatProposal[] }
   | {
       type: "estimate_proposals";
@@ -226,6 +228,27 @@ export type SSEChunk =
       messageId: string;
       proposals: ChatClarificationProposal[];
     };
+
+// Map a backend tool name to a short, present-tense status line for the
+// "AI is working" indicator. Falls back to "Working…" for unknown names so a
+// new handler added on the backend still surfaces something sensible.
+const TOOL_STATUS_LABELS: Record<string, string> = {
+  read_tender_drawing: "Reading drawing…",
+  list_tender_drawings: "Listing drawings…",
+  extract_drawing_titleblock: "Reading title block…",
+  read_asbestos_register: "Reading asbestos register…",
+  list_tender_clarifications: "Reading clarifications…",
+  list_tender_quotes: "Reading quotes…",
+  lookup_rate: "Looking up rate…",
+  propose_scope_items: "Drafting scope items…",
+  propose_estimate_items: "Drafting estimate items…",
+  propose_quote_content: "Drafting quote content…",
+  propose_clarifications: "Drafting clarifications…"
+};
+
+export function toolStatusLabel(toolName: string): string {
+  return TOOL_STATUS_LABELS[toolName] ?? "Working…";
+}
 
 // Send button is active only when the user has typed something AND we're not
 // currently streaming a response back.
@@ -395,6 +418,8 @@ export function parseSSEEvent(rawEvent: string): SSEChunk[] {
     conversationId?: string;
     messageId?: string;
     proposals?: ChatProposal[];
+    toolUseId?: string;
+    name?: string;
   };
   if (obj.type === "content" && typeof obj.text === "string") {
     return [{ type: "content", text: obj.text }];
@@ -407,6 +432,23 @@ export function parseSSEEvent(rawEvent: string): SSEChunk[] {
   }
   if (obj.type === "conversation" && typeof obj.conversationId === "string") {
     return [{ type: "conversation", conversationId: obj.conversationId }];
+  }
+  // Multi-turn tool-use lifecycle: the dispatcher emits these so the chat UI
+  // can show a transient "Reading X…" line while a tool runs. We forward
+  // both edges; the hook tracks the most-recent started/completed pair.
+  if (
+    obj.type === "tool_use_started" &&
+    typeof obj.toolUseId === "string" &&
+    typeof obj.name === "string"
+  ) {
+    return [{ type: "tool_use_started", toolUseId: obj.toolUseId, name: obj.name }];
+  }
+  if (
+    obj.type === "tool_use_completed" &&
+    typeof obj.toolUseId === "string" &&
+    typeof obj.name === "string"
+  ) {
+    return [{ type: "tool_use_completed", toolUseId: obj.toolUseId, name: obj.name }];
   }
   if (
     obj.type === "proposals" &&

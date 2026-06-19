@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-06-18 03:35 AEST
+Last updated: 2026-06-18 06:49 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -1314,12 +1314,12 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
      and migrate.)
 
 ✅  Tender title truncation in dashboard lists (~12-15 char ellipsis)
-    — closed by the UX bundle PR, 2026-06-12. Re-verified post
-    dashboard-v2: the fixed 12-15 char cut is gone (flexible CSS
-    ellipsis with min-width:0), but narrow slots at ≤1024px still
-    squeeze titles to a few characters. Fixed per the hard rule: every
-    truncated row title/meta in the tendering widgets (Due this week,
-    Follow-up queue, Recent wins) now carries title= hover reveal.
+    — closed by this PR (2026-06-18). Widened .td-v2__row-title from
+    single-line nowrap/ellipsis to a 2-line -webkit-line-clamp, so
+    narrow dashboard slots at ≤1024px now reveal ~80–120 chars instead
+    of a few. Hover reveal via title= still in place from the prior pass.
+    Previously: closed by the UX bundle PR 2026-06-12 (hover-reveal added)
+    and re-verified post dashboard-v2 (fixed 12-15 char cut removed).
     (Chat1 dashboard 2026-05-03 — truncation point too aggressive.)
 
 ⏸️  Scheduler week view weekend clipping at narrow viewports

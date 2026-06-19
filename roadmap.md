@@ -2529,3 +2529,24 @@ users:prod only, requires explicit DATABASE_URL, and exits non-zero
 if the target DB contains dev seed users (@projectops.local).
 CP-08 gains a seed:prod idempotency + zero-demo-rows case running
 against a scratch schema.
+
+### 2026-06-18 — §2 Admin user-roles + access-levels UI
+
+The Permissions tab in Admin Settings was a "Coming soon" stub. PR
+`feat/admin-user-roles-ui` replaces it with a read-only role→permission
+matrix grouped by module — wide table with sticky permission column,
+roles as columns, ✓ where granted. Builds on the data the existing
+`GET /roles` already returns (each role carries a flattened `permissions`
+array from the rolePermissions join) plus `GET /permissions` — no new
+API, no schema change, no migration.
+
+The Users tab also surfaces the tier model more loudly: a banner is
+shown to non-Super-User admins explaining that 🔒 rows (Admins and Super
+Users) can only be modified by a Super User, and the lock icon picks up
+an `aria-label` and a sharper tooltip. The matrix shaping is covered
+by 11 vitest specs in `apps/web/src/pages/admin/__tests__/roleMatrix.test.ts`.
+
+Per-user permission overrides are *not* in scope: the Prisma schema has
+no `UserPermission` model, so granting permissions outside of role
+assignment would need a schema migration. Logged as a follow-up rather
+than guessed at.

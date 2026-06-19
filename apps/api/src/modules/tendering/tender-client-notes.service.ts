@@ -4,6 +4,7 @@ import { AuditService } from "../audit/audit.service";
 
 const ALLOWED_TYPES = new Set(["note", "call", "email", "meeting", "site_visit"]);
 
+/** Service-level input shape for creating a tender-client interaction note. */
 export type CreateTenderClientNoteInput = {
   noteType?: string;
   subject?: string | null;

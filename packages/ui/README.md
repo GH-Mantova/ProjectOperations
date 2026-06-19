@@ -1,6 +1,27 @@
 # @project-ops/ui
 
-Shared UI components for ProjectOperations. Consumed in source form by the web app (`main` points at `src/index.ts`); no separate build step.
+Shared UI components for ProjectOperations. The package is consumed two ways:
+
+- **In-repo (apps/web):** resolved to `src/index.ts` via the Vite `resolve.alias`
+  and the `@project-ops/ui` entry in `tsconfig.base.json` paths. No rebuild
+  needed between edits.
+- **External tooling (e.g. Claude Design `/design-sync`):** resolved via
+  `main`/`module`/`types`/`exports` to the compiled `dist/` produced by `tsup`.
+
+## Build
+
+```bash
+pnpm --filter @project-ops/ui build
+```
+
+Emits ESM + `.d.ts` types to `dist/`. `react`, `react-dom`, and `recharts` are
+externalised as peer dependencies — they are never bundled.
+
+## Storybook
+
+Not yet wired. Follow-up PR will add stories for each public component and a
+`build-storybook` script. Until then, point Claude Design `/design-sync` at the
+`dist/` build above.
 
 ## CenteredModal
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { AdminUsersTab } from "./admin/AdminUsersTab";
+import { AdminRolesPermissionsTab } from "./admin/AdminRolesPermissionsTab";
 
 type Trigger = {
   id: string;
@@ -107,9 +108,7 @@ export function AdminSettingsPage() {
               <XeroPanel />
             </>
           )}
-          {tab === "permissions" && (
-            <StubCard title="Role & permission management" body="Coming soon." />
-          )}
+          {tab === "permissions" && <AdminRolesPermissionsTab />}
           {tab === "audit" && <StubCard title="System audit log" body="Coming soon. All admin actions are recorded." />}
         </div>
       </div>

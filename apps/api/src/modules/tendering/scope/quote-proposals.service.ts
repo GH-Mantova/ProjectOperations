@@ -26,8 +26,10 @@ import type {
 // scope/estimate/quote proposal stores stay strictly isolated.
 const TOOL_NAME = "propose_quote_content";
 
+/** Lifecycle status of a stored quote-content proposal. */
 export type QuoteProposalStatus = "pending" | "accepted" | "rejected";
 
+/** One AI quote-content proposal as persisted on a tool_result message. */
 export type StoredQuoteProposal = {
   index: number;
   quoteId: string;
@@ -41,12 +43,14 @@ export type StoredQuoteProposal = {
   decidedAt?: string;
 };
 
+/** Shape of the tool_result message metadata for quote-content proposals. */
 export type QuoteProposalsMetadata = {
   toolUseId: string;
   toolName: typeof TOOL_NAME;
   proposals: StoredQuoteProposal[];
 };
 
+/** Optional content-array edits applied to a quote proposal at accept time. */
 export type QuoteProposalEdits = Partial<{
   costLines: QuoteCostLineProposal[];
   exclusions: QuoteExclusionProposal[];

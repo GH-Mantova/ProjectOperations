@@ -65,4 +65,5 @@ import { ClarificationProposalsService } from "./scope/clarification-proposals.s
     ClarificationProposalsService
   ]
 })
+/** NestJS module wiring tendering controllers, services, and submodules. */
 export class TenderingModule {}

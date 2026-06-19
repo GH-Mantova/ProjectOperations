@@ -1,8 +1,186 @@
-# Environment Reference
+# Setup & Local Development
+
+> Consolidates `setup-guide.md`, `local-development.md`, and `environment-reference.md`
+> (merged 2026-06-19). The env-vars reference is preserved verbatim as the final section.
+
+## Current project state
+
+This repository is no longer only shell-level scaffolding. It contains:
+
+- platform/auth/admin foundations
+- SharePoint abstraction foundations
+- master data
+- Tendering
+- tender documents
+- award / contract / job conversion
+- Jobs and Delivery
+- Scheduler and Work Planning
+- Resources and Competencies
+- Assets and Equipment
+- Maintenance
+- Forms and Compliance
+- Documents
+- Dashboards and Reporting
+- Closeout and Archive
+- hardening/consolidation work
+
+For the latest Tendering-specific runtime and handover details, read:
+
+- [continuation-log.md](continuation-log.md)
+
+For broad module inventory and current implementation coverage, see:
+
+- [module-build-log.md](module-build-log.md)
+
+## Prerequisites
+
+- Node.js 22 or later
+- pnpm 10 or later
+- Docker Desktop or compatible Docker runtime
+- PostgreSQL via Docker for local development
+
+## Workspace rule
+
+Use the local workspace only:
+
+- `C:\Dev\ProjectOperations`
+
+Do not actively develop from the SharePoint-synced path. If SharePoint is used for sync/storage, follow:
+
+- [sharepoint-local-workflow.md](sharepoint-local-workflow.md)
+
+## First-time setup
+
+1. Copy `.env.example` to `.env`.
+2. Start PostgreSQL:
+
+```powershell
+docker compose up -d postgres
+```
+
+3. Install dependencies:
+
+```powershell
+pnpm install
+```
+
+4. Generate Prisma client:
+
+```powershell
+pnpm prisma:generate
+```
+
+5. Apply local migrations:
+
+```powershell
+pnpm prisma:migrate
+```
+
+## Standard local startup (condensed)
+
+```powershell
+docker compose up -d postgres
+pnpm install
+pnpm prisma:generate
+pnpm prisma:migrate
+pnpm dev
+```
+
+## Start the app locally
+
+General local app startup:
+
+```powershell
+pnpm dev
+```
+
+Useful direct commands:
+
+```powershell
+pnpm dev:api
+pnpm dev:web
+pnpm build
+```
+
+## Managed-Windows safe validation path
+
+This project runs in a managed Windows environment that has recurring `spawn EPERM` issues with
+some child-process-heavy toolchains. For day-to-day verification, do not treat generic frontend
+dev/test startup as the most reliable signal.
+
+For reliable local verification, prefer:
+
+```powershell
+pnpm --filter @project-ops/api build
+pnpm test:api:serial
+pnpm --filter @project-ops/web exec -- tsc -p . --noEmit
+pnpm test:web:logic
+```
+
+These commands have been the safest repeatable validation path during Tendering hardening.
+
+## Commands to use with caution
+
+These may still work in some environments, but they have been less reliable in this managed setup:
+
+```powershell
+pnpm test
+pnpm --filter @project-ops/web test
+pnpm seed
+```
+
+Reasons:
+
+- Vite/Vitest startup can be unstable under `spawn EPERM`
+- `tsx prisma/seed.ts` has also been affected by `spawn EPERM`
+
+## Tendering browser verification
+
+When browser verification is needed for Tendering, prefer the reuse-runtime path instead of
+relying on Playwright to boot servers itself in this environment.
+
+1. Terminal 1 — start API:
+
+```powershell
+cd C:\Dev\ProjectOperations
+pnpm dev:api:e2e
+```
+
+2. Terminal 2 — start web:
+
+```powershell
+cd C:\Dev\ProjectOperations
+pnpm dev:web:e2e
+```
+
+3. Terminal 3 — run Tendering E2E against those running servers:
+
+```powershell
+cd C:\Dev\ProjectOperations
+pnpm test:tendering:e2e:reuse
+```
+
+## Operational notes
+
+- Scheduler is implemented and is not just a placeholder nav item.
+- Tendering is in a strong, pilot-ready state and has broad local Playwright coverage.
+- SharePoint integration in the app is still mock-backed by default; live Graph-backed
+  integration remains future work.
+- Microsoft 365 / Entra SSO is not yet implemented.
+
+## SharePoint workflow
+
+If SharePoint is used for synchronization/storage across machines, use the local-copy workflow:
+
+- [sharepoint-local-workflow.md](sharepoint-local-workflow.md)
+
+---
+
+# Environment Variables Reference
 
 ## Scope
 
-This file documents the current environment variables used by:
+This section documents the current environment variables used by:
 
 - local development
 - CI validation
@@ -82,7 +260,7 @@ These are already wired through the existing package scripts and Playwright setu
 
 ## Hosted deployment guidance
 
-## Recommended first Azure deployment
+### Recommended first Azure deployment
 
 Recommended first hosted shape:
 
@@ -195,6 +373,6 @@ These defaults should not be relied on in Azure production. Hosted deployments s
 
 ## Related references
 
-- [deployment-guide.md](C:\Dev\ProjectOperations\docs\deployment-guide.md)
-- [app.config.ts](C:\Dev\ProjectOperations\apps\api\src\config\app.config.ts)
-- [auth.config.ts](C:\Dev\ProjectOperations\apps\api\src\config\auth.config.ts)
+- [deployment-guide.md](deployment-guide.md)
+- `apps/api/src/config/app.config.ts`
+- `apps/api/src/config/auth.config.ts`

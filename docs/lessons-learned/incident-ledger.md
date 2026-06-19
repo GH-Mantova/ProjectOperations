@@ -24,7 +24,7 @@ Root cause variant of LL-01: interrupted/unflushed write left NUL padding. Fix: 
 Root cause: mount cache staleness during active Windows-side git operations. Fix: verify on the Windows side (`git status`, `git fsck`) before trusting sandbox reads; restart the Cowork session to remount. Standing guard: sandbox observations of `.git` internals during agent runs are advisory only — never "repair" through the mount without Windows-side confirmation. (One benign exception logged: the LL-02 rewrite was byte-identical to the valid ref.)
 
 **LL-04 | ongoing | Branch accumulation after manual merges.**
-Root cause: only watcher auto-merge path passes `--delete-branch`; manual merges leave remote branches. Fix/Standing guard: `scripts/branch-prune.ps1` (deletes remote branches whose PR merged, skips open PRs + main); see vscode-max-strategy.md for the recurring schedule + repo setting.
+Root cause: only watcher auto-merge path passes `--delete-branch`; manual merges leave remote branches. Fix/Standing guard: `scripts/branch-prune.ps1` (deletes remote branches whose PR merged, skips open PRs + main); see [vs-code-strategy.md §A3](../vs-code-strategy.md#a3-branch-hygiene-the-pruning-routine) for the recurring schedule + repo setting.
 
 ## Prisma / database
 
@@ -36,6 +36,9 @@ Root cause: schema changes committed without matching migrations over time. Fix:
 
 **LL-07 | 2026-06-11 | CP-G5 failed locally: orphan applied migration `20260603000000_team_and_comm_filter` not in git.**
 Root cause: PR-smoke runs apply branch migrations to the shared dev DB; the branch's migration was renamed before merge, orphaning the dev-DB row + a real schema delta (`tender_entries.client_id`). Fix: dropped the orphan column/FK/index + `_prisma_migrations` row. Standing guard: when CP-G5/`migrate status` fails locally, suspect smoke-run orphans FIRST — compare `_prisma_migrations` rows vs `prisma/migrations/` folders and check git log for renamed migrations. Parked mitigation options: disposable smoke DB, or CP-G5 as post-smoke check.
+
+**LL-07a | 2026-05-17 | Date-bounded delete migration cutoff was 39 s too early (PR #188, B-followup).**
+Symptom: PR #188's migration to add `NOT NULL` on `cutting_sheet_items.card_id` first DELETEs pre-B4b orphan cutting rows, bounded by a date filter. The WHERE clause used `2026-05-17 07:30:00+00`; the actual B4b merge (SHA `fe39e27`) was `2026-05-17 07:30:39 UTC` — 39 seconds later. Root cause: cutoff timestamp rounded down to the minute instead of using the exact merge time. The whole point of the filter was to fail loud (via the subsequent NOT NULL ALTER) if any post-B4b orphan existed; the 39-second slack would have silently deleted any row created in that window, then let the ALTER succeed cleanly. Blast radius in this case: zero (dev DB orphans were all from 2026-05-16, CI shadow DB empty). In a parallel universe with an orphan in those 39 seconds: silent data loss. Fix: caught in Codex P2 review on PR #188; subsequent housekeeping in PR #190. Standing guard: for any date-bounded delete migration where the safety property is "delete X but only if X is older than timestamp T" — use the EXACT timestamp T (`git log --format=%cI <sha>` or the GitHub API), never a rounded minute/hour; state T's exact value in both the migration comment AND the WHERE clause and treat any mismatch as a bug. Refs: PR #188, PR #190, migration file `apps/api/prisma/migrations/20260517090000_b_followup_cardid_not_null/migration.sql`, B4b merge SHA `fe39e27`.
 
 ## CI / gates / GitHub behaviours
 

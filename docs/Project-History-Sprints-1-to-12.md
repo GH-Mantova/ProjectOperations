@@ -2,19 +2,9 @@
 
 Date prepared: 2026-04-14
 Workspace: `C:\Dev\ProjectOperations`
-Source material:
-- [Sprint1.md](C:\Dev\ProjectOperations\docs\Sprint1.md)
-- [Sprint2.md](C:\Dev\ProjectOperations\docs\Sprint2.md)
-- [Sprint3.md](C:\Dev\ProjectOperations\docs\Sprint3.md)
-- [Sprint4.md](C:\Dev\ProjectOperations\docs\Sprint4.md)
-- [Sprint5.md](C:\Dev\ProjectOperations\docs\Sprint5.md)
-- [Sprint6.md](C:\Dev\ProjectOperations\docs\Sprint6.md)
-- [Sprint7.md](C:\Dev\ProjectOperations\docs\Sprint7.md)
-- [Sprint8.md](C:\Dev\ProjectOperations\docs\Sprint8.md)
-- [Sprint9.md](C:\Dev\ProjectOperations\docs\Sprint9.md)
-- [Sprint10.md](C:\Dev\ProjectOperations\docs\Sprint10.md)
-- [Sprint11.md](C:\Dev\ProjectOperations\docs\Sprint11.md)
-- [Sprint12.md](C:\Dev\ProjectOperations\docs\Sprint12.md)
+Source material: the original `Sprint1.md` through `Sprint12.md` handover files. They were
+deleted on 2026-06-19 after their full content was confirmed to be folded into this consolidated
+history. See git history for the originals if needed.
 
 ## Executive Summary
 
@@ -617,5 +607,5 @@ Use this file as:
 
 If a shorter operational handover is needed, the best companion files are:
 
-- [continuation-log.md](C:\Dev\ProjectOperations\docs\continuation-log.md)
-- [Sprint12.md](C:\Dev\ProjectOperations\docs\Sprint12.md)
+- [continuation-log.md](continuation-log.md)
+- the Sprint 12 section above (the original `Sprint12.md` has been folded in)

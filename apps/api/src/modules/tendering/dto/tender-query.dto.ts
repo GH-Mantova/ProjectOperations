@@ -15,6 +15,7 @@ const SORTABLE_FIELDS = [
   "probability"
 ] as const;
 
+/** Union of accepted tender list sort fields. */
 export type TenderSortField = (typeof SORTABLE_FIELDS)[number];
 
 const csvToArray = ({ value }: { value: unknown }): string[] | undefined => {
@@ -34,6 +35,7 @@ const csvToArray = ({ value }: { value: unknown }): string[] | undefined => {
   return undefined;
 };
 
+/** Query DTO for the tender list endpoint (paging + filters + sort). */
 export class TenderQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsString()
@@ -92,6 +94,7 @@ export class TenderQueryDto extends PaginationQueryDto {
   sortDir?: "asc" | "desc";
 }
 
+/** Body for the bulk-status update endpoint. */
 export class BulkStatusDto {
   @IsArray()
   @IsString({ each: true })
@@ -101,6 +104,7 @@ export class BulkStatusDto {
   status!: string;
 }
 
+/** Body for the tender quick-edit endpoint (small partial patch). */
 export class QuickEditDto {
   @IsOptional()
   @IsString()
@@ -133,4 +137,5 @@ export class QuickEditDto {
   notes?: string | null;
 }
 
+/** Re-exported list of sortable tender list fields. */
 export { SORTABLE_FIELDS };

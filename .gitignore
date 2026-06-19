@@ -11,6 +11,8 @@ apps/api/generated
 /deploy-api/
 apps/api/dist/
 apps/web/dist/
+packages/ui/dist/
+packages/ui/storybook-static/
 # PR #146 — local mock storage for SharePoint adapter (dev-only file persistence).
 # Pattern matches wherever the storage dir lands (default is
 # apps/api/.local-storage/ since both `pnpm dev` and `pnpm seed` run from there,

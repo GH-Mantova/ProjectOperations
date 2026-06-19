@@ -86,7 +86,14 @@ export default defineConfig({
     })
   ],
   resolve: {
-    extensions: [".tsx", ".ts", ".jsx", ".js", ".mjs", ".json"]
+    extensions: [".tsx", ".ts", ".jsx", ".js", ".mjs", ".json"],
+    // Keep the monorepo app pointed at the UI package source even after
+    // packages/ui grew a dist/ build. The compiled bundle is for external
+    // tooling (e.g. Claude Design's /design-sync); in-repo, source is faster
+    // and avoids needing to rebuild packages/ui between edits.
+    alias: {
+      "@project-ops/ui": resolve(__dirname, "../../packages/ui/src/index.ts")
+    }
   },
   define: {
     __APP_VERSION__: JSON.stringify(packageJson.version)

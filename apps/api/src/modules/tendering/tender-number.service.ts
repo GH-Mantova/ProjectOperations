@@ -69,6 +69,7 @@ export class TenderNumberService {
     };
   }
 
+  /** Returns an error string if the tender number is missing or non-canonical; null when valid. */
   validate(tenderNumber: string): string | null {
     if (!tenderNumber) return "Tender number is required.";
     if (!TenderNumberService.TENDER_NUMBER_REGEX.test(tenderNumber)) {

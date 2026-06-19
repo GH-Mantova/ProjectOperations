@@ -284,6 +284,7 @@ export async function resolveCuttingRate(
 // Core hole resolver — spec Part 3.2. Returns isPOA=true for > 650mm so
 // the UI can display the manual-pricing flag; undersize rounds up to 32mm;
 // between-listed diameters round up to the next available diameter.
+/** Result of resolveCoreHoleRate: either a POA flag or resolved rate + multipliers. */
 export type CoreHoleRateResult =
   | { isPOA: true; ratePerHole: null; methodMultiplier: number; elevationMultiplier: number }
   | {

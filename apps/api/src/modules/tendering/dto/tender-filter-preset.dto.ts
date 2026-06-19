@@ -1,5 +1,6 @@
 import { IsBoolean, IsNotEmpty, IsObject, IsOptional, IsString, MaxLength } from "class-validator";
 
+/** Body for creating a per-user tender filter preset. */
 export class CreateTenderFilterPresetDto {
   @IsString()
   @IsNotEmpty()
@@ -14,6 +15,7 @@ export class CreateTenderFilterPresetDto {
   isDefault?: boolean;
 }
 
+/** Partial-update body for a tender filter preset. */
 export class UpdateTenderFilterPresetDto {
   @IsOptional()
   @IsString()

@@ -65,7 +65,7 @@ The implementation sequence follows the master build pack:
 
 - `pnpm compliance:smoke` runs a repeatable backend smoke flow across the core lifecycle: login, tender creation, tender award/contract, job conversion, scheduler planning, maintenance visibility, forms, documents, dashboards, and closeout/archive
 - Tendering also has local browser verification coverage via Playwright. In the managed Windows environment, the most reliable browser-validation path is the manual reuse-runtime flow documented in:
-  - [local-development.md](C:\Dev\ProjectOperations\docs\local-development.md)
+  - [setup-and-local-development.md](setup-and-local-development.md)
 
 ## V2 Improvements (April 2026) — architecture delta
 

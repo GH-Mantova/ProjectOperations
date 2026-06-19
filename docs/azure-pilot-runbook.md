@@ -31,28 +31,23 @@ Watcher modes: **review-gated** (task default, auto-merge OFF — verdicts pile 
 4. **After 166 is MERGED:** rename pr-174 (deploy hardening) → -ready.
 5. **Weekend chain batch (rename all five + restart watcher in chain mode):** pr-175 JSDoc sweep, pr-176 unit tests API batch 1, pr-177 unit tests API batch 2 + web, pr-178 UX bundle, pr-179 roadmap sync. Independent of pilot work; pure quality digestion.
 
-## 3. Manual provisioning checklist (Marco, in the Azure portal / Entra — NOT automatable, do in this order once pr-166 proves the pipeline)
+## 3. Manual provisioning checklist
 
-1. Azure Database for PostgreSQL Flexible Server: smallest burstable tier is fine for 3 users; private networking or firewall to the Web App's outbound IPs; create db `project_operations`; capture admin DSN.
-2. Web App (API) configuration → set: `DATABASE_URL`, `JWT_ACCESS_SECRET`/`JWT_REFRESH_SECRET` (fresh 64-char randoms — NOT the dev values), `CORS_ORIGIN` (the Static Web App URL), `SHAREPOINT_MODE=live` + the five `SHAREPOINT_*` values (tenant/client/secret/site/library — from the existing Entra app), `SSO_ENABLED=true` + `ENTRA_*`, `AZURE_MAIL_*` (sender mailbox for quotes).
-3. Static Web App configuration: `VITE_API_BASE_URL` (the Web App URL + /api/v1), `VITE_SSO_ENABLED=true`, `VITE_ENTRA_*`.
-4. Entra app registration: add the production redirect URIs (Static Web App URL) for SSO; confirm Graph permissions for SharePoint + Mail.Send are admin-consented.
-5. GitHub repo secrets: whatever pr-166's diagnosis says the deploy needs (likely refreshed publish profiles / OIDC creds).
-6. Run the deploy (push to main or manual dispatch) → green → continue to §4.
+The portal/Entra provisioning steps (PostgreSQL Flexible Server, Web App + Static Web App config,
+Entra redirect URIs, GitHub repo secrets) now live in
+[deployment-guide.md — Manual Azure provisioning checklist](deployment-guide.md#manual-azure-provisioning-checklist).
+Do them once pr-166 proves the pipeline can publish green.
 
-## 4. First-deploy verification (in order, ~30 min)
+## 4. First-deploy verification
 
-1. `GET https://<api>/api/v1/health` → 200 with the enriched body `{ status, service, db, version, commit, uptimeSec, timestamp }` — confirm `db: "up"` and that `version` matches the deployed `apps/api/package.json` (`commit` shows the deployed SHA once the workflow injects `GIT_SHA`; `"unknown"` until then). `GET …/api/v1/health/ready` → 200 — this readiness endpoint returns **503** when the DB is unreachable and is what pr-174's deploy gate should poll instead of `/health`.
-2. `prisma migrate deploy` ran clean in the deploy logs (102+ migrations on a fresh DB).
-3. Run prod seed (`pnpm seed:prod` — exists after pr-173): reference data only. Verify rates admin shows the Cutrite matrix + 9 tabs, lookups populated, ZERO demo clients/tenders.
-4. SSO: each of the three real accounts logs in; roles per Section 1 (Sean Super User, Raj Senior Estimator, Marco Admin+WHS). Confirm the seed/dev local-login users do NOT exist.
-5. Create a real test tender end-to-end: client → tender (check number format per pr-172) → scope → quote → PDF → send via Outlook to yourself (G7 verified here) → log an interaction (63b surface).
-6. SharePoint: upload a tender document; verify it lands in the live site path.
-7. Backups: confirm the Flexible Server's automated backups are on (7-day minimum) and note the restore procedure in this doc.
-
-### Troubleshooting
-
-- **`Application Error` page + `Error: Cannot find module '@nestjs/config'` (MODULE_NOT_FOUND) in Log stream** — the deployed artifact was not self-contained: `apps/api/node_modules` are pnpm workspace symlinks into the repo-root store, which break when the directory is copied. Fixed in `deploy.yml` by shipping a `pnpm deploy --prod --legacy --config.node-linker=hoisted` bundle (`deploy-api/`, physical node_modules + regenerated Prisma client) with a pre-deploy `require()` smoke probe. If this recurs, check the "Smoke-probe bundle before deploy" step in the failed run first.
+The 7-step verification flow (health/ready endpoints, migration log check, prod seed,
+SSO, end-to-end tender, SharePoint upload, backups) plus the
+`Cannot find module '@nestjs/config'` troubleshooting note now live in
+[deployment-guide.md — First-deploy verification](deployment-guide.md#first-deploy-verification).
+Pilot-specific role assignments referenced there:
+Sean = Super User, Raj = Senior Estimator, Marco = Admin+WHS;
+tender number format gate = pr-172; interaction log surface = pr-63b;
+mail send (`AZURE_MAIL_*`) is G7 in §1.
 
 ## 5. Pilot operating model
 

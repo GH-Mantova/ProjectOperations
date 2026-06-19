@@ -11,6 +11,7 @@ import {
 } from "react";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../auth/AuthContext";
+import { buildPatchBody, createSaveSerializer, type Serializer } from "./estimateRatesCommit";
 
 type LabourRate = {
   id: string;
@@ -626,6 +627,23 @@ function EditableRateRow<T extends { id: string }>({
   );
   const trRef = useRef<HTMLTableRowElement | null>(null);
   const focusColRef = useRef(0);
+  // Refs keep `commit` reading the latest snapshot when the serializer
+  // coalesces a second commit on top of an in-flight one — without these the
+  // queued run would capture a stale `draft`/`row` from its closure and could
+  // overwrite a sibling field that has since changed.
+  const draftRef = useRef(draft);
+  const rowRef = useRef(row);
+  const columnsRef = useRef(columns);
+  const serializerRef = useRef<Serializer | null>(null);
+  if (serializerRef.current === null) serializerRef.current = createSaveSerializer();
+
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
+  useEffect(() => {
+    rowRef.current = row;
+    columnsRef.current = columns;
+  }, [row, columns]);
 
   useEffect(() => {
     // Never clobber an in-progress draft: `columns` is a fresh array each
@@ -659,17 +677,23 @@ function EditableRateRow<T extends { id: string }>({
   }, [editing]);
 
   const commit = async () => {
-    const dirty = columns.some(
-      (c) => draft[c.key] !== String((row as unknown as Record<string, unknown>)[c.key] ?? "")
-    );
-    if (!dirty) {
-      setEditing(false);
-      return;
-    }
-    const body: Record<string, unknown> = {};
-    for (const c of columns) body[c.key] = draft[c.key];
-    body.isActive = true;
-    await callApi(`${basePath}/${row.id}`, "PATCH", body);
+    // Serialize so a second Enter / blur during an in-flight PATCH can't race
+    // the first to the server (last-write-wins on the wire is undefined),
+    // and re-read the latest draft/row inside the runner so a coalesced
+    // follow-up always patches the freshest values.
+    await serializerRef.current!.enqueue(async () => {
+      const currentDraft = draftRef.current;
+      const currentRow = rowRef.current;
+      const currentColumns = columnsRef.current;
+      const columnKeys = currentColumns.map((c) => c.key);
+      const { dirtyKeys, body } = buildPatchBody(
+        currentDraft,
+        currentRow as unknown as Record<string, unknown>,
+        columnKeys
+      );
+      if (dirtyKeys.length === 0) return;
+      await callApi(`${basePath}/${currentRow.id}`, "PATCH", body);
+    });
     setEditing(false);
   };
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { readApiErrorMessage } from "../../lib/api-errors";
 import { EmptyState } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { COMPLIANCE_BADGE_TOOLTIP, countComplianceAlerts } from "./complianceCounts";
@@ -138,7 +139,7 @@ export function CompliancePage() {
       body: JSON.stringify({ blocked: false })
     });
     if (!response.ok) {
-      setError(await response.text());
+      setError(await readApiErrorMessage(response));
       return;
     }
     await load();

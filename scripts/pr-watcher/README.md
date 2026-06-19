@@ -464,6 +464,53 @@ with `PR_WATCHER_AUTO_REVIEW=true` automatically when the folder opens.
 
 To stop: Ctrl+C in the watcher terminal pane.
 
+## Sequential merge queue (`merge-queue.mjs`)
+
+`scripts/pr-watcher/merge-queue.mjs` is a standalone helper for draining a
+hand-picked list of PRs in a strict order. It is independent of the watcher
+loop — invoke it directly when you want to merge a batch yourself rather than
+having the watcher's `tests-docs` policy do it.
+
+For each PR number, in the order given, it:
+
+1. Skips it if already `MERGED`.
+2. Runs `gh pr update-branch` if `BEHIND` main (merge commit, not rebase).
+3. Waits until all checks are green **and** the PR is mergeable.
+4. Squash-merges (or `MERGE_METHOD`).
+5. Confirms `state == MERGED` before starting the next PR.
+
+It stops immediately on a real merge conflict, a `BLOCKED` state (needs an
+approving review / permission), or after the self-heal step below still leaves
+checks red.
+
+```powershell
+node scripts/pr-watcher/merge-queue.mjs 417 418 419
+node scripts/pr-watcher/merge-queue.mjs --dry-run 417 418
+```
+
+| Env var | Default | Effect |
+|---|---|---|
+| `MERGE_POLL_SEC` | `30` | Poll interval while waiting for checks / merge confirm. |
+| `MERGE_TIMEOUT_MIN` | `60` | Max wait per PR before giving up. |
+| `MERGE_METHOD` | `squash` | `squash` \| `merge` \| `rebase`. |
+| `PR_WATCHER_GH_BIN` | `gh` | Override if `gh` isn't on PATH. |
+
+### Self-heal: one auto-rerun per PR on failed checks
+
+A FAILED required check does **not** immediately abort. Once per PR, before
+giving up, the queue:
+
+1. Resolves the most recent workflow run on the PR's `headRefName`
+   (`gh run list --branch <headRefName> -L 1 --json databaseId`).
+2. Dispatches `gh run rerun <id> --failed` to re-run only the failed jobs.
+3. Re-enters the wait loop.
+
+If the second pass still has failed checks (or the rerun couldn't be
+dispatched), the queue stops without merging — it never merges a red PR. This
+auto-clears transient flakes (e.g. the recurring tendering-e2e webkit flake)
+without losing the hard refusal on a genuine failure. Counter is in-memory per
+queue run — restarting the script resets it.
+
 ## What it doesn't do
 
 - **Doesn't watch subfolders.** Only the top level of `docs/pr-prompts/`.

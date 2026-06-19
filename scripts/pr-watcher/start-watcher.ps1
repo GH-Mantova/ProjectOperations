@@ -26,8 +26,11 @@ function Write-Log([string]$msg) {
 }
 
 # --- Pre-flight: branch + clean tree ---
+# Only TRACKED modified/staged files count as "dirty" -- untracked files (e.g.
+# the watcher's own queue of -ready.md prompts under docs/pr-prompts/) must not
+# block startup, but tracked changes still poison per-PR branch switches.
 $branch = (git branch --show-current).Trim()
-$dirty  = (git status --porcelain)
+$dirty  = (git status --porcelain --untracked-files=no)
 
 if ($branch -ne "main") {
     $msg = "[$(Get-Date -Format o)] PRE-FLIGHT FAIL: current branch is '$branch', expected 'main'. The watcher branch-switches per PR; running from a feature branch poisons it. Switch to main and retry."
@@ -36,9 +39,9 @@ if ($branch -ne "main") {
 }
 
 if ($dirty) {
-    $msg = "[$(Get-Date -Format o)] PRE-FLIGHT FAIL: working tree is dirty. Commit, stash, or clean before starting the watcher (dirty trees poison per-PR branch switches)."
+    $msg = "[$(Get-Date -Format o)] PRE-FLIGHT FAIL: uncommitted changes to tracked files. Commit, stash, or clean before starting the watcher (dirty trees poison per-PR branch switches)."
     Write-Log $msg
-    Write-Log "git status --porcelain:"
+    Write-Log "git status --porcelain --untracked-files=no:"
     Write-Log $dirty
     exit 1
 }

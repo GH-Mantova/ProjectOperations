@@ -1,6 +1,10 @@
 node_modules
 dist
 coverage
+
+# Local PR-smoke output (transient timestamped reports written to repo root)
+pr-smoke-report-*.md
+
 .turbo
 .pnpm-store
 .env

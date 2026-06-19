@@ -8636,9 +8636,13 @@ textarea {
 .td-v2__row-body { min-width: 0; }
 .td-v2__row-title {
   font-size: 14px;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .td-v2__row-meta {
   font-size: 12px;

@@ -9,6 +9,9 @@
     "resolveJsonModule": true,
     "forceConsistentCasingInFileNames": true,
     "paths": {
+      "@project-ops/ui": [
+        "./packages/ui/src/index.ts"
+      ],
       "@project-ops/ui/*": [
         "./packages/ui/src/*"
       ],

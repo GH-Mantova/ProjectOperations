@@ -138,10 +138,8 @@ Details:
 
 ## Documentation
 
-- [Setup Guide](./docs/setup-guide.md)
-- [Environment Reference](./docs/environment-reference.md)
+- [Setup & Local Development](./docs/setup-and-local-development.md) — first-time setup, day-to-day commands, and environment-variable reference
 - [Architecture Overview](./docs/architecture-overview.md)
-- [Local Development Guide](./docs/local-development.md)
 - [SharePoint + Local Workflow](./docs/sharepoint-local-workflow.md)
 - [Deployment Guide](./docs/deployment-guide.md)
 - [Module Build Log](./docs/module-build-log.md)

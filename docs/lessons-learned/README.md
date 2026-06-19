@@ -21,4 +21,7 @@ enough to learn from, narrow enough not to over-generalise.
 
 ## Entries
 
-- [2026-05-17 — migration date-filter precision](./2026-05-17-migration-date-filter-precision.md)
+The canonical, append-only record of every incident lives in
+[incident-ledger.md](./incident-ledger.md) — start there. Standalone per-incident files are kept
+only when their detail exceeds what fits a ledger row; right now the ledger absorbs everything,
+including the 2026-05-17 migration date-filter precision case (see entry `LL-07a`).

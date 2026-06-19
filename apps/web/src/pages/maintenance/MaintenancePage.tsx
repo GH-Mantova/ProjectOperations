@@ -237,6 +237,9 @@ export function MaintenancePage() {
           <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>Maintenance</h1>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          <Link to="/maintenance/utilisation" className="s7-btn s7-btn--secondary">
+            Utilisation report
+          </Link>
           <button type="button" className="s7-btn s7-btn--primary" onClick={() => setLogOpen(true)}>
             + Log event
           </button>

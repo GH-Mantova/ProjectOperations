@@ -33,6 +33,7 @@ import { WorkerDetailPage } from "./pages/workers/WorkerDetailPage";
 import { AssetsListPage } from "./pages/assets/AssetsListPage";
 import { AssetDetailPage } from "./pages/assets/AssetDetailPage";
 import { MaintenancePage as MaintenanceDashboardPage } from "./pages/maintenance/MaintenancePage";
+import { PlantUtilisationReportPage } from "./pages/maintenance/PlantUtilisationReportPage";
 import { FormsListPage } from "./pages/forms/FormsListPage";
 import { FormDesignerPage } from "./pages/forms/FormDesignerPage";
 import { FormSubmitPage } from "./pages/forms/FormSubmitPage";
@@ -200,6 +201,7 @@ export function App() {
             <Route path="/assets" element={<AssetsListPage />} />
             <Route path="/assets/:id" element={<AssetDetailPage />} />
             <Route path="/maintenance" element={<MaintenanceDashboardPage />} />
+            <Route path="/maintenance/utilisation" element={<PlantUtilisationReportPage />} />
             <Route path="/forms" element={<FormsListPage />} />
             <Route path="/forms/designer/:templateId" element={<FormDesignerPage />} />
             <Route path="/forms/submit/:templateId" element={<FormSubmitPage />} />

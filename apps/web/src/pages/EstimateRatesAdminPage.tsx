@@ -11,6 +11,7 @@ import {
 } from "react";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../auth/AuthContext";
+import { buildPatchBody, createSaveSerializer, type Serializer } from "./estimateRatesCommit";
 
 type LabourRate = {
   id: string;
@@ -626,6 +627,23 @@ function EditableRateRow<T extends { id: string }>({
   );
   const trRef = useRef<HTMLTableRowElement | null>(null);
   const focusColRef = useRef(0);
+  // Refs keep `commit` reading the latest snapshot when the serializer
+  // coalesces a second commit on top of an in-flight one — without these the
+  // queued run would capture a stale `draft`/`row` from its closure and could
+  // overwrite a sibling field that has since changed.
+  const draftRef = useRef(draft);
+  const rowRef = useRef(row);
+  const columnsRef = useRef(columns);
+  const serializerRef = useRef<Serializer | null>(null);
+  if (serializerRef.current === null) serializerRef.current = createSaveSerializer();
+
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
+  useEffect(() => {
+    rowRef.current = row;
+    columnsRef.current = columns;
+  }, [row, columns]);
 
   useEffect(() => {
     // Never clobber an in-progress draft: `columns` is a fresh array each
@@ -659,17 +677,38 @@ function EditableRateRow<T extends { id: string }>({
   }, [editing]);
 
   const commit = async () => {
-    const dirty = columns.some(
-      (c) => draft[c.key] !== String((row as unknown as Record<string, unknown>)[c.key] ?? "")
-    );
-    if (!dirty) {
-      setEditing(false);
-      return;
+    // Capture the committed values from the DOM at commit time — a queued
+    // run must NOT read draftRef inside the runner, because the `useEffect`
+    // that mirrors `draft` into `draftRef` flushes after React renders, and
+    // a synchronous commit fired in the same task as the last keystroke
+    // (Playwright fill -> Enter, or a fast user) can read a stale ref and
+    // produce a no-op PATCH that fails to persist. Snapshot the column
+    // inputs directly so the body always reflects exactly what the user
+    // committed at this Enter / blur.
+    const currentColumns = columnsRef.current;
+    const currentRow = rowRef.current;
+    const inputs = trRef.current?.querySelectorAll<HTMLInputElement>("input");
+    const committedDraft: Record<string, string> = {};
+    for (let i = 0; i < currentColumns.length; i++) {
+      const key = currentColumns[i].key;
+      const inputValue = inputs?.[i]?.value;
+      committedDraft[key] =
+        inputValue !== undefined ? inputValue : draftRef.current[key] ?? "";
     }
-    const body: Record<string, unknown> = {};
-    for (const c of columns) body[c.key] = draft[c.key];
-    body.isActive = true;
-    await callApi(`${basePath}/${row.id}`, "PATCH", body);
+    // Serialize so a second Enter / blur during an in-flight PATCH can't race
+    // the first to the server (last-write-wins on the wire is undefined);
+    // each enqueue closes over its own committed snapshot so the coalesced
+    // follow-up patches the freshest values.
+    await serializerRef.current!.enqueue(async () => {
+      const columnKeys = currentColumns.map((c) => c.key);
+      const { dirtyKeys, body } = buildPatchBody(
+        committedDraft,
+        currentRow as unknown as Record<string, unknown>,
+        columnKeys
+      );
+      if (dirtyKeys.length === 0) return;
+      await callApi(`${basePath}/${currentRow.id}`, "PATCH", body);
+    });
     setEditing(false);
   };
 

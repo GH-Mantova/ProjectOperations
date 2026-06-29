@@ -10,6 +10,7 @@ import {
   buildRetryHistory,
   readSSEStream,
   toApiMessages,
+  toolStatusLabel,
   updateClarificationProposalsMessage,
   updateEstimateProposalsMessage,
   updateProposalsMessage,
@@ -64,6 +65,10 @@ export function useStreamingChat(
   const [status, setStatus] = useState<ChatStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  // Transient label shown while a tool is running ("Reading drawing…",
+  // "Looking up rate…"). Cleared as soon as the tool finishes or the
+  // assistant resumes streaming text. Not persisted across requests.
+  const [toolStatus, setToolStatus] = useState<string | null>(null);
   const lastOptionsRef = useRef<SendOptions>({});
   const abortRef = useRef<AbortController | null>(null);
   // Mirror the latest messages so retry / send can build the request body
@@ -85,6 +90,7 @@ export function useStreamingChat(
       setCurrentResponse("");
       setStatus("idle");
       setError(null);
+      setToolStatus(null);
       return;
     }
     let cancelled = false;
@@ -166,6 +172,7 @@ export function useStreamingChat(
       setCurrentResponse("");
       setError(null);
       setStatus("streaming");
+      setToolStatus(null);
 
       const controller = new AbortController();
       abortRef.current = controller;
@@ -205,8 +212,18 @@ export function useStreamingChat(
             setConversationId(chunk.conversationId);
             conversationIdRef.current = chunk.conversationId;
           } else if (chunk.type === "content") {
+            // Assistant text resuming after a tool call clears any
+            // lingering tool-status line so the bubble doesn't render
+            // alongside a stale "Reading…" indicator.
+            if (accumulated.length === 0) {
+              setToolStatus(null);
+            }
             accumulated += chunk.text;
             setCurrentResponse(accumulated);
+          } else if (chunk.type === "tool_use_started") {
+            setToolStatus(toolStatusLabel(chunk.name));
+          } else if (chunk.type === "tool_use_completed") {
+            setToolStatus(null);
           } else if (chunk.type === "proposals") {
             // §5A.1 PR 11: tool_result row arrived. Insert it into the
             // visible message history so ProposalCardList renders inline.
@@ -273,8 +290,10 @@ export function useStreamingChat(
         }
         setCurrentResponse("");
         setStatus("idle");
+        setToolStatus(null);
       } catch (err) {
         if ((err as { name?: string }).name === "AbortError") {
+          setToolStatus(null);
           return;
         }
         if (accumulated.length > 0) {
@@ -283,6 +302,7 @@ export function useStreamingChat(
         }
         setError((err as Error).message ?? "Chat failed");
         setStatus("error");
+        setToolStatus(null);
       } finally {
         abortRef.current = null;
       }
@@ -879,6 +899,7 @@ export function useStreamingChat(
     status,
     error,
     conversationId,
+    toolStatus,
     sendMessage,
     retry,
     reset,

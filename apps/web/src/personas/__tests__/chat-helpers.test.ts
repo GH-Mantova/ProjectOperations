@@ -8,6 +8,7 @@ import {
   readSSEStream,
   shouldDisableSendButton,
   shouldResetOnPersonaChange,
+  toolStatusLabel,
   type ChatMessage
 } from "../chat-helpers";
 import type { ActivePersona } from "../types";
@@ -190,6 +191,41 @@ describe("parseSSEEvent", () => {
 
   it("ignores unknown event types", () => {
     expect(parseSSEEvent('data: {"type":"unknown"}')).toEqual([]);
+  });
+
+  it("parses tool_use_started / tool_use_completed events", () => {
+    expect(
+      parseSSEEvent(
+        'data: {"type":"tool_use_started","toolUseId":"tu-1","name":"read_tender_drawing"}'
+      )
+    ).toEqual([
+      { type: "tool_use_started", toolUseId: "tu-1", name: "read_tender_drawing" }
+    ]);
+    expect(
+      parseSSEEvent(
+        'data: {"type":"tool_use_completed","toolUseId":"tu-1","name":"read_tender_drawing"}'
+      )
+    ).toEqual([
+      { type: "tool_use_completed", toolUseId: "tu-1", name: "read_tender_drawing" }
+    ]);
+  });
+
+  it("drops tool_use events missing required fields", () => {
+    expect(parseSSEEvent('data: {"type":"tool_use_started","name":"x"}')).toEqual([]);
+    expect(parseSSEEvent('data: {"type":"tool_use_started","toolUseId":"x"}')).toEqual([]);
+  });
+});
+
+describe("toolStatusLabel", () => {
+  it("maps known tool names to user-facing labels", () => {
+    expect(toolStatusLabel("read_tender_drawing")).toBe("Reading drawing…");
+    expect(toolStatusLabel("lookup_rate")).toBe("Looking up rate…");
+    expect(toolStatusLabel("propose_scope_items")).toBe("Drafting scope items…");
+  });
+
+  it("falls back to a generic label for unknown tool names", () => {
+    expect(toolStatusLabel("some_future_tool")).toBe("Working…");
+    expect(toolStatusLabel("")).toBe("Working…");
   });
 
   it("joins multi-line data fields", () => {

@@ -225,6 +225,25 @@ Every PR to `main` must include:
 
 ---
 
+## Doc reconcile ownership (roadmap.md / progress.md)
+
+`roadmap.md` and `progress.md` are owned by a periodic **doc-reconcile PR**.
+Feature, fix, chore, test, and docs PRs:
+
+- **Must not** edit the `Last updated:` header on either file.
+- **Must not** restate phase status, edit the table of contents, or
+  re-render existing entries.
+- **Must not** append per-PR status blocks — that batched catch-up is the
+  doc-reconcile PR's job, run after merge.
+
+This kills the recurring merge conflict on those two headers (every
+parallel PR was bumping the timestamp, so each one had to be rebased).
+If a feature PR genuinely introduces a new module section that didn't
+exist before, still leave the header alone — the next reconcile PR
+will refresh the timestamp.
+
+---
+
 ## pnpm discipline
 
 - Always use `--frozen-lockfile` unless intentionally adding a dependency

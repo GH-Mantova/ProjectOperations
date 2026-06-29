@@ -233,7 +233,7 @@ test.describe("Batch 6 — Projects + Jobs (PRs #17, #39, #40, #242, #250, #267,
       await page.getByRole("button", { name: "+ Add task" }).click();
       await page.getByLabel("Title *").fill("e2e-b6-gantt-task");
       await page.getByRole("button", { name: "Add task", exact: true }).click();
-      const bar = page.getByRole("button", { name: "Edit e2e-b6-gantt-task" });
+      const bar = page.getByRole("button", { name: /e2e-b6-gantt-task/ });
       await expect(bar).toBeVisible();
 
       // Drag-to-reschedule has no pixel DnD here — the bar opens an edit
@@ -245,7 +245,7 @@ test.describe("Batch 6 — Projects + Jobs (PRs #17, #39, #40, #242, #250, #267,
       await editDialog.getByLabel("End", { exact: true }).fill(end);
       await editDialog.getByRole("button", { name: "Save", exact: true }).click();
       await expect(editDialog).toBeHidden();
-      await expect(page.getByRole("button", { name: "Edit e2e-b6-gantt-task" })).toBeVisible();
+      await expect(page.getByRole("button", { name: /e2e-b6-gantt-task/ })).toBeVisible();
 
       // Milestones section renders alongside the Gantt.
       await expect(page.getByText("No milestones yet")).toBeVisible();

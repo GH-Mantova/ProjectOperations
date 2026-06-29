@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { readApiErrorMessage } from "../../lib/api-errors";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { NotesField, OverrideField, TooltipSelect, type TooltipSelectOption } from "../../components";
@@ -232,7 +233,7 @@ export function ScopeQuantitiesTable({
   const confirmItem = async (id: string) => {
     const response = await authFetch(`/tenders/${tenderId}/scope/items/${id}/confirm`, { method: "POST" });
     if (!response.ok) {
-      setError(await response.text());
+      setError(await readApiErrorMessage(response));
       return;
     }
     await onItemsChanged();
@@ -240,7 +241,7 @@ export function ScopeQuantitiesTable({
   const excludeItem = async (id: string) => {
     const response = await authFetch(`/tenders/${tenderId}/scope/items/${id}/exclude`, { method: "POST" });
     if (!response.ok) {
-      setError(await response.text());
+      setError(await readApiErrorMessage(response));
       return;
     }
     await onItemsChanged();
@@ -250,7 +251,7 @@ export function ScopeQuantitiesTable({
     setDeleteWarning(null);
     const response = await authFetch(`/tenders/${tenderId}/scope/items/${item.id}`, { method: "DELETE" });
     if (!response.ok) {
-      setError(await response.text());
+      setError(await readApiErrorMessage(response));
       return;
     }
     await onItemsChanged();
@@ -274,7 +275,7 @@ export function ScopeQuantitiesTable({
       body: JSON.stringify({ description: "" })
     });
     if (!response.ok) {
-      setError(await response.text());
+      setError(await readApiErrorMessage(response));
       return;
     }
     // Best-effort grab of the new id so we can auto-expand it on next render.

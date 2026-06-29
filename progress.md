@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-06-18 03:35 AEST
+Last updated: 2026-06-18 22:17 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -8423,3 +8423,240 @@ GitHub PR: (pending)
 Type: PR
 Detail: [Feat/§2] Admin user-roles + access-levels UI — read-only role→permission matrix tab (replaces "Coming soon" stub) and tier-restriction banner on the users tab; reuses existing /roles + /permissions endpoints (no schema/migration). Per-user permission overrides noted as follow-up (no UserPermission model in schema).
 Status: OPEN
+
+---
+
+## 2026-06-19 — Doc reconcile (PRs #393–#431 catch-up)
+
+The previous reconcile (PR #393, 2026-06-15) covered up to #392. Since then,
+the following PRs have merged to `main` and are recorded here so progress.md
+and roadmap.md stop drifting. Per-PR detail kept short — full bodies live on
+GitHub.
+
+## 2026-06-15 — PR #393 MERGED
+GitHub PR: #393 (https://github.com/GH-Mantova/ProjectOperations/pull/393)
+Type: PR
+Detail: [Docs] Reconcile progress.md + roadmap.md with main (#301-#392 catch-up)
+Status: MERGED
+
+## 2026-06-15 — PR #394 MERGED
+GitHub PR: #394 (https://github.com/GH-Mantova/ProjectOperations/pull/394)
+Type: PR
+Detail: [Fix/§13] FormFillPage crash — include sections/fields in getSubmission
+Status: MERGED
+
+## 2026-06-15 — PR #395 MERGED
+GitHub PR: #395 (https://github.com/GH-Mantova/ProjectOperations/pull/395)
+Type: PR
+Detail: [Fix/§12] Widget settings Apply — persist filters + fields together
+Status: MERGED
+
+## 2026-06-16 — PR #397 MERGED
+GitHub PR: #397 (https://github.com/GH-Mantova/ProjectOperations/pull/397)
+Type: PR
+Detail: [Fix/§2] SSO on Static Web Apps — redirect flow + PWA-safe auth (supersedes #396)
+Status: MERGED
+
+## 2026-06-16 — PR #398 MERGED
+GitHub PR: #398 (https://github.com/GH-Mantova/ProjectOperations/pull/398)
+Type: PR
+Detail: [Fix/§2] SSO — remove ssoSilent hidden-iframe, interactive redirect only
+Status: MERGED
+
+## 2026-06-16 — PR #399 MERGED
+GitHub PR: #399 (https://github.com/GH-Mantova/ProjectOperations/pull/399)
+Type: PR
+Detail: [Feat/§15] Custom dashboard widget builder — pick source/metric/chart
+Status: MERGED
+
+## 2026-06-16 — PR #400 MERGED
+GitHub PR: #400 (https://github.com/GH-Mantova/ProjectOperations/pull/400)
+Type: PR
+Detail: [Feat/§3] Correspondence Hub — mock-mode email threading on records (#215)
+Status: MERGED
+
+## 2026-06-16 — PR #401 MERGED
+GitHub PR: #401 (https://github.com/GH-Mantova/ProjectOperations/pull/401)
+Type: PR
+Detail: [Feat/§9] Calendar Sync — mock-mode shift→calendar adapter (PR-216)
+Status: MERGED
+
+## 2026-06-16 — PR #402 MERGED
+GitHub PR: #402 (https://github.com/GH-Mantova/ProjectOperations/pull/402)
+Type: PR
+Detail: [Chore/§1] Repo hygiene + authz F2: gate /projects/next-number (PR-217)
+Status: MERGED
+
+## 2026-06-16 — PR #403 MERGED
+GitHub PR: #403 (https://github.com/GH-Mantova/ProjectOperations/pull/403)
+Type: PR
+Detail: [Test/§13] Harden flaky batch6 e2e specs (toggle round-trip + variation walk + shift slide-over)
+Status: MERGED
+
+## 2026-06-16 — PR #404 MERGED
+GitHub PR: #404 (https://github.com/GH-Mantova/ProjectOperations/pull/404)
+Type: PR
+Detail: [Fix/§8] Job activity toggle — partial PATCH (status-only) no longer 400/404s
+Status: MERGED
+
+## 2026-06-16 — PR #405 MERGED
+GitHub PR: #405 (https://github.com/GH-Mantova/ProjectOperations/pull/405)
+Type: PR
+Detail: fix(pr-gates): CP-17 only flags request-input DTOs
+Status: MERGED
+
+## 2026-06-16 — PR #406 MERGED
+GitHub PR: #406 (https://github.com/GH-Mantova/ProjectOperations/pull/406)
+Type: PR
+Detail: fix(sso): await handleRedirectPromise before router renders
+Status: MERGED
+
+## 2026-06-16 — PR #407 MERGED
+GitHub PR: #407 (https://github.com/GH-Mantova/ProjectOperations/pull/407)
+Type: PR
+Detail: ci(deploy): pin Azure/static-web-apps-deploy off floating @v1
+Status: MERGED
+
+## 2026-06-16 — PR #408 MERGED
+GitHub PR: #408 (https://github.com/GH-Mantova/ProjectOperations/pull/408)
+Type: PR
+Detail: Bump vite in the npm_and_yarn group across 1 directory (dependabot)
+Status: MERGED
+
+## 2026-06-16 — PR #409 MERGED
+GitHub PR: #409 (https://github.com/GH-Mantova/ProjectOperations/pull/409)
+Type: PR
+Detail: fix(swa): add explicit SPA navigationFallback for deep-link routing
+Status: MERGED
+
+## 2026-06-16 — PR #410 MERGED
+GitHub PR: #410 (https://github.com/GH-Mantova/ProjectOperations/pull/410)
+Type: PR
+Detail: [Docs] SSO on Static Web Apps — go-live learnings
+Status: MERGED
+
+## 2026-06-16 — PR #411 MERGED
+GitHub PR: #411 (https://github.com/GH-Mantova/ProjectOperations/pull/411)
+Type: PR
+Detail: fix(api): stop serving stale built frontend on API port in dev
+Status: MERGED
+
+## 2026-06-16 — PR #412 MERGED
+GitHub PR: #412 (https://github.com/GH-Mantova/ProjectOperations/pull/412)
+Type: PR
+Detail: feat(pilot-feedback): in-app feedback capture (PR-193b)
+Status: MERGED
+
+## 2026-06-16 — PR #413 MERGED
+GitHub PR: #413 (https://github.com/GH-Mantova/ProjectOperations/pull/413)
+Type: PR
+Detail: feat(dashboards): surface tender win-rate-by-client and loss-reasons widgets
+Status: MERGED
+
+## 2026-06-16 — PR #414 MERGED
+GitHub PR: #414 (https://github.com/GH-Mantova/ProjectOperations/pull/414)
+Type: PR
+Detail: feat(directory): supplier credit ledger with running balance
+Status: MERGED
+
+## 2026-06-16 — PR #415 MERGED
+GitHub PR: #415 (https://github.com/GH-Mantova/ProjectOperations/pull/415)
+Type: PR
+Detail: chore(ui): add Vitest + jsdom + Testing Library to @project-ops/ui
+Status: MERGED
+
+## 2026-06-17 — PR #416 MERGED
+GitHub PR: #416 (https://github.com/GH-Mantova/ProjectOperations/pull/416)
+Type: PR
+Detail: fix(authz): PR-188b — gate F1 (global lists) + F4 (worker leave/unavailability)
+Status: MERGED
+
+## 2026-06-17 — PR #417 MERGED
+GitHub PR: #417 (https://github.com/GH-Mantova/ProjectOperations/pull/417)
+Type: PR
+Detail: docs(forms): JSDoc on DTOs and module
+Status: MERGED
+
+## 2026-06-17 — PR #418 MERGED
+GitHub PR: #418 (https://github.com/GH-Mantova/ProjectOperations/pull/418)
+Type: PR
+Detail: docs(scheduler): JSDoc on DTOs and module
+Status: MERGED
+
+## 2026-06-17 — PR #419 MERGED
+GitHub PR: #419 (https://github.com/GH-Mantova/ProjectOperations/pull/419)
+Type: PR
+Detail: docs(estimates): JSDoc on DTOs and module
+Status: MERGED
+
+## 2026-06-17 — PR #420 MERGED
+GitHub PR: #420 (https://github.com/GH-Mantova/ProjectOperations/pull/420)
+Type: PR
+Detail: docs(audit): JSDoc on AuditModule class
+Status: MERGED
+
+## 2026-06-17 — PR #421 MERGED
+GitHub PR: #421 (https://github.com/GH-Mantova/ProjectOperations/pull/421)
+Type: PR
+Detail: docs(roles): JSDoc on roles module public exports
+Status: MERGED
+
+## 2026-06-17 — PR #422 MERGED
+GitHub PR: #422 (https://github.com/GH-Mantova/ProjectOperations/pull/422)
+Type: PR
+Detail: docs(permissions): JSDoc on permissions module class
+Status: MERGED
+
+## 2026-06-17 — PR #423 MERGED
+GitHub PR: #423 (https://github.com/GH-Mantova/ProjectOperations/pull/423)
+Type: PR
+Detail: docs(assets): JSDoc on assets module class and DTOs
+Status: MERGED
+
+## 2026-06-17 — PR #424 MERGED
+GitHub PR: #424 (https://github.com/GH-Mantova/ProjectOperations/pull/424)
+Type: PR
+Detail: docs(contracts): JSDoc on contracts module DTOs and module class
+Status: MERGED
+
+## 2026-06-18 — PR #425 MERGED
+GitHub PR: #425 (https://github.com/GH-Mantova/ProjectOperations/pull/425)
+Type: PR
+Detail: feat(competency-gate): enforce gate with logged override
+Status: MERGED
+
+## 2026-06-18 — PR #426 MERGED
+GitHub PR: #426 (https://github.com/GH-Mantova/ProjectOperations/pull/426)
+Type: PR
+Detail: docs(resources): JSDoc on resources module DTOs and module class
+Status: MERGED
+
+## 2026-06-18 — PR #427 MERGED
+GitHub PR: #427 (https://github.com/GH-Mantova/ProjectOperations/pull/427)
+Type: PR
+Detail: docs(workers): JSDoc on workers module class and DTOs
+Status: MERGED
+
+## 2026-06-18 — PR #428 MERGED
+GitHub PR: #428 (https://github.com/GH-Mantova/ProjectOperations/pull/428)
+Type: PR
+Detail: fix(ui): dashboard widget title/period-selector layout collision
+Status: MERGED
+
+## 2026-06-18 — PR #429 MERGED
+GitHub PR: #429 (https://github.com/GH-Mantova/ProjectOperations/pull/429)
+Type: PR
+Detail: [Feat/§2] Admin user-roles + access-levels UI — role→permission matrix
+Status: MERGED
+
+## 2026-06-18 — PR #430 MERGED
+GitHub PR: #430 (https://github.com/GH-Mantova/ProjectOperations/pull/430)
+Type: PR
+Detail: fix(a11y): ProjectDetailPage tabs ARIA wiring + range input label
+Status: MERGED
+
+## 2026-06-18 — PR #431 MERGED
+GitHub PR: #431 (https://github.com/GH-Mantova/ProjectOperations/pull/431)
+Type: PR
+Detail: chore(watcher): reap spawned children + harden single-instance + daytime launcher
+Status: MERGED

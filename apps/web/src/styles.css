@@ -9112,6 +9112,26 @@ textarea {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }
 }
+.persona-window__tool-status {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--text-muted, #6B7280);
+}
+.persona-window__tool-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brand-accent);
+  animation: persona-window-pulse 900ms ease-in-out infinite;
+}
+.persona-window__tool-status-label {
+  line-height: 1.2;
+}
 .persona-window__error {
   display: flex;
   align-items: center;

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { readApiErrorMessage } from "../../lib/api-errors";
 import { useAuth } from "../../auth/AuthContext";
 
 type ListSummary = {
@@ -92,7 +93,7 @@ export function GlobalListsSection({ isAdmin }: { isAdmin: boolean }) {
       body: JSON.stringify({ label: newLabel.trim(), value: newValue.trim() || undefined })
     });
     if (!response.ok) {
-      setError(await response.text());
+      setError(await readApiErrorMessage(response));
       return;
     }
     setNewLabel("");
@@ -105,7 +106,7 @@ export function GlobalListsSection({ isAdmin }: { isAdmin: boolean }) {
     if (!window.confirm(`Archive "${label}"? It will no longer appear in dropdowns for new entries but will remain on existing records.`)) return;
     const response = await authFetch(`/lists/${selected.slug}/items/${itemId}`, { method: "DELETE" });
     if (!response.ok) {
-      setError(await response.text());
+      setError(await readApiErrorMessage(response));
       return;
     }
     await loadSelected(selected.slug);
@@ -118,7 +119,7 @@ export function GlobalListsSection({ isAdmin }: { isAdmin: boolean }) {
       body: JSON.stringify({ isArchived: false })
     });
     if (!response.ok) {
-      setError(await response.text());
+      setError(await readApiErrorMessage(response));
       return;
     }
     await loadSelected(selected.slug);
@@ -136,7 +137,7 @@ export function GlobalListsSection({ isAdmin }: { isAdmin: boolean }) {
       body: JSON.stringify({ name, slug, type: "STATIC" })
     });
     if (!response.ok) {
-      setError(await response.text());
+      setError(await readApiErrorMessage(response));
       return;
     }
     setNewListName("");

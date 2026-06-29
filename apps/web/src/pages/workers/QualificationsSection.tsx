@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { readApiErrorMessage } from "../../lib/api-errors";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 
@@ -102,7 +103,7 @@ export function QualificationsSection({
       method: "DELETE"
     });
     if (!response.ok) {
-      setError(await response.text());
+      setError(await readApiErrorMessage(response));
       return;
     }
     await load();

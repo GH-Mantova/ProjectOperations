@@ -7,6 +7,8 @@ import {
   type PropsWithChildren
 } from "react";
 
+import { readApiErrorMessage } from "../lib/api-errors";
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000/api/v1";
 
 type SafeUser = {
@@ -77,7 +79,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     });
 
     if (!response.ok) {
-      throw new Error("Unable to login.");
+      throw new Error(await readApiErrorMessage(response, "Unable to login."));
     }
 
     const data = await response.json();
@@ -97,8 +99,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       body: JSON.stringify({ tempToken, newPassword })
     });
     if (!response.ok) {
-      const text = await response.text();
-      throw new Error(text || "Unable to reset password.");
+      throw new Error(await readApiErrorMessage(response, "Unable to reset password."));
     }
     const data = await response.json();
     setAccessToken(data.accessToken);
@@ -116,7 +117,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     });
 
     if (!response.ok) {
-      throw new Error("Microsoft sign-in failed.");
+      throw new Error(await readApiErrorMessage(response, "Microsoft sign-in failed."));
     }
 
     const data = await response.json();

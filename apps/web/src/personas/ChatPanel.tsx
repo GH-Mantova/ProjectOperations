@@ -86,6 +86,7 @@ export function ChatPanel() {
     currentResponse,
     status,
     error,
+    toolStatus,
     sendMessage,
     retry,
     startNewConversation,
@@ -170,6 +171,7 @@ export function ChatPanel() {
             messages={messages}
             streamingResponse={currentResponse}
             isStreaming={status === "streaming"}
+            toolStatus={toolStatus}
             emptyHint={emptyHint}
             onAcceptProposal={acceptProposal}
             onRejectProposal={rejectProposal}

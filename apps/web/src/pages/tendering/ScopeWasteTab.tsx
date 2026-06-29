@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { readApiErrorMessage } from "../../lib/api-errors";
 import { useAuth } from "../../auth/AuthContext";
 import { NotesField } from "../../components";
 
@@ -177,7 +178,7 @@ export function ScopeWasteTab({
       body: JSON.stringify(body)
     });
     if (!response.ok) {
-      setError(await response.text());
+      setError(await readApiErrorMessage(response));
       return;
     }
     await load();
@@ -202,7 +203,7 @@ export function ScopeWasteTab({
       { method: "POST" }
     );
     if (!response.ok) {
-      setError(await response.text());
+      setError(await readApiErrorMessage(response));
       return;
     }
     await load();
@@ -214,7 +215,7 @@ export function ScopeWasteTab({
       body: JSON.stringify(patch)
     });
     if (!response.ok) {
-      setError(await response.text());
+      setError(await readApiErrorMessage(response));
       return;
     }
     await load();
@@ -224,7 +225,7 @@ export function ScopeWasteTab({
     if (!window.confirm("Delete this waste row?")) return;
     const response = await authFetch(`/tenders/${tenderId}/scope/waste/${id}`, { method: "DELETE" });
     if (!response.ok) {
-      setError(await response.text());
+      setError(await readApiErrorMessage(response));
       return;
     }
     await load();

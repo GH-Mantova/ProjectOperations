@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { readApiErrorMessage } from "../../lib/api-errors";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 
@@ -46,7 +47,7 @@ export function ComplianceAlertsWidget() {
       .then(async (response) => {
         if (cancelled) return;
         if (!response.ok) {
-          setError(await response.text());
+          setError(await readApiErrorMessage(response));
           setLoading(false);
           return;
         }

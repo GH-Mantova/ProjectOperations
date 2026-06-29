@@ -40,6 +40,8 @@ import {
   readdir,
   readFile,
   rename,
+  rmdir,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
@@ -1438,6 +1440,43 @@ async function rescan() {
 // recorded in CHILDREN_FILE (reapPreviousChildren / killCurrentChildTree).
 // This warning is purely informational: surface the count so Marco can
 // decide whether to clean them up by hand.
+// Sweep stray empty folders at repo root whose name is a literal Windows
+// absolute path with collapsed backslashes — e.g. "C:ProjectOperations2docspr-reviews".
+// These appear when an agent runs `mkdir C:\ProjectOperations2\docs\...` in bash
+// (backslashes are escape chars, so the path collapses to one literal name).
+// SAFETY: only matches names starting with "C:ProjectOperations2" AND only
+// removes them when empty. Legitimate paths never start with "C:".
+async function sweepMalformedLiteralPathDirs() {
+  // Match the malformed-path family. The leading "C:" can survive as a
+  // literal colon, get stripped entirely, or get encoded by Windows as a
+  // Private Use Area codepoint (0xF03A) since ":" is reserved in NTFS
+  // filenames. Allow any single non-alphanumeric char (or none) between
+  // "C" and "ProjectOperations2".
+  const MALFORMED = /^C[^A-Za-z0-9]?ProjectOperations2/;
+  try {
+    const entries = await readdir(REPO_ROOT);
+    for (const name of entries) {
+      if (!MALFORMED.test(name)) continue;
+      const full = path.join(REPO_ROOT, name);
+      try {
+        const s = await stat(full);
+        if (!s.isDirectory()) continue;
+        const inner = await readdir(full);
+        if (inner.length !== 0) {
+          log("watcher", `sweep: skipping non-empty malformed dir "${name}" (${inner.length} entries)`);
+          continue;
+        }
+        await rmdir(full);
+        log("watcher", `sweep: removed empty malformed literal-path dir "${name}"`);
+      } catch (err) {
+        log("watcher", `sweep: could not inspect "${name}": ${err.message}`);
+      }
+    }
+  } catch (err) {
+    log("watcher", `sweep skipped: ${err.message}`);
+  }
+}
+
 function warnOnOrphanClaudeProcesses() {
   if (process.platform !== "win32") return;
   try {
@@ -1492,6 +1531,7 @@ async function main() {
   }
 
   warnOnOrphanClaudeProcesses();
+  await sweepMalformedLiteralPathDirs();
   await reapPreviousChildren();
 
   await scanExisting();

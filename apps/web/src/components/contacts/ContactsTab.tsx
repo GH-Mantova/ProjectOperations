@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { readApiErrorMessage } from "../../lib/api-errors";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { DraftBanner, SaveDraftButton, useFormDraft } from "../../drafts";
@@ -147,7 +148,7 @@ export function ContactsTab({
     if (!window.confirm(`Delete ${row.firstName} ${row.lastName}? This cannot be undone.`)) return;
     const response = await authFetch(`/contacts/${row.id}`, { method: "DELETE" });
     if (!response.ok) {
-      setError(await response.text());
+      setError(await readApiErrorMessage(response));
       return;
     }
     flashToast("Contact deleted");

@@ -38,7 +38,14 @@ describe("buildPatchBody (PR fix/estimate-rates-save-race)", () => {
     expect(plan.body).toEqual({});
   });
 
-  it("PATCHes only the field the user edited, not the whole row", () => {
+  it("PATCHes the full committed snapshot, flagged dirty on the edited field", () => {
+    // The rate-library DTOs mark every column required, so a dirty-only body
+    // is rejected by validation and nothing persists. buildPatchBody emits
+    // the full committed snapshot; the dirtyKeys list still drives whether
+    // a PATCH is sent at all. The wrong-field overwrite class of bug
+    // (LL-27) is now guarded at the commit handler, which snapshots the
+    // input DOM values at commit time rather than reading a ref that may
+    // have lagged the latest keystroke.
     const draft = {
       role: "Machine operator",
       dayRate: "601",
@@ -47,16 +54,16 @@ describe("buildPatchBody (PR fix/estimate-rates-save-race)", () => {
     };
     const plan = buildPatchBody(draft, labourRow, labourColumns);
     expect(plan.dirtyKeys).toEqual(["dayRate"]);
-    expect(plan.body).toEqual({ dayRate: "601", isActive: true });
-    expect(plan.body.role).toBeUndefined();
+    expect(plan.body).toEqual({
+      role: "Machine operator",
+      dayRate: "601",
+      nightRate: "750",
+      weekendRate: "900",
+      isActive: true
+    });
   });
 
-  it("only PATCHes the edited cell when sibling columns match the current row", () => {
-    // The dirty-only PATCH is the structural guard against the wrong-field
-    // class of bug: even if some other code path (focus race, future
-    // regression of LL-27, autofill) parked the spinbutton value in the role
-    // input, this body wouldn't carry the role field at all unless the
-    // current draft diverges from the current row for that key.
+  it("includes every column key in the body so the server DTO validates", () => {
     const draft = {
       role: "Machine operator",
       dayRate: "601",
@@ -64,10 +71,13 @@ describe("buildPatchBody (PR fix/estimate-rates-save-race)", () => {
       weekendRate: "900"
     };
     const plan = buildPatchBody(draft, labourRow, labourColumns);
-    expect(Object.keys(plan.body).sort()).toEqual(["dayRate", "isActive"]);
-    expect(plan.body.role).toBeUndefined();
-    expect(plan.body.nightRate).toBeUndefined();
-    expect(plan.body.weekendRate).toBeUndefined();
+    expect(Object.keys(plan.body).sort()).toEqual([
+      "dayRate",
+      "isActive",
+      "nightRate",
+      "role",
+      "weekendRate"
+    ]);
   });
 });
 

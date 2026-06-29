@@ -89,4 +89,11 @@ apps/api/scripts/xero-import-report.md
 /*.png
 /drift-diff.sql
 /seed-output.log
+/repo-files.txt
 /.playwright-mcp/
+
+# Guard against malformed literal Windows paths used inside shell commands
+# (e.g. "mkdir C:\ProjectOperations2\docs\..." in bash collapses backslashes
+# and creates a single junk folder at repo root like "C:ProjectOperations2docs...").
+# Watcher sweeps these at startup; gitignore prevents accidental commit.
+/C:*

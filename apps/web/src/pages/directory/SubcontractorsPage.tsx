@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { readApiErrorMessage } from "../../lib/api-errors";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { ContactsTab } from "../../components/contacts/ContactsTab";
@@ -435,7 +436,7 @@ function SubcontractorDetail({
       body: JSON.stringify({ prequalStatus: status, prequalNotes: notes || null })
     });
     if (!response.ok) {
-      setError(await response.text());
+      setError(await readApiErrorMessage(response));
       return;
     }
     await load();
@@ -448,7 +449,7 @@ function SubcontractorDetail({
       body: JSON.stringify(body)
     });
     if (!response.ok) {
-      setError(await response.text());
+      setError(await readApiErrorMessage(response));
       return false;
     }
     await load();
@@ -459,7 +460,7 @@ function SubcontractorDetail({
     if (!window.confirm("Delete this document record?")) return;
     const response = await authFetch(`/directory/${id}/documents/${docId}`, { method: "DELETE" });
     if (!response.ok) {
-      setError(await response.text());
+      setError(await readApiErrorMessage(response));
       return;
     }
     await load();
@@ -469,7 +470,7 @@ function SubcontractorDetail({
     if (!window.confirm("Mark this entry inactive?")) return;
     const response = await authFetch(`/directory/${id}`, { method: "DELETE" });
     if (!response.ok) {
-      setError(await response.text());
+      setError(await readApiErrorMessage(response));
       return;
     }
     onChanged();

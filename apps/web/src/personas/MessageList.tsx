@@ -15,6 +15,7 @@ type Props = {
   messages: ChatMessage[];
   streamingResponse: string;
   isStreaming: boolean;
+  toolStatus?: string | null;
   emptyHint: string;
   onAcceptProposal?: (
     messageId: string,
@@ -73,6 +74,7 @@ export function MessageList({
   messages,
   streamingResponse,
   isStreaming,
+  toolStatus,
   emptyHint,
   onAcceptProposal,
   onRejectProposal,
@@ -99,7 +101,7 @@ export function MessageList({
     const el = scrollRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [messages, streamingResponse]);
+  }, [messages, streamingResponse, toolStatus]);
 
   const isEmpty = messages.length === 0 && streamingResponse.length === 0 && !isStreaming;
 
@@ -193,6 +195,16 @@ export function MessageList({
           })}
           {streamingResponse.length > 0 || isStreaming ? (
             <Bubble role="assistant" text={streamingResponse} streaming={isStreaming} />
+          ) : null}
+          {isStreaming && toolStatus ? (
+            <div
+              className="persona-window__tool-status"
+              role="status"
+              aria-live="polite"
+            >
+              <span className="persona-window__tool-status-dot" aria-hidden />
+              <span className="persona-window__tool-status-label">{toolStatus}</span>
+            </div>
           ) : null}
         </>
       )}

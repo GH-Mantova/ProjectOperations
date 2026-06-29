@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { readApiErrorMessage } from "../../lib/api-errors";
 import { EmptyState } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { DraftBanner, SaveDraftButton, useFormDraft } from "../../drafts";
@@ -259,7 +260,7 @@ export function TenderClarificationLog({
         : `/tenders/${tenderId}/clarification-notes/${entry.id}`;
     const response = await authFetch(path, { method: "DELETE" });
     if (!response.ok) {
-      setError(await response.text());
+      setError(await readApiErrorMessage(response));
       return;
     }
     if (entry.kind === "rfi") onRfiChanged();

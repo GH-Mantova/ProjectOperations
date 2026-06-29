@@ -16,6 +16,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { readApiErrorMessage } from "../../lib/api-errors";
 import { OverrideField } from "../../components";
 import { DISCIPLINE_CODES, DISCIPLINE_LABELS } from "./scope-cards/utils/card-display";
 import {
@@ -1960,7 +1961,7 @@ function QuoteScopeTab({
     setError(null);
     try {
       const response = await authFetch(base);
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       setRows((await response.json()) as QuoteScopeItem[]);
     } catch (err) {
       setError((err as Error).message);
@@ -1979,7 +1980,7 @@ function QuoteScopeTab({
       body: JSON.stringify(patch)
     });
     if (!response.ok) {
-      setError(await response.text());
+      setError(await readApiErrorMessage(response));
       return;
     }
     await load();
@@ -1989,7 +1990,7 @@ function QuoteScopeTab({
     if (!window.confirm("Remove this item from the quote?")) return;
     const response = await authFetch(`${base}/${id}`, { method: "DELETE" });
     if (!response.ok) {
-      setError(await response.text());
+      setError(await readApiErrorMessage(response));
       return;
     }
     await load();
@@ -2001,7 +2002,7 @@ function QuoteScopeTab({
       body: JSON.stringify({ description: "New item", isVisible: true })
     });
     if (!response.ok) {
-      setError(await response.text());
+      setError(await readApiErrorMessage(response));
       return;
     }
     await load();
@@ -2022,7 +2023,7 @@ function QuoteScopeTab({
       })
     });
     if (!response.ok) {
-      setError(await response.text());
+      setError(await readApiErrorMessage(response));
       return;
     }
     await load();
@@ -2033,7 +2034,7 @@ function QuoteScopeTab({
     setBusy(true);
     try {
       const response = await authFetch(`${base}/reset`, { method: "POST" });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       await load();
     } catch (err) {
       setError((err as Error).message);
@@ -2046,7 +2047,7 @@ function QuoteScopeTab({
     setBusy(true);
     try {
       const response = await authFetch(`${base}/push-from-scope`, { method: "POST" });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       await load();
     } catch (err) {
       setError((err as Error).message);
@@ -2068,7 +2069,7 @@ function QuoteScopeTab({
         })
       });
       if (!response.ok) {
-        setError(await response.text());
+        setError(await readApiErrorMessage(response));
         setRows(prev);
       }
     },

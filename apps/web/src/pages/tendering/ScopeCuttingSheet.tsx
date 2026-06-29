@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { readApiErrorMessage } from "../../lib/api-errors";
 import { useAuth } from "../../auth/AuthContext";
 import { NotesField } from "../../components";
 
@@ -195,7 +196,7 @@ export function ScopeCuttingSheet({
       body: JSON.stringify(body)
     });
     if (!response.ok) {
-      setError(await response.text());
+      setError(await readApiErrorMessage(response));
       return;
     }
     await load();
@@ -216,7 +217,7 @@ export function ScopeCuttingSheet({
       { method: "POST" }
     );
     if (!response.ok) {
-      setError(await response.text());
+      setError(await readApiErrorMessage(response));
       return;
     }
     type CopyResult = { replaced: number; created: number; warnings?: string[] };
@@ -238,7 +239,7 @@ export function ScopeCuttingSheet({
       body: JSON.stringify(body)
     });
     if (!response.ok) {
-      setError(await response.text());
+      setError(await readApiErrorMessage(response));
       return;
     }
     await load();
@@ -248,7 +249,7 @@ export function ScopeCuttingSheet({
     if (!window.confirm("Delete this cutting item?")) return;
     const response = await authFetch(`/tenders/${tenderId}/scope/cutting-items/${id}`, { method: "DELETE" });
     if (!response.ok) {
-      setError(await response.text());
+      setError(await readApiErrorMessage(response));
       return;
     }
     await load();

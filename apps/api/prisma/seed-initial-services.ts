@@ -3933,3 +3933,60 @@ export async function seedSafetyDemos(prisma: PrismaClient): Promise<void> {
     create: { id: 1, lastNumber: hazardLast }
   });
 }
+
+// PR-451 — QLD public holidays for 2025-2027. Region-aware so the Scheduler and
+// Availability report can filter state-wide vs Brisbane-only days. Stable
+// composite key (date, region) makes this fully idempotent across re-runs.
+export async function seedPublicHolidays(prisma: PrismaClient): Promise<void> {
+  type HolidaySeed = { date: string; name: string; region: string };
+  const holidays: HolidaySeed[] = [
+    // 2025 — QLD state-wide
+    { date: "2025-01-01", name: "New Year's Day", region: "QLD" },
+    { date: "2025-01-27", name: "Australia Day (observed)", region: "QLD" },
+    { date: "2025-04-18", name: "Good Friday", region: "QLD" },
+    { date: "2025-04-19", name: "Easter Saturday", region: "QLD" },
+    { date: "2025-04-20", name: "Easter Sunday", region: "QLD" },
+    { date: "2025-04-21", name: "Easter Monday", region: "QLD" },
+    { date: "2025-04-25", name: "Anzac Day", region: "QLD" },
+    { date: "2025-05-05", name: "Labour Day", region: "QLD" },
+    { date: "2025-10-06", name: "King's Birthday", region: "QLD" },
+    { date: "2025-12-25", name: "Christmas Day", region: "QLD" },
+    { date: "2025-12-26", name: "Boxing Day", region: "QLD" },
+    { date: "2025-08-13", name: "Royal Queensland Show", region: "BRISBANE" },
+    // 2026 — QLD state-wide
+    { date: "2026-01-01", name: "New Year's Day", region: "QLD" },
+    { date: "2026-01-26", name: "Australia Day", region: "QLD" },
+    { date: "2026-04-03", name: "Good Friday", region: "QLD" },
+    { date: "2026-04-04", name: "Easter Saturday", region: "QLD" },
+    { date: "2026-04-05", name: "Easter Sunday", region: "QLD" },
+    { date: "2026-04-06", name: "Easter Monday", region: "QLD" },
+    { date: "2026-04-25", name: "Anzac Day", region: "QLD" },
+    { date: "2026-05-04", name: "Labour Day", region: "QLD" },
+    { date: "2026-10-05", name: "King's Birthday", region: "QLD" },
+    { date: "2026-12-25", name: "Christmas Day", region: "QLD" },
+    { date: "2026-12-26", name: "Boxing Day", region: "QLD" },
+    { date: "2026-08-12", name: "Royal Queensland Show", region: "BRISBANE" },
+    // 2027 — QLD state-wide
+    { date: "2027-01-01", name: "New Year's Day", region: "QLD" },
+    { date: "2027-01-26", name: "Australia Day", region: "QLD" },
+    { date: "2027-03-26", name: "Good Friday", region: "QLD" },
+    { date: "2027-03-27", name: "Easter Saturday", region: "QLD" },
+    { date: "2027-03-28", name: "Easter Sunday", region: "QLD" },
+    { date: "2027-03-29", name: "Easter Monday", region: "QLD" },
+    { date: "2027-04-26", name: "Anzac Day (observed)", region: "QLD" },
+    { date: "2027-05-03", name: "Labour Day", region: "QLD" },
+    { date: "2027-10-04", name: "King's Birthday", region: "QLD" },
+    { date: "2027-12-27", name: "Christmas Day (observed)", region: "QLD" },
+    { date: "2027-12-28", name: "Boxing Day (observed)", region: "QLD" },
+    { date: "2027-08-11", name: "Royal Queensland Show", region: "BRISBANE" }
+  ];
+
+  for (const seed of holidays) {
+    const date = new Date(`${seed.date}T00:00:00.000Z`);
+    await prisma.publicHoliday.upsert({
+      where: { date_region: { date, region: seed.region } },
+      update: { name: seed.name },
+      create: { date, name: seed.name, region: seed.region }
+    });
+  }
+}

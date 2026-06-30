@@ -14,6 +14,7 @@ import {
   seedBusinessDirectoryDemos,
   seedEstimateRates,
   seedInitialServicesDataset,
+  seedPublicHolidays,
   seedSafetyDemos
 } from "./seed-initial-services";
 import { seedFormTemplates } from "./seed-form-templates";
@@ -3671,6 +3672,7 @@ async function main() {
   await seedFormTemplates(prisma);
   await seedNotificationTriggerConfigs(prisma);
   await seedPersonaRegistry(prisma);
+  await seedPublicHolidays(prisma);
 }
 
 async function seedUserDashboards(prisma: PrismaClient) {

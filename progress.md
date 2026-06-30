@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-06-18 22:17 AEST
+Last updated: 2026-06-30 23:18 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -8659,4 +8659,58 @@ Status: MERGED
 GitHub PR: #431 (https://github.com/GH-Mantova/ProjectOperations/pull/431)
 Type: PR
 Detail: chore(watcher): reap spawned children + harden single-instance + daytime launcher
+Status: MERGED
+
+## 2026-06-29 — PR #438 MERGED
+GitHub PR: #438 (https://github.com/GH-Mantova/ProjectOperations/pull/438)
+Type: PR
+Detail: [Docs] Reconcile progress.md + roadmap.md with main (PRs #393-#431) + add reconcile-ownership rule
+Status: MERGED
+
+## 2026-06-29 — PR #440 MERGED
+GitHub PR: #440 (https://github.com/GH-Mantova/ProjectOperations/pull/440)
+Type: PR
+Detail: chore(web): remove dead FormSubmitPage / /forms/submit route
+Status: MERGED
+
+## 2026-06-29 — PR #441 MERGED
+GitHub PR: #441 (https://github.com/GH-Mantova/ProjectOperations/pull/441)
+Type: PR
+Detail: chore(repo): sweep malformed literal-path dirs + tighten gitignore
+Status: MERGED
+
+## 2026-06-29 — PR #442 MERGED
+GitHub PR: #442 (https://github.com/GH-Mantova/ProjectOperations/pull/442)
+Type: PR
+Detail: feat(web): wire payroll CSV export button to backend endpoint
+Status: MERGED
+
+## 2026-06-29 — PR #443 MERGED
+GitHub PR: #443 (https://github.com/GH-Mantova/ProjectOperations/pull/443)
+Type: PR
+Detail: chore(api): forward SIGTERM in dev:api launcher (no orphan node on port 3000)
+Status: MERGED
+
+## 2026-06-29 — PR #444 MERGED
+GitHub PR: #444 (https://github.com/GH-Mantova/ProjectOperations/pull/444)
+Type: PR
+Detail: fix(web): render API error envelope humanely
+Status: MERGED
+
+## 2026-06-29 — PR #447 MERGED
+GitHub PR: #447 (https://github.com/GH-Mantova/ProjectOperations/pull/447)
+Type: PR
+Detail: docs: migration history audit (report-only)
+Status: MERGED
+
+## 2026-06-29 — PR #448 MERGED
+GitHub PR: #448 (https://github.com/GH-Mantova/ProjectOperations/pull/448)
+Type: PR
+Detail: feat(personas): render AI tool-status events in chat UI
+Status: MERGED
+
+## 2026-06-29 — PR #449 MERGED
+GitHub PR: #449 (https://github.com/GH-Mantova/ProjectOperations/pull/449)
+Type: PR
+Detail: feat(maintenance): plant utilisation report page
 Status: MERGED

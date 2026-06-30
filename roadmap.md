@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-06-18 22:17 AEST
+Last updated: 2026-06-30 23:18 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -482,9 +482,9 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     - Per-widget period override pill (orange when overridden)
     - Drag handle visible on widget cards (baseline opacity 0.5)
     - Inline-editable dashboard name (click → Enter)
-🔲 subcontractor_contacts table drop
-   (table retained in PR #75 migration, marked deprecated — never dropped.
-    Migration risk — move to completed state)
+✅ subcontractor_contacts table drop (PR #78 — verified 2026-07-01 against
+   `apps/api/prisma/schema.prisma` line 3249-3251: SubcontractorContact was
+   unified into the polymorphic Contact model and the table was dropped.)
 
 ---
 
@@ -1720,7 +1720,110 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
 
 ---
 
+## SCHEDULER TRACK (parallel to Phase 5A sign-off)
+
+Origin: `Resource_Allocator_Gap_Analysis.md` (2026-06-29). This lane
+implements the day-grain, dense-grid scheduling layer that the Resource
+Allocator analysis identified as the only genuinely new scheduling UX the
+ERP was missing. Everything else the Allocator did already existed in
+`ProjectAllocation` / `Shift` / `GanttTask`.
+
+**Governance note:** This lane sits ahead of the Phase 5A tendering
+sign-off gate. It is a conscious parallel track — not a silent
+reprioritisation. Rationale: the structural pieces (Job Roles, day-grain
+allocation, public holidays) needed to land before Marco could begin
+populating Scheduler data, and they are decoupled from Raj/Sean's tender
+sign-off workflow. Phase 5A remains the gate for everything downstream
+of tendering.
+
+### Shipped (merged 2026-06-30)
+
+✅ Job Roles module — JobRole + JobRoleRequirement (PR #450)
+✅ Public holidays lookup table + QLD seed (PR #451)
+✅ Day-grain ScheduleAllocation + eligibility service (PR #452)
+✅ Scheduler grid UI — month/week, by-job/by-resource, fit-the-bill
+   picker, conflict flags (PR #453)
+
+### In progress
+
+🔧 Availability heatmap report — unique-by-name TOTAL, green→red
+   gradient, CSV export (PR #454 — OPEN at time of reconcile)
+
+### Deferred — structural prerequisites (need phased, reviewed PRs)
+
+⏸️  Job / Project merge — survivor: Project
+    Two overlapping entities representing the same concept. Phased
+    migration: rename `Job.*` foreign keys → `Project.*`, backfill,
+    deprecate Job model. Touches scheduler, jobs, contracts, forms,
+    documents, allocations. Needs a dedicated phased plan because the
+    blast radius covers most modules.
+
+⏸️  Worker / WorkerProfile consolidation — WorkerProfile canonical
+    `Shift*` cluster uses `Worker`; `ProjectAllocation` /
+    `ScheduleAllocation` use `WorkerProfile`. Pick WorkerProfile as
+    canonical, migrate Shift references, retire `Worker`. Phased to
+    keep the shift cluster working through the migration window.
+
+---
+
 ## CHANGELOG
+
+### 2026-07-01 — Reconciliation with main (PRs #393–#449) + Scheduler lane added
+Roadmap reconciled against `gh pr list --state merged` (range #393–#454,
+filtered to #393–#449 per scope of this PR) and cross-checked against
+progress.md and `apps/api/prisma/schema.prisma`. Append-only.
+
+Items flipped to ✅ in place this pass:
+
+- §6 (deferred tech debt) `subcontractor_contacts` table drop — already
+  done in PR #78; verified against schema comment at line 3249-3251.
+  Flipped from 🔲 to ✅ to remove the false "still pending" signal.
+
+PRs in scope this reconciliation (merged 2026-06-15 → 2026-06-29):
+
+- Doc reconciliation: prior reconcile PR #438 (2026-06-29) added the
+  reconcile-ownership rule and consolidated docs (#439).
+- §2 Auth / SSO: #397, #398, #406 SSO interactive-redirect + handle-
+  redirect await; #416 authz F1/F4 gates; #429 admin user-roles UI;
+  #425 competency-gate enforce + override logging.
+- §3 Directory / Compliance: #400 Correspondence Hub (mock); #414
+  supplier credit ledger.
+- §8 Jobs / Delivery: #404 partial PATCH for job activity toggle;
+  #444 humane API error envelope render; #430 ProjectDetailPage a11y.
+- §9 Scheduler: #401 Calendar Sync mock adapter; #446 drag-to-
+  reschedule on Gantt bars.
+- §12 Maintenance: #449 plant utilisation report page.
+- §13 Forms: #394 FormFillPage crash fix; #403 e2e hardening;
+  #440 dead FormSubmitPage route removal.
+- §15 Dashboards / Reporting: #395 widget settings Apply fix;
+  #399 custom dashboard widget builder; #413 win-rate-by-client +
+  loss-reasons widgets; #428 KPI card layout fix; #433 title
+  truncation widen.
+- §1 / Platform: #402 repo hygiene + authz F2; #405 CP-17 DTO scope;
+  #407 deploy action SHA pin; #408 vite dependabot bump; #409 SWA
+  navigationFallback; #411 stop serving stale built FE on API port;
+  #441 literal-path sweep + gitignore; #442 payroll CSV wire;
+  #443 SIGTERM forward in dev:api; #447 migration history audit
+  (report-only); #445 serialize inline rate-edit saves;
+  #448 AI tool-status events in chat UI.
+- Tests / infra: #412 in-app pilot feedback; #415 packages/ui vitest
+  harness; #431 / #434 / #435 watcher hardening; #436 packages/ui
+  tsup buildable package.
+- §10 Docs (JSDoc burn-down): #417 forms, #418 scheduler, #419
+  estimates, #420 audit, #421 roles, #422 permissions, #423 assets,
+  #424 contracts, #426 resources, #427 workers, #432 tendering,
+  #437 users. §10 JSDoc coverage now spans 12 modules across this and
+  the prior reconcile window (was 8 at #438 cut).
+- Pilot ops: #410 SSO-on-SWA go-live learnings docs.
+
+New lane added (see SCHEDULER TRACK above): PRs #450–#453 shipped,
+#454 in progress. Phase 5A tendering sign-off remains the gate for
+everything downstream of tendering; the Scheduler lane runs in parallel
+because its structural pieces (JobRole, public holidays, day-grain
+allocation) are decoupled from Raj/Sean's review workflow.
+
+Phase 7 and Phase 8 items remain OPEN — not touched by this
+reconciliation beyond the one §6 flip noted above.
 
 ### 2026-06-15 — Reconciliation with main (PRs #301–#392)
 Roadmap status reconciled with `git log origin/main` after the weekend

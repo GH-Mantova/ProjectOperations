@@ -3889,3 +3889,20 @@ model PilotFeedback {
   @@index([userId])
   @@map("pilot_feedback")
 }
+
+// PR-451 — Public holidays lookup. Region-aware, multi-year. Replaces hardcoded
+// holiday maps in the Resource Allocator / Scheduler. Region defaults to "QLD";
+// state-wide holidays use "QLD" and Brisbane-only days (e.g. Royal Queensland
+// Show) use "BRISBANE" so callers can filter accordingly.
+model PublicHoliday {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+  name      String
+  region    String   @default("QLD")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([date, region])
+  @@index([region, date])
+  @@map("public_holidays")
+}

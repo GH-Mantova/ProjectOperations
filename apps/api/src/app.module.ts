@@ -34,6 +34,7 @@ import { PortalModule } from "./modules/portal/portal.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { XeroModule } from "./modules/xero/xero.module";
 import { ProjectsModule } from "./modules/projects/projects.module";
+import { PublicHolidaysModule } from "./modules/public-holidays/public-holidays.module";
 import { QuoteModule } from "./modules/quote/quote.module";
 import { ResourcesModule } from "./modules/resources/resources.module";
 import { RolesModule } from "./modules/roles/roles.module";
@@ -93,6 +94,7 @@ import { FieldModule } from "./modules/field/field.module";
     SchedulerModule,
     CalendarModule,
     ProjectsModule,
+    PublicHolidaysModule,
     QuoteModule,
     CorrespondenceModule,
     TenderClarificationsModule,

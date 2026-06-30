@@ -70,6 +70,7 @@ model User {
   projectsCreated            Project[]                 @relation("ProjectCreatedBy")
   projectActivityLogs        ProjectActivityLog[]
   projectAllocationsCreated  ProjectAllocation[]       @relation("ProjectAllocationCreatedBy")
+  scheduleAllocationsCreated ScheduleAllocation[]      @relation("ScheduleAllocationCreatedBy")
   competencyOverrides        CompetencyOverride[]      @relation("CompetencyOverrideActor")
   approvedTimesheets         Timesheet[]               @relation("TimesheetApprover")
   rejectedTimesheets         Timesheet[]               @relation("TimesheetRejecter")
@@ -588,6 +589,7 @@ model JobRole {
   isActive     Boolean              @default(true) @map("is_active")
   sortOrder    Int                  @default(0) @map("sort_order")
   requirements JobRoleRequirement[]
+  scheduleAllocations ScheduleAllocation[]
   createdAt    DateTime             @default(now()) @map("created_at")
   updatedAt    DateTime             @updatedAt @map("updated_at")
 
@@ -689,6 +691,7 @@ model Asset {
   statusHistory     AssetStatusHistory[]
   formSubmissions   FormSubmission[]
   allocations       ProjectAllocation[]
+  scheduleAllocations ScheduleAllocation[]
   scopePlantRefs    ScopeOfWorksItem[]      @relation("ScopeItemPlant")
 
   @@index([status])
@@ -1992,6 +1995,7 @@ model Project {
   activityLog             ProjectActivityLog[]
   documents               TenderDocumentLink[]
   allocations             ProjectAllocation[]
+  scheduleAllocations     ScheduleAllocation[]
   preStartChecklists      PreStartChecklist[]
   timesheets              Timesheet[]
   contract                Contract?
@@ -2082,6 +2086,7 @@ model WorkerProfile {
   locationConsentAt        DateTime?              @map("location_consent_at")
   locationConsentRevokedAt DateTime?              @map("location_consent_revoked_at")
   allocations              ProjectAllocation[]
+  scheduleAllocations      ScheduleAllocation[]
   preStartChecklists       PreStartChecklist[]
   timesheets               Timesheet[]
   qualifications           WorkerQualification[]
@@ -2122,6 +2127,49 @@ model ProjectAllocation {
   @@index([workerProfileId, startDate])
   @@index([assetId, startDate])
   @@map("project_allocations")
+}
+
+// ── PR-452 §9 Day-grain ScheduleAllocation ─────────────────────────────
+// Canonical day-grain allocation alongside the existing range-based
+// `ProjectAllocation` (which stays wired to timesheets / pre-starts /
+// competency-gate). The scheduler grid consumes this table. Eligibility
+// and conflict flags are COMPUTED on read — never denormalised here.
+//
+// `overrideReason` is populated when a `scheduler.manage` user allocates
+// an ineligible worker via the showAll path; the matching AuditLog row
+// is action `schedule.unqualified_override`.
+
+enum ScheduleTargetType {
+  WORKER
+  ASSET
+}
+
+model ScheduleAllocation {
+  id              String             @id @default(cuid())
+  date            DateTime           @db.Date
+  projectId       String             @map("project_id")
+  project         Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  targetType      ScheduleTargetType @map("target_type")
+  workerProfileId String?            @map("worker_profile_id")
+  workerProfile   WorkerProfile?     @relation(fields: [workerProfileId], references: [id], onDelete: Cascade)
+  assetId         String?            @map("asset_id")
+  asset           Asset?             @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  jobRoleId       String?            @map("job_role_id")
+  jobRole         JobRole?           @relation(fields: [jobRoleId], references: [id], onDelete: SetNull)
+  note            String?
+  overrideReason  String?            @map("override_reason")
+  createdById     String             @map("created_by_id")
+  createdBy       User               @relation("ScheduleAllocationCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  @@unique([date, projectId, workerProfileId, jobRoleId], name: "schedule_alloc_worker_uniq")
+  @@unique([date, projectId, assetId], name: "schedule_alloc_asset_uniq")
+  @@index([date])
+  @@index([projectId, date])
+  @@index([workerProfileId, date])
+  @@index([assetId, date])
+  @@map("schedule_allocations")
 }
 
 // ── Competency gate override (PR-279 enforcement) ─────────────────────────

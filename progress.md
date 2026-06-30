@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-06-18 22:17 AEST
+Last updated: 2026-06-30 23:35 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -8659,4 +8659,155 @@ Status: MERGED
 GitHub PR: #431 (https://github.com/GH-Mantova/ProjectOperations/pull/431)
 Type: PR
 Detail: chore(watcher): reap spawned children + harden single-instance + daytime launcher
+Status: MERGED
+
+---
+
+## 2026-07-01 — Doc reconcile (PRs #432–#454 catch-up) + Scheduler lane
+
+The previous reconcile (PR #438, 2026-06-29) covered up to #431. Replaces
+the rejected PR #455 attempt (wrong fork point, carried PR-454 code +
+conflicts). This redo was forked clean from `origin/main` and edits only
+roadmap.md + progress.md. Per-PR detail kept short — full bodies live on
+GitHub. Includes the Scheduler track (Job Roles, public holidays,
+ScheduleAllocation, day-grid, availability heatmap) plus DEFERRED
+Job/Project and Worker/WorkerProfile consolidation as structural
+prerequisites — see roadmap CHANGELOG 2026-07-01.
+
+## 2026-06-19 — PR #432 MERGED
+GitHub PR: #432 (https://github.com/GH-Mantova/ProjectOperations/pull/432)
+Type: PR
+Detail: [Docs] JSDoc on public exports in tendering module
+Status: MERGED
+
+## 2026-06-19 — PR #433 MERGED
+GitHub PR: #433 (https://github.com/GH-Mantova/ProjectOperations/pull/433)
+Type: PR
+Detail: [UX] Widen tender title truncation in dashboard lists
+Status: MERGED
+
+## 2026-06-19 — PR #434 MERGED
+GitHub PR: #434 (https://github.com/GH-Mantova/ProjectOperations/pull/434)
+Type: PR
+Detail: fix(watcher): pre-flight ignores untracked files
+Status: MERGED
+
+## 2026-06-19 — PR #435 MERGED
+GitHub PR: #435 (https://github.com/GH-Mantova/ProjectOperations/pull/435)
+Type: PR
+Detail: chore(watcher): commit merge-queue.mjs + self-heal flaky checks
+Status: MERGED
+
+## 2026-06-19 — PR #436 MERGED
+GitHub PR: #436 (https://github.com/GH-Mantova/ProjectOperations/pull/436)
+Type: PR
+Detail: chore(ui): packages/ui buildable design-system package (tsup dist + types)
+Status: MERGED
+
+## 2026-06-19 — PR #437 MERGED
+GitHub PR: #437 (https://github.com/GH-Mantova/ProjectOperations/pull/437)
+Type: PR
+Detail: [Docs] JSDoc on users module public exports
+Status: MERGED
+
+## 2026-06-29 — PR #438 MERGED
+GitHub PR: #438 (https://github.com/GH-Mantova/ProjectOperations/pull/438)
+Type: PR
+Detail: [Docs] Reconcile progress.md + roadmap.md with main (PRs #393-#431) + add reconcile-ownership rule
+Status: MERGED
+
+## 2026-06-19 — PR #439 MERGED
+GitHub PR: #439 (https://github.com/GH-Mantova/ProjectOperations/pull/439)
+Type: PR
+Detail: [docs] consolidate duplicate documentation into single canonical files
+Status: MERGED
+
+## 2026-06-29 — PR #440 MERGED
+GitHub PR: #440 (https://github.com/GH-Mantova/ProjectOperations/pull/440)
+Type: PR
+Detail: chore(web): remove dead FormSubmitPage / /forms/submit route
+Status: MERGED
+
+## 2026-06-29 — PR #441 MERGED
+GitHub PR: #441 (https://github.com/GH-Mantova/ProjectOperations/pull/441)
+Type: PR
+Detail: chore(repo): sweep malformed literal-path dirs + tighten gitignore
+Status: MERGED
+
+## 2026-06-29 — PR #442 MERGED
+GitHub PR: #442 (https://github.com/GH-Mantova/ProjectOperations/pull/442)
+Type: PR
+Detail: feat(web): wire payroll CSV export button to backend endpoint
+Status: MERGED
+
+## 2026-06-29 — PR #443 MERGED
+GitHub PR: #443 (https://github.com/GH-Mantova/ProjectOperations/pull/443)
+Type: PR
+Detail: chore(api): forward SIGTERM in dev:api launcher (no orphan node on port 3000)
+Status: MERGED
+
+## 2026-06-29 — PR #444 MERGED
+GitHub PR: #444 (https://github.com/GH-Mantova/ProjectOperations/pull/444)
+Type: PR
+Detail: fix(web): render API error envelope humanely
+Status: MERGED
+
+## 2026-06-29 — PR #445 MERGED
+GitHub PR: #445 (https://github.com/GH-Mantova/ProjectOperations/pull/445)
+Type: PR
+Detail: fix(web): serialize inline rate-edit saves on EstimateRatesAdminPage
+Status: MERGED
+
+## 2026-06-29 — PR #446 MERGED
+GitHub PR: #446 (https://github.com/GH-Mantova/ProjectOperations/pull/446)
+Type: PR
+Detail: feat(web): drag-to-reschedule on Gantt chart bars — flips Phase 7 ⏸ Drag-to-reschedule Gantt UI to ✅
+Status: MERGED
+
+## 2026-06-29 — PR #447 MERGED
+GitHub PR: #447 (https://github.com/GH-Mantova/ProjectOperations/pull/447)
+Type: PR
+Detail: docs: migration history audit (report-only)
+Status: MERGED
+
+## 2026-06-29 — PR #448 MERGED
+GitHub PR: #448 (https://github.com/GH-Mantova/ProjectOperations/pull/448)
+Type: PR
+Detail: feat(personas): render AI tool-status events in chat UI
+Status: MERGED
+
+## 2026-06-29 — PR #449 MERGED
+GitHub PR: #449 (https://github.com/GH-Mantova/ProjectOperations/pull/449)
+Type: PR
+Detail: feat(maintenance): plant utilisation report page (KPIs, filtering, 7 tests)
+Status: MERGED
+
+## 2026-06-30 — PR #450 MERGED — Scheduler lane
+GitHub PR: #450 (https://github.com/GH-Mantova/ProjectOperations/pull/450)
+Type: PR
+Detail: [Scheduler] Job Roles module (JobRole + JobRoleRequirement) — schema + 5 CRUD endpoints + admin UI + RBAC. First merge in the Scheduler lane (parallel to Phase 5A — see roadmap CHANGELOG 2026-07-01).
+Status: MERGED
+
+## 2026-06-30 — PR #451 MERGED — Scheduler lane
+GitHub PR: #451 (https://github.com/GH-Mantova/ProjectOperations/pull/451)
+Type: PR
+Detail: [Scheduler] Public holidays lookup table + QLD seed (36 entries). Auto-merged; pr-fix-reviewer escalation noted missing GATE-ALLOW: migrations marker in body (process fix, not code regression).
+Status: MERGED
+
+## 2026-06-30 — PR #452 MERGED — Scheduler lane
+GitHub PR: #452 (https://github.com/GH-Mantova/ProjectOperations/pull/452)
+Type: PR
+Detail: [Scheduler] Day-grain ScheduleAllocation + eligibility service. Migration 20260630120000, 5 /scheduler/allocations endpoints (incl. eligibility check), 18 tests. CP-11 gate initially blocked on missing GATE-ALLOW: migrations marker; Marco added marker + rerun.
+Status: MERGED
+
+## 2026-06-30 — PR #453 MERGED — Scheduler lane
+GitHub PR: #453 (https://github.com/GH-Mantova/ProjectOperations/pull/453)
+Type: PR
+Detail: [Scheduler] Day-grid UI (month/week, by-job/by-resource) — SchedulerGridPage + gridHelpers with eligibility picker (fit-the-bill), show-all, conflict markers, hide-empty toggle, collapsible groups, headcount totals; route + sidebar wired; 11 vitest + E2E specs. CI green (lint, build, web 469, smoke, prisma). Flips ⏸ Scheduler weekly grid view to ✅. Deps: PR-452, PR-451.
+Status: MERGED
+
+## 2026-06-30 — PR #454 MERGED — Scheduler lane
+GitHub PR: #454 (https://github.com/GH-Mantova/ProjectOperations/pull/454)
+Type: PR
+Detail: [Scheduler] Availability heatmap report (unique-by-name) + CSV — AvailabilityReportService + controller (JSON/CSV, unique-by-name TOTAL, skip toggle), AvailabilityReportPage (heatmap green→red, month nav, detail drill, CSV export), 6 specs. CI green (lint, build, 53 scheduler tests). Deps: PR-452, PR-451.
 Status: MERGED

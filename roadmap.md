@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-06-18 22:17 AEST
+Last updated: 2026-06-30 23:35 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -482,9 +482,9 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     - Per-widget period override pill (orange when overridden)
     - Drag handle visible on widget cards (baseline opacity 0.5)
     - Inline-editable dashboard name (click → Enter)
-🔲 subcontractor_contacts table drop
-   (table retained in PR #75 migration, marked deprecated — never dropped.
-    Migration risk — move to completed state)
+✅ subcontractor_contacts table drop — PR #78
+   (table retained in PR #75 migration, marked deprecated — dropped via
+    PR #78 migration. Verified at 2026-07-01 reconcile.)
 
 ---
 
@@ -1031,11 +1031,16 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
     inspecting sub-mode descriptions directly, which is the correct
     unit for its assertions. Left untouched.
 
-⏸️  Drag-to-reschedule Gantt UI
-    (API supports it — purely frontend @dnd-kit work)
-⏸️  Scheduler weekly grid view
-⏸️  Worker/WorkerProfile dual model consolidation
-    (ResourcesPage still calls /resources/workers — different model)
+✅  Drag-to-reschedule Gantt UI — PR #446 (2026-06-29)
+    (frontend @dnd-kit on Gantt bars; API already supported it)
+✅  Scheduler weekly grid view — PR #453 (2026-06-30)
+    (day-grid month/week, by-job + by-resource pivots, eligibility
+     picker, conflict markers, hide-empty, headcount totals — see
+     2026-07-01 Scheduler lane CHANGELOG entry)
+⏸️  Worker/WorkerProfile dual model consolidation — DEFERRED (Scheduler lane prerequisite)
+    (ResourcesPage still calls /resources/workers — different model.
+     Phased, reviewed merge planned: WorkerProfile is the canonical
+     survivor. Tracked in the 2026-07-01 Scheduler lane.)
 ⏸️  directory.finance inline permission → guard decorator
     (currently inline hasPermission check, not @RequirePermissions)
 ⏸️  PWA NetworkFirst 24h cache — cross-user stale data on shared devices
@@ -2611,3 +2616,84 @@ change phase-level status in the table of contents — Phases §1–§4 remain
 recurring "Last updated:" merge conflict on roadmap.md / progress.md,
 feature/fix PRs must not edit those headers or restate status. A
 periodic doc-reconcile PR (like this one) owns those files going forward.
+
+### 2026-07-01 — Doc reconcile (PRs #432–#454 catch-up) + Scheduler lane
+
+Replaces the rejected PR #455 attempt (forked off the wrong point and
+carried PR-454 feature code + conflicts). This redo was forked clean
+from `origin/main` and edits only `roadmap.md` and `progress.md`.
+
+The previous reconcile (PR #438, 2026-06-29) covered #393–#431. Since
+then the following merged to `main` and are now reflected in progress.md.
+None change phase-level status — Phases §1–§4 remain ✅ COMPLETE, §5A
+remains the active gate, §5C remains the queued follow-up. The new
+Scheduler track runs as a conscious parallel lane (see below).
+
+**Docs / API hygiene — ✅ COMPLETE:**
+- ✅ JSDoc on tendering module public exports (#432)
+- ✅ JSDoc on users module public exports (#437)
+- ✅ Consolidate duplicate documentation into single canonical files (#439)
+- ✅ Migration history audit (report-only) (#447)
+
+**Tooling — ✅ COMPLETE:**
+- ✅ Watcher pre-flight ignores untracked files (#434)
+- ✅ Watcher commit merge-queue.mjs + self-heal flaky checks (#435)
+- ✅ packages/ui buildable design-system package (tsup dist + types) (#436)
+- ✅ Sweep malformed literal-path dirs + tighten gitignore (#441)
+- ✅ Forward SIGTERM in dev:api launcher (no orphan node on port 3000) (#443)
+
+**UX / a11y / fixes — ✅ COMPLETE:**
+- ✅ Widen tender title truncation in dashboard lists (#433)
+- ✅ Remove dead FormSubmitPage / /forms/submit route (#440)
+- ✅ Render API error envelope humanely (#444)
+- ✅ Serialize inline rate-edit saves on EstimateRatesAdminPage (#445)
+
+**Phase 7 / Phase 15 — additions ✅ COMPLETE:**
+- ✅ Drag-to-reschedule on Gantt chart bars (#446) — Phase 7 line flipped
+- ✅ Wire payroll CSV export button to backend endpoint (#442)
+- ✅ Render AI tool-status events in chat UI (personas) (#448)
+- ✅ Plant utilisation report page (#449)
+
+**Doc reconcile chain — ✅ COMPLETE:**
+- ✅ Reconcile progress + roadmap with main (#393–#431) + add
+  reconcile-ownership rule (#438)
+
+#### Scheduler lane (originated from docs/Resource_Allocator_Gap_Analysis.md)
+
+A focused scheduler/resource-allocation track started end of June 2026 to
+close the gap between the legacy /resources/workers model and a real
+day-grain allocation engine. **This runs ahead of the Phase 5A tendering
+sign-off gate as a conscious parallel track, not a silent reprioritisation
+of the master phase plan.** Tendering remains the user-facing release
+blocker; the Scheduler lane is internal-tooling work that does not depend
+on the tendering sign-off and unblocks Job/Project + Worker/WorkerProfile
+consolidation.
+
+**Merged modules — ✅ COMPLETE:**
+- ✅ Job Roles module — JobRole + JobRoleRequirement (#450, 2026-06-30)
+- ✅ Public holidays lookup table + QLD seed (36 entries) (#451, 2026-06-30)
+- ✅ Day-grain ScheduleAllocation + eligibility service
+  (5 /scheduler/allocations endpoints, 18 tests, migration
+  20260630120000) (#452, 2026-06-30)
+- ✅ Scheduler day-grid UI — month/week, by-job + by-resource pivots,
+  eligibility picker (fit-the-bill), show-all, conflict markers,
+  hide-empty, collapsible, headcount totals (#453, 2026-06-30)
+- ✅ Availability heatmap report — unique-by-name TOTAL, month nav,
+  detail drill, green→red heatmap, CSV export (#454, 2026-06-30)
+
+**Structural prerequisites — DEFERRED (need phased, reviewed PRs):**
+- ⏸️ Job/Project merge — survivor: Project
+  (two near-duplicate domain models; merge requires schema migration,
+   controller/service rename, FK rewiring across estimates/scheduler/forms.
+   Deferred until the scheduler lane has stabilised; do NOT bundle into a
+   feature PR.)
+- ⏸️ Worker/WorkerProfile consolidation — canonical: WorkerProfile
+  (ResourcesPage still calls /resources/workers — different model.
+   Merge plan: keep WorkerProfile, migrate scheduler + competency code
+   to it, then drop Worker. Phased PRs reviewed end-to-end.)
+
+**Governance note.** Scheduler lane PRs ship under feat(scheduler) /
+[Scheduler] prefixes and have their own pr-prompts trail
+(SCHEDULER-CHAIN-2026-06-29.md). They are NOT counted against the
+Phase 5A burn-down; Phase 5A status is still gated by the tendering
+sign-off backlog.

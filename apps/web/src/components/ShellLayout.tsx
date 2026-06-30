@@ -253,6 +253,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: "/admin/settings", label: "Admin Settings", icon: ICON_AUDIT },
       { to: "/admin/estimate-rates", label: "Rates & Lists", icon: ICON_TENDERING },
+      { to: "/admin/job-roles", label: "Job Roles", icon: ICON_AUDIT },
       { to: "/admin/ai-settings", label: "AI Settings", icon: ICON_AUDIT }
     ]
   }
@@ -309,6 +310,7 @@ const BREADCRUMBS: Record<string, string> = {
   "/admin/audit": "Audit",
   "/admin/platform": "Platform",
   "/admin/settings": "Admin Settings",
+  "/admin/job-roles": "Job Roles",
   "/contracts": "Contracts"
 };
 

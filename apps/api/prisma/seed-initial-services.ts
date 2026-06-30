@@ -764,6 +764,152 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
     }
   }
 
+  // --- Job Roles (PR-450) -----------------------------------------------
+  // Named job functions that bundle required competencies. Idempotent.
+  // Some roles reference competencies the existing catalogue does not yet
+  // hold (asbestos, demolition, HR truck). Upsert by name so reseed is safe.
+  const extraCompetencyDefs = [
+    { name: "Asbestos Removal - Class A", code: "COMP-013", description: "Licence" },
+    { name: "Asbestos Removal - Class B", code: "COMP-014", description: "Licence" },
+    { name: "Demolition - Restricted", code: "COMP-015", description: "Licence" },
+    { name: "HR Truck Licence", code: "COMP-016", description: "Licence" }
+  ];
+  const competencyIdByName = new Map<string, string>();
+  for (const c of extraCompetencyDefs) {
+    const rec = await prisma.competency.upsert({
+      where: { name: c.name },
+      update: { code: c.code, description: c.description },
+      create: { name: c.name, code: c.code, description: c.description }
+    });
+    competencyIdByName.set(c.name, rec.id);
+  }
+  for (const seed of competencySeeds) {
+    const id = competencyIdByLabel.get(seed.label);
+    if (id) competencyIdByName.set(seed.name, id);
+  }
+
+  type JobRoleSeed = {
+    id: string;
+    name: string;
+    description: string;
+    colour: string;
+    sortOrder: number;
+    requirements: Array<{ competencyName: string; isMandatory?: boolean }>;
+  };
+  const jobRoleSeeds: JobRoleSeed[] = [
+    {
+      id: "jobrole-001",
+      name: "Supervisor",
+      description: "On-site supervisor responsible for crew and safety.",
+      colour: "#1f4e8c",
+      sortOrder: 10,
+      requirements: [
+        { competencyName: "Construction Induction (White Card)" },
+        { competencyName: "First Aid Certificate" },
+        { competencyName: "Working at Heights", isMandatory: false }
+      ]
+    },
+    {
+      id: "jobrole-002",
+      name: "Machine Operator",
+      description: "Plant / excavator operator.",
+      colour: "#b85c00",
+      sortOrder: 20,
+      requirements: [
+        { competencyName: "Construction Induction (White Card)" },
+        { competencyName: "Excavator (HR) Licence" }
+      ]
+    },
+    {
+      id: "jobrole-003",
+      name: "Demolition Labourer",
+      description: "General demolition labour (restricted).",
+      colour: "#7a1f1f",
+      sortOrder: 30,
+      requirements: [
+        { competencyName: "Construction Induction (White Card)" },
+        { competencyName: "Demolition - Restricted" }
+      ]
+    },
+    {
+      id: "jobrole-004",
+      name: "Asbestos Labourer (Class A)",
+      description: "Friable asbestos removal labour.",
+      colour: "#5e2c8a",
+      sortOrder: 40,
+      requirements: [
+        { competencyName: "Construction Induction (White Card)" },
+        { competencyName: "Asbestos Removal - Class A" }
+      ]
+    },
+    {
+      id: "jobrole-005",
+      name: "Asbestos Labourer (Class B)",
+      description: "Non-friable asbestos removal labour.",
+      colour: "#8a5ec0",
+      sortOrder: 50,
+      requirements: [
+        { competencyName: "Construction Induction (White Card)" },
+        { competencyName: "Asbestos Removal - Class B" }
+      ]
+    },
+    {
+      id: "jobrole-006",
+      name: "Truck Driver",
+      description: "Heavy rigid truck driver.",
+      colour: "#2e7d32",
+      sortOrder: 60,
+      requirements: [
+        { competencyName: "Construction Induction (White Card)" },
+        { competencyName: "HR Truck Licence" }
+      ]
+    },
+    {
+      id: "jobrole-007",
+      name: "Traffic Controller",
+      description: "TCP-ticketed traffic control.",
+      colour: "#c0a000",
+      sortOrder: 70,
+      requirements: [
+        { competencyName: "Construction Induction (White Card)" },
+        { competencyName: "Traffic Control (TCP)" }
+      ]
+    }
+  ];
+
+  for (const role of jobRoleSeeds) {
+    await prisma.jobRole.upsert({
+      where: { id: role.id },
+      update: {
+        name: role.name,
+        description: role.description,
+        colour: role.colour,
+        sortOrder: role.sortOrder,
+        isActive: true
+      },
+      create: {
+        id: role.id,
+        name: role.name,
+        description: role.description,
+        colour: role.colour,
+        sortOrder: role.sortOrder,
+        isActive: true
+      }
+    });
+    await prisma.jobRoleRequirement.deleteMany({ where: { jobRoleId: role.id } });
+    for (const req of role.requirements) {
+      const competencyId = competencyIdByName.get(req.competencyName);
+      if (!competencyId) continue;
+      await prisma.jobRoleRequirement.create({
+        data: {
+          jobRoleId: role.id,
+          competencyId,
+          isMandatory: req.isMandatory ?? true
+        }
+      });
+    }
+  }
+
   type CrewSeed = {
     id: string;
     name: string;

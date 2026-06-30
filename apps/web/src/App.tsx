@@ -28,6 +28,7 @@ import { ProjectsListPage } from "./pages/projects/ProjectsListPage";
 import { ProjectDetailPage } from "./pages/projects/ProjectDetailPage";
 import { SchedulerWorkspacePage } from "./pages/scheduler/SchedulerWorkspacePage";
 import { AvailabilityReportPage } from "./pages/scheduler/AvailabilityReportPage";
+import { SchedulerGridPage } from "./pages/scheduler/SchedulerGridPage";
 import { CalendarSyncPage } from "./pages/calendar/CalendarSyncPage";
 import { WorkersListPage } from "./pages/workers/WorkersListPage";
 import { WorkerDetailPage } from "./pages/workers/WorkerDetailPage";
@@ -175,6 +176,7 @@ export function App() {
             />
             <Route path="/scheduler" element={<SchedulerWorkspacePage />} />
             <Route path="/scheduler/availability-report" element={<AvailabilityReportPage />} />
+            <Route path="/scheduler/grid" element={<SchedulerGridPage />} />
             <Route path="/account/calendar-sync" element={<CalendarSyncPage />} />
             <Route path="/tenders" element={<TenderingPage />} />
             <Route path="/tenders/dashboard" element={<TenderingDashboardPage />} />

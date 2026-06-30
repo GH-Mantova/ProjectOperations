@@ -9261,3 +9261,22 @@ textarea {
   font-size: 13px;
   color: var(--text-secondary, #6b7280);
 }
+
+/* PR-454 — Availability heatmap report */
+.avail-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.avail-th { padding: 6px 8px; text-align: center; border-bottom: 1px solid var(--border-subtle, #e5e7eb); font-weight: 600; color: var(--text-secondary, #6b7280); white-space: nowrap; }
+.avail-th--rowhead { text-align: left; min-width: 220px; }
+.avail-th--skipped { color: var(--text-muted, #9ca3af); background: var(--surface-muted, #f3f4f6); }
+.avail-th__date { display: block; font-weight: 700; color: var(--text-primary, #1f2937); }
+.avail-th__dow { display: block; font-size: 10px; }
+.avail-cell { padding: 6px 8px; text-align: center; border-bottom: 1px solid var(--border-subtle, #e5e7eb); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.avail-cell--total { font-weight: 600; }
+.avail-cell--skipped { background: var(--surface-muted, #f3f4f6); color: var(--text-muted, #9ca3af); }
+.avail-cell--green { background: #d1fae5; color: #065f46; }
+.avail-cell--amber { background: #fef3c7; color: #92400e; }
+.avail-cell--red { background: #fee2e2; color: #991b1b; }
+.avail-table__totalrow { background: var(--surface-subtle, #f9fafb); font-weight: 700; }
+.avail-worker-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 12px; }
+.avail-worker { padding: 12px; border: 1px solid var(--border-subtle, #e5e7eb); border-radius: var(--radius-md, 8px); }
+.avail-worker__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.avail-worker__committed { margin: 6px 0 0; padding-left: 20px; color: var(--text-secondary, #6b7280); }

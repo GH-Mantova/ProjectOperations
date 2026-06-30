@@ -4,17 +4,18 @@ import { SchedulerController } from "./scheduler.controller";
 import { SchedulerService } from "./scheduler.service";
 import { ScheduleAllocationController } from "./schedule-allocation.controller";
 import { ScheduleAllocationService } from "./schedule-allocation.service";
+import { AvailabilityReportController } from "./availability-report.controller";
+import { AvailabilityReportService } from "./availability-report.service";
 
 /**
  * §9 Scheduler and Work Planning module.
  *
- * Wires {@link SchedulerController} and {@link SchedulerService} for the
- * existing shift workspace, plus {@link ScheduleAllocationController} and
- * {@link ScheduleAllocationService} for the PR-452 day-grain grid.
+ * Wires the existing shift workspace, the PR-452 day-grain allocation grid,
+ * and the PR-454 month availability heatmap report.
  */
 @Module({
   imports: [PlatformModule],
-  controllers: [SchedulerController, ScheduleAllocationController],
-  providers: [SchedulerService, ScheduleAllocationService]
+  controllers: [SchedulerController, ScheduleAllocationController, AvailabilityReportController],
+  providers: [SchedulerService, ScheduleAllocationService, AvailabilityReportService]
 })
 export class SchedulerModule {}

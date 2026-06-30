@@ -575,8 +575,38 @@ model Competency {
   updatedAt             DateTime               @updatedAt @map("updated_at")
   workerCompetencies    WorkerCompetency[]
   shiftRoleRequirements ShiftRoleRequirement[]
+  jobRoleRequirements   JobRoleRequirement[]
 
   @@map("competencies")
+}
+
+model JobRole {
+  id           String               @id @default(cuid())
+  name         String               @unique
+  description  String?
+  colour       String?
+  isActive     Boolean              @default(true) @map("is_active")
+  sortOrder    Int                  @default(0) @map("sort_order")
+  requirements JobRoleRequirement[]
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+
+  @@map("job_roles")
+}
+
+model JobRoleRequirement {
+  id                  String     @id @default(cuid())
+  jobRoleId           String     @map("job_role_id")
+  competencyId        String     @map("competency_id")
+  isMandatory         Boolean    @default(true) @map("is_mandatory")
+  minMonthsExperience Int?       @map("min_months_experience")
+  notes               String?
+  jobRole             JobRole    @relation(fields: [jobRoleId], references: [id], onDelete: Cascade)
+  competency          Competency @relation(fields: [competencyId], references: [id], onDelete: Restrict)
+
+  @@unique([jobRoleId, competencyId])
+  @@index([competencyId])
+  @@map("job_role_requirements")
 }
 
 model Worker {

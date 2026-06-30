@@ -49,6 +49,7 @@ import { TenderDocumentsModule } from "./modules/tender-documents/tender-documen
 import { UsersModule } from "./modules/users/users.module";
 import { WorkersModule } from "./modules/workers/workers.module";
 import { AllocationsModule } from "./modules/allocations/allocations.module";
+import { JobRolesModule } from "./modules/job-roles/job-roles.module";
 import { FieldModule } from "./modules/field/field.module";
 
 @Module({
@@ -104,6 +105,7 @@ import { FieldModule } from "./modules/field/field.module";
     RolesModule,
     WorkersModule,
     AllocationsModule,
+    JobRolesModule,
     FieldModule,
     PortalModule,
     XeroModule

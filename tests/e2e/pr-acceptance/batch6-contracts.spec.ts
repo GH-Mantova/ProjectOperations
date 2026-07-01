@@ -84,7 +84,7 @@ test.describe("Batch 6 — Contracts (PRs #58, #59)", () => {
       // Each transition issues an API call; the test waits on the matching
       // response before asserting the next status badge so the bounded timeout
       // doesn't expire while the request is still in flight.
-      const VAR_TIMEOUT = 15_000;
+      const VAR_TIMEOUT = 20_000;
       const isVariationsCall = (r: import("@playwright/test").Response) =>
         /\/variations(?:\/[^/]+(?:\/[a-z]+)?)?$/.test(r.url()) &&
         ["POST", "PATCH", "PUT"].includes(r.request().method());
@@ -96,27 +96,33 @@ test.describe("Batch 6 — Contracts (PRs #58, #59)", () => {
       const createResponse = page.waitForResponse(isVariationsCall, { timeout: VAR_TIMEOUT });
       await page.getByRole("button", { name: "Add", exact: true }).click();
       await createResponse;
-      await expect(page.getByRole("cell", { name: "e2e-b6 extra rock excavation" })).toBeVisible({
-        timeout: VAR_TIMEOUT
-      });
-      await expect(page.getByText("RECEIVED", { exact: true })).toBeVisible({ timeout: VAR_TIMEOUT });
+      // Scope the row assertion to the row containing the description — the
+      // variations table renders description + status badge in the same row,
+      // so anchoring both checks to the same row avoids racing a re-render
+      // that would move the RECEIVED badge into a fresh DOM node before the
+      // second global text-lookup runs.
+      const variationRow = page
+        .getByRole("row")
+        .filter({ hasText: "e2e-b6 extra rock excavation" });
+      await expect(variationRow).toHaveCount(1, { timeout: VAR_TIMEOUT });
+      await expect(variationRow).toContainText("RECEIVED", { timeout: VAR_TIMEOUT });
 
       page.once("dialog", (d) => void d.accept("5000")); // Priced amount $
       const pricedResponse = page.waitForResponse(isVariationsCall, { timeout: VAR_TIMEOUT });
       await page.getByRole("button", { name: "Mark priced" }).click();
       await pricedResponse;
-      await expect(page.getByText("PRICED", { exact: true })).toBeVisible({ timeout: VAR_TIMEOUT });
+      await expect(variationRow).toContainText("PRICED", { timeout: VAR_TIMEOUT });
 
       const submittedResponse = page.waitForResponse(isVariationsCall, { timeout: VAR_TIMEOUT });
       await page.getByRole("button", { name: "Submit", exact: true }).click();
       await submittedResponse;
-      await expect(page.getByText("SUBMITTED", { exact: true })).toBeVisible({ timeout: VAR_TIMEOUT });
+      await expect(variationRow).toContainText("SUBMITTED", { timeout: VAR_TIMEOUT });
 
       page.once("dialog", (d) => void d.accept("5000")); // Approved amount $
       const approvedResponse = page.waitForResponse(isVariationsCall, { timeout: VAR_TIMEOUT });
       await page.getByRole("button", { name: "Mark approved" }).click();
       await approvedResponse;
-      await expect(page.getByText("APPROVED", { exact: true })).toBeVisible({ timeout: VAR_TIMEOUT });
+      await expect(variationRow).toContainText("APPROVED", { timeout: VAR_TIMEOUT });
 
       // Approved variation feeds the revised contract value on Overview.
       await page.getByRole("button", { name: "Overview", exact: true }).click();

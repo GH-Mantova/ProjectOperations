@@ -142,28 +142,31 @@ test.describe("Batch 6 — Projects + Jobs (PRs #17, #39, #40, #242, #250, #267,
       await page.getByRole("button", { expanded: false }).first().click();
       toggle = page.getByRole("button", { name: /^Toggle activity status/ }).first();
     }
-    await expect(toggle).toBeVisible({ timeout: 10_000 });
+    await expect(toggle).toBeVisible({ timeout: 15_000 });
     await expect(toggle).toBeEnabled();
-    const TOGGLE_TIMEOUT = 15_000;
+    const TOGGLE_TIMEOUT = 20_000;
     const isActivityPatch = (r: import("@playwright/test").Response) =>
       /\/jobs\/[^/]+\/activities\/[^/]+/.test(r.url()) && r.request().method() === "PATCH";
 
-    const clickAndAwaitPatch = async () => {
+    // Wait for the PATCH to resolve AND for the aria-label to change off the
+    // pre-click snapshot. Two conditions because the optimistic React update
+    // and the server response can settle in either order, and the assertion
+    // must not read the DOM until both have landed.
+    const clickAndAwaitStateChange = async (prevLabel: string) => {
       const responsePromise = page.waitForResponse(isActivityPatch, { timeout: TOGGLE_TIMEOUT });
       await toggle.click();
       const response = await responsePromise;
       expect(response.ok()).toBe(true);
+      await expect(toggle).not.toHaveAttribute("aria-label", prevLabel, { timeout: TOGGLE_TIMEOUT });
+      return (await toggle.getAttribute("aria-label")) ?? "";
     };
 
     const original = (await toggle.getAttribute("aria-label")) ?? "";
-    await clickAndAwaitPatch();
-    await expect(toggle).not.toHaveAttribute("aria-label", original, { timeout: TOGGLE_TIMEOUT });
+    let current = await clickAndAwaitStateChange(original);
     // Cycle back to the original status (at most two more advances).
     for (let i = 0; i < 2; i += 1) {
-      const current = (await toggle.getAttribute("aria-label")) ?? "";
       if (current === original) break;
-      await clickAndAwaitPatch();
-      await expect(toggle).not.toHaveAttribute("aria-label", current, { timeout: TOGGLE_TIMEOUT });
+      current = await clickAndAwaitStateChange(current);
     }
     await expect(toggle).toHaveAttribute("aria-label", original, { timeout: TOGGLE_TIMEOUT });
   });

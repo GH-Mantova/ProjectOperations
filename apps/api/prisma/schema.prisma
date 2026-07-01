@@ -2531,13 +2531,17 @@ model ScopeWasteItem {
   wasteGroup    String?  @map("waste_group")
   wasteType     String?  @map("waste_type")
   wasteFacility String?  @map("waste_facility")
-  // PR B4a — `wasteTonnes` reverts to its literal meaning (tonnes).
-  // The aggregator writes BOTH `wasteTonnes` and `m3` per row so the
-  // UI can render either, and the line total bills by the facility's
-  // unit (rate.unit === "t" ? wasteTonnes : m3) × ratePerTonne.
-  wasteTonnes   Decimal? @map("waste_tonnes") @db.Decimal(10, 3)
-  // PR B4a — m³ companion to wasteTonnes. Aggregator writes both;
-  // facility's rate.unit decides which side the line total bills against.
+  // PR B4a — this column carried the aggregated waste quantity in
+  // tonnes; PR B4a made it billable against either tonnes or m³
+  // depending on the facility's rate unit. The name became a lie once
+  // it no longer meant "tonnes" universally, so the Prisma field is
+  // now `qty` (chore/schema-hygiene-waste). The `waste_tonnes` DB
+  // column was renamed to `qty` in the same PR — see migration
+  // `20260701_chore_schema_hygiene_waste_rename_qty`.
+  qty           Decimal? @db.Decimal(10, 3)
+  // PR B4a — m³ companion to `qty` (previously wasteTonnes). Aggregator
+  // writes both; facility's rate.unit decides which side the line
+  // total bills against.
   m3            Decimal? @db.Decimal(10, 2)
   wasteLoads    Int?     @map("waste_loads")
   // PR B3 — unit drives the facility filter on the summary subtable.

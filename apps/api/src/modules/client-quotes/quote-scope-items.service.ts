@@ -160,8 +160,8 @@ export class QuoteScopeItemsService {
         sourceItemType: "waste",
         label: w.wbsRef,
         description: w.description,
-        qty: w.wasteTonnes !== null ? w.wasteTonnes.toString() : null,
-        unit: w.wasteTonnes !== null ? "T" : null,
+        qty: w.qty !== null ? w.qty.toString() : null,
+        unit: w.qty !== null ? "T" : null,
         notes: w.notes ?? null,
         isVisible: true,
         sortOrder: order++

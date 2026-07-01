@@ -124,7 +124,7 @@ export type WasteRow = {
   wasteType: string | null;
   wasteFacility: string | null;
   unit: string | null;
-  wasteTonnes: string | null;
+  qty: string | null;
   m3: string | null;
   ratePerTonne: string | null;
   lineTotal: string | null;

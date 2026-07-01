@@ -12,8 +12,10 @@ type UpsertWasteDto = {
   wasteType?: string | null;
   wasteFacility?: string | null;
   unit?: string | null;
-  wasteTonnes?: number | null;
-  // PR B4a — m³ companion to wasteTonnes. Manual create/edit accepts
+  // PR chore/schema-hygiene-waste — renamed from `wasteTonnes` (column-name
+  // lie post-B4a; this quantity is tonnes OR m³ depending on facility rate).
+  qty?: number | null;
+  // PR B4a — m³ companion to qty. Manual create/edit accepts
   // either; the sumFromAbove aggregator writes both.
   m3?: number | null;
   wasteLoads?: number | null;
@@ -91,7 +93,7 @@ export class ScopeWasteService {
     // PR B4a.3 — narrow DTO numerics at the call site so CodeQL's
     // dataflow analyzer can see the typeof guards. Downstream Decimal
     // constructors then operate on trusted `number | null` locals.
-    const tonnesN = narrowToNumber(dto.wasteTonnes);
+    const tonnesN = narrowToNumber(dto.qty);
     const m3N = narrowToNumber(dto.m3);
     const loadsN = narrowToNumber(dto.wasteLoads);
     const ratePerTonneN = narrowToNumber(dto.ratePerTonne);
@@ -115,7 +117,7 @@ export class ScopeWasteService {
         wasteType: dto.wasteType ?? null,
         wasteFacility: dto.wasteFacility ?? null,
         unit: dto.unit ?? null,
-        wasteTonnes: toDecimal(tonnesN),
+        qty: toDecimal(tonnesN),
         m3: toDecimal(m3N),
         wasteLoads: loadsN,
         truckDays: toDecimal(truckDays),
@@ -149,7 +151,7 @@ export class ScopeWasteService {
     // PR B4a.3 — narrow DTO numerics at the call site. The resulting
     // locals are typed `number | null` so CodeQL no longer flags the
     // downstream Prisma.Decimal constructors as tainted sinks.
-    const dtoTonnesN = dto.wasteTonnes === undefined ? undefined : narrowToNumber(dto.wasteTonnes);
+    const dtoTonnesN = dto.qty === undefined ? undefined : narrowToNumber(dto.qty);
     const dtoM3N = dto.m3 === undefined ? undefined : narrowToNumber(dto.m3);
     const dtoLoadsN = dto.wasteLoads === undefined ? undefined : narrowToNumber(dto.wasteLoads);
     const dtoRatePerTonneN = dto.ratePerTonne === undefined ? undefined : narrowToNumber(dto.ratePerTonne);
@@ -157,7 +159,7 @@ export class ScopeWasteService {
 
     // Compute effective values for the totals: DTO value (narrowed) wins
     // when present; otherwise fall back to existing row.
-    const tonnes = dtoTonnesN !== undefined ? dtoTonnesN : existing.wasteTonnes ? Number(existing.wasteTonnes) : null;
+    const tonnes = dtoTonnesN !== undefined ? dtoTonnesN : existing.qty ? Number(existing.qty) : null;
     const m3 = dtoM3N !== undefined ? dtoM3N : existing.m3 ? Number(existing.m3) : null;
     const loads = dtoLoadsN !== undefined ? dtoLoadsN : existing.wasteLoads;
     const ratePerTonne = dtoRatePerTonneN !== undefined ? dtoRatePerTonneN : existing.ratePerTonne ? Number(existing.ratePerTonne) : null;
@@ -172,7 +174,7 @@ export class ScopeWasteService {
     if (dto.wasteType !== undefined) data.wasteType = dto.wasteType;
     if (dto.wasteFacility !== undefined) data.wasteFacility = dto.wasteFacility;
     if (dto.unit !== undefined) data.unit = dto.unit;
-    if (dtoTonnesN !== undefined) data.wasteTonnes = toDecimal(dtoTonnesN);
+    if (dtoTonnesN !== undefined) data.qty = toDecimal(dtoTonnesN);
     if (dtoM3N !== undefined) data.m3 = toDecimal(dtoM3N);
     if (dtoLoadsN !== undefined) data.wasteLoads = dtoLoadsN;
     if (dtoRatePerTonneN !== undefined) data.ratePerTonne = toDecimal(dtoRatePerTonneN);
@@ -225,8 +227,9 @@ export class ScopeWasteService {
   // `ratePerTonne` field name is a legacy column name; semantically it's
   // "rate per billing unit" — same number regardless of which side the
   // qty comes from.
-  //   unit === "m³":  qty = m3,          lineTotal = m3 * ratePerTonne + loads * ratePerLoad
-  //   else (default): qty = wasteTonnes, lineTotal = tonnes * ratePerTonne + loads * ratePerLoad
+  //   unit === "m³":  qtyForBilling = m3,  lineTotal = m3 * ratePerTonne + loads * ratePerLoad
+  //   else (default): qtyForBilling = qty, lineTotal = qty * ratePerTonne + loads * ratePerLoad
+  //   (`qty` here is the ScopeWasteItem.qty column — previously `wasteTonnes`.)
   private deriveTotals(
     tonnes: number | null | undefined,
     m3: number | null | undefined,
@@ -348,7 +351,7 @@ export class ScopeWasteService {
         wasteType: g.wasteType,
         wasteFacility: rate?.facility ?? null,
         unit: billingUnit,
-        wasteTonnes: new Prisma.Decimal(tonnesRounded),
+        qty: new Prisma.Decimal(tonnesRounded),
         m3: new Prisma.Decimal(m3Rounded),
         wasteLoads: null as number | null,
         truckDays: null as Prisma.Decimal | null,

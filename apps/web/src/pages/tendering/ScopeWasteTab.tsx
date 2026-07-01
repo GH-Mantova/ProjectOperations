@@ -24,10 +24,11 @@ type WasteRow = {
   // "Sum from above" (regenerable) from manual rows (preserved).
   unit: string | null;
   autoSummed: boolean;
-  // PR B4a — wasteTonnes is back to meaning literal tonnes; m³ is the
-  // companion column. Both are persisted per row; the line total bills
-  // against whichever side matches the facility's rate.unit.
-  wasteTonnes: string | null;
+  // PR B4a — the qty column carries the primary waste quantity (tonnes
+  // by default); m³ is the companion column. Both are persisted per row;
+  // the line total bills against whichever side matches the facility's
+  // rate.unit. Renamed from `wasteTonnes` in chore/schema-hygiene-waste.
+  qty: string | null;
   m3: string | null;
   wasteLoads: number | null;
   truckDays: string | null;
@@ -493,12 +494,12 @@ export function ScopeWasteTab({
                       className="s7-input s7-input--sm"
                       type="number"
                       step="0.001"
-                      defaultValue={row.wasteTonnes ?? ""}
+                      defaultValue={row.qty ?? ""}
                       disabled={!canManage}
                       onBlur={(e) => {
                         const n = e.target.value === "" ? null : Number(e.target.value);
-                        if (String(n) !== String(row.wasteTonnes))
-                          void patchRow(row.id, { wasteTonnes: n });
+                        if (String(n) !== String(row.qty))
+                          void patchRow(row.id, { qty: n });
                       }}
                       style={{ width: 70, textAlign: "right" }}
                     />

@@ -1,0 +1,13 @@
+-- chore/schema-hygiene-waste — rename ScopeWasteItem.waste_tonnes -> qty.
+--
+-- Column-name lie: since PR B4a the column held either tonnes or m³
+-- depending on the facility's rate unit; the aggregator writes both
+-- this column and `m3` per row and bills whichever side matches. The
+-- Prisma field is now `qty` and the DB column follows to keep the two
+-- names aligned.
+--
+-- Hand-written ALTER TABLE RENAME COLUMN — Prisma's non-interactive
+-- migrate produces drop+add for column renames, which would lose all
+-- existing waste quantities. RENAME COLUMN preserves data and is a
+-- metadata-only DDL in PostgreSQL (no table rewrite, no index rebuild).
+ALTER TABLE "scope_waste_items" RENAME COLUMN "waste_tonnes" TO "qty";

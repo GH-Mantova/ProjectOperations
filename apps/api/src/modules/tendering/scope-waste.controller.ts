@@ -25,8 +25,11 @@ class UpsertWasteDto {
   @IsOptional() @IsString() wasteFacility?: string | null;
   // PR B3 — unit drives the facility filter on the summary subtable.
   @IsOptional() @IsString() unit?: string | null;
-  @IsOptional() @Type(() => Number) @IsNumber() wasteTonnes?: number | null;
-  // PR B4a.2 — m³ companion to wasteTonnes. Without this on the
+  // PR chore/schema-hygiene-waste — renamed from `wasteTonnes` (the
+  // column-name lie: since B4a this quantity is tonnes OR m³ depending
+  // on the facility's rate unit).
+  @IsOptional() @Type(() => Number) @IsNumber() qty?: number | null;
+  // PR B4a.2 — m³ companion to qty (previously wasteTonnes). Without this on the
   // controller-side DTO, PATCH bodies carrying `m3` were silently
   // stripped by class-validator's whitelist (the service-side type
   // accepts it but never received it from the wire).
@@ -65,7 +68,7 @@ export class ScopeWasteController {
 
   // PR B4a.4 — same controller-boundary assertion as ScopeOfWorksController.
   // See that controller for the rationale; the CodeQL alert chain reaches
-  // this service via the m3 / wasteTonnes Decimal sinks.
+  // this service via the m3 / qty Decimal sinks.
   private assertObjectBody(dto: unknown): asserts dto is Record<string, unknown> {
     if (typeof dto !== "object" || dto === null || Array.isArray(dto)) {
       throw new BadRequestException("Request body must be a JSON object.");

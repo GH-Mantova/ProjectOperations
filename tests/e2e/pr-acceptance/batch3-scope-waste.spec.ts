@@ -146,7 +146,7 @@ test.describe("Batch 3 — Scope of Works waste subtable (PRs #72, #176, #179, #
       );
       const auto = await rubbleAuto();
       expect(auto).toHaveLength(1);
-      expect(Number(auto[0].wasteTonnes)).toBeCloseTo(12);
+      expect(Number(auto[0].qty)).toBeCloseTo(12);
       expect(Number(auto[0].m3)).toBeCloseTo(5);
       expect(auto[0].wasteFacility).toBeTruthy();
       // Line total bills against the facility rate's unit (t or m³).

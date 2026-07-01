@@ -97,3 +97,4 @@ apps/api/scripts/xero-import-report.md
 # and creates a single junk folder at repo root like "C:ProjectOperations2docs...").
 # Watcher sweeps these at startup; gitignore prevents accidental commit.
 /C:*
+Claude Design/

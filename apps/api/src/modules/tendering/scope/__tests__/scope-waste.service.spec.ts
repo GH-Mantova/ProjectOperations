@@ -131,7 +131,7 @@ describe("ScopeWasteService.sumFromAbove (PR B4a)", () => {
     );
     const concreteRow = calls.find((d) => d.wasteGroup === "Concrete");
     expect(concreteRow?.wasteType).toBe("Clean concrete");
-    expect(Number(concreteRow?.wasteTonnes)).toBe(30); // 12 + 18
+    expect(Number(concreteRow?.qty)).toBe(30); // 12 + 18
     expect(Number(concreteRow?.m3)).toBe(12.5); // 5 + 7.5
     expect(concreteRow?.unit).toBe("t"); // billed by rate.unit
     expect(concreteRow?.wasteFacility).toBe("Cleanaway Lytton");
@@ -153,7 +153,7 @@ describe("ScopeWasteService.sumFromAbove (PR B4a)", () => {
     await svc.sumFromAbove("tender-1", "card-1", "user-1");
     const data = (mocks.scopeWasteItemCreate.mock.calls[0]?.[0] as { data: Record<string, unknown> }).data;
     expect(data.unit).toBe("m³");
-    expect(Number(data.wasteTonnes)).toBe(10); // tonnes still persisted
+    expect(Number(data.qty)).toBe(10); // tonnes still persisted
     expect(Number(data.m3)).toBe(4);
     expect(Number(data.ratePerTonne)).toBe(120);
     expect(Number(data.lineTotal)).toBe(480); // 4 × 120, NOT 10 × 120
@@ -218,7 +218,7 @@ describe("ScopeWasteService.sumFromAbove (PR B4a)", () => {
     expect(data.ratePerTonne).toBeNull();
     expect(data.lineTotal).toBeNull();
     expect(data.unit).toBeNull();
-    expect(Number(data.wasteTonnes)).toBe(5);
+    expect(Number(data.qty)).toBe(5);
     expect(Number(data.m3)).toBe(2);
     expect(data.autoSummed).toBe(true);
   });
@@ -290,7 +290,7 @@ describe("ScopeWasteService.sumFromAbove (PR B4a)", () => {
     const result = await svc.sumFromAbove("tender-1", "card-1", "user-1");
     expect(result).toEqual({ replaced: 0, created: 1 });
     const data = (mocks.scopeWasteItemCreate.mock.calls[0]?.[0] as { data: Record<string, unknown> }).data;
-    expect(Number(data.wasteTonnes)).toBe(10);
+    expect(Number(data.qty)).toBe(10);
     expect(Number(data.m3)).toBe(10);
   });
 
@@ -314,7 +314,7 @@ describe("ScopeWasteService.sumFromAbove (PR B4a)", () => {
     const second = calls.find((d) => d.wasteGroup === "A" && d.wasteType === "B C");
     expect(first).toBeDefined();
     expect(second).toBeDefined();
-    expect(Number(first?.wasteTonnes)).toBe(5);
-    expect(Number(second?.wasteTonnes)).toBe(7);
+    expect(Number(first?.qty)).toBe(5);
+    expect(Number(second?.qty)).toBe(7);
   });
 });

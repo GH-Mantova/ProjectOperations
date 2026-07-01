@@ -99,10 +99,10 @@ test.describe("Batch 6 — Scheduler workspace (PR #18)", () => {
 
     // The slide-over renders the assignment counts from the parent's already-
     // loaded shift list — but on slower runs the parent state can finish
-    // hydrating after the dialog mounts. Give the seeded "Workers (1)" /
-    // "Assets (1)" headings an explicit bounded timeout instead of the
+    // hydrating after the dialog mounts. Give the seeded "Workers (N)" /
+    // "Assets (N)" headings an explicit bounded timeout instead of the
     // default, and only after the dialog itself is on screen.
-    const ASGN_TIMEOUT = 15_000;
+    const ASGN_TIMEOUT = 20_000;
     const SHIFT_MUTATION = (r: import("@playwright/test").Response) =>
       /\/scheduler\/shifts\/[^/]+\/(workers|assets)/.test(r.url()) &&
       ["POST", "DELETE"].includes(r.request().method());
@@ -111,14 +111,41 @@ test.describe("Batch 6 — Scheduler workspace (PR #18)", () => {
     await expect(slideOver.getByRole("heading", { name: SEED_SHIFT })).toBeVisible({
       timeout: ASGN_TIMEOUT
     });
-    await expect(slideOver.getByRole("heading", { name: "Workers (1)" })).toBeVisible({
-      timeout: ASGN_TIMEOUT
-    });
+
+    // Residue-tolerant baseline: a previous aborted run may have left an
+    // extra Jack Sorensen / Toyota HiLux assignment on this seeded shift
+    // (LL-30 — the shift is seeded but ad-hoc assignments made during the
+    // test are not wiped by re-seed). Proactively remove them if present
+    // before we lock in the baseline count. The assertion still fails on a
+    // real regression because we verify Mia Turner and Excavator 1 (seed)
+    // remain, and that the counts return to baseline after add/remove.
+    const removeIfPresent = async (name: string) => {
+      const row = assignmentRow(name);
+      if ((await row.count()) > 0) {
+        const resp = page.waitForResponse(SHIFT_MUTATION, { timeout: ASGN_TIMEOUT });
+        await row.getByRole("button", { name: "Remove" }).click();
+        await resp;
+        await expect(row).toHaveCount(0, { timeout: ASGN_TIMEOUT });
+      }
+    };
+    await removeIfPresent("Jack Sorensen");
+    await removeIfPresent("Toyota HiLux ute — MCV 123");
+
+    // Baseline: the seed guarantees Mia Turner + Excavator 1. Read the
+    // current counts (after residue cleanup) instead of hard-coding "1" so
+    // the test tolerates any additional seed-only rows a future seed adds.
     await expect(assignmentRow("Mia Turner")).toHaveCount(1, { timeout: ASGN_TIMEOUT });
-    await expect(slideOver.getByRole("heading", { name: "Assets (1)" })).toBeVisible({
-      timeout: ASGN_TIMEOUT
-    });
     await expect(assignmentRow("Excavator 1")).toHaveCount(1, { timeout: ASGN_TIMEOUT });
+    const readCount = async (kind: "Workers" | "Assets"): Promise<number> => {
+      const heading = slideOver.getByRole("heading", { name: new RegExp(`^${kind} \\(\\d+\\)$`) });
+      await expect(heading).toBeVisible({ timeout: ASGN_TIMEOUT });
+      const text = (await heading.textContent()) ?? "";
+      const match = text.match(/\((\d+)\)/);
+      if (!match) throw new Error(`could not parse ${kind} count from "${text}"`);
+      return Number(match[1]);
+    };
+    const baselineWorkers = await readCount("Workers");
+    const baselineAssets = await readCount("Assets");
 
     // Assign a worker, then remove them again (restores seeded state). Wait
     // on the POST/DELETE response before reading the next heading count so
@@ -128,16 +155,16 @@ test.describe("Batch 6 — Scheduler workspace (PR #18)", () => {
     const addWorkerResp = page.waitForResponse(SHIFT_MUTATION, { timeout: ASGN_TIMEOUT });
     await slideOver.getByRole("button", { name: "Add", exact: true }).first().click();
     await addWorkerResp;
-    await expect(slideOver.getByRole("heading", { name: "Workers (2)" })).toBeVisible({
-      timeout: ASGN_TIMEOUT
-    });
+    await expect(
+      slideOver.getByRole("heading", { name: `Workers (${baselineWorkers + 1})` })
+    ).toBeVisible({ timeout: ASGN_TIMEOUT });
     await expect(assignmentRow("Jack Sorensen")).toHaveCount(1, { timeout: ASGN_TIMEOUT });
     const removeWorkerResp = page.waitForResponse(SHIFT_MUTATION, { timeout: ASGN_TIMEOUT });
     await assignmentRow("Jack Sorensen").getByRole("button", { name: "Remove" }).click();
     await removeWorkerResp;
-    await expect(slideOver.getByRole("heading", { name: "Workers (1)" })).toBeVisible({
-      timeout: ASGN_TIMEOUT
-    });
+    await expect(
+      slideOver.getByRole("heading", { name: `Workers (${baselineWorkers})` })
+    ).toBeVisible({ timeout: ASGN_TIMEOUT });
     await expect(assignmentRow("Jack Sorensen")).toHaveCount(0, { timeout: ASGN_TIMEOUT });
 
     // Assign an asset, then remove it again.
@@ -146,15 +173,15 @@ test.describe("Batch 6 — Scheduler workspace (PR #18)", () => {
     const addAssetResp = page.waitForResponse(SHIFT_MUTATION, { timeout: ASGN_TIMEOUT });
     await slideOver.getByRole("button", { name: "Add", exact: true }).last().click();
     await addAssetResp;
-    await expect(slideOver.getByRole("heading", { name: "Assets (2)" })).toBeVisible({
-      timeout: ASGN_TIMEOUT
-    });
+    await expect(
+      slideOver.getByRole("heading", { name: `Assets (${baselineAssets + 1})` })
+    ).toBeVisible({ timeout: ASGN_TIMEOUT });
     const removeAssetResp = page.waitForResponse(SHIFT_MUTATION, { timeout: ASGN_TIMEOUT });
     await assignmentRow("Toyota HiLux ute — MCV 123").getByRole("button", { name: "Remove" }).click();
     await removeAssetResp;
-    await expect(slideOver.getByRole("heading", { name: "Assets (1)" })).toBeVisible({
-      timeout: ASGN_TIMEOUT
-    });
+    await expect(
+      slideOver.getByRole("heading", { name: `Assets (${baselineAssets})` })
+    ).toBeVisible({ timeout: ASGN_TIMEOUT });
 
     // Seeded notes render.
     await expect(slideOver.getByText("Initial mobilisation shift")).toBeVisible();

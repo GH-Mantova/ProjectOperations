@@ -1,9 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
-const credentials = {
-  email: "admin@projectops.local",
-  password: "Password123!"
-};
+import { loginAsAdmin } from "./pr-acceptance/helpers";
+
 const apiBaseUrl = "http://127.0.0.1:3000/api/v1";
 
 type TenderListItem = {
@@ -11,17 +9,6 @@ type TenderListItem = {
   tenderNumber: string;
   title: string;
 };
-
-async function login(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(credentials.email);
-  // The Password <label> wraps both the input and a show-password toggle
-  // button, so getByLabel('Password') resolves to two elements under strict
-  // mode. Target the input by its unique placeholder instead.
-  await page.getByPlaceholder("Password").fill(credentials.password);
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Operations Overview" })).toBeVisible();
-}
 
 async function fetchAuthedJson<T>(page: Page, path: string): Promise<T> {
   const token = await page.evaluate(() => window.localStorage.getItem("project-ops.accessToken"));
@@ -51,7 +38,7 @@ async function loadTenderList(page: Page) {
 
 test.describe("Tendering — redesigned register + pipeline", () => {
   test.beforeEach(async ({ page }) => {
-    await login(page);
+    await loginAsAdmin(page);
   });
 
   test("/tenders renders the redesigned register page", async ({ page }) => {

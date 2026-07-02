@@ -98,3 +98,11 @@ apps/api/scripts/xero-import-report.md
 # Watcher sweeps these at startup; gitignore prevents accidental commit.
 /C:*
 Claude Design/
+
+# Overnight-QA scheduled task - local-only run state (durable, always-mounted location).
+# The Master Plan doc stays committable; these transient state files do not dirty the tree.
+docs/qa/qa-checklist.md
+docs/qa/qa-findings.md
+docs/qa/qa-test-data-registry.md
+docs/qa/.qa-run.lock
+docs/qa/qa-run-*.md

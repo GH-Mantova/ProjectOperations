@@ -13,6 +13,16 @@
 
 $ErrorActionPreference = "Stop"
 
+# --- Log encoding: single-source everything as UTF-8 ---
+# Without this the log file ends up with interleaved encodings (LL: seen
+# 2026-07-02): Write-Log used Add-Content with the PS 5.1 default (ANSI)
+# while the node output went through Tee-Object -FilePath, which writes
+# UTF-16LE in PS 5.1. [Console]::OutputEncoding makes PowerShell decode
+# node's UTF-8 stdout correctly; every file write below passes an explicit
+# -Encoding UTF8.
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
+$OutputEncoding = [Text.Encoding]::UTF8
+
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 Set-Location $RepoRoot
 
@@ -21,7 +31,7 @@ New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
 $LogFile = Join-Path $LogDir ("{0}.log" -f (Get-Date -Format "yyyy-MM-dd"))
 
 function Write-Log([string]$msg) {
-    Add-Content -Path $LogFile -Value $msg
+    Add-Content -Path $LogFile -Value $msg -Encoding UTF8
     Write-Host $msg
 }
 
@@ -95,7 +105,13 @@ Write-Log $banner
 $prevErrorActionPreference = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 try {
-    node --no-deprecation "$RepoRoot\scripts\pr-watcher\index.mjs" 2>&1 | Tee-Object -FilePath $LogFile -Append
+    # Tee-Object -FilePath writes UTF-16LE in PS 5.1 -- append UTF-8 per line
+    # instead so the log stays single-encoding end to end.
+    node --no-deprecation "$RepoRoot\scripts\pr-watcher\index.mjs" 2>&1 | ForEach-Object {
+        $line = "$_"
+        Add-Content -Path $LogFile -Value $line -Encoding UTF8
+        Write-Host $line
+    }
     $exit = $LASTEXITCODE
 } finally {
     $ErrorActionPreference = $prevErrorActionPreference

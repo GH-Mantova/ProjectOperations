@@ -107,12 +107,31 @@
       "type": "shell",
       "command": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pr-watcher/start-watcher.ps1",
       "isBackground": true,
+      "runOptions": { "runOn": "folderOpen" },
       "presentation": {
         "reveal": "always",
         "panel": "dedicated"
       },
       "problemMatcher": [],
       "detail": "Starts the v2 PR watcher via start-watcher.ps1 — pre-flights (main branch + clean tree + gh/claude on PATH), single-instance guard (refuses if another watcher is already running), and child-process reaping (kills only PIDs the watcher itself spawned; never Marco's interactive Claude sessions). Env defaults: AUTO_REVIEW=true, AUTO_UPDATE=true, AUTO_MERGE_POLICY=tests-docs, MAX_TURNS=240. Ctrl+C in the pane to stop."
+    },
+    {
+      "label": "e2e: tendering",
+      "type": "npm",
+      "script": "test:tendering:e2e",
+      "problemMatcher": [],
+      "group": "test",
+      "presentation": { "panel": "dedicated", "reveal": "always" },
+      "detail": "pnpm test:tendering:e2e — Playwright tendering suite."
+    },
+    {
+      "label": "watcher: tail log",
+      "type": "shell",
+      "command": "powershell -NoProfile -Command \"Get-Content -Wait -Tail 40 (Get-ChildItem scripts/pr-watcher/logs/*.log | Sort-Object LastWriteTime | Select-Object -Last 1)\"",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated", "reveal": "always" },
+      "detail": "Live tail of the newest PR-watcher log file."
     },
     {
       "label": "branch: prune (remote + local)",

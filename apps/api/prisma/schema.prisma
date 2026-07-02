@@ -530,6 +530,7 @@ model Site {
   updatedAt       DateTime         @updatedAt @map("updated_at")
   client          Client?          @relation(fields: [clientId], references: [id], onDelete: SetNull)
   jobs            Job[]
+  projects        Project[]
   formSubmissions FormSubmission[]
   tenders         Tender[]
 
@@ -1960,12 +1961,16 @@ model ProjectNumberSequence {
 model Project {
   id                      String               @id @default(cuid())
   projectNumber           String               @unique @map("project_number")
+  jobNumber               String?              @unique @map("job_number")
+  legacyJobId             String?              @unique @map("legacy_job_id")
   name                    String
   status                  ProjectStatus        @default(MOBILISING)
   sourceTenderId          String?              @map("source_tender_id")
   sourceTender            Tender?              @relation(fields: [sourceTenderId], references: [id], onDelete: SetNull)
   clientId                String               @map("client_id")
   client                  Client               @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  siteId                  String?              @map("site_id")
+  site                    Site?                @relation(fields: [siteId], references: [id], onDelete: SetNull)
   siteAddressLine1        String               @map("site_address_line1")
   siteAddressLine2        String?              @map("site_address_line2")
   siteAddressSuburb       String               @map("site_address_suburb")

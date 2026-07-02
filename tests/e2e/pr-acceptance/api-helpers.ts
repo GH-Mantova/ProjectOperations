@@ -17,12 +17,33 @@ export const TEMPLATE_TENDER_ID = "seed-tender-template-100";
 export const TEMPLATE_CARD_DEM = `${TEMPLATE_TENDER_ID}-card-DEM`;
 export const TEMPLATE_CARD_CIV = `${TEMPLATE_TENDER_ID}-card-CIV`;
 
-export async function apiToken(request: APIRequestContext): Promise<string> {
+// Access tokens live 15m (auth.accessTtl); reuse them well inside that window
+// so per-test fixture setup doesn't hammer /auth/login — the per-IP auth rate
+// limit (5 logins / 60s) otherwise trips mid-run and 429s every later login.
+const TOKEN_CACHE_TTL_MS = 10 * 60 * 1000;
+const tokenCache = new Map<string, { token: string; fetchedAt: number }>();
+
+async function cachedLoginToken(
+  request: APIRequestContext,
+  email: string,
+  password: string,
+  label: string
+): Promise<string> {
+  const hit = tokenCache.get(email);
+  if (hit && Date.now() - hit.fetchedAt < TOKEN_CACHE_TTL_MS) {
+    return hit.token;
+  }
   const res = await request.post(`${API_BASE}/auth/login`, {
-    data: { email: ADMIN.email, password: ADMIN.password }
+    data: { email, password }
   });
-  expect(res.ok(), `POST /auth/login → ${res.status()}`).toBeTruthy();
-  return ((await res.json()) as { accessToken: string }).accessToken;
+  expect(res.ok(), `POST /auth/login (${label}) → ${res.status()}`).toBeTruthy();
+  const token = ((await res.json()) as { accessToken: string }).accessToken;
+  tokenCache.set(email, { token, fetchedAt: Date.now() });
+  return token;
+}
+
+export async function apiToken(request: APIRequestContext): Promise<string> {
+  return cachedLoginToken(request, ADMIN.email, ADMIN.password, "admin");
 }
 
 /**
@@ -31,11 +52,7 @@ export async function apiToken(request: APIRequestContext): Promise<string> {
  * so worker-side fixtures must authenticate as Sean, not ADMIN.
  */
 export async function fieldWorkerToken(request: APIRequestContext): Promise<string> {
-  const res = await request.post(`${API_BASE}/auth/login`, {
-    data: { email: FIELD_WORKER.email, password: FIELD_WORKER.password }
-  });
-  expect(res.ok(), `POST /auth/login (field worker) → ${res.status()}`).toBeTruthy();
-  return ((await res.json()) as { accessToken: string }).accessToken;
+  return cachedLoginToken(request, FIELD_WORKER.email, FIELD_WORKER.password, "field worker");
 }
 
 export async function apiFetch<T = unknown>(

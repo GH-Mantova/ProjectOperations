@@ -1,5 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
+import { ADMIN_STORAGE_STATE } from "./tests/e2e/storage-state";
+
 const apiPort = 3000;
 const webPort = 4173;
 const isWindows = process.platform === "win32";
@@ -26,22 +28,34 @@ export default defineConfig({
     video: "retain-on-failure"
   },
   projects: [
+    // Logs in once per seeded persona and saves storageState — see
+    // tests/e2e/auth.setup.ts. Keeps per-test logins off the auth rate limit.
+    {
+      name: "setup",
+      testMatch: /auth\.setup\.ts/
+    },
     {
       name: "chromium",
+      dependencies: ["setup"],
       use: {
-        ...devices["Desktop Chrome"]
+        ...devices["Desktop Chrome"],
+        storageState: ADMIN_STORAGE_STATE
       }
     },
     {
       name: "firefox",
+      dependencies: ["setup"],
       use: {
-        ...devices["Desktop Firefox"]
+        ...devices["Desktop Firefox"],
+        storageState: ADMIN_STORAGE_STATE
       }
     },
     {
       name: "webkit",
+      dependencies: ["setup"],
       use: {
-        ...devices["Desktop Safari"]
+        ...devices["Desktop Safari"],
+        storageState: ADMIN_STORAGE_STATE
       }
     }
   ],

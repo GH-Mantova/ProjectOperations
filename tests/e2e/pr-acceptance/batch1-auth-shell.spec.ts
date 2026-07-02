@@ -34,6 +34,10 @@
 import { expect, test } from "@playwright/test";
 import { ADMIN, VIEWER, loginAsAdmin, loginAsViewer } from "./helpers";
 
+// This file exercises the login flow itself, so it must start signed out —
+// opt out of the shared admin storageState the browser projects inherit.
+test.use({ storageState: { cookies: [], origins: [] } });
+
 test.describe("Batch 1 — Auth, Shell & Sidebar Navigation (PRs #12, #13, #29, #41, #48)", () => {
   // ── Login flow ────────────────────────────────────────────────────────────
 

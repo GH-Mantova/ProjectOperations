@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   DndContext,
   PointerSensor,
@@ -28,7 +28,8 @@ import {
   type WidgetSubConfig
 } from "./types";
 import { CustomisePanel } from "./CustomisePanel";
-import { CustomWidgetBuilderModal } from "./CustomWidgetBuilderModal";
+import { WidgetGalleryModal } from "./WidgetGalleryModal";
+import { insertWidgetAt } from "./widgetGallery";
 import { DashboardSwitcher } from "./DashboardSwitcher";
 import { DeleteDashboardModal } from "./DeleteDashboardModal";
 import { WidgetSettingsPopover } from "./WidgetSettingsPopover";
@@ -64,10 +65,13 @@ export function DashboardCanvas({
   const [active, setActive] = useState<UserDashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [customiseOpen, setCustomiseOpen] = useState(false);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  // Placement mode — explicit state, never derived from sibling state.
+  const [placementActive, setPlacementActive] = useState(false);
+  const [pendingWidget, setPendingWidget] = useState<WidgetConfigEntry | null>(null);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [builderOpen, setBuilderOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [openSettingsId, setOpenSettingsId] = useState<string | null>(null);
   const saveTimerRef = useRef<number | null>(null);
@@ -236,15 +240,50 @@ export function DashboardCanvas({
     updateConfig(next);
   };
 
-  const addWidget = (entry: WidgetConfigEntry) => {
+  // Gallery hand-off: close the modal and enter placement mode. When the
+  // dashboard has no visible widgets there is nowhere to choose, so append
+  // immediately — the configured widget is never discarded.
+  const beginPlacement = (entry: WidgetConfigEntry) => {
+    setGalleryOpen(false);
+    if (!active || active.config.widgets.filter((w) => w.visible).length === 0) {
+      placeEntry(entry, null);
+      return;
+    }
+    setPendingWidget(entry);
+    setPlacementActive(true);
+  };
+
+  /** Insert at `index` within the order-sorted list; null appends to the end. */
+  const placeEntry = (entry: WidgetConfigEntry, index: number | null) => {
     if (!active) return;
-    const nextOrder = active.config.widgets.reduce((max, w) => Math.max(max, w.order), -1) + 1;
     const next: UserDashboardConfig = {
       ...active.config,
-      widgets: [...active.config.widgets, { ...entry, order: nextOrder }]
+      widgets: insertWidgetAt(active.config.widgets, entry, index)
     };
+    setPendingWidget(null);
+    setPlacementActive(false);
     updateConfig(next);
   };
+
+  // Escape or a click outside a drop slot appends the pending widget to the
+  // end — placement can be dismissed but the configured widget is kept.
+  useEffect(() => {
+    if (!placementActive || !pendingWidget) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") placeEntry(pendingWidget, null);
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest(".td-canvas__dropslot")) return;
+      placeEntry(pendingWidget, null);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onPointerDown);
+    };
+  }, [placementActive, pendingWidget, active]);
 
   const updateWidgetSpan = (widgetId: string, colSpan: number, rowSpan: number) => {
     if (!active) return;
@@ -324,8 +363,8 @@ export function DashboardCanvas({
               <button
                 type="button"
                 className="s7-btn s7-btn--secondary s7-btn--sm"
-                onClick={() => setBuilderOpen(true)}
-                data-testid="add-custom-widget-button"
+                onClick={() => setGalleryOpen(true)}
+                data-testid="add-widget-button"
               >
                 + Add widget
               </button>
@@ -364,36 +403,64 @@ export function DashboardCanvas({
         />
       ) : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          {placementActive && pendingWidget ? (
+            <div className="td-canvas__placement-banner" role="status">
+              Placing <b>{WIDGET_BY_TYPE[pendingWidget.type]?.name ?? pendingWidget.type}</b> — click a highlighted
+              slot, or press Escape to add it at the end.
+            </div>
+          ) : null}
           <SortableContext items={visibleWidgets.map((w) => w.id)} strategy={rectSortingStrategy}>
-            <div className="td-canvas__widgets">
-              {visibleWidgets.map((entry) => {
+            <div className={placementActive ? "td-canvas__widgets td-canvas__widgets--placement" : "td-canvas__widgets"}>
+              {visibleWidgets.map((entry, visibleIndex) => {
                 const meta = WIDGET_BY_TYPE[entry.type];
+                const dropSlot =
+                  placementActive && pendingWidget ? (
+                    <DropSlot
+                      key={`slot-${entry.id}`}
+                      pending={pendingWidget}
+                      onPlace={() => placeEntry(pendingWidget, orderedWidgets.indexOf(entry))}
+                      testId={`dropslot-${visibleIndex}`}
+                    />
+                  ) : null;
                 if (!meta) {
                   return (
-                    <div key={entry.id} className="td-canvas__slot td-canvas__slot--half">
-                      <div className="s7-card">
-                        <p style={{ color: "var(--text-muted)" }}>Unknown widget: {entry.type}</p>
+                    <Fragment key={entry.id}>
+                      {dropSlot}
+                      <div className="td-canvas__slot td-canvas__slot--half">
+                        <div className="s7-card">
+                          <p style={{ color: "var(--text-muted)" }}>Unknown widget: {entry.type}</p>
+                        </div>
                       </div>
-                    </div>
+                    </Fragment>
                   );
                 }
                 return (
-                  <SortableWidget
-                    key={entry.id}
-                    entry={entry}
-                    meta={meta}
-                    globalPeriod={active.config.period as WidgetPeriod}
-                    settingsOpen={openSettingsId === entry.id}
-                    onOpenSettings={() =>
-                      setOpenSettingsId((prev) => (prev === entry.id ? null : entry.id))
-                    }
-                    onCloseSettings={() => setOpenSettingsId(null)}
-                    onConfigChange={(nextSub) => updateWidgetConfig(entry.id, nextSub)}
-                    onApplySettings={(payload) => applyWidgetSettings(entry.id, payload)}
-                    onResize={(colSpan, rowSpan) => updateWidgetSpan(entry.id, colSpan, rowSpan)}
-                  />
+                  <Fragment key={entry.id}>
+                    {dropSlot}
+                    <SortableWidget
+                      entry={entry}
+                      meta={meta}
+                      globalPeriod={active.config.period as WidgetPeriod}
+                      settingsOpen={openSettingsId === entry.id}
+                      onOpenSettings={() =>
+                        setOpenSettingsId((prev) => (prev === entry.id ? null : entry.id))
+                      }
+                      onCloseSettings={() => setOpenSettingsId(null)}
+                      onConfigChange={(nextSub) => updateWidgetConfig(entry.id, nextSub)}
+                      onApplySettings={(payload) => applyWidgetSettings(entry.id, payload)}
+                      onResize={(colSpan, rowSpan) => updateWidgetSpan(entry.id, colSpan, rowSpan)}
+                    />
+                  </Fragment>
                 );
               })}
+              {placementActive && pendingWidget ? (
+                <DropSlot
+                  pending={pendingWidget}
+                  onPlace={() => placeEntry(pendingWidget, null)}
+                  testId="dropslot-end"
+                  end
+                />
+              ) : null}
             </div>
           </SortableContext>
         </DndContext>
@@ -409,11 +476,11 @@ export function DashboardCanvas({
         />
       ) : null}
 
-      {active ? (
-        <CustomWidgetBuilderModal
-          open={builderOpen}
-          onClose={() => setBuilderOpen(false)}
-          onCreate={addWidget}
+      {active && galleryOpen ? (
+        <WidgetGalleryModal
+          globalPeriod={active.config.period as WidgetPeriod}
+          onClose={() => setGalleryOpen(false)}
+          onAdd={beginPlacement}
         />
       ) : null}
 
@@ -427,6 +494,44 @@ export function DashboardCanvas({
         />
       ) : null}
     </div>
+  );
+}
+
+// Placement-mode drop zone — dashed accent slot per the approved Concept B
+// mockup. Click to land the configured widget at this position.
+function DropSlot({
+  pending,
+  onPlace,
+  testId,
+  end = false
+}: {
+  pending: WidgetConfigEntry;
+  onPlace: () => void;
+  testId: string;
+  end?: boolean;
+}) {
+  const meta = WIDGET_BY_TYPE[pending.type];
+  // In-between slots stay 1 column wide so the existing grid keeps its
+  // shape; only the end slot previews the widget's real width.
+  const { colSpan } = resolveSpan(meta, pending);
+  return (
+    <button
+      type="button"
+      className="td-canvas__dropslot"
+      style={{ gridColumn: `span ${end ? colSpan : 1}` }}
+      onClick={onPlace}
+      data-testid={testId}
+    >
+      <span className="td-canvas__dropslot-glyph" aria-hidden>
+        ⬇
+      </span>
+      {end ? "Place at end" : "Place here"}
+      {end ? (
+        <span className="td-canvas__dropslot-sub">
+          “{meta?.name ?? pending.type}” will appear in this slot
+        </span>
+      ) : null}
+    </button>
   );
 }
 

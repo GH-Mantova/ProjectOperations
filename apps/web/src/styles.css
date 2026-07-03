@@ -8386,6 +8386,294 @@ textarea {
   border-radius: 12px;
 }
 
+/* ── Add-widget placement mode (gallery step 3) ─────────────────── */
+.td-canvas__placement-banner {
+  background: var(--brand-primary-light, #E6F0F1);
+  color: var(--brand-primary-dark, #004449);
+  border-radius: var(--radius-md, 8px);
+  padding: 12px 16px;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+/* Dim the existing widgets and suspend their interactions while placing. */
+.td-canvas__widgets--placement .td-canvas__slot {
+  opacity: 0.55;
+  pointer-events: none;
+}
+.td-canvas__dropslot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 150px;
+  border: 2px dashed var(--brand-accent, #FEAA6D);
+  border-radius: var(--radius-lg, 12px);
+  background: color-mix(in srgb, var(--brand-accent, #FEAA6D) 8%, transparent);
+  color: var(--brand-accent-dark, #E8914F);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease, box-shadow 120ms ease;
+}
+.td-canvas__dropslot:hover,
+.td-canvas__dropslot:focus-visible {
+  background: color-mix(in srgb, var(--brand-accent, #FEAA6D) 18%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-accent, #FEAA6D) 50%, transparent);
+}
+.td-canvas__dropslot-glyph { font-size: 18px; }
+.td-canvas__dropslot-sub {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--text-secondary, #6B7280);
+}
+
+/* ── Add-widget gallery modal (steps 1–2) ───────────────────────── */
+.wg-modal {
+  max-height: 90vh;
+  overflow: auto;
+}
+.wg-steps {
+  margin: 4px 0 12px;
+  font-size: 12px;
+  color: var(--text-muted, #9CA3AF);
+}
+.wg-steps b { font-weight: 400; }
+.wg-steps .wg-steps__active {
+  color: var(--brand-primary, #005B61);
+  font-weight: 600;
+}
+.wg-body {
+  display: flex;
+  min-height: 380px;
+  border: 1px solid var(--border-default, #E5E7EB);
+  border-radius: var(--radius-md, 8px);
+  overflow: hidden;
+}
+.wg-cats {
+  width: 180px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-default, #E5E7EB);
+  padding: 12px 0;
+  background: var(--surface-subtle, #F5F5F4);
+  display: flex;
+  flex-direction: column;
+}
+.wg-cat {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 44px;
+  padding: 11px 18px;
+  font-size: 14px;
+  border: none;
+  border-left: 3px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.wg-cat:hover { background: var(--surface-hover, #EEEEEC); }
+.wg-cat--active {
+  background: var(--surface-card, #fff);
+  border-left-color: var(--brand-accent, #FEAA6D);
+  font-weight: 600;
+}
+.wg-gallery {
+  flex: 1;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  align-content: start;
+  /* Buttons report broken intrinsic heights to stretched grid tracks in
+     Chrome — top-align items so each card sizes to its own content. */
+  align-items: start;
+  overflow-y: auto;
+  max-height: 60vh;
+}
+.wg-gcard {
+  display: block;
+  text-align: left;
+  border: 1px solid var(--border-default, #E5E7EB);
+  border-radius: var(--radius-md, 8px);
+  padding: 11px;
+  background: var(--surface-card, #fff);
+  cursor: pointer;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+  /* Fixed height: Chrome buttons report broken intrinsic heights to grid
+     track sizing, so auto-height cards overlap rows. 110px thumb + title +
+     two clamped description lines + padding. */
+  height: 196px;
+  overflow: hidden;
+}
+.wg-gcard:hover {
+  border-color: var(--brand-primary, #005B61);
+  box-shadow: var(--shadow-card, 0 1px 3px rgba(0, 0, 0, 0.06));
+}
+.wg-gcard--selected {
+  border: 2px solid var(--brand-primary, #005B61);
+  background: var(--brand-primary-light, #E6F0F1);
+  padding: 10px;
+}
+/* Buttons are not reliable flex containers in Chrome — the column layout
+   lives on this inner wrapper instead of the .wg-gcard button itself. */
+.wg-gcard__body {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.wg-thumb {
+  height: 110px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-subtle, #F5F5F4);
+  border-radius: 6px;
+  margin-bottom: 8px;
+  overflow: hidden;
+  pointer-events: none;
+}
+.wg-thumb__fit {
+  width: 100%;
+  transform: scale(0.82);
+}
+.wg-thumb__scale {
+  width: 300px;
+  flex-shrink: 0;
+  transform: scale(0.36);
+  transform-origin: center center;
+}
+.wg-thumb__list {
+  font-size: 11px;
+  line-height: 1.9;
+  color: var(--text-secondary, #6B7280);
+  width: 130px;
+  display: flex;
+  flex-direction: column;
+}
+.wg-thumb__row { display: flex; justify-content: space-between; }
+.wg-thumb__row-danger { color: var(--status-danger, #EF4444); }
+.wg-thumb__row-warn { color: var(--status-warning, #F59E0B); }
+.wg-thumb__row-ok { color: var(--brand-primary, #005B61); }
+.wg-thumb__custom-glyph {
+  font-size: 22px;
+  color: var(--brand-primary, #005B61);
+  text-align: center;
+}
+.wg-gcard__title { font-size: 13px; font-weight: 600; }
+.wg-gcard__desc {
+  font-size: 11.5px;
+  color: var(--text-secondary, #6B7280);
+  margin-top: 2px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.wg-config {
+  display: flex;
+  border: 1px solid var(--border-default, #E5E7EB);
+  border-radius: var(--radius-md, 8px);
+  overflow: hidden;
+  min-height: 380px;
+}
+.wg-form {
+  width: 320px;
+  flex-shrink: 0;
+  padding: 18px;
+  border-right: 1px solid var(--border-default, #E5E7EB);
+  overflow-y: auto;
+  max-height: 60vh;
+}
+.wg-form__label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--text-muted, #9CA3AF);
+  text-transform: uppercase;
+  margin: 14px 0 5px;
+}
+.wg-form__label:first-child { margin-top: 0; }
+.wg-form__hint {
+  font-size: 12px;
+  color: var(--text-muted, #9CA3AF);
+  margin: 6px 0 0;
+}
+.wg-form__pills {
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+.wg-form__pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.wg-pill {
+  min-height: 44px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid var(--border-subtle, rgba(0, 0, 0, 0.12));
+  background: var(--surface-card, #fff);
+  color: var(--text-muted, #6B7280);
+  cursor: pointer;
+}
+.wg-pill--on {
+  background: var(--brand-accent, #FEAA6D);
+  border-color: var(--brand-accent, #FEAA6D);
+  color: var(--brand-dark, #242424);
+}
+.wg-preview {
+  flex: 1;
+  padding: 18px;
+  background: var(--surface-subtle, #F5F5F4);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  overflow-y: auto;
+  max-height: 60vh;
+}
+.wg-preview__badge {
+  font-size: 11px;
+  color: var(--brand-primary, #005B61);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.wg-preview__card {
+  width: min(380px, 100%);
+  background: var(--surface-card, #fff);
+  border-radius: var(--radius-lg, 12px);
+  box-shadow: var(--shadow-card, 0 1px 3px rgba(0, 0, 0, 0.06));
+  padding: 12px;
+}
+@media (max-width: 768px) {
+  .wg-body,
+  .wg-config { flex-direction: column; }
+  .wg-cats {
+    width: 100%;
+    flex-direction: row;
+    overflow-x: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--border-default, #E5E7EB);
+    padding: 0;
+  }
+  .wg-cat { border-left: none; border-bottom: 3px solid transparent; }
+  .wg-cat--active { border-bottom-color: var(--brand-accent, #FEAA6D); }
+  .wg-gallery { grid-template-columns: repeat(2, 1fr); }
+  .wg-form {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--border-default, #E5E7EB);
+  }
+}
+
 /* Widget settings popover */
 .widget-settings-popover {
   position: absolute;

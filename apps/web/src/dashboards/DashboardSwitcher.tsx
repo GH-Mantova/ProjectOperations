@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { DeleteDashboardModal } from "./DeleteDashboardModal";
 import { NewDashboardModal } from "./NewDashboardModal";
-import type { UserDashboard } from "./types";
+import { canDeleteDashboard, type UserDashboard } from "./types";
 import { useUserDashboardsActions } from "./userDashboards";
 
 type Props = {
@@ -16,6 +17,10 @@ export function DashboardSwitcher({ slug, dashboards, activeId, onSelect, onList
   const [open, setOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<UserDashboard | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -33,10 +38,31 @@ export function DashboardSwitcher({ slug, dashboards, activeId, onSelect, onList
     onListRefresh();
   };
 
-  const deleteDashboard = async (id: string) => {
-    if (!window.confirm("Delete this dashboard?")) return;
-    await remove(id);
-    onListRefresh();
+  const openDeleteConfirm = (dash: UserDashboard) => {
+    setDeleteTarget(dash);
+    setDeleteError(null);
+    setIsDeleteConfirmOpen(true);
+  };
+
+  const closeDeleteConfirm = () => {
+    setIsDeleteConfirmOpen(false);
+    setDeleteTarget(null);
+    setDeleteError(null);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      await remove(deleteTarget.id);
+      closeDeleteConfirm();
+      onListRefresh();
+    } catch (err) {
+      setDeleteError((err as Error).message || "Could not delete dashboard.");
+    } finally {
+      setDeleteBusy(false);
+    }
   };
 
   const rename = async (dash: UserDashboard) => {
@@ -213,8 +239,8 @@ export function DashboardSwitcher({ slug, dashboards, activeId, onSelect, onList
                     <button
                       type="button"
                       className="s7-btn s7-btn--danger s7-btn--sm"
-                      onClick={() => void deleteDashboard(d.id)}
-                      disabled={d.isSystem}
+                      onClick={() => openDeleteConfirm(d)}
+                      disabled={!canDeleteDashboard(d)}
                     >
                       Delete
                     </button>
@@ -224,6 +250,16 @@ export function DashboardSwitcher({ slug, dashboards, activeId, onSelect, onList
             </div>
           </div>
         </div>
+      ) : null}
+
+      {isDeleteConfirmOpen && deleteTarget ? (
+        <DeleteDashboardModal
+          dashboard={deleteTarget}
+          busy={deleteBusy}
+          error={deleteError}
+          onCancel={closeDeleteConfirm}
+          onConfirm={() => void confirmDelete()}
+        />
       ) : null}
     </div>
   );

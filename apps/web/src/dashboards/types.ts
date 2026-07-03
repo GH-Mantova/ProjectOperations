@@ -51,6 +51,12 @@ export type UserDashboard = {
   updatedAt: string;
 };
 
+/** System dashboards are seeded per user and must stay intact — the same rule
+ *  that guards rename. Custom (non-system) dashboards are deletable. */
+export function canDeleteDashboard(dashboard: Pick<UserDashboard, "isSystem">): boolean {
+  return !dashboard.isSystem;
+}
+
 export type WidgetCategory =
   | "operations"
   | "tendering"

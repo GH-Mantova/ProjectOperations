@@ -9,6 +9,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { useNavigate } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../auth/AuthContext";
 import { WIDGET_BY_TYPE } from "./widgetRegistry";
@@ -16,6 +17,7 @@ import {
   GRID_ROW_HEIGHT_PX,
   PERIOD_LABELS,
   PERIOD_ORDER,
+  canDeleteDashboard,
   resolveSpan,
   type UserDashboard,
   type UserDashboardConfig,
@@ -29,6 +31,7 @@ import { CustomisePanel } from "./CustomisePanel";
 import { WidgetGalleryModal } from "./WidgetGalleryModal";
 import { insertWidgetAt } from "./widgetGallery";
 import { DashboardSwitcher } from "./DashboardSwitcher";
+import { DeleteDashboardModal } from "./DeleteDashboardModal";
 import { WidgetSettingsPopover } from "./WidgetSettingsPopover";
 import { useUserDashboardsActions } from "./userDashboards";
 
@@ -56,7 +59,8 @@ export function DashboardCanvas({
   actions
 }: Props) {
   const { authFetch } = useAuth();
-  const { invalidate } = useUserDashboardsActions();
+  const { invalidate, remove } = useUserDashboardsActions();
+  const navigate = useNavigate();
   const [dashboards, setDashboards] = useState<UserDashboard[] | null>(null);
   const [active, setActive] = useState<UserDashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +69,9 @@ export function DashboardCanvas({
   // Placement mode — explicit state, never derived from sibling state.
   const [placementActive, setPlacementActive] = useState(false);
   const [pendingWidget, setPendingWidget] = useState<WidgetConfigEntry | null>(null);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [openSettingsId, setOpenSettingsId] = useState<string | null>(null);
   const saveTimerRef = useRef<number | null>(null);
@@ -178,6 +185,27 @@ export function DashboardCanvas({
 
   const saveFromPanel = (next: UserDashboardConfig, nextName?: string) => {
     updateConfig(next, nextName);
+  };
+
+  const confirmDeleteActive = async () => {
+    if (!active || !canDeleteDashboard(active)) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      await remove(active.id);
+      setIsDeleteConfirmOpen(false);
+      if (mode === "by-id") {
+        // The deleted dashboard's route no longer exists — land on the
+        // default (Operations) dashboard.
+        navigate("/");
+      } else if (dashboardSlug) {
+        await loadBySlug(dashboardSlug);
+      }
+    } catch (err) {
+      setDeleteError((err as Error).message || "Could not delete dashboard.");
+    } finally {
+      setDeleteBusy(false);
+    }
   };
 
   const updateWidgetConfig = (widgetId: string, nextSub: WidgetSubConfig) => {
@@ -343,6 +371,19 @@ export function DashboardCanvas({
               <button type="button" className="s7-btn s7-btn--secondary s7-btn--sm" onClick={() => setCustomiseOpen(true)}>
                 Customise
               </button>
+              <button
+                type="button"
+                className="s7-btn s7-btn--danger s7-btn--sm"
+                onClick={() => {
+                  setDeleteError(null);
+                  setIsDeleteConfirmOpen(true);
+                }}
+                disabled={!canDeleteDashboard(active)}
+                title={canDeleteDashboard(active) ? undefined : "System dashboards cannot be deleted"}
+                data-testid="delete-dashboard-button"
+              >
+                Delete
+              </button>
             </>
           ) : null}
         </div>
@@ -440,6 +481,16 @@ export function DashboardCanvas({
           globalPeriod={active.config.period as WidgetPeriod}
           onClose={() => setGalleryOpen(false)}
           onAdd={beginPlacement}
+        />
+      ) : null}
+
+      {active && isDeleteConfirmOpen ? (
+        <DeleteDashboardModal
+          dashboard={active}
+          busy={deleteBusy}
+          error={deleteError}
+          onCancel={() => setIsDeleteConfirmOpen(false)}
+          onConfirm={() => void confirmDeleteActive()}
         />
       ) : null}
     </div>

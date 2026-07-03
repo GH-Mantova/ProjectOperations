@@ -1965,7 +1965,7 @@ model Project {
   legacyJobId             String?              @unique @map("legacy_job_id")
   name                    String
   status                  ProjectStatus        @default(MOBILISING)
-  sourceTenderId          String?              @map("source_tender_id")
+  sourceTenderId          String?              @unique @map("source_tender_id")
   sourceTender            Tender?              @relation(fields: [sourceTenderId], references: [id], onDelete: SetNull)
   clientId                String               @map("client_id")
   client                  Client               @relation(fields: [clientId], references: [id], onDelete: Restrict)
@@ -2014,7 +2014,6 @@ model Project {
 
   @@index([status])
   @@index([clientId])
-  @@index([sourceTenderId])
   @@map("projects")
 }
 

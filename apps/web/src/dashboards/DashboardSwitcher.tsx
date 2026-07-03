@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { DeleteDashboardModal } from "./DeleteDashboardModal";
 import { NewDashboardModal } from "./NewDashboardModal";
-import { canDeleteDashboard, type UserDashboard } from "./types";
+import { useAuth } from "../auth/AuthContext";
+import { canDeleteDashboard, canRenameDashboard, type UserDashboard } from "./types";
 import { useUserDashboardsActions } from "./userDashboards";
 
 type Props = {
@@ -13,6 +14,8 @@ type Props = {
 };
 
 export function DashboardSwitcher({ slug, dashboards, activeId, onSelect, onListRefresh }: Props) {
+  const { user } = useAuth();
+  const isAdmin = Boolean(user?.isSuperUser || user?.permissions.includes("platform.admin"));
   const { setDefault: setDefaultApi, remove, rename: renameApi } = useUserDashboardsActions();
   const [open, setOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
@@ -232,7 +235,8 @@ export function DashboardSwitcher({ slug, dashboards, activeId, onSelect, onList
                       type="button"
                       className="s7-btn s7-btn--secondary s7-btn--sm"
                       onClick={() => void rename(d)}
-                      disabled={d.isSystem}
+                      disabled={!canRenameDashboard(d, { isAdmin })}
+                      title={canRenameDashboard(d, { isAdmin }) ? undefined : "Only admins can rename system dashboards"}
                     >
                       Rename
                     </button>

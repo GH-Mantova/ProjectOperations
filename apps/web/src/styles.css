@@ -8314,16 +8314,15 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 220px;
-  overflow-y: auto;
 }
 .widget-field-list__row {
   display: grid;
   grid-template-columns: 16px 1fr auto;
   align-items: center;
   gap: 8px;
+  min-height: 44px;
   padding: 4px 6px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm, 6px);
   background: transparent;
 }
 .widget-field-list__row:hover { background: var(--surface-subtle, rgba(0,0,0,0.04)); }
@@ -8674,18 +8673,26 @@ textarea {
   }
 }
 
-/* Widget settings popover */
+/* Widget settings popover — rendered in a portal (S3-005: inside the grid
+   slot it inherited overflow:hidden + header padding rules and clipped to a
+   double-scrollbox). Fixed positioning comes inline from the component; the
+   class only owns sizing and appearance. One natural vertical scroll on the
+   popover itself when content is genuinely long — no nested scrollboxes. */
 .widget-settings-popover {
   position: absolute;
   top: 42px;
   right: 10px;
-  width: 260px;
+  width: min(320px, calc(100vw - 16px));
+  min-width: 260px;
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+  overflow-x: hidden;
   background: var(--surface-card, white);
   border: 1px solid var(--border-subtle, rgba(0,0,0,0.08));
-  border-radius: 8px;
+  border-radius: var(--radius-md, 8px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
   padding: 14px;
-  z-index: 20;
+  z-index: 60;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -8696,22 +8703,28 @@ textarea {
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 .widget-settings-popover__multiselect {
-  max-height: 140px;
-  overflow-y: auto;
   border: 1px solid var(--border-subtle, rgba(0,0,0,0.08));
-  border-radius: 6px;
+  border-radius: var(--radius-sm, 6px);
   padding: 4px;
 }
 .widget-settings-popover__multiselect label {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   align-items: center;
-  padding: 4px 6px;
+  min-height: 44px;
+  padding: 4px 8px;
   font-size: 13px;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--radius-sm, 4px);
+}
+.widget-settings-popover__multiselect label span {
+  white-space: normal;
+  overflow-wrap: break-word;
+  min-width: 0;
 }
 .widget-settings-popover__multiselect label:hover { background: var(--surface-subtle, rgba(0,0,0,0.04)); }
 .widget-settings-popover__apply {

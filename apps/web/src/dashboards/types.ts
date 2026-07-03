@@ -51,10 +51,30 @@ export type UserDashboard = {
   updatedAt: string;
 };
 
-/** System dashboards are seeded per user and must stay intact — the same rule
- *  that guards rename. Custom (non-system) dashboards are deletable. */
+/** System dashboards are seeded per user and must stay intact — deletion is
+ *  never allowed on them, regardless of role. Custom dashboards are deletable. */
 export function canDeleteDashboard(dashboard: Pick<UserDashboard, "isSystem">): boolean {
   return !dashboard.isSystem;
+}
+
+/** Renaming a system dashboard is admin-only (they are shared across users);
+ *  custom dashboards can be renamed by their owner. Delete stays blocked on
+ *  system dashboards for everyone — see canDeleteDashboard. */
+export function canRenameDashboard(
+  dashboard: Pick<UserDashboard, "isSystem">,
+  opts: { isAdmin: boolean }
+): boolean {
+  return !dashboard.isSystem || opts.isAdmin;
+}
+
+/** Dashboards offered as "Copy from" sources when creating a new dashboard.
+ *  System dashboards ARE valid sources — copying Operations as a starting
+ *  point is the primary use case. The copy always becomes a custom
+ *  (isSystem: false) dashboard. */
+export function copySourceDashboards(dashboards: UserDashboard[]): UserDashboard[] {
+  return [...dashboards].sort(
+    (a, b) => Number(b.isSystem) - Number(a.isSystem) || a.name.localeCompare(b.name)
+  );
 }
 
 export type WidgetCategory =

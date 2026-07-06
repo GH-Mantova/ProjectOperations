@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Form Rules Builder — Concept (for Marco's review)</title>
+<style>
+:root{--brand-primary:#005B61;--brand-primary-light:#E6F0F1;--brand-accent:#FEAA6D;--brand-accent-dark:#E8914F;--brand-dark:#242424;--page:#F4F6F6;--card:#FFF;--text:#1A2B2C;--text2:#5F7375;--muted:#9AACAD;--line:#E3E9E9;--danger:#EF4444;--warn:#F59E0B;--info:#3B82F6;--ok:#10B981;--r:10px;--shadow:0 1px 2px rgba(10,40,42,.05),0 2px 8px rgba(10,40,42,.04)}
+*{box-sizing:border-box;margin:0}body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--page);padding:18px;color:var(--text)}
+h1{font-size:22px;font-weight:600}.sub{color:var(--text2);font-size:13px;margin:4px 0 14px;max-width:900px}
+.wrap{max-width:980px;margin:0 auto}
+.aibar{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:13px 15px;display:flex;gap:10px;align-items:center;box-shadow:var(--shadow);margin-bottom:14px}
+.aibar .tag{font-size:9px;font-weight:800;background:var(--brand-primary);color:#fff;border-radius:8px;padding:2px 8px;letter-spacing:.05em}
+.aibar input{flex:1;border:none;font-size:13px;outline:none;color:var(--text)}
+.aibar button{background:var(--brand-accent);border:none;border-radius:8px;padding:9px 16px;font-size:12.5px;font-weight:700;color:var(--brand-dark);cursor:pointer}
+.rule{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);margin-bottom:14px;overflow:hidden}
+.rhead{display:flex;align-items:center;gap:10px;padding:12px 15px;cursor:pointer}
+.rhead .nm{font-size:13.5px;font-weight:700}
+.rhead .when{font-size:11px;color:var(--text2)}
+.pill{font-size:9.5px;font-weight:800;border-radius:8px;padding:2px 9px;letter-spacing:.04em}
+.pill.block{background:#FDECEC;color:var(--danger)}.pill.warn{background:#FEF5E6;color:var(--warn)}.pill.show{background:var(--brand-primary-light);color:var(--brand-primary)}.pill.notify{background:#EAF1FE;color:var(--info)}.pill.live{background:#E9F9F2;color:var(--ok)}
+.rhead .tsw{margin-left:auto;width:32px;height:18px;border-radius:9px;background:var(--brand-primary);position:relative;flex-shrink:0}.rhead .tsw::after{content:'';position:absolute;right:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#fff}
+.rbody{border-top:1px solid var(--line);padding:15px;display:none;background:#FBFCFC}
+.rule.open .rbody{display:block}
+.grp{border:1.5px solid var(--line);border-radius:9px;padding:12px;background:#fff;position:relative;margin-bottom:8px}
+.grp .glbl{position:absolute;top:-9px;left:12px;background:#fff;padding:0 7px;font-size:9.5px;font-weight:800;letter-spacing:.06em;color:var(--muted)}
+.cond{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:8px}
+.cond:first-of-type{margin-top:2px}
+.tok{border:1px solid var(--line);border-radius:7px;padding:7px 11px;font-size:12px;background:#fff}
+.tok.field{background:var(--brand-primary-light);border-color:#BFD9DB;color:var(--brand-primary);font-weight:600}
+.tok.op{background:#F1F3F3;font-weight:600;color:var(--text2)}
+.tok.val{background:#FFF7EF;border-color:#F3DFC9;color:var(--brand-accent-dark);font-weight:600}
+.joiner{font-size:10px;font-weight:800;color:var(--info);margin:6px 0 6px 4px;letter-spacing:.05em}
+.arrow{text-align:center;font-size:16px;color:var(--muted);margin:6px 0}
+.act{display:flex;gap:9px;align-items:flex-start;background:#fff;border:1px solid var(--line);border-radius:9px;padding:11px;margin-top:8px;font-size:12.5px}
+.act .ic{width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0}
+.act.block .ic{background:#FDECEC}.act.notify .ic{background:#EAF1FE}.act.show .ic{background:var(--brand-primary-light)}.act.warnk .ic{background:#FEF5E6}
+.act b{font-size:12.5px}
+.act .sub2{font-size:11px;color:var(--text2);margin-top:2px;line-height:1.5}
+.msgprev{border:1px solid #F3C8C8;background:#FDF6F6;border-radius:8px;padding:9px 11px;font-size:11.5px;color:#8C2B2B;margin-top:6px}
+.addbtn{border:1.5px dashed var(--line);background:none;border-radius:8px;padding:9px 13px;font-size:12px;color:var(--text2);cursor:pointer;margin-top:8px}
+.meta{display:flex;gap:14px;font-size:11px;color:var(--muted);margin-top:12px;flex-wrap:wrap}
+.newrule{width:100%;border:1.5px dashed var(--brand-primary);background:var(--brand-primary-light);border-radius:var(--r);padding:13px;font-size:13px;font-weight:700;color:var(--brand-primary);cursor:pointer}
+.legend{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;margin-top:16px;font-size:12px;color:var(--text2);line-height:1.9}
+.legend b{color:var(--text)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Rules — Plant Pre-Start <span style="font-size:12px;color:var(--text2);font-weight:400">· the "Logic" tab, full screen</span></h1>
+<p class="sub">Click a rule to expand it. Rule 1 is your exact scenario: specific values selected in a multi-choice trigger a hard stop + a targeted alert. Conditions read left-to-right as plain sentences; every coloured token is a dropdown in the real builder.</p>
+
+<div class="aibar"><span class="tag">AI</span><input value="if they select asbestos but haven't picked a P2 respirator in PPE, block them and alert Marco"><button>Draft rule</button></div>
+
+<div class="rule open">
+  <div class="rhead" onclick="tog(this)">
+    <span class="nm">1 · Asbestos without P2 protection</span>
+    <span class="pill block">BLOCKS</span><span class="pill notify">ALERTS</span><span class="pill live">LIVE — while filling</span>
+    <span class="when">2 conditions · 3 actions</span><div class="tsw"></div>
+  </div>
+  <div class="rbody">
+    <div class="grp"><span class="glbl">WHEN — ALL of these</span>
+      <div class="cond"><span class="tok field">Hazards present (multi-choice)</span><span class="tok op">contains any of</span><span class="tok val">Asbestos · Silica dust</span></div>
+      <div class="joiner">AND</div>
+      <div class="cond"><span class="tok field">PPE in use (multi-choice)</span><span class="tok op">does not contain</span><span class="tok val">P2 respirator</span></div>
+    </div>
+    <div class="arrow">↓ THEN</div>
+    <div class="act block"><span class="ic">⛔</span><div><b>Block continuing</b> — hard stop, cannot proceed past this section<div class="msgprev">⛔ Asbestos/silica work requires a P2 respirator. Add it to your PPE or contact your supervisor before continuing. This form cannot be submitted as-is.</div></div></div>
+    <div class="act notify"><span class="ic">🔔</span><div><b>Alert a specific person</b> — Marco Mantovaninni (WHS) · in-app + email + Teams #plant-whs<div class="sub2">Message with live answers: "⚠ {worker} at {site} reported {hazards} without P2 — form blocked at {time}"</div></div></div>
+    <div class="act show"><span class="ic">👁</span><div><b>Show section</b> — "Respiratory protection checklist" appears if they add the P2 (so the fix is guided, not just demanded)</div></div>
+    <div class="meta"><span>Evaluates: live, as answers change</span><span>Created by Marco · v2</span><span>Fired 3 times this month</span></div>
+  </div>
+</div>
+
+<div class="rule">
+  <div class="rhead" onclick="tog(this)">
+    <span class="nm">2 · Major defect in the defects table</span>
+    <span class="pill notify">ALERTS</span><span class="pill show">SHOWS</span><span class="pill live">LIVE</span>
+    <span class="when">any-row condition · 3 actions</span><div class="tsw"></div>
+  </div>
+  <div class="rbody">
+    <div class="grp"><span class="glbl">WHEN</span>
+      <div class="cond"><span class="tok field">Defects (repeating section)</span><span class="tok op">has any entry where</span><span class="tok field">Severity</span><span class="tok op">is</span><span class="tok val">Major</span></div>
+    </div>
+    <div class="arrow">↓ THEN</div>
+    <div class="act notify"><span class="ic">🔔</span><div><b>Alert role</b> — Maintenance Manager · immediately, not on submit<div class="sub2">"{asset} reported MAJOR defect: {defect description} — photo attached"</div></div></div>
+    <div class="act show"><span class="ic">👁</span><div><b>Require field</b> — "Immediate action taken" becomes required</div></div>
+    <div class="act block"><span class="ic">⛔</span><div><b>Push action</b> — asset status set to "Defected — do not operate" on submit (through the assets module, with the form linked as evidence)</div></div>
+  </div>
+</div>
+
+<div class="rule">
+  <div class="rhead" onclick="tog(this)">
+    <span class="nm">3 · Meter reading looks wrong</span>
+    <span class="pill warn">WARNS</span>
+    <span class="when">compares against system data</span><div class="tsw"></div>
+  </div>
+  <div class="rbody">
+    <div class="grp"><span class="glbl">WHEN — ANY of these</span>
+      <div class="cond"><span class="tok field">Hour meter reading</span><span class="tok op">is less than</span><span class="tok val">Asset → last recorded reading</span></div>
+      <div class="joiner">OR</div>
+      <div class="cond"><span class="tok field">Hour meter reading</span><span class="tok op">is more than</span><span class="tok val">last reading + 24 × days since</span></div>
+    </div>
+    <div class="arrow">↓ THEN</div>
+    <div class="act warnk"><span class="ic">⚠</span><div><b>Warn (soft stop)</b> — "That reading doesn't look right for this machine (last: 1,240 h two days ago). Double-check the meter." User can confirm-and-continue; confirmation is recorded.</div></div>
+  </div>
+</div>
+
+<div class="rule">
+  <div class="rhead" onclick="tog(this)">
+    <span class="nm">4 · Nothing entered where something's expected</span>
+    <span class="pill warn">WARNS</span><span class="pill live">ON SUBMIT</span>
+    <span class="when">"empty" conditions work too</span><div class="tsw"></div>
+  </div>
+  <div class="rbody">
+    <div class="grp"><span class="glbl">WHEN — ALL</span>
+      <div class="cond"><span class="tok field">Any defects found?</span><span class="tok op">is</span><span class="tok val">No</span></div>
+      <div class="joiner">AND</div>
+      <div class="cond"><span class="tok field">Site condition photos</span><span class="tok op">is empty</span></div>
+    </div>
+    <div class="arrow">↓ THEN</div>
+    <div class="act warnk"><span class="ic">⚠</span><div><b>Warn on submit</b> — ""No defects" with no photos is unusual — add at least one photo of the machine before submitting."</div></div>
+  </div>
+</div>
+
+<div class="rule">
+  <div class="rhead" onclick="tog(this)">
+    <span class="nm">5 · Worker lacks the ticket for the task</span>
+    <span class="pill block">BLOCKS</span><span class="pill notify">ALERTS</span><span class="pill live">LIVE</span>
+    <span class="when">checks system data — competencies register</span><div class="tsw"></div>
+  </div>
+  <div class="rbody">
+    <div class="grp"><span class="glbl">WHEN — ALL</span>
+      <div class="cond"><span class="tok field">Task type</span><span class="tok op">is any of</span><span class="tok val">Asbestos removal · Working at heights · Confined space</span></div>
+      <div class="joiner">AND</div>
+      <div class="cond"><span class="tok field">Crew members (worker picker)</span><span class="tok op">has any worker where</span><span class="tok val">required licence for task → missing or expired</span></div>
+    </div>
+    <div class="arrow">↓ THEN</div>
+    <div class="act block"><span class="ic">⛔</span><div><b>Block</b> — names the worker and the missing/expired ticket, on the spot<div class="msgprev">⛔ Colin H's Working at Heights licence expired 12/06. He cannot be on this task today. Remove him from the crew or contact WHS.</div></div></div>
+    <div class="act notify"><span class="ic">🔔</span><div><b>Alert WHS + the worker</b> — expiry alert also lands in the compliance module (where it should have fired 30 days earlier — belt and braces)</div></div>
+  </div>
+</div>
+
+<div class="rule">
+  <div class="rhead" onclick="tog(this)">
+    <span class="nm">6 · Fatigue flag on sign-in <span style="font-weight:400;color:var(--muted);font-size:10.5px">(the 1Breadcrumb pattern)</span></span>
+    <span class="pill warn">WARNS</span><span class="pill notify">ALERTS</span><span class="pill live">LIVE</span>
+    <span class="when">combines an answer with timesheet history</span><div class="tsw"></div>
+  </div>
+  <div class="rbody">
+    <div class="grp"><span class="glbl">WHEN — ANY</span>
+      <div class="cond"><span class="tok field">"Have you had at least a 10-hour break?"</span><span class="tok op">is</span><span class="tok val">No</span></div>
+      <div class="joiner">OR</div>
+      <div class="cond"><span class="tok val">System: hours worked, last 7 days</span><span class="tok op">is more than</span><span class="tok val">55</span></div>
+    </div>
+    <div class="arrow">↓ THEN</div>
+    <div class="act warnk"><span class="ic">⚠</span><div><b>Warn + require</b> — "Fatigue management" section becomes required; the worker acknowledges and answers it before continuing</div></div>
+    <div class="act notify"><span class="ic">🔔</span><div><b>Quiet alert to the supervisor</b> — not visible to the worker: "{worker} flagged fatigue criteria at sign-in — check in with them"</div></div>
+  </div>
+</div>
+
+<div class="rule">
+  <div class="rhead" onclick="tog(this)">
+    <span class="nm">7 · Wind speed kills the crane lift <span style="font-weight:400;color:var(--muted);font-size:10.5px">(HammerTech-style permit gate)</span></span>
+    <span class="pill block">BLOCKS</span><span class="pill live">LIVE</span>
+    <span class="when">uses the auto-captured weather</span><div class="tsw"></div>
+  </div>
+  <div class="rbody">
+    <div class="grp"><span class="glbl">WHEN — on a Lift Permit form</span>
+      <div class="cond"><span class="tok val">Auto-captured: wind speed at site</span><span class="tok op">is more than</span><span class="tok val">gusts 38 km/h (or the crane's chart limit from Assets)</span></div>
+    </div>
+    <div class="arrow">↓ THEN</div>
+    <div class="act block"><span class="ic">⛔</span><div><b>Block the permit</b> — "Current gusts at {site}: {wind}. Above the {crane}'s limit. Permit cannot be issued — recheck conditions in the form when wind drops."</div></div>
+    <div class="act notify"><span class="ic">🔔</span><div><b>Notify the PM</b> — lift delayed, with the weather snapshot attached as evidence for the delay record</div></div>
+  </div>
+</div>
+
+<div class="rule">
+  <div class="rhead" onclick="tog(this)">
+    <span class="nm">8 · Inspection score below the pass mark <span style="font-weight:400;color:var(--muted);font-size:10.5px">(the SafetyCulture/iAuditor pattern)</span></span>
+    <span class="pill show">REQUIRES</span><span class="pill notify">ALERTS</span><span class="pill live">ON SUBMIT</span>
+    <span class="when">uses a Calculation field as the trigger</span><div class="tsw"></div>
+  </div>
+  <div class="rbody">
+    <div class="grp"><span class="glbl">WHEN</span>
+      <div class="cond"><span class="tok field">Inspection score (calculated)</span><span class="tok op">is less than</span><span class="tok val">80%</span></div>
+    </div>
+    <div class="arrow">↓ THEN</div>
+    <div class="act show"><span class="ic">👁</span><div><b>Require</b> — "Corrective actions" repeating section (one entry per failed item, each with owner + due date)</div></div>
+    <div class="act notify"><span class="ic">🔔</span><div><b>Mark outcome FAILED + schedule re-inspection</b> — a follow-up form is scheduled for 7 days (this is the FormSchedule engine finally earning its keep) and the site supervisor is notified</div></div>
+  </div>
+</div>
+
+<div class="rule">
+  <div class="rhead" onclick="tog(this)">
+    <span class="nm">9 · Notifiable incident — the big one</span>
+    <span class="pill notify">ESCALATES</span><span class="pill live">ON SUBMIT</span>
+    <span class="when">changes the approval chain + starts the regulator clock</span><div class="tsw"></div>
+  </div>
+  <div class="rbody">
+    <div class="grp"><span class="glbl">WHEN — ANY (on the Incident Report)</span>
+      <div class="cond"><span class="tok field">Incident classification</span><span class="tok op">is any of</span><span class="tok val">Serious injury · Dangerous incident · Fatality</span></div>
+      <div class="joiner">OR</div>
+      <div class="cond"><span class="tok field">Treatment required</span><span class="tok op">is</span><span class="tok val">Hospitalisation</span></div>
+    </div>
+    <div class="arrow">↓ THEN</div>
+    <div class="act notify"><span class="ic">🔔</span><div><b>Escalate the approval chain</b> — Director added as mandatory approver; WHS (Marco) alerted on every channel at once</div></div>
+    <div class="act show"><span class="ic">👁</span><div><b>Show</b> — "Notifiable incident checklist" section (scene preservation, who's been contacted, regulator notification)</div></div>
+    <div class="act block"><span class="ic">⏱</span><div><b>Start a deadline task</b> — "Notify WorkSafe QLD" with the statutory clock running, assigned to WHS, reminders escalating until marked done. The form triggers it; compliance tracks it.</div></div>
+  </div>
+</div>
+
+<div class="rule">
+  <div class="rhead" onclick="tog(this)">
+    <span class="nm">10 · Same hazard keeps coming up <span style="font-weight:400;color:var(--muted);font-size:10.5px">(trend rule — looks across submissions)</span></span>
+    <span class="pill notify">ALERTS</span><span class="pill warn">V2</span>
+    <span class="when">cross-submission intelligence · pairs with the AI digest</span><div class="tsw"></div>
+  </div>
+  <div class="rbody">
+    <div class="grp"><span class="glbl">WHEN — across the last 30 days</span>
+      <div class="cond"><span class="tok field">Hazard reports at the same site</span><span class="tok op">mention the same hazard</span><span class="tok val">3 or more times</span></div>
+    </div>
+    <div class="arrow">↓ THEN</div>
+    <div class="act notify"><span class="ic">🔔</span><div><b>Trend alert to WHS</b> — "Access ramp at Coomera flagged in 3 pre-starts this month — individual reports were all 'minor'." The pattern nobody sees form-by-form. Flagged V2: this one reads history, so it ships with the AI-digest phase.</div></div>
+  </div>
+</div>
+
+<button class="newrule">+ New rule &nbsp;·&nbsp; or describe it in the AI bar above</button>
+
+<div class="legend">
+<b>The full grammar (design-doc summary):</b><br>
+<b>Conditions</b> per field type — choice/multi: is · is not · contains any/all/none of · number selected ≥/≤ • text: filled · empty · contains · doesn't contain • numbers/dates: = ≠ &gt; &lt; between · before/after/within • tables &amp; repeating sections: has any entry where… · has no entry where… · entry count · column total • <b>system values</b>: compare against asset readings, worker competencies, site attributes, weather, the filler's role. Groups combine with ALL (and) / ANY (or), nestable.<br>
+<b>Actions</b> — show/hide/require field·section·page • set a value • filter another field's options • <b>WARN</b> (acknowledge to continue, acknowledgement recorded) • <b>BLOCK</b> (hard stop with your custom message) • <b>alert</b> a named person or role via in-app/email/Teams, message templated with live answers • change the approval chain • push actions into modules (flag asset, raise maintenance, log hazard) • change the after-submit message.<br>
+<b>Timing</b> — each rule chooses: live while filling · on submit · on approval.
+</div>
+</div>
+<script>function tog(h){h.parentElement.classList.toggle('open')}</script>
+</body>
+</html>

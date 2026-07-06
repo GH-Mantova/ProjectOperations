@@ -394,6 +394,7 @@ export function SchedulerGridPage() {
 
   return (
     <div className="sched-grid-page">
+      <h1 className="s7-type-page-title" style={{ margin: "0 0 8px" }}>Scheduler grid</h1>
       <header className="sched-grid__head">
         <div className="sched-grid__nav">
           <button

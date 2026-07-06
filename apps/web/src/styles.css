@@ -2409,8 +2409,6 @@ textarea {
   font: inherit;
   font-size: 11px;
   position: relative;
-  min-width: 0;
-  max-width: 100%;
   transition: transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
 }
 
@@ -2489,7 +2487,7 @@ textarea {
 
 .sched-month__headrow {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(7, 1fr);
   background: var(--border-subtle, #F3F4F6);
   border-bottom: 1px solid var(--border-default, #E5E7EB);
 }
@@ -2505,7 +2503,7 @@ textarea {
 
 .sched-month__grid {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(7, 1fr);
   grid-auto-rows: minmax(120px, 1fr);
   gap: 1px;
   background: var(--border-default, #E5E7EB);
@@ -2517,7 +2515,6 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  min-width: 0;
 }
 
 .sched-month__cell--dim {

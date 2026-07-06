@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { progressPercent } from "./jobsListLogic";
 
 type JobListItem = {
   id: string;
@@ -13,7 +14,7 @@ type JobListItem = {
   updatedAt: string;
   client: { id: string; name: string };
   site?: { id: string; name: string } | null;
-  activities?: Array<{ id: string; status: string }>;
+  stages?: Array<{ id: string; activities?: Array<{ id: string; status: string }> }>;
   projectManager?: { id: string; firstName: string; lastName: string } | null;
   supervisor?: { id: string; firstName: string; lastName: string } | null;
 };
@@ -44,13 +45,6 @@ type View = "cards" | "table";
 type Client = { id: string; name: string };
 type Site = { id: string; name: string };
 type Worker = { id: string; firstName: string; lastName: string };
-
-function progressPercent(job: JobListItem): number {
-  const activities = job.activities ?? [];
-  if (activities.length === 0) return 0;
-  const done = activities.filter((activity) => activity.status === "COMPLETE").length;
-  return Math.round((done / activities.length) * 100);
-}
 
 function initials(firstName?: string, lastName?: string): string {
   if (!firstName && !lastName) return "??";

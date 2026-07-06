@@ -3966,3 +3966,34 @@ model PublicHoliday {
   @@index([region, date])
   @@map("public_holidays")
 }
+
+// Authority seam (Phase 0.2). Configurable ceiling for approval / spend-limit
+// decisions consulted by AuthorityService.check. Empty table = open ceiling:
+// with no matching rule, the seam defaults to allowed and does not restrict
+// any feature. Scope specificity (USER > ROLE > DEPARTMENT > GLOBAL) is
+// resolved in code; the store is intentionally flat.
+enum AuthorityScopeType {
+  USER
+  ROLE
+  DEPARTMENT
+  GLOBAL
+}
+
+model AuthorityRule {
+  id                String             @id @default(cuid())
+  scopeType         AuthorityScopeType @map("scope_type")
+  scopeId           String?            @map("scope_id")
+  action            String
+  limitAmount       Decimal?           @map("limit_amount") @db.Decimal(12, 2)
+  escalateToUserId  String?            @map("escalate_to_user_id")
+  enabled           Boolean            @default(true)
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+  createdById       String?            @map("created_by_id")
+  updatedById       String?            @map("updated_by_id")
+
+  @@unique([scopeType, scopeId, action])
+  @@index([action])
+  @@index([scopeType, scopeId])
+  @@map("authority_rules")
+}

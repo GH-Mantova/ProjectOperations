@@ -1,4 +1,12 @@
-import { IsArray, IsBoolean, IsEmail, IsOptional, IsString, MinLength } from "class-validator";
+import {
+  IsArray,
+  IsBoolean,
+  IsEmail,
+  IsOptional,
+  IsString,
+  MinLength,
+  ValidateIf
+} from "class-validator";
 
 /**
  * Partial update payload for an application-user.
@@ -39,4 +47,13 @@ export class UpdateUserDto {
   @IsOptional()
   @IsArray()
   roleIds?: string[];
+
+  /**
+   * Reporting-line manager id (cuid). Pass null to clear the reporting line.
+   * Rejects any value that would create a cycle in the reporting hierarchy.
+   */
+  @ValidateIf((_, value) => value !== null)
+  @IsOptional()
+  @IsString()
+  managerId?: string | null;
 }

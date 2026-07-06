@@ -32,7 +32,8 @@ function makeTenderingService(prismaOverrides: Record<string, unknown> = {}) {
         clientSlugSnapshot: "ACME",
         revisionNumber: 1
       })
-    } as never
+    } as never,
+    { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never
   );
   return { service, prisma, audit };
 }

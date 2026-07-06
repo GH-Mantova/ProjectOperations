@@ -44,7 +44,8 @@ function makeService(prisma: ReturnType<typeof mockPrisma>, audit: ReturnType<ty
     audit as never,
     mockEmail() as never,
     mockSharePoint() as never,
-    mockTenderNumbers() as never
+    mockTenderNumbers() as never,
+    { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never
   );
 }
 

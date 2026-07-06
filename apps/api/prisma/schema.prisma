@@ -787,6 +787,7 @@ model Tender {
   assumptions        TenderAssumption[]
   exclusions         TenderExclusion[]
   clientQuotes       ClientQuote[]
+  packages           TenderPackage[]
   wasteItems         ScopeWasteItem[]
   safetyIncidents    SafetyIncident[]
   hazardObservations HazardObservation[]
@@ -807,6 +808,7 @@ model TenderClient {
   isAwarded        Boolean        @default(false) @map("is_awarded")
   contractIssued   Boolean        @default(false) @map("contract_issued")
   contractIssuedAt DateTime?      @map("contract_issued_at")
+  submissionDate   DateTime?      @map("submission_date")
   relationshipType String?        @map("relationship_type")
   notes            String?
   createdAt        DateTime       @default(now()) @map("created_at")
@@ -815,11 +817,56 @@ model TenderClient {
   client           Client         @relation(fields: [clientId], references: [id], onDelete: Restrict)
   contact          Contact?       @relation(fields: [contactId], references: [id], onDelete: SetNull)
   jobConversion    JobConversion?
+  clientPackages   TenderClientPackage[]
 
   @@unique([tenderId, clientId])
   @@index([clientId])
   @@index([isAwarded])
   @@map("tender_clients")
+}
+
+enum TenderPricingBasis {
+  DOCUMENTS
+  CLIENT_REQUEST
+  IDENTIFIED_RISK
+}
+
+// A tender-scope package (e.g. Asbestos, Demolition, Concrete Cutting, Civil).
+// disciplineItemId points at a GlobalListItem in the `tender-package-disciplines`
+// list — Director-configurable, not a hardcoded enum.
+model TenderPackage {
+  id               String                @id @default(cuid())
+  tenderId         String                @map("tender_id")
+  disciplineItemId String                @map("discipline_item_id")
+  createdAt        DateTime              @default(now()) @map("created_at")
+  updatedAt        DateTime              @updatedAt @map("updated_at")
+  tender           Tender                @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  disciplineItem   GlobalListItem        @relation("TenderPackageDiscipline", fields: [disciplineItemId], references: [id], onDelete: Restrict)
+  clientPackages   TenderClientPackage[]
+
+  @@unique([tenderId, disciplineItemId])
+  @@index([tenderId])
+  @@index([disciplineItemId])
+  @@map("tender_packages")
+}
+
+// Builder × package matrix cell — which client is pricing which package,
+// on what basis, with optional note (e.g. what document/request/risk drove it).
+model TenderClientPackage {
+  id              String             @id @default(cuid())
+  tenderClientId  String             @map("tender_client_id")
+  tenderPackageId String             @map("tender_package_id")
+  pricingBasis    TenderPricingBasis @default(DOCUMENTS) @map("pricing_basis")
+  basisNote       String?            @map("basis_note")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  tenderClient    TenderClient       @relation(fields: [tenderClientId], references: [id], onDelete: Cascade)
+  tenderPackage   TenderPackage      @relation(fields: [tenderPackageId], references: [id], onDelete: Cascade)
+
+  @@unique([tenderClientId, tenderPackageId])
+  @@index([tenderClientId])
+  @@index([tenderPackageId])
+  @@map("tender_client_packages")
 }
 
 model TenderNote {
@@ -2672,6 +2719,7 @@ model GlobalListItem {
   isArchived  Boolean    @default(false) @map("is_archived")
   createdById String     @map("created_by_id")
   createdBy   User       @relation("GlobalListItemCreatedBy", fields: [createdById], references: [id])
+  tenderPackages TenderPackage[] @relation("TenderPackageDiscipline")
   createdAt   DateTime   @default(now()) @map("created_at")
   updatedAt   DateTime   @updatedAt @map("updated_at")
 

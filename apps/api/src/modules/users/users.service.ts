@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PaginationQueryDto } from "../../common/dto/pagination-query.dto";
 import { PasswordService } from "../../common/security/password.service";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -152,6 +152,28 @@ export class UsersService {
     if (typeof input.isActive === "boolean") data.isActive = input.isActive;
     if (input.password) data.passwordHash = this.passwordService.hashPassword(input.password);
 
+    if (input.managerId !== undefined) {
+      if (input.managerId === null) {
+        data.managerId = null;
+      } else {
+        if (input.managerId === userId) {
+          throw new BadRequestException("A user cannot be their own manager.");
+        }
+        const targetExists = await this.prisma.user.findUnique({
+          where: { id: input.managerId },
+          select: { id: true }
+        });
+        if (!targetExists) {
+          throw new BadRequestException("Manager user not found.");
+        }
+        const subtree = await this.getReportSubtreeIds(userId);
+        if (subtree.includes(input.managerId)) {
+          throw new BadRequestException("Assigning this manager would create a cycle in the reporting line.");
+        }
+        data.managerId = input.managerId;
+      }
+    }
+
     if (input.roleIds) {
       await this.prisma.userRole.deleteMany({ where: { userId } });
       if (input.roleIds.length > 0) {
@@ -245,6 +267,7 @@ export class UsersService {
       lastName: string;
       isActive: boolean;
       isSuperUser?: boolean;
+      managerId?: string | null;
       lastLoginAt: Date | null;
       userRoles: Array<{
         role: {
@@ -264,6 +287,7 @@ export class UsersService {
       lastName: user.lastName,
       isActive: user.isActive,
       isSuperUser: Boolean(user.isSuperUser),
+      managerId: user.managerId ?? null,
       lastLoginAt: user.lastLoginAt,
       roles: user.userRoles.map((userRole) => ({
         id: userRole.role.id,
@@ -272,6 +296,37 @@ export class UsersService {
       })),
       permissions
     };
+  }
+
+  /**
+   * Return the given user's id plus every transitive direct report.
+   *
+   * Iterative BFS with a visited set — guards against cycles even though
+   * `update` rejects them, so bad data on disk cannot infinite-loop this.
+   *
+   * @param userId - id of the root user
+   * @returns array of user ids including the root, in BFS order
+   */
+  async getReportSubtreeIds(userId: string): Promise<string[]> {
+    const visited = new Set<string>([userId]);
+    let frontier: string[] = [userId];
+
+    while (frontier.length > 0) {
+      const children = await this.prisma.user.findMany({
+        where: { managerId: { in: frontier } },
+        select: { id: true }
+      });
+      const next: string[] = [];
+      for (const { id } of children) {
+        if (!visited.has(id)) {
+          visited.add(id);
+          next.push(id);
+        }
+      }
+      frontier = next;
+    }
+
+    return [...visited];
   }
 
   private async ensureUserExists(userId: string) {

@@ -5,7 +5,7 @@
 > `Worker` and `WorkerProfile` staff entities into a single spine.
 >
 > **Survivor decision locked** (Master QA plan, WorkerProfile canonical);
-> **section 7 decisions are NOT locked** — they are posed for Marco's review.
+> **section 7 decisions LOCKED 2026-07-03 (see Section 7).**
 > **Scope owner:** WHS & Commercial Compliance.
 > **Verified against:** `apps/api/prisma/schema.prisma` and the `workers` /
 > `resources` / `master-data` / `scheduler` / `compliance` modules at commit
@@ -207,7 +207,7 @@ order). Each slice is its own PR with its own migration file(s).
 | **B-P0b-3** | `improvement/s-bp0b3-merge-competencies` | backfill (merge) | `YYYYMMDDHHMMSS_bp0b3_merge_worker_competencies` | Merge `WorkerCompetency` rows into `WorkerQualification` via the -2 map: `qualType = Competency.code`, `achievedAt -> issueDate`, `expiresAt -> expiryDate`, note the provenance in `notes`. Skip rows whose `(workerProfileId, qualType)` already has a WorkerQualification with equal-or-later expiry. **Destructive-ish merge** — flagged R1; do not drop `WorkerCompetency` here. Pending **Q5**. | Delete migrated rows by provenance marker; source table untouched until -7. |
 | **B-P0b-4** | `improvement/s-bp0b4-forms-repoint` | expand + backfill (edges) | `YYYYMMDDHHMMSS_bp0b4_form_submission_worker_profile` | Add `FormSubmission.workerProfileId` (nullable FK), backfill from the -2 map, switch the forms module read/write paths. Keep `workerId` populated in parallel until -7. **Sequence against B-P0a-7** (same table) — whichever lands second rebases. | Drop the new column; reads revert to `workerId`. |
 | **B-P0b-5** | `improvement/s-bp0b5-switch-readers` | switch reads/writes | *(none — code only)* | Redirect `master-data` (write, L405-406), `resources` (L37, L97), `global-lists` (L267) to `WorkerProfile`. `/resources` page behaviour per **Q6** (freeze with legacy banner per IA map GAP-1 L424, or redirect to `/workers`). After this slice the legacy scheduler (section 3) is the only `Worker` client. | Revert the service redirects. |
-| **B-P0b-6** | `improvement/s-bp0b6-crew-decision` | switch or contract (crews) | `YYYYMMDDHHMMSS_bp0b6_crew_repoint` *(or `_crew_retire`)* | Execute whichever **Q1** answer Marco picks: re-point `CrewWorker.workerId -> workerProfileId` via the -2 map, or drop `Crew`/`CrewWorker`. | Re-point: restore FK. Retire: snapshot restore only. |
+| **B-P0b-6** | `improvement/s-bp0b6-crew-decision` | switch or contract (crews) | `YYYYMMDDHHMMSS_bp0b6_crew_repoint` *(or `_crew_retire`)* | Execute whichever **Q1** answer Marco picks: re-point `CrewWorker.workerId -> workerProfileId` via the -2 map, or drop `Crew`/`CrewWorker`. **Retire variant selected (Q1, locked 2026-07-03) — migration file `_crew_retire`.** | Re-point: restore FK. Retire: snapshot restore only. |
 | **B-P0b-7** | `improvement/s-bp0b7-drop-worker` | contract (drop) | `YYYYMMDDHHMMSS_bp0b7_drop_worker_tables` | **Gated on B-P0a-9.** Drop `worker_competencies`, `availability_windows`, `worker_role_suitabilities`, `FormSubmission.worker_id`, `ResourceType.workers` back-relation, and finally `workers`. Soak period + go/no-go first. | Snapshot restore only. |
 
 ### Sequencing against the remaining B-P0a slices (-5 .. -9)
@@ -251,7 +251,7 @@ order). Each slice is its own PR with its own migration file(s).
 
 ---
 
-## 7. Open questions for Marco (NOT locked — decide before B-P0b-3/-5/-6)
+## 7. Open questions for Marco (LOCKED — Marco, 2026-07-03)
 
 Unlike the IA map, these have **no pre-made decision**. Each question lists the
 default the plan assumes if you simply say "defaults fine".
@@ -260,33 +260,62 @@ default the plan assumes if you simply say "defaults fine".
    `CrewWorker` to `WorkerProfile`) or retire them? IA map notes minimal web
    usage (2 files, L374-375). **Default: retire.** Keeping them is cheap if
    crews are operationally real for Initial Services.
+   **DECISION (Marco 2026-07-03):** Retire `Crew` / `CrewWorker` (the default).
+   B-P0b-6 migration uses the `_crew_retire` variant.
 2. **`employmentType`** *(blocks -1)* — Carry it onto `WorkerProfile` as its
    own column (default), or is `role` (L2078) enough and employment basis
    belongs in a future HR/payroll integration instead?
+   **DECISION (Marco 2026-07-03):** Carry `employmentType` onto `WorkerProfile`
+   as its own nullable column (the default).
 3. **`ResourceType` link** *(blocks -2)* — Drop `Worker.resourceTypeId`
    outright (default — `ResourceType` stays for Assets only, L551), or does
    worker resource-classification matter for any report you use?
+   **DECISION (Marco 2026-07-03):** Drop `Worker.resourceTypeId` (the default).
+   Classification is owned by the competency / qualification layer. Caveat:
+   may be revisited in detail later — record the caveat here so a future
+   reader knows this was not "closed forever".
 4. **Legacy `Worker.status` values** *(blocks -2)* — Plan maps
    `ACTIVE -> isActive=true`, all else `false`. Are there status values in use
    (e.g. `ON_LEAVE`, `INACTIVE`) that deserve their own representation rather
    than a boolean collapse? (Leave is now `WorkerLeave`, so **default: boolean
    collapse** with the raw value in the -2 report.)
+   **DECISION (Marco 2026-07-03):** Boolean collapse (the default) — active /
+   inactive is sufficient at this time. `ACTIVE -> isActive=true`, all else
+   `-> false`; raw legacy value preserved in the -2 migration report.
 5. **Competency merge shape** *(blocks -3)* — Convert `WorkerCompetency` rows
    into `WorkerQualification` strings (default — matches how the eligibility
    gate reads today, `schedule-allocation.service.ts` L120-126), or re-point
    the normalised `WorkerCompetency -> Competency` join to `WorkerProfile` and
    keep two stores? The default is simpler but gives up the FK to the
    `Competency` catalogue on historical rows.
+   **DECISION (Marco 2026-07-03):** Default — convert `WorkerCompetency` rows
+   into `WorkerQualification` with `qualType = Competency.code` and provenance
+   markers. No parallel second store.
 6. **`/resources` legacy page** *(blocks -5)* — Freeze with a "legacy" banner
    until -7 (default, per GAP-1, IA map L424) or 308-redirect to `/workers`
    at -5?
+   **DECISION (Marco 2026-07-03):** 308-redirect `/resources` to `/workers` at
+   B-P0b-5 (NOT the freeze-with-banner option). **This supersedes the IA map
+   GAP-1 (module-ownership-ia-map.md L424) freeze lean** — the supersession is
+   noted here inside this doc rather than by editing the IA map.
 7. **User-link conflicts** *(blocks -2 completion)* — When a `User` is claimed
    by a `Worker` and a *different* `WorkerProfile`, which link wins? Plan
    leaves them unlinked + reported (default), but you may prefer
    "WorkerProfile always wins".
+   **DECISION (Marco 2026-07-03):** Report-don't-guess stands for the backfill
+   — the -2 migration leaves conflicted rows unlinked and lists them in the
+   report. AND: the go-forward workflow will be invitation / approval-based
+   (workers invited to join, or requests approved), so link conflicts should
+   be prevented or flagged at the approval stage. Both halves are load-bearing:
+   migration behaviour = leave conflicted rows unlinked + report; product
+   direction = the approval-stage validation must check for an existing
+   conflicting `User` link before creating a new profile-user binding.
 8. **Historical `AvailabilityWindow` data** *(blocks nothing; decide by -7)* —
    Discard with the shift board (default), or import historical windows into
    `WorkerUnavailability` for record-keeping?
+   **DECISION (Marco 2026-07-03):** Discard with the shift board (the default).
+   The DB snapshot taken before B-P0b-7 is the recovery path if anything is
+   ever needed.
 
 ---
 

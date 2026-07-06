@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { SiteFormModal } from "./SiteFormModal";
+import { siteJobsCount } from "./sitesListLogic";
 
 type Site = {
   id: string;
@@ -14,7 +15,7 @@ type Site = {
   postcode: string | null;
   notes: string | null;
   client: { id: string; name: string } | null;
-  jobs?: Array<{ id: string }>;
+  _count?: { jobs: number };
 };
 
 type ClientOption = { id: string; name: string };
@@ -163,7 +164,7 @@ export function SitesListPage() {
                   </td>
                   <td style={{ padding: "6px 8px", fontSize: 12 }}>{s.client?.name ?? "—"}</td>
                   <td style={{ padding: "6px 8px", fontSize: 12 }}>{s.code ?? "—"}</td>
-                  <td style={{ padding: "6px 8px", fontSize: 12 }}>{s.jobs?.length ?? 0}</td>
+                  <td style={{ padding: "6px 8px", fontSize: 12 }}>{siteJobsCount(s)}</td>
                   <td
                     style={{ padding: "6px 8px", textAlign: "right" }}
                     onClick={(e) => e.stopPropagation()}

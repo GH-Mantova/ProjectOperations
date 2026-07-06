@@ -444,7 +444,7 @@ describe("MasterDataService — listSites", () => {
 
     expect(prisma.site.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        include: { client: true },
+        include: { client: true, _count: { select: { jobs: true } } },
         orderBy: { name: "asc" }
       })
     );

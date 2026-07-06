@@ -20,7 +20,8 @@ describe("TenderingService", () => {
       { write: jest.fn() } as never,
       { sendNotificationEmail: jest.fn() } as never,
       { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never,
-      tenderNumberServiceMock() as never
+      tenderNumberServiceMock() as never,
+      { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never
     );
 
     await expect(
@@ -49,7 +50,8 @@ describe("TenderingService", () => {
       { write: jest.fn() } as never,
       { sendNotificationEmail: jest.fn() } as never,
       { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never,
-      tenderNumberServiceMock() as never
+      tenderNumberServiceMock() as never,
+      { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never
     );
 
     return expect(
@@ -79,7 +81,8 @@ describe("TenderingService", () => {
       { write: jest.fn() } as never,
       { sendNotificationEmail: jest.fn() } as never,
       { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never,
-      tenderNumberServiceMock() as never
+      tenderNumberServiceMock() as never,
+      { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never
     );
 
     const result = await service.previewImport([
@@ -100,7 +103,8 @@ describe("TenderingService", () => {
       { write: jest.fn() } as never,
       { sendNotificationEmail: jest.fn() } as never,
       { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never,
-      tenderNumberServiceMock() as never
+      tenderNumberServiceMock() as never,
+      { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never
     );
 
     const addNoteSpy = jest.spyOn(service, "addNote").mockResolvedValue({ id: "tender-1" } as never);
@@ -130,7 +134,8 @@ describe("TenderingService", () => {
       { write: jest.fn() } as never,
       { sendNotificationEmail: jest.fn() } as never,
       { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never,
-      tenderNumberServiceMock() as never
+      tenderNumberServiceMock() as never,
+      { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never
     );
 
     await expect(

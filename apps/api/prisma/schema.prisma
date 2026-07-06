@@ -2353,6 +2353,12 @@ model ScopeCard {
   // a decimal (e.g. 30.00 means 30%). Reset via × button on the input or
   // bulk POST /scope/markup/reset-all.
   markupOverride Decimal? @db.Decimal(5, 2) @map("markup_override")
+  // Per-section markup overrides. null = inherit TenderEstimate.markup;
+  // any non-null value overrides that section only. Independent cost
+  // streams: waste and cutting each carry their own markup applied to
+  // their own base, distinct from the scope-card markupOverride above.
+  wasteMarkupOverride   Decimal? @db.Decimal(5, 2) @map("waste_markup_override")
+  cuttingMarkupOverride Decimal? @db.Decimal(5, 2) @map("cutting_markup_override")
   peakCrewOverride        Int?     @map("peak_crew_override")
   labourDaysOverride Decimal? @map("labour_days_override") @db.Decimal(10, 2)
   plantSummaryOverride    String?  @map("plant_summary_override")

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { useAuth } from "../../auth/AuthContext";
 import { NotesField } from "../../components";
+import { SectionMarkupOverride, computeWithMarkup } from "./SectionMarkupOverride";
 
 // Waste disposal rows for a tender × discipline. truckDays and lineTotal
 // are derived server-side — the UI only submits raw inputs (tonnes, loads,
@@ -72,7 +73,10 @@ export function ScopeWasteTab({
   canManage,
   wasteNotes,
   onWasteNotesChange,
-  cardId
+  cardId,
+  tenderMarkup,
+  sectionMarkupOverride,
+  onSectionMarkupChange
 }: {
   tenderId: string;
   discipline: string;
@@ -87,6 +91,11 @@ export function ScopeWasteTab({
   // card (instead of the whole discipline) and exposes the "Sum from
   // above" button.
   cardId?: string;
+  // Per-section markup override for this card's waste subtable.
+  // Independent cost stream from the scope-card markup.
+  tenderMarkup?: number;
+  sectionMarkupOverride?: number | null;
+  onSectionMarkupChange?: (next: number | null) => Promise<void> | void;
 }) {
   const { authFetch } = useAuth();
   const [rows, setRows] = useState<WasteRow[]>([]);
@@ -253,8 +262,28 @@ export function ScopeWasteTab({
             ({rows.length} row{rows.length === 1 ? "" : "s"})
           </span>
         </h3>
-        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-          Subtotal: <strong style={{ color: "var(--text)" }}>{fmtCurrency(subtotal)}</strong>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+          {onSectionMarkupChange && tenderMarkup !== undefined ? (
+            <SectionMarkupOverride
+              label="Waste markup:"
+              value={sectionMarkupOverride}
+              tenderMarkup={tenderMarkup}
+              onSave={onSectionMarkupChange}
+              disabled={!canManage}
+            />
+          ) : null}
+          <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+            Subtotal: <strong style={{ color: "var(--text)" }}>{fmtCurrency(subtotal)}</strong>
+            {tenderMarkup !== undefined ? (
+              <>
+                <span> · </span>
+                with markup:{" "}
+                <strong style={{ color: "var(--text)" }}>
+                  {fmtCurrency(computeWithMarkup(subtotal, sectionMarkupOverride, tenderMarkup))}
+                </strong>
+              </>
+            ) : null}
+          </div>
         </div>
       </div>
       <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 12px" }}>

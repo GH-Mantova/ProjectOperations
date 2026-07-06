@@ -31,10 +31,13 @@ model User {
   updatedAt                  DateTime                  @updatedAt @map("updated_at")
   createdById                String?                   @map("created_by_id")
   updatedById                String?                   @map("updated_by_id")
+  managerId                  String?                   @map("manager_id")
   createdBy                  User?                     @relation("UserCreatedBy", fields: [createdById], references: [id])
   updatedBy                  User?                     @relation("UserUpdatedBy", fields: [updatedById], references: [id])
+  manager                    User?                     @relation("UserManager", fields: [managerId], references: [id], onDelete: SetNull)
   createdUsers               User[]                    @relation("UserCreatedBy")
   updatedUsers               User[]                    @relation("UserUpdatedBy")
+  directReports              User[]                    @relation("UserManager")
   userRoles                  UserRole[]
   refreshTokens              RefreshToken[]
   auditLogs                  AuditLog[]                @relation("AuditActor")
@@ -136,6 +139,7 @@ model User {
   calendarSyncedEvents    CalendarSyncedEvent[]     @relation("CalendarSyncedEventUser")
 
   @@index([isActive])
+  @@index([managerId])
   @@map("users")
 }
 

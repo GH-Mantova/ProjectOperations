@@ -30,7 +30,7 @@ export function InstallPrompt() {
       aria-label="Install Project Operations"
       style={{
         position: "fixed",
-        bottom: 16,
+        bottom: 80,
         right: 16,
         zIndex: 1200,
         background: "#fff",
@@ -59,8 +59,10 @@ export function InstallPrompt() {
             border: "1px solid var(--border, #e5e7eb)",
             color: "#666",
             borderRadius: 4,
-            padding: "6px 12px",
-            fontSize: 12,
+            padding: "10px 16px",
+            fontSize: 13,
+            minHeight: 44,
+            minWidth: 44,
             cursor: "pointer"
           }}
         >
@@ -80,9 +82,11 @@ export function InstallPrompt() {
             color: "#fff",
             border: 0,
             borderRadius: 4,
-            padding: "6px 12px",
-            fontSize: 12,
+            padding: "10px 16px",
+            fontSize: 13,
             fontWeight: 600,
+            minHeight: 44,
+            minWidth: 44,
             cursor: "pointer"
           }}
         >

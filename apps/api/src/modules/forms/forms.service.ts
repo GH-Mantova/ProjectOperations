@@ -1,8 +1,13 @@
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
-import { FormsQueryDto, SubmitFormDto, UpsertFormTemplateDto } from "./dto/forms.dto";
+import {
+  FormsQueryDto,
+  SubmitFormDto,
+  UpdateFormTemplateMetadataDto,
+  UpsertFormTemplateDto
+} from "./dto/forms.dto";
 
 const templateInclude = {
   versions: {
@@ -163,7 +168,10 @@ export class FormsService {
    * @throws NotFoundException when the template does not exist
    */
   async createNextVersion(templateId: string, dto: UpsertFormTemplateDto, actorId?: string) {
-    await this.requireTemplate(templateId);
+    const existing = await this.requireTemplate(templateId);
+    if (existing.isSystemTemplate) {
+      throw new ForbiddenException("System templates cannot be edited. Duplicate this template to customise it.");
+    }
 
     const template = await this.prisma.$transaction((tx) =>
       this.createTemplateVersion(tx, templateId, dto, false)
@@ -330,11 +338,218 @@ export class FormsService {
     return submission;
   }
 
+  /**
+   * Patch metadata on an existing template — never touches versions.
+   *
+   * System templates (isSystemTemplate=true) are rejected with 403 so
+   * the 7 seeded compliance templates cannot drift from source.
+   *
+   * @throws NotFoundException when the template does not exist
+   * @throws ForbiddenException when the template is a system template
+   * @throws ConflictException when the new name collides with another template
+   */
+  async updateTemplateMetadata(id: string, dto: UpdateFormTemplateMetadataDto, actorId?: string) {
+    const existing = await this.requireTemplate(id);
+    if (existing.isSystemTemplate) {
+      throw new ForbiddenException("System templates cannot be edited. Duplicate this template to customise it.");
+    }
+
+    if (dto.name && dto.name !== existing.name) {
+      const clash = await this.prisma.formTemplate.findFirst({
+        where: { name: dto.name, id: { not: id } }
+      });
+      if (clash) {
+        throw new ConflictException("A form template with that name already exists.");
+      }
+    }
+
+    const data: Prisma.FormTemplateUpdateInput = {};
+    if (dto.name !== undefined) data.name = dto.name;
+    if (dto.description !== undefined) data.description = dto.description;
+    if (dto.category !== undefined) data.category = dto.category;
+    if (dto.geolocationEnabled !== undefined) data.geolocationEnabled = dto.geolocationEnabled;
+    if (dto.settings !== undefined) data.settings = dto.settings as Prisma.InputJsonValue;
+
+    await this.prisma.formTemplate.update({ where: { id }, data });
+    await this.auditService.write({
+      actorId,
+      action: "forms.template.update",
+      entityType: "FormTemplate",
+      entityId: id
+    });
+
+    return this.getTemplate(id);
+  }
+
+  /**
+   * Archive a template — hides it from fill-a-form pickers but keeps
+   * every historical version and submission intact. System templates
+   * cannot be archived.
+   */
+  async archiveTemplate(id: string, actorId?: string) {
+    const existing = await this.requireTemplate(id);
+    if (existing.isSystemTemplate) {
+      throw new ForbiddenException("System templates cannot be archived.");
+    }
+    await this.prisma.formTemplate.update({
+      where: { id },
+      data: { status: "ARCHIVED" }
+    });
+    await this.auditService.write({
+      actorId,
+      action: "forms.template.archive",
+      entityType: "FormTemplate",
+      entityId: id
+    });
+    return this.getTemplate(id);
+  }
+
+  /** Reverse of archiveTemplate — restores status to DRAFT. */
+  async unarchiveTemplate(id: string, actorId?: string) {
+    const existing = await this.requireTemplate(id);
+    if (existing.status !== "ARCHIVED") {
+      throw new ConflictException("Template is not archived.");
+    }
+    await this.prisma.formTemplate.update({
+      where: { id },
+      data: { status: "DRAFT" }
+    });
+    await this.auditService.write({
+      actorId,
+      action: "forms.template.unarchive",
+      entityType: "FormTemplate",
+      entityId: id
+    });
+    return this.getTemplate(id);
+  }
+
+  /**
+   * Hard-delete a template.
+   *
+   * Only allowed when the template is NOT a system template AND has zero
+   * submissions across all versions. Otherwise 409 — compliance data
+   * must never be orphaned; the caller should archive instead.
+   */
+  async deleteTemplate(id: string, actorId?: string) {
+    const existing = await this.requireTemplate(id);
+    if (existing.isSystemTemplate) {
+      throw new ForbiddenException("System templates cannot be deleted.");
+    }
+    const submissionCount = await this.prisma.formSubmission.count({
+      where: { templateVersion: { templateId: id } }
+    });
+    if (submissionCount > 0) {
+      throw new ConflictException(
+        "Template has submissions and cannot be deleted. Archive it instead to preserve compliance history."
+      );
+    }
+    await this.prisma.formTemplate.delete({ where: { id } });
+    await this.auditService.write({
+      actorId,
+      action: "forms.template.delete",
+      entityType: "FormTemplate",
+      entityId: id
+    });
+    return { id };
+  }
+
+  /**
+   * Duplicate a template — copies metadata + the latest version's
+   * sections/fields/rules into a NEW custom template (status DRAFT,
+   * isSystemTemplate=false). This is how the 7 seeded system forms
+   * become tailorable without mutating the source.
+   *
+   * @returns the freshly created template via getTemplate
+   */
+  async duplicateTemplate(id: string, actorId?: string) {
+    const source = await this.getTemplate(id);
+    const latest = source.versions[0];
+
+    const baseName = `Copy of ${source.name}`;
+    const uniqueName = await this.pickUniqueTemplateName(baseName);
+    const uniqueCode = await this.pickUniqueTemplateCode(`${source.code}-COPY`);
+
+    const dto: UpsertFormTemplateDto = {
+      name: uniqueName,
+      code: uniqueCode,
+      description: source.description ?? undefined,
+      status: "DRAFT",
+      geolocationEnabled: source.geolocationEnabled,
+      associationScopes: Array.isArray(source.associationScopes)
+        ? (source.associationScopes as string[])
+        : [],
+      sections: latest
+        ? latest.sections.map((section) => ({
+            title: section.title,
+            description: section.description ?? undefined,
+            sectionOrder: section.sectionOrder,
+            fields: section.fields.map((field) => ({
+              fieldKey: field.fieldKey,
+              label: field.label,
+              fieldType: field.fieldType,
+              fieldOrder: field.fieldOrder,
+              isRequired: field.isRequired,
+              placeholder: field.placeholder ?? undefined,
+              helpText: field.helpText ?? undefined,
+              optionsJson: field.optionsJson ?? undefined
+            }))
+          }))
+        : [{ title: "Section 1", sectionOrder: 1, fields: [] }],
+      rules: latest
+        ? latest.rules.map((rule) => ({
+            sourceFieldKey: rule.sourceFieldKey,
+            targetFieldKey: rule.targetFieldKey,
+            operator: rule.operator,
+            comparisonValue: rule.comparisonValue ?? undefined,
+            effect: rule.effect
+          }))
+        : []
+    };
+
+    const created = await this.prisma.$transaction((tx) =>
+      this.createTemplateVersion(tx, undefined, dto, true, {
+        category: source.category ?? "custom",
+        isSystemTemplate: false
+      })
+    );
+
+    await this.auditService.write({
+      actorId,
+      action: "forms.template.duplicate",
+      entityType: "FormTemplate",
+      entityId: created.id,
+      metadata: { sourceTemplateId: id }
+    });
+
+    return this.getTemplate(created.id);
+  }
+
+  private async pickUniqueTemplateName(base: string): Promise<string> {
+    let candidate = base;
+    let n = 2;
+    while (await this.prisma.formTemplate.findFirst({ where: { name: candidate } })) {
+      candidate = `${base} (${n++})`;
+      if (n > 500) throw new ConflictException("Could not derive a unique template name.");
+    }
+    return candidate;
+  }
+
+  private async pickUniqueTemplateCode(base: string): Promise<string> {
+    let candidate = base;
+    let n = 2;
+    while (await this.prisma.formTemplate.findFirst({ where: { code: candidate } })) {
+      candidate = `${base}-${n++}`;
+      if (n > 500) throw new ConflictException("Could not derive a unique template code.");
+    }
+    return candidate;
+  }
+
   private async createTemplateVersion(
     tx: Prisma.TransactionClient | PrismaClient,
     templateId: string | undefined,
     dto: UpsertFormTemplateDto,
-    createTemplate: boolean
+    createTemplate: boolean,
+    overrides?: { category?: string; isSystemTemplate?: boolean }
   ) {
     const template = createTemplate
       ? await tx.formTemplate.create({
@@ -344,7 +559,11 @@ export class FormsService {
             description: dto.description ?? null,
             status: dto.status ?? "ACTIVE",
             geolocationEnabled: dto.geolocationEnabled ?? false,
-            associationScopes: dto.associationScopes ?? []
+            associationScopes: dto.associationScopes ?? [],
+            ...(overrides?.category !== undefined ? { category: overrides.category } : {}),
+            ...(overrides?.isSystemTemplate !== undefined
+              ? { isSystemTemplate: overrides.isSystemTemplate }
+              : {})
           }
         })
       : await tx.formTemplate.update({

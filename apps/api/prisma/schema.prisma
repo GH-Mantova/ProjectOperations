@@ -3914,3 +3914,112 @@ model PublicHoliday {
   @@index([region, date])
   @@map("public_holidays")
 }
+
+// PR-486 — Native inventory / stock layer (slice 1).
+// Purpose-built for consumable stock (bolts, PPE, concrete, small parts) —
+// intentionally SEPARATE from Asset/AssetCategory (which tracks unique,
+// serialised, maintained plant). StockCategory does not overload
+// AssetCategory: an "off-hire" from Assets is not the same domain as a
+// "receive" against a stock item.
+//
+// Movements carry a signed Decimal quantity so the same shape handles
+// receipts (+), issues (-), returns (+), and adjustments (either sign).
+// The service enforces sign rules per StockMovementType and updates
+// StockItem.quantityOnHand atomically via prisma.$transaction.
+enum StockMovementType {
+  RECEIVE
+  ISSUE
+  ADJUST
+  RETURN
+}
+
+model StockCategory {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  code        String?
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  stockItems  StockItem[]
+
+  @@map("stock_categories")
+}
+
+model StockItem {
+  id              String   @id @default(cuid())
+  name            String
+  sku             String?
+  categoryId      String?  @map("category_id")
+  unit            String
+  quantityOnHand  Decimal  @default(0) @db.Decimal(14, 4) @map("quantity_on_hand")
+  reorderLevel    Decimal? @db.Decimal(14, 4) @map("reorder_level")
+  location        String?
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  category        StockCategory?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  movements       StockMovement[]
+  stocktakeCounts StocktakeCount[]
+
+  @@index([name])
+  @@index([sku])
+  @@index([categoryId])
+  @@map("stock_items")
+}
+
+model StockMovement {
+  id            String            @id @default(cuid())
+  stockItemId   String            @map("stock_item_id")
+  type          StockMovementType
+  // Signed delta. RECEIVE/RETURN are stored positive; ISSUE is stored negative;
+  // ADJUST is a signed delta (positive for count-up, negative for count-down)
+  // so stocktake commits can encode variances in a single row.
+  quantity      Decimal           @db.Decimal(14, 4)
+  reason        String?
+  refType       String?           @map("ref_type")
+  refId         String?           @map("ref_id")
+  movedByUserId String?           @map("moved_by_user_id")
+  createdAt     DateTime          @default(now()) @map("created_at")
+
+  stockItem     StockItem         @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+
+  @@index([stockItemId])
+  @@index([createdAt])
+  @@map("stock_movements")
+}
+
+model StocktakeSession {
+  id              String   @id @default(cuid())
+  startedByUserId String?  @map("started_by_user_id")
+  // Enforced at API boundary: "OPEN" | "COMMITTED" | "CANCELLED".
+  status          String   @default("OPEN")
+  notes           String?
+  startedAt       DateTime @default(now()) @map("started_at")
+  committedAt     DateTime? @map("committed_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  counts          StocktakeCount[]
+
+  @@index([status])
+  @@map("stocktake_sessions")
+}
+
+model StocktakeCount {
+  id           String   @id @default(cuid())
+  sessionId    String   @map("session_id")
+  stockItemId  String   @map("stock_item_id")
+  systemQty    Decimal  @db.Decimal(14, 4) @map("system_qty")
+  countedQty   Decimal  @db.Decimal(14, 4) @map("counted_qty")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  session      StocktakeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  stockItem    StockItem        @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, stockItemId])
+  @@index([sessionId])
+  @@map("stocktake_counts")
+}

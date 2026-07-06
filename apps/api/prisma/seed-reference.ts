@@ -166,6 +166,14 @@ export async function seedPermissionsAndCoreRoles(prisma: PrismaClient) {
       },
       {
         roleId: plannerRole.id,
+        permissionId: permissionIdByCode.get("inventory.view")!
+      },
+      {
+        roleId: plannerRole.id,
+        permissionId: permissionIdByCode.get("inventory.manage")!
+      },
+      {
+        roleId: plannerRole.id,
         permissionId: permissionIdByCode.get("forms.view")!
       },
       {

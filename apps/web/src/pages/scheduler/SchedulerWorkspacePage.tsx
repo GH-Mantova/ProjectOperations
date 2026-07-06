@@ -370,6 +370,7 @@ export function SchedulerWorkspacePage() {
       </aside>
 
       <section className="sched-main">
+        <h1 className="s7-type-page-title" style={{ margin: "0 0 8px" }}>Scheduler</h1>
         <header className="sched-main__head">
           <div className="sched-main__nav">
             <button type="button" className="s7-btn s7-btn--ghost s7-btn--sm" onClick={() => go(-1)} aria-label="Previous">‹</button>

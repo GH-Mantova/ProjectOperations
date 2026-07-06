@@ -3247,6 +3247,7 @@ model SubcontractorSupplier {
   insurances         EntityInsurance[]       @relation("SubInsurances")
   creditApplications CreditApplication[]     @relation("SubCreditApps")
   creditEntries      SupplierCreditEntry[]   @relation("SupplierCreditEntries")
+  rateTables         RateTable[]             @relation("RateTableSupplier")
 
   @@index([entityType])
   @@index([prequalStatus])
@@ -3913,4 +3914,114 @@ model PublicHoliday {
   @@unique([date, region])
   @@index([region, date])
   @@map("public_holidays")
+}
+
+// ── Rates & Lists R0 (PR-487) ──────────────────────────────────────────
+// Additive-only flexible rate model + list-binding registry per
+// docs/specs/rates-lists-tidyup-spec.md §3. The eight legacy rate tables
+// (EstimateLabourRate…CuttingOtherRate) remain the pricing source of truth;
+// nothing consumer-facing changes in R0. The resolver seam
+// (RateResolverService) reads legacy tables by default. Later phases
+// (R1…Rn) route consumers through the seam and migrate one legacy table
+// at a time.
+
+enum RateTableCategory {
+  INITIAL_SERVICES
+  SUBCONTRACTOR
+}
+
+enum RateColumnDataType {
+  TEXT
+  NUMBER
+  CURRENCY
+  DATE
+  BOOL
+  LIST_REF
+}
+
+enum RateColumnRole {
+  KEY
+  VALUE
+  INFO
+}
+
+enum ListBindingConsumerType {
+  RATE_COLUMN
+  FORM_FIELD
+  MODULE_DROPDOWN
+}
+
+model RateTable {
+  id                String                 @id @default(cuid())
+  name              String
+  slug              String                 @unique
+  description       String?
+  category          RateTableCategory
+  subcontractorType String?                @map("subcontractor_type")
+  supplierId        String?                @map("supplier_id")
+  supplier          SubcontractorSupplier? @relation("RateTableSupplier", fields: [supplierId], references: [id])
+  isSystem          Boolean                @default(false) @map("is_system")
+  createdById       String?                @map("created_by_id")
+  updatedById       String?                @map("updated_by_id")
+  columns           RateColumn[]
+  rows              RateRow[]
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+
+  @@index([category])
+  @@index([supplierId])
+  @@map("rate_tables")
+}
+
+model RateColumn {
+  id          String             @id @default(cuid())
+  rateTableId String             @map("rate_table_id")
+  rateTable   RateTable          @relation(fields: [rateTableId], references: [id], onDelete: Cascade)
+  name        String
+  dataType    RateColumnDataType @map("data_type")
+  role        RateColumnRole
+  unit        String?
+  listSlug    String?            @map("list_slug")
+  required    Boolean            @default(false)
+  min         Decimal?           @db.Decimal(18, 6)
+  max         Decimal?           @db.Decimal(18, 6)
+  sortOrder   Int                @default(0) @map("sort_order")
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+
+  @@unique([rateTableId, name])
+  @@map("rate_columns")
+}
+
+model RateRow {
+  id            String    @id @default(cuid())
+  rateTableId   String    @map("rate_table_id")
+  rateTable     RateTable @relation(fields: [rateTableId], references: [id], onDelete: Cascade)
+  cells         Json
+  isActive      Boolean   @default(true) @map("is_active")
+  effectiveFrom DateTime? @map("effective_from")
+  effectiveTo   DateTime? @map("effective_to")
+  sortOrder     Int       @default(0) @map("sort_order")
+  createdById   String?   @map("created_by_id")
+  updatedById   String?   @map("updated_by_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@index([rateTableId, isActive])
+  @@map("rate_rows")
+}
+
+model ListBinding {
+  id           String                  @id @default(cuid())
+  listId       String                  @map("list_id")
+  consumerType ListBindingConsumerType @map("consumer_type")
+  consumerRef  String                  @map("consumer_ref")
+  label        String?
+  createdAt    DateTime                @default(now()) @map("created_at")
+  updatedAt    DateTime                @updatedAt @map("updated_at")
+
+  @@unique([listId, consumerType, consumerRef])
+  @@index([listId])
+  @@index([consumerType, consumerRef])
+  @@map("list_bindings")
 }

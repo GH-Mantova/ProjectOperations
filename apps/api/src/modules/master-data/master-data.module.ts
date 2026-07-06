@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
+import { ClientStatsService } from "./client-stats.service";
 import { MasterDataController } from "./master-data.controller";
 import { MasterDataService } from "./master-data.service";
 
@@ -12,7 +13,7 @@ import { MasterDataService } from "./master-data.service";
 @Module({
   imports: [AuditModule],
   controllers: [MasterDataController],
-  providers: [MasterDataService],
-  exports: [MasterDataService]
+  providers: [MasterDataService, ClientStatsService],
+  exports: [MasterDataService, ClientStatsService]
 })
 export class MasterDataModule {}

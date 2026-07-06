@@ -3,7 +3,7 @@
 // direct instantiation with `as never`. PasswordService is always mocked so
 // no real hashing runs in the suite (backlog pr-92 rule).
 
-import { ConflictException, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, NotFoundException } from "@nestjs/common";
 import { UsersService } from "../users.service";
 
 const PAGE = { page: 1, pageSize: 25 } as never;
@@ -271,6 +271,83 @@ describe("UsersService.flattenPermissions / toSafeUser", () => {
     delete (row as Record<string, unknown>).isSuperUser;
 
     expect(service.toSafeUser(row as never).isSuperUser).toBe(false);
+  });
+});
+
+// ─── Reporting hierarchy ───────────────────────────────────────────────────
+
+describe("UsersService.getReportSubtreeIds", () => {
+  it("returns just the root when the user has no direct reports", async () => {
+    const { service, prisma } = buildService();
+    (prisma.user as { findMany: jest.Mock }).findMany.mockResolvedValueOnce([]);
+
+    const ids = await service.getReportSubtreeIds("root");
+
+    expect(ids).toEqual(["root"]);
+  });
+
+  it("walks a linear reporting chain in BFS order", async () => {
+    const { service, prisma } = buildService();
+    const findMany = (prisma.user as { findMany: jest.Mock }).findMany;
+    findMany
+      .mockResolvedValueOnce([{ id: "b" }])
+      .mockResolvedValueOnce([{ id: "c" }])
+      .mockResolvedValueOnce([]);
+
+    const ids = await service.getReportSubtreeIds("a");
+
+    expect(ids).toEqual(["a", "b", "c"]);
+  });
+
+  it("collects a branching tree without duplicates and guards cycles via a visited set", async () => {
+    const { service, prisma } = buildService();
+    const findMany = (prisma.user as { findMany: jest.Mock }).findMany;
+    findMany
+      .mockResolvedValueOnce([{ id: "b" }, { id: "c" }])
+      .mockResolvedValueOnce([{ id: "d" }, { id: "a" }])
+      .mockResolvedValueOnce([]);
+
+    const ids = await service.getReportSubtreeIds("a");
+
+    expect(ids.sort()).toEqual(["a", "b", "c", "d"]);
+  });
+});
+
+describe("UsersService.update managerId", () => {
+  it("rejects self-management with BadRequestException", async () => {
+    const { service, prisma } = buildService();
+    (prisma.user as { findUnique: jest.Mock }).findUnique.mockResolvedValue(userRow());
+
+    await expect(
+      service.update("user-1", { managerId: "user-1" } as never, "actor-1")
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("rejects a managerId that is already in the user's subtree (cycle guard)", async () => {
+    const { service, prisma } = buildService();
+    const findUnique = (prisma.user as { findUnique: jest.Mock }).findUnique;
+    findUnique
+      .mockResolvedValueOnce(userRow()) // ensureUserExists
+      .mockResolvedValueOnce({ id: "user-2" }); // target exists check
+    (prisma.user as { findMany: jest.Mock }).findMany
+      .mockResolvedValueOnce([{ id: "user-2" }])
+      .mockResolvedValueOnce([]);
+
+    await expect(
+      service.update("user-1", { managerId: "user-2" } as never, "actor-1")
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("clears the reporting line when managerId is explicitly null", async () => {
+    const { service, prisma } = buildService();
+    (prisma.user as { findUnique: jest.Mock }).findUnique.mockResolvedValue(userRow());
+
+    await service.update("user-1", { managerId: null } as never, "actor-1");
+
+    const data = ((prisma.user as { update: jest.Mock }).update.mock.calls[0][0] as {
+      data: Record<string, unknown>;
+    }).data;
+    expect(data.managerId).toBeNull();
   });
 });
 

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Form Builder — Concept v2 (Cognito-clean · JotForm-deep)</title>
+<style>
+:root{--brand-primary:#005B61;--brand-primary-light:#E6F0F1;--brand-accent:#FEAA6D;--brand-accent-dark:#E8914F;--brand-dark:#242424;--page:#F4F6F6;--card:#FFF;--text:#1A2B2C;--text2:#5F7375;--muted:#9AACAD;--line:#E3E9E9;--danger:#EF4444;--info:#3B82F6;--r:10px;--shadow:0 1px 2px rgba(10,40,42,.05),0 2px 8px rgba(10,40,42,.04)}
+*{box-sizing:border-box;margin:0}body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--page);padding:18px;color:var(--text)}
+h1{font-size:22px;font-weight:600;letter-spacing:-.01em}.sub{color:var(--text2);font-size:13px;margin:4px 0 14px}
+/* new-form strip */
+.newstrip{max-width:1280px;margin:0 auto 12px;display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.ntile{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:13px;text-align:center;font-size:12.5px;font-weight:600;color:var(--brand-primary);cursor:pointer;box-shadow:var(--shadow)}
+.ntile:hover{border-color:var(--brand-primary)}
+.ntile .d{display:block;font-weight:400;font-size:10.5px;color:var(--muted);margin-top:3px}
+.ntile .ai{font-size:9px;background:var(--brand-primary);color:#fff;border-radius:8px;padding:1px 7px;margin-left:5px;letter-spacing:.05em}
+/* top bar */
+.topbar{max-width:1280px;margin:0 auto;background:var(--card);border:1px solid var(--line);border-bottom:none;border-radius:var(--r) var(--r) 0 0;display:flex;align-items:center;gap:12px;padding:11px 16px}
+.fname{font-size:15px;font-weight:600;border:none;color:var(--text);padding:4px 2px;border-bottom:1.5px dashed var(--line);background:none;min-width:280px}
+.chip{font-size:10.5px;background:var(--brand-primary-light);color:var(--brand-primary);padding:3px 10px;border-radius:9px;font-weight:700;letter-spacing:.04em}
+.laytoggle{margin-left:auto;display:flex;background:var(--page);border:1px solid var(--line);border-radius:8px;overflow:hidden;font-size:12px}
+.laytoggle div{padding:7px 13px;cursor:pointer;color:var(--text2)}.laytoggle .on{background:var(--brand-primary);color:#fff;font-weight:600}
+.tbtn{background:var(--page);border:1px solid var(--line);color:var(--text2);font-size:12.5px;padding:8px 14px;border-radius:8px;cursor:pointer;min-height:38px}
+.tbtn.primary{background:var(--brand-accent);border-color:var(--brand-accent);color:var(--brand-dark);font-weight:700}
+/* frame */
+.frame{max-width:1280px;margin:0 auto;display:flex;background:var(--card);border:1px solid var(--line);border-radius:0 0 var(--r) var(--r);overflow:hidden;box-shadow:var(--shadow);min-height:660px}
+/* palette (LIGHT, Cognito style) */
+.palette{width:236px;border-right:1px solid var(--line);background:#FBFCFC;overflow:auto;padding:12px}
+.palette h4{font-size:10px;letter-spacing:.07em;color:var(--muted);text-transform:uppercase;margin:14px 4px 7px}
+.palette h4:first-child{margin-top:2px}
+.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.pill{border:1px solid var(--line);border-radius:18px;background:#fff;font-size:11.5px;padding:8px 10px;cursor:grab;display:flex;align-items:center;gap:6px;color:var(--text);min-height:36px}
+.pill:hover{border-color:var(--brand-primary);color:var(--brand-primary)}
+.pill.wide{grid-column:span 2}
+.pill .st{font-size:8.5px;font-weight:800;color:var(--brand-accent-dark);margin-left:auto;letter-spacing:.04em}
+/* canvas */
+.canvas{flex:1;background:var(--page);padding:22px;overflow:auto}
+.formcard{max-width:560px;margin:0 auto;background:#fff;border-radius:var(--r);box-shadow:var(--shadow);padding:24px;border-top:4px solid var(--brand-primary)}
+.formcard h2{font-size:18px;font-weight:600}.fdesc{font-size:12px;color:var(--text2);margin:3px 0 6px}
+.autofill{display:flex;gap:7px;margin:10px 0 4px;flex-wrap:wrap}
+.autofill span{font-size:10.5px;background:var(--brand-primary-light);color:var(--brand-primary);padding:3px 9px;border-radius:9px;font-weight:600}
+.sect{border:1px solid var(--line);border-radius:10px;padding:14px;margin-top:14px;background:#fff}
+.stitle{font-size:12.5px;font-weight:700;color:var(--brand-primary);letter-spacing:.03em;margin-bottom:8px}
+.f{border:1.5px solid transparent;border-radius:9px;padding:10px;margin-top:6px;position:relative;cursor:pointer}
+.f:hover{border-color:var(--line);background:#FBFCFC}
+.f.sel{border-color:var(--brand-primary);background:var(--brand-primary-light)}
+.f label{font-size:12.5px;font-weight:600;display:block;margin-bottom:5px}
+.f label .req{color:var(--danger)}
+.help{font-size:10.5px;color:var(--muted);margin-top:4px}
+.mockinput{border:1px solid var(--line);border-radius:7px;padding:9px;font-size:12.5px;color:var(--muted);background:#fff}
+.opts{display:flex;gap:8px;flex-wrap:wrap}
+.opt{border:1px solid var(--line);border-radius:16px;padding:6px 13px;font-size:12px;background:#fff}
+.opt.on{background:var(--brand-primary);color:#fff;border-color:var(--brand-primary)}
+.pushbadge{position:absolute;top:-9px;right:10px;background:var(--brand-accent);color:var(--brand-dark);font-size:9.5px;font-weight:800;padding:2px 9px;border-radius:9px;letter-spacing:.03em}
+.calcbadge{position:absolute;top:-9px;right:10px;background:var(--info);color:#fff;font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:9px}
+.rep{border:1.5px dashed var(--brand-primary);border-radius:9px;padding:10px;margin-top:8px;background:#F7FAFA}
+.rep .rhead{display:flex;justify-content:space-between;font-size:11px;font-weight:700;color:var(--brand-primary);margin-bottom:6px}
+.rep .rrow{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:7px;margin-top:6px}
+.rep .rrow .mockinput{padding:7px;font-size:11.5px}
+.addrow{border:none;background:none;color:var(--brand-primary);font-size:11.5px;font-weight:700;cursor:pointer;margin-top:8px}
+.sig{border:1px solid var(--line);border-radius:8px;height:52px;display:flex;align-items:flex-end;justify-content:center;font-size:10.5px;color:var(--muted);padding-bottom:4px;background:linear-gradient(#fff 96%,var(--line) 96%)}
+.outstrip{display:flex;gap:7px;margin-top:16px;flex-wrap:wrap;align-items:center}
+.outstrip .lbl{font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.06em}
+.out{font-size:10.5px;border:1px solid var(--line);border-radius:9px;padding:3px 9px;color:var(--text2);background:#fff}
+.out b{color:var(--brand-primary)}
+/* properties */
+.props{width:308px;border-left:1px solid var(--line);overflow:auto;background:#fff}
+.phead{padding:14px 16px 0}
+.props h3{font-size:14px;font-weight:700}
+.ptype{font-size:11px;color:var(--muted)}
+.ptabs{display:flex;border-bottom:1px solid var(--line);margin-top:10px}
+.ptab{flex:1;text-align:center;font-size:11px;font-weight:700;padding:9px 0;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent}
+.ptab.on{color:var(--brand-primary);border-color:var(--brand-accent)}
+.pbody{padding:14px 16px}
+.pbody label{display:block;font-size:9.5px;font-weight:700;letter-spacing:.06em;color:var(--muted);text-transform:uppercase;margin:12px 0 5px}
+.pbody label:first-child{margin-top:0}
+.pbody input[type=text],.pbody select{width:100%;padding:9px;border:1px solid var(--line);border-radius:7px;font-size:12.5px;background:#fff}
+.tgl{display:flex;align-items:center;justify-content:space-between;font-size:12.5px;padding:8px 0;border-bottom:1px solid var(--line)}
+.tgl:last-child{border:none}
+.tsw{width:32px;height:18px;border-radius:9px;background:#D3DCDC;position:relative;flex-shrink:0}.tsw::after{content:'';position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#fff}
+.tsw.on{background:var(--brand-primary)}.tsw.on::after{left:auto;right:2px}
+.pushcard{background:#FFF7EF;border:1px solid #F8DFC7;border-radius:8px;padding:11px;font-size:12px;line-height:1.75;margin-top:4px}
+.pushcard b{color:var(--brand-accent-dark)}
+.logicrow{background:var(--brand-primary-light);border-radius:8px;padding:10px;font-size:12px;line-height:1.7;margin-top:6px}
+.logicrow b{color:var(--brand-primary)}
+.note{background:var(--brand-primary-light);border-radius:8px;padding:10px 12px;font-size:11px;color:#0B4448;line-height:1.5;margin:12px 16px}
+</style>
+</head>
+<body>
+<h1>Form builder — concept v2 <span style="font-size:12px;font-weight:400;color:var(--text2)">Cognito-clean skin · JotForm-deep engine</span></h1>
+<p class="sub">This round shows your <b>Plant Pre-Start</b> — click the <b>hour meter field</b> to see the push-to-Assets binding, the <b>defects block</b> for repeating sections, and note the new-form strip with both AI entries. Output channels shown at the form's foot.</p>
+
+<div class="newstrip">
+  <div class="ntile">Start from scratch<span class="d">blank canvas</span></div>
+  <div class="ntile">Import a form<span class="ai">AI</span><span class="d">Word / PDF / Cognito export → draft template</span></div>
+  <div class="ntile">Describe it<span class="ai">AI</span><span class="d">"a working-at-heights permit with 2-stage sign-off"</span></div>
+  <div class="ntile">Duplicate a template<span class="d">incl. the 7 system forms</span></div>
+</div>
+
+<div class="topbar">
+  <input class="fname" value="Plant Pre-Start — Excavators & Rollers">
+  <span class="chip">DRAFT v2</span><span class="chip" style="background:#FFF1E3;color:var(--brand-accent-dark)">PUSHES DATA → ASSETS</span>
+  <div class="laytoggle"><div class="on">Classic</div><div>Card — one question at a time (field default)</div></div>
+  <button class="tbtn">Versions</button><button class="tbtn">Preview</button><button class="tbtn primary">Publish</button>
+</div>
+
+<div class="frame">
+  <div class="palette">
+    <h4>Site &amp; WHS</h4>
+    <div class="pgrid">
+      <div class="pill">📷 Photo</div><div class="pill">✍ Signature</div>
+      <div class="pill">👷 Worker</div><div class="pill">🚜 Asset</div>
+      <div class="pill">📍 Location</div><div class="pill">☀ Weather</div>
+      <div class="pill wide">✅ Terms &amp; acceptance<span class="st">NEW</span></div>
+    </div>
+    <h4>Input</h4>
+    <div class="pgrid">
+      <div class="pill">T Text</div><div class="pill">¶ Long text</div>
+      <div class="pill"># Number</div><div class="pill">📅 Date/time</div>
+      <div class="pill">▾ Dropdown</div><div class="pill">◉ Choice</div>
+      <div class="pill">☑ Multi</div><div class="pill">📎 File</div>
+      <div class="pill wide">🔎 Lookup — any system list<span class="st">NEW</span></div>
+      <div class="pill wide">🧮 Calculation<span class="st">NEW</span></div>
+      <div class="pill wide">🆔 Unique ID (auto-number)<span class="st">NEW</span></div>
+    </div>
+    <h4>Structure</h4>
+    <div class="pgrid">
+      <div class="pill">≡ Section</div><div class="pill">▤ Table</div>
+      <div class="pill wide">§§ Repeating section<span class="st">NEW</span></div>
+      <div class="pill">— Divider</div><div class="pill">⤵ Page break</div>
+    </div>
+  </div>
+
+  <div class="canvas">
+    <div class="formcard">
+      <h2>Plant Pre-Start — Excavators &amp; Rollers</h2>
+      <div class="fdesc">Daily, before first use. Submission ID: <b>PPS-2026-0311</b> (auto)</div>
+      <div class="autofill"><span>⚙ Site</span><span>⚙ Date</span><span>⚙ Operator (you)</span><span>⚙ Weather</span></div>
+
+      <div class="sect">
+        <div class="stitle">1 · MACHINE</div>
+        <div class="f" onclick="sel(this,'asset')">
+          <label>Which machine? <span class="req">*</span></label>
+          <div class="opts"><span class="opt on">CAT 320 Excavator (asset-001)</span><span class="opt">Change…</span></div>
+          <div class="help">Asset picker — filtered to plant allocated to this site · warns if service overdue</div>
+        </div>
+        <div class="f sel" id="fmeter" onclick="sel(this,'meter')"><span class="pushbadge">PUSHES → ASSETS</span>
+          <label>Hour meter reading <span class="req">*</span></label>
+          <div class="mockinput">1,254</div>
+          <div class="help">Last recorded: 1,240 h (2 days ago) · readings below that are rejected on the spot</div>
+        </div>
+        <div class="f" onclick="sel(this,'calc')"><span class="calcbadge">CALCULATED</span>
+          <label>Hours since last service</label>
+          <div class="mockinput">254 of 500 h — next service in 246 h</div>
+        </div>
+      </div>
+
+      <div class="sect">
+        <div class="stitle">2 · DEFECTS</div>
+        <div class="f" onclick="sel(this,'defq')">
+          <label>Any defects found? <span class="req">*</span></label>
+          <div class="opts"><span class="opt on">Yes</span><span class="opt">No</span></div>
+        </div>
+        <div class="rep" onclick="sel(this,'rep')">
+          <div class="rhead"><span>DEFECTS — repeating section (shows if Yes)</span><span>2 entries</span></div>
+          <div class="rrow"><div class="mockinput">Hydraulic hose weeping at boom</div><div class="mockinput">Minor</div><div class="mockinput">📷 1 photo</div><div style="color:var(--danger);font-size:12px;align-self:center">✕</div></div>
+          <div class="rrow"><div class="mockinput">Left mirror cracked</div><div class="mockinput">Cosmetic</div><div class="mockinput">📷 1 photo</div><div style="color:var(--danger);font-size:12px;align-self:center">✕</div></div>
+          <button class="addrow">+ Add defect</button>
+        </div>
+      </div>
+
+      <div class="sect">
+        <div class="stitle">3 · SIGN-OFF</div>
+        <div class="f" onclick="sel(this,'sig')">
+          <label>Operator signature <span class="req">*</span></label>
+          <div class="sig">sign here — seals the submission</div>
+        </div>
+      </div>
+
+      <div class="outstrip"><span class="lbl">ON SUBMIT →</span>
+        <span class="out"><b>Assets</b>: hour reading + defects logged</span>
+        <span class="out"><b>Teams</b> #plant-whs</span>
+        <span class="out"><b>SharePoint</b> PDF → job folder</span>
+        <span class="out"><b>Email</b> W.Manager</span>
+        <span class="out">Webhook</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="props" id="props"></div>
+</div>
+
+<script>
+const P={
+ meter:{t:'Hour meter reading',ty:'Number · required',tabs:['General','Options','Push','Logic'],on:2,body:`
+   <label>Pushes to</label>
+   <div class="pushcard"><b>Assets → CAT 320 → Hour meter</b><br>via the machine chosen in "Which machine?"<br>Recorded as a new reading (full history kept), never an overwrite.</div>
+   <div class="tgl" style="margin-top:10px">Reject readings below last (1,240 h) <div class="tsw on"></div></div>
+   <div class="tgl">Allow "meter replaced" override (supervisor) <div class="tsw on"></div></div>
+   <div class="tgl">Apply on approval (not on submit) <div class="tsw"></div></div>
+   <label style="margin-top:12px">Drives</label>
+   <div class="logicrow">Usage-based servicing: <b>every 500 h</b> → reminder at 90% via notifications ("CAT 320 is 50 h from service")</div>`},
+ calc:{t:'Hours since last service',ty:'Calculation · read-only',tabs:['General','Formula','Logic'],on:1,body:`
+   <label>Formula</label>
+   <div class="logicrow"><b>[Hour meter reading]</b> − <b>Asset.lastServiceReading</b></div>
+   <label>Display</label><input type="text" value="{value} of 500 h — next service in {remaining} h">
+   <div style="font-size:11px;color:var(--muted);margin-top:8px">Calculations can reference form fields AND system values from pickers on the form.</div>`},
+ rep:{t:'Defects',ty:'Repeating section',tabs:['General','Fields','Logic'],on:0,body:`
+   <label>Entry label</label><input type="text" value="Defect">
+   <label>Min / max entries</label><select><option>0 – unlimited</option><option>1 – 10</option></select>
+   <div class="tgl" style="margin-top:10px">Each entry pushes a defect record to the asset <div class="tsw on"></div></div>
+   <div class="tgl">Severity "Major" flags maintenance immediately <div class="tsw on"></div></div>
+   <div class="logicrow" style="margin-top:8px">Whole section <b>shows only if</b> "Any defects found?" = Yes</div>`},
+ defq:{t:'Any defects found?',ty:'Single choice · required',tabs:['General','Options','Logic'],on:2,body:`
+   <div class="logicrow"><b>WHEN</b> answer = <b>Yes</b> → show "Defects" repeating section<br><b>WHEN</b> any defect severity = <b>Major</b> → notify Maintenance + block plant status "cleared"</div>
+   <button class="tbtn" style="margin-top:8px">+ Add rule</button>
+   <div style="font-size:11px;color:var(--muted);margin-top:8px">AI assist (v1): describe a rule in plain words → it drafts the condition for your review.</div>`},
+ asset:{t:'Which machine?',ty:'Asset picker · required',tabs:['General','Options','Logic'],on:1,body:`
+   <label>Filter</label><select><option>Plant allocated to this site</option><option>All active plant</option></select>
+   <div class="tgl" style="margin-top:10px">Warn if service overdue <div class="tsw on"></div></div>
+   <div class="tgl">Block use if defected-major open <div class="tsw on"></div></div>
+   <div style="font-size:11px;color:var(--muted);margin-top:8px">Downstream fields (meter, calc, defects) bind to whichever machine is picked here.</div>`},
+ sig:{t:'Operator signature',ty:'Signature · required',tabs:['General','Options','Logic'],on:1,body:`
+   <div class="tgl">Lock form after signing <div class="tsw on"></div></div>
+   <div class="tgl">Capture signer + timestamp <div class="tsw on"></div></div>
+   <div class="tgl">Push happens only after signature <div class="tsw on"></div></div>
+   <div style="font-size:11px;color:var(--muted);margin-top:8px">No signature → no asset update. Data integrity rides the sign-off.</div>`}};
+function sel(el,key){
+ document.querySelectorAll('.f,.rep').forEach(f=>f.classList.remove('sel')); el.classList.add('sel');
+ const p=P[key];
+ document.getElementById('props').innerHTML=`
+  <div class="phead"><h3>${p.t}</h3><div class="ptype">${p.ty}</div>
+  <div class="ptabs">${p.tabs.map((t,i)=>`<div class="ptab ${i===p.on?'on':''}">${t}</div>`).join('')}</div></div>
+  <div class="pbody">${p.body}</div>
+  <div class="note"><b>Every field:</b> label, help, placeholder, default, required, hide, duplicate, read-only — the JotForm basics live in General/Options.</div>`;
+ event && event.stopPropagation();
+}
+sel(document.getElementById('fmeter'),'meter');
+</script>
+</body>
+</html>

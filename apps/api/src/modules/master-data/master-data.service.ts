@@ -195,7 +195,7 @@ export class MasterDataService {
     return this.paginate(query, () =>
       this.prisma.site.findMany({
         where: query.q ? { name: { contains: query.q, mode: "insensitive" } } : undefined,
-        include: { client: true },
+        include: { client: true, _count: { select: { jobs: true } } },
         orderBy: { name: "asc" }
       }),
       () =>

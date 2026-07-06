@@ -505,6 +505,12 @@ export class FormsEngineService {
    * Note: overdueApprovals is a global count of pending approvals past
    * their dueAt — it ignores the from/to/templateId filters.
    *
+   * byStatus keys are folded to lowercase before accumulation: mixed-case
+   * legacy rows exist (seed and schema default write "SUBMITTED"/"DRAFT";
+   * the engine writes "draft"/"submitted"/"rejected"), and the response
+   * contract is lowercase — so "SUBMITTED" and "submitted" land in the
+   * same bucket. See QA S3-006.
+   *
    * @param filters - optional submittedAt date range and templateId
    * @returns `{ totalSubmissions, byStatus, overdueApprovals }`
    */
@@ -526,7 +532,10 @@ export class FormsEngineService {
       })
     ]);
     const byStatus: Record<string, number> = {};
-    for (const row of byStatusRows) byStatus[row.status] = row._count._all;
+    for (const row of byStatusRows) {
+      const key = row.status.toLowerCase();
+      byStatus[key] = (byStatus[key] ?? 0) + row._count._all;
+    }
     return { totalSubmissions: total, byStatus, overdueApprovals: overdue };
   }
 

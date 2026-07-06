@@ -241,7 +241,10 @@ test.describe("Batch 8 — Shell & tendering long tail (PRs #219, #248, #172, #1
     await page.getByRole("button", { name: "Reset all" }).click();
     await expect(page.getByText(/[1-9]\d* card override(s)? cleared/)).toBeVisible();
     expect(dialogMessages.length).toBe(1);
-    expect(dialogMessages[0]).toContain("Reset every card's markup override");
+    expect(dialogMessages[0]).toContain("Reset every markup override back to the tender default");
+    expect(dialogMessages[0]).toMatch(
+      /\d+ scope card\(s\).*\d+ waste section\(s\).*\d+ cutting section\(s\)/
+    );
     await expect(cardInput).toHaveValue("");
 
     // With no overrides left the second click skips the confirm dialog

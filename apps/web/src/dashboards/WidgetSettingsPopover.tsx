@@ -45,7 +45,7 @@ export function WidgetSettingsPopover({ meta, entry, anchor, onApply, onClose }:
   const hasFieldSchema = Boolean(meta.fieldSchema && meta.fieldSchema.length > 0);
   const schema = meta.configSchema ?? [];
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
-  const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
+  const [position, setPosition] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
 
   useLayoutEffect(() => {
     if (!anchor) return;
@@ -56,8 +56,23 @@ export function WidgetSettingsPopover({ meta, entry, anchor, onApply, onClose }:
         VIEWPORT_GUTTER,
         Math.min(rect.right - width - 10, window.innerWidth - width - VIEWPORT_GUTTER)
       );
-      const top = Math.max(VIEWPORT_GUTTER, Math.min(rect.top + 42, window.innerHeight * 0.5));
-      setPosition({ top, left });
+      // Preferred top: just below the widget header. Clamp so top + maxHeight fits
+      // within the viewport, otherwise the bottom of the popover ends up
+      // off-screen and its Apply/toggle buttons become unreachable in headless
+      // Chromium (Playwright can't scrollIntoView across a fixed container's
+      // own edge — see batch9a-forms-widgets timeouts fixed here).
+      const preferredTop = Math.max(VIEWPORT_GUTTER, rect.top + 42);
+      const minHeight = 200;
+      const availableBelow = window.innerHeight - preferredTop - VIEWPORT_GUTTER;
+      const top =
+        availableBelow >= minHeight
+          ? preferredTop
+          : Math.max(VIEWPORT_GUTTER, window.innerHeight - minHeight - VIEWPORT_GUTTER);
+      const maxHeight = Math.max(
+        minHeight,
+        window.innerHeight - top - VIEWPORT_GUTTER
+      );
+      setPosition({ top, left, maxHeight });
     };
     place();
     window.addEventListener("resize", place);
@@ -127,7 +142,17 @@ export function WidgetSettingsPopover({ meta, entry, anchor, onApply, onClose }:
       className="widget-settings-popover"
       role="dialog"
       aria-label="Widget settings"
-      style={position ? { position: "fixed", top: position.top, left: position.left, right: "auto" } : undefined}
+      style={
+        position
+          ? {
+              position: "fixed",
+              top: position.top,
+              left: position.left,
+              right: "auto",
+              maxHeight: position.maxHeight
+            }
+          : undefined
+      }
     >
       {schema.map((field) => (
         <FieldRenderer

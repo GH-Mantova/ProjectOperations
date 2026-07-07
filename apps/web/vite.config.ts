@@ -15,16 +15,16 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: "autoUpdate",
+      // "prompt" so vite-plugin-pwa fires onNeedRefresh and the new SW stays
+      // in "waiting" until the user hits Reload in the in-app toast (see
+      // updatePromptStore + UpdatePromptToast). autoUpdate + skipWaiting was
+      // silently swapping the SW without ever reloading the open tab, leaving
+      // users on a stale shell after every deploy.
+      registerType: "prompt",
       // Field workers spend most of their day on flaky-coverage sites — cache
       // the shell aggressively, but always go-network-first for /api so they
       // see fresh data when they do have signal.
       workbox: {
-        // PR F FIX 2 — skipWaiting + clientsClaim eliminate the "stale tab
-        // serves the old shell" race during autoUpdate. New SW activates
-        // immediately on install; main.tsx prompts the user to refresh.
-        skipWaiting: true,
-        clientsClaim: true,
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         navigateFallback: "/index.html",

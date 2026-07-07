@@ -8,6 +8,7 @@ import { registerSW } from "virtual:pwa-register";
 import { App } from "./App";
 import { consumeSsoRedirect } from "./auth/consumeSsoRedirect";
 import { isSsoEnabled, msalConfig } from "./auth/msal.config";
+import { updatePromptStore } from "./pwa/updatePromptStore";
 import "./styles/tokens.css";
 import "./styles.css";
 
@@ -15,16 +16,13 @@ const queryClient = new QueryClient();
 
 const msalInstance = isSsoEnabled ? new PublicClientApplication(msalConfig) : null;
 
-// PR F FIX 2 — register the service worker explicitly so we can prompt the
-// user when a fresh shell is ready. A simple confirm() is intentional here:
-// the toast system lives inside React tree and isn't reachable from this
-// module-level callback. Reload only if the user opts in; otherwise the new
-// SW still takes over on next full navigation.
+// Register the service worker in "prompt" mode (see vite.config.ts). The new
+// SW installs but waits — we surface a non-blocking in-app toast (rendered by
+// UpdatePromptToast) and only call updateSW(true) when the user opts in, so a
+// deploy never yanks the page out from under an in-progress form.
 const updateSW = registerSW({
   onNeedRefresh() {
-    if (window.confirm("A new version of Project Operations is available. Reload now?")) {
-      void updateSW(true);
-    }
+    updatePromptStore.signalNeedRefresh();
   },
   onOfflineReady() {
     // Brief, non-intrusive console log — the OfflineIndicator already
@@ -32,6 +30,8 @@ const updateSW = registerSW({
     console.info("[ProjectOps] PWA ready — offline use available.");
   }
 });
+
+updatePromptStore.setUpdater(() => updateSW(true));
 
 const tree = (
   <React.StrictMode>

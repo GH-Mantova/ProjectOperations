@@ -798,6 +798,8 @@ export class ScopeOfWorksService {
       cuttingNotes: c.cuttingNotes,
       wasteNotes: c.wasteNotes,
       markupOverride: c.markupOverride !== null ? Number(c.markupOverride) : null,
+      wasteMarkupOverride: c.wasteMarkupOverride !== null ? Number(c.wasteMarkupOverride) : null,
+      cuttingMarkupOverride: c.cuttingMarkupOverride !== null ? Number(c.cuttingMarkupOverride) : null,
       sortOrder: c.sortOrder,
       itemCount: c._count.scopeItems,
       createdAt: c.createdAt,
@@ -891,6 +893,30 @@ export class ScopeOfWorksService {
       where: { id: cardId },
       data: {
         markupOverride: markupOverride == null ? null : new Prisma.Decimal(markupOverride)
+      }
+    });
+  }
+
+  /**
+   * Per-section markup override for the card's waste or cutting
+   * subtable. Independent from `markupOverride` (scope) — waste and
+   * cutting are their own cost streams and each carries its own rate.
+   * Pass null to clear and fall back to TenderEstimate.markup.
+   */
+  async setCardSectionMarkupOverride(
+    tenderId: string,
+    cardId: string,
+    sectionType: "waste" | "cutting",
+    markupOverride: number | null
+  ) {
+    await this.requireTender(tenderId);
+    const card = await this.prisma.scopeCard.findFirst({ where: { id: cardId, tenderId } });
+    if (!card) throw new NotFoundException("Card not found.");
+    const field = sectionType === "waste" ? "wasteMarkupOverride" : "cuttingMarkupOverride";
+    return this.prisma.scopeCard.update({
+      where: { id: cardId },
+      data: {
+        [field]: markupOverride == null ? null : new Prisma.Decimal(markupOverride)
       }
     });
   }
@@ -1077,11 +1103,28 @@ export class ScopeOfWorksService {
    */
   async resetAllCardMarkup(tenderId: string) {
     await this.requireTender(tenderId);
-    const result = await this.prisma.scopeCard.updateMany({
-      where: { tenderId, markupOverride: { not: null } },
-      data: { markupOverride: null }
-    });
-    return { cardsReset: result.count };
+    // Clears scope-card, waste-section, and cutting-section overrides
+    // for the tender in one call. Counts are per-column so callers can
+    // report each stream separately in the confirm dialog.
+    const [cardsReset, wasteReset, cuttingReset] = await this.prisma.$transaction([
+      this.prisma.scopeCard.updateMany({
+        where: { tenderId, markupOverride: { not: null } },
+        data: { markupOverride: null }
+      }),
+      this.prisma.scopeCard.updateMany({
+        where: { tenderId, wasteMarkupOverride: { not: null } },
+        data: { wasteMarkupOverride: null }
+      }),
+      this.prisma.scopeCard.updateMany({
+        where: { tenderId, cuttingMarkupOverride: { not: null } },
+        data: { cuttingMarkupOverride: null }
+      })
+    ]);
+    return {
+      cardsReset: cardsReset.count,
+      wasteSectionsReset: wasteReset.count,
+      cuttingSectionsReset: cuttingReset.count
+    };
   }
 
   /**

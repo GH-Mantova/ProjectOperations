@@ -254,6 +254,25 @@ export class UpdateScopeCardDto {
   })
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) markupOverride?: number | null;
 
+  // Per-section markup overrides for the card's waste + cutting
+  // subtables. Same 0-100 semantics as `markupOverride`; independent
+  // cost streams (each applied to its own base).
+  @ApiPropertyOptional({
+    nullable: true,
+    minimum: 0,
+    maximum: 100,
+    description: "Per-card waste-section markup % override. Null = inherit tender markup. 0-100."
+  })
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) wasteMarkupOverride?: number | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    minimum: 0,
+    maximum: 100,
+    description: "Per-card cutting-section markup % override. Null = inherit tender markup. 0-100."
+  })
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) cuttingMarkupOverride?: number | null;
+
   @ApiPropertyOptional({ nullable: true, description: "Card-header peak crew override. Null = auto-derived." })
   @IsOptional() @Type(() => Number) @IsInt() peakCrewOverride?: number | null;
 

@@ -17,6 +17,10 @@ export type ScopeCard = {
   wasteNotes: string | null;
   /** PR B2 — per-card markup % override. null = inherit tender markup. */
   markupOverride: number | null;
+  /** Per-section markup overrides on the card's waste + cutting subtables.
+   *  Independent from `markupOverride`; each applied to its own base. */
+  wasteMarkupOverride: number | null;
+  cuttingMarkupOverride: number | null;
   peakCrewOverride: number | null;
   labourDaysOverride: number | null;
   plantSummaryOverride: string | null;
@@ -143,15 +147,46 @@ export function useScopeCards(tenderId: string) {
   );
 
   /**
+   * Set the per-section markup override for the card's waste or
+   * cutting subtable. Independent cost stream from the scope-card
+   * markup. Pass null to clear.
+   */
+  const setCardSectionMarkupOverride = useCallback(
+    async (
+      cardId: string,
+      sectionType: "waste" | "cutting",
+      override: number | null
+    ): Promise<void> => {
+      const field = sectionType === "waste" ? "wasteMarkupOverride" : "cuttingMarkupOverride";
+      const res = await authFetch(`/tenders/${tenderId}/scope/cards/${cardId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [field]: override })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      await load();
+    },
+    [authFetch, tenderId, load]
+  );
+
+  /**
    * PR B2 — clear every card's markupOverride in this tender. Returns
    * the count of cards that actually had an override.
    */
-  const resetAllCardMarkup = useCallback(async (): Promise<{ cardsReset: number }> => {
+  const resetAllCardMarkup = useCallback(async (): Promise<{
+    cardsReset: number;
+    wasteSectionsReset: number;
+    cuttingSectionsReset: number;
+  }> => {
     const res = await authFetch(`/tenders/${tenderId}/scope/markup/reset-all`, {
       method: "POST"
     });
     if (!res.ok) throw new Error(await res.text());
-    const result = (await res.json()) as { cardsReset: number };
+    const result = (await res.json()) as {
+      cardsReset: number;
+      wasteSectionsReset: number;
+      cuttingSectionsReset: number;
+    };
     await load();
     return result;
   }, [authFetch, tenderId, load]);
@@ -275,6 +310,7 @@ export function useScopeCards(tenderId: string) {
     setPlantColumnCount,
     setCardNotes,
     setCardMarkupOverride,
+    setCardSectionMarkupOverride,
     resetAllCardMarkup,
     changeDiscipline,
     deleteCard,

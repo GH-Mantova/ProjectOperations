@@ -55,6 +55,7 @@ import { JobRolesModule } from "./modules/job-roles/job-roles.module";
 import { FieldModule } from "./modules/field/field.module";
 import { RatesModule } from "./modules/rates/rates.module";
 import { ListBindingsModule } from "./modules/list-bindings/list-bindings.module";
+import { CommsApprovalsModule } from "./modules/comms-approvals/comms-approvals.module";
 import { ProcurementModule } from "./modules/procurement/procurement.module";
 
 @Module({
@@ -118,6 +119,7 @@ import { ProcurementModule } from "./modules/procurement/procurement.module";
     XeroModule,
     RatesModule,
     ListBindingsModule,
+    CommsApprovalsModule,
     ProcurementModule
   ]
 })

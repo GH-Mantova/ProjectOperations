@@ -21,6 +21,7 @@ import { GlobalListsModule } from "./modules/global-lists/global-lists.module";
 import { HealthModule } from "./health/health.module";
 import { JobsModule } from "./modules/jobs/jobs.module";
 import { MaintenanceModule } from "./modules/maintenance/maintenance.module";
+import { InventoryModule } from "./modules/inventory/inventory.module";
 import { ComplianceModule } from "./modules/compliance/compliance.module";
 import { ContactsModule } from "./modules/contacts/contacts.module";
 import { DirectoryModule } from "./modules/directory/directory.module";
@@ -88,6 +89,7 @@ import { FieldModule } from "./modules/field/field.module";
     GlobalListsModule,
     JobsModule,
     MaintenanceModule,
+    InventoryModule,
     MasterDataModule,
     DirectoryModule,
     ContactsModule,

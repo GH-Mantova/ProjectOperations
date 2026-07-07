@@ -194,6 +194,7 @@ const NAV_GROUPS: NavGroup[] = [
         match: (path) => path.startsWith("/sites") || path.startsWith("/master-data?tab=sites")
       },
       { to: "/assets", label: "Assets", icon: ICON_ASSETS },
+      { to: "/inventory", label: "Inventory", icon: ICON_ASSETS },
       { to: "/maintenance", label: "Maintenance", icon: ICON_MAINTENANCE },
       { to: "/forms", label: "Forms", icon: ICON_FORMS },
       {
@@ -299,6 +300,7 @@ const BREADCRUMBS: Record<string, string> = {
   "/workers": "Workers",
   "/resources": "Workers (legacy)",
   "/assets": "Assets",
+  "/inventory": "Inventory",
   "/maintenance": "Maintenance",
   "/master-data": "Master Data",
   "/documents": "Documents",

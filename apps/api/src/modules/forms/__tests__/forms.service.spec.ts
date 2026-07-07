@@ -1,4 +1,4 @@
-import { ConflictException, NotFoundException } from "@nestjs/common";
+import { ConflictException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { FormsService } from "../forms.service";
 
@@ -13,6 +13,9 @@ function templateRow(overrides: Record<string, unknown> = {}) {
     status: "ACTIVE",
     geolocationEnabled: false,
     associationScopes: [],
+    category: "custom",
+    isSystemTemplate: false,
+    settings: {},
     versions: [],
     ...overrides
   };
@@ -51,6 +54,7 @@ function versionRow(overrides: Record<string, unknown> = {}) {
         ]
       }
     ],
+    rules: [],
     ...overrides
   };
 }
@@ -348,6 +352,197 @@ describe("FormsService.createNextVersion", () => {
         metadata: { templateId: "tpl-1" }
       })
     );
+  });
+});
+
+describe("FormsService.updateTemplateMetadata", () => {
+  it("rejects edits to system templates with 403", async () => {
+    const { service, prisma } = buildService();
+    prisma.formTemplate.findUnique.mockResolvedValueOnce(templateRow({ isSystemTemplate: true }));
+
+    await expect(
+      service.updateTemplateMetadata("tpl-1", { name: "Renamed" }, "user-1")
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it("throws ConflictException when a rename collides with another template", async () => {
+    const { service, prisma } = buildService();
+    prisma.formTemplate.findUnique.mockResolvedValueOnce(templateRow({ isSystemTemplate: false }));
+    prisma.formTemplate.findFirst.mockResolvedValueOnce({ id: "tpl-other" });
+
+    await expect(
+      service.updateTemplateMetadata("tpl-1", { name: "Existing" }, "user-1")
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it("patches only the supplied fields and writes an audit log", async () => {
+    const { service, prisma, audit } = buildService();
+    prisma.formTemplate.findUnique.mockResolvedValueOnce(templateRow({ isSystemTemplate: false }));
+    const update = jest.fn().mockResolvedValue({ id: "tpl-1" });
+    (prisma.formTemplate as unknown as { update: jest.Mock }).update = update;
+
+    await service.updateTemplateMetadata(
+      "tpl-1",
+      { description: "New desc", geolocationEnabled: true },
+      "user-1"
+    );
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "tpl-1" },
+        data: expect.objectContaining({ description: "New desc", geolocationEnabled: true })
+      })
+    );
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "forms.template.update", entityType: "FormTemplate" })
+    );
+  });
+});
+
+describe("FormsService.archiveTemplate / unarchiveTemplate", () => {
+  it("archive rejects system templates with 403", async () => {
+    const { service, prisma } = buildService();
+    prisma.formTemplate.findUnique.mockResolvedValueOnce(templateRow({ isSystemTemplate: true }));
+
+    await expect(service.archiveTemplate("tpl-1", "user-1")).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it("archive sets status ARCHIVED and audits", async () => {
+    const { service, prisma, audit } = buildService();
+    prisma.formTemplate.findUnique.mockResolvedValueOnce(templateRow({ isSystemTemplate: false }));
+    const update = jest.fn().mockResolvedValue({ id: "tpl-1" });
+    (prisma.formTemplate as unknown as { update: jest.Mock }).update = update;
+
+    await service.archiveTemplate("tpl-1", "user-1");
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "tpl-1" }, data: { status: "ARCHIVED" } })
+    );
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "forms.template.archive" })
+    );
+  });
+
+  it("unarchive rejects templates that are not currently archived", async () => {
+    const { service, prisma } = buildService();
+    prisma.formTemplate.findUnique.mockResolvedValueOnce(templateRow({ status: "ACTIVE" }));
+
+    await expect(service.unarchiveTemplate("tpl-1", "user-1")).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it("unarchive resets status to DRAFT and audits", async () => {
+    const { service, prisma, audit } = buildService();
+    prisma.formTemplate.findUnique.mockResolvedValueOnce(templateRow({ status: "ARCHIVED" }));
+    const update = jest.fn().mockResolvedValue({ id: "tpl-1" });
+    (prisma.formTemplate as unknown as { update: jest.Mock }).update = update;
+
+    await service.unarchiveTemplate("tpl-1", "user-1");
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "tpl-1" }, data: { status: "DRAFT" } })
+    );
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "forms.template.unarchive" })
+    );
+  });
+});
+
+describe("FormsService.deleteTemplate", () => {
+  it("rejects system templates with 403", async () => {
+    const { service, prisma } = buildService();
+    prisma.formTemplate.findUnique.mockResolvedValueOnce(templateRow({ isSystemTemplate: true }));
+
+    await expect(service.deleteTemplate("tpl-1", "user-1")).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it("rejects templates with submissions (409) and never deletes", async () => {
+    const { service, prisma } = buildService();
+    prisma.formTemplate.findUnique.mockResolvedValueOnce(templateRow({ isSystemTemplate: false }));
+    prisma.formSubmission.count.mockResolvedValueOnce(3);
+    const del = jest.fn();
+    (prisma.formTemplate as unknown as { delete: jest.Mock }).delete = del;
+
+    await expect(service.deleteTemplate("tpl-1", "user-1")).rejects.toBeInstanceOf(ConflictException);
+    expect(del).not.toHaveBeenCalled();
+  });
+
+  it("hard-deletes when no submissions and audits", async () => {
+    const { service, prisma, audit } = buildService();
+    prisma.formTemplate.findUnique.mockResolvedValueOnce(templateRow({ isSystemTemplate: false }));
+    prisma.formSubmission.count.mockResolvedValueOnce(0);
+    const del = jest.fn().mockResolvedValue({ id: "tpl-1" });
+    (prisma.formTemplate as unknown as { delete: jest.Mock }).delete = del;
+
+    const result = await service.deleteTemplate("tpl-1", "user-1");
+
+    expect(del).toHaveBeenCalledWith({ where: { id: "tpl-1" } });
+    expect(result).toEqual({ id: "tpl-1" });
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "forms.template.delete" })
+    );
+  });
+});
+
+describe("FormsService.duplicateTemplate", () => {
+  it("clones fields into a new custom draft template", async () => {
+    const { service, prisma, tx, audit } = buildService();
+    const source = templateRow({
+      id: "tpl-src",
+      name: "System Prestart",
+      code: "SYS-PRESTART",
+      isSystemTemplate: true,
+      category: "safety",
+      versions: [versionRow()]
+    });
+    // First getTemplate (source), second getTemplate (created)
+    prisma.formTemplate.findUnique
+      .mockResolvedValueOnce(source)
+      .mockResolvedValueOnce(templateRow({ id: "tpl-new" }));
+    // Uniqueness probes: first findFirst call for name → null (unique), then code → null
+    prisma.formTemplate.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+    tx.formTemplate.create.mockResolvedValueOnce({ id: "tpl-new" });
+    tx.formTemplateVersion.create.mockResolvedValueOnce({ id: "ver-new", templateId: "tpl-new", versionNumber: 1 });
+    tx.formSection.create.mockResolvedValueOnce({ id: "sec-new" });
+
+    const result = await service.duplicateTemplate("tpl-src", "user-1");
+
+    expect(tx.formTemplate.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          name: "Copy of System Prestart",
+          code: "SYS-PRESTART-COPY",
+          status: "DRAFT",
+          category: "safety",
+          isSystemTemplate: false
+        })
+      })
+    );
+    expect(tx.formField.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.arrayContaining([
+          expect.objectContaining({ fieldKey: "notes" }),
+          expect.objectContaining({ fieldKey: "signoff" })
+        ])
+      })
+    );
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "forms.template.duplicate",
+        metadata: { sourceTemplateId: "tpl-src" }
+      })
+    );
+    expect(result.id).toBe("tpl-new");
+  });
+});
+
+describe("FormsService.createNextVersion (system guard)", () => {
+  it("rejects edits to system templates with 403", async () => {
+    const { service, prisma } = buildService();
+    prisma.formTemplate.findUnique.mockResolvedValueOnce(templateRow({ isSystemTemplate: true }));
+
+    await expect(
+      service.createNextVersion("tpl-1", VALID_TEMPLATE_DTO as never, "user-1")
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
 

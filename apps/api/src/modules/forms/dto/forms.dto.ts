@@ -103,6 +103,23 @@ export class UpsertFormTemplateDto {
 }
 
 /**
+ * Metadata-only patch for an existing form template — never touches
+ * versions/sections/fields. Used by `PATCH /forms/templates/:id`.
+ */
+export class UpdateFormTemplateMetadataDto {
+  /** Display name; must remain unique within the tenant. */
+  @IsOptional() @IsString() name?: string;
+  /** Optional description. */
+  @IsOptional() @IsString() description?: string;
+  /** Category slug (safety|asbestos|plant|...); see FormTemplate.category. */
+  @IsOptional() @IsString() category?: string;
+  /** Whether the engine captures GPS at submit. */
+  @IsOptional() @IsBoolean() geolocationEnabled?: boolean;
+  /** Free-form settings blob (approvalChain, complianceGate, pdfExport, etc.). */
+  @IsOptional() settings?: unknown;
+}
+
+/**
  * One field value inside a SubmitFormDto. Exactly one of the value*
  * columns is populated according to the field type; the rest are null.
  */

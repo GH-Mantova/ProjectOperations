@@ -301,14 +301,16 @@ will refresh the timestamp.
 
 These are the active improvement branches — execute one at a time, in this order:
 
+Status reconciled 2026-07-07; live tracking lives in roadmap.md phases + docs/pr-prompts.
+
 | Section | Branch | Description | Status |
 |---|---|---|---|
-| S1 | `improvement/s1-cross-env` | Cross-platform script fix | — |
-| S2 | `improvement/s2-ci-cd` | GitHub Actions CI + deploy | — |
-| S8 | `improvement/s8-seed-data` | Comprehensive seed data | — |
-| S5 | `improvement/s5-dashboard-charts` | Recharts chart components | After S8 |
-| S3 | `improvement/s3-sharepoint-graph` | SharePoint Graph live adapter | — |
-| S4 | `improvement/s4-m365-sso` | Microsoft 365 SSO | — |
+| S1 | `improvement/s1-cross-env` | Cross-platform script fix | ✅ done |
+| S2 | `improvement/s2-ci-cd` | GitHub Actions CI + deploy | ✅ done |
+| S8 | `improvement/s8-seed-data` | Comprehensive seed data | ✅ done |
+| S5 | `improvement/s5-dashboard-charts` | Recharts chart components | ✅ done |
+| S3 | `improvement/s3-sharepoint-graph` | SharePoint Graph live adapter | ✅ done |
+| S4 | `improvement/s4-m365-sso` | Microsoft 365 SSO | ✅ done |
 | S6 | `improvement/s6-archive-route` | Archive as standalone route | — |
 | S7 | `improvement/s7-ui-ux-overhaul` | Full UI/UX overhaul | Last before S9 |
 | S9 | `improvement/s9-quality-pass` | Lint, type check, docs | After all |

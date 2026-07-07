@@ -43,9 +43,23 @@ $branch = (git branch --show-current).Trim()
 $dirty  = (git status --porcelain --untracked-files=no)
 
 if ($branch -ne "main") {
-    $msg = "[$(Get-Date -Format o)] PRE-FLIGHT FAIL: current branch is '$branch', expected 'main'. The watcher branch-switches per PR; running from a feature branch poisons it. Switch to main and retry."
-    Write-Log $msg
-    exit 1
+    if ($dirty) {
+        $msg = "[$(Get-Date -Format o)] PRE-FLIGHT FAIL: on branch '$branch' with uncommitted TRACKED changes; cannot safely auto-switch to main. Commit or stash, then retry."
+        Write-Log $msg
+        Write-Log $dirty
+        exit 1
+    }
+    # Clean tree parked on a stray feature branch -- a build/smoke/worktree op left the
+    # main working tree switched (recurring hazard). Auto-recover to main so the
+    # supervisor does not loop forever on preflight and the prompt queue keeps draining.
+    Write-Log "[$(Get-Date -Format o)] PRE-FLIGHT: on '$branch' but tree is clean; auto-checkout main to recover."
+    git checkout main 2>&1 | ForEach-Object { Add-Content -Path $LogFile -Value "$_" -Encoding UTF8; Write-Host "$_" }
+    $branch = (git branch --show-current).Trim()
+    if ($branch -ne "main") {
+        Write-Log "[$(Get-Date -Format o)] PRE-FLIGHT FAIL: auto-checkout to main did not take (still on '$branch'). Manual fix needed."
+        exit 1
+    }
+    Write-Log "[$(Get-Date -Format o)] PRE-FLIGHT: recovered to main."
 }
 
 if ($dirty) {

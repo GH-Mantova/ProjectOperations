@@ -1064,6 +1064,7 @@ model Job {
   clientId           String                 @map("client_id")
   siteId             String?                @map("site_id")
   sourceTenderId     String?                @unique @map("source_tender_id")
+  survivingProjectId String?                @unique @map("surviving_project_id")
   status             String                 @default("PLANNING")
   projectManagerId   String?                @map("project_manager_id")
   supervisorId       String?                @map("supervisor_id")
@@ -1072,6 +1073,8 @@ model Job {
   client             Client                 @relation(fields: [clientId], references: [id], onDelete: Restrict)
   site               Site?                  @relation(fields: [siteId], references: [id], onDelete: SetNull)
   sourceTender       Tender?                @relation(fields: [sourceTenderId], references: [id], onDelete: SetNull)
+  survivingProject   Project?               @relation("JobSurvivingProject", fields: [survivingProjectId], references: [id], onDelete: SetNull)
+  reverseSourceOf    Project?               @relation("ProjectSourceJob")
   projectManager     User?                  @relation("JobProjectManager", fields: [projectManagerId], references: [id], onDelete: SetNull)
   supervisor         User?                  @relation("JobSupervisor", fields: [supervisorId], references: [id], onDelete: SetNull)
   conversion         JobConversion?
@@ -1090,6 +1093,7 @@ model Job {
   @@index([status])
   @@index([projectManagerId])
   @@index([supervisorId])
+  @@index([survivingProjectId])
   @@map("jobs")
 }
 
@@ -2083,6 +2087,9 @@ model Project {
   status                  ProjectStatus        @default(MOBILISING)
   sourceTenderId          String?              @unique @map("source_tender_id")
   sourceTender            Tender?              @relation(fields: [sourceTenderId], references: [id], onDelete: SetNull)
+  sourceJobId             String?              @unique @map("source_job_id")
+  sourceJob               Job?                 @relation("ProjectSourceJob", fields: [sourceJobId], references: [id], onDelete: SetNull)
+  reverseSurvivorOf       Job?                 @relation("JobSurvivingProject")
   clientId                String               @map("client_id")
   client                  Client               @relation(fields: [clientId], references: [id], onDelete: Restrict)
   siteId                  String?              @map("site_id")
@@ -2130,6 +2137,7 @@ model Project {
 
   @@index([status])
   @@index([clientId])
+  @@index([sourceJobId])
   @@map("projects")
 }
 

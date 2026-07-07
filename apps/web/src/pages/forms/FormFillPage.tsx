@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { FormDraftStore } from "../../drafts";
+import { readTemplateLayout, resolveEffectiveLayout, type FormLayout } from "./formLayoutResolver";
 
 // ── Types matching the engine response shape ─────────────────────────────
 
@@ -62,7 +63,7 @@ type Submission = {
   templateVersion: {
     id: string;
     versionNumber: number;
-    template: { id: string; name: string; category?: string | null };
+    template: { id: string; name: string; category?: string | null; settings?: unknown };
     sections: Section[];
   };
 };
@@ -196,6 +197,10 @@ export function FormFillPage() {
   const [submission, setSubmission] = useState<Submission | null>(null);
   const [values, setValues] = useState<ValueMap>({});
   const [sectionIndex, setSectionIndex] = useState(0);
+  const [cardFieldIndex, setCardFieldIndex] = useState(0);
+  const [viewportWidth, setViewportWidth] = useState<number>(
+    typeof window === "undefined" ? 1280 : window.innerWidth
+  );
   const [error, setError] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -216,6 +221,14 @@ export function FormFillPage() {
       window.removeEventListener("online", onOn);
       window.removeEventListener("offline", onOff);
     };
+  }, []);
+
+  // Viewport width — used to auto-switch to Card below 768px (forms-engine-v2 §1.2, §10 Q8).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
   }, []);
 
   // Load submission + template
@@ -377,6 +390,26 @@ export function FormFillPage() {
 
   const goNext = () => {
     if (!validateSection()) return;
+    const layout = resolveEffectiveLayout({
+      templateLayout: readTemplateLayout(submission?.templateVersion.template.settings),
+      viewportWidth
+    });
+    if (layout === "card") {
+      const fieldsInSection = visibleFields.length;
+      if (cardFieldIndex < fieldsInSection - 1) {
+        setCardFieldIndex(cardFieldIndex + 1);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+      if (sectionIndex < sections.length - 1) {
+        const next = sectionIndex + 1;
+        setSectionIndex(next);
+        setCardFieldIndex(0);
+        scheduleSave(values, next);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+      return;
+    }
     if (sectionIndex < sections.length - 1) {
       const next = sectionIndex + 1;
       setSectionIndex(next);
@@ -386,6 +419,26 @@ export function FormFillPage() {
   };
 
   const goPrev = () => {
+    const layout = resolveEffectiveLayout({
+      templateLayout: readTemplateLayout(submission?.templateVersion.template.settings),
+      viewportWidth
+    });
+    if (layout === "card") {
+      if (cardFieldIndex > 0) {
+        setCardFieldIndex(cardFieldIndex - 1);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+      if (sectionIndex > 0) {
+        const prev = sectionIndex - 1;
+        const prevSection = sections[prev];
+        const prevVisible = (prevSection.fields ?? []).filter((f) => fieldVisible(f, values));
+        setSectionIndex(prev);
+        setCardFieldIndex(Math.max(0, prevVisible.length - 1));
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+      return;
+    }
     if (sectionIndex > 0) {
       const prev = sectionIndex - 1;
       setSectionIndex(prev);
@@ -471,8 +524,24 @@ export function FormFillPage() {
     return <div style={{ padding: 24, color: "var(--text-muted)" }}>Loading…</div>;
   }
 
-  const progressPct = Math.round(((sectionIndex + 1) / sections.length) * 100);
+  const templateLayout: FormLayout | null = readTemplateLayout(submission.templateVersion.template.settings);
+  const effectiveLayout = resolveEffectiveLayout({ templateLayout, viewportWidth });
+  const isCard = effectiveLayout === "card";
+  const cardStep = Math.min(cardFieldIndex, Math.max(0, visibleFields.length - 1));
+  const currentCardField = isCard ? visibleFields[cardStep] : null;
+  const cardFieldsRendered = isCard && currentCardField ? [currentCardField] : visibleFields;
+
+  const totalSteps = isCard
+    ? sections.reduce((n, s) => n + Math.max(1, s.fields.length), 0)
+    : sections.length;
+  const stepsBeforeCurrent = isCard
+    ? sections.slice(0, sectionIndex).reduce((n, s) => n + Math.max(1, s.fields.length), 0) + cardStep + 1
+    : sectionIndex + 1;
+  const progressPct = Math.round((stepsBeforeCurrent / Math.max(1, totalSteps)) * 100);
   const isLastSection = sectionIndex === sections.length - 1;
+  const isLastCardField = isCard ? cardStep >= visibleFields.length - 1 : true;
+  const isLastStep = isCard ? isLastSection && isLastCardField : isLastSection;
+  const isFirstStep = isCard ? sectionIndex === 0 && cardStep === 0 : sectionIndex === 0;
   const ctx = submission.context ?? {};
 
   return (
@@ -508,7 +577,9 @@ export function FormFillPage() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
           <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-            Section {sectionIndex + 1} of {sections.length}
+            {isCard
+              ? `Step ${stepsBeforeCurrent} of ${totalSteps}`
+              : `Section ${sectionIndex + 1} of ${sections.length}`}
           </span>
           <div style={{ flex: 1, height: 4, background: "var(--border-subtle, rgba(0,0,0,0.08))", borderRadius: 999, overflow: "hidden" }}>
             <div
@@ -549,7 +620,7 @@ export function FormFillPage() {
         ) : null}
 
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {visibleFields.map((field) => {
+          {cardFieldsRendered.map((field) => {
             const required = fieldRequired(field, values);
             const errorMsg = errors[field.fieldKey];
             return (
@@ -587,11 +658,11 @@ export function FormFillPage() {
           type="button"
           className="s7-btn s7-btn--ghost"
           onClick={goPrev}
-          disabled={sectionIndex === 0}
+          disabled={isFirstStep}
         >
           ← Previous
         </button>
-        {isLastSection ? (
+        {isLastStep ? (
           <button
             type="button"
             className="s7-btn s7-btn--primary"

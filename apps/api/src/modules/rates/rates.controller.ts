@@ -1,0 +1,166 @@
+import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { CurrentUser } from "../../common/auth/current-user.decorator";
+import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
+import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
+import { PermissionsGuard } from "../../common/auth/permissions.guard";
+import { RequirePermissions } from "../../common/auth/permissions.decorator";
+import { CreateRateTableDto } from "./dto/create-rate-table.dto";
+import { UpdateRateTableDto } from "./dto/update-rate-table.dto";
+import { CreateRateColumnDto, UpdateRateColumnDto } from "./dto/rate-column.dto";
+import { CreateRateRowDto, UpdateRateRowDto } from "./dto/rate-row.dto";
+import { RateTablesService } from "./rate-tables.service";
+import { RateResolverService } from "./rate-resolver.service";
+
+const PLATFORM_ADMIN = "platform.admin";
+
+@ApiTags("Rates")
+@ApiBearerAuth()
+@Controller("rates")
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+export class RatesController {
+  constructor(
+    private readonly tables: RateTablesService,
+    private readonly resolver: RateResolverService
+  ) {}
+
+  // ── Tables ───────────────────────────────────────────────────────────
+
+  @Get("tables")
+  @RequirePermissions("rates.manage")
+  @ApiOperation({ summary: "List flexible rate tables with their columns." })
+  @ApiResponse({ status: 200, description: "RateTable[] with columns." })
+  listTables() {
+    return this.tables.listTables();
+  }
+
+  @Get("tables/:id")
+  @RequirePermissions("rates.manage")
+  @ApiOperation({ summary: "Fetch a rate table with columns and active rows." })
+  @ApiResponse({ status: 200, description: "RateTable with columns and rows." })
+  @ApiResponse({ status: 404, description: "Rate table not found." })
+  getTable(@Param("id") id: string) {
+    return this.tables.getTable(id);
+  }
+
+  @Post("tables")
+  @RequirePermissions("rates.manage")
+  @ApiOperation({ summary: "Create a flexible rate table." })
+  @ApiResponse({ status: 201, description: "Created RateTable." })
+  @ApiResponse({ status: 409, description: "Slug already exists." })
+  createTable(@Body() dto: CreateRateTableDto, @CurrentUser() actor: AuthenticatedUser) {
+    return this.tables.createTable(actor.sub, dto);
+  }
+
+  @Patch("tables/:id")
+  @RequirePermissions("rates.manage")
+  @ApiOperation({ summary: "Update a rate table's metadata." })
+  @ApiResponse({ status: 200, description: "Updated RateTable." })
+  @ApiResponse({ status: 404, description: "Rate table not found." })
+  updateTable(
+    @Param("id") id: string,
+    @Body() dto: UpdateRateTableDto,
+    @CurrentUser() actor: AuthenticatedUser
+  ) {
+    return this.tables.updateTable(actor.sub, id, dto);
+  }
+
+  @Delete("tables/:id")
+  @RequirePermissions("rates.manage")
+  @ApiOperation({
+    summary:
+      "Delete a rate table. Restricted to platform admins pending the authority seam (TODO: move behind seam)."
+  })
+  @ApiResponse({ status: 200, description: "{ deleted: true }" })
+  @ApiResponse({ status: 403, description: "Non-admin attempted whole-table delete." })
+  deleteTable(@Param("id") id: string, @CurrentUser() actor: AuthenticatedUser) {
+    if (!actor.permissions.includes(PLATFORM_ADMIN)) {
+      throw new ForbiddenException("Whole-table delete is restricted to platform admins.");
+    }
+    return this.tables.deleteTable(id);
+  }
+
+  // ── Columns ──────────────────────────────────────────────────────────
+
+  @Post("tables/:tableId/columns")
+  @RequirePermissions("rates.manage")
+  @ApiOperation({ summary: "Add a column to a rate table." })
+  @ApiResponse({ status: 201, description: "Created RateColumn." })
+  @ApiResponse({ status: 400, description: "Structure validation failed." })
+  @ApiResponse({ status: 409, description: "Column name already exists on this table." })
+  createColumn(@Param("tableId") tableId: string, @Body() dto: CreateRateColumnDto) {
+    return this.tables.createColumn(tableId, dto);
+  }
+
+  @Patch("tables/:tableId/columns/:columnId")
+  @RequirePermissions("rates.manage")
+  @ApiOperation({ summary: "Update a rate column." })
+  @ApiResponse({ status: 200, description: "Updated RateColumn." })
+  @ApiResponse({ status: 400, description: "Structure validation failed." })
+  updateColumn(
+    @Param("tableId") tableId: string,
+    @Param("columnId") columnId: string,
+    @Body() dto: UpdateRateColumnDto
+  ) {
+    return this.tables.updateColumn(tableId, columnId, dto);
+  }
+
+  @Delete("tables/:tableId/columns/:columnId")
+  @RequirePermissions("rates.manage")
+  @ApiOperation({ summary: "Delete a rate column." })
+  @ApiResponse({ status: 200, description: "{ deleted: true }" })
+  deleteColumn(@Param("tableId") tableId: string, @Param("columnId") columnId: string) {
+    return this.tables.deleteColumn(tableId, columnId);
+  }
+
+  // ── Rows ─────────────────────────────────────────────────────────────
+
+  @Post("tables/:tableId/rows")
+  @RequirePermissions("rates.manage")
+  @ApiOperation({ summary: "Add a row to a rate table (validated per spec §4)." })
+  @ApiResponse({ status: 201, description: "Created RateRow." })
+  @ApiResponse({ status: 400, description: "Row validation failed." })
+  createRow(
+    @Param("tableId") tableId: string,
+    @Body() dto: CreateRateRowDto,
+    @CurrentUser() actor: AuthenticatedUser
+  ) {
+    return this.tables.createRow(actor.sub, tableId, dto);
+  }
+
+  @Patch("tables/:tableId/rows/:rowId")
+  @RequirePermissions("rates.manage")
+  @ApiOperation({ summary: "Update a rate row (re-validates cells if supplied)." })
+  @ApiResponse({ status: 200, description: "Updated RateRow." })
+  @ApiResponse({ status: 400, description: "Row validation failed." })
+  updateRow(
+    @Param("tableId") tableId: string,
+    @Param("rowId") rowId: string,
+    @Body() dto: UpdateRateRowDto,
+    @CurrentUser() actor: AuthenticatedUser
+  ) {
+    return this.tables.updateRow(actor.sub, tableId, rowId, dto);
+  }
+
+  @Delete("tables/:tableId/rows/:rowId")
+  @RequirePermissions("rates.manage")
+  @ApiOperation({ summary: "Soft-delete a rate row (sets isActive=false)." })
+  @ApiResponse({ status: 200, description: "The deactivated RateRow." })
+  deleteRow(@Param("tableId") tableId: string, @Param("rowId") rowId: string) {
+    return this.tables.deleteRow(tableId, rowId);
+  }
+
+  // ── Resolver ─────────────────────────────────────────────────────────
+
+  @Post("resolve/:slug")
+  @RequirePermissions("rates.manage")
+  @ApiOperation({
+    summary:
+      "Resolve a rate. R0 reads legacy tables by default; unknown slugs fall through to the flexible model."
+  })
+  @ApiResponse({ status: 200, description: "{ rowId, value, unit, source: 'legacy'|'ratetable' }" })
+  @ApiResponse({ status: 404, description: "No matching rate row." })
+  resolve(@Param("slug") slug: string, @Body() keys: Record<string, unknown>) {
+    return this.resolver.resolveRate(slug, keys ?? {});
+  }
+}

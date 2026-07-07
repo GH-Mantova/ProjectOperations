@@ -35,6 +35,7 @@ import { WorkerDetailPage } from "./pages/workers/WorkerDetailPage";
 import { AssetsListPage } from "./pages/assets/AssetsListPage";
 import { AssetDetailPage } from "./pages/assets/AssetDetailPage";
 import { InventoryPage } from "./pages/inventory/InventoryPage";
+import { ProcurementPage } from "./pages/procurement/ProcurementPage";
 import { MaintenancePage as MaintenanceDashboardPage } from "./pages/maintenance/MaintenancePage";
 import { PlantUtilisationReportPage } from "./pages/maintenance/PlantUtilisationReportPage";
 import { FormsListPage } from "./pages/forms/FormsListPage";
@@ -206,6 +207,7 @@ export function App() {
             <Route path="/assets" element={<AssetsListPage />} />
             <Route path="/assets/:id" element={<AssetDetailPage />} />
             <Route path="/inventory" element={<InventoryPage />} />
+            <Route path="/procurement" element={<ProcurementPage />} />
             <Route path="/maintenance" element={<MaintenanceDashboardPage />} />
             <Route path="/maintenance/utilisation" element={<PlantUtilisationReportPage />} />
             <Route path="/forms" element={<FormsListPage />} />

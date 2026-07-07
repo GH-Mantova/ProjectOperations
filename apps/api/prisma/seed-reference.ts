@@ -174,6 +174,22 @@ export async function seedPermissionsAndCoreRoles(prisma: PrismaClient) {
       },
       {
         roleId: plannerRole.id,
+        permissionId: permissionIdByCode.get("procurement.view")!
+      },
+      {
+        roleId: plannerRole.id,
+        permissionId: permissionIdByCode.get("procurement.manage")!
+      },
+      {
+        roleId: plannerRole.id,
+        permissionId: permissionIdByCode.get("procurement.approve")!
+      },
+      {
+        roleId: plannerRole.id,
+        permissionId: permissionIdByCode.get("procurement.receive")!
+      },
+      {
+        roleId: plannerRole.id,
         permissionId: permissionIdByCode.get("forms.view")!
       },
       {
@@ -586,4 +602,30 @@ export async function seedReferenceData(
 
   await seedNotificationTriggerConfigs(prisma);
   await seedPersonaRegistry(prisma);
+  await seedProcurementConfig(prisma);
+}
+
+/**
+ * Procurement sourcing-gate thresholds (PR-488 slice 1) per POL 1.2.14.
+ *
+ * - `< minQuoteThreshold` → no quote evidence required.
+ * - `>= minQuoteThreshold` → operator must supply `quoteEvidenceRef` proving
+ *   `requiredQuotesAtMin` competing quotes were collected.
+ * - `>= rfqThreshold` → formal RFQ + 3 bids expected; the same
+ *   `quoteEvidenceRef` field carries the RFQ pack reference.
+ *
+ * Values live in DB so future changes are a settings edit, not a code
+ * change. Idempotent upsert on the singleton row.
+ */
+async function seedProcurementConfig(prisma: PrismaClient) {
+  await prisma.procurementConfig.upsert({
+    where: { id: "singleton" },
+    update: {},
+    create: {
+      id: "singleton",
+      minQuoteThreshold: "5000",
+      requiredQuotesAtMin: 3,
+      rfqThreshold: "20000"
+    }
+  });
 }

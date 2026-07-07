@@ -70,5 +70,13 @@ export const permissionRegistry = [
   // authoring; `lists.manage` gates ListBinding CRUD (whole-list delete is
   // separately restricted — TODO: route through the authority seam once merged).
   { code: "rates.manage", module: "rates", description: "Create and edit flexible rate tables (RateTable / RateColumn / RateRow)" },
-  { code: "lists.manage", module: "lists", description: "Manage list bindings and list-consumer wiring" }
+  { code: "lists.manage", module: "lists", description: "Manage list bindings and list-consumer wiring" },
+  // Procurement (PR-488 slice 1). `view` gates lists and detail; `manage` gates
+  // draft/edit/submit/cancel; `approve` is the target permission the authority
+  // seam consults when routing an over-limit approval; `receive` gates posting
+  // a receipt (which writes a RECEIVE StockMovement via the inventory layer).
+  { code: "procurement.view", module: "procurement", description: "View procurement requests and purchase orders" },
+  { code: "procurement.manage", module: "procurement", description: "Create, edit, submit, cancel procurement requests" },
+  { code: "procurement.approve", module: "procurement", description: "Approve procurement requests and issue purchase orders" },
+  { code: "procurement.receive", module: "procurement", description: "Record receipt of goods against a procurement line" }
 ] as const;

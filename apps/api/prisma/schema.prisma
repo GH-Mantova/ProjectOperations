@@ -4223,3 +4223,116 @@ model ListBinding {
   @@index([consumerType, consumerRef])
   @@map("list_bindings")
 }
+
+// ── Procurement (PR-488 slice 1) ─────────────────────────────────────────
+// Request → approval → PO/subcontract spine per POL 1.2.14 / PRO 23.
+// - Approval routing consults AuthorityService.check; empty ruleset = open
+//   ceiling (matches the seam's default posture).
+// - Sourcing gate thresholds live on ProcurementConfig (seed data), not
+//   hardcoded in service code.
+// - Out-of-allowance / job-budget escalation (Estimator → Director) is
+//   DEFERRED until job budget is modelled. ProcurementService.submitRequest
+//   carries a clearly-marked hook where that branch will slot in.
+// - Supplier / stock-item / job FKs are stored as scalar columns (no
+//   Prisma @relation back-refs on the existing models) to avoid modifying
+//   SubcontractorSupplier, StockItem, or Job model shapes in this slice.
+
+enum ProcurementRequestStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  ISSUED
+  RECEIVED
+  CANCELLED
+}
+
+enum ProcurementLineCategory {
+  CONSUMABLE
+  EQUIPMENT
+  HIRE
+  ASSET
+  SUBCONTRACT
+}
+
+model ProcurementRequest {
+  id                 String                   @id @default(cuid())
+  reference          String                   @unique
+  originUserId       String                   @map("origin_user_id")
+  originDepartment   String?                  @map("origin_department")
+  jobId              String?                  @map("job_id")
+  status             ProcurementRequestStatus @default(DRAFT)
+  supplierId         String?                  @map("supplier_id")
+  approverUserId     String?                  @map("approver_user_id")
+  requiresEscalation Boolean                  @default(false) @map("requires_escalation")
+  authorityRuleId    String?                  @map("authority_rule_id")
+  quoteEvidenceRef   String?                  @map("quote_evidence_ref")
+  notes              String?
+  submittedAt        DateTime?                @map("submitted_at")
+  approvedAt         DateTime?                @map("approved_at")
+  issuedAt           DateTime?                @map("issued_at")
+  receivedAt         DateTime?                @map("received_at")
+  cancelledAt        DateTime?                @map("cancelled_at")
+  createdAt          DateTime                 @default(now()) @map("created_at")
+  updatedAt          DateTime                 @updatedAt @map("updated_at")
+
+  lines          ProcurementLine[]
+  purchaseOrders PurchaseOrder[]
+
+  @@index([status])
+  @@index([originUserId])
+  @@index([supplierId])
+  @@index([jobId])
+  @@map("procurement_requests")
+}
+
+model ProcurementLine {
+  id          String                  @id @default(cuid())
+  requestId   String                  @map("request_id")
+  description String
+  category    ProcurementLineCategory
+  stockItemId String?                 @map("stock_item_id")
+  quantity    Decimal                 @db.Decimal(14, 4)
+  unit        String
+  unitPrice   Decimal?                @map("unit_price") @db.Decimal(14, 2)
+  lineTotal   Decimal?                @map("line_total") @db.Decimal(14, 2)
+  createdAt   DateTime                @default(now()) @map("created_at")
+  updatedAt   DateTime                @updatedAt @map("updated_at")
+
+  request ProcurementRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+  @@index([stockItemId])
+  @@map("procurement_lines")
+}
+
+model PurchaseOrder {
+  id                 String    @id @default(cuid())
+  requestId          String    @map("request_id")
+  poNumber           String    @unique @map("po_number")
+  issuedToSupplierId String    @map("issued_to_supplier_id")
+  issuedByUserId     String    @map("issued_by_user_id")
+  issuedAt           DateTime  @default(now()) @map("issued_at")
+  documentRef        String?   @map("document_ref")
+  emailSentAt        DateTime? @map("email_sent_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+
+  request ProcurementRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+  @@index([issuedToSupplierId])
+  @@map("purchase_orders")
+}
+
+// Singleton (id="singleton") — sourcing-gate value bands per POL 1.2.14.
+// Under `minQuoteThreshold` → no quote evidence required. At or above → the
+// operator must record `quoteEvidenceRef` on the request. At or above
+// `rfqThreshold` a formal RFQ is expected. Numbers seeded, not hardcoded.
+model ProcurementConfig {
+  id                  String   @id
+  minQuoteThreshold   Decimal  @default(5000) @map("min_quote_threshold") @db.Decimal(14, 2)
+  requiredQuotesAtMin Int      @default(3) @map("required_quotes_at_min")
+  rfqThreshold        Decimal  @default(20000) @map("rfq_threshold") @db.Decimal(14, 2)
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@map("procurement_config")
+}

@@ -1,6 +1,6 @@
 import { Test } from "@nestjs/testing";
 import type { Response } from "express";
-import { HealthController } from "./health.controller";
+import { HealthController, VersionController } from "./health.controller";
 import { HealthService } from "./health.service";
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -90,5 +90,47 @@ describe("HealthController", () => {
     expect(res.status).toHaveBeenCalledWith(503);
     expect(result.status).toBe("degraded");
     expect(result.db).toBe("down");
+  });
+});
+
+describe("VersionController", () => {
+  const originalGitSha = process.env.GIT_SHA;
+
+  afterEach(() => {
+    if (originalGitSha === undefined) {
+      delete process.env.GIT_SHA;
+    } else {
+      process.env.GIT_SHA = originalGitSha;
+    }
+  });
+
+  async function buildVersionController() {
+    const moduleRef = await Test.createTestingModule({
+      controllers: [VersionController],
+      providers: [
+        HealthService,
+        { provide: PrismaService, useValue: { $queryRaw: jest.fn() } }
+      ]
+    }).compile();
+    return moduleRef.get(VersionController);
+  }
+
+  it("reports the GIT_SHA commit and a stable service identity", async () => {
+    process.env.GIT_SHA = "deadbee";
+    const controller = await buildVersionController();
+
+    const result = controller.getVersion();
+
+    expect(result.service).toBe("project-operations-api");
+    expect(result.commit).toBe("deadbee");
+    expect(result.version).toMatch(/^\d+\.\d+\.\d+/);
+    expect(typeof result.builtAt).toBe("string");
+  });
+
+  it("falls back to 'unknown' when GIT_SHA is unset", async () => {
+    delete process.env.GIT_SHA;
+    const controller = await buildVersionController();
+
+    expect(controller.getVersion().commit).toBe("unknown");
   });
 });

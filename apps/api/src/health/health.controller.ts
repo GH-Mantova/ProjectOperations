@@ -58,3 +58,30 @@ export class HealthController {
     return report;
   }
 }
+
+@ApiTags("Health")
+@Controller("version")
+export class VersionController {
+  constructor(private readonly healthService: HealthService) {}
+
+  @Get()
+  @ApiOperation({
+    summary: "Build identity — running commit, version, and process start",
+    description:
+      "Unauthenticated. Reports the exact commit (GIT_SHA) baked into the deployed artifact so operators can confirm which build is live without opening the App Service portal."
+  })
+  @ApiOkResponse({
+    description: "Build identity for the running API process",
+    schema: {
+      example: {
+        service: "project-operations-api",
+        version: "0.1.3",
+        commit: "abc1234",
+        builtAt: "2026-07-08T09:20:00.000Z"
+      }
+    }
+  })
+  getVersion() {
+    return this.healthService.getVersion();
+  }
+}

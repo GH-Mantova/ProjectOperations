@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import { readApiErrorMessage } from "../lib/api-errors";
+import { buildInfo } from "../buildInfo";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000/api/v1";
 
@@ -133,6 +134,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         ...init,
         headers: {
           ...(isFormData ? {} : { "Content-Type": "application/json" }),
+          "X-Client-Version": buildInfo.sha,
           ...(init.headers ?? {}),
           ...(token ? { Authorization: `Bearer ${token}` } : {})
         }

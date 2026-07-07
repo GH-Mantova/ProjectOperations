@@ -239,7 +239,7 @@ test.describe("Batch 8 — Shell & tendering long tail (PRs #219, #248, #172, #1
     await expect(page.getByRole("button", { name: "Reset this card" })).toBeVisible();
 
     await page.getByRole("button", { name: "Reset all" }).click();
-    await expect(page.getByText(/[1-9]\d* card override(s)? cleared/)).toBeVisible();
+    await expect(page.getByText(/Cleared: [1-9]\d* scope,/)).toBeVisible();
     expect(dialogMessages.length).toBe(1);
     expect(dialogMessages[0]).toContain("Reset every markup override back to the tender default");
     await expect(cardInput).toHaveValue("");
@@ -247,7 +247,7 @@ test.describe("Batch 8 — Shell & tendering long tail (PRs #219, #248, #172, #1
     // With no overrides left the second click skips the confirm dialog
     // entirely and reports cardsReset: 0.
     await page.getByRole("button", { name: "Reset all" }).click();
-    await expect(page.getByText("0 card overrides cleared")).toBeVisible();
+    await expect(page.getByText("Cleared: 0 scope, 0 waste, 0 cutting")).toBeVisible();
     expect(dialogMessages.length).toBe(1);
   });
 

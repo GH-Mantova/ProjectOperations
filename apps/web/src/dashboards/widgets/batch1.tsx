@@ -203,10 +203,21 @@ export function AssetsByStatusDonut(_props: WidgetProps) {
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard", "assets-by-status"],
     queryFn: async () => {
-      const res = await authFetch("/assets?page=1&pageSize=200");
-      if (!res.ok) return [] as AssetRow[];
-      const body = await res.json();
-      return (body.items ?? body ?? []) as AssetRow[];
+      const PAGE_SIZE = 100;
+      const all: AssetRow[] = [];
+      let page = 1;
+      while (true) {
+        const res = await authFetch(`/assets?page=${page}&pageSize=${PAGE_SIZE}`);
+        if (!res.ok) return all;
+        const body = await res.json();
+        const items = (body.items ?? body ?? []) as AssetRow[];
+        all.push(...items);
+        const total = typeof body?.total === "number" ? body.total : all.length;
+        if (all.length >= total || items.length < PAGE_SIZE) break;
+        page += 1;
+        if (page > 50) break;
+      }
+      return all;
     },
     staleTime: 60_000
   });

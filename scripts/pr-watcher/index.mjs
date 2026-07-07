@@ -90,6 +90,14 @@ const AUTO_MERGE_POLICY = (() => {
 const AUTO_MERGE = AUTO_MERGE_POLICY !== "off";
 const MERGE_TIMEOUT_MS =
   Number(process.env.PR_WATCHER_MERGE_TIMEOUT_MIN ?? 90) * 60 * 1000;
+// Per-run wall-clock ceiling. --max-turns caps TURNS only; a child that
+// hangs without consuming turns (stalled MCP call, wedged tool) sits until
+// the next watcher restart reaps it. This backstops that: on trip, kill the
+// spawned tree, quarantine the prompt to blocked/, and continue draining
+// the queue (per-prompt quarantine — this does NOT global-pause). Set 0 to
+// disable. Default is deliberately generous (LL-25: silence ≠ hang).
+const RUN_TIMEOUT_MS =
+  Number(process.env.PR_WATCHER_RUN_TIMEOUT_MIN ?? 75) * 60 * 1000;
 const POLL_INTERVAL_MS =
   Number(process.env.PR_WATCHER_POLL_INTERVAL_SEC ?? 60) * 1000;
 
@@ -141,6 +149,12 @@ const TRANSIENT_PATTERNS = (() => {
   }
   return compiled;
 })();
+
+// Pure trip decision for the per-run wall-clock watchdog. Exported so the
+// rule is unit-testable in isolation. capMs <= 0 disables the ceiling.
+export function isRunTimedOut(elapsedMs, capMs) {
+  return capMs > 0 && elapsedMs >= capMs;
+}
 
 export function isTransientFailure(text) {
   if (!text) return false;
@@ -486,25 +500,44 @@ function stopHeartbeat() {
   }
 }
 
-function startHeartbeat(name, getLastLine) {
+async function appendHeartbeatLine(line) {
+  try {
+    let lines = [];
+    try {
+      lines = (await readFile(HEARTBEAT_FILE, "utf-8")).split(/\r?\n/).filter(Boolean);
+    } catch {
+      // no heartbeat file yet
+    }
+    lines.push(line);
+    if (lines.length > HEARTBEAT_MAX_LINES) lines = lines.slice(-HEARTBEAT_MAX_LINES);
+    await writeFile(HEARTBEAT_FILE, lines.join("\n") + "\n", "utf-8");
+  } catch (err) {
+    log("heartbeat", `write failed: ${err.message}`);
+  }
+}
+
+function startHeartbeat(name, getLastLine, onRunTimeout) {
   stopHeartbeat();
   const startedMs = Date.now();
+  let tripped = false;
   heartbeatTimer = setInterval(async () => {
-    const elapsedSec = Math.round((Date.now() - startedMs) / 1000);
+    const elapsedMs = Date.now() - startedMs;
+    const elapsedSec = Math.round(elapsedMs / 1000);
     const snippet = (getLastLine() ?? "").slice(0, 160);
-    const line = `[${ts()}] ${name} elapsed=${elapsedSec}s last: ${snippet}`;
-    try {
-      let lines = [];
-      try {
-        lines = (await readFile(HEARTBEAT_FILE, "utf-8")).split(/\r?\n/).filter(Boolean);
-      } catch {
-        // no heartbeat file yet
+    await appendHeartbeatLine(`[${ts()}] ${name} elapsed=${elapsedSec}s last: ${snippet}`);
+    if (!tripped && isRunTimedOut(elapsedMs, RUN_TIMEOUT_MS)) {
+      tripped = true;
+      const capMin = RUN_TIMEOUT_MS / 60000;
+      const msg = `[run-timeout] ${name} exceeded ${capMin} min (elapsed=${elapsedSec}s) — killing child + quarantining`;
+      log("run-timeout", `${name} exceeded ${capMin} min (elapsed=${elapsedSec}s) — killing child + quarantining`);
+      await appendHeartbeatLine(`[${ts()}] ${msg}`);
+      if (onRunTimeout) {
+        try {
+          onRunTimeout();
+        } catch (err) {
+          log("run-timeout", `handler error: ${err.message}`);
+        }
       }
-      lines.push(line);
-      if (lines.length > HEARTBEAT_MAX_LINES) lines = lines.slice(-HEARTBEAT_MAX_LINES);
-      await writeFile(HEARTBEAT_FILE, lines.join("\n") + "\n", "utf-8");
-    } catch (err) {
-      log("heartbeat", `write failed: ${err.message}`);
     }
   }, HEARTBEAT_INTERVAL_MS);
 }
@@ -1217,7 +1250,12 @@ async function drain() {
     trackLastLine(c);
   });
 
-  startHeartbeat(name, () => lastLine);
+  let runTimedOut = false;
+  startHeartbeat(name, () => lastLine, () => {
+    runTimedOut = true;
+    // Reuse the existing safe kill path — never taskkill /IM (LL-33).
+    killCurrentChildTree();
+  });
 
   child.on("close", async (code) => {
     stopHeartbeat();
@@ -1235,6 +1273,42 @@ async function drain() {
       "",
     ].join("\n");
     let logBody = header + agentOutput;
+
+    // Per-run wall-clock watchdog fired. Quarantine THIS prompt only and
+    // keep draining the queue — a single hung run must not freeze the tail
+    // (decoupled from pauseQueue, which is reserved for CI-red cascades).
+    if (runTimedOut) {
+      const capMin = RUN_TIMEOUT_MS / 60000;
+      const dest = path.join(BLOCKED_DIR, name);
+      const logDest = path.join(BLOCKED_DIR, `${name}.log`);
+      const noteDest = path.join(BLOCKED_DIR, `${name}.run-timeout.md`);
+      const note = [
+        `# Run-timeout — ${name}`,
+        ``,
+        `Started: ${startedAt}`,
+        `Killed:  ${endedAt}`,
+        `Cap:     ${capMin} min (PR_WATCHER_RUN_TIMEOUT_MIN=${capMin})`,
+        `Exit:    ${code}`,
+        ``,
+        `The watcher's per-run wall-clock watchdog fired: the spawned child`,
+        `had not exited after ${capMin} minutes. The watcher killed the child`,
+        `tree via killCurrentChildTree() and parked the prompt so the queue`,
+        `keeps draining. Investigate before re-queuing.`,
+        ``,
+      ].join("\n");
+      try {
+        await rename(filePath, dest);
+        await writeFile(logDest, logBody);
+        await writeFile(noteDest, note, "utf-8");
+        log("BLOCKED", `${name} → blocked/ (run-timeout after ${capMin} min)`);
+      } catch (err) {
+        log("error", `run-timeout move failed: ${err.message}`);
+      }
+      seen.delete(name);
+      running = false;
+      drain();
+      return;
+    }
 
     // Review job failures must not freeze the authoring pipeline.
     const reviewJob = isReviewJob(name);
@@ -1514,6 +1588,7 @@ async function main() {
   log("watcher", `max-turns:   ${MAX_TURNS}`);
   log("watcher", `merge-pol:   ${AUTO_MERGE_POLICY}`);
   log("watcher", `merge-tmout: ${MERGE_TIMEOUT_MS / 60000} min`);
+  log("watcher", `run-tmout:   ${RUN_TIMEOUT_MS > 0 ? `${RUN_TIMEOUT_MS / 60000} min` : "OFF"}`);
   log("watcher", `poll-every:  ${POLL_INTERVAL_MS / 1000} s`);
   log("watcher", `rescan:      ${RESCAN_INTERVAL_MS / 60000} min`);
   log("watcher", `auto-review: ${AUTO_REVIEW ? "ON" : "OFF"}`);

@@ -55,6 +55,7 @@ import { JobRolesModule } from "./modules/job-roles/job-roles.module";
 import { FieldModule } from "./modules/field/field.module";
 import { RatesModule } from "./modules/rates/rates.module";
 import { ListBindingsModule } from "./modules/list-bindings/list-bindings.module";
+import { ProcurementModule } from "./modules/procurement/procurement.module";
 
 @Module({
   imports: [
@@ -116,7 +117,8 @@ import { ListBindingsModule } from "./modules/list-bindings/list-bindings.module
     PortalModule,
     XeroModule,
     RatesModule,
-    ListBindingsModule
+    ListBindingsModule,
+    ProcurementModule
   ]
 })
 export class AppModule {}

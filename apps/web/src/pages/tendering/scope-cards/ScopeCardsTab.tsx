@@ -45,6 +45,7 @@ export function ScopeCardsTab({
     renameCard,
     setCardNotes,
     setCardMarkupOverride,
+    setCardSectionMarkupOverride,
     resetAllCardMarkup,
     changeDiscipline,
     deleteCard,
@@ -234,19 +235,22 @@ export function ScopeCardsTab({
             }
           }}
           onResetAll={async () => {
-            const anyOverridden = cards.some((c) => c.markupOverride != null);
-            if (anyOverridden) {
+            const scopeCount = cards.filter((c) => c.markupOverride != null).length;
+            const wasteCount = cards.filter((c) => c.wasteMarkupOverride != null).length;
+            const cuttingCount = cards.filter((c) => c.cuttingMarkupOverride != null).length;
+            const total = scopeCount + wasteCount + cuttingCount;
+            if (total > 0) {
               const ok = window.confirm(
-                "Reset every card's markup override back to the tender default? This affects " +
-                  cards.filter((c) => c.markupOverride != null).length +
-                  " card(s)."
+                `Reset every markup override back to the tender default? This affects ${scopeCount} scope card(s), ${wasteCount} waste section(s), and ${cuttingCount} cutting section(s).`
               );
               if (!ok) return;
             }
             try {
-              const { cardsReset } = await resetAllCardMarkup();
+              const { cardsReset, wasteSectionsReset, cuttingSectionsReset } = await resetAllCardMarkup();
               await reloadEverything();
-              setToast(`${cardsReset} card override${cardsReset === 1 ? "" : "s"} cleared`);
+              setToast(
+                `Cleared: ${cardsReset} scope, ${wasteSectionsReset} waste, ${cuttingSectionsReset} cutting`
+              );
             } catch (err) {
               setError((err as Error).message);
             }
@@ -390,6 +394,12 @@ export function ScopeCardsTab({
               await setCardNotes(activeCard.id, { wasteNotes: v });
             }}
             cardId={activeCard.id}
+            tenderMarkup={tenderMarkup}
+            sectionMarkupOverride={activeCard.wasteMarkupOverride}
+            onSectionMarkupChange={async (next) => {
+              await setCardSectionMarkupOverride(activeCard.id, "waste", next);
+              await reloadEverything();
+            }}
           />
 
           {activeCard.discipline !== "ASB" ? (
@@ -402,6 +412,12 @@ export function ScopeCardsTab({
                 await setCardNotes(activeCard.id, { cuttingNotes: v });
               }}
               cardId={activeCard.id}
+              tenderMarkup={tenderMarkup}
+              sectionMarkupOverride={activeCard.cuttingMarkupOverride}
+              onSectionMarkupChange={async (next) => {
+                await setCardSectionMarkupOverride(activeCard.id, "cutting", next);
+                await reloadEverything();
+              }}
             />
           ) : null}
         </div>

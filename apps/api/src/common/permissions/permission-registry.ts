@@ -71,6 +71,13 @@ export const permissionRegistry = [
   // separately restricted — TODO: route through the authority seam once merged).
   { code: "rates.manage", module: "rates", description: "Create and edit flexible rate tables (RateTable / RateColumn / RateRow)" },
   { code: "lists.manage", module: "lists", description: "Manage list bindings and list-consumer wiring" },
+  // Comms + Approvals Phase 2 slice 1 (PR ${TBD}). Decide/overrule route
+  // through the AuthorityService seam + managerId reporting chain.
+  { code: "approvals.view", module: "approvals", description: "View approval-decision history for a record" },
+  { code: "approvals.decide", module: "approvals", description: "Record an approval decision (approve or reject) on a record" },
+  { code: "approvals.overrule", module: "approvals", description: "Overrule a prior approval decision as a senior in the reporting chain" },
+  { code: "internal-messages.view", module: "approvals", description: "View internal record-anchored messages you sent or received" },
+  { code: "internal-messages.send", module: "approvals", description: "Send an internal record-anchored message to another user" },
   // Procurement (PR-488 slice 1). `view` gates lists and detail; `manage` gates
   // draft/edit/submit/cancel; `approve` is the target permission the authority
   // seam consults when routing an over-limit approval; `receive` gates posting

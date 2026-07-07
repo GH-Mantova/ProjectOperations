@@ -80,6 +80,7 @@ import { PortalAccountPage } from "./portal/pages/PortalAccountPage";
 import { OfflineProvider } from "./offline/OfflineContext";
 import { OfflineIndicator } from "./offline/OfflineIndicator";
 import { InstallPrompt } from "./offline/InstallPrompt";
+import { UpdatePromptToast } from "./pwa/UpdatePromptToast";
 
 function ProtectedRoute() {
   const { isAuthenticated } = useAuth();
@@ -129,6 +130,7 @@ export function App() {
   return (
     <AuthProvider>
       <DraftPurgeRunner />
+      <UpdatePromptToast />
       {/* PR F FIX 1 — OfflineProvider scoped to /field/* only. Desktop and
           portal routes are online-only, so they don't need the IndexedDB
           outbox / online-state listeners running for every navigation. */}

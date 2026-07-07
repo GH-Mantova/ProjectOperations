@@ -255,7 +255,8 @@ const NAV_GROUPS: NavGroup[] = [
     adminOnly: true,
     items: [
       { to: "/admin/settings", label: "Admin Settings", icon: ICON_AUDIT },
-      { to: "/admin/estimate-rates", label: "Rates & Lists", icon: ICON_TENDERING },
+      { to: "/admin/rates-lists", label: "Rates & Lists", icon: ICON_TENDERING },
+      { to: "/admin/estimate-rates", label: "Legacy estimate rates", icon: ICON_TENDERING },
       { to: "/admin/job-roles", label: "Job Roles", icon: ICON_AUDIT },
       { to: "/admin/ai-settings", label: "AI Settings", icon: ICON_AUDIT }
     ]
@@ -311,7 +312,8 @@ const BREADCRUMBS: Record<string, string> = {
   "/dashboards": "Dashboards",
   "/admin/users": "Users",
   "/admin/roles": "Roles",
-  "/admin/estimate-rates": "Estimate Rates",
+  "/admin/estimate-rates": "Legacy estimate rates",
+  "/admin/rates-lists": "Rates & Lists",
   "/admin/permissions": "Permissions",
   "/admin/audit": "Audit",
   "/admin/platform": "Platform",

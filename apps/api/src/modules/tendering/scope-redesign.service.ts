@@ -807,42 +807,85 @@ export class ScopeRedesignService {
       bucket.withMarkup += totals.lineTotalWithMarkup;
     }
 
+    // Per-section markup — waste + cutting are independent cost
+    // streams from the scope-card total. Each aggregates per card and
+    // applies (card.<section>MarkupOverride ?? tenderMarkup) to that
+    // card's subtotal, then sums across cards. NEVER folded into the
+    // scope discipline total.
     const cuttingItems = await this.prisma.cuttingSheetItem.findMany({
       where: { tenderId },
-      select: { lineTotal: true }
+      select: { cardId: true, lineTotal: true, card: { select: { cuttingMarkupOverride: true } } }
     });
-    const cuttingSubtotal = cuttingItems.reduce(
-      (sum, ci) => sum + (ci.lineTotal ? Number(ci.lineTotal) : 0),
-      0
-    );
+    let cuttingSubtotal = 0;
+    let cuttingWithMarkup = 0;
+    const cuttingByCard = new Map<string, { subtotal: number; override: number | null }>();
+    for (const ci of cuttingItems) {
+      const amt = ci.lineTotal ? Number(ci.lineTotal) : 0;
+      cuttingSubtotal += amt;
+      const bucket = cuttingByCard.get(ci.cardId) ?? {
+        subtotal: 0,
+        override: ci.card?.cuttingMarkupOverride != null ? Number(ci.card.cuttingMarkupOverride) : null
+      };
+      bucket.subtotal += amt;
+      cuttingByCard.set(ci.cardId, bucket);
+    }
+    for (const { subtotal, override } of cuttingByCard.values()) {
+      const rate = override != null ? override : tenderMarkup;
+      cuttingWithMarkup += subtotal * (1 + rate / 100);
+    }
 
     // Waste totals — PR #71. Each ScopeWasteItem has a server-side
-    // lineTotal; we aggregate by discipline and overall.
+    // lineTotal; we aggregate by discipline (report) and by card
+    // (markup application).
     const wasteItems = await this.prisma.scopeWasteItem.findMany({
       where: { tenderId },
-      select: { discipline: true, lineTotal: true }
+      select: {
+        cardId: true,
+        discipline: true,
+        lineTotal: true,
+        card: { select: { wasteMarkupOverride: true } }
+      }
     });
     const wasteByDiscipline: Record<string, number> = {};
     for (const d of DISCIPLINES) wasteByDiscipline[d] = 0;
+    const wasteByCard = new Map<string, { subtotal: number; override: number | null }>();
     for (const w of wasteItems) {
-      if (!Object.prototype.hasOwnProperty.call(wasteByDiscipline, w.discipline)) continue;
-      wasteByDiscipline[w.discipline] += w.lineTotal ? Number(w.lineTotal) : 0;
+      const amt = w.lineTotal ? Number(w.lineTotal) : 0;
+      if (Object.prototype.hasOwnProperty.call(wasteByDiscipline, w.discipline)) {
+        wasteByDiscipline[w.discipline] += amt;
+      }
+      const bucket = wasteByCard.get(w.cardId) ?? {
+        subtotal: 0,
+        override: w.card?.wasteMarkupOverride != null ? Number(w.card.wasteMarkupOverride) : null
+      };
+      bucket.subtotal += amt;
+      wasteByCard.set(w.cardId, bucket);
     }
     const wasteTotal = Object.values(wasteByDiscipline).reduce((s, v) => s + v, 0);
+    let wasteWithMarkup = 0;
+    for (const { subtotal, override } of wasteByCard.values()) {
+      const rate = override != null ? override : tenderMarkup;
+      wasteWithMarkup += subtotal * (1 + rate / 100);
+    }
 
-    const tenderPrice =
-      Object.values(perDiscipline).reduce((s, v) => s + v.withMarkup, 0)
-      + cuttingSubtotal
-      + wasteTotal;
+    const scopeWithMarkupTotal = Object.values(perDiscipline).reduce((s, v) => s + v.withMarkup, 0);
+    // Grand total = the three independently-marked-up streams. Never
+    // fold a bare subtotal in — that was the bug the invariant guards.
+    const tenderPrice = scopeWithMarkupTotal + cuttingWithMarkup + wasteWithMarkup;
     return {
       ...perDiscipline,
-      cutting: { itemCount: cuttingItems.length, subtotal: Number(cuttingSubtotal.toFixed(2)) },
+      cutting: {
+        itemCount: cuttingItems.length,
+        subtotal: Number(cuttingSubtotal.toFixed(2)),
+        withMarkup: Number(cuttingWithMarkup.toFixed(2))
+      },
       waste: {
         itemCount: wasteItems.length,
         byDiscipline: Object.fromEntries(
           Object.entries(wasteByDiscipline).map(([k, v]) => [k, Number(v.toFixed(2))])
         ),
-        subtotal: Number(wasteTotal.toFixed(2))
+        subtotal: Number(wasteTotal.toFixed(2)),
+        withMarkup: Number(wasteWithMarkup.toFixed(2))
       },
       tenderPrice: Number(tenderPrice.toFixed(2))
     };

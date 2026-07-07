@@ -32,6 +32,16 @@ export type UpdateUserDashboardDto = {
   config?: UserDashboardConfig;
 };
 
+export type DashboardActor = {
+  sub: string;
+  permissions?: string[];
+  isSuperUser?: boolean;
+};
+
+function isPlatformAdmin(actor: DashboardActor): boolean {
+  return Boolean(actor.isSuperUser) || (actor.permissions ?? []).includes("platform.admin");
+}
+
 @Injectable()
 export class UserDashboardsService {
   constructor(
@@ -81,8 +91,20 @@ export class UserDashboardsService {
     return record;
   }
 
-  async update(userId: string, id: string, dto: UpdateUserDashboardDto) {
+  async update(actor: DashboardActor, id: string, dto: UpdateUserDashboardDto) {
+    const userId = actor.sub;
     const existing = await this.getById(userId, id);
+    // System dashboards are shared fixtures: renaming them is admin-only.
+    // Per-user config changes (widget layout, filters, periods) stay open to
+    // the owner, and delete remains blocked for everyone (see remove()).
+    if (
+      existing.isSystem &&
+      dto.name !== undefined &&
+      dto.name !== existing.name &&
+      !isPlatformAdmin(actor)
+    ) {
+      throw new ForbiddenException("Only administrators can rename system dashboards.");
+    }
     const data: Prisma.UserDashboardUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name;
     if (dto.config !== undefined) data.config = dto.config as unknown as Prisma.InputJsonValue;

@@ -458,6 +458,19 @@ export async function seedGlobalLists(prisma: PrismaClient, adminUserId: string)
         { label: "Vacuum Excavation" },
         { label: "Waste Facilities" }
       ]
+    },
+    {
+      slug: "tender-package-disciplines",
+      name: "Tender package disciplines",
+      description:
+        "Disciplines used to categorise per-tender pricing packages (asbestos, demolition, cutting, civil, …). Director-configurable.",
+      items: [
+        { value: "asbestos", label: "Asbestos" },
+        { value: "demolition", label: "Demolition" },
+        { value: "concrete-cutting", label: "Concrete Cutting" },
+        { value: "civil", label: "Civil" },
+        { value: "other", label: "Other" }
+      ]
     }
   ];
 

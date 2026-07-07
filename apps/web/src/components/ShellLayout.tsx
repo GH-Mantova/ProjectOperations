@@ -617,7 +617,7 @@ export function ShellLayout() {
       {newDashboardOpen ? (
         <NewDashboardModal
           slug="custom"
-          existingDashboards={customDashboards}
+          existingDashboards={allDashboards ?? []}
           onClose={() => setNewDashboardOpen(false)}
           onCreated={() => setNewDashboardOpen(false)}
         />

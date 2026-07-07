@@ -10,6 +10,7 @@ import { ArchiveModule } from "./modules/archive/archive.module";
 import { AssetsModule } from "./modules/assets/assets.module";
 import { AuditModule } from "./modules/audit/audit.module";
 import { AuthModule } from "./modules/auth/auth.module";
+import { AuthorizationModule } from "./modules/authorization/authorization.module";
 import { DocumentsModule } from "./modules/documents/documents.module";
 import { EmailModule } from "./modules/email/email.module";
 import { ClientQuotesModule } from "./modules/client-quotes/client-quotes.module";
@@ -83,6 +84,7 @@ import { FieldModule } from "./modules/field/field.module";
     PlatformModule,
     ResourcesModule,
     AuthModule,
+    AuthorizationModule,
     FormsModule,
     GlobalListsModule,
     JobsModule,

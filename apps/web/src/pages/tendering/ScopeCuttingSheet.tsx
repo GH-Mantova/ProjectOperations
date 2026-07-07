@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { useAuth } from "../../auth/AuthContext";
 import { NotesField } from "../../components";
+import { SectionMarkupOverride, computeWithMarkup } from "./SectionMarkupOverride";
 
 type ItemType = "saw-cut" | "core-hole" | "other-rate";
 
@@ -81,7 +82,10 @@ export function ScopeCuttingSheet({
   canManage,
   cuttingNotes,
   onCuttingNotesChange,
-  cardId
+  cardId,
+  tenderMarkup,
+  sectionMarkupOverride,
+  onSectionMarkupChange
 }: {
   tenderId: string;
   wbsRefs: string[];
@@ -96,6 +100,11 @@ export function ScopeCuttingSheet({
   // Falls back to whole-tender + client-side WBS filtering for legacy
   // callers that don't have a card in scope.
   cardId?: string;
+  // Per-section markup override for this card's cutting subtable.
+  // Independent cost stream from the scope-card markup.
+  tenderMarkup?: number;
+  sectionMarkupOverride?: number | null;
+  onSectionMarkupChange?: (next: number | null) => Promise<void> | void;
 }) {
   const { authFetch } = useAuth();
   const [items, setItems] = useState<CuttingItem[]>([]);
@@ -264,8 +273,28 @@ export function ScopeCuttingSheet({
             ({disciplineItems.length} item{disciplineItems.length === 1 ? "" : "s"})
           </span>
         </h3>
-        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-          Subtotal: <strong style={{ color: "var(--text)" }}>{fmt(subtotal)}</strong>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+          {onSectionMarkupChange && tenderMarkup !== undefined ? (
+            <SectionMarkupOverride
+              label="Cutting markup:"
+              value={sectionMarkupOverride}
+              tenderMarkup={tenderMarkup}
+              onSave={onSectionMarkupChange}
+              disabled={!canManage}
+            />
+          ) : null}
+          <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+            Subtotal: <strong style={{ color: "var(--text)" }}>{fmt(subtotal)}</strong>
+            {tenderMarkup !== undefined ? (
+              <>
+                <span> · </span>
+                with markup:{" "}
+                <strong style={{ color: "var(--text)" }}>
+                  {fmt(computeWithMarkup(subtotal, sectionMarkupOverride, tenderMarkup))}
+                </strong>
+              </>
+            ) : null}
+          </div>
         </div>
       </div>
       {discipline ? (

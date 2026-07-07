@@ -1,6 +1,6 @@
 # ProjectOperations — Roadmap
 
-Last updated: 2026-06-30 23:35 AEST
+Last updated: 2026-07-07 09:26 AEST
 
 # Version: 1.0
 # Created: 2026-04-25 10:02 AEST
@@ -23,8 +23,8 @@ Last updated: 2026-06-30 23:35 AEST
 | §2 | Operations + Field | ✅ Complete |
 | §3 | Directory + Compliance | ✅ Complete |
 | §4 | Integrations | ✅ Complete |
-| §5A | Tendering Module Sign-off | 🔲 Current priority — gate for everything else |
-| §5B | Dashboard + UI fixes | ✅ Complete (PR #92 + #96) |
+| §5A | Tendering Module Sign-off | 🔲 Current priority — pilot-facing gate |
+| §5B | Dashboard + UI fixes | ✅ Complete (PR #92 + #96 + #470/#473/#476) |
 | §5C | Forms Engine UI | 🔲 Follow-up to PR #97 |
 | §6 | Deferred / tech debt | ⏸️ Tracked items |
 | §7 | Next feature priorities | 🔲 Queued |
@@ -35,6 +35,12 @@ Last updated: 2026-06-30 23:35 AEST
 - "What should I work on next?" → §5A (gate) → §7 (post-gate)
 - "Is this on the roadmap?" → Ctrl+F the keyword
 - "Why was X deferred?" → §6 (notes attached to each item)
+
+**Parallel lanes (2026-07 note).** §5A remains the tendering sign-off gate,
+but the Scheduler, Dashboards, Tender Packages, Authority Seam, and native
+Inventory lanes have been proceeding in parallel by owner decision — they
+are internal-tooling or foundation work and do not depend on the tendering
+sign-off. See the 2026-07-07 CHANGELOG entry for lane-by-lane status.
 
 ---
 
@@ -1727,7 +1733,95 @@ Raj to test, and the rendered quote PDFs match Sean's templates.
 
 ## CHANGELOG
 
-### 2026-06-15 — Reconciliation with main (PRs #301–#392)
+### 2026-07-07 — Doc reconcile (PRs #457–#495) + parallel lane summary
+
+Periodic doc-reconcile PR (docs-only) syncing `roadmap.md` + `progress.md`
++ README/CLAUDE/project_instructions with `main` through PR #495. The
+previous reconcile (2026-07-01 entry) covered #432–#454 + the Scheduler
+lane. None of the below shift the master phase plan — §5A remains the
+tendering sign-off gate; §5C Forms Engine v2 is queued (plan-of-record
+locked in PR #482). The following lanes have been proceeding in parallel
+by owner decision.
+
+#### B-P0a Job/Project spine (#465, #468, #472, #474) ✅ groundwork
+- ✅ [B-P0a-1] Project/Job spine — expand Project columns + multi-role
+  guard on write path (#465, 2026-07-02)
+- ✅ [B-P0a-2] Backfill Job attributes onto Project — idempotent data
+  migration (#468, 2026-07-03)
+- ✅ [B-P0a-2b] Create Project shells for unmapped Jobs — completes 1:1
+  spine mapping (#472, 2026-07-03)
+- ✅ [B-P0a-3] Unique `sourceTenderId` on Project — single conversion
+  path from tender to project (#474, 2026-07-03)
+- Survivor-spine design of record: #462 (Job/Project). B-P0b
+  Worker/WorkerProfile design of record: #475, Section-7 decisions locked
+  in #477.
+- ⏸ Destructive merge (drop legacy Job table) remains DEFERRED — the
+  spine groundwork ships, the drop is a separate reviewed PR.
+
+#### Reporting hierarchy + central authority seam (#478, #479) ✅
+- ✅ User reporting hierarchy — `User.managerId` self-relation with
+  cycle-guard + admin surface (#478, 2026-07-04). Foundation for the
+  authority seam and future approval flows.
+- ✅ Central authority seam (config-open) — `AuthorityService` +
+  `AuthorityRule` model. Ceilings resolved via config (Director-
+  configurable), no hard-coded policy (#479, 2026-07-04).
+
+#### Tender packages + pricing basis (#480) ✅
+- ✅ TenderPackage model + package-scoped pricing basis (backend)
+  (#480, 2026-07-04). Unblocks Rates/Lists lane and the New Tender
+  wizard (#492).
+
+#### Native inventory / stock slice 1 (#484) ✅
+- ✅ Schema + service seam replacing Asset Tiger dependency for
+  stock-level workflows; migration 20260706150000 (#484, 2026-07-06).
+  Follow-up slices tracked separately.
+
+#### Forms Authoring v1 (#481) ✅ + Forms Engine v2 plan-of-record (#482)
+- ✅ [Forms] Authoring v1 — new/edit/duplicate/archive from the list
+  page (#481, 2026-07-05). First end-to-end authoring surface.
+- ✅ [Docs] Forms Engine v2 — plan of record; decisions locked
+  2026-07-03 (#482). §5C Forms Engine UI now proceeds under this plan.
+
+#### Dashboards gallery / rename / delete + widgets (#470, #473, #476, #494) ✅
+- ✅ Delete custom dashboards (system-owned protected) (#470)
+- ✅ Add-widget gallery + drag-to-place (#473)
+- ✅ Rename system dashboards (admin) + Copy-from + widget settings
+  popover portal-overflow fix (#476)
+- ✅ Program snapshot + Availability heatmap widgets — 2 API endpoints
+  + 2 web widgets (#494)
+
+#### Rates & Lists R0 (#485) ✅ — backend seam only, UI unbuilt
+- ✅ Flexible RateTable + `resolveRate` seam + ListBinding registry
+  (#485, 2026-07-07). Design spec landed; user-facing rates/lists UI
+  remains queued.
+
+#### QA batch (#487–#491) ✅
+- ✅ S3-006 form-submission status casing (#487)
+- ✅ S3-008 jobs list progress from nested stages (#488)
+- ✅ S3-007 scheduler month grid — 7 aligned columns with pills (#489)
+- ✅ Master data sites — hydrate per-site job count (#490)
+- ✅ Findings batch 1 — touch targets, h1 titles, PWA banner, Design
+  gallery routes (#491)
+
+#### Ownership + counters (#486) ✅
+- ✅ [OWN-1] Client win/loss counters — single-writer atomic
+  `ClientStatsService` (#486, 2026-07-06).
+
+#### Tender workflow (#492) ✅
+- ✅ New Tender wizard (multi-step modal) — 7 steps
+  (Project→Builders→Packages→Docs→Rates→AI→Review); reuses #480/#482
+  endpoints + `TenderDocumentsPanel`; 14 vitest specs (#492, 2026-07-07).
+
+#### Docs / tooling (#457–#464, #466, #467, #469, #471, #475, #477, #482, #493, #495)
+- Repo streamline (#457), Dependabot security bumps (#458, #467),
+  CenteredModal contract tests (#459), waste `qty` rename (#460),
+  e2e flake hardening (#461, #469), gitignore repair (#463), watcher
+  mojibake (#464), VS Code cockpit polish (#466), IA/Module Ownership
+  plan of record (#471), Section 7 decisions locked (#477), data-model
+  relationship map + SoT TOC infra (#493), watcher launcher
+  auto-recover to main (#495).
+
+
 Roadmap status reconciled with `git log origin/main` after the weekend
 pilot push. Items flipped to ✅ (see body of roadmap for the in-place
 edits):

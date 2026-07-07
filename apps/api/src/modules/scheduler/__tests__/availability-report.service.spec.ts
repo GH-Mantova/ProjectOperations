@@ -143,3 +143,90 @@ describe("AvailabilityReportService", () => {
     expect(lines[0].split(",")).toHaveLength(33);
   });
 });
+
+describe("AvailabilityReportService.heatmap (dashboard widget)", () => {
+  function heatmapPrismaMock(seed: {
+    workers?: Array<{ id: string; firstName: string; lastName: string; role: string }>;
+    allocations?: Array<{ workerProfileId: string; projectId: string; date: Date }>;
+  }) {
+    return {
+      workerProfile: { findMany: jest.fn().mockResolvedValue(seed.workers ?? []) },
+      scheduleAllocation: { findMany: jest.fn().mockResolvedValue(seed.allocations ?? []) }
+    } as never;
+  }
+
+  it("buckets a fully-free worker as 'free' on every cell and reports totalLoad=0", async () => {
+    const svc = new AvailabilityReportService(
+      heatmapPrismaMock({
+        workers: [{ id: "w-1", firstName: "A", lastName: "B", role: "Foreman" }]
+      })
+    );
+    const result = await svc.heatmap({ days: 14, topN: 8 });
+    expect(result.workers).toHaveLength(1);
+    expect(result.workers[0].totalLoad).toBe(0);
+    expect(result.workers[0].cells.every((c) => c.load === "free")).toBe(true);
+    expect(result.days).toHaveLength(14);
+  });
+
+  it("collapses multi-role allocations on the same worker+day+project into ONE project (partial, not full)", async () => {
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const svc = new AvailabilityReportService(
+      heatmapPrismaMock({
+        workers: [{ id: "w-1", firstName: "Ken", lastName: "R", role: "Foreman" }],
+        allocations: [
+          { workerProfileId: "w-1", projectId: "p-A", date: today },
+          { workerProfileId: "w-1", projectId: "p-A", date: today } // second role, same project
+        ]
+      })
+    );
+    const result = await svc.heatmap({ days: 14, topN: 8 });
+    const firstCell = result.workers[0].cells[0];
+    expect(firstCell.projectCount).toBe(1);
+    expect(firstCell.load).toBe("partial");
+  });
+
+  it("counts allocations across DIFFERENT projects on the same day as 'full'", async () => {
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const svc = new AvailabilityReportService(
+      heatmapPrismaMock({
+        workers: [{ id: "w-1", firstName: "Ken", lastName: "R", role: "Foreman" }],
+        allocations: [
+          { workerProfileId: "w-1", projectId: "p-A", date: today },
+          { workerProfileId: "w-1", projectId: "p-B", date: today }
+        ]
+      })
+    );
+    const result = await svc.heatmap({ days: 14, topN: 8 });
+    const firstCell = result.workers[0].cells[0];
+    expect(firstCell.projectCount).toBe(2);
+    expect(firstCell.load).toBe("full");
+  });
+
+  it("caps returned workers at topN and ranks by allocation activity desc", async () => {
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const svc = new AvailabilityReportService(
+      heatmapPrismaMock({
+        workers: [
+          { id: "w-1", firstName: "A", lastName: "A", role: "F" },
+          { id: "w-2", firstName: "B", lastName: "B", role: "F" },
+          { id: "w-3", firstName: "C", lastName: "C", role: "F" }
+        ],
+        allocations: [{ workerProfileId: "w-3", projectId: "p-A", date: today }]
+      })
+    );
+    const result = await svc.heatmap({ days: 14, topN: 2 });
+    expect(result.workers).toHaveLength(2);
+    expect(result.workers[0].workerProfileId).toBe("w-3"); // highest load first
+  });
+
+  it("clamps day/topN to safe bounds", async () => {
+    const svc = new AvailabilityReportService(heatmapPrismaMock({}));
+    const tooSmall = await svc.heatmap({ days: 0, topN: 0 });
+    expect(tooSmall.days).toHaveLength(7); // clamped to min
+    const tooBig = await svc.heatmap({ days: 999, topN: 999 });
+    expect(tooBig.days).toHaveLength(42); // clamped to max
+  });
+});

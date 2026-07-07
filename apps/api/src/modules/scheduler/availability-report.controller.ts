@@ -63,4 +63,26 @@ export class AvailabilityReportController {
   reportCsv(@Query() query: AvailabilityReportQueryDto) {
     return this.service.reportCsv(query);
   }
+
+  /**
+   * Compact rolling-window heatmap for the dashboard widget: top-N workers
+   * by allocation activity, with per-cell load bucket (free / partial /
+   * full) derived from DISTINCT project count per (worker, day). Multi-role
+   * rows on the same worker+day+project count as one project.
+   */
+  @Get("availability-heatmap")
+  @RequirePermissions("scheduler.view")
+  @ApiOperation({
+    summary:
+      "Rolling-window availability heatmap for the dashboard widget (top-N workers, load bucketed by distinct project count)."
+  })
+  @ApiQuery({ name: "days", required: false, description: "Rolling window in days (7–42, default 14)." })
+  @ApiQuery({ name: "topN", required: false, description: "Max workers returned (1–20, default 8)." })
+  @ApiResponse({ status: 200, description: "Heatmap payload." })
+  heatmap(@Query("days") days?: string, @Query("topN") topN?: string) {
+    return this.service.heatmap({
+      days: days ? Number(days) : 14,
+      topN: topN ? Number(topN) : 8
+    });
+  }
 }

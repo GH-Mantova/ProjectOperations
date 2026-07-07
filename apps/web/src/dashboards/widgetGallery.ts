@@ -39,6 +39,12 @@ const KIND_OVERRIDES: Record<string, GalleryKind> = {
   ten_win_rate_by_client: "bar",
   ten_pipeline_by_estimator: "donut",
   ten_loss_reasons: "donut",
+  // Program snapshot renders horizontal task bars over a time window — bar
+  // rail is the closest match; the heatmap is grid/table-shaped so belongs
+  // with tables & lists.
+  ops_project_timeline: "bar",
+  ops_program_snapshot: "bar",
+  ops_availability_heatmap: "list",
   [CUSTOM_WIDGET_TYPE]: "custom"
 };
 

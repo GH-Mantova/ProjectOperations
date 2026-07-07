@@ -77,5 +77,13 @@ export const permissionRegistry = [
   { code: "approvals.decide", module: "approvals", description: "Record an approval decision (approve or reject) on a record" },
   { code: "approvals.overrule", module: "approvals", description: "Overrule a prior approval decision as a senior in the reporting chain" },
   { code: "internal-messages.view", module: "approvals", description: "View internal record-anchored messages you sent or received" },
-  { code: "internal-messages.send", module: "approvals", description: "Send an internal record-anchored message to another user" }
+  { code: "internal-messages.send", module: "approvals", description: "Send an internal record-anchored message to another user" },
+  // Procurement (PR-488 slice 1). `view` gates lists and detail; `manage` gates
+  // draft/edit/submit/cancel; `approve` is the target permission the authority
+  // seam consults when routing an over-limit approval; `receive` gates posting
+  // a receipt (which writes a RECEIVE StockMovement via the inventory layer).
+  { code: "procurement.view", module: "procurement", description: "View procurement requests and purchase orders" },
+  { code: "procurement.manage", module: "procurement", description: "Create, edit, submit, cancel procurement requests" },
+  { code: "procurement.approve", module: "procurement", description: "Approve procurement requests and issue purchase orders" },
+  { code: "procurement.receive", module: "procurement", description: "Record receipt of goods against a procurement line" }
 ] as const;

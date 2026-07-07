@@ -56,6 +56,7 @@ import { FieldModule } from "./modules/field/field.module";
 import { RatesModule } from "./modules/rates/rates.module";
 import { ListBindingsModule } from "./modules/list-bindings/list-bindings.module";
 import { CommsApprovalsModule } from "./modules/comms-approvals/comms-approvals.module";
+import { ProcurementModule } from "./modules/procurement/procurement.module";
 
 @Module({
   imports: [
@@ -118,7 +119,8 @@ import { CommsApprovalsModule } from "./modules/comms-approvals/comms-approvals.
     XeroModule,
     RatesModule,
     ListBindingsModule,
-    CommsApprovalsModule
+    CommsApprovalsModule,
+    ProcurementModule
   ]
 })
 export class AppModule {}

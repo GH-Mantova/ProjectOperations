@@ -96,6 +96,7 @@ if (-not $env:PR_WATCHER_AUTO_REVIEW)       { $env:PR_WATCHER_AUTO_REVIEW = "tru
 if (-not $env:PR_WATCHER_AUTO_UPDATE)       { $env:PR_WATCHER_AUTO_UPDATE = "true" }
 if (-not $env:PR_WATCHER_AUTO_MERGE_POLICY) { $env:PR_WATCHER_AUTO_MERGE_POLICY = "tests-docs" }
 if (-not $env:PR_WATCHER_MAX_TURNS)         { $env:PR_WATCHER_MAX_TURNS = "240" }
+if (-not $env:PR_WATCHER_RUN_TIMEOUT_MIN)   { $env:PR_WATCHER_RUN_TIMEOUT_MIN = "75" }
 
 $banner = @"
 ============================================================
@@ -105,6 +106,7 @@ Auto-review:    $($env:PR_WATCHER_AUTO_REVIEW)
 Auto-update:    $($env:PR_WATCHER_AUTO_UPDATE)
 Auto-merge:     $($env:PR_WATCHER_AUTO_MERGE_POLICY)
 Max turns:      $($env:PR_WATCHER_MAX_TURNS)
+Run timeout:    $($env:PR_WATCHER_RUN_TIMEOUT_MIN) min
 Log file:       $LogFile
 ============================================================
 "@

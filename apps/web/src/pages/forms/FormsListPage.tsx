@@ -144,7 +144,7 @@ export function FormsListPage() {
     setError(null);
     try {
       const requests: Array<Promise<Response>> = [
-        authFetch("/forms/templates?page=1&pageSize=200"),
+        authFetch("/forms/templates?page=1&pageSize=100"),
         authFetch("/forms/my-submissions")
       ];
       if (canApprove) requests.push(authFetch("/forms/pending-approvals"));

@@ -235,6 +235,116 @@ export class AvailabilityReportService {
     };
   }
 
+  /**
+   * Rolling-window heatmap for the dashboard widget.
+   *
+   * For a `days`-wide window starting today, returns the top-N workers
+   * (ranked by count of allocated cells) with a per-cell load bucket:
+   *   - "free"    — 0 distinct projects allocated
+   *   - "partial" — 1 distinct project
+   *   - "full"    — 2+ distinct projects
+   *
+   * Multi-role rule: two ScheduleAllocation rows for the same
+   * workerProfileId+date on the same project (differing only by jobRoleId)
+   * count as ONE project — the load bucket is computed over the DISTINCT
+   * project set for the (worker, day) key. This mirrors the "one worker-
+   * day" locked invariant enforced elsewhere.
+   *
+   * Leave / unavailability suppress the cell to "free" — the widget is a
+   * project-load view, not an availability view.
+   */
+  async heatmap(opts: {
+    days: number;
+    topN: number;
+  }): Promise<{
+    windowStart: string;
+    windowEnd: string;
+    days: Array<{ date: string; isWeekend: boolean }>;
+    workers: Array<{
+      workerProfileId: string;
+      firstName: string;
+      lastName: string;
+      role: string;
+      totalLoad: number;
+      cells: Array<{
+        date: string;
+        load: "free" | "partial" | "full";
+        projectCount: number;
+      }>;
+    }>;
+  }> {
+    const days = clampInt(opts.days, 7, 42, 14);
+    const topN = clampInt(opts.topN, 1, 20, 8);
+    const start = startOfUtcDay(new Date());
+    const endExclusive = new Date(start.getTime() + days * 86_400_000);
+
+    const [workers, allocations] = await Promise.all([
+      this.prisma.workerProfile.findMany({
+        where: { isActive: true },
+        select: { id: true, firstName: true, lastName: true, role: true },
+        orderBy: [{ role: "asc" }, { lastName: "asc" }, { firstName: "asc" }]
+      }),
+      this.prisma.scheduleAllocation.findMany({
+        where: {
+          date: { gte: start, lt: endExclusive },
+          targetType: "WORKER",
+          workerProfileId: { not: null }
+        },
+        select: { workerProfileId: true, projectId: true, date: true }
+      })
+    ]);
+
+    // Index: worker → (date → distinct project set). Multi-role dedupe is
+    // free here because we accumulate into a Set of projectId.
+    const projectsByWorkerDay = new Map<string, Map<string, Set<string>>>();
+    for (const a of allocations) {
+      if (!a.workerProfileId) continue;
+      const iso = formatIsoDate(a.date);
+      const byDay = projectsByWorkerDay.get(a.workerProfileId) ?? new Map<string, Set<string>>();
+      const set = byDay.get(iso) ?? new Set<string>();
+      set.add(a.projectId);
+      byDay.set(iso, set);
+      projectsByWorkerDay.set(a.workerProfileId, byDay);
+    }
+
+    const dayList: Array<{ date: string; isWeekend: boolean }> = [];
+    for (let i = 0; i < days; i++) {
+      const d = new Date(start.getTime() + i * 86_400_000);
+      const weekday = d.getUTCDay();
+      dayList.push({ date: formatIsoDate(d), isWeekend: weekday === 0 || weekday === 6 });
+    }
+
+    const rows = workers.map((w) => {
+      const byDay = projectsByWorkerDay.get(w.id) ?? new Map<string, Set<string>>();
+      let totalLoad = 0;
+      const cells = dayList.map((d) => {
+        const projectCount = byDay.get(d.date)?.size ?? 0;
+        const load: "free" | "partial" | "full" =
+          projectCount === 0 ? "free" : projectCount === 1 ? "partial" : "full";
+        if (projectCount > 0) totalLoad += 1;
+        return { date: d.date, load, projectCount };
+      });
+      return {
+        workerProfileId: w.id,
+        firstName: w.firstName,
+        lastName: w.lastName,
+        role: w.role || "Unassigned",
+        totalLoad,
+        cells
+      };
+    });
+
+    rows.sort((a, b) => b.totalLoad - a.totalLoad || a.lastName.localeCompare(b.lastName));
+    const topRows = rows.slice(0, topN);
+
+    return {
+      windowStart: start.toISOString(),
+      windowEnd: endExclusive.toISOString(),
+      days: dayList,
+      workers: topRows
+    };
+  }
+
   async reportCsv(query: AvailabilityReportQueryDto): Promise<string> {
     const r = await this.report(query);
     const csv: CsvReport = {
@@ -249,6 +359,16 @@ export class AvailabilityReportService {
     };
     return renderReportCsv(csv);
   }
+}
+
+function startOfUtcDay(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
+function clampInt(v: unknown, min: number, max: number, fallback: number): number {
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(n)));
 }
 
 function parseIsoUtc(iso: string): Date {

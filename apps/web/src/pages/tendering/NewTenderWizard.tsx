@@ -289,10 +289,14 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
   }
 
   async function patchDraft(id: string, patch: Record<string, unknown>) {
-    const res = await authFetch(`/tenders/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
+    // API PATCH /tenders/:id uses UpsertTenderDto which requires `title`. Always
+    // re-send the current title so partial patches (adding builders, packages,
+    // etc.) don't get rejected with "title must be a string".
+    const body = "title" in patch ? patch : { title: title.trim(), ...patch };
+    const res = await authFetch(`/tenders/${id}`, { method: "PATCH", body: JSON.stringify(body) });
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body.message ?? "Could not update draft tender.");
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message ?? "Could not update draft tender.");
     }
     return res.json();
   }

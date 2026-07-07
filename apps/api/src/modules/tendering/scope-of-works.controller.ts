@@ -302,6 +302,13 @@ export class ScopeOfWorksController {
     if (dto.markupOverride !== undefined) {
       return this.service.setCardMarkupOverride(tenderId, cardId, dto.markupOverride);
     }
+    // Per-section markup overrides (waste + cutting cost streams).
+    if (dto.wasteMarkupOverride !== undefined) {
+      return this.service.setCardSectionMarkupOverride(tenderId, cardId, "waste", dto.wasteMarkupOverride);
+    }
+    if (dto.cuttingMarkupOverride !== undefined) {
+      return this.service.setCardSectionMarkupOverride(tenderId, cardId, "cutting", dto.cuttingMarkupOverride);
+    }
     // Card-header summary overrides.
     if (
       dto.peakCrewOverride !== undefined ||
@@ -320,7 +327,7 @@ export class ScopeOfWorksController {
       return this.service.renameCard(tenderId, cardId, dto.name);
     }
     throw new BadRequestException(
-      "Provide name, discipline, plantColumnCount, cuttingNotes, wasteNotes, markupOverride, or header overrides."
+      "Provide name, discipline, plantColumnCount, cuttingNotes, wasteNotes, markupOverride, wasteMarkupOverride, cuttingMarkupOverride, or header overrides."
     );
   }
 
@@ -348,9 +355,9 @@ export class ScopeOfWorksController {
   @Post("markup/reset-all")
   @RequirePermissions("estimates.manage")
   @ApiOperation({
-    summary: "PR B2 — Reset every card's markupOverride to null in one call. Returns { cardsReset: count }."
+    summary: "Reset every card's markupOverride, wasteMarkupOverride and cuttingMarkupOverride to null in one call. Returns per-type counts."
   })
-  @ApiResponse({ status: 200, description: "All card overrides cleared for the tender." })
+  @ApiResponse({ status: 200, description: "All scope + waste + cutting section overrides cleared for the tender." })
   resetAllCardMarkup(@Param("tenderId") tenderId: string) {
     return this.service.resetAllCardMarkup(tenderId);
   }

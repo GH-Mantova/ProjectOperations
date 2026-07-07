@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-06-30 23:35 AEST
+Last updated: 2026-07-07 09:26 AEST
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -21,6 +21,7 @@ Progress is append-only — most recent entries are at the end.
 | PR #111 (FIX 4) | Form drafts (IndexedDB) | 2026-04-27 |
 | PR #112 | Doc cleanup (this PR's predecessor) | 2026-04-27 |
 | (this PR) | Doc hygiene infrastructure | 2026-04-27 |
+| #455–#493 | B-P0a spine · dashboards · authority seam · tender packages · inventory · forms authoring · QA batch | 2026-07-07 |
 
 **Quick navigation:**
 - Latest entry → scroll to bottom of file
@@ -8810,4 +8811,238 @@ Status: MERGED
 GitHub PR: #454 (https://github.com/GH-Mantova/ProjectOperations/pull/454)
 Type: PR
 Detail: [Scheduler] Availability heatmap report (unique-by-name) + CSV — AvailabilityReportService + controller (JSON/CSV, unique-by-name TOTAL, skip toggle), AvailabilityReportPage (heatmap green→red, month nav, detail drill, CSV export), 6 specs. CI green (lint, build, 53 scheduler tests). Deps: PR-452, PR-451.
+Status: MERGED
+
+## 2026-07-01 — PR #457 MERGED
+GitHub PR: #457 (https://github.com/GH-Mantova/ProjectOperations/pull/457)
+Type: PR
+Detail: chore: repo streamline — ignore Claude Design/ scratch tree, relocate gap-analysis doc under docs/.
+Status: MERGED
+
+## 2026-07-01 — PR #458 MERGED
+GitHub PR: #458 (https://github.com/GH-Mantova/ProjectOperations/pull/458)
+Type: PR
+Detail: chore(security): Dependabot bumps — multer, form-data, tar, react-router, babel to patched lines.
+Status: MERGED
+
+## 2026-07-01 — PR #459 MERGED
+GitHub PR: #459 (https://github.com/GH-Mantova/ProjectOperations/pull/459)
+Type: PR
+Detail: test(ui): expand CenteredModal contract tests (focus trap, portal target, escape) + add `test:watch` script.
+Status: MERGED
+
+## 2026-07-01 — PR #460 MERGED
+GitHub PR: #460 (https://github.com/GH-Mantova/ProjectOperations/pull/460)
+Type: PR
+Detail: chore(schema): rename `ScopeWasteItem.wasteTonnes` → `qty` + waste audits; migration + consumer updates.
+Status: MERGED
+
+## 2026-07-01 — PR #461 MERGED
+GitHub PR: #461 (https://github.com/GH-Mantova/ProjectOperations/pull/461)
+Type: PR
+Detail: test(batch6): harden three flaky e2e specs — tests-only, no product change.
+Status: MERGED
+
+## 2026-07-02 — PR #462 MERGED
+GitHub PR: #462 (https://github.com/GH-Mantova/ProjectOperations/pull/462)
+Type: PR
+Detail: docs(bp0a): Job/Project consolidation survivor-spine design — plan of record for the B-P0a lane.
+Status: MERGED
+
+## 2026-07-02 — PR #463 MERGED
+GitHub PR: #463 (https://github.com/GH-Mantova/ProjectOperations/pull/463)
+Type: PR
+Detail: chore(qa): repair `.gitignore` corruption + ignore overnight-QA local state files.
+Status: MERGED
+
+## 2026-07-02 — PR #464 MERGED
+GitHub PR: #464 (https://github.com/GH-Mantova/ProjectOperations/pull/464)
+Type: PR
+Detail: [Chore] Fix mojibake in watcher bookkeeping comment.
+Status: MERGED
+
+## 2026-07-02 — PR #465 MERGED — B-P0a Job/Project spine
+GitHub PR: #465 (https://github.com/GH-Mantova/ProjectOperations/pull/465)
+Type: PR
+Detail: [B-P0a-1] Project/Job spine — expand Project columns to hold Job attributes; multi-role guard on write path. First slice of the Job→Project consolidation.
+Status: MERGED
+
+## 2026-07-02 — PR #466 MERGED
+GitHub PR: #466 (https://github.com/GH-Mantova/ProjectOperations/pull/466)
+Type: PR
+Detail: [Tooling] VS Code cockpit polish — watcher autostart, `e2e` task, log-encoding fix.
+Status: MERGED
+
+## 2026-07-02 — PR #467 MERGED
+GitHub PR: #467 (https://github.com/GH-Mantova/ProjectOperations/pull/467)
+Type: PR
+Detail: [Chore] Pin js-yaml to patched lines via version-scoped pnpm overrides (Dependabot #49/#50).
+Status: MERGED
+
+## 2026-07-03 — PR #468 MERGED — B-P0a Job/Project spine
+GitHub PR: #468 (https://github.com/GH-Mantova/ProjectOperations/pull/468)
+Type: PR
+Detail: [B-P0a-2] Backfill Job attributes onto Project — idempotent data migration + verification query.
+Status: MERGED
+
+## 2026-07-03 — PR #469 MERGED
+GitHub PR: #469 (https://github.com/GH-Mantova/ProjectOperations/pull/469)
+Type: PR
+Detail: [E2E] Reuse auth via `storageState` — fix login rate-limit flake across Playwright projects.
+Status: MERGED
+
+## 2026-07-03 — PR #470 MERGED — Dashboards
+GitHub PR: #470 (https://github.com/GH-Mantova/ProjectOperations/pull/470)
+Type: PR
+Detail: [Dashboards] Delete custom dashboards (system-owned dashboards protected). CRUD gap closed.
+Status: MERGED
+
+## 2026-07-03 — PR #471 MERGED
+GitHub PR: #471 (https://github.com/GH-Mantova/ProjectOperations/pull/471)
+Type: PR
+Detail: [Docs] Module Ownership & IA Map — plan of record (decisions locked 2026-07-03).
+Status: MERGED
+
+## 2026-07-03 — PR #472 MERGED — B-P0a Job/Project spine
+GitHub PR: #472 (https://github.com/GH-Mantova/ProjectOperations/pull/472)
+Type: PR
+Detail: [B-P0a-2b] Create Project shells for unmapped Jobs — completes 1:1 spine mapping.
+Status: MERGED
+
+## 2026-07-03 — PR #473 MERGED — Dashboards
+GitHub PR: #473 (https://github.com/GH-Mantova/ProjectOperations/pull/473)
+Type: PR
+Detail: [Dashboards] Add-widget gallery + drag-to-place (combo A+B). Ships gallery browse + insertion UX.
+Status: MERGED
+
+## 2026-07-03 — PR #474 MERGED — B-P0a Job/Project spine
+GitHub PR: #474 (https://github.com/GH-Mantova/ProjectOperations/pull/474)
+Type: PR
+Detail: [B-P0a-3] Unique `sourceTenderId` on Project — single conversion path from tender to project.
+Status: MERGED
+
+## 2026-07-03 — PR #475 MERGED
+GitHub PR: #475 (https://github.com/GH-Mantova/ProjectOperations/pull/475)
+Type: PR
+Detail: [Docs][B-P0b] Worker / WorkerProfile consolidation — survivor-spine design (plan of record).
+Status: MERGED
+
+## 2026-07-03 — PR #476 MERGED — Dashboards
+GitHub PR: #476 (https://github.com/GH-Mantova/ProjectOperations/pull/476)
+Type: PR
+Detail: [Dashboards] Rename system dashboards (admin) + Copy-from + widget settings popover portal-overflow fix.
+Status: MERGED
+
+## 2026-07-03 — PR #477 MERGED
+GitHub PR: #477 (https://github.com/GH-Mantova/ProjectOperations/pull/477)
+Type: PR
+Detail: [Docs][B-P0b] Lock Section 7 decisions (Marco 2026-07-03) — Award/Contract/Job Conversion module decisions.
+Status: MERGED
+
+## 2026-07-04 — PR #478 MERGED — Reporting hierarchy
+GitHub PR: #478 (https://github.com/GH-Mantova/ProjectOperations/pull/478)
+Type: PR
+Detail: [Feat] User reporting hierarchy — `User.managerId` self-relation with cycle-guard + admin surface. Foundation for the central authority seam.
+Status: MERGED
+
+## 2026-07-04 — PR #479 MERGED — Authority seam
+GitHub PR: #479 (https://github.com/GH-Mantova/ProjectOperations/pull/479)
+Type: PR
+Detail: [Feat] Central authority seam (config-open) — AuthorityService + AuthorityRule model; ceilings resolved via config, no hard-coded policy.
+Status: MERGED
+
+## 2026-07-04 — PR #480 MERGED — Tender packages
+GitHub PR: #480 (https://github.com/GH-Mantova/ProjectOperations/pull/480)
+Type: PR
+Detail: [Feat] Tender packages + pricing basis (backend) — TenderPackage model + package-scoped pricing basis. Unblocks Rates/Lists lane.
+Status: MERGED
+
+## 2026-07-05 — PR #481 MERGED — Forms Authoring v1
+GitHub PR: #481 (https://github.com/GH-Mantova/ProjectOperations/pull/481)
+Type: PR
+Detail: [Forms] Authoring v1 — new/edit/duplicate/archive from the list page. Ships the first Forms authoring surface end-to-end.
+Status: MERGED
+
+## 2026-07-05 — PR #482 MERGED
+GitHub PR: #482 (https://github.com/GH-Mantova/ProjectOperations/pull/482)
+Type: PR
+Detail: [Docs] Forms Engine v2 — plan of record (decisions locked 2026-07-03). Governs the follow-up Forms engine work post v1 authoring.
+Status: MERGED
+
+## 2026-07-05 — PR #483 MERGED
+GitHub PR: #483 (https://github.com/GH-Mantova/ProjectOperations/pull/483)
+Type: PR
+Detail: [Feat] Per-section markup for waste + concrete cutting — differentiated markup handling in estimator sections.
+Status: MERGED
+
+## 2026-07-06 — PR #484 MERGED — Native inventory
+GitHub PR: #484 (https://github.com/GH-Mantova/ProjectOperations/pull/484)
+Type: PR
+Detail: [Feat] Native inventory / stock layer (slice 1) — schema + service seam replacing Asset Tiger dependency for stock-level workflows.
+Status: MERGED
+
+## 2026-07-07 — PR #485 MERGED
+GitHub PR: #485 (https://github.com/GH-Mantova/ProjectOperations/pull/485)
+Type: PR
+Detail: [Feat] Rates & Lists R0 — flexible model + resolver seam (backend). Ships typed RateTable + `resolveRate` seam and ListBinding registry.
+Status: MERGED
+
+## 2026-07-06 — PR #486 MERGED
+GitHub PR: #486 (https://github.com/GH-Mantova/ProjectOperations/pull/486)
+Type: PR
+Detail: [OWN-1] Client win/loss counters — single-writer atomic ClientStatsService, replaces racy counters.
+Status: MERGED
+
+## 2026-07-07 — PR #487 MERGED — QA batch
+GitHub PR: #487 (https://github.com/GH-Mantova/ProjectOperations/pull/487)
+Type: PR
+Detail: [QA] S3-006 — fold form-submission status casing in analytics; consistent uppercase handling in aggregates.
+Status: MERGED
+
+## 2026-07-07 — PR #488 MERGED — QA batch
+GitHub PR: #488 (https://github.com/GH-Mantova/ProjectOperations/pull/488)
+Type: PR
+Detail: [QA] S3-008 — jobs list progress derived from nested stage activities (fixes stale progress readout).
+Status: MERGED
+
+## 2026-07-07 — PR #489 MERGED — QA batch
+GitHub PR: #489 (https://github.com/GH-Mantova/ProjectOperations/pull/489)
+Type: PR
+Detail: [QA] Scheduler month grid — 7 aligned columns with pills (S3-007). CSS grid fix for month view.
+Status: MERGED
+
+## 2026-07-07 — PR #490 MERGED — QA batch
+GitHub PR: #490 (https://github.com/GH-Mantova/ProjectOperations/pull/490)
+Type: PR
+Detail: [Master Data] Sites list — hydrate per-site job count (fixes always-0 Jobs column); shape matches API `_count.jobs`.
+Status: MERGED
+
+## 2026-07-07 — PR #491 MERGED — QA batch
+GitHub PR: #491 (https://github.com/GH-Mantova/ProjectOperations/pull/491)
+Type: PR
+Detail: [QA] Findings batch 1 — touch targets ≥44×44, h1 titles on scheduler pages, PWA install banner CSS, Design gallery routes drift.
+Status: MERGED
+
+## 2026-07-07 — PR #492 MERGED
+GitHub PR: #492 (https://github.com/GH-Mantova/ProjectOperations/pull/492)
+Type: PR
+Detail: [Feat] New Tender wizard (multi-step modal) — 7-step Project→Builders→Packages→Docs→Rates→AI→Review, reuses PR #482 endpoints + TenderDocumentsPanel; 14 vitest specs.
+Status: MERGED
+
+## 2026-07-07 — PR #493 MERGED
+GitHub PR: #493 (https://github.com/GH-Mantova/ProjectOperations/pull/493)
+Type: PR
+Detail: chore: data-model relationship map + source-of-truth TOC infra (`scripts/data-model/*.mjs`, `docs/data-model/*`, SOURCE-OF-TRUTH.md).
+Status: MERGED
+
+## 2026-07-07 — PR #494 MERGED
+GitHub PR: #494 (https://github.com/GH-Mantova/ProjectOperations/pull/494)
+Type: PR
+Detail: [Dashboards] Program snapshot + Availability heatmap widgets — 2 API endpoints, 2 web widgets with shape helpers/tests, registry + gallery wiring.
+Status: MERGED
+
+## 2026-07-07 — PR #495 MERGED
+GitHub PR: #495 (https://github.com/GH-Mantova/ProjectOperations/pull/495)
+Type: PR
+Detail: fix(watcher): auto-recover launcher to `main` when tree is parked on a clean stray branch (`start-watcher.ps1` preflight).
 Status: MERGED

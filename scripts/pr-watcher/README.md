@@ -81,6 +81,7 @@ Env vars override the defaults:
 | `PR_WATCHER_AUTO_MERGE` | `false` | **Legacy** blanket flag. `"true"` maps to `PR_WATCHER_AUTO_MERGE_POLICY=all` when no explicit policy is set. Prefer the policy var. |
 | `PR_WATCHER_AUTO_MERGE_POLICY` | `off` | `off` \| `all` \| `tests-docs`. See the policy matrix below. |
 | `PR_WATCHER_MERGE_TIMEOUT_MIN` | `90` | Max wait for a PR to merge after CI starts. |
+| `PR_WATCHER_RUN_TIMEOUT_MIN` | `75` | Per-run wall-clock ceiling (minutes). If a spawned `claude --print` child exceeds this without exiting, the watcher kills the tree (via the same safe helper as shutdown), moves the prompt to `blocked/` with a `.run-timeout.md` note, and keeps draining the queue. Per-prompt quarantine — does NOT global-pause. Distinct from `PR_WATCHER_MAX_TURNS` (turn budget) and `PR_WATCHER_MERGE_TIMEOUT_MIN` (merge-wait cap). Set `0` to disable. |
 | `PR_WATCHER_POLL_INTERVAL_SEC` | `60` | How often to poll PR state during merge wait. |
 | `PR_WATCHER_STOP_AT` | _(unset)_ | Nightly cutoff `HH:MM` (24-hour, local). Past this, watcher won't start a new prompt and exits cleanly with code 0. In-flight prompt finishes. |
 | `PR_WATCHER_AUTO_REVIEW` | `false` | Set to `"true"` to poll GitHub for new PRs and auto-fire reviews. |

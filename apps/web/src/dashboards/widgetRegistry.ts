@@ -104,6 +104,8 @@ import {
   SafetySummaryWidget
 } from "./widgets/safety";
 import { ProjectTimelineWidget } from "./widgets/projectTimeline";
+import { ProgramSnapshotWidget } from "./widgets/programSnapshotWidget";
+import { AvailabilityHeatmapWidget } from "./widgets/availabilityHeatmapWidget";
 import { CustomBuilderWidget } from "./CustomBuilderWidget";
 import { CUSTOM_WIDGET_TYPE } from "./customWidget";
 
@@ -578,6 +580,64 @@ export const WIDGETS: WidgetMeta[] = [
     defaultColSpan: 3,
     defaultRowSpan: 2,
     component: ProjectTimelineWidget
+  },
+  {
+    type: "ops_program_snapshot",
+    name: "Program snapshot",
+    category: "operations",
+    size: "full",
+    description: "Top active projects with their Gantt tasks over a rolling window.",
+    defaultColSpan: 3,
+    defaultRowSpan: 2,
+    minColSpan: 2,
+    minRowSpan: 1,
+    maxColSpan: 4,
+    maxRowSpan: 4,
+    configSchema: [
+      {
+        key: "windowDays",
+        label: "Window (days)",
+        type: "select",
+        defaultValue: "28",
+        options: [
+          { value: "14", label: "Next 14 days" },
+          { value: "28", label: "Next 4 weeks" },
+          { value: "56", label: "Next 8 weeks" },
+          { value: "90", label: "Next 90 days" }
+        ]
+      },
+      { key: "topN", label: "Max projects", type: "number", min: 3, max: 20, step: 1, defaultValue: 8 }
+    ],
+    component: ProgramSnapshotWidget
+  },
+  {
+    type: "ops_availability_heatmap",
+    name: "Worker availability heatmap",
+    category: "operations",
+    size: "full",
+    description:
+      "Top active workers x next N days — cells coloured by allocation load (free / partial / full).",
+    defaultColSpan: 3,
+    defaultRowSpan: 2,
+    minColSpan: 2,
+    minRowSpan: 1,
+    maxColSpan: 4,
+    maxRowSpan: 4,
+    configSchema: [
+      {
+        key: "days",
+        label: "Window (days)",
+        type: "select",
+        defaultValue: "14",
+        options: [
+          { value: "7", label: "Next 7 days" },
+          { value: "14", label: "Next 14 days" },
+          { value: "28", label: "Next 28 days" }
+        ]
+      },
+      { key: "topN", label: "Max workers", type: "number", min: 3, max: 20, step: 1, defaultValue: 8 }
+    ],
+    component: AvailabilityHeatmapWidget
   }
 ];
 

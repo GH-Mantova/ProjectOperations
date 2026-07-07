@@ -1,5 +1,5 @@
-import { Controller, Get, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { Controller, Get, Query, UseGuards } from "@nestjs/common";
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
@@ -41,5 +41,29 @@ export class ProjectsTimelineController {
   @ApiResponse({ status: 200, description: "Active projects with planned start/end for the timeline widget (team-scoped)." })
   list(@CurrentUser() user: AuthenticatedUser) {
     return this.gantt.activeTimeline(user);
+  }
+
+  /**
+   * Compact program snapshot for the dashboard Gantt widget: top N active
+   * projects (ranked by count of tasks intersecting the window) with their
+   * Gantt tasks clipped to a `windowDays` rolling window from today.
+   */
+  @Get("program-snapshot")
+  @RequirePermissions("projects.view")
+  @ApiOperation({
+    summary: "Top-N active projects + their Gantt tasks within a rolling window (team-scoped)."
+  })
+  @ApiQuery({ name: "windowDays", required: false, description: "Rolling window in days (7–90, default 28)." })
+  @ApiQuery({ name: "topN", required: false, description: "Max projects returned (1–20, default 8)." })
+  @ApiResponse({ status: 200, description: "Program snapshot returned." })
+  programSnapshot(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("windowDays") windowDays?: string,
+    @Query("topN") topN?: string
+  ) {
+    return this.gantt.programSnapshot(user, {
+      windowDays: windowDays ? Number(windowDays) : 28,
+      topN: topN ? Number(topN) : 8
+    });
   }
 }

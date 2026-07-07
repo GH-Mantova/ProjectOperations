@@ -334,6 +334,110 @@ export class GanttService {
   }
 
   /**
+   * Compact program-snapshot payload for the dashboard widget: top N active
+   * projects (ranked by task count intersecting the window) each with their
+   * Gantt tasks clipped to a rolling `windowDays` window starting today.
+   *
+   * Justification for a dedicated endpoint: `activeTimeline` returns
+   * project-level bars only (no tasks); the per-project `GET /projects/:id/
+   * gantt` endpoint requires N round-trips and returns full task detail. This
+   * one aggregates the minimum shape a dashboard widget needs.
+   *
+   * Team-scoped via the same rules as `activeTimeline`. Only tasks that
+   * intersect the window are returned; the widget clips the visible edges.
+   */
+  async programSnapshot(
+    requestingUser: { sub: string; isSuperUser?: boolean },
+    opts: { windowDays: number; topN: number }
+  ): Promise<{
+    windowStart: string;
+    windowEnd: string;
+    projects: Array<{
+      id: string;
+      projectNumber: string;
+      name: string;
+      status: string;
+      tasks: Array<{
+        id: string;
+        title: string;
+        discipline: string | null;
+        startDate: string;
+        endDate: string;
+        progress: number;
+        colour: string | null;
+      }>;
+    }>;
+  }> {
+    const windowDays = clampInt(opts.windowDays, 7, 90, 28);
+    const topN = clampInt(opts.topN, 1, 20, 8);
+    const start = startOfUtcDay(new Date());
+    const end = new Date(start.getTime() + windowDays * 86_400_000);
+
+    const teamFilter = requestingUser.isSuperUser
+      ? {}
+      : {
+          OR: [
+            { projectManagerId: requestingUser.sub },
+            { supervisorId: requestingUser.sub },
+            { estimatorId: requestingUser.sub },
+            { whsOfficerId: requestingUser.sub }
+          ]
+        };
+
+    const projects = await this.prisma.project.findMany({
+      where: {
+        status: { in: ["MOBILISING", "ACTIVE", "PRACTICAL_COMPLETION", "DEFECTS"] },
+        ...teamFilter
+      },
+      select: {
+        id: true,
+        projectNumber: true,
+        name: true,
+        status: true,
+        ganttTasks: {
+          where: { startDate: { lt: end }, endDate: { gte: start } },
+          select: {
+            id: true,
+            title: true,
+            discipline: true,
+            startDate: true,
+            endDate: true,
+            progress: true,
+            colour: true,
+            sortOrder: true
+          },
+          orderBy: [{ sortOrder: "asc" }, { startDate: "asc" }]
+        }
+      }
+    });
+
+    const ranked = projects
+      .filter((p) => p.ganttTasks.length > 0)
+      .sort((a, b) => b.ganttTasks.length - a.ganttTasks.length)
+      .slice(0, topN);
+
+    return {
+      windowStart: start.toISOString(),
+      windowEnd: end.toISOString(),
+      projects: ranked.map((p) => ({
+        id: p.id,
+        projectNumber: p.projectNumber,
+        name: p.name,
+        status: p.status,
+        tasks: p.ganttTasks.map((t) => ({
+          id: t.id,
+          title: t.title,
+          discipline: t.discipline,
+          startDate: t.startDate.toISOString(),
+          endDate: t.endDate.toISOString(),
+          progress: t.progress,
+          colour: t.colour
+        }))
+      }))
+    };
+  }
+
+  /**
    * Verify the user can access this project, used as a guard before any
    * Gantt task read or write.
    *
@@ -376,4 +480,14 @@ export class GanttService {
     const p = await this.prisma.project.findUnique({ where: { id }, select: { id: true } });
     if (!p) throw new NotFoundException("Project not found.");
   }
+}
+
+function startOfUtcDay(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
+function clampInt(v: unknown, min: number, max: number, fallback: number): number {
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(n)));
 }

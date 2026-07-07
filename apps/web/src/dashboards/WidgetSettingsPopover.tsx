@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   DndContext,
   PointerSensor,
@@ -27,17 +28,60 @@ type ApplyPayload = {
 type Props = {
   meta: WidgetMeta;
   entry: WidgetConfigEntry;
+  /** Element the popover anchors to (the widget slot). The popover renders in
+   *  a portal so the slot's overflow:hidden can't clip it — see S3-005. */
+  anchor: HTMLElement | null;
   onApply: (next: ApplyPayload) => void;
   onClose: () => void;
 };
 
-export function WidgetSettingsPopover({ meta, entry, onApply, onClose }: Props) {
+const POPOVER_WIDTH = 320;
+const VIEWPORT_GUTTER = 8;
+
+export function WidgetSettingsPopover({ meta, entry, anchor, onApply, onClose }: Props) {
   const [draftFilters, setDraftFilters] = useState<WidgetFilters>(entry.config.filters ?? {});
   const [draftFields, setDraftFields] = useState<string[]>(() => resolveVisibleFields(meta, entry));
   const ref = useRef<HTMLDivElement | null>(null);
   const hasFieldSchema = Boolean(meta.fieldSchema && meta.fieldSchema.length > 0);
   const schema = meta.configSchema ?? [];
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  const [position, setPosition] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!anchor) return;
+    const place = () => {
+      const rect = anchor.getBoundingClientRect();
+      const width = Math.min(POPOVER_WIDTH, window.innerWidth - VIEWPORT_GUTTER * 2);
+      const left = Math.max(
+        VIEWPORT_GUTTER,
+        Math.min(rect.right - width - 10, window.innerWidth - width - VIEWPORT_GUTTER)
+      );
+      // Preferred top: just below the widget header. Clamp so top + maxHeight fits
+      // within the viewport, otherwise the bottom of the popover ends up
+      // off-screen and its Apply/toggle buttons become unreachable in headless
+      // Chromium (Playwright can't scrollIntoView across a fixed container's
+      // own edge — see batch9a-forms-widgets timeouts fixed here).
+      const preferredTop = Math.max(VIEWPORT_GUTTER, rect.top + 42);
+      const minHeight = 200;
+      const availableBelow = window.innerHeight - preferredTop - VIEWPORT_GUTTER;
+      const top =
+        availableBelow >= minHeight
+          ? preferredTop
+          : Math.max(VIEWPORT_GUTTER, window.innerHeight - minHeight - VIEWPORT_GUTTER);
+      const maxHeight = Math.max(
+        minHeight,
+        window.innerHeight - top - VIEWPORT_GUTTER
+      );
+      setPosition({ top, left, maxHeight });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [anchor]);
 
   useEffect(() => {
     setDraftFilters(entry.config.filters ?? {});
@@ -92,8 +136,24 @@ export function WidgetSettingsPopover({ meta, entry, onApply, onClose }: Props) 
     return [...draftFields, ...hidden];
   }, [draftFields, meta.fieldSchema]);
 
-  return (
-    <div ref={ref} className="widget-settings-popover" role="dialog" aria-label="Widget settings">
+  const popover = (
+    <div
+      ref={ref}
+      className="widget-settings-popover"
+      role="dialog"
+      aria-label="Widget settings"
+      style={
+        position
+          ? {
+              position: "fixed",
+              top: position.top,
+              left: position.left,
+              right: "auto",
+              maxHeight: position.maxHeight
+            }
+          : undefined
+      }
+    >
       {schema.map((field) => (
         <FieldRenderer
           key={field.key}
@@ -146,6 +206,11 @@ export function WidgetSettingsPopover({ meta, entry, onApply, onClose }: Props) 
       </button>
     </div>
   );
+
+  // Portal to body — inside the slot the popover inherits the grid slot's
+  // overflow:hidden + chrome padding rules, which clipped it to an unusable
+  // double-scrollbox (S3-005).
+  return createPortal(popover, document.body);
 }
 
 function SortableFieldRow({

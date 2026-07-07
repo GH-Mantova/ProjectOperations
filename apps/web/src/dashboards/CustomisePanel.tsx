@@ -6,11 +6,12 @@ type Props = {
   open: boolean;
   onClose: () => void;
   dashboard: UserDashboard;
+  canRename: boolean;
   saving: boolean;
   onSave: (config: UserDashboardConfig, name?: string) => void;
 };
 
-export function CustomisePanel({ open, onClose, dashboard, saving, onSave }: Props) {
+export function CustomisePanel({ open, onClose, dashboard, canRename, saving, onSave }: Props) {
   const [draft, setDraft] = useState<UserDashboardConfig>(dashboard.config);
   const [name, setName] = useState(dashboard.name);
 
@@ -63,7 +64,7 @@ export function CustomisePanel({ open, onClose, dashboard, saving, onSave }: Pro
   };
 
   const save = () => {
-    onSave(draft, name !== dashboard.name ? name : undefined);
+    onSave(draft, canRename && name !== dashboard.name ? name : undefined);
     onClose();
   };
 
@@ -85,11 +86,15 @@ export function CustomisePanel({ open, onClose, dashboard, saving, onSave }: Pro
               className="s7-input"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              disabled={dashboard.isSystem}
-              readOnly={dashboard.isSystem}
+              disabled={!canRename}
+              readOnly={!canRename}
             />
-            {dashboard.isSystem ? (
-              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>System dashboards can't be renamed.</span>
+            {!canRename ? (
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Only admins can rename system dashboards.</span>
+            ) : dashboard.isSystem ? (
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                Renaming this system dashboard changes it for your account.
+              </span>
             ) : null}
           </label>
 

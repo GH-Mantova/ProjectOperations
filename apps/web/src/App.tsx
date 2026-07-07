@@ -52,6 +52,7 @@ import { CompliancePage } from "./pages/compliance/CompliancePage";
 import { SafetyPage } from "./pages/safety/SafetyPage";
 import { EstimateRatesAdminPage } from "./pages/EstimateRatesAdminPage";
 import { JobRolesPage } from "./pages/admin/JobRolesPage";
+import { RatesListsAdminPage } from "./pages/admin/RatesListsAdminPage";
 import { UserDashboardPage } from "./pages/dashboards/UserDashboardPage";
 import { DashboardRedirectPage } from "./pages/dashboards/DashboardRedirectPage";
 import { FieldLayout } from "./layouts/FieldLayout";
@@ -227,6 +228,7 @@ export function App() {
             <Route path="/contracts" element={<ContractsListPage />} />
             <Route path="/contracts/:id" element={<ContractDetailPage />} />
             <Route path="/admin/estimate-rates" element={<EstimateRatesAdminPage />} />
+            <Route path="/admin/rates-lists" element={<RatesListsAdminPage />} />
             <Route path="/admin/job-roles" element={<JobRolesPage />} />
             <Route path="/account" element={<UserProfilePage />} />
             <Route path="/notifications" element={<NotificationsPage />} />

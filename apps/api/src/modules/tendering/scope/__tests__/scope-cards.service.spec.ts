@@ -542,28 +542,90 @@ describe("ScopeOfWorksService.setCardMarkupOverride (PR B2)", () => {
   });
 });
 
-describe("ScopeOfWorksService.resetAllCardMarkup (PR B2)", () => {
-  it("issues an updateMany scoped to the tender + non-null overrides", async () => {
+describe("ScopeOfWorksService.resetAllCardMarkup", () => {
+  it("clears scope, waste, and cutting overrides scoped to the tender", async () => {
     const { prisma, mocks } = buildPrismaMock();
-    mocks.scopeCardUpdateMany.mockResolvedValueOnce({ count: 3 });
+    mocks.scopeCardUpdateMany
+      .mockResolvedValueOnce({ count: 3 })
+      .mockResolvedValueOnce({ count: 2 })
+      .mockResolvedValueOnce({ count: 1 });
     const svc = new ScopeOfWorksService(prisma as never);
     const result = await svc.resetAllCardMarkup("tender-1");
-    expect(result).toEqual({ cardsReset: 3 });
-    const args = (mocks.scopeCardUpdateMany.mock.calls[0]?.[0] ?? {}) as {
+    expect(result).toEqual({ cardsReset: 3, wasteSectionsReset: 2, cuttingSectionsReset: 1 });
+    const scopeArgs = (mocks.scopeCardUpdateMany.mock.calls[0]?.[0] ?? {}) as {
       where?: { tenderId?: string; markupOverride?: { not: null } };
       data?: { markupOverride?: null };
     };
-    expect(args.where?.tenderId).toBe("tender-1");
-    expect(args.where?.markupOverride).toEqual({ not: null });
-    expect(args.data?.markupOverride).toBeNull();
+    expect(scopeArgs.where?.tenderId).toBe("tender-1");
+    expect(scopeArgs.where?.markupOverride).toEqual({ not: null });
+    expect(scopeArgs.data?.markupOverride).toBeNull();
+    const wasteArgs = (mocks.scopeCardUpdateMany.mock.calls[1]?.[0] ?? {}) as {
+      where?: { wasteMarkupOverride?: { not: null } };
+      data?: { wasteMarkupOverride?: null };
+    };
+    expect(wasteArgs.where?.wasteMarkupOverride).toEqual({ not: null });
+    expect(wasteArgs.data?.wasteMarkupOverride).toBeNull();
+    const cuttingArgs = (mocks.scopeCardUpdateMany.mock.calls[2]?.[0] ?? {}) as {
+      where?: { cuttingMarkupOverride?: { not: null } };
+      data?: { cuttingMarkupOverride?: null };
+    };
+    expect(cuttingArgs.where?.cuttingMarkupOverride).toEqual({ not: null });
+    expect(cuttingArgs.data?.cuttingMarkupOverride).toBeNull();
   });
 
-  it("returns cardsReset: 0 when no cards had an override", async () => {
-    const { prisma, mocks } = buildPrismaMock();
-    mocks.scopeCardUpdateMany.mockResolvedValueOnce({ count: 0 });
+  it("returns zero counts when nothing had an override", async () => {
+    const { prisma } = buildPrismaMock();
     const svc = new ScopeOfWorksService(prisma as never);
     const result = await svc.resetAllCardMarkup("tender-1");
-    expect(result).toEqual({ cardsReset: 0 });
+    expect(result).toEqual({ cardsReset: 0, wasteSectionsReset: 0, cuttingSectionsReset: 0 });
+  });
+});
+
+describe("ScopeOfWorksService.setCardSectionMarkupOverride", () => {
+  it("writes wasteMarkupOverride when sectionType='waste'", async () => {
+    const { prisma, mocks } = buildPrismaMock({
+      scopeCardFindFirst: { id: "c1", tenderId: "tender-1" }
+    });
+    const svc = new ScopeOfWorksService(prisma as never);
+    await svc.setCardSectionMarkupOverride("tender-1", "c1", "waste", 12.5);
+    const args = (mocks.scopeCardUpdate.mock.calls[0]?.[0] ?? {}) as {
+      data?: { wasteMarkupOverride?: unknown; cuttingMarkupOverride?: unknown };
+    };
+    expect(String(args.data?.wasteMarkupOverride)).toBe("12.5");
+    expect(args.data?.cuttingMarkupOverride).toBeUndefined();
+  });
+
+  it("writes cuttingMarkupOverride when sectionType='cutting'", async () => {
+    const { prisma, mocks } = buildPrismaMock({
+      scopeCardFindFirst: { id: "c1", tenderId: "tender-1" }
+    });
+    const svc = new ScopeOfWorksService(prisma as never);
+    await svc.setCardSectionMarkupOverride("tender-1", "c1", "cutting", 20);
+    const args = (mocks.scopeCardUpdate.mock.calls[0]?.[0] ?? {}) as {
+      data?: { wasteMarkupOverride?: unknown; cuttingMarkupOverride?: unknown };
+    };
+    expect(String(args.data?.cuttingMarkupOverride)).toBe("20");
+    expect(args.data?.wasteMarkupOverride).toBeUndefined();
+  });
+
+  it("clears the override when null is supplied", async () => {
+    const { prisma, mocks } = buildPrismaMock({
+      scopeCardFindFirst: { id: "c1", tenderId: "tender-1" }
+    });
+    const svc = new ScopeOfWorksService(prisma as never);
+    await svc.setCardSectionMarkupOverride("tender-1", "c1", "waste", null);
+    const args = (mocks.scopeCardUpdate.mock.calls[0]?.[0] ?? {}) as {
+      data?: { wasteMarkupOverride?: unknown };
+    };
+    expect(args.data?.wasteMarkupOverride).toBeNull();
+  });
+
+  it("throws NotFoundException when card is not in the tender", async () => {
+    const { prisma } = buildPrismaMock({ scopeCardFindFirst: null });
+    const svc = new ScopeOfWorksService(prisma as never);
+    await expect(
+      svc.setCardSectionMarkupOverride("tender-1", "missing", "waste", 15)
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 });
 

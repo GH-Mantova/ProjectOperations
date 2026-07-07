@@ -2,45 +2,27 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
-
-type FieldType = "text" | "textarea" | "number" | "date" | "checkbox" | "multiple_choice" | "signature" | "image_capture" | "file";
-
-type DraftField = {
-  tempId: string;
-  fieldKey: string;
-  label: string;
-  fieldType: FieldType | string;
-  fieldOrder: number;
-  isRequired: boolean;
-  placeholder?: string;
-  helpText?: string;
-  options?: string[];
-};
-
-type DraftSection = {
-  tempId: string;
-  title: string;
-  description?: string;
-  sectionOrder: number;
-  fields: DraftField[];
-};
-
-type DraftRule = {
-  tempId: string;
-  sourceFieldKey: string;
-  targetFieldKey: string;
-  operator: string;
-  comparisonValue: string;
-  effect: string;
-};
-
-type Draft = {
-  name: string;
-  code: string;
-  description?: string;
-  sections: DraftSection[];
-  rules: DraftRule[];
-};
+import {
+  addFieldToSection,
+  addSectionToDraft,
+  deleteFieldFromDraft,
+  duplicateField,
+  moveFieldInDraft,
+  PALETTE_GROUPS,
+  removeSectionFromDraft,
+  setDraftLayout,
+  tabsForFieldType,
+  uid,
+  updateFieldInDraft,
+  updateSectionInDraft,
+  type DesignerDraft,
+  type DraftField,
+  type DraftSection,
+  type FieldType,
+  type PropertyTab
+} from "./formDesignerState";
+import { readTemplateLayout, type FormLayout } from "./formLayoutResolver";
+import "./FormBuilder.css";
 
 type TemplateVersion = {
   id: string;
@@ -63,7 +45,14 @@ type TemplateVersion = {
       optionsJson?: unknown;
     }>;
   }>;
-  rules: Array<{ id: string; sourceFieldKey: string; targetFieldKey: string; operator: string; comparisonValue?: string | null; effect: string }>;
+  rules: Array<{
+    id: string;
+    sourceFieldKey: string;
+    targetFieldKey: string;
+    operator: string;
+    comparisonValue?: string | null;
+    effect: string;
+  }>;
 };
 
 type Template = {
@@ -72,42 +61,22 @@ type Template = {
   code: string;
   description?: string | null;
   status: string;
+  settings?: unknown;
   versions: TemplateVersion[];
 };
-
-const FIELD_TYPES: Array<{ type: FieldType; label: string; icon: string }> = [
-  { type: "text", label: "Short text", icon: "Tt" },
-  { type: "textarea", label: "Long text", icon: "¶" },
-  { type: "number", label: "Number", icon: "#" },
-  { type: "date", label: "Date", icon: "📅" },
-  { type: "checkbox", label: "Checkbox", icon: "☑" },
-  { type: "multiple_choice", label: "Dropdown", icon: "▾" },
-  { type: "signature", label: "Signature", icon: "✍" },
-  { type: "image_capture", label: "Photo", icon: "📷" },
-  { type: "file", label: "File upload", icon: "📎" }
-];
-
-function uid(): string {
-  return Math.random().toString(36).slice(2, 10);
-}
-
-function keyFromLabel(label: string): string {
-  return label
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/(^_|_$)/g, "") || uid();
-}
 
 export function FormDesignerPage() {
   const { templateId } = useParams<{ templateId: string }>();
   const { authFetch } = useAuth();
   const [template, setTemplate] = useState<Template | null>(null);
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [draft, setDraft] = useState<DesignerDraft | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedFieldKey, setSelectedFieldKey] = useState<string | null>(null);
-  const [previewOpen, setPreviewOpen] = useState(false);
+  const [selectedFieldTempId, setSelectedFieldTempId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<PropertyTab>("general");
+  const [propsCollapsed, setPropsCollapsed] = useState(false);
+  const [openSectionCogTempId, setOpenSectionCogTempId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!templateId) return;
@@ -121,12 +90,14 @@ export function FormDesignerPage() {
         const data = (await response.json()) as Template;
         if (cancelled) return;
         setTemplate(data);
+        const layout: FormLayout = readTemplateLayout(data.settings) ?? "classic";
         const latest = data.versions.find((v) => v.status === "ACTIVE") ?? data.versions[0];
         if (!latest) {
           setDraft({
             name: data.name,
             code: data.code,
             description: data.description ?? undefined,
+            layout,
             sections: [{ tempId: uid(), title: "Section 1", sectionOrder: 1, fields: [] }],
             rules: []
           });
@@ -136,6 +107,7 @@ export function FormDesignerPage() {
           name: data.name,
           code: data.code,
           description: data.description ?? undefined,
+          layout,
           sections: latest.sections.map((section, i) => ({
             tempId: uid(),
             title: section.title,
@@ -173,23 +145,24 @@ export function FormDesignerPage() {
     };
   }, [authFetch, templateId]);
 
-  const allFields = useMemo(() => {
-    if (!draft) return [] as DraftField[];
-    return draft.sections.flatMap((s) => s.fields);
-  }, [draft]);
-
   const selectedField = useMemo(() => {
-    if (!draft || !selectedFieldKey) return null;
+    if (!draft || !selectedFieldTempId) return null;
     for (const section of draft.sections) {
-      const match = section.fields.find((f) => f.fieldKey === selectedFieldKey);
+      const match = section.fields.find((f) => f.tempId === selectedFieldTempId);
       if (match) return { field: match, section };
     }
     return null;
-  }, [draft, selectedFieldKey]);
+  }, [draft, selectedFieldTempId]);
+
+  useEffect(() => {
+    if (!selectedField) return;
+    const tabs = tabsForFieldType(selectedField.field.fieldType);
+    if (!tabs.includes(activeTab)) setActiveTab(tabs[0]);
+  }, [selectedField, activeTab]);
 
   if (loading || !draft || !template) {
     return (
-      <div className="forms-designer">
+      <div className="fv2-builder">
         <Skeleton width="60%" height={24} />
         <Skeleton width="100%" height={300} style={{ marginTop: 16 }} />
       </div>
@@ -198,7 +171,7 @@ export function FormDesignerPage() {
 
   if (error) {
     return (
-      <div className="forms-designer">
+      <div className="fv2-builder">
         <EmptyState
           heading="Could not load template"
           subtext={error}
@@ -208,165 +181,67 @@ export function FormDesignerPage() {
     );
   }
 
-  const addFieldToSection = (sectionTempId: string, fieldType: FieldType | string) => {
-    const label =
-      FIELD_TYPES.find((f) => f.type === fieldType)?.label ?? fieldType;
-    const newField: DraftField = {
-      tempId: uid(),
-      fieldKey: `${keyFromLabel(label)}_${uid().slice(0, 4)}`,
-      label: `New ${label.toLowerCase()} field`,
-      fieldType,
-      fieldOrder: 0,
-      isRequired: false,
-      options: fieldType === "multiple_choice" ? ["Option 1", "Option 2"] : undefined
-    };
+  const handleAddField = (sectionTempId: string, fieldType: FieldType | string) => {
     setDraft((current) => {
       if (!current) return current;
-      return {
-        ...current,
-        sections: current.sections.map((section) => {
-          if (section.tempId !== sectionTempId) return section;
-          const reordered = [...section.fields, newField].map((field, i) => ({ ...field, fieldOrder: i + 1 }));
-          return { ...section, fields: reordered };
-        })
-      };
-    });
-    setSelectedFieldKey(newField.fieldKey);
-  };
-
-  const moveField = (sectionTempId: string, fieldTempId: string, direction: -1 | 1) => {
-    setDraft((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        sections: current.sections.map((section) => {
-          if (section.tempId !== sectionTempId) return section;
-          const index = section.fields.findIndex((f) => f.tempId === fieldTempId);
-          if (index < 0) return section;
-          const target = index + direction;
-          if (target < 0 || target >= section.fields.length) return section;
-          const next = [...section.fields];
-          [next[index], next[target]] = [next[target], next[index]];
-          return { ...section, fields: next.map((field, i) => ({ ...field, fieldOrder: i + 1 })) };
-        })
-      };
+      const result = addFieldToSection(current, sectionTempId, fieldType);
+      setSelectedFieldTempId(result.newField.tempId);
+      return result.draft;
     });
   };
 
-  const deleteField = (sectionTempId: string, fieldTempId: string) => {
+  const handleUpdateField = (sectionTempId: string, fieldTempId: string, patch: Partial<DraftField>) => {
+    setDraft((current) => (current ? updateFieldInDraft(current, sectionTempId, fieldTempId, patch) : current));
+  };
+
+  const handleDeleteField = (sectionTempId: string, fieldTempId: string) => {
+    setDraft((current) => (current ? deleteFieldFromDraft(current, sectionTempId, fieldTempId) : current));
+    setSelectedFieldTempId(null);
+  };
+
+  const handleDuplicateField = (sectionTempId: string, fieldTempId: string) => {
     setDraft((current) => {
       if (!current) return current;
-      const nextSections = current.sections.map((section) => {
-        if (section.tempId !== sectionTempId) return section;
-        return {
-          ...section,
-          fields: section.fields
-            .filter((f) => f.tempId !== fieldTempId)
-            .map((field, i) => ({ ...field, fieldOrder: i + 1 }))
-        };
+      const result = duplicateField(current, sectionTempId, fieldTempId);
+      if (result.newField) setSelectedFieldTempId(result.newField.tempId);
+      return result.draft;
+    });
+  };
+
+  const handleMoveField = (sectionTempId: string, fieldTempId: string, dir: -1 | 1) => {
+    setDraft((current) => (current ? moveFieldInDraft(current, sectionTempId, fieldTempId, dir) : current));
+  };
+
+  const handleUpdateSection = (sectionTempId: string, patch: Partial<DraftSection>) => {
+    setDraft((current) => (current ? updateSectionInDraft(current, sectionTempId, patch) : current));
+  };
+
+  const handleAddSection = () => setDraft((current) => (current ? addSectionToDraft(current) : current));
+
+  const handleRemoveSection = (sectionTempId: string) => {
+    setDraft((current) => (current ? removeSectionFromDraft(current, sectionTempId) : current));
+    setOpenSectionCogTempId(null);
+  };
+
+  const handleLayoutChange = async (layout: FormLayout) => {
+    setDraft((current) => (current ? setDraftLayout(current, layout) : current));
+    if (!templateId) return;
+    try {
+      const nextSettings = {
+        ...((template.settings as Record<string, unknown> | null | undefined) ?? {}),
+        layout
+      };
+      const res = await authFetch(`/forms/templates/${templateId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ settings: nextSettings })
       });
-      const deletedKey = current.sections
-        .find((s) => s.tempId === sectionTempId)?.fields.find((f) => f.tempId === fieldTempId)?.fieldKey;
-      const rules = deletedKey
-        ? current.rules.filter((r) => r.sourceFieldKey !== deletedKey && r.targetFieldKey !== deletedKey)
-        : current.rules;
-      return { ...current, sections: nextSections, rules };
-    });
-    setSelectedFieldKey(null);
-  };
-
-  const updateField = (sectionTempId: string, fieldTempId: string, patch: Partial<DraftField>) => {
-    setDraft((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        sections: current.sections.map((section) => {
-          if (section.tempId !== sectionTempId) return section;
-          return {
-            ...section,
-            fields: section.fields.map((field) => (field.tempId === fieldTempId ? { ...field, ...patch } : field))
-          };
-        })
-      };
-    });
-  };
-
-  const addSection = () => {
-    setDraft((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        sections: [
-          ...current.sections,
-          {
-            tempId: uid(),
-            title: `Section ${current.sections.length + 1}`,
-            sectionOrder: current.sections.length + 1,
-            fields: []
-          }
-        ]
-      };
-    });
-  };
-
-  const updateSection = (sectionTempId: string, patch: Partial<DraftSection>) => {
-    setDraft((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        sections: current.sections.map((s) => (s.tempId === sectionTempId ? { ...s, ...patch } : s))
-      };
-    });
-  };
-
-  const removeSection = (sectionTempId: string) => {
-    setDraft((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        sections: current.sections
-          .filter((s) => s.tempId !== sectionTempId)
-          .map((s, i) => ({ ...s, sectionOrder: i + 1 }))
-      };
-    });
-  };
-
-  const addRule = () => {
-    if (allFields.length < 1) return;
-    setDraft((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        rules: [
-          ...current.rules,
-          {
-            tempId: uid(),
-            sourceFieldKey: allFields[0].fieldKey,
-            targetFieldKey: allFields[Math.min(1, allFields.length - 1)].fieldKey,
-            operator: "equals",
-            comparisonValue: "",
-            effect: "SHOW"
-          }
-        ]
-      };
-    });
-  };
-
-  const updateRule = (tempId: string, patch: Partial<DraftRule>) => {
-    setDraft((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        rules: current.rules.map((r) => (r.tempId === tempId ? { ...r, ...patch } : r))
-      };
-    });
-  };
-
-  const removeRule = (tempId: string) => {
-    setDraft((current) => {
-      if (!current) return current;
-      return { ...current, rules: current.rules.filter((r) => r.tempId !== tempId) };
-    });
+      if (res.ok) {
+        const updated = (await res.json()) as Template;
+        setTemplate(updated);
+      }
+    } catch {
+      /* silent — user can retry via toggle; publish also persists structure */
+    }
   };
 
   const publish = async () => {
@@ -408,7 +283,7 @@ export function FormDesignerPage() {
       });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
-        throw new Error(body.message ?? "Could not save & publish.");
+        throw new Error((body as { message?: string }).message ?? "Could not save & publish.");
       }
       const updated = (await response.json()) as Template;
       setTemplate(updated);
@@ -421,313 +296,381 @@ export function FormDesignerPage() {
 
   const latest = template.versions.find((v) => v.status === "ACTIVE") ?? template.versions[0];
   const nextVersion = (latest?.versionNumber ?? 0) + 1;
+  const tabs: PropertyTab[] = selectedField ? tabsForFieldType(selectedField.field.fieldType) : [];
 
   return (
-    <div className="forms-designer">
-      <header className="workers-page__header">
-        <div>
-          <Link to="/forms" className="tender-detail__back">← Back to forms</Link>
-          <h1 className="s7-type-page-title" style={{ margin: "8px 0 0" }}>Designer</h1>
+    <div className="fv2-builder">
+      <Link to="/forms" className="fv2-builder__back">← Back to forms</Link>
+
+      <div className="fv2-topbar">
+        <input
+          className="fv2-topbar__name"
+          value={draft.name}
+          onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+          aria-label="Form name"
+        />
+        <span className="fv2-chip">DRAFT v{nextVersion}</span>
+        <div className="fv2-laytoggle" role="group" aria-label="Fill layout">
+          <button
+            type="button"
+            className={`fv2-laytoggle__btn ${draft.layout === "classic" ? "fv2-laytoggle__btn--on" : ""}`}
+            aria-pressed={draft.layout === "classic"}
+            onClick={() => void handleLayoutChange("classic")}
+          >
+            Classic
+          </button>
+          <button
+            type="button"
+            className={`fv2-laytoggle__btn ${draft.layout === "card" ? "fv2-laytoggle__btn--on" : ""}`}
+            aria-pressed={draft.layout === "card"}
+            onClick={() => void handleLayoutChange("card")}
+            title="One question at a time — auto below 768px"
+          >
+            Card
+          </button>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span className="s7-badge s7-badge--neutral">Next: v{nextVersion}</span>
-          <button type="button" className="s7-btn s7-btn--secondary" onClick={() => setPreviewOpen(true)}>
-            Preview
-          </button>
-          <button type="button" className="s7-btn s7-btn--primary" onClick={() => void publish()} disabled={saving}>
-            {saving ? "Saving…" : "Save & publish"}
-          </button>
-        </div>
-      </header>
-
-      {error ? <div className="tender-page__error" role="alert">{error}</div> : null}
-
-      <div className="designer-grid">
-        <aside className="designer-palette">
-          <h3 className="s7-type-label" style={{ marginTop: 0, marginBottom: 10 }}>Field types</h3>
-          <ul className="designer-palette__list">
-            {FIELD_TYPES.map((ft) => (
-              <li
-                key={ft.type}
-                className="designer-chip"
-                draggable
-                onDragStart={(event) => {
-                  event.dataTransfer.setData("text/field-type", ft.type);
-                  event.dataTransfer.effectAllowed = "copy";
-                }}
-                title="Drag to a section, or click to add to the last section"
-                onClick={() => {
-                  if (!draft || draft.sections.length === 0) return;
-                  addFieldToSection(draft.sections[draft.sections.length - 1].tempId, ft.type);
-                }}
-              >
-                <span className="designer-chip__icon" aria-hidden>{ft.icon}</span>
-                <span>{ft.label}</span>
-              </li>
-            ))}
-          </ul>
-        </aside>
-
-        <main className="designer-canvas">
-          <input
-            className="s7-input designer-title"
-            value={draft.name}
-            onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-            placeholder="Form title"
-          />
-          <input
-            className="s7-input designer-subtitle"
-            value={draft.code}
-            onChange={(event) => setDraft({ ...draft, code: event.target.value })}
-            placeholder="Form code (e.g. DAILY-PRESTART)"
-          />
-          <textarea
-            className="s7-textarea"
-            value={draft.description ?? ""}
-            onChange={(event) => setDraft({ ...draft, description: event.target.value })}
-            placeholder="Description (optional)"
-            rows={2}
-          />
-
-          {draft.sections.map((section) => (
-            <section
-              key={section.tempId}
-              className="designer-section"
-              onDragOver={(event) => {
-                if (event.dataTransfer.types.includes("text/field-type")) {
-                  event.preventDefault();
-                  event.currentTarget.classList.add("designer-section--drag-over");
-                }
-              }}
-              onDragLeave={(event) => event.currentTarget.classList.remove("designer-section--drag-over")}
-              onDrop={(event) => {
-                event.preventDefault();
-                event.currentTarget.classList.remove("designer-section--drag-over");
-                const type = event.dataTransfer.getData("text/field-type");
-                if (type) addFieldToSection(section.tempId, type);
-              }}
-            >
-              <header className="designer-section__head">
-                <input
-                  className="s7-input designer-section__title"
-                  value={section.title}
-                  onChange={(event) => updateSection(section.tempId, { title: event.target.value })}
-                  placeholder="Section title"
-                />
-                <button
-                  type="button"
-                  className="s7-btn s7-btn--ghost s7-btn--sm"
-                  onClick={() => removeSection(section.tempId)}
-                  aria-label="Remove section"
-                  disabled={draft.sections.length === 1}
-                >
-                  ✕
-                </button>
-              </header>
-              {section.fields.length === 0 ? (
-                <div className="designer-section__dropzone">Drop a field type here or click one in the left palette</div>
-              ) : (
-                <ul className="designer-fields">
-                  {section.fields.map((field) => {
-                    const selected = selectedFieldKey === field.fieldKey;
-                    return (
-                      <li
-                        key={field.tempId}
-                        className={selected ? "designer-field designer-field--selected" : "designer-field"}
-                        onClick={() => setSelectedFieldKey(field.fieldKey)}
-                      >
-                        <span className="designer-field__type">{field.fieldType}</span>
-                        <span className="designer-field__label">
-                          {field.label}
-                          {field.isRequired ? <span className="designer-field__required">*</span> : null}
-                        </span>
-                        <div className="designer-field__actions" onClick={(e) => e.stopPropagation()}>
-                          <button type="button" className="s7-btn s7-btn--ghost s7-btn--sm" onClick={() => moveField(section.tempId, field.tempId, -1)} aria-label="Move up">↑</button>
-                          <button type="button" className="s7-btn s7-btn--ghost s7-btn--sm" onClick={() => moveField(section.tempId, field.tempId, 1)} aria-label="Move down">↓</button>
-                          <button type="button" className="s7-btn s7-btn--ghost s7-btn--sm" onClick={() => deleteField(section.tempId, field.tempId)} aria-label="Delete">✕</button>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </section>
-          ))}
-
-          <button type="button" className="s7-btn s7-btn--secondary" onClick={addSection}>
-            + Add section
-          </button>
-        </main>
-
-        <aside className="designer-properties">
-          {selectedField ? (
-            <FieldPropertiesEditor
-              field={selectedField.field}
-              onChange={(patch) => updateField(selectedField.section.tempId, selectedField.field.tempId, patch)}
-            />
-          ) : (
-            <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
-              Select a field to edit its properties, or drag one from the left palette.
-            </p>
-          )}
-
-          <hr style={{ margin: "20px 0", border: 0, borderTop: "1px solid var(--border-default)" }} />
-
-          <h3 className="s7-type-label" style={{ marginTop: 0 }}>Conditional rules</h3>
-          <p style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 0, marginBottom: 8 }}>
-            Show or hide fields based on other fields' values.
-          </p>
-          {draft.rules.length === 0 ? (
-            <p style={{ fontSize: 12, color: "var(--text-muted)" }}>No rules yet.</p>
-          ) : (
-            <ul className="designer-rules">
-              {draft.rules.map((rule) => (
-                <li key={rule.tempId} className="designer-rule">
-                  <div className="designer-rule__row">
-                    <select className="s7-select" value={rule.sourceFieldKey} onChange={(e) => updateRule(rule.tempId, { sourceFieldKey: e.target.value })}>
-                      {allFields.map((f) => <option key={f.fieldKey} value={f.fieldKey}>{f.label}</option>)}
-                    </select>
-                    <select className="s7-select" value={rule.operator} onChange={(e) => updateRule(rule.tempId, { operator: e.target.value })}>
-                      <option value="equals">equals</option>
-                      <option value="not_equals">not equals</option>
-                    </select>
-                    <input className="s7-input" value={rule.comparisonValue} onChange={(e) => updateRule(rule.tempId, { comparisonValue: e.target.value })} placeholder="value" />
-                  </div>
-                  <div className="designer-rule__row">
-                    <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>then</span>
-                    <select className="s7-select" value={rule.effect} onChange={(e) => updateRule(rule.tempId, { effect: e.target.value })}>
-                      <option value="SHOW">show</option>
-                      <option value="HIDE">hide</option>
-                      <option value="REQUIRE">require</option>
-                    </select>
-                    <select className="s7-select" value={rule.targetFieldKey} onChange={(e) => updateRule(rule.tempId, { targetFieldKey: e.target.value })}>
-                      {allFields.map((f) => <option key={f.fieldKey} value={f.fieldKey}>{f.label}</option>)}
-                    </select>
-                    <button type="button" className="s7-btn s7-btn--ghost s7-btn--sm" onClick={() => removeRule(rule.tempId)}>✕</button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-          <button type="button" className="s7-btn s7-btn--ghost s7-btn--sm" onClick={addRule} disabled={allFields.length < 1}>
-            + Add rule
-          </button>
-        </aside>
+        <button type="button" className="fv2-tbtn">Versions</button>
+        <button
+          type="button"
+          className="fv2-tbtn fv2-tbtn--primary"
+          onClick={() => void publish()}
+          disabled={saving}
+        >
+          {saving ? "Saving…" : "Publish"}
+        </button>
       </div>
 
-      {previewOpen ? (
-        <div className="slide-over-overlay" role="dialog" aria-modal="true" onClick={() => setPreviewOpen(false)}>
-          <div className="preview-modal" onClick={(e) => e.stopPropagation()}>
-            <header className="slide-over__header">
-              <h2 className="s7-type-section-heading" style={{ margin: 0 }}>Preview · {draft.name}</h2>
-              <button type="button" className="slide-over__close" onClick={() => setPreviewOpen(false)} aria-label="Close">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M6 6l12 12M6 18L18 6" />
-                </svg>
-              </button>
-            </header>
-            <div className="slide-over__body">
-              {draft.sections.map((section) => (
-                <section key={section.tempId} className="preview-section">
-                  <h3>{section.title}</h3>
-                  {section.fields.map((field) => (
-                    <div key={field.tempId} className="preview-field">
-                      <label className="s7-type-label" style={{ marginBottom: 4 }}>
-                        {field.label}{field.isRequired ? " *" : ""}
-                      </label>
-                      {field.fieldType === "textarea" ? (
-                        <textarea className="s7-textarea" disabled placeholder="—" />
-                      ) : field.fieldType === "checkbox" ? (
-                        <input type="checkbox" disabled />
-                      ) : field.fieldType === "multiple_choice" ? (
-                        <select className="s7-select" disabled>
-                          <option>—</option>
-                          {(field.options ?? []).map((opt) => <option key={opt}>{opt}</option>)}
-                        </select>
-                      ) : field.fieldType === "signature" ? (
-                        <div className="preview-signature">Signature canvas</div>
-                      ) : field.fieldType === "image_capture" ? (
-                        <div className="preview-signature">Photo capture</div>
-                      ) : field.fieldType === "file" ? (
-                        <div className="preview-signature">File upload</div>
-                      ) : (
-                        <input
-                          className="s7-input"
-                          disabled
-                          type={field.fieldType === "number" ? "number" : field.fieldType === "date" ? "date" : "text"}
-                          placeholder={field.placeholder ?? "—"}
-                        />
-                      )}
-                    </div>
-                  ))}
-                </section>
-              ))}
+      {error ? <div className="tender-page__error" role="alert" style={{ maxWidth: 1280, margin: "8px auto" }}>{error}</div> : null}
+
+      <div className="fv2-frame">
+        <aside className="fv2-palette" aria-label="Field palette">
+          {PALETTE_GROUPS.map((group) => (
+            <div key={group.key}>
+              <div className="fv2-palette__group-label">{group.label}</div>
+              <div className="fv2-palette__grid">
+                {group.entries.map((entry) => (
+                  <button
+                    key={entry.type}
+                    type="button"
+                    className="fv2-pill"
+                    draggable
+                    onDragStart={(event) => {
+                      event.dataTransfer.setData("text/field-type", entry.type);
+                      event.dataTransfer.effectAllowed = "copy";
+                    }}
+                    onClick={() => {
+                      if (draft.sections.length === 0) return;
+                      handleAddField(draft.sections[draft.sections.length - 1].tempId, entry.type);
+                    }}
+                    title={`Drag or click to add ${entry.label}`}
+                  >
+                    <span aria-hidden>{entry.icon}</span>
+                    <span>{entry.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
+          ))}
+        </aside>
+
+        <main className="fv2-canvas">
+          <div className="fv2-formcard">
+            <input
+              className="fv2-formcard__title"
+              value={draft.name}
+              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+              aria-label="Form title (inline)"
+            />
+            <input
+              className="fv2-formcard__desc"
+              value={draft.description ?? ""}
+              onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+              placeholder="Description (optional)"
+              aria-label="Form description (inline)"
+            />
+
+            {draft.sections.map((section) => (
+              <section
+                key={section.tempId}
+                className="fv2-sect"
+                onDragOver={(event) => {
+                  if (event.dataTransfer.types.includes("text/field-type")) {
+                    event.preventDefault();
+                    event.currentTarget.classList.add("fv2-sect--drag-over");
+                  }
+                }}
+                onDragLeave={(event) => event.currentTarget.classList.remove("fv2-sect--drag-over")}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  event.currentTarget.classList.remove("fv2-sect--drag-over");
+                  const type = event.dataTransfer.getData("text/field-type");
+                  if (type) handleAddField(section.tempId, type);
+                }}
+              >
+                <header className="fv2-sect__head">
+                  <input
+                    className="fv2-sect__title"
+                    value={section.title}
+                    onChange={(e) => handleUpdateSection(section.tempId, { title: e.target.value })}
+                    aria-label="Section title (inline)"
+                  />
+                  <button
+                    type="button"
+                    className="fv2-sect__cog"
+                    aria-label="Section settings"
+                    aria-expanded={openSectionCogTempId === section.tempId}
+                    onClick={() =>
+                      setOpenSectionCogTempId((current) => (current === section.tempId ? null : section.tempId))
+                    }
+                  >
+                    ⚙
+                  </button>
+                </header>
+
+                {openSectionCogTempId === section.tempId ? (
+                  <div className="fv2-sect__cog-popover" role="dialog" aria-label="Section settings">
+                    <label>
+                      Title
+                      <input
+                        type="text"
+                        value={section.title}
+                        onChange={(e) => handleUpdateSection(section.tempId, { title: e.target.value })}
+                      />
+                    </label>
+                    <label>
+                      Description
+                      <input
+                        type="text"
+                        value={section.description ?? ""}
+                        onChange={(e) => handleUpdateSection(section.tempId, { description: e.target.value })}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="fv2-danger"
+                      onClick={() => handleRemoveSection(section.tempId)}
+                      disabled={draft.sections.length === 1}
+                    >
+                      Remove section
+                    </button>
+                  </div>
+                ) : null}
+
+                {section.fields.length === 0 ? (
+                  <div className="fv2-mockinput" style={{ textAlign: "center", padding: "18px", color: "var(--fv2-muted)" }}>
+                    Drop a field here or click one in the left palette
+                  </div>
+                ) : (
+                  section.fields.map((field) => {
+                    const selected = selectedFieldTempId === field.tempId;
+                    return (
+                      <div
+                        key={field.tempId}
+                        className={selected ? "fv2-f fv2-f--sel" : "fv2-f"}
+                        onClick={() => setSelectedFieldTempId(field.tempId)}
+                        role="button"
+                        tabIndex={0}
+                      >
+                        <input
+                          className="fv2-f__label"
+                          value={field.label}
+                          onChange={(e) => handleUpdateField(section.tempId, field.tempId, { label: e.target.value })}
+                          onClick={(e) => e.stopPropagation()}
+                          aria-label={`${field.fieldType} label`}
+                        />
+                        {field.isRequired ? <span className="fv2-f__req">*</span> : null}
+                        <div className="fv2-f__type">{field.fieldType}</div>
+                        <div className="fv2-mockinput" style={{ marginTop: 6 }}>
+                          {field.placeholder ?? "—"}
+                        </div>
+                        <div className="fv2-f__toolbar" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            aria-label="Toggle required"
+                            aria-pressed={field.isRequired}
+                            onClick={() =>
+                              handleUpdateField(section.tempId, field.tempId, { isRequired: !field.isRequired })
+                            }
+                            title="Required"
+                          >
+                            {field.isRequired ? "★" : "☆"}
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="Move up"
+                            onClick={() => handleMoveField(section.tempId, field.tempId, -1)}
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="Move down"
+                            onClick={() => handleMoveField(section.tempId, field.tempId, 1)}
+                          >
+                            ↓
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="Duplicate"
+                            onClick={() => handleDuplicateField(section.tempId, field.tempId)}
+                          >
+                            ⧉
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="Delete"
+                            onClick={() => handleDeleteField(section.tempId, field.tempId)}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </section>
+            ))}
+
+            <button type="button" className="fv2-add-section" onClick={handleAddSection}>
+              + Add section
+            </button>
           </div>
-        </div>
-      ) : null}
+        </main>
+
+        <aside
+          className={propsCollapsed ? "fv2-props fv2-props--collapsed" : "fv2-props"}
+          aria-label="Field properties"
+        >
+          <button
+            type="button"
+            className="fv2-props__collapse"
+            onClick={() => setPropsCollapsed((v) => !v)}
+            aria-label={propsCollapsed ? "Expand properties" : "Collapse properties"}
+            aria-expanded={!propsCollapsed}
+          >
+            {propsCollapsed ? "‹" : "›"}
+          </button>
+          {!propsCollapsed && selectedField ? (
+            <>
+              <div className="fv2-props__head">
+                <h3>{selectedField.field.label || "Untitled field"}</h3>
+                <div className="fv2-props__type">
+                  {selectedField.field.fieldType}
+                  {selectedField.field.isRequired ? " · required" : ""}
+                </div>
+                <div className="fv2-props__tabs" role="tablist">
+                  {tabs.map((tab) => (
+                    <button
+                      key={tab}
+                      type="button"
+                      role="tab"
+                      aria-selected={activeTab === tab}
+                      className={`fv2-props__tab ${activeTab === tab ? "fv2-props__tab--on" : ""}`}
+                      onClick={() => setActiveTab(tab)}
+                    >
+                      {tab}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="fv2-props__body">
+                <FieldTabBody
+                  tab={activeTab}
+                  field={selectedField.field}
+                  onChange={(patch) =>
+                    handleUpdateField(selectedField.section.tempId, selectedField.field.tempId, patch)
+                  }
+                />
+              </div>
+            </>
+          ) : !propsCollapsed ? (
+            <div className="fv2-props__empty">
+              Select a field to edit its properties, or drag one from the left palette.
+            </div>
+          ) : null}
+        </aside>
+      </div>
     </div>
   );
 }
 
-type FieldPropertiesEditorProps = {
+function FieldTabBody({
+  tab,
+  field,
+  onChange
+}: {
+  tab: PropertyTab;
   field: DraftField;
   onChange: (patch: Partial<DraftField>) => void;
-};
-
-function FieldPropertiesEditor({ field, onChange }: FieldPropertiesEditorProps) {
+}) {
   const [optionsText, setOptionsText] = useState((field.options ?? []).join("\n"));
   useEffect(() => {
     setOptionsText((field.options ?? []).join("\n"));
-  }, [field.fieldKey]);
+  }, [field.tempId]);
 
-  const commitOptions = () => {
-    const options = optionsText
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
-    onChange({ options });
-  };
-
-  return (
-    <>
-      <h3 className="s7-type-label" style={{ marginTop: 0 }}>Field properties</h3>
-      <label className="tender-form__field">
-        <span className="s7-type-label">Label</span>
-        <input className="s7-input" value={field.label} onChange={(e) => onChange({ label: e.target.value })} />
-      </label>
-      <label className="tender-form__field">
-        <span className="s7-type-label">Type</span>
-        <select className="s7-select" value={field.fieldType} onChange={(e) => onChange({ fieldType: e.target.value })}>
-          {FIELD_TYPES.map((ft) => (
-            <option key={ft.type} value={ft.type}>{ft.label}</option>
-          ))}
-        </select>
-      </label>
-      <label className="tender-form__field">
-        <span className="s7-type-label">Placeholder</span>
-        <input className="s7-input" value={field.placeholder ?? ""} onChange={(e) => onChange({ placeholder: e.target.value })} />
-      </label>
-      <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: 13 }}>
-        <input
-          type="checkbox"
-          checked={field.isRequired}
-          onChange={(e) => onChange({ isRequired: e.target.checked })}
-        />
-        Required
-      </label>
-      {field.fieldType === "multiple_choice" ? (
-        <label className="tender-form__field" style={{ marginTop: 12 }}>
-          <span className="s7-type-label">Options (one per line)</span>
-          <textarea
-            className="s7-textarea"
-            rows={4}
-            value={optionsText}
-            onChange={(e) => setOptionsText(e.target.value)}
-            onBlur={commitOptions}
+  if (tab === "general") {
+    return (
+      <>
+        <label>
+          Label
+          <input
+            type="text"
+            value={field.label}
+            onChange={(e) => onChange({ label: e.target.value })}
           />
         </label>
-      ) : null}
-    </>
+        <label>
+          Placeholder
+          <input
+            type="text"
+            value={field.placeholder ?? ""}
+            onChange={(e) => onChange({ placeholder: e.target.value })}
+          />
+        </label>
+        <label>
+          Help text
+          <input
+            type="text"
+            value={field.helpText ?? ""}
+            onChange={(e) => onChange({ helpText: e.target.value })}
+          />
+        </label>
+        <div className="fv2-tgl">
+          <span>Required</span>
+          <input
+            type="checkbox"
+            checked={field.isRequired}
+            onChange={(e) => onChange({ isRequired: e.target.checked })}
+            aria-label="Required"
+          />
+        </div>
+      </>
+    );
+  }
+
+  if (tab === "options") {
+    return (
+      <>
+        <label>
+          Choices (one per line)
+          <textarea
+            value={optionsText}
+            onChange={(e) => setOptionsText(e.target.value)}
+            onBlur={() =>
+              onChange({
+                options: optionsText.split("\n").map((line) => line.trim()).filter(Boolean)
+              })
+            }
+          />
+        </label>
+      </>
+    );
+  }
+
+  return (
+    <div className="fv2-props__empty" style={{ padding: 0 }}>
+      Rules for this field arrive in F-2 (rules storage + full-screen builder).
+      For now, use the legacy rules editor via the JSON version endpoint.
+    </div>
   );
 }

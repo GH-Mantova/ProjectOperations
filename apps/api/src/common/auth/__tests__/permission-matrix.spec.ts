@@ -93,6 +93,7 @@ const ROWS: MatrixRow[] = [
   { group: "long-tail", method: "post", path: "/directory", permission: "directory.manage", body: {}, viewer: 403 },
   { group: "long-tail", method: "post", path: "/assets", permission: "assets.manage", body: {}, viewer: 403 },
   { group: "long-tail", method: "post", path: "/maintenance/plans", permission: "maintenance.manage", body: {}, viewer: 403 },
+  { group: "long-tail", method: "post", path: "/inventory/items", permission: "inventory.manage", body: {}, viewer: 403 },
   { group: "long-tail", method: "post", path: "/safety/incidents", permission: "safety.manage", body: {}, viewer: 403 },
   { group: "long-tail", method: "post", path: "/forms/templates", permission: "forms.manage", body: {}, viewer: 403 },
   { group: "long-tail", method: "post", path: "/estimate-rates/labour", permission: "estimates.admin", body: {}, viewer: 403 },

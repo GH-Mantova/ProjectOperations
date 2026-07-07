@@ -26,6 +26,8 @@ export const permissionRegistry = [
   { code: "assets.manage", module: "assets", description: "Manage asset register and categories" },
   { code: "maintenance.view", module: "maintenance", description: "View maintenance plans, events, inspections, and breakdowns" },
   { code: "maintenance.manage", module: "maintenance", description: "Manage maintenance plans, events, inspections, and breakdowns" },
+  { code: "inventory.view", module: "inventory", description: "View stock items and movements" },
+  { code: "inventory.manage", module: "inventory", description: "Manage stock items, movements, and stocktakes" },
   { code: "forms.view", module: "forms", description: "View form templates and submissions" },
   { code: "forms.submit", module: "forms", description: "Submit forms — fill and lodge submissions" },
   { code: "forms.manage", module: "forms", description: "Create and edit form templates" },

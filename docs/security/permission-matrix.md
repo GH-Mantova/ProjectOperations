@@ -397,6 +397,26 @@ against a seeded database. F1 (global-list creation) and F4 (worker leave / unav
 | DELETE | `/lists/:slug/items/:itemId` | — | 200 | 200 | 401 | Creator-or-admin enforced in service. |
 | POST | `/lists/:slug/items/reorder` | — | 200 | 200 | 401 | System lists require platform.admin (service check); user lists free-for-all. |
 
+### `modules/inventory/inventory.controller.ts` — guards: JwtAuthGuard, PermissionsGuard
+
+| Method | Path | Required permission | Admin | Viewer | Anon | Notes |
+|---|---|---|---|---|---|---|
+| GET | `/inventory/categories` | `inventory.view` | 200 | 200 | 401 |  |
+| POST | `/inventory/categories` | `inventory.manage` | 200 | 403 | 401 |  |
+| PATCH | `/inventory/categories/:id` | `inventory.manage` | 200 | 403 | 401 |  |
+| GET | `/inventory/items` | `inventory.view` | 200 | 200 | 401 |  |
+| GET | `/inventory/items/:id` | `inventory.view` | 200 | 200 | 401 |  |
+| POST | `/inventory/items` | `inventory.manage` | 200 | 403 | 401 |  |
+| PATCH | `/inventory/items/:id` | `inventory.manage` | 200 | 403 | 401 |  |
+| POST | `/inventory/items/:id/movements` | `inventory.manage` | 200 | 403 | 401 |  |
+| GET | `/inventory/items/:id/movements` | `inventory.view` | 200 | 200 | 401 |  |
+| POST | `/inventory/stocktakes` | `inventory.manage` | 200 | 403 | 401 |  |
+| GET | `/inventory/stocktakes` | `inventory.view` | 200 | 200 | 401 |  |
+| GET | `/inventory/stocktakes/:id` | `inventory.view` | 200 | 200 | 401 |  |
+| POST | `/inventory/stocktakes/:id/counts` | `inventory.manage` | 200 | 403 | 401 |  |
+| POST | `/inventory/stocktakes/:id/commit` | `inventory.manage` | 200 | 403 | 401 |  |
+| POST | `/inventory/stocktakes/:id/cancel` | `inventory.manage` | 200 | 403 | 401 |  |
+
 ### `modules/jobs/jobs.controller.ts` — guards: JwtAuthGuard, PermissionsGuard
 
 | Method | Path | Required permission | Admin | Viewer | Anon | Notes |

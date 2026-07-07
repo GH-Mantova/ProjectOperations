@@ -54,12 +54,15 @@ Included:
 - live dashboards with user and role ownership, KPI/chart/table widgets, and seeded operations/planner reporting views
 - job closeout records, read-only archive behavior, and historical archive visibility
 - repeatable compliance smoke runner covering login, tender lifecycle, scheduler, maintenance, forms, documents, dashboards, and closeout
+- tender packages + package-scoped pricing basis (multi-builder tender workflow)
+- native inventory / stock layer (replaces external Asset Tiger dependency for stock-level workflows)
+- day-grain scheduler allocation with eligibility (fit-the-bill), month/week grid, availability heatmap
+- org reporting hierarchy (`User.managerId`) + central authority seam (config-open Director-configurable ceilings)
+- Forms Authoring v1 (new / edit / duplicate / archive from the list page)
 
 Not yet included:
 
-- live SharePoint Graph integration
 - downstream operational modules after closeout
-- Microsoft 365 SSO
 
 ## Workspace structure
 

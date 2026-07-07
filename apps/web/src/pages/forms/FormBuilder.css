@@ -288,10 +288,18 @@
   border: 1px solid transparent;
   color: var(--fv2-muted);
   border-radius: 6px;
+  width: 44px;
+  height: 44px;
   min-width: 44px;
   min-height: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
   cursor: pointer;
   font-size: 16px;
+  line-height: 1;
 }
 .fv2-sect__cog:hover,
 .fv2-sect__cog[aria-expanded="true"] {
@@ -389,14 +397,22 @@
   display: flex;
 }
 .fv2-f__toolbar button {
-  min-width: 36px;
-  min-height: 36px;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
   border: none;
   background: transparent;
   color: var(--fv2-text-2);
   cursor: pointer;
   border-radius: 6px;
   font-size: 13px;
+  line-height: 1;
 }
 .fv2-f__toolbar button:hover {
   background: var(--fv2-brand-tint);

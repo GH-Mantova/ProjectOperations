@@ -63,6 +63,7 @@ export const permissionRegistry = [
   { code: "safety.admin", module: "safety", description: "Close incidents/hazards, manage corrective actions" },
   { code: "portal.invite", module: "portal", description: "Invite client contacts to the client portal" },
   { code: "ai.persona.tendering", module: "ai", description: "Use the Tendering Assistant AI persona — chat, settings, instruction overrides" },
+  { code: "authority.manage", module: "authority", description: "Manage authority rules — configurable spend limits and approval thresholds" },
   // Rates & Lists R0 (PR-487). `rates.manage` gates flexible RateTable/Column/Row
   // authoring; `lists.manage` gates ListBinding CRUD (whole-list delete is
   // separately restricted — TODO: route through the authority seam once merged).

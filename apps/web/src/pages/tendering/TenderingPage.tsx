@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
+import { NewTenderWizard } from "./NewTenderWizard";
 
 type TenderListItem = {
   id: string;
@@ -285,6 +286,8 @@ export function TenderingPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newOpen, setNewOpen] = useState(false);
+  const [resumeDraftId, setResumeDraftId] = useState<string | null>(null);
+  const [draftPickerOpen, setDraftPickerOpen] = useState(false);
 
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [presets, setPresets] = useState<FilterPreset[]>([]);
@@ -611,8 +614,16 @@ export function TenderingPage() {
           </div>
           <button
             type="button"
+            className="s7-btn s7-btn--ghost"
+            onClick={() => setDraftPickerOpen(true)}
+            aria-haspopup="dialog"
+          >
+            Resume drafts
+          </button>
+          <button
+            type="button"
             className="s7-btn s7-btn--primary"
-            onClick={() => setNewOpen(true)}
+            onClick={() => { setResumeDraftId(null); setNewOpen(true); }}
           >
             + New tender
           </button>
@@ -691,16 +702,31 @@ export function TenderingPage() {
         />
       )}
 
-      <NewTenderSlideOver
+      <NewTenderWizard
         open={newOpen}
         clients={clients}
-        onClose={() => setNewOpen(false)}
+        users={users}
+        existingDraftId={resumeDraftId}
+        onClose={() => { setNewOpen(false); setResumeDraftId(null); void reload(filters); }}
         onCreated={(id) => {
           setNewOpen(false);
+          setResumeDraftId(null);
           void reload(filters);
           navigate(`/tenders/${id}`);
         }}
       />
+
+      {draftPickerOpen ? (
+        <ResumeDraftPicker
+          drafts={tenders.filter((t) => t.status === "DRAFT")}
+          onClose={() => setDraftPickerOpen(false)}
+          onResume={(id) => {
+            setDraftPickerOpen(false);
+            setResumeDraftId(id);
+            setNewOpen(true);
+          }}
+        />
+      ) : null}
 
       {quickEditTarget ? (
         <QuickEditModal
@@ -2034,95 +2060,30 @@ function TenderCard({ tender, onOpen, onDelete, canManage }: TenderCardProps) {
   );
 }
 
-type NewTenderSlideOverProps = {
-  open: boolean;
-  clients: ClientOption[];
+// The old single-step NewTenderSlideOver has been superseded by NewTenderWizard.
+// The multi-step wizard reuses the same POST /tenders endpoint (as a DRAFT create
+// on step 1) plus the pr-482 packages/matrix/document-buckets seams, and embeds
+// TenderDocumentsPanel on step 4.
+
+type ResumeDraftPickerProps = {
+  drafts: TenderListItem[];
   onClose: () => void;
-  onCreated: (tenderId: string) => void;
+  onResume: (id: string) => void;
 };
 
-function NewTenderSlideOver({ open, clients, onClose, onCreated }: NewTenderSlideOverProps) {
-  const { authFetch } = useAuth();
-  const [form, setForm] = useState({
-    clientId: "",
-    title: "",
-    description: "",
-    estimatedValue: "",
-    dueDate: "",
-    status: "DRAFT"
-  });
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const panelRef = useRef<HTMLDivElement | null>(null);
-
+function ResumeDraftPicker({ drafts, onClose, onResume }: ResumeDraftPickerProps) {
   useEffect(() => {
-    if (!open) return;
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", handleKey);
-    return () => document.removeEventListener("keydown", handleKey);
-  }, [open, onClose]);
-
-  useEffect(() => {
-    if (open) {
-      setForm({
-        clientId: "",
-        title: "",
-        description: "",
-        estimatedValue: "",
-        dueDate: "",
-        status: "DRAFT"
-      });
-      setError(null);
-    }
-  }, [open]);
-
-  if (!open) return null;
-
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!form.clientId || !form.title.trim()) {
-      setError("Client and title are required.");
-      return;
-    }
-    setSubmitting(true);
-    setError(null);
-    try {
-      // G5 — the tender number is generated server-side from the primary
-      // client (T{YYMMDD}-{SLUG}-Rev{N}); no number is sent from the form.
-      const payload: Record<string, unknown> = {
-        title: form.title.trim(),
-        status: form.status,
-        tenderClients: [{ clientId: form.clientId, relationshipType: "PRIMARY" }]
-      };
-      if (form.description.trim()) payload.description = form.description.trim();
-      if (form.estimatedValue.trim()) payload.estimatedValue = form.estimatedValue.trim();
-      if (form.dueDate) payload.dueDate = new Date(form.dueDate).toISOString();
-      const response = await authFetch("/tenders", {
-        method: "POST",
-        body: JSON.stringify(payload)
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.message ?? "Could not create tender.");
-      }
-      const created = await response.json();
-      onCreated(created.id);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
   return (
-    <div className="slide-over-overlay" role="dialog" aria-modal="true" aria-label="Create tender" onClick={onClose}>
-      <div ref={panelRef} className="slide-over" onClick={(event) => event.stopPropagation()}>
+    <div className="slide-over-overlay" role="dialog" aria-modal="true" aria-label="Resume draft tender" onClick={onClose}>
+      <div className="slide-over" onClick={(event) => event.stopPropagation()}>
         <header className="slide-over__header">
           <div>
-            <h2 className="s7-type-section-heading" style={{ margin: 0 }}>New tender</h2>
-            <p className="slide-over__subtitle">Create a tender and drop it anywhere on the pipeline.</p>
+            <h2 className="s7-type-section-heading" style={{ margin: 0 }}>Resume incomplete tenders</h2>
+            <p className="slide-over__subtitle">Pick a DRAFT tender to reopen in the wizard.</p>
           </div>
           <button type="button" className="slide-over__close" onClick={onClose} aria-label="Close">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -2130,86 +2091,32 @@ function NewTenderSlideOver({ open, clients, onClose, onCreated }: NewTenderSlid
             </svg>
           </button>
         </header>
-        <form onSubmit={submit} className="slide-over__body tender-form">
-          {error ? <div className="login-card__error" role="alert">{error}</div> : null}
-          <label className="tender-form__field">
-            <span className="s7-type-label">Client</span>
-            <select
-              className="s7-select"
-              value={form.clientId}
-              onChange={(event) => setForm((current) => ({ ...current, clientId: event.target.value }))}
-              required
-            >
-              <option value="">Select a client…</option>
-              {clients.map((client) => (
-                <option key={client.id} value={client.id}>{client.name}</option>
+        <div className="slide-over__body">
+          {drafts.length === 0 ? (
+            <div className="new-tender-wizard__empty">
+              <strong>No draft tenders to resume.</strong>
+              <span>Start a new tender to see it here.</span>
+            </div>
+          ) : (
+            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+              {drafts.map((d) => (
+                <li key={d.id}>
+                  <button
+                    type="button"
+                    className="s7-btn s7-btn--ghost"
+                    style={{ width: "100%", justifyContent: "flex-start", textAlign: "left" }}
+                    onClick={() => onResume(d.id)}
+                  >
+                    <span style={{ fontWeight: 600 }}>{d.title || "(untitled)"}</span>
+                    <span style={{ marginLeft: 8, opacity: 0.7 }}>{d.tenderNumber}</span>
+                  </button>
+                </li>
               ))}
-            </select>
-          </label>
-          <p className="s7-type-label" style={{ opacity: 0.7, margin: 0 }}>
-            Tender number is auto-generated on save (T{"{YYMMDD}"}-{"{CLIENT}"}-Rev1).
-          </p>
-          <label className="tender-form__field">
-            <span className="s7-type-label">Title</span>
-            <input
-              className="s7-input"
-              value={form.title}
-              onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
-              placeholder="Site civil works package"
-              required
-            />
-          </label>
-          <label className="tender-form__field">
-            <span className="s7-type-label">Stage</span>
-            <select
-              className="s7-select"
-              value={form.status}
-              onChange={(event) => setForm((current) => ({ ...current, status: event.target.value }))}
-            >
-              {STAGES.map((stage) => (
-                <option key={stage} value={stage}>{STAGE_LABEL[stage]}</option>
-              ))}
-            </select>
-          </label>
-          <label className="tender-form__field">
-            <span className="s7-type-label">Estimated value (AUD)</span>
-            <input
-              className="s7-input"
-              type="number"
-              min="0"
-              step="1"
-              value={form.estimatedValue}
-              onChange={(event) => setForm((current) => ({ ...current, estimatedValue: event.target.value }))}
-              placeholder="0"
-            />
-          </label>
-          <label className="tender-form__field">
-            <span className="s7-type-label">Due date</span>
-            <input
-              className="s7-input"
-              type="date"
-              value={form.dueDate}
-              onChange={(event) => setForm((current) => ({ ...current, dueDate: event.target.value }))}
-            />
-          </label>
-          <label className="tender-form__field">
-            <span className="s7-type-label">Description</span>
-            <textarea
-              className="s7-textarea"
-              rows={4}
-              value={form.description}
-              onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
-              placeholder="Short scope summary"
-            />
-          </label>
-          <footer className="slide-over__footer">
-            <button type="button" className="s7-btn s7-btn--ghost" onClick={onClose}>Cancel</button>
-            <button type="submit" className="s7-btn s7-btn--primary" disabled={submitting}>
-              {submitting ? "Creating…" : "Create tender"}
-            </button>
-          </footer>
-        </form>
+            </ul>
+          )}
+        </div>
       </div>
     </div>
   );
 }
+

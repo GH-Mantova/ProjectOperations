@@ -1,10 +1,15 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
-import { FormsQueryDto, SubmitFormDto, UpsertFormTemplateDto } from "./dto/forms.dto";
+import {
+  FormsQueryDto,
+  SubmitFormDto,
+  UpdateFormTemplateMetadataDto,
+  UpsertFormTemplateDto
+} from "./dto/forms.dto";
 import { FormsService } from "./forms.service";
 
 /**
@@ -78,6 +83,76 @@ export class FormsController {
   @ApiResponse({ status: 201, description: "Create next version for existing form template." })
   createVersion(@Param("id") id: string, @Body() dto: UpsertFormTemplateDto, @CurrentUser() actor: { sub: string }) {
     return this.service.createNextVersion(id, dto, actor.sub);
+  }
+
+  /**
+   * Patch form template metadata (name, description, category,
+   * geolocationEnabled, settings). Does NOT touch versions/fields —
+   * for structural edits use POST :id/versions.
+   *
+   * @throws ForbiddenException when the template is a system template
+   * @throws ConflictException when the new name collides with another template
+   * @throws NotFoundException when the template does not exist
+   */
+  @Patch("templates/:id")
+  @RequirePermissions("forms.manage")
+  @ApiOperation({ summary: "Update form template metadata (non-system only)" })
+  @ApiResponse({ status: 200, description: "Updated form template." })
+  @ApiResponse({ status: 403, description: "System templates cannot be edited." })
+  updateTemplate(
+    @Param("id") id: string,
+    @Body() dto: UpdateFormTemplateMetadataDto,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.updateTemplateMetadata(id, dto, actor.sub);
+  }
+
+  /**
+   * Archive a form template — hides it from fill pickers but keeps
+   * versions and submissions intact.
+   */
+  @Post("templates/:id/archive")
+  @RequirePermissions("forms.manage")
+  @ApiOperation({ summary: "Archive form template (non-system only)" })
+  @ApiResponse({ status: 201, description: "Archived form template." })
+  @ApiResponse({ status: 403, description: "System templates cannot be archived." })
+  archiveTemplate(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
+    return this.service.archiveTemplate(id, actor.sub);
+  }
+
+  /** Unarchive a previously archived template — restores it to DRAFT. */
+  @Post("templates/:id/unarchive")
+  @RequirePermissions("forms.manage")
+  @ApiOperation({ summary: "Unarchive form template" })
+  @ApiResponse({ status: 201, description: "Unarchived form template." })
+  unarchiveTemplate(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
+    return this.service.unarchiveTemplate(id, actor.sub);
+  }
+
+  /**
+   * Hard-delete a form template. Blocked (409) when submissions exist
+   * anywhere in the version chain, and (403) for system templates.
+   */
+  @Delete("templates/:id")
+  @RequirePermissions("forms.manage")
+  @ApiOperation({ summary: "Delete form template (only when no submissions and not a system template)" })
+  @ApiResponse({ status: 200, description: "Deleted form template." })
+  @ApiResponse({ status: 403, description: "System templates cannot be deleted." })
+  @ApiResponse({ status: 409, description: "Template has submissions and cannot be deleted." })
+  deleteTemplate(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
+    return this.service.deleteTemplate(id, actor.sub);
+  }
+
+  /**
+   * Duplicate a form template into a new custom (non-system) template
+   * in DRAFT. Intended path for tailoring the seeded compliance forms.
+   */
+  @Post("templates/:id/duplicate")
+  @RequirePermissions("forms.manage")
+  @ApiOperation({ summary: "Duplicate form template into a new custom draft" })
+  @ApiResponse({ status: 201, description: "Duplicated form template." })
+  duplicateTemplate(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
+    return this.service.duplicateTemplate(id, actor.sub);
   }
 
   /**

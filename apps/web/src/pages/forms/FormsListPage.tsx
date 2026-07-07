@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { CenteredModal, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { formTemplateAuthority } from "./formTemplateAuthority";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -133,6 +134,10 @@ export function FormsListPage() {
 
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<string>("all");
+  const [showArchived, setShowArchived] = useState(false);
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<FormTemplate | null>(null);
+  const [confirmArchive, setConfirmArchive] = useState<FormTemplate | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -146,7 +151,7 @@ export function FormsListPage() {
       const [tplRes, mineRes, approvalsRes] = await Promise.all(requests);
       if (!tplRes.ok) throw new Error(await tplRes.text());
       const tplBody = (await tplRes.json()) as { items: FormTemplate[] };
-      setTemplates((tplBody.items ?? []).filter((t) => t.status === "ACTIVE"));
+      setTemplates(tplBody.items ?? []);
       if (mineRes.ok) {
         const body = await mineRes.json();
         setSubmissions(Array.isArray(body) ? body : (body.items ?? []));
@@ -182,6 +187,8 @@ export function FormsListPage() {
   const filteredTemplates = useMemo(() => {
     const q = search.trim().toLowerCase();
     return templates.filter((t) => {
+      const isArchived = t.status === "ARCHIVED";
+      if (showArchived ? !isArchived : isArchived) return false;
       if (category !== "all" && (t.category ?? "custom") !== category) return false;
       if (!q) return true;
       return (
@@ -190,7 +197,89 @@ export function FormsListPage() {
         t.code.toLowerCase().includes(q)
       );
     });
-  }, [templates, category, search]);
+  }, [templates, category, search, showArchived]);
+
+  const archivedCount = useMemo(
+    () => templates.filter((t) => t.status === "ARCHIVED").length,
+    [templates]
+  );
+
+  const createBlankTemplate = async () => {
+    setActionBusy("__new__");
+    setError(null);
+    try {
+      const suffix = Date.now().toString(36).toUpperCase();
+      const res = await authFetch("/forms/templates", {
+        method: "POST",
+        body: JSON.stringify({
+          name: `Untitled form ${suffix}`,
+          code: `UNTITLED-${suffix}`,
+          status: "DRAFT",
+          sections: [{ title: "Section 1", sectionOrder: 1, fields: [] }]
+        })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const created = (await res.json()) as { id: string };
+      navigate(`/forms/designer/${created.id}`);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setActionBusy(null);
+    }
+  };
+
+  const duplicateTemplate = async (template: FormTemplate) => {
+    setActionBusy(template.id);
+    setError(null);
+    try {
+      const res = await authFetch(`/forms/templates/${template.id}/duplicate`, {
+        method: "POST",
+        body: "{}"
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const created = (await res.json()) as { id: string };
+      await load();
+      navigate(`/forms/designer/${created.id}`);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setActionBusy(null);
+    }
+  };
+
+  const archiveTemplate = async (template: FormTemplate) => {
+    setActionBusy(template.id);
+    setError(null);
+    try {
+      const path = template.status === "ARCHIVED" ? "unarchive" : "archive";
+      const res = await authFetch(`/forms/templates/${template.id}/${path}`, {
+        method: "POST",
+        body: "{}"
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setConfirmArchive(null);
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setActionBusy(null);
+    }
+  };
+
+  const deleteTemplate = async (template: FormTemplate) => {
+    setActionBusy(template.id);
+    setError(null);
+    try {
+      const res = await authFetch(`/forms/templates/${template.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(await res.text());
+      setConfirmDelete(null);
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setActionBusy(null);
+    }
+  };
 
   const fillOut = async (templateId: string) => {
     setCreating(templateId);
@@ -255,7 +344,76 @@ export function FormsListPage() {
           lastSubmittedByTemplate={lastSubmittedByTemplate}
           creating={creating}
           onFillOut={fillOut}
+          canManage={canManage}
+          showArchived={showArchived}
+          setShowArchived={setShowArchived}
+          archivedCount={archivedCount}
+          onNew={() => void createBlankTemplate()}
+          onEdit={(t) => navigate(`/forms/designer/${t.id}`)}
+          onDuplicate={(t) => void duplicateTemplate(t)}
+          onArchiveConfirm={(t) => setConfirmArchive(t)}
+          onDeleteConfirm={(t) => setConfirmDelete(t)}
+          actionBusy={actionBusy}
         />
+      ) : null}
+
+      {confirmArchive ? (
+        <CenteredModal
+          title={confirmArchive.status === "ARCHIVED" ? "Unarchive form?" : "Archive form?"}
+          onClose={() => setConfirmArchive(null)}
+          maxWidth={440}
+          footer={
+            <>
+              <button type="button" className="s7-btn s7-btn--ghost" onClick={() => setConfirmArchive(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="s7-btn s7-btn--primary"
+                disabled={actionBusy === confirmArchive.id}
+                onClick={() => void archiveTemplate(confirmArchive)}
+              >
+                {confirmArchive.status === "ARCHIVED" ? "Unarchive" : "Archive"}
+              </button>
+            </>
+          }
+        >
+          <p style={{ margin: 0, fontSize: 13 }}>
+            {confirmArchive.status === "ARCHIVED"
+              ? `"${confirmArchive.name}" will move back to Draft and become visible to fillers again.`
+              : `"${confirmArchive.name}" will be hidden from workers filling out forms. Existing submissions and versions are preserved.`}
+          </p>
+        </CenteredModal>
+      ) : null}
+
+      {confirmDelete ? (
+        <CenteredModal
+          title="Delete form?"
+          onClose={() => setConfirmDelete(null)}
+          maxWidth={440}
+          footer={
+            <>
+              <button type="button" className="s7-btn s7-btn--ghost" onClick={() => setConfirmDelete(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="s7-btn s7-btn--primary"
+                style={{ background: "#DC2626", color: "#fff", borderColor: "#DC2626" }}
+                disabled={actionBusy === confirmDelete.id}
+                onClick={() => void deleteTemplate(confirmDelete)}
+              >
+                Delete permanently
+              </button>
+            </>
+          }
+        >
+          <p style={{ margin: 0, fontSize: 13 }}>
+            This will permanently delete "{confirmDelete.name}" and every draft version. If any
+            submissions exist the server will block the delete — archive it instead to preserve
+            compliance history.
+          </p>
+        </CenteredModal>
       ) : null}
 
       {tab === "my-submissions" ? <MySubmissionsTab loading={loading} submissions={submissions} /> : null}
@@ -280,7 +438,17 @@ function TemplatesTab({
   setCategory,
   lastSubmittedByTemplate,
   creating,
-  onFillOut
+  onFillOut,
+  canManage,
+  showArchived,
+  setShowArchived,
+  archivedCount,
+  onNew,
+  onEdit,
+  onDuplicate,
+  onArchiveConfirm,
+  onDeleteConfirm,
+  actionBusy
 }: {
   loading: boolean;
   templates: FormTemplate[];
@@ -291,6 +459,16 @@ function TemplatesTab({
   lastSubmittedByTemplate: Map<string, string>;
   creating: string | null;
   onFillOut: (id: string) => void;
+  canManage: boolean;
+  showArchived: boolean;
+  setShowArchived: (v: boolean) => void;
+  archivedCount: number;
+  onNew: () => void;
+  onEdit: (t: FormTemplate) => void;
+  onDuplicate: (t: FormTemplate) => void;
+  onArchiveConfirm: (t: FormTemplate) => void;
+  onDeleteConfirm: (t: FormTemplate) => void;
+  actionBusy: string | null;
 }) {
   const categories = ["all", ...Object.keys(CATEGORY_LABEL)];
 
@@ -305,6 +483,28 @@ function TemplatesTab({
           className="s7-input"
           style={{ minWidth: 220, flex: "0 1 320px" }}
         />
+        {canManage ? (
+          <>
+            <button
+              type="button"
+              className="s7-btn s7-btn--secondary s7-btn--sm"
+              onClick={() => setShowArchived(!showArchived)}
+              title={showArchived ? "Show active templates" : "Show archived templates"}
+            >
+              {showArchived ? "← Back to active" : `Archived${archivedCount ? ` (${archivedCount})` : ""}`}
+            </button>
+            <div style={{ flex: 1 }} />
+            <button
+              type="button"
+              className="s7-btn s7-btn--primary"
+              disabled={actionBusy === "__new__"}
+              onClick={onNew}
+              style={{ background: "#FEAA6D", color: "#242424", borderColor: "#FEAA6D" }}
+            >
+              {actionBusy === "__new__" ? "Creating…" : "+ New form"}
+            </button>
+          </>
+        ) : null}
       </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 14, overflowX: "auto", paddingBottom: 4 }}>
@@ -399,16 +599,28 @@ function TemplatesTab({
                   <p style={{ margin: 0, fontSize: 11, color: "var(--text-muted, #9CA3AF)" }}>
                     Last submitted: {relativeTime(last)}
                   </p>
-                  <div style={{ marginTop: "auto", paddingTop: 8 }}>
-                    <button
-                      type="button"
-                      className="s7-btn s7-btn--primary"
-                      style={{ width: "100%", background: "#FEAA6D", color: "#242424", borderColor: "#FEAA6D" }}
-                      disabled={isCreating}
-                      onClick={() => onFillOut(t.id)}
-                    >
-                      {isCreating ? "Opening…" : "Fill out"}
-                    </button>
+                  <div style={{ marginTop: "auto", paddingTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+                    {t.status !== "ARCHIVED" ? (
+                      <button
+                        type="button"
+                        className="s7-btn s7-btn--primary"
+                        style={{ width: "100%", background: "#FEAA6D", color: "#242424", borderColor: "#FEAA6D" }}
+                        disabled={isCreating}
+                        onClick={() => onFillOut(t.id)}
+                      >
+                        {isCreating ? "Opening…" : "Fill out"}
+                      </button>
+                    ) : null}
+                    {canManage ? (
+                      <TemplateManageActions
+                        template={t}
+                        actionBusy={actionBusy}
+                        onEdit={onEdit}
+                        onDuplicate={onDuplicate}
+                        onArchive={onArchiveConfirm}
+                        onDelete={onDeleteConfirm}
+                      />
+                    ) : null}
                   </div>
                 </div>
               </article>
@@ -714,6 +926,77 @@ function Card({ label, value, tone = "default" }: { label: string; value: number
     <div className="s7-card" style={{ padding: 14 }}>
       <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase" }}>{label}</div>
       <div style={{ fontSize: 28, fontWeight: 600, color: colour, marginTop: 6 }}>{value}</div>
+    </div>
+  );
+}
+
+function TemplateManageActions({
+  template,
+  actionBusy,
+  onEdit,
+  onDuplicate,
+  onArchive,
+  onDelete
+}: {
+  template: FormTemplate;
+  actionBusy: string | null;
+  onEdit: (t: FormTemplate) => void;
+  onDuplicate: (t: FormTemplate) => void;
+  onArchive: (t: FormTemplate) => void;
+  onDelete: (t: FormTemplate) => void;
+}) {
+  const auth = formTemplateAuthority(template);
+  const isSystem = Boolean(template.isSystemTemplate);
+  const busy = actionBusy === template.id;
+  const isArchived = template.status === "ARCHIVED";
+  const systemTip = "System templates are read-only. Duplicate to make a custom copy you can edit.";
+
+  return (
+    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
+      <button
+        type="button"
+        className="s7-btn s7-btn--ghost s7-btn--sm"
+        onClick={() => onEdit(template)}
+        disabled={busy || !auth.canEdit}
+        title={isSystem ? systemTip : "Edit fields (creates a new version)"}
+        style={{ minHeight: 32 }}
+      >
+        Edit
+      </button>
+      <button
+        type="button"
+        className="s7-btn s7-btn--ghost s7-btn--sm"
+        onClick={() => onDuplicate(template)}
+        disabled={busy}
+        title="Copy this template as a new custom draft"
+        style={{ minHeight: 32 }}
+      >
+        {busy ? "…" : "Duplicate"}
+      </button>
+      <button
+        type="button"
+        className="s7-btn s7-btn--ghost s7-btn--sm"
+        onClick={() => onArchive(template)}
+        disabled={busy || (isArchived ? !auth.canUnarchive : !auth.canArchive)}
+        title={isSystem ? systemTip : isArchived ? "Restore this template" : "Hide from fillers (keeps history)"}
+        style={{ minHeight: 32 }}
+      >
+        {isArchived ? "Unarchive" : "Archive"}
+      </button>
+      <button
+        type="button"
+        className="s7-btn s7-btn--ghost s7-btn--sm"
+        onClick={() => onDelete(template)}
+        disabled={busy || !auth.canDelete}
+        title={
+          isSystem
+            ? systemTip
+            : "Permanently delete (only when no submissions exist — otherwise archive)"
+        }
+        style={{ minHeight: 32, color: isSystem ? undefined : "#B91C1C" }}
+      >
+        Delete
+      </button>
     </div>
   );
 }

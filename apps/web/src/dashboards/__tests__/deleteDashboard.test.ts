@@ -11,7 +11,7 @@ describe("canDeleteDashboard", () => {
     expect(canDeleteDashboard({ isSystem: false })).toBe(true);
   });
 
-  it("protects system dashboards — same rule as the rename guard", () => {
+  it("protects system dashboards — delete stays blocked regardless of role", () => {
     expect(canDeleteDashboard({ isSystem: true })).toBe(false);
   });
 });

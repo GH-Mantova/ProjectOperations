@@ -45,12 +45,13 @@ export class UserDashboardsController {
   @Patch(":id")
   @ApiOperation({ summary: "Update dashboard name and/or config (widget order, visibility, filters, periods)" })
   @ApiResponse({ status: 200, description: "Update dashboard name and/or config (widget order, visibility, filters, periods)." })
+  @ApiResponse({ status: 403, description: "Renaming a system dashboard requires platform.admin." })
   update(
-    @CurrentUser() actor: { sub: string },
+    @CurrentUser() actor: { sub: string; permissions?: string[]; isSuperUser?: boolean },
     @Param("id") id: string,
     @Body() dto: UpdateUserDashboardDto
   ) {
-    return this.service.update(actor.sub, id, {
+    return this.service.update(actor, id, {
       name: dto.name,
       config: dto.config as never
     });

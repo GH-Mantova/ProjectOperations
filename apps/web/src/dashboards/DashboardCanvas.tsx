@@ -18,6 +18,7 @@ import {
   PERIOD_LABELS,
   PERIOD_ORDER,
   canDeleteDashboard,
+  canRenameDashboard,
   resolveSpan,
   type UserDashboard,
   type UserDashboardConfig,
@@ -58,7 +59,8 @@ export function DashboardCanvas({
   title,
   actions
 }: Props) {
-  const { authFetch } = useAuth();
+  const { authFetch, user } = useAuth();
+  const isAdmin = Boolean(user?.isSuperUser || user?.permissions.includes("platform.admin"));
   const { invalidate, remove } = useUserDashboardsActions();
   const navigate = useNavigate();
   const [dashboards, setDashboards] = useState<UserDashboard[] | null>(null);
@@ -327,7 +329,7 @@ export function DashboardCanvas({
         <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
           <div>
             <p className="s7-type-label">Dashboard</p>
-            {active ? (
+            {active && canRenameDashboard(active, { isAdmin }) ? (
               <InlineDashboardName
                 name={active.name}
                 onSave={(next) => {
@@ -336,6 +338,14 @@ export function DashboardCanvas({
                   }
                 }}
               />
+            ) : active ? (
+              <h1
+                className="s7-type-page-title"
+                style={{ margin: "4px 0 0" }}
+                title="Only admins can rename system dashboards"
+              >
+                {active.name}
+              </h1>
             ) : (
               <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>
                 {title ?? "Dashboard"}
@@ -471,6 +481,7 @@ export function DashboardCanvas({
           open={customiseOpen}
           onClose={() => setCustomiseOpen(false)}
           dashboard={active}
+          canRename={canRenameDashboard(active, { isAdmin })}
           saving={saving}
           onSave={saveFromPanel}
         />
@@ -683,6 +694,7 @@ function SortableWidget({
         <WidgetSettingsPopover
           meta={meta}
           entry={entry}
+          anchor={slotRef.current}
           onApply={onApplySettings}
           onClose={onCloseSettings}
         />

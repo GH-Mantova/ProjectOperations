@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { widgetsByCategory } from "./widgetRegistry";
-import type { UserDashboard, UserDashboardConfig, WidgetPeriod } from "./types";
+import { copySourceDashboards, type UserDashboard, type UserDashboardConfig, type WidgetPeriod } from "./types";
 import { useUserDashboardsActions } from "./userDashboards";
 
 type Props = {
@@ -19,9 +19,10 @@ export function NewDashboardModal({ slug, existingDashboards, onClose, onCreated
   const navigate = useNavigate();
   const { invalidate } = useUserDashboardsActions();
   const groups = useMemo(() => widgetsByCategory(), []);
+  const copySources = useMemo(() => copySourceDashboards(existingDashboards), [existingDashboards]);
   const [name, setName] = useState("New dashboard");
   const [mode, setMode] = useState<StartMode>("blank");
-  const [copyFromId, setCopyFromId] = useState<string>(existingDashboards[0]?.id ?? "");
+  const [copyFromId, setCopyFromId] = useState<string>(copySources[0]?.id ?? "");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,8 +61,10 @@ export function NewDashboardModal({ slug, existingDashboards, onClose, onCreated
     try {
       let config: UserDashboardConfig;
       if (mode === "copy") {
-        const source = existingDashboards.find((d) => d.id === copyFromId);
+        const source = copySources.find((d) => d.id === copyFromId);
         if (!source) throw new Error("Source dashboard not found.");
+        // Deep-clone the source config — the copy is always a fully editable
+        // custom dashboard (the API creates with isSystem: false).
         config = JSON.parse(JSON.stringify(source.config));
       } else {
         const widgetTypes = Array.from(selected);
@@ -120,19 +123,24 @@ export function NewDashboardModal({ slug, existingDashboards, onClose, onCreated
               Start blank
             </label>
             <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <input type="radio" checked={mode === "copy"} onChange={() => setMode("copy")} disabled={existingDashboards.length === 0} />
+              <input type="radio" checked={mode === "copy"} onChange={() => setMode("copy")} disabled={copySources.length === 0} />
               Copy from
               <select
                 className="s7-input s7-input--sm"
                 value={copyFromId}
                 onChange={(e) => setCopyFromId(e.target.value)}
-                disabled={mode !== "copy"}
+                disabled={mode !== "copy" || copySources.length === 0}
               >
-                {existingDashboards.map((d) => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
+                {copySources.map((d) => (
+                  <option key={d.id} value={d.id}>{d.isSystem ? `${d.name} (system)` : d.name}</option>
                 ))}
               </select>
             </label>
+            {copySources.length === 0 ? (
+              <p style={{ margin: "4px 0 0 24px", fontSize: 12, color: "var(--text-muted)" }}>
+                No dashboards available to copy yet.
+              </p>
+            ) : null}
           </fieldset>
 
           {mode === "blank" ? (

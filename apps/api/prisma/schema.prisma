@@ -115,6 +115,13 @@ model User {
   personaSettings            UserPersonaSettings[]
   pilotFeedback              PilotFeedback[]             @relation("PilotFeedbackUser")
 
+  // Comms + Approvals Phase 2 slice 1 — record-anchored internal messages
+  // and approval-decision audit. Overrule paths resolve through the
+  // managerId chain above and the authority seam; these are the storage side.
+  sentInternalMessages       InternalMessage[]           @relation("InternalMessageSender")
+  receivedInternalMessages   InternalMessage[]           @relation("InternalMessageRecipient")
+  approvalDecisions          ApprovalDecision[]          @relation("ApprovalDecidedBy")
+
   // §5A.1 PR 9 — per-user encrypted AI provider keys (BYOK). Storage format
   // is "<iv-base64>:<authTag-base64>:<ciphertext-base64>" produced by
   // KeyEncryptionService (AES-256-GCM, BYOK_ENCRYPTION_KEY master). Presence
@@ -358,6 +365,64 @@ model Notification {
 
   @@index([userId, status])
   @@map("notifications")
+}
+
+// ─── Comms + Approvals Phase 2 slice 1 ──────────────────────────────────
+// Record-anchored internal message. `entityType`/`entityId` name the
+// business record the message is about (e.g. Tender/tender-123). Reads are
+// gated on the caller (either sender or recipient); writes on ownership
+// (sender/recipient can mark read for their own copy).
+model InternalMessage {
+  id          String    @id @default(cuid())
+  entityType  String    @map("entity_type")
+  entityId    String    @map("entity_id")
+  senderId    String    @map("sender_id")
+  recipientId String    @map("recipient_id")
+  subject     String?
+  body        String
+  status      String    @default("UNREAD")
+  readAt      DateTime? @map("read_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  sender    User @relation("InternalMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient User @relation("InternalMessageRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, status])
+  @@index([entityType, entityId])
+  @@map("internal_messages")
+}
+
+// Immutable audit of an approval decision. `action` is the authority seam
+// action key (matches AuthorityService.check). Overrules point at the
+// prior decision via `overrulesId`; the overruler must be senior in the
+// `managerId` chain of the prior decider (enforced by ApprovalsService).
+enum ApprovalDecisionKind {
+  APPROVED
+  REJECTED
+  OVERRULED
+}
+
+model ApprovalDecision {
+  id              String               @id @default(cuid())
+  entityType      String               @map("entity_type")
+  entityId        String               @map("entity_id")
+  action          String
+  amount          Decimal?             @db.Decimal(14, 2)
+  decision        ApprovalDecisionKind
+  reason          String?
+  decidedById     String               @map("decided_by_id")
+  overrulesId     String?              @unique @map("overrules_id")
+  authorityRuleId String?              @map("authority_rule_id")
+  createdAt       DateTime             @default(now()) @map("created_at")
+
+  decidedBy User              @relation("ApprovalDecidedBy", fields: [decidedById], references: [id], onDelete: Cascade)
+  overrules ApprovalDecision? @relation("ApprovalOverrules", fields: [overrulesId], references: [id])
+  overruledBy ApprovalDecision? @relation("ApprovalOverrules")
+
+  @@index([entityType, entityId])
+  @@index([decidedById])
+  @@index([action])
+  @@map("approval_decisions")
 }
 
 model SearchEntry {

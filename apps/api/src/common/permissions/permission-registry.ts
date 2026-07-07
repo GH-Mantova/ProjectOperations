@@ -70,5 +70,12 @@ export const permissionRegistry = [
   // authoring; `lists.manage` gates ListBinding CRUD (whole-list delete is
   // separately restricted — TODO: route through the authority seam once merged).
   { code: "rates.manage", module: "rates", description: "Create and edit flexible rate tables (RateTable / RateColumn / RateRow)" },
-  { code: "lists.manage", module: "lists", description: "Manage list bindings and list-consumer wiring" }
+  { code: "lists.manage", module: "lists", description: "Manage list bindings and list-consumer wiring" },
+  // Comms + Approvals Phase 2 slice 1 (PR ${TBD}). Decide/overrule route
+  // through the AuthorityService seam + managerId reporting chain.
+  { code: "approvals.view", module: "approvals", description: "View approval-decision history for a record" },
+  { code: "approvals.decide", module: "approvals", description: "Record an approval decision (approve or reject) on a record" },
+  { code: "approvals.overrule", module: "approvals", description: "Overrule a prior approval decision as a senior in the reporting chain" },
+  { code: "internal-messages.view", module: "approvals", description: "View internal record-anchored messages you sent or received" },
+  { code: "internal-messages.send", module: "approvals", description: "Send an internal record-anchored message to another user" }
 ] as const;

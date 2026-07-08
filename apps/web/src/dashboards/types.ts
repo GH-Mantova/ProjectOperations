@@ -115,7 +115,7 @@ export type AggregationOp = "Sum" | "Count" | "Average" | "Max" | "Min";
 
 export type ConfigFieldOption = { value: string; label: string };
 
-export type ConfigFieldType = "select" | "multiselect" | "period" | "number";
+export type ConfigFieldType = "select" | "multiselect" | "period" | "number" | "text" | "textarea";
 
 export type ConfigField = {
   key: string;
@@ -127,6 +127,8 @@ export type ConfigField = {
   min?: number;
   max?: number;
   step?: number;
+  /** Optional placeholder for text/textarea inputs. */
+  placeholder?: string;
 };
 
 export type WidgetMeta = {

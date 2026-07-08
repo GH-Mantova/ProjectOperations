@@ -65,6 +65,25 @@ function buildService(extraPrisma: Record<string, unknown> = {}) {
       create: jest.fn().mockResolvedValue(tenderClientRow()),
       delete: jest.fn().mockResolvedValue(tenderClientRow())
     },
+    // Mocked so tests can prove the wizard's per-client attach/detach path
+    // does NOT deleteMany child collections the way `tendering.service.ts`
+    // updateTender does when it processes a PATCH /tenders/:id
+    // {tenderClients} payload.
+    tenderPricingSnapshot: {
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 })
+    },
+    tenderNote: {
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 })
+    },
+    tenderClarification: {
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 })
+    },
+    tenderFollowUp: {
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 })
+    },
+    tenderOutcome: {
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 })
+    },
     $transaction: jest.fn().mockImplementation((input: unknown) => {
       if (typeof input === "function") {
         return (input as (tx: unknown) => Promise<unknown>)(prisma);
@@ -131,6 +150,40 @@ describe("TenderClientsService.addClient", () => {
     );
     expect((prisma.tenderClient as { create: jest.Mock }).create).not.toHaveBeenCalled();
   });
+
+  it("passes relationshipType through to the create call when provided (wizard PRIMARY/COMPETITOR)", async () => {
+    const { service, prisma } = buildService();
+    await service.addClient("tender-1", "client-1", "PRIMARY");
+    expect((prisma.tenderClient as { create: jest.Mock }).create).toHaveBeenCalledWith({
+      data: { tenderId: "tender-1", clientId: "client-1", relationshipType: "PRIMARY" }
+    });
+    (prisma.tenderClient as { create: jest.Mock }).create.mockClear();
+    await service.addClient("tender-1", "client-2", "COMPETITOR");
+    expect((prisma.tenderClient as { create: jest.Mock }).create).toHaveBeenCalledWith({
+      data: { tenderId: "tender-1", clientId: "client-2", relationshipType: "COMPETITOR" }
+    });
+  });
+
+  it("does not deleteMany any tender child collection (destructive-replace path is gone)", async () => {
+    const { service, prisma } = buildService();
+    await service.addClient("tender-1", "client-1");
+    // These deleteMany calls are what tendering.service.ts `updateTender` runs
+    // on every PATCH /tenders/:id {tenderClients} payload. The per-client
+    // attach endpoint must never touch them.
+    expect(
+      (prisma.tenderPricingSnapshot as { deleteMany: jest.Mock }).deleteMany
+    ).not.toHaveBeenCalled();
+    expect((prisma.tenderNote as { deleteMany: jest.Mock }).deleteMany).not.toHaveBeenCalled();
+    expect(
+      (prisma.tenderClarification as { deleteMany: jest.Mock }).deleteMany
+    ).not.toHaveBeenCalled();
+    expect(
+      (prisma.tenderFollowUp as { deleteMany: jest.Mock }).deleteMany
+    ).not.toHaveBeenCalled();
+    expect(
+      (prisma.tenderOutcome as { deleteMany: jest.Mock }).deleteMany
+    ).not.toHaveBeenCalled();
+  });
 });
 
 // ─── removeClient ──────────────────────────────────────────────────────────
@@ -194,6 +247,28 @@ describe("TenderClientsService.removeClient", () => {
     await expect(service.removeClient("missing", "client-1")).rejects.toBeInstanceOf(
       NotFoundException
     );
+  });
+
+  it("does not deleteMany any tender child collection (destructive-replace path is gone)", async () => {
+    const { service, prisma } = buildService();
+    (prisma.tenderClient as { findFirst: jest.Mock }).findFirst.mockResolvedValueOnce(
+      tenderClientRow()
+    );
+    (prisma.tenderClient as { count: jest.Mock }).count.mockResolvedValueOnce(2);
+    await service.removeClient("tender-1", "client-1");
+    expect(
+      (prisma.tenderPricingSnapshot as { deleteMany: jest.Mock }).deleteMany
+    ).not.toHaveBeenCalled();
+    expect((prisma.tenderNote as { deleteMany: jest.Mock }).deleteMany).not.toHaveBeenCalled();
+    expect(
+      (prisma.tenderClarification as { deleteMany: jest.Mock }).deleteMany
+    ).not.toHaveBeenCalled();
+    expect(
+      (prisma.tenderFollowUp as { deleteMany: jest.Mock }).deleteMany
+    ).not.toHaveBeenCalled();
+    expect(
+      (prisma.tenderOutcome as { deleteMany: jest.Mock }).deleteMany
+    ).not.toHaveBeenCalled();
   });
 });
 

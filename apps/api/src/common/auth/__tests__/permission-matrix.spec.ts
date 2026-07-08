@@ -104,6 +104,8 @@ const ROWS: MatrixRow[] = [
   { group: "projects", method: "get", path: "/projects/next-number", permission: "projects.view", viewer: 403, admin: true },
   { group: "long-tail", method: "patch", path: `/tenders/${MISSING}/award`, permission: "tenderconversion.manage", body: {}, viewer: 403 },
   { group: "long-tail", method: "get", path: "/admin/settings/notifications", permission: "platform.admin", viewer: 403 },
+  { group: "long-tail", method: "get", path: "/admin/client-versions", permission: "platform.admin", viewer: 403 },
+  { group: "long-tail", method: "post", path: "/admin/client-versions/request-update", permission: "platform.admin", body: { all: true }, viewer: 403 },
   { group: "long-tail", method: "post", path: "/documents", permission: "documents.manage", body: {}, viewer: 403 },
   { group: "long-tail", method: "post", path: "/dashboards", permission: "dashboards.manage", body: {}, viewer: 403 },
   { group: "long-tail", method: "post", path: "/notifications", permission: "notifications.manage", body: {}, viewer: 403 },

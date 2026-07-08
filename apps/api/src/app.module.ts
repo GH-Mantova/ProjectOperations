@@ -57,6 +57,7 @@ import { RatesModule } from "./modules/rates/rates.module";
 import { ListBindingsModule } from "./modules/list-bindings/list-bindings.module";
 import { CommsApprovalsModule } from "./modules/comms-approvals/comms-approvals.module";
 import { ProcurementModule } from "./modules/procurement/procurement.module";
+import { ClientVersionsModule } from "./modules/client-versions/client-versions.module";
 
 @Module({
   imports: [
@@ -120,7 +121,8 @@ import { ProcurementModule } from "./modules/procurement/procurement.module";
     RatesModule,
     ListBindingsModule,
     CommsApprovalsModule,
-    ProcurementModule
+    ProcurementModule,
+    ClientVersionsModule
   ]
 })
 export class AppModule {}

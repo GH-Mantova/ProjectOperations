@@ -8,8 +8,16 @@ import {
 } from "react";
 
 import { readApiErrorMessage } from "../lib/api-errors";
+import { updatePromptStore } from "../pwa/updatePromptStore";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000/api/v1";
+const CLIENT_VERSION = (import.meta.env.VITE_BUILD_SHA as string | undefined) ?? "dev";
+
+function notifyIfUpdateRequested(response: Response): void {
+  if (response.headers.get("X-Update-Requested") === "1") {
+    updatePromptStore.signalNeedRefresh();
+  }
+}
 
 type SafeUser = {
   id: string;
@@ -134,7 +142,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
         headers: {
           ...(isFormData ? {} : { "Content-Type": "application/json" }),
           ...(init.headers ?? {}),
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          "X-Client-Version": CLIENT_VERSION
         }
       });
 
@@ -162,6 +171,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       response = await request(refreshed.accessToken);
     }
 
+    notifyIfUpdateRequested(response);
     return response;
   };
 

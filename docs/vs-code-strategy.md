@@ -5,7 +5,7 @@
 > were merged here on 2026-06-19 — Part A is the operational cockpit guide (lead doc), Part B
 > retains the full research detail for provenance.
 >
-> **Companion:** `docs/lessons-learned/incident-ledger.md` — the knowledge source the operational
+> **Companion:** `sot/05-decisions-and-lessons.md` — the knowledge source the operational
 > strategy is built on. Read it first.
 
 **Stack reminder:** NestJS API + React/Vite web + PostgreSQL + Prisma, pnpm monorepo,
@@ -104,9 +104,9 @@ Three layers, least to most effort:
 
 ## A4. Knowledge-source maintenance (anti-double-handling)
 
-- `docs/lessons-learned/incident-ledger.md` is the single ledger. Rule: symptom looks familiar → ledger first, diagnosis second.
+- `sot/05-decisions-and-lessons.md` is the single ledger. Rule: symptom looks familiar → ledger first, diagnosis second.
 - **Append discipline:** every new incident gets an LL entry when closed (what/cause/fix/guard). Cowork maintains it; Marco can demand an entry for anything that cost more than 15 minutes.
-- **Make agents read it (pr-165):** add one line to `CLAUDE.md` — "Before diagnosing any operational/CI/git issue, check `docs/lessons-learned/incident-ledger.md` for a matching entry." That single pointer puts the ledger in every agent session repo-wide.
+- **Make agents read it (pr-165):** add one line to `CLAUDE.md` — "Before diagnosing any operational/CI/git issue, check `sot/05-decisions-and-lessons.md` for a matching entry." That single pointer puts the ledger in every agent session repo-wide.
 - Cowork's own memory mirrors the high-frequency entries (migration ordering, smoke drift, CI-from-logs, HEAD corruption) — the ledger is the authoritative superset.
 
 ## A5. Action list (chronological)

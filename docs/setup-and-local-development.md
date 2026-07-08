@@ -26,11 +26,11 @@ This repository is no longer only shell-level scaffolding. It contains:
 
 For the latest Tendering-specific runtime and handover details, read:
 
-- [continuation-log.md](continuation-log.md)
+- [continuation-log.md](../sot/03-progress-log.md)
 
 For broad module inventory and current implementation coverage, see:
 
-- [module-build-log.md](module-build-log.md)
+- [module-build-log.md](../sot/03-progress-log.md)
 
 ## Prerequisites
 
@@ -47,7 +47,7 @@ Use the local workspace only:
 
 Do not actively develop from the SharePoint-synced path. If SharePoint is used for sync/storage, follow:
 
-- [sharepoint-local-workflow.md](sharepoint-local-workflow.md)
+- [sharepoint-local-workflow.md](../sot/01-charter-and-architecture.md)
 
 ## First-time setup
 
@@ -172,7 +172,7 @@ pnpm test:tendering:e2e:reuse
 
 If SharePoint is used for synchronization/storage across machines, use the local-copy workflow:
 
-- [sharepoint-local-workflow.md](sharepoint-local-workflow.md)
+- [sharepoint-local-workflow.md](../sot/01-charter-and-architecture.md)
 
 ---
 

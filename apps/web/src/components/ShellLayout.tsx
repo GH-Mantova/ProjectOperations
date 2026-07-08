@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { buildInfo } from "../buildInfo";
 import { NotificationsDropdown } from "./NotificationsDropdown";
 import { CommandPalette } from "./CommandPalette";
 import { FeedbackButton } from "./FeedbackButton";
@@ -535,6 +536,19 @@ export function ShellLayout() {
               </span>
               <span className="shell__sidebar-user-role">{primaryRole}</span>
             </div>
+          </div>
+          <div
+            className="shell__sidebar-build"
+            title={buildInfo.builtAt ? `Built ${buildInfo.builtAt}` : undefined}
+            style={{
+              fontSize: 11,
+              opacity: 0.55,
+              padding: "0 4px 6px",
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+              letterSpacing: 0.2
+            }}
+          >
+            build {buildInfo.shortSha}
           </div>
           <button type="button" className="shell__sidebar-logout" onClick={logout} aria-label="Logout">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

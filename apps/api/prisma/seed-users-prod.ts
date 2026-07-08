@@ -72,7 +72,7 @@ export async function seedProdUsers(prisma: PrismaClient): Promise<void> {
       firstName: "Marco",
       lastName: "Mantovaninni",
       roleIds: [adminRole.id, whsOfficerRole.id],
-      isSuperUser: false,
+      isSuperUser: true,
       profile: { id: "wp-user-supervisor-001", role: "WHS & Commercial Compliance", phone: "0487 373 415" }
     }
   ];

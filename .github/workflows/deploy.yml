@@ -51,6 +51,15 @@ jobs:
       HAS_PROD_DATABASE_URL: ${{ secrets.PROD_DATABASE_URL != '' }}
     steps:
       - uses: actions/checkout@v4.2.2
+      # Short SHA is used as the build identity across surfaces:
+      #   * baked into the web bundle via VITE_BUILD_SHA (buildInfo.ts,
+      #     version.json, X-Client-Version header)
+      #   * set as GIT_SHA on the API App Service so /health.commit and
+      #     /version.commit report the real running commit instead of
+      #     "unknown".
+      - name: Compute build SHA
+        id: sha
+        run: echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
       - uses: pnpm/action-setup@v4.0.0
       - uses: actions/setup-node@v4.1.0
         with: { node-version: '22', cache: 'pnpm' }
@@ -79,6 +88,8 @@ jobs:
           VITE_SSO_ENABLED: 'true'
           VITE_ENTRA_CLIENT_ID: ${{ secrets.PROD_ENTRA_CLIENT_ID }}
           VITE_ENTRA_TENANT_ID: ${{ secrets.PROD_ENTRA_TENANT_ID }}
+          # Baked into buildInfo.ts + version.json + X-Client-Version.
+          VITE_BUILD_SHA: ${{ steps.sha.outputs.short }}
       # apps/api/node_modules are pnpm workspace symlinks into the repo-root
       # store — copying apps/api alone ships broken links and the app
       # crash-loops with MODULE_NOT_FOUND (G11). Build a self-contained
@@ -92,6 +103,13 @@ jobs:
       # against the bundled schema; output lands in deploy-api/node_modules.
       - name: Generate Prisma client into bundle
         run: pnpm --filter @project-ops/api exec prisma generate --schema ../../deploy-api/prisma/schema.prisma
+      # App Service Node reads .env at app root (ConfigModule.forRoot in
+      # apps/api/src/app.module.ts). Writing GIT_SHA here is the least-risky
+      # way to advertise the running commit without adding az-cli/OIDC to
+      # this workflow. All other secrets (DATABASE_URL, JWT_*, etc.) still
+      # come from portal-managed application settings.
+      - name: Stamp API bundle with GIT_SHA
+        run: echo "GIT_SHA=${{ steps.sha.outputs.short }}" > deploy-api/.env
       - name: Smoke-probe bundle before deploy
         run: |
           node -e "require('./deploy-api/node_modules/@nestjs/config/package.json'); console.log('bundle deps OK')"

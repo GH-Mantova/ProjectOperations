@@ -18,7 +18,11 @@ $ErrorActionPreference = "Stop"
 # --- Configuration ---
 # Override these via env vars in the Task Scheduler action if you want a
 # different cutoff or behaviour.
-$RepoRoot   = "C:\ProjectOperations2"
+if ($env:PR_WATCHER_REPO_ROOT) {
+    $RepoRoot = (Resolve-Path $env:PR_WATCHER_REPO_ROOT).Path
+} else {
+    $RepoRoot = "C:\ProjectOperations2"
+}
 $StopAt     = if ($env:PR_WATCHER_STOP_AT) { $env:PR_WATCHER_STOP_AT } else { "06:00" }
 $AutoMerge  = if ($env:PR_WATCHER_AUTO_MERGE) { $env:PR_WATCHER_AUTO_MERGE } else { "false" }
 $MaxTurns   = if ($env:PR_WATCHER_MAX_TURNS) { $env:PR_WATCHER_MAX_TURNS } else { "120" }

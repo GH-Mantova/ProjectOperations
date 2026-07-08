@@ -6,9 +6,9 @@ conventions, git/PR discipline, business logic (estimating / Cutrite schedule / 
 module registry, and integration detail. Read this before writing any code.
 
 > **Merged from** (sot-consolidation, 2026-07-08): primary `project_instructions.md` §1–§16,
-> plus the conventions of root `CLAUDE.md` and `docs/architecture-overview.md`,
-> `docs/sharepoint-local-workflow.md`, `docs/sso-entra-setup.md`, `docs/dev-to-prod-workflow.md`
-> (folded into the appendix below §16). The old chat-routing header and §17 (support-chat
+> plus the conventions of root `CLAUDE.md` and `docs/architecture-overview.md` (folded into the
+> appendix below §16). The SSO / SharePoint / dev-to-prod **runbooks stay operational under
+> `docs/`** (not SoT) and are linked from the appendix, not embedded. The old chat-routing header and §17 (support-chat
 > roles) / §18 (main-chat operating rules) now live in **`sot/README.md`**; §19 (Cowork local
 > diagnostic agent) now lives in **`docs/diagnostics/README.md`**. Full `.env` reference with
 > descriptions remains authoritative in **`.env.example`**.
@@ -35,7 +35,7 @@ module registry, and integration detail. Read this before writing any code.
 | §14 | Integrations Detail | SharePoint, Xero, MYOB specifics |
 | §15 | Autonomous PR Chain | progress-log format, bypass actor, audit schedule |
 | §16 | Planned Integrations | Not yet built |
-| — Appendix | Conventions & Architecture | Workspace/aliases, commands, TypeScript rules, code conventions, git/PR workflow, Prisma/seed/pnpm discipline, architecture overview, V2 architecture delta, SharePoint+local workflow, M365 SSO/Entra setup, dev-to-prod workflow |
+| — Appendix | Conventions & Architecture | Workspace/aliases, commands, TypeScript rules, code conventions, git/PR workflow, Prisma/seed/pnpm discipline, architecture overview, V2 architecture delta. *(SSO / SharePoint / dev-to-prod runbooks live under `docs/` — linked at the end, not embedded.)* |
 
 **Quick navigation for common tasks:**
 - "What modules are live?" → §13
@@ -1277,9 +1277,8 @@ Type CONTINUE or paste fix instructions to resume.
      Merged below from:
        - CLAUDE.md            (code/git/prisma/seed/pnpm/TS conventions only — file stays as a pointer stub)
        - docs/architecture-overview.md
-       - docs/sharepoint-local-workflow.md
-       - docs/sso-entra-setup.md
-       - docs/dev-to-prod-workflow.md
+     (SSO / SharePoint / dev-to-prod runbooks are NOT merged — they stay under docs/ and are
+      linked from the "Integration & environment runbooks" section at the end of this file.)
      ============================================================ -->
 
 ## Workspace Structure & Path Aliases
@@ -1528,7 +1527,7 @@ The implementation sequence follows the master build pack:
   planning, maintenance visibility, forms, documents, dashboards, and closeout/archive.
 - Tendering also has local browser verification coverage via Playwright. In the managed
   Windows environment, the most reliable browser-validation path is the manual
-  reuse-runtime flow (see the SharePoint + Local Development Workflow section below).
+  reuse-runtime flow (see [`docs/sharepoint-local-workflow.md`](../docs/sharepoint-local-workflow.md)).
 
 ---
 
@@ -1680,295 +1679,13 @@ One migration in the v2 cycle:
 
 ---
 
-## SharePoint + Local Development Workflow
+## Integration & environment runbooks (operational — under `docs/`, not SoT)
 
-Use SharePoint as the synced storage location, but run the app from a normal local
-folder on each computer.
+Step-by-step setup / operational runbooks live under `docs/` — per `sot/README.md`'s rule that
+runbooks are **not** source of truth (only durable charter facts belong here). The required
+env-var **names** for these integrations stay in §7 and the V2 Architecture Delta above (SSO /
+SharePoint-live keys); only the how-to prose moved out.
 
-**Why.** The workspace runs into Windows `esbuild` / `vite` `spawn EPERM` errors when
-build tools run directly inside the SharePoint-synced path. Keeping the project on
-SharePoint is fine; *running the build* from the SharePoint-synced folder is the part
-that causes trouble.
-
-### Recommended pattern
-1. Keep the master copy in the SharePoint-synced folder.
-2. Create a local working folder on each machine, e.g. `C:\Dev\ProjectOperations`.
-3. Copy the project from SharePoint to the local working folder before development.
-4. Run Docker, Node, Prisma, and Vite from the local working folder only.
-5. Sync source changes back to SharePoint when finished.
-
-### Sync scripts
-```powershell
-# SharePoint → local
-.\scripts\sync-from-sharepoint.ps1 `
-  -SharePointPath "C:\Users\marco\Initial Services Pty Ltd\Initial Services Office - Documents\4. Reports\App Dev\Project Operations" `
-  -LocalPath "C:\Dev\ProjectOperations"
-
-# local → SharePoint
-.\scripts\sync-to-sharepoint.ps1 `
-  -LocalPath "C:\Dev\ProjectOperations" `
-  -SharePointPath "C:\Users\marco\Initial Services Pty Ltd\Initial Services Office - Documents\4. Reports\App Dev\Project Operations"
-```
-
-The sync scripts intentionally exclude runtime/build artifacts: `node_modules`, `dist`,
-`build`, `.vite`, `.next`, logs, and local-only env files. This keeps SharePoint cleaner
-and reduces sync conflicts.
-
-### Daily workflow
-1. Sync from SharePoint to local.
-2. Open the local folder in your terminal/editor.
-3. Run:
-   ```powershell
-   docker compose up -d postgres
-   pnpm install
-   pnpm prisma:generate
-   pnpm prisma:migrate
-   pnpm dev
-   ```
-4. Work normally from the local folder.
-5. Sync local changes back to SharePoint.
-
-> If switching between multiple computers, **always sync from SharePoint first** before
-> starting work on a machine so you don't overwrite newer changes.
-
-### Managed-Windows validation note
-This environment has recurring `spawn EPERM` issues. For reliable verification, prefer
-the local safe validation path over generic frontend tooling:
-```powershell
-pnpm --filter @project-ops/api build
-pnpm test:api:serial
-pnpm --filter @project-ops/web exec -- tsc -p . --noEmit
-pnpm test:web:logic
-```
-For Tendering browser verification, prefer:
-```powershell
-pnpm dev:api:e2e
-pnpm dev:web:e2e
-pnpm test:tendering:e2e:reuse
-```
-
-### Operational SharePoint note
-SharePoint currently serves two purposes around this project:
-1. Sync/storage for the source tree when using the local-workflow pattern above.
-2. Future operational environment support for the live app, where the Intranet site can
-   act as the launch surface and the Initialservices site as the document/backups
-   repository.
-
-The app-side SharePoint integration is still mock-backed, so this workflow is
-specifically about source/workspace sync rather than full live document integration
-inside the app.
-
----
-
-## Microsoft 365 SSO / Entra Setup
-
-How Microsoft 365 single sign-on is wired for the ERP, and how to add users
-(set up 2026-06-15).
-
-### How auth works here
-- **Web (React SPA):** MSAL signs the user in (`loginPopup`, scopes
-  `openid profile email User.Read`) and uses the returned **ID token**.
-  `redirectUri = window.location.origin`.
-- **API (NestJS):** validates that ID token — issuer
-  `https://login.microsoftonline.com/{tenant}/v2.0`, audience = `ENTRA_CLIENT_ID`.
-- Both sides use the **same app registration / client ID**. The API consumes the ID
-  token directly, so there is **one** app registration (no exposed API scope, no second
-  app).
-
-### The app registration
-- **Name:** `projectops-erp-sso` (Microsoft Entra admin center → App registrations).
-- **Account types:** single tenant — *Accounts in this organizational directory only
-  (INITIAL SERVICES)*. This alone restricts sign-in to `@initialservices.net` accounts.
-- **Platform:** Single-page application (SPA), with redirect URIs:
-  - `https://<prod-web-origin>` — production Static Web App origin, **no trailing slash**
-    (MSAL sends the bare origin; a trailing-slash-only entry causes `AADSTS50011`).
-  - `https://<prod-web-origin>/` — kept as belt-and-braces.
-  - `http://localhost:5173` — local dev.
-  - Confirm the exact prod origin in Azure Portal → Static Web App → Overview → URL.
-- **API permissions:** Microsoft Graph → `User.Read` (Delegated) + **admin consent
-  granted** for Initial Services.
-- **Token configuration:** optional ID-token claims **`email`** and **`upn`** added (the
-  API matches users by email).
-- Do **not** enable implicit/hybrid flows — SPA uses auth-code + PKCE.
-
-### Where the IDs are wired (3 places, same two GUIDs)
-From the app's Overview: **Application (client) ID** and **Directory (tenant) ID**.
-1. **GitHub repo secrets** (baked into the web bundle by the deploy):
-   `PROD_ENTRA_CLIENT_ID` = Application (client) ID, `PROD_ENTRA_TENANT_ID` = Directory
-   (tenant) ID. `gh secret set <NAME>` from the repo dir.
-2. **Production API** (Azure Portal → App Service `operations-api` → Settings →
-   Environment variables): `ENTRA_CLIENT_ID`, `ENTRA_TENANT_ID`, and `SSO_ENABLED = true`.
-   (Issuer/JWKS auto-derive from the tenant.)
-3. **Web build vars** `VITE_SSO_ENABLED` / `VITE_ENTRA_CLIENT_ID` / `VITE_ENTRA_TENANT_ID`
-   are injected from the GitHub secrets during `build:azure` (deploy.yml, enabled by
-   PR #384).
-
-### Enterprise application — assignment
-Registering the app auto-creates an Enterprise application of the same name.
-Entra → Enterprise applications → `projectops-erp-sso` → Properties → **Assignment
-required?**
-- **No:** any tenant account can authenticate; ProjectOps still gates access by user
-  record.
-- **Yes:** users must also be assigned (Users and groups → Add) — tighter. If Yes,
-  assigning a new person is an extra step.
-
-### Who can actually log in
-A person needs **both**:
-1. An Initial Services Microsoft account (single-tenant app), **and**
-2. A **user record in ProjectOps** (Admin → User Access) whose email matches their
-   Microsoft UPN.
-3. (If assignment required = Yes) also assigned to the Enterprise app.
-
-An IS email alone is **not** enough — no user record means they authenticate with
-Microsoft but the app bounces them. Pilot is provisioned for Marco, Sean, Raj (pr-173).
-
-### Login experience
-User opens the app → **Sign in with Microsoft** → if already signed into their IS
-Microsoft account in that browser, usually a one-click account pick (no password) → app
-matches their email to their record and routes them to their role's pages. No separate
-ProjectOps password. (Optional enhancement pr-203 adds silent auto-login so
-already-signed-in staff skip even that click.)
-
-### Adding a new user later
-Not an Entra change (they're already in the tenant):
-1. Admin → User Access → create their user record, set role, email = their Microsoft UPN.
-2. If assignment required = Yes: also assign them in Entra → Enterprise applications →
-   `projectops-erp-sso` → Users and groups.
-No code, no redeploy.
-
-### Troubleshooting
-- **`AADSTS50011` redirect mismatch:** the registered SPA redirect URI doesn't exactly
-  match `window.location.origin` (usually a trailing-slash issue). Fix the URI.
-- **Authenticates with Microsoft but ProjectOps denies access:** the ID-token email
-  doesn't match a user record. Check the record's email vs their actual UPN (watch shared
-  mailboxes like `estimating@`).
-- **SSO not appearing at all:** confirm `SSO_ENABLED=true` (API) and
-  `VITE_SSO_ENABLED=true` baked into the deployed web bundle.
-
-### Azure Static Web Apps + PWA gotchas (learned at go-live)
-Captured 2026-06-16 after the SSO production cut-over. Each item cost a deploy cycle to
-diagnose; keep them in this order — they form a dependency chain.
-1. **Use `loginRedirect`, not `loginPopup`.** On Static Web Apps the popup → opener
-   handoff is severed (cross-origin / PWA service-worker scope) and `loginPopup` hangs
-   until it times out. Switch to `loginRedirect` + `handleRedirectPromise()`. (PR #397.)
-2. **Do not call `ssoSilent`.** Its hidden sandboxed iframe attempts a top-level
-   navigation back to the app origin and is blocked with `frame is sandboxed …
-   allow-top-navigation not set`, which kills the sign-in flow. Interactive redirect only
-   — no silent iframe path. (PR #398.)
-3. **Await `handleRedirectPromise()` before the router renders.** If the router mounts
-   first, the protected route immediately redirects to `/login` and strips the auth
-   response off the URL before MSAL processes it — the user lands silently back on
-   `/login` with no error. Gate app render on the promise resolving. (PR #406.)
-4. **Set `staticwebapp.config.json` `navigationFallback` → `/index.html`.** Without an
-   explicit fallback, a hard GET or browser refresh of any deep route (including `/login`
-   and the SSO redirect landing) returns Azure's default 404 page instead of the SPA.
-   SWA's implicit SPA fallback was unreliable across action versions — make it explicit.
-   (PR #409.)
-5. **MSAL config that works on SWA + PWA:**
-   - `navigateToLoginRequestUrl: false` — we control post-login routing.
-   - `cacheLocation: "localStorage"` — survives the service-worker-controlled reload.
-   - `storeAuthStateInCookie: true` — covers Safari/WebKit ITP and PWA storage
-     partitioning.
-   - `redirectUri: window.location.origin` — must match a registered SPA redirect URI
-     exactly (see `AADSTS50011` note above).
-6. **Pin `Azure/static-web-apps-deploy` to a SHA.** The floating `@v1` tag shipped a
-   release that broke deploys with `Build container for action … Docker build failed`,
-   and the same floating tag silently changed SPA-fallback defaulting. Pin Docker-based
-   actions to a known-good SHA and bump deliberately. (PR #407.)
-7. **Deploy model is full-`main` per merge.** Every merge to `main` triggers a deploy of
-   the entire current `main` (health-gated). A fix merged but not deployed (gate failure,
-   action break) goes live on the next successful deploy — there is no per-PR deploy slice.
-
-Referenced PRs: #397 (redirect + PWA-safe), #398 (remove silent iframe), #406 (await
-before router), #407 (pin deploy action), #409 (navigationFallback).
-
----
-
-## Dev-to-Prod Workflow
-
-How a change goes from idea to live on Azure.
-
-### Who does what
-
-| Role | Who | Responsibility |
-|---|---|---|
-| Product / ideas | Marco | Pitches changes, makes the call on priorities, clicks merge on production PRs, does Azure/Entra portal steps |
-| Architect / dev | Cowork main chat (this assistant) | Turns ideas into self-contained PR prompts, diagnoses failures, stages `rev-` fix prompts, writes/maintains docs |
-| Implementer | PR-watcher + headless Claude Code agents | Branch, write code, run local checks, open the PR |
-| Reviewer | Watcher auto-review (verdict) + Marco (final click) | Posts MERGE/FIX/BLOCK verdict; Marco approves production changes |
-
-### The lifecycle
-
-**1. Create the PR.**
-- *Automated (normal path):* Marco describes the change → main chat writes a
-  self-contained prompt → dropped as `docs/pr-prompts/<name>-ready.md` → the watcher
-  picks it up and an agent branches, implements, and opens the PR (body + reviewer
-  `GH-Mantova`).
-- *Manual:* branch off `main`, make changes, open the PR yourself. Same rules apply.
-
-**2. Test locally (pre-PR gate).** The agent runs this before opening a PR; run the same
-by hand for manual work:
-```
-pnpm install
-pnpm dev            # web at localhost:5173, API at localhost:3000 — click through
-pnpm lint
-pnpm build
-pnpm test:api:serial
-pnpm test:web:logic
-pnpm compliance:smoke
-```
-Seed/login for local testing: `pnpm seed`, then `admin@projectops.local` /
-`Password123!`. Never open a PR with known-failing checks.
-
-**3. Test on GitHub (CI = the authoritative gate).** Opening the PR triggers GitHub
-Actions: API lint/test/smoke, web lint/logic/build, PR diff gates, tendering E2E, CodeQL.
-Green CI here is what counts. If CI goes red, the PR stays unmerged — paste the failing
-job log to the main chat and a `rev-` fix prompt is staged for the watcher. (CI can't be
-diagnosed without the job log; PR-body edits don't retrigger workflows.)
-
-**4. Review & approve.** The watcher's auto-review posts a **VERDICT** (MERGE / FIX /
-BLOCK) as a PR comment (mirrored from `docs/pr-reviews/`). Merge policy:
-- **Tests/docs-only** PRs with green CI + approving verdict → **auto-merge**.
-- **Production code, migrations, env vars, or workflows** → **stop for Marco's click**.
-  Marco reads the verdict + CI (phone is fine) and merges.
-
-**5. Deploy to Azure (automatic).** A merge to `main` triggers `deploy.yml`:
-```
-prisma migrate deploy (prod DB)
-  → build:azure (web bundle, SSO vars baked in)
-  → deploy API (App Service: operations-api)
-  → API HEALTH GATE   (polls /api/v1/health; red ⇒ run fails)
-  → deploy web (Static Web App)
-  → SWA REACHABILITY GATE (root must return 200; red ⇒ run fails)
-```
-Merge = deploy, health-checked end to end. A red gate fails the run loudly — never a
-silent bad deploy.
-
-### When things fail
-Everything is built to **fail safe and wait** — nothing loops or merges/ships broken.
-- Failure *during* an agent's run (build/lint/test/visual) → the agent fixes it before
-  opening the PR.
-- Transient infra (cache, runner, "workspace starting") → watcher retries once.
-- A PR going stale behind main → watcher auto-updates the branch (content conflicts it
-  can't fix → see below).
-- Hard failure (turn cap, usage limit, real bug, merge conflict) → quarantined; Marco
-  pastes the log/report, main chat stages a `rev-` fix prompt, watcher runs it.
-
-### Merge conflicts
-Auto-update-branch only handles fast-forwards. **Content conflicts** need resolution:
-small/doc conflicts in GitHub's web conflict editor; code conflicts via a `rev-` prompt
-(agent rebases + resolves + reverifies). For append-only logs (`progress.md`), keep both
-sides; for single header lines keep the later value.
-
-### Rollback
-Current deploy is **direct-to-production** (no slot/swap yet — pending a Standard App
-Service tier upgrade). A bad deploy is live until rolled back; see the runbook §8
-rollback steps. Upgrading to slot+swap (deploy → health-gate → swap) is the planned
-hardening.
-
-### Quick reference
-- Repo: `GH-Mantova/ProjectOperations` · Local: `C:\ProjectOperations2`
-- Prompts in: `docs/pr-prompts/` (`*-ready.md` = picked up by watcher)
-- Verdicts: PR comments + `docs/pr-reviews/`
-- Failures: `docs/pr-prompts/failed/` · Escalations: `docs/pr-prompts/needs-marco/`
-- Prod web: the Static Web App URL · Prod API: `https://operations-api.azurewebsites.net/api/v1`
+- [`docs/sso-entra-setup.md`](../docs/sso-entra-setup.md) — Microsoft Entra / M365 SSO setup
+- [`docs/sharepoint-local-workflow.md`](../docs/sharepoint-local-workflow.md) — SharePoint local dev workflow
+- [`docs/dev-to-prod-workflow.md`](../docs/dev-to-prod-workflow.md) — dev-to-prod deploy workflow

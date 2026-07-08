@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
-import { IsString } from "class-validator";
+import { IsIn, IsOptional, IsString } from "class-validator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
@@ -8,6 +8,10 @@ import { TenderClientsService } from "./tender-clients.service";
 
 class AddClientDto {
   @IsString() clientId!: string;
+  // Wizard passes PRIMARY for the first builder linked to a draft and
+  // COMPETITOR for each subsequent one. Kept optional so the plain
+  // "attach another client" callers (Overview modal) still work.
+  @IsOptional() @IsIn(["PRIMARY", "COMPETITOR"]) relationshipType?: "PRIMARY" | "COMPETITOR";
 }
 
 @ApiTags("Tender Clients")
@@ -31,7 +35,7 @@ export class TenderClientsController {
   @ApiResponse({ status: 404, description: "Client not found." })
   @ApiResponse({ status: 409, description: "Client is already linked." })
   add(@Param("tenderId") tenderId: string, @Body() dto: AddClientDto) {
-    return this.service.addClient(tenderId, dto.clientId);
+    return this.service.addClient(tenderId, dto.clientId, dto.relationshipType);
   }
 
   @Delete(":clientId")

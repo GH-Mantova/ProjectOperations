@@ -106,6 +106,17 @@ import {
 import { ProjectTimelineWidget } from "./widgets/projectTimeline";
 import { ProgramSnapshotWidget } from "./widgets/programSnapshotWidget";
 import { AvailabilityHeatmapWidget } from "./widgets/availabilityHeatmapWidget";
+import {
+  AssetsByStatusDonut,
+  DaysSinceLastIncidentKpi,
+  HoursByProjectWeekBar,
+  LeavePendingKpi,
+  RecentActivityList,
+  StaticHeadingWidget,
+  StaticNoteWidget,
+  WhoIsAwayThisWeekWidget,
+  XeroSyncHealthKpi
+} from "./widgets/batch1";
 import { CustomBuilderWidget } from "./CustomBuilderWidget";
 import { CUSTOM_WIDGET_TYPE } from "./customWidget";
 
@@ -638,6 +649,118 @@ export const WIDGETS: WidgetMeta[] = [
       { key: "topN", label: "Max workers", type: "number", min: 3, max: 20, step: 1, defaultValue: 8 }
     ],
     component: AvailabilityHeatmapWidget
+  },
+
+  // ── Batch 1 quick wins ────────────────────────────────────
+  {
+    type: "hseq_days_since_last_incident",
+    name: "Days since last incident",
+    category: "safety",
+    size: "kpi",
+    description: "The classic site-board counter — days since the most recent recorded safety incident.",
+    component: DaysSinceLastIncidentKpi
+  },
+  {
+    type: "res_who_is_away_this_week",
+    name: "Who's away this week",
+    category: "operations",
+    size: "half",
+    description: "Approved leave + unavailability blocks touching the next 7 days.",
+    defaultColSpan: 2,
+    defaultRowSpan: 2,
+    component: WhoIsAwayThisWeekWidget
+  },
+  {
+    type: "res_leave_pending_kpi",
+    name: "Leave pending",
+    category: "operations",
+    size: "kpi",
+    description: "PENDING worker leave requests waiting on a decision.",
+    component: LeavePendingKpi
+  },
+  {
+    type: "fld_hours_by_project_week_bar",
+    name: "Hours by project this week",
+    category: "operations",
+    size: "half",
+    description: "Approved timesheet hours split by project for the current ISO week.",
+    defaultColSpan: 2,
+    defaultRowSpan: 2,
+    component: HoursByProjectWeekBar
+  },
+  {
+    type: "ast_by_status_donut",
+    name: "Assets by status",
+    category: "maintenance",
+    size: "half",
+    description: "Donut chart of asset counts by status (Available / In use / Down / Maintenance / Retired).",
+    defaultColSpan: 2,
+    defaultRowSpan: 2,
+    component: AssetsByStatusDonut
+  },
+  {
+    type: "plt_xero_sync_health_kpi",
+    name: "Xero sync health",
+    category: "operations",
+    size: "kpi",
+    description: "Xero connection state and last sync result — green when connected + syncing cleanly.",
+    component: XeroSyncHealthKpi
+  },
+  {
+    type: "plt_recent_activity_list",
+    name: "Recent activity",
+    category: "operations",
+    size: "half",
+    description: "Latest audit-log entries (who did what, when). Admin-only.",
+    defaultColSpan: 2,
+    defaultRowSpan: 2,
+    component: RecentActivityList
+  },
+  {
+    type: "annot_text_heading",
+    name: "Heading",
+    category: "custom",
+    size: "kpi",
+    description: "Static heading — for section labels on shared dashboards. No data source.",
+    defaultColSpan: 4,
+    defaultRowSpan: 1,
+    minColSpan: 1,
+    minRowSpan: 1,
+    maxColSpan: 4,
+    maxRowSpan: 2,
+    configSchema: [
+      {
+        key: "text",
+        label: "Heading text",
+        type: "text",
+        defaultValue: "Section heading",
+        placeholder: "e.g. Tendering this week"
+      }
+    ],
+    component: StaticHeadingWidget
+  },
+  {
+    type: "annot_text_note",
+    name: "Note",
+    category: "custom",
+    size: "half",
+    description: "Static text note — instructions, context, or contact info. No data source.",
+    defaultColSpan: 2,
+    defaultRowSpan: 2,
+    minColSpan: 1,
+    minRowSpan: 1,
+    maxColSpan: 4,
+    maxRowSpan: 4,
+    configSchema: [
+      {
+        key: "text",
+        label: "Note text",
+        type: "textarea",
+        defaultValue: "",
+        placeholder: "Ring Marco if this row goes red."
+      }
+    ],
+    component: StaticNoteWidget
   }
 ];
 

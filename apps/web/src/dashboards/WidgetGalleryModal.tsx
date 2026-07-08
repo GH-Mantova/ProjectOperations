@@ -326,6 +326,40 @@ function ConfigFieldInput({
       </fieldset>
     );
   }
+  if (field.type === "text") {
+    return (
+      <>
+        <label className="wg-form__label" htmlFor={inputId}>
+          {field.label}
+        </label>
+        <input
+          id={inputId}
+          className="s7-input"
+          type="text"
+          placeholder={field.placeholder}
+          value={typeof value === "string" ? value : (field.defaultValue as string | undefined) ?? ""}
+          onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value)}
+        />
+      </>
+    );
+  }
+  if (field.type === "textarea") {
+    return (
+      <>
+        <label className="wg-form__label" htmlFor={inputId}>
+          {field.label}
+        </label>
+        <textarea
+          id={inputId}
+          className="s7-input"
+          rows={4}
+          placeholder={field.placeholder}
+          value={typeof value === "string" ? value : (field.defaultValue as string | undefined) ?? ""}
+          onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value)}
+        />
+      </>
+    );
+  }
   // select (and the unused "period" type falls back to its static options)
   const current = typeof value === "string" ? value : "";
   return (

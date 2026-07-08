@@ -45,6 +45,10 @@ const KIND_OVERRIDES: Record<string, GalleryKind> = {
   ops_project_timeline: "bar",
   ops_program_snapshot: "bar",
   ops_availability_heatmap: "list",
+  // Static annotation widgets — rendered from the "custom" rail so users find
+  // them alongside the free-form Custom widget builder.
+  annot_text_heading: "custom",
+  annot_text_note: "custom",
   [CUSTOM_WIDGET_TYPE]: "custom"
 };
 

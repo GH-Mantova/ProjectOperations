@@ -54,6 +54,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = process.env.PR_WATCHER_REPO_ROOT
   ? path.resolve(process.env.PR_WATCHER_REPO_ROOT)
   : path.resolve(__dirname, "..", "..");
+// Orphaned-worktree sweep runs ONLY in isolated-clone mode. When
+// PR_WATCHER_REPO_ROOT is unset, REPO_ROOT is the interactive tree, which may
+// hold the user's own legitimate feature-branch worktrees — never sweep those.
+const WORKTREE_SWEEP = !!process.env.PR_WATCHER_REPO_ROOT;
 const PROMPT_DIR = path.join(REPO_ROOT, "docs", "pr-prompts");
 const PROCESSED_DIR = path.join(PROMPT_DIR, "processed");
 const FAILED_DIR = path.join(PROMPT_DIR, "failed");
@@ -159,6 +163,46 @@ const TRANSIENT_PATTERNS = (() => {
 // rule is unit-testable in isolation. capMs <= 0 disables the ceiling.
 export function isRunTimedOut(elapsedMs, capMs) {
   return capMs > 0 && elapsedMs >= capMs;
+}
+
+// Extract worktree paths from `git worktree list --porcelain`, excluding the
+// main working tree. Pure + exported for unit testing.
+export function parseWorktreePaths(porcelain, mainPath) {
+  const main = path.resolve(mainPath);
+  const out = [];
+  for (const line of (porcelain ?? "").split(/\r?\n/)) {
+    if (line.startsWith("worktree ")) {
+      const p = line.slice("worktree ".length).trim();
+      if (p && path.resolve(p) !== main) out.push(p);
+    }
+  }
+  return out;
+}
+
+// Reclaim every worktree except the watcher's own REPO_ROOT. Only ever called
+// when no child is running (startup, or between jobs). Best-effort — never throws.
+async function sweepOrphanWorktrees() {
+  if (!WORKTREE_SWEEP) return;
+  let listing;
+  try {
+    await runGit(["worktree", "prune"]);
+    listing = await runGit(["worktree", "list", "--porcelain"]);
+  } catch (err) {
+    log("worktree", `sweep skipped: ${err.message}`);
+    return;
+  }
+  const paths = parseWorktreePaths(listing, REPO_ROOT);
+  for (const p of paths) {
+    try {
+      await runGit(["worktree", "remove", "--force", p]);
+      log("worktree", `reclaimed orphan worktree ${p}`);
+    } catch (err) {
+      log("worktree", `could not remove ${p}: ${err.message}`);
+    }
+  }
+  if (paths.length > 0) {
+    try { await runGit(["worktree", "prune"]); } catch { /* best-effort */ }
+  }
 }
 
 export function isTransientFailure(text) {
@@ -1172,6 +1216,7 @@ async function drain() {
   }
 
   running = true;
+  await sweepOrphanWorktrees();
   const filePath = queue.shift();
   const name = path.basename(filePath);
 
@@ -1613,6 +1658,7 @@ async function main() {
   warnOnOrphanClaudeProcesses();
   await sweepMalformedLiteralPathDirs();
   await reapPreviousChildren();
+  await sweepOrphanWorktrees();
 
   await scanExisting();
 

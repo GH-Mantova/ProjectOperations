@@ -31,6 +31,11 @@ function readApiVersion(): string {
 
 const API_VERSION = readApiVersion();
 
+// Captured at module load. BUILT_AT reports when this process started, not
+// when the artifact was compiled — good enough for "which deploy am I on"
+// diagnostics and cheaper than shipping a build-time stamp file.
+const PROCESS_STARTED_AT = new Date().toISOString();
+
 export type HealthReport = {
   status: "ok" | "degraded";
   service: string;
@@ -39,6 +44,13 @@ export type HealthReport = {
   commit: string;
   uptimeSec: number;
   timestamp: string;
+};
+
+export type VersionReport = {
+  service: string;
+  version: string;
+  commit: string;
+  builtAt: string;
 };
 
 @Injectable()
@@ -55,6 +67,15 @@ export class HealthService {
       commit: process.env.GIT_SHA ?? "unknown",
       uptimeSec: Math.floor(process.uptime()),
       timestamp: new Date().toISOString()
+    };
+  }
+
+  getVersion(): VersionReport {
+    return {
+      service: "project-operations-api",
+      version: API_VERSION,
+      commit: process.env.GIT_SHA ?? "unknown",
+      builtAt: PROCESS_STARTED_AT
     };
   }
 

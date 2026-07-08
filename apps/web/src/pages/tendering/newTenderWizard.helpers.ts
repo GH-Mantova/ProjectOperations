@@ -209,3 +209,34 @@ export function formatReminderBody(reminder: IncompleteBuilderReminder): string 
   if (reminder.reasons.includes("missing_submission_date")) parts.push("no submission date set");
   return `${reminder.clientName}: ${parts.join(", ")}. Follow up before submission.`;
 }
+
+// ---------------------------------------------------------------------------
+// Builder link/unlink request shapes. Kept as pure helpers so the wizard can
+// be tested without jsdom AND so the request payload is provably free of the
+// `submissionDate` field that the destructive PATCH /tenders/:id path rejects
+// under `forbidNonWhitelisted: true` (see TenderClientInputDto).
+// ---------------------------------------------------------------------------
+
+export type BuilderRequest = {
+  path: string;
+  method: "POST" | "DELETE";
+  body?: { clientId: string; relationshipType: "PRIMARY" | "COMPETITOR" };
+};
+
+export function buildAddBuilderRequest(clientId: string, isFirst: boolean): BuilderRequest {
+  return {
+    path: "clients",
+    method: "POST",
+    body: {
+      clientId,
+      relationshipType: isFirst ? "PRIMARY" : "COMPETITOR"
+    }
+  };
+}
+
+export function buildRemoveBuilderRequest(clientId: string): BuilderRequest {
+  return {
+    path: `clients/${encodeURIComponent(clientId)}`,
+    method: "DELETE"
+  };
+}

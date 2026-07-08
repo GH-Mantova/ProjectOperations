@@ -11,7 +11,12 @@ import { WorkersService } from "./workers.service";
  * services so other modules (scheduler, resources) can reuse them.
  */
 @Module({
-  controllers: [WorkersController, WorkerAvailabilityController],
+  // Order matters: WorkerAvailabilityController's static /workers/leaves,
+  // /workers/unavailability, /workers/availability/overlay routes must register
+  // BEFORE WorkersController's @Get(":id") param route, otherwise the wildcard
+  // swallows the single-segment paths and returns 404 "Worker not found."
+  // See apps/api/src/common/__tests__/route-shadowing.guard.spec.ts.
+  controllers: [WorkerAvailabilityController, WorkersController],
   providers: [WorkersService, WorkerAvailabilityService, PasswordService],
   exports: [WorkersService, WorkerAvailabilityService]
 })

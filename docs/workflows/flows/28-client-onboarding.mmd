@@ -1,0 +1,10 @@
+%% title: Client onboarding || module: Master Data || role: Finance & Administration Officer || status: DRAFT || view: module
+flowchart TD
+  s([New client enquiry]):::startEnd --> a[Create client record - ABN, ACN, address]:::process
+  a --> b[Set business type and contacts]:::process
+  b --> c{Credit required?}:::decision
+  c -- Yes --> d[Credit application - approve]:::doc
+  c -- No --> e[Add licences and insurances]:::process
+  d --> e
+  e --> f[Client active]:::process
+  f --> g[Available to Tendering]:::output

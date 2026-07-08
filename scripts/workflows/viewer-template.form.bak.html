@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ProjectOperations - Workflow Editor</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/svg-pan-zoom/3.6.1/svg-pan-zoom.min.js"></script>
+<style>
+  :root{ --teal:#005B61; --teal-d:#00363a; --orange:#FEAA6D; --dark:#242424; --light:#F6F6F6; --line:#e4e7e7; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; height:100%; font-family:'Outfit',system-ui,sans-serif; color:var(--dark); background:var(--light); }
+  #app{ display:grid; grid-template-rows:auto auto 1fr; height:100vh; }
+  header{ background:var(--teal); color:#fff; padding:10px 18px; display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; }
+  header h1{ font-family:'Syne'; font-weight:800; font-size:18px; margin:0; }
+  header .sub{ font-size:12px; opacity:.85; }
+  header .who{ margin-left:auto; font-size:12px; }
+  header .who input{ font:inherit; font-size:12px; padding:5px 8px; border:none; border-radius:7px; width:150px; }
+  .toolbar{ background:#fff; border-bottom:1px solid var(--line); padding:8px 18px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  label.lbl{ font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:#8a8a8a; }
+  select,.btn,input[type=text],input[type=number]{ font:inherit; font-size:13px; padding:7px 9px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--teal); }
+  select{ font-weight:600; cursor:pointer; } input[type=number]{ width:64px; }
+  .btn{ cursor:pointer; font-weight:600; } .btn:hover{ border-color:var(--teal); }
+  .btn.primary{ background:var(--orange); border-color:var(--orange); color:#3a2400; }
+  .btn.sm{ padding:4px 8px; font-size:12px; }
+  .spacer{ flex:1; }
+  .draft{ background:#b3261e; color:#fff; font-size:10px; font-weight:700; padding:2px 7px; border-radius:20px; }
+  #body{ display:grid; grid-template-columns:1fr 430px; overflow:hidden; }
+  #stage{ position:relative; overflow:hidden; background:radial-gradient(circle at 25% 15%, #fff, #eef2f2); }
+  #canvas{ position:absolute; inset:0; }
+  #canvas svg{ width:100%!important; height:100%!important; max-width:none!important; }
+  #canvas .node rect,#canvas .node polygon,#canvas .node path{ filter:drop-shadow(0 3px 5px rgba(0,40,45,.16)); }
+  .legend{ position:absolute; bottom:10px; left:12px; font-size:11px; color:#666; background:rgba(255,255,255,.9); border:1px solid var(--line); border-radius:8px; padding:6px 9px; display:flex; gap:12px; flex-wrap:wrap; }
+  #side{ border-left:1px solid var(--line); background:#fff; overflow:auto; padding:12px 14px; }
+  #side h3{ font-family:'Syne'; font-size:14px; margin:0; color:var(--teal); outline:none; }
+  #side h3:focus{ background:#fff7ee; box-shadow:0 0 0 2px var(--orange); border-radius:4px; }
+  .hdr-meta{ display:flex; gap:6px; margin:6px 0 10px; }
+  .hdr-meta input{ flex:1; font-size:12px; }
+  .step{ border:1px solid var(--line); border-radius:10px; padding:9px; margin-bottom:9px; background:#fcfdfd; }
+  .step.gate{ border-color:#E08A3C; background:#fff8f1; }
+  .step.drag-over{ border-top:3px solid var(--orange); }
+  .step .top{ display:flex; gap:6px; align-items:center; }
+  .grip{ cursor:grab; color:#c0c6c6; font-size:15px; padding:0 2px; user-select:none; }
+  .grip:active{ cursor:grabbing; }
+  .num{ font-weight:700; color:var(--teal); font-size:12px; min-width:18px; text-align:center; }
+  .step .top select{ flex:none; } .step .top input.lab{ flex:1; }
+  .step .sub{ margin-top:7px; padding-left:8px; border-left:2px solid var(--line); }
+  .path{ display:flex; gap:5px; align-items:center; margin:4px 0; }
+  .path input.plab{ width:64px; } .path select{ flex:1; }
+  .mini{ font-size:11px; color:#8a8a8a; text-transform:uppercase; letter-spacing:.04em; margin:6px 0 3px; }
+  .gaterow{ display:flex; align-items:center; gap:7px; margin-top:8px; font-size:13px; }
+  .chips{ display:flex; flex-wrap:wrap; gap:5px; margin-top:4px; }
+  .chip{ font-size:12px; padding:3px 8px; border:1px solid var(--line); border-radius:20px; cursor:pointer; }
+  .chip.on{ background:var(--teal); color:#fff; border-color:var(--teal); }
+  .x{ cursor:pointer; border:none; background:none; color:#bbb; font-size:15px; } .x:hover{ color:#b3261e; }
+  textarea{ width:100%; font:inherit; font-size:13px; padding:7px; border:1px solid var(--line); border-radius:7px; resize:vertical; }
+  .divider{ border-top:1px solid var(--line); margin:12px 0; }
+  .exportrow{ display:flex; gap:6px; flex-wrap:wrap; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Workflow Editor</h1>
+    <span class="sub">Initial Services &middot; edit the process, flag approval gates &amp; notifications</span>
+    <span class="who">Reviewer: <input id="reviewer" type="text" placeholder="Your name" /></span>
+  </header>
+  <div class="toolbar">
+    <label class="lbl">Group</label>
+    <select id="groupBy"><option value="module">By module</option><option value="role">By role</option></select>
+    <label class="lbl">Workflow</label>
+    <select id="picker"></select>
+    <span id="draftBadge"></span>
+    <label class="lbl">Order</label>
+    <input type="number" id="order" min="1" step="1" title="Where this workflow sits in the real sequence" />
+    <button class="btn sm primary" id="newwf">+ New workflow</button>
+    <button class="btn sm" id="delwf" title="Delete this workflow">Delete</button>
+    <span class="spacer"></span>
+    <label class="lbl"><input type="checkbox" id="numsteps" /> Number steps</label>
+    <label class="lbl">Layout</label>
+    <select id="layout"><option value="TD">Vertical</option><option value="LR">Horizontal</option></select>
+    <button class="btn sm" id="zout">-</button>
+    <button class="btn sm" id="fit">Fit</button>
+    <button class="btn sm" id="zin">+</button>
+    <button class="btn sm" id="revert" title="Discard your edits to this workflow">Revert</button>
+  </div>
+  <div id="body">
+    <div id="stage">
+      <div id="canvas"></div>
+      <div class="legend">
+        <span><b style="color:#005B61">&#9679;</b> Start/End</span>
+        <span><b style="color:#005B61">&#9632;</b> Process</span>
+        <span><b style="color:#E08A3C">&#9670;</b> Decision</span>
+        <span><b style="color:#E08A3C">&#9632;</b> Approval gate</span>
+      </div>
+    </div>
+    <div id="side"></div>
+  </div>
+</div>
+<script>
+const WORKFLOWS = __WORKFLOWS_JSON__;
+const STAFF = __STAFF_JSON__;
+</script>
+<script>
+const CLASSDEFS = [
+  'classDef startEnd fill:#005B61,stroke:#00363a,color:#ffffff,stroke-width:2px;',
+  'classDef process fill:#ffffff,stroke:#005B61,color:#12333a,stroke-width:2px;',
+  'classDef decision fill:#FCE9D6,stroke:#E08A3C,color:#7a3d00,stroke-width:2px;',
+  'classDef io fill:#E7F1F1,stroke:#3B7A80,color:#12333a,stroke-width:2px;',
+  'classDef doc fill:#0E7A82,stroke:#00363a,color:#ffffff,stroke-width:2px;',
+  'classDef output fill:#12545a,stroke:#00363a,color:#ffffff,stroke-width:2px;',
+  'classDef gate fill:#FFF3E0,stroke:#E08A3C,color:#7a3d00,stroke-width:4px;'
+].join('\n');
+const TYPES = [['process','Process'],['decision','Decision'],['startEnd','Start / End'],['io','Data entry'],['doc','Report'],['output','Output']];
+
+mermaid.initialize({ startOnLoad:false, securityLevel:'loose', theme:'base',
+  flowchart:{ curve:'basis', nodeSpacing:50, rankSpacing:65, useMaxWidth:false, htmlLabels:true },
+  themeVariables:{ fontFamily:"Outfit, system-ui, sans-serif", fontSize:'15px', lineColor:'#5f7378',
+    primaryColor:'#ffffff', primaryTextColor:'#12333a', primaryBorderColor:'#005B61' } });
+
+const $ = (s)=>document.querySelector(s);
+let curKey=null, model=null, panZoom=null, seq=0, previewTimer=null, dragFrom=null;
+
+const reviewerEl=$('#reviewer'); reviewerEl.value=localStorage.getItem('wf-reviewer')||'';
+reviewerEl.oninput=()=>localStorage.setItem('wf-reviewer', reviewerEl.value);
+
+// ---------- storage / registry ----------
+function eKey(k){ return 'wf-edit:'+k; }
+function clone(o){ return JSON.parse(JSON.stringify(o)); }
+function savedModel(k){ const s=localStorage.getItem(eKey(k)); if(s){ try{ return JSON.parse(s); }catch(e){} } return null; }
+function embedded(k){ return WORKFLOWS.find(w=>w.key===k)||null; }
+function customList(){ try{ return JSON.parse(localStorage.getItem('wf-custom-list')||'[]'); }catch(e){ return []; } }
+function setCustomList(a){ localStorage.setItem('wf-custom-list', JSON.stringify(a)); }
+function initNode(n){ n.gate=n.gate||false; n.approvers=n.approvers||[]; n.notify=n.notify||[]; n.comment=n.comment||''; return n; }
+function loadModel(k){
+  const sm=savedModel(k);
+  if(sm){ sm.nodes.forEach(initNode); sm.edges=sm.edges||[]; return sm; }
+  const e=embedded(k); if(!e) return null;
+  const w=clone(e); w.nodes.forEach(initNode); w.generalNotes=''; return w;
+}
+function persist(){ localStorage.setItem(eKey(curKey), JSON.stringify(model)); }
+function orderOf(k, def){ const v=localStorage.getItem('wf-order:'+k); return v!=null?Number(v):def; }
+function listWorkflows(){
+  const out=[];
+  WORKFLOWS.forEach((w,i)=>{ const sm=savedModel(w.key); out.push({ key:w.key, custom:false,
+    title:(sm&&sm.title)||w.title, module:(sm&&sm.module)||w.module, role:(sm&&sm.role)||w.role, status:(sm&&sm.status)||w.status, order:orderOf(w.key,i+1) }); });
+  customList().forEach((c,i)=>{ const sm=savedModel(c.key); out.push({ key:c.key, custom:true,
+    title:(sm&&sm.title)||c.title, module:(sm&&sm.module)||'Custom', role:(sm&&sm.role)||'', status:(sm&&sm.status)||'DRAFT', order:orderOf(c.key,100+i+1) }); });
+  out.sort((a,b)=>(a.order-b.order)||a.title.localeCompare(b.title));
+  return out;
+}
+
+// ---------- mermaid build ----------
+function mmLabel(s){ return String(s==null?'':s).replace(/"/g,'&quot;').replace(/\n/g,'<br/>'); }
+function mmEdge(s){ return String(s||'').replace(/[|]/g,'/'); }
+function shapeFor(n, prefix){
+  const l='"'+(prefix||'')+mmLabel(n.label)+'"';
+  if(n.type==='decision') return n.id+'{'+l+'}';
+  if(n.type==='startEnd'||n.type==='output') return n.id+'(['+l+'])';
+  return n.id+'['+l+']';
+}
+function buildMermaid(){
+  const num=$('#numsteps').checked;
+  const L=['flowchart '+($('#layout').value||model.dir||'TD')];
+  model.nodes.forEach((n,i)=>{ L.push('  '+shapeFor(n, num?((i+1)+'. '):'')+':::'+(n.gate?'gate':n.type)); });
+  model.edges.forEach(e=>{ L.push('  '+e.from+(e.label?' -->|'+mmEdge(e.label)+'| ':' --> ')+e.to); });
+  L.push(CLASSDEFS);
+  return L.join('\n');
+}
+function schedulePreview(){ clearTimeout(previewTimer); previewTimer=setTimeout(renderPreview,350); }
+function renderPreview(){
+  mermaid.render('wf'+(++seq), buildMermaid()).then(res=>{
+    const c=$('#canvas'); c.innerHTML=res.svg; const svg=c.querySelector('svg');
+    if(svg){ svg.removeAttribute('width'); svg.removeAttribute('height');
+      if(panZoom){ try{panZoom.destroy();}catch(e){} }
+      panZoom=svgPanZoom(svg,{controlIconsEnabled:false,fit:true,center:true,minZoom:0.2,maxZoom:8,zoomScaleSensitivity:.35}); }
+  }).catch(err=>{ $('#canvas').innerHTML='<pre style="padding:16px;color:#a00;white-space:pre-wrap">'+String(err)+'</pre>'; });
+}
+
+// ---------- picker ----------
+function buildPicker(){
+  const by=$('#groupBy').value, picker=$('#picker'); picker.innerHTML='';
+  const items=listWorkflows(); const groups={};
+  items.forEach(it=>{ const g=(by==='role'?it.role:it.module)||'Other'; (groups[g]=groups[g]||[]).push(it); });
+  Object.keys(groups).sort().forEach(g=>{ const og=document.createElement('optgroup'); og.label=g;
+    groups[g].forEach(it=>{ const o=document.createElement('option'); o.value=it.key; o.textContent=it.order+'. '+it.title; og.appendChild(o); });
+    picker.appendChild(og); });
+  if(curKey) picker.value=curKey;
+}
+
+// ---------- helpers ----------
+function newId(){ let i=1; while(model.nodes.some(n=>n.id==='n'+i)) i++; return 'n'+i; }
+function staffChips(sel,onTog){ const w=document.createElement('div'); w.className='chips';
+  STAFF.forEach(s=>{ const c=document.createElement('span'); c.className='chip'+(sel.includes(s.name)?' on':'');
+    c.textContent=s.name.split(' ')[0]+' ('+s.roleShort+')'; c.title=s.name+' - '+s.role; c.onclick=()=>onTog(s.name); w.appendChild(c); }); return w; }
+function toggle(a,v){ return a.includes(v)?a.filter(x=>x!==v):a.concat([v]); }
+function targetSelect(cur,onChange){ const s=document.createElement('select');
+  model.nodes.forEach(n=>{ const o=document.createElement('option'); o.value=n.id; o.textContent=n.label.split('\n')[0].slice(0,40); if(n.id===cur)o.selected=true; s.appendChild(o); });
+  s.onchange=()=>onChange(s.value); return s; }
+
+// ---------- editor ----------
+function renderEditor(){
+  const side=$('#side'); side.innerHTML='';
+  const h=document.createElement('h3'); h.contentEditable='true'; h.spellcheck=false; h.textContent=model.title;
+  h.oninput=()=>{ model.title=h.textContent.trim(); persist(); buildPicker(); }; side.appendChild(h);
+  const hm=document.createElement('div'); hm.className='hdr-meta';
+  const mi=document.createElement('input'); mi.type='text'; mi.placeholder='Module'; mi.value=model.module||''; mi.oninput=()=>{ model.module=mi.value; persist(); buildPicker(); };
+  const ri=document.createElement('input'); ri.type='text'; ri.placeholder='Role'; ri.value=model.role||''; ri.oninput=()=>{ model.role=ri.value; persist(); buildPicker(); };
+  hm.appendChild(mi); hm.appendChild(ri); side.appendChild(hm);
+
+  const add=document.createElement('button'); add.className='btn sm primary'; add.textContent='+ Add step';
+  add.onclick=()=>{ model.nodes.push(initNode({id:newId(),label:'New step',type:'process'})); persist(); renderEditor(); schedulePreview(); };
+  side.appendChild(add);
+
+  model.nodes.forEach((n,idx)=>{
+    const card=document.createElement('div'); card.className='step'+(n.gate?' gate':''); card.dataset.idx=idx;
+    card.ondragover=(ev)=>{ ev.preventDefault(); card.classList.add('drag-over'); };
+    card.ondragleave=()=>card.classList.remove('drag-over');
+    card.ondrop=(ev)=>{ ev.preventDefault(); card.classList.remove('drag-over'); moveStep(dragFrom, idx); };
+    const top=document.createElement('div'); top.className='top';
+    const grip=document.createElement('span'); grip.className='grip'; grip.textContent='☰'; grip.draggable=true; grip.title='Drag to reorder';
+    grip.ondragstart=()=>{ dragFrom=idx; };
+    const num=document.createElement('span'); num.className='num'; num.textContent=(idx+1);
+    const ts=document.createElement('select'); TYPES.forEach(t=>{ const o=document.createElement('option'); o.value=t[0]; o.textContent=t[1]; if(n.type===t[0])o.selected=true; ts.appendChild(o); });
+    ts.onchange=()=>{ n.type=ts.value; persist(); renderEditor(); schedulePreview(); };
+    const lab=document.createElement('input'); lab.type='text'; lab.className='lab'; lab.value=n.label; lab.oninput=()=>{ n.label=lab.value; persist(); schedulePreview(); };
+    const del=document.createElement('button'); del.className='x'; del.title='Delete step'; del.innerHTML='&times;';
+    del.onclick=()=>{ if(!confirm('Delete this step and its paths?'))return; model.nodes=model.nodes.filter(x=>x!==n); model.edges=model.edges.filter(e=>e.from!==n.id&&e.to!==n.id); persist(); renderEditor(); schedulePreview(); };
+    top.appendChild(grip); top.appendChild(num); top.appendChild(ts); top.appendChild(lab); top.appendChild(del); card.appendChild(top);
+
+    const sub=document.createElement('div'); sub.className='sub';
+    const pl=document.createElement('div'); pl.className='mini'; pl.textContent=(n.type==='decision'?'Branches (label each, e.g. Yes / No)':'Goes to'); sub.appendChild(pl);
+    model.edges.filter(e=>e.from===n.id).forEach(e=>{
+      const row=document.createElement('div'); row.className='path';
+      const plab=document.createElement('input'); plab.type='text'; plab.className='plab'; plab.placeholder='label'; plab.value=e.label||''; plab.oninput=()=>{ e.label=plab.value; persist(); schedulePreview(); };
+      const tsel=targetSelect(e.to,v=>{ e.to=v; persist(); schedulePreview(); });
+      const xr=document.createElement('button'); xr.className='x'; xr.innerHTML='&times;'; xr.title='Remove path'; xr.onclick=()=>{ model.edges=model.edges.filter(x=>x!==e); persist(); renderEditor(); schedulePreview(); };
+      if(n.type==='decision') row.appendChild(plab); row.appendChild(tsel); row.appendChild(xr); sub.appendChild(row);
+    });
+    const ap=document.createElement('button'); ap.className='btn sm'; ap.textContent='+ path';
+    ap.onclick=()=>{ const other=model.nodes.find(x=>x.id!==n.id)||n; model.edges.push({from:n.id,to:other.id,label:''}); persist(); renderEditor(); schedulePreview(); };
+    sub.appendChild(ap); card.appendChild(sub);
+
+    const gr=document.createElement('div'); gr.className='gaterow';
+    const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=!!n.gate; cb.onchange=()=>{ n.gate=cb.checked; persist(); renderEditor(); schedulePreview(); };
+    gr.appendChild(cb); gr.appendChild(document.createTextNode(' Approval gate')); card.appendChild(gr);
+    if(n.gate){
+      const a1=document.createElement('div'); a1.innerHTML='<div class="mini">Who approves</div>'; a1.appendChild(staffChips(n.approvers,name=>{ n.approvers=toggle(n.approvers,name); persist(); renderEditor(); })); card.appendChild(a1);
+      const a2=document.createElement('div'); a2.innerHTML='<div class="mini">Notify when completed</div>'; a2.appendChild(staffChips(n.notify,name=>{ n.notify=toggle(n.notify,name); persist(); renderEditor(); })); card.appendChild(a2);
+    }
+    const cm=document.createElement('textarea'); cm.rows=1; cm.placeholder='Comment (optional)'; cm.value=n.comment||''; cm.style.marginTop='7px'; cm.oninput=()=>{ n.comment=cm.value; persist(); }; card.appendChild(cm);
+    side.appendChild(card);
+  });
+
+  side.appendChild(hr());
+  const gn=document.createElement('div'); gn.innerHTML='<div class="mini">General notes on this workflow</div>';
+  const gta=document.createElement('textarea'); gta.rows=2; gta.value=model.generalNotes||''; gta.oninput=()=>{ model.generalNotes=gta.value; persist(); }; gn.appendChild(gta); side.appendChild(gn);
+
+  side.appendChild(hr());
+  const ex=document.createElement('div'); ex.className='exportrow';
+  ex.appendChild(mkbtn('Download (JSON)','primary',exportJSON));
+  ex.appendChild(mkbtn('Download summary (MD)','',exportMD));
+  ex.appendChild(mkbtn('Download SVG','',downloadSVG));
+  ex.appendChild(mkbtn('Print','',()=>window.print()));
+  const imp=document.createElement('label'); imp.className='btn sm'; imp.style.cursor='pointer'; imp.textContent='Import';
+  const fi=document.createElement('input'); fi.type='file'; fi.accept='.json'; fi.style.display='none'; fi.onchange=importJSON; imp.appendChild(fi); ex.appendChild(imp);
+  side.appendChild(ex);
+}
+function moveStep(from,to){ if(from==null||from===to) return; const a=model.nodes; const [m]=a.splice(from,1); a.splice(to,0,m); dragFrom=null; persist(); renderEditor(); schedulePreview(); }
+function hr(){ const d=document.createElement('div'); d.className='divider'; return d; }
+function mkbtn(t,c,f){ const b=document.createElement('button'); b.className='btn sm '+c; b.textContent=t; b.onclick=f; return b; }
+
+// ---------- export ----------
+function n_label(id){ const n=model.nodes.find(x=>x.id===id); return n?n.label.replace(/\n/g,' '):id; }
+function payload(){ return { workflow:model.title, key:model.key, module:model.module, role:model.role, status:model.status||'', order:orderOf(curKey,''),
+  reviewer:reviewerEl.value||'(unnamed)', editedAt:new Date().toISOString(), layout:$('#layout').value, generalNotes:model.generalNotes||'',
+  steps:model.nodes.map((n,i)=>({ seq:i+1, id:n.id, label:n.label, type:n.type, gate:!!n.gate, approvers:n.approvers||[], notify:n.notify||[], comment:n.comment||'',
+    goesTo:model.edges.filter(e=>e.from===n.id).map(e=>({ to:n_label(e.to), toId:e.to, when:e.label||'' })) })) }; }
+function dl(name,text,type){ const b=new Blob([text],{type}); const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; a.click(); URL.revokeObjectURL(a.href); }
+function slug(s){ return String(s).replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,''); }
+function exportJSON(){ const p=payload(); dl(slug(p.workflow)+'-'+slug(p.reviewer)+'.json', JSON.stringify(p,null,2),'application/json'); }
+function exportMD(){ const p=payload(); const L=[]; L.push('# Workflow: '+p.workflow); L.push('Reviewer: '+p.reviewer+'  |  '+p.editedAt.slice(0,10));
+  if(p.module||p.role) L.push('Module: '+p.module+'  |  Role: '+p.role);
+  if(p.generalNotes) L.push('\nGeneral notes: '+p.generalNotes);
+  L.push('\n## Steps'); p.steps.forEach(s=>{ L.push('\n'+s.seq+'. ['+s.type+'] '+s.label.replace(/\n/g,' '));
+    s.goesTo.forEach(g=>L.push('    -> '+(g.when?'('+g.when+') ':'')+g.to));
+    if(s.gate){ L.push('    APPROVAL GATE'); if(s.approvers.length)L.push('      approvers: '+s.approvers.join(', ')); if(s.notify.length)L.push('      notify: '+s.notify.join(', ')); }
+    if(s.comment) L.push('    note: '+s.comment); });
+  dl(slug(p.workflow)+'-'+slug(p.reviewer)+'.md', L.join('\n'),'text/markdown'); }
+function downloadSVG(){ const svg=$('#canvas svg'); if(!svg)return; dl(slug(model.title)+'.svg', new XMLSerializer().serializeToString(svg),'image/svg+xml'); }
+function importJSON(ev){ const f=ev.target.files[0]; if(!f)return; const r=new FileReader();
+  r.onload=()=>{ try{ const p=JSON.parse(r.result); if(p.steps){
+    model.nodes=p.steps.map(s=>initNode({id:s.id,label:s.label,type:s.type,gate:!!s.gate,approvers:s.approvers||[],notify:s.notify||[],comment:s.comment||''}));
+    model.edges=[]; p.steps.forEach(s=>(s.goesTo||[]).forEach(g=>model.edges.push({from:s.id,to:g.toId,label:g.when||''})));
+    if(p.workflow) model.title=p.workflow; if(p.module!=null) model.module=p.module; if(p.role!=null) model.role=p.role;
+    model.generalNotes=p.generalNotes||''; if(p.reviewer) reviewerEl.value=p.reviewer; persist(); buildPicker(); renderEditor(); renderPreview(); alert('Imported.'); }
+  }catch(e){ alert('Could not read that file.'); } }; r.readAsText(f); }
+
+function newWorkflow(){
+  const key='custom-'+Date.now();
+  const orders=listWorkflows().map(x=>x.order); const nextOrder=(orders.length?Math.max.apply(null,orders):0)+1;
+  const m={ key, title:'New workflow', module:'Custom', role:'', status:'DRAFT', dir:'TD', generalNotes:'',
+    nodes:[ initNode({id:'s1',label:'Start',type:'startEnd'}), initNode({id:'n1',label:'First step',type:'process'}) ],
+    edges:[ {from:'s1',to:'n1',label:''} ] };
+  localStorage.setItem(eKey(key), JSON.stringify(m));
+  const cl=customList(); cl.push({key, title:m.title}); setCustomList(cl);
+  localStorage.setItem('wf-order:'+key, String(nextOrder));
+  curKey=key; loadWorkflow();
+}
+function deleteWorkflow(){
+  const isCustom=customList().some(c=>c.key===curKey);
+  if(!isCustom){ alert('Built-in workflows cannot be deleted. Use Revert to undo your edits.'); return; }
+  if(!confirm('Delete this workflow permanently?')) return;
+  localStorage.removeItem(eKey(curKey)); localStorage.removeItem('wf-order:'+curKey);
+  setCustomList(customList().filter(c=>c.key!==curKey));
+  curKey=null; init();
+}
+
+function loadWorkflow(){
+  model=loadModel(curKey); if(!model){ init(); return; }
+  $('#draftBadge').innerHTML=(model.status&&/draft/i.test(model.status))?'<span class="draft">DRAFT</span>':'';
+  $('#order').value=orderOf(curKey, '');
+  $('#delwf').style.display=customList().some(c=>c.key===curKey)?'':'none';
+  buildPicker(); renderEditor(); renderPreview();
+}
+$('#groupBy').onchange=buildPicker;
+$('#picker').onchange=()=>{ curKey=$('#picker').value; loadWorkflow(); };
+$('#layout').onchange=renderPreview;
+$('#numsteps').onchange=renderPreview;
+$('#order').onchange=()=>{ if(curKey){ localStorage.setItem('wf-order:'+curKey, String(Number($('#order').value)||1)); buildPicker(); } };
+$('#newwf').onclick=newWorkflow;
+$('#delwf').onclick=deleteWorkflow;
+$('#zin').onclick=()=>panZoom&&panZoom.zoomIn();
+$('#zout').onclick=()=>panZoom&&panZoom.zoomOut();
+$('#fit').onclick=()=>panZoom&&panZoom.reset();
+$('#revert').onclick=()=>{ if(customList().some(c=>c.key===curKey)){ alert('This is a workflow you created - use Delete to remove it.'); return; } if(confirm('Discard your edits and restore the original for this workflow?')){ localStorage.removeItem(eKey(curKey)); loadWorkflow(); } };
+
+function init(){ const items=listWorkflows(); curKey=items.length?items[0].key:null; if(curKey) loadWorkflow(); else { newWorkflow(); } }
+buildPicker(); init();
+</script>
+</body>
+</html>

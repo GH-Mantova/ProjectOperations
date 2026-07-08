@@ -1,0 +1,18 @@
+%% title: Operations Manager - delivery cycle || module: Role workflow || role: Operations Manager || status: DRAFT || view: role
+flowchart TD
+  s([Start]):::startEnd --> forecast[Review tender forecast and pipeline health]:::process
+  forecast --> plan[Plan resources<br/>plant, vehicles, personnel]:::process
+  plan --> gap{Resourcing gap?}:::decision
+  gap -- Yes --> hire[Cross-hire or external resourcing<br/>IS and Redcliffe Skips]:::process
+  gap -- No --> allocate[Allocate resources to jobs]:::process
+  hire --> allocate
+  allocate --> monitor[Monitor delivery<br/>on time, safe, on budget]:::process
+  monitor --> quality[Quality and progress inspections]:::process
+  quality --> issue{Issue or risk?}:::decision
+  issue -- Yes --> mitigate[Corrective action or mitigation]:::process
+  issue -- No --> eff[Monitor equipment and driver efficiency]:::process
+  mitigate --> eff
+  eff --> admin[Approve day-to-day business support items]:::process
+  admin --> improve[Business improvement and process optimisation]:::process
+  improve --> report[Report to Director]:::doc
+  report --> done([Ops cycle complete]):::output

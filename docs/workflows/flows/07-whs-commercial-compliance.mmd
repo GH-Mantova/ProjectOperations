@@ -1,0 +1,15 @@
+%% title: WHS and Commercial Compliance - cycle || module: Role workflow || role: WHS & Commercial Compliance || status: DRAFT || view: role
+flowchart TD
+  s([Start]):::startEnd --> system[Maintain safety system and policies<br/>with Operations Manager]:::process
+  system --> inspect[Schedule and conduct inspections or audits]:::process
+  inspect --> nc{Incident, hazard or<br/>non-conformance?}:::decision
+  nc -- Yes --> log[/Log incident or hazard/]:::io
+  log --> investigate[Investigate and assign corrective actions]:::process
+  investigate --> verify[Verify actions closed]:::process
+  nc -- No --> iso[Maintain ISO 9001, 14001, 45001<br/>audits and document control]:::process
+  verify --> iso
+  iso --> track[Track licences, insurances, qualifications<br/>expiry alerts, block expired]:::process
+  track --> train[Deliver inductions and training<br/>safety-biased people and culture]:::process
+  train --> comm[Commercial compliance<br/>contracts, credit, subcontractors]:::process
+  comm --> report[Report compliance status to Director or Ops]:::doc
+  report --> done([Compliance maintained]):::output

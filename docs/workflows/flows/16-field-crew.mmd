@@ -1,0 +1,10 @@
+%% title: Field crew CW1D to CW4 - role || module: Role workflow || role: CW1D - Demolition Labourer || status: DRAFT || view: role
+flowchart TD
+  s([Start]):::startEnd --> a[Attend pre-start]:::process
+  a --> b[Receive tasks from Leading Hand]:::process
+  b --> c[Carry out work safely]:::process
+  c --> d{Hazard or unsure?}:::decision
+  d -- Yes --> e[Stop and report - escalate to Leading Hand]:::process
+  d -- No --> f[Complete tasks]:::process
+  e --> f
+  f --> g[Clean up and report done]:::output

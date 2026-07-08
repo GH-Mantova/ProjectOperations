@@ -1,0 +1,13 @@
+%% title: Assets and Equipment || module: Assets || role: Logistics & Warehouse Manager || status: DRAFT || view: module
+flowchart TD
+  s([Asset acquired]):::startEnd --> a[Register asset - category and details]:::process
+  a --> b[Assign to site or job]:::process
+  b --> c[Track status and location]:::process
+  c --> d{Due for inspection or service?}:::decision
+  d -- Yes --> e[Schedule via Maintenance]:::process
+  d -- No --> f{Breakdown?}:::decision
+  e --> f
+  f -- Yes --> g[Log and take offline via Maintenance]:::process
+  f -- No --> h[Update status]:::process
+  g --> h
+  h --> i[Reporting]:::output

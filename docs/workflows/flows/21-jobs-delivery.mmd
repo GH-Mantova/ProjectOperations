@@ -1,0 +1,14 @@
+%% title: Jobs and Delivery || module: Jobs || role: Project Manager || status: DRAFT || view: module
+flowchart TD
+  s([Job created]):::startEnd --> a[Plan program and resources]:::process
+  a --> b[Allocate crew and plant via Scheduler]:::process
+  b --> c[Mobilise site]:::process
+  c --> d[Execute works]:::process
+  d --> e[/Capture progress, timesheets, forms/]:::io
+  e --> f{Variation?}:::decision
+  f -- Yes --> g[Assess and get client approval]:::doc
+  f -- No --> h[Prepare progress claim]:::process
+  g --> h
+  h --> i{Complete?}:::decision
+  i -- No --> d
+  i -- Yes --> j[Closeout and Archive]:::output

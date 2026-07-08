@@ -1,0 +1,11 @@
+%% title: Closeout and Archive || module: Closeout || role: Project Manager || status: DRAFT || view: module
+flowchart TD
+  s([Works complete]):::startEnd --> a[Final inspection]:::process
+  a --> b{Defects?}:::decision
+  b -- Yes --> c[Rectify]:::process
+  b -- No --> d[Final claim and invoice]:::process
+  c --> a
+  d --> e[Collect docs - forms, compliance, photos]:::process
+  e --> f[Client sign-off]:::doc
+  f --> g[Archive job]:::process
+  g --> h[Reporting]:::output

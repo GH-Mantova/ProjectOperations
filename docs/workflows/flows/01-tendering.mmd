@@ -1,0 +1,18 @@
+%% title: Tendering process || module: Tendering || role: Estimating / Commercial || view: module
+flowchart TD
+  start([Start]):::startEnd --> rft[Received RFT]:::process
+  rft --> price{Should we price it?}:::decision
+  price -- No --> ignore([Ignore it]):::startEnd
+  price -- Yes --> tfolder[[Create &quot;T&quot; folder]]:::process
+  tfolder --> save[Save tender documents to folder]:::process
+  save --> listc[List clients to tender for]:::process
+  listc --> alloc[Allocate an Estimator]:::process
+  alloc --> monitor[Monitor tender progress]:::process
+  monitor --> submitted{Tender submitted?}:::decision
+  submitted -- No --> monitor
+  submitted -- Yes --> contact[Contact all listed clients and gather feedback]:::process
+  contact --> enter[/Enter information on Tender Database/]:::io
+  enter --> report[Generate report for Management]:::doc
+  report --> jobs([Jobs tendered]):::output
+  report --> likely([Likelihood]):::output
+  report --> overall([Overall feedback]):::output

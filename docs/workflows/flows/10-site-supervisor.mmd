@@ -1,0 +1,15 @@
+%% title: Site Supervisor - role || module: Role workflow || role: CW5 - Senior Specialist / Site Manager || status: DRAFT || view: role
+flowchart TD
+  s([Start]):::startEnd --> a[Receive daily allocation]:::process
+  a --> b[Run pre-start and toolbox]:::process
+  b --> c[Assign tasks to crew]:::process
+  c --> d[Supervise works and safety]:::process
+  d --> e{Hazard or incident?}:::decision
+  e -- Yes --> f[Control and report - escalate to WHS]:::process
+  e -- No --> g{Query beyond authority?}:::decision
+  f --> g
+  g -- Yes --> h[Escalate to PM or Ops Manager]:::process
+  g -- No --> i[Continue works]:::process
+  h --> i
+  i --> j[/Daily records and timesheets/]:::io
+  j --> k[Report progress to PM]:::output

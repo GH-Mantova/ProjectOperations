@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Initial Services - Workflow Studio</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Workflow Studio</h1>
+    <span class="sub">Initial Services</span>
+    <select id="viewSel" class="btn" title="Which set of workflows"><option value="module">Modules</option><option value="role">Job Roles</option></select>
+    <select id="picker" class="btn"></select>
+    <span id="draftBadge"></span>
+    <span style="font-size:11px;opacity:.8">Order</span>
+    <input type="number" id="order" min="1" step="1" style="width:56px" />
+    <button class="btn sm primary" id="newwf">+ New</button>
+    <button class="btn sm" id="delwf">Delete</button>
+    <button class="btn sm" id="arrange">Auto-arrange</button>
+    <button class="btn sm" id="rolesBtn" title="Set who holds each role">Roles &amp; people</button>
+    <span class="who">Reviewer: <input id="reviewer" type="text" placeholder="Your name" /></span>
+  </header>
+  <div id="main">
+    <div id="palette"></div>
+    <div id="stage">
+      <svg id="svg"><defs>
+        <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#5f7378"></path></marker>
+        <marker id="arrowSel" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#FEAA6D"></path></marker>
+        <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+          <path d="M24 0 L0 0 0 24" fill="none" stroke="#e6ecec" stroke-width="1"></path></pattern>
+      </defs>
+        <rect id="bg" x="-5000" y="-5000" width="10000" height="10000" fill="url(#grid)"></rect>
+        <g id="viewport">
+          <g id="edges"></g>
+          <g id="nodes"></g>
+          <path id="tempEdge" class="edge" style="display:none" marker-end="url(#arrow)"></path>
+        </g>
+      </svg>
+      <textarea id="overlayInput" rows="1"></textarea>
+      <div class="hint" id="hint">Click a step to edit it (right panel). Drag a shape from the left to add. Hover a shape and drag a dot to connect. Double-click to rename.</div>
+      <div class="zoombar">
+        <button class="btn sm" id="zout">-</button>
+        <button class="btn sm" id="zfit">Fit</button>
+        <button class="btn sm" id="zin">+</button>
+      </div>
+      <div class="legend">
+        <span><b style="color:#005B61">&#9679;</b> Start/End</span>
+        <span><b style="color:#005B61">&#9632;</b> Process</span>
+        <span><b style="color:#E08A3C">&#9670;</b> Decision</span>
+        <span><b style="color:#E08A3C">&#9632;</b> Gate</span>
+        <span><b style="color:#7a5cc0">&#8599;</b> Escalate</span>
+      </div>
+    </div>
+    <div id="props"></div>
+  </div>
+</div>
+<script src="workflows.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+%% title: Contract and Job conversion || module: Contracts || role: Project Manager || status: DRAFT || view: module
+flowchart TD
+  s([Tender won]):::startEnd --> a[Receive award and contract]:::process
+  a --> b[Review contract terms]:::process
+  b --> c{Terms acceptable?}:::decision
+  c -- No --> d[Negotiate - escalate to Director or Ops]:::process
+  c -- Yes --> e[Accept contract]:::process
+  d --> e
+  e --> f[Convert tender to Job]:::process
+  f --> g[Set up job - number, site, scope]:::process
+  g --> h[Assign Project Manager]:::process
+  h --> i[Handover to Jobs and Delivery]:::output

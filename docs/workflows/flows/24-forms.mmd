@@ -1,0 +1,13 @@
+%% title: Forms submission and approval || module: Forms || role: Site Supervisor || status: DRAFT || view: module
+flowchart TD
+  s([Start]):::startEnd --> a[Open form - mobile or desktop]:::process
+  a --> b[/Complete fields, GPS, photos/]:::io
+  b --> c[Submit]:::process
+  c --> d{Requires approval?}:::decision
+  d -- Yes --> e[Route to approver]:::doc
+  d -- No --> f{Triggers an action?}:::decision
+  e --> f
+  f -- Yes --> g[Auto-create record and notify]:::process
+  f -- No --> h[Store submission in SharePoint]:::process
+  g --> h
+  h --> i[Dashboard and report]:::output

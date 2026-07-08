@@ -248,3 +248,15 @@ export function insertWidgetAt(
   ordered.splice(at, 0, entry);
   return ordered.map((w, i) => ({ ...w, order: i }));
 }
+
+/** Remove the entry with `id` and renumber the remainder so `order` stays
+ *  contiguous — the same normalization insertWidgetAt/reorder relies on. */
+export function removeWidgetById(
+  widgets: ReadonlyArray<WidgetConfigEntry>,
+  id: string
+): WidgetConfigEntry[] {
+  return [...widgets]
+    .sort((a, b) => a.order - b.order)
+    .filter((w) => w.id !== id)
+    .map((w, i) => ({ ...w, order: i }));
+}

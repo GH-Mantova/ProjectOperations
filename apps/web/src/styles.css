@@ -8376,6 +8376,10 @@ textarea {
 .td-canvas__slot-icon:hover { color: #FEAA6D; background: var(--surface-raised, white); }
 .td-canvas__slot-icon--drag { cursor: grab; }
 .td-canvas__slot-icon--drag:active { cursor: grabbing; }
+.td-canvas__slot-icon--danger:hover {
+  color: var(--status-danger, #B42318);
+  border-color: color-mix(in srgb, var(--status-danger, #B42318) 40%, transparent);
+}
 .td-canvas__slot--dragging {
   opacity: 0.9;
   transform: scale(1.02);
@@ -8733,6 +8737,10 @@ textarea {
 .widget-settings-popover__apply {
   margin-top: 4px;
   width: 100%;
+}
+.widget-settings-popover__remove {
+  width: 100%;
+  margin-top: 4px;
 }
 
 /* Customise panel */

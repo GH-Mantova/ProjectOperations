@@ -16,6 +16,8 @@ import { UserDashboardsController } from "./user-dashboards.controller";
 import { UserDashboardsService } from "./user-dashboards.service";
 import { AiProvidersController, PlatformConfigController } from "./platform-config.controller";
 import { PlatformConfigService } from "./platform-config.service";
+import { MyDayController } from "./my-day.controller";
+import { MyDayService } from "./my-day.service";
 
 @Module({
   imports: [AuditModule],
@@ -26,6 +28,7 @@ import { PlatformConfigService } from "./platform-config.service";
     SearchController,
     DashboardsController,
     UserDashboardsController,
+    MyDayController,
     PlatformConfigController,
     AiProvidersController
   ],
@@ -49,6 +52,7 @@ import { PlatformConfigService } from "./platform-config.service";
     SearchService,
     DashboardsService,
     UserDashboardsService,
+    MyDayService,
     PlatformConfigService
   ],
   exports: [SharePointService, NotificationsService, SearchService, DashboardsService, UserDashboardsService, PlatformConfigService]

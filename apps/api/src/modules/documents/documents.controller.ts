@@ -68,6 +68,21 @@ export class DocumentsController {
     return this.service.getDocumentsForSite(siteId, actor, { skip, take });
   }
 
+  @Get("recent-photos")
+  @RequirePermissions("documents.view")
+  @ApiOperation({
+    summary: "Dashboard widget aggregate — most recent image DocumentLinks visible to caller."
+  })
+  @ApiQuery({ name: "limit", required: false, type: Number, description: "Top-N (default 12, max 40)" })
+  @ApiResponse({ status: 200, description: "{ items: [{ id, title, webUrl, mimeType, ... }] }" })
+  recentPhotos(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Query("limit") limit?: string
+  ) {
+    const parsed = limit ? Number(limit) : undefined;
+    return this.service.getRecentPhotos(actor, Number.isFinite(parsed) ? parsed : undefined);
+  }
+
   @Get(":id")
   @RequirePermissions("documents.view")
   @ApiOperation({ summary: "Get document detail with version history and access rules" })

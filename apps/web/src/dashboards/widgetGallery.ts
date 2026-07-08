@@ -72,6 +72,24 @@ export function widgetsForKind(widgets: ReadonlyArray<WidgetMeta>, kind: Gallery
   return widgets.filter((w) => galleryKindFor(w) === kind);
 }
 
+/** Case-insensitive substring match across name + description. Empty/whitespace
+ *  query returns the full input list unchanged. */
+export function searchWidgets(widgets: ReadonlyArray<WidgetMeta>, query: string): WidgetMeta[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return [...widgets];
+  return widgets.filter((w) => {
+    const name = (w.name ?? "").toLowerCase();
+    const desc = (w.description ?? "").toLowerCase();
+    return name.includes(q) || desc.includes(q);
+  });
+}
+
+/** Stable localeCompare sort by name. */
+export function sortWidgets(widgets: ReadonlyArray<WidgetMeta>, dir: "asc" | "desc"): WidgetMeta[] {
+  const factor = dir === "asc" ? 1 : -1;
+  return [...widgets].sort((a, b) => a.name.localeCompare(b.name) * factor);
+}
+
 // ── Step-2 config fields ─────────────────────────────────────
 
 /** Config fields renderable in the gallery's configure step. Fields backed
@@ -149,6 +167,10 @@ export type GalleryState = {
   kind: GalleryKind;
   /** Explicit selection — never derived from sibling state. */
   selectedTypeId: string | null;
+  /** Cross-category search — non-empty hides the rail and shows a flat list. */
+  query: string;
+  /** Per-group name sort. Resets to "asc" whenever the active kind changes. */
+  sortDir: "asc" | "desc";
   filters: WidgetFilters;
   period: WidgetPeriod | null;
   colSpan: number;
@@ -163,6 +185,8 @@ export type GalleryAction =
   | { type: "setFilters"; filters: WidgetFilters }
   | { type: "setPeriod"; period: WidgetPeriod | null }
   | { type: "setSize"; colSpan: number; rowSpan: number }
+  | { type: "setQuery"; query: string }
+  | { type: "toggleSort" }
   | { type: "reset" };
 
 export function initialGalleryState(kind: GalleryKind = "kpi"): GalleryState {
@@ -170,6 +194,8 @@ export function initialGalleryState(kind: GalleryKind = "kpi"): GalleryState {
     step: "choose",
     kind,
     selectedTypeId: null,
+    query: "",
+    sortDir: "asc",
     filters: {},
     period: null,
     colSpan: 1,
@@ -184,7 +210,9 @@ export function canProceed(state: GalleryState): boolean {
 export function galleryReducer(state: GalleryState, action: GalleryAction): GalleryState {
   switch (action.type) {
     case "setKind":
-      return { ...state, kind: action.kind };
+      // Switching group always restarts the sort at A-Z so users get a
+      // predictable ordering per rail.
+      return { ...state, kind: action.kind, sortDir: "asc" };
     case "select": {
       const def = resolveSpan(action.meta, {
         id: "",
@@ -215,6 +243,10 @@ export function galleryReducer(state: GalleryState, action: GalleryAction): Gall
       return { ...state, period: action.period };
     case "setSize":
       return { ...state, colSpan: action.colSpan, rowSpan: action.rowSpan };
+    case "setQuery":
+      return { ...state, query: action.query };
+    case "toggleSort":
+      return { ...state, sortDir: state.sortDir === "asc" ? "desc" : "asc" };
     case "reset":
       return initialGalleryState(state.kind);
   }

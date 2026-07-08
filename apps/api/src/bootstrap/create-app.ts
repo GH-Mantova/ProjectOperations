@@ -13,7 +13,7 @@ export async function createApp() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const configService = app.get(ConfigService);
   const apiPrefix = configService.get<string>("app.apiPrefix", "api/v1");
-  const corsOrigin = configService.get<string>("app.corsOrigin", "http://localhost:5173");
+  const corsOrigin = configService.get<string[]>("app.corsOrigin", ["http://localhost:5173"]);
 
   app.use(helmet());
   app.enableCors({ origin: corsOrigin, credentials: true });
@@ -50,7 +50,7 @@ export async function createApp() {
       });
     }
   } else {
-    const helper = renderDevHelper(corsOrigin, "/api/docs");
+    const helper = renderDevHelper(corsOrigin[0] ?? "http://localhost:5173", "/api/docs");
 
     const httpAdapter = app.getHttpAdapter().getInstance();
     httpAdapter.get(

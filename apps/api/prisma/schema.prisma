@@ -52,6 +52,7 @@ model User {
   tenderFollowUps            TenderFollowUp[]            @relation("TenderFollowUpAssignee")
   tenderEntriesAuthored      TenderEntry[]               @relation("TenderEntryAuthor")
   tenderEntriesAssigned      TenderEntry[]               @relation("TenderEntryAssignee")
+  lockedTenderRateSets       TenderRateSet[]             @relation("TenderRateSetLockedBy")
   managedJobs                Job[]                       @relation("JobProjectManager")
   supervisedJobs             Job[]                       @relation("JobSupervisor")
   ownedActivities            JobActivity[]               @relation("JobActivityOwner")
@@ -118,9 +119,9 @@ model User {
   // Comms + Approvals Phase 2 slice 1 — record-anchored internal messages
   // and approval-decision audit. Overrule paths resolve through the
   // managerId chain above and the authority seam; these are the storage side.
-  sentInternalMessages       InternalMessage[]           @relation("InternalMessageSender")
-  receivedInternalMessages   InternalMessage[]           @relation("InternalMessageRecipient")
-  approvalDecisions          ApprovalDecision[]          @relation("ApprovalDecidedBy")
+  sentInternalMessages     InternalMessage[]  @relation("InternalMessageSender")
+  receivedInternalMessages InternalMessage[]  @relation("InternalMessageRecipient")
+  approvalDecisions        ApprovalDecision[] @relation("ApprovalDecidedBy")
 
   // §5A.1 PR 9 — per-user encrypted AI provider keys (BYOK). Storage format
   // is "<iv-base64>:<authTag-base64>:<ciphertext-base64>" produced by
@@ -436,8 +437,8 @@ model ApprovalDecision {
   authorityRuleId String?              @map("authority_rule_id")
   createdAt       DateTime             @default(now()) @map("created_at")
 
-  decidedBy User              @relation("ApprovalDecidedBy", fields: [decidedById], references: [id], onDelete: Cascade)
-  overrules ApprovalDecision? @relation("ApprovalOverrules", fields: [overrulesId], references: [id])
+  decidedBy   User              @relation("ApprovalDecidedBy", fields: [decidedById], references: [id], onDelete: Cascade)
+  overrules   ApprovalDecision? @relation("ApprovalOverrules", fields: [overrulesId], references: [id])
   overruledBy ApprovalDecision? @relation("ApprovalOverrules")
 
   @@index([entityType, entityId])
@@ -882,6 +883,7 @@ model Tender {
   safetyIncidents     SafetyIncident[]
   hazardObservations  HazardObservation[]
   correspondences     CorrespondenceThread[]    @relation("TenderCorrespondence")
+  rateSet             TenderRateSet?
 
   @@index([status])
   @@index([estimatorUserId])
@@ -4301,6 +4303,44 @@ model RateRow {
 
   @@index([rateTableId, isActive])
   @@map("rate_rows")
+}
+
+// Per-tender snapshot of the resolved rate set. Created when the user
+// locks rates from the tender's Rates tab; deleted on unlock. Entries
+// carry the original resolved value + an optional override the user
+// edits without touching global rates or other tenders' snapshots.
+model TenderRateSet {
+  id          String            @id @default(cuid())
+  tenderId    String            @unique @map("tender_id")
+  lockedAt    DateTime          @default(now()) @map("locked_at")
+  lockedById  String?           @map("locked_by_id")
+  sourceLabel String?           @map("source_label")
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+  tender      Tender            @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  lockedBy    User?             @relation("TenderRateSetLockedBy", fields: [lockedById], references: [id], onDelete: SetNull)
+  entries     TenderRateEntry[]
+
+  @@map("tender_rate_sets")
+}
+
+model TenderRateEntry {
+  id              String        @id @default(cuid())
+  tenderRateSetId String        @map("tender_rate_set_id")
+  key             String
+  rateTableId     String?       @map("rate_table_id")
+  rateTableSlug   String?       @map("rate_table_slug")
+  label           String
+  unit            String?
+  originalValue   Decimal       @map("original_value") @db.Decimal(18, 6)
+  overrideValue   Decimal?      @map("override_value") @db.Decimal(18, 6)
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  rateSet         TenderRateSet @relation(fields: [tenderRateSetId], references: [id], onDelete: Cascade)
+
+  @@unique([tenderRateSetId, key])
+  @@index([tenderRateSetId])
+  @@map("tender_rate_entries")
 }
 
 model ListBinding {

@@ -3455,6 +3455,325 @@ export async function seedEstimateRates(prisma: PrismaClient): Promise<void> {
   }
 }
 
+// ── Rate-table projections (B-slice-1) ────────────────────────────────────
+// The Rates tab reads from the flexible `RateTable`/`RateColumn`/`RateRow`
+// model via `RateResolverService.enumerateRateSet()`. Nothing populates
+// that model in the seed, so locking a tender snapshots zero rows. Here we
+// project every legacy Estimate*Rate table into RateTable rows with stable
+// IDs so re-runs are no-ops and per-tender overrides (keyed by
+// `${table.id}:${row.id}:${col.id}`) survive re-seeds.
+//
+// This is a READ-ONLY projection: `RateResolverService.resolveRate()`'s
+// legacy adapter map is untouched, so pricing math still reads the eight
+// legacy Estimate*Rate tables. Making RateTable canonical + retiring the
+// legacy tables is a deferred follow-up (B-slice-2).
+export async function seedRateTableProjections(prisma: PrismaClient): Promise<void> {
+  function rowSlug(...parts: Array<string | number>): string {
+    return parts
+      .map((p) => String(p).toLowerCase())
+      .join("-")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80);
+  }
+
+  type ColSpec = {
+    key: string; // stable short id fragment
+    name: string;
+    dataType: "TEXT" | "NUMBER" | "CURRENCY";
+    role: "KEY" | "VALUE" | "INFO";
+    unit?: string | null;
+    sortOrder: number;
+  };
+
+  async function upsertTable(spec: {
+    id: string;
+    slug: string;
+    name: string;
+    description: string;
+    columns: ColSpec[];
+    rows: Array<{ id: string; sortOrder: number; cells: Record<string, unknown> }>;
+  }): Promise<void> {
+    await prisma.rateTable.upsert({
+      where: { slug: spec.slug },
+      update: {
+        name: spec.name,
+        description: spec.description,
+        category: "INITIAL_SERVICES",
+        isSystem: true
+      },
+      create: {
+        id: spec.id,
+        slug: spec.slug,
+        name: spec.name,
+        description: spec.description,
+        category: "INITIAL_SERVICES",
+        isSystem: true
+      }
+    });
+
+    // Column upserts by (rateTableId, name). We stamp stable IDs on create
+    // so cell keys in `RateRow.cells` stay stable across re-seeds.
+    const colIdByKey: Record<string, string> = {};
+    for (const col of spec.columns) {
+      const colId = `${spec.id}-c-${col.key}`;
+      colIdByKey[col.key] = colId;
+      await prisma.rateColumn.upsert({
+        where: { rateTableId_name: { rateTableId: spec.id, name: col.name } },
+        update: {
+          dataType: col.dataType,
+          role: col.role,
+          unit: col.unit ?? null,
+          sortOrder: col.sortOrder
+        },
+        create: {
+          id: colId,
+          rateTableId: spec.id,
+          name: col.name,
+          dataType: col.dataType,
+          role: col.role,
+          unit: col.unit ?? null,
+          sortOrder: col.sortOrder
+        }
+      });
+    }
+
+    // Row upserts by stable id. Cells key by *column id* so lookups in
+    // enumerateRateSet resolve correctly (that reader tolerates both `cells[c.id]`
+    // and `cells[c.name]`, but we stick to id for future-proofing).
+    const seenRowIds: string[] = [];
+    for (const row of spec.rows) {
+      const cells: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(row.cells)) {
+        const cid = colIdByKey[key];
+        if (!cid) continue;
+        cells[cid] = value;
+      }
+      await prisma.rateRow.upsert({
+        where: { id: row.id },
+        update: {
+          rateTableId: spec.id,
+          cells: cells as Prisma.InputJsonValue,
+          isActive: true,
+          sortOrder: row.sortOrder
+        },
+        create: {
+          id: row.id,
+          rateTableId: spec.id,
+          cells: cells as Prisma.InputJsonValue,
+          isActive: true,
+          sortOrder: row.sortOrder
+        }
+      });
+      seenRowIds.push(row.id);
+    }
+
+    // Drop legacy rows that were previously seeded but are no longer
+    // present (kept for full idempotency; usually a no-op).
+    await prisma.rateRow.deleteMany({
+      where: { rateTableId: spec.id, id: { notIn: seenRowIds } }
+    });
+  }
+
+  // ── Labour ───────────────────────────────────────────────────────────
+  const labourRows = await prisma.estimateLabourRate.findMany({
+    orderBy: [{ sortOrder: "asc" }, { role: "asc" }]
+  });
+  await upsertTable({
+    id: "rt-lbr",
+    slug: "labour",
+    name: "Labour rates",
+    description: "Day / night / weekend labour rates by role (projection of EstimateLabourRate).",
+    columns: [
+      { key: "role", name: "Role", dataType: "TEXT", role: "KEY", sortOrder: 1 },
+      { key: "day", name: "Day rate", dataType: "CURRENCY", role: "VALUE", unit: "day", sortOrder: 2 },
+      { key: "night", name: "Night rate", dataType: "CURRENCY", role: "VALUE", unit: "day", sortOrder: 3 },
+      { key: "weekend", name: "Weekend rate", dataType: "CURRENCY", role: "VALUE", unit: "day", sortOrder: 4 }
+    ],
+    rows: labourRows.map((r, idx) => ({
+      id: `rr-lbr-${rowSlug(r.role)}`,
+      sortOrder: r.sortOrder || idx + 1,
+      cells: {
+        role: r.role,
+        day: Number(r.dayRate),
+        night: Number(r.nightRate),
+        weekend: Number(r.weekendRate)
+      }
+    }))
+  });
+
+  // ── Plant ────────────────────────────────────────────────────────────
+  const plantRows = await prisma.estimatePlantRate.findMany({
+    orderBy: [{ sortOrder: "asc" }, { item: "asc" }]
+  });
+  await upsertTable({
+    id: "rt-plt",
+    slug: "plant",
+    name: "Plant rates",
+    description: "Plant hire rates by item (projection of EstimatePlantRate).",
+    columns: [
+      { key: "item", name: "Item", dataType: "TEXT", role: "KEY", sortOrder: 1 },
+      { key: "category", name: "Category", dataType: "TEXT", role: "INFO", sortOrder: 2 },
+      { key: "unit", name: "Unit", dataType: "TEXT", role: "INFO", sortOrder: 3 },
+      { key: "rate", name: "Rate", dataType: "CURRENCY", role: "VALUE", sortOrder: 4 }
+    ],
+    rows: plantRows.map((r, idx) => ({
+      id: `rr-plt-${rowSlug(r.item)}`,
+      sortOrder: r.sortOrder || idx + 1,
+      cells: {
+        item: r.item,
+        category: r.category ?? "",
+        unit: r.unit,
+        rate: Number(r.rate)
+      }
+    }))
+  });
+
+  // ── Waste — per tonne / per m³ (split by unit for clearer UI) ───────
+  const wasteAll = await prisma.estimateWasteRate.findMany({
+    orderBy: [{ sortOrder: "asc" }, { facility: "asc" }, { wasteType: "asc" }]
+  });
+  const wasteTonne = wasteAll.filter((r) => r.unit.toLowerCase() === "tonne");
+  const wasteM3 = wasteAll.filter((r) => r.unit.toLowerCase() !== "tonne");
+  await upsertTable({
+    id: "rt-wst-t",
+    slug: "waste-per-tonne",
+    name: "Waste rates (per tonne)",
+    description: "Waste facility rates priced by tonne (projection of EstimateWasteRate).",
+    columns: [
+      { key: "facility", name: "Facility", dataType: "TEXT", role: "KEY", sortOrder: 1 },
+      { key: "type", name: "Waste type", dataType: "TEXT", role: "KEY", sortOrder: 2 },
+      { key: "group", name: "Group", dataType: "TEXT", role: "INFO", sortOrder: 3 },
+      { key: "ton", name: "Rate per tonne", dataType: "CURRENCY", role: "VALUE", unit: "tonne", sortOrder: 4 },
+      { key: "load", name: "Rate per load", dataType: "CURRENCY", role: "VALUE", unit: "load", sortOrder: 5 }
+    ],
+    rows: wasteTonne.map((r, idx) => ({
+      id: `rr-wst-t-${rowSlug(r.facility, r.wasteType)}`,
+      sortOrder: r.sortOrder || idx + 1,
+      cells: {
+        facility: r.facility,
+        type: r.wasteType,
+        group: r.wasteGroup ?? "",
+        ton: Number(r.tonRate),
+        load: Number(r.loadRate)
+      }
+    }))
+  });
+  await upsertTable({
+    id: "rt-wst-m3",
+    slug: "waste-per-m3",
+    name: "Waste rates (per m³)",
+    description: "Waste facility rates priced by cubic metre (projection of EstimateWasteRate).",
+    columns: [
+      { key: "facility", name: "Facility", dataType: "TEXT", role: "KEY", sortOrder: 1 },
+      { key: "type", name: "Waste type", dataType: "TEXT", role: "KEY", sortOrder: 2 },
+      { key: "group", name: "Group", dataType: "TEXT", role: "INFO", sortOrder: 3 },
+      { key: "m3", name: "Rate per m³", dataType: "CURRENCY", role: "VALUE", unit: "m³", sortOrder: 4 }
+    ],
+    rows: wasteM3.map((r, idx) => ({
+      id: `rr-wst-m3-${rowSlug(r.facility, r.wasteType)}`,
+      sortOrder: r.sortOrder || idx + 1,
+      cells: {
+        facility: r.facility,
+        type: r.wasteType,
+        group: r.wasteGroup ?? "",
+        m3: Number(r.tonRate)
+      }
+    }))
+  });
+
+  // ── Cutting (Cutrite matrix) ─────────────────────────────────────────
+  const cuttingRows = await prisma.estimateCuttingRate.findMany({
+    orderBy: [{ sortOrder: "asc" }, { equipment: "asc" }, { elevation: "asc" }, { material: "asc" }, { depthMm: "asc" }]
+  });
+  await upsertTable({
+    id: "rt-cut",
+    slug: "cutting",
+    name: "Concrete-cutting rates (Cutrite)",
+    description: "Equipment × elevation × material × depth rate matrix (projection of EstimateCuttingRate).",
+    columns: [
+      { key: "eq", name: "Equipment", dataType: "TEXT", role: "KEY", sortOrder: 1 },
+      { key: "el", name: "Elevation", dataType: "TEXT", role: "KEY", sortOrder: 2 },
+      { key: "mat", name: "Material", dataType: "TEXT", role: "KEY", sortOrder: 3 },
+      { key: "dep", name: "Depth (mm)", dataType: "NUMBER", role: "KEY", unit: "mm", sortOrder: 4 },
+      { key: "rate", name: "Rate per m", dataType: "CURRENCY", role: "VALUE", unit: "m", sortOrder: 5 }
+    ],
+    rows: cuttingRows.map((r, idx) => ({
+      id: `rr-cut-${rowSlug(r.equipment, r.elevation, r.material, r.depthMm)}`,
+      sortOrder: r.sortOrder || idx + 1,
+      cells: {
+        eq: r.equipment,
+        el: r.elevation,
+        mat: r.material,
+        dep: r.depthMm,
+        rate: Number(r.ratePerM)
+      }
+    }))
+  });
+
+  // ── Core-hole ────────────────────────────────────────────────────────
+  const coreHoleRows = await prisma.estimateCoreHoleRate.findMany({
+    orderBy: [{ diameterMm: "asc" }]
+  });
+  await upsertTable({
+    id: "rt-ch",
+    slug: "core-hole",
+    name: "Core-hole rates",
+    description: "Rate per hole by diameter (projection of EstimateCoreHoleRate).",
+    columns: [
+      { key: "dia", name: "Diameter (mm)", dataType: "NUMBER", role: "KEY", unit: "mm", sortOrder: 1 },
+      { key: "rate", name: "Rate per hole", dataType: "CURRENCY", role: "VALUE", unit: "hole", sortOrder: 2 }
+    ],
+    rows: coreHoleRows.map((r, idx) => ({
+      id: `rr-ch-${r.diameterMm}`,
+      sortOrder: idx + 1,
+      cells: { dia: r.diameterMm, rate: Number(r.ratePerHole) }
+    }))
+  });
+
+  // ── Fuel ─────────────────────────────────────────────────────────────
+  const fuelRows = await prisma.estimateFuelRate.findMany({
+    orderBy: [{ sortOrder: "asc" }, { item: "asc" }]
+  });
+  await upsertTable({
+    id: "rt-fl",
+    slug: "fuel",
+    name: "Fuel rates",
+    description: "Fuel adjustment rates (projection of EstimateFuelRate).",
+    columns: [
+      { key: "item", name: "Item", dataType: "TEXT", role: "KEY", sortOrder: 1 },
+      { key: "unit", name: "Unit", dataType: "TEXT", role: "INFO", sortOrder: 2 },
+      { key: "rate", name: "Rate", dataType: "CURRENCY", role: "VALUE", sortOrder: 3 }
+    ],
+    rows: fuelRows.map((r, idx) => ({
+      id: `rr-fl-${rowSlug(r.item)}`,
+      sortOrder: r.sortOrder || idx + 1,
+      cells: { item: r.item, unit: r.unit, rate: Number(r.rate) }
+    }))
+  });
+
+  // ── Enclosure ────────────────────────────────────────────────────────
+  const enclosureRows = await prisma.estimateEnclosureRate.findMany({
+    orderBy: [{ sortOrder: "asc" }, { enclosureType: "asc" }]
+  });
+  await upsertTable({
+    id: "rt-en",
+    slug: "enclosure",
+    name: "Enclosure rates",
+    description: "Asbestos enclosure / air monitoring rates (projection of EstimateEnclosureRate).",
+    columns: [
+      { key: "type", name: "Enclosure type", dataType: "TEXT", role: "KEY", sortOrder: 1 },
+      { key: "unit", name: "Unit", dataType: "TEXT", role: "INFO", sortOrder: 2 },
+      { key: "rate", name: "Rate", dataType: "CURRENCY", role: "VALUE", sortOrder: 3 }
+    ],
+    rows: enclosureRows.map((r, idx) => ({
+      id: `rr-en-${rowSlug(r.enclosureType)}`,
+      sortOrder: r.sortOrder || idx + 1,
+      cells: { type: r.enclosureType, unit: r.unit, rate: Number(r.rate) }
+    }))
+  });
+}
+
 export async function seedBusinessDirectoryDemos(prisma: PrismaClient): Promise<void> {
   const admin = await prisma.user.findUnique({ where: { email: "admin@projectops.local" } });
   if (!admin) return;

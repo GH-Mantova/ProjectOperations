@@ -1,6 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { permissionRegistry } from "../src/common/permissions/permission-registry";
-import { seedEstimateRates } from "./seed-initial-services";
+import { seedEstimateRates, seedRateTableProjections } from "./seed-initial-services";
 import { seedFormTemplates } from "./seed-form-templates";
 
 export async function seedPermissionsAndCoreRoles(prisma: PrismaClient) {
@@ -584,6 +584,7 @@ export async function seedReferenceData(
   });
   await seedLookups(prisma);
   await seedEstimateRates(prisma);
+  await seedRateTableProjections(prisma);
   await seedFormTemplates(prisma);
 
   const listsOwnerId =

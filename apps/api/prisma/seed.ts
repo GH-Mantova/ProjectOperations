@@ -15,6 +15,7 @@ import {
   seedEstimateRates,
   seedInitialServicesDataset,
   seedPublicHolidays,
+  seedRateTableProjections,
   seedSafetyDemos
 } from "./seed-initial-services";
 import { seedFormTemplates } from "./seed-form-templates";
@@ -3664,6 +3665,10 @@ async function main() {
   // and jobs that reference its user IDs). The remaining IS-dependent seeds run
   // at the end once every other record exists.
   await seedEstimateRates(prisma);
+  // Populate the flexible RateTable projection from the legacy rates seeded
+  // above so the tender Rates tab (which reads RateTable via
+  // enumerateRateSet) has real rows to snapshot.
+  await seedRateTableProjections(prisma);
   await backfillTenderLifecycleTimestamps(prisma);
   await seedUserDashboards(prisma);
   if (adminUser) await seedGlobalLists(prisma, adminUser.id);

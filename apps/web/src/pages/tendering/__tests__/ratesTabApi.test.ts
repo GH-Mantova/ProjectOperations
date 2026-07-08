@@ -19,6 +19,10 @@ function textResponse(body: string, status: number): Response {
   return new Response(body, { status, headers: { "content-type": "text/plain" } });
 }
 
+function emptyResponse(status = 204): Response {
+  return new Response(null, { status });
+}
+
 describe("tabFromPath", () => {
   it("routes /tenders/:id → overview", () => {
     expect(tabFromPath("/tenders/abc")).toBe("overview");
@@ -55,6 +59,27 @@ describe("ratesTabApi", () => {
     expect((init as RequestInit).body).toBe(JSON.stringify({}));
   });
 
+  it("lockRateSet: passes sourceLabel through as body when provided", async () => {
+    const authFetch = vi.fn<AuthFetch>(async () => jsonResponse({}));
+    await lockRateSet(authFetch, "t-1", "Rates as of 09/07/2026");
+    const [, init] = authFetch.mock.calls[0] ?? [];
+    expect((init as RequestInit).body).toBe(
+      JSON.stringify({ sourceLabel: "Rates as of 09/07/2026" })
+    );
+  });
+
+  it("lockRateSet: empty/204 response returns null instead of throwing", async () => {
+    const authFetch = vi.fn<AuthFetch>(async () => emptyResponse(204));
+    // Reproduces the wizard bug: previously res.json() threw
+    // "Unexpected end of JSON input" here.
+    await expect(lockRateSet(authFetch, "t-1")).resolves.toBeNull();
+  });
+
+  it("getRateSet: empty response returns null instead of throwing", async () => {
+    const authFetch = vi.fn<AuthFetch>(async () => emptyResponse(200));
+    await expect(getRateSet(authFetch, "t-1")).resolves.toBeNull();
+  });
+
   it("unlockRateSet: DELETE /tenders/:id/rate-set", async () => {
     const authFetch = vi.fn<AuthFetch>(async () => jsonResponse({ unlocked: true }));
     const out = await unlockRateSet(authFetch, "t-1");
@@ -62,6 +87,11 @@ describe("ratesTabApi", () => {
     expect(path).toBe("/tenders/t-1/rate-set");
     expect((init as RequestInit).method).toBe("DELETE");
     expect(out.unlocked).toBe(true);
+  });
+
+  it("unlockRateSet: empty/204 response returns { unlocked: false } instead of throwing", async () => {
+    const authFetch = vi.fn<AuthFetch>(async () => emptyResponse(204));
+    await expect(unlockRateSet(authFetch, "t-1")).resolves.toEqual({ unlocked: false });
   });
 
   it("patchRateEntry: PATCH the entry with { overrideValue: <number> }", async () => {

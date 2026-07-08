@@ -11,6 +11,8 @@ import "./newTenderWizard.css";
 import { TenderDocumentsPanel, type DocumentRecord } from "./TenderDocumentsPanel";
 import {
   advanceStep,
+  buildAddBuilderRequest,
+  buildRemoveBuilderRequest,
   deriveDocumentBuckets,
   detectIncompleteBuilders,
   formatReminderBody,
@@ -386,19 +388,21 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
     try {
       const draftId = await ensureDraftId();
       const isFirst = builders.length === 0;
-      const nextTenderClients = [
-        ...serverTenderClients.map((tc) => ({
-          clientId: tc.clientId,
-          relationshipType: tc.relationshipType,
-          submissionDate: tc.submissionDate
-        })),
-        {
-          clientId,
-          relationshipType: isFirst ? "PRIMARY" : "COMPETITOR"
-        }
-      ];
-      const updated = await patchDraft(draftId, { tenderClients: nextTenderClients });
-      setServerTenderClients(updated.tenderClients ?? []);
+      // Append-only per-client endpoint — avoids the destructive PATCH /tenders/:id
+      // {tenderClients} path in UpsertTenderDto, which whitelists a fixed field set
+      // (no submissionDate) and deleteMany-then-recreates every child collection on
+      // the tender (pricing snapshots, notes, clarifications, etc.).
+      const req = buildAddBuilderRequest(clientId, isFirst);
+      const res = await authFetch(`/tenders/${draftId}/${req.path}`, {
+        method: req.method,
+        body: JSON.stringify(req.body)
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message ?? "Could not link builder to draft tender.");
+      }
+      const list = (await res.json()) as ServerTenderClient[];
+      setServerTenderClients(list);
       setBuilders((prev) => [
         ...prev,
         { clientId, clientName: client.name, contactId: null, submissionDate: null }
@@ -417,15 +421,16 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
     setError(null);
     try {
       const draftId = await ensureDraftId();
-      const nextTenderClients = serverTenderClients
-        .filter((tc) => tc.clientId !== clientId)
-        .map((tc) => ({
-          clientId: tc.clientId,
-          relationshipType: tc.relationshipType,
-          submissionDate: tc.submissionDate
-        }));
-      const updated = await patchDraft(draftId, { tenderClients: nextTenderClients });
-      setServerTenderClients(updated.tenderClients ?? []);
+      const req = buildRemoveBuilderRequest(clientId);
+      const res = await authFetch(`/tenders/${draftId}/${req.path}`, {
+        method: req.method
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message ?? "Could not unlink builder from draft tender.");
+      }
+      const list = (await res.json()) as ServerTenderClient[];
+      setServerTenderClients(list);
       setBuilders((prev) => prev.filter((b) => b.clientId !== clientId));
     } catch (err) {
       setError((err as Error).message);

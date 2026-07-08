@@ -3,6 +3,7 @@ import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { AdminUsersTab } from "./admin/AdminUsersTab";
 import { AdminRolesPermissionsTab } from "./admin/AdminRolesPermissionsTab";
+import { AdminClientVersionsTab } from "./admin/AdminClientVersionsTab";
 
 type Trigger = {
   id: string;
@@ -40,6 +41,7 @@ const TABS = [
   { id: "ai", label: "AI & Integrations" },
   { id: "platform", label: "Platform" },
   { id: "permissions", label: "Permissions" },
+  { id: "client-versions", label: "Client versions" },
   { id: "audit", label: "Audit log" }
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
@@ -109,6 +111,7 @@ export function AdminSettingsPage() {
             </>
           )}
           {tab === "permissions" && <AdminRolesPermissionsTab />}
+          {tab === "client-versions" && <AdminClientVersionsTab />}
           {tab === "audit" && <StubCard title="System audit log" body="Coming soon. All admin actions are recorded." />}
         </div>
       </div>

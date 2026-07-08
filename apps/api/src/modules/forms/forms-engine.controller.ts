@@ -229,4 +229,39 @@ export class FormsEngineController {
   ) {
     return this.engine.getAnalytics({ from, to, templateId });
   }
+
+  /**
+   * Dashboard widget aggregate — every pending FormApproval across the
+   * system, with an overdue count and the top N due-soonest items. Spans
+   * all assignees; use `pending-approvals` for the per-user list.
+   */
+  @Get("approvals-waiting")
+  @RequirePermissions("forms.approve")
+  @ApiOperation({
+    summary: "System-wide pending approval count, overdue count, and top-N due-soonest items."
+  })
+  @ApiResponse({
+    status: 200,
+    description: "{ total, overdue, items: [{ id, dueAt, overdue, templateName, submittedByName, ... }] }"
+  })
+  @ApiQuery({ name: "limit", required: false, type: Number, description: "Top-N items (default 5, max 20)" })
+  approvalsWaiting(@Query("limit") limit?: string) {
+    const parsed = limit ? Number(limit) : undefined;
+    return this.engine.getApprovalsWaiting(Number.isFinite(parsed) ? parsed : undefined);
+  }
+
+  /**
+   * Dashboard widget aggregate — number of pre-start submissions logged
+   * today (server-local calendar day). "Expected" denominator is DEFERRED
+   * to B-P0c; this returns count-only by design.
+   */
+  @Get("pre-starts-today")
+  @RequirePermissions("forms.view")
+  @ApiOperation({
+    summary: "Count of pre-start form submissions logged today. Denominator deferred to B-P0c."
+  })
+  @ApiResponse({ status: 200, description: "{ count, latestSubmittedAt }" })
+  preStartsToday() {
+    return this.engine.getPreStartsToday();
+  }
 }

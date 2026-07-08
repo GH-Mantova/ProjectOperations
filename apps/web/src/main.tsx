@@ -9,25 +9,68 @@ import { App } from "./App";
 import { consumeSsoRedirect } from "./auth/consumeSsoRedirect";
 import { isSsoEnabled, msalConfig } from "./auth/msal.config";
 import { updatePromptStore } from "./pwa/updatePromptStore";
+import { buildInfo } from "./buildInfo";
 import "./styles/tokens.css";
 import "./styles.css";
 
 const queryClient = new QueryClient();
 
+// Expose the running build SHA as a meta tag so operators can inspect the
+// deployed commit straight from DevTools without hitting /version.json.
+const buildMeta = document.createElement("meta");
+buildMeta.name = "build-sha";
+buildMeta.content = buildInfo.sha;
+document.head.appendChild(buildMeta);
+
 const msalInstance = isSsoEnabled ? new PublicClientApplication(msalConfig) : null;
 
-// Register the service worker in "prompt" mode (see vite.config.ts). The new
-// SW installs but waits — we surface a non-blocking in-app toast (rendered by
-// UpdatePromptToast) and only call updateSW(true) when the user opts in, so a
-// deploy never yanks the page out from under an in-progress form.
+// Track whether the user has touched the page yet. If a new SW appears
+// BEFORE any interaction, we apply it silently and reload once — the fresh
+// open should always land on the latest build. After interaction we fall
+// back to the non-blocking toast so we never yank an in-progress form out
+// from under the user. sessionStorage guards against reload loops (cleared
+// when the tab closes, so a fresh session can auto-reload again).
+const RELOAD_GUARD_KEY = "__projectops_pwa_auto_reloaded__";
+let hasInteracted = false;
+const markInteracted = () => {
+  hasInteracted = true;
+};
+for (const evt of ["pointerdown", "keydown", "input", "change"] as const) {
+  window.addEventListener(evt, markInteracted, { capture: true, passive: true });
+}
+
+// Register the service worker in "prompt" mode (see vite.config.ts). Fresh
+// opens get a silent auto-apply; long-open tabs get the non-blocking in-app
+// toast (rendered by UpdatePromptToast) so deploys never yank the page out
+// from under an in-progress form.
 const updateSW = registerSW({
   onNeedRefresh() {
+    const alreadyReloaded = sessionStorage.getItem(RELOAD_GUARD_KEY) === "1";
+    if (!hasInteracted && !alreadyReloaded) {
+      sessionStorage.setItem(RELOAD_GUARD_KEY, "1");
+      void updateSW(true);
+      return;
+    }
     updatePromptStore.signalNeedRefresh();
   },
   onOfflineReady() {
     // Brief, non-intrusive console log — the OfflineIndicator already
     // surfaces sync state in the field UI when needed.
     console.info("[ProjectOps] PWA ready — offline use available.");
+  },
+  onRegisteredSW(_swUrl, registration) {
+    if (!registration) return;
+    // Belt for the SW's own update timer: force an update check on load
+    // and every time the tab becomes visible again. Combined with
+    // NetworkFirst navigations and no-cache headers on /sw.js, this makes
+    // a fresh open reliably pick up the latest deploy.
+    const check = () => {
+      void registration.update().catch(() => {});
+    };
+    check();
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") check();
+    });
   }
 });
 

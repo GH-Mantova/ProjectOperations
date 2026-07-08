@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, type PluginOption } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import { readFileSync } from "node:fs";
@@ -11,50 +11,51 @@ const packageJson = JSON.parse(
   readFileSync(resolve(__dirname, "package.json"), "utf-8")
 ) as { version: string };
 
+// Deploy pipeline exports VITE_BUILD_SHA (see .github/workflows/deploy.yml)
+// so the client + version.json + X-Client-Version header all reflect the
+// exact commit shipped. Locally we fall back to "dev" — health.commit does
+// the same on the API side.
+const BUILD_SHA = process.env.VITE_BUILD_SHA ?? "dev";
+const BUILT_AT = new Date().toISOString();
+
+// Emits a top-level version.json into the build output. The file is served
+// no-cache (see apps/web/public/staticwebapp.config.json) so operators can
+// always read the running SHA + build time by hitting /version.json.
+function emitVersionJson(): PluginOption {
+  return {
+    name: "projectops-emit-version-json",
+    apply: "build",
+    generateBundle() {
+      this.emitFile({
+        type: "asset",
+        fileName: "version.json",
+        source: JSON.stringify({ sha: BUILD_SHA, builtAt: BUILT_AT }, null, 2)
+      });
+    }
+  };
+}
+
 export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      // injectManifest so we can hand-roll the navigation strategy
+      // (NetworkFirst with offline fallback — see apps/web/src/sw.ts). The
+      // prior generateSW config used navigateFallback: "/index.html" which
+      // serves the shell from precache and left returning browsers on a
+      // stale bundle across deploys.
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.ts",
       // "prompt" so vite-plugin-pwa fires onNeedRefresh and the new SW stays
       // in "waiting" until the user hits Reload in the in-app toast (see
       // updatePromptStore + UpdatePromptToast). autoUpdate + skipWaiting was
       // silently swapping the SW without ever reloading the open tab, leaving
       // users on a stale shell after every deploy.
       registerType: "prompt",
-      // Field workers spend most of their day on flaky-coverage sites — cache
-      // the shell aggressively, but always go-network-first for /api so they
-      // see fresh data when they do have signal.
-      workbox: {
+      injectManifest: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
-        navigateFallback: "/index.html",
-        // Never let the SW intercept the auth redirect — Entra returns the
-        // response either as ?code=&state= or in the fragment (#), and any
-        // navigation to login.microsoftonline.com must hit the network.
-        // Without these, the cached index.html shell can swallow the redirect
-        // and MSAL never sees the response, causing "Connecting to
-        // Microsoft…" to hang.
-        navigateFallbackDenylist: [
-          /^\/api/,
-          /[?&](code|state|error|error_description|session_state)=/,
-          /login\.microsoftonline\.com/
-        ],
-        runtimeCaching: [
-          {
-            // Bypass the cache entirely for Microsoft identity endpoints.
-            urlPattern: /^https:\/\/login\.microsoftonline\.com\/.*/i,
-            handler: "NetworkOnly"
-          },
-          {
-            urlPattern: /^https?:\/\/[^/]+\/api\/.*/i,
-            handler: "NetworkFirst",
-            options: {
-              cacheName: "api-cache",
-              networkTimeoutSeconds: 5,
-              expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 }
-            }
-          }
-        ]
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024
       },
       includeAssets: ["favicon.ico"],
       manifest: {
@@ -83,7 +84,8 @@ export default defineConfig({
         ]
       },
       devOptions: { enabled: false }
-    })
+    }),
+    emitVersionJson()
   ],
   resolve: {
     extensions: [".tsx", ".ts", ".jsx", ".js", ".mjs", ".json"],
@@ -96,7 +98,9 @@ export default defineConfig({
     }
   },
   define: {
-    __APP_VERSION__: JSON.stringify(packageJson.version)
+    __APP_VERSION__: JSON.stringify(packageJson.version),
+    "import.meta.env.VITE_BUILD_SHA": JSON.stringify(BUILD_SHA),
+    "import.meta.env.VITE_BUILT_AT": JSON.stringify(BUILT_AT)
   },
   server: {
     port: 5173

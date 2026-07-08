@@ -145,9 +145,30 @@ model User {
   // cancel them deterministically.
   calendarSyncedEvents CalendarSyncedEvent[] @relation("CalendarSyncedEventUser")
 
+  // Client-version telemetry — admin can nudge a specific user to reload.
+  // Cleared automatically once the client reports the current server SHA.
+  updateRequestedAt DateTime?       @map("update_requested_at")
+  clientSessions    ClientSession[]
+
   @@index([isActive])
   @@index([managerId])
   @@map("users")
+}
+
+model ClientSession {
+  id            String   @id @default(cuid())
+  userId        String   @map("user_id")
+  clientVersion String   @map("client_version")
+  userAgent     String?  @map("user_agent")
+  firstSeenAt   DateTime @default(now()) @map("first_seen_at")
+  lastSeenAt    DateTime @default(now()) @map("last_seen_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clientVersion])
+  @@index([userId])
+  @@index([lastSeenAt])
+  @@map("client_sessions")
 }
 
 model Role {

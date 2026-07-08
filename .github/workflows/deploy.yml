@@ -103,13 +103,32 @@ jobs:
       # against the bundled schema; output lands in deploy-api/node_modules.
       - name: Generate Prisma client into bundle
         run: pnpm --filter @project-ops/api exec prisma generate --schema ../../deploy-api/prisma/schema.prisma
+      # Puppeteer 23.x needs a pinned Chrome build available at runtime for
+      # /tenders/:id/export/pdf and per-quote PDF endpoints. Install it into
+      # the bundle so the App Service deploy ships a self-contained Chrome
+      # (fix/quote-pdf-crash). Cache dir is set inside the bundle so the
+      # runtime resolver in deploy-api/node_modules/puppeteer finds it.
+      - name: Install Chrome for puppeteer into bundle
+        run: |
+          set -euo pipefail
+          cd deploy-api
+          PUPPETEER_CACHE_DIR="$PWD/.cache/puppeteer" \
+            node node_modules/puppeteer/lib/esm/puppeteer/node/cli.js \
+              browsers install chrome
       # App Service Node reads .env at app root (ConfigModule.forRoot in
       # apps/api/src/app.module.ts). Writing GIT_SHA here is the least-risky
       # way to advertise the running commit without adding az-cli/OIDC to
       # this workflow. All other secrets (DATABASE_URL, JWT_*, etc.) still
       # come from portal-managed application settings.
       - name: Stamp API bundle with GIT_SHA
-        run: echo "GIT_SHA=${{ steps.sha.outputs.short }}" > deploy-api/.env
+        run: |
+          {
+            echo "GIT_SHA=${{ steps.sha.outputs.short }}"
+            # App Service unpacks the bundle to /home/site/wwwroot, so the
+            # Chrome cache we shipped lands at that absolute path. Point
+            # puppeteer's resolver at it (fix/quote-pdf-crash).
+            echo "PUPPETEER_CACHE_DIR=/home/site/wwwroot/.cache/puppeteer"
+          } > deploy-api/.env
       - name: Smoke-probe bundle before deploy
         run: |
           node -e "require('./deploy-api/node_modules/@nestjs/config/package.json'); console.log('bundle deps OK')"

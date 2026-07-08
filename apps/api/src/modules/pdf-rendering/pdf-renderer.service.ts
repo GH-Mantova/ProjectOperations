@@ -3,12 +3,16 @@ import {
   Logger,
   OnModuleDestroy,
 } from "@nestjs/common";
+import { existsSync } from "node:fs";
 import type { Browser, LaunchOptions } from "puppeteer";
 import { PdfRenderError } from "./pdf-render.error";
 import { PDF_RENDER_DEFAULTS, type PdfRenderOptions } from "./pdf-render.types";
 import { interpolate, loadTemplateFile } from "./template.helpers";
 
 const MAX_CONCURRENT_RENDERS = 4;
+
+const CHROME_INSTALL_HINT =
+  "Chrome for PDF rendering is not installed. Run: npx puppeteer browsers install chrome";
 
 const LAUNCH_ARGS: LaunchOptions = {
   headless: true,
@@ -77,6 +81,7 @@ export class PdfRendererService implements OnModuleDestroy {
 
       return Buffer.from(pdfUint8);
     } catch (err) {
+      if (err instanceof PdfRenderError) throw err;
       throw new PdfRenderError("PDF rendering failed", err);
     } finally {
       this.inFlight--;
@@ -114,9 +119,39 @@ export class PdfRendererService implements OnModuleDestroy {
 
   private async launchBrowser(): Promise<Browser> {
     this.logger.log("Launching Chromium for PDF rendering…");
+    const puppeteer = require("puppeteer") as {
+      launch: typeof import("puppeteer").launch;
+      executablePath: typeof import("puppeteer").executablePath;
+    };
+
+    const envPath = process.env.PUPPETEER_EXECUTABLE_PATH?.trim();
+    let executablePath: string | undefined;
+
+    if (envPath) {
+      executablePath = envPath;
+      if (!existsSync(executablePath)) {
+        const msg = `PUPPETEER_EXECUTABLE_PATH is set to "${executablePath}" but that file does not exist.`;
+        this.logger.error(msg);
+        throw new PdfRenderError(msg);
+      }
+    } else {
+      let resolved: string | null = null;
+      try {
+        resolved = puppeteer.executablePath();
+      } catch (err) {
+        this.logger.error(CHROME_INSTALL_HINT);
+        throw new PdfRenderError(CHROME_INSTALL_HINT, err);
+      }
+      if (!resolved || !existsSync(resolved)) {
+        this.logger.error(CHROME_INSTALL_HINT);
+        throw new PdfRenderError(CHROME_INSTALL_HINT);
+      }
+    }
+
     try {
-      const puppeteer = require("puppeteer") as { launch: typeof import("puppeteer").launch };
-      const browser = await puppeteer.launch(LAUNCH_ARGS);
+      const browser = await puppeteer.launch(
+        executablePath ? { ...LAUNCH_ARGS, executablePath } : LAUNCH_ARGS,
+      );
 
       browser.on("disconnected", () => {
         this.logger.warn("Chromium disconnected — will relaunch on next render");

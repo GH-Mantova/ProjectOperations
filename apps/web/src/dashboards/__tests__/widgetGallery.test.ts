@@ -12,12 +12,14 @@ import {
   hasDeferredFields,
   initialGalleryState,
   insertWidgetAt,
+  searchWidgets,
   sizeOptionsFor,
+  sortWidgets,
   widgetsForKind,
   type GalleryState
 } from "../widgetGallery";
 import { WIDGETS, WIDGET_BY_TYPE } from "../widgetRegistry";
-import type { WidgetConfigEntry } from "../types";
+import type { WidgetMeta, WidgetConfigEntry } from "../types";
 
 const entry = (id: string, order: number): WidgetConfigEntry => ({
   id,
@@ -174,6 +176,109 @@ describe("sizeOptionsFor", () => {
     for (const meta of WIDGETS) {
       expect(sizeOptionsFor(meta).some((o) => o.isDefault)).toBe(true);
     }
+  });
+});
+
+describe("searchWidgets", () => {
+  const stub = (type: string, name: string, description: string): WidgetMeta => ({
+    type,
+    name,
+    description,
+    category: "operations",
+    size: "kpi",
+    component: () => null
+  });
+
+  const list: WidgetMeta[] = [
+    stub("a", "Active jobs", "Count of jobs currently active"),
+    stub("b", "Compliance expiring", "Documents that expire soon"),
+    stub("c", "Tender win rate", "Percentage of tenders won this period"),
+    stub("d", "Zebra crossings", "Unrelated safety widget")
+  ];
+
+  it("matches on name (case-insensitive) and returns matches only", () => {
+    expect(searchWidgets(list, "active").map((w) => w.type)).toEqual(["a"]);
+    expect(searchWidgets(list, "ACTIVE").map((w) => w.type)).toEqual(["a"]);
+  });
+
+  it("matches on description as well as name", () => {
+    expect(searchWidgets(list, "expire").map((w) => w.type)).toEqual(["b"]);
+    expect(searchWidgets(list, "tenders").map((w) => w.type)).toEqual(["c"]);
+  });
+
+  it("returns all widgets when query is empty or whitespace", () => {
+    expect(searchWidgets(list, "").map((w) => w.type)).toEqual(["a", "b", "c", "d"]);
+    expect(searchWidgets(list, "   ").map((w) => w.type)).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("returns [] when nothing matches", () => {
+    expect(searchWidgets(list, "nonsense-query")).toEqual([]);
+  });
+});
+
+describe("sortWidgets", () => {
+  const stub = (type: string, name: string): WidgetMeta => ({
+    type,
+    name,
+    description: "",
+    category: "operations",
+    size: "kpi",
+    component: () => null
+  });
+
+  it("sorts by name ascending via localeCompare", () => {
+    const input = [stub("c", "Charlie"), stub("a", "alpha"), stub("b", "Bravo")];
+    expect(sortWidgets(input, "asc").map((w) => w.name)).toEqual(["alpha", "Bravo", "Charlie"]);
+  });
+
+  it("sorts descending", () => {
+    const input = [stub("a", "alpha"), stub("b", "Bravo"), stub("c", "Charlie")];
+    expect(sortWidgets(input, "desc").map((w) => w.name)).toEqual(["Charlie", "Bravo", "alpha"]);
+  });
+
+  it("is stable for entries with the same name", () => {
+    const input = [stub("first", "Same"), stub("second", "Same"), stub("third", "Same")];
+    expect(sortWidgets(input, "asc").map((w) => w.type)).toEqual(["first", "second", "third"]);
+    expect(sortWidgets(input, "desc").map((w) => w.type)).toEqual(["first", "second", "third"]);
+  });
+
+  it("does not mutate the input array", () => {
+    const input = [stub("a", "Beta"), stub("b", "Alpha")];
+    const snapshot = input.map((w) => w.type);
+    sortWidgets(input, "asc");
+    expect(input.map((w) => w.type)).toEqual(snapshot);
+  });
+});
+
+describe("gallery reducer — search + sort", () => {
+  it("setQuery / clearing query toggles between flat search and grouped view", () => {
+    let state = initialGalleryState();
+    expect(state.query).toBe("");
+    state = galleryReducer(state, { type: "setQuery", query: "jobs" });
+    expect(state.query).toBe("jobs");
+    state = galleryReducer(state, { type: "setQuery", query: "" });
+    expect(state.query).toBe("");
+  });
+
+  it("initial sortDir is asc", () => {
+    expect(initialGalleryState().sortDir).toBe("asc");
+  });
+
+  it("toggleSort flips asc <-> desc", () => {
+    let state = initialGalleryState();
+    state = galleryReducer(state, { type: "toggleSort" });
+    expect(state.sortDir).toBe("desc");
+    state = galleryReducer(state, { type: "toggleSort" });
+    expect(state.sortDir).toBe("asc");
+  });
+
+  it("setKind resets sortDir to asc", () => {
+    let state = initialGalleryState("kpi");
+    state = galleryReducer(state, { type: "toggleSort" });
+    expect(state.sortDir).toBe("desc");
+    state = galleryReducer(state, { type: "setKind", kind: "bar" });
+    expect(state.kind).toBe("bar");
+    expect(state.sortDir).toBe("asc");
   });
 });
 

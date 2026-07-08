@@ -33,12 +33,15 @@ type Props = {
   anchor: HTMLElement | null;
   onApply: (next: ApplyPayload) => void;
   onClose: () => void;
+  /** Optional destructive action rendered at the bottom of the popover; when
+   *  provided the caller is responsible for the actual remove side effect. */
+  onRemove?: () => void;
 };
 
 const POPOVER_WIDTH = 320;
 const VIEWPORT_GUTTER = 8;
 
-export function WidgetSettingsPopover({ meta, entry, anchor, onApply, onClose }: Props) {
+export function WidgetSettingsPopover({ meta, entry, anchor, onApply, onClose, onRemove }: Props) {
   const [draftFilters, setDraftFilters] = useState<WidgetFilters>(entry.config.filters ?? {});
   const [draftFields, setDraftFields] = useState<string[]>(() => resolveVisibleFields(meta, entry));
   const ref = useRef<HTMLDivElement | null>(null);
@@ -129,6 +132,18 @@ export function WidgetSettingsPopover({ meta, entry, anchor, onApply, onClose }:
     onClose();
   };
 
+  const handleRemove = () => {
+    if (!onRemove) return;
+    if (
+      window.confirm(
+        "Remove this widget from the dashboard? You can add it back from Add widget."
+      )
+    ) {
+      onRemove();
+      onClose();
+    }
+  };
+
   // Build the sortable items in "draft order for visible, then hidden appended at the end"
   const allKeys = useMemo(() => {
     if (!meta.fieldSchema) return [] as string[];
@@ -204,6 +219,17 @@ export function WidgetSettingsPopover({ meta, entry, anchor, onApply, onClose }:
       >
         Apply
       </button>
+
+      {onRemove ? (
+        <button
+          type="button"
+          className="s7-btn s7-btn--danger s7-btn--sm widget-settings-popover__remove"
+          data-testid="widget-settings-remove"
+          onClick={handleRemove}
+        >
+          Remove from dashboard
+        </button>
+      ) : null}
     </div>
   );
 

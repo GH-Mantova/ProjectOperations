@@ -334,8 +334,16 @@ tr.cost-opt-header td {
 }
 
 function logoBase64(): string {
-  const logoPath = join(getTemplatesDir(), "assets", "teal_sq_logo4x.png");
-  return readFileSync(logoPath).toString("base64");
+  try {
+    const logoPath = join(getTemplatesDir(), "assets", "teal_sq_logo4x.png");
+    return readFileSync(logoPath).toString("base64");
+  } catch (err) {
+    console.warn(
+      "[quote-html.builder] Header logo missing — rendering without it.",
+      err,
+    );
+    return "";
+  }
 }
 
 // ── Page 1: Cover + Cost Summary ────────────────────────────────────

@@ -5,6 +5,7 @@
   "type": "commonjs",
   "scripts": {
     "dev": "node scripts/dev.mjs",
+    "postinstall": "node scripts/ensure-puppeteer-chrome.mjs",
     "build": "nest build",
     "start": "node dist/src/main.js",
     "lint": "eslint \"src/**/*.ts\"",

@@ -1,7 +1,35 @@
 # Diagnostics
 
-Folder for Cowork-produced diagnostic reports. See
-`project_instructions.md` §19 for the full rules.
+Folder for **Cowork**-produced diagnostic reports. Cowork's full operating rules live here
+(previously `project_instructions.md` §19, folded in during the 2026-07-08 source-of-truth
+consolidation).
+
+## What Cowork is
+
+Cowork is a local agent with read/write access to the repo at `C:\ProjectOperations2` and the
+dev environment. It is used for local file reads, DB probes, browser-based smoke tests, and
+diagnostic reports. Cowork is **NOT** an implementation agent — Claude Code remains the sole
+code-shipping tool.
+
+**When MAIN uses Cowork:**
+
+1. **Diagnostic reads** — investigating a bug; reading source files MAIN can't fetch from
+   GitHub (private feature branches, stash state); DB probes against the dev postgres
+   container; capturing local config. → `docs/diagnostics/<YYYY-MM-DD>-<topic>/REPORT.md`
+2. **Smoke test reports** — after a fix lands on main, verifying user-visible behaviour in
+   the running app (browser console + network + DOM). → `docs/diagnostics/<YYYY-MM-DD>-<topic>-smoketest/REPORT.md`
+3. **One-shot probes** — small lookups (row count, file presence, config value, branch state)
+   where a full report is overkill. → direct paste-back to MAIN, no committed artefact.
+
+**What Cowork does NOT do:** source code changes, schema migrations, PR creation,
+architectural decisions, test/lint fixes, or deployments — all out of scope (Claude Code's or
+MAIN's job).
+
+**Standard bug-investigation flow:** MAIN writes a Cowork diagnostic prompt with explicit
+deliverables → Marco pastes it to Cowork → Cowork produces `REPORT.md` in the right subfolder
+→ Marco pastes the report (or path) back to MAIN → MAIN identifies the cause → MAIN writes a
+Claude Code implementation prompt → Claude Code ships the fix. Cowork outputs do **not**
+replace Claude Code's protocols (pre-flight, test gates, progress-log entries, PR cycle).
 
 ## Folder convention
 
@@ -59,9 +87,10 @@ that level of impact, commit it.
 For cases that don't fit any of the above, leave the report
 uncommitted. Marco can always move a committed report to
 `docs/lessons-learned/` later if it grows into a more formal
-reference. The default uncommitted state is captured in
-`project_instructions.md` §19 and remains the canonical rule
-— this README is the operational override.
+reference. The default uncommitted state is captured in the
+Cowork rules above (this file is now their home — they were
+previously `project_instructions.md` §19) and remains the
+canonical rule for the default-uncommitted behaviour.
 
 ## Report template
 

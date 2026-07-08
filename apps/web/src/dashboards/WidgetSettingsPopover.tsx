@@ -302,6 +302,38 @@ function FieldRenderer({
     );
   }
 
+  if (field.type === "text") {
+    return (
+      <div className="widget-settings-popover__field">
+        <span className="widget-settings-popover__field-label">{field.label}</span>
+        <input
+          type="text"
+          className="s7-input s7-input--sm"
+          placeholder={field.placeholder}
+          data-testid={`widget-setting-${field.key.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase()}`}
+          value={typeof value === "string" ? value : (field.defaultValue as string | undefined) ?? ""}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      </div>
+    );
+  }
+
+  if (field.type === "textarea") {
+    return (
+      <div className="widget-settings-popover__field">
+        <span className="widget-settings-popover__field-label">{field.label}</span>
+        <textarea
+          className="s7-input s7-input--sm"
+          rows={4}
+          placeholder={field.placeholder}
+          data-testid={`widget-setting-${field.key.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase()}`}
+          value={typeof value === "string" ? value : (field.defaultValue as string | undefined) ?? ""}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      </div>
+    );
+  }
+
   return null;
 }
 

@@ -23,7 +23,16 @@ $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 $OutputEncoding = [Text.Encoding]::UTF8
 
-$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+if ($env:PR_WATCHER_REPO_ROOT) {
+    $RepoRoot = (Resolve-Path $env:PR_WATCHER_REPO_ROOT).Path
+} else {
+    $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+}
+# Guardrail: never let automation drive the interactive tree.
+if ($RepoRoot -eq "C:\ProjectOperations2") {
+    Write-Host "REFUSE: watcher must not run against the interactive tree C:\ProjectOperations2. Set PR_WATCHER_REPO_ROOT to a dedicated clone."
+    exit 1
+}
 Set-Location $RepoRoot
 
 $LogDir = Join-Path $RepoRoot "scripts\pr-watcher\logs"

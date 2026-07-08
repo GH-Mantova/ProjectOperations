@@ -298,7 +298,8 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       firstName: "Marco",
       lastName: "Mantovaninni",
       roleId: adminRole.id,
-      position: "WHS & Commercial Compliance · Admin"
+      position: "WHS & Commercial Compliance · Admin",
+      isSuperUser: true
     },
     {
       id: "user-estimator",

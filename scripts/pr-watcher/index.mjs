@@ -48,7 +48,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.resolve(__dirname, "..", "..");
+// Isolation: the watcher can run against a dedicated clone (its own .git)
+// so automation never churns the interactive working tree's HEAD/index.
+// Unset -> unchanged (repo root two levels up from this script).
+const REPO_ROOT = process.env.PR_WATCHER_REPO_ROOT
+  ? path.resolve(process.env.PR_WATCHER_REPO_ROOT)
+  : path.resolve(__dirname, "..", "..");
 const PROMPT_DIR = path.join(REPO_ROOT, "docs", "pr-prompts");
 const PROCESSED_DIR = path.join(PROMPT_DIR, "processed");
 const FAILED_DIR = path.join(PROMPT_DIR, "failed");

@@ -29,8 +29,8 @@
 > page plus the missing template PATCH/archive/duplicate/delete endpoints. This
 > document assumes that work lands first and starts from there.
 >
-> **Defers to:** `docs/architecture/job-project-consolidation.md` (B-P0a) and
-> `docs/architecture/module-ownership-ia-map.md` (ownership rules). Nothing here
+> **Defers to:** `sot/04-data-model.md` (B-P0a) and
+> `sot/04-data-model.md` (ownership rules). Nothing here
 > re-decides Job/Project, Worker/WorkerProfile, or entity ownership.
 
 ---
@@ -133,10 +133,10 @@ This is the honest starting line.
 | `FormSection` | 1375-1392 | Built, **with repeat semantics already reserved**: `isRepeating`, `minRepeat`, `maxRepeat` (L1382-1384) and section `conditions` Json (L1385). Nothing reads the repeat fields — the fill page has zero references to repeating (grep of `FormFillPage.tsx` for `repeat`/`isRepeating`: no matches). Orphaned columns awaiting section 3.1. |
 | `FormField` | 1394-1423 | Built with generic extension points: `config`, `conditions`, `validations`, `actions` Json columns (L1412-1415). `config` is documented for "min/max/step, formula, lookup spec, etc." (L1406) — the natural home for new field-type settings. |
 | `FormRule` | 1425-1438 | Built but **primitive**: one source field, one target field, one operator, one comparison value, one effect (default `SHOW`). No groups, no system values, no actions beyond a single effect. This is the storage seed section 3.5 extends. |
-| `FormSubmission` | 1440-1482 | Built: status lifecycle, association FKs (job/client/asset/worker/site/shift), `context` Json auto-fill blob, GPS lat/lng (L1470-1472), approvals + triggered records relations (L1473-1474). Note: `jobId` is re-pointed to Project by **B-P0a-7** (`job-project-consolidation.md` section 6) — forms slices must not touch that linkage. |
+| `FormSubmission` | 1440-1482 | Built: status lifecycle, association FKs (job/client/asset/worker/site/shift), `context` Json auto-fill blob, GPS lat/lng (L1470-1472), approvals + triggered records relations (L1473-1474). Note: `jobId` is re-pointed to Project by **B-P0a-7** (`sot/04-data-model.md` section 6) — forms slices must not touch that linkage. |
 | `FormApproval` | 1486-1504 | Built: step number, assignee (user or role), status, due date. |
 | `FormTriggeredRecord` | 1506-1517 | Built: the audit link between a submission and any record it caused (`recordType` + `recordId`). **This is the push engine's audit spine** — it already exists. |
-| `FormSchedule` | 1519-1537 | Built in schema, **orphaned in product**: zero web references (confirmed in `module-ownership-ia-map.md` section 5.2) and no runner. Out of scope here except where rule 8 of the mockup ("schedule a re-inspection") finally gives it a consumer. |
+| `FormSchedule` | 1519-1537 | Built in schema, **orphaned in product**: zero web references (confirmed in `sot/04-data-model.md` section 5.2) and no runner. Out of scope here except where rule 8 of the mockup ("schedule a re-inspection") finally gives it a consumer. |
 | `FormSubmissionValue` | 1539-1560 | Built: typed value columns (text/number/datetime/json/boolean) + `filePath` (L1544-1552). **Has no per-entry index** — the gap repeating sections must fill (section 3.1). |
 | `FormAttachment` / `FormSignature` | 1562-1586 | Built. `FormSignature` records signer name + timestamps only — **no role gating, no lock semantics, no seal** (section 3.6). |
 
@@ -200,7 +200,7 @@ This is the honest starting line.
 House rules apply to every slice: migration folders use **full
 `YYYYMMDDHHMMSS_` timestamps** (bare `YYYYMMDD_` folders sort ahead of
 timestamped ones on the same day and reorder backfills —
-`job-project-consolidation.md` risk R3), backfill data stays **inline** in the
+`sot/04-data-model.md` risk R3), backfill data stays **inline** in the
 migration, and every change follows **expand → backfill → switch reads →
 switch writes → contract**. All additions below are pure *expand* steps
 (nullable columns, new tables) unless flagged.
@@ -292,7 +292,7 @@ model AssetUsageReading {
   `currentKmReading Decimal?`, `lastReadingAt DateTime?`. Maintained solely by
   the assets service method that inserts readings — the same
   stored-counter-behind-one-service pattern Marco locked for Client counters
-  (`module-ownership-ia-map.md` section 7, decision Q4).
+  (`sot/04-data-model.md` section 7, decision Q4).
 - **Migration slices:** `YYYYMMDDHHMMSS_fv2_asset_usage_reading` (new table)
   then `YYYYMMDDHHMMSS_fv2_asset_current_reading_denorm` (nullable columns; no
   backfill — no historical readings exist). Both reversible by drop.
@@ -393,7 +393,7 @@ the owning module's service**.
 
 The ownership map already codifies forms as a *sanctioned* multi-table writer
 with a strict rule: "forms may **create** trigger targets, never update them;
-owning modules handle lifecycle" (`module-ownership-ia-map.md` section 2.4, and
+owning modules handle lifecycle" (`sot/04-data-model.md` section 2.4, and
 the SBD rows for `SafetyIncident`/`HazardObservation` at section 1 —
 "creation allowed from the forms trigger (recorded in `FormTriggeredRecord`)"
 — and `AssetBreakdown` — "same trigger rule as safety"). The push engine
@@ -644,7 +644,7 @@ Sequencing constraints, checked against the in-flight programs:
   — everything here builds on its PATCH/archive/duplicate endpoints and the
   un-orphaned designer.
 - **Around B-P0a:** slice B-P0a-7 re-points `FormSubmission.jobId` → Project
-  (`job-project-consolidation.md` section 6). No F-slice touches
+  (`sot/04-data-model.md` section 6). No F-slice touches
   `FormSubmission`'s association FKs; F-slices that *read* the job linkage (PDF
   → job folder, F-11) use whatever linkage is current and are trivially
   re-pointed by B-P0a-7 itself.
@@ -693,7 +693,7 @@ schema changes, Swagger decorators on all new endpoints, reviewer GH-Mantova.
 | R3 | **AI import quality** — a mangled import silently drops a critical question from a safety form. | Med | High | Imports are always DRAFT and human-reviewed in the builder (LOCKED); the import view shows a side-by-side of source pages vs drafted fields; publish stays a human action. |
 | R4 | **Repeating-section migration** — retrofitting `entryIndex` interacts with existing submission values and the two rule stores. | Low | Med | Column is nullable with `null` = legacy meaning; no backfill needed; rule-store unification (F-2) lands *before* repeating rules (F-3) so there is one evaluator to teach. |
 | R5 | **Two rule evaluators drift** (server vs fill page — already true today at `rules-engine.service.ts:144` vs `FormFillPage.tsx:97`). | Med | Med | F-2 makes the definition format shared and adds contract tests that run the same fixtures through both evaluators. |
-| R6 | **Ownership regression** — a push binding written as raw prisma into another module's table would recreate exactly the CONFLICT pattern the ownership map is eliminating. | Low | High | Binding executor can only call registered owning-service methods (a typed registry, not arbitrary prisma); reviewed against `module-ownership-ia-map.md` section 1 rows per target. |
+| R6 | **Ownership regression** — a push binding written as raw prisma into another module's table would recreate exactly the CONFLICT pattern the ownership map is eliminating. | Low | High | Binding executor can only call registered owning-service methods (a typed registry, not arbitrary prisma); reviewed against `sot/04-data-model.md` section 1 rows per target. |
 | R7 | **B-P0a / B-P0b moving parts** — `FormSubmission.jobId` re-points (B-P0a-7); competency data moves sides (B-P0b). | Med | Med | F-slices never touch submission association FKs; competency resolver isolated behind one function (section 5.1). |
 | R8 | **Meter data integrity** — a wrong accepted reading poisons service scheduling. | Med | Med | Append-only history with `previousReading` snapshots; reject-below-last at the service; live warn rule; meter-replaced override is explicit, attributed, and audited. |
 | R9 | **Migration ordering** — same-day folder sort hazard as B-P0a R3. | Low | High | Full 14-digit timestamps on every folder; inline backfills; `prisma migrate status` check before apply (house rule, `reference_prisma_migration_ordering`). |
@@ -719,7 +719,7 @@ above.
    Manager and Warehouse Manager roles** (sections 3.3, 4.3). **NOTE recorded:**
    Marco flags that job roles and role names need a cleanup pass — the Job
    Roles register is currently empty. Cross-reference the IA map's users/roles
-   slice (`module-ownership-ia-map.md`); the forms engine binds to roles by
+   slice (`sot/04-data-model.md`); the forms engine binds to roles by
    id, so the cleanup is **non-blocking** for this program.
 4. **Unique IDs — yearly reset** (`PPS-2026-0311` → `PPS-2027-0001`), and
    **duplicate prefixes across templates are blocked** (section 3.6).

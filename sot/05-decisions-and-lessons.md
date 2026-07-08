@@ -24,7 +24,7 @@ Root cause variant of LL-01: interrupted/unflushed write left NUL padding. Fix: 
 Root cause: mount cache staleness during active Windows-side git operations. Fix: verify on the Windows side (`git status`, `git fsck`) before trusting sandbox reads; restart the Cowork session to remount. Standing guard: sandbox observations of `.git` internals during agent runs are advisory only — never "repair" through the mount without Windows-side confirmation. (One benign exception logged: the LL-02 rewrite was byte-identical to the valid ref.)
 
 **LL-04 | ongoing | Branch accumulation after manual merges.**
-Root cause: only watcher auto-merge path passes `--delete-branch`; manual merges leave remote branches. Fix/Standing guard: `scripts/branch-prune.ps1` (deletes remote branches whose PR merged, skips open PRs + main); see [vs-code-strategy.md §A3](../vs-code-strategy.md#a3-branch-hygiene-the-pruning-routine) for the recurring schedule + repo setting.
+Root cause: only watcher auto-merge path passes `--delete-branch`; manual merges leave remote branches. Fix/Standing guard: `scripts/branch-prune.ps1` (deletes remote branches whose PR merged, skips open PRs + main); see [vs-code-strategy.md §A3](../docs/vs-code-strategy.md#a3-branch-hygiene-the-pruning-routine) for the recurring schedule + repo setting.
 
 ## Prisma / database
 
@@ -171,12 +171,12 @@ follows this structure:
 3. **Lesson** — the rule to apply going forward.
 4. **References** — links to PRs, Codex review URLs, commit SHAs, related files.
 
-These are **not architecture rules** (those live in `project_instructions.md` §6).
+These are **not architecture rules** (those live in `sot/01-charter-and-architecture.md` §6).
 These are **war stories** — pointed enough to learn from, narrow enough not to
 over-generalise.
 
 The canonical, append-only record of every incident lives in
-`incident-ledger.md` — start there. Standalone per-incident files are kept only
+the incident ledger above (this document, `sot/05`) — start there. Standalone per-incident files are kept only
 when their detail exceeds what fits a ledger row; right now the ledger absorbs
 everything, including the 2026-05-17 migration date-filter precision case (see
 entry `LL-07a`).

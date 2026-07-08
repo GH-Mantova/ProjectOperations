@@ -97,14 +97,16 @@ One platform. One source of truth. Desktop for office, mobile web for field.
 | Dev login | admin@projectops.local / Password123! |
 | Claude Code flag | always use --dangerously-skip-permissions |
 | CLAUDE.md | Repo root — Claude Code reads automatically each session |
-| project_instructions.md | Repo root — fetch via blob URL |
-| progress.md | Repo root — fetch via blob URL |
-| roadmap.md | Repo root — fetch via blob URL |
+| Source of truth | `/sot/` — start at `sot/README.md` (routing + law) |
+| Charter (this file) | `sot/01-charter-and-architecture.md` (was `project_instructions.md`) |
+| Roadmap | `sot/02-roadmap-and-status.md` (was `roadmap.md`) |
+| Progress log | `sot/03-progress-log.md` (was `progress.md`) |
 
 ### Key URLs (use blob URL — raw CDN has delays)
-- Instructions: https://github.com/GH-Mantova/ProjectOperations/blob/main/project_instructions.md
-- Progress: https://github.com/GH-Mantova/ProjectOperations/blob/main/progress.md
-- Roadmap: https://github.com/GH-Mantova/ProjectOperations/blob/main/roadmap.md
+- SoT README: https://github.com/GH-Mantova/ProjectOperations/blob/main/sot/README.md
+- Charter (01): https://github.com/GH-Mantova/ProjectOperations/blob/main/sot/01-charter-and-architecture.md
+- Roadmap (02): https://github.com/GH-Mantova/ProjectOperations/blob/main/sot/02-roadmap-and-status.md
+- Progress (03): https://github.com/GH-Mantova/ProjectOperations/blob/main/sot/03-progress-log.md
 
 ---
 
@@ -1039,7 +1041,7 @@ AI Persona System (planned — Phase 5A.1)
   to arbitrary JavaScript execution upon opening a malicious PDF
   (HIGH severity). Patched upstream in 4.2.67; the repo is pinned
   to ^3.11 because Jest's CommonJS runtime can't load v4 ESM
-  without transformer gymnastics (see roadmap.md §6). Setting
+  without transformer gymnastics (see `sot/02-roadmap-and-status.md`). Setting
   `isEvalSupported: false` is Mozilla's recommended mitigation
   when the version can't be upgraded — it defangs the eval-based
   execution path. Two runtime call sites today: the
@@ -1131,12 +1133,12 @@ Quote PDF generation (`pdf-rendering/builders/quote-html.builder.ts`)
   mismatch.
 
 ### 🔲 NEXT PRIORITIES
-See roadmap.md §5A.1 + 5A.2 for the expanded Phase 5A scope. AI
+See `sot/02-roadmap-and-status.md` §5A for the expanded Phase 5A scope. AI
 persona infrastructure and HTML→PDF renderer migration are now
 critical-path before tendering sign-off.
 
-See roadmap.md for full prioritised list.
-https://github.com/GH-Mantova/ProjectOperations/blob/main/roadmap.md
+See `sot/02-roadmap-and-status.md` for the full prioritised list.
+https://github.com/GH-Mantova/ProjectOperations/blob/main/sot/02-roadmap-and-status.md
 
 ---
 
@@ -1166,10 +1168,10 @@ https://github.com/GH-Mantova/ProjectOperations/blob/main/roadmap.md
 
 ## SECTION 15 — AUTONOMOUS PR CHAIN INFRASTRUCTURE
 
-### progress.md
-Maintained at repo root. Append-only. Never delete entries.
-Fetch (full file): https://raw.githubusercontent.com/GH-Mantova/ProjectOperations/main/progress.md
-Fetch (navigation): https://github.com/GH-Mantova/ProjectOperations/blob/main/progress.md
+### progress log — `sot/03-progress-log.md`
+Maintained in `/sot/`. Append-only. Never delete entries.
+Fetch (full file): https://raw.githubusercontent.com/GH-Mantova/ProjectOperations/main/sot/03-progress-log.md
+Fetch (navigation): https://github.com/GH-Mantova/ProjectOperations/blob/main/sot/03-progress-log.md
 Note: always use the raw URL for reading file contents — the blob URL
 serves a truncated HTML page that cuts off long files.
 
@@ -1184,16 +1186,15 @@ Status: COMPLETE | FAILED | PAUSED
 
 Update after: PR opens, PR merges, audit completes, fix applied, chain pauses.
 
-### Doc updates within a PR
+### Doc updates — the doc-reconcile split (2026-07-08)
 
-Every PR includes its documentation updates as part of the PR itself, not as a follow-up. This is non-negotiable — follow-up doc PRs have historically been forgotten (see PR #111 → PR #112 cleanup), causing stale-doc drift that breaks the routing-instructions trust model.
+**Charter/architecture** (this file, `sot/01`) is updated **inline in the same PR** that changes a module, business rule, sidebar, env var, or architecture pattern — §13 module registry should always reflect what's on `main`.
 
-Per-file rules:
-- progress.md — append a merge entry on EVERY PR. Format matches existing entries: ## YYYY-MM-DD HH:MM AEST — PR #N MERGED — <title>, followed by Type / Status / Detail / files changed / CI summary.
-- roadmap.md — edit when phases shift, items complete, items added, or items deferred. Use the changelog at the bottom to record the change. No edit needed for PRs that don't move roadmap state.
-- project_instructions.md — edit when modules go live, business rules change, sidebar changes, env vars change, architecture patterns change. §13 module registry should always reflect what's on main.
+**Roadmap (`sot/02`) and progress (`sot/03`) are owned by a dedicated doc-reconcile PR.** Feature/fix PRs must **NOT** edit their `Last updated:` headers, restate phase status, or append per-PR status blocks. (This killed the recurring header merge conflict that arose when parallel PRs each bumped the timestamp; see `sot/README.md` → SoT sweep policy.) The reconcile PR:
+- appends per-PR entries to `sot/03-progress-log.md` — one per merged PR, format `## YYYY-MM-DD HH:MM AEST — PR #N MERGED — <title>` followed by Type / Status / Detail / files-changed / CI summary;
+- updates `sot/02-roadmap-and-status.md` when phases shift or items complete / add / defer.
 
-The pre-commit hook stamps "Last updated:" on any of these three files when they're staged. Never edit that line by hand — the hook will overwrite it.
+The pre-commit hook stamps `Last updated:` on `sot/01`/`sot/02`/`sot/03` when staged. Never edit that line by hand — the hook overwrites it.
 
 ### Bypass actor pattern
 Ruleset ID: 15532058
@@ -1213,17 +1214,17 @@ gh api --method PUT repos/GH-Mantova/ProjectOperations/rulesets/15532058 \
 Always verify removal: `current_user_can_bypass` must show `"never"`.
 Always remove bypass before pausing or finishing a session.
 
-### Final progress.md entry (after chain complete)
+### Final progress-log entry (after chain complete)
 Bypass is removed before final commit, so direct push to main is blocked.
-Always use a PR for the final chain-complete log entry:
+Always use a PR for the final chain-complete log entry (a doc-reconcile PR — see §6):
 ```bash
 git checkout -b chore/chain-complete-log
-# append final entry to progress.md
-git add progress.md
+# append final entry to sot/03-progress-log.md
+git add sot/03-progress-log.md
 git commit -m "chore: progress — CHAIN COMPLETE"
 git push origin chore/chain-complete-log
 gh pr create --title "chore: chain complete log" \
-  --body "Final progress.md entry." --reviewer GH-Mantova \
+  --body "Final sot/03-progress-log.md entry." --reviewer GH-Mantova \
 && gh pr merge --auto --squash
 ```
 
@@ -1235,7 +1236,7 @@ gh pr create --title "chore: chain complete log" \
 Pause message format:
 ```
 ⏸️  CHAIN PAUSED
-URL: https://raw.githubusercontent.com/GH-Mantova/ProjectOperations/main/progress.md
+URL: https://raw.githubusercontent.com/GH-Mantova/ProjectOperations/main/sot/03-progress-log.md
 Reason: [why]
 Waiting for: [what's needed]
 Type CONTINUE or paste fix instructions to resume.

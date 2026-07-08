@@ -71,7 +71,7 @@ OAuth2, MYOB CSV, M365 SSO + local JWT + Super User, AI providers + BYOK encrypt
 **5A Tendering sign-off gate (still the pilot-facing release blocker):**
 - Floating AI window shell; AI Settings tab (Sean + user views); remaining persona sub-mode tooling.
 - 5A.3 end-to-end workflow review with Raj → fix PRs → **Raj + Sean sign-off**.
-- Clarification Call/Email/Meeting/Note first-class types — **still Open** (verified 2026-07-08): #215/#260 shipped an *email-only* Correspondence Hub (no Call/Meeting/Note type discriminator); `TenderClarification`/`TenderClarificationNote` are untyped. Not covered — remains a real 5A item.
+- Clarification Call/Email/Meeting/Note first-class types — **Done (types wired)** (verified 2026-07-08): typed end-to-end via `TenderClarificationNote.noteType` (call/email/meeting/note/response, PR #72; `@IsIn` API validation + UI filter) and `TenderEntry.type` (PR #18 unified comms panel). *(The earlier "email-only" read looked at the Correspondence Hub and missed the clarification-note subsystem; if #260 intended richer per-type workflows beyond the discriminator, re-scope that separately.)*
 - Quote PDF enhancements — **all Done** (verified 2026-07-08; drop from this gate at next reconcile): PR A density-as-lookup shipped incl. seed (`EstimateMaterialDensity` + admin UI + 44 seeded rows); PR B card-header summaries / override / proportional cost-line allocation (`client-quotes.service.ts`); PR C floating Assumptions/Exclusions editor, Alt+A (`AssumptionsExclusionsFloatingEditor.tsx`).
 - Variation PDF + Schedule-of-Rates PDF HTML→PDF migration (deferred pending Sean's templates).
 
@@ -119,7 +119,7 @@ several "is it built?" items. All were verified against `apps/` + `prisma/schema
 | Forms Engine v2 UI depth | 🔧 Partial | F-1 builder shell + fill + rules shipped (#499); v2 palette (F-4/F-5) + push (F-9) not built yet (`formDesignerState.ts`) |
 | Gantt drag-to-reschedule (#446) | ✅ Done | `apps/web/src/pages/projects/GanttChart.tsx` (@dnd-kit, PATCHes dates) — projects Gantt, not the scheduler grid |
 | Quote-PDF PR B / PR C | ✅ Done | PR B `client-quotes.service.ts` proportional allocation; PR C Alt+A `AssumptionsExclusionsFloatingEditor.tsx` |
-| Clarification Call/Email/Meeting/Note types (#260) | ⛔ Open | #215/#260 Correspondence Hub is email-only; no type discriminator — **not** covered |
+| Clarification Call/Email/Meeting/Note types | ✅ Done (types wired) | Typed end-to-end: `TenderClarificationNote.noteType` = call/email/meeting/note/response (PR #72, `@IsIn` in `tender-clarifications.controller.ts`, filtered in `TenderClarificationLog.tsx`) + `TenderEntry.type` (PR #18 unified comms panel). *(Earlier "email-only Correspondence Hub" read missed this subsystem; if #260 scoped richer per-type workflows, re-scope separately.)* |
 | `subcontractor_contacts` drop | ✅ Done | migration `20260426_feat_drop_deprecated_tables` (data first unified into polymorphic `Contact`) |
 | `directory.finance` guard | ✅ N/A | intentional field-masking (`maskBank` / `stripBankFromInput`), not a missing guard decorator |
 | Material density lookup | ✅ Done incl. seed | `EstimateMaterialDensity` + admin UI + seed upserts 44 rows |

@@ -117,6 +117,15 @@ import {
   WhoIsAwayThisWeekWidget,
   XeroSyncHealthKpi
 } from "./widgets/batch1";
+import {
+  FormApprovalsWaitingKpi,
+  FormApprovalsWaitingWidget,
+  MyDayWidget,
+  PreStartsTodayKpi,
+  QuoteDraftsKpi,
+  QuoteDraftsWidget,
+  RecentSitePhotosWidget
+} from "./widgets/batch2";
 import { CustomBuilderWidget } from "./CustomBuilderWidget";
 import { CUSTOM_WIDGET_TYPE } from "./customWidget";
 
@@ -739,6 +748,74 @@ export const WIDGETS: WidgetMeta[] = [
     ],
     component: StaticHeadingWidget
   },
+  // ── Batch 2 composed ──────────────────────────────────────────
+  {
+    type: "forms_approvals_waiting_kpi",
+    name: "Approvals waiting",
+    category: "forms",
+    size: "kpi",
+    description: "System-wide pending form approvals with an overdue split — tap for the queue.",
+    component: FormApprovalsWaitingKpi
+  },
+  {
+    type: "forms_approvals_waiting_panel",
+    name: "Approvals waiting (list)",
+    category: "forms",
+    size: "half",
+    description: "Top 5 form approvals due soonest, with the overdue count on top.",
+    defaultColSpan: 2,
+    defaultRowSpan: 2,
+    component: FormApprovalsWaitingWidget
+  },
+  {
+    type: "ten_quote_drafts_kpi",
+    name: "Draft quotes",
+    category: "tendering",
+    size: "kpi",
+    description: "Total $ of ClientQuotes still in DRAFT — the money-on-the-table view across all tenders.",
+    component: QuoteDraftsKpi
+  },
+  {
+    type: "ten_quote_drafts_panel",
+    name: "Draft quotes (list)",
+    category: "tendering",
+    size: "half",
+    description: "Top 5 DRAFT ClientQuotes by value, with the tender number and client name.",
+    defaultColSpan: 2,
+    defaultRowSpan: 2,
+    component: QuoteDraftsWidget
+  },
+  {
+    type: "forms_prestarts_today_kpi",
+    name: "Prestarts today",
+    category: "forms",
+    size: "kpi",
+    description:
+      "Count of pre-start form submissions logged today. Denominator (crews expected) is deferred to B-P0c.",
+    component: PreStartsTodayKpi
+  },
+  {
+    type: "doc_recent_site_photos",
+    name: "Recent site photos",
+    category: "operations",
+    size: "half",
+    description: "Latest image documents visible to you, as a thumbnail grid. Tap through to Documents.",
+    defaultColSpan: 2,
+    defaultRowSpan: 2,
+    component: RecentSitePhotosWidget
+  },
+  {
+    type: "personal_my_day",
+    name: "My day",
+    category: "operations",
+    size: "half",
+    description:
+      "Your allocations today, approvals waiting on your decision, and forms due — all scoped to you.",
+    defaultColSpan: 2,
+    defaultRowSpan: 2,
+    component: MyDayWidget
+  },
+
   {
     type: "annot_text_note",
     name: "Note",

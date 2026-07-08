@@ -139,6 +139,55 @@ export class DocumentsService {
     };
   }
 
+  /**
+   * Dashboard batch-2 widget aggregate: most recent site-photo document
+   * links visible to the caller. Filters DocumentLink to rows whose
+   * fileLink.mimeType begins with "image/", applies the standard access
+   * check, and returns up to `limit` most-recently-updated items.
+   *
+   * Thumbnails and click-through URLs come straight from the underlying
+   * SharePointFileLink — we do NOT proxy image bytes here; the widget
+   * hits SharePoint (or the mock) directly.
+   *
+   * @param actor - requesting user, for access-rule filtering
+   * @param limit - top-N items to return (default 12, min 1, max 40)
+   * @returns `{ items }`
+   */
+  async getRecentPhotos(actor: AuthenticatedUser, limit = 12) {
+    const take = Math.max(1, Math.min(limit, 40));
+    const roleNames = await this.getActorRoles(actor.sub);
+    const raw = await this.prisma.documentLink.findMany({
+      where: {
+        status: "ACTIVE",
+        fileLink: { is: { mimeType: { startsWith: "image/" } } }
+      },
+      include: {
+        fileLink: true,
+        accessRules: true
+      },
+      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+      take: take * 3
+    });
+    const visible = raw.filter((r) =>
+      this.canAccessDocument(r as never, actor.permissions, roleNames, "view")
+    );
+    const items = visible.slice(0, take).map((r) => ({
+      id: r.id,
+      title: r.title,
+      linkedEntityType: r.linkedEntityType,
+      linkedEntityId: r.linkedEntityId,
+      category: r.category,
+      module: r.module,
+      updatedAt: r.updatedAt,
+      createdAt: r.createdAt,
+      fileName: r.fileLink?.name ?? null,
+      webUrl: r.fileLink?.webUrl ?? null,
+      mimeType: r.fileLink?.mimeType ?? null,
+      sizeBytes: r.fileLink?.sizeBytes ?? null
+    }));
+    return { items };
+  }
+
   async listForEntity(linkedEntityType: string, linkedEntityId: string, actor: AuthenticatedUser) {
     const response = await this.list(
       {

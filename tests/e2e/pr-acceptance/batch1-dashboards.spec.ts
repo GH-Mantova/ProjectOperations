@@ -139,7 +139,7 @@ test.describe("Batch 1 — Dashboards, KPIs & Widgets (PRs #6, #15, #29, #30, #3
 
     // Set a unique name
     const dashName = `e2e-batch1-${Date.now()}`;
-    await page.getByLabel("Name").fill(dashName);
+    await page.getByRole("textbox", { name: "Name" }).fill(dashName);
 
     // Select widgets via "Select all" for the first category
     await page.getByRole("button", { name: "Select all" }).first().click();

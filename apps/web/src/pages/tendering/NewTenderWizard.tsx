@@ -9,6 +9,7 @@ import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import "./newTenderWizard.css";
+import { lockRateSet } from "./ratesTabApi";
 import { TenderDocumentsPanel, type DocumentRecord } from "./TenderDocumentsPanel";
 import {
   advanceStep,
@@ -318,7 +319,10 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.message ?? "Could not update draft tender.");
     }
-    return res.json();
+    // 204/empty body → `res.json()` would throw "Unexpected end of JSON input".
+    // Read text first and only parse when there's something to parse.
+    const text = await res.text();
+    return text ? JSON.parse(text) : {};
   }
 
   async function refreshPackagesAndMatrix(id: string) {
@@ -634,13 +638,15 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
 
   const lockRates = async () => {
     if (!flow.draftId) return;
+    // Use the dedicated rate-set lock endpoint so a TenderRateSet + entries
+    // are actually snapshotted. The previous PATCH /tenders/:id
+    // {pricingSnapshots} path did not create rate-set rows (which the Rates
+    // tab reads) and returned an empty body that crashed res.json().
     const label = ratesVersionLabel.trim() || `Rates as of ${new Date().toLocaleDateString("en-AU")}`;
     setBusy(true);
     setError(null);
     try {
-      await patchDraft(flow.draftId, {
-        pricingSnapshots: [{ versionLabel: label }]
-      });
+      await lockRateSet(authFetch, flow.draftId, label);
       dispatch({ type: "lockRates" });
     } catch (err) {
       setError((err as Error).message);

@@ -199,6 +199,7 @@ export function App() {
             <Route path="/tenders/:id" element={<TenderDetailPage />} />
             <Route path="/tenders/:id/scope" element={<TenderDetailPage />} />
             <Route path="/tenders/:id/quote" element={<TenderDetailPage />} />
+            <Route path="/tenders/:id/rates" element={<TenderDetailPage />} />
             <Route path="/jobs" element={<JobsListPage />} />
             <Route path="/jobs/:id" element={<JobDetailPage />} />
             <Route path="/projects" element={<ProjectsListPage />} />

@@ -1,4 +1,4 @@
-import type { TenderRateEntry, TenderRateSet } from "./RatesTab";
+import type { TenderRateEntry, TenderRateGroup, TenderRateSet } from "./RatesTab";
 
 export type AuthFetch = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -66,4 +66,28 @@ export function tabFromPath(pathname: string): "overview" | "scope" | "rates" | 
   if (pathname.endsWith("/rates")) return "rates";
   if (pathname.endsWith("/quote")) return "quote";
   return "overview";
+}
+
+/**
+ * Describe the columnar layout of a rate group so the render logic can
+ * be tested without mounting the page. A group with `keyColumns` renders
+ * one leading cell per key column (matching the Rates & Lists admin
+ * table); groups without key columns fall back to the flat
+ * `Rate | Unit` pair keyed off the legacy label.
+ */
+export function describeRateGroup(group: TenderRateGroup): {
+  headers: string[];
+  rowKeyCells: string[][];
+} {
+  const hasKeys = group.keyColumns.length > 0;
+  const leadingHeaders = hasKeys
+    ? group.keyColumns.map((c) => (c.unit ? `${c.name} (${c.unit})` : c.name))
+    : ["Rate", "Unit"];
+  const headers = [...leadingHeaders, "Original", "Override"];
+  const rowKeyCells = group.entries.map((entry) =>
+    hasKeys
+      ? group.keyColumns.map((_c, i) => entry.keyValues[i] || "—")
+      : [entry.label, entry.unit ?? "—"]
+  );
+  return { headers, rowKeyCells };
 }

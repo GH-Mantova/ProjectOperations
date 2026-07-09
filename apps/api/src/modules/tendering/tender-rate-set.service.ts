@@ -184,28 +184,76 @@ export class TenderRateSetService {
       orderBy: [{ rateTableSlug: "asc" }, { label: "asc" }]
     });
 
-    type SerializedEntry = ReturnType<TenderRateSetService["serializeEntry"]>;
-    const groups = new Map<
-      string,
-      {
-        rateTableId: string | null;
-        rateTableSlug: string | null;
-        tableName: string;
-        entries: SerializedEntry[];
-      }
-    >();
+    // Batch-load RateTable KEY/VALUE columns and RateRow cells so each
+    // entry can expose structured `keyValues` aligned to the group's
+    // `keyColumns`. Legacy/_other groups (no rateTableId) fall back to
+    // the flat label.
+    const rateTableIds = Array.from(
+      new Set(entries.map((e) => e.rateTableId).filter((id): id is string => !!id))
+    );
+    const rowIds = Array.from(
+      new Set(
+        entries
+          .map((e) => e.key.split(":")[1])
+          .filter((id): id is string => !!id)
+      )
+    );
+    const tables = rateTableIds.length
+      ? await client.rateTable.findMany({
+          where: { id: { in: rateTableIds } },
+          include: {
+            columns: {
+              where: { role: { in: ["KEY", "VALUE"] } },
+              orderBy: { sortOrder: "asc" }
+            }
+          }
+        })
+      : [];
+    const tablesById = new Map(tables.map((t) => [t.id, t]));
+    const rows = rowIds.length
+      ? await client.rateRow.findMany({ where: { id: { in: rowIds } } })
+      : [];
+    const rowsById = new Map(rows.map((r) => [r.id, r]));
+
+    type SerializedEntry = ReturnType<TenderRateSetService["serializeEntry"]> & {
+      keyValues: string[];
+    };
+    type Group = {
+      rateTableId: string | null;
+      rateTableSlug: string | null;
+      tableName: string;
+      keyColumns: { name: string; unit: string | null }[];
+      valueColumnLabel: string | null;
+      entries: SerializedEntry[];
+    };
+    const groups = new Map<string, Group>();
     for (const entry of entries) {
       const groupKey = entry.rateTableId ?? entry.rateTableSlug ?? "_other";
+      const table = entry.rateTableId ? tablesById.get(entry.rateTableId) : null;
+      const keyCols = table?.columns.filter((c) => c.role === "KEY") ?? [];
+      const valueCols = table?.columns.filter((c) => c.role === "VALUE") ?? [];
+
+      const rowId = entry.key.split(":")[1] ?? "";
+      const row = rowsById.get(rowId);
+      const cells = ((row?.cells ?? {}) as Record<string, unknown>) ?? {};
+      const keyValues = keyCols.map((c) => {
+        const raw = cells[c.id] ?? cells[c.name];
+        return raw === undefined || raw === null ? "" : String(raw);
+      });
+
+      const serialized = { ...this.serializeEntry(entry), keyValues };
       const existing = groups.get(groupKey);
-      const serialized = this.serializeEntry(entry);
       if (existing) {
         existing.entries.push(serialized);
       } else {
-        const tableName = entry.label.split(" — ")[0]?.split(" (")[0] ?? "Rates";
+        const tableName =
+          table?.name ?? entry.label.split(" — ")[0]?.split(" (")[0] ?? "Rates";
         groups.set(groupKey, {
           rateTableId: entry.rateTableId,
           rateTableSlug: entry.rateTableSlug,
           tableName,
+          keyColumns: keyCols.map((c) => ({ name: c.name, unit: c.unit ?? null })),
+          valueColumnLabel: valueCols[0]?.name ?? null,
           entries: [serialized]
         });
       }

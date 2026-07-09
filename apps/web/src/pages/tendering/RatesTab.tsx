@@ -1,7 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
-import { getRateSet, lockRateSet, patchRateEntry, unlockRateSet } from "./ratesTabApi";
+import {
+  formatKeyColumnHeader,
+  getRateSet,
+  lockRateSet,
+  patchRateEntry,
+  rateGroupKey,
+  selectDefaultRatesTableKey,
+  unlockRateSet
+} from "./ratesTabApi";
 
 export type TenderRateEntry = {
   id: string;
@@ -55,6 +63,7 @@ export function RatesTab({ tenderId, canManage }: { tenderId: string; canManage:
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -205,18 +214,23 @@ export function RatesTab({ tenderId, canManage }: { tenderId: string; canManage:
           <EmptyState heading="No rates in the snapshot" subtext="There are no active rate rows to snapshot yet." />
         </section>
       ) : (
-        set.groups.map((group) => {
-          const hasKeyCols = group.keyColumns.length > 0;
-          return (
-            <section className="s7-card" key={`${group.rateTableId ?? group.rateTableSlug ?? "other"}`}>
-              <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>{group.tableName}</h3>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+        <RatesMasterDetail
+          groups={set.groups}
+          selectedKey={selectedKey}
+          onSelect={setSelectedKey}
+          renderDetail={(group) => {
+            const hasKeyCols = group.keyColumns.length > 0;
+            return (
+              <>
+                <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>{group.tableName}</h3>
+                <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
                 <thead>
                   <tr style={{ textAlign: "left", borderBottom: "1px solid var(--border-subtle, #E5E7EB)" }}>
                     {hasKeyCols ? (
                       group.keyColumns.map((col) => (
                         <th key={col.name} style={{ padding: "8px 12px" }}>
-                          {col.unit ? `${col.name} (${col.unit})` : col.name}
+                          {formatKeyColumnHeader(col.name, col.unit)}
                         </th>
                       ))
                     ) : (
@@ -318,10 +332,114 @@ export function RatesTab({ tenderId, canManage }: { tenderId: string; canManage:
                   })}
                 </tbody>
               </table>
-            </section>
-          );
-        })
+                </div>
+              </>
+            );
+          }}
+        />
       )}
+    </div>
+  );
+}
+
+function RatesMasterDetail({
+  groups,
+  selectedKey,
+  onSelect,
+  renderDetail
+}: {
+  groups: TenderRateGroup[];
+  selectedKey: string | null;
+  onSelect: (key: string) => void;
+  renderDetail: (group: TenderRateGroup) => ReactNode;
+}) {
+  const resolvedKey = useMemo(
+    () => selectDefaultRatesTableKey(groups, selectedKey),
+    [groups, selectedKey]
+  );
+
+  useEffect(() => {
+    if (resolvedKey && resolvedKey !== selectedKey) onSelect(resolvedKey);
+  }, [resolvedKey, selectedKey, onSelect]);
+
+  const selectedGroup =
+    groups.find((g) => rateGroupKey(g) === resolvedKey) ?? groups[0] ?? null;
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 16,
+        alignItems: "flex-start",
+        flexWrap: "wrap"
+      }}
+      data-testid="rates-master-detail"
+    >
+      <aside
+        className="s7-card"
+        style={{
+          padding: 12,
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+          flex: "0 0 240px",
+          minWidth: 220,
+          maxWidth: 260,
+          alignSelf: "stretch"
+        }}
+        data-testid="rates-tables-nav"
+      >
+        <strong>Tables</strong>
+        <ul
+          style={{
+            listStyle: "none",
+            padding: 0,
+            margin: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: 2
+          }}
+        >
+          {groups.map((group) => {
+            const key = rateGroupKey(group);
+            const active = key === resolvedKey;
+            const subtitle = group.rateTableSlug ?? group.rateTableId ?? "other";
+            return (
+              <li key={key}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(key)}
+                  data-testid={`rates-table-nav-${subtitle}`}
+                  aria-current={active ? "true" : undefined}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    minHeight: 44,
+                    padding: "8px 10px",
+                    border: "none",
+                    borderRadius: 6,
+                    background: active ? "rgba(0,91,97,0.08)" : "transparent",
+                    color: active ? "var(--brand-primary, #005B61)" : "var(--text)",
+                    fontWeight: active ? 600 : 400,
+                    cursor: "pointer"
+                  }}
+                >
+                  <div>{group.tableName}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{subtitle}</div>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </aside>
+
+      <section
+        className="s7-card"
+        style={{ flex: "1 1 480px", minWidth: 320 }}
+        data-testid="rates-table-detail"
+      >
+        {selectedGroup ? renderDetail(selectedGroup) : null}
+      </section>
     </div>
   );
 }

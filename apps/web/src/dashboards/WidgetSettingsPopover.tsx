@@ -408,6 +408,7 @@ function MultiSelectField({
 function useDynamicOptions(field: ConfigField): Array<{ value: string; label: string }> {
   const { data: tenders } = useTenders();
   const formTemplates = useFormTemplates(field.dynamicOptions === "formTemplates");
+  const sites = useSites(field.dynamicOptions === "sites");
 
   if (field.options) return field.options;
 
@@ -426,7 +427,43 @@ function useDynamicOptions(field: ConfigField): Array<{ value: string; label: st
     return formTemplates;
   }
 
+  if (field.dynamicOptions === "sites") {
+    return sites;
+  }
+
   return [];
+}
+
+type SiteRow = { id: string; name: string };
+
+function useSites(enabled: boolean): Array<{ value: string; label: string }> {
+  const { authFetch } = useAuth();
+  const [options, setOptions] = useState<Array<{ value: string; label: string }>>([]);
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await authFetch("/master-data/sites?page=1&pageSize=200");
+        if (!response.ok) return;
+        const body = await response.json();
+        const items = (body.items ?? body ?? []) as SiteRow[];
+        if (!cancelled) {
+          setOptions(
+            items
+              .map((item) => ({ value: item.id, label: item.name }))
+              .sort((a, b) => a.label.localeCompare(b.label))
+          );
+        }
+      } catch {
+        // non-fatal
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch, enabled]);
+  return options;
 }
 
 type FormTemplateRow = { id: string; name: string };

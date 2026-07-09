@@ -8542,6 +8542,49 @@ textarea {
   border-left-color: var(--brand-accent, #FEAA6D);
   font-weight: 600;
 }
+.wg-cat__count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted, #9CA3AF);
+  font-weight: 400;
+}
+.wg-cats--modules {
+  padding: 8px 0;
+  overflow-y: auto;
+}
+.wg-cat-group {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0 8px;
+}
+.wg-cat-group + .wg-cat-group {
+  border-top: 1px solid var(--border-default, #E5E7EB);
+  margin-top: 4px;
+}
+.wg-cat-group__label {
+  padding: 6px 18px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted, #9CA3AF);
+}
+.wg-cats--modules .wg-cat {
+  min-height: 40px;
+  padding: 8px 18px 8px 22px;
+  font-size: 13px;
+}
+.wg-toolbar__group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.wg-toolbar__group-label {
+  font-size: 12px;
+  color: var(--text-muted, #6B7280);
+  margin-right: 2px;
+}
 .wg-gallery {
   flex: 1;
   padding: 16px;

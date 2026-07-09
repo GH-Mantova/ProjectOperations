@@ -58,7 +58,16 @@ const REPO_ROOT = process.env.PR_WATCHER_REPO_ROOT
 // PR_WATCHER_REPO_ROOT is unset, REPO_ROOT is the interactive tree, which may
 // hold the user's own legitimate feature-branch worktrees — never sweep those.
 const WORKTREE_SWEEP = !!process.env.PR_WATCHER_REPO_ROOT;
-const PROMPT_DIR = path.join(REPO_ROOT, "docs", "pr-prompts");
+// The prompt QUEUE can live outside the git clone: scheduled agents
+// (pr-shepherd / watcher-triage / night-qa) and Marco only see the interactive
+// tree, so a queue nested inside PR_WATCHER_REPO_ROOT strands staged prompts.
+// PR_WATCHER_PROMPT_DIR moves the queue anywhere; git/build stay on REPO_ROOT.
+export function resolvePromptDir(env, repoRoot) {
+  return env.PR_WATCHER_PROMPT_DIR
+    ? path.resolve(env.PR_WATCHER_PROMPT_DIR)
+    : path.join(repoRoot, "docs", "pr-prompts");
+}
+const PROMPT_DIR = resolvePromptDir(process.env, REPO_ROOT);
 const PROCESSED_DIR = path.join(PROMPT_DIR, "processed");
 const FAILED_DIR = path.join(PROMPT_DIR, "failed");
 const BLOCKED_DIR = path.join(PROMPT_DIR, "blocked");
@@ -1631,6 +1640,7 @@ async function main() {
   await acquireLock();
   await ensureDirs();
   log("watcher", `repo:        ${REPO_ROOT}`);
+  log("watcher", `prompt-dir:  ${PROMPT_DIR}`);
   log("watcher", `watching     ${PROMPT_DIR}`);
   log("watcher", `pattern:     (pr|rev)-*-ready.md`);
   log("watcher", `claude:      ${CLAUDE_BIN}`);

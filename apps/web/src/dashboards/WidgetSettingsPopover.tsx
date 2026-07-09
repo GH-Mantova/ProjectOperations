@@ -464,6 +464,33 @@ function useDynamicOptions(field: ConfigField): Array<{ value: string; label: st
 
 type SiteRow = { id: string; name: string };
 
+/** Convention across the app: every other /master-data/sites caller uses
+ *  pageSize=100 (see pages/jobs/JobsListPage, pages/JobsPage,
+ *  pages/master-data/MasterDataWorkspacePage). The shared PaginationQueryDto
+ *  on the API caps pageSize at 100, so pageSize=200 fails validation with 400
+ *  and the picker rendered empty — see rev-527-fix2-ready.md. Exported so the
+ *  regression test can assert we haven't drifted back above the cap. */
+export const SITES_OPTIONS_URL = "/master-data/sites?page=1&pageSize=100";
+
+/** Fetches site options for the widget picker. Extracted so a unit test can
+ *  assert the URL requested without needing a jsdom/hook harness (the web
+ *  workspace runs tests in the default node environment — see
+ *  widgetSettingsPopover.test.ts header). */
+export async function fetchSiteOptions(
+  authFetch: (input: string) => Promise<Response>
+): Promise<{ ok: true; options: Array<{ value: string; label: string }> } | { ok: false }> {
+  const response = await authFetch(SITES_OPTIONS_URL);
+  if (!response.ok) return { ok: false };
+  const body = await response.json();
+  const items = (body.items ?? body ?? []) as SiteRow[];
+  return {
+    ok: true,
+    options: items
+      .map((item) => ({ value: item.id, label: item.name }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+  };
+}
+
 function useSites(enabled: boolean): Array<{ value: string; label: string }> {
   const { authFetch } = useAuth();
   const [options, setOptions] = useState<Array<{ value: string; label: string }>>([]);
@@ -472,19 +499,21 @@ function useSites(enabled: boolean): Array<{ value: string; label: string }> {
     let cancelled = false;
     (async () => {
       try {
-        const response = await authFetch("/master-data/sites?page=1&pageSize=200");
-        if (!response.ok) return;
-        const body = await response.json();
-        const items = (body.items ?? body ?? []) as SiteRow[];
-        if (!cancelled) {
-          setOptions(
-            items
-              .map((item) => ({ value: item.id, label: item.name }))
-              .sort((a, b) => a.label.localeCompare(b.label))
-          );
+        const result = await fetchSiteOptions(authFetch);
+        if (cancelled) return;
+        if (result.ok) {
+          setOptions(result.options);
+        } else {
+          // Fail loudly (bounded): surface the loader failure to devtools so a
+          // future backend regression like the pageSize=200 → HTTP 400 that
+          // motivated rev-527-fix2 doesn't silently present as "no sites".
+          // TODO(rev-527 follow-up): thread this through the picker UI so
+          //   end users see "Couldn't load sites" instead of an empty menu —
+          //   that requires touching useDynamicOptions()'s shared contract.
+          console.error("[widget-settings] failed to load site options");
         }
-      } catch {
-        // non-fatal
+      } catch (err) {
+        console.error("[widget-settings] site options request threw", err);
       }
     })();
     return () => {

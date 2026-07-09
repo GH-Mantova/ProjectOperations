@@ -9,10 +9,12 @@
  * the select branch inlined `field.options?.map(...)` and never consulted the
  * dynamic sources.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { TenderForDashboard } from "../hooks";
 import type { ConfigField } from "../types";
 import {
+  SITES_OPTIONS_URL,
+  fetchSiteOptions,
   resolveDynamicOptions,
   type DynamicOptionSources
 } from "../WidgetSettingsPopover";
@@ -109,5 +111,63 @@ describe("resolveDynamicOptions", () => {
   it("returns [] when a field has neither static options nor a known dynamic source", () => {
     const field: ConfigField = { key: "x", label: "X", type: "select" };
     expect(resolveDynamicOptions(field, emptySources)).toEqual([]);
+  });
+});
+
+/**
+ * Regression guard for rev-527-fix2 — the site picker was rendering an empty
+ * <select> because useSites() requested pageSize=200 and PaginationQueryDto
+ * (shared API validator) caps it at 100, returning HTTP 400 that the loader
+ * swallowed. Assert against the URL passed to the mocked authFetch so any
+ * future reintroduction of a >100 pageSize fails in CI.
+ */
+describe("fetchSiteOptions (rev-527-fix2)", () => {
+  it("requests the sites endpoint with pageSize <= 100", async () => {
+    const authFetch = vi.fn(async (_input: string) =>
+      new Response(JSON.stringify({ items: [] }), { status: 200 })
+    );
+
+    await fetchSiteOptions(authFetch);
+
+    expect(authFetch).toHaveBeenCalledTimes(1);
+    const url = authFetch.mock.calls[0]![0]!;
+    const params = new URLSearchParams(url.split("?")[1] ?? "");
+    const pageSize = Number(params.get("pageSize"));
+    expect(pageSize).toBeGreaterThan(0);
+    expect(pageSize).toBeLessThanOrEqual(100);
+  });
+
+  it("SITES_OPTIONS_URL matches the shared PaginationQueryDto @Max(100) cap", () => {
+    const params = new URLSearchParams(SITES_OPTIONS_URL.split("?")[1] ?? "");
+    expect(Number(params.get("pageSize"))).toBeLessThanOrEqual(100);
+  });
+
+  it("returns ok:false when the API responds non-2xx (regression: no more silent empty dropdown)", async () => {
+    const authFetch = vi.fn(async () => new Response("Bad Request", { status: 400 }));
+    const result = await fetchSiteOptions(authFetch);
+    expect(result).toEqual({ ok: false });
+  });
+
+  it("maps and sorts returned rows into { value, label } option pairs", async () => {
+    const authFetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            items: [
+              { id: "b", name: "Bravo" },
+              { id: "a", name: "Alpha" }
+            ]
+          }),
+          { status: 200 }
+        )
+    );
+    const result = await fetchSiteOptions(authFetch);
+    expect(result).toEqual({
+      ok: true,
+      options: [
+        { value: "a", label: "Alpha" },
+        { value: "b", label: "Bravo" }
+      ]
+    });
   });
 });

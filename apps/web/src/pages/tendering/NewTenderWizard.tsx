@@ -376,10 +376,16 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
 
   async function loadContacts(clientId: string, force = false) {
     if (!force && contactCache[clientId]) return contactCache[clientId];
-    const res = await authFetch(`/master-data/contacts?clientId=${encodeURIComponent(clientId)}&take=100`);
+    const res = await authFetch(`/master-data/contacts?clientId=${encodeURIComponent(clientId)}&pageSize=100`);
     if (!res.ok) return [];
     const body = await res.json();
-    const raw = Array.isArray(body?.data) ? body.data : Array.isArray(body) ? body : [];
+    const raw = Array.isArray(body?.items)
+      ? body.items
+      : Array.isArray(body?.data)
+        ? body.data
+        : Array.isArray(body)
+          ? body
+          : [];
     const list: ContactOption[] = raw.map((c: { id: string; fullName?: string; firstName?: string; lastName?: string; email?: string | null; phone?: string | null }) => ({
       id: c.id,
       fullName: c.fullName ?? `${c.firstName ?? ""} ${c.lastName ?? ""}`.trim(),

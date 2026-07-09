@@ -10,6 +10,9 @@ import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import "./newTenderWizard.css";
 import { lockRateSet } from "./ratesTabApi";
+import { QuickAddBuilderModal } from "./QuickAddBuilderModal";
+import { QuickAddContactModal } from "./QuickAddContactModal";
+import type { QuickAddClientResult, QuickAddContactResult } from "./tenderQuickAdd";
 import { TenderDocumentsPanel, type DocumentRecord } from "./TenderDocumentsPanel";
 import {
   advanceStep,
@@ -108,10 +111,16 @@ export type NewTenderWizardProps = {
   existingDraftId?: string | null;
   onClose: () => void;
   onCreated: (id: string) => void;
+  /**
+   * Fired when the wizard needs the parent to reload the master builder list
+   * — currently used after quick-add so a builder given "full details" in the
+   * other tab shows up when the user returns to the picker.
+   */
+  onNeedClientsRefetch?: () => void;
 };
 
 export function NewTenderWizard(props: NewTenderWizardProps) {
-  const { open, clients, users, existingDraftId, onClose, onCreated } = props;
+  const { open, clients, users, existingDraftId, onClose, onCreated, onNeedClientsRefetch } = props;
   const { authFetch, user } = useAuth();
 
   const [flow, dispatch] = useReducer(flowReducer, undefined, initialFlowState);
@@ -123,6 +132,13 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
   const [confirmingClose, setConfirmingClose] = useState(false);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
+  // Quick-add builder / contact — mount the CenteredModal on demand. `quickAddContactFor`
+  // pins which builder the contact belongs to so we can slot the created contact
+  // straight into that builder's dropdown on success.
+  const [quickAddBuilderOpen, setQuickAddBuilderOpen] = useState(false);
+  const [quickAddContactFor, setQuickAddContactFor] = useState<
+    { clientId: string; clientName: string } | null
+  >(null);
 
   // Step 1 — Project
   const [title, setTitle] = useState("");
@@ -170,6 +186,8 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
     setConfirmingClose(false);
     setConfirmBusy(false);
     setConfirmError(null);
+    setQuickAddBuilderOpen(false);
+    setQuickAddContactFor(null);
     if (existingDraftId) {
       dispatch({ type: "setDraft", draftId: existingDraftId });
     }
@@ -247,11 +265,25 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
       if (event.key !== "Escape") return;
       if (busy) return;
       if (confirmingClose) return;
+      // Escape while a quick-add modal is open should close *that* modal only
+      // — CenteredModal already handles it. Bail so the wizard doesn't also
+      // close alongside the quick-add.
+      if (quickAddBuilderOpen || quickAddContactFor) return;
       handleCancel();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, busy, confirmingClose, flow.draftId, documents.length]);
+  }, [open, busy, confirmingClose, quickAddBuilderOpen, quickAddContactFor, flow.draftId, documents.length]);
+
+  // Refetch the parent's builder list whenever the window regains focus —
+  // covers the "opened /tenders/clients in another tab, filled full details,
+  // came back" flow so the picker shows the updated record.
+  useEffect(() => {
+    if (!open || !onNeedClientsRefetch) return;
+    const onFocus = () => onNeedClientsRefetch();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [open, onNeedClientsRefetch]);
 
   const packageRefs: PackageRef[] = useMemo(
     () =>
@@ -342,8 +374,8 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
     }
   }
 
-  async function loadContacts(clientId: string) {
-    if (contactCache[clientId]) return contactCache[clientId];
+  async function loadContacts(clientId: string, force = false) {
+    if (!force && contactCache[clientId]) return contactCache[clientId];
     const res = await authFetch(`/master-data/contacts?clientId=${encodeURIComponent(clientId)}&take=100`);
     if (!res.ok) return [];
     const body = await res.json();
@@ -456,9 +488,13 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
   // Step-2 (Builders) handlers
   // -------------------------------------------------------------------------
 
-  const addBuilder = async (clientId: string) => {
+  // `presetName` lets quick-add attach a builder that isn't (yet) in the parent's
+  // `clients` prop — the create response gives us the name directly. Picker
+  // callers pass no override and rely on the `clients` lookup.
+  const addBuilder = async (clientId: string, presetName?: string) => {
     const client = clients.find((c) => c.id === clientId);
-    if (!client) return;
+    const clientName = client?.name ?? presetName;
+    if (!clientName) return;
     if (builders.some((b) => b.clientId === clientId)) return;
     setBusy(true);
     setError(null);
@@ -482,7 +518,7 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
       setServerTenderClients(list);
       setBuilders((prev) => [
         ...prev,
-        { clientId, clientName: client.name, contactId: null, submissionDate: null }
+        { clientId, clientName, contactId: null, submissionDate: null }
       ]);
       if (isFirst) setPrimaryClientId(clientId);
       void loadContacts(clientId);
@@ -492,6 +528,42 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
       setBusy(false);
     }
   };
+
+  // -------------------------------------------------------------------------
+  // Quick-add builder / contact — inline creation without leaving the wizard
+  // -------------------------------------------------------------------------
+
+  async function handleQuickBuilderCreated(created: QuickAddClientResult) {
+    setQuickAddBuilderOpen(false);
+    // Nudge the parent to refresh its master list so subsequent picker searches
+    // find the new builder too (the immediate attach below uses the create
+    // response directly, so it doesn't wait on the refetch).
+    if (onNeedClientsRefetch) onNeedClientsRefetch();
+    await addBuilder(created.id, created.name);
+  }
+
+  async function handleQuickContactCreated(created: QuickAddContactResult) {
+    const target = quickAddContactFor;
+    setQuickAddContactFor(null);
+    if (!target) return;
+    try {
+      // Force-refetch this client's contacts so the dropdown reflects the
+      // canonical server list (matches the spec: "refetch that client's
+      // contacts and select the new one").
+      await loadContacts(target.clientId, true);
+    } catch {
+      // Best-effort — even if the refetch fails we can still slot the newly
+      // created contact into local state so the wizard can proceed.
+      setContactCache((prev) => ({
+        ...prev,
+        [target.clientId]: [
+          ...(prev[target.clientId] ?? []),
+          { id: created.id, fullName: created.fullName, email: created.email, phone: created.phone }
+        ]
+      }));
+    }
+    updateBuilderContact(target.clientId, created.id);
+  }
 
   const removeBuilder = async (clientId: string) => {
     setBusy(true);
@@ -853,6 +925,10 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
                 contactCache={contactCache}
                 onWantContacts={loadContacts}
                 incompleteCount={incompleteBuilders.length}
+                onQuickAddBuilder={() => setQuickAddBuilderOpen(true)}
+                onQuickAddContact={(clientId, clientName) =>
+                  setQuickAddContactFor({ clientId, clientName })
+                }
               />
             ) : null}
 
@@ -1021,6 +1097,20 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
           ) : null}
         </CenteredModal>
       ) : null}
+      {quickAddBuilderOpen ? (
+        <QuickAddBuilderModal
+          onClose={() => setQuickAddBuilderOpen(false)}
+          onCreated={(client) => void handleQuickBuilderCreated(client)}
+        />
+      ) : null}
+      {quickAddContactFor ? (
+        <QuickAddContactModal
+          clientId={quickAddContactFor.clientId}
+          clientName={quickAddContactFor.clientName}
+          onClose={() => setQuickAddContactFor(null)}
+          onCreated={(contact) => void handleQuickContactCreated(contact)}
+        />
+      ) : null}
     </>
   );
 }
@@ -1102,6 +1192,8 @@ function StepBuilders(props: {
   contactCache: Record<string, ContactOption[]>;
   onWantContacts: (clientId: string) => Promise<ContactOption[]>;
   incompleteCount: number;
+  onQuickAddBuilder: () => void;
+  onQuickAddContact: (clientId: string, clientName: string) => void;
 }) {
   const [search, setSearch] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -1151,9 +1243,21 @@ function StepBuilders(props: {
             ))}
             {filtered.length === 0 ? (
               <div className="new-tender-wizard__picker-empty">
-                No matches — create a new builder from Master Data first.
+                No matches — add a new builder without leaving the wizard.
               </div>
             ) : null}
+            <button
+              type="button"
+              className="new-tender-wizard__picker-item"
+              onClick={() => {
+                props.onQuickAddBuilder();
+                setPickerOpen(false);
+              }}
+              data-testid="new-tender-wizard-quick-add-builder"
+              style={{ fontWeight: 500 }}
+            >
+              + Add new builder
+            </button>
           </div>
         ) : null}
       </div>
@@ -1193,18 +1297,30 @@ function StepBuilders(props: {
                 <div className="new-tender-wizard__builder-fields">
                   <label className="tender-form__field">
                     <span className="s7-type-label">Contact</span>
-                    <select
-                      className="s7-select"
-                      value={b.contactId ?? ""}
-                      onChange={(e) => props.onContactChange(b.clientId, e.target.value)}
-                    >
-                      <option value="">Select a contact…</option>
-                      {contacts.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.fullName}
-                        </option>
-                      ))}
-                    </select>
+                    <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+                      <select
+                        className="s7-select"
+                        value={b.contactId ?? ""}
+                        onChange={(e) => props.onContactChange(b.clientId, e.target.value)}
+                        style={{ flex: 1 }}
+                      >
+                        <option value="">Select a contact…</option>
+                        {contacts.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.fullName}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="s7-btn s7-btn--ghost s7-btn--sm"
+                        onClick={() => props.onQuickAddContact(b.clientId, b.clientName)}
+                        data-testid={`new-tender-wizard-quick-add-contact-${b.clientId}`}
+                        style={{ minHeight: 44, whiteSpace: "nowrap" }}
+                      >
+                        + Add contact
+                      </button>
+                    </div>
                   </label>
                   <label className="tender-form__field">
                     <span className="s7-type-label">Submission date</span>

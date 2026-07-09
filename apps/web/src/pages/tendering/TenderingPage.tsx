@@ -310,6 +310,20 @@ export function TenderingPage() {
 
   const canUseView: View = view;
 
+  const reloadClients = useCallback(async () => {
+    try {
+      const response = await authFetch("/master-data/clients?page=1&pageSize=100");
+      if (!response.ok) return;
+      const body = await response.json();
+      const items = (body.items ?? body) as ClientOption[];
+      setClients(items);
+    } catch {
+      // Refetch is best-effort — the wizard already has the newly-created
+      // builder attached from the create response, so a failed refresh only
+      // means the picker won't reflect it until the next full reload.
+    }
+  }, [authFetch]);
+
   const reload = useCallback(
     async (withFilters: Filters) => {
       setLoading(true);
@@ -714,6 +728,7 @@ export function TenderingPage() {
           void reload(filters);
           navigate(`/tenders/${id}`);
         }}
+        onNeedClientsRefetch={() => void reloadClients()}
       />
 
       {draftPickerOpen ? (

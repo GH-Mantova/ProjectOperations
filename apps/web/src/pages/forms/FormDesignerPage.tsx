@@ -5,12 +5,16 @@ import { useAuth } from "../../auth/AuthContext";
 import {
   addFieldToSection,
   addSectionToDraft,
+  CHOICE_TYPES,
   deleteFieldFromDraft,
   duplicateField,
+  fieldToPublishPayload,
+  isLayoutOnlyType,
   moveFieldInDraft,
   PALETTE_GROUPS,
   removeSectionFromDraft,
   setDraftLayout,
+  SURVEY_TYPES,
   tabsForFieldType,
   uid,
   updateFieldInDraft,
@@ -43,6 +47,7 @@ type TemplateVersion = {
       placeholder?: string | null;
       helpText?: string | null;
       optionsJson?: unknown;
+      config?: Record<string, unknown> | null;
     }>;
   }>;
   rules: Array<{
@@ -122,7 +127,8 @@ export function FormDesignerPage() {
               isRequired: field.isRequired,
               placeholder: field.placeholder ?? undefined,
               helpText: field.helpText ?? undefined,
-              options: Array.isArray(field.optionsJson) ? (field.optionsJson as string[]) : undefined
+              options: Array.isArray(field.optionsJson) ? (field.optionsJson as string[]) : undefined,
+              config: (field.config ?? undefined) as Record<string, unknown> | undefined
             }))
           })),
           rules: latest.rules.map((rule) => ({
@@ -258,16 +264,7 @@ export function FormDesignerPage() {
           title: section.title,
           description: section.description,
           sectionOrder: section.sectionOrder,
-          fields: section.fields.map((field) => ({
-            fieldKey: field.fieldKey,
-            label: field.label,
-            fieldType: field.fieldType,
-            fieldOrder: field.fieldOrder,
-            isRequired: field.isRequired,
-            placeholder: field.placeholder,
-            helpText: field.helpText,
-            optionsJson: field.options
-          }))
+          fields: section.fields.map(fieldToPublishPayload)
         })),
         rules: draft.rules.map((rule) => ({
           sourceFieldKey: rule.sourceFieldKey,
@@ -608,6 +605,15 @@ function FieldTabBody({
     setOptionsText((field.options ?? []).join("\n"));
   }, [field.tempId]);
 
+  const config = (field.config ?? {}) as Record<string, unknown>;
+  const patchConfig = (patch: Record<string, unknown>) =>
+    onChange({ config: { ...config, ...patch } });
+
+  const isLayout = isLayoutOnlyType(field.fieldType);
+  const isChoice = CHOICE_TYPES.has(field.fieldType);
+  const isSurvey = SURVEY_TYPES.has(field.fieldType);
+  const isImage = field.fieldType === "image";
+
   if (tab === "general") {
     return (
       <>
@@ -619,38 +625,108 @@ function FieldTabBody({
             onChange={(e) => onChange({ label: e.target.value })}
           />
         </label>
+        {!isLayout && field.fieldType !== "divider" ? (
+          <label>
+            Placeholder
+            <input
+              type="text"
+              value={field.placeholder ?? ""}
+              onChange={(e) => onChange({ placeholder: e.target.value })}
+            />
+          </label>
+        ) : null}
         <label>
-          Placeholder
-          <input
-            type="text"
-            value={field.placeholder ?? ""}
-            onChange={(e) => onChange({ placeholder: e.target.value })}
-          />
-        </label>
-        <label>
-          Help text
+          {field.fieldType === "paragraph" ? "Body text" : "Help text"}
           <input
             type="text"
             value={field.helpText ?? ""}
             onChange={(e) => onChange({ helpText: e.target.value })}
           />
         </label>
-        <div className="fv2-tgl">
-          <span>Required</span>
-          <input
-            type="checkbox"
-            checked={field.isRequired}
-            onChange={(e) => onChange({ isRequired: e.target.checked })}
-            aria-label="Required"
-          />
-        </div>
+        {isImage ? (
+          <label>
+            Image URL
+            <input
+              type="url"
+              value={String(config.imageUrl ?? "")}
+              onChange={(e) => patchConfig({ imageUrl: e.target.value })}
+              placeholder="https://…"
+            />
+          </label>
+        ) : null}
+        {isLayout ? null : (
+          <div className="fv2-tgl">
+            <span>Required</span>
+            <input
+              type="checkbox"
+              checked={field.isRequired}
+              onChange={(e) => onChange({ isRequired: e.target.checked })}
+              aria-label="Required"
+            />
+          </div>
+        )}
       </>
     );
   }
 
   if (tab === "options") {
-    return (
-      <>
+    if (isSurvey && field.fieldType === "rating") {
+      const maxRating = Number(config.maxRating ?? 5);
+      return (
+        <label>
+          Maximum stars
+          <input
+            type="number"
+            min={2}
+            max={10}
+            value={maxRating}
+            onChange={(e) => patchConfig({ maxRating: Number(e.target.value) || 5 })}
+          />
+        </label>
+      );
+    }
+    if (isSurvey && field.fieldType === "scale") {
+      const min = Number(config.min ?? 1);
+      const max = Number(config.max ?? 5);
+      return (
+        <>
+          <label>
+            Minimum
+            <input
+              type="number"
+              value={min}
+              onChange={(e) => patchConfig({ min: Number(e.target.value) })}
+            />
+          </label>
+          <label>
+            Maximum
+            <input
+              type="number"
+              value={max}
+              onChange={(e) => patchConfig({ max: Number(e.target.value) })}
+            />
+          </label>
+          <label>
+            Label at minimum
+            <input
+              type="text"
+              value={String(config.minLabel ?? "")}
+              onChange={(e) => patchConfig({ minLabel: e.target.value })}
+            />
+          </label>
+          <label>
+            Label at maximum
+            <input
+              type="text"
+              value={String(config.maxLabel ?? "")}
+              onChange={(e) => patchConfig({ maxLabel: e.target.value })}
+            />
+          </label>
+        </>
+      );
+    }
+    if (isChoice) {
+      return (
         <label>
           Choices (one per line)
           <textarea
@@ -663,7 +739,12 @@ function FieldTabBody({
             }
           />
         </label>
-      </>
+      );
+    }
+    return (
+      <div className="fv2-props__empty" style={{ padding: 0 }}>
+        No options to configure for this field type.
+      </div>
     );
   }
 

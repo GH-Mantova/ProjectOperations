@@ -491,7 +491,8 @@ export class FormsService {
               isRequired: field.isRequired,
               placeholder: field.placeholder ?? undefined,
               helpText: field.helpText ?? undefined,
-              optionsJson: field.optionsJson ?? undefined
+              optionsJson: field.optionsJson ?? undefined,
+              config: field.config ?? undefined
             }))
           }))
         : [{ title: "Section 1", sectionOrder: 1, fields: [] }],
@@ -612,7 +613,8 @@ export class FormsService {
             isRequired: field.isRequired ?? false,
             placeholder: field.placeholder ?? null,
             helpText: field.helpText ?? null,
-            optionsJson: field.optionsJson ?? Prisma.JsonNull
+            optionsJson: field.optionsJson ?? Prisma.JsonNull,
+            config: (field.config ?? {}) as Prisma.InputJsonValue
           }))
         });
       }

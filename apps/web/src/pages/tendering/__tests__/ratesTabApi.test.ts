@@ -1,14 +1,28 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   describeRateGroup,
+  formatKeyColumnHeader,
   getRateSet,
   lockRateSet,
   patchRateEntry,
+  rateGroupKey,
+  selectDefaultRatesTableKey,
   tabFromPath,
   unlockRateSet,
   type AuthFetch
 } from "../ratesTabApi";
 import type { TenderRateGroup } from "../RatesTab";
+
+function makeGroup(over: Partial<TenderRateGroup> = {}): TenderRateGroup {
+  return {
+    rateTableId: "rateTableId" in over ? (over.rateTableId ?? null) : "t-1",
+    rateTableSlug: "rateTableSlug" in over ? (over.rateTableSlug ?? null) : "table-one",
+    tableName: over.tableName ?? "Table one",
+    keyColumns: over.keyColumns ?? [],
+    valueColumnLabel: over.valueColumnLabel ?? null,
+    entries: over.entries ?? []
+  };
+}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -231,6 +245,24 @@ describe("describeRateGroup", () => {
     expect(rowKeyCells).toEqual([["Concrete saw", "Ground", "Reinforced", "200"]]);
   });
 
+  it("does NOT re-append the unit when it is already present in the column name", () => {
+    // Fix for the "Diameter (mm) (mm)" duplication: the projected column
+    // name already carries its unit token, so the header must not double.
+    const group: TenderRateGroup = {
+      rateTableId: "t-core",
+      rateTableSlug: "core-hole",
+      tableName: "Core-hole rates",
+      keyColumns: [
+        { name: "Diameter (mm)", unit: "mm" },
+        { name: "Depth (MM)", unit: "mm" }
+      ],
+      valueColumnLabel: "Rate per hole",
+      entries: []
+    };
+    const { headers } = describeRateGroup(group);
+    expect(headers.slice(0, 2)).toEqual(["Diameter (mm)", "Depth (MM)"]);
+  });
+
   it("falls back to Rate | Unit columns when keyColumns is empty (legacy group)", () => {
     const group: TenderRateGroup = {
       rateTableId: null,
@@ -257,5 +289,52 @@ describe("describeRateGroup", () => {
     const { headers, rowKeyCells } = describeRateGroup(group);
     expect(headers).toEqual(["Rate", "Unit", "Original", "Override"]);
     expect(rowKeyCells).toEqual([["Labourer (day)", "day"]]);
+  });
+});
+
+describe("formatKeyColumnHeader", () => {
+  it("appends the unit when the name doesn't already contain it", () => {
+    expect(formatKeyColumnHeader("Size", "mm")).toBe("Size (mm)");
+  });
+
+  it("returns the name as-is when unit is null", () => {
+    expect(formatKeyColumnHeader("Equipment", null)).toBe("Equipment");
+  });
+
+  it("does not double the unit when the name already contains it", () => {
+    // Prevents the "Diameter (mm) (mm)" regression Marco flagged.
+    expect(formatKeyColumnHeader("Diameter (mm)", "mm")).toBe("Diameter (mm)");
+    expect(formatKeyColumnHeader("Depth (MM)", "mm")).toBe("Depth (MM)");
+  });
+});
+
+describe("rateGroupKey / selectDefaultRatesTableKey", () => {
+  it("keys prefer rateTableId, fall back to slug, then 'other'", () => {
+    expect(rateGroupKey(makeGroup({ rateTableId: "id-1", rateTableSlug: "s" }))).toBe("id-1");
+    expect(rateGroupKey(makeGroup({ rateTableId: null, rateTableSlug: "s" }))).toBe("s");
+    expect(rateGroupKey(makeGroup({ rateTableId: null, rateTableSlug: null }))).toBe("other");
+  });
+
+  it("returns null when there are no groups", () => {
+    expect(selectDefaultRatesTableKey([], null)).toBeNull();
+    expect(selectDefaultRatesTableKey([], "anything")).toBeNull();
+  });
+
+  it("defaults to the first group's key when nothing is selected", () => {
+    const g1 = makeGroup({ rateTableId: "a", tableName: "A" });
+    const g2 = makeGroup({ rateTableId: "b", tableName: "B" });
+    expect(selectDefaultRatesTableKey([g1, g2], null)).toBe("a");
+  });
+
+  it("preserves the current selection when it still exists", () => {
+    const g1 = makeGroup({ rateTableId: "a" });
+    const g2 = makeGroup({ rateTableId: "b" });
+    expect(selectDefaultRatesTableKey([g1, g2], "b")).toBe("b");
+  });
+
+  it("falls back to the first group when the current selection is gone", () => {
+    const g1 = makeGroup({ rateTableId: "a" });
+    const g2 = makeGroup({ rateTableId: "b" });
+    expect(selectDefaultRatesTableKey([g1, g2], "z")).toBe("a");
   });
 });

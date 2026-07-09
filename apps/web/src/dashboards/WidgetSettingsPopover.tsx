@@ -15,7 +15,7 @@ import {
   verticalListSortingStrategy
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useTenders } from "./hooks";
+import { useTenders, type TenderForDashboard } from "./hooks";
 import { useAuth } from "../auth/AuthContext";
 import { resolveVisibleFields } from "./types";
 import type { ConfigField, WidgetConfigEntry, WidgetFilters, WidgetMeta } from "./types";
@@ -283,6 +283,13 @@ function FieldRenderer({
   value: unknown;
   onChange: (next: unknown) => void;
 }) {
+  // Resolve options up-front so the hook call is unconditional (Rules of Hooks)
+  // and so the select/period branch honours `dynamicOptions: "sites"` etc. —
+  // previously the branch inlined `field.options?.map(...)` and dropped any
+  // dynamically-fetched options, which is what broke the Site weather widget's
+  // site picker.
+  const resolvedOptions = useDynamicOptions(field);
+
   if (field.type === "select" || field.type === "period") {
     return (
       <div className="widget-settings-popover__field">
@@ -293,7 +300,7 @@ function FieldRenderer({
           value={typeof value === "string" ? value : String(field.defaultValue ?? "")}
           onChange={(e) => onChange(e.target.value)}
         >
-          {field.options?.map((opt) => (
+          {resolvedOptions.map((opt) => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
           ))}
         </select>
@@ -324,7 +331,12 @@ function FieldRenderer({
 
   if (field.type === "multiselect") {
     return (
-      <MultiSelectField field={field} value={Array.isArray(value) ? (value as string[]) : []} onChange={onChange} />
+      <MultiSelectField
+        field={field}
+        value={Array.isArray(value) ? (value as string[]) : []}
+        onChange={onChange}
+        options={resolvedOptions}
+      />
     );
   }
 
@@ -366,13 +378,14 @@ function FieldRenderer({
 function MultiSelectField({
   field,
   value,
-  onChange
+  onChange,
+  options
 }: {
   field: ConfigField;
   value: string[];
   onChange: (next: string[]) => void;
+  options: Array<{ value: string; label: string }>;
 }) {
-  const options = useDynamicOptions(field);
   const selected = useMemo(() => new Set(value), [value]);
   const toggle = (optValue: string) => {
     const next = new Set(selected);
@@ -405,16 +418,24 @@ function MultiSelectField({
   );
 }
 
-function useDynamicOptions(field: ConfigField): Array<{ value: string; label: string }> {
-  const { data: tenders } = useTenders();
-  const formTemplates = useFormTemplates(field.dynamicOptions === "formTemplates");
-  const sites = useSites(field.dynamicOptions === "sites");
+export type DynamicOptionSources = {
+  tenders: TenderForDashboard[] | undefined;
+  formTemplates: Array<{ value: string; label: string }>;
+  sites: Array<{ value: string; label: string }>;
+};
 
+/** Pure resolver — turns a ConfigField plus already-loaded sources into the
+ *  option list the popover should render. Exposed for unit tests; the hook
+ *  version below wires in the actual data sources. */
+export function resolveDynamicOptions(
+  field: ConfigField,
+  sources: DynamicOptionSources
+): Array<{ value: string; label: string }> {
   if (field.options) return field.options;
 
   if (field.dynamicOptions === "estimators") {
     const map = new Map<string, string>();
-    for (const t of tenders ?? []) {
+    for (const t of sources.tenders ?? []) {
       if (!t.estimator) continue;
       map.set(t.estimator.id, `${t.estimator.firstName} ${t.estimator.lastName}`);
     }
@@ -424,14 +445,21 @@ function useDynamicOptions(field: ConfigField): Array<{ value: string; label: st
   }
 
   if (field.dynamicOptions === "formTemplates") {
-    return formTemplates;
+    return sources.formTemplates;
   }
 
   if (field.dynamicOptions === "sites") {
-    return sites;
+    return sources.sites;
   }
 
   return [];
+}
+
+function useDynamicOptions(field: ConfigField): Array<{ value: string; label: string }> {
+  const { data: tenders } = useTenders();
+  const formTemplates = useFormTemplates(field.dynamicOptions === "formTemplates");
+  const sites = useSites(field.dynamicOptions === "sites");
+  return resolveDynamicOptions(field, { tenders, formTemplates, sites });
 }
 
 type SiteRow = { id: string; name: string };

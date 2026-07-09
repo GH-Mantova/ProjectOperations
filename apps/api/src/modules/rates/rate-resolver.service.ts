@@ -10,6 +10,15 @@ export type ResolvedRate = {
   source: RateSource;
 };
 
+export type RateSetEntry = {
+  key: string;
+  rateTableId: string;
+  rateTableSlug: string;
+  label: string;
+  unit: string | null;
+  value: number;
+};
+
 /**
  * Single seam every future consumer will call: `resolveRate(slug, keys)`.
  * R0 reads from the eight legacy rate tables via a slug→adapter map so
@@ -58,6 +67,55 @@ export class RateResolverService {
       unit: valueCols[0].unit ?? "",
       source: "ratetable"
     };
+  }
+
+  /**
+   * Enumerate every active RateTable row × VALUE column as a flat list
+   * of rate entries. The `key` — `{rateTableId}:{rowId}:{columnId}` — is
+   * stable across snapshots so re-locking preserves overrides. Legacy
+   * rate tables are not included; they lack a uniform enumerable shape.
+   */
+  async enumerateRateSet(): Promise<RateSetEntry[]> {
+    const tables = await this.prisma.rateTable.findMany({
+      include: { columns: { orderBy: { sortOrder: "asc" } } }
+    });
+    const entries: RateSetEntry[] = [];
+    for (const table of tables) {
+      const keyCols = table.columns.filter((c) => c.role === "KEY");
+      const valueCols = table.columns.filter((c) => c.role === "VALUE");
+      if (valueCols.length === 0) continue;
+      const rows = await this.prisma.rateRow.findMany({
+        where: { rateTableId: table.id, isActive: true },
+        orderBy: { sortOrder: "asc" }
+      });
+      for (const row of rows) {
+        const cells = (row.cells as Record<string, unknown> | null) ?? {};
+        const keyLabel = keyCols
+          .map((c) => {
+            const v = cells[c.id] ?? cells[c.name];
+            return v === undefined || v === null ? "" : String(v);
+          })
+          .filter((s) => s.length > 0)
+          .join(" · ");
+        for (const col of valueCols) {
+          const raw = cells[col.id];
+          const value = Number(raw);
+          if (raw === undefined || raw === null || Number.isNaN(value)) continue;
+          const key = `${table.id}:${row.id}:${col.id}`;
+          const label =
+            keyLabel.length > 0 ? `${table.name} — ${keyLabel} (${col.name})` : `${table.name} (${col.name})`;
+          entries.push({
+            key,
+            rateTableId: table.id,
+            rateTableSlug: table.slug,
+            label,
+            unit: col.unit ?? null,
+            value
+          });
+        }
+      }
+    }
+    return entries;
   }
 
   private async tryLegacy(slug: string, keys: Record<string, unknown>): Promise<ResolvedRate | null> {

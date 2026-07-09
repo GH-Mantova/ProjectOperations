@@ -72,6 +72,52 @@ export class ClientQuotesService {
     private readonly auditService: AuditService
   ) {}
 
+  /**
+   * Dashboard batch-2 widget aggregate: every ClientQuote still in DRAFT
+   * — the "money on the table" view. Sum uses the base cost-line prices
+   * (client-facing values before adjustment); provisional lines and
+   * options are intentionally excluded so the KPI stays comparable to
+   * what an estimator sees on the quote list. Top-N sorted by per-quote
+   * value DESC.
+   *
+   * @param limit - top-N items to include (default 5, min 1, max 20)
+   * @returns `{ count, totalValue, items }`
+   */
+  async getDraftsSummary(limit = 5) {
+    const take = Math.max(1, Math.min(limit, 20));
+    const drafts = await this.prisma.clientQuote.findMany({
+      where: { status: "DRAFT" },
+      include: {
+        client: { select: { id: true, name: true } },
+        tender: { select: { id: true, tenderNumber: true, title: true } },
+        costLines: { select: { price: true } }
+      },
+      orderBy: { updatedAt: "desc" }
+    });
+    const shaped = drafts.map((q) => {
+      const value = q.costLines.reduce((sum, l) => sum + toNum(l.price), 0);
+      return {
+        id: q.id,
+        quoteRef: q.quoteRef,
+        revision: q.revision,
+        updatedAt: q.updatedAt,
+        clientId: q.clientId,
+        clientName: q.client.name,
+        tenderId: q.tenderId,
+        tenderNumber: q.tender.tenderNumber,
+        tenderTitle: q.tender.title,
+        value: Math.round(value * 100) / 100
+      };
+    });
+    const totalValue = shaped.reduce((sum, r) => sum + r.value, 0);
+    const items = [...shaped].sort((a, b) => b.value - a.value).slice(0, take);
+    return {
+      count: shaped.length,
+      totalValue: Math.round(totalValue * 100) / 100,
+      items
+    };
+  }
+
   // ── Quote CRUD ──────────────────────────────────────────────────────
   async listByTender(tenderId: string) {
     await this.requireTender(tenderId);

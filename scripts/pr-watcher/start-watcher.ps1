@@ -62,7 +62,20 @@ if ($branch -ne "main") {
     # main working tree switched (recurring hazard). Auto-recover to main so the
     # supervisor does not loop forever on preflight and the prompt queue keeps draining.
     Write-Log "[$(Get-Date -Format o)] PRE-FLIGHT: on '$branch' but tree is clean; auto-checkout main to recover."
+    # LL-23: 'git checkout main' writes "Switched to branch 'main'" to stderr on
+    # success. Under $ErrorActionPreference='Stop' PS 5.1 turns that benign
+    # stderr line into a terminating NativeCommandError and the launcher dies
+    # (exit 1) even though recovery worked. Flip to Continue around the call
+    # and rely on $LASTEXITCODE to detect a real failure.
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     git checkout main 2>&1 | ForEach-Object { Add-Content -Path $LogFile -Value "$_" -Encoding UTF8; Write-Host "$_" }
+    $checkoutExit = $LASTEXITCODE
+    $ErrorActionPreference = $prevEAP
+    if ($checkoutExit -ne 0) {
+        Write-Log "[$(Get-Date -Format o)] PRE-FLIGHT FAIL: 'git checkout main' exited $checkoutExit."
+        exit 1
+    }
     $branch = (git branch --show-current).Trim()
     if ($branch -ne "main") {
         Write-Log "[$(Get-Date -Format o)] PRE-FLIGHT FAIL: auto-checkout to main did not take (still on '$branch'). Manual fix needed."

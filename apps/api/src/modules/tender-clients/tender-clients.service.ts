@@ -5,7 +5,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 export class TenderClientsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async addClient(tenderId: string, clientId: string) {
+  async addClient(tenderId: string, clientId: string, relationshipType?: string) {
     await this.requireTender(tenderId);
     const client = await this.prisma.client.findUnique({ where: { id: clientId }, select: { id: true } });
     if (!client) throw new NotFoundException("Client not found.");
@@ -16,7 +16,11 @@ export class TenderClientsService {
       throw new ConflictException("Client is already linked to this tender.");
     }
     await this.prisma.tenderClient.create({
-      data: { tenderId, clientId }
+      data: {
+        tenderId,
+        clientId,
+        ...(relationshipType ? { relationshipType } : {})
+      }
     });
     return this.listClients(tenderId);
   }

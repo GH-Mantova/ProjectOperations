@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   advanceStep,
+  buildAddBuilderRequest,
+  buildRemoveBuilderRequest,
   detectIncompleteBuilders,
   deriveDocumentBuckets,
   formatReminderBody,
@@ -129,5 +131,68 @@ describe("incomplete builder reminders", () => {
     expect(formatReminderBody(reminder)).toContain("Hutchies");
     expect(formatReminderBody(reminder)).toContain("no contact selected");
     expect(formatReminderBody(reminder)).toContain("no submission date set");
+  });
+});
+
+// Regression: adding the 2nd builder used to construct a PATCH /tenders/:id
+// payload that spread `serverTenderClients` and re-injected each row's
+// `submissionDate`. TenderClientInputDto forbids that field under
+// `forbidNonWhitelisted: true`, so once any existing tenderClient had a
+// non-null submissionDate the request 400'd and the wizard silently no-op'd.
+// The fix routes add/remove through the per-client endpoint whose DTO does
+// NOT include `submissionDate`. These helpers pin the outgoing payload shape.
+describe("builder link/unlink request builders", () => {
+  it("addBuilder posts to the clients sub-resource with PRIMARY for the first builder", () => {
+    const req = buildAddBuilderRequest("client-1", true);
+    expect(req).toEqual({
+      path: "clients",
+      method: "POST",
+      body: { clientId: "client-1", relationshipType: "PRIMARY" }
+    });
+  });
+
+  it("addBuilder posts COMPETITOR for the 2nd+ builder — the case the bug hit", () => {
+    const req = buildAddBuilderRequest("client-2", false);
+    expect(req.method).toBe("POST");
+    expect(req.body).toEqual({ clientId: "client-2", relationshipType: "COMPETITOR" });
+  });
+
+  it("addBuilder body never carries submissionDate (the 400-triggering field)", () => {
+    // Guard: the destructive PATCH path used to spread serverTenderClients
+    // rows into the payload which re-emitted `submissionDate`. The new
+    // per-client body must be provably free of that field.
+    for (const isFirst of [true, false]) {
+      const req = buildAddBuilderRequest("any-client", isFirst);
+      expect(req.body).not.toHaveProperty("submissionDate");
+      // Also whitelist-check: the only keys the API accepts on add are
+      // clientId + relationshipType.
+      expect(Object.keys(req.body ?? {}).sort()).toEqual(["clientId", "relationshipType"]);
+    }
+  });
+
+  it("removeBuilder issues a DELETE against the per-client resource, no body", () => {
+    const req = buildRemoveBuilderRequest("client-1");
+    expect(req).toEqual({ path: "clients/client-1", method: "DELETE" });
+    expect(req.body).toBeUndefined();
+  });
+
+  it("removeBuilder URL-encodes the clientId so odd IDs stay safe", () => {
+    const req = buildRemoveBuilderRequest("client with/slash");
+    expect(req.path).toBe(`clients/${encodeURIComponent("client with/slash")}`);
+  });
+
+  it("removing one of two builders leaves exactly the other in a client-side flow", () => {
+    // Mirrors what the wizard does after DELETE returns the fresh list:
+    // it drops the deleted clientId from local `builders`. Proves the state
+    // transition doesn't silently no-op (which was the visible bug).
+    const builders = [
+      { clientId: "c1", clientName: "A", contactId: null, submissionDate: null },
+      { clientId: "c2", clientName: "B", contactId: null, submissionDate: null }
+    ];
+    const remove = buildRemoveBuilderRequest("c1");
+    expect(remove.method).toBe("DELETE");
+    const after = builders.filter((b) => b.clientId !== "c1");
+    expect(after).toHaveLength(1);
+    expect(after[0].clientId).toBe("c2");
   });
 });

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   advanceStep,
   buildAddBuilderRequest,
+  buildDiscardDraftRequest,
+  buildProjectStepFlushPayload,
   buildRemoveBuilderRequest,
   detectIncompleteBuilders,
   deriveDocumentBuckets,
@@ -9,6 +11,7 @@ import {
   goBack,
   initialFlowState,
   jumpToStep,
+  shouldConfirmClose,
   skipCurrentStep,
   WIZARD_STEP_KEYS,
   type PackageRef
@@ -194,5 +197,118 @@ describe("builder link/unlink request builders", () => {
     const after = builders.filter((b) => b.clientId !== "c1");
     expect(after).toHaveLength(1);
     expect(after[0].clientId).toBe("c2");
+  });
+});
+
+// Regression: users reported "accidentally cancelling (Escape) loses my
+// work" because the wizard closed instantly on Esc / overlay / X. The draft
+// is actually server-side once created, but closing without warning is
+// disorienting. `shouldConfirmClose` is the predicate that gates the new
+// close-confirm modal.
+describe("shouldConfirmClose (close guard)", () => {
+  it("false on a truly blank wizard — no draft, no uploads", () => {
+    expect(shouldConfirmClose({ draftId: null, documentsCount: 0 })).toBe(false);
+  });
+
+  it("true once a draft exists — even with zero uploads", () => {
+    // This is the case the bug hit: Escape after step 1 dropped the wizard
+    // without asking, but a DRAFT tender was already sitting in the pipeline.
+    expect(shouldConfirmClose({ draftId: "t-1", documentsCount: 0 })).toBe(true);
+  });
+
+  it("true with uploads present — even without a draft id", () => {
+    // Defensive: uploads currently require a draft id, but the guard should
+    // still fire if the invariant is ever loosened (e.g. deferred draft).
+    expect(shouldConfirmClose({ draftId: null, documentsCount: 3 })).toBe(true);
+  });
+
+  it("true when both are present", () => {
+    expect(shouldConfirmClose({ draftId: "t-1", documentsCount: 5 })).toBe(true);
+  });
+});
+
+// The Project step used to only flush title on the initial DRAFT create
+// (ensureDraftId) — estimator + siteAddress only made it to the server on
+// handleFinish. Users editing estimator on the Project step and pressing
+// Next lost the edit if they closed the wizard mid-flow. `flushCurrentStep`
+// now calls buildProjectStepFlushPayload before every Next/Skip.
+describe("buildProjectStepFlushPayload (Project step flush)", () => {
+  it("returns null when no draft exists (nothing to patch)", () => {
+    expect(
+      buildProjectStepFlushPayload({
+        draftId: null,
+        title: "Anything",
+        estimatorUserId: "u-1",
+        siteAddress: "123 Example Rd"
+      })
+    ).toBeNull();
+  });
+
+  it("returns null when the title would be empty — API rejects PATCH without title", () => {
+    expect(
+      buildProjectStepFlushPayload({
+        draftId: "t-1",
+        title: "   ",
+        estimatorUserId: "u-1",
+        siteAddress: "123 Example Rd"
+      })
+    ).toBeNull();
+  });
+
+  it("always sends the trimmed title even when nothing else changed", () => {
+    const patch = buildProjectStepFlushPayload({
+      draftId: "t-1",
+      title: "  Site civil works  ",
+      estimatorUserId: "",
+      siteAddress: ""
+    });
+    expect(patch).toEqual({ title: "Site civil works" });
+  });
+
+  it("adds estimator + description when populated — the fields that used to leak", () => {
+    const patch = buildProjectStepFlushPayload({
+      draftId: "t-1",
+      title: "Site civil works",
+      estimatorUserId: "user-42",
+      siteAddress: "123 Example Rd, Brisbane QLD"
+    });
+    expect(patch).toEqual({
+      title: "Site civil works",
+      estimatorUserId: "user-42",
+      description: "Site: 123 Example Rd, Brisbane QLD"
+    });
+  });
+
+  it("omits description when siteAddress is blank so we don't clobber other description edits", () => {
+    const patch = buildProjectStepFlushPayload({
+      draftId: "t-1",
+      title: "Site civil works",
+      estimatorUserId: "user-42",
+      siteAddress: "   "
+    });
+    expect(patch).toEqual({
+      title: "Site civil works",
+      estimatorUserId: "user-42"
+    });
+    expect(patch).not.toHaveProperty("description");
+  });
+});
+
+// Discard-draft action wires the confirm modal to the existing hard-delete
+// endpoint (DELETE /tenders/:id — audit-before-delete, permission-gated by
+// tenders.manage). Pinning the request shape means the wizard can't
+// accidentally point at a different route in a future refactor.
+describe("buildDiscardDraftRequest", () => {
+  it("targets the tender delete endpoint with DELETE", () => {
+    expect(buildDiscardDraftRequest("t-1")).toEqual({
+      path: "tenders/t-1",
+      method: "DELETE"
+    });
+  });
+
+  it("URL-encodes the draftId so odd ids stay safe", () => {
+    const req = buildDiscardDraftRequest("t/1?");
+    expect(req.path).toBe(`tenders/${encodeURIComponent("t/1?")}`);
+    expect(req.method).toBe("DELETE");
   });
 });

@@ -28,6 +28,10 @@ function makeEntry(key: string, original: number, override: number | null = null
   };
 }
 
+type ColumnDef = { id: string; name: string; role: "KEY" | "VALUE"; unit: string | null; sortOrder: number };
+type TableDef = { id: string; name: string; columns: ColumnDef[] };
+type RowDef = { id: string; cells: Record<string, unknown> };
+
 function buildMocks(opts: {
   tenderExists?: boolean;
   existingSet?: { id: string; tenderId: string } | null;
@@ -40,6 +44,8 @@ function buildMocks(opts: {
     unit: string | null;
     value: number;
   }>;
+  rateTables?: TableDef[];
+  rateRows?: RowDef[];
 }) {
   const state = {
     entries: [...(opts.existingEntries ?? [])],
@@ -106,6 +112,25 @@ function buildMocks(opts: {
   );
   const tenderUpdate = jest.fn(async () => ({ id: "tender-1" }));
 
+  const tableStore = opts.rateTables ?? [];
+  const rowStore = opts.rateRows ?? [];
+  const rateTableFindMany = jest.fn(
+    async ({ where, include }: { where: { id: { in: string[] } }; include?: { columns?: { where?: { role?: { in: string[] } } } } }) => {
+      const ids = new Set(where.id.in);
+      const roleFilter = include?.columns?.where?.role?.in;
+      return tableStore
+        .filter((t) => ids.has(t.id))
+        .map((t) => ({
+          ...t,
+          columns: roleFilter ? t.columns.filter((c) => roleFilter.includes(c.role)) : t.columns
+        }));
+    }
+  );
+  const rateRowFindMany = jest.fn(async ({ where }: { where: { id: { in: string[] } } }) => {
+    const ids = new Set(where.id.in);
+    return rowStore.filter((r) => ids.has(r.id));
+  });
+
   const tx = {
     tenderRateSet: { upsert: setUpsert, findUnique: setFindUnique, delete: setDelete },
     tenderRateEntry: {
@@ -114,12 +139,16 @@ function buildMocks(opts: {
       update: entryUpdate,
       findUnique: entryFindUnique
     },
-    tender: { update: tenderUpdate }
+    tender: { update: tenderUpdate },
+    rateTable: { findMany: rateTableFindMany },
+    rateRow: { findMany: rateRowFindMany }
   };
 
   const prisma = {
     ...tx,
     tender: { findUnique: tenderFindUnique, update: tenderUpdate },
+    rateTable: { findMany: rateTableFindMany },
+    rateRow: { findMany: rateRowFindMany },
     $transaction: jest.fn(async (arg: unknown) => {
       if (typeof arg === "function") return (arg as (client: typeof tx) => Promise<unknown>)(tx);
       return [];
@@ -145,7 +174,9 @@ function buildMocks(opts: {
       entryCreate,
       entryUpdate,
       entryFindUnique,
-      tenderUpdate
+      tenderUpdate,
+      rateTableFindMany,
+      rateRowFindMany
     },
     state
   };
@@ -254,5 +285,141 @@ describe("TenderRateSetService", () => {
     const svc = makeService(m);
     const out = await svc.unlock("tender-1", "user-1");
     expect(out).toEqual({ unlocked: false });
+  });
+
+  it("get: exposes keyColumns/keyValues per group with a single KEY column", async () => {
+    const existing: Row[] = [
+      {
+        id: "entry-a",
+        key: "table-core:row-100:col-value",
+        label: "Core-hole rates — 100 (Rate per hole)",
+        unit: "hole",
+        rateTableId: "table-core",
+        rateTableSlug: "core-hole",
+        originalValue: new Prisma.Decimal(2.55),
+        overrideValue: null,
+        tenderRateSetId: "set-1"
+      },
+      {
+        id: "entry-b",
+        key: "table-core:row-125:col-value",
+        label: "Core-hole rates — 125 (Rate per hole)",
+        unit: "hole",
+        rateTableId: "table-core",
+        rateTableSlug: "core-hole",
+        originalValue: new Prisma.Decimal(2.75),
+        overrideValue: null,
+        tenderRateSetId: "set-1"
+      }
+    ];
+    const m = buildMocks({
+      existingSet: { id: "set-1", tenderId: "tender-1" },
+      existingEntries: existing,
+      rateTables: [
+        {
+          id: "table-core",
+          name: "Core-hole rates",
+          columns: [
+            { id: "col-size", name: "Size (mm)", role: "KEY", unit: null, sortOrder: 0 },
+            { id: "col-value", name: "Rate per hole", role: "VALUE", unit: "hole", sortOrder: 1 }
+          ]
+        }
+      ],
+      rateRows: [
+        { id: "row-100", cells: { "col-size": 100, "col-value": 2.55 } },
+        { id: "row-125", cells: { "col-size": 125, "col-value": 2.75 } }
+      ]
+    });
+    const svc = makeService(m);
+    const result = await svc.get("tender-1");
+    expect(result?.groups).toHaveLength(1);
+    const group = result!.groups[0];
+    expect(group.tableName).toBe("Core-hole rates");
+    expect(group.keyColumns).toEqual([{ name: "Size (mm)", unit: null }]);
+    expect(group.valueColumnLabel).toBe("Rate per hole");
+    expect(group.entries.map((e) => e.keyValues)).toEqual([["100"], ["125"]]);
+  });
+
+  it("get: exposes multi-KEY columns in sortOrder", async () => {
+    const existing: Row[] = [
+      {
+        id: "entry-cut",
+        key: "table-cut:row-1:col-value",
+        label: "Cutting rates — Concrete saw · Ground · Reinforced · 200 (Rate per m)",
+        unit: "m",
+        rateTableId: "table-cut",
+        rateTableSlug: "cutting",
+        originalValue: new Prisma.Decimal(50),
+        overrideValue: null,
+        tenderRateSetId: "set-1"
+      }
+    ];
+    const m = buildMocks({
+      existingSet: { id: "set-1", tenderId: "tender-1" },
+      existingEntries: existing,
+      rateTables: [
+        {
+          id: "table-cut",
+          name: "Cutting rates",
+          columns: [
+            { id: "col-equip", name: "Equipment", role: "KEY", unit: null, sortOrder: 0 },
+            { id: "col-elev", name: "Elevation", role: "KEY", unit: null, sortOrder: 1 },
+            { id: "col-mat", name: "Material", role: "KEY", unit: null, sortOrder: 2 },
+            { id: "col-depth", name: "Depth", role: "KEY", unit: "mm", sortOrder: 3 },
+            { id: "col-value", name: "Rate per m", role: "VALUE", unit: "m", sortOrder: 4 }
+          ]
+        }
+      ],
+      rateRows: [
+        {
+          id: "row-1",
+          cells: {
+            "col-equip": "Concrete saw",
+            "col-elev": "Ground",
+            "col-mat": "Reinforced",
+            "col-depth": 200,
+            "col-value": 50
+          }
+        }
+      ]
+    });
+    const svc = makeService(m);
+    const result = await svc.get("tender-1");
+    const group = result!.groups[0];
+    expect(group.keyColumns).toEqual([
+      { name: "Equipment", unit: null },
+      { name: "Elevation", unit: null },
+      { name: "Material", unit: null },
+      { name: "Depth", unit: "mm" }
+    ]);
+    expect(group.entries[0].keyValues).toEqual(["Concrete saw", "Ground", "Reinforced", "200"]);
+  });
+
+  it("get: legacy entries with no rateTableId yield empty keyColumns/keyValues", async () => {
+    const existing: Row[] = [
+      {
+        id: "entry-legacy",
+        key: "legacy:row-x:col-y",
+        label: "Legacy labour — day (rate)",
+        unit: "day",
+        rateTableId: null,
+        rateTableSlug: null,
+        originalValue: new Prisma.Decimal(500),
+        overrideValue: null,
+        tenderRateSetId: "set-1"
+      }
+    ];
+    const m = buildMocks({
+      existingSet: { id: "set-1", tenderId: "tender-1" },
+      existingEntries: existing
+    });
+    const svc = makeService(m);
+    const result = await svc.get("tender-1");
+    const group = result!.groups[0];
+    expect(group.keyColumns).toEqual([]);
+    expect(group.valueColumnLabel).toBeNull();
+    expect(group.entries[0].keyValues).toEqual([]);
+    // Fallback tableName still derived from the label
+    expect(group.tableName).toBe("Legacy labour");
   });
 });

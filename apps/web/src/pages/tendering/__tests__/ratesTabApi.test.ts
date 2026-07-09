@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  describeRateGroup,
   getRateSet,
   lockRateSet,
   patchRateEntry,
@@ -7,6 +8,7 @@ import {
   unlockRateSet,
   type AuthFetch
 } from "../ratesTabApi";
+import type { TenderRateGroup } from "../RatesTab";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -106,7 +108,8 @@ describe("ratesTabApi", () => {
         originalValue: "100",
         overrideValue: "175",
         effectiveValue: "175",
-        overridden: true
+        overridden: true,
+        keyValues: []
       })
     );
     const out = await patchRateEntry(authFetch, "t-1", "e-1", 175);
@@ -129,7 +132,8 @@ describe("ratesTabApi", () => {
         originalValue: "100",
         overrideValue: null,
         effectiveValue: "100",
-        overridden: false
+        overridden: false,
+        keyValues: []
       })
     );
     const out = await patchRateEntry(authFetch, "t-1", "e-1", null);
@@ -142,5 +146,116 @@ describe("ratesTabApi", () => {
   it("throws with the server message when the API returns an error", async () => {
     const authFetch = vi.fn<AuthFetch>(async () => textResponse("Not locked", 404));
     await expect(patchRateEntry(authFetch, "t-1", "e-1", 10)).rejects.toThrow("Not locked");
+  });
+});
+
+describe("describeRateGroup", () => {
+  it("renders one leading cell per key column (single-key table)", () => {
+    const group: TenderRateGroup = {
+      rateTableId: "t-core",
+      rateTableSlug: "core-hole",
+      tableName: "Core-hole rates",
+      keyColumns: [{ name: "Size", unit: "mm" }],
+      valueColumnLabel: "Rate per hole",
+      entries: [
+        {
+          id: "e-1",
+          key: "t-core:r-100:v",
+          label: "Core-hole rates — 100 (Rate per hole)",
+          unit: "hole",
+          rateTableId: "t-core",
+          rateTableSlug: "core-hole",
+          originalValue: "2.55",
+          overrideValue: null,
+          effectiveValue: "2.55",
+          overridden: false,
+          keyValues: ["100"]
+        },
+        {
+          id: "e-2",
+          key: "t-core:r-125:v",
+          label: "Core-hole rates — 125 (Rate per hole)",
+          unit: "hole",
+          rateTableId: "t-core",
+          rateTableSlug: "core-hole",
+          originalValue: "2.75",
+          overrideValue: null,
+          effectiveValue: "2.75",
+          overridden: false,
+          keyValues: ["125"]
+        }
+      ]
+    };
+    const { headers, rowKeyCells } = describeRateGroup(group);
+    expect(headers).toEqual(["Size (mm)", "Original", "Override"]);
+    expect(rowKeyCells).toEqual([["100"], ["125"]]);
+  });
+
+  it("renders N leading cells per key column (multi-key table)", () => {
+    const group: TenderRateGroup = {
+      rateTableId: "t-cut",
+      rateTableSlug: "cutting",
+      tableName: "Cutting rates",
+      keyColumns: [
+        { name: "Equipment", unit: null },
+        { name: "Elevation", unit: null },
+        { name: "Material", unit: null },
+        { name: "Depth", unit: "mm" }
+      ],
+      valueColumnLabel: "Rate per m",
+      entries: [
+        {
+          id: "e-1",
+          key: "t-cut:r-1:v",
+          label: "…",
+          unit: "m",
+          rateTableId: "t-cut",
+          rateTableSlug: "cutting",
+          originalValue: "50",
+          overrideValue: null,
+          effectiveValue: "50",
+          overridden: false,
+          keyValues: ["Concrete saw", "Ground", "Reinforced", "200"]
+        }
+      ]
+    };
+    const { headers, rowKeyCells } = describeRateGroup(group);
+    expect(headers).toEqual([
+      "Equipment",
+      "Elevation",
+      "Material",
+      "Depth (mm)",
+      "Original",
+      "Override"
+    ]);
+    expect(rowKeyCells).toEqual([["Concrete saw", "Ground", "Reinforced", "200"]]);
+  });
+
+  it("falls back to Rate | Unit columns when keyColumns is empty (legacy group)", () => {
+    const group: TenderRateGroup = {
+      rateTableId: null,
+      rateTableSlug: null,
+      tableName: "Legacy labour",
+      keyColumns: [],
+      valueColumnLabel: null,
+      entries: [
+        {
+          id: "e-1",
+          key: "legacy:x:y",
+          label: "Labourer (day)",
+          unit: "day",
+          rateTableId: null,
+          rateTableSlug: null,
+          originalValue: "500",
+          overrideValue: null,
+          effectiveValue: "500",
+          overridden: false,
+          keyValues: []
+        }
+      ]
+    };
+    const { headers, rowKeyCells } = describeRateGroup(group);
+    expect(headers).toEqual(["Rate", "Unit", "Original", "Override"]);
+    expect(rowKeyCells).toEqual([["Labourer (day)", "day"]]);
   });
 });

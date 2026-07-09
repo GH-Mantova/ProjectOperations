@@ -14,12 +14,17 @@ export type TenderRateEntry = {
   overrideValue: string | null;
   effectiveValue: string;
   overridden: boolean;
+  keyValues: string[];
 };
+
+export type TenderRateKeyColumn = { name: string; unit: string | null };
 
 export type TenderRateGroup = {
   rateTableId: string | null;
   rateTableSlug: string | null;
   tableName: string;
+  keyColumns: TenderRateKeyColumn[];
+  valueColumnLabel: string | null;
   entries: TenderRateEntry[];
 };
 
@@ -104,7 +109,11 @@ export function RatesTab({ tenderId, canManage }: { tenderId: string; canManage:
               ...prev,
               groups: prev.groups.map((g) => ({
                 ...g,
-                entries: g.entries.map((e) => (e.id === entryId ? updated : e))
+                // Preserve existing keyValues — the PATCH response only
+                // carries the value fields; keys don't change on override.
+                entries: g.entries.map((e) =>
+                  e.id === entryId ? { ...e, ...updated, keyValues: e.keyValues } : e
+                )
               }))
             }
           : prev
@@ -196,99 +205,122 @@ export function RatesTab({ tenderId, canManage }: { tenderId: string; canManage:
           <EmptyState heading="No rates in the snapshot" subtext="There are no active rate rows to snapshot yet." />
         </section>
       ) : (
-        set.groups.map((group) => (
-          <section className="s7-card" key={`${group.rateTableId ?? group.rateTableSlug ?? "other"}`}>
-            <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>{group.tableName}</h3>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-              <thead>
-                <tr style={{ textAlign: "left", borderBottom: "1px solid var(--border-subtle, #E5E7EB)" }}>
-                  <th style={{ padding: "8px 12px" }}>Rate</th>
-                  <th style={{ padding: "8px 12px" }}>Unit</th>
-                  <th style={{ padding: "8px 12px", textAlign: "right" }}>Original</th>
-                  <th style={{ padding: "8px 12px", textAlign: "right", width: 180 }}>Override</th>
-                  <th style={{ padding: "8px 12px", width: 80 }} />
-                </tr>
-              </thead>
-              <tbody>
-                {group.entries.map((entry) => {
-                  const draft = drafts[entry.id];
-                  const draftValue = draft ?? (entry.overrideValue ?? "");
-                  const overrideColor = entry.overridden ? "#EA580C" : undefined;
-                  return (
-                    <tr
-                      key={entry.id}
-                      data-testid={`rates-entry-${entry.key}`}
-                      style={{ borderBottom: "1px solid var(--border-subtle, #F1F5F9)" }}
-                    >
-                      <td style={{ padding: "8px 12px", color: overrideColor }}>{entry.label}</td>
-                      <td style={{ padding: "8px 12px" }}>{entry.unit ?? "—"}</td>
-                      <td style={{ padding: "8px 12px", textAlign: "right" }}>
-                        {formatCurrency(entry.originalValue, entry.unit)}
-                      </td>
-                      <td style={{ padding: "8px 12px", textAlign: "right" }}>
-                        {canManage ? (
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={draftValue}
-                            onChange={(e) =>
-                              setDrafts((prev) => ({ ...prev, [entry.id]: e.target.value }))
-                            }
-                            onBlur={() => {
-                              if (draft === undefined) return;
-                              const trimmed = draft.trim();
-                              if (trimmed === "") {
-                                if (entry.overrideValue !== null) void patchEntry(entry.id, null);
-                                setDrafts((prev) => {
-                                  const next = { ...prev };
-                                  delete next[entry.id];
-                                  return next;
-                                });
-                                return;
-                              }
-                              const parsed = Number(trimmed);
-                              if (Number.isNaN(parsed) || parsed < 0) return;
-                              if (String(parsed) === entry.overrideValue) return;
-                              void patchEntry(entry.id, parsed);
-                            }}
-                            style={{
-                              width: 140,
-                              padding: "6px 8px",
-                              border: "1px solid var(--border-subtle, #E5E7EB)",
-                              borderRadius: 6,
-                              textAlign: "right",
-                              color: overrideColor,
-                              fontWeight: entry.overridden ? 600 : 400
-                            }}
-                            data-testid={`rates-entry-input-${entry.key}`}
-                          />
+        set.groups.map((group) => {
+          const hasKeyCols = group.keyColumns.length > 0;
+          return (
+            <section className="s7-card" key={`${group.rateTableId ?? group.rateTableSlug ?? "other"}`}>
+              <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>{group.tableName}</h3>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+                <thead>
+                  <tr style={{ textAlign: "left", borderBottom: "1px solid var(--border-subtle, #E5E7EB)" }}>
+                    {hasKeyCols ? (
+                      group.keyColumns.map((col) => (
+                        <th key={col.name} style={{ padding: "8px 12px" }}>
+                          {col.unit ? `${col.name} (${col.unit})` : col.name}
+                        </th>
+                      ))
+                    ) : (
+                      <>
+                        <th style={{ padding: "8px 12px" }}>Rate</th>
+                        <th style={{ padding: "8px 12px" }}>Unit</th>
+                      </>
+                    )}
+                    <th style={{ padding: "8px 12px", textAlign: "right" }}>Original</th>
+                    <th style={{ padding: "8px 12px", textAlign: "right", width: 180 }}>Override</th>
+                    <th style={{ padding: "8px 12px", width: 80 }} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {group.entries.map((entry) => {
+                    const draft = drafts[entry.id];
+                    const draftValue = draft ?? (entry.overrideValue ?? "");
+                    const overrideColor = entry.overridden ? "#EA580C" : undefined;
+                    return (
+                      <tr
+                        key={entry.id}
+                        data-testid={`rates-entry-${entry.key}`}
+                        style={{ borderBottom: "1px solid var(--border-subtle, #F1F5F9)" }}
+                      >
+                        {hasKeyCols ? (
+                          group.keyColumns.map((col, i) => (
+                            <td key={col.name} style={{ padding: "8px 12px", color: overrideColor }}>
+                              {entry.keyValues[i] || "—"}
+                            </td>
+                          ))
                         ) : (
-                          <span style={{ color: overrideColor }}>
-                            {entry.overrideValue ? formatCurrency(entry.overrideValue, entry.unit) : "—"}
-                          </span>
+                          <>
+                            <td style={{ padding: "8px 12px", color: overrideColor }}>{entry.label}</td>
+                            <td style={{ padding: "8px 12px" }}>{entry.unit ?? "—"}</td>
+                          </>
                         )}
-                      </td>
-                      <td style={{ padding: "8px 12px", textAlign: "right" }}>
-                        {canManage && entry.overridden ? (
-                          <button
-                            type="button"
-                            className="s7-btn s7-btn--sm s7-btn--ghost"
-                            onClick={() => void patchEntry(entry.id, null)}
-                            data-testid={`rates-entry-revert-${entry.key}`}
-                            style={{ minHeight: 44 }}
-                          >
-                            Revert
-                          </button>
-                        ) : null}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </section>
-        ))
+                        <td style={{ padding: "8px 12px", textAlign: "right" }}>
+                          {formatCurrency(entry.originalValue, entry.unit)}
+                        </td>
+                        <td style={{ padding: "8px 12px", textAlign: "right" }}>
+                          {canManage ? (
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={draftValue}
+                              onChange={(e) =>
+                                setDrafts((prev) => ({ ...prev, [entry.id]: e.target.value }))
+                              }
+                              onBlur={() => {
+                                if (draft === undefined) return;
+                                const trimmed = draft.trim();
+                                if (trimmed === "") {
+                                  if (entry.overrideValue !== null) void patchEntry(entry.id, null);
+                                  setDrafts((prev) => {
+                                    const next = { ...prev };
+                                    delete next[entry.id];
+                                    return next;
+                                  });
+                                  return;
+                                }
+                                const parsed = Number(trimmed);
+                                if (Number.isNaN(parsed) || parsed < 0) return;
+                                if (String(parsed) === entry.overrideValue) return;
+                                void patchEntry(entry.id, parsed);
+                              }}
+                              style={{
+                                width: 140,
+                                padding: "6px 8px",
+                                border: "1px solid var(--border-subtle, #E5E7EB)",
+                                borderRadius: 6,
+                                textAlign: "right",
+                                color: overrideColor,
+                                fontWeight: entry.overridden ? 600 : 400
+                              }}
+                              data-testid={`rates-entry-input-${entry.key}`}
+                            />
+                          ) : (
+                            <span style={{ color: overrideColor }}>
+                              {entry.overrideValue ? formatCurrency(entry.overrideValue, entry.unit) : "—"}
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ padding: "8px 12px", textAlign: "right" }}>
+                          {canManage && entry.overridden ? (
+                            <button
+                              type="button"
+                              className="s7-btn s7-btn--sm s7-btn--ghost"
+                              onClick={() => void patchEntry(entry.id, null)}
+                              data-testid={`rates-entry-revert-${entry.key}`}
+                              style={{ minHeight: 44 }}
+                            >
+                              Revert
+                            </button>
+                          ) : null}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </section>
+          );
+        })
       )}
     </div>
   );

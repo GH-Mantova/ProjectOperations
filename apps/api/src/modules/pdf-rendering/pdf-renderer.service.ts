@@ -1,4 +1,5 @@
 import {
+  HttpStatus,
   Injectable,
   Logger,
   OnModuleDestroy,
@@ -132,7 +133,7 @@ export class PdfRendererService implements OnModuleDestroy {
       if (!existsSync(executablePath)) {
         const msg = `PUPPETEER_EXECUTABLE_PATH is set to "${executablePath}" but that file does not exist.`;
         this.logger.error(msg);
-        throw new PdfRenderError(msg);
+        throw new PdfRenderError(msg, undefined, HttpStatus.SERVICE_UNAVAILABLE);
       }
     } else {
       let resolved: string | null = null;
@@ -140,11 +141,11 @@ export class PdfRendererService implements OnModuleDestroy {
         resolved = puppeteer.executablePath();
       } catch (err) {
         this.logger.error(CHROME_INSTALL_HINT);
-        throw new PdfRenderError(CHROME_INSTALL_HINT, err);
+        throw new PdfRenderError(CHROME_INSTALL_HINT, err, HttpStatus.SERVICE_UNAVAILABLE);
       }
       if (!resolved || !existsSync(resolved)) {
         this.logger.error(CHROME_INSTALL_HINT);
-        throw new PdfRenderError(CHROME_INSTALL_HINT);
+        throw new PdfRenderError(CHROME_INSTALL_HINT, undefined, HttpStatus.SERVICE_UNAVAILABLE);
       }
     }
 

@@ -11,6 +11,13 @@ function getFsMock() {
   return jest.requireMock("node:fs") as { existsSync: jest.Mock };
 }
 
+import { HttpStatus } from "@nestjs/common";
+
+// NOTE: we intentionally don't import PdfRenderError at the top level here —
+// jest.resetModules() in afterEach re-loads pdf-render.error for each test,
+// which would give the fresh copy a different class identity than any
+// top-level import. Duck-check via getStatus() / getResponse() / name instead.
+
 describe("PdfRendererService.launchBrowser (unit)", () => {
   const OLD_ENV = process.env.PUPPETEER_EXECUTABLE_PATH;
 
@@ -55,9 +62,21 @@ describe("PdfRendererService.launchBrowser (unit)", () => {
     });
     const service = loadService();
 
-    await expect(service.renderHtmlToPdf("<p>x</p>")).rejects.toThrow(
+    const promise = service.renderHtmlToPdf("<p>x</p>");
+    await expect(promise).rejects.toThrow(
       /Chrome for PDF rendering is not installed. Run: npx puppeteer browsers install chrome/,
     );
+    const err = await promise.catch((e: Error) => e);
+    expect(err.name).toBe("PdfRenderError");
+    expect((err as { getStatus: () => number }).getStatus()).toBe(
+      HttpStatus.SERVICE_UNAVAILABLE,
+    );
+    expect((err as { getResponse: () => unknown }).getResponse()).toMatchObject({
+      statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+      error: "PDF Rendering Error",
+      message:
+        "Chrome for PDF rendering is not installed. Run: npx puppeteer browsers install chrome",
+    });
     expect(launch).not.toHaveBeenCalled();
   });
 
@@ -70,9 +89,21 @@ describe("PdfRendererService.launchBrowser (unit)", () => {
     });
     const service = loadService();
 
-    await expect(service.renderHtmlToPdf("<p>x</p>")).rejects.toThrow(
+    const promise = service.renderHtmlToPdf("<p>x</p>");
+    await expect(promise).rejects.toThrow(
       /Chrome for PDF rendering is not installed/,
     );
+    const err = await promise.catch((e: Error) => e);
+    expect(err.name).toBe("PdfRenderError");
+    expect((err as { getStatus: () => number }).getStatus()).toBe(
+      HttpStatus.SERVICE_UNAVAILABLE,
+    );
+    expect((err as { getResponse: () => unknown }).getResponse()).toMatchObject({
+      statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+      error: "PDF Rendering Error",
+      message:
+        "Chrome for PDF rendering is not installed. Run: npx puppeteer browsers install chrome",
+    });
     expect(launch).not.toHaveBeenCalled();
   });
 
@@ -104,9 +135,21 @@ describe("PdfRendererService.launchBrowser (unit)", () => {
     });
     const service = loadService();
 
-    await expect(service.renderHtmlToPdf("<p>x</p>")).rejects.toThrow(
+    const promise = service.renderHtmlToPdf("<p>x</p>");
+    await expect(promise).rejects.toThrow(
       /PUPPETEER_EXECUTABLE_PATH is set to "\/opt\/chrome\/chrome" but that file does not exist/,
     );
+    const err = await promise.catch((e: Error) => e);
+    expect(err.name).toBe("PdfRenderError");
+    expect((err as { getStatus: () => number }).getStatus()).toBe(
+      HttpStatus.SERVICE_UNAVAILABLE,
+    );
+    expect((err as { getResponse: () => unknown }).getResponse()).toMatchObject({
+      statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+      error: "PDF Rendering Error",
+      message:
+        'PUPPETEER_EXECUTABLE_PATH is set to "/opt/chrome/chrome" but that file does not exist.',
+    });
     expect(launch).not.toHaveBeenCalled();
   });
 });

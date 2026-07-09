@@ -240,3 +240,61 @@ export function buildRemoveBuilderRequest(clientId: string): BuilderRequest {
     method: "DELETE"
   };
 }
+
+// ---------------------------------------------------------------------------
+// Close-guard helpers. Users report "accidentally cancelling (Escape) loses my
+// work" — the draft is actually server-side once created, but closing without
+// warning is disorienting. These pure helpers back the confirm/discard/flush
+// wiring in NewTenderWizard so the component can be tested via the existing
+// helper-only pattern (no jsdom).
+// ---------------------------------------------------------------------------
+
+/**
+ * True when Escape / overlay-click / X must NOT close instantly — i.e., the
+ * wizard has state worth preserving (a persisted draft or at least one
+ * upload). Blank wizards close immediately.
+ */
+export function shouldConfirmClose(input: {
+  draftId: string | null;
+  documentsCount: number;
+}): boolean {
+  return !!input.draftId || input.documentsCount > 0;
+}
+
+/**
+ * Build the PATCH body for flushing the Project step's local field state to
+ * the draft. Returns `null` when there's nothing to flush — either no draft
+ * exists yet (nothing to patch) or the title is empty (would fail the API's
+ * UpsertTenderDto `title` guard, which the component avoids by refusing to
+ * advance past the Project step until a title is entered).
+ */
+export function buildProjectStepFlushPayload(input: {
+  draftId: string | null;
+  title: string;
+  estimatorUserId: string;
+  siteAddress: string;
+}): Record<string, unknown> | null {
+  if (!input.draftId) return null;
+  const trimmedTitle = input.title.trim();
+  if (!trimmedTitle) return null;
+  const patch: Record<string, unknown> = { title: trimmedTitle };
+  if (input.estimatorUserId) patch.estimatorUserId = input.estimatorUserId;
+  const site = input.siteAddress.trim();
+  if (site) patch.description = `Site: ${site}`;
+  return patch;
+}
+
+export type DiscardDraftRequest = { path: string; method: "DELETE" };
+
+/**
+ * The Discard-draft action targets the tenders module's existing hard-delete
+ * endpoint (DELETE /tenders/:id — writes audit BEFORE the cascade). Encoded
+ * as a pure helper so the request shape is pinned by test rather than
+ * scattered through the component.
+ */
+export function buildDiscardDraftRequest(draftId: string): DiscardDraftRequest {
+  return {
+    path: `tenders/${encodeURIComponent(draftId)}`,
+    method: "DELETE"
+  };
+}

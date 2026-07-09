@@ -69,6 +69,41 @@ export function tabFromPath(pathname: string): "overview" | "scope" | "rates" | 
 }
 
 /**
+ * Format a key-column header. Appends " (unit)" only when the column
+ * name doesn't already contain the unit — otherwise a projected column
+ * whose name is "Diameter (mm)" with unit "mm" would render as
+ * "Diameter (mm) (mm)".
+ */
+export function formatKeyColumnHeader(name: string, unit: string | null): string {
+  if (!unit) return name;
+  if (name.toLowerCase().includes(unit.toLowerCase())) return name;
+  return `${name} (${unit})`;
+}
+
+/**
+ * Stable per-group key used by both the master rail and the detail
+ * pane so selection state and render keys stay in lockstep.
+ */
+export function rateGroupKey(group: TenderRateGroup): string {
+  return group.rateTableId ?? group.rateTableSlug ?? "other";
+}
+
+/**
+ * Pick the first-group key on load, or fall back to it when the
+ * previously-selected key is no longer present in the snapshot (e.g.
+ * after Refresh drops a table). Returns null when there are no groups.
+ */
+export function selectDefaultRatesTableKey(
+  groups: TenderRateGroup[],
+  current: string | null
+): string | null {
+  if (groups.length === 0) return null;
+  const keys = groups.map(rateGroupKey);
+  if (current && keys.includes(current)) return current;
+  return keys[0];
+}
+
+/**
  * Describe the columnar layout of a rate group so the render logic can
  * be tested without mounting the page. A group with `keyColumns` renders
  * one leading cell per key column (matching the Rates & Lists admin
@@ -81,7 +116,7 @@ export function describeRateGroup(group: TenderRateGroup): {
 } {
   const hasKeys = group.keyColumns.length > 0;
   const leadingHeaders = hasKeys
-    ? group.keyColumns.map((c) => (c.unit ? `${c.name} (${c.unit})` : c.name))
+    ? group.keyColumns.map((c) => formatKeyColumnHeader(c.name, c.unit))
     : ["Rate", "Unit"];
   const headers = [...leadingHeaders, "Original", "Override"];
   const rowKeyCells = group.entries.map((entry) =>

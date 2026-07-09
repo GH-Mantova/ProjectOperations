@@ -709,17 +709,61 @@ function FieldRender({
   const config = (field.config ?? {}) as Record<string, unknown>;
   const options = (config.options ?? []) as string[];
 
-  // Layout fields render without label scaffolding
-  if (field.fieldType === "section_header") {
-    return <h3 style={{ margin: "12px 0 4px", color: "#005B61", fontSize: 16 }}>{field.label}</h3>;
+  // Layout fields render without label scaffolding and never contribute a
+  // FormSubmissionValue — no onChange call means no key in the values map.
+  if (field.fieldType === "section_header" || field.fieldType === "heading") {
+    return (
+      <h3
+        data-testid={`form-fill-${field.fieldKey.replace(/_/g, "-")}`}
+        style={{ margin: "12px 0 4px", color: "#005B61", fontSize: 16 }}
+      >
+        {field.label}
+      </h3>
+    );
   }
   if (field.fieldType === "divider") {
-    return <hr style={{ border: 0, borderTop: "1px solid var(--border-subtle, rgba(0,0,0,0.08))" }} />;
-  }
-  if (field.fieldType === "instructions") {
     return (
-      <div style={{ background: "var(--surface-muted, #F6F6F6)", padding: 12, borderRadius: 6, fontSize: 13 }}>
+      <hr
+        data-testid={`form-fill-${field.fieldKey.replace(/_/g, "-")}`}
+        style={{ border: 0, borderTop: "1px solid var(--border-subtle, rgba(0,0,0,0.08))" }}
+      />
+    );
+  }
+  if (field.fieldType === "instructions" || field.fieldType === "paragraph") {
+    return (
+      <div
+        data-testid={`form-fill-${field.fieldKey.replace(/_/g, "-")}`}
+        style={{ background: "var(--surface-muted, #F6F6F6)", padding: 12, borderRadius: 6, fontSize: 13 }}
+      >
         {field.helpText ?? field.label}
+      </div>
+    );
+  }
+  if (field.fieldType === "image") {
+    const cfg = (field.config ?? {}) as Record<string, unknown>;
+    const src = String(cfg.imageUrl ?? "");
+    return (
+      <div data-testid={`form-fill-${field.fieldKey.replace(/_/g, "-")}`}>
+        {src ? (
+          <img
+            src={src}
+            alt={field.label}
+            style={{ maxWidth: "100%", borderRadius: 6, display: "block" }}
+          />
+        ) : (
+          <div
+            style={{
+              padding: 12,
+              background: "var(--surface-muted, #F6F6F6)",
+              borderRadius: 6,
+              fontSize: 12,
+              color: "var(--text-muted)",
+              textAlign: "center"
+            }}
+          >
+            No image URL configured
+          </div>
+        )}
       </div>
     );
   }
@@ -1022,6 +1066,64 @@ function FieldInput({
               ★
             </button>
           ))}
+        </div>
+      );
+    }
+    case "scale":
+    case "nps": {
+      const isNps = t === "nps";
+      const min = Number(config.min ?? (isNps ? 0 : 1));
+      const max = Number(config.max ?? (isNps ? 10 : 5));
+      const minLabel = String(config.minLabel ?? "");
+      const maxLabel = String(config.maxLabel ?? "");
+      const active = value === null || value === undefined ? null : Number(value);
+      const steps = Math.max(2, Math.min(max - min + 1, 21));
+      const points = Array.from({ length: steps }, (_, i) => min + i);
+      return (
+        <div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {points.map((n) => {
+              const on = active === n;
+              return (
+                <button
+                  key={n}
+                  type="button"
+                  aria-label={`Score ${n}`}
+                  aria-pressed={on}
+                  onClick={() => onChange(n)}
+                  style={{
+                    minWidth: 44,
+                    minHeight: 44,
+                    padding: "0 12px",
+                    borderRadius: 6,
+                    border: "1px solid",
+                    borderColor: on ? "#FEAA6D" : "var(--border-subtle, rgba(0,0,0,0.12))",
+                    background: on ? "#FEAA6D" : "var(--surface-card, #fff)",
+                    color: on ? "#242424" : "var(--text-default)",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: "pointer"
+                  }}
+                >
+                  {n}
+                </button>
+              );
+            })}
+          </div>
+          {minLabel || maxLabel ? (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                marginTop: 6,
+                fontSize: 11,
+                color: "var(--text-muted)"
+              }}
+            >
+              <span>{minLabel}</span>
+              <span>{maxLabel}</span>
+            </div>
+          ) : null}
         </div>
       );
     }

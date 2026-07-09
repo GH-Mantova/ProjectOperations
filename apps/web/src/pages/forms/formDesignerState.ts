@@ -1,15 +1,64 @@
 import type { FormLayout } from "./formLayoutResolver";
 
+/**
+ * Field types the F-1 designer emits.
+ *
+ * F-1 shipped exactly nine functional types; this slice widens the palette to
+ * cover the renderer-ready basic inputs / survey types / static layout blocks
+ * so the builder catches up with what `FormFillPage` already draws.
+ */
 export type FieldType =
+  // Basic inputs
   | "text"
   | "textarea"
   | "number"
   | "date"
-  | "checkbox"
+  | "time"
+  | "email"
+  | "phone"
+  | "address"
+  | "file"
+  // Choice
   | "multiple_choice"
+  | "checkbox"
+  | "radio"
+  // Survey
+  | "rating"
+  | "scale"
+  // Static layout (produces no `FormSubmissionValue`)
+  | "heading"
+  | "paragraph"
+  | "divider"
+  | "image"
+  // Site & WHS
   | "signature"
-  | "image_capture"
-  | "file";
+  | "image_capture";
+
+/**
+ * Static-layout field types render read-only content and never contribute a
+ * `FormSubmissionValue` — they exist purely for canvas structure. Enforce this
+ * in one place so designer + renderer + tests agree.
+ */
+export const LAYOUT_ONLY_TYPES: ReadonlySet<string> = new Set<string>([
+  "heading",
+  "paragraph",
+  "divider",
+  "image"
+]);
+
+export function isLayoutOnlyType(fieldType: string): boolean {
+  return LAYOUT_ONLY_TYPES.has(fieldType);
+}
+
+/** Choice-bearing types share the same options-list authoring surface. */
+export const CHOICE_TYPES: ReadonlySet<string> = new Set<string>([
+  "multiple_choice",
+  "checkbox",
+  "radio"
+]);
+
+/** Survey types carry a numeric scale config rather than an options list. */
+export const SURVEY_TYPES: ReadonlySet<string> = new Set<string>(["rating", "scale"]);
 
 export type DraftField = {
   tempId: string;
@@ -21,6 +70,7 @@ export type DraftField = {
   placeholder?: string;
   helpText?: string;
   options?: string[];
+  config?: Record<string, unknown>;
 };
 
 export type DraftSection = {
@@ -50,15 +100,19 @@ export type DesignerDraft = {
 };
 
 export type PaletteGroup = {
-  key: "site_whs" | "input" | "structure";
+  key: "site_whs" | "basic" | "choice" | "survey" | "layout";
   label: string;
   entries: Array<{ type: FieldType; label: string; icon: string; badge?: string }>;
 };
 
 /**
- * F-1 palette: only the 9 existing types are functional, grouped per the
- * mockup (form-builder-mockup.html:107-131). New-in-v2 palette tiles are
- * intentionally not surfaced in F-1 — they arrive with F-4/F-5.
+ * Palette groups per the F-1 category model. This slice widens F-1's
+ * two-group palette to the full Basic / Choice / Survey / Layout set, keeping
+ * Site & WHS on top for the construction-critical Photo + Signature tiles.
+ *
+ * Advanced tiles (Lookup, Calculation, Unique ID, Terms, Table, Worker,
+ * Asset, Location, Weather) belong to F-4 / F-5 and are intentionally not
+ * surfaced here.
  */
 export const PALETTE_GROUPS: PaletteGroup[] = [
   {
@@ -70,16 +124,45 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
     ]
   },
   {
-    key: "input",
-    label: "Input",
+    key: "basic",
+    label: "Basic",
     entries: [
       { type: "text", label: "Text", icon: "T" },
       { type: "textarea", label: "Long text", icon: "¶" },
       { type: "number", label: "Number", icon: "#" },
       { type: "date", label: "Date", icon: "\u{1F4C5}" },
+      { type: "time", label: "Time", icon: "⏱" },
+      { type: "email", label: "Email", icon: "✉" },
+      { type: "phone", label: "Phone", icon: "☎" },
+      { type: "address", label: "Address", icon: "\u{1F4CD}" },
+      { type: "file", label: "File", icon: "\u{1F4CE}" }
+    ]
+  },
+  {
+    key: "choice",
+    label: "Choice",
+    entries: [
       { type: "multiple_choice", label: "Dropdown", icon: "▾" },
       { type: "checkbox", label: "Checkbox", icon: "☑" },
-      { type: "file", label: "File", icon: "\u{1F4CE}" }
+      { type: "radio", label: "Radio", icon: "◉" }
+    ]
+  },
+  {
+    key: "survey",
+    label: "Survey",
+    entries: [
+      { type: "rating", label: "Star rating", icon: "★" },
+      { type: "scale", label: "Scale", icon: "\u{1F4CF}" }
+    ]
+  },
+  {
+    key: "layout",
+    label: "Layout",
+    entries: [
+      { type: "heading", label: "Heading", icon: "H" },
+      { type: "paragraph", label: "Paragraph", icon: "¶" },
+      { type: "divider", label: "Divider", icon: "—" },
+      { type: "image", label: "Image", icon: "\u{1F5BC}" }
     ]
   }
 ];
@@ -87,12 +170,18 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
 export type PropertyTab = "general" | "options" | "logic";
 
 /**
- * Which right-panel tabs a field type shows. F-1 exposes General/Options for
- * choice-bearing types and General/Logic for the rest — Push tab arrives with
- * F-9 (push engine), so it is intentionally absent here.
+ * Right-panel tabs per field type. Choice + survey types earn an Options tab
+ * (choices list or scale config). Static layout blocks show General only —
+ * they carry no logic target of their own, and F-2 handles conditional
+ * visibility at the section level.
+ *
+ * The Push tab arrives with F-9; not surfaced here.
  */
 export function tabsForFieldType(fieldType: string): PropertyTab[] {
-  if (fieldType === "multiple_choice") return ["general", "options", "logic"];
+  if (isLayoutOnlyType(fieldType)) return ["general"];
+  if (CHOICE_TYPES.has(fieldType) || SURVEY_TYPES.has(fieldType)) {
+    return ["general", "options", "logic"];
+  }
   return ["general", "logic"];
 }
 
@@ -111,8 +200,28 @@ export function keyFromLabel(label: string): string {
   );
 }
 
+const DEFAULT_LABEL: Partial<Record<string, string>> = {
+  heading: "Section heading",
+  paragraph: "Static paragraph",
+  divider: "Divider",
+  image: "Image"
+};
+
+function defaultConfigFor(fieldType: FieldType | string): Record<string, unknown> | undefined {
+  if (fieldType === "rating") return { maxRating: 5 };
+  if (fieldType === "scale") return { min: 1, max: 5, minLabel: "", maxLabel: "" };
+  if (fieldType === "image") return { imageUrl: "" };
+  return undefined;
+}
+
+function defaultOptionsFor(fieldType: FieldType | string): string[] | undefined {
+  if (CHOICE_TYPES.has(String(fieldType))) return ["Option 1", "Option 2"];
+  return undefined;
+}
+
 export function makeField(fieldType: FieldType | string, label?: string): DraftField {
-  const displayLabel = label ?? `New ${String(fieldType).replace(/_/g, " ")} field`;
+  const displayLabel =
+    label ?? DEFAULT_LABEL[String(fieldType)] ?? `New ${String(fieldType).replace(/_/g, " ")} field`;
   return {
     tempId: uid(),
     fieldKey: `${keyFromLabel(displayLabel)}_${uid().slice(0, 4)}`,
@@ -120,7 +229,8 @@ export function makeField(fieldType: FieldType | string, label?: string): DraftF
     fieldType,
     fieldOrder: 0,
     isRequired: false,
-    options: fieldType === "multiple_choice" ? ["Option 1", "Option 2"] : undefined
+    options: defaultOptionsFor(fieldType),
+    config: defaultConfigFor(fieldType)
   };
 }
 
@@ -181,7 +291,8 @@ export function duplicateField(
         tempId: uid(),
         fieldKey: `${source.fieldKey}_copy_${uid().slice(0, 4)}`,
         label: `${source.label} (copy)`,
-        options: source.options ? [...source.options] : undefined
+        options: source.options ? [...source.options] : undefined,
+        config: source.config ? { ...source.config } : undefined
       };
       created = copy;
       const idx = section.fields.findIndex((f) => f.tempId === fieldTempId);
@@ -277,4 +388,51 @@ export function removeSectionFromDraft(
 
 export function setDraftLayout(draft: DesignerDraft, layout: FormLayout): DesignerDraft {
   return { ...draft, layout };
+}
+
+/**
+ * Publish-time shape of a single field — mirrors the API's
+ * `FormFieldInputDto`. Kept structural (no class) so callers can spread it
+ * straight into fetch bodies.
+ */
+export type FieldPublishPayload = {
+  fieldKey: string;
+  label: string;
+  fieldType: string;
+  fieldOrder: number;
+  isRequired: boolean;
+  placeholder?: string;
+  helpText?: string;
+  optionsJson?: unknown;
+  config: Record<string, unknown>;
+};
+
+/**
+ * Serialise a designer draft field for the publish endpoint.
+ *
+ * Two invariants worth calling out:
+ * 1. **Layout blocks never publish as required.** The isRequired toggle is
+ *    hidden for them in the UI, but this belt-and-braces catches drafts
+ *    imported from older shapes where the flag might have been set.
+ * 2. **Choice options are mirrored into `config.options`.** FormFillPage's
+ *    FieldInput reads options from `field.config.options`; the canonical
+ *    `optionsJson` column is preserved for API compatibility.
+ */
+export function fieldToPublishPayload(field: DraftField): FieldPublishPayload {
+  const authoredConfig = (field.config ?? {}) as Record<string, unknown>;
+  const mergedConfig: Record<string, unknown> = { ...authoredConfig };
+  if (CHOICE_TYPES.has(field.fieldType) && field.options !== undefined) {
+    mergedConfig.options = field.options;
+  }
+  return {
+    fieldKey: field.fieldKey,
+    label: field.label,
+    fieldType: field.fieldType,
+    fieldOrder: field.fieldOrder,
+    isRequired: isLayoutOnlyType(field.fieldType) ? false : field.isRequired,
+    placeholder: field.placeholder,
+    helpText: field.helpText,
+    optionsJson: field.options,
+    config: mergedConfig
+  };
 }

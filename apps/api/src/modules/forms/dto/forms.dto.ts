@@ -43,6 +43,12 @@ export class FormFieldInputDto {
   @IsOptional() @IsString() helpText?: string;
   /** Field-type-specific options blob (e.g. select choices). */
   @IsOptional() optionsJson?: unknown;
+  /**
+   * Field-type-specific config blob (e.g. `{ maxRating }` for star ratings,
+   * `{ min, max, minLabel, maxLabel }` for scale, `{ imageUrl }` for static
+   * image blocks). Mirrors the `FormField.config` column added by PR #97.
+   */
+  @IsOptional() config?: unknown;
 }
 
 /**

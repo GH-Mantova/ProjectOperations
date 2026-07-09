@@ -72,6 +72,7 @@ const PROCESSED_DIR = path.join(PROMPT_DIR, "processed");
 const FAILED_DIR = path.join(PROMPT_DIR, "failed");
 const BLOCKED_DIR = path.join(PROMPT_DIR, "blocked");
 const PAUSED_DIR = path.join(PROMPT_DIR, "paused");
+const NO_PR_DIR = path.join(PROMPT_DIR, "no-pr-opened");
 
 const READY_PATTERN = /^(pr|rev)-.*-ready\.md$/i;
 const DEBOUNCE_MS = 800;
@@ -312,6 +313,7 @@ async function ensureDirs() {
   await mkdir(FAILED_DIR, { recursive: true });
   await mkdir(BLOCKED_DIR, { recursive: true });
   await mkdir(PAUSED_DIR, { recursive: true });
+  await mkdir(NO_PR_DIR, { recursive: true });
 }
 
 function isReady(name) {
@@ -1442,8 +1444,26 @@ async function drain() {
     if (AUTO_MERGE && !reviewJob) {
       const prNumber = extractPrNumber(agentOutput);
       if (prNumber == null) {
-        mergeReport = `\n\n---\n[watcher] no PR number found in agent output — skipping auto-merge\n`;
-        log("merge", `${name}: no PR number in output, skipping auto-merge`);
+        // Agent exited 0 but never opened a PR. Treating this as success has
+        // caused fully-specified prompts to silently vanish into processed/.
+        // Route to no-pr-opened/ so a human can triage: legitimately no PR
+        // needed vs. silent failure is a judgment call, not a heuristic.
+        const reason =
+          "WATCHER: agent exited 0 but no PR number was found in its output — " +
+          "filed to no-pr-opened/ for manual review, NOT treated as success.";
+        const dest = path.join(NO_PR_DIR, name);
+        const logDest = path.join(NO_PR_DIR, `${name}.log`);
+        try {
+          await rename(filePath, dest);
+          await writeFile(logDest, `${reason}\n\n${logBody}`);
+          log("NO-PR", `${name} → no-pr-opened/ (agent exited 0 but no PR number found)`);
+        } catch (err) {
+          log("error", `move no-pr: ${err.message}`);
+        }
+        seen.delete(name);
+        running = false;
+        drain();
+        return;
       } else {
         log("merge", `${name}: opened PR #${prNumber}, policy=${AUTO_MERGE_POLICY}, waiting…`);
         const result =

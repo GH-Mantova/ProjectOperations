@@ -6,6 +6,7 @@
  * in newTenderWizard.helpers.ts so the flow can be tested without jsdom.
  */
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import "./newTenderWizard.css";
 import { lockRateSet } from "./ratesTabApi";
@@ -13,6 +14,8 @@ import { TenderDocumentsPanel, type DocumentRecord } from "./TenderDocumentsPane
 import {
   advanceStep,
   buildAddBuilderRequest,
+  buildDiscardDraftRequest,
+  buildProjectStepFlushPayload,
   buildRemoveBuilderRequest,
   deriveDocumentBuckets,
   detectIncompleteBuilders,
@@ -20,6 +23,7 @@ import {
   goBack,
   initialFlowState,
   jumpToStep,
+  shouldConfirmClose,
   skipCurrentStep,
   WIZARD_STEP_KEYS,
   WIZARD_STEP_LABELS,
@@ -113,6 +117,12 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
   const [flow, dispatch] = useReducer(flowReducer, undefined, initialFlowState);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // When true, Escape / overlay / X / "Save & finish later" have asked to close
+  // but there is a draft (or uploads) worth preserving. We surface a small
+  // Keep / Discard / Cancel confirm before actually closing.
+  const [confirmingClose, setConfirmingClose] = useState(false);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
 
   // Step 1 — Project
   const [title, setTitle] = useState("");
@@ -157,6 +167,9 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
     setDocuments([]);
     setRatesVersionLabel("");
     setServerTenderClients([]);
+    setConfirmingClose(false);
+    setConfirmBusy(false);
+    setConfirmError(null);
     if (existingDraftId) {
       dispatch({ type: "setDraft", draftId: existingDraftId });
     }
@@ -225,15 +238,20 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
     };
   }, [open, flow.draftId, authFetch]);
 
-  // Esc-to-close (blocked when busy).
+  // Esc-to-close (blocked when busy). If the confirm modal is open, defer to
+  // its own Esc handler so pressing Escape closes the confirm rather than the
+  // whole wizard.
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !busy) handleCancel();
+      if (event.key !== "Escape") return;
+      if (busy) return;
+      if (confirmingClose) return;
+      handleCancel();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, busy, flow.draftId, documents.length]);
+  }, [open, busy, confirmingClose, flow.draftId, documents.length]);
 
   const packageRefs: PackageRef[] = useMemo(
     () =>
@@ -340,6 +358,25 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
     return list;
   }
 
+  // Flush the current step's field state to the draft so pressing Next / Skip
+  // (or closing) never silently loses in-progress input. Server-writing steps
+  // (packages / matrix / documents / submission-date) already persist on each
+  // change; only the Project step accumulates local-only fields (estimator,
+  // site/description) between mounts. Extend the switch when adding future
+  // client-side-buffered steps.
+  async function flushCurrentStep() {
+    if (!flow.draftId) return;
+    if (flow.currentStep === "project") {
+      const patch = buildProjectStepFlushPayload({
+        draftId: flow.draftId,
+        title,
+        estimatorUserId,
+        siteAddress
+      });
+      if (patch) await patchDraft(flow.draftId, patch);
+    }
+  }
+
   async function fireIncompleteReminders() {
     if (!user) return;
     for (const reminder of incompleteBuilders) {
@@ -371,6 +408,42 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
     setError(null);
     try {
       await ensureDraftId();
+      // Flush estimator / site / description too — ensureDraftId only writes
+      // them on the very first save (when it creates the draft), so second
+      // and subsequent Nexts on this step would otherwise drop later edits.
+      await flushCurrentStep();
+      dispatch({ type: "advance" });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Shared Skip handler — always flushes the current step's field state first
+  // so users don't lose input by skipping a step they were partway through.
+  const handleSkip = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await flushCurrentStep();
+      dispatch({ type: "skip" });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Shared Next handler for steps whose fields already persist on change
+  // (packages / matrix / documents / rates / ai / review). Still routes
+  // through flushCurrentStep so future step additions get the same guarantee
+  // by default.
+  const handleGenericNext = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await flushCurrentStep();
       dispatch({ type: "advance" });
     } catch (err) {
       setError((err as Error).message);
@@ -478,10 +551,12 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
   };
 
   const handleNextFromBuilders = async () => {
-    // Non-blocking: fire notifications for any incomplete builders, then advance.
+    // Non-blocking: flush current step, fire notifications for any incomplete
+    // builders, then advance.
     setBusy(true);
     setError(null);
     try {
+      await flushCurrentStep();
       await fireIncompleteReminders();
       dispatch({ type: "advance" });
     } finally {
@@ -581,20 +656,67 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
   };
 
   // -------------------------------------------------------------------------
-  // Cancel / Save-and-finish-later
+  // Cancel / Save-and-finish-later / Discard draft
   // -------------------------------------------------------------------------
 
-  const isFirstBuilderIncompleteOnly =
-    builders.length === 0 && !flow.draftId;
+  // Blank wizard = no draft persisted server-side AND no uploads. In that
+  // case Escape / overlay-click / X can close instantly with no prompt.
+  const mustConfirmClose = shouldConfirmClose({
+    draftId: flow.draftId,
+    documentsCount: documents.length
+  });
 
-  async function handleCancel() {
-    // No draft yet + no uploads → hard cancel is safe.
-    if (!flow.draftId || (isFirstBuilderIncompleteOnly && documents.length === 0)) {
+  function handleCancel() {
+    if (!mustConfirmClose) {
       onClose();
       return;
     }
-    // Behave as "save & finish later" — draft is already persisted; just close.
-    onClose();
+    // Draft exists (or uploads happened) — pop the confirm instead of
+    // closing. Users previously reported "accidentally cancelling loses my
+    // work"; even though the draft is server-side and resumable, closing
+    // without confirmation is disorienting when they have a live draft.
+    setConfirmError(null);
+    setConfirmingClose(true);
+  }
+
+  async function handleKeepAndClose() {
+    setConfirmBusy(true);
+    setConfirmError(null);
+    try {
+      await flushCurrentStep();
+      setConfirmingClose(false);
+      onClose();
+    } catch (err) {
+      setConfirmError((err as Error).message);
+    } finally {
+      setConfirmBusy(false);
+    }
+  }
+
+  async function handleDiscardDraft() {
+    if (!flow.draftId) {
+      // Uploads-without-draft is not currently reachable (uploads require a
+      // draft id) but defend against it — just close.
+      setConfirmingClose(false);
+      onClose();
+      return;
+    }
+    setConfirmBusy(true);
+    setConfirmError(null);
+    try {
+      const req = buildDiscardDraftRequest(flow.draftId);
+      const res = await authFetch(`/${req.path}`, { method: req.method });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message ?? "Could not discard the draft.");
+      }
+      setConfirmingClose(false);
+      onClose();
+    } catch (err) {
+      setConfirmError((err as Error).message);
+    } finally {
+      setConfirmBusy(false);
+    }
   }
 
   async function handleFinish() {
@@ -627,6 +749,7 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
   const stepIsLast = flow.currentStep === "review";
 
   return (
+    <>
     <div
       className="new-tender-wizard__overlay"
       role="dialog"
@@ -804,8 +927,9 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
                 <button
                   type="button"
                   className="s7-btn s7-btn--ghost"
-                  onClick={() => dispatch({ type: "skip" })}
+                  onClick={handleSkip}
                   disabled={busy}
+                  data-testid="new-tender-wizard-skip"
                 >
                   Skip
                 </button>
@@ -819,9 +943,10 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
                       ? handleNextFromProject
                       : flow.currentStep === "builders"
                         ? handleNextFromBuilders
-                        : () => dispatch({ type: "advance" })
+                        : handleGenericNext
                   }
                   disabled={busy}
+                  data-testid="new-tender-wizard-next"
                 >
                   {busy ? "Working…" : "Next"}
                 </button>
@@ -840,6 +965,63 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
         </div>
       </div>
     </div>
+      {confirmingClose ? (
+        <CenteredModal
+          title="Close this tender?"
+          subtitle={
+            flow.draftId
+              ? "Your draft is saved and can be resumed from the pipeline. You can also discard it if you no longer need it."
+              : "You have uploads in progress. Close anyway?"
+          }
+          onClose={() => {
+            if (confirmBusy) return;
+            setConfirmingClose(false);
+          }}
+          busy={confirmBusy}
+          maxWidth={480}
+          dataTestId="new-tender-wizard-close-confirm"
+          footer={
+            <>
+              <button
+                type="button"
+                className="s7-btn s7-btn--ghost"
+                onClick={() => setConfirmingClose(false)}
+                disabled={confirmBusy}
+                data-testid="new-tender-wizard-close-cancel"
+              >
+                Cancel
+              </button>
+              {flow.draftId ? (
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--ghost"
+                  onClick={handleDiscardDraft}
+                  disabled={confirmBusy}
+                  data-testid="new-tender-wizard-close-discard"
+                >
+                  {confirmBusy ? "Working…" : "Discard draft"}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="s7-btn s7-btn--primary"
+                onClick={handleKeepAndClose}
+                disabled={confirmBusy}
+                data-testid="new-tender-wizard-close-keep"
+              >
+                {confirmBusy ? "Working…" : "Save & finish later"}
+              </button>
+            </>
+          }
+        >
+          {confirmError ? (
+            <div className="login-card__error" role="alert">
+              {confirmError}
+            </div>
+          ) : null}
+        </CenteredModal>
+      ) : null}
+    </>
   );
 }
 

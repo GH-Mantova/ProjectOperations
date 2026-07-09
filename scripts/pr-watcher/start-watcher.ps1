@@ -120,10 +120,18 @@ if (-not $env:PR_WATCHER_AUTO_MERGE_POLICY) { $env:PR_WATCHER_AUTO_MERGE_POLICY 
 if (-not $env:PR_WATCHER_MAX_TURNS)         { $env:PR_WATCHER_MAX_TURNS = "240" }
 if (-not $env:PR_WATCHER_RUN_TIMEOUT_MIN)   { $env:PR_WATCHER_RUN_TIMEOUT_MIN = "75" }
 
+if ($env:PR_WATCHER_PROMPT_DIR) {
+    $PromptDir = (Resolve-Path $env:PR_WATCHER_PROMPT_DIR).Path
+} else {
+    $PromptDir = Join-Path $RepoRoot "docs\pr-prompts"
+}
+
 $banner = @"
 ============================================================
 PR watcher (v2) -- daytime launcher
 Started:        $(Get-Date -Format o)
+Repo (git):     $RepoRoot
+Prompt dir:     $PromptDir
 Auto-review:    $($env:PR_WATCHER_AUTO_REVIEW)
 Auto-update:    $($env:PR_WATCHER_AUTO_UPDATE)
 Auto-merge:     $($env:PR_WATCHER_AUTO_MERGE_POLICY)

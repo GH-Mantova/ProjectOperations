@@ -2164,9 +2164,17 @@ The generator does two things a raw schema can't:
 ### Regenerating the map
 
 ```bash
-node scripts/data-model/build-relationship-map.mjs          # rewrite the map
-node scripts/data-model/build-relationship-map.mjs --check  # CI: fail if stale
+pnpm data-model:build   # rewrite the map AND rebuild the interactive graph
+pnpm data-model:check    # CI: fail if the committed map is stale vs schema
 ```
+
+`pnpm data-model:build` runs the map builder then the graph builder
+(`scripts/data-model/build-graph-html.mjs`). It writes four artifacts:
+
+- `relationship-map.json`, `relationship-map.md`, `metadata-catalog.json` — **tracked**; commit these.
+- `relationship-graph.html` — an interactive vis-network viewer, **gitignored**
+  (a 100 KB+ file fully regenerated on every schema change, so it's build-on-demand,
+  not committed). Run the command and open it locally; do **not** expect it in a PR diff.
 
 The `--check` mode compares the committed `schemaSha256` against the current
 schema and exits non-zero on drift — wire it into CI so a schema change without a
@@ -2197,8 +2205,9 @@ Field-role meanings for the wizard:
 
 > **Any PR that adds, removes, or changes a Prisma model or field MUST:**
 >
-> 1. Run `node scripts/data-model/build-relationship-map.mjs` and commit the
->    regenerated `relationship-map.json` and `relationship-map.md`.
+> 1. Run `pnpm data-model:build` and commit the regenerated `relationship-map.json`,
+>    `relationship-map.md`, and `metadata-catalog.json`. (`relationship-graph.html` is
+>    gitignored/build-on-demand — do not commit it; it won't appear in the diff, that's expected.)
 > 2. Review `metadata-catalog.json` for every model it touched — set the correct
 >    domain and field roles, then mark those models `"reviewed": true`.
 > 3. Include in the PR body a **Data-model impact** section listing: models

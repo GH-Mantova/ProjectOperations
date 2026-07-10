@@ -126,6 +126,7 @@ import {
   QuoteDraftsWidget,
   RecentSitePhotosWidget
 } from "./widgets/batch2";
+import { SiteWeatherWidget } from "./widgets/weather";
 import { CustomBuilderWidget } from "./CustomBuilderWidget";
 import { CUSTOM_WIDGET_TYPE } from "./customWidget";
 
@@ -816,6 +817,30 @@ export const WIDGETS: WidgetMeta[] = [
     component: MyDayWidget
   },
 
+  // ── Site weather (Open-Meteo proxy) ──────────────────────────
+  //
+  // First external data dependency in the platform. All calls go through
+  // the API's /dashboards/weather/site/:siteId proxy — never straight from
+  // the browser — and the proxy caches upstream results for 30 min. If the
+  // upstream is down the widget shows "weather unavailable" rather than
+  // erroring the dashboard.
+  {
+    type: "ops_site_weather",
+    name: "Site weather",
+    category: "operations",
+    size: "half",
+    description: "Current conditions + 5-day outlook for a site, using its postcode. Open-Meteo, no key required.",
+    defaultColSpan: 2,
+    defaultRowSpan: 2,
+    minColSpan: 2,
+    minRowSpan: 1,
+    maxColSpan: 4,
+    maxRowSpan: 3,
+    configSchema: [
+      { key: "siteId", label: "Site", type: "select", dynamicOptions: "sites" }
+    ],
+    component: SiteWeatherWidget
+  },
   {
     type: "annot_text_note",
     name: "Note",

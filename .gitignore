@@ -106,3 +106,10 @@ docs/qa/qa-findings.md
 docs/qa/qa-test-data-registry.md
 docs/qa/.qa-run.lock
 docs/qa/qa-run-*.md
+
+# Data-model interactive graph — a 100KB+ artifact fully regenerated from
+# relationship-map.json on every schema change. Committing it churns every
+# data-model PR. It is derivable: run `pnpm data-model:build` and open
+# docs/data-model/relationship-graph.html locally. The generator
+# (scripts/data-model/build-graph-html.mjs) and the JSON/MD sources ARE tracked.
+docs/data-model/relationship-graph.html

@@ -2,10 +2,10 @@
   "_generator": "scripts/data-model/build-relationship-map.mjs",
   "_doNotEdit": "Regenerated from schema.prisma. Do not hand-edit.",
   "generatedFrom": "apps/api/prisma/schema.prisma",
-  "schemaSha256": "454906b959705cc1dfb9e237ee8c7f25340668c844c44a63f0eb56fab2cbb4ca",
+  "schemaSha256": "768042ffd99cd74461eb72cdd388b295a1163e57b3e9a091387915e6296f459a",
   "modelCount": 190,
   "enumCount": 21,
-  "edgeCount": 280,
+  "edgeCount": 281,
   "domains": {
     "Assets": [
       "Asset",
@@ -4486,6 +4486,41 @@
           "owning": true
         },
         {
+          "name": "sourceTenderEstimateId",
+          "dbColumn": "source_tender_estimate_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "sourceTenderEstimate",
+          "dbColumn": null,
+          "type": "TenderEstimate",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [
+              "sourceTenderEstimateId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "SetNull"
+          },
+          "owning": true
+        },
+        {
           "name": "revision",
           "dbColumn": null,
           "type": "Int",
@@ -4929,6 +4964,20 @@
           "onDelete": null,
           "fkFields": [
             "clientId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "sourceTenderEstimate",
+          "target": "TenderEstimate",
+          "cardinality": "one-optional",
+          "relationName": null,
+          "owning": true,
+          "onDelete": "SetNull",
+          "fkFields": [
+            "sourceTenderEstimateId"
           ],
           "refFields": [
             "id"
@@ -25113,6 +25162,30 @@
           "isUpdatedAt": false
         },
         {
+          "name": "sourceEstimateLineType",
+          "dbColumn": "source_estimate_line_type",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "sourceEstimateLineId",
+          "dbColumn": "source_estimate_line_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
           "name": "assumptions",
           "dbColumn": null,
           "type": "QuoteAssumption",
@@ -37447,6 +37520,25 @@
             "onDelete": null
           },
           "owning": false
+        },
+        {
+          "name": "clientQuotes",
+          "dbColumn": null,
+          "type": "ClientQuote",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
         }
       ],
       "relations": [
@@ -37473,6 +37565,16 @@
           "onDelete": null,
           "fkFields": [],
           "refFields": []
+        },
+        {
+          "field": "clientQuotes",
+          "target": "ClientQuote",
+          "cardinality": "many",
+          "relationName": null,
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
         }
       ],
       "referencedBy": [
@@ -37480,6 +37582,11 @@
           "from": "EstimateItem",
           "via": "estimate",
           "fk": "estimateId"
+        },
+        {
+          "from": "ClientQuote",
+          "via": "sourceTenderEstimate",
+          "fk": "sourceTenderEstimateId"
         }
       ]
     },
@@ -47814,6 +47921,14 @@
       "via": "client",
       "fk": "clientId",
       "onDelete": null,
+      "relationName": null
+    },
+    {
+      "from": "ClientQuote",
+      "to": "TenderEstimate",
+      "via": "sourceTenderEstimate",
+      "fk": "sourceTenderEstimateId",
+      "onDelete": "SetNull",
       "relationName": null
     },
     {

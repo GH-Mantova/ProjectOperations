@@ -1680,6 +1680,18 @@
           "filterable": true,
           "aggregations": []
         },
+        "sourceTenderEstimateId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "sourceTenderEstimate": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
         "revision": {
           "role": "measure-candidate",
           "label": null,
@@ -10036,6 +10048,18 @@
           "filterable": true,
           "aggregations": []
         },
+        "sourceEstimateLineType": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "sourceEstimateLineId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
         "assumptions": {
           "role": "system",
           "label": null,
@@ -14853,6 +14877,12 @@
           "aggregations": []
         },
         "items": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "clientQuotes": {
           "role": "system",
           "label": null,
           "filterable": false,

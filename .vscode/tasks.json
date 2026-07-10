@@ -106,6 +106,12 @@
       "label": "PR Watcher (v2)",
       "type": "shell",
       "command": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pr-watcher/start-watcher.ps1",
+      "options": {
+        "env": {
+          "PR_WATCHER_PROMPT_DIR": "C:\\ProjectOperations2\\docs\\pr-prompts",
+          "PR_WATCHER_REPO_ROOT": "C:\\po-watcher\\ProjectOperations"
+        }
+      },
       "isBackground": true,
       "runOptions": { "runOn": "folderOpen" },
       "presentation": {

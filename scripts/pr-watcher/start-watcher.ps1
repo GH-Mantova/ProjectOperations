@@ -123,7 +123,22 @@ if (-not $env:PR_WATCHER_RUN_TIMEOUT_MIN)   { $env:PR_WATCHER_RUN_TIMEOUT_MIN = 
 if ($env:PR_WATCHER_PROMPT_DIR) {
     $PromptDir = (Resolve-Path $env:PR_WATCHER_PROMPT_DIR).Path
 } else {
-    $PromptDir = Join-Path $RepoRoot "docs\pr-prompts"
+    # The QUEUE always lives in the MAIN interactive tree, never the clone (LL-35).
+    # Deriving it from $RepoRoot (the clone) silently strands every armed prompt that
+    # was staged in the main tree, so default to the main tree explicitly.
+    $PromptDir = "C:\ProjectOperations2\docs\pr-prompts"
+}
+
+# Guardrail: the queue must NOT resolve to inside the clone / $RepoRoot. If it does, the
+# armed prompts staged in the main tree are invisible and the watcher runs a stale clone
+# queue instead. Refuse loudly rather than silently draining the wrong folder.
+if ($PromptDir.StartsWith($RepoRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+    Write-Host "REFUSE: prompt dir '$PromptDir' is inside the clone '$RepoRoot'. The queue must be the main tree C:\ProjectOperations2\docs\pr-prompts. Unset PR_WATCHER_PROMPT_DIR (it will default correctly) or point it at the main tree."
+    exit 1
+}
+if (-not (Test-Path $PromptDir)) {
+    Write-Host "REFUSE: prompt dir '$PromptDir' does not exist. Cannot start the watcher against a missing queue."
+    exit 1
 }
 
 $banner = @"

@@ -1,6 +1,6 @@
 # 02 — Roadmap & Status
 
-**Last updated:** 2026-07-08 (AEST) · **Owner:** MAIN chat (doc-reconcile PRs only).
+**Last updated:** 2026-07-10 (AEST) · **Owner:** MAIN chat (doc-reconcile PRs only).
 Single forward-looking roadmap for ProjectOperations. Supersedes the old `roadmap.md`,
 `development-plan.md`, `development-backlog.md`, and the sanity-check/QA planning docs.
 
@@ -22,7 +22,7 @@ polymorphic contacts, entity licences/insurance, credit applications, compliance
 worker qual register, expiry crons, auto-block) · Integrations (SharePoint Graph live, Xero
 OAuth2, MYOB CSV, M365 SSO + local JWT + Super User, AI providers + BYOK encryption).
 
-**Full per-PR history lives in `03-progress-log.md`.** Recent merged batch (2026-07, #455–#501):
+**Full per-PR history lives in `03-progress-log.md`.** Recent merged batch (2026-07, #455–#533):
 
 - **Data-model spine:** Job/Project 1:1 (#472, #474), Worker/WorkerProfile survivor design (#475), Job–Project merge Phase A additive links (#500)
 - **Authority/config seam:** `User.managerId` hierarchy (#478), AuthorityService + AuthorityRule (#479)
@@ -31,10 +31,10 @@ OAuth2, MYOB CSV, M365 SSO + local JWT + Super User, AI providers + BYOK encrypt
 - **Forms:** Authoring v1 (#481), Engine v2 plan (#482), F-1 Builder shell (#499)
 - **Inventory:** native stock layer slice 1 (#484, replaces AssetTiger)
 - **Comms/approvals:** Phase 2 slice 1 — decision seam + internal messages (#497)
-- **Dashboards:** add-widget gallery (#473), rename/copy + popover fix (#476), Program snapshot + Availability heatmap (#494)
+- **Dashboards:** add-widget gallery (#473), rename/copy + popover fix (#476), Program snapshot + Availability heatmap (#494), widgets batch 3 — weather + gallery module view (#527, merged 2026-07-09; **known residual:** site-picker dropdown is empty because a `pageSize=200` request hits the backend `@Max(100)` cap — follow-up, not yet fixed)
 - **Scheduler lane (late June):** Job Roles (#450), public holidays (#451), day-grain ScheduleAllocation (#452), scheduler grid UI (#453), availability heatmap (#454)
 - **Master data / QA:** client win/loss counters (#486), analytics status casing (#487), jobs progress from stage activities (#488), scheduler month grid (#489), sites job count (#490), findings batch 1 (#491)
-- **Infra/docs:** data-model map + SoT TOC infra (#493), watcher hardening (#495), GATE-ALLOW migrations (#496), SoT reconcile (#498)
+- **Infra/docs:** data-model map + SoT TOC infra (#493), watcher hardening (#495), GATE-ALLOW migrations (#496), SoT reconcile (#498), pr-watcher no-PR routing fix (#528, merged 2026-07-09), watcher prompt-dir hardening (#533, merged 2026-07-10)
 
 ---
 

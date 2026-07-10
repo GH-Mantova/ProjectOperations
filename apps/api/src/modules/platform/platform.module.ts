@@ -18,6 +18,8 @@ import { AiProvidersController, PlatformConfigController } from "./platform-conf
 import { PlatformConfigService } from "./platform-config.service";
 import { MyDayController } from "./my-day.controller";
 import { MyDayService } from "./my-day.service";
+import { WeatherController } from "./weather.controller";
+import { WeatherService } from "./weather.service";
 
 @Module({
   imports: [AuditModule],
@@ -29,6 +31,7 @@ import { MyDayService } from "./my-day.service";
     DashboardsController,
     UserDashboardsController,
     MyDayController,
+    WeatherController,
     PlatformConfigController,
     AiProvidersController
   ],
@@ -53,6 +56,7 @@ import { MyDayService } from "./my-day.service";
     DashboardsService,
     UserDashboardsService,
     MyDayService,
+    WeatherService,
     PlatformConfigService
   ],
   exports: [SharePointService, NotificationsService, SearchService, DashboardsService, UserDashboardsService, PlatformConfigService]

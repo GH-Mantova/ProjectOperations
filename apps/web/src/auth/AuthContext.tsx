@@ -10,6 +10,7 @@ import {
 import { readApiErrorMessage } from "../lib/api-errors";
 import { updatePromptStore } from "../pwa/updatePromptStore";
 import { buildInfo } from "../buildInfo";
+import { getMsalInstance } from "./msalInstance";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000/api/v1";
 
@@ -75,6 +76,29 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setAccessToken(null);
     setRefreshToken(null);
     setUser(null);
+    // Shared-computer scenario: clear the MSAL account cache so the next
+    // "Sign in with Microsoft" click starts fresh instead of silently
+    // reusing the previous user's cached Microsoft account. This is a
+    // local cache clear only — no full Microsoft sign-out redirect.
+    const msal = getMsalInstance();
+    if (msal) {
+      void msal
+        .initialize()
+        .then(async () => {
+          for (const account of msal.getAllAccounts()) {
+            try {
+              await msal.clearCache({ account });
+            } catch {
+              // best-effort — the visible outcome we care about (account
+              // picker on next SSO) still fires because of prompt=select_account
+            }
+          }
+        })
+        .catch(() => {
+          // Never let logout throw — the app-session clear above is
+          // authoritative for the user's local state.
+        });
+    }
   };
 
   const login = async (email: string, password: string) => {
@@ -125,10 +149,31 @@ export function AuthProvider({ children }: PropsWithChildren) {
     });
 
     if (!response.ok) {
+      // Gated-SSO signal: stash the idToken + identity so the LoginPage
+      // can render the request-access screen instead of a blank error.
+      if (response.status === 403) {
+        const body = await response.clone().json().catch(() => null);
+        if (
+          body &&
+          typeof body === "object" &&
+          (body as { code?: unknown }).code === "ENTRA_NOT_REGISTERED"
+        ) {
+          const pending = {
+            email: String((body as { email?: unknown }).email ?? ""),
+            displayName:
+              typeof (body as { displayName?: unknown }).displayName === "string"
+                ? (body as { displayName: string }).displayName
+                : null,
+            idToken
+          };
+          localStorage.setItem("project-ops.entraPendingAccess", JSON.stringify(pending));
+        }
+      }
       throw new Error(await readApiErrorMessage(response, "Microsoft sign-in failed."));
     }
 
     const data = await response.json();
+    localStorage.removeItem("project-ops.entraPendingAccess");
     setAccessToken(data.accessToken);
     setRefreshToken(data.refreshToken);
     setUser(data.user);

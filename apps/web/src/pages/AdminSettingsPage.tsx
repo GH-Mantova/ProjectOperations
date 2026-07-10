@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { AdminAccessRequestsTab } from "./admin/AdminAccessRequestsTab";
 import { AdminUsersTab } from "./admin/AdminUsersTab";
 import { AdminRolesPermissionsTab } from "./admin/AdminRolesPermissionsTab";
 import { AdminClientVersionsTab } from "./admin/AdminClientVersionsTab";
@@ -38,6 +39,7 @@ const TABS = [
   { id: "notifications", label: "Notifications" },
   { id: "email", label: "Email" },
   { id: "users", label: "Users" },
+  { id: "access-requests", label: "Access requests" },
   { id: "ai", label: "AI & Integrations" },
   { id: "platform", label: "Platform" },
   { id: "permissions", label: "Permissions" },
@@ -92,6 +94,7 @@ export function AdminSettingsPage() {
           {tab === "notifications" && <NotificationsTab />}
           {tab === "email" && <EmailTab />}
           {tab === "users" && <AdminUsersTab />}
+          {tab === "access-requests" && <AdminAccessRequestsTab />}
           {tab === "ai" && (
             <IntegrationTab
               href="/admin/platform"

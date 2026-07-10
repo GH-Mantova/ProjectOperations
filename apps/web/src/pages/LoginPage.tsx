@@ -3,11 +3,36 @@ import { Navigate } from "react-router-dom";
 import { useMsal } from "@azure/msal-react";
 import { useAuth } from "../auth/AuthContext";
 import { isSsoEnabled, loginRequest } from "../auth/msal.config";
+import { getMsalInstance } from "../auth/msalInstance";
+import {
+  ENTRA_PENDING_ACCESS_KEY,
+  type PendingAccessRequest
+} from "../auth/consumeSsoRedirect";
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000/api/v1";
+
+function readPendingAccessRequest(): PendingAccessRequest | null {
+  const raw = localStorage.getItem(ENTRA_PENDING_ACCESS_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<PendingAccessRequest>;
+    if (typeof parsed.idToken === "string" && typeof parsed.email === "string") {
+      return {
+        email: parsed.email,
+        displayName: typeof parsed.displayName === "string" ? parsed.displayName : null,
+        idToken: parsed.idToken
+      };
+    }
+  } catch {
+    // fall through
+  }
+  return null;
+}
 
 export function LoginPage() {
   const { isAuthenticated, login, loginWithSso, resetPassword } = useAuth();
-  const [email, setEmail] = useState("admin@projectops.local");
-  const [password, setPassword] = useState("Password123!");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -15,9 +40,43 @@ export function LoginPage() {
   const [resetMode, setResetMode] = useState<{ tempToken: string } | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [pendingAccess, setPendingAccess] = useState<PendingAccessRequest | null>(() =>
+    readPendingAccessRequest()
+  );
 
   if (isAuthenticated) {
     return <Navigate to="/" replace />;
+  }
+
+  if (pendingAccess) {
+    return (
+      <RequestAccessScreen
+        pending={pendingAccess}
+        onCancel={() => {
+          localStorage.removeItem(ENTRA_PENDING_ACCESS_KEY);
+          setPendingAccess(null);
+          // Also clear the MSAL account cache so the user can try a
+          // different Microsoft account on "Back to sign in".
+          const msal = getMsalInstance();
+          if (msal) {
+            void msal
+              .initialize()
+              .then(async () => {
+                for (const account of msal.getAllAccounts()) {
+                  try {
+                    await msal.clearCache({ account });
+                  } catch {
+                    /* best-effort */
+                  }
+                }
+              })
+              .catch(() => {
+                /* never let cancel throw */
+              });
+          }
+        }}
+      />
+    );
   }
 
   const submit = async (event: React.FormEvent) => {
@@ -247,5 +306,114 @@ function SsoButton({ onError, onStart, onEnd, disabled, pending }: SsoButtonProp
       </svg>
       <span>{pending ? "Connecting to Microsoft..." : "Sign in with Microsoft"}</span>
     </button>
+  );
+}
+
+type RequestAccessScreenProps = {
+  pending: PendingAccessRequest;
+  onCancel: () => void;
+};
+
+function RequestAccessScreen({ pending, onCancel }: RequestAccessScreenProps) {
+  const [message, setMessage] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/request-access`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken: pending.idToken, message: message.trim() || undefined })
+      });
+      if (!response.ok) {
+        // Best-effort error — the record is what matters, we don't
+        // want to leak the raw envelope shape to the user.
+        setError("Could not submit your request. Please try again in a moment.");
+        return;
+      }
+      setSubmitted(true);
+      // Consume the pending idToken so a page reload doesn't replay this
+      // screen — the user has already been notified.
+      localStorage.removeItem(ENTRA_PENDING_ACCESS_KEY);
+    } catch {
+      setError("Could not submit your request. Please try again in a moment.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const displayName = pending.displayName?.trim() || pending.email;
+
+  return (
+    <div className="login-page">
+      <div className="login-card" role="main">
+        <div className="login-card__brand">
+          <span className="login-card__logo" aria-hidden>PO</span>
+          <div>
+            <h1 className="login-card__title">Request access</h1>
+            <p className="login-card__subtitle">Not yet a registered Project Ops user.</p>
+          </div>
+        </div>
+
+        {submitted ? (
+          <>
+            <p style={{ marginTop: 0 }}>
+              Request sent — an admin will review it and set up your access. You'll be
+              able to sign in with Microsoft once your account is approved.
+            </p>
+            <button
+              type="button"
+              className="s7-btn s7-btn--primary s7-btn--lg login-card__submit"
+              onClick={onCancel}
+            >
+              Back to sign in
+            </button>
+          </>
+        ) : (
+          <>
+            <p style={{ marginTop: 0 }}>
+              You're signed in with Microsoft as <strong>{displayName}</strong>, but you're
+              not a registered Project Ops user. Send a request to the admin to set up
+              your access.
+            </p>
+            {error ? (
+              <div className="login-card__error" role="alert">{error}</div>
+            ) : null}
+            <form className="login-card__form" onSubmit={submit} noValidate>
+              <label className="login-card__field">
+                <span className="login-card__label">Message (optional)</span>
+                <textarea
+                  className="s7-input"
+                  rows={4}
+                  value={message}
+                  onChange={(event) => setMessage(event.target.value)}
+                  placeholder="Anything the admin should know — team, project, expected role."
+                  maxLength={2000}
+                />
+              </label>
+              <button
+                type="submit"
+                className="s7-btn s7-btn--primary s7-btn--lg login-card__submit"
+                disabled={submitting}
+              >
+                {submitting ? "Sending…" : "Send request to the admin"}
+              </button>
+              <button
+                type="button"
+                className="s7-btn s7-btn--ghost login-card__submit"
+                onClick={onCancel}
+              >
+                Back to sign in
+              </button>
+            </form>
+          </>
+        )}
+      </div>
+    </div>
   );
 }

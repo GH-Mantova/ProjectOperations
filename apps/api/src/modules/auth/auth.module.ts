@@ -43,6 +43,6 @@ import { LocalAuthProvider } from "./local-auth.provider";
     EntraTokenValidatorService,
     EntraAuthService
   ],
-  exports: [AuthService]
+  exports: [AuthService, EntraAuthService, EntraTokenValidatorService]
 })
 export class AuthModule {}

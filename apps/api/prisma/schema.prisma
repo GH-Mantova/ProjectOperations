@@ -255,6 +255,28 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+// Gated Entra SSO — a valid Entra token whose email has no active internal
+// user does NOT get auto-provisioned; the user submits an access request
+// which lands here for an admin to Approve (creates the user) or Deny.
+// `kind` is the discriminator that lets a future field-worker email
+// channel share this table without a migration.
+model AccessRequest {
+  id            String    @id @default(cuid())
+  email         String
+  displayName   String?   @map("display_name")
+  entraOid      String?   @map("entra_oid")
+  kind          String    @default("OFFICE") // OFFICE = Entra SSO (now) | FIELD = personal-email site worker (future)
+  message       String?
+  status        String    @default("PENDING") // PENDING | APPROVED | DENIED
+  createdAt     DateTime  @default(now()) @map("created_at")
+  reviewedAt    DateTime? @map("reviewed_at")
+  reviewedById  String?   @map("reviewed_by_id")
+  createdUserId String?   @map("created_user_id")
+
+  @@index([status])
+  @@map("access_requests")
+}
+
 model SharePointFolderLink {
   id               String               @id @default(cuid())
   siteId           String               @map("site_id")

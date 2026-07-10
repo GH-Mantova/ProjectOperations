@@ -20,4 +20,12 @@ export class CreateRateTableDto {
   @ApiPropertyOptional() @IsOptional() @IsString() supplierId?: string;
 
   @ApiPropertyOptional() @IsOptional() @IsBoolean() isSystem?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      "Reference tables hold factors (production rates, densities…) — resolvable via the seam but excluded from the priced tender snapshot."
+  })
+  @IsOptional()
+  @IsBoolean()
+  isReference?: boolean;
 }

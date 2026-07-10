@@ -149,4 +149,68 @@ describe("WeatherService.getSiteWeather", () => {
     await svc.getSiteWeather("site-1");
     expect(calls).toBe(before); // second call served from cache
   });
+
+  it("geocodes by suburb name constrained to the country, never the raw postcode", async () => {
+    const svc = new WeatherService(
+      makePrisma(siteRecord({ postcode: "4157", suburb: "Capalaba" })),
+      config
+    );
+    let geocodeUrl = "";
+    withFetch(async (url) => {
+      if (url.includes("geocoding-api")) {
+        geocodeUrl = url;
+        return response(200, {
+          results: [{ latitude: -27.5, longitude: 153.2, admin1: "Queensland", postcodes: ["4157"] }]
+        });
+      }
+      return response(200, {
+        current: { temperature_2m: 20, wind_speed_10m: 5, weather_code: 1, time: "" },
+        daily: {
+          time: ["2026-07-10"],
+          temperature_2m_max: [21],
+          temperature_2m_min: [10],
+          precipitation_sum: [0],
+          weather_code: [1]
+        }
+      });
+    });
+
+    await svc.getSiteWeather("site-1");
+    expect(geocodeUrl).toContain("name=Capalaba");
+    expect(geocodeUrl).toContain("countryCode=AU");
+    expect(geocodeUrl).not.toContain("name=4157");
+  });
+
+  it("disambiguates same-named suburbs by the site's postcode", async () => {
+    const svc = new WeatherService(
+      makePrisma(siteRecord({ postcode: "4157", suburb: "Richmond" })),
+      config
+    );
+    let forecastUrl = "";
+    withFetch(async (url) => {
+      if (url.includes("geocoding-api")) {
+        return response(200, {
+          results: [
+            { latitude: -37.8, longitude: 145.0, admin1: "Victoria", postcodes: ["3121"] },
+            { latitude: -27.5, longitude: 153.2, admin1: "Queensland", postcodes: ["4157"] }
+          ]
+        });
+      }
+      forecastUrl = url;
+      return response(200, {
+        current: { temperature_2m: 20, wind_speed_10m: 5, weather_code: 1, time: "" },
+        daily: {
+          time: ["2026-07-10"],
+          temperature_2m_max: [21],
+          temperature_2m_min: [10],
+          precipitation_sum: [0],
+          weather_code: [1]
+        }
+      });
+    });
+
+    await svc.getSiteWeather("site-1");
+    expect(forecastUrl).toContain("longitude=153.2");
+    expect(forecastUrl).not.toContain("longitude=145");
+  });
 });

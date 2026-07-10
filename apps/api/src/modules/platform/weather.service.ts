@@ -136,22 +136,42 @@ export class WeatherService {
     suburb: string | null,
     state: string | null
   ): Promise<{ latitude: number; longitude: number } | null> {
-    // Prefer the postcode (unambiguous in AU) but fall back to suburb/state
-    // if the site record is missing one. Open-Meteo's free geocoding
-    // endpoint returns the best match ordered by relevance.
-    const query = postcode ?? [suburb, state].filter(Boolean).join(" ");
-    if (!query) return null;
+    // Open-Meteo's geocoder is a place-NAME lookup, not a postcode lookup —
+    // searching by a bare numeric postcode (e.g. "4157") returns the wrong
+    // location, or a same-numbered place in another country. So we query by
+    // suburb name, constrain to the site's country (default AU), pull a few
+    // candidates, and disambiguate on postcode → state → first result.
+    const name = (suburb ?? state ?? "").trim();
+    if (!name) return null;
+    const countryCode = this.config.get<string>("WEATHER_COUNTRY", "AU");
     const url = new URL(this.geocodeBaseUrl());
-    url.searchParams.set("name", query);
-    url.searchParams.set("count", "1");
+    url.searchParams.set("name", name);
+    url.searchParams.set("count", "5");
+    if (countryCode) url.searchParams.set("countryCode", countryCode);
     url.searchParams.set("language", "en");
     url.searchParams.set("format", "json");
     const res = await this.timedFetch(url.toString(), GEOCODE_TIMEOUT_MS);
     if (!res.ok) throw new Error(`geocode ${res.status}`);
     const data: unknown = await res.json();
-    const results = (data as { results?: Array<{ latitude: number; longitude: number }> })?.results;
+    const results = (
+      data as {
+        results?: Array<{
+          latitude: number;
+          longitude: number;
+          admin1?: string;
+          postcodes?: string[];
+        }>;
+      }
+    )?.results;
     if (!results?.length) return null;
-    return { latitude: results[0].latitude, longitude: results[0].longitude };
+    const byPostcode = postcode
+      ? results.find((r) => r.postcodes?.includes(postcode))
+      : undefined;
+    const byState = state
+      ? results.find((r) => (r.admin1 ?? "").toLowerCase() === state.toLowerCase())
+      : undefined;
+    const pick = byPostcode ?? byState ?? results[0];
+    return { latitude: pick.latitude, longitude: pick.longitude };
   }
 
   private async fetchForecast(

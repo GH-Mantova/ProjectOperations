@@ -15,7 +15,7 @@ import {
   verticalListSortingStrategy
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useTenders } from "./hooks";
+import { useTenders, type TenderForDashboard } from "./hooks";
 import { useAuth } from "../auth/AuthContext";
 import { resolveVisibleFields } from "./types";
 import type { ConfigField, WidgetConfigEntry, WidgetFilters, WidgetMeta } from "./types";
@@ -283,6 +283,13 @@ function FieldRenderer({
   value: unknown;
   onChange: (next: unknown) => void;
 }) {
+  // Resolve options up-front so the hook call is unconditional (Rules of Hooks)
+  // and so the select/period branch honours `dynamicOptions: "sites"` etc. —
+  // previously the branch inlined `field.options?.map(...)` and dropped any
+  // dynamically-fetched options, which is what broke the Site weather widget's
+  // site picker.
+  const resolvedOptions = useDynamicOptions(field);
+
   if (field.type === "select" || field.type === "period") {
     return (
       <div className="widget-settings-popover__field">
@@ -293,7 +300,7 @@ function FieldRenderer({
           value={typeof value === "string" ? value : String(field.defaultValue ?? "")}
           onChange={(e) => onChange(e.target.value)}
         >
-          {field.options?.map((opt) => (
+          {resolvedOptions.map((opt) => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
           ))}
         </select>
@@ -324,7 +331,12 @@ function FieldRenderer({
 
   if (field.type === "multiselect") {
     return (
-      <MultiSelectField field={field} value={Array.isArray(value) ? (value as string[]) : []} onChange={onChange} />
+      <MultiSelectField
+        field={field}
+        value={Array.isArray(value) ? (value as string[]) : []}
+        onChange={onChange}
+        options={resolvedOptions}
+      />
     );
   }
 
@@ -366,13 +378,14 @@ function FieldRenderer({
 function MultiSelectField({
   field,
   value,
-  onChange
+  onChange,
+  options
 }: {
   field: ConfigField;
   value: string[];
   onChange: (next: string[]) => void;
+  options: Array<{ value: string; label: string }>;
 }) {
-  const options = useDynamicOptions(field);
   const selected = useMemo(() => new Set(value), [value]);
   const toggle = (optValue: string) => {
     const next = new Set(selected);
@@ -405,15 +418,24 @@ function MultiSelectField({
   );
 }
 
-function useDynamicOptions(field: ConfigField): Array<{ value: string; label: string }> {
-  const { data: tenders } = useTenders();
-  const formTemplates = useFormTemplates(field.dynamicOptions === "formTemplates");
+export type DynamicOptionSources = {
+  tenders: TenderForDashboard[] | undefined;
+  formTemplates: Array<{ value: string; label: string }>;
+  sites: Array<{ value: string; label: string }>;
+};
 
+/** Pure resolver — turns a ConfigField plus already-loaded sources into the
+ *  option list the popover should render. Exposed for unit tests; the hook
+ *  version below wires in the actual data sources. */
+export function resolveDynamicOptions(
+  field: ConfigField,
+  sources: DynamicOptionSources
+): Array<{ value: string; label: string }> {
   if (field.options) return field.options;
 
   if (field.dynamicOptions === "estimators") {
     const map = new Map<string, string>();
-    for (const t of tenders ?? []) {
+    for (const t of sources.tenders ?? []) {
       if (!t.estimator) continue;
       map.set(t.estimator.id, `${t.estimator.firstName} ${t.estimator.lastName}`);
     }
@@ -423,10 +445,82 @@ function useDynamicOptions(field: ConfigField): Array<{ value: string; label: st
   }
 
   if (field.dynamicOptions === "formTemplates") {
-    return formTemplates;
+    return sources.formTemplates;
+  }
+
+  if (field.dynamicOptions === "sites") {
+    return sources.sites;
   }
 
   return [];
+}
+
+function useDynamicOptions(field: ConfigField): Array<{ value: string; label: string }> {
+  const { data: tenders } = useTenders();
+  const formTemplates = useFormTemplates(field.dynamicOptions === "formTemplates");
+  const sites = useSites(field.dynamicOptions === "sites");
+  return resolveDynamicOptions(field, { tenders, formTemplates, sites });
+}
+
+type SiteRow = { id: string; name: string };
+
+/** Convention across the app: every other /master-data/sites caller uses
+ *  pageSize=100 (see pages/jobs/JobsListPage, pages/JobsPage,
+ *  pages/master-data/MasterDataWorkspacePage). The shared PaginationQueryDto
+ *  on the API caps pageSize at 100, so pageSize=200 fails validation with 400
+ *  and the picker rendered empty — see rev-527-fix2-ready.md. Exported so the
+ *  regression test can assert we haven't drifted back above the cap. */
+export const SITES_OPTIONS_URL = "/master-data/sites?page=1&pageSize=100";
+
+/** Fetches site options for the widget picker. Extracted so a unit test can
+ *  assert the URL requested without needing a jsdom/hook harness (the web
+ *  workspace runs tests in the default node environment — see
+ *  widgetSettingsPopover.test.ts header). */
+export async function fetchSiteOptions(
+  authFetch: (input: string) => Promise<Response>
+): Promise<{ ok: true; options: Array<{ value: string; label: string }> } | { ok: false }> {
+  const response = await authFetch(SITES_OPTIONS_URL);
+  if (!response.ok) return { ok: false };
+  const body = await response.json();
+  const items = (body.items ?? body ?? []) as SiteRow[];
+  return {
+    ok: true,
+    options: items
+      .map((item) => ({ value: item.id, label: item.name }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+  };
+}
+
+function useSites(enabled: boolean): Array<{ value: string; label: string }> {
+  const { authFetch } = useAuth();
+  const [options, setOptions] = useState<Array<{ value: string; label: string }>>([]);
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await fetchSiteOptions(authFetch);
+        if (cancelled) return;
+        if (result.ok) {
+          setOptions(result.options);
+        } else {
+          // Fail loudly (bounded): surface the loader failure to devtools so a
+          // future backend regression like the pageSize=200 → HTTP 400 that
+          // motivated rev-527-fix2 doesn't silently present as "no sites".
+          // TODO(rev-527 follow-up): thread this through the picker UI so
+          //   end users see "Couldn't load sites" instead of an empty menu —
+          //   that requires touching useDynamicOptions()'s shared contract.
+          console.error("[widget-settings] failed to load site options");
+        }
+      } catch (err) {
+        console.error("[widget-settings] site options request threw", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch, enabled]);
+  return options;
 }
 
 type FormTemplateRow = { id: string; name: string };

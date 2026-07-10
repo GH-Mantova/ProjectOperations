@@ -8,6 +8,7 @@ import {
   defaultFiltersFor,
   galleryKindFor,
   galleryKinds,
+  galleryModules,
   galleryReducer,
   hasDeferredFields,
   initialGalleryState,
@@ -16,9 +17,11 @@ import {
   sizeOptionsFor,
   sortWidgets,
   widgetsForKind,
+  widgetsForModule,
   type GalleryState
 } from "../widgetGallery";
 import { WIDGETS, WIDGET_BY_TYPE } from "../widgetRegistry";
+import { WIDGET_MODULE_ORDER, WIDGET_TAXONOMY } from "../widgets/taxonomy";
 import type { WidgetMeta, WidgetConfigEntry } from "../types";
 
 const entry = (id: string, order: number): WidgetConfigEntry => ({
@@ -278,6 +281,89 @@ describe("gallery reducer — search + sort", () => {
     expect(state.sortDir).toBe("desc");
     state = galleryReducer(state, { type: "setKind", kind: "bar" });
     expect(state.kind).toBe("bar");
+    expect(state.sortDir).toBe("asc");
+  });
+});
+
+describe("WIDGET_TAXONOMY completeness", () => {
+  it("has a taxonomy entry for every registered widget type", () => {
+    const missing: string[] = [];
+    for (const w of WIDGETS) {
+      if (!WIDGET_TAXONOMY[w.type]) missing.push(w.type);
+    }
+    expect(missing).toEqual([]);
+  });
+
+  it("taxonomy modules only reference known WIDGET_MODULE_ORDER entries", () => {
+    for (const [, entry] of Object.entries(WIDGET_TAXONOMY)) {
+      expect(WIDGET_MODULE_ORDER).toContain(entry.module);
+    }
+  });
+});
+
+describe("galleryModules + widgetsForModule", () => {
+  it("returns a module list in NAV_GROUPS order and omits empty submodules", () => {
+    const modules = galleryModules(WIDGETS);
+    const moduleNames = modules.map((m) => m.module);
+    // The registered set spans multiple modules; ordering must match
+    // WIDGET_MODULE_ORDER (Commercial, Operations, Platform, Personal, Custom).
+    expect(moduleNames).toEqual(WIDGET_MODULE_ORDER.filter((m) => moduleNames.includes(m)));
+    for (const node of modules) {
+      for (const sub of node.submodules) {
+        expect(sub.count).toBeGreaterThan(0);
+        expect(widgetsForModule(WIDGETS, node.module, sub.submodule).length).toBe(sub.count);
+      }
+    }
+  });
+
+  it("Commercial > Contracts includes the mis-tagged fin_contracts_summary_kpi", () => {
+    const widgets = widgetsForModule(WIDGETS, "Commercial", "Contracts");
+    expect(widgets.map((w) => w.type)).toContain("fin_contracts_summary_kpi");
+  });
+
+  it("Operations > Sites includes the weather widget", () => {
+    const widgets = widgetsForModule(WIDGETS, "Operations", "Sites");
+    expect(widgets.map((w) => w.type)).toContain("ops_site_weather");
+  });
+
+  it("Platform > Documents includes the Xero sync + recent activity widgets", () => {
+    const widgets = widgetsForModule(WIDGETS, "Platform", "Documents");
+    const types = widgets.map((w) => w.type);
+    expect(types).toContain("plt_xero_sync_health_kpi");
+    expect(types).toContain("plt_recent_activity_list");
+  });
+
+  it("Personal > My day contains the personal_my_day widget", () => {
+    const widgets = widgetsForModule(WIDGETS, "Personal", "My day");
+    expect(widgets.map((w) => w.type)).toEqual(["personal_my_day"]);
+  });
+});
+
+describe("gallery reducer — module view", () => {
+  it("defaults groupMode to \"type\"", () => {
+    expect(initialGalleryState().groupMode).toBe("type");
+  });
+
+  it("setGroupMode switches mode and resets sortDir to asc", () => {
+    let state = initialGalleryState();
+    state = galleryReducer(state, { type: "toggleSort" });
+    expect(state.sortDir).toBe("desc");
+    state = galleryReducer(state, { type: "setGroupMode", mode: "module" });
+    expect(state.groupMode).toBe("module");
+    expect(state.sortDir).toBe("asc");
+  });
+
+  it("setModule stores module/submodule and resets sortDir to asc", () => {
+    let state = initialGalleryState();
+    state = galleryReducer(state, { type: "setGroupMode", mode: "module" });
+    state = galleryReducer(state, { type: "toggleSort" });
+    state = galleryReducer(state, {
+      type: "setModule",
+      module: "Operations",
+      submodule: "Sites"
+    });
+    expect(state.selectedModule).toBe("Operations");
+    expect(state.selectedSubmodule).toBe("Sites");
     expect(state.sortDir).toBe("asc");
   });
 });

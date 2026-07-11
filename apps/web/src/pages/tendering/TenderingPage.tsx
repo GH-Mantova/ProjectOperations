@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { can } from "../../auth/permissions";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { NewTenderWizard } from "./NewTenderWizard";
 
@@ -306,7 +307,7 @@ export function TenderingPage() {
     _count: Record<string, number>;
   } | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
-  const canManage = user?.permissions.includes("tenders.manage") ?? false;
+  const canManage = can(user, "tenders.manage");
 
   const canUseView: View = view;
 

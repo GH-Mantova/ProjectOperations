@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { isAdminUser } from "../auth/permissions";
 import { AdminUsersTab } from "./admin/AdminUsersTab";
 import { AdminRolesPermissionsTab } from "./admin/AdminRolesPermissionsTab";
 import { AdminClientVersionsTab } from "./admin/AdminClientVersionsTab";
@@ -48,7 +49,7 @@ type TabId = (typeof TABS)[number]["id"];
 
 export function AdminSettingsPage() {
   const { user } = useAuth();
-  const isAdmin = user?.roles?.some((r) => r.name === "Admin") ?? false;
+  const isAdmin = isAdminUser(user);
   const [tab, setTab] = useState<TabId>("notifications");
 
   if (!user) return null;

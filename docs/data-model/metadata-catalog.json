@@ -3,27 +3,31 @@
   "_generatedFrom": "apps/api/prisma/schema.prisma",
   "domains": [
     "Assets",
+    "Authorization",
+    "Communications",
     "Compliance",
     "Contracts",
     "Dashboards",
     "Directory",
     "Documents",
     "Estimating",
+    "Estimating (Legacy)",
     "Forms",
     "Integrations",
+    "Inventory",
     "Jobs",
     "Platform",
+    "Procurement",
     "Projects",
     "Safety",
     "Scheduler",
     "Sites",
     "Tendering",
-    "Unclassified",
     "Workers"
   ],
   "models": {
     "ApprovalDecision": {
-      "domain": "Unclassified",
+      "domain": "Authorization",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -761,7 +765,7 @@
       }
     },
     "AuthorityRule": {
-      "domain": "Unclassified",
+      "domain": "Authorization",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -995,7 +999,7 @@
       }
     },
     "ClaimLineItem": {
-      "domain": "Unclassified",
+      "domain": "Contracts",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -1093,7 +1097,7 @@
       }
     },
     "ClaimNumberSequence": {
-      "domain": "Unclassified",
+      "domain": "Contracts",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -2393,7 +2397,7 @@
       }
     },
     "Conversation": {
-      "domain": "Unclassified",
+      "domain": "Communications",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -2455,7 +2459,7 @@
       }
     },
     "ConversationMessage": {
-      "domain": "Unclassified",
+      "domain": "Communications",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -2523,7 +2527,7 @@
       }
     },
     "CorrespondenceMessage": {
-      "domain": "Unclassified",
+      "domain": "Communications",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -2627,7 +2631,7 @@
       }
     },
     "CorrespondenceThread": {
-      "domain": "Unclassified",
+      "domain": "Communications",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -2959,7 +2963,7 @@
       }
     },
     "CuttingOtherRate": {
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -3027,7 +3031,7 @@
       }
     },
     "CuttingSheetItem": {
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -3681,7 +3685,7 @@
       }
     },
     "EmailProviderConfig": {
-      "domain": "Unclassified",
+      "domain": "Communications",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -3939,7 +3943,7 @@
       }
     },
     "EstimateAssumption": {
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -3977,7 +3981,7 @@
       }
     },
     "EstimateCoreHoleRate": {
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -4027,7 +4031,7 @@
       }
     },
     "EstimateCuttingLine": {
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -4131,7 +4135,7 @@
       }
     },
     "EstimateCuttingRate": {
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -4205,7 +4209,7 @@
       }
     },
     "EstimateEnclosureRate": {
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -4267,7 +4271,7 @@
       }
     },
     "EstimateEquipLine": {
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -4341,7 +4345,7 @@
       }
     },
     "EstimateExport": {
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -4403,7 +4407,7 @@
       }
     },
     "EstimateFuelRate": {
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -4465,7 +4469,7 @@
       }
     },
     "EstimateItem": {
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -4605,7 +4609,7 @@
       }
     },
     "EstimateLabourLine": {
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -4685,7 +4689,7 @@
       }
     },
     "EstimateLabourRate": {
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -4765,7 +4769,7 @@
       }
     },
     "EstimateMaterialDensity": {
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -4833,7 +4837,7 @@
       }
     },
     "EstimatePlantLine": {
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -4913,7 +4917,7 @@
       }
     },
     "EstimatePlantRate": {
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -4993,7 +4997,7 @@
       }
     },
     "EstimateWasteLine": {
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -5091,7 +5095,7 @@
       }
     },
     "EstimateWasteRate": {
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -6307,7 +6311,7 @@
       }
     },
     "GlobalAISettings": {
-      "domain": "Unclassified",
+      "domain": "Platform",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -6709,7 +6713,7 @@
       }
     },
     "InternalMessage": {
-      "domain": "Unclassified",
+      "domain": "Communications",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -7797,7 +7801,7 @@
       }
     },
     "ListBinding": {
-      "domain": "Unclassified",
+      "domain": "Platform",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -7847,7 +7851,7 @@
       }
     },
     "LookupValue": {
-      "domain": "Unclassified",
+      "domain": "Platform",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -8213,7 +8217,7 @@
       }
     },
     "PilotFeedback": {
-      "domain": "Unclassified",
+      "domain": "Platform",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -8709,7 +8713,7 @@
       }
     },
     "ProcurementConfig": {
-      "domain": "Unclassified",
+      "domain": "Procurement",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -8747,7 +8751,7 @@
       }
     },
     "ProcurementLine": {
-      "domain": "Unclassified",
+      "domain": "Procurement",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -8845,7 +8849,7 @@
       }
     },
     "ProcurementRequest": {
-      "domain": "Unclassified",
+      "domain": "Procurement",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -9785,7 +9789,7 @@
       }
     },
     "PublicHoliday": {
-      "domain": "Unclassified",
+      "domain": "Platform",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -9829,7 +9833,7 @@
       }
     },
     "PurchaseOrder": {
-      "domain": "Unclassified",
+      "domain": "Procurement",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -10681,7 +10685,7 @@
       }
     },
     "ResourceType": {
-      "domain": "Unclassified",
+      "domain": "Inventory",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -11137,7 +11141,7 @@
       }
     },
     "SchedulingConflict": {
-      "domain": "Unclassified",
+      "domain": "Scheduler",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -11187,7 +11191,7 @@
       }
     },
     "ScopeCard": {
-      "domain": "Unclassified",
+      "domain": "Estimating",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -11961,7 +11965,7 @@
       }
     },
     "ScopeViewConfig": {
-      "domain": "Unclassified",
+      "domain": "Estimating",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -12011,7 +12015,7 @@
       }
     },
     "ScopeWasteItem": {
-      "domain": "Unclassified",
+      "domain": "Estimating",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -12211,7 +12215,7 @@
       }
     },
     "SearchEntry": {
-      "domain": "Unclassified",
+      "domain": "Platform",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -12917,7 +12921,7 @@
       }
     },
     "StockCategory": {
-      "domain": "Unclassified",
+      "domain": "Inventory",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -12973,7 +12977,7 @@
       }
     },
     "StockItem": {
-      "domain": "Unclassified",
+      "domain": "Inventory",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -13071,7 +13075,7 @@
       }
     },
     "StockMovement": {
-      "domain": "Unclassified",
+      "domain": "Inventory",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -13145,7 +13149,7 @@
       }
     },
     "StocktakeCount": {
-      "domain": "Unclassified",
+      "domain": "Inventory",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,
@@ -13213,7 +13217,7 @@
       }
     },
     "StocktakeSession": {
-      "domain": "Unclassified",
+      "domain": "Inventory",
       "wizardVisible": false,
       "label": null,
       "reviewed": false,

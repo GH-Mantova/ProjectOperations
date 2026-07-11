@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { CenteredModal, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { can } from "../../auth/permissions";
 
 type WorkerRow = {
   id: string;
@@ -27,7 +28,7 @@ export function WorkersListPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
-  const canManage = useMemo(() => user?.permissions.includes("resources.manage") ?? false, [user]);
+  const canManage = useMemo(() => can(user, "resources.manage"), [user]);
 
   const load = useCallback(async () => {
     setLoading(true);

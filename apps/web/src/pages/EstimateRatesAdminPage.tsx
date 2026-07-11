@@ -11,6 +11,7 @@ import {
 } from "react";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../auth/AuthContext";
+import { can, canAny } from "../auth/permissions";
 import { buildPatchBody, createSaveSerializer, type Serializer } from "./estimateRatesCommit";
 
 type LabourRate = {
@@ -118,11 +119,8 @@ type ColumnDef<T> = {
 
 export function EstimateRatesAdminPage() {
   const { authFetch, user } = useAuth();
-  const canAdmin = useMemo(() => user?.permissions.includes("estimates.admin") ?? false, [user]);
-  const canView = useMemo(
-    () => user?.permissions.includes("estimates.view") || user?.permissions.includes("estimates.admin") || false,
-    [user]
-  );
+  const canAdmin = useMemo(() => can(user, "estimates.admin"), [user]);
+  const canView = useMemo(() => canAny(user, "estimates.view", "estimates.admin"), [user]);
 
   const [tab, setTab] = useState<Tab>("labour");
   const [labour, setLabour] = useState<LabourRate[]>([]);

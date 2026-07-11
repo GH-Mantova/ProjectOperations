@@ -19,7 +19,7 @@ function notifyIfUpdateRequested(response: Response): void {
   }
 }
 
-type SafeUser = {
+export type SafeUser = {
   id: string;
   email: string;
   firstName: string;

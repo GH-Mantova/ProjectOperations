@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { isAdminUser } from "../../auth/permissions";
 import { ContactFormModal, type ContactRecord } from "../../components/contacts/ContactsTab";
 
 type OrgLookup = Map<string, { name: string }>;
@@ -38,10 +39,7 @@ function orgHref(type: string, id: string): string | null {
 
 export function ContactsPage() {
   const { authFetch, user } = useAuth();
-  const isAdmin = useMemo(
-    () => Boolean(user?.isSuperUser) || Boolean(user?.roles?.some((r) => r.name === "Admin")),
-    [user]
-  );
+  const isAdmin = useMemo(() => isAdminUser(user), [user]);
 
   const [items, setItems] = useState<ContactRecord[]>([]);
   const [total, setTotal] = useState(0);

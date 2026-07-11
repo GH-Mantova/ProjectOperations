@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { can } from "../../auth/permissions";
 import { QuoteTab } from "./QuoteTab";
 import { AddClientModal } from "./AddClientModal";
 import { TenderDocumentsPanel } from "./TenderDocumentsPanel";
@@ -137,13 +138,10 @@ export function TenderDetailPage() {
     return "overview";
   }, [location.pathname]);
 
-  const canManageTenders = useMemo(() => user?.permissions.includes("tenders.manage") ?? false, [user]);
-  const canManageEstimates = useMemo(() => user?.permissions.includes("estimates.manage") ?? false, [user]);
-  const canAdminEstimates = useMemo(() => user?.permissions.includes("estimates.admin") ?? false, [user]);
-  const canConvertTender = useMemo(
-    () => user?.permissions.includes("tenderconversion.manage") ?? false,
-    [user]
-  );
+  const canManageTenders = useMemo(() => can(user, "tenders.manage"), [user]);
+  const canManageEstimates = useMemo(() => can(user, "estimates.manage"), [user]);
+  const canAdminEstimates = useMemo(() => can(user, "estimates.admin"), [user]);
+  const canConvertTender = useMemo(() => can(user, "tenderconversion.manage"), [user]);
   const [convertOpen, setConvertOpen] = useState(false);
   const [tender, setTender] = useState<TenderDetail | null>(null);
   const [estimateSummary, setEstimateSummary] = useState<EstimateSummaryPayload | null>(null);

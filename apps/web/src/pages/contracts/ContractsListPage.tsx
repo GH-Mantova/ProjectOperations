@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { can } from "../../auth/permissions";
 import { NewContractModal } from "./NewContractModal";
 
 type ContractRow = {
@@ -35,10 +36,7 @@ function fmtCurrency(v: string | number | null | undefined): string {
 
 export function ContractsListPage() {
   const { authFetch, user } = useAuth();
-  const canManage = useMemo(
-    () => user?.permissions.includes("finance.manage") ?? false,
-    [user]
-  );
+  const canManage = useMemo(() => can(user, "finance.manage"), [user]);
   const [contracts, setContracts] = useState<ContractRow[]>([]);
   const [statusFilter, setStatusFilter] = useState<ContractRow["status"] | "ALL">("ALL");
   const [loading, setLoading] = useState(true);

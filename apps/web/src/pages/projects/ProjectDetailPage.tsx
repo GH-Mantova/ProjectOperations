@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { CenteredModal, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { can } from "../../auth/permissions";
 import { AdvanceStatusModal } from "./AdvanceStatusModal";
 import { ConfirmRevertDialog } from "./ConfirmRevertDialog";
 import { GanttChart, type GanttTask } from "./GanttChart";
@@ -99,8 +100,8 @@ export function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { authFetch, user } = useAuth();
   const navigate = useNavigate();
-  const canManage = useMemo(() => user?.permissions.includes("projects.manage") ?? false, [user]);
-  const canRevert = useMemo(() => user?.permissions.includes("tenders.manage") ?? false, [user]);
+  const canManage = useMemo(() => can(user, "projects.manage"), [user]);
+  const canRevert = useMemo(() => can(user, "tenders.manage"), [user]);
 
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -698,14 +699,8 @@ type AllocationsResponse = { workers: WorkerAllocation[]; assets: AssetAllocatio
 
 function TeamTab({ project, onProjectUpdated }: { project: ProjectDetail; onProjectUpdated: () => void }) {
   const { authFetch, user } = useAuth();
-  const canManageResources = useMemo(
-    () => user?.permissions.includes("resources.manage") ?? false,
-    [user]
-  );
-  const canManageProject = useMemo(
-    () => user?.permissions.includes("projects.manage") ?? (user?.isSuperUser ?? false),
-    [user]
-  );
+  const canManageResources = useMemo(() => can(user, "resources.manage"), [user]);
+  const canManageProject = useMemo(() => can(user, "projects.manage"), [user]);
   const [reqQualsModalOpen, setReqQualsModalOpen] = useState(false);
   const [data, setData] = useState<AllocationsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1008,8 +1003,7 @@ function AllocateWorkerModal({
   onAllocated: () => void;
 }) {
   const { authFetch, user } = useAuth();
-  const canOverride =
-    (user?.isSuperUser ?? false) || (user?.permissions.includes("resources.manage") ?? false);
+  const canOverride = can(user, "resources.manage");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<WorkerSearchRow[]>([]);
   const [selected, setSelected] = useState<WorkerSearchRow | null>(null);

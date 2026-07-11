@@ -12,6 +12,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useNavigate } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../auth/AuthContext";
+import { can } from "../auth/permissions";
 import { WIDGET_BY_TYPE } from "./widgetRegistry";
 import {
   GRID_ROW_HEIGHT_PX,
@@ -60,7 +61,7 @@ export function DashboardCanvas({
   actions
 }: Props) {
   const { authFetch, user } = useAuth();
-  const isAdmin = Boolean(user?.isSuperUser || user?.permissions.includes("platform.admin"));
+  const isAdmin = can(user, "platform.admin");
   const { invalidate, remove } = useUserDashboardsActions();
   const navigate = useNavigate();
   const [dashboards, setDashboards] = useState<UserDashboard[] | null>(null);

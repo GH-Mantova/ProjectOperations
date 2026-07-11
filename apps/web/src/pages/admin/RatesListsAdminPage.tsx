@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { Navigate } from "react-router-dom";
 import { EmptyState, SkeletonList } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { can } from "../../auth/permissions";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { FilterableRateGrid } from "../../components/rates/FilterableRateGrid";
 import type { RateGridColumn, RateGridRow } from "../../components/rates/rateGridModel";
@@ -73,8 +74,8 @@ type TopTab = "rates" | "lists";
 
 export function RatesListsAdminPage() {
   const { user } = useAuth();
-  const canManageRates = user?.permissions.includes("rates.manage") ?? false;
-  const canManageLists = user?.permissions.includes("lists.manage") ?? false;
+  const canManageRates = can(user, "rates.manage");
+  const canManageLists = can(user, "lists.manage");
 
   const [tab, setTab] = useState<TopTab>(canManageRates ? "rates" : "lists");
 

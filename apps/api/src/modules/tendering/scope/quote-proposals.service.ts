@@ -33,6 +33,10 @@ export type QuoteProposalStatus = "pending" | "accepted" | "rejected";
 export type StoredQuoteProposal = {
   index: number;
   quoteId: string;
+  // Optional traceability pointer back to the internal estimate this quote is
+  // derived from. Stamped onto ClientQuote.sourceTenderEstimateId at accept
+  // time. Per-line pointers live inside each costLines[i].
+  sourceTenderEstimateId?: string;
   costLines?: QuoteCostLineProposal[];
   exclusions?: QuoteExclusionProposal[];
   assumptions?: QuoteAssumptionProposal[];
@@ -97,6 +101,7 @@ export class QuoteProposalsService {
     const proposal: StoredQuoteProposal = {
       index: 0,
       quoteId: args.quoteId,
+      sourceTenderEstimateId: args.sourceTenderEstimateId,
       costLines: args.costLines,
       exclusions: args.exclusions,
       assumptions: args.assumptions,
@@ -189,7 +194,7 @@ export class QuoteProposalsService {
     //        immutable.
     const quote = await this.prisma.clientQuote.findUnique({
       where: { id: merged.quoteId },
-      select: { id: true, tenderId: true, status: true }
+      select: { id: true, tenderId: true, status: true, sourceTenderEstimateId: true }
     });
     if (!quote) {
       throw new NotFoundException(`ClientQuote ${merged.quoteId} not found.`);
@@ -203,6 +208,30 @@ export class QuoteProposalsService {
       throw new BadRequestException(
         `Proposal cannot be accepted — ClientQuote is in status ${quote.status}. Only DRAFT quotes accept new content.`
       );
+    }
+
+    // 1a. Optional traceability: if the proposal names a source TenderEstimate,
+    // verify it belongs to the same tender AND doesn't conflict with an
+    // already-stamped pointer BEFORE any row writes — keeps the accept path
+    // atomic. Cross-tender pointers are rejected; a null pointer stays null.
+    if (merged.sourceTenderEstimateId) {
+      if (
+        quote.sourceTenderEstimateId &&
+        quote.sourceTenderEstimateId !== merged.sourceTenderEstimateId
+      ) {
+        throw new BadRequestException(
+          "Proposal cannot be accepted — quote is already linked to a different TenderEstimate."
+        );
+      }
+      const est = await this.prisma.tenderEstimate.findUnique({
+        where: { id: merged.sourceTenderEstimateId },
+        select: { id: true, tenderId: true }
+      });
+      if (!est || est.tenderId !== tenderId) {
+        throw new BadRequestException(
+          "Proposal cannot be accepted — sourceTenderEstimateId does not belong to this tender."
+        );
+      }
     }
 
     // 2. Compute next sortOrder per row type so accepted proposals
@@ -231,13 +260,25 @@ export class QuoteProposalsService {
     // price.
     const acceptedCostLineIds: string[] = [];
     for (const line of merged.costLines ?? []) {
+      // Traceability pointers: both fields set together or neither. Reject the
+      // half-populated shape — it would leave orphan data that reporting can't
+      // resolve.
+      const hasType = typeof line.sourceEstimateLineType === "string";
+      const hasId = typeof line.sourceEstimateLineId === "string";
+      if (hasType !== hasId) {
+        throw new BadRequestException(
+          "Cost-line traceability must set BOTH sourceEstimateLineType and sourceEstimateLineId, or neither."
+        );
+      }
       const row = await this.prisma.quoteCostLine.create({
         data: {
           quoteId: quote.id,
           label: line.label,
           description: line.description,
           price: new Prisma.Decimal(line.price ?? 0),
-          sortOrder: costSort
+          sortOrder: costSort,
+          sourceEstimateLineType: line.sourceEstimateLineType ?? null,
+          sourceEstimateLineId: line.sourceEstimateLineId ?? null
         },
         select: { id: true }
       });
@@ -269,6 +310,16 @@ export class QuoteProposalsService {
       });
       acceptedAssumptionIds.push(row.id);
       assumeSort += 1;
+    }
+
+    // 3a. Stamp the quote-level traceability pointer if supplied and not
+    // already set. Idempotent to the same value; conflicting values were
+    // rejected in step 1a before any row writes.
+    if (merged.sourceTenderEstimateId && !quote.sourceTenderEstimateId) {
+      await this.prisma.clientQuote.update({
+        where: { id: quote.id },
+        data: { sourceTenderEstimateId: merged.sourceTenderEstimateId }
+      });
     }
 
     // 4. Flip the proposal to accepted with the ids of every row we

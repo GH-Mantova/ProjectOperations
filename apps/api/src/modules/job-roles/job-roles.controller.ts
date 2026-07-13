@@ -1,5 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { CurrentUser } from "../../common/auth/current-user.decorator";
+import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
@@ -62,7 +64,11 @@ export class JobRolesController {
   @ApiOperation({ summary: "Delete a job role." })
   @ApiResponse({ status: 200, description: "{ deleted: true }" })
   @ApiResponse({ status: 404, description: "Job role not found." })
-  remove(@Param("id") id: string) {
-    return this.service.remove(id);
+  @ApiResponse({
+    status: 409,
+    description: "Role is used by one or more ScheduleAllocation rows; deactivate instead."
+  })
+  remove(@Param("id") id: string, @CurrentUser() actor: AuthenticatedUser) {
+    return this.service.remove(id, actor.sub);
   }
 }

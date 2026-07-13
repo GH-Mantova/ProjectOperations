@@ -64,7 +64,8 @@ export class AuthorityController {
   @RequirePermissions("authority.manage")
   @ApiOperation({ summary: "Delete an authority rule" })
   @ApiResponse({ status: 200, description: "Delete an authority rule." })
-  remove(@Param("id") id: string) {
-    return this.authorityService.remove(id);
+  @ApiResponse({ status: 409, description: "Rule is enabled; disable it first." })
+  remove(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
+    return this.authorityService.remove(id, actor.sub);
   }
 }

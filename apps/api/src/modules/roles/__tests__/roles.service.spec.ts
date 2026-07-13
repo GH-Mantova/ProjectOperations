@@ -4,7 +4,7 @@
 // of permission updates and the absence of a system-role mutation guard at
 // the service layer (isSystem is persisted but not enforced here).
 
-import { ConflictException, NotFoundException } from "@nestjs/common";
+import { ConflictException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { RolesService } from "../roles.service";
 
 const roleRow = (overrides: Record<string, unknown> = {}) => ({
@@ -28,7 +28,13 @@ function buildService() {
       create: jest.fn().mockResolvedValue(roleRow({ id: "role-new" })),
       update: jest.fn().mockResolvedValue(roleRow())
     },
+    permission: {
+      findUnique: jest.fn().mockResolvedValue(null)
+    },
     rolePermission: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      count: jest.fn().mockResolvedValue(0),
+      create: jest.fn().mockResolvedValue({ id: "rp-1" }),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       createMany: jest.fn().mockResolvedValue({ count: 0 })
     },
@@ -195,5 +201,187 @@ describe("RolesService.update", () => {
       entityId: "role-1",
       metadata: { updatedFields: ["name", "permissionIds"] }
     });
+  });
+});
+
+// ─── grantPermission ───────────────────────────────────────────────────────
+
+describe("RolesService.grantPermission", () => {
+  it("404s when the role does not exist", async () => {
+    const { service, prisma } = buildService();
+    (prisma.permission as { findUnique: jest.Mock }).findUnique.mockResolvedValue({
+      id: "perm-1",
+      code: "rates.manage",
+      isHighRisk: false
+    });
+
+    await expect(service.grantPermission("missing", "perm-1", "actor-1")).rejects.toBeInstanceOf(
+      NotFoundException
+    );
+  });
+
+  it("404s when the permission does not exist", async () => {
+    const { service, prisma } = buildService();
+    (prisma.role as { findUnique: jest.Mock }).findUnique.mockResolvedValue(roleRow());
+
+    await expect(service.grantPermission("role-1", "missing", "actor-1")).rejects.toBeInstanceOf(
+      NotFoundException
+    );
+  });
+
+  it("creates a role_permissions row and writes a grant audit entry", async () => {
+    const { service, prisma, auditService } = buildService();
+    (prisma.role as { findUnique: jest.Mock }).findUnique.mockResolvedValue(roleRow());
+    (prisma.permission as { findUnique: jest.Mock }).findUnique.mockResolvedValue({
+      id: "perm-1",
+      code: "rates.manage",
+      isHighRisk: false
+    });
+
+    const result = await service.grantPermission("role-1", "perm-1", "actor-1");
+
+    expect(result).toEqual({ granted: true, alreadyGranted: false });
+    expect((prisma.rolePermission as { create: jest.Mock }).create).toHaveBeenCalledWith({
+      data: { roleId: "role-1", permissionId: "perm-1" }
+    });
+    expect(auditService.write).toHaveBeenCalledWith({
+      actorId: "actor-1",
+      action: "role_permissions.grant",
+      entityType: "RolePermission",
+      entityId: "role-1:perm-1",
+      metadata: {
+        roleId: "role-1",
+        roleName: "Estimator",
+        permissionId: "perm-1",
+        permissionCode: "rates.manage",
+        isHighRisk: false
+      }
+    });
+  });
+
+  it("is idempotent — an already-granted permission returns alreadyGranted without writing audit", async () => {
+    const { service, prisma, auditService } = buildService();
+    (prisma.role as { findUnique: jest.Mock }).findUnique.mockResolvedValue(roleRow());
+    (prisma.permission as { findUnique: jest.Mock }).findUnique.mockResolvedValue({
+      id: "perm-1",
+      code: "rates.manage",
+      isHighRisk: false
+    });
+    (prisma.rolePermission as { findUnique: jest.Mock }).findUnique.mockResolvedValue({
+      id: "rp-1",
+      roleId: "role-1",
+      permissionId: "perm-1"
+    });
+
+    const result = await service.grantPermission("role-1", "perm-1", "actor-1");
+
+    expect(result).toEqual({ granted: false, alreadyGranted: true });
+    expect((prisma.rolePermission as { create: jest.Mock }).create).not.toHaveBeenCalled();
+    expect(auditService.write).not.toHaveBeenCalled();
+  });
+});
+
+// ─── revokePermission ──────────────────────────────────────────────────────
+
+describe("RolesService.revokePermission", () => {
+  it("404s when the role does not exist", async () => {
+    const { service, prisma } = buildService();
+    (prisma.permission as { findUnique: jest.Mock }).findUnique.mockResolvedValue({
+      id: "perm-1",
+      code: "rates.manage",
+      isHighRisk: false
+    });
+
+    await expect(service.revokePermission("missing", "perm-1", "actor-1")).rejects.toBeInstanceOf(
+      NotFoundException
+    );
+  });
+
+  it("deletes the join row and writes a revoke audit entry", async () => {
+    const { service, prisma, auditService } = buildService();
+    (prisma.role as { findUnique: jest.Mock }).findUnique.mockResolvedValue(roleRow());
+    (prisma.permission as { findUnique: jest.Mock }).findUnique.mockResolvedValue({
+      id: "perm-1",
+      code: "rates.manage",
+      isHighRisk: false
+    });
+    (prisma.rolePermission as { deleteMany: jest.Mock }).deleteMany.mockResolvedValue({ count: 1 });
+
+    const result = await service.revokePermission("role-1", "perm-1", "actor-1");
+
+    expect(result).toEqual({ revoked: true, alreadyRevoked: false });
+    expect((prisma.rolePermission as { deleteMany: jest.Mock }).deleteMany).toHaveBeenCalledWith({
+      where: { roleId: "role-1", permissionId: "perm-1" }
+    });
+    expect(auditService.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "role_permissions.revoke",
+        entityId: "role-1:perm-1"
+      })
+    );
+  });
+
+  it("is idempotent — a revoke against an ungranted row returns alreadyRevoked", async () => {
+    const { service, prisma, auditService } = buildService();
+    (prisma.role as { findUnique: jest.Mock }).findUnique.mockResolvedValue(roleRow());
+    (prisma.permission as { findUnique: jest.Mock }).findUnique.mockResolvedValue({
+      id: "perm-1",
+      code: "rates.manage",
+      isHighRisk: false
+    });
+    (prisma.rolePermission as { deleteMany: jest.Mock }).deleteMany.mockResolvedValue({ count: 0 });
+
+    const result = await service.revokePermission("role-1", "perm-1", "actor-1");
+
+    expect(result).toEqual({ revoked: false, alreadyRevoked: true });
+    expect(auditService.write).not.toHaveBeenCalled();
+  });
+
+  it("blocks revoking permissions.view from the last role granting it (lockout guardrail)", async () => {
+    const { service, prisma } = buildService();
+    (prisma.role as { findUnique: jest.Mock }).findUnique.mockResolvedValue(roleRow());
+    (prisma.permission as { findUnique: jest.Mock }).findUnique.mockResolvedValue({
+      id: "perm-1",
+      code: "permissions.view",
+      isHighRisk: false
+    });
+    (prisma.rolePermission as { count: jest.Mock }).count.mockResolvedValue(0);
+
+    await expect(
+      service.revokePermission("role-1", "perm-1", "actor-1")
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect((prisma.rolePermission as { deleteMany: jest.Mock }).deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("blocks revoking roles.view from the last role granting it (lockout guardrail)", async () => {
+    const { service, prisma } = buildService();
+    (prisma.role as { findUnique: jest.Mock }).findUnique.mockResolvedValue(roleRow());
+    (prisma.permission as { findUnique: jest.Mock }).findUnique.mockResolvedValue({
+      id: "perm-2",
+      code: "roles.view",
+      isHighRisk: false
+    });
+    (prisma.rolePermission as { count: jest.Mock }).count.mockResolvedValue(0);
+
+    await expect(
+      service.revokePermission("role-1", "perm-2", "actor-1")
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it("allows revoking permissions.view when another role still grants it", async () => {
+    const { service, prisma, auditService } = buildService();
+    (prisma.role as { findUnique: jest.Mock }).findUnique.mockResolvedValue(roleRow());
+    (prisma.permission as { findUnique: jest.Mock }).findUnique.mockResolvedValue({
+      id: "perm-1",
+      code: "permissions.view",
+      isHighRisk: false
+    });
+    (prisma.rolePermission as { count: jest.Mock }).count.mockResolvedValue(2);
+    (prisma.rolePermission as { deleteMany: jest.Mock }).deleteMany.mockResolvedValue({ count: 1 });
+
+    await expect(
+      service.revokePermission("role-1", "perm-1", "actor-1")
+    ).resolves.toEqual({ revoked: true, alreadyRevoked: false });
+    expect(auditService.write).toHaveBeenCalled();
   });
 });

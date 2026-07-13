@@ -13,6 +13,14 @@
 //   GATE-ALLOW: env-vars
 //   GATE-ALLOW: dependencies
 //
+// CP-23 (seed-without-migration) uses its own column-0 marker as the escape
+// hatch, mirroring the GATE-ALLOW convention:
+//   SEED-ONLY: dev  -- <reason prod does not need this seed change>
+// Rationale: production runs `prisma migrate deploy`, which does NOT run the
+// TypeScript seed. So a change that lives only in a seed file never reaches
+// production. This has happened twice (#504 tender-package-disciplines, and
+// #506 marco super-user parity). See sot/05-decisions-and-lessons.md.
+//
 // Scope gate (opt-in): a fenced gate-scope block at column 0 in the body, one
 // regex per line; every changed file must match at least one regex.
 // The opening fence MUST be a line starting at column 0 exactly as:
@@ -237,6 +245,72 @@ function report(level, gate, name, detail) {
       report("PASS", "CP-09/10", "scope", `${changedFiles.length} file(s) in scope`);
     } else {
       report("FAIL", "CP-09/10", "scope", `out of declared scope: ${strays.join(", ")}`);
+    }
+  }
+}
+
+// CP-23 - seed changes must ship with a migration (or explicit dev-only marker).
+// Production runs `prisma migrate deploy`, not `pnpm seed`, so a seed-only
+// change never reaches prod. Two silent regressions to date (#504, #506).
+// The check: if any file under apps/api/prisma/seed* (or apps/api/prisma/seed/*)
+// is touched AND no NEW folder was added under apps/api/prisma/migrations/,
+// fail unless the body contains a column-0 `SEED-ONLY: dev` line.
+{
+  const seedRe = /^apps\/api\/prisma\/seed(?:[^/]*|\/.*)$/;
+  const seedChanges = changedFiles.filter((f) => seedRe.test(f));
+  if (seedChanges.length === 0) {
+    report("PASS", "CP-23", "seed-without-migration", "no seed files changed");
+  } else {
+    // A new migration folder shows up as one or more Added ("A") files under
+    // apps/api/prisma/migrations/<folder>/. Prisma migration folders are
+    // immutable once merged, so any A-status file under migrations/ implies
+    // a newly added folder.
+    const newMigrationFiles = nameStatus.filter(
+      (f) =>
+        f.status === "A" &&
+        /^apps\/api\/prisma\/migrations\/[^/]+\//.test(f.path)
+    );
+    const seedOnlyDev = /^SEED-ONLY:\s*dev\b/m.test(prBody);
+    if (newMigrationFiles.length > 0) {
+      const folders = new Set(
+        newMigrationFiles.map((f) => f.path.split("/")[4])
+      );
+      report(
+        "PASS",
+        "CP-23",
+        "seed-without-migration",
+        `migration added alongside seed: ${[...folders].join(", ")}`
+      );
+    } else if (seedOnlyDev) {
+      report(
+        "ALLOWED",
+        "CP-23",
+        "seed-without-migration",
+        `SEED-ONLY: dev marker present (${seedChanges.join(", ")})`
+      );
+    } else {
+      process.stdout.write(
+        "::error::This PR changes a Prisma seed but adds no migration.\n" +
+          "\n" +
+          "Production runs `prisma migrate deploy`, which does NOT run the TypeScript seed.\n" +
+          "A seed-only change will therefore NEVER reach production.\n" +
+          "\n" +
+          "If this data must exist in production, add an idempotent (insert-if-absent /\n" +
+          "guarded UPDATE) migration alongside the seed change.\n" +
+          "\n" +
+          "If this seed change is genuinely dev/test-only and is NOT needed in production,\n" +
+          "add this line to the PR body to acknowledge it and pass this gate:\n" +
+          "\n" +
+          "    SEED-ONLY: dev  -- <one line saying why prod does not need this>\n" +
+          "\n" +
+          "See sot/05-decisions-and-lessons.md (#504, #506).\n"
+      );
+      report(
+        "FAIL",
+        "CP-23",
+        "seed-without-migration",
+        `seed touched with no migration: ${seedChanges.join(", ")}`
+      );
     }
   }
 }

@@ -1,6 +1,8 @@
 import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { IsOptional, IsString, Matches, MaxLength, MinLength } from "class-validator";
+import { CurrentUser } from "../../common/auth/current-user.decorator";
+import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
@@ -53,7 +55,7 @@ export class PublicHolidaysController {
   @ApiOperation({ summary: "Delete a public holiday (admin)." })
   @ApiResponse({ status: 200, description: "Deleted." })
   @ApiResponse({ status: 404, description: "Holiday not found." })
-  remove(@Param("id") id: string) {
-    return this.service.remove(id);
+  remove(@Param("id") id: string, @CurrentUser() actor: AuthenticatedUser) {
+    return this.service.remove(id, actor.sub);
   }
 }

@@ -264,17 +264,15 @@ export async function seedPermissionsAndCoreRoles(prisma: PrismaClient) {
     ]
   });
 
-  // Viewer role: only permissions whose code ends in ".view" — picked up
-  // automatically as new modules add view permissions to the registry.
-  // Additive per S3-016 — grants only, never revokes.
-  const viewerPermissions = permissions.filter((p) => p.code.endsWith(".view"));
-  await prisma.rolePermission.createMany({
-    skipDuplicates: true,
-    data: viewerPermissions.map((p) => ({
-      roleId: viewerRole.id,
-      permissionId: p.id
-    }))
-  });
+  // Viewer's permission set is owned by seed-initial-services.ts
+  // (`seedOperationalRoles`), which grants an explicit narrow list of `.view`
+  // codes. Granting "every .view permission" here (as the pre-S3-016 seed did)
+  // paired with the additive-only rule leaves Viewer holding view codes the
+  // operational role never intended (e.g. projects.view, audit.view) — the
+  // pre-S3-016 `deleteMany` in seed-initial-services was what narrowed it.
+  // Keep this file as the platform baseline (roles exist, admins get
+  // everything, planner/field get their explicit grants); let
+  // seed-initial-services own the Viewer overlay.
 
   return { adminRole, plannerRole, fieldRole, viewerRole };
 }

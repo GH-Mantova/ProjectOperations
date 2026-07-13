@@ -3,7 +3,9 @@ import { QuoteProposalsService } from "../quote-proposals.service";
 
 type AsyncMock = jest.Mock<Promise<unknown>, unknown[]>;
 
-function buildPrismaMock(overrides: { quote?: unknown } = {}) {
+function buildPrismaMock(
+  overrides: { quote?: unknown; tenderEstimate?: unknown } = {}
+) {
   const conversationMessageCreate: AsyncMock = jest.fn(async (args: unknown) => ({
     id: "msg-result",
     ...((args as { data?: Record<string, unknown> })?.data ?? {})
@@ -14,9 +16,20 @@ function buildPrismaMock(overrides: { quote?: unknown } = {}) {
   }));
   const conversationUpdate: AsyncMock = jest.fn(async () => ({}));
   const quote = (overrides.quote ?? null) as
-    | { id: string; tenderId: string; status: string }
+    | {
+        id: string;
+        tenderId: string;
+        status: string;
+        sourceTenderEstimateId?: string | null;
+      }
     | null;
   const clientQuoteFindUnique: AsyncMock = jest.fn(async () => quote);
+  const clientQuoteUpdate: AsyncMock = jest.fn(async (args: unknown) => ({
+    ...((args as { data?: Record<string, unknown> })?.data ?? {})
+  }));
+  const tenderEstimateFindUnique: AsyncMock = jest.fn(
+    async () => overrides.tenderEstimate ?? null
+  );
   const quoteCostLineAggregate: AsyncMock = jest.fn(async () => ({ _max: { sortOrder: null } }));
   const quoteExclusionAggregate: AsyncMock = jest.fn(async () => ({ _max: { sortOrder: null } }));
   const quoteAssumptionAggregate: AsyncMock = jest.fn(async () => ({ _max: { sortOrder: null } }));
@@ -35,7 +48,8 @@ function buildPrismaMock(overrides: { quote?: unknown } = {}) {
       update: conversationMessageUpdate
     },
     conversation: { update: conversationUpdate },
-    clientQuote: { findUnique: clientQuoteFindUnique },
+    clientQuote: { findUnique: clientQuoteFindUnique, update: clientQuoteUpdate },
+    tenderEstimate: { findUnique: tenderEstimateFindUnique },
     quoteCostLine: { aggregate: quoteCostLineAggregate, create: quoteCostLineCreate },
     quoteExclusion: { aggregate: quoteExclusionAggregate, create: quoteExclusionCreate },
     quoteAssumption: { aggregate: quoteAssumptionAggregate, create: quoteAssumptionCreate },
@@ -49,6 +63,8 @@ function buildPrismaMock(overrides: { quote?: unknown } = {}) {
       conversationMessageUpdate,
       conversationUpdate,
       clientQuoteFindUnique,
+      clientQuoteUpdate,
+      tenderEstimateFindUnique,
       quoteCostLineAggregate,
       quoteExclusionAggregate,
       quoteAssumptionAggregate,
@@ -379,6 +395,193 @@ describe("QuoteProposalsService.acceptQuoteProposal", () => {
     await expect(service.acceptQuoteProposal("u-1", "msg-1", 0)).rejects.toBeInstanceOf(
       BadRequestException
     );
+  });
+
+  // Traceability link (feat/quote-estimate-traceability) — additive: the tool
+  // now accepts optional pointers from QuoteCostLine back to the internal
+  // Estimate*Line, and from ClientQuote back to the TenderEstimate. Both
+  // pointers are opt-in; the pre-existing null-fields behaviour is unchanged.
+
+  it("persists per-line traceability pointers when both fields are supplied", async () => {
+    const { prisma, mocks } = buildPrismaMock({
+      quote: { id: "q-1", tenderId: "tender-1", status: "DRAFT", sourceTenderEstimateId: null }
+    });
+    mocks.conversationMessageFindUnique.mockResolvedValueOnce({
+      id: "msg-1",
+      role: "tool_result",
+      conversation: { id: "conv-1", userId: "u-1", contextKey: "tender-1" },
+      metadata: {
+        toolUseId: "toolu_X",
+        toolName: "propose_quote_content",
+        proposals: [
+          {
+            index: 0,
+            quoteId: "q-1",
+            costLines: [
+              {
+                label: "Demo",
+                description: "Internal demolition",
+                sourceEstimateLineType: "EstimateLabourLine",
+                sourceEstimateLineId: "ell-42"
+              }
+            ],
+            status: "pending"
+          }
+        ]
+      }
+    });
+    const service = new QuoteProposalsService(prisma as never);
+    await service.acceptQuoteProposal("u-1", "msg-1", 0);
+    const createArgs = mocks.quoteCostLineCreate.mock.calls[0]?.[0] as {
+      data?: { sourceEstimateLineType?: string; sourceEstimateLineId?: string };
+    };
+    expect(createArgs.data?.sourceEstimateLineType).toBe("EstimateLabourLine");
+    expect(createArgs.data?.sourceEstimateLineId).toBe("ell-42");
+  });
+
+  it("leaves per-line traceability pointers null when the proposal omits them", async () => {
+    const { prisma, mocks } = buildPrismaMock({
+      quote: { id: "q-1", tenderId: "tender-1", status: "DRAFT", sourceTenderEstimateId: null }
+    });
+    mocks.conversationMessageFindUnique.mockResolvedValueOnce(existingMessage());
+    const service = new QuoteProposalsService(prisma as never);
+    await service.acceptQuoteProposal("u-1", "msg-1", 0);
+    for (const call of mocks.quoteCostLineCreate.mock.calls) {
+      const args = call[0] as {
+        data?: { sourceEstimateLineType?: unknown; sourceEstimateLineId?: unknown };
+      };
+      expect(args.data?.sourceEstimateLineType).toBeNull();
+      expect(args.data?.sourceEstimateLineId).toBeNull();
+    }
+  });
+
+  it("400s when a cost line supplies only one half of the traceability pair", async () => {
+    const { prisma, mocks } = buildPrismaMock({
+      quote: { id: "q-1", tenderId: "tender-1", status: "DRAFT", sourceTenderEstimateId: null }
+    });
+    mocks.conversationMessageFindUnique.mockResolvedValueOnce({
+      id: "msg-1",
+      role: "tool_result",
+      conversation: { id: "conv-1", userId: "u-1", contextKey: "tender-1" },
+      metadata: {
+        toolUseId: "toolu_X",
+        toolName: "propose_quote_content",
+        proposals: [
+          {
+            index: 0,
+            quoteId: "q-1",
+            costLines: [
+              {
+                label: "Demo",
+                description: "d",
+                sourceEstimateLineType: "EstimateLabourLine"
+                // sourceEstimateLineId intentionally missing
+              }
+            ],
+            status: "pending"
+          }
+        ]
+      }
+    });
+    const service = new QuoteProposalsService(prisma as never);
+    await expect(service.acceptQuoteProposal("u-1", "msg-1", 0)).rejects.toBeInstanceOf(
+      BadRequestException
+    );
+  });
+
+  it("stamps ClientQuote.sourceTenderEstimateId when the pointer belongs to the same tender", async () => {
+    const { prisma, mocks } = buildPrismaMock({
+      quote: { id: "q-1", tenderId: "tender-1", status: "DRAFT", sourceTenderEstimateId: null },
+      tenderEstimate: { id: "est-1", tenderId: "tender-1" }
+    });
+    mocks.conversationMessageFindUnique.mockResolvedValueOnce({
+      id: "msg-1",
+      role: "tool_result",
+      conversation: { id: "conv-1", userId: "u-1", contextKey: "tender-1" },
+      metadata: {
+        toolUseId: "toolu_X",
+        toolName: "propose_quote_content",
+        proposals: [
+          {
+            index: 0,
+            quoteId: "q-1",
+            sourceTenderEstimateId: "est-1",
+            costLines: [{ label: "Demo", description: "d" }],
+            status: "pending"
+          }
+        ]
+      }
+    });
+    const service = new QuoteProposalsService(prisma as never);
+    await service.acceptQuoteProposal("u-1", "msg-1", 0);
+    expect(mocks.clientQuoteUpdate).toHaveBeenCalledTimes(1);
+    const updateArgs = mocks.clientQuoteUpdate.mock.calls[0]?.[0] as {
+      data?: { sourceTenderEstimateId?: string };
+    };
+    expect(updateArgs.data?.sourceTenderEstimateId).toBe("est-1");
+  });
+
+  it("400s when sourceTenderEstimateId belongs to a different tender", async () => {
+    const { prisma, mocks } = buildPrismaMock({
+      quote: { id: "q-1", tenderId: "tender-1", status: "DRAFT", sourceTenderEstimateId: null },
+      tenderEstimate: { id: "est-other", tenderId: "tender-OTHER" }
+    });
+    mocks.conversationMessageFindUnique.mockResolvedValueOnce({
+      id: "msg-1",
+      role: "tool_result",
+      conversation: { id: "conv-1", userId: "u-1", contextKey: "tender-1" },
+      metadata: {
+        toolUseId: "toolu_X",
+        toolName: "propose_quote_content",
+        proposals: [
+          {
+            index: 0,
+            quoteId: "q-1",
+            sourceTenderEstimateId: "est-other",
+            status: "pending"
+          }
+        ]
+      }
+    });
+    const service = new QuoteProposalsService(prisma as never);
+    await expect(service.acceptQuoteProposal("u-1", "msg-1", 0)).rejects.toBeInstanceOf(
+      BadRequestException
+    );
+    expect(mocks.clientQuoteUpdate).not.toHaveBeenCalled();
+  });
+
+  it("400s when the quote is already linked to a different TenderEstimate", async () => {
+    const { prisma, mocks } = buildPrismaMock({
+      quote: {
+        id: "q-1",
+        tenderId: "tender-1",
+        status: "DRAFT",
+        sourceTenderEstimateId: "est-existing"
+      },
+      tenderEstimate: { id: "est-new", tenderId: "tender-1" }
+    });
+    mocks.conversationMessageFindUnique.mockResolvedValueOnce({
+      id: "msg-1",
+      role: "tool_result",
+      conversation: { id: "conv-1", userId: "u-1", contextKey: "tender-1" },
+      metadata: {
+        toolUseId: "toolu_X",
+        toolName: "propose_quote_content",
+        proposals: [
+          {
+            index: 0,
+            quoteId: "q-1",
+            sourceTenderEstimateId: "est-new",
+            status: "pending"
+          }
+        ]
+      }
+    });
+    const service = new QuoteProposalsService(prisma as never);
+    await expect(service.acceptQuoteProposal("u-1", "msg-1", 0)).rejects.toBeInstanceOf(
+      BadRequestException
+    );
+    expect(mocks.clientQuoteUpdate).not.toHaveBeenCalled();
   });
 });
 

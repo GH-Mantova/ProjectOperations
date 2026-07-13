@@ -62,6 +62,11 @@ type CostLine = {
   overrideAmount: string | null;
   sortOrder: number;
   isVisible: boolean;
+  // Read-only traceability pointer back to an internal Estimate*Line. Populated
+  // by propose_quote_content when the AI (or user) references a specific
+  // estimate line; null otherwise. No write UI in this build.
+  sourceEstimateLineType: string | null;
+  sourceEstimateLineId: string | null;
 };
 type ProvisionalLine = {
   id: string;
@@ -923,6 +928,24 @@ function CostTab({
                     e.target.value !== l.label && void onPatch(l.id, { label: e.target.value })
                   }
                 />
+                {l.sourceEstimateLineId ? (
+                  <span
+                    title={`Traced from ${l.sourceEstimateLineType ?? "estimate line"} ${l.sourceEstimateLineId}`}
+                    style={{
+                      display: "inline-block",
+                      marginTop: 4,
+                      padding: "1px 6px",
+                      fontSize: 10,
+                      lineHeight: "14px",
+                      borderRadius: 999,
+                      background: "var(--surface-muted, #EEF2FF)",
+                      color: "var(--text-muted, #4338CA)",
+                      border: "1px solid var(--border, #C7D2FE)"
+                    }}
+                  >
+                    from estimate
+                  </span>
+                ) : null}
               </td>
               <td style={{ padding: 4 }}>
                 {quote.detailLevel === "simple" ? (

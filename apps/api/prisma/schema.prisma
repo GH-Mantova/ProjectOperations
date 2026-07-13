@@ -1850,16 +1850,19 @@ model EstimateMaterialDensity {
 }
 
 model TenderEstimate {
-  id         String         @id @default(uuid())
-  tenderId   String         @unique @map("tender_id")
-  tender     Tender         @relation(fields: [tenderId], references: [id], onDelete: Cascade)
-  markup     Decimal        @default(30) @db.Decimal(5, 2)
-  notes      String?
-  lockedAt   DateTime?      @map("locked_at")
-  lockedById String?        @map("locked_by_id")
-  createdAt  DateTime       @default(now()) @map("created_at")
-  updatedAt  DateTime       @updatedAt @map("updated_at")
-  items      EstimateItem[]
+  id           String         @id @default(uuid())
+  tenderId     String         @unique @map("tender_id")
+  tender       Tender         @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  markup       Decimal        @default(30) @db.Decimal(5, 2)
+  notes        String?
+  lockedAt     DateTime?      @map("locked_at")
+  lockedById   String?        @map("locked_by_id")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  items        EstimateItem[]
+  // Traceability back-relation for ClientQuote.sourceTenderEstimate. Required
+  // by Prisma to name the FK from the quote side; no domain use today.
+  clientQuotes ClientQuote[]
 
   @@map("tender_estimates")
 }
@@ -3215,6 +3218,12 @@ model ClientQuote {
   tender                 Tender                 @relation(fields: [tenderId], references: [id], onDelete: Cascade)
   clientId               String                 @map("client_id")
   client                 Client                 @relation(fields: [clientId], references: [id])
+  // Traceability pointer back to the internal TenderEstimate this quote was
+  // derived from. Nullable — pre-existing quotes and quotes authored without
+  // a source estimate stay NULL. SetNull so deleting the estimate leaves the
+  // quote intact but unlinked. No pricing behaviour is derived from this.
+  sourceTenderEstimateId String?                @map("source_tender_estimate_id")
+  sourceTenderEstimate   TenderEstimate?        @relation(fields: [sourceTenderEstimateId], references: [id], onDelete: SetNull)
   revision               Int                    @default(1)
   quoteRef               String                 @unique @map("quote_ref")
   status                 ClientQuoteStatus      @default(DRAFT)
@@ -3255,24 +3264,33 @@ model ClientQuote {
   @@unique([tenderId, clientId, revision])
   @@index([tenderId])
   @@index([clientId])
+  @@index([sourceTenderEstimateId])
   @@map("client_quotes")
 }
 
 model QuoteCostLine {
-  id                 String            @id @default(cuid())
-  quoteId            String            @map("quote_id")
-  quote              ClientQuote       @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  label              String
-  description        String
-  displayDescription String?           @map("display_description")
-  price              Decimal           @db.Decimal(12, 2)
-  baseValue          Decimal           @default(0) @map("base_value") @db.Decimal(14, 2)
-  overrideAmount     Decimal?          @map("override_amount") @db.Decimal(14, 2)
-  sortOrder          Int               @default(0) @map("sort_order")
-  isVisible          Boolean           @default(true) @map("is_visible")
-  assumptions        QuoteAssumption[] @relation("CostLineAssumptions")
+  id                     String            @id @default(cuid())
+  quoteId                String            @map("quote_id")
+  quote                  ClientQuote       @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  label                  String
+  description            String
+  displayDescription     String?           @map("display_description")
+  price                  Decimal           @db.Decimal(12, 2)
+  baseValue              Decimal           @default(0) @map("base_value") @db.Decimal(14, 2)
+  overrideAmount         Decimal?          @map("override_amount") @db.Decimal(14, 2)
+  sortOrder              Int               @default(0) @map("sort_order")
+  isVisible              Boolean           @default(true) @map("is_visible")
+  // Traceability pointer back to the internal estimate line this quote line
+  // was derived from. Polymorphic because the source can be any Estimate*Line
+  // variant (labour / plant / equip / waste / cutting), which have no shared
+  // parent table to FK to — same shape used by AuditLog.entityType/entityId.
+  // Both nullable; both set together or both NULL.
+  sourceEstimateLineType String?           @map("source_estimate_line_type")
+  sourceEstimateLineId   String?           @map("source_estimate_line_id")
+  assumptions            QuoteAssumption[] @relation("CostLineAssumptions")
 
   @@index([quoteId])
+  @@index([sourceEstimateLineType, sourceEstimateLineId])
   @@map("quote_cost_lines")
 }
 

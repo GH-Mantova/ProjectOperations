@@ -74,9 +74,14 @@ export class RateResolverService {
    * of rate entries. The `key` — `{rateTableId}:{rowId}:{columnId}` — is
    * stable across snapshots so re-locking preserves overrides. Legacy
    * rate tables are not included; they lack a uniform enumerable shape.
+   *
+   * Reference tables (isReference=true) are factor / production data, not
+   * priced rates — they are excluded here so they never appear as `$`
+   * override rows in a locked tender snapshot.
    */
   async enumerateRateSet(): Promise<RateSetEntry[]> {
     const tables = await this.prisma.rateTable.findMany({
+      where: { isReference: false },
       include: { columns: { orderBy: { sortOrder: "asc" } } }
     });
     const entries: RateSetEntry[] = [];
@@ -116,6 +121,44 @@ export class RateResolverService {
       }
     }
     return entries;
+  }
+
+  /**
+   * Read a named numeric metric from a reference RateTable. Unlike
+   * `resolveRate` (which returns the first VALUE column and is used by
+   * priced consumers) this lets calculators pull a specific factor out of a
+   * multi-metric factor row — e.g. the "Excavating" metric from the
+   * excavator-production table. Returns `null` on any miss so callers can
+   * choose a fallback without wrapping in try/catch.
+   */
+  async resolveReferenceValue(
+    tableSlug: string,
+    keys: Record<string, unknown>,
+    columnName: string
+  ): Promise<number | null> {
+    const table = await this.prisma.rateTable.findUnique({
+      where: { slug: tableSlug },
+      include: { columns: true }
+    });
+    if (!table || !table.isReference) return null;
+
+    const wanted = columnName.trim().toLowerCase();
+    const col = table.columns.find((c) => c.name.trim().toLowerCase() === wanted);
+    if (!col) return null;
+
+    const keyCols = table.columns.filter((c) => c.role === "KEY");
+    const rows = await this.prisma.rateRow.findMany({
+      where: { rateTableId: table.id, isActive: true }
+    });
+    const match = rows.find((r) => {
+      const cells = (r.cells as Record<string, unknown> | null) ?? {};
+      return keyCols.every((c) => norm(cells[c.id]) === norm(keys[c.name] ?? keys[c.id]));
+    });
+    if (!match) return null;
+    const raw = ((match.cells as Record<string, unknown>) ?? {})[col.id];
+    if (raw === undefined || raw === null || raw === "") return null;
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : null;
   }
 
   private async tryLegacy(slug: string, keys: Record<string, unknown>): Promise<ResolvedRate | null> {

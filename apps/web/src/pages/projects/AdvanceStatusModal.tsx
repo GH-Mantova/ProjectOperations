@@ -1,8 +1,7 @@
 import { FormEvent, useMemo, useState } from "react";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
-
-type ProjectStatus = "MOBILISING" | "ACTIVE" | "PRACTICAL_COMPLETION" | "DEFECTS" | "CLOSED";
+import { PROJECT_STATUS_LABELS, type ProjectStatus } from "../../constants/statuses";
 
 type ProjectLite = {
   id: string;
@@ -27,13 +26,7 @@ const NEXT_STATUS: Record<ProjectStatus, ProjectStatus | null> = {
   CLOSED: null
 };
 
-const STATUS_LABEL: Record<ProjectStatus, string> = {
-  MOBILISING: "Mobilising",
-  ACTIVE: "Active",
-  PRACTICAL_COMPLETION: "Practical Completion",
-  DEFECTS: "Defects",
-  CLOSED: "Closed"
-};
+const STATUS_LABEL = PROJECT_STATUS_LABELS;
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);

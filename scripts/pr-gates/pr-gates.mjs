@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// PR diff gates (CP-09..CP-13, CP-17, CP-22). Node built-ins only, ASCII-only output.
+// PR diff gates (CP-09..CP-13, CP-17, CP-22, CP-24). Node built-ins only, ASCII-only output.
 // Diffs HEAD against the merge-base with origin/main.
 //
 // PR body source (in priority order):
@@ -238,6 +238,43 @@ function report(level, gate, name, detail) {
     } else {
       report("FAIL", "CP-09/10", "scope", `out of declared scope: ${strays.join(", ")}`);
     }
+  }
+}
+
+// CP-24 - failure honesty (sot/01 SECTION 6): permission failures must not
+// silently redirect. Any newly ADDED line under apps/web/src/pages/ that
+// matches `Navigate to="/"` is treated as a permission-redirect regression
+// and must instead render <NoAccess required={...} />. Legitimate uses
+// (route-level catch-all redirects, canonical-URL rewrites) can opt out
+// with the trailing comment `// eslint-ok: not-a-permission-redirect`.
+{
+  const diff = git("diff", "--unified=0", base, "HEAD", "--", "apps/web/src/pages");
+  const offenders = [];
+  let currentFile = null;
+  for (const line of diff.split(/\r?\n/)) {
+    const fileMatch = line.match(/^\+\+\+ b\/(.+)$/);
+    if (fileMatch) {
+      currentFile = fileMatch[1];
+      continue;
+    }
+    if (!currentFile || !line.startsWith("+") || line.startsWith("+++")) continue;
+    const added = line.slice(1);
+    if (/Navigate\s+to="\/"/.test(added) && !/eslint-ok:\s*not-a-permission-redirect/.test(added)) {
+      offenders.push(`${currentFile}: ${added.trim()}`);
+    }
+  }
+  if (offenders.length === 0) {
+    report("PASS", "CP-24", "failure-honesty", "no new permission-redirects in apps/web/src/pages");
+  } else {
+    report(
+      "FAIL",
+      "CP-24",
+      "failure-honesty",
+      `permission-redirect regression — use <NoAccess required={...} /> instead ` +
+        `(sot/01 SECTION 6). Offenders: ${offenders.join(" | ")}. ` +
+        `If this is a legitimate non-permission redirect, append ` +
+        `// eslint-ok: not-a-permission-redirect on the same line.`
+    );
   }
 }
 

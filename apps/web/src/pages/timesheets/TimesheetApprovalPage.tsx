@@ -1,8 +1,8 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { Navigate } from "react-router-dom";
 import { CenteredModal, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
+import { NoAccess } from "../../components/NoAccess";
 
 type Worker = { id: string; firstName: string; lastName: string; role: string };
 type Project = { id: string; projectNumber: string; name: string };
@@ -74,7 +74,7 @@ export function TimesheetApprovalPage() {
   const canManage = useMemo(() => can(user, "field.manage"), [user]);
   const [tab, setTab] = useState<"pending" | "all">("pending");
 
-  if (!canManage) return <Navigate to="/" replace />;
+  if (!canManage) return <NoAccess required="field.manage" />;
 
   return (
     <div className="admin-page">

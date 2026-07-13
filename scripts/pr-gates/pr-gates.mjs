@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// PR diff gates (CP-09..CP-13, CP-17, CP-22). Node built-ins only, ASCII-only output.
+// PR diff gates (CP-09..CP-13, CP-17, CP-22, CP-23, CP-24). Node built-ins only, ASCII-only output.
 // Diffs HEAD against the merge-base with origin/main.
 //
 // PR body source (in priority order):
@@ -312,6 +312,66 @@ function report(level, gate, name, detail) {
         `seed touched with no migration: ${seedChanges.join(", ")}`
       );
     }
+  }
+}
+
+// CP-24 - sot purity: a code PR must never touch /sot/. SoT edits land via a
+// dedicated doc-reconcile PR (sot/ + docs/ only). Mixing code with sot/ causes
+// merge conflicts when two PRs append to the same governance doc. This happened
+// on 2026-07-13: PR #543 (a CI PR) and an in-flight doc-reconcile PR both
+// appended to sot/05. HARD BLOCK - no escape hatch. See sot/05 LL-36.
+// docs/** is intentionally NOT in codeFiles: doc-reconcile PRs legitimately
+// touch sot/ + docs/ (runbooks, pr-prompts, review artifacts).
+{
+  const sotRe = /^sot\//;
+  const codeRe = /^(?:apps\/|scripts\/|\.github\/|packages\/|package\.json$|pnpm-lock\.yaml$)/;
+  const sotFiles = changedFiles.filter((f) => sotRe.test(f));
+  const codeFilesForSot = changedFiles.filter((f) => codeRe.test(f));
+  if (sotFiles.length === 0) {
+    report("PASS", "CP-24", "sot-purity", "no sot/ files changed");
+  } else if (codeFilesForSot.length === 0) {
+    report(
+      "PASS",
+      "CP-24",
+      "sot-purity",
+      `sot-only change (doc-reconcile PR): ${sotFiles.join(", ")}`
+    );
+  } else {
+    process.stdout.write(
+      "::error::This PR changes files under sot/ AND changes code. Both cannot ride in one PR.\n" +
+        "\n" +
+        "sot/ is the source of truth. Feature/fix/CI PRs must NEVER touch it -- SoT edits\n" +
+        "land via a dedicated doc-reconcile PR. Mixing them causes merge conflicts when\n" +
+        "two PRs append to the same governance doc. This happened on 2026-07-13: PR #543\n" +
+        "(a CI PR) and an in-flight doc-reconcile PR both appended to sot/05.\n" +
+        "\n" +
+        `  sot/ files changed:  ${sotFiles.join(", ")}\n` +
+        `  code files changed:  ${codeFilesForSot.join(", ")}\n` +
+        "\n" +
+        "HOW TO FIX (30 seconds -- your lesson will NOT be lost):\n" +
+        "\n" +
+        "  1. Revert the sot/ changes from this PR:\n" +
+        "         git checkout origin/main -- sot/\n" +
+        "\n" +
+        "  2. Write the content to a doc-reconcile prompt instead:\n" +
+        "         docs/pr-prompts/pr-sot-<slug>-ready.md\n" +
+        "\n" +
+        "     Put the exact text you wanted to add to sot/ inside it, naming the target\n" +
+        "     file and section. The PR-watcher will land it through the correct channel.\n" +
+        "     See docs/pr-prompts/TEMPLATE-sot-reconcile.md for the skeleton.\n" +
+        "\n" +
+        "  3. Push. This gate turns green.\n" +
+        "\n" +
+        "Recording the lesson is REQUIRED, not optional -- step 2 is not a way of\n" +
+        "discarding it. A lesson dropped to make CI green is a worse outcome than the\n" +
+        "conflict this gate prevents.\n"
+    );
+    report(
+      "FAIL",
+      "CP-24",
+      "sot-purity",
+      `sot/ + code in same PR (sot: ${sotFiles.join(", ")}; code: ${codeFilesForSot.join(", ")})`
+    );
   }
 }
 

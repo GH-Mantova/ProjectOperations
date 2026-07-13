@@ -2,7 +2,7 @@
   "_generator": "scripts/data-model/build-relationship-map.mjs",
   "_doNotEdit": "Regenerated from schema.prisma. Do not hand-edit.",
   "generatedFrom": "apps/api/prisma/schema.prisma",
-  "schemaSha256": "454906b959705cc1dfb9e237ee8c7f25340668c844c44a63f0eb56fab2cbb4ca",
+  "schemaSha256": "b31c4217323d178b3e5a6d14e85d10f220169b5c7613705566de16cb419b7f02",
   "modelCount": 190,
   "enumCount": 21,
   "edgeCount": 280,

@@ -95,6 +95,58 @@ describe("ProposeQuoteContentHandler", () => {
     expect(text).toMatch(/3 assumptions/);
   });
 
+  it("passes optional traceability fields through to storeQuoteProposals", async () => {
+    const storeQuoteProposals = jest.fn(async () => ({
+      message: { id: "msg" },
+      proposals: [
+        {
+          index: 0,
+          quoteId: "q-1",
+          sourceTenderEstimateId: "est-1",
+          costLines: [
+            {
+              label: "Demo",
+              description: "d",
+              sourceEstimateLineType: "EstimateLabourLine",
+              sourceEstimateLineId: "ell-42"
+            }
+          ],
+          status: "pending"
+        }
+      ]
+    }));
+    const handler = new ProposeQuoteContentHandler({ storeQuoteProposals } as never);
+    await handler.execute(
+      {
+        quoteId: "q-1",
+        sourceTenderEstimateId: "est-1",
+        costLines: [
+          {
+            label: "Demo",
+            description: "d",
+            sourceEstimateLineType: "EstimateLabourLine",
+            sourceEstimateLineId: "ell-42"
+          }
+        ]
+      },
+      CTX
+    );
+    expect(storeQuoteProposals).toHaveBeenCalledWith(
+      "conv-1",
+      "toolu_X",
+      expect.objectContaining({
+        quoteId: "q-1",
+        sourceTenderEstimateId: "est-1",
+        costLines: [
+          expect.objectContaining({
+            sourceEstimateLineType: "EstimateLabourLine",
+            sourceEstimateLineId: "ell-42"
+          })
+        ]
+      })
+    );
+  });
+
   it("propagates errors from the proposals service", async () => {
     const storeQuoteProposals = jest.fn(async () => {
       throw new Error("DB down");

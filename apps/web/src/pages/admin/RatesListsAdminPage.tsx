@@ -34,6 +34,7 @@ type RateTableSummary = {
   subcontractorType: string | null;
   supplierId: string | null;
   isSystem: boolean;
+  isReference: boolean;
   columns: RateColumn[];
 };
 
@@ -258,7 +259,10 @@ function RateTablesPanel() {
                       cursor: "pointer"
                     }}
                   >
-                    <div>{t.name}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span>{t.name}</span>
+                      {t.isReference ? <ReferenceBadge /> : null}
+                    </div>
                     <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
                       {t.category === "SUBCONTRACTOR" ? "Sub / supplier" : "Initial Services"} · {t.slug}
                     </div>
@@ -376,14 +380,19 @@ function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged
       <div className="s7-card">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
           <div>
-            <h2 className="s7-type-section-heading" style={{ marginTop: 0, marginBottom: 4 }}>
-              {table.name}
+            <h2
+              className="s7-type-section-heading"
+              style={{ marginTop: 0, marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}
+            >
+              <span>{table.name}</span>
+              {table.isReference ? <ReferenceBadge /> : null}
             </h2>
             <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
               slug <code>{table.slug}</code> ·{" "}
               {table.category === "SUBCONTRACTOR" ? "Subcontractor / supplier" : "Initial Services"}
               {table.subcontractorType ? ` · ${table.subcontractorType}` : ""}
               {table.isSystem ? " · system" : ""}
+              {table.isReference ? " · reference (excluded from tender pricing)" : ""}
             </div>
             {table.description ? (
               <p style={{ marginTop: 8, color: "var(--text-muted)" }}>{table.description}</p>
@@ -589,6 +598,26 @@ function ColumnsCard({
         </div>
       </div>
     </div>
+  );
+}
+
+function ReferenceBadge() {
+  return (
+    <span
+      title="Reference table — resolvable by calculators but excluded from tender rate-set snapshots."
+      style={{
+        padding: "2px 8px",
+        borderRadius: 999,
+        background: "rgba(59,130,246,0.12)",
+        color: "#2563eb",
+        fontSize: 11,
+        fontWeight: 600,
+        letterSpacing: 0.2,
+        textTransform: "uppercase"
+      }}
+    >
+      Reference
+    </span>
   );
 }
 

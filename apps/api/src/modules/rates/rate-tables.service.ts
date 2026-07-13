@@ -56,6 +56,7 @@ export class RateTablesService {
         subcontractorType: dto.subcontractorType?.trim() || null,
         supplierId: dto.supplierId ?? null,
         isSystem: dto.isSystem ?? false,
+        isReference: dto.isReference ?? false,
         createdById: actorId,
         updatedById: actorId
       }
@@ -72,6 +73,7 @@ export class RateTablesService {
         subcontractorType: dto.subcontractorType?.trim() ?? undefined,
         supplierId: dto.supplierId ?? undefined,
         isSystem: dto.isSystem,
+        isReference: dto.isReference,
         updatedById: actorId
       }
     });

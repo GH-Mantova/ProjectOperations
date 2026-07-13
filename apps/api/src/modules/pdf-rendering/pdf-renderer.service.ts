@@ -149,6 +149,11 @@ export class PdfRendererService implements OnModuleDestroy {
       }
     }
 
+    const cacheDir = process.env.PUPPETEER_CACHE_DIR?.trim() || "(unset)";
+    this.logger.log(
+      `Chromium launch: executablePath=${executablePath ?? "(puppeteer default)"} PUPPETEER_CACHE_DIR=${cacheDir}`,
+    );
+
     try {
       const browser = await puppeteer.launch(
         executablePath ? { ...LAUNCH_ARGS, executablePath } : LAUNCH_ARGS,
@@ -161,7 +166,9 @@ export class PdfRendererService implements OnModuleDestroy {
 
       return browser;
     } catch (err) {
-      throw new PdfRenderError("Failed to launch Chromium", err);
+      const cause = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Chromium launch failed: ${cause}`);
+      throw new PdfRenderError(`Failed to launch Chromium: ${cause}`, err);
     }
   }
 

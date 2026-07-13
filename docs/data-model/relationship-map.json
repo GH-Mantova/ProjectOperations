@@ -2,8 +2,8 @@
   "_generator": "scripts/data-model/build-relationship-map.mjs",
   "_doNotEdit": "Regenerated from schema.prisma. Do not hand-edit.",
   "generatedFrom": "apps/api/prisma/schema.prisma",
-  "schemaSha256": "cde10760d654aa526e56f64d5abdff346225bbe6d6f4316da163b98fd3282ed2",
-  "modelCount": 192,
+  "schemaSha256": "dd365e9f105f063f18e2a07f83d8541313aeaed801e679bd42eb82fa12cf5e37",
+  "modelCount": 193,
   "enumCount": 23,
   "edgeCount": 288,
   "domains": {
@@ -162,6 +162,7 @@
       "Notification",
       "NotificationTriggerConfig",
       "Permission",
+      "PermissionModule",
       "Persona",
       "PersonaCompanyInstruction",
       "PilotFeedback",
@@ -21482,6 +21483,30 @@
           "isUpdatedAt": false
         },
         {
+          "name": "label",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "isHighRisk",
+          "dbColumn": "is_high_risk",
+          "type": "Boolean",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
           "name": "createdAt",
           "dbColumn": "created_at",
           "type": "DateTime",
@@ -21544,6 +21569,63 @@
           "fk": "permissionId"
         }
       ]
+    },
+    "PermissionModule": {
+      "name": "PermissionModule",
+      "domain": "Platform",
+      "dbTable": "permission_modules",
+      "fields": [
+        {
+          "name": "name",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": true,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "label",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "createdAt",
+          "dbColumn": "created_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "updatedAt",
+          "dbColumn": "updated_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": true
+        }
+      ],
+      "relations": [],
+      "referencedBy": []
     },
     "Persona": {
       "name": "Persona",

@@ -8581,6 +8581,18 @@
           "filterable": false,
           "aggregations": []
         },
+        "label": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "isHighRisk": {
+          "role": "filter",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
         "createdAt": {
           "role": "system",
           "label": null,
@@ -8594,6 +8606,38 @@
           "aggregations": []
         },
         "rolePermissions": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        }
+      }
+    },
+    "PermissionModule": {
+      "domain": "Platform",
+      "wizardVisible": false,
+      "label": null,
+      "reviewed": false,
+      "fields": {
+        "name": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "label": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "createdAt": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "updatedAt": {
           "role": "system",
           "label": null,
           "filterable": false,

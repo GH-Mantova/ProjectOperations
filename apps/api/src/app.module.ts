@@ -15,6 +15,7 @@ import { AuthorizationModule } from "./modules/authorization/authorization.modul
 import { DocumentsModule } from "./modules/documents/documents.module";
 import { EmailModule } from "./modules/email/email.module";
 import { ClientQuotesModule } from "./modules/client-quotes/client-quotes.module";
+import { CompanyProfileModule } from "./modules/company-profile/company-profile.module";
 import { EstimateExportModule } from "./modules/estimate-export/estimate-export.module";
 import { EstimatesModule } from "./modules/estimates/estimates.module";
 import { FormsModule } from "./modules/forms/forms.module";
@@ -82,6 +83,7 @@ import { ClientVersionsModule } from "./modules/client-versions/client-versions.
     AuditModule,
     DocumentsModule,
     ClientQuotesModule,
+    CompanyProfileModule,
     EstimateExportModule,
     EstimatesModule,
     PdfRenderingModule,

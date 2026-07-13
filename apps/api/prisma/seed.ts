@@ -19,6 +19,7 @@ import {
   seedSafetyDemos
 } from "./seed-initial-services";
 import { seedFormTemplates } from "./seed-form-templates";
+import { seedCompanyProfile } from "./seed-company-profile";
 import { SCOPE_CARD_DEFAULTS } from "../src/modules/tendering/scope/card-defaults";
 
 const databaseUrl =
@@ -3678,6 +3679,9 @@ async function main() {
   await seedNotificationTriggerConfigs(prisma);
   await seedPersonaRegistry(prisma);
   await seedPublicHolidays(prisma);
+  // CompanyProfile singleton + v1 legal documents. Insert-if-absent so a
+  // manual admin edit survives re-seed (CP-08 discipline).
+  await seedCompanyProfile(prisma);
 }
 
 async function seedUserDashboards(prisma: PrismaClient) {

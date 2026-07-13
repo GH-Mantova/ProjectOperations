@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import type { Prisma, RateColumn } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { AuditService } from "../audit/audit.service";
 import { RateValidationService } from "./rate-validation.service";
 import type { CreateRateTableDto } from "./dto/create-rate-table.dto";
 import type { UpdateRateTableDto } from "./dto/update-rate-table.dto";
@@ -16,7 +17,8 @@ import type { CreateRateRowDto, UpdateRateRowDto } from "./dto/rate-row.dto";
 export class RateTablesService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly validation: RateValidationService
+    private readonly validation: RateValidationService,
+    private readonly auditService: AuditService
   ) {}
 
   listTables() {
@@ -81,13 +83,45 @@ export class RateTablesService {
 
   /**
    * Whole-table delete is restricted at the controller (rates.manage plus a
-   * hard admin check). Rows cascade — this is a genuine hard delete because
-   * R0 has no live consumers of the flexible model yet. Once R1+ routes real
-   * pricing through here, switch to soft-delete via the authority seam.
+   * hard admin check). Refuses if the table still holds rows (they would
+   * cascade and vanish silently) or if any TenderRateSet snapshot still
+   * references the table (compliance / historical pricing). Every successful
+   * delete writes an AuditLog row with the table payload.
    */
-  async deleteTable(id: string) {
-    await this.getTable(id);
+  async deleteTable(id: string, actorId?: string) {
+    const existing = await this.getTable(id);
+    const rowCount = await this.prisma.rateRow.count({ where: { rateTableId: id } });
+    if (rowCount > 0) {
+      throw new ConflictException(
+        `Rate table has ${rowCount} row(s). Deactivate rows (isActive = false) instead — deleting the table would cascade and orphan snapshot references.`
+      );
+    }
+    const snapshotCount = await this.prisma.tenderRateEntry.count({
+      where: { rateTableId: id }
+    });
+    if (snapshotCount > 0) {
+      throw new ConflictException(
+        `Rate table is referenced by ${snapshotCount} locked tender rate-set entry(ies). Unlock those tenders before deleting the table.`
+      );
+    }
     await this.prisma.rateTable.delete({ where: { id } });
+    await this.auditService.write({
+      actorId,
+      action: "rateTable.delete",
+      entityType: "RateTable",
+      entityId: id,
+      metadata: {
+        name: existing.name,
+        slug: existing.slug,
+        description: existing.description,
+        category: existing.category,
+        subcontractorType: existing.subcontractorType,
+        supplierId: existing.supplierId,
+        isSystem: existing.isSystem,
+        isReference: existing.isReference,
+        columnCount: existing.columns?.length ?? 0
+      }
+    });
     return { deleted: true };
   }
 
@@ -170,12 +204,42 @@ export class RateTablesService {
     });
   }
 
-  async deleteColumn(tableId: string, columnId: string) {
+  /**
+   * Hard-delete a column. Refuses if the parent table still holds any rows —
+   * row cells key on column names, so pulling a column silently orphans data
+   * in every existing RateRow.cells JSON. Every successful delete writes an
+   * AuditLog row with the column payload.
+   */
+  async deleteColumn(tableId: string, columnId: string, actorId?: string) {
     const existing = await this.prisma.rateColumn.findUnique({ where: { id: columnId } });
     if (!existing || existing.rateTableId !== tableId) {
       throw new NotFoundException(`Column "${columnId}" not on this table.`);
     }
+    const rowCount = await this.prisma.rateRow.count({ where: { rateTableId: tableId } });
+    if (rowCount > 0) {
+      throw new ConflictException(
+        `Cannot delete column while the table has ${rowCount} row(s) — cell keys reference the column and would be orphaned. Deactivate rows first.`
+      );
+    }
     await this.prisma.rateColumn.delete({ where: { id: columnId } });
+    await this.auditService.write({
+      actorId,
+      action: "rateColumn.delete",
+      entityType: "RateColumn",
+      entityId: columnId,
+      metadata: {
+        rateTableId: existing.rateTableId,
+        name: existing.name,
+        dataType: existing.dataType,
+        role: existing.role,
+        unit: existing.unit,
+        listSlug: existing.listSlug,
+        required: existing.required,
+        min: existing.min?.toString() ?? null,
+        max: existing.max?.toString() ?? null,
+        sortOrder: existing.sortOrder
+      }
+    });
     return { deleted: true };
   }
 

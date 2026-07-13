@@ -10,6 +10,10 @@ import {
   metricsForSource,
   parseCustomConfig
 } from "../customWidget";
+import {
+  JOB_STATUSES,
+  PROJECT_STATUSES
+} from "../../constants/statuses";
 import { WIDGET_BY_TYPE } from "../widgetRegistry";
 
 describe("customWidget allowlist", () => {
@@ -110,6 +114,54 @@ describe("metric aggregation", () => {
     expect(draft?.label).toBe("Identified");
     expect(submitted?.value).toBe(2);
     expect(submitted?.label).toBe("Submitted");
+  });
+});
+
+describe("status catalogue anti-drift (S3-014)", () => {
+  // Keep this list in the test file — the web app does not import Prisma
+  // types. If Prisma `enum ProjectStatus` changes, this test fails and the
+  // shared catalogue in `constants/statuses.ts` must be updated in the same
+  // PR that runs the migration.
+  const EXPECTED_PROJECT_STATUSES = [
+    "MOBILISING",
+    "ACTIVE",
+    "PRACTICAL_COMPLETION",
+    "DEFECTS",
+    "CLOSED"
+  ];
+  // Mirrors the values `Job.status` is written with by the API (default
+  // "PLANNING" on create; PLANNING | ACTIVE | ON_HOLD | COMPLETE across the
+  // job UIs). No PENDING / CANCELLED — those never reach a Job row.
+  const EXPECTED_JOB_STATUSES = ["PLANNING", "ACTIVE", "ON_HOLD", "COMPLETE"];
+
+  it("projects catalogue matches the ProjectStatus enum", () => {
+    expect([...PROJECT_STATUSES]).toEqual(EXPECTED_PROJECT_STATUSES);
+  });
+
+  it("jobs catalogue matches the statuses the API writes", () => {
+    expect([...JOB_STATUSES]).toEqual(EXPECTED_JOB_STATUSES);
+  });
+
+  it("projects data source uses the shared catalogue (no COMPLETE, has CLOSED)", () => {
+    const projects = DATA_SOURCE_BY_KEY.projects;
+    expect(projects.statusOptions).toEqual(EXPECTED_PROJECT_STATUSES);
+    expect(projects.statusOptions).not.toContain("COMPLETE");
+    expect(projects.statusOptions).toContain("CLOSED");
+    for (const key of EXPECTED_PROJECT_STATUSES) {
+      expect(projects.statusLabels[key]).toBeTruthy();
+    }
+    expect(projects.statusLabels.COMPLETE).toBeUndefined();
+  });
+
+  it("jobs data source uses the shared catalogue (has PLANNING, no dead chips)", () => {
+    const jobs = DATA_SOURCE_BY_KEY.jobs;
+    expect(jobs.statusOptions).toEqual(EXPECTED_JOB_STATUSES);
+    expect(jobs.statusOptions).toContain("PLANNING");
+    expect(jobs.statusOptions).not.toContain("PENDING");
+    expect(jobs.statusOptions).not.toContain("CANCELLED");
+    for (const key of EXPECTED_JOB_STATUSES) {
+      expect(jobs.statusLabels[key]).toBeTruthy();
+    }
   });
 });
 

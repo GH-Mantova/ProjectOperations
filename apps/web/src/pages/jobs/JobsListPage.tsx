@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { JOB_STATUS_LABELS } from "../../constants/statuses";
 import { progressPercent } from "./jobsListLogic";
 
 type JobListItem = {
@@ -26,12 +27,7 @@ type JobListResponse = {
   pageSize: number;
 };
 
-const STATUS_LABEL: Record<string, string> = {
-  PLANNING: "Planning",
-  ACTIVE: "Active",
-  ON_HOLD: "On hold",
-  COMPLETE: "Complete"
-};
+const STATUS_LABEL: Record<string, string> = JOB_STATUS_LABELS;
 
 const STATUS_CLASS: Record<string, string> = {
   PLANNING: "s7-badge s7-badge--info",

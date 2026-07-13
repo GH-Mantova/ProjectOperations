@@ -255,6 +255,29 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+// PR-sharepoint-folder-mappings — Which SharePoint folder each business
+// entity's documents land in. Data, not code: a super-user edits the
+// folderPath in the admin UI without a redeploy. entityType is a Prisma
+// enum (not free text) because it drives module lookup — a rename here
+// must break the build, not silently break document filing.
+enum SharePointMappingEntityType {
+  TENDER
+  JOB
+}
+
+model SharePointFolderMapping {
+  id          String                      @id @default(cuid())
+  entityType  SharePointMappingEntityType @unique @map("entity_type")
+  folderPath  String                      @map("folder_path")
+  isActive    Boolean                     @default(true) @map("is_active")
+  createdById String?                     @map("created_by_id")
+  updatedById String?                     @map("updated_by_id")
+  createdAt   DateTime                    @default(now()) @map("created_at")
+  updatedAt   DateTime                    @updatedAt @map("updated_at")
+
+  @@map("sharepoint_folder_mappings")
+}
+
 model SharePointFolderLink {
   id               String               @id @default(cuid())
   siteId           String               @map("site_id")

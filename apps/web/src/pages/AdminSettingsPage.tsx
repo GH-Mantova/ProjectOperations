@@ -108,6 +108,7 @@ export function AdminSettingsPage() {
                 body="SharePoint tenant, site, and library bindings plus the root folder tree used by Project Operations. SHAREPOINT_MODE is set by environment."
               />
               <SharePointTestPanel />
+              <SharePointFolderMappingsPanel />
               <XeroPanel />
             </>
           )}
@@ -610,6 +611,191 @@ function SharePointTestPanel() {
           {result.message ? <div style={{ marginTop: 4 }}>{result.message}</div> : null}
         </div>
       ) : null}
+    </section>
+  );
+}
+
+// SharePoint folder mappings — DB-backed, super-user-only. Same idea as
+// the Rates admin: which folder each entity's documents live in is a
+// business decision, not a deployment setting. Server enforces
+// super-user; this hides the panel from everyone else so it doesn't
+// look editable when it isn't.
+type FolderMapping = {
+  id: string;
+  entityType: "TENDER" | "JOB";
+  folderPath: string;
+  isActive: boolean;
+  updatedAt: string;
+};
+
+const ENTITY_LABELS: Record<FolderMapping["entityType"], string> = {
+  TENDER: "Tender",
+  JOB: "Job"
+};
+
+function SharePointFolderMappingsPanel() {
+  const { authFetch, user } = useAuth();
+  const isSuperUser = user?.isSuperUser === true;
+  const [mappings, setMappings] = useState<FolderMapping[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{ entityType: FolderMapping["entityType"]; path: string } | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [flash, setFlash] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!isSuperUser) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await authFetch("/admin/sharepoint-folder-mappings");
+      if (!response.ok) throw new Error(await response.text());
+      setMappings((await response.json()) as FolderMapping[]);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, [authFetch, isSuperUser]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  if (!isSuperUser) return null;
+
+  const save = async () => {
+    if (!editing) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const response = await authFetch(
+        `/admin/sharepoint-folder-mappings/${editing.entityType}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ folderPath: editing.path })
+        }
+      );
+      if (!response.ok) {
+        // Server rejects an invalid path with a specific message naming
+        // the folder that wasn't found — surface it verbatim so the
+        // admin can see what's wrong instead of a generic error.
+        const message = await response.text();
+        throw new Error(message);
+      }
+      setFlash(`Updated ${ENTITY_LABELS[editing.entityType]} folder path.`);
+      setEditing(null);
+      await load();
+    } catch (err) {
+      setSaveError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="s7-card" style={{ marginTop: 12 }}>
+      <h2 className="s7-type-section-heading" style={{ marginTop: 0 }}>SharePoint folder mappings</h2>
+      <p style={{ color: "var(--text-muted)", margin: "0 0 10px" }}>
+        Which folder each entity's documents live in. Edit the path and Save — the change is
+        validated against SharePoint and takes effect immediately. No redeploy.
+      </p>
+      {loading ? <p style={{ color: "var(--text-muted)" }}>Loading…</p> : null}
+      {error ? <p style={{ color: "var(--status-danger)" }}>{error}</p> : null}
+      {flash ? <p style={{ color: "#16a34a", margin: "0 0 10px" }}>{flash}</p> : null}
+      {!loading && mappings.length > 0 ? (
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", padding: "6px 8px", borderBottom: "1px solid var(--divider)" }}>Entity</th>
+              <th style={{ textAlign: "left", padding: "6px 8px", borderBottom: "1px solid var(--divider)" }}>Folder path</th>
+              <th style={{ textAlign: "left", padding: "6px 8px", borderBottom: "1px solid var(--divider)", width: 100 }}>Status</th>
+              <th style={{ padding: "6px 8px", borderBottom: "1px solid var(--divider)", width: 80 }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {mappings.map((m) => {
+              const isEditing = editing?.entityType === m.entityType;
+              return (
+                <tr key={m.id}>
+                  <td style={{ padding: "8px", borderBottom: "1px solid var(--divider)" }}>{ENTITY_LABELS[m.entityType]}</td>
+                  <td style={{ padding: "8px", borderBottom: "1px solid var(--divider)" }}>
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        value={editing!.path}
+                        onChange={(e) => setEditing({ entityType: m.entityType, path: e.target.value })}
+                        style={{ width: "100%", padding: 4, fontFamily: "monospace", fontSize: 12 }}
+                        disabled={saving}
+                      />
+                    ) : (
+                      <code style={{ fontSize: 12 }}>{m.folderPath}</code>
+                    )}
+                  </td>
+                  <td style={{ padding: "8px", borderBottom: "1px solid var(--divider)" }}>
+                    {m.isActive ? (
+                      <span style={{ color: "#16a34a" }}>Active</span>
+                    ) : (
+                      <span style={{ color: "var(--text-muted)" }}>Inactive</span>
+                    )}
+                  </td>
+                  <td style={{ padding: "8px", borderBottom: "1px solid var(--divider)", textAlign: "right" }}>
+                    {isEditing ? (
+                      <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
+                        <button
+                          type="button"
+                          className="s7-btn s7-btn--primary"
+                          onClick={() => void save()}
+                          disabled={saving}
+                          style={{ padding: "4px 10px", fontSize: 12 }}
+                        >
+                          {saving ? "Saving…" : "Save"}
+                        </button>
+                        <button
+                          type="button"
+                          className="s7-btn s7-btn--ghost"
+                          onClick={() => {
+                            setEditing(null);
+                            setSaveError(null);
+                          }}
+                          disabled={saving}
+                          style={{ padding: "4px 10px", fontSize: 12 }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="s7-btn s7-btn--ghost"
+                        onClick={() => {
+                          setEditing({ entityType: m.entityType, path: m.folderPath });
+                          setFlash(null);
+                          setSaveError(null);
+                        }}
+                        style={{ padding: "4px 10px", fontSize: 12 }}
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      ) : null}
+      {saveError ? (
+        <p style={{ color: "var(--status-danger)", marginTop: 10, fontSize: 12 }}>{saveError}</p>
+      ) : null}
+      <p style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 12, marginBottom: 0 }}>
+        Paths are relative to the SharePoint library. A path that doesn't exist in the library will
+        be rejected — create the folder in SharePoint first.
+      </p>
     </section>
   );
 }

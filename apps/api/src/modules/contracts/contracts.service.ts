@@ -119,6 +119,15 @@ export class ContractsService {
     if (!project) throw new NotFoundException("Project not found.");
     if (project.contract) throw new ConflictException("This project already has a contract.");
     const contractNumber = await this.nextContractNumber();
+    // Pin the currently-active T&C version at contract creation. Editing
+    // T&Cs later creates a new version; this FK still points at the old
+    // one so the executed contract forever renders the terms in force
+    // when it was signed. See ADR: legal-doc-versioning.
+    const activeTerms = await this.prisma.companyLegalDocument.findFirst({
+      where: { type: "TERMS_AND_CONDITIONS", isActive: true },
+      orderBy: { version: "desc" },
+      select: { id: true }
+    });
     return this.prisma.contract.create({
       data: {
         projectId: dto.projectId,
@@ -128,7 +137,8 @@ export class ContractsService {
         startDate: dto.startDate ? new Date(dto.startDate) : null,
         endDate: dto.endDate ? new Date(dto.endDate) : null,
         notes: dto.notes ?? null,
-        createdById: actorId
+        createdById: actorId,
+        issuedTermsDocumentId: activeTerms?.id ?? null
       },
       include: { project: { include: { client: true } } }
     });

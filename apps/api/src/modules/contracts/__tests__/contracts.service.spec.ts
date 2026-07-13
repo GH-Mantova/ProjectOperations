@@ -151,6 +151,9 @@ function buildService(extraPrisma: Record<string, unknown> = {}) {
     claimNumberSequence: {
       upsert: jest.fn().mockResolvedValue({ id: 1, lastNumber: 1 })
     },
+    companyLegalDocument: {
+      findFirst: jest.fn().mockResolvedValue(null)
+    },
     $transaction: jest.fn().mockImplementation((input: unknown) => {
       if (typeof input === "function") {
         return (input as (tx: unknown) => Promise<unknown>)(prisma);

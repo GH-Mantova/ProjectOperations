@@ -64,6 +64,7 @@ import { FieldSafetyPage } from "./pages/field/FieldSafetyPage";
 import { TimesheetApprovalPage } from "./pages/timesheets/TimesheetApprovalPage";
 import { UserProfilePage } from "./pages/account/UserProfilePage";
 import { AdminSettingsPage } from "./pages/AdminSettingsPage";
+import { AdminCompanyPage } from "./pages/admin/AdminCompanyPage";
 import { AiSettingsPage } from "./personas/pages/AiSettingsPage";
 import { ContractsListPage } from "./pages/contracts/ContractsListPage";
 import { ContractDetailPage } from "./pages/contracts/ContractDetailPage";
@@ -225,6 +226,7 @@ export function App() {
             <Route path="/admin/audit" element={<AuditLogsPage />} />
             <Route path="/admin/platform" element={<PlatformPage />} />
             <Route path="/admin/settings" element={<AdminSettingsPage />} />
+            <Route path="/admin/company" element={<AdminCompanyPage />} />
             <Route path="/admin/ai-settings" element={<AiSettingsPage />} />
             <Route path="/contracts" element={<ContractsListPage />} />
             <Route path="/contracts/:id" element={<ContractDetailPage />} />

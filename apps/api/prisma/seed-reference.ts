@@ -604,6 +604,10 @@ export async function seedReferenceData(
   await seedNotificationTriggerConfigs(prisma);
   await seedPersonaRegistry(prisma);
   await seedProcurementConfig(prisma);
+  // CompanyProfile singleton — insert-if-absent so manual admin edits
+  // survive re-seed (CP-08 discipline).
+  const { seedCompanyProfile } = await import("./seed-company-profile.js");
+  await seedCompanyProfile(prisma);
 }
 
 /**

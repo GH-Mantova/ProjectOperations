@@ -62,8 +62,10 @@ export async function seedOperationalRoles(prisma: PrismaClient) {
     "directory.view"
   ];
   const viewPermissions = await prisma.permission.findMany({ where: { code: { in: viewPermissionCodes } } });
-  await prisma.rolePermission.deleteMany({ where: { roleId: viewerRole.id } });
+  // S3-016 (Marco, 2026-07-13): additive-only — the seed grants baseline
+  // permissions but never revokes what an admin set in /admin/settings.
   await prisma.rolePermission.createMany({
+    skipDuplicates: true,
     data: viewPermissions.map((permission) => ({ roleId: viewerRole.id, permissionId: permission.id }))
   });
 
@@ -84,9 +86,14 @@ export async function seedOperationalRoles(prisma: PrismaClient) {
       create: { name, description, isSystem: true }
     });
     const perms = await prisma.permission.findMany({ where: { code: { in: permissionCodes } } });
-    await prisma.rolePermission.deleteMany({ where: { roleId: role.id } });
+    // S3-016 (Marco, 2026-07-13): additive-only. This function used to
+    // deleteMany every RolePermission for the role and rebuild — which
+    // silently reverted deliberate grants made in /admin/settings (e.g.
+    // Senior Estimator → rates.manage for Raj). We now grant baseline
+    // permissions without deleting the admin's overlay.
     if (perms.length > 0) {
       await prisma.rolePermission.createMany({
+        skipDuplicates: true,
         data: perms.map((p) => ({ roleId: role.id, permissionId: p.id }))
       });
     }

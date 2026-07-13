@@ -191,12 +191,34 @@ model Permission {
   code            String           @unique
   description     String
   module          String
+  // Human-readable, action-first label ("Edit rates and price lists"). The
+  // `code` remains the immutable identifier that guards check; `label` is
+  // the primary line the operator sees in /admin/settings.
+  label           String           @default("")
+  // Marks permissions that grant an override, bypass, or elevated write
+  // (e.g. compliance.admin, platform.admin). Frontend uses this to add a
+  // confirm step on grant. Data-driven — no hardcoded list.
+  isHighRisk      Boolean          @default(false) @map("is_high_risk")
   createdAt       DateTime         @default(now()) @map("created_at")
   updatedAt       DateTime         @updatedAt @map("updated_at")
   rolePermissions RolePermission[]
 
   @@index([module])
   @@map("permissions")
+}
+
+// Display names for permission modules. Kept as a lookup (not a hardcoded
+// frontend map, not a duplicated column on Permission) so an operator can
+// reword a module title once and it propagates to every permission in it.
+// `name` matches `Permission.module` by convention; no hard FK, so an
+// unknown module falls back to its raw string.
+model PermissionModule {
+  name      String   @id
+  label     String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("permission_modules")
 }
 
 model UserRole {

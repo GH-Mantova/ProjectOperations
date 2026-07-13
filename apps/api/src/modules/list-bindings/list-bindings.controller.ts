@@ -83,6 +83,6 @@ export class ListBindingsController {
     if (!actor.permissions.includes(PLATFORM_ADMIN)) {
       throw new ForbiddenException("Binding delete is restricted to platform admins.");
     }
-    return this.service.remove(id);
+    return this.service.remove(id, actor.sub);
   }
 }

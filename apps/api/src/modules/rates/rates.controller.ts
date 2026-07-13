@@ -77,7 +77,7 @@ export class RatesController {
     if (!actor.permissions.includes(PLATFORM_ADMIN)) {
       throw new ForbiddenException("Whole-table delete is restricted to platform admins.");
     }
-    return this.tables.deleteTable(id);
+    return this.tables.deleteTable(id, actor.sub);
   }
 
   // ── Columns ──────────────────────────────────────────────────────────
@@ -109,8 +109,16 @@ export class RatesController {
   @RequirePermissions("rates.manage")
   @ApiOperation({ summary: "Delete a rate column." })
   @ApiResponse({ status: 200, description: "{ deleted: true }" })
-  deleteColumn(@Param("tableId") tableId: string, @Param("columnId") columnId: string) {
-    return this.tables.deleteColumn(tableId, columnId);
+  @ApiResponse({
+    status: 409,
+    description: "Table still has rows; deactivate them first (cell keys reference the column)."
+  })
+  deleteColumn(
+    @Param("tableId") tableId: string,
+    @Param("columnId") columnId: string,
+    @CurrentUser() actor: AuthenticatedUser
+  ) {
+    return this.tables.deleteColumn(tableId, columnId, actor.sub);
   }
 
   // ── Rows ─────────────────────────────────────────────────────────────

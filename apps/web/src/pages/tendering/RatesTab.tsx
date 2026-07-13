@@ -1,6 +1,16 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction
+} from "react";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { FilterableRateGrid } from "../../components/rates/FilterableRateGrid";
+import type { RateGridColumn, RateGridRow } from "../../components/rates/rateGridModel";
 import {
   formatKeyColumnHeader,
   getRateSet,
@@ -218,127 +228,202 @@ export function RatesTab({ tenderId, canManage }: { tenderId: string; canManage:
           groups={set.groups}
           selectedKey={selectedKey}
           onSelect={setSelectedKey}
-          renderDetail={(group) => {
-            const hasKeyCols = group.keyColumns.length > 0;
-            return (
-              <>
-                <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>{group.tableName}</h3>
-                <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-                <thead>
-                  <tr style={{ textAlign: "left", borderBottom: "1px solid var(--border-subtle, #E5E7EB)" }}>
-                    {hasKeyCols ? (
-                      group.keyColumns.map((col) => (
-                        <th key={col.name} style={{ padding: "8px 12px" }}>
-                          {formatKeyColumnHeader(col.name, col.unit)}
-                        </th>
-                      ))
-                    ) : (
-                      <>
-                        <th style={{ padding: "8px 12px" }}>Rate</th>
-                        <th style={{ padding: "8px 12px" }}>Unit</th>
-                      </>
-                    )}
-                    <th style={{ padding: "8px 12px", textAlign: "right" }}>Original</th>
-                    <th style={{ padding: "8px 12px", textAlign: "right", width: 180 }}>Override</th>
-                    <th style={{ padding: "8px 12px", width: 80 }} />
-                  </tr>
-                </thead>
-                <tbody>
-                  {group.entries.map((entry) => {
-                    const draft = drafts[entry.id];
-                    const draftValue = draft ?? (entry.overrideValue ?? "");
-                    const overrideColor = entry.overridden ? "#EA580C" : undefined;
-                    return (
-                      <tr
-                        key={entry.id}
-                        data-testid={`rates-entry-${entry.key}`}
-                        style={{ borderBottom: "1px solid var(--border-subtle, #F1F5F9)" }}
-                      >
-                        {hasKeyCols ? (
-                          group.keyColumns.map((col, i) => (
-                            <td key={col.name} style={{ padding: "8px 12px", color: overrideColor }}>
-                              {entry.keyValues[i] || "—"}
-                            </td>
-                          ))
-                        ) : (
-                          <>
-                            <td style={{ padding: "8px 12px", color: overrideColor }}>{entry.label}</td>
-                            <td style={{ padding: "8px 12px" }}>{entry.unit ?? "—"}</td>
-                          </>
-                        )}
-                        <td style={{ padding: "8px 12px", textAlign: "right" }}>
-                          {formatCurrency(entry.originalValue, entry.unit)}
-                        </td>
-                        <td style={{ padding: "8px 12px", textAlign: "right" }}>
-                          {canManage ? (
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={draftValue}
-                              onChange={(e) =>
-                                setDrafts((prev) => ({ ...prev, [entry.id]: e.target.value }))
-                              }
-                              onBlur={() => {
-                                if (draft === undefined) return;
-                                const trimmed = draft.trim();
-                                if (trimmed === "") {
-                                  if (entry.overrideValue !== null) void patchEntry(entry.id, null);
-                                  setDrafts((prev) => {
-                                    const next = { ...prev };
-                                    delete next[entry.id];
-                                    return next;
-                                  });
-                                  return;
-                                }
-                                const parsed = Number(trimmed);
-                                if (Number.isNaN(parsed) || parsed < 0) return;
-                                if (String(parsed) === entry.overrideValue) return;
-                                void patchEntry(entry.id, parsed);
-                              }}
-                              style={{
-                                width: 140,
-                                padding: "6px 8px",
-                                border: "1px solid var(--border-subtle, #E5E7EB)",
-                                borderRadius: 6,
-                                textAlign: "right",
-                                color: overrideColor,
-                                fontWeight: entry.overridden ? 600 : 400
-                              }}
-                              data-testid={`rates-entry-input-${entry.key}`}
-                            />
-                          ) : (
-                            <span style={{ color: overrideColor }}>
-                              {entry.overrideValue ? formatCurrency(entry.overrideValue, entry.unit) : "—"}
-                            </span>
-                          )}
-                        </td>
-                        <td style={{ padding: "8px 12px", textAlign: "right" }}>
-                          {canManage && entry.overridden ? (
-                            <button
-                              type="button"
-                              className="s7-btn s7-btn--sm s7-btn--ghost"
-                              onClick={() => void patchEntry(entry.id, null)}
-                              data-testid={`rates-entry-revert-${entry.key}`}
-                              style={{ minHeight: 44 }}
-                            >
-                              Revert
-                            </button>
-                          ) : null}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-                </div>
-              </>
-            );
-          }}
+          renderDetail={(group) => (
+            <>
+              <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>{group.tableName}</h3>
+              <RateGroupGrid
+                group={group}
+                canManage={canManage}
+                drafts={drafts}
+                setDrafts={setDrafts}
+                patchEntry={patchEntry}
+              />
+            </>
+          )}
         />
       )}
     </div>
+  );
+}
+
+function RateGroupGrid({
+  group,
+  canManage,
+  drafts,
+  setDrafts,
+  patchEntry
+}: {
+  group: TenderRateGroup;
+  canManage: boolean;
+  drafts: Record<string, string>;
+  setDrafts: Dispatch<SetStateAction<Record<string, string>>>;
+  patchEntry: (entryId: string, overrideValue: number | null) => Promise<void>;
+}) {
+  const hasKeyCols = group.keyColumns.length > 0;
+
+  const columns = useMemo<RateGridColumn[]>(() => {
+    const keyCols: RateGridColumn[] = hasKeyCols
+      ? group.keyColumns.map((c, idx) => {
+          const numeric = /^\s*-?\d/.test(group.entries[0]?.keyValues[idx] ?? "");
+          return {
+            key: `k${idx}`,
+            label: formatKeyColumnHeader(c.name, c.unit),
+            kind: numeric ? "number" : "text",
+            unit: c.unit,
+            filterable: true,
+            sortable: true,
+            groupable: false
+          } satisfies RateGridColumn;
+        })
+      : [
+          { key: "label", label: "Rate", kind: "text", filterable: true, sortable: true, groupable: false },
+          { key: "unit", label: "Unit", kind: "text", filterable: true, sortable: true, groupable: false }
+        ];
+    const original: RateGridColumn = {
+      key: "original",
+      label: "Original",
+      kind: "currency",
+      filterable: false,
+      sortable: false,
+      groupable: false,
+      align: "right"
+    };
+    const override: RateGridColumn = {
+      key: "override",
+      label: "Override",
+      kind: "currency",
+      filterable: false,
+      sortable: false,
+      groupable: false,
+      align: "right"
+    };
+    return [...keyCols, original, override];
+  }, [group, hasKeyCols]);
+
+  const rows = useMemo<RateGridRow[]>(
+    () =>
+      group.entries.map((entry) => {
+        const values: Record<string, string | number | null> = {};
+        if (hasKeyCols) {
+          group.keyColumns.forEach((_c, idx) => {
+            const raw = entry.keyValues[idx] ?? "";
+            const asNum = Number(raw);
+            values[`k${idx}`] = raw !== "" && Number.isFinite(asNum) ? asNum : raw;
+          });
+        } else {
+          values.label = entry.label;
+          values.unit = entry.unit ?? "";
+        }
+        const origNum = Number(entry.originalValue);
+        values.original = Number.isFinite(origNum) ? origNum : entry.originalValue;
+        const effNum = Number(entry.effectiveValue);
+        values.override = entry.overridden && Number.isFinite(effNum) ? effNum : null;
+
+        const render: Record<string, ReactNode> = {};
+        render.original = formatCurrency(entry.originalValue, entry.unit);
+        render.override = (
+          <OverrideCell
+            entry={entry}
+            canManage={canManage}
+            draft={drafts[entry.id]}
+            setDrafts={setDrafts}
+            patchEntry={patchEntry}
+          />
+        );
+        return { id: entry.id, values, render };
+      }),
+    [group, hasKeyCols, canManage, drafts, setDrafts, patchEntry]
+  );
+
+  return (
+    <FilterableRateGrid
+      columns={columns}
+      rows={rows}
+      groupByKey={null}
+      testIdPrefix="tender-rates"
+      trailingHeader={canManage ? <span aria-hidden /> : undefined}
+      renderTrailing={
+        canManage
+          ? (gridRow) => {
+              const entry = group.entries.find((e) => e.id === gridRow.id);
+              if (!entry || !entry.overridden) return null;
+              return (
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--sm s7-btn--ghost"
+                  onClick={() => void patchEntry(entry.id, null)}
+                  data-testid={`rates-entry-revert-${entry.key}`}
+                  style={{ minHeight: 44 }}
+                >
+                  Revert
+                </button>
+              );
+            }
+          : undefined
+      }
+    />
+  );
+}
+
+function OverrideCell({
+  entry,
+  canManage,
+  draft,
+  setDrafts,
+  patchEntry
+}: {
+  entry: TenderRateEntry;
+  canManage: boolean;
+  draft: string | undefined;
+  setDrafts: Dispatch<SetStateAction<Record<string, string>>>;
+  patchEntry: (entryId: string, overrideValue: number | null) => Promise<void>;
+}) {
+  const overrideColor = entry.overridden ? "#EA580C" : undefined;
+  if (!canManage) {
+    return (
+      <span style={{ color: overrideColor }} data-testid={`rates-entry-${entry.key}`}>
+        {entry.overrideValue ? formatCurrency(entry.overrideValue, entry.unit) : "—"}
+      </span>
+    );
+  }
+  const draftValue = draft ?? (entry.overrideValue ?? "");
+  return (
+    <span data-testid={`rates-entry-${entry.key}`}>
+      <input
+        type="number"
+        step="0.01"
+        min="0"
+        value={draftValue}
+        onChange={(e) => setDrafts((prev) => ({ ...prev, [entry.id]: e.target.value }))}
+        onBlur={() => {
+          if (draft === undefined) return;
+          const trimmed = draft.trim();
+          if (trimmed === "") {
+            if (entry.overrideValue !== null) void patchEntry(entry.id, null);
+            setDrafts((prev) => {
+              const next = { ...prev };
+              delete next[entry.id];
+              return next;
+            });
+            return;
+          }
+          const parsed = Number(trimmed);
+          if (Number.isNaN(parsed) || parsed < 0) return;
+          if (String(parsed) === entry.overrideValue) return;
+          void patchEntry(entry.id, parsed);
+        }}
+        style={{
+          width: 140,
+          padding: "6px 8px",
+          border: "1px solid var(--border-subtle, #E5E7EB)",
+          borderRadius: 6,
+          textAlign: "right",
+          color: overrideColor,
+          fontWeight: entry.overridden ? 600 : 400
+        }}
+        data-testid={`rates-entry-input-${entry.key}`}
+      />
+    </span>
   );
 }
 

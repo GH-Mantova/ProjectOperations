@@ -154,25 +154,34 @@ function parseModelFields(model, modelNames, enumNames) {
 // ---------------------------------------------------------------------------
 
 // Ordered rules: first match wins. Keep specific before generic.
+// "Estimating (Legacy)" is intentionally kept separate from the Quote-side
+// "Estimating" domain — the pending Rates/Lists consolidation (PR #516 line)
+// will merge them; visible separation here IS the documentation of that
+// pending work, not an oversight to collapse.
 const DOMAIN_RULES = [
-  ['Estimating', /^(Cutrite|Rate|EstimateRate|CostLine|Quote|ScopeOfWork|ScopeItem|WasteLine|CuttingLine|CoreHole|MaterialDensity|ProvisionalSum|CostOption|Markup)/],
+  ['Estimating (Legacy)', /^(Estimate|CuttingSheet|CuttingOther)/],
+  ['Estimating', /^(Cutrite|Rate|EstimateRate|CostLine|Quote|Scope|WasteLine|CuttingLine|CoreHole|MaterialDensity|ProvisionalSum|CostOption|Markup)/],
   ['Tendering', /^(Tender|Clarification|FollowUp|PricingBasis|Builder|ClientPackage)/],
-  ['Contracts', /^(Contract|Variation|ProgressClaim|Retention|PaymentClaim)/],
+  ['Contracts', /^(Contract|Variation|ProgressClaim|Retention|PaymentClaim|Claim)/],
+  ['Procurement', /^(Procurement|PurchaseOrder)/],
+  ['Inventory', /^(Stock|Stocktake|ResourceType)/],
   ['Jobs', /^(Job|Shift|Allocation|ResourceAllocation|Timesheet|ClockEvent|JobIssue)/],
   ['Projects', /^(Project|Gantt|Milestone|ScheduleAllocation|WorkPlan)/],
-  ['Scheduler', /^(Schedule|Availability|Leave|Unavailability|Roster)/],
+  ['Scheduler', /^(Schedul|Availability|Leave|Unavailability|Roster)/],
   ['Sites', /^(Site)/],
   ['Assets', /^(Asset|Equipment|Plant|Vehicle)/],
   ['Maintenance', /^(Maintenance|Breakdown|ServiceRecord|Inspection)/],
   ['Forms', /^(Form|Field|Section|Submission|RulesEngine|Prestart|PreStart)/],
   ['Safety', /^(Safety|Incident|Hazard|Swms|SWMS|Toolbox|Injury)/],
   ['Compliance', /^(Compliance|Licence|License|Insurance|Qualification|Qual|CreditApplication|ComplianceAlert|EntityLicence|EntityInsurance)/],
+  ['Authorization', /^(Authority|Approval)/],
   ['Directory', /^(Client|Contact|Subcontractor|Supplier|Prequal|BusinessType)/],
   ['Workers', /^(Worker|Competenc|Skill|Trade|Crew)/],
   ['Documents', /^(Document|SharePoint|File|Attachment|Folder)/],
   ['Dashboards', /^(Dashboard|Widget|UserDashboard|Report)/],
   ['Integrations', /^(Xero|Myob|MYOB|Integration|Calendar|Sync|Portal|ClientPortal)/],
-  ['Platform', /^(User|Role|Permission|Audit|RefreshToken|Notification|GlobalList|PlatformConfig|Setting|Persona|ApiKey|Healthcheck|Session)/],
+  ['Communications', /^(Conversation|Correspondence|InternalMessage|EmailProvider)/],
+  ['Platform', /^(User|Role|Permission|Audit|RefreshToken|Notification|GlobalList|GlobalAI|PlatformConfig|Setting|Persona|ApiKey|Healthcheck|Session|LookupValue|PublicHoliday|SearchEntry|PilotFeedback|ListBinding)/],
 ];
 
 function domainForModel(name) {
@@ -481,8 +490,12 @@ function buildCatalog(graph, existing) {
       };
     }
 
+    // Un-reviewed entries always refresh from the auto-derived domain so
+    // that generator-rule updates propagate. Human edits should be locked
+    // with reviewed:true, not by relying on the merge to preserve stale
+    // values.
     out.models[name] = {
-      domain: before?.domain || m.domain,
+      domain: m.domain,
       wizardVisible: before?.wizardVisible ?? (m.domain !== 'Platform' && m.domain !== 'Unclassified'),
       label: before?.label || null,
       reviewed: false,
@@ -500,7 +513,11 @@ function ensureDir(p) { if (!existsSync(p)) mkdirSync(p, { recursive: true }); }
 
 function main() {
   const text = readFileSync(SCHEMA_PATH, 'utf8');
-  const schemaSha = createHash('sha256').update(text).digest('hex');
+  // Normalize line endings before hashing so the sha is stable across Windows
+  // (CRLF checkout) and Linux CI (LF checkout). Without this the gate self-
+  // fails on the platform that didn't generate the committed JSON.
+  const normalized = text.replace(/\r\n/g, '\n');
+  const schemaSha = createHash('sha256').update(normalized).digest('hex');
   const parsed = parseSchema(text);
   const graph = buildGraph(parsed);
 

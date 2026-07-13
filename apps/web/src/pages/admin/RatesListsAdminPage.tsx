@@ -4,6 +4,8 @@ import { EmptyState, SkeletonList } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
 import { readApiErrorMessage } from "../../lib/api-errors";
+import { FilterableRateGrid } from "../../components/rates/FilterableRateGrid";
+import type { RateGridColumn, RateGridRow } from "../../components/rates/rateGridModel";
 import {
   blankRowCells,
   consumerTypeLabel,
@@ -32,6 +34,7 @@ type RateTableSummary = {
   subcontractorType: string | null;
   supplierId: string | null;
   isSystem: boolean;
+  isReference: boolean;
   columns: RateColumn[];
 };
 
@@ -256,7 +259,10 @@ function RateTablesPanel() {
                       cursor: "pointer"
                     }}
                   >
-                    <div>{t.name}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span>{t.name}</span>
+                      {t.isReference ? <ReferenceBadge /> : null}
+                    </div>
                     <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
                       {t.category === "SUBCONTRACTOR" ? "Sub / supplier" : "Initial Services"} · {t.slug}
                     </div>
@@ -374,14 +380,19 @@ function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged
       <div className="s7-card">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
           <div>
-            <h2 className="s7-type-section-heading" style={{ marginTop: 0, marginBottom: 4 }}>
-              {table.name}
+            <h2
+              className="s7-type-section-heading"
+              style={{ marginTop: 0, marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}
+            >
+              <span>{table.name}</span>
+              {table.isReference ? <ReferenceBadge /> : null}
             </h2>
             <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
               slug <code>{table.slug}</code> ·{" "}
               {table.category === "SUBCONTRACTOR" ? "Subcontractor / supplier" : "Initial Services"}
               {table.subcontractorType ? ` · ${table.subcontractorType}` : ""}
               {table.isSystem ? " · system" : ""}
+              {table.isReference ? " · reference (excluded from tender pricing)" : ""}
             </div>
             {table.description ? (
               <p style={{ marginTop: 8, color: "var(--text-muted)" }}>{table.description}</p>
@@ -590,6 +601,26 @@ function ColumnsCard({
   );
 }
 
+function ReferenceBadge() {
+  return (
+    <span
+      title="Reference table — resolvable by calculators but excluded from tender rate-set snapshots."
+      style={{
+        padding: "2px 8px",
+        borderRadius: 999,
+        background: "rgba(59,130,246,0.12)",
+        color: "#2563eb",
+        fontSize: 11,
+        fontWeight: 600,
+        letterSpacing: 0.2,
+        textTransform: "uppercase"
+      }}
+    >
+      Reference
+    </span>
+  );
+}
+
 function RoleBadge({ role }: { role: RateColumnRole }) {
   const bg = role === "VALUE" ? "rgba(22,163,74,0.12)" : role === "KEY" ? "rgba(0,91,97,0.10)" : "rgba(148,163,184,0.15)";
   const color = role === "VALUE" ? "#16a34a" : role === "KEY" ? "var(--brand-primary, #005B61)" : "#64748b";
@@ -629,6 +660,25 @@ function RowsCard({
 
   const canAdd = columns.length > 0;
 
+  const gridColumns = useMemo<RateGridColumn[]>(
+    () => columns.map((c) => toGridColumn(c)),
+    [columns]
+  );
+
+  const gridRows = useMemo<RateGridRow[]>(
+    () =>
+      rows.map((row) => {
+        const values: Record<string, string | number | null> = {};
+        const render: Record<string, ReactNode> = {};
+        for (const c of columns) {
+          values[c.id] = coerceCellValue(c, row.cells[c.id]);
+          render[c.id] = renderCellDisplay(c, row.cells[c.id]);
+        }
+        return { id: row.id, values, render };
+      }),
+    [rows, columns]
+  );
+
   return (
     <div className="s7-card">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
@@ -651,87 +701,108 @@ function RowsCard({
       ) : rows.length === 0 && !rowDraft ? (
         <EmptyState icon="📊" heading="No rows yet" subtext="Add rows to build this rate table." />
       ) : (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 600 }}>
-            <thead>
-              <tr style={{ borderBottom: "1px solid var(--border, #e5e7eb)", color: "var(--text-muted)" }}>
-                {columns.map((c) => (
-                  <th key={c.id} style={{ textAlign: "left", padding: "6px 8px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      {c.name}
-                      <RoleBadge role={c.role} />
+        <>
+          {rows.length > 0 ? (
+            <FilterableRateGrid
+              columns={gridColumns}
+              rows={gridRows}
+              testIdPrefix="admin-rates"
+              trailingHeader={<span aria-hidden />}
+              renderTrailing={(gridRow) => (
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--ghost s7-btn--sm"
+                  onClick={() => void onDeleteRow(gridRow.id)}
+                  style={{ minHeight: 32 }}
+                >
+                  Delete
+                </button>
+              )}
+            />
+          ) : null}
+          {rowDraft ? (
+            <div
+              style={{
+                marginTop: 12,
+                padding: 12,
+                borderRadius: 6,
+                border: "1px solid var(--border, #e5e7eb)",
+                background: "rgba(254,170,109,0.06)"
+              }}
+            >
+              <div
+                style={{ fontSize: 11, textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 8 }}
+              >
+                New row (draft)
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+                {columns.map((c) => {
+                  const err = errorByColumn.get(c.id);
+                  return (
+                    <div key={c.id} style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 140 }}>
+                      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{c.name}</span>
+                      <CellEditor
+                        column={c}
+                        value={rowDraft[c.id]}
+                        onChange={(v) => onChangeDraft({ ...rowDraft, [c.id]: v })}
+                      />
+                      {err ? (
+                        <div style={{ fontSize: 11, color: "var(--status-danger, #ef4444)" }}>{err}</div>
+                      ) : null}
                     </div>
-                  </th>
-                ))}
-                <th style={{ width: 88 }} />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id} style={{ borderBottom: "1px solid var(--border, #f1f5f9)" }}>
-                  {columns.map((c) => (
-                    <td key={c.id} style={{ padding: "6px 8px" }}>
-                      {renderCellDisplay(c, row.cells[c.id])}
-                    </td>
-                  ))}
-                  <td style={{ textAlign: "right", padding: "6px 8px" }}>
-                    <button
-                      type="button"
-                      className="s7-btn s7-btn--ghost s7-btn--sm"
-                      onClick={() => void onDeleteRow(row.id)}
-                      style={{ minHeight: 32 }}
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {rowDraft ? (
-                <tr style={{ borderBottom: "1px solid var(--border, #f1f5f9)", background: "rgba(254,170,109,0.06)" }}>
-                  {columns.map((c) => {
-                    const err = errorByColumn.get(c.id);
-                    return (
-                      <td key={c.id} style={{ padding: "6px 8px", verticalAlign: "top" }}>
-                        <CellEditor
-                          column={c}
-                          value={rowDraft[c.id]}
-                          onChange={(v) => onChangeDraft({ ...rowDraft, [c.id]: v })}
-                        />
-                        {err ? (
-                          <div style={{ marginTop: 4, fontSize: 11, color: "var(--status-danger, #ef4444)" }}>{err}</div>
-                        ) : null}
-                      </td>
-                    );
-                  })}
-                  <td style={{ padding: "6px 8px", textAlign: "right" }}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                      <button
-                        type="button"
-                        className="s7-btn s7-btn--primary s7-btn--sm"
-                        disabled={rowErrors.length > 0}
-                        onClick={() => void onCommitAdd()}
-                        style={{ minHeight: 32 }}
-                      >
-                        Save
-                      </button>
-                      <button
-                        type="button"
-                        className="s7-btn s7-btn--ghost s7-btn--sm"
-                        onClick={onCancelAdd}
-                        style={{ minHeight: 32 }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
+                  );
+                })}
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--ghost s7-btn--sm"
+                  onClick={onCancelAdd}
+                  style={{ minHeight: 32 }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--primary s7-btn--sm"
+                  disabled={rowErrors.length > 0}
+                  onClick={() => void onCommitAdd()}
+                  style={{ minHeight: 32 }}
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </>
       )}
     </div>
   );
+}
+
+function toGridColumn(c: RateColumn): RateGridColumn {
+  const kind: RateGridColumn["kind"] =
+    c.dataType === "CURRENCY" ? "currency" : c.dataType === "NUMBER" ? "number" : "text";
+  return {
+    key: c.id,
+    label: c.name,
+    labelSuffix: <RoleBadge role={c.role} />,
+    kind,
+    unit: c.unit,
+    groupable: c.role === "KEY" && kind === "text",
+    filterable: true,
+    sortable: true
+  };
+}
+
+function coerceCellValue(c: RateColumn, raw: unknown): string | number | null {
+  if (raw === null || raw === undefined || raw === "") return null;
+  if (c.dataType === "NUMBER" || c.dataType === "CURRENCY") {
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : String(raw);
+  }
+  if (c.dataType === "BOOL") return raw ? "yes" : "no";
+  return String(raw);
 }
 
 function renderCellDisplay(column: RateColumn, value: unknown): string {

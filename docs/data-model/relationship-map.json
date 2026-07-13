@@ -2,7 +2,7 @@
   "_generator": "scripts/data-model/build-relationship-map.mjs",
   "_doNotEdit": "Regenerated from schema.prisma. Do not hand-edit.",
   "generatedFrom": "apps/api/prisma/schema.prisma",
-  "schemaSha256": "768042ffd99cd74461eb72cdd388b295a1163e57b3e9a091387915e6296f459a",
+  "schemaSha256": "c018f725cd37c31c98ac2281c96d19c847de27892fc3280f6f7dac6c28ee5db4",
   "modelCount": 190,
   "enumCount": 21,
   "edgeCount": 281,
@@ -16,6 +16,18 @@
       "AssetMaintenancePlan",
       "AssetStatusHistory"
     ],
+    "Authorization": [
+      "ApprovalDecision",
+      "AuthorityRule"
+    ],
+    "Communications": [
+      "Conversation",
+      "ConversationMessage",
+      "CorrespondenceMessage",
+      "CorrespondenceThread",
+      "EmailProviderConfig",
+      "InternalMessage"
+    ],
     "Compliance": [
       "ComplianceAlert",
       "CreditApplication",
@@ -23,6 +35,8 @@
       "EntityLicence"
     ],
     "Contracts": [
+      "ClaimLineItem",
+      "ClaimNumberSequence",
       "Contract",
       "ContractNumberSequence",
       "ProgressClaim",
@@ -62,8 +76,31 @@
       "RateColumn",
       "RateRow",
       "RateTable",
+      "ScopeCard",
       "ScopeOfWorksHeader",
-      "ScopeOfWorksItem"
+      "ScopeOfWorksItem",
+      "ScopeViewConfig",
+      "ScopeWasteItem"
+    ],
+    "Estimating (Legacy)": [
+      "CuttingOtherRate",
+      "CuttingSheetItem",
+      "EstimateAssumption",
+      "EstimateCoreHoleRate",
+      "EstimateCuttingLine",
+      "EstimateCuttingRate",
+      "EstimateEnclosureRate",
+      "EstimateEquipLine",
+      "EstimateExport",
+      "EstimateFuelRate",
+      "EstimateItem",
+      "EstimateLabourLine",
+      "EstimateLabourRate",
+      "EstimateMaterialDensity",
+      "EstimatePlantLine",
+      "EstimatePlantRate",
+      "EstimateWasteLine",
+      "EstimateWasteRate"
     ],
     "Forms": [
       "FormApproval",
@@ -87,6 +124,14 @@
       "XeroConnection",
       "XeroSyncLog"
     ],
+    "Inventory": [
+      "ResourceType",
+      "StockCategory",
+      "StockItem",
+      "StockMovement",
+      "StocktakeCount",
+      "StocktakeSession"
+    ],
     "Jobs": [
       "Job",
       "JobActivity",
@@ -108,21 +153,33 @@
     ],
     "Platform": [
       "AuditLog",
+      "GlobalAISettings",
       "GlobalList",
       "GlobalListItem",
       "HealthcheckSeedMarker",
+      "ListBinding",
+      "LookupValue",
       "Notification",
       "NotificationTriggerConfig",
       "Permission",
       "Persona",
       "PersonaCompanyInstruction",
+      "PilotFeedback",
       "PlatformConfig",
+      "PublicHoliday",
       "RefreshToken",
       "Role",
       "RolePermission",
+      "SearchEntry",
       "User",
       "UserPersonaSettings",
       "UserRole"
+    ],
+    "Procurement": [
+      "ProcurementConfig",
+      "ProcurementLine",
+      "ProcurementRequest",
+      "PurchaseOrder"
     ],
     "Projects": [
       "GanttTask",
@@ -141,7 +198,8 @@
       "SafetyIncidentNumberSequence"
     ],
     "Scheduler": [
-      "AvailabilityWindow"
+      "AvailabilityWindow",
+      "SchedulingConflict"
     ],
     "Sites": [
       "Site"
@@ -168,56 +226,6 @@
       "TenderRateSet",
       "TenderScopeRevision",
       "TenderTandC"
-    ],
-    "Unclassified": [
-      "ApprovalDecision",
-      "AuthorityRule",
-      "ClaimLineItem",
-      "ClaimNumberSequence",
-      "Conversation",
-      "ConversationMessage",
-      "CorrespondenceMessage",
-      "CorrespondenceThread",
-      "CuttingOtherRate",
-      "CuttingSheetItem",
-      "EmailProviderConfig",
-      "EstimateAssumption",
-      "EstimateCoreHoleRate",
-      "EstimateCuttingLine",
-      "EstimateCuttingRate",
-      "EstimateEnclosureRate",
-      "EstimateEquipLine",
-      "EstimateExport",
-      "EstimateFuelRate",
-      "EstimateItem",
-      "EstimateLabourLine",
-      "EstimateLabourRate",
-      "EstimateMaterialDensity",
-      "EstimatePlantLine",
-      "EstimatePlantRate",
-      "EstimateWasteLine",
-      "EstimateWasteRate",
-      "GlobalAISettings",
-      "InternalMessage",
-      "ListBinding",
-      "LookupValue",
-      "PilotFeedback",
-      "ProcurementConfig",
-      "ProcurementLine",
-      "ProcurementRequest",
-      "PublicHoliday",
-      "PurchaseOrder",
-      "ResourceType",
-      "SchedulingConflict",
-      "ScopeCard",
-      "ScopeViewConfig",
-      "ScopeWasteItem",
-      "SearchEntry",
-      "StockCategory",
-      "StockItem",
-      "StockMovement",
-      "StocktakeCount",
-      "StocktakeSession"
     ],
     "Workers": [
       "Competency",
@@ -363,7 +371,7 @@
   "models": {
     "ApprovalDecision": {
       "name": "ApprovalDecision",
-      "domain": "Unclassified",
+      "domain": "Authorization",
       "dbTable": "approval_decisions",
       "fields": [
         {
@@ -2314,7 +2322,7 @@
     },
     "AuthorityRule": {
       "name": "AuthorityRule",
-      "domain": "Unclassified",
+      "domain": "Authorization",
       "dbTable": "authority_rules",
       "fields": [
         {
@@ -2801,7 +2809,7 @@
     },
     "ClaimLineItem": {
       "name": "ClaimLineItem",
-      "domain": "Unclassified",
+      "domain": "Contracts",
       "dbTable": "claim_line_items",
       "fields": [
         {
@@ -3005,7 +3013,7 @@
     },
     "ClaimNumberSequence": {
       "name": "ClaimNumberSequence",
-      "domain": "Unclassified",
+      "domain": "Contracts",
       "dbTable": "claim_number_sequences",
       "fields": [
         {
@@ -6401,7 +6409,7 @@
     },
     "Conversation": {
       "name": "Conversation",
-      "domain": "Unclassified",
+      "domain": "Communications",
       "dbTable": "conversations",
       "fields": [
         {
@@ -6567,7 +6575,7 @@
     },
     "ConversationMessage": {
       "name": "ConversationMessage",
-      "domain": "Unclassified",
+      "domain": "Communications",
       "dbTable": "conversation_messages",
       "fields": [
         {
@@ -6722,7 +6730,7 @@
     },
     "CorrespondenceMessage": {
       "name": "CorrespondenceMessage",
-      "domain": "Unclassified",
+      "domain": "Communications",
       "dbTable": "correspondence_messages",
       "fields": [
         {
@@ -6974,7 +6982,7 @@
     },
     "CorrespondenceThread": {
       "name": "CorrespondenceThread",
-      "domain": "Unclassified",
+      "domain": "Communications",
       "dbTable": "correspondence_threads",
       "fields": [
         {
@@ -7885,7 +7893,7 @@
     },
     "CuttingOtherRate": {
       "name": "CuttingOtherRate",
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "dbTable": "cutting_other_rates",
       "fields": [
         {
@@ -8026,7 +8034,7 @@
     },
     "CuttingSheetItem": {
       "name": "CuttingSheetItem",
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "dbTable": "cutting_sheet_items",
       "fields": [
         {
@@ -9619,7 +9627,7 @@
     },
     "EmailProviderConfig": {
       "name": "EmailProviderConfig",
-      "domain": "Unclassified",
+      "domain": "Communications",
       "dbTable": "email_provider_config",
       "fields": [
         {
@@ -10230,7 +10238,7 @@
     },
     "EstimateAssumption": {
       "name": "EstimateAssumption",
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "dbTable": "estimate_assumptions",
       "fields": [
         {
@@ -10325,7 +10333,7 @@
     },
     "EstimateCoreHoleRate": {
       "name": "EstimateCoreHoleRate",
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "dbTable": "estimate_core_hole_rates",
       "fields": [
         {
@@ -10406,7 +10414,7 @@
     },
     "EstimateCuttingLine": {
       "name": "EstimateCuttingLine",
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "dbTable": "estimate_cutting_lines",
       "fields": [
         {
@@ -10609,7 +10617,7 @@
     },
     "EstimateCuttingRate": {
       "name": "EstimateCuttingRate",
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "dbTable": "estimate_cutting_rates",
       "fields": [
         {
@@ -10738,7 +10746,7 @@
     },
     "EstimateEnclosureRate": {
       "name": "EstimateEnclosureRate",
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "dbTable": "estimate_enclosure_rates",
       "fields": [
         {
@@ -10843,7 +10851,7 @@
     },
     "EstimateEquipLine": {
       "name": "EstimateEquipLine",
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "dbTable": "estimate_equip_lines",
       "fields": [
         {
@@ -10986,7 +10994,7 @@
     },
     "EstimateExport": {
       "name": "EstimateExport",
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "dbTable": "estimate_exports",
       "fields": [
         {
@@ -11154,7 +11162,7 @@
     },
     "EstimateFuelRate": {
       "name": "EstimateFuelRate",
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "dbTable": "estimate_fuel_rates",
       "fields": [
         {
@@ -11259,7 +11267,7 @@
     },
     "EstimateItem": {
       "name": "EstimateItem",
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "dbTable": "estimate_items",
       "fields": [
         {
@@ -11655,7 +11663,7 @@
     },
     "EstimateLabourLine": {
       "name": "EstimateLabourLine",
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "dbTable": "estimate_labour_lines",
       "fields": [
         {
@@ -11798,7 +11806,7 @@
     },
     "EstimateLabourRate": {
       "name": "EstimateLabourRate",
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "dbTable": "estimate_labour_rates",
       "fields": [
         {
@@ -11915,7 +11923,7 @@
     },
     "EstimateMaterialDensity": {
       "name": "EstimateMaterialDensity",
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "dbTable": "estimate_material_density",
       "fields": [
         {
@@ -12044,7 +12052,7 @@
     },
     "EstimatePlantLine": {
       "name": "EstimatePlantLine",
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "dbTable": "estimate_plant_lines",
       "fields": [
         {
@@ -12187,7 +12195,7 @@
     },
     "EstimatePlantRate": {
       "name": "EstimatePlantRate",
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "dbTable": "estimate_plant_rates",
       "fields": [
         {
@@ -12316,7 +12324,7 @@
     },
     "EstimateWasteLine": {
       "name": "EstimateWasteLine",
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "dbTable": "estimate_waste_lines",
       "fields": [
         {
@@ -12483,7 +12491,7 @@
     },
     "EstimateWasteRate": {
       "name": "EstimateWasteRate",
-      "domain": "Unclassified",
+      "domain": "Estimating (Legacy)",
       "dbTable": "estimate_waste_rates",
       "fields": [
         {
@@ -15614,7 +15622,7 @@
     },
     "GlobalAISettings": {
       "name": "GlobalAISettings",
-      "domain": "Unclassified",
+      "domain": "Platform",
       "dbTable": "global_ai_settings",
       "fields": [
         {
@@ -16588,7 +16596,7 @@
     },
     "InternalMessage": {
       "name": "InternalMessage",
-      "domain": "Unclassified",
+      "domain": "Communications",
       "dbTable": "internal_messages",
       "fields": [
         {
@@ -19702,7 +19710,7 @@
     },
     "ListBinding": {
       "name": "ListBinding",
-      "domain": "Unclassified",
+      "domain": "Platform",
       "dbTable": "list_bindings",
       "fields": [
         {
@@ -19795,7 +19803,7 @@
     },
     "LookupValue": {
       "name": "LookupValue",
-      "domain": "Unclassified",
+      "domain": "Platform",
       "dbTable": "lookup_values",
       "fields": [
         {
@@ -20632,7 +20640,7 @@
     },
     "PilotFeedback": {
       "name": "PilotFeedback",
-      "domain": "Unclassified",
+      "domain": "Platform",
       "dbTable": "pilot_feedback",
       "fields": [
         {
@@ -21743,7 +21751,7 @@
     },
     "ProcurementConfig": {
       "name": "ProcurementConfig",
-      "domain": "Unclassified",
+      "domain": "Procurement",
       "dbTable": "procurement_config",
       "fields": [
         {
@@ -21812,7 +21820,7 @@
     },
     "ProcurementLine": {
       "name": "ProcurementLine",
-      "domain": "Unclassified",
+      "domain": "Procurement",
       "dbTable": "procurement_lines",
       "fields": [
         {
@@ -21991,7 +21999,7 @@
     },
     "ProcurementRequest": {
       "name": "ProcurementRequest",
-      "domain": "Unclassified",
+      "domain": "Procurement",
       "dbTable": "procurement_requests",
       "fields": [
         {
@@ -24635,7 +24643,7 @@
     },
     "PublicHoliday": {
       "name": "PublicHoliday",
-      "domain": "Unclassified",
+      "domain": "Platform",
       "dbTable": "public_holidays",
       "fields": [
         {
@@ -24716,7 +24724,7 @@
     },
     "PurchaseOrder": {
       "name": "PurchaseOrder",
-      "domain": "Unclassified",
+      "domain": "Procurement",
       "dbTable": "purchase_orders",
       "fields": [
         {
@@ -26474,6 +26482,18 @@
           "isUpdatedAt": false
         },
         {
+          "name": "isReference",
+          "dbColumn": "is_reference",
+          "type": "Boolean",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
           "name": "createdById",
           "dbColumn": "created_by_id",
           "type": "String",
@@ -26730,7 +26750,7 @@
     },
     "ResourceType": {
       "name": "ResourceType",
-      "domain": "Unclassified",
+      "domain": "Inventory",
       "dbTable": "resource_types",
       "fields": [
         {
@@ -27980,7 +28000,7 @@
     },
     "SchedulingConflict": {
       "name": "SchedulingConflict",
-      "domain": "Unclassified",
+      "domain": "Scheduler",
       "dbTable": "scheduling_conflicts",
       "fields": [
         {
@@ -28099,7 +28119,7 @@
     },
     "ScopeCard": {
       "name": "ScopeCard",
-      "domain": "Unclassified",
+      "domain": "Estimating",
       "dbTable": "scope_cards",
       "fields": [
         {
@@ -29631,7 +29651,7 @@
     },
     "ScopeViewConfig": {
       "name": "ScopeViewConfig",
-      "domain": "Unclassified",
+      "domain": "Estimating",
       "dbTable": "scope_view_configs",
       "fields": [
         {
@@ -29750,7 +29770,7 @@
     },
     "ScopeWasteItem": {
       "name": "ScopeWasteItem",
-      "domain": "Unclassified",
+      "domain": "Estimating",
       "dbTable": "scope_waste_items",
       "fields": [
         {
@@ -30147,7 +30167,7 @@
     },
     "SearchEntry": {
       "name": "SearchEntry",
-      "domain": "Unclassified",
+      "domain": "Platform",
       "dbTable": "search_entries",
       "fields": [
         {
@@ -32098,7 +32118,7 @@
     },
     "StockCategory": {
       "name": "StockCategory",
-      "domain": "Unclassified",
+      "domain": "Inventory",
       "dbTable": "stock_categories",
       "fields": [
         {
@@ -32227,7 +32247,7 @@
     },
     "StockItem": {
       "name": "StockItem",
-      "domain": "Unclassified",
+      "domain": "Inventory",
       "dbTable": "stock_items",
       "fields": [
         {
@@ -32475,7 +32495,7 @@
     },
     "StockMovement": {
       "name": "StockMovement",
-      "domain": "Unclassified",
+      "domain": "Inventory",
       "dbTable": "stock_movements",
       "fields": [
         {
@@ -32630,7 +32650,7 @@
     },
     "StocktakeCount": {
       "name": "StocktakeCount",
-      "domain": "Unclassified",
+      "domain": "Inventory",
       "dbTable": "stocktake_counts",
       "fields": [
         {
@@ -32786,7 +32806,7 @@
     },
     "StocktakeSession": {
       "name": "StocktakeSession",
-      "domain": "Unclassified",
+      "domain": "Inventory",
       "dbTable": "stocktake_sessions",
       "fields": [
         {

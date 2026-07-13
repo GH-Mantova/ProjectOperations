@@ -172,6 +172,31 @@ describe("ComplianceService.getExpiringItems", () => {
       status: "expiring_30"
     });
   });
+
+  it("labels company-owned licences with the profile trading name (same alert path as subs)", async () => {
+    const { service, prisma } = buildService();
+    (prisma.entityLicence as { findMany: jest.Mock }).findMany.mockResolvedValue([
+      {
+        id: "lic-c1",
+        licenceType: "demolition",
+        licenceNumber: "2328018",
+        expiryDate: daysFromNow(5),
+        client: null,
+        subcontractor: null,
+        companyProfile: { id: "singleton", tradingName: "Initial Services" }
+      }
+    ]);
+
+    const result = await service.getExpiringItems();
+
+    expect(result.licences[0]).toMatchObject({
+      itemType: "licence",
+      entityType: "company",
+      entityId: "singleton",
+      entityName: "Initial Services",
+      status: "expiring_7"
+    });
+  });
 });
 
 // ─── Alert pass: tiers + dedup ─────────────────────────────────────────────

@@ -42,16 +42,26 @@ function n(v: string | number | null | undefined): number {
   return Number.isFinite(num) ? num : 0;
 }
 
-export async function buildEstimateExcel(payload: ExportPayload): Promise<Buffer> {
+export type ExcelBranding = {
+  /** Trading name — used as workbook creator + summary header. */
+  tradingName: string;
+};
+
+const DEFAULT_BRANDING: ExcelBranding = { tradingName: "Initial Services" };
+
+export async function buildEstimateExcel(
+  payload: ExportPayload,
+  branding: ExcelBranding = DEFAULT_BRANDING
+): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
-  wb.creator = "Initial Services — Project Operations";
+  wb.creator = `${branding.tradingName} — Project Operations`;
   wb.created = new Date();
 
   // ── Sheet 1: Summary ──
   const summary = wb.addWorksheet("Summary");
   summary.mergeCells("A1:D1");
   const brandCell = summary.getCell("A1");
-  brandCell.value = "INITIAL SERVICES — Estimate summary";
+  brandCell.value = `${branding.tradingName.toUpperCase()} — Estimate summary`;
   brandCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: TEAL_ARGB } };
   brandCell.font = { bold: true, color: { argb: WHITE_ARGB }, size: 14 };
   brandCell.alignment = { vertical: "middle", horizontal: "left" };

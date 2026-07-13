@@ -14,12 +14,12 @@ env:
   # production keys live in Azure Key Vault and are never committed.
   BYOK_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
   # Opt-in to Node 24 runtime for JavaScript actions ahead of GitHub's
-  # 2026-06-16 Node 20 → 24 force-migration deadline.
+  # 2026-06-16 Node 20 â†’ 24 force-migration deadline.
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   api:
-    name: API — lint, test, compliance smoke
+    name: API â€” lint, test, compliance smoke
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -75,7 +75,7 @@ jobs:
           SHAREPOINT_MODE: mock
 
   data-model-drift:
-    name: Data model — drift check (schema.prisma <-> generated map)
+    name: Data model â€” drift check (schema.prisma <-> generated map)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.2.2
@@ -89,7 +89,7 @@ jobs:
           fi
 
   pr-gates:
-    name: PR gates — diff checks (CP-09–13, CP-17, CP-22, CP-24)
+    name: PR gates â€” diff checks (CP-09â€“13, CP-17, CP-22, CP-23, CP-24, CP-25)
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
@@ -104,7 +104,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
   web:
-    name: Web — lint, logic tests, build
+    name: Web â€” lint, logic tests, build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.2.2

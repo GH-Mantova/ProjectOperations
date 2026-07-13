@@ -127,6 +127,33 @@ describe("PdfRendererService.launchBrowser (unit)", () => {
     });
   });
 
+  it("surfaces the underlying launch error verbatim in the PdfRenderError message", async () => {
+    process.env.PUPPETEER_EXECUTABLE_PATH = "/opt/chrome/chrome";
+    getFsMock().existsSync.mockReturnValue(true);
+    mockPuppeteer({
+      executablePath: () => "/should/not/be/used",
+      launch: jest
+        .fn()
+        .mockRejectedValue(
+          new Error(
+            "error while loading shared libraries: libnss3.so: cannot open shared object file",
+          ),
+        ),
+    });
+    const service = loadService();
+
+    const err = await service
+      .renderHtmlToPdf("<p>x</p>")
+      .catch((e: Error) => e);
+    expect(err.name).toBe("PdfRenderError");
+    expect((err as { getResponse: () => unknown }).getResponse()).toMatchObject({
+      statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+      error: "PDF Rendering Error",
+      message:
+        "Failed to launch Chromium: error while loading shared libraries: libnss3.so: cannot open shared object file",
+    });
+  });
+
   it("rejects when PUPPETEER_EXECUTABLE_PATH points to a missing file", async () => {
     process.env.PUPPETEER_EXECUTABLE_PATH = "/opt/chrome/chrome";
     getFsMock().existsSync.mockReturnValue(false);

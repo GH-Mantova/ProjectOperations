@@ -11,9 +11,9 @@
 > generator run: re-merge the regenerated map while preserving the appended design sections.
 > Business meaning (domains, field roles) is curated in `docs/data-model/metadata-catalog.json`.
 
-- Last updated: 2026-07-10 08:17 UTC
+- Last updated: 2026-07-13 00:01 UTC
 - Generated from: `apps/api/prisma/schema.prisma` (sha256 `454906b95970`)
-- Models: 190 | Enums: 21 | FK edges: 280 | Domains: 18
+- Models: 190 | Enums: 21 | FK edges: 280 | Domains: 22
 
 <!-- SOT04-GENERATED:BEGIN -->
 
@@ -23,23 +23,27 @@
 2. [Domain dependency overview](#domain-dependency-overview)
 3. [Domain index](#domain-index)
     1. [Assets (7)](#domain-assets)
-    2. [Compliance (4)](#domain-compliance)
-    3. [Contracts (5)](#domain-contracts)
-    4. [Dashboards (3)](#domain-dashboards)
-    5. [Directory (8)](#domain-directory)
-    6. [Documents (5)](#domain-documents)
-    7. [Estimating (12)](#domain-estimating)
-    8. [Forms (13)](#domain-forms)
-    9. [Integrations (5)](#domain-integrations)
-    10. [Jobs (17)](#domain-jobs)
-    11. [Platform (16)](#domain-platform)
-    12. [Projects (8)](#domain-projects)
-    13. [Safety (4)](#domain-safety)
-    14. [Scheduler (1)](#domain-scheduler)
-    15. [Sites (1)](#domain-sites)
-    16. [Tendering (21)](#domain-tendering)
-    17. [Unclassified (48)](#domain-unclassified)
-    18. [Workers (12)](#domain-workers)
+    2. [Authorization (2)](#domain-authorization)
+    3. [Communications (6)](#domain-communications)
+    4. [Compliance (4)](#domain-compliance)
+    5. [Contracts (7)](#domain-contracts)
+    6. [Dashboards (3)](#domain-dashboards)
+    7. [Directory (8)](#domain-directory)
+    8. [Documents (5)](#domain-documents)
+    9. [Estimating (15)](#domain-estimating)
+    10. [Estimating (Legacy) (18)](#domain-estimating-legacy)
+    11. [Forms (13)](#domain-forms)
+    12. [Integrations (5)](#domain-integrations)
+    13. [Inventory (6)](#domain-inventory)
+    14. [Jobs (17)](#domain-jobs)
+    15. [Platform (22)](#domain-platform)
+    16. [Procurement (4)](#domain-procurement)
+    17. [Projects (8)](#domain-projects)
+    18. [Safety (4)](#domain-safety)
+    19. [Scheduler (2)](#domain-scheduler)
+    20. [Sites (1)](#domain-sites)
+    21. [Tendering (21)](#domain-tendering)
+    22. [Workers (12)](#domain-workers)
 4. [Enums](#enums)
 5. [Full model index (A-Z)](#full-model-index-a-z)
 
@@ -63,24 +67,33 @@ How the domains reference each other (arrow = "holds a foreign key into").
 ```mermaid
 graph LR
   assets["Assets"]
+  authorization["Authorization"]
+  communications["Communications"]
   compliance["Compliance"]
   contracts["Contracts"]
   dashboards["Dashboards"]
   directory["Directory"]
   documents["Documents"]
   estimating["Estimating"]
+  estimating_legacy["Estimating (Legacy)"]
   forms["Forms"]
   integrations["Integrations"]
+  inventory["Inventory"]
   jobs["Jobs"]
   platform["Platform"]
+  procurement["Procurement"]
   projects["Projects"]
   safety["Safety"]
   scheduler["Scheduler"]
   sites["Sites"]
   tendering["Tendering"]
-  unclassified["Unclassified"]
   workers["Workers"]
-  assets --> unclassified
+  assets --> inventory
+  authorization --> platform
+  communications --> directory
+  communications --> jobs
+  communications --> platform
+  communications --> tendering
   compliance --> directory
   compliance --> platform
   contracts --> platform
@@ -89,11 +102,13 @@ graph LR
   directory --> platform
   directory --> tendering
   documents --> platform
+  estimating_legacy --> estimating
+  estimating_legacy --> platform
+  estimating_legacy --> tendering
   estimating --> assets
   estimating --> directory
   estimating --> platform
   estimating --> tendering
-  estimating --> unclassified
   forms --> assets
   forms --> directory
   forms --> jobs
@@ -120,6 +135,7 @@ graph LR
   safety --> platform
   safety --> projects
   safety --> tendering
+  scheduler --> jobs
   scheduler --> workers
   sites --> directory
   tendering --> directory
@@ -127,35 +143,34 @@ graph LR
   tendering --> platform
   tendering --> projects
   tendering --> sites
-  unclassified --> contracts
-  unclassified --> directory
-  unclassified --> jobs
-  unclassified --> platform
-  unclassified --> tendering
+  workers --> inventory
   workers --> platform
   workers --> projects
-  workers --> unclassified
 ```
 
 ## Domain index
 
 - **Assets** (7): Asset, AssetBreakdown, AssetCategory, AssetInspection, AssetMaintenanceEvent, AssetMaintenancePlan, AssetStatusHistory
+- **Authorization** (2): ApprovalDecision, AuthorityRule
+- **Communications** (6): Conversation, ConversationMessage, CorrespondenceMessage, CorrespondenceThread, EmailProviderConfig, InternalMessage
 - **Compliance** (4): ComplianceAlert, CreditApplication, EntityInsurance, EntityLicence
-- **Contracts** (5): Contract, ContractNumberSequence, ProgressClaim, Variation, VariationNumberSequence
+- **Contracts** (7): ClaimLineItem, ClaimNumberSequence, Contract, ContractNumberSequence, ProgressClaim, Variation, VariationNumberSequence
 - **Dashboards** (3): Dashboard, DashboardWidget, UserDashboard
 - **Directory** (8): Client, ClientPortalUser, ClientQuote, ClientSession, Contact, SubcontractorDocument, SubcontractorSupplier, SupplierCreditEntry
 - **Documents** (5): DocumentAccessRule, DocumentLink, DocumentTag, SharePointFileLink, SharePointFolderLink
-- **Estimating** (12): QuoteAssumption, QuoteCostLine, QuoteCostOption, QuoteEmail, QuoteExclusion, QuoteProvisionalLine, QuoteScopeItem, RateColumn, RateRow, RateTable, ScopeOfWorksHeader, ScopeOfWorksItem
+- **Estimating** (15): QuoteAssumption, QuoteCostLine, QuoteCostOption, QuoteEmail, QuoteExclusion, QuoteProvisionalLine, QuoteScopeItem, RateColumn, RateRow, RateTable, ScopeCard, ScopeOfWorksHeader, ScopeOfWorksItem, ScopeViewConfig, ScopeWasteItem
+- **Estimating (Legacy)** (18): CuttingOtherRate, CuttingSheetItem, EstimateAssumption, EstimateCoreHoleRate, EstimateCuttingLine, EstimateCuttingRate, EstimateEnclosureRate, EstimateEquipLine, EstimateExport, EstimateFuelRate, EstimateItem, EstimateLabourLine, EstimateLabourRate, EstimateMaterialDensity, EstimatePlantLine, EstimatePlantRate, EstimateWasteLine, EstimateWasteRate
 - **Forms** (13): FormApproval, FormAttachment, FormField, FormRule, FormSchedule, FormSection, FormSignature, FormSubmission, FormSubmissionValue, FormTemplate, FormTemplateVersion, FormTriggeredRecord, PreStartChecklist
 - **Integrations** (5): CalendarSyncedEvent, PortalInvite, PortalSession, XeroConnection, XeroSyncLog
+- **Inventory** (6): ResourceType, StockCategory, StockItem, StockMovement, StocktakeCount, StocktakeSession
 - **Jobs** (17): Job, JobActivity, JobCloseout, JobConversion, JobIssue, JobNumberSequence, JobProgressEntry, JobRole, JobRoleRequirement, JobStage, JobStatusHistory, JobVariation, Shift, ShiftAssetAssignment, ShiftRoleRequirement, ShiftWorkerAssignment, Timesheet
-- **Platform** (16): AuditLog, GlobalList, GlobalListItem, HealthcheckSeedMarker, Notification, NotificationTriggerConfig, Permission, Persona, PersonaCompanyInstruction, PlatformConfig, RefreshToken, Role, RolePermission, User, UserPersonaSettings, UserRole
+- **Platform** (22): AuditLog, GlobalAISettings, GlobalList, GlobalListItem, HealthcheckSeedMarker, ListBinding, LookupValue, Notification, NotificationTriggerConfig, Permission, Persona, PersonaCompanyInstruction, PilotFeedback, PlatformConfig, PublicHoliday, RefreshToken, Role, RolePermission, SearchEntry, User, UserPersonaSettings, UserRole
+- **Procurement** (4): ProcurementConfig, ProcurementLine, ProcurementRequest, PurchaseOrder
 - **Projects** (8): GanttTask, Project, ProjectActivityLog, ProjectAllocation, ProjectMilestone, ProjectNumberSequence, ProjectScopeItem, ScheduleAllocation
 - **Safety** (4): HazardNumberSequence, HazardObservation, SafetyIncident, SafetyIncidentNumberSequence
-- **Scheduler** (1): AvailabilityWindow
+- **Scheduler** (2): AvailabilityWindow, SchedulingConflict
 - **Sites** (1): Site
 - **Tendering** (21): Tender, TenderAssumption, TenderClarification, TenderClarificationNote, TenderClient, TenderClientNote, TenderClientPackage, TenderDocumentLink, TenderEntry, TenderEstimate, TenderExclusion, TenderFilterPreset, TenderFollowUp, TenderNote, TenderOutcome, TenderPackage, TenderPricingSnapshot, TenderRateEntry, TenderRateSet, TenderScopeRevision, TenderTandC
-- **Unclassified** (48): ApprovalDecision, AuthorityRule, ClaimLineItem, ClaimNumberSequence, Conversation, ConversationMessage, CorrespondenceMessage, CorrespondenceThread, CuttingOtherRate, CuttingSheetItem, EmailProviderConfig, EstimateAssumption, EstimateCoreHoleRate, EstimateCuttingLine, EstimateCuttingRate, EstimateEnclosureRate, EstimateEquipLine, EstimateExport, EstimateFuelRate, EstimateItem, EstimateLabourLine, EstimateLabourRate, EstimateMaterialDensity, EstimatePlantLine, EstimatePlantRate, EstimateWasteLine, EstimateWasteRate, GlobalAISettings, InternalMessage, ListBinding, LookupValue, PilotFeedback, ProcurementConfig, ProcurementLine, ProcurementRequest, PublicHoliday, PurchaseOrder, ResourceType, SchedulingConflict, ScopeCard, ScopeViewConfig, ScopeWasteItem, SearchEntry, StockCategory, StockItem, StockMovement, StocktakeCount, StocktakeSession
 - **Workers** (12): Competency, CompetencyOverride, Crew, CrewWorker, Worker, WorkerCompetency, WorkerLeave, WorkerLocationLog, WorkerProfile, WorkerQualification, WorkerRoleSuitability, WorkerUnavailability
 
 ## Domain: Assets
@@ -232,6 +247,83 @@ graph LR
 - Suggested dimensions: fromStatus, toStatus, asset
 - Time fields: changedAt
 
+## Domain: Authorization
+
+### Model: ApprovalDecision
+
+- Table: `approval_decisions` | Domain: Authorization | Fields: 14
+- Belongs to (FK out):
+  - `decidedBy` -> **User** (decidedById, onDelete Cascade)
+  - `overrules` -> **ApprovalDecision** (overrulesId)
+- Has one (back-relation):
+  - `overruledBy` -> **ApprovalDecision**
+- Referenced by: **ApprovalDecision**
+- Suggested measures: amount
+- Suggested dimensions: entityType, decision, decidedBy, overrules
+
+### Model: AuthorityRule
+
+- Table: `authority_rules` | Domain: Authorization | Fields: 11
+- Suggested measures: limitAmount
+- Suggested dimensions: scopeType, scopeId
+
+## Domain: Communications
+
+### Model: Conversation
+
+- Table: `conversations` | Domain: Communications | Fields: 9
+- Belongs to (FK out):
+  - `user` -> **User** (userId, onDelete Cascade)
+- Has many:
+  - `messages` -> **ConversationMessage**[]
+- Referenced by: **ConversationMessage**
+- Suggested dimensions: user
+
+### Model: ConversationMessage
+
+- Table: `conversation_messages` | Domain: Communications | Fields: 10
+- Belongs to (FK out):
+  - `conversation` -> **Conversation** (conversationId, onDelete Cascade)
+- Suggested dimensions: role, conversation
+
+### Model: CorrespondenceMessage
+
+- Table: `correspondence_messages` | Domain: Communications | Fields: 16
+- Belongs to (FK out):
+  - `thread` -> **CorrespondenceThread** (threadId, onDelete Cascade)
+  - `sentBy` -> **User** (sentById, onDelete SetNull)
+- Suggested dimensions: thread, sentBy
+- Time fields: sentAt, receivedAt
+
+### Model: CorrespondenceThread
+
+- Table: `correspondence_threads` | Domain: Communications | Fields: 14
+- Belongs to (FK out):
+  - `client` -> **Client** (clientId, onDelete Cascade)
+  - `tender` -> **Tender** (tenderId, onDelete Cascade)
+  - `job` -> **Job** (jobId, onDelete Cascade)
+- Has many:
+  - `messages` -> **CorrespondenceMessage**[]
+- Referenced by: **CorrespondenceMessage**
+- Suggested dimensions: client, tender, job
+- Time fields: lastMessageAt
+
+### Model: EmailProviderConfig
+
+- Table: `email_provider_config` | Domain: Communications | Fields: 8
+- Belongs to (FK out):
+  - `updatedBy` -> **User** (updatedById, onDelete SetNull)
+- Suggested dimensions: updatedBy
+
+### Model: InternalMessage
+
+- Table: `internal_messages` | Domain: Communications | Fields: 12
+- Belongs to (FK out):
+  - `sender` -> **User** (senderId, onDelete Cascade)
+  - `recipient` -> **User** (recipientId, onDelete Cascade)
+- Suggested dimensions: entityType, status, sender, recipient
+- Time fields: readAt
+
 ## Domain: Compliance
 
 ### Model: ComplianceAlert
@@ -273,6 +365,20 @@ graph LR
 - Time fields: issueDate, expiryDate
 
 ## Domain: Contracts
+
+### Model: ClaimLineItem
+
+- Table: `claim_line_items` | Domain: Contracts | Fields: 12
+- Belongs to (FK out):
+  - `claim` -> **ProgressClaim** (claimId, onDelete Cascade)
+  - `variation` -> **Variation** (variationId, onDelete SetNull)
+- Suggested measures: contractValue, thisClaimPct, thisClaimAmount
+- Suggested dimensions: claim, discipline, variation
+
+### Model: ClaimNumberSequence
+
+- Table: `claim_number_sequences` | Domain: Contracts | Fields: 2
+- Suggested measures: lastNumber
 
 ### Model: Contract
 
@@ -604,6 +710,20 @@ graph LR
 - Referenced by: **RateColumn**, **RateRow**
 - Suggested dimensions: category, subcontractorType, supplier
 
+### Model: ScopeCard
+
+- Table: `scope_cards` | Domain: Estimating | Fields: 24
+- Belongs to (FK out):
+  - `tender` -> **Tender** (tenderId, onDelete Cascade)
+  - `createdBy` -> **User** (createdById, onDelete Restrict)
+- Has many:
+  - `scopeItems` -> **ScopeOfWorksItem**[]
+  - `wasteItems` -> **ScopeWasteItem**[]
+  - `cuttingItems` -> **CuttingSheetItem**[]
+- Referenced by: **CuttingSheetItem**, **ScopeOfWorksItem**, **ScopeWasteItem**
+- Suggested measures: cardNumber, plantColumnCount, markupOverride, wasteMarkupOverride, cuttingMarkupOverride, labourDaysOverride
+- Suggested dimensions: tender, discipline, createdBy
+
 ### Model: ScopeOfWorksHeader
 
 - Table: `scope_of_works_headers` | Domain: Estimating | Fields: 11
@@ -622,6 +742,161 @@ graph LR
   - `createdBy` -> **User** (createdById, onDelete Restrict)
 - Suggested measures: itemNumber, days, value, tonnes, coreHoleQty, wasteTonnes, wasteLoads, measurementQty, provisionalAmount, excavatorDays, bobcatDays, ewpDays, hookTruckDays, semiTipperDays
 - Suggested dimensions: tender, card, rowType, status, materialType, elevation, acmType, acmMaterial, excavationMaterial, wasteType, material, plantAsset, createdBy
+
+### Model: ScopeViewConfig
+
+- Table: `scope_view_configs` | Domain: Estimating | Fields: 7
+- Belongs to (FK out):
+  - `tender` -> **Tender** (tenderId, onDelete Cascade)
+- Suggested dimensions: tender, discipline
+
+### Model: ScopeWasteItem
+
+- Table: `scope_waste_items` | Domain: Estimating | Fields: 26
+- Belongs to (FK out):
+  - `tender` -> **Tender** (tenderId, onDelete Cascade)
+  - `card` -> **ScopeCard** (cardId, onDelete Cascade)
+  - `createdBy` -> **User** (createdById, onDelete Restrict)
+- Suggested measures: qty, wasteLoads, truckDays, ratePerTonne, ratePerLoad, lineTotal
+- Suggested dimensions: tender, card, discipline, wasteType, createdBy
+
+## Domain: Estimating (Legacy)
+
+### Model: CuttingOtherRate
+
+- Table: `cutting_other_rates` | Domain: Estimating (Legacy) | Fields: 9
+- Has many:
+  - `cuttingItems` -> **CuttingSheetItem**[]
+- Referenced by: **CuttingSheetItem**
+- Suggested measures: rate
+
+### Model: CuttingSheetItem
+
+- Table: `cutting_sheet_items` | Domain: Estimating (Legacy) | Fields: 30
+- Belongs to (FK out):
+  - `tender` -> **Tender** (tenderId, onDelete Cascade)
+  - `card` -> **ScopeCard** (cardId, onDelete Cascade)
+  - `otherRate` -> **CuttingOtherRate** (otherRateId, onDelete SetNull)
+  - `createdBy` -> **User** (createdById, onDelete Restrict)
+- Suggested measures: quantityLm, quantityEach, ratePerM, ratePerHole, lineTotal
+- Suggested dimensions: tender, card, itemType, elevation, material, method, otherRate, createdBy
+
+### Model: EstimateAssumption
+
+- Table: `estimate_assumptions` | Domain: Estimating (Legacy) | Fields: 5
+- Belongs to (FK out):
+  - `item` -> **EstimateItem** (itemId, onDelete Cascade)
+- Suggested dimensions: item
+
+### Model: EstimateCoreHoleRate
+
+- Table: `estimate_core_hole_rates` | Domain: Estimating (Legacy) | Fields: 6
+- Suggested measures: ratePerHole
+
+### Model: EstimateCuttingLine
+
+- Table: `estimate_cutting_lines` | Domain: Estimating (Legacy) | Fields: 14
+- Belongs to (FK out):
+  - `item` -> **EstimateItem** (itemId, onDelete Cascade)
+- Suggested measures: qty, rate
+- Suggested dimensions: item, cuttingType, elevation, material
+
+### Model: EstimateCuttingRate
+
+- Table: `estimate_cutting_rates` | Domain: Estimating (Legacy) | Fields: 10
+- Suggested measures: ratePerM
+- Suggested dimensions: elevation, material
+
+### Model: EstimateEnclosureRate
+
+- Table: `estimate_enclosure_rates` | Domain: Estimating (Legacy) | Fields: 8
+- Suggested measures: rate
+- Suggested dimensions: enclosureType
+
+### Model: EstimateEquipLine
+
+- Table: `estimate_equip_lines` | Domain: Estimating (Legacy) | Fields: 9
+- Belongs to (FK out):
+  - `item` -> **EstimateItem** (itemId, onDelete Cascade)
+- Suggested measures: qty, rate
+- Suggested dimensions: item
+
+### Model: EstimateExport
+
+- Table: `estimate_exports` | Domain: Estimating (Legacy) | Fields: 9
+- Belongs to (FK out):
+  - `tender` -> **Tender** (tenderId, onDelete Cascade)
+  - `user` -> **User** (generatedBy, onDelete Restrict)
+- Suggested dimensions: tender, type, user
+- Time fields: generatedAt
+
+### Model: EstimateFuelRate
+
+- Table: `estimate_fuel_rates` | Domain: Estimating (Legacy) | Fields: 8
+- Suggested measures: rate
+
+### Model: EstimateItem
+
+- Table: `estimate_items` | Domain: Estimating (Legacy) | Fields: 19
+- Belongs to (FK out):
+  - `estimate` -> **TenderEstimate** (estimateId, onDelete Cascade)
+- Has many:
+  - `labourLines` -> **EstimateLabourLine**[]
+  - `equipLines` -> **EstimateEquipLine**[]
+  - `plantLines` -> **EstimatePlantLine**[]
+  - `wasteLines` -> **EstimateWasteLine**[]
+  - `cuttingLines` -> **EstimateCuttingLine**[]
+  - `assumptions` -> **EstimateAssumption**[]
+- Referenced by: **EstimateAssumption**, **EstimateCuttingLine**, **EstimateEquipLine**, **EstimateLabourLine**, **EstimatePlantLine**, **EstimateWasteLine**
+- Suggested measures: itemNumber, markup, provisionalAmount
+- Suggested dimensions: estimate
+
+### Model: EstimateLabourLine
+
+- Table: `estimate_labour_lines` | Domain: Estimating (Legacy) | Fields: 9
+- Belongs to (FK out):
+  - `item` -> **EstimateItem** (itemId, onDelete Cascade)
+- Suggested measures: qty, days, rate
+- Suggested dimensions: item, role
+
+### Model: EstimateLabourRate
+
+- Table: `estimate_labour_rates` | Domain: Estimating (Legacy) | Fields: 9
+- Suggested measures: dayRate, nightRate, weekendRate
+- Suggested dimensions: role
+
+### Model: EstimateMaterialDensity
+
+- Table: `estimate_material_density` | Domain: Estimating (Legacy) | Fields: 10
+- Suggested dimensions: materialName, category
+
+### Model: EstimatePlantLine
+
+- Table: `estimate_plant_lines` | Domain: Estimating (Legacy) | Fields: 9
+- Belongs to (FK out):
+  - `item` -> **EstimateItem** (itemId, onDelete Cascade)
+- Suggested measures: qty, days, rate
+- Suggested dimensions: item
+
+### Model: EstimatePlantRate
+
+- Table: `estimate_plant_rates` | Domain: Estimating (Legacy) | Fields: 10
+- Suggested measures: rate, fuelRate
+- Suggested dimensions: category
+
+### Model: EstimateWasteLine
+
+- Table: `estimate_waste_lines` | Domain: Estimating (Legacy) | Fields: 11
+- Belongs to (FK out):
+  - `item` -> **EstimateItem** (itemId, onDelete Cascade)
+- Suggested measures: qtyTonnes, tonRate, loads, loadRate
+- Suggested dimensions: item, wasteType
+
+### Model: EstimateWasteRate
+
+- Table: `estimate_waste_rates` | Domain: Estimating (Legacy) | Fields: 11
+- Suggested measures: tonRate, loadRate
+- Suggested dimensions: wasteType
 
 ## Domain: Forms
 
@@ -793,6 +1068,62 @@ graph LR
 
 - Table: `xero_sync_logs` | Domain: Integrations | Fields: 9
 - Suggested dimensions: entityType, status
+
+## Domain: Inventory
+
+### Model: ResourceType
+
+- Table: `resource_types` | Domain: Inventory | Fields: 9
+- Has many:
+  - `workers` -> **Worker**[]
+  - `assets` -> **Asset**[]
+- Referenced by: **Asset**, **Worker**
+- Suggested dimensions: category
+
+### Model: StockCategory
+
+- Table: `stock_categories` | Domain: Inventory | Fields: 8
+- Has many:
+  - `stockItems` -> **StockItem**[]
+- Referenced by: **StockItem**
+
+### Model: StockItem
+
+- Table: `stock_items` | Domain: Inventory | Fields: 14
+- Belongs to (FK out):
+  - `category` -> **StockCategory** (categoryId, onDelete SetNull)
+- Has many:
+  - `movements` -> **StockMovement**[]
+  - `stocktakeCounts` -> **StocktakeCount**[]
+- Referenced by: **StockMovement**, **StocktakeCount**
+- Suggested measures: quantityOnHand
+- Suggested dimensions: categoryId, category
+
+### Model: StockMovement
+
+- Table: `stock_movements` | Domain: Inventory | Fields: 10
+- Belongs to (FK out):
+  - `stockItem` -> **StockItem** (stockItemId, onDelete Cascade)
+- Suggested measures: quantity
+- Suggested dimensions: type, refType, stockItem
+
+### Model: StocktakeCount
+
+- Table: `stocktake_counts` | Domain: Inventory | Fields: 8
+- Belongs to (FK out):
+  - `session` -> **StocktakeSession** (sessionId, onDelete Cascade)
+  - `stockItem` -> **StockItem** (stockItemId, onDelete Cascade)
+- Suggested measures: systemQty, countedQty
+- Suggested dimensions: session, stockItem
+
+### Model: StocktakeSession
+
+- Table: `stocktake_sessions` | Domain: Inventory | Fields: 9
+- Has many:
+  - `counts` -> **StocktakeCount**[]
+- Referenced by: **StocktakeCount**
+- Suggested dimensions: status
+- Time fields: startedAt, committedAt
 
 ## Domain: Jobs
 
@@ -992,6 +1323,10 @@ graph LR
   - `actor` -> **User** (actorId, onDelete SetNull)
 - Suggested dimensions: entityType, actor
 
+### Model: GlobalAISettings
+
+- Table: `global_ai_settings` | Domain: Platform | Fields: 6
+
 ### Model: GlobalList
 
 - Table: `global_lists` | Domain: Platform | Fields: 12
@@ -1016,6 +1351,16 @@ graph LR
 ### Model: HealthcheckSeedMarker
 
 - Table: `healthcheck_seed_markers` | Domain: Platform | Fields: 3
+
+### Model: ListBinding
+
+- Table: `list_bindings` | Domain: Platform | Fields: 7
+- Suggested dimensions: consumerType
+
+### Model: LookupValue
+
+- Table: `lookup_values` | Domain: Platform | Fields: 9
+- Suggested dimensions: category
 
 ### Model: Notification
 
@@ -1054,10 +1399,22 @@ graph LR
   - `updatedBy` -> **User** (updatedById)
 - Suggested dimensions: persona, updatedBy
 
+### Model: PilotFeedback
+
+- Table: `pilot_feedback` | Domain: Platform | Fields: 8
+- Belongs to (FK out):
+  - `user` -> **User** (userId, onDelete Cascade)
+- Suggested dimensions: user, category, status
+
 ### Model: PlatformConfig
 
 - Table: `platform_config` | Domain: Platform | Fields: 16
 - Time fields: anthropicKeyValidatedAt, openaiKeyValidatedAt, geminiKeyValidatedAt, groqKeyValidatedAt
+
+### Model: PublicHoliday
+
+- Table: `public_holidays` | Domain: Platform | Fields: 6
+- Time fields: date
 
 ### Model: RefreshToken
 
@@ -1084,6 +1441,11 @@ graph LR
   - `permission` -> **Permission** (permissionId, onDelete Cascade)
 - Suggested dimensions: roleId, role, permission
 - Time fields: assignedAt
+
+### Model: SearchEntry
+
+- Table: `search_entries` | Domain: Platform | Fields: 11
+- Suggested dimensions: entityType
 
 ### Model: User
 
@@ -1200,6 +1562,38 @@ graph LR
   - `role` -> **Role** (roleId, onDelete Cascade)
 - Suggested dimensions: roleId, user, role
 - Time fields: assignedAt
+
+## Domain: Procurement
+
+### Model: ProcurementConfig
+
+- Table: `procurement_config` | Domain: Procurement | Fields: 5
+
+### Model: ProcurementLine
+
+- Table: `procurement_lines` | Domain: Procurement | Fields: 12
+- Belongs to (FK out):
+  - `request` -> **ProcurementRequest** (requestId, onDelete Cascade)
+- Suggested measures: quantity, unitPrice, lineTotal
+- Suggested dimensions: category, request
+
+### Model: ProcurementRequest
+
+- Table: `procurement_requests` | Domain: Procurement | Fields: 21
+- Has many:
+  - `lines` -> **ProcurementLine**[]
+  - `purchaseOrders` -> **PurchaseOrder**[]
+- Referenced by: **ProcurementLine**, **PurchaseOrder**
+- Suggested dimensions: status
+- Time fields: submittedAt, approvedAt, issuedAt, receivedAt, cancelledAt
+
+### Model: PurchaseOrder
+
+- Table: `purchase_orders` | Domain: Procurement | Fields: 10
+- Belongs to (FK out):
+  - `request` -> **ProcurementRequest** (requestId, onDelete Cascade)
+- Suggested dimensions: request
+- Time fields: issuedAt, emailSentAt
 
 ## Domain: Projects
 
@@ -1345,6 +1739,13 @@ graph LR
   - `worker` -> **Worker** (workerId, onDelete Cascade)
 - Suggested dimensions: status, worker
 - Time fields: startAt, endAt
+
+### Model: SchedulingConflict
+
+- Table: `scheduling_conflicts` | Domain: Scheduler | Fields: 7
+- Belongs to (FK out):
+  - `shift` -> **Shift** (shiftId, onDelete Cascade)
+- Suggested dimensions: shift
 
 ## Domain: Sites
 
@@ -1591,384 +1992,6 @@ graph LR
   - `tender` -> **Tender** (tenderId, onDelete Cascade)
 - Suggested dimensions: tender
 
-## Domain: Unclassified
-
-### Model: ApprovalDecision
-
-- Table: `approval_decisions` | Domain: Unclassified | Fields: 14
-- Belongs to (FK out):
-  - `decidedBy` -> **User** (decidedById, onDelete Cascade)
-  - `overrules` -> **ApprovalDecision** (overrulesId)
-- Has one (back-relation):
-  - `overruledBy` -> **ApprovalDecision**
-- Referenced by: **ApprovalDecision**
-- Suggested measures: amount
-- Suggested dimensions: entityType, decision, decidedBy, overrules
-
-### Model: AuthorityRule
-
-- Table: `authority_rules` | Domain: Unclassified | Fields: 11
-- Suggested measures: limitAmount
-- Suggested dimensions: scopeType, scopeId
-
-### Model: ClaimLineItem
-
-- Table: `claim_line_items` | Domain: Unclassified | Fields: 12
-- Belongs to (FK out):
-  - `claim` -> **ProgressClaim** (claimId, onDelete Cascade)
-  - `variation` -> **Variation** (variationId, onDelete SetNull)
-- Suggested measures: contractValue, thisClaimPct, thisClaimAmount
-- Suggested dimensions: claim, discipline, variation
-
-### Model: ClaimNumberSequence
-
-- Table: `claim_number_sequences` | Domain: Unclassified | Fields: 2
-- Suggested measures: lastNumber
-
-### Model: Conversation
-
-- Table: `conversations` | Domain: Unclassified | Fields: 9
-- Belongs to (FK out):
-  - `user` -> **User** (userId, onDelete Cascade)
-- Has many:
-  - `messages` -> **ConversationMessage**[]
-- Referenced by: **ConversationMessage**
-- Suggested dimensions: user
-
-### Model: ConversationMessage
-
-- Table: `conversation_messages` | Domain: Unclassified | Fields: 10
-- Belongs to (FK out):
-  - `conversation` -> **Conversation** (conversationId, onDelete Cascade)
-- Suggested dimensions: role, conversation
-
-### Model: CorrespondenceMessage
-
-- Table: `correspondence_messages` | Domain: Unclassified | Fields: 16
-- Belongs to (FK out):
-  - `thread` -> **CorrespondenceThread** (threadId, onDelete Cascade)
-  - `sentBy` -> **User** (sentById, onDelete SetNull)
-- Suggested dimensions: thread, sentBy
-- Time fields: sentAt, receivedAt
-
-### Model: CorrespondenceThread
-
-- Table: `correspondence_threads` | Domain: Unclassified | Fields: 14
-- Belongs to (FK out):
-  - `client` -> **Client** (clientId, onDelete Cascade)
-  - `tender` -> **Tender** (tenderId, onDelete Cascade)
-  - `job` -> **Job** (jobId, onDelete Cascade)
-- Has many:
-  - `messages` -> **CorrespondenceMessage**[]
-- Referenced by: **CorrespondenceMessage**
-- Suggested dimensions: client, tender, job
-- Time fields: lastMessageAt
-
-### Model: CuttingOtherRate
-
-- Table: `cutting_other_rates` | Domain: Unclassified | Fields: 9
-- Has many:
-  - `cuttingItems` -> **CuttingSheetItem**[]
-- Referenced by: **CuttingSheetItem**
-- Suggested measures: rate
-
-### Model: CuttingSheetItem
-
-- Table: `cutting_sheet_items` | Domain: Unclassified | Fields: 30
-- Belongs to (FK out):
-  - `tender` -> **Tender** (tenderId, onDelete Cascade)
-  - `card` -> **ScopeCard** (cardId, onDelete Cascade)
-  - `otherRate` -> **CuttingOtherRate** (otherRateId, onDelete SetNull)
-  - `createdBy` -> **User** (createdById, onDelete Restrict)
-- Suggested measures: quantityLm, quantityEach, ratePerM, ratePerHole, lineTotal
-- Suggested dimensions: tender, card, itemType, elevation, material, method, otherRate, createdBy
-
-### Model: EmailProviderConfig
-
-- Table: `email_provider_config` | Domain: Unclassified | Fields: 8
-- Belongs to (FK out):
-  - `updatedBy` -> **User** (updatedById, onDelete SetNull)
-- Suggested dimensions: updatedBy
-
-### Model: EstimateAssumption
-
-- Table: `estimate_assumptions` | Domain: Unclassified | Fields: 5
-- Belongs to (FK out):
-  - `item` -> **EstimateItem** (itemId, onDelete Cascade)
-- Suggested dimensions: item
-
-### Model: EstimateCoreHoleRate
-
-- Table: `estimate_core_hole_rates` | Domain: Unclassified | Fields: 6
-- Suggested measures: ratePerHole
-
-### Model: EstimateCuttingLine
-
-- Table: `estimate_cutting_lines` | Domain: Unclassified | Fields: 14
-- Belongs to (FK out):
-  - `item` -> **EstimateItem** (itemId, onDelete Cascade)
-- Suggested measures: qty, rate
-- Suggested dimensions: item, cuttingType, elevation, material
-
-### Model: EstimateCuttingRate
-
-- Table: `estimate_cutting_rates` | Domain: Unclassified | Fields: 10
-- Suggested measures: ratePerM
-- Suggested dimensions: elevation, material
-
-### Model: EstimateEnclosureRate
-
-- Table: `estimate_enclosure_rates` | Domain: Unclassified | Fields: 8
-- Suggested measures: rate
-- Suggested dimensions: enclosureType
-
-### Model: EstimateEquipLine
-
-- Table: `estimate_equip_lines` | Domain: Unclassified | Fields: 9
-- Belongs to (FK out):
-  - `item` -> **EstimateItem** (itemId, onDelete Cascade)
-- Suggested measures: qty, rate
-- Suggested dimensions: item
-
-### Model: EstimateExport
-
-- Table: `estimate_exports` | Domain: Unclassified | Fields: 9
-- Belongs to (FK out):
-  - `tender` -> **Tender** (tenderId, onDelete Cascade)
-  - `user` -> **User** (generatedBy, onDelete Restrict)
-- Suggested dimensions: tender, type, user
-- Time fields: generatedAt
-
-### Model: EstimateFuelRate
-
-- Table: `estimate_fuel_rates` | Domain: Unclassified | Fields: 8
-- Suggested measures: rate
-
-### Model: EstimateItem
-
-- Table: `estimate_items` | Domain: Unclassified | Fields: 19
-- Belongs to (FK out):
-  - `estimate` -> **TenderEstimate** (estimateId, onDelete Cascade)
-- Has many:
-  - `labourLines` -> **EstimateLabourLine**[]
-  - `equipLines` -> **EstimateEquipLine**[]
-  - `plantLines` -> **EstimatePlantLine**[]
-  - `wasteLines` -> **EstimateWasteLine**[]
-  - `cuttingLines` -> **EstimateCuttingLine**[]
-  - `assumptions` -> **EstimateAssumption**[]
-- Referenced by: **EstimateAssumption**, **EstimateCuttingLine**, **EstimateEquipLine**, **EstimateLabourLine**, **EstimatePlantLine**, **EstimateWasteLine**
-- Suggested measures: itemNumber, markup, provisionalAmount
-- Suggested dimensions: estimate
-
-### Model: EstimateLabourLine
-
-- Table: `estimate_labour_lines` | Domain: Unclassified | Fields: 9
-- Belongs to (FK out):
-  - `item` -> **EstimateItem** (itemId, onDelete Cascade)
-- Suggested measures: qty, days, rate
-- Suggested dimensions: item, role
-
-### Model: EstimateLabourRate
-
-- Table: `estimate_labour_rates` | Domain: Unclassified | Fields: 9
-- Suggested measures: dayRate, nightRate, weekendRate
-- Suggested dimensions: role
-
-### Model: EstimateMaterialDensity
-
-- Table: `estimate_material_density` | Domain: Unclassified | Fields: 10
-- Suggested dimensions: materialName, category
-
-### Model: EstimatePlantLine
-
-- Table: `estimate_plant_lines` | Domain: Unclassified | Fields: 9
-- Belongs to (FK out):
-  - `item` -> **EstimateItem** (itemId, onDelete Cascade)
-- Suggested measures: qty, days, rate
-- Suggested dimensions: item
-
-### Model: EstimatePlantRate
-
-- Table: `estimate_plant_rates` | Domain: Unclassified | Fields: 10
-- Suggested measures: rate, fuelRate
-- Suggested dimensions: category
-
-### Model: EstimateWasteLine
-
-- Table: `estimate_waste_lines` | Domain: Unclassified | Fields: 11
-- Belongs to (FK out):
-  - `item` -> **EstimateItem** (itemId, onDelete Cascade)
-- Suggested measures: qtyTonnes, tonRate, loads, loadRate
-- Suggested dimensions: item, wasteType
-
-### Model: EstimateWasteRate
-
-- Table: `estimate_waste_rates` | Domain: Unclassified | Fields: 11
-- Suggested measures: tonRate, loadRate
-- Suggested dimensions: wasteType
-
-### Model: GlobalAISettings
-
-- Table: `global_ai_settings` | Domain: Unclassified | Fields: 6
-
-### Model: InternalMessage
-
-- Table: `internal_messages` | Domain: Unclassified | Fields: 12
-- Belongs to (FK out):
-  - `sender` -> **User** (senderId, onDelete Cascade)
-  - `recipient` -> **User** (recipientId, onDelete Cascade)
-- Suggested dimensions: entityType, status, sender, recipient
-- Time fields: readAt
-
-### Model: ListBinding
-
-- Table: `list_bindings` | Domain: Unclassified | Fields: 7
-- Suggested dimensions: consumerType
-
-### Model: LookupValue
-
-- Table: `lookup_values` | Domain: Unclassified | Fields: 9
-- Suggested dimensions: category
-
-### Model: PilotFeedback
-
-- Table: `pilot_feedback` | Domain: Unclassified | Fields: 8
-- Belongs to (FK out):
-  - `user` -> **User** (userId, onDelete Cascade)
-- Suggested dimensions: user, category, status
-
-### Model: ProcurementConfig
-
-- Table: `procurement_config` | Domain: Unclassified | Fields: 5
-
-### Model: ProcurementLine
-
-- Table: `procurement_lines` | Domain: Unclassified | Fields: 12
-- Belongs to (FK out):
-  - `request` -> **ProcurementRequest** (requestId, onDelete Cascade)
-- Suggested measures: quantity, unitPrice, lineTotal
-- Suggested dimensions: category, request
-
-### Model: ProcurementRequest
-
-- Table: `procurement_requests` | Domain: Unclassified | Fields: 21
-- Has many:
-  - `lines` -> **ProcurementLine**[]
-  - `purchaseOrders` -> **PurchaseOrder**[]
-- Referenced by: **ProcurementLine**, **PurchaseOrder**
-- Suggested dimensions: status
-- Time fields: submittedAt, approvedAt, issuedAt, receivedAt, cancelledAt
-
-### Model: PublicHoliday
-
-- Table: `public_holidays` | Domain: Unclassified | Fields: 6
-- Time fields: date
-
-### Model: PurchaseOrder
-
-- Table: `purchase_orders` | Domain: Unclassified | Fields: 10
-- Belongs to (FK out):
-  - `request` -> **ProcurementRequest** (requestId, onDelete Cascade)
-- Suggested dimensions: request
-- Time fields: issuedAt, emailSentAt
-
-### Model: ResourceType
-
-- Table: `resource_types` | Domain: Unclassified | Fields: 9
-- Has many:
-  - `workers` -> **Worker**[]
-  - `assets` -> **Asset**[]
-- Referenced by: **Asset**, **Worker**
-- Suggested dimensions: category
-
-### Model: SchedulingConflict
-
-- Table: `scheduling_conflicts` | Domain: Unclassified | Fields: 7
-- Belongs to (FK out):
-  - `shift` -> **Shift** (shiftId, onDelete Cascade)
-- Suggested dimensions: shift
-
-### Model: ScopeCard
-
-- Table: `scope_cards` | Domain: Unclassified | Fields: 24
-- Belongs to (FK out):
-  - `tender` -> **Tender** (tenderId, onDelete Cascade)
-  - `createdBy` -> **User** (createdById, onDelete Restrict)
-- Has many:
-  - `scopeItems` -> **ScopeOfWorksItem**[]
-  - `wasteItems` -> **ScopeWasteItem**[]
-  - `cuttingItems` -> **CuttingSheetItem**[]
-- Referenced by: **CuttingSheetItem**, **ScopeOfWorksItem**, **ScopeWasteItem**
-- Suggested measures: cardNumber, plantColumnCount, markupOverride, wasteMarkupOverride, cuttingMarkupOverride, labourDaysOverride
-- Suggested dimensions: tender, discipline, createdBy
-
-### Model: ScopeViewConfig
-
-- Table: `scope_view_configs` | Domain: Unclassified | Fields: 7
-- Belongs to (FK out):
-  - `tender` -> **Tender** (tenderId, onDelete Cascade)
-- Suggested dimensions: tender, discipline
-
-### Model: ScopeWasteItem
-
-- Table: `scope_waste_items` | Domain: Unclassified | Fields: 26
-- Belongs to (FK out):
-  - `tender` -> **Tender** (tenderId, onDelete Cascade)
-  - `card` -> **ScopeCard** (cardId, onDelete Cascade)
-  - `createdBy` -> **User** (createdById, onDelete Restrict)
-- Suggested measures: qty, wasteLoads, truckDays, ratePerTonne, ratePerLoad, lineTotal
-- Suggested dimensions: tender, card, discipline, wasteType, createdBy
-
-### Model: SearchEntry
-
-- Table: `search_entries` | Domain: Unclassified | Fields: 11
-- Suggested dimensions: entityType
-
-### Model: StockCategory
-
-- Table: `stock_categories` | Domain: Unclassified | Fields: 8
-- Has many:
-  - `stockItems` -> **StockItem**[]
-- Referenced by: **StockItem**
-
-### Model: StockItem
-
-- Table: `stock_items` | Domain: Unclassified | Fields: 14
-- Belongs to (FK out):
-  - `category` -> **StockCategory** (categoryId, onDelete SetNull)
-- Has many:
-  - `movements` -> **StockMovement**[]
-  - `stocktakeCounts` -> **StocktakeCount**[]
-- Referenced by: **StockMovement**, **StocktakeCount**
-- Suggested measures: quantityOnHand
-- Suggested dimensions: categoryId, category
-
-### Model: StockMovement
-
-- Table: `stock_movements` | Domain: Unclassified | Fields: 10
-- Belongs to (FK out):
-  - `stockItem` -> **StockItem** (stockItemId, onDelete Cascade)
-- Suggested measures: quantity
-- Suggested dimensions: type, refType, stockItem
-
-### Model: StocktakeCount
-
-- Table: `stocktake_counts` | Domain: Unclassified | Fields: 8
-- Belongs to (FK out):
-  - `session` -> **StocktakeSession** (sessionId, onDelete Cascade)
-  - `stockItem` -> **StockItem** (stockItemId, onDelete Cascade)
-- Suggested measures: systemQty, countedQty
-- Suggested dimensions: session, stockItem
-
-### Model: StocktakeSession
-
-- Table: `stocktake_sessions` | Domain: Unclassified | Fields: 9
-- Has many:
-  - `counts` -> **StocktakeCount**[]
-- Referenced by: **StocktakeCount**
-- Suggested dimensions: status
-- Time fields: startedAt, committedAt
-
 ## Domain: Workers
 
 ### Model: Competency
@@ -2116,7 +2139,7 @@ graph LR
 
 ## Full model index (A-Z)
 
-- **ApprovalDecision** (Unclassified) - table `approval_decisions`
+- **ApprovalDecision** (Authorization) - table `approval_decisions`
 - **Asset** (Assets) - table `assets`
 - **AssetBreakdown** (Assets) - table `asset_breakdowns`
 - **AssetCategory** (Assets) - table `asset_categories`
@@ -2125,11 +2148,11 @@ graph LR
 - **AssetMaintenancePlan** (Assets) - table `asset_maintenance_plans`
 - **AssetStatusHistory** (Assets) - table `asset_status_history`
 - **AuditLog** (Platform) - table `audit_logs`
-- **AuthorityRule** (Unclassified) - table `authority_rules`
+- **AuthorityRule** (Authorization) - table `authority_rules`
 - **AvailabilityWindow** (Scheduler) - table `availability_windows`
 - **CalendarSyncedEvent** (Integrations) - table `calendar_synced_events`
-- **ClaimLineItem** (Unclassified) - table `claim_line_items`
-- **ClaimNumberSequence** (Unclassified) - table `claim_number_sequences`
+- **ClaimLineItem** (Contracts) - table `claim_line_items`
+- **ClaimNumberSequence** (Contracts) - table `claim_number_sequences`
 - **Client** (Directory) - table `clients`
 - **ClientPortalUser** (Directory) - table `client_portal_users`
 - **ClientQuote** (Directory) - table `client_quotes`
@@ -2140,39 +2163,39 @@ graph LR
 - **Contact** (Directory) - table `contacts`
 - **Contract** (Contracts) - table `contracts`
 - **ContractNumberSequence** (Contracts) - table `contract_number_sequences`
-- **Conversation** (Unclassified) - table `conversations`
-- **ConversationMessage** (Unclassified) - table `conversation_messages`
-- **CorrespondenceMessage** (Unclassified) - table `correspondence_messages`
-- **CorrespondenceThread** (Unclassified) - table `correspondence_threads`
+- **Conversation** (Communications) - table `conversations`
+- **ConversationMessage** (Communications) - table `conversation_messages`
+- **CorrespondenceMessage** (Communications) - table `correspondence_messages`
+- **CorrespondenceThread** (Communications) - table `correspondence_threads`
 - **CreditApplication** (Compliance) - table `credit_applications`
 - **Crew** (Workers) - table `crews`
 - **CrewWorker** (Workers) - table `crew_workers`
-- **CuttingOtherRate** (Unclassified) - table `cutting_other_rates`
-- **CuttingSheetItem** (Unclassified) - table `cutting_sheet_items`
+- **CuttingOtherRate** (Estimating (Legacy)) - table `cutting_other_rates`
+- **CuttingSheetItem** (Estimating (Legacy)) - table `cutting_sheet_items`
 - **Dashboard** (Dashboards) - table `dashboards`
 - **DashboardWidget** (Dashboards) - table `dashboard_widgets`
 - **DocumentAccessRule** (Documents) - table `document_access_rules`
 - **DocumentLink** (Documents) - table `document_links`
 - **DocumentTag** (Documents) - table `document_tags`
-- **EmailProviderConfig** (Unclassified) - table `email_provider_config`
+- **EmailProviderConfig** (Communications) - table `email_provider_config`
 - **EntityInsurance** (Compliance) - table `entity_insurances`
 - **EntityLicence** (Compliance) - table `entity_licences`
-- **EstimateAssumption** (Unclassified) - table `estimate_assumptions`
-- **EstimateCoreHoleRate** (Unclassified) - table `estimate_core_hole_rates`
-- **EstimateCuttingLine** (Unclassified) - table `estimate_cutting_lines`
-- **EstimateCuttingRate** (Unclassified) - table `estimate_cutting_rates`
-- **EstimateEnclosureRate** (Unclassified) - table `estimate_enclosure_rates`
-- **EstimateEquipLine** (Unclassified) - table `estimate_equip_lines`
-- **EstimateExport** (Unclassified) - table `estimate_exports`
-- **EstimateFuelRate** (Unclassified) - table `estimate_fuel_rates`
-- **EstimateItem** (Unclassified) - table `estimate_items`
-- **EstimateLabourLine** (Unclassified) - table `estimate_labour_lines`
-- **EstimateLabourRate** (Unclassified) - table `estimate_labour_rates`
-- **EstimateMaterialDensity** (Unclassified) - table `estimate_material_density`
-- **EstimatePlantLine** (Unclassified) - table `estimate_plant_lines`
-- **EstimatePlantRate** (Unclassified) - table `estimate_plant_rates`
-- **EstimateWasteLine** (Unclassified) - table `estimate_waste_lines`
-- **EstimateWasteRate** (Unclassified) - table `estimate_waste_rates`
+- **EstimateAssumption** (Estimating (Legacy)) - table `estimate_assumptions`
+- **EstimateCoreHoleRate** (Estimating (Legacy)) - table `estimate_core_hole_rates`
+- **EstimateCuttingLine** (Estimating (Legacy)) - table `estimate_cutting_lines`
+- **EstimateCuttingRate** (Estimating (Legacy)) - table `estimate_cutting_rates`
+- **EstimateEnclosureRate** (Estimating (Legacy)) - table `estimate_enclosure_rates`
+- **EstimateEquipLine** (Estimating (Legacy)) - table `estimate_equip_lines`
+- **EstimateExport** (Estimating (Legacy)) - table `estimate_exports`
+- **EstimateFuelRate** (Estimating (Legacy)) - table `estimate_fuel_rates`
+- **EstimateItem** (Estimating (Legacy)) - table `estimate_items`
+- **EstimateLabourLine** (Estimating (Legacy)) - table `estimate_labour_lines`
+- **EstimateLabourRate** (Estimating (Legacy)) - table `estimate_labour_rates`
+- **EstimateMaterialDensity** (Estimating (Legacy)) - table `estimate_material_density`
+- **EstimatePlantLine** (Estimating (Legacy)) - table `estimate_plant_lines`
+- **EstimatePlantRate** (Estimating (Legacy)) - table `estimate_plant_rates`
+- **EstimateWasteLine** (Estimating (Legacy)) - table `estimate_waste_lines`
+- **EstimateWasteRate** (Estimating (Legacy)) - table `estimate_waste_rates`
 - **FormApproval** (Forms) - table `form_approvals`
 - **FormAttachment** (Forms) - table `form_attachments`
 - **FormField** (Forms) - table `form_fields`
@@ -2186,13 +2209,13 @@ graph LR
 - **FormTemplateVersion** (Forms) - table `form_template_versions`
 - **FormTriggeredRecord** (Forms) - table `form_triggered_records`
 - **GanttTask** (Projects) - table `gantt_tasks`
-- **GlobalAISettings** (Unclassified) - table `global_ai_settings`
+- **GlobalAISettings** (Platform) - table `global_ai_settings`
 - **GlobalList** (Platform) - table `global_lists`
 - **GlobalListItem** (Platform) - table `global_list_items`
 - **HazardNumberSequence** (Safety) - table `hazard_number_sequences`
 - **HazardObservation** (Safety) - table `hazard_observations`
 - **HealthcheckSeedMarker** (Platform) - table `healthcheck_seed_markers`
-- **InternalMessage** (Unclassified) - table `internal_messages`
+- **InternalMessage** (Communications) - table `internal_messages`
 - **Job** (Jobs) - table `jobs`
 - **JobActivity** (Jobs) - table `job_activities`
 - **JobCloseout** (Jobs) - table `job_closeouts`
@@ -2205,21 +2228,21 @@ graph LR
 - **JobStage** (Jobs) - table `job_stages`
 - **JobStatusHistory** (Jobs) - table `job_status_history`
 - **JobVariation** (Jobs) - table `job_variations`
-- **ListBinding** (Unclassified) - table `list_bindings`
-- **LookupValue** (Unclassified) - table `lookup_values`
+- **ListBinding** (Platform) - table `list_bindings`
+- **LookupValue** (Platform) - table `lookup_values`
 - **Notification** (Platform) - table `notifications`
 - **NotificationTriggerConfig** (Platform) - table `notification_trigger_configs`
 - **Permission** (Platform) - table `permissions`
 - **Persona** (Platform) - table `personas`
 - **PersonaCompanyInstruction** (Platform) - table `persona_company_instructions`
-- **PilotFeedback** (Unclassified) - table `pilot_feedback`
+- **PilotFeedback** (Platform) - table `pilot_feedback`
 - **PlatformConfig** (Platform) - table `platform_config`
 - **PortalInvite** (Integrations) - table `portal_invites`
 - **PortalSession** (Integrations) - table `portal_sessions`
 - **PreStartChecklist** (Forms) - table `pre_start_checklists`
-- **ProcurementConfig** (Unclassified) - table `procurement_config`
-- **ProcurementLine** (Unclassified) - table `procurement_lines`
-- **ProcurementRequest** (Unclassified) - table `procurement_requests`
+- **ProcurementConfig** (Procurement) - table `procurement_config`
+- **ProcurementLine** (Procurement) - table `procurement_lines`
+- **ProcurementRequest** (Procurement) - table `procurement_requests`
 - **ProgressClaim** (Contracts) - table `progress_claims`
 - **Project** (Projects) - table `projects`
 - **ProjectActivityLog** (Projects) - table `project_activity_logs`
@@ -2227,8 +2250,8 @@ graph LR
 - **ProjectMilestone** (Projects) - table `project_milestones`
 - **ProjectNumberSequence** (Projects) - table `project_number_sequences`
 - **ProjectScopeItem** (Projects) - table `project_scope_items`
-- **PublicHoliday** (Unclassified) - table `public_holidays`
-- **PurchaseOrder** (Unclassified) - table `purchase_orders`
+- **PublicHoliday** (Platform) - table `public_holidays`
+- **PurchaseOrder** (Procurement) - table `purchase_orders`
 - **QuoteAssumption** (Estimating) - table `quote_assumptions`
 - **QuoteCostLine** (Estimating) - table `quote_cost_lines`
 - **QuoteCostOption** (Estimating) - table `quote_cost_options`
@@ -2240,19 +2263,19 @@ graph LR
 - **RateRow** (Estimating) - table `rate_rows`
 - **RateTable** (Estimating) - table `rate_tables`
 - **RefreshToken** (Platform) - table `refresh_tokens`
-- **ResourceType** (Unclassified) - table `resource_types`
+- **ResourceType** (Inventory) - table `resource_types`
 - **Role** (Platform) - table `roles`
 - **RolePermission** (Platform) - table `role_permissions`
 - **SafetyIncident** (Safety) - table `safety_incidents`
 - **SafetyIncidentNumberSequence** (Safety) - table `safety_incident_number_sequences`
 - **ScheduleAllocation** (Projects) - table `schedule_allocations`
-- **SchedulingConflict** (Unclassified) - table `scheduling_conflicts`
-- **ScopeCard** (Unclassified) - table `scope_cards`
+- **SchedulingConflict** (Scheduler) - table `scheduling_conflicts`
+- **ScopeCard** (Estimating) - table `scope_cards`
 - **ScopeOfWorksHeader** (Estimating) - table `scope_of_works_headers`
 - **ScopeOfWorksItem** (Estimating) - table `scope_of_works_items`
-- **ScopeViewConfig** (Unclassified) - table `scope_view_configs`
-- **ScopeWasteItem** (Unclassified) - table `scope_waste_items`
-- **SearchEntry** (Unclassified) - table `search_entries`
+- **ScopeViewConfig** (Estimating) - table `scope_view_configs`
+- **ScopeWasteItem** (Estimating) - table `scope_waste_items`
+- **SearchEntry** (Platform) - table `search_entries`
 - **SharePointFileLink** (Documents) - table `sharepoint_file_links`
 - **SharePointFolderLink** (Documents) - table `sharepoint_folder_links`
 - **Shift** (Jobs) - table `shifts`
@@ -2260,11 +2283,11 @@ graph LR
 - **ShiftRoleRequirement** (Jobs) - table `shift_role_requirements`
 - **ShiftWorkerAssignment** (Jobs) - table `shift_worker_assignments`
 - **Site** (Sites) - table `sites`
-- **StockCategory** (Unclassified) - table `stock_categories`
-- **StockItem** (Unclassified) - table `stock_items`
-- **StockMovement** (Unclassified) - table `stock_movements`
-- **StocktakeCount** (Unclassified) - table `stocktake_counts`
-- **StocktakeSession** (Unclassified) - table `stocktake_sessions`
+- **StockCategory** (Inventory) - table `stock_categories`
+- **StockItem** (Inventory) - table `stock_items`
+- **StockMovement** (Inventory) - table `stock_movements`
+- **StocktakeCount** (Inventory) - table `stocktake_counts`
+- **StocktakeSession** (Inventory) - table `stocktake_sessions`
 - **SubcontractorDocument** (Directory) - table `subcontractor_documents`
 - **SubcontractorSupplier** (Directory) - table `subcontractor_suppliers`
 - **SupplierCreditEntry** (Directory) - table `supplier_credit_entries`

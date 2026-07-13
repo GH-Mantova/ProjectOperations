@@ -5,6 +5,7 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
+import { AuditService } from "../audit/audit.service";
 import type {
   CreateListBindingDto,
   ListBindingConsumerTypeDto,
@@ -18,7 +19,10 @@ import type {
  */
 @Injectable()
 export class ListBindingsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService
+  ) {}
 
   list(filters: { listId?: string; consumerType?: ListBindingConsumerTypeDto } = {}) {
     return this.prisma.listBinding.findMany({
@@ -75,10 +79,27 @@ export class ListBindingsService {
     });
   }
 
-  async remove(id: string) {
+  /**
+   * Hard-delete a binding. Bindings are pure link records — nothing at the DB
+   * level depends on them, so there is no in-use guard beyond existence. Every
+   * delete writes an AuditLog row so the link can be reconstructed.
+   */
+  async remove(id: string, actorId?: string) {
     const existing = await this.prisma.listBinding.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException(`Binding "${id}" not found.`);
     await this.prisma.listBinding.delete({ where: { id } });
+    await this.auditService.write({
+      actorId,
+      action: "listBinding.delete",
+      entityType: "ListBinding",
+      entityId: id,
+      metadata: {
+        listId: existing.listId,
+        consumerType: existing.consumerType,
+        consumerRef: existing.consumerRef,
+        label: existing.label
+      }
+    });
     return { deleted: true };
   }
 }

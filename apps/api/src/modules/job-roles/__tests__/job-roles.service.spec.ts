@@ -14,9 +14,12 @@ type MockPrisma = {
     deleteMany: jest.Mock;
     createMany: jest.Mock;
   };
+  scheduleAllocation: { count: jest.Mock };
   competency: { findMany: jest.Mock };
   $transaction: jest.Mock;
 };
+
+type MockAudit = { write: jest.Mock };
 
 function makePrisma(): MockPrisma {
   const prisma: MockPrisma = {
@@ -31,6 +34,7 @@ function makePrisma(): MockPrisma {
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       createMany: jest.fn().mockResolvedValue({ count: 0 })
     },
+    scheduleAllocation: { count: jest.fn().mockResolvedValue(0) },
     competency: { findMany: jest.fn().mockResolvedValue([]) },
     $transaction: jest.fn()
   };
@@ -38,8 +42,12 @@ function makePrisma(): MockPrisma {
   return prisma;
 }
 
-function makeService(prisma: MockPrisma) {
-  return new JobRolesService(prisma as never);
+function makeAudit(): MockAudit {
+  return { write: jest.fn().mockResolvedValue(undefined) };
+}
+
+function makeService(prisma: MockPrisma, audit: MockAudit = makeAudit()) {
+  return new JobRolesService(prisma as never, audit as never);
 }
 
 describe("JobRolesService", () => {
@@ -131,10 +139,47 @@ describe("JobRolesService", () => {
     expect(prisma.jobRoleRequirement.createMany).not.toHaveBeenCalled();
   });
 
-  test("remove returns { deleted: true } and calls prisma.delete", async () => {
+  test("remove returns { deleted: true } and calls prisma.delete when unused, and writes audit", async () => {
     const prisma = makePrisma();
-    prisma.jobRole.findUnique.mockResolvedValue({ id: "r-1", requirements: [] });
-    await expect(makeService(prisma).remove("r-1")).resolves.toEqual({ deleted: true });
+    const audit = makeAudit();
+    prisma.jobRole.findUnique.mockResolvedValue({
+      id: "r-1",
+      name: "Supervisor",
+      description: null,
+      colour: null,
+      isActive: true,
+      sortOrder: 0,
+      requirements: [{ id: "req-1" }]
+    });
+    await expect(makeService(prisma, audit).remove("r-1", "actor-1")).resolves.toEqual({
+      deleted: true
+    });
+    expect(prisma.scheduleAllocation.count).toHaveBeenCalledWith({
+      where: { jobRoleId: "r-1" }
+    });
     expect(prisma.jobRole.delete).toHaveBeenCalledWith({ where: { id: "r-1" } });
+    expect(audit.write).toHaveBeenCalledTimes(1);
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: "actor-1",
+        action: "jobRole.delete",
+        entityType: "JobRole",
+        entityId: "r-1",
+        metadata: expect.objectContaining({ name: "Supervisor", requirementCount: 1 })
+      })
+    );
+  });
+
+  test("remove refuses with 409 when any ScheduleAllocation still references the role", async () => {
+    const prisma = makePrisma();
+    const audit = makeAudit();
+    prisma.jobRole.findUnique.mockResolvedValue({ id: "r-1", requirements: [] });
+    prisma.scheduleAllocation.count.mockResolvedValue(3);
+    await expect(makeService(prisma, audit).remove("r-1", "actor-1")).rejects.toBeInstanceOf(
+      ConflictException
+    );
+    // Regression: nothing is written when the guard fires.
+    expect(prisma.jobRole.delete).not.toHaveBeenCalled();
+    expect(audit.write).not.toHaveBeenCalled();
   });
 });

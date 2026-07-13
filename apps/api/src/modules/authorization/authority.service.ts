@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import type { AuthorityRule, Prisma } from "@prisma/client";
 import { AuthorityScopeType } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { AuditService } from "../audit/audit.service";
 import type { CreateAuthorityRuleDto } from "./dto/create-authority-rule.dto";
 import type { UpdateAuthorityRuleDto } from "./dto/update-authority-rule.dto";
 
@@ -34,7 +35,10 @@ const SCOPE_PRIORITY: AuthorityScopeType[] = [
  */
 @Injectable()
 export class AuthorityService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService
+  ) {}
 
   /**
    * Decide whether `input.userId` may perform `input.action` at the
@@ -127,12 +131,38 @@ export class AuthorityService {
     return this.prisma.authorityRule.update({ where: { id }, data });
   }
 
-  async remove(id: string) {
+  /**
+   * Hard-delete an authority rule. Refuses while the rule is still enabled —
+   * an enabled rule participates in every `check()` decision, so a live delete
+   * silently reshapes approval routing. Caller must disable (`enabled = false`)
+   * first. Every successful delete writes an AuditLog row with the rule payload
+   * so the decision surface can be reconstructed.
+   */
+  async remove(id: string, actorId?: string) {
     const existing = await this.prisma.authorityRule.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundException("Authority rule not found.");
     }
+    if (existing.enabled) {
+      throw new ConflictException(
+        "Authority rule is enabled. Disable it first (set enabled = false) before deleting."
+      );
+    }
     await this.prisma.authorityRule.delete({ where: { id } });
+    await this.auditService.write({
+      actorId,
+      action: "authorityRule.delete",
+      entityType: "AuthorityRule",
+      entityId: id,
+      metadata: {
+        scopeType: existing.scopeType,
+        scopeId: existing.scopeId,
+        action: existing.action,
+        limitAmount: existing.limitAmount?.toString() ?? null,
+        escalateToUserId: existing.escalateToUserId,
+        enabled: existing.enabled
+      }
+    });
     return { id };
   }
 

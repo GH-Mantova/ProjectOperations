@@ -2,6 +2,7 @@
 // approval / spend-limit consumers route through. Documents the default
 // open-ceiling posture: no rule matches ⇒ allowed, no escalation.
 
+import { ConflictException, NotFoundException } from "@nestjs/common";
 import { AuthorityScopeType } from "@prisma/client";
 import { AuthorityService } from "../authority.service";
 
@@ -50,7 +51,23 @@ function buildService(rules: RuleRow[], roleIds: string[] = []) {
     }
   };
 
-  return new AuthorityService(prisma as never);
+  const audit = { write: jest.fn().mockResolvedValue(undefined) };
+  return new AuthorityService(prisma as never, audit as never);
+}
+
+function buildRemoveHarness(rule: RuleRow | null) {
+  const prisma = {
+    authorityRule: {
+      findUnique: jest.fn().mockResolvedValue(rule),
+      delete: jest.fn().mockResolvedValue({ id: rule?.id ?? "x" })
+    }
+  };
+  const audit = { write: jest.fn().mockResolvedValue(undefined) };
+  return {
+    service: new AuthorityService(prisma as never, audit as never),
+    prisma,
+    audit
+  };
 }
 
 describe("AuthorityService.check", () => {
@@ -162,6 +179,50 @@ describe("AuthorityService.check", () => {
       amount: 100000
     });
     expect(decision).toEqual({ allowed: true, requiresEscalation: false });
+  });
+
+  it("remove refuses an enabled rule with 409 and never deletes", async () => {
+    const { service, prisma, audit } = buildRemoveHarness(
+      rule({ id: "rule-live", enabled: true })
+    );
+    await expect(service.remove("rule-live", "actor-1")).rejects.toBeInstanceOf(ConflictException);
+    expect(prisma.authorityRule.delete).not.toHaveBeenCalled();
+    expect(audit.write).not.toHaveBeenCalled();
+  });
+
+  it("remove throws NotFound when the rule does not exist", async () => {
+    const { service } = buildRemoveHarness(null);
+    await expect(service.remove("missing", "actor-1")).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("remove hard-deletes a disabled rule and writes an audit row with the payload", async () => {
+    const { service, prisma, audit } = buildRemoveHarness(
+      rule({
+        id: "rule-off",
+        enabled: false,
+        limitAmount: null,
+        scopeType: AuthorityScopeType.USER,
+        scopeId: "user-9",
+        escalateToUserId: "director-9"
+      })
+    );
+    await expect(service.remove("rule-off", "actor-1")).resolves.toEqual({ id: "rule-off" });
+    expect(prisma.authorityRule.delete).toHaveBeenCalledWith({ where: { id: "rule-off" } });
+    expect(audit.write).toHaveBeenCalledTimes(1);
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: "actor-1",
+        action: "authorityRule.delete",
+        entityType: "AuthorityRule",
+        entityId: "rule-off",
+        metadata: expect.objectContaining({
+          scopeType: AuthorityScopeType.USER,
+          scopeId: "user-9",
+          escalateToUserId: "director-9",
+          enabled: false
+        })
+      })
+    );
   });
 
   it("returns escalateToUserId undefined when the matched rule has no escalation target", async () => {

@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { AuditService } from "../audit/audit.service";
 import { CreateJobRoleDto } from "./dto/create-job-role.dto";
 import { JobRoleRequirementDto } from "./dto/job-role-requirement.dto";
 import { UpdateJobRoleDto } from "./dto/update-job-role.dto";
@@ -14,7 +15,10 @@ const ROLE_WITH_REQUIREMENTS = {
 
 @Injectable()
 export class JobRolesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService
+  ) {}
 
   async list() {
     return this.prisma.jobRole.findMany({
@@ -92,9 +96,37 @@ export class JobRolesService {
     }
   }
 
-  async remove(id: string) {
-    await this.get(id);
+  /**
+   * Hard-delete a job role. Refuses if any ScheduleAllocation references it —
+   * the FK is `onDelete: SetNull`, so an unguarded delete silently erases the
+   * role from every historical allocation. Callers should deactivate
+   * (`isActive = false`) instead to preserve allocation history.
+   */
+  async remove(id: string, actorId?: string) {
+    const existing = await this.get(id);
+    const allocationCount = await this.prisma.scheduleAllocation.count({
+      where: { jobRoleId: id }
+    });
+    if (allocationCount > 0) {
+      throw new ConflictException(
+        `Job role is used by ${allocationCount} scheduled allocation(s). Deactivate it instead (set isActive = false) to preserve allocation history.`
+      );
+    }
     await this.prisma.jobRole.delete({ where: { id } });
+    await this.auditService.write({
+      actorId,
+      action: "jobRole.delete",
+      entityType: "JobRole",
+      entityId: id,
+      metadata: {
+        name: existing.name,
+        description: existing.description ?? null,
+        colour: existing.colour ?? null,
+        isActive: existing.isActive,
+        sortOrder: existing.sortOrder,
+        requirementCount: existing.requirements?.length ?? 0
+      }
+    });
     return { deleted: true };
   }
 

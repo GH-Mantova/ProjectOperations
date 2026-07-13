@@ -7,6 +7,7 @@ import {
   buildQuoteHtml,
   headerTemplate,
   footerTemplate,
+  type PdfCompanyContext,
 } from "../pdf-rendering/builders/quote-html.builder";
 import { PdfRendererService } from "../pdf-rendering/pdf-renderer.service";
 
@@ -394,11 +395,12 @@ export class EstimateExportService {
 
   async exportPdf(tenderId: string, userId: string): Promise<{ buffer: Buffer; filename: string }> {
     const payload = await this.fetchTenderForExport(tenderId);
+    const ctx = await this.resolvePdfCompanyContext();
     const html = buildQuoteHtml(payload);
     const buffer = await this.pdfRenderer.renderHtmlToPdf(html, {
       displayHeaderFooter: true,
-      headerHtml: headerTemplate(payload.tender.tenderNumber),
-      footerHtml: footerTemplate(),
+      headerHtml: headerTemplate(payload.tender.tenderNumber, ctx),
+      footerHtml: footerTemplate(ctx),
       margin: { top: "35mm", bottom: "22mm" },
     });
     await this.prisma.estimateExport.create({
@@ -412,7 +414,74 @@ export class EstimateExportService {
 
   async exportExcel(tenderId: string, userId: string): Promise<{ buffer: Buffer; filename: string }> {
     const payload = await this.fetchTenderForExport(tenderId);
-    const buffer = await buildEstimateExcel(payload);
+    const profile = await this.prisma.companyProfile.findUnique({
+      where: { id: "singleton" },
+      select: { tradingName: true }
+    });
+    const buffer = await buildEstimateExcel(payload, {
+      tradingName: profile?.tradingName ?? "Initial Services"
+    });
+    return this.finaliseExcelExport(buffer, payload, tenderId, userId);
+  }
+
+  /**
+   * Resolve the PDF letterhead/footer context from CompanyProfile +
+   * company-owned licences. Falls back to legacy defaults if the profile
+   * has not been seeded (impossible in normal operation).
+   */
+  async resolvePdfCompanyContext(): Promise<PdfCompanyContext> {
+    const profile = await this.prisma.companyProfile.findUnique({
+      where: { id: "singleton" },
+      include: {
+        licences: {
+          where: { status: "active" },
+          orderBy: { licenceType: "asc" }
+        }
+      }
+    });
+    if (!profile) {
+      return {
+        tradingName: "INITIAL SERVICES",
+        headerRightMeta:
+          "Demolition Licence: 2328018 | Class A Asbestos Licence: 2320431",
+        footerAddressLine:
+          "10 Grice St, Clontarf Q 4019 | P: (07) 3888 0539 | E: admin@initialservices.net | A.B.N: 75 631 222 556"
+      };
+    }
+    const licenceLine =
+      profile.licences.length > 0
+        ? profile.licences
+            .filter((l) => l.licenceNumber)
+            .map((l) => `${l.licenceType}: ${l.licenceNumber}`)
+            .join(" | ") ||
+          "Demolition Licence: 2328018 | Class A Asbestos Licence: 2320431"
+        : "Demolition Licence: 2328018 | Class A Asbestos Licence: 2320431";
+    const addressParts = [
+      [profile.registeredAddressLine1, profile.registeredSuburb, profile.registeredState, profile.registeredPostcode]
+        .filter(Boolean)
+        .join(" ")
+    ].filter(Boolean);
+    const footerLine = [
+      addressParts.join(", ") || "10 Grice St, Clontarf Q 4019",
+      profile.primaryPhone ? `P: ${profile.primaryPhone}` : null,
+      profile.primaryEmail ? `E: ${profile.primaryEmail}` : null,
+      profile.abn ? `A.B.N: ${profile.abn}` : null
+    ]
+      .filter(Boolean)
+      .join(" | ");
+    return {
+      tradingName: profile.tradingName,
+      headerRightMeta: licenceLine,
+      footerAddressLine: footerLine
+    };
+  }
+
+  private async finaliseExcelExport(
+    buffer: Buffer,
+    payload: { tender: { tenderNumber: string } },
+    tenderId: string,
+    userId: string
+  ): Promise<{ buffer: Buffer; filename: string }> {
     await this.prisma.estimateExport.create({
       data: { tenderId, type: "excel", generatedBy: userId }
     });

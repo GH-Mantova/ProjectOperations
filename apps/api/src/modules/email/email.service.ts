@@ -28,7 +28,18 @@ export class EmailService {
       where: { id: CONFIG_SINGLETON_ID }
     });
     const providerName = record?.provider ?? "outlook";
-    const senderAddress = record?.senderAddress ?? "marco@initialservices.net";
+    // Fallback chain: EmailProviderConfig.senderAddress → CompanyProfile.primaryEmail
+    // → hardcoded. The hardcoded value is only reached if the profile row is
+    // missing (i.e. seed hasn't run), which never happens in normal
+    // operation.
+    let senderAddress = record?.senderAddress;
+    if (!senderAddress) {
+      const profile = await this.prisma.companyProfile.findUnique({
+        where: { id: "singleton" },
+        select: { primaryEmail: true }
+      });
+      senderAddress = profile?.primaryEmail ?? "marco@initialservices.net";
+    }
     if (providerName === "gmail") return new GmailEmailProvider();
     return new OutlookEmailProvider(this.config, senderAddress);
   }

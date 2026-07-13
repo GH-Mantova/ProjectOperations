@@ -74,8 +74,22 @@ jobs:
           JWT_REFRESH_SECRET: ci-refresh-secret
           SHAREPOINT_MODE: mock
 
+  data-model-drift:
+    name: Data model — drift check (schema.prisma <-> generated map)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-node@v4.1.0
+        with: { node-version: '22' }
+      - name: Check relationship map is in sync with schema.prisma
+        run: |
+          if ! node scripts/data-model/build-relationship-map.mjs --check; then
+            echo "::error::schema.prisma changed but the generated data-model map is stale - run \`node scripts/data-model/build-relationship-map.mjs\` and commit the result."
+            exit 1
+          fi
+
   pr-gates:
-    name: PR gates — diff checks (CP-09–13, CP-17)
+    name: PR gates — diff checks (CP-09–13, CP-17, CP-22, CP-23)
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:

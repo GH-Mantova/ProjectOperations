@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { EmptyState } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { can } from "../../auth/permissions";
 import { COMPLIANCE_BADGE_TOOLTIP, countComplianceAlerts } from "./complianceCounts";
 
 type ExpiryRow = {
@@ -71,7 +72,7 @@ function daysCellTone(days: number | null): string {
 
 export function CompliancePage() {
   const { authFetch, user } = useAuth();
-  const isAdmin = Boolean(user?.isSuperUser) || Boolean(user?.permissions?.includes("compliance.admin"));
+  const isAdmin = can(user, "compliance.admin");
 
   const [days, setDays] = useState<number>(30);
   const [typeFilter, setTypeFilter] = useState<string>("all");

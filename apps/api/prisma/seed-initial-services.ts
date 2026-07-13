@@ -3500,6 +3500,7 @@ export async function seedRateTableProjections(prisma: PrismaClient): Promise<vo
     description: string;
     columns: ColSpec[];
     rows: Array<{ id: string; sortOrder: number; cells: Record<string, unknown> }>;
+    isReference?: boolean;
   }): Promise<void> {
     await prisma.rateTable.upsert({
       where: { slug: spec.slug },
@@ -3507,7 +3508,8 @@ export async function seedRateTableProjections(prisma: PrismaClient): Promise<vo
         name: spec.name,
         description: spec.description,
         category: "INITIAL_SERVICES",
-        isSystem: true
+        isSystem: true,
+        isReference: spec.isReference ?? false
       },
       create: {
         id: spec.id,
@@ -3515,7 +3517,8 @@ export async function seedRateTableProjections(prisma: PrismaClient): Promise<vo
         name: spec.name,
         description: spec.description,
         category: "INITIAL_SERVICES",
-        isSystem: true
+        isSystem: true,
+        isReference: spec.isReference ?? false
       }
     });
 
@@ -3777,6 +3780,80 @@ export async function seedRateTableProjections(prisma: PrismaClient): Promise<vo
       id: `rr-en-${rowSlug(r.enclosureType)}`,
       sortOrder: r.sortOrder || idx + 1,
       cells: { type: r.enclosureType, unit: r.unit, rate: Number(r.rate) }
+    }))
+  });
+
+  // ── Excavator production rates (REFERENCE) ───────────────────────────
+  // Factor table used by future task-time calculators (task time =
+  // quantity ÷ production factor). Flagged `isReference` so
+  // `RateResolverService.enumerateRateSet()` skips it — these are not
+  // priced overrides and must not appear in a locked tender snapshot.
+  const excavatorSizes: Array<{
+    size: string;
+    slabs: number;
+    masonry: number;
+    stud: number;
+    excavating: number;
+  }> = [
+    { size: "0.8t", slabs: 1.5, masonry: 10, stud: 5, excavating: 15 },
+    { size: "1.5t", slabs: 3, masonry: 8, stud: 4, excavating: 20 },
+    { size: "5t", slabs: 10, masonry: 5, stud: 3, excavating: 30 },
+    { size: "10t", slabs: 20, masonry: 4, stud: 2.25, excavating: 50 },
+    { size: "20t", slabs: 40, masonry: 3, stud: 1.5, excavating: 80 },
+    { size: "25t", slabs: 45, masonry: 2.5, stud: 1.25, excavating: 100 }
+  ];
+  await upsertTable({
+    id: "rt-exc-prod",
+    slug: "excavator-production",
+    name: "Excavator production rates",
+    description:
+      "Reference production factors (m³/day, 100 m²/day, m³/hr) used by task-time calculators. Not priced — excluded from tender rate-set snapshots.",
+    isReference: true,
+    columns: [
+      { key: "size", name: "Excavator size", dataType: "TEXT", role: "KEY", sortOrder: 1 },
+      {
+        key: "slabs",
+        name: "Demolishing concrete slabs",
+        dataType: "NUMBER",
+        role: "VALUE",
+        unit: "m³/day",
+        sortOrder: 2
+      },
+      {
+        key: "masonry",
+        name: "Demolishing structures (masonry/concrete)",
+        dataType: "NUMBER",
+        role: "VALUE",
+        unit: "100 m²/day",
+        sortOrder: 3
+      },
+      {
+        key: "stud",
+        name: "Demolishing structures (stud walls)",
+        dataType: "NUMBER",
+        role: "VALUE",
+        unit: "100 m²/day",
+        sortOrder: 4
+      },
+      {
+        key: "excavating",
+        name: "Excavating",
+        dataType: "NUMBER",
+        role: "VALUE",
+        unit: "m³/hr",
+        sortOrder: 5
+      }
+    ],
+    rows: excavatorSizes.map((r, idx) => ({
+      id: `rr-exc-prod-${rowSlug(r.size)}`,
+      sortOrder: idx + 1,
+      cells: {
+        size: r.size,
+        slabs: r.slabs,
+        masonry: r.masonry,
+        stud: r.stud,
+        excavating: r.excavating
+      }
     }))
   });
 }

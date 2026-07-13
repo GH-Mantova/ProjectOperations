@@ -4,8 +4,8 @@
 > Regenerate with `node scripts/data-model/build-relationship-map.mjs`.
 > Business meaning (domains, field roles) is curated in `metadata-catalog.json`.
 
-- Last updated: 2026-07-13 03:13 UTC
-- Generated from: `apps/api/prisma/schema.prisma` (sha256 `08d3d759bf94`)
+- Last updated: 2026-07-13 23:10 UTC
+- Generated from: `apps/api/prisma/schema.prisma` (sha256 `c3c77c041607`)
 - Models: 191 | Enums: 21 | FK edges: 280 | Domains: 22
 
 ## Table of Contents
@@ -692,7 +692,7 @@ graph LR
 
 ### Model: RateTable
 
-- Table: `rate_tables` | Domain: Estimating | Fields: 15
+- Table: `rate_tables` | Domain: Estimating | Fields: 16
 - Belongs to (FK out):
   - `supplier` -> **SubcontractorSupplier** (supplierId)
 - Has many:

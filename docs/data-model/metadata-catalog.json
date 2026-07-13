@@ -10640,6 +10640,12 @@
           "filterable": true,
           "aggregations": []
         },
+        "isReference": {
+          "role": "filter",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
         "createdById": {
           "role": "system",
           "label": null,

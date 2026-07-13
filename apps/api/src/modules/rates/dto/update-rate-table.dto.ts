@@ -11,4 +11,6 @@ export class UpdateRateTableDto {
   @ApiPropertyOptional() @IsOptional() @IsString() supplierId?: string;
 
   @ApiPropertyOptional() @IsOptional() @IsBoolean() isSystem?: boolean;
+
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() isReference?: boolean;
 }

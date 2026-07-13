@@ -2,7 +2,7 @@
   "_generator": "scripts/data-model/build-relationship-map.mjs",
   "_doNotEdit": "Regenerated from schema.prisma. Do not hand-edit.",
   "generatedFrom": "apps/api/prisma/schema.prisma",
-  "schemaSha256": "780cc27a658e7c4a7e90d31db66215f065a8cd2d71215a47235895cf33eef47d",
+  "schemaSha256": "7fa95e87be6503dd3c6341f99df6f041ff248a918a002d86d999ff5e9645c44b",
   "modelCount": 192,
   "enumCount": 23,
   "edgeCount": 287,
@@ -27613,6 +27613,18 @@
         {
           "name": "isSystem",
           "dbColumn": "is_system",
+          "type": "Boolean",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "isReference",
+          "dbColumn": "is_reference",
           "type": "Boolean",
           "kind": "scalar",
           "isList": false,

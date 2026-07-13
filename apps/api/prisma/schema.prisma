@@ -4287,6 +4287,7 @@ model RateTable {
   supplierId        String?                @map("supplier_id")
   supplier          SubcontractorSupplier? @relation("RateTableSupplier", fields: [supplierId], references: [id])
   isSystem          Boolean                @default(false) @map("is_system")
+  isReference       Boolean                @default(false) @map("is_reference")
   createdById       String?                @map("created_by_id")
   updatedById       String?                @map("updated_by_id")
   columns           RateColumn[]

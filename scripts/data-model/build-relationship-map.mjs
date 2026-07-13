@@ -513,7 +513,11 @@ function ensureDir(p) { if (!existsSync(p)) mkdirSync(p, { recursive: true }); }
 
 function main() {
   const text = readFileSync(SCHEMA_PATH, 'utf8');
-  const schemaSha = createHash('sha256').update(text).digest('hex');
+  // Normalize line endings before hashing so the sha is stable across Windows
+  // (CRLF checkout) and Linux CI (LF checkout). Without this the gate self-
+  // fails on the platform that didn't generate the committed JSON.
+  const normalized = text.replace(/\r\n/g, '\n');
+  const schemaSha = createHash('sha256').update(normalized).digest('hex');
   const parsed = parseSchema(text);
   const graph = buildGraph(parsed);
 

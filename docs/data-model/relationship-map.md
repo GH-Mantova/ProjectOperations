@@ -4,9 +4,9 @@
 > Regenerate with `node scripts/data-model/build-relationship-map.mjs`.
 > Business meaning (domains, field roles) is curated in `metadata-catalog.json`.
 
-- Last updated: 2026-07-13 23:10 UTC
-- Generated from: `apps/api/prisma/schema.prisma` (sha256 `c3c77c041607`)
-- Models: 191 | Enums: 21 | FK edges: 280 | Domains: 22
+- Last updated: 2026-07-13 23:33 UTC
+- Generated from: `apps/api/prisma/schema.prisma` (sha256 `e568a5c76c3b`)
+- Models: 191 | Enums: 21 | FK edges: 281 | Domains: 22
 
 ## Table of Contents
 
@@ -488,10 +488,11 @@ graph LR
 
 ### Model: ClientQuote
 
-- Table: `client_quotes` | Domain: Directory | Fields: 34
+- Table: `client_quotes` | Domain: Directory | Fields: 36
 - Belongs to (FK out):
   - `tender` -> **Tender** (tenderId, onDelete Cascade)
   - `client` -> **Client** (clientId)
+  - `sourceTenderEstimate` -> **TenderEstimate** (sourceTenderEstimateId, onDelete SetNull)
   - `sentBy` -> **User** (sentById)
   - `createdBy` -> **User** (createdById)
 - Has many:
@@ -504,7 +505,7 @@ graph LR
   - `scopeItems` -> **QuoteScopeItem**[]
 - Referenced by: **QuoteAssumption**, **QuoteCostLine**, **QuoteCostOption**, **QuoteEmail**, **QuoteExclusion**, **QuoteProvisionalLine**, **QuoteScopeItem**
 - Suggested measures: adjustmentPct
-- Suggested dimensions: tender, client, status, sentBy, createdBy
+- Suggested dimensions: tender, client, sourceTenderEstimate, status, sentBy, createdBy
 - Time fields: sentAt
 
 ### Model: ClientSession
@@ -627,14 +628,14 @@ graph LR
 
 ### Model: QuoteCostLine
 
-- Table: `quote_cost_lines` | Domain: Estimating | Fields: 12
+- Table: `quote_cost_lines` | Domain: Estimating | Fields: 14
 - Belongs to (FK out):
   - `quote` -> **ClientQuote** (quoteId, onDelete Cascade)
 - Has many:
   - `assumptions` -> **QuoteAssumption**[]
 - Referenced by: **QuoteAssumption**
 - Suggested measures: price, baseValue, overrideAmount
-- Suggested dimensions: quote
+- Suggested dimensions: quote, sourceEstimateLineType
 
 ### Model: QuoteCostOption
 
@@ -1884,12 +1885,13 @@ graph LR
 
 ### Model: TenderEstimate
 
-- Table: `tender_estimates` | Domain: Tendering | Fields: 10
+- Table: `tender_estimates` | Domain: Tendering | Fields: 11
 - Belongs to (FK out):
   - `tender` -> **Tender** (tenderId, onDelete Cascade)
 - Has many:
   - `items` -> **EstimateItem**[]
-- Referenced by: **EstimateItem**
+  - `clientQuotes` -> **ClientQuote**[]
+- Referenced by: **ClientQuote**, **EstimateItem**
 - Suggested measures: markup
 - Suggested dimensions: tender
 - Time fields: lockedAt

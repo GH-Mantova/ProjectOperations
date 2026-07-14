@@ -2,12 +2,12 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router-dom";
-import { PublicClientApplication } from "@azure/msal-browser";
 import { MsalProvider } from "@azure/msal-react";
 import { registerSW } from "virtual:pwa-register";
 import { App } from "./App";
 import { consumeSsoRedirect } from "./auth/consumeSsoRedirect";
-import { isSsoEnabled, msalConfig } from "./auth/msal.config";
+import { getMsalInstance } from "./auth/msalInstance";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { updatePromptStore } from "./pwa/updatePromptStore";
 import { buildInfo } from "./buildInfo";
 import "./styles/tokens.css";
@@ -22,7 +22,7 @@ buildMeta.name = "build-sha";
 buildMeta.content = buildInfo.sha;
 document.head.appendChild(buildMeta);
 
-const msalInstance = isSsoEnabled ? new PublicClientApplication(msalConfig) : null;
+const msalInstance = getMsalInstance();
 
 // Track whether the user has touched the page yet. If a new SW appears
 // BEFORE any interaction, we apply it silently and reload once — the fresh
@@ -78,11 +78,16 @@ updatePromptStore.setUpdater(() => updateSW(true));
 
 const tree = (
   <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
-    </QueryClientProvider>
+    {/* Top-level error boundary so a render-phase throw anywhere in the
+        tree (including the login / SSO / request-access flows) renders a
+        friendly fallback instead of a blank white page. */}
+    <ErrorBoundary sectionName="Project Ops">
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
+      </QueryClientProvider>
+    </ErrorBoundary>
   </React.StrictMode>
 );
 

@@ -1,9 +1,7 @@
 import { ForbiddenException, Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { UsersService } from "../users/users.service";
-import { EntraTokenValidatorService } from "./entra-token-validator.service";
-
-const SSO_DEFAULT_ROLE_PRIORITY = ["Viewer", "Field", "Planner", "Admin"];
+import { EntraPrincipal, EntraTokenValidatorService } from "./entra-token-validator.service";
 
 @Injectable()
 export class EntraAuthService {
@@ -17,7 +15,7 @@ export class EntraAuthService {
 
   async authenticate(idToken: string) {
     const principal = await this.entraTokenValidatorService.validateIdToken(idToken);
-    const user = await this.resolveProvisionedUser(principal.email);
+    const user = await this.resolveProvisionedUser(principal);
 
     return {
       user,
@@ -26,9 +24,13 @@ export class EntraAuthService {
     };
   }
 
+  // Gated SSO: a valid Entra token with no active internal user is NOT
+  // auto-provisioned. It throws ENTRA_NOT_REGISTERED so the client can
+  // route the user to the request-access screen. Existing active users
+  // sign in normally; deactivated accounts still see the tailored 403.
   async authenticateWithSso(idToken: string) {
     const principal = await this.entraTokenValidatorService.validateIdToken(idToken);
-    const user = await this.resolveOrProvisionUser(principal.email, principal.displayName);
+    const user = await this.resolveProvisionedUser(principal);
 
     return {
       user,
@@ -41,76 +43,33 @@ export class EntraAuthService {
     return this.entraTokenValidatorService.getPublicConfiguration();
   }
 
-  private async resolveProvisionedUser(email: string) {
-    const normalizedEmail = email.trim().toLowerCase();
+  private async resolveProvisionedUser(principal: EntraPrincipal) {
+    const normalizedEmail = principal.email.trim().toLowerCase();
     const user = await this.usersService.findByEmailWithSecurity(normalizedEmail);
 
-    if (!user || !user.isActive) {
+    if (!user) {
+      throw new ForbiddenException({
+        code: "ENTRA_NOT_REGISTERED",
+        email: normalizedEmail,
+        displayName: principal.displayName ?? null,
+        message: "Not a registered user."
+      });
+    }
+
+    if (!user.isActive) {
       throw new ForbiddenException(
-        "Access denied. Your Microsoft account is not provisioned for Project Operations."
+        "Access denied. Your Microsoft account exists but is deactivated."
       );
     }
 
     return user;
   }
 
-  private async resolveOrProvisionUser(email: string, displayName: string | null) {
-    const normalizedEmail = email.trim().toLowerCase();
-    const existing = await this.usersService.findByEmailWithSecurity(normalizedEmail);
-
-    if (existing) {
-      if (!existing.isActive) {
-        throw new ForbiddenException(
-          "Access denied. Your Microsoft account exists but is deactivated."
-        );
-      }
-      return existing;
-    }
-
-    const defaultRole = await this.findLowestPrivilegeRole();
-    if (!defaultRole) {
-      throw new ForbiddenException(
-        "SSO provisioning is unavailable: no lowest-privilege role is configured."
-      );
-    }
-
-    const { firstName, lastName } = this.splitDisplayName(displayName, normalizedEmail);
-
-    await this.prisma.user.create({
-      data: {
-        email: normalizedEmail,
-        firstName,
-        lastName,
-        passwordHash: "",
-        isActive: true,
-        ssoOnly: true,
-        userRoles: {
-          create: [{ roleId: defaultRole.id }]
-        }
-      }
-    });
-
-    this.logger.log(`Provisioned new SSO user ${normalizedEmail} with role ${defaultRole.name}.`);
-
-    const created = await this.usersService.findByEmailWithSecurity(normalizedEmail);
-    if (!created) {
-      throw new ForbiddenException("SSO provisioning failed.");
-    }
-    return created;
-  }
-
-  private async findLowestPrivilegeRole() {
-    const roles = await this.prisma.role.findMany({
-      where: { name: { in: SSO_DEFAULT_ROLE_PRIORITY } }
-    });
-    for (const name of SSO_DEFAULT_ROLE_PRIORITY) {
-      const match = roles.find((role) => role.name === name);
-      if (match) return match;
-    }
-    return null;
-  }
-
-  private splitDisplayName(displayName: string | null, fallbackEmail: string) {
+  // Public helper: derive first/last name from Entra display name, or
+  // fall back to the email local-part when Microsoft returned nothing.
+  // Used by the admin approve-access-request path to seed the new user
+  // record without duplicating the parsing rule.
+  splitDisplayName(displayName: string | null, fallbackEmail: string) {
     const source = displayName?.trim() || fallbackEmail.split("@")[0];
     const parts = source.split(/\s+/);
     const firstName = parts[0] ?? "SSO";

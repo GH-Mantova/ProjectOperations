@@ -1,4 +1,4 @@
-import { HttpStatus } from "@nestjs/common";
+import { ForbiddenException, HttpStatus } from "@nestjs/common";
 import type { ArgumentsHost } from "@nestjs/common";
 import { ApiExceptionFilter } from "../api-exception.filter";
 import { PdfRenderError } from "../../../modules/pdf-rendering/pdf-render.error";
@@ -68,6 +68,35 @@ describe("ApiExceptionFilter", () => {
     expect((captured.body as { timestamp: string }).timestamp).toEqual(
       expect.any(String),
     );
+  });
+
+  it("preserves extra structured fields from HttpException object bodies", () => {
+    // Gated-Entra flow: /auth/sso throws Forbidden with an object body that
+    // includes `code`, `email`, and `displayName`; the client branches on
+    // those fields, so the filter must pass them through.
+    const filter = new ApiExceptionFilter();
+    const { host, captured } = makeHost("/auth/sso");
+
+    filter.catch(
+      new ForbiddenException({
+        code: "ENTRA_NOT_REGISTERED",
+        email: "someone@example.com",
+        displayName: "Some One",
+        message: "Not a registered user."
+      }),
+      host
+    );
+
+    expect(captured.statusCode).toBe(HttpStatus.FORBIDDEN);
+    expect(captured.body).toMatchObject({
+      statusCode: HttpStatus.FORBIDDEN,
+      error: "FORBIDDEN",
+      message: "Not a registered user.",
+      code: "ENTRA_NOT_REGISTERED",
+      email: "someone@example.com",
+      displayName: "Some One",
+      path: "/auth/sso"
+    });
   });
 
   it("preserves the generic fallback for non-HttpException errors", () => {

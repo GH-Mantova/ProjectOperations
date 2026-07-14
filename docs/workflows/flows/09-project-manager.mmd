@@ -1,0 +1,15 @@
+%% title: Project Manager - role || module: Role workflow || role: Project Manager || status: DRAFT || view: role
+flowchart TD
+  s([Start]):::startEnd --> a[Receive awarded job]:::process
+  a --> b[Review contract and scope]:::process
+  b --> c[Plan delivery - program and resources]:::process
+  c --> d[Coordinate allocation with Ops and Scheduler]:::process
+  d --> e[Mobilise site]:::process
+  e --> f[Monitor progress, safety and budget]:::process
+  f --> g{Variation or major issue?}:::decision
+  g -- Yes --> h[Assess and seek client approval]:::doc
+  g -- No --> i[Prepare progress claims]:::process
+  h --> i
+  i --> j{Job complete?}:::decision
+  j -- No --> f
+  j -- Yes --> k[Closeout and handover to Archive]:::output

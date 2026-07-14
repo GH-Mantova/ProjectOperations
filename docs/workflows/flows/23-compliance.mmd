@@ -1,0 +1,13 @@
+%% title: Compliance monitoring || module: Compliance || role: WHS & Commercial Compliance || status: DRAFT || view: module
+flowchart TD
+  s([Start]):::startEnd --> a[Track licences, insurances, qualifications]:::process
+  a --> b[Daily expiry scan]:::process
+  b --> c{Expiring in 30 or 7 days?}:::decision
+  c -- Yes --> d[Alert compliance admin]:::process
+  c -- No --> e{Expired on critical item?}:::decision
+  d --> e
+  e -- Yes --> f[Block entity and notify]:::process
+  e -- No --> g[Follow up renewal]:::process
+  f --> g
+  g --> h[Update records]:::process
+  h --> i[Report compliance status]:::output

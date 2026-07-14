@@ -1,0 +1,16 @@
+%% title: Safety incident || module: Safety || role: Field worker / WHS || status: DRAFT || view: module
+flowchart TD
+  start([Incident occurs on site]):::startEnd --> open[Field worker opens incident form on mobile]:::process
+  open --> capture[/Capture details, photos, GPS/]:::io
+  capture --> submit[Submit incident<br/>IS-INC auto-number]:::process
+  submit --> notify[Notify Marco and safety admin]:::process
+  notify --> sev{Severity extreme?}:::decision
+  sev -- Yes --> stop[Stop work and immediate escalation]:::process
+  sev -- No --> triage[Standard triage]:::process
+  stop --> investigate[Investigate root cause]:::process
+  triage --> investigate
+  investigate --> actions[Assign corrective actions]:::process
+  actions --> closed{Actions complete?}:::decision
+  closed -- No --> actions
+  closed -- Yes --> close[Close incident]:::doc
+  close --> dash([Safety dashboard and report]):::output

@@ -1,0 +1,10 @@
+%% title: Documents and SharePoint || module: Documents || role: Business Support || status: DRAFT || view: module
+flowchart TD
+  s([Document created or received]):::startEnd --> a[Classify - tender, job or compliance]:::process
+  a --> b[Upload to SharePoint]:::process
+  b --> c[Link to record]:::process
+  c --> d{Access controlled?}:::decision
+  d -- Yes --> e[Set permissions]:::process
+  d -- No --> f[Version and track]:::process
+  e --> f
+  f --> g[Retrieve as needed]:::output

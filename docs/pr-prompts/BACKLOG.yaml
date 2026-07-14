@@ -69,23 +69,7 @@ items:
     needs_marco: false
     order: 3
 
-  - id: workflow-studio-open-pr
-    title: "Workflow Studio ÔÇö open a PR for the branch that has been sitting there since 07-07"
-    priority: P2
-    why: >
-      `origin/docs/workflow-studio-and-datamodel` holds 27 .mmd flows + the offline editor HTML.
-      Pushed 2026-07-07. NO PR was ever opened. This is the tool Sean and Colin were to use to sign
-      off approval gates and notification targets ÔÇö and its JSON export was meant to BE the spec for
-      the real approval/notification logic. It is one `gh pr create` from being reviewable.
-    gate: 'git ls-remote --heads origin docs/workflow-studio-and-datamodel | grep -q workflow-studio'
-    gate_means: The branch still exists on origin and is not merged.
-    needs_marco: false
-    order: 4
-
-  # -------------------------------------------------------------------------------------------
-  # P3 ÔÇö large, designed, never queued
-  # -------------------------------------------------------------------------------------------
-  - id: swms-interactive-module
+    - id: swms-interactive-module
     title: "Interactive SWMS module ÔÇö office wizard + control-mapping tool"
     priority: P3
     why: >
@@ -224,22 +208,7 @@ items:
     decided_in_BACKLOG_DECISIONS_md: "Same gate as B-P0a. Restart it? WorkerProfile was agreed canonical."
     order: 14
 
-  - id: watcher-launcher-hardening
-    title: "Track watcher-launcher.ps1 -- the detached-launch wrapper is untracked too"
-    priority: P2
-    why: >
-      pr-c1 commits supervise-watcher.ps1. But the DETACHED launcher that starts it --
-      C:\po-watcher\watcher-launcher.ps1 -- is still an untracked loose file. On 2026-07-14 the
-      watcher was started as a child of a Claude Desktop shell; when Desktop restarted, the watcher
-      died with it. The fix (launch via Win32_Process.Create so it is outside the session job
-      object) currently exists ONLY as that untracked file. One git clean and the fix is gone.
-      Commit it as scripts/pr-watcher/watcher-launcher.ps1 and document it in the README.
-    gate: 'git ls-files --error-unmatch scripts/pr-watcher/supervise-watcher.ps1 > /dev/null 2>&1 && ! git ls-files --error-unmatch scripts/pr-watcher/watcher-launcher.ps1 > /dev/null 2>&1'
-    gate_means: pr-c1 has landed (supervise-watcher.ps1 is tracked) AND the launcher is still untracked.
-    needs_marco: false
-    order: 16
-
-  - id: mail-send-managed-identity
+    - id: mail-send-managed-identity
     title: "Outlook mail: managed-identity auth (MAIL_AUTH_MODE) -- Mail.Send never tested post-MI swap"
     priority: P2
     why: >

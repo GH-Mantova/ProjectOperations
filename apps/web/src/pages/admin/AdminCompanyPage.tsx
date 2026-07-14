@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Navigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { isAdminUser } from "../../auth/permissions";
+import { NoAccess } from "../../components/NoAccess";
 
 // ── Types shared with backend DTOs ────────────────────────────────────
 type CompanyProfile = {
@@ -117,11 +117,26 @@ type SectionId = (typeof SECTIONS)[number]["id"];
  * a completeness indicator so a second company (or Marco reviewing this
  * one) can see at a glance what is still unset.
  */
+export function humaniseError(raw: string | null): string {
+  if (!raw) return "Something went wrong loading the company profile.";
+  try {
+    const parsed = JSON.parse(raw) as { message?: string };
+    if (parsed && typeof parsed.message === "string" && parsed.message.trim().length > 0) {
+      return parsed.message;
+    }
+  } catch {
+    // not JSON — fall through to raw text
+  }
+  return raw;
+}
+
 export function AdminCompanyPage() {
   const { user, authFetch } = useAuth();
   const [profile, setProfile] = useState<CompanyProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [savedFlash, setSavedFlash] = useState<string | null>(null);
   const [section, setSection] = useState<SectionId>("identity");
 
@@ -129,8 +144,15 @@ export function AdminCompanyPage() {
     setLoading(true);
     try {
       const res = await authFetch("/admin/company/profile");
+      if (res.status === 404) {
+        setNotFound(true);
+        setProfile(null);
+        setError(null);
+        return;
+      }
       if (!res.ok) throw new Error(await res.text());
       setProfile((await res.json()) as CompanyProfile);
+      setNotFound(false);
       setError(null);
     } catch (err) {
       setError((err as Error).message);
@@ -142,6 +164,21 @@ export function AdminCompanyPage() {
   useEffect(() => {
     void loadProfile();
   }, [loadProfile]);
+
+  const bootstrapProfile = useCallback(async () => {
+    setCreating(true);
+    try {
+      const res = await authFetch("/admin/company/profile", { method: "POST" });
+      if (!res.ok) throw new Error(await res.text());
+      setProfile((await res.json()) as CompanyProfile);
+      setNotFound(false);
+      setError(null);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setCreating(false);
+    }
+  }, [authFetch]);
 
   const patchField = async (field: keyof CompanyProfile, value: unknown) => {
     try {
@@ -160,10 +197,58 @@ export function AdminCompanyPage() {
 
   const isAdmin = isAdminUser(user);
   if (!user) return null;
-  if (!isAdmin) return <Navigate to="/" replace />;
+  if (!isAdmin) {
+    return (
+      <NoAccess
+        required="role:Admin"
+        title="Company profile requires the Admin role"
+      />
+    );
+  }
 
   if (loading) return <div style={{ padding: 24 }}>Loading company profile…</div>;
-  if (!profile) return <div style={{ padding: 24, color: "#c62828" }}>{error ?? "No profile."}</div>;
+
+  if (notFound) {
+    return (
+      <div style={{ padding: 24, maxWidth: 640 }} data-testid="company-profile-empty">
+        <h1 className="s7-type-page-heading" style={{ marginTop: 0 }}>No company profile yet</h1>
+        <p style={{ color: "var(--text-muted)" }}>
+          The company profile has not been created for this environment. Create
+          it now to seed defaults for identity, contact details, commercial
+          settings, numbering, and branding — you can edit any field afterwards.
+        </p>
+        {error && (
+          <div style={{ background: "#ffebee", color: "#c62828", padding: 8, borderRadius: 4, margin: "12px 0" }}>
+            {humaniseError(error)}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={bootstrapProfile}
+          disabled={creating}
+          style={{
+            padding: "10px 18px",
+            background: "#005B61",
+            color: "#fff",
+            border: "none",
+            borderRadius: 4,
+            cursor: creating ? "wait" : "pointer",
+            opacity: creating ? 0.7 : 1
+          }}
+        >
+          {creating ? "Creating…" : "Create company profile"}
+        </button>
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <div style={{ padding: 24, color: "#c62828" }}>
+        {humaniseError(error)}
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: 24, maxWidth: 1100 }}>
@@ -178,7 +263,7 @@ export function AdminCompanyPage() {
 
       {error && (
         <div style={{ background: "#ffebee", color: "#c62828", padding: 8, borderRadius: 4, margin: "12px 0" }}>
-          {error}
+          {humaniseError(error)}
         </div>
       )}
 

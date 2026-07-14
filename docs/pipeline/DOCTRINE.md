@@ -97,3 +97,65 @@ there to read.**
 - If you do nothing, say `NO-OP: <reason>` — loudly. A silent success is indistinguishable from a
   crash, and the watcher will file it as a win.
 - Echo progress between phases. Long silences get you killed (see §3).
+
+---
+
+# 🔬 §7. YOUR INSTRUMENT LIES. CALIBRATE IT BEFORE YOU TRUST THE READING.
+
+**The most dangerous failure here is not a broken system — it is a broken MEASUREMENT of a working
+system.** A broken system fails loudly. A broken instrument hands you a confident, coherent, WRONG
+verdict, and then you act on it.
+
+This has now happened **six times**. Every time, the system was fine and the *tool* was broken.
+Twice it nearly caused real damage: one agent almost "repaired" clean files into corruption; another
+declared a healthy watcher dead and killed the queue.
+
+## The rule
+
+> **Before you believe a NEGATIVE result — "it's broken", "it's missing", "it's already done",
+> "it's down" — prove your instrument can produce a POSITIVE one.**
+
+A check never seen to succeed is not a check. If your script says FAIL, first make it say PASS on
+something you *know* is good. If it can't, **the script is the bug.**
+
+And: **a tool that cannot run must FAIL LOUD, never fail quiet.** "I could not measure it" must
+never silently become "it measured false".
+
+## The six. Recognise them — they will happen to you.
+
+| # | The lie it told | The truth | Why |
+|---|---|---|---|
+| 1 | "WATCHER IS DOWN — QUEUE FROZEN" | It had run **6 minutes ago** | `ps aux \| grep` in a **Linux sandbox** against a **Windows** process. Then compared a UTC log line to a local clock. **Logs are UTC; the machine is Brisbane (UTC+10).** |
+| 2 | "sot/ files are corrupted — em-dashes eaten, `?` everywhere" | Files were **clean UTF-8**, zero replacement chars | **PS 5.1 `Get-Content` decodes BOM-less UTF-8 as Windows-1252.** The mojibake was in the READER. The "fix" (an `-Encoding ascii` patch) would have caused the corruption **for real**. |
+| 3 | "premise satisfied — work already done" → **BINNED THE PROMPT** | The premise never **ran** | `shell: "/bin/bash"` — **Windows has no /bin/bash.** Spawn failure gives `err.status === undefined` -> `-1`, which wasn't in the broken-list, so it was misread as "premise false". It would have **silently discarded the entire backlog** while printing green. |
+| 4 | "NOT IDEMPOTENT / ADMIN EDIT OVERWRITTEN" | The migration was perfectly idempotent | Wrong DB role. **Every query failed**, and the empty strings compared unequal. A connection failure wearing a finding's clothes. |
+| 5 | "No such container: 35" | The container was fine | **PowerShell variables are CASE-INSENSITIVE.** A local `$c` (column count) silently clobbered `$C` (container name). |
+| 6 | "NOT IDEMPOTENT" — while printing two IDENTICAL row counts | It was idempotent | **A PowerShell function returns ALL its output**, not just `return`. `Write-Output` inside the function got captured into the return value. |
+
+Note the shape: **four of the six were a failed call being read as a meaningful answer.**
+
+## Standing guards
+
+1. **Positive control first.** Prove the check CAN pass before believing it failed. (#3, #4)
+2. **Connect, then assert.** Any script touching a DB / API / process must verify the connection and
+   **abort** on failure. Never let a failed call flow into a comparison. (#4)
+3. **Suspected file corruption -> verify with `node`**, which reads UTF-8 correctly. Not
+   `Get-Content`. Check for U+FFFD and the `a-hat-euro` mojibake signature in the BYTES. (#2)
+4. **Liveness ONLY via `scripts\restart-watcher-if-wedged.ps1`.** Never `ps`/`grep` across an OS
+   boundary. **"I cannot verify it" is NOT "it is down".** (#1)
+5. **No single-letter PowerShell variables. Ever.** (#5)
+6. **No `Write-Output` inside a PowerShell function whose return value you capture.** Use
+   `Write-Host`, or build one value and return it. (#6)
+7. **`$ErrorActionPreference = "Continue"` in git scripts.** Git warns on stderr; `"Stop"` will abort
+   you *before your commit* while the log still looks perfectly clean.
+8. **Never pass `-q '<jq>'` to `gh` from PS 5.1** — it re-splits the quoted expression on spaces.
+   Take raw `--json` and `ConvertFrom-Json`. And **assign-then-foreach**: piping a JSON array
+   straight into `Where-Object` collapses it to ONE object. That exact bug once let the merge queue
+   select **#552 — the production-data PR.**
+
+## If your instrument breaks mid-task
+
+**Say so.** `NO-OP: my check was broken; here is what I could not measure.` That is a **success**.
+
+Reporting a verdict you obtained from a broken instrument is the worst thing you can do here — worse
+than doing nothing, because someone will act on it.

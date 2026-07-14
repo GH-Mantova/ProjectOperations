@@ -273,3 +273,28 @@ items:
       This backfills PRODUCTION data and then locks the column. What should rows with no site
       resolve to -- a default site, or do they get fixed by hand first? I will not guess this.
     order: 20
+
+  # -------------------------------------------------------------------------------------------
+  # ADDED 2026-07-15 by STATION 03. Found by 02-board-driver on live CI, not by design review.
+  # -------------------------------------------------------------------------------------------
+
+  - id: flaky-batch5-sites-post-delete-race
+    title: "Flaky e2e: batch5-sites post-delete empty-state race reddens unrelated PRs"
+    priority: P2
+    why: >
+      In tests/e2e/pr-acceptance/batch5-sites.spec.ts (test "fresh site lifecycle - empty states,
+      edit in place, delete") the post-delete assertion
+      `expect(page.getByText("No sites match the current filters.")).toBeVisible()` times out after
+      10s with "element(s) not found". It reddened PR #583 (1 failed / 141 passed) whose diff was
+      THREE DOCS-ONLY FILES that cannot reach the Sites page, and it passed on a bare re-run.
+      MECHANISM (a race, not a flake to be re-run away): `toHaveURL(/\/sites$/)` resolves the instant
+      the URL changes - BEFORE the Sites register finishes its post-delete fetch. The `fill()` on the
+      search box is then clobbered by the list re-render, the filter never applies, and the
+      empty-state text never appears. FIX DIRECTION: after the post-delete navigation, wait for the
+      sites list itself to settle (rows / loading state), not merely the URL, before filling search.
+      COST IF LEFT: it will keep randomly reddening unrelated PRs and burning e2e cycles, and it
+      trains agents to re-run for green - which DOCTRINE section 2 explicitly forbids.
+    gate: "grep -A1 -F 'await expect(page).toHaveURL(/\/sites$/);' tests/e2e/pr-acceptance/batch5-sites.spec.ts | grep -q 'getByPlaceholder'"
+    gate_means: The search-box fill() still runs on the line IMMEDIATELY after the toHaveURL assertion - i.e. nothing waits for the sites list to settle, so the race is still there. Once a settle-wait is inserted between them the grep finds no getByPlaceholder on the next line and the gate exits 1.
+    needs_marco: false
+    order: 15

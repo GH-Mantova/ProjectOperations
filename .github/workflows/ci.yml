@@ -89,7 +89,7 @@ jobs:
           fi
 
   pr-gates:
-    name: PR gates â€” diff checks (CP-09â€“13, CP-17, CP-22, CP-23, CP-24, CP-25)
+    name: PR gates ÔÇö diff checks (CP-09ÔÇô13, CP-17, CP-22, CP-23)
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:

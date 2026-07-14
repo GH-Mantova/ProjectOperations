@@ -988,10 +988,12 @@ export class TenderingService {
   /**
    * Full upsert-style update of a tender.
    *
-   * Replace semantics: ALL nested collections (clients, notes,
-   * clarifications, pricing snapshots, follow-ups, outcomes) are
-   * deleted and re-created from the payload inside one transaction —
-   * omitting a collection clears it.
+   * Partial semantics: each nested collection (clients, notes,
+   * clarifications, pricing snapshots, follow-ups, outcomes) is only
+   * touched when the payload explicitly carries that key. An absent
+   * key leaves existing rows alone; an explicit empty array clears
+   * the collection; an array with items replaces it. All writes run
+   * inside one transaction.
    *
    * Tender numbers are immutable here: any tenderNumber in the payload is
    * ignored — renames happen only via the bump-revision action.
@@ -1017,80 +1019,95 @@ export class TenderingService {
         data: this.toTenderUpdateInput(dto)
       });
 
-      await tx.tenderClient.deleteMany({ where: { tenderId: id } });
-      await tx.tenderNote.deleteMany({ where: { tenderId: id } });
-      await tx.tenderClarification.deleteMany({ where: { tenderId: id } });
-      await tx.tenderPricingSnapshot.deleteMany({ where: { tenderId: id } });
-      await tx.tenderFollowUp.deleteMany({ where: { tenderId: id } });
-      await tx.tenderOutcome.deleteMany({ where: { tenderId: id } });
+      // Only touch a child collection if the caller explicitly sent that key.
+      // Guard is `!== undefined` so an explicit `[]` still clears — conflating
+      // absent with empty is exactly what caused the silent data-loss bug.
 
-      if (dto.tenderClients?.length) {
-        await tx.tenderClient.createMany({
-          data: dto.tenderClients.map((item) => ({
-            tenderId: id,
-            clientId: item.clientId,
-            contactId: item.contactId,
-            isAwarded: item.isAwarded ?? false,
-            relationshipType: item.relationshipType,
-            notes: item.notes
-          }))
-        });
+      if (dto.tenderClients !== undefined) {
+        await tx.tenderClient.deleteMany({ where: { tenderId: id } });
+        if (dto.tenderClients.length) {
+          await tx.tenderClient.createMany({
+            data: dto.tenderClients.map((item) => ({
+              tenderId: id,
+              clientId: item.clientId,
+              contactId: item.contactId,
+              isAwarded: item.isAwarded ?? false,
+              relationshipType: item.relationshipType,
+              notes: item.notes
+            }))
+          });
+        }
       }
 
-      for (const note of dto.tenderNotes ?? []) {
-        await tx.tenderNote.create({
-          data: {
-            tenderId: id,
-            authorUserId: actorId,
-            body: note.body
-          }
-        });
+      if (dto.tenderNotes !== undefined) {
+        await tx.tenderNote.deleteMany({ where: { tenderId: id } });
+        for (const note of dto.tenderNotes) {
+          await tx.tenderNote.create({
+            data: {
+              tenderId: id,
+              authorUserId: actorId,
+              body: note.body
+            }
+          });
+        }
       }
 
-      if (dto.clarifications?.length) {
-        await tx.tenderClarification.createMany({
-          data: dto.clarifications.map((item) => ({
-            tenderId: id,
-            subject: item.subject,
-            response: item.response,
-            status: item.status ?? "OPEN",
-            dueDate: item.dueDate ? new Date(item.dueDate) : null
-          }))
-        });
+      if (dto.clarifications !== undefined) {
+        await tx.tenderClarification.deleteMany({ where: { tenderId: id } });
+        if (dto.clarifications.length) {
+          await tx.tenderClarification.createMany({
+            data: dto.clarifications.map((item) => ({
+              tenderId: id,
+              subject: item.subject,
+              response: item.response,
+              status: item.status ?? "OPEN",
+              dueDate: item.dueDate ? new Date(item.dueDate) : null
+            }))
+          });
+        }
       }
 
-      if (dto.pricingSnapshots?.length) {
-        await tx.tenderPricingSnapshot.createMany({
-          data: dto.pricingSnapshots.map((item) => ({
-            tenderId: id,
-            versionLabel: item.versionLabel,
-            estimatedValue: item.estimatedValue ? new Prisma.Decimal(item.estimatedValue) : null,
-            marginPercent: item.marginPercent ? new Prisma.Decimal(item.marginPercent) : null,
-            assumptions: item.assumptions
-          }))
-        });
+      if (dto.pricingSnapshots !== undefined) {
+        await tx.tenderPricingSnapshot.deleteMany({ where: { tenderId: id } });
+        if (dto.pricingSnapshots.length) {
+          await tx.tenderPricingSnapshot.createMany({
+            data: dto.pricingSnapshots.map((item) => ({
+              tenderId: id,
+              versionLabel: item.versionLabel,
+              estimatedValue: item.estimatedValue ? new Prisma.Decimal(item.estimatedValue) : null,
+              marginPercent: item.marginPercent ? new Prisma.Decimal(item.marginPercent) : null,
+              assumptions: item.assumptions
+            }))
+          });
+        }
       }
 
-      if (dto.followUps?.length) {
-        await tx.tenderFollowUp.createMany({
-          data: dto.followUps.map((item) => ({
-            tenderId: id,
-            dueAt: new Date(item.dueAt),
-            status: item.status ?? "OPEN",
-            details: item.details,
-            assignedUserId: item.assignedUserId
-          }))
-        });
+      if (dto.followUps !== undefined) {
+        await tx.tenderFollowUp.deleteMany({ where: { tenderId: id } });
+        if (dto.followUps.length) {
+          await tx.tenderFollowUp.createMany({
+            data: dto.followUps.map((item) => ({
+              tenderId: id,
+              dueAt: new Date(item.dueAt),
+              status: item.status ?? "OPEN",
+              details: item.details,
+              assignedUserId: item.assignedUserId
+            }))
+          });
+        }
       }
 
-      if (dto.outcomes?.length) {
-        await tx.tenderOutcome.createMany({
-          data: dto.outcomes.map((item) => ({
-            tenderId: id,
-            outcomeType: item.outcomeType,
-            notes: item.notes
-          }))
-        });
+      if (dto.outcomes !== undefined) {
+        await tx.tenderOutcome.deleteMany({ where: { tenderId: id } });
+        if (dto.outcomes.length) {
+          await tx.tenderOutcome.createMany({
+            data: dto.outcomes.map((item) => ({
+              tenderId: id,
+              outcomeType: item.outcomeType,
+              notes: item.notes
+            }))
+          });
+        }
       }
 
     });

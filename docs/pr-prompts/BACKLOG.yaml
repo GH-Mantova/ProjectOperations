@@ -33,42 +33,25 @@
 #   backlog ÔÇö agents cannot read it, and it is where these seven items went to die.
 # * `needs_marco: true` items are NEVER auto-staged. The scanner surfaces them; Marco decides.
 # * When an item IS staged, delete it here. The queue is then its home. One place, never two.
+# * A GATE MUST BE ABLE TO FAIL. The literal word `true` is not a gate; nor is a command that
+#   ends in a `[space][pipe][pipe][space]true` swallow-the-error suffix. Both always exit 0 and
+#   can never notice that the work is done ÔÇö which is the entire job of this file. If you cannot
+#   express the blocker as a command that EXITS NON-ZERO once the work has shipped, you do not
+#   understand the item well enough to register it. On 2026-07-14 the P0 tender-PATCH item sat
+#   at the top of this register as READY for a full day after PR #577 fixed it, because its
+#   gate was set to always-pass.
 # =============================================================================================
 
 items:
 
   # -------------------------------------------------------------------------------------------
-  # P0 ÔÇö LIVE DATA LOSS. Nothing else in this file outranks this.
+  # DISCHARGED 2026-07-14 (this hygiene PR): two items lived here with tautological gates and
+  # both had ALREADY SHIPPED on main. Removed rather than left with a working gate, per the
+  # rule at the top of this file: "When an item IS staged, delete it here."
+  #   * the P0 slot (tender PATCH data-loss) shipped as PR #577 (cb9ae39) on 2026-07-14
+  #   * the P1 slot (RATES_CANONICAL_SOURCE cutover) shipped as PR #579 (c5fad84) on 2026-07-14
+  # The next-priority items now start at P2.
   # -------------------------------------------------------------------------------------------
-  - id: tender-update-destructive-patch
-    title: "updateTender PATCH destroys pricing snapshots, notes and clarifications"
-    priority: P0
-    why: >
-      Every PATCH to a tender that includes `tenderClients` runs deleteMany on the tender's
-      pricing snapshots, notes, clarifications, follow-ups and outcomes, then re-creates only what
-      the payload carries. A partial update therefore DELETES data the caller never mentioned.
-      Known since 2026-07-08. Deferred to "a separate PR". That PR was never written.
-      This is losing real data in production TODAY.
-    gate: 'true'
-    gate_means: No blocker. This should have been staged a week ago.
-    needs_marco: false
-    order: 1
-
-  # -------------------------------------------------------------------------------------------
-  # P1 ÔÇö a whole workstream is blocked on a prompt that does not exist
-  # -------------------------------------------------------------------------------------------
-  - id: rates-b2-ratetable-canonical-cutover
-    title: "RateTable canonical cutover (RATES_CANONICAL_SOURCE=ratetable)"
-    priority: P1
-    why: >
-      `pr-524-rates-b2-slice2-canonical-HOLD.md` names this as its explicit precondition ÔÇö and the
-      prompt DOES NOT EXIST. So the Rates B-slice-2 endgame (dropping the 8 legacy Estimate*Rate
-      tables) is blocked on a step nobody ever wrote. The rate-resolver seam, the flexible
-      RateTable, the grid and the prod seed have all shipped. Only the cutover is missing.
-    gate: 'grep -q "RATES_CANONICAL_SOURCE" apps/api/src -r || true'
-    gate_means: No hard blocker ÔÇö the seam and the RateTable both exist on main already.
-    needs_marco: false
-    order: 2
 
   # -------------------------------------------------------------------------------------------
   # P2 ÔÇö gate ALREADY RELEASED and nobody noticed. This is the item that proves the point.
@@ -140,8 +123,8 @@ items:
     title: "QA Workstream C ÔÇö full-depth compliance suites into CI"
     priority: P4
     why: "Locked as a decision 2026-07-02. Never started. 12 days idle."
-    gate: 'true'
-    gate_means: No technical blocker.
+    gate: '! test -d apps/api/src/compliance/__tests__'
+    gate_means: The full-depth compliance test suite Workstream C is meant to produce does not exist yet.
     needs_marco: false
     decided_in_BACKLOG_DECISIONS_md: "Workstream C was locked as full-depth. Still the call, or trim the scope?"
     order: 7
@@ -173,8 +156,8 @@ items:
     why: >
       Deliberately held back ÔÇö these CHANGE QUOTE NUMBERS, so they must not ride along with a
       refactor. Needs to be its own reviewable PR.
-    gate: 'true'
-    gate_means: No technical blocker; the reference production rates already shipped (#540).
+    gate: '! grep -rqiE "taskTimeCalculator|wasteWeightCalculator" apps/api/src'
+    gate_means: Neither calculator exists on main yet.
     needs_marco: false
     decided_in_BACKLOG_DECISIONS_md: "These change quoted prices. Ship as its own PR you review line-by-line?"
     order: 10

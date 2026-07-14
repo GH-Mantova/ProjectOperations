@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { isAdminUser } from "../auth/permissions";
+import { can, isAdminUser } from "../auth/permissions";
 import { buildInfo } from "../buildInfo";
 import { NotificationsDropdown } from "./NotificationsDropdown";
 import { CommandPalette } from "./CommandPalette";
@@ -22,6 +22,10 @@ type NavItem = {
   icon: ReactNode;
   match?: (pathname: string) => boolean;
   badge?: "safety" | "compliance";
+  // Optional per-item gate. When set, the item is hidden from users who do
+  // not have the permission. The route itself still renders a NoAccess page
+  // if a user reaches the URL directly (defence-in-depth).
+  requiresPermission?: string;
 };
 
 type NavGroup = {
@@ -215,6 +219,16 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/maintenance", label: "Maintenance", icon: ICON_MAINTENANCE },
       { to: "/forms", label: "Forms", icon: ICON_FORMS },
       {
+        // §7 payroll export: dedicated page over the existing CSV endpoint.
+        // Requires field.manage; NoAccess surfaces the missing code when a
+        // user without the permission lands on the route.
+        to: "/timesheets/payroll-export",
+        label: "Payroll Export",
+        icon: ICON_FORMS,
+        match: (path) => path.startsWith("/timesheets/payroll-export"),
+        requiresPermission: "field.manage"
+      },
+      {
         // Safety lives under OPERATIONS per project_instructions §9. Badge
         // surfaces open incidents — see SafetyBadge below.
         to: "/safety",
@@ -308,6 +322,7 @@ const BREADCRUMBS: Record<string, string> = {
   "/": "Dashboard",
   "/projects": "Projects",
   "/timesheets/approval": "Timesheets",
+  "/timesheets/payroll-export": "Payroll Export",
   "/jobs": "Jobs",
   "/scheduler": "Scheduler",
   "/scheduler/availability-report": "Availability report",
@@ -435,7 +450,13 @@ export function ShellLayout() {
   const initials = initialsOf(user?.firstName, user?.lastName, user?.email);
   const primaryRole = user?.roles?.[0]?.name ?? "Member";
 
-  const filteredGroups = NAV_GROUPS.filter((group) => !group.adminOnly || isAdmin);
+  const filteredGroups = NAV_GROUPS
+    .filter((group) => !group.adminOnly || isAdmin)
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => !item.requiresPermission || can(user, item.requiresPermission))
+    }))
+    .filter((group) => group.items.length > 0);
 
   return (
     <PersonaProvider>

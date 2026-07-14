@@ -55,14 +55,15 @@ function seedDraft(): DesignerDraft {
   };
 }
 
-describe("PALETTE_GROUPS (Basic / Choice / Survey / Layout category model)", () => {
-  it("exposes the F-1 category model plus Site & WHS on top", () => {
+describe("PALETTE_GROUPS (Basic / Choice / Survey / Layout / Advanced category model)", () => {
+  it("exposes the F-1 category model plus Site & WHS on top and Advanced (F-4) at the bottom", () => {
     expect(PALETTE_GROUPS.map((g) => g.key)).toEqual([
       "site_whs",
       "basic",
       "choice",
       "survey",
-      "layout"
+      "layout",
+      "advanced"
     ]);
   });
 
@@ -93,20 +94,18 @@ describe("PALETTE_GROUPS (Basic / Choice / Survey / Layout category model)", () 
     );
   });
 
-  it("keeps advanced F-4/F-5 tiles out of the palette", () => {
+  it("surfaces the four F-4 advanced tiles under Advanced", () => {
+    const advanced = PALETTE_GROUPS.find((g) => g.key === "advanced")!;
+    expect(new Set(advanced.entries.map((e) => e.type))).toEqual(
+      new Set(["lookup", "calculation", "table", "terms"])
+    );
+  });
+
+  it("keeps the still-deferred F-4/F-5 tiles out of the palette", () => {
     const flat = PALETTE_GROUPS.flatMap((g) => g.entries.map((e) => e.type));
-    for (const advanced of [
-      "lookup",
-      "calculation",
-      "unique_id",
-      "terms",
-      "table",
-      "worker",
-      "asset",
-      "location",
-      "weather"
-    ]) {
-      expect(flat).not.toContain(advanced);
+    // Unique ID needs the fv2_form_number_sequence migration; the rest are F-5.
+    for (const deferred of ["unique_id", "worker", "asset", "location", "weather"]) {
+      expect(flat).not.toContain(deferred);
     }
   });
 
@@ -147,6 +146,12 @@ describe("tabsForFieldType", () => {
   it("shows General only for static layout blocks (no rules target, no options)", () => {
     for (const t of ["heading", "paragraph", "divider", "image"]) {
       expect(tabsForFieldType(t)).toEqual(["general"]);
+    }
+  });
+
+  it("shows General/Options/Logic for advanced F-4 types (Options carries lookup/calc/table/terms config)", () => {
+    for (const t of ["lookup", "calculation", "table", "terms"]) {
+      expect(tabsForFieldType(t)).toEqual(["general", "options", "logic"]);
     }
   });
 
@@ -197,6 +202,31 @@ describe("makeField default config seeding", () => {
     for (const t of ["heading", "paragraph", "divider", "image"]) {
       expect(makeField(t).isRequired).toBe(false);
     }
+  });
+
+  it("seeds an empty listSlug for lookup fields (points at /lists/:slug/items at fill time)", () => {
+    const f = makeField("lookup");
+    expect(f.config).toEqual({ listSlug: "", parentFieldKey: "" });
+  });
+
+  it("seeds a calculation with empty operands so the server treats it as pending config", () => {
+    const f = makeField("calculation");
+    expect(f.config).toEqual({ operation: "sum", operandKeys: [], decimals: 2 });
+  });
+
+  it("seeds a two-column table skeleton", () => {
+    const f = makeField("table");
+    const cfg = f.config as { columns: Array<{ key: string; label: string; fieldType: string }>; minRows: number; maxRows: number };
+    expect(cfg.columns).toHaveLength(2);
+    expect(cfg.minRows).toBe(1);
+    expect(cfg.maxRows).toBe(20);
+  });
+
+  it("seeds terms with a default v1 version and prompt text", () => {
+    const f = makeField("terms");
+    const cfg = f.config as { termsText: string; termsVersion: string };
+    expect(cfg.termsVersion).toBe("1");
+    expect(cfg.termsText.length).toBeGreaterThan(0);
   });
 });
 

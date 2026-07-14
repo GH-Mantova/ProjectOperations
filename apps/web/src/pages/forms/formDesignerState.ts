@@ -32,7 +32,12 @@ export type FieldType =
   | "image"
   // Site & WHS
   | "signature"
-  | "image_capture";
+  | "image_capture"
+  // Advanced (F-4)
+  | "lookup"
+  | "calculation"
+  | "table"
+  | "terms";
 
 /**
  * Static-layout field types render read-only content and never contribute a
@@ -59,6 +64,19 @@ export const CHOICE_TYPES: ReadonlySet<string> = new Set<string>([
 
 /** Survey types carry a numeric scale config rather than an options list. */
 export const SURVEY_TYPES: ReadonlySet<string> = new Set<string>(["rating", "scale"]);
+
+/**
+ * Advanced F-4 types. All four keep their config in `FormField.config` so no
+ * schema migration is needed — that's why they can ship in a single slice.
+ * The remaining F-4 tile, Unique ID, is deferred pending the
+ * `fv2_form_number_sequence` migration.
+ */
+export const ADVANCED_TYPES: ReadonlySet<string> = new Set<string>([
+  "lookup",
+  "calculation",
+  "table",
+  "terms"
+]);
 
 export type DraftField = {
   tempId: string;
@@ -100,7 +118,7 @@ export type DesignerDraft = {
 };
 
 export type PaletteGroup = {
-  key: "site_whs" | "basic" | "choice" | "survey" | "layout";
+  key: "site_whs" | "basic" | "choice" | "survey" | "layout" | "advanced";
   label: string;
   entries: Array<{ type: FieldType; label: string; icon: string; badge?: string }>;
 };
@@ -110,9 +128,9 @@ export type PaletteGroup = {
  * two-group palette to the full Basic / Choice / Survey / Layout set, keeping
  * Site & WHS on top for the construction-critical Photo + Signature tiles.
  *
- * Advanced tiles (Lookup, Calculation, Unique ID, Terms, Table, Worker,
- * Asset, Location, Weather) belong to F-4 / F-5 and are intentionally not
- * surfaced here.
+ * F-4 adds an Advanced group with Lookup, Calculation, Table and Terms. The
+ * remaining advanced tiles (Unique ID, Worker, Asset, Location, Weather) are
+ * still deferred — Unique ID pends the `fv2_form_number_sequence` migration.
  */
 export const PALETTE_GROUPS: PaletteGroup[] = [
   {
@@ -164,6 +182,16 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
       { type: "divider", label: "Divider", icon: "—" },
       { type: "image", label: "Image", icon: "\u{1F5BC}" }
     ]
+  },
+  {
+    key: "advanced",
+    label: "Advanced",
+    entries: [
+      { type: "lookup", label: "Lookup", icon: "\u{1F50D}" },
+      { type: "calculation", label: "Calculation", icon: "\u{1F9EE}" },
+      { type: "table", label: "Table", icon: "\u{1F4CB}" },
+      { type: "terms", label: "Terms", icon: "\u{1F4DC}" }
+    ]
   }
 ];
 
@@ -179,7 +207,11 @@ export type PropertyTab = "general" | "options" | "logic";
  */
 export function tabsForFieldType(fieldType: string): PropertyTab[] {
   if (isLayoutOnlyType(fieldType)) return ["general"];
-  if (CHOICE_TYPES.has(fieldType) || SURVEY_TYPES.has(fieldType)) {
+  if (
+    CHOICE_TYPES.has(fieldType) ||
+    SURVEY_TYPES.has(fieldType) ||
+    ADVANCED_TYPES.has(fieldType)
+  ) {
     return ["general", "options", "logic"];
   }
   return ["general", "logic"];
@@ -204,13 +236,35 @@ const DEFAULT_LABEL: Partial<Record<string, string>> = {
   heading: "Section heading",
   paragraph: "Static paragraph",
   divider: "Divider",
-  image: "Image"
+  image: "Image",
+  lookup: "Lookup",
+  calculation: "Calculated total",
+  table: "Table",
+  terms: "Terms & conditions"
 };
 
 function defaultConfigFor(fieldType: FieldType | string): Record<string, unknown> | undefined {
   if (fieldType === "rating") return { maxRating: 5 };
   if (fieldType === "scale") return { min: 1, max: 5, minLabel: "", maxLabel: "" };
   if (fieldType === "image") return { imageUrl: "" };
+  if (fieldType === "lookup") return { listSlug: "", parentFieldKey: "" };
+  if (fieldType === "calculation") return { operation: "sum", operandKeys: [], decimals: 2 };
+  if (fieldType === "table") {
+    return {
+      columns: [
+        { key: "col_1", label: "Column 1", fieldType: "text" },
+        { key: "col_2", label: "Column 2", fieldType: "number" }
+      ],
+      minRows: 1,
+      maxRows: 20
+    };
+  }
+  if (fieldType === "terms") {
+    return {
+      termsText: "I agree to the terms and conditions.",
+      termsVersion: "1"
+    };
+  }
   return undefined;
 }
 

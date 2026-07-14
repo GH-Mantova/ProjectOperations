@@ -351,6 +351,17 @@ export class RulesEngineService {
               continue;
             }
           }
+          if (field.fieldType === "terms") {
+            // Terms are only "filled" when accepted:true. A raw truthy JSON
+            // blob without accepted:true (e.g. legacy or malformed client
+            // state) is treated as missing.
+            const accepted =
+              typeof value === "object" && value !== null && (value as { accepted?: unknown }).accepted === true;
+            if (!accepted) {
+              if (required) errors[field.fieldKey] = `${field.label} must be accepted to continue.`;
+              continue;
+            }
+          }
         }
         // Custom validations
         const validations = (field.validations as ValidationRule[]) ?? [];

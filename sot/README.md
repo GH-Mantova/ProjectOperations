@@ -1,7 +1,7 @@
 # ProjectOperations — Source of Truth (`/sot/`)
 
 **This folder is the single source of truth for the ProjectOperations ERP.**
-Last reorganised: 2026-07-08.
+Last reorganised: 2026-07-13 (chat-routing model retired; boot sequence + concurrency added).
 
 ---
 
@@ -13,44 +13,149 @@ roadmap, progress, data-model, decision, or spec documents anywhere else in the 
 Operational and working docs (runbooks, PR artifacts, transient notes) live under `docs/`
 and are explicitly **not** source of truth.
 
-Before writing any doc, decide: **durable truth → `/sot/`. Runbook / PR artifact / transient
-note → `docs/`. When in doubt, ask.**
+Before writing any doc, decide: **durable truth → `/sot/`. Runbook / PR artifact /
+transient note → `docs/`. When in doubt, ask.**
 
 Root `CLAUDE.md` is the only SoT-adjacent file outside this folder — it must stay at repo
 root because Claude Code auto-loads it. It is a pointer stub to this folder, not content.
 
 ---
 
-## 📇 Registry — the 7 masters
+## 🧭 Chat model — every chat is a full development chat
 
-| File | What lives here |
-|---|---|
-| `README.md` (this) | The law, this registry, chat routing, re-fetch rules, the SoT sweep policy |
-| `01-charter-and-architecture.md` | Company, staff, permission roles, environment/env-vars, tech stack, brand tokens, architecture rules, business logic (Cutrite schedule / densities / estimating), module registry, integrations detail, user types, sidebar nav |
-| `02-roadmap-and-status.md` | The one roadmap — every item tagged ✅ Done / 🔧 In-PR / 📦 Staged / 🧊 Awaiting-staging / 💡 Idea, plus the "needs-Marco" list |
-| `03-progress-log.md` | Append-only chronological history of what shipped (per-PR ledger) |
-| `04-data-model.md` | Canonical entities/relationships + Job↔Project & Worker↔WorkerProfile spine + module ownership / IA map |
-| `05-decisions-and-lessons.md` | ADRs, locked decisions, the incident ledger + operational playbooks, migration-history audit |
-| `06-active-specs.md` | Forward design specs not yet fully built (Forms Engine v2, Rates & Lists tidy-up, dashboard-widget catalogue, API permission matrix) |
+There is **no MAIN / OldMain / Chat# / DR# routing any more.** Ignore any older instruction
+that says otherwise. Every chat, regardless of title, has the same authority: architecture,
+decisions, PR prompts, document review, diagnostics.
 
-**Not source of truth (stays under `docs/`):** the PR pipeline (`docs/pr-prompts/**`),
-per-PR reviews (`docs/pr-reviews/**`), QA registers (`docs/qa/*`), and runbooks/guides
-(deploy, setup, troubleshooting, SSO, vs-code, diagnostics, scheduled-tasks-archive).
+**Multiple chats run concurrently by design.** So the danger is no longer "which role am
+I?" — it is **two chats acting on the same thing without knowing.** The Boot Sequence and
+Concurrency Rules below exist for exactly that.
 
 ---
 
-## 🚦 Chat routing (act on this chat's title)
+## 🚀 BOOT SEQUENCE — do this before your first substantive answer
 
-- **`🏗️ MAIN — ProjectOperations Development`** → read `README` + `01` + `02` fully. Role: architecture, PR prompts, roadmap, all decisions.
-- **`OldMain` + digits** (OldMain1, OldMain2…) → same role as MAIN. Re-fetch `README` + `01` + `02` at conversation start — context may be stale from compaction.
-- **`Chat` + digits** (Chat1, Chat2…) → **support chat**. Read only "Support-chat role" below, then STOP. Never make architectural decisions or write PR prompts.
-- **`DR` + digits** (DR1, DR2…) → **document-review** support chat. "Support-chat role" below, document review only, then STOP.
-- **Any other title** → ask the user what this chat is for.
+Docs describe intent. **Live state is the truth.** Never plan off `02` alone — it is
+reconciled at most daily and is routinely a few PRs behind.
 
-## 🔁 Re-fetch / memory rule
+1. Read `README.md` (this file) + `01-charter-and-architecture.md` + `02-roadmap-and-status.md`.
+2. **Check live state, in this order:**
+   - Open PRs on `GH-Mantova/ProjectOperations` — this is the real "in flight" list, not `02` §2.
+   - `docs/pr-prompts/` — armed `*-ready.md`, plus `failed/`, `needs-marco/`, `blocked/`, `*-HOLD.md`.
+   - **Scheduled tasks: are they enabled?** If the shepherd / QA / triage / queue-watch tasks
+     are disabled, *nothing is merging or being tested automatically* — say so up front. This
+     has silently stalled the board before.
+3. **Query the graph before you grep** — `graphify query "<question>"` (see below). Reading
+   files one by one to reconstruct architecture is the single biggest waste of a session.
+4. State your working assumption in one line, then proceed.
 
-- **MAIN + OldMain:** re-fetch `README` + `01` + `02` when context seems stale, after long gaps, or when explicitly asked.
-- **Support chats (Chat#, DR#):** fetch once at conversation start; use for the whole session; do not re-fetch mid-conversation.
+**Re-boot** (steps 1–2 again) after a long gap, after compaction, or whenever your picture
+of the board feels older than the conversation.
+
+---
+
+## 🔑 EXECUTION AUTHORITY — default is DO IT, not ask
+
+Marco (2026-07-13): *"I would rather leave it to you to do all the smoke tests + Marco tests +
+fixing + merging PRs. Only those that need my input should come to me."*
+
+Agents with a real shell (Cowork via Desktop Commander, Claude Code, the watcher) have **full
+filesystem access** — including `C:\po-watcher\ProjectOperations`, the watcher's git repo that
+actually pushes — **PowerShell**, and **`gh` authenticated as `GH-Mantova`**. GitHub writes go
+through `gh` in a shell; the GitHub *MCP* is read-only (403s on writes).
+
+**So: diagnose, fix, push, verify CI, and merge. Do not narrate a plan and wait for permission to
+do work you can simply perform.** A status update that asks Marco to run a command you could have
+run yourself is a failure of this rule.
+
+**ESCALATE only these — bring a question, not a status update:**
+
+1. **Open design/product questions.** Anything only Marco knows. Never guess his intent.
+2. **Irreversible / destructive.** Data loss, destructive migrations, force-push, branch deletion.
+3. **Authorization grants.** Never grant a permission or role autonomously.
+4. **Production auth / secrets / deploy config** that cannot be verified without him.
+5. **Requires a real human identity.** The one true hard stop — e.g. PR #538 needs a real Microsoft
+   account on a real shared PC. Get it green and mergeable, then hand it over.
+6. **Verification exhausted.** Two honest attempts failed. Say so plainly. Do not loop.
+
+Everything else: **do it.**
+
+### 🚫 AZURE / ENTRA / SHAREPOINT — NEVER WITHOUT MARCO (2026-07-13, absolute)
+
+**No agent touches the Azure portal, Entra ID, or the SharePoint tenant. Ever. Not once.** This is
+not an escalation category you can reason your way out of — it is a hard stop.
+
+Specifically forbidden without Marco at the keyboard:
+- App Service **environment variables / configuration** (incl. `SHAREPOINT_AUTH_MODE`,
+  `MAIL_AUTH_MODE`, any `AZURE_*`), restarts, deployment slots, scaling.
+- **Entra**: app registrations, client secrets, certificates, API permissions, admin consent,
+  managed identities, app-role assignments, directory roles, users, groups.
+- **SharePoint**: site permissions, folder structure, document libraries, sharing settings.
+- Any `az` / `Connect-MgGraph` / `Microsoft.Graph` PowerShell that **writes**.
+
+These systems are shared company infrastructure. A wrong move locks real staff out of real
+documents, and the blast radius extends well beyond this repo.
+
+**What you MAY do:** write the code, the migration, the runbook, and the exact step-by-step
+instructions for Marco to execute himself. Ship the PR. Then stop and hand him the steps.
+
+Reading public config values already committed to the repo is fine. Anything that mutates tenant
+state is not.
+
+---
+
+## 🔀 CONCURRENCY RULES (multiple chats are live at once)
+
+1. **Claim before you act.** Before staging a prompt, opening a branch, or editing a `/sot/`
+   file, re-check that another chat has not already done it: grep `docs/pr-prompts/`
+   (including `processed/`) for the artifact, and check open PRs. *Assume a parallel chat has
+   been busy.*
+2. **Never re-stage a stale prompt without checking `main` first.** Grep `main` for the
+   artifact it would create. History: 5 of 7 re-queued prompts turned out to already be shipped.
+3. **One `/sot/` doc, one chat, one PR.** `/sot/` edits land only via a dedicated
+   **doc-reconcile PR**. Feature/fix PRs must not touch `Last updated` headers or restate
+   status — that is what causes the recurring header merge conflict.
+4. **Trust code and CI over prose.** PR bodies over-claim. Grep the diff for the named
+   artifact before believing "done". Never diagnose a CI failure without the job log.
+5. **Leave a trail.** Anything durable you learn goes into `03` (what shipped), `05`
+   (decisions/incidents), or a staged prompt — not just the chat.
+
+---
+
+## 🕸️ Graph-first navigation (Graphify)
+
+The repo ships a committed knowledge graph in `graphify-out/` covering **app code +
+Prisma/SQL schema + infrastructure in one graph**.
+
+- Ask the graph first: `graphify query "what connects the rate resolver to the schema?"`,
+  `graphify path "ClientQuote" "TenderEstimate"`, `graphify explain "RateResolverService"`.
+- Broad architecture review: `graphify-out/GRAPH_REPORT.md`.
+- **Graphify is NOT source of truth.** It is a generated navigation index (a `docs/`-class
+  artifact that lives at repo root only because the tool requires it). The canonical Prisma
+  spine remains `sot/04-data-model.md` + `scripts/data-model/build-relationship-map.mjs`
+  (deterministic, CI-gated). If the graph and `sot/04` disagree, **`sot/04` wins** — and that
+  disagreement is a bug worth reporting.
+- Setup / rebuild: `docs/runbooks/graphify-setup.md`.
+
+---
+
+## 📇 Registry — the 7 masters
+
+| File | What lives here |
+| --- | --- |
+| `README.md` (this) | The law, the chat model, the boot sequence, concurrency rules, this registry, the sweep policy |
+| `01-charter-and-architecture.md` | Company, staff, permission roles, env vars, tech stack, brand tokens, architecture rules, business logic (Cutrite schedule / densities / estimating), module registry, integrations, user types, sidebar nav |
+| `02-roadmap-and-status.md` | The one roadmap — ✅ Done / 🔧 In-PR / 📦 Staged / 🧊 Awaiting-staging / 💡 Idea, plus the "needs-Marco" list. **Reconciled daily at best — always verify against live PRs.** |
+| `03-progress-log.md` | Append-only chronological history of what shipped (per-PR ledger) |
+| `04-data-model.md` | Canonical entities/relationships + Job↔Project & Worker↔WorkerProfile spine + module ownership / IA map |
+| `05-decisions-and-lessons.md` | ADRs, locked decisions, incident ledger + operational playbooks, migration-history audit. **Check here before diagnosing any ops/CI/git/DB issue.** |
+| `06-active-specs.md` | Forward design specs not yet fully built (Forms Engine v2, Rates & Lists, dashboard-widget catalogue, API permission matrix) |
+
+**Not source of truth (stays under `docs/`):** the PR pipeline (`docs/pr-prompts/**`),
+per-PR reviews (`docs/pr-reviews/**`), QA registers (`docs/qa/*`), runbooks/guides, and
+`graphify-out/`.
+
+---
 
 ## 🔗 Fetch URLs (use blob — raw CDN has delays)
 
@@ -62,25 +167,20 @@ per-PR reviews (`docs/pr-reviews/**`), QA registers (`docs/qa/*`), and runbooks/
 - 05 Decisions & Lessons: `…/blob/main/sot/05-decisions-and-lessons.md`
 - 06 Active Specs: `…/blob/main/sot/06-active-specs.md`
 
+---
+
 ## 🧹 SoT sweep policy
 
-Weekly, MAIN reconciles `02` + `03` against merged PRs, open PRs, and the `docs/pr-prompts/`
-queue. Edits to `02`/`03` land via a dedicated **doc-reconcile PR** — feature/fix PRs must
-not touch their `Last updated` headers or restate status (this kills the recurring header
-merge conflict).
+A daily scheduled sweep reconciles `02` + `03` against merged PRs, open PRs, and the
+`docs/pr-prompts/` queue, and reports drift. Deterministic, regeneratable drift may be staged
+as a **doc-reconcile PR**; curated prose is never auto-edited — it comes back as a finding for
+a human chat to action.
 
 ---
 
-## Support-chat role (Chat#, DR#) — read only this section, then STOP
+## 🖼️ Working with screenshots and uploaded files
 
-You are the eyes and ears of the MAIN chat. Observe precisely, describe completely, never
-decide architecture, never write PR prompts. When asked "what should we do?", describe the
-issue and say "take this to the MAIN development chat."
-
-**On screenshot upload:** output a full structured description BEFORE any analysis — route
-visible, user/role, exact error text verbatim, every UI element (buttons, fields, labels,
-dropdowns, table columns, badges, values), exact data values, layout issues, and a numbered
-issues list. Nothing omitted, no "etc.", no summarising — this is copied to MAIN verbatim.
-
-**On file upload (PDF/Word/Excel/CSV):** state file type + apparent purpose, describe every
-section/field/value, quote exact text where relevant. Nothing omitted.
+When a screenshot or document is shared, describe it **completely before analysing**: route
+visible, user/role, exact error text verbatim, every UI element and value, layout issues, then
+a numbered issues list. No summarising, no "etc." — the description is the evidence another
+chat will act on.

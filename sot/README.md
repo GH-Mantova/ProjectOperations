@@ -39,15 +39,18 @@ Docs describe intent. **Live state is the truth.** Never plan off `02` alone —
 reconciled at most daily and is routinely a few PRs behind.
 
 1. Read `README.md` (this file) + `01-charter-and-architecture.md` + `02-roadmap-and-status.md`.
-2. **Check live state, in this order:**
+2. **Read `docs/pipeline/DOCTRINE.md`.** ⚠️ **Non-negotiable — see "THE PIPELINE" below.** It is
+   `docs/`-class by filing, but it is **binding on every chat and every agent**. If you skip it you
+   will re-make mistakes that are already written down.
+3. **Check live state, in this order:**
    - Open PRs on `GH-Mantova/ProjectOperations` — this is the real "in flight" list, not `02` §2.
    - `docs/pr-prompts/` — armed `*-ready.md`, plus `failed/`, `needs-marco/`, `blocked/`, `*-HOLD.md`.
-   - **Scheduled tasks: are they enabled?** If the shepherd / QA / triage / queue-watch tasks
-     are disabled, *nothing is merging or being tested automatically* — say so up front. This
-     has silently stalled the board before.
-3. **Query the graph before you grep** — `graphify query "<question>"` (see below). Reading
+   - **Scheduled tasks: are they enabled?** If `00-supervisor` / `04-scanner` / `05-sot-keeper`
+     are disabled, *nothing is merging or being tested automatically* — say so up front. This has
+     silently stalled the board before: all four sat disabled for three days and no chat noticed.
+4. **Query the graph before you grep** — `graphify query "<question>"` (see below). Reading
    files one by one to reconstruct architecture is the single biggest waste of a session.
-4. State your working assumption in one line, then proceed.
+5. State your working assumption in one line, then proceed.
 
 **Re-boot** (steps 1–2 again) after a long gap, after compaction, or whenever your picture
 of the board feels older than the conversation.
@@ -101,6 +104,56 @@ instructions for Marco to execute himself. Ship the PR. Then stop and hand him t
 
 Reading public config values already committed to the repo is fine. Anything that mutates tenant
 state is not.
+
+---
+
+## 🏭 THE PIPELINE (2026-07-14) — read this before you touch the board or stage a prompt
+
+The automation is a **production line**. It is not optional context: a chat that does not know it
+exists will hand-roll board operations and re-make bugs that are already fixed.
+
+**The files are under `docs/` because they are operational, not because they are optional.**
+
+| What | Where | Why you care |
+|---|---|---|
+| **The doctrine** | `docs/pipeline/DOCTRINE.md` | **Binding.** Read-back rule; evidence-not-assertion; **§7 "your instrument lies"**; stay-in-your-station; the hard stops; never-exit-silently. |
+| **The primitives** | `scripts/pipeline/pipeline-lib.ps1` | **Dot-source it. Never hand-roll a board operation.** Every mutation reads back and proves its effect. |
+| **The intake lint** | `scripts/pipeline/lint-prompt.mjs` + `docs/pr-prompts/PROMPT-SCHEMA.md` | Every prompt needs an **executable `premise`**. No front-matter → it cannot enter the queue. |
+| **The smoke harness** | `scripts/pipeline/smoke-pr.ps1` | Drives the real acceptance suite. **The exit code decides — not your opinion of it.** |
+| **The stations** | `.claude/agents/00-05` + `docs/pipeline/stations/` | Numbered by execution order. |
+
+### The stations
+
+`00-supervisor` (cron, 2h) — **the only thing that starts board or machine work.** Builds the whole
+picture, then **dispatches**. It does not do the stations' work; doing so once killed an entire
+overnight queue (LL-38).
+`01-code-writer` — invoked by the **watcher** when a prompt dequeues.
+`02-board-driver` · `03-machine-minder` — **no schedule.** They run *only* when the supervisor
+dispatches them. Both mutate git; two of them starting independently is the collision the
+supervisor exists to prevent.
+`04-scanner` (cron, 4h) — read-only audit; stages lint-compliant prompts.
+`05-sot-keeper` (cron, daily) — **the only station allowed to touch `/sot/`.**
+
+### 🚫 NEVER-MERGE
+
+Maintained in code at `scripts/pipeline/pipeline-lib.ps1` (`$script:NEVER_MERGE`) and enforced by
+`Assert-Mergeable` **at the point of action** — not in a selection filter, because a filter is one
+PowerShell quirk away from being a silent no-op, and once was: it selected **#552, the
+production-data PR**, for merge.
+
+**Every entry carries a reason AND a discharge condition.** A guard nobody can ever clear is a lie.
+
+### Merging — there is exactly one way
+
+```powershell
+. scripts\pipeline\pipeline-lib.ps1
+Assert-SmokedOrEscalate -PR $n -MustContain @("<the artifact the PR body claims>")
+Merge-Pr -PR $n
+```
+
+It **throws** on: the NEVER-MERGE list · a check still **in flight** (*pending is not pass*) · a
+**missing** required check (*an absent gate is not a green gate*) · a **diff that does not contain
+what the body claims** (#476 and #478 both over-claimed and both merged anyway).
 
 ---
 

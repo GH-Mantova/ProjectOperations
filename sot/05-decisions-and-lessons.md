@@ -1174,3 +1174,49 @@ supervisor intervention needed"* in the same run in which it broke the system. *
 its intentions, not its effects.** Any agent must re-check the state it touched before writing a
 verdict. A supervisor that damages the thing it watches and then reports "nominal" is worse than no
 supervisor at all — it actively suppresses the alarm.
+
+
+---
+
+**LL-39 | 2026-07-14 | YOUR INSTRUMENT LIES. Six times a broken TOOL produced a confident, coherent, WRONG verdict about a perfectly healthy system.**
+
+This is the most dangerous failure class in this repo, and it now has its own doctrine section:
+**`docs/pipeline/DOCTRINE.md` §7** — read it. A broken *system* fails loudly. A broken *measurement*
+hands you a plausible answer and you act on it.
+
+Twice it nearly caused real damage: one agent almost "repaired" clean UTF-8 files **into** corruption;
+another declared a live watcher dead and killed the overnight queue.
+
+| # | The lie | The truth | The cause |
+|---|---|---|---|
+| 1 | "WATCHER IS DOWN — QUEUE FROZEN" | It had run **6 minutes ago** | Linux `ps \| grep` in a sandbox against a **Windows** process; then a UTC log line compared to a local clock. **Logs are UTC; the machine is Brisbane (UTC+10).** |
+| 2 | "`sot/` files are corrupted — em-dashes eaten, `?` everywhere" | Files were **clean UTF-8**, zero replacement chars | **PS 5.1 `Get-Content` decodes BOM-less UTF-8 as Windows-1252.** The mojibake was in the READER. The proposed "fix" (`-Encoding ascii`) would have caused the corruption **for real**. |
+| 3 | "premise satisfied — work already done" → **BINNED THE PROMPT** | The premise never **ran** | `shell: "/bin/bash"` — **Windows has no `/bin/bash`.** Spawn failure gives `err.status === undefined` → `-1`, which was not in the broken-list, so it was misread as "premise false". **It would have silently discarded the entire backlog while printing green.** |
+| 4 | "NOT IDEMPOTENT / ADMIN EDIT OVERWRITTEN" | The migration was perfectly idempotent | Wrong DB role → **every psql call failed** → empty strings compared unequal. A connection failure wearing a finding's clothes. |
+| 5 | "No such container: 35" | The container was fine | **PowerShell variables are CASE-INSENSITIVE.** A local `$c` (column count) silently clobbered `$C` (container name). |
+| 6 | "NOT IDEMPOTENT" — while printing two **identical** row counts | It was idempotent | **A PowerShell function returns ALL its output**, not just `return`. `Write-Output` inside the function was captured into the return value. |
+
+Note the shape: **four of the six were a failed call being read as a meaningful answer.**
+
+**A seventh, same week, same class:** the evidence-gate self-test printed **PASS while the library was
+not even loaded** — it dot-sourced a hardcoded path, every function was undefined, and `Should-Throw`
+accepted *"the term Assert-Mergeable is not recognized"* as a successful refusal. **A guard test that
+goes green while the guard does not exist is worse than no test.**
+
+**THE RULE.** Before believing a **negative** result — *"it's broken", "it's missing", "it's already
+done", "it's down"* — **prove your instrument can produce a POSITIVE one.** A check never observed to
+succeed is not a check. And **a tool that cannot run must FAIL LOUD, never fail quiet**: *"I could not
+measure it"* must never silently become *"it measured false"*.
+
+**Standing guards** (full list in DOCTRINE §7): positive control first · connect-then-assert (abort on
+a failed connection; never let it flow into a comparison) · verify file bytes with `node`, not
+`Get-Content` · liveness ONLY via `scripts/restart-watcher-if-wedged.ps1` · no single-letter PowerShell
+variables · no `Write-Output` inside a function whose value you capture · `$ErrorActionPreference =
+"Continue"` in git scripts (git warns on stderr, and `"Stop"` aborts you *before* your commit while the
+log still looks clean) · never pass `-q '<jq>'` to `gh` from PS 5.1, and **assign-then-foreach** —
+piping a JSON array into `Where-Object` collapses it to ONE object, which is the bug that once let the
+merge queue select **#552, the production-data PR**.
+
+**If your instrument breaks mid-task, say so.** `NO-OP: my check was broken; here is what I could not
+measure.` That is a **success**. Reporting a verdict obtained from a broken instrument is the worst
+outcome available — worse than doing nothing, because someone will act on it.

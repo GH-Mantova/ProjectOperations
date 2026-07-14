@@ -11,8 +11,8 @@
 > generator run: re-merge the regenerated map while preserving the appended design sections.
 > Business meaning (domains, field roles) is curated in `docs/data-model/metadata-catalog.json`.
 
-- Last updated: 2026-07-13 00:01 UTC
-- Generated from: `apps/api/prisma/schema.prisma` (sha256 `454906b95970`)
+- Last updated: 2026-07-14 06:16 UTC
+- Generated from: `apps/api/prisma/schema.prisma` (sha256 `b31c4217323d`)
 - Models: 190 | Enums: 21 | FK edges: 280 | Domains: 22
 
 <!-- SOT04-GENERATED:BEGIN -->

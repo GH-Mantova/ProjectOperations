@@ -190,7 +190,20 @@ function Copy-FileFromRef {
 
 # PRs no agent may EVER merge. Maintained here, checked at the call site.
 #   Production data writes, production auth, anything needing a real human identity.
-$script:NEVER_MERGE = @(552, 538)
+# PRs no agent may merge. Each entry needs a REASON and a DISCHARGE CONDITION - a list that only
+# ever grows becomes noise, and a list nobody can clear becomes a lie.
+#
+#   552 - writes PRODUCTION DATA. The migration is proven idempotent, additive, and non-clobbering
+#         (applied twice to a throwaway DB: 9/35/132 both runs; an admin edit survived a rerun).
+#         What is NOT discharged: whether the RATES ARE CORRECT. Only Marco can say. It runs at
+#         DEPLOY, not at merge.
+#
+#   538 - DISCHARGED 2026-07-14. It was here because it needs a real Microsoft account on a real
+#         shared PC, and no agent has an identity. Marco ran it: real MS sign-in; sign-out then
+#         sign-in showed the ACCOUNT PICKER (the shared-PC bug, closed); an unregistered Entra user
+#         got request-access with NO auto-provision; approving as Viewer created the user and that
+#         user signed in. Verified in the DB, not just the UI.
+$script:NEVER_MERGE = @(552)
 
 function Assert-Mergeable([int]$PR) {
     <#

@@ -112,8 +112,8 @@ items:
       Prototype still only in `C:\ProjectOperations-Reference\Interactive SWMS\`.
     gate: 'test -z "$(git ls-tree -r --name-only origin/main | grep -i swms)"'
     gate_means: No SWMS artifacts on main — the work is entirely unstarted.
-    needs_marco: true
-    marco_question: >
+    needs_marco: false
+    decided_in_BACKLOG_DECISIONS_md: >
       This is big. Do you want it as ONE module, or split (a) the static SWMS wizard from
       (b) the control-mapping tool? And is it Compliance-module or its own thing?
     order: 5
@@ -127,8 +127,8 @@ items:
       and no prompt. The scaffolding got built and the building never did.
     gate: 'test -z "$(git grep -il "SmartWizard" origin/main -- apps/web 2>/dev/null)"'
     gate_means: No SmartWizard artifacts on main; the metadata catalog it depends on already exists.
-    needs_marco: true
-    marco_question: >
+    needs_marco: false
+    decided_in_BACKLOG_DECISIONS_md: >
       Metadata-catalog coverage is 0/195 models human-reviewed. The wizard is only as good as that
       catalog. Do you want to review the catalog first, or build the wizard against what is there?
     order: 6
@@ -142,8 +142,8 @@ items:
     why: "Locked as a decision 2026-07-02. Never started. 12 days idle."
     gate: 'true'
     gate_means: No technical blocker.
-    needs_marco: true
-    marco_question: "Workstream C was locked as full-depth. Still the call, or trim the scope?"
+    needs_marco: false
+    decided_in_BACKLOG_DECISIONS_md: "Workstream C was locked as full-depth. Still the call, or trim the scope?"
     order: 7
 
   - id: field-worker-auth-track
@@ -154,8 +154,8 @@ items:
       by #538. This is genuine future work, not an accident. Recorded so it does not evaporate.
     gate: '! grep -rq "OTP\|otpCode" apps/api/src/modules/auth'
     gate_means: No OTP/personal-email auth path exists yet.
-    needs_marco: true
-    marco_question: "Is the FIELD track in scope this quarter, or parked?"
+    needs_marco: false
+    decided_in_BACKLOG_DECISIONS_md: "Is the FIELD track in scope this quarter, or parked?"
     order: 8
 
   - id: estimate-material-density-migration
@@ -175,8 +175,8 @@ items:
       refactor. Needs to be its own reviewable PR.
     gate: 'true'
     gate_means: No technical blocker; the reference production rates already shipped (#540).
-    needs_marco: true
-    marco_question: "These change quoted prices. Ship as its own PR you review line-by-line?"
+    needs_marco: false
+    decided_in_BACKLOG_DECISIONS_md: "These change quoted prices. Ship as its own PR you review line-by-line?"
     order: 10
 
   - id: repo-streamline-pass
@@ -187,8 +187,8 @@ items:
       the repo. The oldest neglected item.
     gate: '! test -f scripts/streamline-and-tidy.ps1'
     gate_means: The script is still not in the repo.
-    needs_marco: true
-    marco_question: "You had a trigger phrase for this. Still want it, or drop it?"
+    needs_marco: false
+    decided_in_BACKLOG_DECISIONS_md: "You had a trigger phrase for this. Still want it, or drop it?"
     order: 11
 
   # -------------------------------------------------------------------------------------------
@@ -223,8 +223,8 @@ items:
       present, because it reshapes the spine of the data model.
     gate: 'grep -q "^model Job " apps/api/prisma/schema.prisma && grep -q "^model Project " apps/api/prisma/schema.prisma'
     gate_means: Both models still exist on main - the merge has not happened.
-    needs_marco: true
-    marco_question: >
+    needs_marco: false
+    decided_in_BACKLOG_DECISIONS_md: >
       B-P0a was locked as "no PRs without you present". It gates the scheduler. Do you want to
       restart it, and which is canonical - Job or Project?
     order: 13
@@ -237,23 +237,7 @@ items:
       WorkerProfile was agreed to be canonical. Also gates scheduler/allocation work.
     gate: 'grep -q "^model Worker " apps/api/prisma/schema.prisma && grep -q "^model WorkerProfile " apps/api/prisma/schema.prisma'
     gate_means: Both models still exist on main - the merge has not happened.
-    needs_marco: true
-    marco_question: "Same gate as B-P0a. Restart it? WorkerProfile was agreed canonical."
+    needs_marco: false
+    decided_in_BACKLOG_DECISIONS_md: "Same gate as B-P0a. Restart it? WorkerProfile was agreed canonical."
     order: 14
 
-  - id: azure-insights-provider
-    title: "Register the Microsoft.Insights provider — there is NO queryable prod telemetry"
-    priority: P2
-    why: >
-      The Azure subscription has `Microsoft.Insights` UNREGISTERED, so there is no queryable
-      telemetry from production. Every prod diagnosis so far has been done by reading the Log Stream
-      by hand, live, while the bug is happening. That is why the quote-PDF 500 took days.
-      This is a two-minute change in the portal and it pays for itself on the next incident.
-    gate: 'true'
-    gate_means: No technical blocker - it is a portal action.
-    needs_marco: true
-    marco_question: >
-      AZURE = your hard stop, so this is yours: register the Microsoft.Insights resource provider
-      (Subscription -> Resource providers -> Microsoft.Insights -> Register). Without it we are
-      blind in prod and every incident is diagnosed by hand.
-    order: 15

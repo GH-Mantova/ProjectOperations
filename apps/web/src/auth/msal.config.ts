@@ -24,5 +24,10 @@ export const msalConfig: Configuration = {
 };
 
 export const loginRequest: RedirectRequest = {
-  scopes: ["openid", "profile", "email", "User.Read"]
+  scopes: ["openid", "profile", "email", "User.Read"],
+  // Shared-computer scenario: without this Microsoft silently reuses the
+  // previously-cached account on this browser, so a new person clicking
+  // "Sign in with Microsoft" lands as the old user. select_account forces
+  // the picker every time.
+  prompt: "select_account"
 };

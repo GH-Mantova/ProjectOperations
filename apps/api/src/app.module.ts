@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { ScheduleModule } from "@nestjs/schedule";
+import { AccessRequestsModule } from "./modules/access-requests/access-requests.module";
 import { AdminSettingsModule } from "./modules/admin-settings/admin-settings.module";
 import { AdminUsersModule } from "./modules/admin-users/admin-users.module";
 import { AiSettingsModule } from "./modules/ai-settings/ai-settings.module";
@@ -72,6 +73,7 @@ import { ClientVersionsModule } from "./modules/client-versions/client-versions.
     PrismaModule,
     HealthModule,
     EmailModule,
+    AccessRequestsModule,
     AdminSettingsModule,
     AdminUsersModule,
     AiSettingsModule,

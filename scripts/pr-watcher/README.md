@@ -298,6 +298,42 @@ stderr line cannot kill the wrapper.
 The launcher is pure ASCII (LL-22). The VS Code task `PR Watcher (v2)`
 runs it via `powershell -NoProfile -ExecutionPolicy Bypass -File`.
 
+## Supervisor (`supervise-watcher.ps1`) — the real entry point
+
+**Run this INSTEAD of `start-watcher.ps1`.** `start-watcher.ps1` is a
+single-shot launcher: if the watcher hits a usage/rate-limit soft-halt
+(exit 2) or crashes (exit 1), it dies and the queue stalls until a human
+notices. `supervise-watcher.ps1` wraps it in a loop that auto-restarts:
+
+- **exit 2** (usage / rate-limit soft-halt) — waits
+  `PR_WATCHER_SOFTWAIT_MIN` minutes (default 20) for the Claude quota
+  window, then restarts. The halted prompt stays in `docs/pr-prompts/`
+  and is picked up on the next start.
+- **exit 1** (real failure / crash) — waits `PR_WATCHER_CRASH_WAIT_SEC`
+  seconds (default 60), then restarts.
+- **exit 0** (Ctrl+C, or the single-instance guard found another watcher
+  already running) — treated as a deliberate stop; supervisor exits.
+
+Launch it detached — **not** as a child of a Claude Desktop / editor
+session, or the whole supervisor dies when that app restarts:
+
+```powershell
+Start-Process powershell -ArgumentList `
+  "-NoProfile","-ExecutionPolicy","Bypass",`
+  "-File","C:\ProjectOperations2\scripts\pr-watcher\supervise-watcher.ps1"
+```
+
+The supervisor writes its own log to
+`scripts/pr-watcher/logs/supervisor.log` alongside the daily watcher log.
+
+**Env carry.** When the supervisor lives in a supervisor-only clone
+(e.g. `C:\po-watcher\ProjectOperations`) but the queue lives in the
+main tree (`C:\ProjectOperations2\docs\pr-prompts`), the supervisor
+pre-sets `PR_WATCHER_REPO_ROOT` (git work) and `PR_WATCHER_PROMPT_DIR`
+(queue) so `start-watcher.ps1` picks the isolated clone as its repo
+root and `index.mjs` watches the real queue directory. Override either
+by exporting them before launch if your layout differs.
+
 ## Nightly mode (Windows Task Scheduler)
 
 Use `scripts/pr-watcher/start-nightly.ps1` as a wrapper. It:

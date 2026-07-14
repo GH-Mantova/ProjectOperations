@@ -4,7 +4,7 @@
 > Regenerate with `node scripts/data-model/build-relationship-map.mjs`.
 > Business meaning (domains, field roles) is curated in `metadata-catalog.json`.
 
-- Last updated: 2026-07-13 23:44 UTC
+- Last updated: 2026-07-14 00:05 UTC
 - Generated from: `apps/api/prisma/schema.prisma` (sha256 `dd365e9f105f`)
 - Models: 193 | Enums: 23 | FK edges: 288 | Domains: 23
 

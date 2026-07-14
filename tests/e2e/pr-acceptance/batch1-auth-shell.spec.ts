@@ -132,6 +132,27 @@ test.describe("Batch 1 — Auth, Shell & Sidebar Navigation (PRs #12, #13, #29, 
 
   // ── Field redirect guard ──────────────────────────────────────────────────
 
+  // ── Sidebar collapse toggle (Raj + Marco, 2026-07-13) ─────────────────────
+
+  test("collapsed sidebar keeps its expand toggle fully in the viewport", async ({ page }) => {
+    await loginAsAdmin(page);
+    const toggle = page.getByTestId("sidebar-collapse-toggle");
+    await expect(toggle).toBeVisible();
+    // Collapse the sidebar.
+    await toggle.click();
+    // After collapsing, the button must still be visible AND fully in the
+    // viewport — a clipped element passes toBeVisible(), so toBeInViewport()
+    // is what actually encodes the "chevron got clipped" bug.
+    await expect(toggle).toBeVisible();
+    await expect(toggle).toBeInViewport();
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    // Clicking again expands the sidebar.
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(page.getByRole("navigation", { name: "Main navigation" })
+      .getByRole("link", { name: "Operations", exact: true })).toBeVisible();
+  });
+
   test("desktop admin user navigating to /field sees empty state, not an auth redirect loop", async ({ page }) => {
     await loginAsAdmin(page);
     await page.goto("/field");

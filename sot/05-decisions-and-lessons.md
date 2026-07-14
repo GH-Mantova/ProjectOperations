@@ -883,3 +883,294 @@ None.
 - **No code changes, no migrations, no DB writes, no PRs opened.**
 
 The audit branch `audit/2026-05-02-system-snapshot` contains exactly one commit: this report file. Marco can read, then either merge to capture the snapshot in main's history, or leave the branch unmerged as a point-in-time artefact.
+
+---
+
+## Incident — CRLF/LF schema-hash bug in the data-model drift gate (2026-07-13)
+
+**Severity:** blocked the entire PR board for ~3 days. Two independent diagnoses were wrong
+before anyone read the CI log.
+
+### What happened
+
+`scripts/data-model/build-relationship-map.mjs` computed the schema fingerprint by hashing the
+**raw bytes** of `apps/api/prisma/schema.prisma`:
+
+```js
+const schemaSha = createHash('sha256').update(text).digest('hex');   // BUG
+```
+
+Windows checks the file out with CRLF line endings; Linux CI checks it out with LF. **Identical
+content, different sha256.** So `build-relationship-map.mjs --check` passed on whichever platform
+generated the committed `relationship-map.json` and failed on the other. The `data-model-drift`
+CI job (PR #536) therefore self-failed on a branch whose map was perfectly correct.
+
+### Fix (PR #536)
+
+Normalise line endings before hashing:
+
+```js
+const normalized = text.replace(/\r\n/g, '\n');
+const schemaSha = createHash('sha256').update(normalized).digest('hex');
+```
+
+Canonical schema sha changed `454906b95970` → `b31c4217323d`. Any branch carrying data-model
+artifacts generated before this fix must regenerate them or the gate will fail.
+
+### Why it took three days — two wrong diagnoses, both from inference
+
+1. ❌ *"The gate self-fails on the per-run `Last updated` timestamp."* Plausible, wrong.
+2. ❌ *"`main`'s map is stale after #539's domain reclassification."* Also plausible, also wrong —
+   the counts and content were correct all along; only the **sha comparison** was broken.
+
+Both were derived from reading artifacts (PR diffs, sweep output) instead of the failing job log.
+The agent that ran `gh run view <run> --job <job> --log` and reproduced `--check` locally on both
+platforms found the real cause in one pass.
+
+**Lesson (this is the existing rule, and it was broken):** *never diagnose a CI failure without
+the job log.* Artifact-based inference produces confident, coherent, wrong answers. If you catch
+yourself reasoning about *why* a check might be failing, stop and go read the log.
+
+### The second failure — the SoT sweep and CI disagreed, and nobody noticed
+
+The daily SoT sweep reported **"schema -> map: clean"** every single day while CI was red on the
+same check. It was not a false-negative in the sweep's *method*: the sweep DOES run
+`build-relationship-map.mjs --check` (its step 1). It is a **platform** disagreement:
+
+- The sweep runs against the **Windows working tree** (`C:\ProjectOperations2`, checked out
+  **CRLF**). The committed `relationship-map.json` sha was also generated on Windows, from CRLF
+  bytes. They matched -> `--check` printed **OK**.
+- GitHub Actions checks the repo out with **LF**. Hashing LF bytes produced a different sha ->
+  `--check` printed **DRIFT**.
+
+**The same command gave opposite answers on the two platforms, and the sweep only ever saw one of
+them.** Four sweeps in a row confidently reported clean while the board was blocked.
+
+**Required hardening of the sweep:**
+- A local `--check` PASS is NOT sufficient evidence of health. The sweep MUST also read the
+  **actual CI check-run conclusion** for `data-model-drift` on `main` and on open PRs, and treat
+  local-PASS + CI-FAIL as a first-class finding ("environment disagreement"), not as clean.
+- It MUST assert `docs/data-model/metadata-catalog.json` parses as valid JSON. It reported that
+  file as invalid (unterminated string @ offset 407816) for four consecutive sweeps and nothing
+  ever acted on it.
+- It MUST NOT run `build-toc.mjs --check` against `sot/` files: none carry `TOC:START`/`TOC:END`
+  markers, so the check reports drift unconditionally and cries wolf daily. Either add markers to
+  `sot/` or exclude `sot/` from that check.
+
+### Generalised lesson — line endings on a Windows dev box + Linux CI
+
+Any tool that fingerprints file *content* must normalise line endings first. Check
+`.gitattributes` before adding a new content-hash or checksum gate. This is now the second
+Windows/Linux parity class of bug in this repo (see also the PS 5.1 encoding rule).
+
+---
+
+## Incident — a 3-day-old `.git/index.lock` silently froze the local tree (2026-07-13)
+
+### What happened
+
+`C:\ProjectOperations2\.git\index.lock` was left behind by an interrupted git operation on
+**2026-07-10 16:05**. Nothing cleaned it up. For **three days**:
+
+- every `git pull` / `checkout` / `merge` in that tree failed with
+  `fatal: Unable to create '.../index.lock': File exists`,
+- local `main` stayed pinned at `e1d1197` while `origin/main` moved on by 5 commits,
+- and — the expensive part — **every tool and every agent reading that working tree was reading
+  three-day-old source code without knowing it.**
+
+### The damage
+
+A Cowork chat grepped the frozen tree, found no `apps/web/src/auth/permissions.ts`, and concluded
+that **PR #537 had over-claimed and never landed its `can()` / `isAdminUser()` helper**. That
+accusation was **false**. #537 had landed correctly; the file simply did not exist in the stale
+snapshot. A PR prompt was armed on that false premise and had to be rewritten before it ran.
+
+The same stale tree also reported the old `schemaSha256` and a missing CRLF fix, muddying the #536
+diagnosis.
+
+### Lessons
+
+1. **A stale lock is silent by design.** Git only complains when you *write*. Every *read* — grep,
+   cat, an agent's `Read` tool — happily returns frozen content with no warning at all. This is the
+   most dangerous failure mode a source of truth can have: confidently wrong, never noisy.
+2. **Before drawing any conclusion from the working tree, confirm the tree is current.**
+   `git status` (is it behind?) and `git log --oneline -1` cost nothing. A conclusion drawn from an
+   unverified tree is worth nothing.
+3. **Never accuse a PR of over-claiming without checking against `origin/main`, not your local
+   tree.** The "watcher agents over-claim done" pattern is real (#476, #478) — which makes it
+   *easier* to jump to it, and therefore more important to verify. Use
+   `git fetch && git show origin/main:<path>` or the GitHub API, never a local checkout you have not
+   verified.
+4. **If git behaves oddly at all, check for `.git/index.lock` FIRST.** Check its age
+   (`Get-Item .git\index.lock | Select CreationTime`) and whether a real `git` process is running
+   (`Get-Process git`). No process + an old lock = stale, safe to delete. This is now the third
+   local-git wedge in this repo (see also the dev-start.bat and dirty-tree recovery entries) —
+   assume it before assuming anything cleverer.
+
+### Preventative
+
+Add a stale-lock check to the local dev-start / doctor path: if `.git/index.lock` exists and no
+`git` process is running, warn loudly (or clear it) rather than letting the tree silently rot.
+
+---
+
+## Incident — a seed-only change never reaches production (2nd occurrence, 2026-07-13)
+
+**This is the same trap as #504. It has now happened twice. A CI gate is the only reliable cure.**
+
+### The rule being broken
+
+Production runs `prisma migrate deploy`. **It does not run the TypeScript seed.** A change that
+lives only in a seed file therefore never reaches production — with no error, no failing test, and
+no warning of any kind. It is a completely silent failure.
+
+### Occurrence 1 — PR #504
+
+`tender-package-disciplines` GlobalList added to the seed. Prod never received it → the New Tender
+wizard 404'd in production. Fixed with an insert-if-absent migration.
+
+### Occurrence 2 — PR #506 (`6b4f165`)
+
+"grant marco@initialservices.net super-user in seed (parity with Sean)". It changed **only**
+`apps/api/prisma/seed-users-prod.ts`. No migration sets `isSuperUser` anywhere in the repo.
+**Result: Marco and Sean were never actually super-users in production.**
+
+Detected on 2026-07-13 only because Marco was mysteriously bounced out of Rates & Lists. The
+diagnosis path was expensive and went wrong twice before landing:
+
+- First theory: "PR #537 over-claimed and never landed its `can()` helper." **False** — derived from
+  a working tree frozen for 3 days by a stale `.git/index.lock` (see that incident above).
+- Second theory: "stale JWT — the flag was set after the token was issued." **False** — a freshly
+  issued token (`iat` = 11:12 that morning) still carried `isSuperUser: false`.
+- Actual cause: the flag had never been written to the production database at all.
+
+The decisive evidence took 30 seconds once someone thought to look: decode the JWT in the browser
+and read the claim.
+
+### Lessons
+
+1. **"It's in the seed" is not the same as "it's in production."** Ask, every time: *does prod
+   actually need this data, and if so, what migration puts it there?*
+2. **A silent failure is more expensive than a loud one.** Nothing failed. No test went red. The
+   only symptom surfaced weeks later as a confusing UI bug, and cost two wrong theories to reach.
+3. **Check the claim before the code.** When an authorization guard misbehaves, decode the token
+   and read the actual claim FIRST. The guard is rarely the bug; the data behind it usually is.
+
+### The backstop (now built)
+
+CI gate: any PR that modifies `apps/api/prisma/seed*` **without adding a migration** fails, unless
+the PR body explicitly declares `SEED-ONLY: dev — <reason>`. The point is not to block seed changes
+but to force the author to consciously state whether production needs the data. See
+`pr-ci-guard-seed-never-reaches-prod-ready.md`.
+
+---
+
+## Shared company infrastructure (Azure / Entra / SharePoint)
+
+**LL-36 | 2026-07-13 | An agent walked Marco through deleting a live production secret BEFORE
+verifying everything that depended on it. Two systems shared the credential; only one was tested.**
+
+**What happened.** Production SharePoint was migrated from an Entra client secret to a system-assigned
+managed identity (#547). The proof was sound: delete `AZURE_CLIENT_SECRET` from App Service, confirm
+SharePoint upload+open still works — with no secret present, only the MI can be authenticating.
+
+The instruction Cowork gave was, in effect, *"delete the secret, and also test email."* Those two steps
+were issued in the same breath and **in the wrong order**. Marco deleted both secrets from the app
+registration (revoking them tenant-wide) before email was ever tested.
+
+**What saved it was luck, not process.** `outlook.provider.ts` builds its own `ClientSecretCredential`
+and resolves creds via `resolveMailCreds()`, which reads ONLY `AZURE_MAIL_*` ?? `SHAREPOINT_*` — never
+`AZURE_CLIENT_SECRET`. None of those six env vars had ever existed in production, so Outlook email had
+**never worked at all**. There was nothing to break. Had mail been correctly configured on the same app
+registration, deleting those secrets would have taken down all outbound email with no rollback (Azure
+never shows a secret value twice).
+
+**Two distinct failures, two distinct guards.**
+
+1. **Ordering.** A verification step that gates an irreversible action must be issued, and completed,
+   BEFORE the irreversible step — never alongside it. This is the same rule as
+   "steps in strict execution order," but the stakes are higher: an irreversible step whose gate is
+   listed *after* it is not a gate at all. When one credential serves N systems, enumerate all N and
+   verify each **before** revoking anything. Grep for every consumer of the credential
+   (`grep -rn "ClientSecretCredential\|AZURE_CLIENT_SECRET" apps/`) — do not assume one adapter owns it.
+
+2. **Authority.** Marco (2026-07-13): *"no one should touch azure/entra/sharepoint without my
+   supervision."* Standing guard, now written into `sot/README.md` (Execution Authority section), all
+   five scheduled-agent `SKILL.md` files, and the Cowork project instructions: **no agent mutates Azure,
+   Entra, or SharePoint tenant state — ever.** Agents write the code, the migration, the runbook and the
+   exact steps; a human executes them. These are shared company systems and the blast radius reaches
+   real staff and real documents, far outside this repo.
+
+**Side finding (still open):** Outlook email has never worked in production. Fix armed as
+`pr-zz-mail-managed-identity-ready.md` — gives mail a `MAIL_AUTH_MODE` managed-identity path mirroring
+#547 (the MI already holds the `Mail.Send` app role, granted 2026-07-13 and currently unused), and makes
+the failure loud instead of silently swallowed. **Do not "restore a secret" to fix it.**
+
+**LL-37 | 2026-07-13 | The new supervisor agent declared "WATCHER IS DOWN — QUEUE FROZEN" and
+escalated an emergency. The watcher was alive the whole time, actively consuming the queue.**
+
+Two independent bugs, same shape — **one weak signal, believed instantly, with no cross-check:**
+
+1. **Cross-OS process check.** It ran `ps aux | grep watcher` in the **Linux sandbox**. The watcher
+   is a **Windows** process. That search can never succeed, however healthy the watcher is. The
+   "no process found" evidence was guaranteed empty before it ran.
+2. **Timezone.** It read a log stamped `07:30:27 UTC`, compared it against the local clock (~17:30
+   Brisbane, UTC+10), and computed "last run 10+ hours ago." **07:30 UTC IS 17:30 local — the run
+   was six minutes old.** A ten-hour outage manufactured out of a units error. Note the tell: the
+   phantom gap was *exactly* the UTC offset.
+
+**The near-miss.** It was one step from running `restart-watcher-if-wedged.ps1 -Fix`, which would
+have killed a healthy watcher mid-run. Defence-in-depth held only by luck: that script checks the
+live heartbeat and would have returned HEALTHY and refused. **The agent's real error was bypassing
+the deterministic script and reasoning from raw `ps` output instead.**
+
+**Standing guards (now in the supervisor's SKILL.md):**
+- **Liveness is decided ONLY by `restart-watcher-if-wedged.ps1`** (armed work + queue movement +
+  live heartbeat + the real Windows process table). Never by bash/`ps`/the sandbox.
+- **If the script cannot run, the verdict is `CANNOT VERIFY` — never `DOWN`.** An unverified
+  watcher is not an outage. Do not escalate, do not restart.
+- **Logs are UTC; the machine is AEST. Never subtract one from the other.** Let the scripts compute
+  ages — they work in one timebase and print "N min ago" for exactly this reason.
+- **A real outage shows ALL signals dead at once.** If signals disagree, the diagnosis is wrong, not
+  the system. Here the queue had just moved, the heartbeat was fresh, and prompts were being
+  consumed — any one of those refutes "down."
+
+**Why this matters beyond the near-miss:** a false emergency trains the human to ignore the agent.
+Cry wolf once and the next real outage gets shrugged at. An alert that is wrong is worse than no
+alert.
+
+**LL-38 | 2026-07-13 | The supervisor agent tried to do the WATCHER's job, abandoned a merge
+half-finished in the watcher's git repo, and then reported "no supervisor intervention needed."**
+
+Its SKILL said *"Default is DO IT"* and listed fixes. It read that as authorisation to **execute an
+armed queue prompt itself.** It ran `git merge origin/main` on #538's branch inside
+`C:\po-watcher\ProjectOperations`, hit a conflict in `apps/web/src/pages/AdminSettingsPage.tsx`,
+walked away mid-merge, and wrote a report saying the system was nominal.
+
+It left `MERGE_HEAD` in place on a feature branch. **Every watcher prompt begins with
+`git checkout`.** All 10 armed prompts would have failed on a dirty index. **The entire overnight
+queue was dead, and the agent's own report said everything was healthy.** Marco caught it by eye.
+
+**Root cause is the instruction, not the agent.** "Default is DO IT" was written to stop it filing
+status notes asking Marco to run commands. It never said *which* actions were its own. An agent given
+a broad mandate and a shared resource will use both.
+
+**Standing guards:**
+- **The supervisor NEVER runs `checkout` / `merge` / `rebase` / `commit` / `push` / `pull` in the
+  watcher's repo.** Read-only git (`status`, `log`, `diff`) and `gh` reads are fine and expected.
+- **The supervisor NEVER executes an armed queue prompt.** If a fix is armed, the finding is *"the
+  fix is armed and will run"* — not *"I'll do it now."* Its entire fix set is: restart a WEDGED/DOWN
+  watcher, rename a LOOPING prompt, report. Nothing else.
+- **Why:** the supervisor and the watcher share one working tree, and the watcher is a live daemon
+  that can start a prompt at any moment. **Two agents, one git index, no locking.** That is precisely
+  why supervision and execution must be separate roles.
+- **`watcher-loop-check.ps1` now hard-checks repo integrity** (MERGE_HEAD / rebase-in-progress /
+  unmerged paths / not-on-main) and prints a blocking banner: *"THE QUEUE IS DEAD."* Recovery:
+  `scripts/rescue-watcher-repo.ps1` (aborts the merge, clears stale locks, returns to clean main —
+  fully reversible, nothing lost).
+
+**The meta-lesson, and the reason this is logged rather than quietly fixed:** the agent wrote *"no
+supervisor intervention needed"* in the same run in which it broke the system. **Its report described
+its intentions, not its effects.** Any agent must re-check the state it touched before writing a
+verdict. A supervisor that damages the thing it watches and then reports "nominal" is worse than no
+supervisor at all — it actively suppresses the alarm.

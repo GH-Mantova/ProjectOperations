@@ -3,13 +3,15 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
-  NotFoundException
+  NotFoundException,
+  Optional
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { NotificationsService } from "../platform/notifications.service";
 import { SharePointService } from "../platform/sharepoint.service";
+import { SharePointFolderMappingsService } from "../platform/sharepoint-folder-mappings.service";
 import {
   CloseoutJobDto,
   CreateJobActivityDto,
@@ -292,8 +294,17 @@ export class JobsService {
     private readonly auditService: AuditService,
     private readonly sharePointService: SharePointService,
     private readonly notificationsService: NotificationsService,
-    private readonly jobNumberService: JobNumberService
+    private readonly jobNumberService: JobNumberService,
+    // Optional so the many existing unit tests that construct JobsService
+    // directly (without DI) keep compiling. Nest wires the real service
+    // in production; when absent, jobs root falls back to the historic
+    // hardcoded path — same behaviour as before this PR.
+    @Optional() private readonly folderMappings?: SharePointFolderMappingsService
   ) {}
+
+  // Legacy hardcoded root, used only if `folderMappings` is unavailable
+  // (test-only path). Prod always resolves the DB-configured mapping.
+  private static readonly LEGACY_JOBS_ROOT = "Project Operations/Jobs";
 
   /**
    * Paginated list of active (non-archived) jobs ordered by `createdAt`
@@ -1208,10 +1219,17 @@ export class JobsService {
       throw new BadRequestException("One or more selected tender documents do not belong to this tender.");
     }
 
+    // PR sharepoint-folder-mappings — jobs root is now a DB-configured
+    // path (Admin → Platform → SharePoint folder mappings). Was a
+    // hardcoded "Project Operations/Jobs" that doesn't exist in live
+    // SharePoint. See migration 20260714120000 for the seeded default.
+    const jobsRoot = this.folderMappings
+      ? await this.folderMappings.getFolderPath("JOB")
+      : JobsService.LEGACY_JOBS_ROOT;
     const jobFolder = await this.sharePointService.ensureFolder(
       {
         name: dto.name,
-        relativePath: `Project Operations/Jobs/${resolvedJobNumber}_${this.slugify(dto.name)}`,
+        relativePath: `${jobsRoot}/${resolvedJobNumber}_${this.slugify(dto.name)}`,
         module: "jobs",
         linkedEntityType: "Job",
         linkedEntityId: tenderId

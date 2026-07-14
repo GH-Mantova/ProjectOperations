@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
@@ -7,6 +7,7 @@ import { InjectSharePointAdapter } from "./sharepoint.adapter";
 import type { SharePointAdapter } from "./sharepoint.adapter";
 import { DOCUMENT_CATEGORIES } from "../tender-documents/tender-document-categories";
 import type { DocumentCategory } from "../tender-documents/tender-document-categories";
+import { SharePointFolderMappingsService } from "./sharepoint-folder-mappings.service";
 
 // PR-64 — Runtime-resolved SharePoint coordinates. `getResolvedConfig`
 // returns these, lazy-resolving siteId/driveId from
@@ -32,7 +33,12 @@ export class SharePointService {
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
-    @InjectSharePointAdapter() private readonly adapter: SharePointAdapter
+    @InjectSharePointAdapter() private readonly adapter: SharePointAdapter,
+    // Optional so existing unit tests that construct the service directly
+    // (without the DI container) keep compiling — they pass `undefined`
+    // and getResolvedConfig falls back to the env var, which is the
+    // pre-mapping behaviour. Nest wires the real service in production.
+    @Optional() private readonly folderMappings?: SharePointFolderMappingsService
   ) {}
 
   // Env-snapshot for the admin UI and tests. Does NOT perform Graph
@@ -67,10 +73,14 @@ export class SharePointService {
     const mode = this.configService.get<string>("SHAREPOINT_MODE", "mock");
     const explicitSiteId = this.configService.get<string>("SHAREPOINT_SITE_ID");
     const explicitDriveId = this.configService.get<string>("SHAREPOINT_LIBRARY_ID");
-    const tendersRoot = this.configService.get<string>(
-      "SHAREPOINT_TENDERS_ROOT",
-      "Project Operations/Tenders"
-    );
+    // DB mapping wins; env var is the deprecation-window fallback so
+    // deploys without a folder_mappings row (fresh QA envs, older tests)
+    // still resolve the historic path.
+    const tendersRoot = (await this.folderMappings?.getFolderPath("TENDER").catch(() => null)) ??
+      this.configService.get<string>(
+        "SHAREPOINT_TENDERS_ROOT",
+        "Project Operations/Tenders"
+      );
 
     // Back-compat: explicit IDs win over hostname/path resolution. Lets
     // existing deployments keep their SHAREPOINT_SITE_ID/LIBRARY_ID env

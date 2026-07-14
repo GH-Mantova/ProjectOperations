@@ -2,9 +2,9 @@
   "_generator": "scripts/data-model/build-relationship-map.mjs",
   "_doNotEdit": "Regenerated from schema.prisma. Do not hand-edit.",
   "generatedFrom": "apps/api/prisma/schema.prisma",
-  "schemaSha256": "dd365e9f105f063f18e2a07f83d8541313aeaed801e679bd42eb82fa12cf5e37",
-  "modelCount": 193,
-  "enumCount": 23,
+  "schemaSha256": "7d7f3870ebc01cd5643b796afc08090aaa065767b88b527aa47f6866f4af2ee5",
+  "modelCount": 194,
+  "enumCount": 24,
   "edgeCount": 288,
   "domains": {
     "Assets": [
@@ -63,7 +63,8 @@
       "DocumentLink",
       "DocumentTag",
       "SharePointFileLink",
-      "SharePointFolderLink"
+      "SharePointFolderLink",
+      "SharePointFolderMapping"
     ],
     "Estimating": [
       "QuoteAssumption",
@@ -248,6 +249,10 @@
     ]
   },
   "enums": {
+    "SharePointMappingEntityType": [
+      "TENDER",
+      "JOB"
+    ],
     "ApprovalDecisionKind": [
       "APPROVED",
       "REJECTED",
@@ -32178,6 +32183,111 @@
           "fk": "folderLinkId"
         }
       ]
+    },
+    "SharePointFolderMapping": {
+      "name": "SharePointFolderMapping",
+      "domain": "Documents",
+      "dbTable": "sharepoint_folder_mappings",
+      "fields": [
+        {
+          "name": "id",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": true,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "entityType",
+          "dbColumn": "entity_type",
+          "type": "SharePointMappingEntityType",
+          "kind": "enum",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": true,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "folderPath",
+          "dbColumn": "folder_path",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "isActive",
+          "dbColumn": "is_active",
+          "type": "Boolean",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "createdById",
+          "dbColumn": "created_by_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "updatedById",
+          "dbColumn": "updated_by_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "createdAt",
+          "dbColumn": "created_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "updatedAt",
+          "dbColumn": "updated_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": true
+        }
+      ],
+      "relations": [],
+      "referencedBy": []
     },
     "Shift": {
       "name": "Shift",

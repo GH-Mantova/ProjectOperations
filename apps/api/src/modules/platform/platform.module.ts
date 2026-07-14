@@ -8,6 +8,8 @@ import { SearchController } from "./search.controller";
 import { SearchService } from "./search.service";
 import { SharePointController } from "./sharepoint.controller";
 import { SharePointService } from "./sharepoint.service";
+import { SharePointFolderMappingsController } from "./sharepoint-folder-mappings.controller";
+import { SharePointFolderMappingsService } from "./sharepoint-folder-mappings.service";
 import { GraphSharePointAdapter } from "./graph-sharepoint.adapter";
 import { MockSharePointAdapter, SHAREPOINT_ADAPTER } from "./sharepoint.adapter";
 import { DashboardsController } from "./dashboards.controller";
@@ -26,6 +28,7 @@ import { WeatherService } from "./weather.service";
   controllers: [
     PlatformController,
     SharePointController,
+    SharePointFolderMappingsController,
     NotificationsController,
     SearchController,
     DashboardsController,
@@ -51,6 +54,7 @@ import { WeatherService } from "./weather.service";
       }
     },
     SharePointService,
+    SharePointFolderMappingsService,
     NotificationsService,
     SearchService,
     DashboardsService,
@@ -59,6 +63,14 @@ import { WeatherService } from "./weather.service";
     WeatherService,
     PlatformConfigService
   ],
-  exports: [SharePointService, NotificationsService, SearchService, DashboardsService, UserDashboardsService, PlatformConfigService]
+  exports: [
+    SharePointService,
+    SharePointFolderMappingsService,
+    NotificationsService,
+    SearchService,
+    DashboardsService,
+    UserDashboardsService,
+    PlatformConfigService
+  ]
 })
 export class PlatformModule {}

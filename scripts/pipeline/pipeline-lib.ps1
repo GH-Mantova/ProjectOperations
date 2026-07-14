@@ -203,7 +203,24 @@ function Copy-FileFromRef {
 #         sign-in showed the ACCOUNT PICKER (the shared-PC bug, closed); an unregistered Entra user
 #         got request-access with NO auto-provision; approving as Viewer created the user and that
 #         user signed in. Verified in the DB, not just the UI.
-$script:NEVER_MERGE = @(552)
+#   552 - DISCHARGED 2026-07-14 03:51Z (merged). Marco reviewed the rates. Before merging it was
+#         proven idempotent (applied twice to a throwaway DB: 9/35/132 both runs), purely additive
+#         (0 DELETE/UPDATE/TRUNCATE/DROP in the live SQL), non-clobbering (an admin edit survived a
+#         rerun), and to contain NO invented values (md5 of all 132 rows == md5 of the seed's own
+#         projection, 218217bdf30c420916899ad3e479398f).
+#
+# THE LIST IS CURRENTLY EMPTY - and that is CORRECT, not broken.
+#
+# An empty list means nothing is presently forbidden to merge. It does NOT mean the guard is off:
+# Assert-Mergeable still runs at every call site, and .claude/hooks/guard.mjs still reads this list
+# and will block `gh pr merge <n>` for anything added to it.
+#
+# ADD A PR HERE the moment you know it must not merge - production data, production auth, or anything
+# needing a real human identity. And ALWAYS write the REASON and the DISCHARGE CONDITION next to it.
+# A guard nobody can ever clear becomes a lie people learn to ignore; a guard left in place after its
+# reason is gone protects nothing while LOOKING like it protects something. Both are worse than no
+# guard at all.
+$script:NEVER_MERGE = @()
 
 function Assert-Mergeable([int]$PR) {
     <#

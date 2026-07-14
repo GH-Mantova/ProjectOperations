@@ -51,13 +51,52 @@ function Write-Log([string]$msg) {
 $branch = (git branch --show-current).Trim()
 $dirty  = (git status --porcelain --untracked-files=no)
 
-if ($branch -ne "main") {
+# --- Self-heal: AUTO-STASH a dirty tree instead of exiting 1 ---
+# A dirty tracked tree used to be a hard PRE-FLIGHT FAIL (exit 1). The supervisor
+# restarts on exit 1, so that turned into an infinite 60-second crash loop that ate
+# the whole queue for hours -- three times (2026-07-07 13:36, 2026-07-14 07:43,
+# 2026-07-14 16:09) -- and nobody diagnosed it, because the reason only ever landed
+# in the clone's daily log.
+#
+# Nothing is destroyed: we 'git stash push --include-untracked' with a labelled
+# message, which is fully reversible ('git stash apply'). We deliberately do NOT
+# 'git reset --hard'. If the stash itself fails we fall back to the old behaviour
+# and exit 1, because at that point we genuinely cannot make the tree safe.
+if ($dirty) {
+    Write-Log "[$(Get-Date -Format o)] PRE-FLIGHT: uncommitted TRACKED changes on branch '$branch'. Self-healing by stashing them (nothing is discarded)."
+    Write-Log "git status --porcelain --untracked-files=no:"
+    Write-Log $dirty
+
+    $stashLabel = "watcher-preflight-autostash on '$branch' at $(Get-Date -Format o)"
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    git stash push --include-untracked -m $stashLabel 2>&1 | ForEach-Object {
+        Add-Content -Path $LogFile -Value "$_" -Encoding UTF8
+        Write-Host "$_"
+    }
+    $stashExit = $LASTEXITCODE
+    $ErrorActionPreference = $prevEAP
+
+    if ($stashExit -ne 0) {
+        Write-Log "[$(Get-Date -Format o)] PRE-FLIGHT FAIL: 'git stash push' exited $stashExit; cannot make the tree safe. Commit or stash by hand, then retry."
+        exit 1
+    }
+
+    # Read back (LL: 'the command exited 0' is not proof). The tree must now be clean.
+    $dirty = (git status --porcelain --untracked-files=no)
     if ($dirty) {
-        $msg = "[$(Get-Date -Format o)] PRE-FLIGHT FAIL: on branch '$branch' with uncommitted TRACKED changes; cannot safely auto-switch to main. Commit or stash, then retry."
-        Write-Log $msg
+        Write-Log "[$(Get-Date -Format o)] PRE-FLIGHT FAIL: tree is STILL dirty after 'git stash push'. Refusing to start."
         Write-Log $dirty
         exit 1
     }
+
+    $stashTop = (git stash list --max-count=1 | Select-Object -First 1)
+    Write-Log "[$(Get-Date -Format o)] PRE-FLIGHT: SELF-HEALED. Your work is NOT lost -- it is stashed, not deleted."
+    Write-Log "[$(Get-Date -Format o)] PRE-FLIGHT: stash entry: $stashTop"
+    Write-Log "[$(Get-Date -Format o)] PRE-FLIGHT: RECOVER WITH:  git -C `"$RepoRoot`" stash list   then   git -C `"$RepoRoot`" stash apply stash@{0}"
+}
+
+if ($branch -ne "main") {
     # Clean tree parked on a stray feature branch -- a build/smoke/worktree op left the
     # main working tree switched (recurring hazard). Auto-recover to main so the
     # supervisor does not loop forever on preflight and the prompt queue keeps draining.
@@ -84,11 +123,13 @@ if ($branch -ne "main") {
     Write-Log "[$(Get-Date -Format o)] PRE-FLIGHT: recovered to main."
 }
 
-if ($dirty) {
-    $msg = "[$(Get-Date -Format o)] PRE-FLIGHT FAIL: uncommitted changes to tracked files. Commit, stash, or clean before starting the watcher (dirty trees poison per-PR branch switches)."
-    Write-Log $msg
-    Write-Log "git status --porcelain --untracked-files=no:"
-    Write-Log $dirty
+# Final assertion: whatever path we took above, the tree the watcher is about to
+# drive must be clean and on main. Re-read rather than trusting $dirty/$branch.
+$dirty  = (git status --porcelain --untracked-files=no)
+$branch = (git branch --show-current).Trim()
+if ($dirty -or $branch -ne "main") {
+    Write-Log "[$(Get-Date -Format o)] PRE-FLIGHT FAIL: post-recovery check failed -- branch='$branch' (want main), dirty tracked files present: $([bool]$dirty). Commit, stash, or clean before starting the watcher (dirty trees poison per-PR branch switches)."
+    if ($dirty) { Write-Log $dirty }
     exit 1
 }
 

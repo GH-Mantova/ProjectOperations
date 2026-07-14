@@ -14,6 +14,47 @@ import { RulesEngineService, type FieldRule, type RuleAction } from "./rules-eng
 
 type ValueMap = Record<string, unknown>;
 
+/**
+ * Reduce a list of numeric operands using the named operation. Returns
+ * `null` when the input is empty (there's nothing to compute) so callers
+ * can persist an empty cell rather than fabricating a zero.
+ *
+ * Exported for the unit tests; keep pure so it can be reasoned about
+ * without a Prisma round-trip.
+ */
+export function computeCalculation(
+  operation: string,
+  operands: number[],
+  decimals = 2
+): number | null {
+  if (operands.length === 0) return null;
+  let raw: number;
+  switch (operation) {
+    case "sum":
+      raw = operands.reduce((a, b) => a + b, 0);
+      break;
+    case "difference":
+      raw = operands.slice(1).reduce((a, b) => a - b, operands[0]);
+      break;
+    case "product":
+      raw = operands.reduce((a, b) => a * b, 1);
+      break;
+    case "average":
+      raw = operands.reduce((a, b) => a + b, 0) / operands.length;
+      break;
+    case "min":
+      raw = Math.min(...operands);
+      break;
+    case "max":
+      raw = Math.max(...operands);
+      break;
+    default:
+      return null;
+  }
+  const factor = Math.pow(10, Math.max(0, Math.min(6, decimals)));
+  return Math.round(raw * factor) / factor;
+}
+
 type ApprovalChainStep = {
   stepNumber: number;
   assignToRole?: string;
@@ -230,7 +271,10 @@ export class FormsEngineService {
     const submission = await this.requireOwnedDraft(submissionId, userId);
     const template = await this.loadTemplateForVersion(submission.templateVersionId);
     const settings = (template.template.settings ?? {}) as TemplateSettings;
-    const merged = await this.collectValues(submission.id);
+    const collected = await this.collectValues(submission.id);
+    // Recompute calculation fields server-side — the client value is never
+    // trusted. The updated map feeds validation and every downstream step.
+    const merged = await this.recomputeCalculations(submission.id, template, collected);
 
     // 1. Validate
     const validation = this.rules.validateValues(template, merged);
@@ -539,6 +583,110 @@ export class FormsEngineService {
     return { totalSubmissions: total, byStatus, overdueApprovals: overdue };
   }
 
+  /**
+   * Dashboard batch-2 widget aggregate: KPI + top-N view of every form
+   * approval still pending across the whole system.
+   *
+   * "Waiting" = FormApproval.status === "pending". The items list is
+   * ordered by dueAt ASC (nulls last) so overdue rows lead. Callers use
+   * this from the Form Approvals Waiting widget — it deliberately spans
+   * all assignees, unlike getPendingApprovalsFor which is per-user.
+   *
+   * @param limit - top-N items to include (default 5, min 1, max 20)
+   * @returns `{ total, overdue, items }`
+   */
+  async getApprovalsWaiting(limit = 5) {
+    const take = Math.max(1, Math.min(limit, 20));
+    const now = new Date();
+    const [total, overdue, rows] = await Promise.all([
+      this.prisma.formApproval.count({ where: { status: "pending" } }),
+      this.prisma.formApproval.count({
+        where: { status: "pending", dueAt: { lt: now } }
+      }),
+      this.prisma.formApproval.findMany({
+        where: { status: "pending" },
+        include: {
+          assignedTo: { select: { id: true, firstName: true, lastName: true } },
+          submission: {
+            select: {
+              id: true,
+              submittedAt: true,
+              submittedBy: { select: { id: true, firstName: true, lastName: true } },
+              templateVersion: {
+                select: { template: { select: { id: true, name: true, code: true } } }
+              }
+            }
+          }
+        },
+        orderBy: [{ dueAt: "asc" }, { createdAt: "asc" }],
+        take
+      })
+    ]);
+    return {
+      total,
+      overdue,
+      items: rows.map((r) => ({
+        id: r.id,
+        submissionId: r.submissionId,
+        stepNumber: r.stepNumber,
+        assignedToId: r.assignedToId,
+        assignedToName: r.assignedTo
+          ? `${r.assignedTo.firstName} ${r.assignedTo.lastName}`.trim()
+          : null,
+        assignedToRole: r.assignedToRole,
+        dueAt: r.dueAt,
+        overdue: r.dueAt ? r.dueAt < now : false,
+        submittedAt: r.submission.submittedAt,
+        submittedByName: r.submission.submittedBy
+          ? `${r.submission.submittedBy.firstName} ${r.submission.submittedBy.lastName}`.trim()
+          : null,
+        templateId: r.submission.templateVersion.template.id,
+        templateName: r.submission.templateVersion.template.name,
+        templateCode: r.submission.templateVersion.template.code
+      }))
+    };
+  }
+
+  /**
+   * Dashboard batch-2 widget aggregate: pre-start submissions logged
+   * anywhere in the system between 00:00 and 23:59:59.999 of the caller's
+   * current calendar day (server-local time).
+   *
+   * A submission counts when the template code OR name contains
+   * "prestart"/"pre-start" (case-insensitive) and the row is NOT a draft.
+   * The "expected" denominator (crews scheduled today) is DEFERRED to
+   * B-P0c — this endpoint deliberately returns a count only.
+   *
+   * @param now - override clock (tests)
+   * @returns `{ count, latestSubmittedAt }`
+   */
+  async getPreStartsToday(now: Date = new Date()) {
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start.getTime() + 86_400_000 - 1);
+    const templateWhere: Prisma.FormSubmissionWhereInput = {
+      submittedAt: { gte: start, lte: end },
+      status: { notIn: ["draft", "DRAFT"] },
+      templateVersion: {
+        template: {
+          OR: [
+            { code: { contains: "prestart", mode: "insensitive" } },
+            { name: { contains: "prestart", mode: "insensitive" } }
+          ]
+        }
+      }
+    };
+    const [count, latest] = await Promise.all([
+      this.prisma.formSubmission.count({ where: templateWhere }),
+      this.prisma.formSubmission.findFirst({
+        where: templateWhere,
+        orderBy: { submittedAt: "desc" },
+        select: { submittedAt: true }
+      })
+    ]);
+    return { count, latestSubmittedAt: latest?.submittedAt ?? null };
+  }
+
   // ── Detail helpers ─────────────────────────────────────────────────────
 
   /**
@@ -813,8 +961,24 @@ export class FormsEngineService {
       valueJson: Prisma.JsonNull as Prisma.NullableJsonNullValueInput
     };
     if (raw === null || raw === undefined) return empty;
+    if (fieldType === "calculation") {
+      // The client value is presentational only — never trust it. The server
+      // recomputes on submit; for draft PATCHes we drop it entirely so a
+      // stale client number can't linger on the row.
+      return empty;
+    }
     if (fieldType === "toggle" || fieldType === "checkbox") {
       return { ...empty, valueBoolean: Boolean(raw) };
+    }
+    if (fieldType === "terms") {
+      // Persist {accepted, version, acceptedAt} as JSON so the audit trail
+      // can prove which version of the text was agreed to. Anything that
+      // isn't a strict `accepted:true` collapses to empty so isRequired
+      // checks catch un-ticked terms.
+      if (typeof raw === "object" && raw !== null && (raw as { accepted?: unknown }).accepted === true) {
+        return { ...empty, valueJson: raw as Prisma.InputJsonValue };
+      }
+      return empty;
     }
     if (
       fieldType === "number" ||
@@ -841,6 +1005,63 @@ export class FormsEngineService {
       };
     }
     return { ...empty, valueText: String(raw) };
+  }
+
+  /**
+   * Recompute every calculation field on the submission and write the
+   * result to its FormSubmissionValue row.
+   *
+   * The server treats client-side numbers as presentational; this is what
+   * makes the "calculation" field trustworthy. Operand values are read
+   * from the current stored values map, coerced to numbers, and combined
+   * per the field's `config.operation`.
+   */
+  private async recomputeCalculations(
+    submissionId: string,
+    template: { sections?: Array<{ fields?: Array<{ id: string; fieldKey: string; fieldType: string; config?: unknown }> }> },
+    values: ValueMap
+  ): Promise<ValueMap> {
+    const merged: ValueMap = { ...values };
+    for (const section of template.sections ?? []) {
+      for (const field of section.fields ?? []) {
+        if (field.fieldType !== "calculation") continue;
+        const config = (field.config ?? {}) as {
+          operation?: string;
+          operandKeys?: string[];
+          decimals?: number;
+        };
+        const operands = (config.operandKeys ?? [])
+          .map((key) => merged[key])
+          .map((v) => (typeof v === "number" ? v : Number(v)))
+          .filter((n) => Number.isFinite(n)) as number[];
+        const result = computeCalculation(config.operation ?? "sum", operands, config.decimals ?? 2);
+        merged[field.fieldKey] = result;
+        const existing = await this.prisma.formSubmissionValue.findFirst({
+          where: { submissionId, fieldKey: field.fieldKey }
+        });
+        const data =
+          result === null
+            ? { valueText: null, valueNumber: null, valueBoolean: null, valueDateTime: null, valueJson: Prisma.JsonNull as Prisma.NullableJsonNullValueInput }
+            : {
+                valueText: null,
+                valueNumber: new Prisma.Decimal(result),
+                valueBoolean: null,
+                valueDateTime: null,
+                valueJson: Prisma.JsonNull as Prisma.NullableJsonNullValueInput
+              };
+        if (existing) {
+          await this.prisma.formSubmissionValue.update({
+            where: { id: existing.id },
+            data: { ...data, fieldId: field.id }
+          });
+        } else {
+          await this.prisma.formSubmissionValue.create({
+            data: { submissionId, fieldKey: field.fieldKey, fieldId: field.id, ...data }
+          });
+        }
+      }
+    }
+    return merged;
   }
 
   private stringValue(values: ValueMap, key: string): string | null {

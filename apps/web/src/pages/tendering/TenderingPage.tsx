@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { can } from "../../auth/permissions";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { NewTenderWizard } from "./NewTenderWizard";
 
@@ -306,9 +307,23 @@ export function TenderingPage() {
     _count: Record<string, number>;
   } | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
-  const canManage = user?.permissions.includes("tenders.manage") ?? false;
+  const canManage = can(user, "tenders.manage");
 
   const canUseView: View = view;
+
+  const reloadClients = useCallback(async () => {
+    try {
+      const response = await authFetch("/master-data/clients?page=1&pageSize=100");
+      if (!response.ok) return;
+      const body = await response.json();
+      const items = (body.items ?? body) as ClientOption[];
+      setClients(items);
+    } catch {
+      // Refetch is best-effort — the wizard already has the newly-created
+      // builder attached from the create response, so a failed refresh only
+      // means the picker won't reflect it until the next full reload.
+    }
+  }, [authFetch]);
 
   const reload = useCallback(
     async (withFilters: Filters) => {
@@ -714,6 +729,7 @@ export function TenderingPage() {
           void reload(filters);
           navigate(`/tenders/${id}`);
         }}
+        onNeedClientsRefetch={() => void reloadClients()}
       />
 
       {draftPickerOpen ? (

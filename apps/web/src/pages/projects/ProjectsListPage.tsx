@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { PROJECT_STATUSES, PROJECT_STATUS_LABELS } from "../../constants/statuses";
 
 type ProjectRow = {
   id: string;
@@ -19,11 +20,7 @@ type ListResponse = { items: ProjectRow[]; total: number; page: number; limit: n
 
 const STATUS_OPTIONS: Array<{ key: string; label: string }> = [
   { key: "", label: "All" },
-  { key: "MOBILISING", label: "Mobilising" },
-  { key: "ACTIVE", label: "Active" },
-  { key: "PRACTICAL_COMPLETION", label: "Practical Completion" },
-  { key: "DEFECTS", label: "Defects" },
-  { key: "CLOSED", label: "Closed" }
+  ...PROJECT_STATUSES.map((key) => ({ key, label: PROJECT_STATUS_LABELS[key] }))
 ];
 
 const STATUS_STYLE: Record<string, { bg: string; fg: string; label: string }> = {

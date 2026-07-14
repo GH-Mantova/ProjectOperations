@@ -3,14 +3,19 @@ import { Link, useParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import {
+  ADVANCED_TYPES,
   addFieldToSection,
   addSectionToDraft,
+  CHOICE_TYPES,
   deleteFieldFromDraft,
   duplicateField,
+  fieldToPublishPayload,
+  isLayoutOnlyType,
   moveFieldInDraft,
   PALETTE_GROUPS,
   removeSectionFromDraft,
   setDraftLayout,
+  SURVEY_TYPES,
   tabsForFieldType,
   uid,
   updateFieldInDraft,
@@ -43,6 +48,7 @@ type TemplateVersion = {
       placeholder?: string | null;
       helpText?: string | null;
       optionsJson?: unknown;
+      config?: Record<string, unknown> | null;
     }>;
   }>;
   rules: Array<{
@@ -122,7 +128,8 @@ export function FormDesignerPage() {
               isRequired: field.isRequired,
               placeholder: field.placeholder ?? undefined,
               helpText: field.helpText ?? undefined,
-              options: Array.isArray(field.optionsJson) ? (field.optionsJson as string[]) : undefined
+              options: Array.isArray(field.optionsJson) ? (field.optionsJson as string[]) : undefined,
+              config: (field.config ?? undefined) as Record<string, unknown> | undefined
             }))
           })),
           rules: latest.rules.map((rule) => ({
@@ -258,16 +265,7 @@ export function FormDesignerPage() {
           title: section.title,
           description: section.description,
           sectionOrder: section.sectionOrder,
-          fields: section.fields.map((field) => ({
-            fieldKey: field.fieldKey,
-            label: field.label,
-            fieldType: field.fieldType,
-            fieldOrder: field.fieldOrder,
-            isRequired: field.isRequired,
-            placeholder: field.placeholder,
-            helpText: field.helpText,
-            optionsJson: field.options
-          }))
+          fields: section.fields.map(fieldToPublishPayload)
         })),
         rules: draft.rules.map((rule) => ({
           sourceFieldKey: rule.sourceFieldKey,
@@ -577,6 +575,7 @@ export function FormDesignerPage() {
                 <FieldTabBody
                   tab={activeTab}
                   field={selectedField.field}
+                  draft={draft}
                   onChange={(patch) =>
                     handleUpdateField(selectedField.section.tempId, selectedField.field.tempId, patch)
                   }
@@ -597,16 +596,28 @@ export function FormDesignerPage() {
 function FieldTabBody({
   tab,
   field,
+  draft,
   onChange
 }: {
   tab: PropertyTab;
   field: DraftField;
+  draft: DesignerDraft;
   onChange: (patch: Partial<DraftField>) => void;
 }) {
   const [optionsText, setOptionsText] = useState((field.options ?? []).join("\n"));
   useEffect(() => {
     setOptionsText((field.options ?? []).join("\n"));
   }, [field.tempId]);
+
+  const config = (field.config ?? {}) as Record<string, unknown>;
+  const patchConfig = (patch: Record<string, unknown>) =>
+    onChange({ config: { ...config, ...patch } });
+
+  const isLayout = isLayoutOnlyType(field.fieldType);
+  const isChoice = CHOICE_TYPES.has(field.fieldType);
+  const isSurvey = SURVEY_TYPES.has(field.fieldType);
+  const isAdvanced = ADVANCED_TYPES.has(field.fieldType);
+  const isImage = field.fieldType === "image";
 
   if (tab === "general") {
     return (
@@ -619,38 +630,108 @@ function FieldTabBody({
             onChange={(e) => onChange({ label: e.target.value })}
           />
         </label>
+        {!isLayout && field.fieldType !== "divider" ? (
+          <label>
+            Placeholder
+            <input
+              type="text"
+              value={field.placeholder ?? ""}
+              onChange={(e) => onChange({ placeholder: e.target.value })}
+            />
+          </label>
+        ) : null}
         <label>
-          Placeholder
-          <input
-            type="text"
-            value={field.placeholder ?? ""}
-            onChange={(e) => onChange({ placeholder: e.target.value })}
-          />
-        </label>
-        <label>
-          Help text
+          {field.fieldType === "paragraph" ? "Body text" : "Help text"}
           <input
             type="text"
             value={field.helpText ?? ""}
             onChange={(e) => onChange({ helpText: e.target.value })}
           />
         </label>
-        <div className="fv2-tgl">
-          <span>Required</span>
-          <input
-            type="checkbox"
-            checked={field.isRequired}
-            onChange={(e) => onChange({ isRequired: e.target.checked })}
-            aria-label="Required"
-          />
-        </div>
+        {isImage ? (
+          <label>
+            Image URL
+            <input
+              type="url"
+              value={String(config.imageUrl ?? "")}
+              onChange={(e) => patchConfig({ imageUrl: e.target.value })}
+              placeholder="https://…"
+            />
+          </label>
+        ) : null}
+        {isLayout ? null : (
+          <div className="fv2-tgl">
+            <span>Required</span>
+            <input
+              type="checkbox"
+              checked={field.isRequired}
+              onChange={(e) => onChange({ isRequired: e.target.checked })}
+              aria-label="Required"
+            />
+          </div>
+        )}
       </>
     );
   }
 
   if (tab === "options") {
-    return (
-      <>
+    if (isSurvey && field.fieldType === "rating") {
+      const maxRating = Number(config.maxRating ?? 5);
+      return (
+        <label>
+          Maximum stars
+          <input
+            type="number"
+            min={2}
+            max={10}
+            value={maxRating}
+            onChange={(e) => patchConfig({ maxRating: Number(e.target.value) || 5 })}
+          />
+        </label>
+      );
+    }
+    if (isSurvey && field.fieldType === "scale") {
+      const min = Number(config.min ?? 1);
+      const max = Number(config.max ?? 5);
+      return (
+        <>
+          <label>
+            Minimum
+            <input
+              type="number"
+              value={min}
+              onChange={(e) => patchConfig({ min: Number(e.target.value) })}
+            />
+          </label>
+          <label>
+            Maximum
+            <input
+              type="number"
+              value={max}
+              onChange={(e) => patchConfig({ max: Number(e.target.value) })}
+            />
+          </label>
+          <label>
+            Label at minimum
+            <input
+              type="text"
+              value={String(config.minLabel ?? "")}
+              onChange={(e) => patchConfig({ minLabel: e.target.value })}
+            />
+          </label>
+          <label>
+            Label at maximum
+            <input
+              type="text"
+              value={String(config.maxLabel ?? "")}
+              onChange={(e) => patchConfig({ maxLabel: e.target.value })}
+            />
+          </label>
+        </>
+      );
+    }
+    if (isChoice) {
+      return (
         <label>
           Choices (one per line)
           <textarea
@@ -663,7 +744,15 @@ function FieldTabBody({
             }
           />
         </label>
-      </>
+      );
+    }
+    if (isAdvanced) {
+      return <AdvancedOptionsEditor field={field} draft={draft} patchConfig={patchConfig} />;
+    }
+    return (
+      <div className="fv2-props__empty" style={{ padding: 0 }}>
+        No options to configure for this field type.
+      </div>
     );
   }
 
@@ -671,6 +760,249 @@ function FieldTabBody({
     <div className="fv2-props__empty" style={{ padding: 0 }}>
       Rules for this field arrive in F-2 (rules storage + full-screen builder).
       For now, use the legacy rules editor via the JSON version endpoint.
+    </div>
+  );
+}
+
+/**
+ * Options-tab editor for the four F-4 advanced types. Each edits its config
+ * blob in place via patchConfig — no schema migration means every knob lives
+ * inside `FormField.config`.
+ */
+function AdvancedOptionsEditor({
+  field,
+  draft,
+  patchConfig
+}: {
+  field: DraftField;
+  draft: DesignerDraft;
+  patchConfig: (patch: Record<string, unknown>) => void;
+}) {
+  const config = (field.config ?? {}) as Record<string, unknown>;
+  const allFields = draft.sections.flatMap((s) => s.fields).filter((f) => f.tempId !== field.tempId);
+
+  if (field.fieldType === "lookup") {
+    return (
+      <>
+        <label>
+          List slug
+          <input
+            type="text"
+            value={String(config.listSlug ?? "")}
+            onChange={(e) => patchConfig({ listSlug: e.target.value })}
+            placeholder="e.g. trade_types"
+          />
+        </label>
+        <p style={{ fontSize: 11, color: "var(--fv2-muted, #64748B)", margin: "4px 0 8px" }}>
+          Points at <code>GET /lists/&lt;slug&gt;/items</code>. Options load at fill time.
+        </p>
+        <label>
+          Parent field (for nested lookups)
+          <select
+            value={String(config.parentFieldKey ?? "")}
+            onChange={(e) => patchConfig({ parentFieldKey: e.target.value })}
+          >
+            <option value="">— none —</option>
+            {allFields
+              .filter((f) => f.fieldType === "lookup" || f.fieldType === "multiple_choice")
+              .map((f) => (
+                <option key={f.tempId} value={f.fieldKey}>
+                  {f.label || f.fieldKey}
+                </option>
+              ))}
+          </select>
+        </label>
+      </>
+    );
+  }
+
+  if (field.fieldType === "calculation") {
+    const operation = String(config.operation ?? "sum");
+    const operandKeys = Array.isArray(config.operandKeys) ? (config.operandKeys as string[]) : [];
+    const numericFields = allFields.filter((f) =>
+      ["number", "calculation", "rating", "scale"].includes(f.fieldType)
+    );
+    const toggleOperand = (key: string) => {
+      const next = operandKeys.includes(key)
+        ? operandKeys.filter((k) => k !== key)
+        : [...operandKeys, key];
+      patchConfig({ operandKeys: next });
+    };
+    return (
+      <>
+        <label>
+          Operation
+          <select
+            value={operation}
+            onChange={(e) => patchConfig({ operation: e.target.value })}
+          >
+            <option value="sum">Sum</option>
+            <option value="difference">Difference (first − rest)</option>
+            <option value="product">Product</option>
+            <option value="average">Average</option>
+            <option value="min">Minimum</option>
+            <option value="max">Maximum</option>
+          </select>
+        </label>
+        <label>
+          Decimal places
+          <input
+            type="number"
+            min={0}
+            max={6}
+            value={Number(config.decimals ?? 2)}
+            onChange={(e) => patchConfig({ decimals: Number(e.target.value) })}
+          />
+        </label>
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Operand fields</div>
+          {numericFields.length === 0 ? (
+            <div style={{ fontSize: 12, color: "var(--fv2-muted, #64748B)" }}>
+              Add a number field to this form first, then pick it here.
+            </div>
+          ) : (
+            numericFields.map((f) => (
+              <label
+                key={f.tempId}
+                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}
+              >
+                <input
+                  type="checkbox"
+                  checked={operandKeys.includes(f.fieldKey)}
+                  onChange={() => toggleOperand(f.fieldKey)}
+                />
+                <span>
+                  {f.label || f.fieldKey}{" "}
+                  <span style={{ color: "var(--fv2-muted, #64748B)" }}>({f.fieldType})</span>
+                </span>
+              </label>
+            ))
+          )}
+        </div>
+      </>
+    );
+  }
+
+  if (field.fieldType === "table") {
+    const columns = Array.isArray(config.columns)
+      ? (config.columns as Array<{ key: string; label: string; fieldType: string }>)
+      : [];
+    const updateColumn = (idx: number, patch: Partial<{ key: string; label: string; fieldType: string }>) => {
+      const next = columns.map((c, i) => (i === idx ? { ...c, ...patch } : c));
+      patchConfig({ columns: next });
+    };
+    const addColumn = () => {
+      const nextIndex = columns.length + 1;
+      patchConfig({
+        columns: [
+          ...columns,
+          { key: `col_${nextIndex}`, label: `Column ${nextIndex}`, fieldType: "text" }
+        ]
+      });
+    };
+    const removeColumn = (idx: number) =>
+      patchConfig({ columns: columns.filter((_, i) => i !== idx) });
+    return (
+      <>
+        <label>
+          Minimum rows
+          <input
+            type="number"
+            min={0}
+            value={Number(config.minRows ?? 1)}
+            onChange={(e) => patchConfig({ minRows: Number(e.target.value) })}
+          />
+        </label>
+        <label>
+          Maximum rows
+          <input
+            type="number"
+            min={1}
+            value={Number(config.maxRows ?? 20)}
+            onChange={(e) => patchConfig({ maxRows: Number(e.target.value) })}
+          />
+        </label>
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Columns</div>
+          {columns.map((col, idx) => (
+            <div
+              key={idx}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr 90px auto",
+                gap: 4,
+                marginBottom: 4
+              }}
+            >
+              <input
+                type="text"
+                value={col.label}
+                onChange={(e) => updateColumn(idx, { label: e.target.value })}
+                placeholder="Label"
+              />
+              <input
+                type="text"
+                value={col.key}
+                onChange={(e) => updateColumn(idx, { key: e.target.value })}
+                placeholder="key"
+              />
+              <select
+                value={col.fieldType}
+                onChange={(e) => updateColumn(idx, { fieldType: e.target.value })}
+              >
+                <option value="text">Text</option>
+                <option value="number">Number</option>
+                <option value="date">Date</option>
+                <option value="checkbox">Checkbox</option>
+              </select>
+              <button
+                type="button"
+                className="fv2-danger"
+                onClick={() => removeColumn(idx)}
+                aria-label={`Remove column ${col.label}`}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+          <button type="button" className="fv2-tbtn" onClick={addColumn}>
+            + Add column
+          </button>
+        </div>
+      </>
+    );
+  }
+
+  if (field.fieldType === "terms") {
+    return (
+      <>
+        <label>
+          Terms text (shown above the acceptance checkbox)
+          <textarea
+            value={String(config.termsText ?? "")}
+            onChange={(e) => patchConfig({ termsText: e.target.value })}
+            rows={4}
+          />
+        </label>
+        <label>
+          Version
+          <input
+            type="text"
+            value={String(config.termsVersion ?? "1")}
+            onChange={(e) => patchConfig({ termsVersion: e.target.value })}
+            placeholder="e.g. 2026-07"
+          />
+        </label>
+        <p style={{ fontSize: 11, color: "var(--fv2-muted, #64748B)", margin: "4px 0 0" }}>
+          The accepted version + timestamp are stored on the submission value.
+        </p>
+      </>
+    );
+  }
+
+  return (
+    <div className="fv2-props__empty" style={{ padding: 0 }}>
+      No options to configure for this field type.
     </div>
   );
 }

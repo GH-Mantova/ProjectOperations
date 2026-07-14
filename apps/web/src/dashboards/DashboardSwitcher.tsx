@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { DeleteDashboardModal } from "./DeleteDashboardModal";
 import { NewDashboardModal } from "./NewDashboardModal";
 import { useAuth } from "../auth/AuthContext";
+import { can } from "../auth/permissions";
 import { canDeleteDashboard, canRenameDashboard, type UserDashboard } from "./types";
 import { useUserDashboardsActions } from "./userDashboards";
 
@@ -15,7 +16,7 @@ type Props = {
 
 export function DashboardSwitcher({ slug, dashboards, activeId, onSelect, onListRefresh }: Props) {
   const { user } = useAuth();
-  const isAdmin = Boolean(user?.isSuperUser || user?.permissions.includes("platform.admin"));
+  const isAdmin = can(user, "platform.admin");
   const { setDefault: setDefaultApi, remove, rename: renameApi } = useUserDashboardsActions();
   const [open, setOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);

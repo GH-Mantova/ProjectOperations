@@ -15,9 +15,11 @@ import {
   seedEstimateRates,
   seedInitialServicesDataset,
   seedPublicHolidays,
+  seedRateTableProjections,
   seedSafetyDemos
 } from "./seed-initial-services";
 import { seedFormTemplates } from "./seed-form-templates";
+import { seedCompanyProfile } from "./seed-company-profile";
 import { SCOPE_CARD_DEFAULTS } from "../src/modules/tendering/scope/card-defaults";
 
 const databaseUrl =
@@ -3664,6 +3666,10 @@ async function main() {
   // and jobs that reference its user IDs). The remaining IS-dependent seeds run
   // at the end once every other record exists.
   await seedEstimateRates(prisma);
+  // Populate the flexible RateTable projection from the legacy rates seeded
+  // above so the tender Rates tab (which reads RateTable via
+  // enumerateRateSet) has real rows to snapshot.
+  await seedRateTableProjections(prisma);
   await backfillTenderLifecycleTimestamps(prisma);
   await seedUserDashboards(prisma);
   if (adminUser) await seedGlobalLists(prisma, adminUser.id);
@@ -3673,6 +3679,9 @@ async function main() {
   await seedNotificationTriggerConfigs(prisma);
   await seedPersonaRegistry(prisma);
   await seedPublicHolidays(prisma);
+  // CompanyProfile singleton + v1 legal documents. Insert-if-absent so a
+  // manual admin edit survives re-seed (CP-08 discipline).
+  await seedCompanyProfile(prisma);
 }
 
 async function seedUserDashboards(prisma: PrismaClient) {

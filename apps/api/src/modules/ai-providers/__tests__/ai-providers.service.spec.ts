@@ -56,7 +56,10 @@ function buildPrismaMock(overrides: {
     userPersonaSettings: { findUnique: userPersonaSettingsFindUnique },
     globalAISettings: { findUnique: globalAISettingsFindUnique },
     user: { findUnique: userFindUnique },
-    tender: { findUnique: tenderFindUnique }
+    tender: { findUnique: tenderFindUnique },
+    companyProfile: {
+      findUnique: jest.fn().mockResolvedValue({ tradingName: "Initial Services" })
+    }
   } as never;
   return prisma;
 }

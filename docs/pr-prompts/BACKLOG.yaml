@@ -1,0 +1,306 @@
+# =============================================================================================
+# THE BACKLOG REGISTER ÔÇö work that is REAL but NOT YET IN THE QUEUE.
+#
+# WHY THIS EXISTS
+# ---------------
+# On 2026-07-14 an audit found SEVEN pieces of designed work that had quietly fallen on the floor.
+# They lived in CHAT MEMORIES ÔÇö which no agent can read ÔÇö or in a HOLD file nobody re-evaluated.
+#
+# The worst case: the **Branding manager** was HOLD-gated on the quote-PDF fix. That fix MERGED on
+# 2026-07-08. The gate released SIX DAYS EARLIER and nothing noticed, because a HOLD is a passive
+# note ÔÇö something has to come back and ASK "is it unblocked yet?" Nothing ever did.
+# Meanwhile `AdminCompanyPage.tsx` still ships a comment promising the tables.
+#
+# Second worst: `pr-524` names `pr-rates-b2-ratetable-canonical-cutover` as its precondition.
+# THAT PROMPT WAS NEVER WRITTEN. An entire workstream was blocked on a step that did not exist.
+#
+# HOW IT WORKS ÔÇö the gate is EXECUTABLE, exactly like the lint's `premise`
+# -----------------------------------------------------------------------
+#   gate:        a shell command. EXIT 0 => the blocker is GONE and this item is READY TO STAGE.
+#   gate_means:  plain English, so a human can sanity-check the command.
+#   needs_marco: true  => a decision only Marco can make. NEVER auto-stage. Surface it, and stop.
+#
+# `scripts/pipeline/check-backlog.mjs` runs every gate against `main`. **STATION 04-SCANNER runs it
+# every 4 hours** and reports anything that just became ready. That is the whole point: a blocker
+# that clears must be NOTICED, not waited on.
+#
+#   > If you cannot express the gate as a command, you do not understand the blocker well enough.
+#   > (Same rule as the lint's premise. It is not a formality.)
+#
+# RULES
+# -----
+# * Add an item here THE MOMENT it is discussed and not immediately staged. Chat memory is NOT a
+#   backlog ÔÇö agents cannot read it, and it is where these seven items went to die.
+# * `needs_marco: true` items are NEVER auto-staged. The scanner surfaces them; Marco decides.
+# * When an item IS staged, delete it here. The queue is then its home. One place, never two.
+# * A GATE MUST BE ABLE TO FAIL. The literal word `true` is not a gate; nor is a command that
+#   ends in a `[space][pipe][pipe][space]true` swallow-the-error suffix. Both always exit 0 and
+#   can never notice that the work is done ÔÇö which is the entire job of this file. If you cannot
+#   express the blocker as a command that EXITS NON-ZERO once the work has shipped, you do not
+#   understand the item well enough to register it. On 2026-07-14 the P0 tender-PATCH item sat
+#   at the top of this register as READY for a full day after PR #577 fixed it, because its
+#   gate was set to always-pass.
+# =============================================================================================
+
+items:
+
+  # -------------------------------------------------------------------------------------------
+  # DISCHARGED 2026-07-14 (this hygiene PR): two items lived here with tautological gates and
+  # both had ALREADY SHIPPED on main. Removed rather than left with a working gate, per the
+  # rule at the top of this file: "When an item IS staged, delete it here."
+  #   * the P0 slot (tender PATCH data-loss) shipped as PR #577 (cb9ae39) on 2026-07-14
+  #   * the P1 slot (RATES_CANONICAL_SOURCE cutover) shipped as PR #579 (c5fad84) on 2026-07-14
+  # The next-priority items now start at P2.
+  # -------------------------------------------------------------------------------------------
+
+  # -------------------------------------------------------------------------------------------
+  # P2 ÔÇö gate ALREADY RELEASED and nobody noticed. This is the item that proves the point.
+  # -------------------------------------------------------------------------------------------
+  - id: branding-manager
+    title: "Branding manager ÔÇö BrandColorScheme + BrandAsset (DB-stored, isSuperUser)"
+    priority: P2
+    why: >
+      HOLD-gated on the quote-PDF crash fix. THAT FIX MERGED 2026-07-08 (PR #518/#525/#548).
+      The gate released six days ago and nothing re-evaluated it ÔÇö the HOLD prompt is not even in
+      the queue any more. `AdminCompanyPage.tsx:422` still carries the comment
+      "Will move to BrandColorScheme / BrandAsset FKs once those tables land."
+    gate: '! grep -q "model BrandColorScheme" apps/api/prisma/schema.prisma && grep -rq "PUPPETEER_EXECUTABLE_PATH" apps/api/src'
+    gate_means: The PDF fix is on main (blocker gone) AND the Brand tables do not exist yet.
+    needs_marco: false
+    order: 3
+
+  - id: workflow-studio-open-pr
+    title: "Workflow Studio ÔÇö open a PR for the branch that has been sitting there since 07-07"
+    priority: P2
+    why: >
+      `origin/docs/workflow-studio-and-datamodel` holds 27 .mmd flows + the offline editor HTML.
+      Pushed 2026-07-07. NO PR was ever opened. This is the tool Sean and Colin were to use to sign
+      off approval gates and notification targets ÔÇö and its JSON export was meant to BE the spec for
+      the real approval/notification logic. It is one `gh pr create` from being reviewable.
+    gate: 'git ls-remote --heads origin docs/workflow-studio-and-datamodel | grep -q workflow-studio'
+    gate_means: The branch still exists on origin and is not merged.
+    needs_marco: false
+    order: 4
+
+  # -------------------------------------------------------------------------------------------
+  # P3 ÔÇö large, designed, never queued
+  # -------------------------------------------------------------------------------------------
+  - id: swms-interactive-module
+    title: "Interactive SWMS module ÔÇö office wizard + control-mapping tool"
+    priority: P3
+    why: >
+      The largest body of unshipped design work. Backbone fully extracted from the Rev 5 template
+      (7 sections, 102 controls, 410 control rows, 31 SOP-SWMS). TWO PR prompts were WRITTEN in
+      `SWMS-PR-prompts.md` and never copied into the queue. Zero SWMS files exist on main.
+      Prototype still only in `C:\ProjectOperations-Reference\Interactive SWMS\`.
+    gate: 'test -z "$(git ls-tree -r --name-only origin/main | grep -i swms)"'
+    gate_means: No SWMS artifacts on main ÔÇö the work is entirely unstarted.
+    needs_marco: false
+    decided_in_BACKLOG_DECISIONS_md: >
+      This is big. Do you want it as ONE module, or split (a) the static SWMS wizard from
+      (b) the control-mapping tool? And is it Compliance-module or its own thing?
+    order: 5
+
+  - id: smart-wizard
+    title: "Smart Wizard ÔÇö metadata-driven dashboard builder (no LLM)"
+    priority: P3
+    why: >
+      The POINT of the data-model-map work. The enabling generator (relationship-map +
+      metadata-catalog) shipped in #531/#532/#536 ÔÇö but the wizard itself has ZERO artifacts on main
+      and no prompt. The scaffolding got built and the building never did.
+    gate: 'test -z "$(git grep -il "SmartWizard" origin/main -- apps/web 2>/dev/null)"'
+    gate_means: No SmartWizard artifacts on main; the metadata catalog it depends on already exists.
+    needs_marco: false
+    decided_in_BACKLOG_DECISIONS_md: >
+      Metadata-catalog coverage is 0/195 models human-reviewed. The wizard is only as good as that
+      catalog. Do you want to review the catalog first, or build the wizard against what is there?
+    order: 6
+
+  # -------------------------------------------------------------------------------------------
+  # P4 ÔÇö real, but genuinely waiting on Marco
+  # -------------------------------------------------------------------------------------------
+  - id: qa-workstream-c
+    title: "QA Workstream C ÔÇö full-depth compliance suites into CI"
+    priority: P4
+    why: "Locked as a decision 2026-07-02. Never started. 12 days idle."
+    gate: '! test -d apps/api/src/compliance/__tests__'
+    gate_means: The full-depth compliance test suite Workstream C is meant to produce does not exist yet.
+    needs_marco: false
+    decided_in_BACKLOG_DECISIONS_md: "Workstream C was locked as full-depth. Still the call, or trim the scope?"
+    order: 7
+
+  - id: field-worker-auth-track
+    title: "FIELD worker auth track (personal email / OTP), vs OFFICE (Entra)"
+    priority: P4
+    why: >
+      Designed for ÔÇö the `kind` discriminator already exists on AccessRequest, deliberately baked in
+      by #538. This is genuine future work, not an accident. Recorded so it does not evaporate.
+    gate: '! grep -rq "OTP\|otpCode" apps/api/src/modules/auth'
+    gate_means: No OTP/personal-email auth path exists yet.
+    needs_marco: false
+    decided_in_BACKLOG_DECISIONS_md: "Is the FIELD track in scope this quarter, or parked?"
+    order: 8
+
+  - id: estimate-material-density-migration
+    title: "Migrate EstimateMaterialDensity into the flexible RateTable system"
+    priority: P4
+    why: "Named a follow-up when the Rates architecture was locked. Never staged."
+    gate: 'grep -q "model EstimateMaterialDensity" apps/api/prisma/schema.prisma'
+    gate_means: The rigid table still exists on main.
+    needs_marco: false
+    order: 9
+
+  - id: task-time-waste-weight-calculators
+    title: "Task-time and waste-weight calculators (qty/rate, volume x density)"
+    priority: P4
+    why: >
+      Deliberately held back ÔÇö these CHANGE QUOTE NUMBERS, so they must not ride along with a
+      refactor. Needs to be its own reviewable PR.
+    gate: '! grep -rqiE "taskTimeCalculator|wasteWeightCalculator" apps/api/src'
+    gate_means: Neither calculator exists on main yet.
+    needs_marco: false
+    decided_in_BACKLOG_DECISIONS_md: "These change quoted prices. Ship as its own PR you review line-by-line?"
+    order: 10
+
+  - id: repo-streamline-pass
+    title: "Repo streamline / tidy pass (streamline-and-tidy.ps1)"
+    priority: P4
+    why: >
+      Script has sat in the Cowork outputs folder since 2026-06-30 ÔÇö 14 days. Never run, never in
+      the repo. The oldest neglected item.
+    gate: '! test -f scripts/streamline-and-tidy.ps1'
+    gate_means: The script is still not in the repo.
+    needs_marco: false
+    decided_in_BACKLOG_DECISIONS_md: "You had a trigger phrase for this. Still want it, or drop it?"
+    order: 11
+
+  # -------------------------------------------------------------------------------------------
+  # ADDED 2026-07-14, second pass. THE REGISTER ITSELF HAD GAPS.
+  #
+  # Within an hour of building this file to stop work falling on the floor, an audit of the same
+  # conversation found FOUR MORE items that had been flagged out loud and never written down.
+  # That is the whole lesson, twice: if it is not in a file an agent reads, it does not exist.
+  # -------------------------------------------------------------------------------------------
+
+  - id: split-native-browser-dialogs
+    title: "Replace native browser dialogs ÔÇö SPLIT into 4 prompts (the original blew the turn cap)"
+    priority: P2
+    why: >
+      `pr-replace-native-browser-dialogs` tried to migrate 48 call sites in ONE run. It hit
+      "Reached max turns (240)" ÔÇö DOUBLE the normal budget ÔÇö left 33 uncommitted files in the shared
+      tree, and killed the queue for 13 hours. It sits in `failed/` and nobody owns it.
+      RAISING THE TURN CAP DOES NOT HELP. SPLITTING DOES. This is also exactly why the intake lint
+      rejects `size > 10`. Rewrite it as ~4 prompts, each under the cap, each independently shippable.
+    gate: 'grep -rq "window.confirm\|window.alert" apps/web/src'
+    gate_means: Native browser dialogs are still in the web app.
+    needs_marco: false
+    order: 12
+
+  - id: job-project-model-merge
+    title: "Job / Project model merge (B-P0a)"
+    priority: P1
+    why: >
+      TWO models for one concept ÔÇö `model Job` and `model Project` both still on main. This is a
+      duplicated data-model split that GATES the scheduler and allocation work. Phase A (the links)
+      merged in #500; slices 3-9 never shipped. A hard rule was set: no PRs on this without Marco
+      present, because it reshapes the spine of the data model.
+    gate: 'grep -q "^model Job " apps/api/prisma/schema.prisma && grep -q "^model Project " apps/api/prisma/schema.prisma'
+    gate_means: Both models still exist on main - the merge has not happened.
+    needs_marco: false
+    decided_in_BACKLOG_DECISIONS_md: >
+      B-P0a was locked as "no PRs without you present". It gates the scheduler. Do you want to
+      restart it, and which is canonical - Job or Project?
+    order: 13
+
+  - id: worker-workerprofile-merge
+    title: "Worker / WorkerProfile model merge (B-P0b)"
+    priority: P1
+    why: >
+      The twin of the above: `model Worker` and `model WorkerProfile` both still on main.
+      WorkerProfile was agreed to be canonical. Also gates scheduler/allocation work.
+    gate: 'grep -q "^model Worker " apps/api/prisma/schema.prisma && grep -q "^model WorkerProfile " apps/api/prisma/schema.prisma'
+    gate_means: Both models still exist on main - the merge has not happened.
+    needs_marco: false
+    decided_in_BACKLOG_DECISIONS_md: "Same gate as B-P0a. Restart it? WorkerProfile was agreed canonical."
+    order: 14
+
+  - id: watcher-launcher-hardening
+    title: "Track watcher-launcher.ps1 -- the detached-launch wrapper is untracked too"
+    priority: P2
+    why: >
+      pr-c1 commits supervise-watcher.ps1. But the DETACHED launcher that starts it --
+      C:\po-watcher\watcher-launcher.ps1 -- is still an untracked loose file. On 2026-07-14 the
+      watcher was started as a child of a Claude Desktop shell; when Desktop restarted, the watcher
+      died with it. The fix (launch via Win32_Process.Create so it is outside the session job
+      object) currently exists ONLY as that untracked file. One git clean and the fix is gone.
+      Commit it as scripts/pr-watcher/watcher-launcher.ps1 and document it in the README.
+    gate: 'git ls-files --error-unmatch scripts/pr-watcher/supervise-watcher.ps1 > /dev/null 2>&1 && ! git ls-files --error-unmatch scripts/pr-watcher/watcher-launcher.ps1 > /dev/null 2>&1'
+    gate_means: pr-c1 has landed (supervise-watcher.ps1 is tracked) AND the launcher is still untracked.
+    needs_marco: false
+    order: 16
+
+  - id: mail-send-managed-identity
+    title: "Outlook mail: managed-identity auth (MAIL_AUTH_MODE) -- Mail.Send never tested post-MI swap"
+    priority: P2
+    why: >
+      apps/api/src/modules/email/providers/outlook.provider.ts still builds its credential with
+      ClientSecretCredential and has no MAIL_AUTH_MODE switch. Prod SharePoint/Graph already moved
+      to a system-assigned managed identity and AZURE_CLIENT_SECRET was deleted from App Service --
+      but Mail.Send was NEVER tested after that swap. The old app-registration secrets MUST NOT be
+      deleted until an email is proven to land. Prompt body is in the untracked HOLD file
+      pr-zz-mail-managed-identity-HOLD.md (size 7, gate_allow env-vars, escalates true).
+    gate: '! grep -rq "MAIL_AUTH_MODE" apps/api/src .env.example'
+    gate_means: The mail provider still has no MAIL_AUTH_MODE switch; it can only use ClientSecretCredential.
+    needs_marco: true
+    marco_question: >
+      AZURE/ENTRA IS YOUR HARD STOP -- nothing touches it without you. This PR is buildable, but it
+      must not be deployed or verified without your supervision. And do NOT delete the old
+      app-registration secrets until a real email is confirmed delivered. Ready to supervise it?
+    order: 17
+
+  - id: graphify-knowledge-graph
+    title: "Graphify knowledge graph -- blocked on PATH, not on code"
+    priority: P4
+    why: >
+      Blocked because the watcher's shell does not resolve the graphify binary
+      (C:\Users\Marco\.local\bin is not on its PATH). This is an ENVIRONMENT blocker, not a code
+      one, so it cannot clear itself -- the gate below only exits 0 once graphify actually resolves.
+      Prompt body is in the untracked HOLD file pr-graphify-setup-HOLD.md (size 10).
+    gate: 'command -v graphify > /dev/null 2>&1 && ! test -f .graphifyignore'
+    gate_means: The graphify binary resolves in the agent's shell AND the graph has not been built yet.
+    needs_marco: false
+    order: 18
+
+  - id: role-default-dashboards
+    title: "Role -> default dashboard mapping (RoleDefaultDashboard / defaultDashboardId)"
+    priority: P4
+    why: >
+      No role-to-default-dashboard concept exists in the schema. The HOLD file carries a
+      watcher:do-not-arm marker -- it was parked on a design question, not a technical blocker.
+      Prompt body is in the untracked HOLD file pr-role-default-dashboards-HOLD.md
+      (size 9, gate_allow migrations).
+    gate: '! grep -qE "RoleDefaultDashboard|defaultDashboardId" apps/api/prisma/schema.prisma'
+    gate_means: No role -> default-dashboard concept in the schema yet.
+    needs_marco: true
+    marco_question: >
+      Which dashboard should each role land on by default? That mapping is a business decision, not
+      a technical one -- it is why this was parked. Also: is it one default per role, or per role
+      per module?
+    order: 19
+
+  - id: siteid-notnull-backfill
+    title: "Enforce siteId NOT NULL on Tender/Job/FormSubmission/Project (backfill first)"
+    priority: P3
+    why: >
+      siteId is still nullable across Tender/Job/FormSubmission/Project. Enforcing NOT NULL needs a
+      data backfill FIRST -- and any row with no resolvable site blocks the migration. That makes it
+      a production-data change, not just a schema one. The HOLD file carries watcher:do-not-arm.
+      Prompt body is in the untracked HOLD file pr-siteid-notnull-backfill-HOLD.md
+      (size 8, gate_allow migrations).
+    gate: 'grep -qE "^[[:space:]]+siteId[[:space:]]+String\?" apps/api/prisma/schema.prisma'
+    gate_means: siteId is still nullable -- NOT NULL has not been enforced.
+    needs_marco: true
+    marco_question: >
+      This backfills PRODUCTION data and then locks the column. What should rows with no site
+      resolve to -- a default site, or do they get fixed by hand first? I will not guess this.
+    order: 20

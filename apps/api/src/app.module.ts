@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { ScheduleModule } from "@nestjs/schedule";
+import { AccessRequestsModule } from "./modules/access-requests/access-requests.module";
 import { AdminSettingsModule } from "./modules/admin-settings/admin-settings.module";
 import { AdminUsersModule } from "./modules/admin-users/admin-users.module";
 import { AiSettingsModule } from "./modules/ai-settings/ai-settings.module";
@@ -14,6 +15,7 @@ import { AuthorizationModule } from "./modules/authorization/authorization.modul
 import { DocumentsModule } from "./modules/documents/documents.module";
 import { EmailModule } from "./modules/email/email.module";
 import { ClientQuotesModule } from "./modules/client-quotes/client-quotes.module";
+import { CompanyProfileModule } from "./modules/company-profile/company-profile.module";
 import { EstimateExportModule } from "./modules/estimate-export/estimate-export.module";
 import { EstimatesModule } from "./modules/estimates/estimates.module";
 import { FormsModule } from "./modules/forms/forms.module";
@@ -71,6 +73,7 @@ import { ClientVersionsModule } from "./modules/client-versions/client-versions.
     PrismaModule,
     HealthModule,
     EmailModule,
+    AccessRequestsModule,
     AdminSettingsModule,
     AdminUsersModule,
     AiSettingsModule,
@@ -80,6 +83,7 @@ import { ClientVersionsModule } from "./modules/client-versions/client-versions.
     AuditModule,
     DocumentsModule,
     ClientQuotesModule,
+    CompanyProfileModule,
     EstimateExportModule,
     EstimatesModule,
     PdfRenderingModule,

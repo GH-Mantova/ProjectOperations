@@ -8,6 +8,7 @@
 
 import { CUSTOM_WIDGET_TYPE, DATA_SOURCE_BY_KEY, chartsForMetric, defaultTitle, metricsForSource } from "./customWidget";
 import { resolveSpan, type ConfigField, type WidgetConfigEntry, type WidgetFilters, type WidgetMeta, type WidgetPeriod } from "./types";
+import { WIDGET_MODULE_ORDER, WIDGET_SUBMODULE_ORDER, taxonomyFor, type WidgetModule } from "./widgets/taxonomy";
 
 // ── Visual kinds (gallery left rail) ─────────────────────────
 
@@ -70,6 +71,75 @@ export function galleryKinds(widgets: ReadonlyArray<WidgetMeta>): GalleryKind[] 
 
 export function widgetsForKind(widgets: ReadonlyArray<WidgetMeta>, kind: GalleryKind): WidgetMeta[] {
   return widgets.filter((w) => galleryKindFor(w) === kind);
+}
+
+/** Case-insensitive substring match across name + description. Empty/whitespace
+ *  query returns the full input list unchanged. */
+export function searchWidgets(widgets: ReadonlyArray<WidgetMeta>, query: string): WidgetMeta[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return [...widgets];
+  return widgets.filter((w) => {
+    const name = (w.name ?? "").toLowerCase();
+    const desc = (w.description ?? "").toLowerCase();
+    return name.includes(q) || desc.includes(q);
+  });
+}
+
+/** Stable localeCompare sort by name. */
+export function sortWidgets(widgets: ReadonlyArray<WidgetMeta>, dir: "asc" | "desc"): WidgetMeta[] {
+  const factor = dir === "asc" ? 1 : -1;
+  return [...widgets].sort((a, b) => a.name.localeCompare(b.name) * factor);
+}
+
+// ── Module-view helpers ──────────────────────────────────────
+
+export type GalleryGroupMode = "type" | "module";
+
+export type GalleryModuleNode = {
+  module: WidgetModule;
+  submodules: Array<{ submodule: string; count: number }>;
+};
+
+/** Build an ordered Module > Submodule tree from the registered widgets.
+ *  Modules and submodules with no widgets are omitted. Ordering mirrors
+ *  NAV_GROUPS (WIDGET_MODULE_ORDER + WIDGET_SUBMODULE_ORDER). */
+export function galleryModules(widgets: ReadonlyArray<WidgetMeta>): GalleryModuleNode[] {
+  const counts = new Map<string, number>();
+  for (const w of widgets) {
+    const { module, submodule } = taxonomyFor(w.type);
+    const key = `${module}::${submodule}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const nodes: GalleryModuleNode[] = [];
+  for (const module of WIDGET_MODULE_ORDER) {
+    const order = WIDGET_SUBMODULE_ORDER[module] ?? [];
+    const subs: Array<{ submodule: string; count: number }> = [];
+    for (const submodule of order) {
+      const count = counts.get(`${module}::${submodule}`) ?? 0;
+      if (count > 0) subs.push({ submodule, count });
+    }
+    // Include any submodule that appeared in taxonomy but wasn't in the
+    // canonical order (defensive — future taxonomy additions still surface).
+    for (const [key, count] of counts) {
+      const [m, s] = key.split("::");
+      if (m === module && !order.includes(s) && !subs.some((x) => x.submodule === s)) {
+        subs.push({ submodule: s, count });
+      }
+    }
+    if (subs.length > 0) nodes.push({ module, submodules: subs });
+  }
+  return nodes;
+}
+
+export function widgetsForModule(
+  widgets: ReadonlyArray<WidgetMeta>,
+  module: WidgetModule,
+  submodule: string
+): WidgetMeta[] {
+  return widgets.filter((w) => {
+    const t = taxonomyFor(w.type);
+    return t.module === module && t.submodule === submodule;
+  });
 }
 
 // ── Step-2 config fields ─────────────────────────────────────
@@ -147,8 +217,18 @@ export type GalleryStep = "choose" | "configure";
 export type GalleryState = {
   step: GalleryStep;
   kind: GalleryKind;
+  /** Left-rail grouping mode. "type" keeps today's visual-kind rails; "module"
+   *  swaps to the sidebar-mirrored module tree. */
+  groupMode: GalleryGroupMode;
+  /** Active module tree selection when groupMode === "module". */
+  selectedModule: WidgetModule | null;
+  selectedSubmodule: string | null;
   /** Explicit selection — never derived from sibling state. */
   selectedTypeId: string | null;
+  /** Cross-category search — non-empty hides the rail and shows a flat list. */
+  query: string;
+  /** Per-group name sort. Resets to "asc" whenever the active kind changes. */
+  sortDir: "asc" | "desc";
   filters: WidgetFilters;
   period: WidgetPeriod | null;
   colSpan: number;
@@ -163,13 +243,22 @@ export type GalleryAction =
   | { type: "setFilters"; filters: WidgetFilters }
   | { type: "setPeriod"; period: WidgetPeriod | null }
   | { type: "setSize"; colSpan: number; rowSpan: number }
+  | { type: "setQuery"; query: string }
+  | { type: "toggleSort" }
+  | { type: "setGroupMode"; mode: GalleryGroupMode }
+  | { type: "setModule"; module: WidgetModule; submodule: string }
   | { type: "reset" };
 
 export function initialGalleryState(kind: GalleryKind = "kpi"): GalleryState {
   return {
     step: "choose",
     kind,
+    groupMode: "type",
+    selectedModule: null,
+    selectedSubmodule: null,
     selectedTypeId: null,
+    query: "",
+    sortDir: "asc",
     filters: {},
     period: null,
     colSpan: 1,
@@ -184,7 +273,9 @@ export function canProceed(state: GalleryState): boolean {
 export function galleryReducer(state: GalleryState, action: GalleryAction): GalleryState {
   switch (action.type) {
     case "setKind":
-      return { ...state, kind: action.kind };
+      // Switching group always restarts the sort at A-Z so users get a
+      // predictable ordering per rail.
+      return { ...state, kind: action.kind, sortDir: "asc" };
     case "select": {
       const def = resolveSpan(action.meta, {
         id: "",
@@ -215,6 +306,22 @@ export function galleryReducer(state: GalleryState, action: GalleryAction): Gall
       return { ...state, period: action.period };
     case "setSize":
       return { ...state, colSpan: action.colSpan, rowSpan: action.rowSpan };
+    case "setQuery":
+      return { ...state, query: action.query };
+    case "toggleSort":
+      return { ...state, sortDir: state.sortDir === "asc" ? "desc" : "asc" };
+    case "setGroupMode":
+      // Switching left-rail groupings restarts the sort at A-Z so users get a
+      // predictable ordering regardless of which mode they came from.
+      return { ...state, groupMode: action.mode, sortDir: "asc" };
+    case "setModule":
+      // Selecting a submodule also resets the sort — same reasoning as setKind.
+      return {
+        ...state,
+        selectedModule: action.module,
+        selectedSubmodule: action.submodule,
+        sortDir: "asc"
+      };
     case "reset":
       return initialGalleryState(state.kind);
   }
@@ -247,4 +354,16 @@ export function insertWidgetAt(
   const at = index === null || index < 0 || index > ordered.length ? ordered.length : index;
   ordered.splice(at, 0, entry);
   return ordered.map((w, i) => ({ ...w, order: i }));
+}
+
+/** Remove the entry with `id` and renumber the remainder so `order` stays
+ *  contiguous — the same normalization insertWidgetAt/reorder relies on. */
+export function removeWidgetById(
+  widgets: ReadonlyArray<WidgetConfigEntry>,
+  id: string
+): WidgetConfigEntry[] {
+  return [...widgets]
+    .sort((a, b) => a.order - b.order)
+    .filter((w) => w.id !== id)
+    .map((w, i) => ({ ...w, order: i }));
 }

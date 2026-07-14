@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { can } from "../../auth/permissions";
 import { QuoteTab } from "./QuoteTab";
 import { AddClientModal } from "./AddClientModal";
 import { TenderDocumentsPanel } from "./TenderDocumentsPanel";
@@ -11,6 +12,7 @@ import { TeamEstimatorPanel } from "./TeamEstimatorPanel";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { ConvertToProjectModal } from "./ConvertToProjectModal";
 import { ScopeCardsTab } from "./scope-cards/ScopeCardsTab";
+import { RatesTab } from "./RatesTab";
 import { AssumptionsExclusionsFloatingEditor } from "./AssumptionsExclusionsFloatingEditor";
 
 type TenderDetail = {
@@ -62,7 +64,7 @@ type TenderDetail = {
 
 import { TENDER_STATUS_LABEL as STAGE_LABEL, TENDER_STATUS_ACCENT as STAGE_ACCENT } from "./tenderStatusLabels";
 
-type Tab = "overview" | "scope" | "quote";
+type Tab = "overview" | "scope" | "rates" | "quote";
 
 type EstimateSummaryPayload = {
   estimateId: string | null;
@@ -131,17 +133,15 @@ export function TenderDetailPage() {
 
   const tab: Tab = useMemo(() => {
     if (location.pathname.endsWith("/scope")) return "scope";
+    if (location.pathname.endsWith("/rates")) return "rates";
     if (location.pathname.endsWith("/quote")) return "quote";
     return "overview";
   }, [location.pathname]);
 
-  const canManageTenders = useMemo(() => user?.permissions.includes("tenders.manage") ?? false, [user]);
-  const canManageEstimates = useMemo(() => user?.permissions.includes("estimates.manage") ?? false, [user]);
-  const canAdminEstimates = useMemo(() => user?.permissions.includes("estimates.admin") ?? false, [user]);
-  const canConvertTender = useMemo(
-    () => user?.permissions.includes("tenderconversion.manage") ?? false,
-    [user]
-  );
+  const canManageTenders = useMemo(() => can(user, "tenders.manage"), [user]);
+  const canManageEstimates = useMemo(() => can(user, "estimates.manage"), [user]);
+  const canAdminEstimates = useMemo(() => can(user, "estimates.admin"), [user]);
+  const canConvertTender = useMemo(() => can(user, "tenderconversion.manage"), [user]);
   const [convertOpen, setConvertOpen] = useState(false);
   const [tender, setTender] = useState<TenderDetail | null>(null);
   const [estimateSummary, setEstimateSummary] = useState<EstimateSummaryPayload | null>(null);
@@ -225,6 +225,7 @@ export function TenderDetailPage() {
       const detail = (event as CustomEvent<Tab>).detail;
       if (!id) return;
       if (detail === "scope") navigate(`/tenders/${id}/scope`);
+      else if (detail === "rates") navigate(`/tenders/${id}/rates`);
       else if (detail === "quote") navigate(`/tenders/${id}/quote`);
       else if (detail === "overview") navigate(`/tenders/${id}`);
     };
@@ -463,6 +464,15 @@ export function TenderDetailPage() {
             onClick={() => navigate(`/tenders/${id}/scope`)}
           >
             Scope of Works
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "rates"}
+            className={tab === "rates" ? "tender-detail__tab tender-detail__tab--active" : "tender-detail__tab"}
+            onClick={() => navigate(`/tenders/${id}/rates`)}
+          >
+            Rates
           </button>
           <button
             type="button"
@@ -729,6 +739,10 @@ export function TenderDetailPage() {
 
         {tab === "scope" && (
           <ScopeCardsTab tenderId={tender.id} tenderTitle={tender.title} />
+        )}
+
+        {tab === "rates" && (
+          <RatesTab tenderId={tender.id} canManage={canManageTenders} />
         )}
 
         {tab === "quote" && (

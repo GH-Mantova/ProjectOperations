@@ -1,0 +1,85 @@
+---
+premise: '! grep -q "quota-governor" scripts/pr-watcher/index.mjs'
+premise_means: The watcher has no quota governor and still fires prompts into a spent quota window.
+scope:
+  - scripts/pr-watcher/index.mjs
+  - scripts/pipeline/quota-governor.mjs
+done_when: pnpm build && grep -q "quota-governor" scripts/pr-watcher/index.mjs
+size: 3
+gate_allow: none
+seed_only: false
+escalates: false
+---
+
+# P1 — QUOTA GOVERNOR + soft-halt re-queue
+
+**This is the single largest failure class in the system's history: 60 of 194 runs (31%).**
+
+Branch: `feat/pipeline-quota-governor`.
+
+## The evidence
+
+Runs die in **bursts**, all byte-identical, ~10–30 seconds in, having attempted **nothing**:
+
+    Exit:    1
+    ---
+    You've hit your limit · resets 12:10pm (Australia/Brisbane)
+
+Wave sizes: **2026-05-29: 15 runs · 2026-06-07: 41 runs · 2026-06-12: 3 · 2026-07-05: 1.**
+
+The queue drains a batch straight into a spent quota window and every prompt is destroyed for nothing.
+This is a **classic batching failure** — shoving 41 units into a station with no capacity.
+
+**And it compounds.** From `sot/05` LL-28:
+
+> *"47 of 50 dead prompts died on usage-limit waves; the watcher's `USAGE_LIMIT_PATTERNS` misses
+> `'You've hit your limit'`, so soft-halts were misfiled as HARD FAILURES and never re-queued
+> (`pr-63b`'s signed-off feature sat invisible for **nine days**)."*
+
+So the prompt is killed by quota, then **buried in `failed/` as if the work itself was bad.**
+
+## Build
+
+### 1. `scripts/pipeline/quota-governor.mjs`
+
+- `isSoftHalt(output)` → true for **all** known quota phrasings. Include, at minimum:
+  `You've hit your limit`, `usage limit`, `rate limit`, `resets <time>`, `quota`.
+  **The current pattern list is incomplete — that is the LL-28 bug. Make it generous: a false
+  positive costs a re-queue; a false negative costs a buried feature for nine days.**
+- `recordHalt(resetTime)` → persist the reset timestamp to `scripts/pr-watcher/.quota-state.json`.
+- `canDequeue()` → `false` while `now < resetTime`. Return `{ ok, waitUntil, reason }`.
+
+### 2. Wire into `scripts/pr-watcher/index.mjs`
+
+- **Before dequeuing any prompt**, call `canDequeue()`. If false, **do not spawn the agent** —
+  log `QUOTA: holding N prompts until <reset time>` and sleep. **Never dequeue into an empty tank.**
+- **After a run**, if `isSoftHalt(output)`:
+  - **RE-QUEUE the prompt** (leave it `-ready.md`, or restore it). **Do NOT file it to `failed/`.**
+  - `recordHalt(resetTime)` so the next dequeue is blocked.
+  - Log it distinctly: `SOFT-HALT (quota) — re-queued, not failed`.
+
+### 3. Backfill the graveyard
+
+Add `--rescue-soft-halts`: scan `failed/*.log` for soft-halt signatures and **restore those prompts
+to the queue** (renaming to `-ready.md`), after re-linting each with `lint-prompt.mjs` so anything
+already-shipped is binned rather than re-run.
+
+**Report how many it rescued.** LL-28 says ~47. Expect real, shipped work to come back from the dead.
+
+## Test plan
+
+- [ ] Unit: `isSoftHalt` matches all five real quota strings taken from `failed/*.log`. Paste them.
+- [ ] Unit: `canDequeue()` is false before the reset time, true after.
+- [ ] Unit: a soft-halted prompt is **re-queued**, never moved to `failed/`.
+- [ ] `--rescue-soft-halts` on the real `failed/` dir: reports a count, moves nothing already shipped.
+
+## Do NOT
+
+- Do NOT change what a prompt *does* — only *when* it is dequeued and *where it goes* on halt.
+- Do NOT touch the merge logic (that is P2).
+- Do NOT git-write in `C:\po-watcher` — the hook will block you. Work in your worktree.
+
+## Guardrails
+
+ONE attempt. If it does not work, `NO-OP: <reason>` and stop. Never ask a question — this is
+headless, there is no human, and 10 runs have already died waiting for an answer.

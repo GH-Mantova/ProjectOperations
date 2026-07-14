@@ -709,17 +709,61 @@ function FieldRender({
   const config = (field.config ?? {}) as Record<string, unknown>;
   const options = (config.options ?? []) as string[];
 
-  // Layout fields render without label scaffolding
-  if (field.fieldType === "section_header") {
-    return <h3 style={{ margin: "12px 0 4px", color: "#005B61", fontSize: 16 }}>{field.label}</h3>;
+  // Layout fields render without label scaffolding and never contribute a
+  // FormSubmissionValue — no onChange call means no key in the values map.
+  if (field.fieldType === "section_header" || field.fieldType === "heading") {
+    return (
+      <h3
+        data-testid={`form-fill-${field.fieldKey.replace(/_/g, "-")}`}
+        style={{ margin: "12px 0 4px", color: "#005B61", fontSize: 16 }}
+      >
+        {field.label}
+      </h3>
+    );
   }
   if (field.fieldType === "divider") {
-    return <hr style={{ border: 0, borderTop: "1px solid var(--border-subtle, rgba(0,0,0,0.08))" }} />;
-  }
-  if (field.fieldType === "instructions") {
     return (
-      <div style={{ background: "var(--surface-muted, #F6F6F6)", padding: 12, borderRadius: 6, fontSize: 13 }}>
+      <hr
+        data-testid={`form-fill-${field.fieldKey.replace(/_/g, "-")}`}
+        style={{ border: 0, borderTop: "1px solid var(--border-subtle, rgba(0,0,0,0.08))" }}
+      />
+    );
+  }
+  if (field.fieldType === "instructions" || field.fieldType === "paragraph") {
+    return (
+      <div
+        data-testid={`form-fill-${field.fieldKey.replace(/_/g, "-")}`}
+        style={{ background: "var(--surface-muted, #F6F6F6)", padding: 12, borderRadius: 6, fontSize: 13 }}
+      >
         {field.helpText ?? field.label}
+      </div>
+    );
+  }
+  if (field.fieldType === "image") {
+    const cfg = (field.config ?? {}) as Record<string, unknown>;
+    const src = String(cfg.imageUrl ?? "");
+    return (
+      <div data-testid={`form-fill-${field.fieldKey.replace(/_/g, "-")}`}>
+        {src ? (
+          <img
+            src={src}
+            alt={field.label}
+            style={{ maxWidth: "100%", borderRadius: 6, display: "block" }}
+          />
+        ) : (
+          <div
+            style={{
+              padding: 12,
+              background: "var(--surface-muted, #F6F6F6)",
+              borderRadius: 6,
+              fontSize: 12,
+              color: "var(--text-muted)",
+              textAlign: "center"
+            }}
+          >
+            No image URL configured
+          </div>
+        )}
       </div>
     );
   }
@@ -1025,6 +1069,64 @@ function FieldInput({
         </div>
       );
     }
+    case "scale":
+    case "nps": {
+      const isNps = t === "nps";
+      const min = Number(config.min ?? (isNps ? 0 : 1));
+      const max = Number(config.max ?? (isNps ? 10 : 5));
+      const minLabel = String(config.minLabel ?? "");
+      const maxLabel = String(config.maxLabel ?? "");
+      const active = value === null || value === undefined ? null : Number(value);
+      const steps = Math.max(2, Math.min(max - min + 1, 21));
+      const points = Array.from({ length: steps }, (_, i) => min + i);
+      return (
+        <div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {points.map((n) => {
+              const on = active === n;
+              return (
+                <button
+                  key={n}
+                  type="button"
+                  aria-label={`Score ${n}`}
+                  aria-pressed={on}
+                  onClick={() => onChange(n)}
+                  style={{
+                    minWidth: 44,
+                    minHeight: 44,
+                    padding: "0 12px",
+                    borderRadius: 6,
+                    border: "1px solid",
+                    borderColor: on ? "#FEAA6D" : "var(--border-subtle, rgba(0,0,0,0.12))",
+                    background: on ? "#FEAA6D" : "var(--surface-card, #fff)",
+                    color: on ? "#242424" : "var(--text-default)",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: "pointer"
+                  }}
+                >
+                  {n}
+                </button>
+              );
+            })}
+          </div>
+          {minLabel || maxLabel ? (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                marginTop: 6,
+                fontSize: 11,
+                color: "var(--text-muted)"
+              }}
+            >
+              <span>{minLabel}</span>
+              <span>{maxLabel}</span>
+            </div>
+          ) : null}
+        </div>
+      );
+    }
     case "system_field": {
       const source = String(config.source ?? "");
       const lookup: Record<string, string | undefined> = {
@@ -1078,8 +1180,16 @@ function FieldInput({
     case "photo":
     case "file":
       return <PhotoInput value={value as string[] | null} onChange={onChange} maxCount={Number(config.maxCount ?? 5)} />;
+    case "lookup":
+      return <LookupInput field={field} value={value} onChange={onChange} />;
+    case "calculation":
+      return <CalculationDisplay field={field} />;
+    case "table":
+      return <TableInput field={field} value={value} onChange={onChange} />;
+    case "terms":
+      return <TermsInput field={field} value={value} onChange={onChange} />;
     default:
-      // matrix, lookup, barcode, slider, nps, likert, calculation — defer
+      // matrix, barcode, slider, likert — defer
       return (
         <div style={{ padding: 10, background: "#FEF3C7", color: "#92400E", borderRadius: 6, fontSize: 12 }}>
           Field type "{t}" — fill on a desktop browser (advanced field types in next release).
@@ -1331,6 +1441,337 @@ function SubmittedSuccess({
       >
         Done
       </button>
+    </div>
+  );
+}
+
+// ── Advanced field inputs (F-4) ────────────────────────────────────────────
+
+/**
+ * Lookup — resolves options from `/lists/:slug/items` at fill time.
+ *
+ * The list of sources is authored on the template (`config.listSlug`), never
+ * hardcoded here; this component just fetches whichever slug the designer
+ * chose. Renders as a dropdown so it degrades gracefully on mobile.
+ */
+function LookupInput({
+  field,
+  value,
+  onChange
+}: {
+  field: Field;
+  value: unknown;
+  onChange: (v: unknown) => void;
+}) {
+  const { authFetch } = useAuth();
+  const config = (field.config ?? {}) as Record<string, unknown>;
+  const slug = String(config.listSlug ?? "").trim();
+  const [items, setItems] = useState<Array<{ id: string; value: string; label: string }>>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!slug) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    (async () => {
+      try {
+        const res = await authFetch(`/lists/${encodeURIComponent(slug)}/items`);
+        if (!res.ok) throw new Error(`Could not load list "${slug}"`);
+        const body = (await res.json()) as Array<{ id: string; value?: string; label: string }>;
+        if (!cancelled) {
+          setItems(
+            body.map((row) => ({ id: row.id, value: row.value ?? row.label, label: row.label }))
+          );
+        }
+      } catch (err) {
+        if (!cancelled) setError((err as Error).message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch, slug]);
+
+  if (!slug) {
+    return (
+      <div style={{ padding: 10, background: "#FEF3C7", color: "#92400E", borderRadius: 6, fontSize: 12 }}>
+        Lookup source not configured — set a list slug on the template.
+      </div>
+    );
+  }
+  return (
+    <>
+      <select
+        className="s7-input"
+        value={(value as string) ?? ""}
+        onChange={(e) => onChange(e.target.value || null)}
+        disabled={loading}
+        style={{ width: "100%", fontSize: 14, padding: 10 }}
+      >
+        <option value="">{loading ? "Loading…" : "Select…"}</option>
+        {items.map((it) => (
+          <option key={it.id} value={it.value}>
+            {it.label}
+          </option>
+        ))}
+      </select>
+      {error ? (
+        <p style={{ fontSize: 11, color: "var(--status-danger, #DC2626)", marginTop: 4 }}>{error}</p>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * Calculation — read-only display. The server always recomputes on submit,
+ * so the client-side number is presentational only; do NOT call onChange.
+ */
+function CalculationDisplay({ field }: { field: Field }) {
+  const config = (field.config ?? {}) as Record<string, unknown>;
+  const operation = String(config.operation ?? "sum");
+  const operandKeys = Array.isArray(config.operandKeys) ? (config.operandKeys as string[]) : [];
+  return (
+    <div
+      style={{
+        padding: 10,
+        background: "var(--surface-muted, #F6F6F6)",
+        borderRadius: 6,
+        fontSize: 13,
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center"
+      }}
+    >
+      <span>
+        Auto-calculated ({operation} of {operandKeys.length || "no"} field
+        {operandKeys.length === 1 ? "" : "s"})
+      </span>
+      <span style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase" }}>
+        computed
+      </span>
+    </div>
+  );
+}
+
+type TableRow = Record<string, unknown>;
+
+/**
+ * Table — repeating rows of sub-fields.
+ *
+ * F-3 (repeating sections + entryIndex) has not landed yet; this keeps the
+ * table entirely self-contained inside `FormField.config`, storing rows as a
+ * `TableRow[]` in the submission value's JSON column. When F-3 lands the two
+ * models can be reconciled without a data migration since both are opaque
+ * JSON to the value column.
+ */
+function TableInput({
+  field,
+  value,
+  onChange
+}: {
+  field: Field;
+  value: unknown;
+  onChange: (v: unknown) => void;
+}) {
+  const config = (field.config ?? {}) as Record<string, unknown>;
+  const columns = Array.isArray(config.columns)
+    ? (config.columns as Array<{ key: string; label: string; fieldType: string }>)
+    : [];
+  const minRows = Math.max(0, Number(config.minRows ?? 1));
+  const maxRows = Math.max(minRows, Number(config.maxRows ?? 20));
+
+  const rows: TableRow[] = Array.isArray(value)
+    ? (value as TableRow[])
+    : Array.from({ length: minRows }, () => ({}));
+
+  const setRows = (next: TableRow[]) => onChange(next);
+  const updateCell = (rowIdx: number, key: string, cell: unknown) => {
+    const next = rows.map((row, i) => (i === rowIdx ? { ...row, [key]: cell } : row));
+    setRows(next);
+  };
+  const addRow = () => {
+    if (rows.length >= maxRows) return;
+    setRows([...rows, {}]);
+  };
+  const removeRow = (rowIdx: number) => {
+    if (rows.length <= minRows) return;
+    setRows(rows.filter((_, i) => i !== rowIdx));
+  };
+
+  if (columns.length === 0) {
+    return (
+      <div style={{ padding: 10, background: "#FEF3C7", color: "#92400E", borderRadius: 6, fontSize: 12 }}>
+        Table has no columns configured yet.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <thead>
+          <tr>
+            {columns.map((col) => (
+              <th
+                key={col.key}
+                style={{
+                  textAlign: "left",
+                  padding: "6px 8px",
+                  borderBottom: "1px solid var(--border-subtle, rgba(0,0,0,0.08))",
+                  fontWeight: 600
+                }}
+              >
+                {col.label}
+              </th>
+            ))}
+            <th style={{ width: 36 }} />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, rowIdx) => (
+            <tr key={rowIdx}>
+              {columns.map((col) => (
+                <td key={col.key} style={{ padding: 4 }}>
+                  <TableCellInput
+                    fieldType={col.fieldType}
+                    value={row[col.key]}
+                    onChange={(cell) => updateCell(rowIdx, col.key, cell)}
+                  />
+                </td>
+              ))}
+              <td style={{ padding: 4 }}>
+                <button
+                  type="button"
+                  onClick={() => removeRow(rowIdx)}
+                  disabled={rows.length <= minRows}
+                  aria-label="Remove row"
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    color: rows.length <= minRows ? "var(--text-muted)" : "#DC2626",
+                    cursor: rows.length <= minRows ? "not-allowed" : "pointer",
+                    fontSize: 16
+                  }}
+                >
+                  ✕
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <button
+        type="button"
+        className="s7-btn s7-btn--ghost s7-btn--sm"
+        onClick={addRow}
+        disabled={rows.length >= maxRows}
+        style={{ marginTop: 6 }}
+      >
+        + Add row
+      </button>
+    </div>
+  );
+}
+
+function TableCellInput({
+  fieldType,
+  value,
+  onChange
+}: {
+  fieldType: string;
+  value: unknown;
+  onChange: (v: unknown) => void;
+}) {
+  if (fieldType === "number") {
+    return (
+      <input
+        type="number"
+        className="s7-input"
+        value={(value as number | string | undefined) ?? ""}
+        onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
+        style={{ width: "100%", padding: 6, fontSize: 13 }}
+      />
+    );
+  }
+  if (fieldType === "date") {
+    return (
+      <input
+        type="date"
+        className="s7-input"
+        value={typeof value === "string" ? value.slice(0, 10) : ""}
+        onChange={(e) => onChange(e.target.value || null)}
+        style={{ width: "100%", padding: 6, fontSize: 13 }}
+      />
+    );
+  }
+  if (fieldType === "checkbox") {
+    return (
+      <input
+        type="checkbox"
+        checked={Boolean(value)}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+    );
+  }
+  return (
+    <input
+      type="text"
+      className="s7-input"
+      value={(value as string | undefined) ?? ""}
+      onChange={(e) => onChange(e.target.value)}
+      style={{ width: "100%", padding: 6, fontSize: 13 }}
+    />
+  );
+}
+
+/**
+ * Terms — acknowledgement checkbox. Stores `{ accepted, version, acceptedAt }`
+ * so the audit trail can prove which text the submitter agreed to.
+ */
+function TermsInput({
+  field,
+  value,
+  onChange
+}: {
+  field: Field;
+  value: unknown;
+  onChange: (v: unknown) => void;
+}) {
+  const config = (field.config ?? {}) as Record<string, unknown>;
+  const termsText = String(config.termsText ?? "");
+  const version = String(config.termsVersion ?? "1");
+  const current = (value as { accepted?: boolean } | null | undefined) ?? { accepted: false };
+  const accepted = Boolean(current.accepted);
+  const toggle = (next: boolean) => {
+    if (next) {
+      onChange({ accepted: true, version, acceptedAt: new Date().toISOString() });
+    } else {
+      onChange(null);
+    }
+  };
+  return (
+    <div
+      style={{
+        background: "var(--surface-muted, #F6F6F6)",
+        padding: 12,
+        borderRadius: 6,
+        fontSize: 13
+      }}
+    >
+      <div style={{ whiteSpace: "pre-wrap", marginBottom: 8 }}>{termsText}</div>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+        <input
+          type="checkbox"
+          checked={accepted}
+          onChange={(e) => toggle(e.target.checked)}
+          style={{ width: 20, height: 20 }}
+        />
+        <span>I accept these terms (version {version})</span>
+      </label>
     </div>
   );
 }

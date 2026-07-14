@@ -3,6 +3,9 @@ import { AuditModule } from "../audit/audit.module";
 import { MasterDataModule } from "../master-data/master-data.module";
 import { PlatformModule } from "../platform/platform.module";
 import { ProjectsModule } from "../projects/projects.module";
+import { RatesModule } from "../rates/rates.module";
+import { TenderRateSetController } from "./tender-rate-set.controller";
+import { TenderRateSetService } from "./tender-rate-set.service";
 import { TenderingController } from "./tendering.controller";
 import { TenderNumberService } from "./tender-number.service";
 import { TenderingService } from "./tendering.service";
@@ -27,12 +30,13 @@ import { ClarificationProposalsController } from "./scope/clarification-proposal
 import { ClarificationProposalsService } from "./scope/clarification-proposals.service";
 
 @Module({
-  imports: [AuditModule, MasterDataModule, PlatformModule, forwardRef(() => ProjectsModule)],
+  imports: [AuditModule, MasterDataModule, PlatformModule, RatesModule, forwardRef(() => ProjectsModule)],
   controllers: [
     TenderingController,
     TenderClientNotesController,
     TenderEntriesController,
     TenderConvertController,
+    TenderRateSetController,
     ScopeOfWorksController,
     ScopeRedesignController,
     ScopeCardCuttingController,
@@ -48,6 +52,7 @@ import { ClarificationProposalsService } from "./scope/clarification-proposals.s
     TenderNumberService,
     TenderClientNotesService,
     TenderEntriesService,
+    TenderRateSetService,
     ScopeOfWorksService,
     ScopeRedesignService,
     ScopeWasteService,

@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { AdminAccessRequestsTab } from "./admin/AdminAccessRequestsTab";
+import { isAdminUser } from "../auth/permissions";
+import { NoAccess } from "../components/NoAccess";
 import { AdminUsersTab } from "./admin/AdminUsersTab";
 import { AdminRolesPermissionsTab } from "./admin/AdminRolesPermissionsTab";
 import { AdminClientVersionsTab } from "./admin/AdminClientVersionsTab";
@@ -38,6 +41,7 @@ const TABS = [
   { id: "notifications", label: "Notifications" },
   { id: "email", label: "Email" },
   { id: "users", label: "Users" },
+  { id: "access-requests", label: "Access requests" },
   { id: "ai", label: "AI & Integrations" },
   { id: "platform", label: "Platform" },
   { id: "permissions", label: "Permissions" },
@@ -48,17 +52,17 @@ type TabId = (typeof TABS)[number]["id"];
 
 export function AdminSettingsPage() {
   const { user } = useAuth();
-  const isAdmin = user?.roles?.some((r) => r.name === "Admin") ?? false;
+  const isAdmin = isAdminUser(user);
   const [tab, setTab] = useState<TabId>("notifications");
 
   if (!user) return null;
-  if (!isAdmin) return <Navigate to="/" replace />;
+  if (!isAdmin) return <NoAccess required="role:Admin" title="Admin settings requires the Admin role" />;
 
   return (
     <div style={{ padding: 24, maxWidth: 1200 }}>
       <h1 className="s7-type-page-heading" style={{ marginTop: 0 }}>Admin settings</h1>
       <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
-        System configuration — notifications, email delivery, integrations, and audit history.
+        System configuration â€” notifications, email delivery, integrations, and audit history.
       </p>
 
       <div style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: 24, marginTop: 24 }}>
@@ -92,6 +96,7 @@ export function AdminSettingsPage() {
           {tab === "notifications" && <NotificationsTab />}
           {tab === "email" && <EmailTab />}
           {tab === "users" && <AdminUsersTab />}
+          {tab === "access-requests" && <AdminAccessRequestsTab />}
           {tab === "ai" && (
             <IntegrationTab
               href="/admin/platform"
@@ -103,10 +108,11 @@ export function AdminSettingsPage() {
             <>
               <IntegrationTab
                 href="/admin/platform"
-                label="Platform integrations — SharePoint"
+                label="Platform integrations â€” SharePoint"
                 body="SharePoint tenant, site, and library bindings plus the root folder tree used by Project Operations. SHAREPOINT_MODE is set by environment."
               />
               <SharePointTestPanel />
+              <SharePointFolderMappingsPanel />
               <XeroPanel />
             </>
           )}
@@ -138,7 +144,7 @@ function StubCard({ title, body }: { title: string; body: string }) {
   );
 }
 
-// ── Notifications tab ────────────────────────────────────────────────────
+// â”€â”€ Notifications tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function NotificationsTab() {
   const { authFetch } = useAuth();
   const [triggers, setTriggers] = useState<Trigger[]>([]);
@@ -185,7 +191,7 @@ function NotificationsTab() {
     }
   };
 
-  if (loading) return <p style={{ color: "var(--text-muted)" }}>Loading…</p>;
+  if (loading) return <p style={{ color: "var(--text-muted)" }}>Loadingâ€¦</p>;
 
   const enabled = triggers.filter((t) => t.isEnabled);
   const disabled = triggers.filter((t) => !t.isEnabled);
@@ -284,7 +290,7 @@ function TriggerRow({
           <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{trigger.description}</div>
         </div>
         {savedFlash ? (
-          <span style={{ fontSize: 11, color: "#16A34A" }}>✓ Saved</span>
+          <span style={{ fontSize: 11, color: "#16A34A" }}>âœ“ Saved</span>
         ) : null}
       </div>
 
@@ -351,7 +357,7 @@ function TriggerRow({
                             checked={trigger.recipientUserIds.includes(u.id)}
                             onChange={() => toggleUser(u.id)}
                           />
-                          {u.firstName} {u.lastName} <span style={{ color: "var(--text-muted)" }}>· {u.email}</span>
+                          {u.firstName} {u.lastName} <span style={{ color: "var(--text-muted)" }}>Â· {u.email}</span>
                         </label>
                       ))}
                     </div>
@@ -402,7 +408,7 @@ function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (v: b
   );
 }
 
-// ── Email tab ────────────────────────────────────────────────────────────
+// â”€â”€ Email tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function EmailTab() {
   const { authFetch } = useAuth();
   const [config, setConfig] = useState<EmailConfig | null>(null);
@@ -469,7 +475,7 @@ function EmailTab() {
     }
   };
 
-  if (loading || !config) return <p style={{ color: "var(--text-muted)" }}>Loading…</p>;
+  if (loading || !config) return <p style={{ color: "var(--text-muted)" }}>Loadingâ€¦</p>;
 
   const showMailSendBanner = test && !test.success && /Mail\.Send/i.test(test.message);
 
@@ -516,10 +522,10 @@ function EmailTab() {
 
       <div style={{ display: "flex", gap: 8 }}>
         <button type="button" className="s7-btn s7-btn--primary" onClick={() => void save()} disabled={saving}>
-          {saving ? "Saving…" : "Save"}
+          {saving ? "Savingâ€¦" : "Save"}
         </button>
         <button type="button" className="s7-btn s7-btn--ghost" onClick={() => void testConn()} disabled={testing}>
-          {testing ? "Testing…" : "Test connection"}
+          {testing ? "Testingâ€¦" : "Test connection"}
         </button>
       </div>
 
@@ -534,7 +540,7 @@ function EmailTab() {
             fontSize: 13
           }}
         >
-          {test.success ? "✓ " : "✗ "}
+          {test.success ? "âœ“ " : "âœ— "}
           {test.message}
         </div>
       ) : null}
@@ -589,7 +595,7 @@ function SharePointTestPanel() {
         ensureFolder call against the configured root.
       </p>
       <button type="button" className="s7-btn s7-btn--secondary" onClick={() => void run()} disabled={busy}>
-        {busy ? "Testing…" : "Test connection"}
+        {busy ? "Testingâ€¦" : "Test connection"}
       </button>
       {error ? (
         <p style={{ color: "var(--status-danger)", marginTop: 10 }}>{error}</p>
@@ -605,10 +611,195 @@ function SharePointTestPanel() {
             fontSize: 13
           }}
         >
-          <strong>{result.connected ? "Connected" : "Unavailable"}</strong> — mode: <code>{result.mode}</code>
+          <strong>{result.connected ? "Connected" : "Unavailable"}</strong> â€” mode: <code>{result.mode}</code>
           {result.message ? <div style={{ marginTop: 4 }}>{result.message}</div> : null}
         </div>
       ) : null}
+    </section>
+  );
+}
+
+// SharePoint folder mappings — DB-backed, super-user-only. Same idea as
+// the Rates admin: which folder each entity's documents live in is a
+// business decision, not a deployment setting. Server enforces
+// super-user; this hides the panel from everyone else so it doesn't
+// look editable when it isn't.
+type FolderMapping = {
+  id: string;
+  entityType: "TENDER" | "JOB";
+  folderPath: string;
+  isActive: boolean;
+  updatedAt: string;
+};
+
+const ENTITY_LABELS: Record<FolderMapping["entityType"], string> = {
+  TENDER: "Tender",
+  JOB: "Job"
+};
+
+function SharePointFolderMappingsPanel() {
+  const { authFetch, user } = useAuth();
+  const isSuperUser = user?.isSuperUser === true;
+  const [mappings, setMappings] = useState<FolderMapping[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{ entityType: FolderMapping["entityType"]; path: string } | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [flash, setFlash] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!isSuperUser) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await authFetch("/admin/sharepoint-folder-mappings");
+      if (!response.ok) throw new Error(await response.text());
+      setMappings((await response.json()) as FolderMapping[]);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, [authFetch, isSuperUser]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  if (!isSuperUser) return null;
+
+  const save = async () => {
+    if (!editing) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const response = await authFetch(
+        `/admin/sharepoint-folder-mappings/${editing.entityType}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ folderPath: editing.path })
+        }
+      );
+      if (!response.ok) {
+        // Server rejects an invalid path with a specific message naming
+        // the folder that wasn't found — surface it verbatim so the
+        // admin can see what's wrong instead of a generic error.
+        const message = await response.text();
+        throw new Error(message);
+      }
+      setFlash(`Updated ${ENTITY_LABELS[editing.entityType]} folder path.`);
+      setEditing(null);
+      await load();
+    } catch (err) {
+      setSaveError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="s7-card" style={{ marginTop: 12 }}>
+      <h2 className="s7-type-section-heading" style={{ marginTop: 0 }}>SharePoint folder mappings</h2>
+      <p style={{ color: "var(--text-muted)", margin: "0 0 10px" }}>
+        Which folder each entity's documents live in. Edit the path and Save — the change is
+        validated against SharePoint and takes effect immediately. No redeploy.
+      </p>
+      {loading ? <p style={{ color: "var(--text-muted)" }}>Loading…</p> : null}
+      {error ? <p style={{ color: "var(--status-danger)" }}>{error}</p> : null}
+      {flash ? <p style={{ color: "#16a34a", margin: "0 0 10px" }}>{flash}</p> : null}
+      {!loading && mappings.length > 0 ? (
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", padding: "6px 8px", borderBottom: "1px solid var(--divider)" }}>Entity</th>
+              <th style={{ textAlign: "left", padding: "6px 8px", borderBottom: "1px solid var(--divider)" }}>Folder path</th>
+              <th style={{ textAlign: "left", padding: "6px 8px", borderBottom: "1px solid var(--divider)", width: 100 }}>Status</th>
+              <th style={{ padding: "6px 8px", borderBottom: "1px solid var(--divider)", width: 80 }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {mappings.map((m) => {
+              const isEditing = editing?.entityType === m.entityType;
+              return (
+                <tr key={m.id}>
+                  <td style={{ padding: "8px", borderBottom: "1px solid var(--divider)" }}>{ENTITY_LABELS[m.entityType]}</td>
+                  <td style={{ padding: "8px", borderBottom: "1px solid var(--divider)" }}>
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        value={editing!.path}
+                        onChange={(e) => setEditing({ entityType: m.entityType, path: e.target.value })}
+                        style={{ width: "100%", padding: 4, fontFamily: "monospace", fontSize: 12 }}
+                        disabled={saving}
+                      />
+                    ) : (
+                      <code style={{ fontSize: 12 }}>{m.folderPath}</code>
+                    )}
+                  </td>
+                  <td style={{ padding: "8px", borderBottom: "1px solid var(--divider)" }}>
+                    {m.isActive ? (
+                      <span style={{ color: "#16a34a" }}>Active</span>
+                    ) : (
+                      <span style={{ color: "var(--text-muted)" }}>Inactive</span>
+                    )}
+                  </td>
+                  <td style={{ padding: "8px", borderBottom: "1px solid var(--divider)", textAlign: "right" }}>
+                    {isEditing ? (
+                      <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
+                        <button
+                          type="button"
+                          className="s7-btn s7-btn--primary"
+                          onClick={() => void save()}
+                          disabled={saving}
+                          style={{ padding: "4px 10px", fontSize: 12 }}
+                        >
+                          {saving ? "Saving…" : "Save"}
+                        </button>
+                        <button
+                          type="button"
+                          className="s7-btn s7-btn--ghost"
+                          onClick={() => {
+                            setEditing(null);
+                            setSaveError(null);
+                          }}
+                          disabled={saving}
+                          style={{ padding: "4px 10px", fontSize: 12 }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="s7-btn s7-btn--ghost"
+                        onClick={() => {
+                          setEditing({ entityType: m.entityType, path: m.folderPath });
+                          setFlash(null);
+                          setSaveError(null);
+                        }}
+                        style={{ padding: "4px 10px", fontSize: 12 }}
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      ) : null}
+      {saveError ? (
+        <p style={{ color: "var(--status-danger)", marginTop: 10, fontSize: 12 }}>{saveError}</p>
+      ) : null}
+      <p style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 12, marginBottom: 0 }}>
+        Paths are relative to the SharePoint library. A path that doesn't exist in the library will
+        be rejected — create the folder in SharePoint first.
+      </p>
     </section>
   );
 }
@@ -645,7 +836,7 @@ function XeroPanel() {
       if (!r.ok) throw new Error(await r.text());
       const body = (await r.json()) as { url: string };
       window.open(body.url, "_blank", "noopener");
-      setInfo("Consent window opened — finish the flow in the new tab.");
+      setInfo("Consent window opened â€” finish the flow in the new tab.");
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -713,7 +904,7 @@ function XeroPanel() {
                 color: "#16a34a"
               }}
             >
-              Connected{status.tenantName ? ` — ${status.tenantName}` : ""}
+              Connected{status.tenantName ? ` â€” ${status.tenantName}` : ""}
             </span>
             <button
               type="button"
@@ -739,7 +930,7 @@ function XeroPanel() {
             onClick={() => void connect()}
             disabled={busy}
           >
-            {busy ? "Working…" : "Connect Xero"}
+            {busy ? "Workingâ€¦" : "Connect Xero"}
           </button>
         )}
       </div>

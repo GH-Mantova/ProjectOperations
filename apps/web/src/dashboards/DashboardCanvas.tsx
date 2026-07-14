@@ -12,6 +12,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useNavigate } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../auth/AuthContext";
+import { can } from "../auth/permissions";
 import { WIDGET_BY_TYPE } from "./widgetRegistry";
 import {
   GRID_ROW_HEIGHT_PX,
@@ -30,7 +31,7 @@ import {
 } from "./types";
 import { CustomisePanel } from "./CustomisePanel";
 import { WidgetGalleryModal } from "./WidgetGalleryModal";
-import { insertWidgetAt } from "./widgetGallery";
+import { insertWidgetAt, removeWidgetById } from "./widgetGallery";
 import { DashboardSwitcher } from "./DashboardSwitcher";
 import { DeleteDashboardModal } from "./DeleteDashboardModal";
 import { WidgetSettingsPopover } from "./WidgetSettingsPopover";
@@ -60,7 +61,7 @@ export function DashboardCanvas({
   actions
 }: Props) {
   const { authFetch, user } = useAuth();
-  const isAdmin = Boolean(user?.isSuperUser || user?.permissions.includes("platform.admin"));
+  const isAdmin = can(user, "platform.admin");
   const { invalidate, remove } = useUserDashboardsActions();
   const navigate = useNavigate();
   const [dashboards, setDashboards] = useState<UserDashboard[] | null>(null);
@@ -296,6 +297,20 @@ export function DashboardCanvas({
     updateConfig(next);
   };
 
+  // True remove — drops the entry entirely (not the Customise `visible:false`
+  // hide) and re-normalizes `order` so it stays contiguous, mirroring the
+  // reorder handler. Closes the settings popover if it belonged to the
+  // removed widget.
+  const removeWidget = (widgetId: string) => {
+    if (!active) return;
+    const next: UserDashboardConfig = {
+      ...active.config,
+      widgets: removeWidgetById(active.config.widgets, widgetId)
+    };
+    if (openSettingsId === widgetId) setOpenSettingsId(null);
+    updateConfig(next);
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
     if (!active) return;
     const { active: dragged, over } = event;
@@ -459,6 +474,7 @@ export function DashboardCanvas({
                       onConfigChange={(nextSub) => updateWidgetConfig(entry.id, nextSub)}
                       onApplySettings={(payload) => applyWidgetSettings(entry.id, payload)}
                       onResize={(colSpan, rowSpan) => updateWidgetSpan(entry.id, colSpan, rowSpan)}
+                      onRemove={() => removeWidget(entry.id)}
                     />
                   </Fragment>
                 );
@@ -555,7 +571,8 @@ function SortableWidget({
   onCloseSettings,
   onConfigChange,
   onApplySettings,
-  onResize
+  onResize,
+  onRemove
 }: {
   entry: WidgetConfigEntry;
   meta: WidgetMeta;
@@ -566,6 +583,7 @@ function SortableWidget({
   onConfigChange: (next: WidgetSubConfig) => void;
   onApplySettings: (payload: { filters?: WidgetFilters; fields?: string[] }) => void;
   onResize: (colSpan: number, rowSpan: number) => void;
+  onRemove: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({
     id: entry.id
@@ -578,6 +596,16 @@ function SortableWidget({
 
   const [ghost, setGhost] = useState<{ colSpan: number; rowSpan: number } | null>(null);
   const slotRef = useRef<HTMLDivElement | null>(null);
+
+  const confirmAndRemove = () => {
+    if (
+      window.confirm(
+        "Remove this widget from the dashboard? You can add it back from Add widget."
+      )
+    ) {
+      onRemove();
+    }
+  };
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -674,6 +702,24 @@ function SortableWidget({
         ) : null}
         <button
           type="button"
+          className="td-canvas__slot-icon td-canvas__slot-icon--danger"
+          aria-label="Remove widget"
+          data-testid={`widget-remove-${entry.type.replace(/_/g, "-")}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            confirmAndRemove();
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+            <path d="M10 11v6" />
+            <path d="M14 11v6" />
+            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+          </svg>
+        </button>
+        <button
+          type="button"
           className="td-canvas__slot-icon td-canvas__slot-icon--drag"
           aria-label="Drag to reorder"
           {...attributes}
@@ -697,6 +743,7 @@ function SortableWidget({
           anchor={slotRef.current}
           onApply={onApplySettings}
           onClose={onCloseSettings}
+          onRemove={onRemove}
         />
       ) : null}
 

@@ -70,7 +70,10 @@ const mockRenderer = {
 function makeService(tender: FakeTender, summary = baseSummary()) {
   const prisma = {
     tender: { findUnique: async () => tender },
-    estimateExport: { create: async () => undefined }
+    estimateExport: { create: async () => undefined },
+    companyProfile: {
+      findUnique: async () => null // exercise the fallback branch
+    }
   } as unknown as ConstructorParameters<typeof EstimateExportService>[0];
   const scope = {
     summary: async () => summary

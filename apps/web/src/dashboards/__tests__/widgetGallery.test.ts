@@ -8,16 +8,21 @@ import {
   defaultFiltersFor,
   galleryKindFor,
   galleryKinds,
+  galleryModules,
   galleryReducer,
   hasDeferredFields,
   initialGalleryState,
   insertWidgetAt,
+  searchWidgets,
   sizeOptionsFor,
+  sortWidgets,
   widgetsForKind,
+  widgetsForModule,
   type GalleryState
 } from "../widgetGallery";
 import { WIDGETS, WIDGET_BY_TYPE } from "../widgetRegistry";
-import type { WidgetConfigEntry } from "../types";
+import { WIDGET_MODULE_ORDER, WIDGET_TAXONOMY } from "../widgets/taxonomy";
+import type { WidgetMeta, WidgetConfigEntry } from "../types";
 
 const entry = (id: string, order: number): WidgetConfigEntry => ({
   id,
@@ -174,6 +179,192 @@ describe("sizeOptionsFor", () => {
     for (const meta of WIDGETS) {
       expect(sizeOptionsFor(meta).some((o) => o.isDefault)).toBe(true);
     }
+  });
+});
+
+describe("searchWidgets", () => {
+  const stub = (type: string, name: string, description: string): WidgetMeta => ({
+    type,
+    name,
+    description,
+    category: "operations",
+    size: "kpi",
+    component: () => null
+  });
+
+  const list: WidgetMeta[] = [
+    stub("a", "Active jobs", "Count of jobs currently active"),
+    stub("b", "Compliance expiring", "Documents that expire soon"),
+    stub("c", "Tender win rate", "Percentage of tenders won this period"),
+    stub("d", "Zebra crossings", "Unrelated safety widget")
+  ];
+
+  it("matches on name (case-insensitive) and returns matches only", () => {
+    expect(searchWidgets(list, "active").map((w) => w.type)).toEqual(["a"]);
+    expect(searchWidgets(list, "ACTIVE").map((w) => w.type)).toEqual(["a"]);
+  });
+
+  it("matches on description as well as name", () => {
+    expect(searchWidgets(list, "expire").map((w) => w.type)).toEqual(["b"]);
+    expect(searchWidgets(list, "tenders").map((w) => w.type)).toEqual(["c"]);
+  });
+
+  it("returns all widgets when query is empty or whitespace", () => {
+    expect(searchWidgets(list, "").map((w) => w.type)).toEqual(["a", "b", "c", "d"]);
+    expect(searchWidgets(list, "   ").map((w) => w.type)).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("returns [] when nothing matches", () => {
+    expect(searchWidgets(list, "nonsense-query")).toEqual([]);
+  });
+});
+
+describe("sortWidgets", () => {
+  const stub = (type: string, name: string): WidgetMeta => ({
+    type,
+    name,
+    description: "",
+    category: "operations",
+    size: "kpi",
+    component: () => null
+  });
+
+  it("sorts by name ascending via localeCompare", () => {
+    const input = [stub("c", "Charlie"), stub("a", "alpha"), stub("b", "Bravo")];
+    expect(sortWidgets(input, "asc").map((w) => w.name)).toEqual(["alpha", "Bravo", "Charlie"]);
+  });
+
+  it("sorts descending", () => {
+    const input = [stub("a", "alpha"), stub("b", "Bravo"), stub("c", "Charlie")];
+    expect(sortWidgets(input, "desc").map((w) => w.name)).toEqual(["Charlie", "Bravo", "alpha"]);
+  });
+
+  it("is stable for entries with the same name", () => {
+    const input = [stub("first", "Same"), stub("second", "Same"), stub("third", "Same")];
+    expect(sortWidgets(input, "asc").map((w) => w.type)).toEqual(["first", "second", "third"]);
+    expect(sortWidgets(input, "desc").map((w) => w.type)).toEqual(["first", "second", "third"]);
+  });
+
+  it("does not mutate the input array", () => {
+    const input = [stub("a", "Beta"), stub("b", "Alpha")];
+    const snapshot = input.map((w) => w.type);
+    sortWidgets(input, "asc");
+    expect(input.map((w) => w.type)).toEqual(snapshot);
+  });
+});
+
+describe("gallery reducer — search + sort", () => {
+  it("setQuery / clearing query toggles between flat search and grouped view", () => {
+    let state = initialGalleryState();
+    expect(state.query).toBe("");
+    state = galleryReducer(state, { type: "setQuery", query: "jobs" });
+    expect(state.query).toBe("jobs");
+    state = galleryReducer(state, { type: "setQuery", query: "" });
+    expect(state.query).toBe("");
+  });
+
+  it("initial sortDir is asc", () => {
+    expect(initialGalleryState().sortDir).toBe("asc");
+  });
+
+  it("toggleSort flips asc <-> desc", () => {
+    let state = initialGalleryState();
+    state = galleryReducer(state, { type: "toggleSort" });
+    expect(state.sortDir).toBe("desc");
+    state = galleryReducer(state, { type: "toggleSort" });
+    expect(state.sortDir).toBe("asc");
+  });
+
+  it("setKind resets sortDir to asc", () => {
+    let state = initialGalleryState("kpi");
+    state = galleryReducer(state, { type: "toggleSort" });
+    expect(state.sortDir).toBe("desc");
+    state = galleryReducer(state, { type: "setKind", kind: "bar" });
+    expect(state.kind).toBe("bar");
+    expect(state.sortDir).toBe("asc");
+  });
+});
+
+describe("WIDGET_TAXONOMY completeness", () => {
+  it("has a taxonomy entry for every registered widget type", () => {
+    const missing: string[] = [];
+    for (const w of WIDGETS) {
+      if (!WIDGET_TAXONOMY[w.type]) missing.push(w.type);
+    }
+    expect(missing).toEqual([]);
+  });
+
+  it("taxonomy modules only reference known WIDGET_MODULE_ORDER entries", () => {
+    for (const [, entry] of Object.entries(WIDGET_TAXONOMY)) {
+      expect(WIDGET_MODULE_ORDER).toContain(entry.module);
+    }
+  });
+});
+
+describe("galleryModules + widgetsForModule", () => {
+  it("returns a module list in NAV_GROUPS order and omits empty submodules", () => {
+    const modules = galleryModules(WIDGETS);
+    const moduleNames = modules.map((m) => m.module);
+    // The registered set spans multiple modules; ordering must match
+    // WIDGET_MODULE_ORDER (Commercial, Operations, Platform, Personal, Custom).
+    expect(moduleNames).toEqual(WIDGET_MODULE_ORDER.filter((m) => moduleNames.includes(m)));
+    for (const node of modules) {
+      for (const sub of node.submodules) {
+        expect(sub.count).toBeGreaterThan(0);
+        expect(widgetsForModule(WIDGETS, node.module, sub.submodule).length).toBe(sub.count);
+      }
+    }
+  });
+
+  it("Commercial > Contracts includes the mis-tagged fin_contracts_summary_kpi", () => {
+    const widgets = widgetsForModule(WIDGETS, "Commercial", "Contracts");
+    expect(widgets.map((w) => w.type)).toContain("fin_contracts_summary_kpi");
+  });
+
+  it("Operations > Sites includes the weather widget", () => {
+    const widgets = widgetsForModule(WIDGETS, "Operations", "Sites");
+    expect(widgets.map((w) => w.type)).toContain("ops_site_weather");
+  });
+
+  it("Platform > Documents includes the Xero sync + recent activity widgets", () => {
+    const widgets = widgetsForModule(WIDGETS, "Platform", "Documents");
+    const types = widgets.map((w) => w.type);
+    expect(types).toContain("plt_xero_sync_health_kpi");
+    expect(types).toContain("plt_recent_activity_list");
+  });
+
+  it("Personal > My day contains the personal_my_day widget", () => {
+    const widgets = widgetsForModule(WIDGETS, "Personal", "My day");
+    expect(widgets.map((w) => w.type)).toEqual(["personal_my_day"]);
+  });
+});
+
+describe("gallery reducer — module view", () => {
+  it("defaults groupMode to \"type\"", () => {
+    expect(initialGalleryState().groupMode).toBe("type");
+  });
+
+  it("setGroupMode switches mode and resets sortDir to asc", () => {
+    let state = initialGalleryState();
+    state = galleryReducer(state, { type: "toggleSort" });
+    expect(state.sortDir).toBe("desc");
+    state = galleryReducer(state, { type: "setGroupMode", mode: "module" });
+    expect(state.groupMode).toBe("module");
+    expect(state.sortDir).toBe("asc");
+  });
+
+  it("setModule stores module/submodule and resets sortDir to asc", () => {
+    let state = initialGalleryState();
+    state = galleryReducer(state, { type: "setGroupMode", mode: "module" });
+    state = galleryReducer(state, { type: "toggleSort" });
+    state = galleryReducer(state, {
+      type: "setModule",
+      module: "Operations",
+      submodule: "Sites"
+    });
+    expect(state.selectedModule).toBe("Operations");
+    expect(state.selectedSubmodule).toBe("Sites");
+    expect(state.sortDir).toBe("asc");
   });
 });
 

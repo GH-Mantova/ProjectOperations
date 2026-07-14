@@ -62,8 +62,10 @@ import { FieldTimesheetPage } from "./pages/field/FieldTimesheetPage";
 import { FieldDocumentsPage } from "./pages/field/FieldDocumentsPage";
 import { FieldSafetyPage } from "./pages/field/FieldSafetyPage";
 import { TimesheetApprovalPage } from "./pages/timesheets/TimesheetApprovalPage";
+import { PayrollExportPage } from "./pages/field/PayrollExportPage";
 import { UserProfilePage } from "./pages/account/UserProfilePage";
 import { AdminSettingsPage } from "./pages/AdminSettingsPage";
+import { AdminCompanyPage } from "./pages/admin/AdminCompanyPage";
 import { AiSettingsPage } from "./personas/pages/AiSettingsPage";
 import { ContractsListPage } from "./pages/contracts/ContractsListPage";
 import { ContractDetailPage } from "./pages/contracts/ContractDetailPage";
@@ -199,11 +201,13 @@ export function App() {
             <Route path="/tenders/:id" element={<TenderDetailPage />} />
             <Route path="/tenders/:id/scope" element={<TenderDetailPage />} />
             <Route path="/tenders/:id/quote" element={<TenderDetailPage />} />
+            <Route path="/tenders/:id/rates" element={<TenderDetailPage />} />
             <Route path="/jobs" element={<JobsListPage />} />
             <Route path="/jobs/:id" element={<JobDetailPage />} />
             <Route path="/projects" element={<ProjectsListPage />} />
             <Route path="/projects/:id" element={<ProjectDetailPage />} />
             <Route path="/timesheets/approval" element={<TimesheetApprovalPage />} />
+            <Route path="/timesheets/payroll-export" element={<PayrollExportPage />} />
             <Route path="/workers" element={<WorkersListPage />} />
             <Route path="/workers/:id" element={<WorkerDetailPage />} />
             <Route path="/resources" element={<ResourcesPage />} />
@@ -224,6 +228,7 @@ export function App() {
             <Route path="/admin/audit" element={<AuditLogsPage />} />
             <Route path="/admin/platform" element={<PlatformPage />} />
             <Route path="/admin/settings" element={<AdminSettingsPage />} />
+            <Route path="/admin/company" element={<AdminCompanyPage />} />
             <Route path="/admin/ai-settings" element={<AiSettingsPage />} />
             <Route path="/contracts" element={<ContractsListPage />} />
             <Route path="/contracts/:id" element={<ContractDetailPage />} />

@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { permissionRegistry } from "../src/common/permissions/permission-registry";
-import { seedEstimateRates } from "./seed-initial-services";
+import { permissionModuleRegistry } from "../src/common/permissions/module-registry";
+import { seedEstimateRates, seedRateTableProjections } from "./seed-initial-services";
 import { seedFormTemplates } from "./seed-form-templates";
 
 export async function seedPermissionsAndCoreRoles(prisma: PrismaClient) {
@@ -10,9 +11,30 @@ export async function seedPermissionsAndCoreRoles(prisma: PrismaClient) {
         where: { code: permission.code },
         update: {
           description: permission.description,
-          module: permission.module
+          module: permission.module,
+          label: permission.label,
+          isHighRisk: ("isHighRisk" in permission ? permission.isHighRisk : false) ?? false
         },
-        create: permission
+        create: {
+          code: permission.code,
+          description: permission.description,
+          module: permission.module,
+          label: permission.label,
+          isHighRisk: ("isHighRisk" in permission ? permission.isHighRisk : false) ?? false
+        }
+      })
+    )
+  );
+
+  // Sync permission-module display names (data-driven titles for the
+  // /admin/settings matrix). Additive — extra rows in the DB are left alone
+  // so an operator's manual reword survives a seed.
+  await Promise.all(
+    permissionModuleRegistry.map((mod) =>
+      prisma.permissionModule.upsert({
+        where: { name: mod.name },
+        update: { label: mod.label },
+        create: { name: mod.name, label: mod.label }
       })
     )
   );
@@ -21,6 +43,11 @@ export async function seedPermissionsAndCoreRoles(prisma: PrismaClient) {
   // have its Permission + RolePermission rows from previous seed runs, which
   // surface as stale entries in every Admin JWT. Delete RolePermission first
   // (FK), then the Permission itself. No-op on clean DBs.
+  //
+  // This is the ONE case where the seed touches RolePermission — and only
+  // via the Permission cascade path, i.e. when the underlying Permission
+  // itself is gone. It never deletes a RolePermission whose Permission still
+  // exists (see S3-016 fix below).
   const registryCodes = permissionRegistry.map((p) => p.code);
   await prisma.rolePermission.deleteMany({
     where: { permission: { code: { notIn: registryCodes } } }
@@ -84,13 +111,21 @@ export async function seedPermissionsAndCoreRoles(prisma: PrismaClient) {
     }
   });
 
-  await prisma.rolePermission.deleteMany({
-    where: {
-      roleId: { in: [adminRole.id, plannerRole.id, fieldRole.id, viewerRole.id] }
-    }
-  });
-
+  // S3-016 fix (Marco, 2026-07-13): additive-only. We used to `deleteMany`
+  // every RolePermission for these four core roles and rebuild from the
+  // seed — which silently reverted every deliberate grant/revoke an admin
+  // made in /admin/settings.
+  //
+  // New rule: the seed may ADD missing baseline grants (via createMany
+  // + skipDuplicates on the unique [roleId, permissionId] index), but it
+  // must NEVER delete a RolePermission row it did not create in this run.
+  // An admin's deliberate configuration outranks the seed's defaults.
+  //
+  // If a "reset roles to defaults" capability is wanted, it is an
+  // explicit, audited, super-user-only button in the UI — never a silent
+  // side-effect of the seed. Not built in this PR.
   await prisma.rolePermission.createMany({
+    skipDuplicates: true,
     data: [
       ...permissions.map((permission) => ({
         roleId: adminRole.id,
@@ -229,15 +264,15 @@ export async function seedPermissionsAndCoreRoles(prisma: PrismaClient) {
     ]
   });
 
-  // Viewer role: only permissions whose code ends in ".view" — picked up
-  // automatically as new modules add view permissions to the registry.
-  const viewerPermissions = permissions.filter((p) => p.code.endsWith(".view"));
-  await prisma.rolePermission.createMany({
-    data: viewerPermissions.map((p) => ({
-      roleId: viewerRole.id,
-      permissionId: p.id
-    }))
-  });
+  // Viewer's permission set is owned by seed-initial-services.ts
+  // (`seedOperationalRoles`), which grants an explicit narrow list of `.view`
+  // codes. Granting "every .view permission" here (as the pre-S3-016 seed did)
+  // paired with the additive-only rule leaves Viewer holding view codes the
+  // operational role never intended (e.g. projects.view, audit.view) — the
+  // pre-S3-016 `deleteMany` in seed-initial-services was what narrowed it.
+  // Keep this file as the platform baseline (roles exist, admins get
+  // everything, planner/field get their explicit grants); let
+  // seed-initial-services own the Viewer overlay.
 
   return { adminRole, plannerRole, fieldRole, viewerRole };
 }
@@ -584,6 +619,7 @@ export async function seedReferenceData(
   });
   await seedLookups(prisma);
   await seedEstimateRates(prisma);
+  await seedRateTableProjections(prisma);
   await seedFormTemplates(prisma);
 
   const listsOwnerId =
@@ -603,6 +639,10 @@ export async function seedReferenceData(
   await seedNotificationTriggerConfigs(prisma);
   await seedPersonaRegistry(prisma);
   await seedProcurementConfig(prisma);
+  // CompanyProfile singleton — insert-if-absent so manual admin edits
+  // survive re-seed (CP-08 discipline).
+  const { seedCompanyProfile } = await import("./seed-company-profile.js");
+  await seedCompanyProfile(prisma);
 }
 
 /**

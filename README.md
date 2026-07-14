@@ -120,7 +120,7 @@ Use:
 
 Details:
 
-- [SharePoint + Local Workflow](./docs/sharepoint-local-workflow.md)
+- [SharePoint + Local Workflow](./sot/01-charter-and-architecture.md) — see the Charter & Architecture appendix
 
 7. Open:
 
@@ -141,8 +141,10 @@ Details:
 
 ## Documentation
 
+**Source of truth lives in [`/sot/`](./sot/README.md)** — charter & architecture, roadmap, progress log, data model, decisions & lessons, and active specs.
+
+- [Source of Truth — start here](./sot/README.md) — the `/sot/` folder + its routing/law
+- [Charter & Architecture](./sot/01-charter-and-architecture.md) — company, tech stack, architecture rules, code conventions, business logic (was `docs/architecture-overview.md` + `project_instructions.md`)
 - [Setup & Local Development](./docs/setup-and-local-development.md) — first-time setup, day-to-day commands, and environment-variable reference
-- [Architecture Overview](./docs/architecture-overview.md)
-- [SharePoint + Local Workflow](./docs/sharepoint-local-workflow.md)
 - [Deployment Guide](./docs/deployment-guide.md)
-- [Module Build Log](./docs/module-build-log.md)
+- [Progress Log](./sot/03-progress-log.md) — per-PR history (was `docs/module-build-log.md`)

@@ -6,6 +6,13 @@
  * Keep this file logic-only (no React/JSX) so it can be unit-tested cheaply.
  */
 
+import {
+  JOB_STATUSES,
+  JOB_STATUS_LABELS,
+  PROJECT_STATUSES,
+  PROJECT_STATUS_LABELS
+} from "../constants/statuses";
+
 export type DataSourceKey =
   | "tenders"
   | "jobs"
@@ -55,28 +62,16 @@ export const DATA_SOURCES: DataSourceMeta[] = [
     key: "jobs",
     label: "Jobs",
     statusField: "status",
-    statusLabels: {
-      ACTIVE: "Active",
-      COMPLETE: "Complete",
-      ON_HOLD: "On hold",
-      PENDING: "Pending",
-      CANCELLED: "Cancelled"
-    },
-    statusOptions: ["ACTIVE", "COMPLETE", "ON_HOLD", "PENDING", "CANCELLED"],
+    statusLabels: { ...JOB_STATUS_LABELS },
+    statusOptions: [...JOB_STATUSES],
     timeField: "createdAt"
   },
   {
     key: "projects",
     label: "Projects",
     statusField: "status",
-    statusLabels: {
-      MOBILISING: "Mobilising",
-      ACTIVE: "Active",
-      PRACTICAL_COMPLETION: "Practical completion",
-      DEFECTS: "Defects",
-      COMPLETE: "Complete"
-    },
-    statusOptions: ["MOBILISING", "ACTIVE", "PRACTICAL_COMPLETION", "DEFECTS", "COMPLETE"],
+    statusLabels: { ...PROJECT_STATUS_LABELS },
+    statusOptions: [...PROJECT_STATUSES],
     valueField: "contractValue"
   },
   {

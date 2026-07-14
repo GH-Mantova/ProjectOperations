@@ -42,6 +42,11 @@ export const proposeQuoteContentTool: ToolDefinition = {
         description:
           "The target ClientQuote id (from list_tender_quotes). The quote MUST belong to the active tender and MUST be in DRAFT status — proposing into a SENT or SUPERSEDED quote will be rejected at accept time."
       },
+      sourceTenderEstimateId: {
+        type: "string",
+        description:
+          "OPTIONAL traceability pointer. If set, the ClientQuote is stamped with this TenderEstimate id at accept time so downstream reporting can trace the quote back to the internal estimate it was derived from. Must belong to the same tender as the quote."
+      },
       costLines: {
         type: "array",
         description: "Proposed quote cost-line structure (label + description).",
@@ -63,6 +68,23 @@ export const proposeQuoteContentTool: ToolDefinition = {
               minimum: 0,
               description:
                 "OPTIONAL. Include ONLY when the user explicitly stated a specific figure. Never invent or estimate a price — the line will be created at 0 if omitted."
+            },
+            sourceEstimateLineType: {
+              type: "string",
+              enum: [
+                "EstimateLabourLine",
+                "EstimatePlantLine",
+                "EstimateEquipLine",
+                "EstimateWasteLine",
+                "EstimateCuttingLine"
+              ],
+              description:
+                "OPTIONAL traceability tag naming the Estimate*Line model this quote line was derived from. Must be paired with sourceEstimateLineId; either both are supplied or neither. Read-only reference — no pricing is inherited."
+            },
+            sourceEstimateLineId: {
+              type: "string",
+              description:
+                "OPTIONAL id of the Estimate*Line row this quote line was derived from. Must be paired with sourceEstimateLineType."
             }
           },
           required: ["label", "description"]
@@ -106,10 +128,25 @@ export const proposeQuoteContentTool: ToolDefinition = {
   }
 };
 
+/** Estimate*Line variants a quote cost line may point back to. Kept as a
+ *  TS union rather than a Prisma enum because the pointer stays polymorphic —
+ *  five distinct tables with no shared parent. Adding a value here should
+ *  match the enum in the tool JSON schema above. */
+export type EstimateLineType =
+  | "EstimateLabourLine"
+  | "EstimatePlantLine"
+  | "EstimateEquipLine"
+  | "EstimateWasteLine"
+  | "EstimateCuttingLine";
+
 export type QuoteCostLineProposal = {
   label: string;
   description: string;
   price?: number;
+  // Both traceability fields are optional but must be set together — enforced
+  // at accept time in QuoteProposalsService.
+  sourceEstimateLineType?: EstimateLineType;
+  sourceEstimateLineId?: string;
 };
 
 export type QuoteExclusionProposal = {
@@ -122,6 +159,7 @@ export type QuoteAssumptionProposal = {
 
 export type ProposeQuoteContentArgs = {
   quoteId: string;
+  sourceTenderEstimateId?: string;
   costLines?: QuoteCostLineProposal[];
   exclusions?: QuoteExclusionProposal[];
   assumptions?: QuoteAssumptionProposal[];

@@ -122,7 +122,7 @@ export type ConfigField = {
   label: string;
   type: ConfigFieldType;
   options?: ConfigFieldOption[];
-  dynamicOptions?: "estimators" | "formTemplates";
+  dynamicOptions?: "estimators" | "formTemplates" | "sites";
   defaultValue?: string | number | string[] | null;
   min?: number;
   max?: number;
@@ -135,6 +135,10 @@ export type WidgetMeta = {
   type: string;
   name: string;
   category: WidgetCategory;
+  /** Optional submodule tag — the gallery's "Group by Module" view uses this.
+   *  The central source of truth lives in `widgets/taxonomy.ts`; this field
+   *  is reserved for widgets that want to override the taxonomy inline. */
+  submodule?: string;
   description: string;
   /** Legacy size tag — still used by the registry; resolveSpan() translates
    *  it into colSpan/rowSpan when new fields are absent. */

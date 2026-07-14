@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { CenteredModal, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { can } from "../../auth/permissions";
 import { QualificationsSection } from "./QualificationsSection";
 import { AvailabilitySection } from "./AvailabilitySection";
 
@@ -48,7 +49,7 @@ export function WorkerDetailPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [deactivating, setDeactivating] = useState(false);
 
-  const canManage = useMemo(() => user?.permissions.includes("resources.manage") ?? false, [user]);
+  const canManage = useMemo(() => can(user, "resources.manage"), [user]);
 
   const load = useCallback(async () => {
     if (!id) return;

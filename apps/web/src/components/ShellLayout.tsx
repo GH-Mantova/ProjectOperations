@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { can, isAdminUser } from "../auth/permissions";
+import { buildInfo } from "../buildInfo";
 import { NotificationsDropdown } from "./NotificationsDropdown";
 import { CommandPalette } from "./CommandPalette";
 import { FeedbackButton } from "./FeedbackButton";
@@ -20,6 +22,10 @@ type NavItem = {
   icon: ReactNode;
   match?: (pathname: string) => boolean;
   badge?: "safety" | "compliance";
+  // Optional per-item gate. When set, the item is hidden from users who do
+  // not have the permission. The route itself still renders a NoAccess page
+  // if a user reaches the URL directly (defence-in-depth).
+  requiresPermission?: string;
 };
 
 type NavGroup = {
@@ -149,7 +155,7 @@ const ICON_EXPAND = (
   </svg>
 );
 
-const NAV_GROUPS: NavGroup[] = [
+export const NAV_GROUPS: NavGroup[] = [
   {
     id: "commercial",
     label: "Commercial",
@@ -162,7 +168,21 @@ const NAV_GROUPS: NavGroup[] = [
           path === "/tenders" ||
           (path.startsWith("/tenders/") &&
             !path.startsWith("/tenders/dashboard") &&
-            !path.startsWith("/tenders/reports"))
+            !path.startsWith("/tenders/reports") &&
+            !path.startsWith("/tenders/contacts") &&
+            !path.startsWith("/tenders/settings"))
+      },
+      {
+        to: "/tenders/contacts",
+        label: "Tender Contacts",
+        icon: ICON_WORKERS,
+        match: (path) => path.startsWith("/tenders/contacts")
+      },
+      {
+        to: "/tenders/settings",
+        label: "Tendering Settings",
+        icon: ICON_AUDIT,
+        match: (path) => path.startsWith("/tenders/settings")
       },
       {
         to: "/contracts",
@@ -198,6 +218,16 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/procurement", label: "Procurement", icon: ICON_ASSETS },
       { to: "/maintenance", label: "Maintenance", icon: ICON_MAINTENANCE },
       { to: "/forms", label: "Forms", icon: ICON_FORMS },
+      {
+        // §7 payroll export: dedicated page over the existing CSV endpoint.
+        // Requires field.manage; NoAccess surfaces the missing code when a
+        // user without the permission lands on the route.
+        to: "/timesheets/payroll-export",
+        label: "Payroll Export",
+        icon: ICON_FORMS,
+        match: (path) => path.startsWith("/timesheets/payroll-export"),
+        requiresPermission: "field.manage"
+      },
       {
         // Safety lives under OPERATIONS per project_instructions §9. Badge
         // surfaces open incidents — see SafetyBadge below.
@@ -256,6 +286,7 @@ const NAV_GROUPS: NavGroup[] = [
     adminOnly: true,
     items: [
       { to: "/admin/settings", label: "Admin Settings", icon: ICON_AUDIT },
+      { to: "/admin/company", label: "Company Profile", icon: ICON_CLIENTS },
       { to: "/admin/rates-lists", label: "Rates & Lists", icon: ICON_TENDERING },
       { to: "/admin/estimate-rates", label: "Legacy estimate rates", icon: ICON_TENDERING },
       { to: "/admin/job-roles", label: "Job Roles", icon: ICON_AUDIT },
@@ -291,6 +322,7 @@ const BREADCRUMBS: Record<string, string> = {
   "/": "Dashboard",
   "/projects": "Projects",
   "/timesheets/approval": "Timesheets",
+  "/timesheets/payroll-export": "Payroll Export",
   "/jobs": "Jobs",
   "/scheduler": "Scheduler",
   "/scheduler/availability-report": "Availability report",
@@ -299,6 +331,8 @@ const BREADCRUMBS: Record<string, string> = {
   "/tenders": "Tendering",
   "/tenders/dashboard": "Tender Dashboard",
   "/tenders/reports": "Tender Reports",
+  "/tenders/contacts": "Tender Contacts",
+  "/tenders/settings": "Tendering Settings",
   "/workers": "Workers",
   "/resources": "Workers (legacy)",
   "/assets": "Assets",
@@ -320,6 +354,7 @@ const BREADCRUMBS: Record<string, string> = {
   "/admin/audit": "Audit",
   "/admin/platform": "Platform",
   "/admin/settings": "Admin Settings",
+  "/admin/company": "Company Profile",
   "/admin/job-roles": "Job Roles",
   "/contracts": "Contracts"
 };
@@ -359,10 +394,7 @@ export function ShellLayout() {
     [allDashboards]
   );
 
-  const isAdmin = useMemo(() => {
-    const roleNames = user?.roles?.map((role) => role.name) ?? [];
-    return roleNames.includes("Admin");
-  }, [user?.roles]);
+  const isAdmin = isAdminUser(user);
 
   useEffect(() => {
     let cancelled = false;
@@ -418,7 +450,13 @@ export function ShellLayout() {
   const initials = initialsOf(user?.firstName, user?.lastName, user?.email);
   const primaryRole = user?.roles?.[0]?.name ?? "Member";
 
-  const filteredGroups = NAV_GROUPS.filter((group) => !group.adminOnly || isAdmin);
+  const filteredGroups = NAV_GROUPS
+    .filter((group) => !group.adminOnly || isAdmin)
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => !item.requiresPermission || can(user, item.requiresPermission))
+    }))
+    .filter((group) => group.items.length > 0);
 
   return (
     <PersonaProvider>
@@ -432,6 +470,8 @@ export function ShellLayout() {
             className="shell__collapse-toggle"
             onClick={() => setCollapsed((current) => !current)}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!collapsed}
+            data-testid="sidebar-collapse-toggle"
           >
             {collapsed ? ICON_EXPAND : ICON_COLLAPSE}
           </button>
@@ -535,6 +575,19 @@ export function ShellLayout() {
               </span>
               <span className="shell__sidebar-user-role">{primaryRole}</span>
             </div>
+          </div>
+          <div
+            className="shell__sidebar-build"
+            title={buildInfo.builtAt ? `Built ${buildInfo.builtAt}` : undefined}
+            style={{
+              fontSize: 11,
+              opacity: 0.55,
+              padding: "0 4px 6px",
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+              letterSpacing: 0.2
+            }}
+          >
+            build {buildInfo.shortSha}
           </div>
           <button type="button" className="shell__sidebar-logout" onClick={logout} aria-label="Logout">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

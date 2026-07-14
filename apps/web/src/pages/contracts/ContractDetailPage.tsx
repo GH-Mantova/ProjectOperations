@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { can } from "../../auth/permissions";
 
 type ContractStatus = "ACTIVE" | "PRACTICAL_COMPLETION" | "DEFECTS" | "CLOSED";
 type VariationStatus = "RECEIVED" | "PRICED" | "SUBMITTED" | "APPROVED";
@@ -75,8 +76,8 @@ type Tab = "overview" | "variations" | "claims";
 export function ContractDetailPage() {
   const { id } = useParams();
   const { authFetch, user } = useAuth();
-  const canManage = user?.permissions.includes("finance.manage") ?? false;
-  const canAdmin = user?.permissions.includes("finance.admin") ?? false;
+  const canManage = can(user, "finance.manage");
+  const canAdmin = can(user, "finance.admin");
   const [contract, setContract] = useState<Contract | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
   const [error, setError] = useState<string | null>(null);

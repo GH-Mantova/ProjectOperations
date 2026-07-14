@@ -48,12 +48,31 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.resolve(__dirname, "..", "..");
-const PROMPT_DIR = path.join(REPO_ROOT, "docs", "pr-prompts");
+// Isolation: the watcher can run against a dedicated clone (its own .git)
+// so automation never churns the interactive working tree's HEAD/index.
+// Unset -> unchanged (repo root two levels up from this script).
+const REPO_ROOT = process.env.PR_WATCHER_REPO_ROOT
+  ? path.resolve(process.env.PR_WATCHER_REPO_ROOT)
+  : path.resolve(__dirname, "..", "..");
+// Orphaned-worktree sweep runs ONLY in isolated-clone mode. When
+// PR_WATCHER_REPO_ROOT is unset, REPO_ROOT is the interactive tree, which may
+// hold the user's own legitimate feature-branch worktrees — never sweep those.
+const WORKTREE_SWEEP = !!process.env.PR_WATCHER_REPO_ROOT;
+// The prompt QUEUE can live outside the git clone: scheduled agents
+// (pr-shepherd / watcher-triage / night-qa) and Marco only see the interactive
+// tree, so a queue nested inside PR_WATCHER_REPO_ROOT strands staged prompts.
+// PR_WATCHER_PROMPT_DIR moves the queue anywhere; git/build stay on REPO_ROOT.
+export function resolvePromptDir(env, repoRoot) {
+  return env.PR_WATCHER_PROMPT_DIR
+    ? path.resolve(env.PR_WATCHER_PROMPT_DIR)
+    : path.join(repoRoot, "docs", "pr-prompts");
+}
+const PROMPT_DIR = resolvePromptDir(process.env, REPO_ROOT);
 const PROCESSED_DIR = path.join(PROMPT_DIR, "processed");
 const FAILED_DIR = path.join(PROMPT_DIR, "failed");
 const BLOCKED_DIR = path.join(PROMPT_DIR, "blocked");
 const PAUSED_DIR = path.join(PROMPT_DIR, "paused");
+const NO_PR_DIR = path.join(PROMPT_DIR, "no-pr-opened");
 
 const READY_PATTERN = /^(pr|rev)-.*-ready\.md$/i;
 const DEBOUNCE_MS = 800;
@@ -156,6 +175,46 @@ export function isRunTimedOut(elapsedMs, capMs) {
   return capMs > 0 && elapsedMs >= capMs;
 }
 
+// Extract worktree paths from `git worktree list --porcelain`, excluding the
+// main working tree. Pure + exported for unit testing.
+export function parseWorktreePaths(porcelain, mainPath) {
+  const main = path.resolve(mainPath);
+  const out = [];
+  for (const line of (porcelain ?? "").split(/\r?\n/)) {
+    if (line.startsWith("worktree ")) {
+      const p = line.slice("worktree ".length).trim();
+      if (p && path.resolve(p) !== main) out.push(p);
+    }
+  }
+  return out;
+}
+
+// Reclaim every worktree except the watcher's own REPO_ROOT. Only ever called
+// when no child is running (startup, or between jobs). Best-effort — never throws.
+async function sweepOrphanWorktrees() {
+  if (!WORKTREE_SWEEP) return;
+  let listing;
+  try {
+    await runGit(["worktree", "prune"]);
+    listing = await runGit(["worktree", "list", "--porcelain"]);
+  } catch (err) {
+    log("worktree", `sweep skipped: ${err.message}`);
+    return;
+  }
+  const paths = parseWorktreePaths(listing, REPO_ROOT);
+  for (const p of paths) {
+    try {
+      await runGit(["worktree", "remove", "--force", p]);
+      log("worktree", `reclaimed orphan worktree ${p}`);
+    } catch (err) {
+      log("worktree", `could not remove ${p}: ${err.message}`);
+    }
+  }
+  if (paths.length > 0) {
+    try { await runGit(["worktree", "prune"]); } catch { /* best-effort */ }
+  }
+}
+
 export function isTransientFailure(text) {
   if (!text) return false;
   const tail = text.length > 16384 ? text.slice(-16384) : text;
@@ -254,6 +313,7 @@ async function ensureDirs() {
   await mkdir(FAILED_DIR, { recursive: true });
   await mkdir(BLOCKED_DIR, { recursive: true });
   await mkdir(PAUSED_DIR, { recursive: true });
+  await mkdir(NO_PR_DIR, { recursive: true });
 }
 
 function isReady(name) {
@@ -1167,6 +1227,7 @@ async function drain() {
   }
 
   running = true;
+  await sweepOrphanWorktrees();
   const filePath = queue.shift();
   const name = path.basename(filePath);
 
@@ -1383,8 +1444,26 @@ async function drain() {
     if (AUTO_MERGE && !reviewJob) {
       const prNumber = extractPrNumber(agentOutput);
       if (prNumber == null) {
-        mergeReport = `\n\n---\n[watcher] no PR number found in agent output — skipping auto-merge\n`;
-        log("merge", `${name}: no PR number in output, skipping auto-merge`);
+        // Agent exited 0 but never opened a PR. Treating this as success has
+        // caused fully-specified prompts to silently vanish into processed/.
+        // Route to no-pr-opened/ so a human can triage: legitimately no PR
+        // needed vs. silent failure is a judgment call, not a heuristic.
+        const reason =
+          "WATCHER: agent exited 0 but no PR number was found in its output — " +
+          "filed to no-pr-opened/ for manual review, NOT treated as success.";
+        const dest = path.join(NO_PR_DIR, name);
+        const logDest = path.join(NO_PR_DIR, `${name}.log`);
+        try {
+          await rename(filePath, dest);
+          await writeFile(logDest, `${reason}\n\n${logBody}`);
+          log("NO-PR", `${name} → no-pr-opened/ (agent exited 0 but no PR number found)`);
+        } catch (err) {
+          log("error", `move no-pr: ${err.message}`);
+        }
+        seen.delete(name);
+        running = false;
+        drain();
+        return;
       } else {
         log("merge", `${name}: opened PR #${prNumber}, policy=${AUTO_MERGE_POLICY}, waiting…`);
         const result =
@@ -1581,6 +1660,7 @@ async function main() {
   await acquireLock();
   await ensureDirs();
   log("watcher", `repo:        ${REPO_ROOT}`);
+  log("watcher", `prompt-dir:  ${PROMPT_DIR}`);
   log("watcher", `watching     ${PROMPT_DIR}`);
   log("watcher", `pattern:     (pr|rev)-*-ready.md`);
   log("watcher", `claude:      ${CLAUDE_BIN}`);
@@ -1608,6 +1688,7 @@ async function main() {
   warnOnOrphanClaudeProcesses();
   await sweepMalformedLiteralPathDirs();
   await reapPreviousChildren();
+  await sweepOrphanWorktrees();
 
   await scanExisting();
 

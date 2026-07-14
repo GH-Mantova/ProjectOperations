@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useState } from "react";
+import { useEffect, useMemo, useReducer, useState, type Dispatch } from "react";
 import { BarChartWidget, CenteredModal, DonutChartWidget, KpiCard, LineChartWidget } from "@project-ops/ui";
 import {
   CUSTOM_WIDGET_TYPE,
@@ -19,12 +19,19 @@ import {
   configurableFields,
   galleryKindFor,
   galleryKinds,
+  galleryModules,
   galleryReducer,
   hasDeferredFields,
   initialGalleryState,
+  searchWidgets,
   sizeOptionsFor,
+  sortWidgets,
   widgetsForKind,
-  type GalleryKind
+  widgetsForModule,
+  type GalleryAction,
+  type GalleryGroupMode,
+  type GalleryKind,
+  type GalleryState
 } from "./widgetGallery";
 import { WIDGETS, WIDGET_BY_TYPE } from "./widgetRegistry";
 import {
@@ -120,43 +127,15 @@ export function WidgetGalleryModal({ globalPeriod, onClose, onAdd }: Props) {
     >
       {stepIndicator}
       {state.step === "choose" ? (
-        <div className="wg-body">
-          <nav className="wg-cats" aria-label="Widget categories">
-            {kinds.map((kind) => (
-              <button
-                key={kind}
-                type="button"
-                className={kind === state.kind ? "wg-cat wg-cat--active" : "wg-cat"}
-                onClick={() => dispatch({ type: "setKind", kind })}
-              >
-                <span aria-hidden>{GALLERY_KIND_ICONS[kind]}</span> {GALLERY_KIND_LABELS[kind]}
-              </button>
-            ))}
-          </nav>
-          <div className="wg-gallery" role="listbox" aria-label="Widget types">
-            {widgetsForKind(WIDGETS, state.kind).map((meta) => (
-              <button
-                key={meta.type}
-                type="button"
-                role="option"
-                aria-selected={state.selectedTypeId === meta.type}
-                className={state.selectedTypeId === meta.type ? "wg-gcard wg-gcard--selected" : "wg-gcard"}
-                onClick={() => dispatch({ type: "select", meta })}
-                data-testid={`gallery-card-${meta.type.replace(/_/g, "-")}`}
-              >
-                {/* Inner wrapper: buttons are not reliable flex containers in
-                    Chrome, so the column layout lives on a child element. */}
-                <div className="wg-gcard__body">
-                  <div className="wg-thumb" aria-hidden>
-                    <GalleryThumb kind={galleryKindFor(meta)} name={meta.name} />
-                  </div>
-                  <span className="wg-gcard__title">{meta.name}</span>
-                  <span className="wg-gcard__desc">{meta.description}</span>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
+        <>
+          <ChooseToolbar
+            query={state.query}
+            onQueryChange={(query) => dispatch({ type: "setQuery", query })}
+            groupMode={state.groupMode}
+            onGroupModeChange={(mode) => dispatch({ type: "setGroupMode", mode })}
+          />
+          <ChooseBody state={state} dispatch={dispatch} />
+        </>
       ) : selectedMeta ? (
         <div className="wg-config">
           <div className="wg-form">
@@ -229,6 +208,201 @@ export function WidgetGalleryModal({ globalPeriod, onClose, onAdd }: Props) {
         </div>
       ) : null}
     </CenteredModal>
+  );
+}
+
+// ── Step-1 toolbar + body ────────────────────────────────────
+
+function ChooseToolbar({
+  query,
+  onQueryChange,
+  groupMode,
+  onGroupModeChange
+}: {
+  query: string;
+  onQueryChange: (query: string) => void;
+  groupMode: GalleryGroupMode;
+  onGroupModeChange: (mode: GalleryGroupMode) => void;
+}) {
+  return (
+    <div className="wg-toolbar">
+      <div className="wg-toolbar__search">
+        <input
+          type="search"
+          className="s7-input"
+          placeholder="Search widgets..."
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          aria-label="Search widgets"
+          data-testid="gallery-search"
+        />
+        {query ? (
+          <button
+            type="button"
+            className="wg-toolbar__clear"
+            onClick={() => onQueryChange("")}
+            aria-label="Clear search"
+            data-testid="gallery-search-clear"
+          >
+            ×
+          </button>
+        ) : null}
+      </div>
+      <div
+        className="wg-toolbar__group"
+        role="group"
+        aria-label="Group widgets by"
+        data-testid="gallery-group-toggle"
+      >
+        <span className="wg-toolbar__group-label">Group by:</span>
+        <button
+          type="button"
+          aria-pressed={groupMode === "type"}
+          className={groupMode === "type" ? "wg-pill wg-pill--on" : "wg-pill"}
+          onClick={() => onGroupModeChange("type")}
+          data-testid="gallery-group-type"
+        >
+          Type
+        </button>
+        <button
+          type="button"
+          aria-pressed={groupMode === "module"}
+          className={groupMode === "module" ? "wg-pill wg-pill--on" : "wg-pill"}
+          onClick={() => onGroupModeChange("module")}
+          data-testid="gallery-group-module"
+        >
+          Module
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ChooseBody({
+  state,
+  dispatch
+}: {
+  state: GalleryState;
+  dispatch: Dispatch<GalleryAction>;
+}) {
+  const kinds = useMemo(() => galleryKinds(WIDGETS), []);
+  const modules = useMemo(() => galleryModules(WIDGETS), []);
+  const isSearching = state.query.trim().length > 0;
+  const isModule = state.groupMode === "module";
+
+  // First non-empty module/submodule — used as the initial selection when the
+  // user first switches into module view.
+  const firstModule = modules[0];
+  const firstSubmodule = firstModule?.submodules[0];
+  const activeModule = state.selectedModule ?? firstModule?.module ?? null;
+  const activeSubmodule = state.selectedSubmodule ?? firstSubmodule?.submodule ?? null;
+
+  const baseList = isSearching
+    ? searchWidgets(WIDGETS, state.query)
+    : isModule && activeModule && activeSubmodule
+    ? widgetsForModule(WIDGETS, activeModule, activeSubmodule)
+    : widgetsForKind(WIDGETS, state.kind);
+  const list = sortWidgets(baseList, state.sortDir);
+
+  const headerTitle = isSearching
+    ? `Results (${list.length})`
+    : isModule && activeModule && activeSubmodule
+    ? `${activeModule} › ${activeSubmodule}`
+    : GALLERY_KIND_LABELS[state.kind];
+
+  return (
+    <div className="wg-body">
+      {isSearching ? null : isModule ? (
+        <nav className="wg-cats wg-cats--modules" aria-label="Widget modules">
+          {modules.map((node) => (
+            <div key={node.module} className="wg-cat-group">
+              <span className="wg-cat-group__label">{node.module}</span>
+              {node.submodules.map((sub) => {
+                const on =
+                  activeModule === node.module && activeSubmodule === sub.submodule;
+                return (
+                  <button
+                    key={`${node.module}-${sub.submodule}`}
+                    type="button"
+                    className={on ? "wg-cat wg-cat--active" : "wg-cat"}
+                    onClick={() =>
+                      dispatch({
+                        type: "setModule",
+                        module: node.module,
+                        submodule: sub.submodule
+                      })
+                    }
+                    data-testid={`gallery-module-${node.module}-${sub.submodule}`.replace(/\s+/g, "-").toLowerCase()}
+                  >
+                    <span>{sub.submodule}</span>
+                    <span className="wg-cat__count" aria-hidden>
+                      {sub.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </nav>
+      ) : (
+        <nav className="wg-cats" aria-label="Widget categories">
+          {kinds.map((kind) => (
+            <button
+              key={kind}
+              type="button"
+              className={kind === state.kind ? "wg-cat wg-cat--active" : "wg-cat"}
+              onClick={() => dispatch({ type: "setKind", kind })}
+            >
+              <span aria-hidden>{GALLERY_KIND_ICONS[kind]}</span> {GALLERY_KIND_LABELS[kind]}
+            </button>
+          ))}
+        </nav>
+      )}
+      <div className="wg-gallery-wrap">
+        <div className="wg-gallery-header">
+          <span className="wg-gallery-header__title">{headerTitle}</span>
+          <button
+            type="button"
+            aria-pressed={state.sortDir === "desc"}
+            className={state.sortDir === "desc" ? "wg-pill wg-pill--on" : "wg-pill"}
+            onClick={() => dispatch({ type: "toggleSort" })}
+            data-testid="gallery-sort-toggle"
+            aria-label={`Sort by name, currently ${state.sortDir === "asc" ? "A to Z" : "Z to A"}`}
+          >
+            {state.sortDir === "asc" ? "A → Z" : "Z → A"}
+          </button>
+        </div>
+        {list.length === 0 ? (
+          <div className="wg-gallery-empty" data-testid="gallery-empty">
+            No widgets match “{state.query.trim()}”.
+          </div>
+        ) : (
+          <div className="wg-gallery" role="listbox" aria-label="Widget types">
+            {list.map((meta) => (
+              <button
+                key={meta.type}
+                type="button"
+                role="option"
+                aria-selected={state.selectedTypeId === meta.type}
+                className={state.selectedTypeId === meta.type ? "wg-gcard wg-gcard--selected" : "wg-gcard"}
+                onClick={() => dispatch({ type: "select", meta })}
+                data-testid={`gallery-card-${meta.type.replace(/_/g, "-")}`}
+              >
+                {/* Inner wrapper: buttons are not reliable flex containers in
+                    Chrome, so the column layout lives on a child element. */}
+                <div className="wg-gcard__body">
+                  <div className="wg-thumb" aria-hidden>
+                    <GalleryThumb kind={galleryKindFor(meta)} name={meta.name} />
+                  </div>
+                  <span className="wg-gcard__title">{meta.name}</span>
+                  <span className="wg-gcard__desc">{meta.description}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

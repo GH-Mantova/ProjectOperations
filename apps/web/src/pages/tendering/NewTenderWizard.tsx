@@ -6,17 +6,27 @@
  * in newTenderWizard.helpers.ts so the flow can be tested without jsdom.
  */
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import "./newTenderWizard.css";
+import { lockRateSet } from "./ratesTabApi";
+import { QuickAddBuilderModal } from "./QuickAddBuilderModal";
+import { QuickAddContactModal } from "./QuickAddContactModal";
+import type { QuickAddClientResult, QuickAddContactResult } from "./tenderQuickAdd";
 import { TenderDocumentsPanel, type DocumentRecord } from "./TenderDocumentsPanel";
 import {
   advanceStep,
+  buildAddBuilderRequest,
+  buildDiscardDraftRequest,
+  buildProjectStepFlushPayload,
+  buildRemoveBuilderRequest,
   deriveDocumentBuckets,
   detectIncompleteBuilders,
   formatReminderBody,
   goBack,
   initialFlowState,
   jumpToStep,
+  shouldConfirmClose,
   skipCurrentStep,
   WIZARD_STEP_KEYS,
   WIZARD_STEP_LABELS,
@@ -101,15 +111,34 @@ export type NewTenderWizardProps = {
   existingDraftId?: string | null;
   onClose: () => void;
   onCreated: (id: string) => void;
+  /**
+   * Fired when the wizard needs the parent to reload the master builder list
+   * — currently used after quick-add so a builder given "full details" in the
+   * other tab shows up when the user returns to the picker.
+   */
+  onNeedClientsRefetch?: () => void;
 };
 
 export function NewTenderWizard(props: NewTenderWizardProps) {
-  const { open, clients, users, existingDraftId, onClose, onCreated } = props;
+  const { open, clients, users, existingDraftId, onClose, onCreated, onNeedClientsRefetch } = props;
   const { authFetch, user } = useAuth();
 
   const [flow, dispatch] = useReducer(flowReducer, undefined, initialFlowState);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // When true, Escape / overlay / X / "Save & finish later" have asked to close
+  // but there is a draft (or uploads) worth preserving. We surface a small
+  // Keep / Discard / Cancel confirm before actually closing.
+  const [confirmingClose, setConfirmingClose] = useState(false);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
+  // Quick-add builder / contact — mount the CenteredModal on demand. `quickAddContactFor`
+  // pins which builder the contact belongs to so we can slot the created contact
+  // straight into that builder's dropdown on success.
+  const [quickAddBuilderOpen, setQuickAddBuilderOpen] = useState(false);
+  const [quickAddContactFor, setQuickAddContactFor] = useState<
+    { clientId: string; clientName: string } | null
+  >(null);
 
   // Step 1 — Project
   const [title, setTitle] = useState("");
@@ -154,6 +183,11 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
     setDocuments([]);
     setRatesVersionLabel("");
     setServerTenderClients([]);
+    setConfirmingClose(false);
+    setConfirmBusy(false);
+    setConfirmError(null);
+    setQuickAddBuilderOpen(false);
+    setQuickAddContactFor(null);
     if (existingDraftId) {
       dispatch({ type: "setDraft", draftId: existingDraftId });
     }
@@ -222,15 +256,34 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
     };
   }, [open, flow.draftId, authFetch]);
 
-  // Esc-to-close (blocked when busy).
+  // Esc-to-close (blocked when busy). If the confirm modal is open, defer to
+  // its own Esc handler so pressing Escape closes the confirm rather than the
+  // whole wizard.
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !busy) handleCancel();
+      if (event.key !== "Escape") return;
+      if (busy) return;
+      if (confirmingClose) return;
+      // Escape while a quick-add modal is open should close *that* modal only
+      // — CenteredModal already handles it. Bail so the wizard doesn't also
+      // close alongside the quick-add.
+      if (quickAddBuilderOpen || quickAddContactFor) return;
+      handleCancel();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, busy, flow.draftId, documents.length]);
+  }, [open, busy, confirmingClose, quickAddBuilderOpen, quickAddContactFor, flow.draftId, documents.length]);
+
+  // Refetch the parent's builder list whenever the window regains focus —
+  // covers the "opened /tenders/clients in another tab, filled full details,
+  // came back" flow so the picker shows the updated record.
+  useEffect(() => {
+    if (!open || !onNeedClientsRefetch) return;
+    const onFocus = () => onNeedClientsRefetch();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [open, onNeedClientsRefetch]);
 
   const packageRefs: PackageRef[] = useMemo(
     () =>
@@ -298,7 +351,10 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.message ?? "Could not update draft tender.");
     }
-    return res.json();
+    // 204/empty body → `res.json()` would throw "Unexpected end of JSON input".
+    // Read text first and only parse when there's something to parse.
+    const text = await res.text();
+    return text ? JSON.parse(text) : {};
   }
 
   async function refreshPackagesAndMatrix(id: string) {
@@ -318,12 +374,18 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
     }
   }
 
-  async function loadContacts(clientId: string) {
-    if (contactCache[clientId]) return contactCache[clientId];
-    const res = await authFetch(`/master-data/contacts?clientId=${encodeURIComponent(clientId)}&take=100`);
+  async function loadContacts(clientId: string, force = false) {
+    if (!force && contactCache[clientId]) return contactCache[clientId];
+    const res = await authFetch(`/master-data/contacts?clientId=${encodeURIComponent(clientId)}&pageSize=100`);
     if (!res.ok) return [];
     const body = await res.json();
-    const raw = Array.isArray(body?.data) ? body.data : Array.isArray(body) ? body : [];
+    const raw = Array.isArray(body?.items)
+      ? body.items
+      : Array.isArray(body?.data)
+        ? body.data
+        : Array.isArray(body)
+          ? body
+          : [];
     const list: ContactOption[] = raw.map((c: { id: string; fullName?: string; firstName?: string; lastName?: string; email?: string | null; phone?: string | null }) => ({
       id: c.id,
       fullName: c.fullName ?? `${c.firstName ?? ""} ${c.lastName ?? ""}`.trim(),
@@ -332,6 +394,25 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
     }));
     setContactCache((prev) => ({ ...prev, [clientId]: list }));
     return list;
+  }
+
+  // Flush the current step's field state to the draft so pressing Next / Skip
+  // (or closing) never silently loses in-progress input. Server-writing steps
+  // (packages / matrix / documents / submission-date) already persist on each
+  // change; only the Project step accumulates local-only fields (estimator,
+  // site/description) between mounts. Extend the switch when adding future
+  // client-side-buffered steps.
+  async function flushCurrentStep() {
+    if (!flow.draftId) return;
+    if (flow.currentStep === "project") {
+      const patch = buildProjectStepFlushPayload({
+        draftId: flow.draftId,
+        title,
+        estimatorUserId,
+        siteAddress
+      });
+      if (patch) await patchDraft(flow.draftId, patch);
+    }
   }
 
   async function fireIncompleteReminders() {
@@ -365,6 +446,42 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
     setError(null);
     try {
       await ensureDraftId();
+      // Flush estimator / site / description too — ensureDraftId only writes
+      // them on the very first save (when it creates the draft), so second
+      // and subsequent Nexts on this step would otherwise drop later edits.
+      await flushCurrentStep();
+      dispatch({ type: "advance" });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Shared Skip handler — always flushes the current step's field state first
+  // so users don't lose input by skipping a step they were partway through.
+  const handleSkip = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await flushCurrentStep();
+      dispatch({ type: "skip" });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Shared Next handler for steps whose fields already persist on change
+  // (packages / matrix / documents / rates / ai / review). Still routes
+  // through flushCurrentStep so future step additions get the same guarantee
+  // by default.
+  const handleGenericNext = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await flushCurrentStep();
       dispatch({ type: "advance" });
     } catch (err) {
       setError((err as Error).message);
@@ -377,31 +494,37 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
   // Step-2 (Builders) handlers
   // -------------------------------------------------------------------------
 
-  const addBuilder = async (clientId: string) => {
+  // `presetName` lets quick-add attach a builder that isn't (yet) in the parent's
+  // `clients` prop — the create response gives us the name directly. Picker
+  // callers pass no override and rely on the `clients` lookup.
+  const addBuilder = async (clientId: string, presetName?: string) => {
     const client = clients.find((c) => c.id === clientId);
-    if (!client) return;
+    const clientName = client?.name ?? presetName;
+    if (!clientName) return;
     if (builders.some((b) => b.clientId === clientId)) return;
     setBusy(true);
     setError(null);
     try {
       const draftId = await ensureDraftId();
       const isFirst = builders.length === 0;
-      const nextTenderClients = [
-        ...serverTenderClients.map((tc) => ({
-          clientId: tc.clientId,
-          relationshipType: tc.relationshipType,
-          submissionDate: tc.submissionDate
-        })),
-        {
-          clientId,
-          relationshipType: isFirst ? "PRIMARY" : "COMPETITOR"
-        }
-      ];
-      const updated = await patchDraft(draftId, { tenderClients: nextTenderClients });
-      setServerTenderClients(updated.tenderClients ?? []);
+      // Append-only per-client endpoint — avoids the destructive PATCH /tenders/:id
+      // {tenderClients} path in UpsertTenderDto, which whitelists a fixed field set
+      // (no submissionDate) and deleteMany-then-recreates every child collection on
+      // the tender (pricing snapshots, notes, clarifications, etc.).
+      const req = buildAddBuilderRequest(clientId, isFirst);
+      const res = await authFetch(`/tenders/${draftId}/${req.path}`, {
+        method: req.method,
+        body: JSON.stringify(req.body)
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message ?? "Could not link builder to draft tender.");
+      }
+      const list = (await res.json()) as ServerTenderClient[];
+      setServerTenderClients(list);
       setBuilders((prev) => [
         ...prev,
-        { clientId, clientName: client.name, contactId: null, submissionDate: null }
+        { clientId, clientName, contactId: null, submissionDate: null }
       ]);
       if (isFirst) setPrimaryClientId(clientId);
       void loadContacts(clientId);
@@ -412,20 +535,57 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
     }
   };
 
+  // -------------------------------------------------------------------------
+  // Quick-add builder / contact — inline creation without leaving the wizard
+  // -------------------------------------------------------------------------
+
+  async function handleQuickBuilderCreated(created: QuickAddClientResult) {
+    setQuickAddBuilderOpen(false);
+    // Nudge the parent to refresh its master list so subsequent picker searches
+    // find the new builder too (the immediate attach below uses the create
+    // response directly, so it doesn't wait on the refetch).
+    if (onNeedClientsRefetch) onNeedClientsRefetch();
+    await addBuilder(created.id, created.name);
+  }
+
+  async function handleQuickContactCreated(created: QuickAddContactResult) {
+    const target = quickAddContactFor;
+    setQuickAddContactFor(null);
+    if (!target) return;
+    try {
+      // Force-refetch this client's contacts so the dropdown reflects the
+      // canonical server list (matches the spec: "refetch that client's
+      // contacts and select the new one").
+      await loadContacts(target.clientId, true);
+    } catch {
+      // Best-effort — even if the refetch fails we can still slot the newly
+      // created contact into local state so the wizard can proceed.
+      setContactCache((prev) => ({
+        ...prev,
+        [target.clientId]: [
+          ...(prev[target.clientId] ?? []),
+          { id: created.id, fullName: created.fullName, email: created.email, phone: created.phone }
+        ]
+      }));
+    }
+    updateBuilderContact(target.clientId, created.id);
+  }
+
   const removeBuilder = async (clientId: string) => {
     setBusy(true);
     setError(null);
     try {
       const draftId = await ensureDraftId();
-      const nextTenderClients = serverTenderClients
-        .filter((tc) => tc.clientId !== clientId)
-        .map((tc) => ({
-          clientId: tc.clientId,
-          relationshipType: tc.relationshipType,
-          submissionDate: tc.submissionDate
-        }));
-      const updated = await patchDraft(draftId, { tenderClients: nextTenderClients });
-      setServerTenderClients(updated.tenderClients ?? []);
+      const req = buildRemoveBuilderRequest(clientId);
+      const res = await authFetch(`/tenders/${draftId}/${req.path}`, {
+        method: req.method
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message ?? "Could not unlink builder from draft tender.");
+      }
+      const list = (await res.json()) as ServerTenderClient[];
+      setServerTenderClients(list);
       setBuilders((prev) => prev.filter((b) => b.clientId !== clientId));
     } catch (err) {
       setError((err as Error).message);
@@ -469,10 +629,12 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
   };
 
   const handleNextFromBuilders = async () => {
-    // Non-blocking: fire notifications for any incomplete builders, then advance.
+    // Non-blocking: flush current step, fire notifications for any incomplete
+    // builders, then advance.
     setBusy(true);
     setError(null);
     try {
+      await flushCurrentStep();
       await fireIncompleteReminders();
       dispatch({ type: "advance" });
     } finally {
@@ -554,13 +716,15 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
 
   const lockRates = async () => {
     if (!flow.draftId) return;
+    // Use the dedicated rate-set lock endpoint so a TenderRateSet + entries
+    // are actually snapshotted. The previous PATCH /tenders/:id
+    // {pricingSnapshots} path did not create rate-set rows (which the Rates
+    // tab reads) and returned an empty body that crashed res.json().
     const label = ratesVersionLabel.trim() || `Rates as of ${new Date().toLocaleDateString("en-AU")}`;
     setBusy(true);
     setError(null);
     try {
-      await patchDraft(flow.draftId, {
-        pricingSnapshots: [{ versionLabel: label }]
-      });
+      await lockRateSet(authFetch, flow.draftId, label);
       dispatch({ type: "lockRates" });
     } catch (err) {
       setError((err as Error).message);
@@ -570,20 +734,67 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
   };
 
   // -------------------------------------------------------------------------
-  // Cancel / Save-and-finish-later
+  // Cancel / Save-and-finish-later / Discard draft
   // -------------------------------------------------------------------------
 
-  const isFirstBuilderIncompleteOnly =
-    builders.length === 0 && !flow.draftId;
+  // Blank wizard = no draft persisted server-side AND no uploads. In that
+  // case Escape / overlay-click / X can close instantly with no prompt.
+  const mustConfirmClose = shouldConfirmClose({
+    draftId: flow.draftId,
+    documentsCount: documents.length
+  });
 
-  async function handleCancel() {
-    // No draft yet + no uploads → hard cancel is safe.
-    if (!flow.draftId || (isFirstBuilderIncompleteOnly && documents.length === 0)) {
+  function handleCancel() {
+    if (!mustConfirmClose) {
       onClose();
       return;
     }
-    // Behave as "save & finish later" — draft is already persisted; just close.
-    onClose();
+    // Draft exists (or uploads happened) — pop the confirm instead of
+    // closing. Users previously reported "accidentally cancelling loses my
+    // work"; even though the draft is server-side and resumable, closing
+    // without confirmation is disorienting when they have a live draft.
+    setConfirmError(null);
+    setConfirmingClose(true);
+  }
+
+  async function handleKeepAndClose() {
+    setConfirmBusy(true);
+    setConfirmError(null);
+    try {
+      await flushCurrentStep();
+      setConfirmingClose(false);
+      onClose();
+    } catch (err) {
+      setConfirmError((err as Error).message);
+    } finally {
+      setConfirmBusy(false);
+    }
+  }
+
+  async function handleDiscardDraft() {
+    if (!flow.draftId) {
+      // Uploads-without-draft is not currently reachable (uploads require a
+      // draft id) but defend against it — just close.
+      setConfirmingClose(false);
+      onClose();
+      return;
+    }
+    setConfirmBusy(true);
+    setConfirmError(null);
+    try {
+      const req = buildDiscardDraftRequest(flow.draftId);
+      const res = await authFetch(`/${req.path}`, { method: req.method });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message ?? "Could not discard the draft.");
+      }
+      setConfirmingClose(false);
+      onClose();
+    } catch (err) {
+      setConfirmError((err as Error).message);
+    } finally {
+      setConfirmBusy(false);
+    }
   }
 
   async function handleFinish() {
@@ -616,6 +827,7 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
   const stepIsLast = flow.currentStep === "review";
 
   return (
+    <>
     <div
       className="new-tender-wizard__overlay"
       role="dialog"
@@ -719,6 +931,10 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
                 contactCache={contactCache}
                 onWantContacts={loadContacts}
                 incompleteCount={incompleteBuilders.length}
+                onQuickAddBuilder={() => setQuickAddBuilderOpen(true)}
+                onQuickAddContact={(clientId, clientName) =>
+                  setQuickAddContactFor({ clientId, clientName })
+                }
               />
             ) : null}
 
@@ -793,8 +1009,9 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
                 <button
                   type="button"
                   className="s7-btn s7-btn--ghost"
-                  onClick={() => dispatch({ type: "skip" })}
+                  onClick={handleSkip}
                   disabled={busy}
+                  data-testid="new-tender-wizard-skip"
                 >
                   Skip
                 </button>
@@ -808,9 +1025,10 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
                       ? handleNextFromProject
                       : flow.currentStep === "builders"
                         ? handleNextFromBuilders
-                        : () => dispatch({ type: "advance" })
+                        : handleGenericNext
                   }
                   disabled={busy}
+                  data-testid="new-tender-wizard-next"
                 >
                   {busy ? "Working…" : "Next"}
                 </button>
@@ -829,6 +1047,77 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
         </div>
       </div>
     </div>
+      {confirmingClose ? (
+        <CenteredModal
+          title="Close this tender?"
+          subtitle={
+            flow.draftId
+              ? "Your draft is saved and can be resumed from the pipeline. You can also discard it if you no longer need it."
+              : "You have uploads in progress. Close anyway?"
+          }
+          onClose={() => {
+            if (confirmBusy) return;
+            setConfirmingClose(false);
+          }}
+          busy={confirmBusy}
+          maxWidth={480}
+          dataTestId="new-tender-wizard-close-confirm"
+          footer={
+            <>
+              <button
+                type="button"
+                className="s7-btn s7-btn--ghost"
+                onClick={() => setConfirmingClose(false)}
+                disabled={confirmBusy}
+                data-testid="new-tender-wizard-close-cancel"
+              >
+                Cancel
+              </button>
+              {flow.draftId ? (
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--ghost"
+                  onClick={handleDiscardDraft}
+                  disabled={confirmBusy}
+                  data-testid="new-tender-wizard-close-discard"
+                >
+                  {confirmBusy ? "Working…" : "Discard draft"}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="s7-btn s7-btn--primary"
+                onClick={handleKeepAndClose}
+                disabled={confirmBusy}
+                data-testid="new-tender-wizard-close-keep"
+              >
+                {confirmBusy ? "Working…" : "Save & finish later"}
+              </button>
+            </>
+          }
+        >
+          {confirmError ? (
+            <div className="login-card__error" role="alert">
+              {confirmError}
+            </div>
+          ) : null}
+        </CenteredModal>
+      ) : null}
+      {quickAddBuilderOpen ? (
+        <QuickAddBuilderModal
+          onClose={() => setQuickAddBuilderOpen(false)}
+          onCreated={(client) => void handleQuickBuilderCreated(client)}
+        />
+      ) : null}
+      {quickAddContactFor ? (
+        <QuickAddContactModal
+          clientId={quickAddContactFor.clientId}
+          clientName={quickAddContactFor.clientName}
+          onClose={() => setQuickAddContactFor(null)}
+          onCreated={(contact) => void handleQuickContactCreated(contact)}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -909,6 +1198,8 @@ function StepBuilders(props: {
   contactCache: Record<string, ContactOption[]>;
   onWantContacts: (clientId: string) => Promise<ContactOption[]>;
   incompleteCount: number;
+  onQuickAddBuilder: () => void;
+  onQuickAddContact: (clientId: string, clientName: string) => void;
 }) {
   const [search, setSearch] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -958,9 +1249,21 @@ function StepBuilders(props: {
             ))}
             {filtered.length === 0 ? (
               <div className="new-tender-wizard__picker-empty">
-                No matches — create a new builder from Master Data first.
+                No matches — add a new builder without leaving the wizard.
               </div>
             ) : null}
+            <button
+              type="button"
+              className="new-tender-wizard__picker-item"
+              onClick={() => {
+                props.onQuickAddBuilder();
+                setPickerOpen(false);
+              }}
+              data-testid="new-tender-wizard-quick-add-builder"
+              style={{ fontWeight: 500 }}
+            >
+              + Add new builder
+            </button>
           </div>
         ) : null}
       </div>
@@ -1000,18 +1303,30 @@ function StepBuilders(props: {
                 <div className="new-tender-wizard__builder-fields">
                   <label className="tender-form__field">
                     <span className="s7-type-label">Contact</span>
-                    <select
-                      className="s7-select"
-                      value={b.contactId ?? ""}
-                      onChange={(e) => props.onContactChange(b.clientId, e.target.value)}
-                    >
-                      <option value="">Select a contact…</option>
-                      {contacts.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.fullName}
-                        </option>
-                      ))}
-                    </select>
+                    <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+                      <select
+                        className="s7-select"
+                        value={b.contactId ?? ""}
+                        onChange={(e) => props.onContactChange(b.clientId, e.target.value)}
+                        style={{ flex: 1 }}
+                      >
+                        <option value="">Select a contact…</option>
+                        {contacts.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.fullName}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="s7-btn s7-btn--ghost s7-btn--sm"
+                        onClick={() => props.onQuickAddContact(b.clientId, b.clientName)}
+                        data-testid={`new-tender-wizard-quick-add-contact-${b.clientId}`}
+                        style={{ minHeight: 44, whiteSpace: "nowrap" }}
+                      >
+                        + Add contact
+                      </button>
+                    </div>
                   </label>
                   <label className="tender-form__field">
                     <span className="s7-type-label">Submission date</span>

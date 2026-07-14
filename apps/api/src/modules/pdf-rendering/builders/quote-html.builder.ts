@@ -334,8 +334,16 @@ tr.cost-opt-header td {
 }
 
 function logoBase64(): string {
-  const logoPath = join(getTemplatesDir(), "assets", "teal_sq_logo4x.png");
-  return readFileSync(logoPath).toString("base64");
+  try {
+    const logoPath = join(getTemplatesDir(), "assets", "teal_sq_logo4x.png");
+    return readFileSync(logoPath).toString("base64");
+  } catch (err) {
+    console.warn(
+      "[quote-html.builder] Header logo missing — rendering without it.",
+      err,
+    );
+    return "";
+  }
 }
 
 // ── Page 1: Cover + Cost Summary ────────────────────────────────────
@@ -798,13 +806,34 @@ function acceptanceBlock(p: ExportPayload): string {
 }
 
 // ── Puppeteer header/footer templates ───────────────────────────────
-function headerTemplate(quoteRef: string): string {
+// Company branding for the letterhead + footer. Optional to preserve
+// legacy call sites and tests; production callers pass a resolved
+// context from CompanyProfile so a re-branded deployment renders
+// correctly. Defaults keep byte-identical output for existing tests.
+export type PdfCompanyContext = {
+  tradingName: string;
+  headerRightMeta?: string; // e.g. licence numbers shown top-right
+  footerAddressLine?: string; // one-line address/phone/email/ABN
+};
+
+const DEFAULT_PDF_COMPANY_CONTEXT: PdfCompanyContext = {
+  tradingName: "INITIAL SERVICES",
+  headerRightMeta: "Demolition Licence: 2328018 | Class A Asbestos Licence: 2320431",
+  footerAddressLine:
+    "10 Grice St, Clontarf Q 4019 | P: (07) 3888 0539 | E: admin@initialservices.net | A.B.N: 75 631 222 556"
+};
+
+function headerTemplate(
+  quoteRef: string,
+  ctx: PdfCompanyContext = DEFAULT_PDF_COMPANY_CONTEXT
+): string {
   const logo = logoBase64();
+  const rightMeta = ctx.headerRightMeta ?? DEFAULT_PDF_COMPANY_CONTEXT.headerRightMeta ?? "";
   return `<div style="width:100%;margin:0;padding:0;font-family:Helvetica,Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact">
   <div style="background:${BRAND.teal};color:#fff;padding:6pt 15mm 10pt 15mm;display:flex;align-items:center;gap:8pt;position:relative">
     <img src="data:image/png;base64,${logo}" style="height:28pt;width:auto">
-    <span style="font-weight:700;font-size:12pt;flex:1">INITIAL SERVICES</span>
-    <span style="font-size:6.5pt;text-align:right;white-space:nowrap">Demolition Licence: 2328018 | Class A Asbestos Licence: 2320431</span>
+    <span style="font-weight:700;font-size:12pt;flex:1">${esc(ctx.tradingName.toUpperCase())}</span>
+    <span style="font-size:6.5pt;text-align:right;white-space:nowrap">${esc(rightMeta)}</span>
     <span style="position:absolute;bottom:2pt;left:50%;transform:translateX(-50%);font-weight:700;font-size:8pt">Quote No. ${esc(quoteRef)}</span>
   </div>
   <div style="height:2pt;background:${BRAND.orange}"></div>
@@ -812,11 +841,12 @@ function headerTemplate(quoteRef: string): string {
 </div>`;
 }
 
-function footerTemplate(): string {
+function footerTemplate(ctx: PdfCompanyContext = DEFAULT_PDF_COMPANY_CONTEXT): string {
+  const line = ctx.footerAddressLine ?? DEFAULT_PDF_COMPANY_CONTEXT.footerAddressLine ?? "";
   return `<div style="width:100%;margin:0;padding:0;font-family:Helvetica,Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact">
   <div style="height:2pt;background:${BRAND.orange}"></div>
   <div style="background:${BRAND.teal};color:#fff;padding:5pt 15mm;display:flex;justify-content:space-between;align-items:center;font-size:7pt">
-    <span>10 Grice St, Clontarf Q 4019 | P: (07) 3888 0539 | E: admin@initialservices.net | A.B.N: 75 631 222 556</span>
+    <span>${esc(line)}</span>
     <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
   </div>
 </div>`;

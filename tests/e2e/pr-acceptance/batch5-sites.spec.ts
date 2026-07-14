@@ -126,6 +126,12 @@ test.describe("Batch 5 — Sites register + detail (PRs #23, #288, #344)", () =>
     await page.getByRole("button", { name: "Delete site", exact: true }).first().click();
     await page.getByRole("dialog").getByRole("button", { name: "Delete site", exact: true }).click();
     await expect(page).toHaveURL(/\/sites$/);
+    // Wait for the register's post-delete fetch to settle before filtering. toHaveURL
+    // resolves the instant the URL changes, but the SitesListPage's load effect is
+    // still in flight; a seeded row appearing proves the initial fetch resolved and
+    // the list re-rendered, so the fill() below won't race the re-render and get
+    // clobbered.
+    await expect(page.getByRole("cell", { name: SITE_001_NAME })).toBeVisible();
     await page.getByPlaceholder("Search by name or address…").fill(name);
     await expect(page.getByText("No sites match the current filters.")).toBeVisible();
   });

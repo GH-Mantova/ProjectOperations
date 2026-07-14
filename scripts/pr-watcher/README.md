@@ -309,8 +309,13 @@ notices. `supervise-watcher.ps1` wraps it in a loop that auto-restarts:
   `PR_WATCHER_SOFTWAIT_MIN` minutes (default 20) for the Claude quota
   window, then restarts. The halted prompt stays in `docs/pr-prompts/`
   and is picked up on the next start.
-- **exit 1** (real failure / crash) — waits `PR_WATCHER_CRASH_WAIT_SEC`
-  seconds (default 60), then restarts.
+- **exit 1** (real failure / crash) — logs the child's actual failure
+  REASON (not just the exit code), waits `PR_WATCHER_CRASH_WAIT_SEC`
+  seconds (default 60), then restarts. It does **not** restart forever:
+  after `PR_WATCHER_MAX_SAME_FAIL` (default 5) *identical* consecutive
+  failures it trips the crash-loop guard, writes an escalation into
+  `docs/pr-prompts/needs-marco/` and stops. A silent restart loop once
+  left the queue dead for ~2.5 hours.
 - **exit 0** (Ctrl+C, or the single-instance guard found another watcher
   already running) — treated as a deliberate stop; supervisor exits.
 

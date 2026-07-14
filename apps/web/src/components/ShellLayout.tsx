@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { isAdminUser } from "../auth/permissions";
 import { buildInfo } from "../buildInfo";
 import { NotificationsDropdown } from "./NotificationsDropdown";
 import { CommandPalette } from "./CommandPalette";
@@ -150,7 +151,7 @@ const ICON_EXPAND = (
   </svg>
 );
 
-const NAV_GROUPS: NavGroup[] = [
+export const NAV_GROUPS: NavGroup[] = [
   {
     id: "commercial",
     label: "Commercial",
@@ -163,7 +164,21 @@ const NAV_GROUPS: NavGroup[] = [
           path === "/tenders" ||
           (path.startsWith("/tenders/") &&
             !path.startsWith("/tenders/dashboard") &&
-            !path.startsWith("/tenders/reports"))
+            !path.startsWith("/tenders/reports") &&
+            !path.startsWith("/tenders/contacts") &&
+            !path.startsWith("/tenders/settings"))
+      },
+      {
+        to: "/tenders/contacts",
+        label: "Tender Contacts",
+        icon: ICON_WORKERS,
+        match: (path) => path.startsWith("/tenders/contacts")
+      },
+      {
+        to: "/tenders/settings",
+        label: "Tendering Settings",
+        icon: ICON_AUDIT,
+        match: (path) => path.startsWith("/tenders/settings")
       },
       {
         to: "/contracts",
@@ -257,6 +272,7 @@ const NAV_GROUPS: NavGroup[] = [
     adminOnly: true,
     items: [
       { to: "/admin/settings", label: "Admin Settings", icon: ICON_AUDIT },
+      { to: "/admin/company", label: "Company Profile", icon: ICON_CLIENTS },
       { to: "/admin/rates-lists", label: "Rates & Lists", icon: ICON_TENDERING },
       { to: "/admin/estimate-rates", label: "Legacy estimate rates", icon: ICON_TENDERING },
       { to: "/admin/job-roles", label: "Job Roles", icon: ICON_AUDIT },
@@ -300,6 +316,8 @@ const BREADCRUMBS: Record<string, string> = {
   "/tenders": "Tendering",
   "/tenders/dashboard": "Tender Dashboard",
   "/tenders/reports": "Tender Reports",
+  "/tenders/contacts": "Tender Contacts",
+  "/tenders/settings": "Tendering Settings",
   "/workers": "Workers",
   "/resources": "Workers (legacy)",
   "/assets": "Assets",
@@ -321,6 +339,7 @@ const BREADCRUMBS: Record<string, string> = {
   "/admin/audit": "Audit",
   "/admin/platform": "Platform",
   "/admin/settings": "Admin Settings",
+  "/admin/company": "Company Profile",
   "/admin/job-roles": "Job Roles",
   "/contracts": "Contracts"
 };
@@ -360,10 +379,7 @@ export function ShellLayout() {
     [allDashboards]
   );
 
-  const isAdmin = useMemo(() => {
-    const roleNames = user?.roles?.map((role) => role.name) ?? [];
-    return roleNames.includes("Admin");
-  }, [user?.roles]);
+  const isAdmin = isAdminUser(user);
 
   useEffect(() => {
     let cancelled = false;

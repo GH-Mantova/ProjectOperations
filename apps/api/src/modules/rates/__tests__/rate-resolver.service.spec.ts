@@ -1,6 +1,16 @@
 import { NotFoundException } from "@nestjs/common";
 import { RateResolverService } from "../rate-resolver.service";
 
+const ORIGINAL_RATES_SOURCE = process.env.RATES_CANONICAL_SOURCE;
+
+afterEach(() => {
+  if (ORIGINAL_RATES_SOURCE === undefined) {
+    delete process.env.RATES_CANONICAL_SOURCE;
+  } else {
+    process.env.RATES_CANONICAL_SOURCE = ORIGINAL_RATES_SOURCE;
+  }
+});
+
 function makePrisma() {
   return {
     estimateLabourRate: { findUnique: jest.fn() },
@@ -261,5 +271,167 @@ describe("RateResolverService", () => {
     const svc = new RateResolverService(prisma as never);
     const out = await svc.resolveRate("custom", { region: "SEQ" });
     expect(out).toEqual({ rowId: "r-1", value: 125, unit: "hr", source: "ratetable" });
+  });
+
+  describe("RATES_CANONICAL_SOURCE", () => {
+    test("unset flag keeps legacy-first behaviour byte-identical", async () => {
+      delete process.env.RATES_CANONICAL_SOURCE;
+      const prisma = makePrisma();
+      prisma.estimateLabourRate.findUnique.mockResolvedValue({
+        id: "lab-1",
+        dayRate: "450",
+        nightRate: "520",
+        weekendRate: "600"
+      });
+      const svc = new RateResolverService(prisma as never);
+      const out = await svc.resolveRate("labour", { role: "Foreman", shift: "day" });
+      expect(out).toEqual({ rowId: "lab-1", value: 450, unit: "day", source: "legacy" });
+      // Never touched the ratetable model in legacy mode.
+      expect(prisma.rateTable.findUnique).not.toHaveBeenCalled();
+    });
+
+    test("flag=legacy is identical to unset (default)", async () => {
+      process.env.RATES_CANONICAL_SOURCE = "legacy";
+      const prisma = makePrisma();
+      prisma.estimatePlantRate.findUnique.mockResolvedValue({
+        id: "p-1",
+        rate: "80",
+        unit: "hr"
+      });
+      const svc = new RateResolverService(prisma as never);
+      const out = await svc.resolveRate("plant", { item: "Excavator 20t" });
+      expect(out).toEqual({ rowId: "p-1", value: 80, unit: "hr", source: "legacy" });
+      expect(prisma.rateTable.findUnique).not.toHaveBeenCalled();
+    });
+
+    test("flag=ratetable answers 'labour' from RateTable, not the legacy DB path", async () => {
+      process.env.RATES_CANONICAL_SOURCE = "ratetable";
+      const prisma = makePrisma();
+      prisma.rateTable.findUnique.mockResolvedValue({
+        id: "rt-lbr",
+        slug: "labour",
+        columns: [
+          { id: "c-role", name: "role", role: "KEY", unit: null },
+          { id: "c-day", name: "day", role: "VALUE", unit: "day" }
+        ]
+      });
+      prisma.rateRow.findMany.mockResolvedValue([
+        { id: "rr-foreman", cells: { "c-role": "Foreman", "c-day": 450 } }
+      ]);
+      const svc = new RateResolverService(prisma as never);
+      const out = await svc.resolveRate("labour", { role: "Foreman" });
+      expect(out).toEqual({ rowId: "rr-foreman", value: 450, unit: "day", source: "ratetable" });
+      // The legacy path must NOT be touched when the canonical source is ratetable.
+      expect(prisma.estimateLabourRate.findUnique).not.toHaveBeenCalled();
+    });
+
+    test("flag=ratetable falls back to legacy when the ratetable has no matching row", async () => {
+      process.env.RATES_CANONICAL_SOURCE = "ratetable";
+      const prisma = makePrisma();
+      // Slug is not present in the flexible model at all — simulate seed gap.
+      prisma.rateTable.findUnique.mockResolvedValue(null);
+      prisma.estimateLabourRate.findUnique.mockResolvedValue({
+        id: "lab-1",
+        dayRate: "450",
+        nightRate: "520",
+        weekendRate: "600"
+      });
+      const svc = new RateResolverService(prisma as never);
+      const out = await svc.resolveRate("labour", { role: "Foreman", shift: "day" });
+      expect(out).toEqual({ rowId: "lab-1", value: 450, unit: "day", source: "legacy" });
+    });
+
+    test("flag=ratetable throws NotFound when neither source has the slug", async () => {
+      process.env.RATES_CANONICAL_SOURCE = "ratetable";
+      const prisma = makePrisma();
+      prisma.rateTable.findUnique.mockResolvedValue(null);
+      const svc = new RateResolverService(prisma as never);
+      await expect(svc.resolveRate("nope", {})).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    test("garbage flag value falls back to legacy (no silent 'ratetable' promotion)", async () => {
+      process.env.RATES_CANONICAL_SOURCE = "yes-please";
+      const prisma = makePrisma();
+      prisma.estimateLabourRate.findUnique.mockResolvedValue({
+        id: "lab-1",
+        dayRate: "450",
+        nightRate: "520",
+        weekendRate: "600"
+      });
+      const svc = new RateResolverService(prisma as never);
+      const out = await svc.resolveRate("labour", { role: "Foreman", shift: "day" });
+      expect(out.source).toBe("legacy");
+      // The ratetable path is not even consulted when the flag is unrecognised.
+      expect(prisma.rateTable.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("assertRateParity", () => {
+    test("returns matches=true when both sources answer identically", async () => {
+      const prisma = makePrisma();
+      prisma.estimateLabourRate.findUnique.mockResolvedValue({
+        id: "lab-1",
+        dayRate: "450",
+        nightRate: "520",
+        weekendRate: "600"
+      });
+      prisma.rateTable.findUnique.mockResolvedValue({
+        id: "rt-lbr",
+        slug: "labour",
+        columns: [
+          { id: "c-role", name: "role", role: "KEY", unit: null },
+          { id: "c-day", name: "day", role: "VALUE", unit: "day" }
+        ]
+      });
+      prisma.rateRow.findMany.mockResolvedValue([
+        { id: "rr-foreman", cells: { "c-role": "Foreman", "c-day": 450 } }
+      ]);
+      const svc = new RateResolverService(prisma as never);
+      const parity = await svc.assertRateParity("labour", { role: "Foreman", shift: "day" });
+      expect(parity.matches).toBe(true);
+      expect(parity.divergence).toBeUndefined();
+    });
+
+    test("returns matches=false with divergence when values differ", async () => {
+      const prisma = makePrisma();
+      prisma.estimateLabourRate.findUnique.mockResolvedValue({
+        id: "lab-1",
+        dayRate: "450",
+        nightRate: "520",
+        weekendRate: "600"
+      });
+      prisma.rateTable.findUnique.mockResolvedValue({
+        id: "rt-lbr",
+        slug: "labour",
+        columns: [
+          { id: "c-role", name: "role", role: "KEY", unit: null },
+          { id: "c-day", name: "day", role: "VALUE", unit: "day" }
+        ]
+      });
+      prisma.rateRow.findMany.mockResolvedValue([
+        { id: "rr-foreman", cells: { "c-role": "Foreman", "c-day": 999 } } // drifted from legacy 450
+      ]);
+      const svc = new RateResolverService(prisma as never);
+      const parity = await svc.assertRateParity("labour", { role: "Foreman", shift: "day" });
+      expect(parity.matches).toBe(false);
+      expect(parity.divergence).toContain("450");
+      expect(parity.divergence).toContain("999");
+    });
+
+    test("reports missing side when only one source has the slug", async () => {
+      const prisma = makePrisma();
+      prisma.estimateLabourRate.findUnique.mockResolvedValue({
+        id: "lab-1",
+        dayRate: "450",
+        nightRate: "520",
+        weekendRate: "600"
+      });
+      prisma.rateTable.findUnique.mockResolvedValue(null); // ratetable has no row
+      const svc = new RateResolverService(prisma as never);
+      const parity = await svc.assertRateParity("labour", { role: "Foreman", shift: "day" });
+      expect(parity.matches).toBe(false);
+      expect(parity.divergence).toContain("legacy=ok");
+      expect(parity.divergence).toContain("ratetable=missing");
+    });
   });
 });

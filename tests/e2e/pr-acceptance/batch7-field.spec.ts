@@ -358,12 +358,15 @@ test.describe("Batch 7 — Timesheet approval workspace (PR #42)", () => {
     await drawer.getByRole("button", { name: "✕" }).click();
   });
 
-  test("user without field.manage is redirected from /timesheets/approval to /", async ({
+  // #544 (failure honesty, sot/01 SECTION 6): a permission denial must NOT silently redirect.
+  // The old assertion here ENCODED THE DEFECT - it required the user to be bounced to "/",
+  // which is indistinguishable from a broken page. We now stay put and say why.
+  test("user without field.manage sees NoAccess on /timesheets/approval (no silent redirect)", async ({
     page
   }) => {
     await loginAsViewer(page);
     await page.goto("/timesheets/approval");
-    await expect(page.getByRole("heading", { name: "Operations Overview" })).toBeVisible();
-    expect(new URL(page.url()).pathname).toBe("/");
+    await expect(page.getByTestId("no-access")).toBeVisible();
+    expect(new URL(page.url()).pathname).toBe("/timesheets/approval");
   });
 });

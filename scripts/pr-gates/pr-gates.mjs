@@ -429,6 +429,26 @@ function report(level, gate, name, detail) {
     }
     if (!currentFile || !line.startsWith("+") || line.startsWith("+++")) continue;
     const added = line.slice(1);
+
+    // Skip COMMENTS. A gate that flags its own documentation is a bad gate.
+    //
+    // BUG THIS FIXES (caught on #561, 2026-07-14): the PR that REMOVES silent redirects
+    // documented the old behaviour in a test comment --
+    //     //   1. non-admin users got <Navigate to="/" replace /> - a silent bounce
+    // -- and CP-25 failed the PR for *describing* the very bug it was deleting. The gate
+    // cannot tell code from prose unless we teach it to.
+    //
+    // Deliberately narrow: line comments (//, *, /*) and JSX comment openers. A string
+    // literal containing the pattern is still flagged - that is a judgement call we want
+    // a human to make, not something to silently wave through.
+    const stripped = added.trim();
+    const isComment =
+      stripped.startsWith("//") ||
+      stripped.startsWith("*") ||
+      stripped.startsWith("/*") ||
+      stripped.startsWith("{/*");
+    if (isComment) continue;
+
     if (/Navigate\s+to="\/"/.test(added) && !/eslint-ok:\s*not-a-permission-redirect/.test(added)) {
       offenders.push(`${currentFile}: ${added.trim()}`);
     }

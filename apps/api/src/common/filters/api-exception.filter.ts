@@ -14,6 +14,11 @@ type ErrorShape = {
   message: string | string[];
   path: string;
   timestamp: string;
+  // Callers can surface additional structured fields (e.g. `code`, `email`,
+  // `displayName` for the gated Entra flow) by throwing HttpException with an
+  // object body — those fields are preserved on the response so the client
+  // can branch on them.
+  [extra: string]: unknown;
 };
 
 @Catch()
@@ -56,13 +61,19 @@ export class ApiExceptionFilter implements ExceptionFilter {
 
       if (typeof exceptionResponse === "object" && exceptionResponse !== null) {
         const record = exceptionResponse as Record<string, unknown>;
+        // Preserve extra fields (e.g. `code`, `email`, `displayName`) from
+        // the exception body so structured client branching works
+        // (see EntraAuthService.resolveProvisionedUser throwing
+        // { code: "ENTRA_NOT_REGISTERED", email, displayName }).
+        const { error, message, statusCode: _ignoredStatus, ...extra } = record;
 
         return {
+          ...extra,
           statusCode,
-          error: typeof record.error === "string" ? record.error : this.httpStatusLabel(statusCode),
+          error: typeof error === "string" ? error : this.httpStatusLabel(statusCode),
           message:
-            typeof record.message === "string" || Array.isArray(record.message)
-              ? (record.message as string | string[])
+            typeof message === "string" || Array.isArray(message)
+              ? (message as string | string[])
               : exception.message,
           path,
           timestamp: new Date().toISOString()

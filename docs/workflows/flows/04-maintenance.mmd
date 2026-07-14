@@ -1,0 +1,14 @@
+%% title: Asset maintenance || module: Maintenance || role: Warehouse || status: DRAFT || view: module
+flowchart TD
+  start([Start]):::startEnd --> trigger{Breakdown or scheduled?}:::decision
+  trigger -- Breakdown --> logbd[Log breakdown]:::process
+  trigger -- Scheduled --> due[Upcoming maintenance due]:::process
+  logbd --> offline[Take asset offline]:::process
+  offline --> repair[Repair]:::process
+  due --> service[Perform service]:::process
+  repair --> record[/Record service and parts used/]:::io
+  service --> record
+  record --> status[Update asset status]:::process
+  status --> back{Back in service?}:::decision
+  back -- No --> repair
+  back -- Yes --> avail([Asset available]):::output

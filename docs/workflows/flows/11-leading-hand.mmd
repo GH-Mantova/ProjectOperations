@@ -1,0 +1,11 @@
+%% title: Leading Hand - role || module: Role workflow || role: CW3 - Tradesperson / Skilled Operator || status: DRAFT || view: role
+flowchart TD
+  s([Start]):::startEnd --> a[Receive tasks from Site Supervisor]:::process
+  a --> b[Set up work area]:::process
+  b --> c[Lead crew on task]:::process
+  c --> d[Monitor safety and quality]:::process
+  d --> e{Issue beyond control?}:::decision
+  e -- Yes --> f[Escalate to Site Supervisor]:::process
+  e -- No --> g[Complete task]:::process
+  f --> g
+  g --> h[Report to Site Supervisor]:::output

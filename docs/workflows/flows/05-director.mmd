@@ -1,0 +1,16 @@
+%% title: Director - oversight and approvals || module: Role workflow || role: Director || status: DRAFT || view: role
+flowchart TD
+  s([Start]):::startEnd --> strat[Set strategy, targets and budgets]:::process
+  strat --> review[Review business performance<br/>financials, tender forecast, ops]:::process
+  review --> gate{High-value tender,<br/>major spend or key hire?}:::decision
+  gate -- No --> delegate[Delegate to Ops Manager or PM]:::process
+  gate -- Yes --> decide[/Director decision/]:::io
+  decide --> outcome{Approve?}:::decision
+  outcome -- No --> back[Return with feedback]:::process
+  outcome -- Yes --> proceed[Authorise and set conditions]:::process
+  delegate --> kpi[Monitor KPIs<br/>IS and Redcliffe Skips]:::process
+  proceed --> kpi
+  back --> kpi
+  kpi --> people[High-level people decisions]:::process
+  people --> mgmt[Management team review]:::doc
+  mgmt --> done([Decisions recorded]):::output

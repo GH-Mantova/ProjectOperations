@@ -1,0 +1,11 @@
+%% title: Warehouse and Logistics Operator - role || module: Role workflow || role: Warehouse / Logistics Operator || status: DRAFT || view: role
+flowchart TD
+  s([Start]):::startEnd --> a[Receive daily tasks]:::process
+  a --> b[Pick and prepare equipment and materials]:::process
+  b --> c[Load and dispatch to sites]:::process
+  c --> d[Receive returns and inspect]:::process
+  d --> e{Damaged or missing?}:::decision
+  e -- Yes --> f[Report to Warehouse Manager]:::process
+  e -- No --> g[Update inventory]:::process
+  f --> g
+  g --> h[Maintain warehouse order]:::output

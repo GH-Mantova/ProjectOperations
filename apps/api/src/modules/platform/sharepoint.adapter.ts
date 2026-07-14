@@ -50,8 +50,21 @@ export type ResolveSiteInput = { hostname: string; sitePath: string };
 // at bootstrap and cache the resulting drive ID.
 export type ResolveDriveInput = { siteId: string; libraryName: string };
 
+// Read-only existence check used by the folder-mappings admin flow —
+// admins must not be able to save a folderPath that Graph can't see,
+// and Save must NEVER create a folder as a side-effect (see PR body).
+export type FolderExistsInput = {
+  siteId: string;
+  driveId: string;
+  relativePath: string;
+};
+
 export interface SharePointAdapter {
   ensureFolder(input: EnsureFolderInput): Promise<EnsureFolderResult>;
+  // Returns true iff the folder at `relativePath` already exists on the
+  // drive. Never creates. Used by the admin folder-mappings validate-on-save
+  // flow. Throws only on transport/auth failure — a legitimate 404 is `false`.
+  folderExists(input: FolderExistsInput): Promise<boolean>;
   uploadFile(input: UploadFileInput): Promise<UploadFileResult>;
   getDownloadUrl(input: { siteId: string; driveId: string; fileId: string }): Promise<string>;
   // PR #146 — added to support drawing tools and any future feature
@@ -116,6 +129,10 @@ export class MockSharePointAdapter implements SharePointAdapter {
   }
 
   async ensureFolder(input: EnsureFolderInput) {
+    // Track ensured paths so folderExists (used by the folder-mappings
+    // admin flow) can distinguish "created earlier in this process" from
+    // "never seen". Tests seed known paths via ensureFolder.
+    MockSharePointAdapter.knownPaths.add(this.pathKey(input.siteId, input.driveId, input.relativePath));
     return {
       siteId: input.siteId,
       driveId: input.driveId,
@@ -123,6 +140,29 @@ export class MockSharePointAdapter implements SharePointAdapter {
       name: input.name,
       relativePath: input.relativePath
     };
+  }
+
+  // Static so all instances share the "known folders" set within a
+  // process — otherwise test setups that construct a service with a
+  // fresh adapter can't reuse folders ensured by an earlier setup step.
+  private static readonly knownPaths = new Set<string>();
+
+  static resetKnownPathsForTests(): void {
+    MockSharePointAdapter.knownPaths.clear();
+  }
+
+  static seedKnownPathForTests(siteId: string, driveId: string, relativePath: string): void {
+    MockSharePointAdapter.knownPaths.add(`${siteId}::${driveId}::${relativePath}`);
+  }
+
+  private pathKey(siteId: string, driveId: string, relativePath: string): string {
+    return `${siteId}::${driveId}::${relativePath}`;
+  }
+
+  async folderExists(input: FolderExistsInput): Promise<boolean> {
+    return MockSharePointAdapter.knownPaths.has(
+      this.pathKey(input.siteId, input.driveId, input.relativePath)
+    );
   }
 
   async uploadFile(input: UploadFileInput): Promise<UploadFileResult> {

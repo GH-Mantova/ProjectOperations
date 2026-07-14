@@ -339,6 +339,31 @@ pre-sets `PR_WATCHER_REPO_ROOT` (git work) and `PR_WATCHER_PROMPT_DIR`
 root and `index.mjs` watches the real queue directory. Override either
 by exporting them before launch if your layout differs.
 
+## Starting the watcher so it survives a Claude Desktop restart
+
+`watcher-launcher.ps1` is the top-level launcher. It sets the two env
+vars that pin the split layout (`PR_WATCHER_REPO_ROOT` = the isolated
+supervisor clone at `C:\po-watcher\ProjectOperations` used for git work;
+`PR_WATCHER_PROMPT_DIR` = the queue directory in the main tree at
+`C:\ProjectOperations2\docs\pr-prompts`), opens a transcript, and hands
+off to `supervise-watcher.ps1`. It must be invoked **detached** — not
+as a child of a Claude Desktop / editor shell. A process started from a
+Claude Desktop shell belongs to that session's job object and is killed
+when Desktop exits or restarts; on 2026-07-14 exactly that happened and
+the whole watcher went down with the Desktop process.
+
+The safest invocation is `Win32_Process.Create`, which spawns the new
+process directly under the WMI service host and outside the calling
+session's job object:
+
+```powershell
+([wmiclass]"Win32_Process").Create('powershell -NoProfile -ExecutionPolicy Bypass -File C:\po-watcher\ProjectOperations\scripts\pr-watcher\watcher-launcher.ps1')
+```
+
+Keep the launcher pure ASCII (LL-22) — PowerShell 5.1 reads UTF-8
+without BOM as Windows-1252 and any non-ASCII byte becomes a parser
+error.
+
 ## Nightly mode (Windows Task Scheduler)
 
 Use `scripts/pr-watcher/start-nightly.ps1` as a wrapper. It:

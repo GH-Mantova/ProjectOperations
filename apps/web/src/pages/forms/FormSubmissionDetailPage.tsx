@@ -135,6 +135,79 @@ function renderValue(field: Field, value: unknown): React.ReactNode {
     case "checkbox":
       if (Array.isArray(value)) return value.join(", ");
       return String(value);
+    case "terms": {
+      if (typeof value === "object" && value !== null) {
+        const v = value as { accepted?: boolean; version?: string; acceptedAt?: string };
+        if (!v.accepted) return <span style={{ color: "var(--text-muted)" }}>Not accepted</span>;
+        return (
+          <span>
+            ✓ Accepted (v{v.version ?? "?"}
+            {v.acceptedAt ? ` · ${new Date(v.acceptedAt).toLocaleString()}` : ""})
+          </span>
+        );
+      }
+      return String(value);
+    }
+    case "table": {
+      if (!Array.isArray(value) || value.length === 0) {
+        return <span style={{ color: "var(--text-muted)" }}>No rows</span>;
+      }
+      const rows = value as Array<Record<string, unknown>>;
+      const columnKeys = Array.from(
+        rows.reduce<Set<string>>((set, row) => {
+          Object.keys(row).forEach((k) => set.add(k));
+          return set;
+        }, new Set())
+      );
+      return (
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+          <thead>
+            <tr>
+              {columnKeys.map((k) => (
+                <th
+                  key={k}
+                  style={{
+                    textAlign: "left",
+                    padding: "4px 6px",
+                    borderBottom: "1px solid var(--border-subtle, rgba(0,0,0,0.08))"
+                  }}
+                >
+                  {k}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => (
+              <tr key={i}>
+                {columnKeys.map((k) => {
+                  const cell = row[k];
+                  const rendered =
+                    typeof cell === "boolean" ? (cell ? "Yes" : "No") : cell == null ? "—" : String(cell);
+                  return (
+                    <td key={k} style={{ padding: "4px 6px" }}>
+                      {rendered}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      );
+    }
+    case "calculation":
+      // Server-computed; render as-is with a subtle marker.
+      return (
+        <span>
+          {String(value)}{" "}
+          <span style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase" }}>
+            computed
+          </span>
+        </span>
+      );
+    case "lookup":
+      return String(value);
     default:
       return String(value);
   }

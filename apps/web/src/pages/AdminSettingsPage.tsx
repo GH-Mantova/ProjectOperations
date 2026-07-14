@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { AdminAccessRequestsTab } from "./admin/AdminAccessRequestsTab";
 import { isAdminUser } from "../auth/permissions";
+import { NoAccess } from "../components/NoAccess";
 import { AdminUsersTab } from "./admin/AdminUsersTab";
 import { AdminRolesPermissionsTab } from "./admin/AdminRolesPermissionsTab";
 import { AdminClientVersionsTab } from "./admin/AdminClientVersionsTab";
@@ -55,7 +56,7 @@ export function AdminSettingsPage() {
   const [tab, setTab] = useState<TabId>("notifications");
 
   if (!user) return null;
-  if (!isAdmin) return <Navigate to="/" replace />;
+  if (!isAdmin) return <NoAccess required="role:Admin" title="Admin settings requires the Admin role" />;
 
   return (
     <div style={{ padding: 24, maxWidth: 1200 }}>

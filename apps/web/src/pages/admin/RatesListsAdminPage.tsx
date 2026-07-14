@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Navigate } from "react-router-dom";
 import { EmptyState, SkeletonList } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { FilterableRateGrid } from "../../components/rates/FilterableRateGrid";
+import { NoAccess } from "../../components/NoAccess";
 import type { RateGridColumn, RateGridRow } from "../../components/rates/rateGridModel";
 import {
   blankRowCells,
@@ -81,7 +81,9 @@ export function RatesListsAdminPage() {
   const [tab, setTab] = useState<TopTab>(canManageRates ? "rates" : "lists");
 
   if (!user) return null;
-  if (!canManageRates && !canManageLists) return <Navigate to="/" replace />;
+  if (!canManageRates && !canManageLists) {
+    return <NoAccess required={["rates.manage", "lists.manage"]} />;
+  }
 
   return (
     <div style={{ padding: 24, maxWidth: 1400 }}>

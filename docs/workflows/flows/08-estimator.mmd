@@ -1,0 +1,19 @@
+%% title: Estimator - role || module: Role workflow || role: Estimator || status: DRAFT || view: role
+flowchart TD
+  s([Start]):::startEnd --> a[Receive assigned tender]:::process
+  a --> b[Review documents and site info]:::process
+  b --> c{Site visit or measure needed?}:::decision
+  c -- Yes --> d[Attend site and measure]:::process
+  c -- No --> e[Build estimate<br/>labour, plant, disposal, cutting]:::process
+  d --> e
+  e --> f[Apply rates and markup]:::process
+  f --> g{Scope or risk query beyond authority?}:::decision
+  g -- Yes --> h[Consult - escalate to Ops or PM]:::process
+  g -- No --> i[Prepare quote]:::process
+  h --> i
+  i --> j[Internal review]:::process
+  j --> k[/Send quote to client/]:::io
+  k --> l[Follow up client]:::process
+  l --> m{Won?}:::decision
+  m -- Yes --> n[Handover to Contracts and PM]:::output
+  m -- No --> o[Record loss and feedback]:::output

@@ -1,0 +1,17 @@
+%% title: Estimating & Quoting || module: Estimating || role: Estimator || status: DRAFT || view: module
+flowchart TD
+  start([Start]):::startEnd --> open[Open priced tender]:::process
+  open --> scope[Build Scope of Works<br/>SO, Str, Asb, Civ, Prv]:::process
+  scope --> lines[Add cost lines<br/>Labour, Equip and Sub, Plant, Disposal, Cutting]:::process
+  rates[Apply rates<br/>Cutrite schedule, plant wet or dry, waste]:::process
+  lines --> rates
+  rates --> markup[Apply markup<br/>default 30% per item]:::process
+  markup --> review{Internal review OK?}:::decision
+  review -- No --> lines
+  review -- Yes --> quote[Generate quote<br/>simple or detailed]:::doc
+  quote --> send[/Send quote to client via Outlook/]:::io
+  send --> won{Won?}:::decision
+  won -- No --> loss[Record loss and client feedback]:::process
+  won -- Yes --> convert[Convert to Job]:::process
+  loss --> endn([Update pipeline]):::output
+  convert --> endw([Job created]):::output

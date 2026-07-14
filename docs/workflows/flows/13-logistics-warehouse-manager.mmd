@@ -1,0 +1,11 @@
+%% title: Logistics and Warehouse Manager - role || module: Role workflow || role: Logistics & Warehouse Manager || status: DRAFT || view: role
+flowchart TD
+  s([Start]):::startEnd --> a[Plan logistics and deliveries]:::process
+  a --> b[Manage warehouse and inventory]:::process
+  b --> c[Schedule transport - trucks and drivers]:::process
+  c --> d[Maintain asset and equipment readiness]:::process
+  d --> e{Shortage or breakdown?}:::decision
+  e -- Yes --> f[Arrange hire - escalate to Ops]:::process
+  e -- No --> g[Ensure compliance - waste transport and loads]:::process
+  f --> g
+  g --> h[Report utilisation to Ops]:::output

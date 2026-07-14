@@ -1,0 +1,13 @@
+%% title: Scheduler and Resource allocation || module: Scheduler || role: Operations Manager || status: DRAFT || view: module
+flowchart TD
+  s([Job needs resources]):::startEnd --> a[Read job role requirements]:::process
+  a --> b[Check worker availability and competencies]:::process
+  b --> c{Fit the bill?}:::decision
+  c -- No --> d[Source or hire - escalate to Ops or Logistics]:::process
+  c -- Yes --> e[Allocate to shifts and days]:::process
+  d --> e
+  e --> f{Scheduling conflict?}:::decision
+  f -- Yes --> g[Resolve conflict]:::process
+  f -- No --> h[Confirm allocations]:::process
+  g --> h
+  h --> i[Notify workers]:::output

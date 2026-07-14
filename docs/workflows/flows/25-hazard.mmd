@@ -1,0 +1,12 @@
+%% title: Hazard observation || module: Safety || role: Field worker / WHS || status: DRAFT || view: module
+flowchart TD
+  s([Hazard observed]):::startEnd --> a[Open hazard form on mobile]:::process
+  a --> b[/Capture details, photos, GPS/]:::io
+  b --> c[Submit - IS-HAZ number]:::process
+  c --> d{Extreme risk?}:::decision
+  d -- Yes --> e[Immediate control and notify WHS]:::process
+  d -- No --> f[Standard triage]:::process
+  e --> g[Assign control actions]:::process
+  f --> g
+  g --> h[Verify closed]:::process
+  h --> i[Safety dashboard]:::output

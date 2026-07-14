@@ -1,0 +1,11 @@
+%% title: Subcontractor prequalification || module: Directory || role: WHS & Commercial Compliance || status: DRAFT || view: module
+flowchart TD
+  s([New subcontractor]):::startEnd --> a[Create record and trade categories]:::process
+  a --> b[Request prequal docs - licences and insurances]:::process
+  b --> c{Docs complete and valid?}:::decision
+  c -- No --> d[Request or hold]:::process
+  c -- Yes --> e[Review]:::process
+  d --> b
+  e --> f{Approve?}:::decision
+  f -- Yes --> g[Approved - available for allocation]:::output
+  f -- No --> h[Pending, suspended or rejected]:::output

@@ -1,0 +1,12 @@
+%% title: Finance and Administration - role || module: Role workflow || role: Finance & Administration Officer || status: DRAFT || view: role
+flowchart TD
+  s([Start]):::startEnd --> a[Process daily transactions in Xero]:::process
+  a --> b[Reconcile accounts]:::process
+  b --> c[Invoice clients and progress claims]:::process
+  c --> d{Overdue or discrepancy?}:::decision
+  d -- Yes --> e[Chase - escalate to Ops or Director]:::process
+  d -- No --> f[Run payroll and supplier payments]:::process
+  e --> f
+  f --> g[Compliance with accountant<br/>BAS, super, EOFY]:::process
+  g --> h[HR admin - onboarding and contracts]:::process
+  h --> i[Reporting]:::output

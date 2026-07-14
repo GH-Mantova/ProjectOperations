@@ -1,0 +1,12 @@
+%% title: Transport Operator - role || module: Role workflow || role: Transport Operator / Truck Driver || status: DRAFT || view: role
+flowchart TD
+  s([Start]):::startEnd --> a[Receive run sheet]:::process
+  a --> b[Pre-start vehicle check]:::process
+  b --> c[Load waste or materials to compliance]:::process
+  c --> d[Transport to site or tip]:::process
+  d --> e{Compliance or route issue?}:::decision
+  e -- Yes --> f[Escalate to Logistics Manager]:::process
+  e -- No --> g[Deliver or dispose]:::process
+  f --> g
+  g --> h[/Records and dockets/]:::io
+  h --> i[Return and report]:::output

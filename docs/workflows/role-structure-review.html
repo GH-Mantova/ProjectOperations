@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Initial Services - Role Structure Review</title>
+<style>
+  :root{ --teal:#005B61; --teal-d:#00363a; --orange:#FEAA6D; --dark:#242424; --light:#F6F6F6;
+         --line:#e2e6e6; --ok:#2e7d32; --warn:#E08A3C; --bad:#b3261e; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; font-family:'Outfit','Segoe UI',Roboto,Helvetica,Arial,sans-serif; color:var(--dark); background:var(--light); }
+  header{ background:var(--teal); color:#fff; padding:16px 22px; }
+  header h1{ margin:0; font-size:20px; font-weight:800; }
+  header .sub{ font-size:13px; opacity:.9; margin-top:3px; }
+  header .who{ margin-top:10px; font-size:13px; }
+  header .who input{ font-size:13px; padding:6px 9px; border:none; border-radius:7px; width:200px; }
+  .wrap{ max-width:1000px; margin:0 auto; padding:20px 22px 60px; }
+  .bar{ position:sticky; top:0; z-index:5; background:var(--light); padding:12px 0; display:flex; gap:8px; flex-wrap:wrap; border-bottom:1px solid var(--line); }
+  .btn{ font:inherit; font-size:13px; font-weight:600; cursor:pointer; border:1px solid var(--line); background:#fff; color:var(--teal); border-radius:8px; padding:8px 12px; }
+  .btn:hover{ border-color:var(--teal); }
+  .btn.primary{ background:var(--orange); border-color:var(--orange); color:#3a2400; }
+  .note{ background:#fff; border:1px solid var(--line); border-left:4px solid var(--teal); border-radius:8px; padding:12px 14px; font-size:14px; margin:16px 0; }
+  h2{ font-size:16px; color:var(--teal); margin:26px 0 10px; border-bottom:2px solid var(--line); padding-bottom:5px; }
+  .grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media(max-width:720px){ .grid{ grid-template-columns:1fr; } }
+  .card{ background:#fff; border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+  .card.dissolved{ opacity:.75; border-style:dashed; }
+  .card .rn{ font-weight:700; font-size:15px; color:var(--teal); outline:none; }
+  .card .rn:focus{ background:#fff7ee; box-shadow:0 0 0 2px var(--orange); border-radius:4px; }
+  .card .meta{ font-size:12px; color:#777; margin:3px 0 8px; }
+  .card .badge{ font-size:10px; font-weight:700; padding:2px 7px; border-radius:20px; letter-spacing:.03em; }
+  .b-keep{ background:#e7f4e8; color:var(--ok); } .b-new{ background:#fff1e0; color:var(--warn); } .b-diss{ background:#fde8e6; color:var(--bad); }
+  .card label{ font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:#8a8a8a; display:block; margin:8px 0 3px; }
+  select,textarea,input[type=text]{ font:inherit; font-size:13px; width:100%; padding:7px 9px; border:1px solid var(--line); border-radius:7px; resize:vertical; }
+  table{ width:100%; border-collapse:collapse; background:#fff; border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  th,td{ text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); font-size:13px; vertical-align:top; }
+  th{ background:#f0f4f4; color:var(--teal); font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
+  td input,td select{ border:1px solid transparent; background:transparent; }
+  td input:focus,td select:focus{ border-color:var(--line); background:#fff; }
+  .rowdel{ cursor:pointer; color:#bbb; border:none; background:none; font-size:16px; }
+  .rowdel:hover{ color:var(--bad); }
+  .muted{ color:#888; font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Role Structure Review</h1>
+  <div class="sub">Initial Services &middot; consolidated roles &amp; CW ladder mapping &middot; for Sean &amp; Colin</div>
+  <div class="who">Reviewer: <input id="reviewer" type="text" placeholder="Your name" /></div>
+</header>
+<div class="wrap">
+  <div class="bar">
+    <button class="btn primary" id="exJson">Download changes (JSON)</button>
+    <button class="btn" id="exMd">Download summary (MD)</button>
+    <button class="btn" id="copy">Copy summary</button>
+    <label class="btn" style="cursor:pointer">Import<input id="imp" type="file" accept=".json" style="display:none"></label>
+    <button class="btn" id="reset">Reset</button>
+    <span style="flex:1"></span>
+    <span class="muted" id="saved"></span>
+  </div>
+
+  <div class="note">
+    <b>How to use:</b> This is the proposed role structure after consolidating the old job
+    descriptions. Edit any role name inline, set a decision and add a comment per role, and
+    adjust the <b>CW ladder mapping</b> table at the bottom (change the level, edit notes, add
+    or remove rows). When done, click <b>Download changes</b> and send the file back to Marco.
+    Your edits save automatically in this browser.
+  </div>
+
+  <div>
+    <label style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#8a8a8a">General notes</label>
+    <textarea id="general" rows="2" placeholder="Overall thoughts on the structure..."></textarea>
+  </div>
+
+  <div id="sections"></div>
+
+  <h2>CW ladder mapping (editable)</h2>
+  <p class="muted">How the old on-site job descriptions fold into the CW1D-CW5 ladder. This is a
+     starting point - change the level or notes as needed. It will be configurable in the system, not fixed.</p>
+  <table id="maptable">
+    <thead><tr><th style="width:42%">Old on-site role</th><th style="width:22%">Maps to</th><th>Notes</th><th></th></tr></thead>
+    <tbody id="mapbody"></tbody>
+  </table>
+  <button class="btn" id="addrow" style="margin-top:8px">+ Add row</button>
+</div>
+
+<script>
+var DATA = {
+  sections: [
+    { title: 'Senior management & office', roles: [
+      { id:'director', name:'Director', meta:'Sean Lattin', badge:'keep', origin:'Absorbs high-level people/business decisions from People & Culture.' },
+      { id:'ops', name:'Operations Manager', meta:'Colin Hanlon', badge:'keep', origin:'Absorbs high-level Business Support items + remaining People & Culture. Also covers Redcliffe Skips.' },
+      { id:'whs', name:'WHS & Commercial Compliance Coordinator', meta:'Marco Mantovaninni', badge:'keep', origin:'Absorbs safety/compliance-biased People & Culture (inductions, training).' },
+      { id:'est', name:'Estimator', meta:'Raj Pudasaini', badge:'keep', origin:'From Estimator JD.' },
+      { id:'pm', name:'Project Manager', meta:'Beau Murphy', badge:'keep', origin:'From PM JD (2 near-identical copies merged + meeting-guide supplement).' },
+      { id:'fin', name:'Finance & Administration Officer', meta:'Amy Russian', badge:'keep', origin:'Admin/bookkeeping + the lower-level Business Support duties merged in.' },
+      { id:'lwm', name:'Logistics & Warehouse Manager', meta:'(incumbent TBC)', badge:'keep', origin:'Absorbs high-level warehouse/logistics coordination. Two duplicate JDs merged.' },
+      { id:'bso', name:'Business Support Officer', meta:'dissolved', badge:'dissolved', origin:'Split: high-level -> Operations Manager; remainder -> Finance & Administration.' },
+      { id:'pc', name:'People & Culture Coordinator', meta:'dissolved', badge:'dissolved', origin:'Split across Director / WHS & Compliance / Operations Manager.' }
+    ]},
+    { title: 'Warehouse & transport', roles: [
+      { id:'wlo', name:'Warehouse / Logistics Operator', meta:'NEW role', badge:'new', origin:'Created from the mundane warehouse + logistics-support duties.' },
+      { id:'trans', name:'Transport Operator / Truck Driver', meta:'(incumbents TBC)', badge:'keep', origin:'Transport Operator + Truck Driver JDs merged (driving MR/HR/MC + forklift/bobcat/excavator).' },
+      { id:'whc', name:'Warehouse Coordinator', meta:'merged up', badge:'dissolved', origin:'High-level tasks -> Logistics & Warehouse Manager; mundane -> Warehouse/Logistics Operator.' },
+      { id:'lwso', name:'Logistics & Warehouse Support Officer', meta:'merged up', badge:'dissolved', origin:'Same split as Warehouse Coordinator.' }
+    ]},
+    { title: 'On-site workforce - CW ladder (replaces the legacy on-site JDs)', roles: [
+      { id:'cw1d', name:'CW1D - Demolition Labourer', meta:'entry on-tools', badge:'keep', origin:'FY27 role profile. Replaces the Labourer JD.' },
+      { id:'cw2', name:'CW2 - Experienced Labourer / Basic Operator', meta:'pre-trade', badge:'keep', origin:'FY27 role profile.' },
+      { id:'cw3', name:'CW3 - Demolition Tradesperson / Skilled Operator', meta:'Cert III, Class B', badge:'keep', origin:'FY27. Replaces Carpenter / Plant Operator / trade demolition JDs.' },
+      { id:'cw4', name:'CW4 - Post-Trade Specialist', meta:'Class A, heavy plant', badge:'keep', origin:'FY27 role profile.' },
+      { id:'cw5', name:'CW5 - Senior Specialist / Site Manager', meta:'HR/HC/MC, supervisors', badge:'keep', origin:'FY27. Site Supervisor & senior operators land here; Leading Hand becomes an Lv leadership suffix.' }
+    ]}
+  ],
+  mapping: [
+    { legacy:'Labourer', cw:'CW1D', notes:'Demolition Labourer' },
+    { legacy:'Experienced labourer / basic plant', cw:'CW2', notes:'Basic operator' },
+    { legacy:'Carpenter / Plant Operator / trade demolition', cw:'CW3', notes:'Cert III, Class B asbestos' },
+    { legacy:'Post-trade specialist (Class A, heavy plant)', cw:'CW4', notes:'Technical apex on-tools' },
+    { legacy:'Site Supervisor / senior operators / HR-HC-MC drivers', cw:'CW5', notes:'With Lv leadership suffix' },
+    { legacy:'Leading Hand', cw:'Lv suffix (CW3-CW5)', notes:'Leadership scope, not a standalone role' }
+  ]
+};
+var CW_OPTIONS = ['CW1D','CW2','CW3','CW4','CW5','Lv suffix (CW3-CW5)','Other / discuss'];
+var DECISIONS = ['(no decision)','Agree','Rename','Merge','Split further','Remove','Needs discussion'];
+var KEY = 'role-structure-review';
+
+var state = load();
+function load(){ try{ return JSON.parse(localStorage.getItem(KEY)) || fresh(); }catch(e){ return fresh(); } }
+function fresh(){ return { reviewer:'', general:'', roles:{}, mapping:DATA.mapping.map(function(m){return Object.assign({},m);}) }; }
+function save(){ localStorage.setItem(KEY, JSON.stringify(state)); var s=document.getElementById('saved'); s.textContent='saved'; setTimeout(function(){s.textContent='';},900); }
+
+var reviewerEl=document.getElementById('reviewer'); reviewerEl.value=state.reviewer||'';
+reviewerEl.oninput=function(){ state.reviewer=reviewerEl.value; save(); };
+var genEl=document.getElementById('general'); genEl.value=state.general||'';
+genEl.oninput=function(){ state.general=genEl.value; save(); };
+
+function badgeHtml(b){ if(b==='keep')return '<span class="badge b-keep">KEEP</span>';
+  if(b==='new')return '<span class="badge b-new">NEW</span>';
+  return '<span class="badge b-diss">DISSOLVED</span>'; }
+
+function renderSections(){
+  var host=document.getElementById('sections'); host.innerHTML='';
+  DATA.sections.forEach(function(sec){
+    var h=document.createElement('h2'); h.textContent=sec.title; host.appendChild(h);
+    var g=document.createElement('div'); g.className='grid';
+    sec.roles.forEach(function(r){
+      var st=state.roles[r.id]||{};
+      var card=document.createElement('div'); card.className='card'+(r.badge==='dissolved'?' dissolved':'');
+      card.innerHTML=
+        '<div class="rn" contenteditable="true" spellcheck="false" data-id="'+r.id+'">'+(st.name||r.name)+'</div>'+
+        '<div class="meta">'+r.meta+' &middot; '+badgeHtml(r.badge)+'</div>'+
+        '<div class="muted">'+r.origin+'</div>'+
+        '<label>Decision</label>'+
+        '<select data-dec="'+r.id+'">'+DECISIONS.map(function(d){return '<option'+((st.decision||DECISIONS[0])===d?' selected':'')+'>'+d+'</option>';}).join('')+'</select>'+
+        '<label>Comment / proposed change</label>'+
+        '<textarea rows="2" data-com="'+r.id+'" placeholder="Optional...">'+(st.comment||'')+'</textarea>';
+      g.appendChild(card);
+    });
+    host.appendChild(g);
+  });
+  host.querySelectorAll('.rn').forEach(function(el){ el.addEventListener('input',function(){ var id=el.getAttribute('data-id'); state.roles[id]=state.roles[id]||{}; state.roles[id].name=el.textContent.trim(); save(); }); });
+  host.querySelectorAll('[data-dec]').forEach(function(el){ el.addEventListener('change',function(){ var id=el.getAttribute('data-dec'); state.roles[id]=state.roles[id]||{}; state.roles[id].decision=el.value; save(); }); });
+  host.querySelectorAll('[data-com]').forEach(function(el){ el.addEventListener('input',function(){ var id=el.getAttribute('data-com'); state.roles[id]=state.roles[id]||{}; state.roles[id].comment=el.value; save(); }); });
+}
+
+function renderMap(){
+  var body=document.getElementById('mapbody'); body.innerHTML='';
+  state.mapping.forEach(function(m,i){
+    var tr=document.createElement('tr');
+    tr.innerHTML=
+      '<td><input type="text" value="'+esc(m.legacy)+'" data-ml="'+i+'"></td>'+
+      '<td><select data-mc="'+i+'">'+CW_OPTIONS.map(function(o){return '<option'+(m.cw===o?' selected':'')+'>'+o+'</option>';}).join('')+'</select></td>'+
+      '<td><input type="text" value="'+esc(m.notes)+'" data-mn="'+i+'"></td>'+
+      '<td><button class="rowdel" data-del="'+i+'" title="remove">&times;</button></td>';
+    body.appendChild(tr);
+  });
+  body.querySelectorAll('[data-ml]').forEach(function(el){ el.oninput=function(){ state.mapping[+el.getAttribute('data-ml')].legacy=el.value; save(); }; });
+  body.querySelectorAll('[data-mc]').forEach(function(el){ el.onchange=function(){ state.mapping[+el.getAttribute('data-mc')].cw=el.value; save(); }; });
+  body.querySelectorAll('[data-mn]').forEach(function(el){ el.oninput=function(){ state.mapping[+el.getAttribute('data-mn')].notes=el.value; save(); }; });
+  body.querySelectorAll('[data-del]').forEach(function(el){ el.onclick=function(){ state.mapping.splice(+el.getAttribute('data-del'),1); save(); renderMap(); }; });
+}
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+document.getElementById('addrow').onclick=function(){ state.mapping.push({legacy:'',cw:CW_OPTIONS[0],notes:''}); save(); renderMap(); };
+
+function payload(){
+  var roleChanges=[];
+  DATA.sections.forEach(function(sec){ sec.roles.forEach(function(r){ var st=state.roles[r.id];
+    if(st && (st.decision&&st.decision!==DECISIONS[0] || st.comment || (st.name&&st.name!==r.name))){
+      roleChanges.push({ role:r.name, section:sec.title, renamedTo:(st.name&&st.name!==r.name)?st.name:'', decision:st.decision||'', comment:st.comment||'' });
+    }
+  });});
+  return { document:'Initial Services role structure review', reviewer:state.reviewer||'(unnamed)', date:new Date().toISOString().slice(0,10),
+    generalNotes:state.general||'', roleChanges:roleChanges, cwMapping:state.mapping };
+}
+function md(){ var p=payload(); var L=[];
+  L.push('# Role structure review'); L.push('Reviewer: '+p.reviewer+'  |  '+p.date);
+  if(p.generalNotes) L.push('\nGeneral notes: '+p.generalNotes);
+  L.push('\n## Role changes ('+p.roleChanges.length+')');
+  if(!p.roleChanges.length) L.push('- (none)');
+  p.roleChanges.forEach(function(c){ L.push('\n- '+c.role+(c.renamedTo?' -> RENAME TO: '+c.renamedTo:''));
+    if(c.decision) L.push('  - Decision: '+c.decision); if(c.comment) L.push('  - Comment: '+c.comment); });
+  L.push('\n## CW ladder mapping');
+  p.cwMapping.forEach(function(m){ L.push('- '+m.legacy+'  ->  '+m.cw+(m.notes?'  ('+m.notes+')':'')); });
+  return L.join('\n');
+}
+function dl(name,text,type){ var b=new Blob([text],{type:type}); var a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; a.click(); URL.revokeObjectURL(a.href); }
+function slug(s){ return String(s).replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,''); }
+document.getElementById('exJson').onclick=function(){ var p=payload(); dl('role-structure-review-'+slug(p.reviewer)+'.json', JSON.stringify(p,null,2),'application/json'); };
+document.getElementById('exMd').onclick=function(){ var p=payload(); dl('role-structure-review-'+slug(p.reviewer)+'.md', md(),'text/markdown'); };
+document.getElementById('copy').onclick=function(){ navigator.clipboard.writeText(md()).then(function(){ alert('Summary copied.'); }); };
+document.getElementById('reset').onclick=function(){ if(confirm('Clear all your edits?')){ state=fresh(); save(); reviewerEl.value=''; genEl.value=''; renderSections(); renderMap(); } };
+document.getElementById('imp').onchange=function(ev){ var f=ev.target.files[0]; if(!f)return; var r=new FileReader();
+  r.onload=function(){ try{ var p=JSON.parse(r.result); state=fresh(); state.reviewer=p.reviewer||''; state.general=p.generalNotes||'';
+    if(p.cwMapping) state.mapping=p.cwMapping; (p.roleChanges||[]).forEach(function(c){}); save(); reviewerEl.value=state.reviewer; genEl.value=state.general; renderSections(); renderMap(); alert('Imported (mapping + notes).'); }catch(e){ alert('Could not read that file.'); } };
+  r.readAsText(f); };
+
+renderSections(); renderMap();
+</script>
+</body>
+</html>

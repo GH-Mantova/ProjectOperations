@@ -20,7 +20,19 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "_comment": [
+          "MATCHER COVERS BOTH SHELL PATHS. The original matcher was just 'Bash' - which would NEVER",
+          "have fired for the scheduled agents, because they shell out through the Desktop Commander",
+          "MCP (mcp__..._start_process), a completely different tool name. The guard was theatre on",
+          "exactly the path that runs UNATTENDED.",
+          "",
+          "Both tools put the command under tool_input.command, so guard.mjs works unchanged for either.",
+          "",
+          "STILL UNPROVEN: whether Desktop scheduled-task runs fire PreToolUse hooks AT ALL. guard.mjs",
+          "now appends every invocation to .claude/hooks/guard.log - that log is the positive control.",
+          "If it stays empty while a scheduled agent shells out, the hook is NOT live on that path."
+        ],
+        "matcher": "Bash|mcp__.*(start_process|interact_with_process|execute_command)",
         "hooks": [
           {
             "type": "command",

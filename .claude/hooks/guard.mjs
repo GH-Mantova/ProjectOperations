@@ -21,7 +21,7 @@
  * Exit 0 = allow. Exit 2 = BLOCK (stderr is shown to the agent).
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync, appendFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -46,7 +46,34 @@ try {
   process.exit(0); // fail open
 }
 
+// The command lives under tool_input.command for BOTH the Claude Code built-in Bash tool AND the
+// Desktop Commander MCP `start_process` tool - so the guard logic works unchanged for either.
+const toolName = String((payload && payload.tool_name) || "unknown");
 const command = String((payload && payload.tool_input && payload.tool_input.command) || "");
+
+// ---------------------------------------------------------------------------------------------
+// POSITIVE CONTROL - log EVERY invocation, before deciding anything.
+//
+// WHY: I claimed this hook protected the scheduled agents. IT MAY NOT. The matcher was "Bash", but
+// the Desktop scheduled tasks shell out through the Desktop Commander MCP (mcp__..._start_process)
+// - a different tool name that "Bash" would NEVER match. And the docs do not confirm PreToolUse
+// hooks fire at all during Desktop scheduled-task runs.
+//
+// A guard never OBSERVED to fire is not a guard. It is theatre. (DOCTRINE section 7: before
+// believing anything, prove your instrument can produce a POSITIVE.)
+//
+// This log IS that proof. If `.claude/hooks/guard.log` fills during a scheduled-task run, the hook
+// is live on that path. If it stays EMPTY while an agent shells out, the hook is NOT firing there
+// and the Azure hard stop is prose only - which we must KNOW, not assume.
+try {
+  appendFileSync(
+    join(HERE, "guard.log"),
+    new Date().toISOString() + "  " + toolName + "  " + command.slice(0, 160).replace(/\r?\n/g, " ") + "\n"
+  );
+} catch {
+  // never let logging break the guard
+}
+
 if (!command.trim()) process.exit(0);
 
 // -----------------------------------------------------------------------------------------

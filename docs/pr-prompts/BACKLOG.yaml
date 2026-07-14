@@ -190,3 +190,70 @@ items:
     needs_marco: true
     marco_question: "You had a trigger phrase for this. Still want it, or drop it?"
     order: 11
+
+  # -------------------------------------------------------------------------------------------
+  # ADDED 2026-07-14, second pass. THE REGISTER ITSELF HAD GAPS.
+  #
+  # Within an hour of building this file to stop work falling on the floor, an audit of the same
+  # conversation found FOUR MORE items that had been flagged out loud and never written down.
+  # That is the whole lesson, twice: if it is not in a file an agent reads, it does not exist.
+  # -------------------------------------------------------------------------------------------
+
+  - id: split-native-browser-dialogs
+    title: "Replace native browser dialogs — SPLIT into 4 prompts (the original blew the turn cap)"
+    priority: P2
+    why: >
+      `pr-replace-native-browser-dialogs` tried to migrate 48 call sites in ONE run. It hit
+      "Reached max turns (240)" — DOUBLE the normal budget — left 33 uncommitted files in the shared
+      tree, and killed the queue for 13 hours. It sits in `failed/` and nobody owns it.
+      RAISING THE TURN CAP DOES NOT HELP. SPLITTING DOES. This is also exactly why the intake lint
+      rejects `size > 10`. Rewrite it as ~4 prompts, each under the cap, each independently shippable.
+    gate: 'grep -rq "window.confirm\|window.alert" apps/web/src'
+    gate_means: Native browser dialogs are still in the web app.
+    needs_marco: false
+    order: 12
+
+  - id: job-project-model-merge
+    title: "Job / Project model merge (B-P0a)"
+    priority: P1
+    why: >
+      TWO models for one concept — `model Job` and `model Project` both still on main. This is a
+      duplicated data-model split that GATES the scheduler and allocation work. Phase A (the links)
+      merged in #500; slices 3-9 never shipped. A hard rule was set: no PRs on this without Marco
+      present, because it reshapes the spine of the data model.
+    gate: 'grep -q "^model Job " apps/api/prisma/schema.prisma && grep -q "^model Project " apps/api/prisma/schema.prisma'
+    gate_means: Both models still exist on main - the merge has not happened.
+    needs_marco: true
+    marco_question: >
+      B-P0a was locked as "no PRs without you present". It gates the scheduler. Do you want to
+      restart it, and which is canonical - Job or Project?
+    order: 13
+
+  - id: worker-workerprofile-merge
+    title: "Worker / WorkerProfile model merge (B-P0b)"
+    priority: P1
+    why: >
+      The twin of the above: `model Worker` and `model WorkerProfile` both still on main.
+      WorkerProfile was agreed to be canonical. Also gates scheduler/allocation work.
+    gate: 'grep -q "^model Worker " apps/api/prisma/schema.prisma && grep -q "^model WorkerProfile " apps/api/prisma/schema.prisma'
+    gate_means: Both models still exist on main - the merge has not happened.
+    needs_marco: true
+    marco_question: "Same gate as B-P0a. Restart it? WorkerProfile was agreed canonical."
+    order: 14
+
+  - id: azure-insights-provider
+    title: "Register the Microsoft.Insights provider — there is NO queryable prod telemetry"
+    priority: P2
+    why: >
+      The Azure subscription has `Microsoft.Insights` UNREGISTERED, so there is no queryable
+      telemetry from production. Every prod diagnosis so far has been done by reading the Log Stream
+      by hand, live, while the bug is happening. That is why the quote-PDF 500 took days.
+      This is a two-minute change in the portal and it pays for itself on the next incident.
+    gate: 'true'
+    gate_means: No technical blocker - it is a portal action.
+    needs_marco: true
+    marco_question: >
+      AZURE = your hard stop, so this is yours: register the Microsoft.Insights resource provider
+      (Subscription -> Resource providers -> Microsoft.Insights -> Register). Without it we are
+      blind in prod and every incident is diagnosed by hand.
+    order: 15

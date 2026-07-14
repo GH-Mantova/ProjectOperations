@@ -1,0 +1,90 @@
+---
+premise: '! test -f scripts/pipeline/merge-queue.mjs'
+premise_means: There is no merge queue; jobs still ABORT when a PR falls BEHIND main.
+scope:
+  - scripts/pipeline/merge-queue.mjs
+  - scripts/pr-watcher/merge-queue.mjs
+done_when: pnpm build && test -f scripts/pipeline/merge-queue.mjs
+size: 4
+gate_allow: none
+seed_only: false
+escalates: false
+---
+
+# P2 — MERGE QUEUE: rebase-then-verify. Never abort on BEHIND.
+
+**Second largest failure class: 40 of 194 runs (21%).**
+
+Branch: `feat/pipeline-merge-queue`.
+
+## The evidence
+
+Three symptoms, **one root cause**: `main` moves while work is in flight, and nothing rebases.
+
+**1. Precondition drift — 20 escalations.** Prompts pin a head SHA at staging; the shepherd merges
+other PRs into `main` before the job runs; the job then **ABORTS**:
+
+> `ABORT — head SHA drifted since prompt was pinned, merge state BEHIND.`
+> `expected d8dac7e… observed 1e9c92a… CI checks (7) all green.`
+
+**PR #503 aborted FOUR times. #499 three times. #496 twice. All seven checks were green every
+single time.** The only "problem" was that `main` had moved.
+
+**2. DIRTY deadlock — 13.** Once a branch actually conflicts:
+
+> *"GitHub Actions can't build the potential merge commit for a `pull_request` event when the branch
+> conflicts with main, so the CI/Tendering workflows **silently skip**."*
+
+So: conflict → CI cannot run → gates stay red → nothing merges → `main` advances → **more** conflicts.
+On 2026-07-13, **five PRs were frozen simultaneously**. A pushed empty commit does nothing.
+
+**3. Merge timeout — 7.** `{"ok":false,"reason":"timeout waiting for green checks + MERGE verdict"}`
+— the head-branch-not-up-to-date race (LL-13).
+
+## The fix — one idea
+
+> **BEHIND is not a failure. It is a rebase.**
+
+## Build `scripts/pipeline/merge-queue.mjs`
+
+A **serialized** queue — **one PR at a time**, no concurrency. That is the point.
+
+    for each PR in the merge queue (lowest number first):
+      1. state = gh pr view <n> --json mergeStateStatus,statusCheckRollup
+      2. BEHIND   -> `gh pr update-branch <n>`  (rebase onto main), wait, RE-VERIFY. Never abort.
+      3. DIRTY    -> hand to 02-board-driver for conflict resolution IN A WORKTREE. Not here.
+      4. BLOCKED  -> read the job log (`gh run view <run> --job <job> --log`). Never guess.
+      5. CLEAN + all checks green -> `gh pr merge <n> --squash`
+      6. main has now moved -> RE-EVALUATE every remaining PR. Do not trust the old state.
+
+**Step 6 is why this must be serialized.** Every merge invalidates the mergeability of every other
+open PR. Merging in parallel is what created the drift in the first place.
+
+### Never merge (escalate to `needs-marco/`)
+
+- production data writes (e.g. #552) · production auth · Azure/Entra/SharePoint
+- anything needing a real human identity (#538 needs a real Microsoft account on a shared PC)
+- `escalates: true` in the prompt front-matter
+
+### Retry budget
+
+**Two rebase attempts per PR per cycle. Then escalate.** Unbounded rework burns quota — the #1
+failure class. Never loop.
+
+## Test plan
+
+- [ ] A BEHIND PR is **rebased and merged**, not aborted. (Test against a real BEHIND PR.)
+- [ ] After each merge, remaining PRs are **re-evaluated**, not read from cache.
+- [ ] A DIRTY PR is **handed off**, not force-merged.
+- [ ] A PR with `escalates: true` is **never merged** — it lands in `needs-marco/`.
+- [ ] Two failed rebases → escalate. No third attempt.
+
+## Do NOT
+
+- Do NOT resolve conflicts here — that is station 02, in a worktree.
+- Do NOT git-write in `C:\po-watcher`. The hook blocks it. `gh pr merge` is an API call and needs
+  no working tree at all — that is the whole point of this station.
+
+## Guardrails
+
+ONE attempt. `NO-OP: <reason>` if it fails. Never ask a question — headless, no human.

@@ -53,7 +53,7 @@ textarea {
 }
 
 .shell--collapsed {
-  grid-template-columns: 64px 1fr;
+  grid-template-columns: 72px 1fr;
 }
 
 .shell__sidebar {
@@ -66,7 +66,7 @@ textarea {
   position: sticky;
   top: 0;
   height: 100vh;
-  overflow-y: auto;
+  overflow: hidden;
   border-right: 1px solid rgba(255, 255, 255, 0.04);
 }
 
@@ -122,13 +122,19 @@ textarea {
   color: var(--sidebar-text-active, #FFFFFF);
 }
 
+.shell--collapsed .shell__brand {
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
 .shell--collapsed .shell__brand-name {
   display: none;
 }
 
 .shell--collapsed .shell__collapse-toggle {
-  margin-left: auto;
-  margin-right: auto;
+  margin: 0;
 }
 
 .shell__nav {

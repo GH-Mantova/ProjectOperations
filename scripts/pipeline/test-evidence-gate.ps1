@@ -50,12 +50,23 @@ function Should-Pass($name, $block) {
     catch { Write-Output ("FAIL " + $name + " - threw: " + $_.Exception.Message); $script:fail++ }
 }
 
-Write-Output "=== the PR that must NEVER auto-merge"
-Should-Throw "Assert-SmokedOrEscalate REFUSES #552 (production data - rates unreviewed)" "NEVER-MERGE" { Assert-SmokedOrEscalate -PR 552 }
+Write-Output "=== the NEVER-MERGE guard"
+Write-Output "    The list is currently EMPTY - both entries were discharged on 2026-07-14:"
+Write-Output "      #538 - Marco ran the real-account shared-PC smoke"
+Write-Output "      #552 - Marco reviewed the rates; merged 03:51Z"
+Write-Output "    So test the MECHANISM, not a hardcoded number. A test that only ever asserts"
+Write-Output "    'refuses #552' rots into a lie the moment #552 merges - and then quietly passes"
+Write-Output "    forever while guarding nothing."
+Write-Output ""
 
-# #538 was DISCHARGED 2026-07-14 (Marco ran the real-account shared-PC smoke). Assert it is no
-# longer refused - a guard nobody can ever clear is a lie, and a stale test hides that.
 Should-Pass "Assert-Mergeable ALLOWS #538 (human-identity smoke discharged)" { Assert-Mergeable -PR 538 }
+Should-Pass "Assert-Mergeable ALLOWS #552 (rates reviewed, merged)"          { Assert-Mergeable -PR 552 }
+
+# Prove the guard still BITES by putting a PR on the list for the duration of one assertion.
+$script:NEVER_MERGE = @(999999)
+Should-Throw "Assert-Mergeable REFUSES a PR that IS on the list" "NEVER-MERGE" { Assert-Mergeable -PR 999999 }
+Should-Pass  "Assert-Mergeable ALLOWS a PR that is NOT on the list"            { Assert-Mergeable -PR 561 }
+$script:NEVER_MERGE = @()
 
 Write-Output ""
 Write-Output "=== a real merged PR should read as green (#557 - pipeline hardening)"

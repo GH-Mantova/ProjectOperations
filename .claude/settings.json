@@ -1,0 +1,45 @@
+{
+  "$comment": [
+    "PIPELINE GUARD - the FLOOR, not a cage. Added 2026-07-14 when the scheduled agents were set to",
+    "'skip all approvals'. That was the right call (a headless agent that hits an approval prompt hangs",
+    "forever) but it removed the last interactive backstop, and every other safety rule we had was PROSE.",
+    "",
+    "DENY-ONLY BY DESIGN. There is deliberately NO 'ask' rule anywhere in this file: an ask-prompt in a",
+    "headless run hangs the queue forever. That is why the first version of this config was thrown away",
+    "before it ever ran - it also denied git inside C:\\po-watcher, where the watcher's own agents WORK,",
+    "and would have bricked the queue on the first run.",
+    "",
+    "Agents keep full git, full gh, full filesystem. The hook blocks only three things:",
+    "  1. Azure / Entra / SharePoint tenant writes (absolute - shared company infrastructure)",
+    "  2. Merging a PR on the NEVER-MERGE list (read from pipeline-lib.ps1 - one source of truth)",
+    "  3. Force-push / deletion of `main` (force-pushing a FEATURE branch stays allowed - rebases need it)",
+    "",
+    "Tested: .claude/hooks/test-guard.mjs - 34/34, including every command the watcher runs daily.",
+    "The hook FAILS OPEN on its own bugs: a broken guard that blocks everything is an outage."
+  ],
+  "hooks": {
+    "PreToolUse": [
+      {
+        "_comment": [
+          "MATCHER COVERS BOTH SHELL PATHS. The original matcher was just 'Bash' - which would NEVER",
+          "have fired for the scheduled agents, because they shell out through the Desktop Commander",
+          "MCP (mcp__..._start_process), a completely different tool name. The guard was theatre on",
+          "exactly the path that runs UNATTENDED.",
+          "",
+          "Both tools put the command under tool_input.command, so guard.mjs works unchanged for either.",
+          "",
+          "STILL UNPROVEN: whether Desktop scheduled-task runs fire PreToolUse hooks AT ALL. guard.mjs",
+          "now appends every invocation to .claude/hooks/guard.log - that log is the positive control.",
+          "If it stays empty while a scheduled agent shells out, the hook is NOT live on that path."
+        ],
+        "matcher": "Bash|mcp__.*(start_process|interact_with_process|execute_command)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard.mjs\""
+          }
+        ]
+      }
+    ]
+  }
+}

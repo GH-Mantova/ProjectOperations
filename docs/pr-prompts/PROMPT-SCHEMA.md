@@ -75,13 +75,61 @@ The pipeline will **build the PR but never merge it** — it goes to Marco.
 
 ---
 
+---
+
+## ⛔ STANDING AUTHORITY — the rule that cost three runs on 2026-07-14
+
+**Every prompt body MUST carry this, verbatim:**
+
+> **You have STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR. Do not ask.**
+> **"Do NOT auto-merge" means: open the PR and LEAVE IT UNMERGED.** It does **not** mean "wait for
+> approval before starting", and it does **not** mean "do the work then ask permission to push".
+> There is no human in this run. **Finishing the work and then asking for permission is
+> indistinguishable from failing** — the work is discarded either way.
+
+### Why this exists
+
+`pr-a1` (sot-reconcile) did **the entire job** — corrected the sha, verified the map in sync,
+confirmed the diff was exactly 2 lines — and then ended with:
+
+> *"Ready to commit/push/PR when you give the word."*
+
+`pr-a2` (timesheet) did the same:
+
+> *"Standing by — awaiting your call on whether to arm it, dry-run, implement, or leave it."*
+
+**Both exited 0. Neither opened a PR. Both runs were discarded.**
+
+They did not fail. They did not exit *silently*. **They exited politely, asking a question nobody
+was awake to answer.** The old guardrail only forbade exiting *silently* — so an agent that
+finished the work and waited for approval slipped straight through it.
+
+**Root cause:** both prompt bodies contained *"Do NOT auto-merge — Marco reviews the rendered
+diff."* The agents read that as *"do not act without Marco"* and stopped **before opening the PR**.
+**"Do not auto-merge" got read as "do not merge, and also do not do anything."**
+
+The watcher caught both (`no-pr-opened/`, *"NOT treated as success"*) — the safety net worked. But a
+safety net that catches a run is still a burned run.
+
+---
+
 ## Also required, in the body
 
 - **What to build** — specific, with file paths.
 - **Do NOT** — the explicit out-of-scope list.
-- **Guardrails** — one attempt; never exit silently (say `NO-OP: <reason>`); never ask a question
-  (there is no human in a headless run — **10 runs died waiting**); read the job log before
-  diagnosing any CI failure.
+- **STANDING AUTHORITY** — the block above, verbatim. Non-negotiable.
+- **Guardrails** — one attempt; never exit silently (say `NO-OP: <reason>`); **never ask a question
+  or "stand by" for approval** (there is no human in a headless run — **10 runs died waiting, plus
+  the two above**); read the job log before diagnosing any CI failure.
+
+### The completion test
+
+Before you finish, ask: **"Is there a PR number in my output?"**
+
+- **Yes** → done.
+- **No, because the work was already on `main`** → say `NO-OP: <reason>`. Correct.
+- **No, because I could not do it** → say `NO-OP: <reason>`. Correct, and honest.
+- **No, because I am waiting for someone** → **WRONG. There is nobody. Open the PR.**
 
 ## Lint failures you will hit
 

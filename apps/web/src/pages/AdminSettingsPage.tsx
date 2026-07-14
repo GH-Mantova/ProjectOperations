@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { AdminAccessRequestsTab } from "./admin/AdminAccessRequestsTab";
 import { isAdminUser } from "../auth/permissions";
 import { NoAccess } from "../components/NoAccess";
 import { AdminUsersTab } from "./admin/AdminUsersTab";
@@ -40,6 +41,7 @@ const TABS = [
   { id: "notifications", label: "Notifications" },
   { id: "email", label: "Email" },
   { id: "users", label: "Users" },
+  { id: "access-requests", label: "Access requests" },
   { id: "ai", label: "AI & Integrations" },
   { id: "platform", label: "Platform" },
   { id: "permissions", label: "Permissions" },
@@ -60,7 +62,7 @@ export function AdminSettingsPage() {
     <div style={{ padding: 24, maxWidth: 1200 }}>
       <h1 className="s7-type-page-heading" style={{ marginTop: 0 }}>Admin settings</h1>
       <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
-        System configuration — notifications, email delivery, integrations, and audit history.
+        System configuration â€” notifications, email delivery, integrations, and audit history.
       </p>
 
       <div style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: 24, marginTop: 24 }}>
@@ -94,6 +96,7 @@ export function AdminSettingsPage() {
           {tab === "notifications" && <NotificationsTab />}
           {tab === "email" && <EmailTab />}
           {tab === "users" && <AdminUsersTab />}
+          {tab === "access-requests" && <AdminAccessRequestsTab />}
           {tab === "ai" && (
             <IntegrationTab
               href="/admin/platform"
@@ -105,7 +108,7 @@ export function AdminSettingsPage() {
             <>
               <IntegrationTab
                 href="/admin/platform"
-                label="Platform integrations — SharePoint"
+                label="Platform integrations â€” SharePoint"
                 body="SharePoint tenant, site, and library bindings plus the root folder tree used by Project Operations. SHAREPOINT_MODE is set by environment."
               />
               <SharePointTestPanel />
@@ -141,7 +144,7 @@ function StubCard({ title, body }: { title: string; body: string }) {
   );
 }
 
-// ── Notifications tab ────────────────────────────────────────────────────
+// â”€â”€ Notifications tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function NotificationsTab() {
   const { authFetch } = useAuth();
   const [triggers, setTriggers] = useState<Trigger[]>([]);
@@ -188,7 +191,7 @@ function NotificationsTab() {
     }
   };
 
-  if (loading) return <p style={{ color: "var(--text-muted)" }}>Loading…</p>;
+  if (loading) return <p style={{ color: "var(--text-muted)" }}>Loadingâ€¦</p>;
 
   const enabled = triggers.filter((t) => t.isEnabled);
   const disabled = triggers.filter((t) => !t.isEnabled);
@@ -287,7 +290,7 @@ function TriggerRow({
           <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{trigger.description}</div>
         </div>
         {savedFlash ? (
-          <span style={{ fontSize: 11, color: "#16A34A" }}>✓ Saved</span>
+          <span style={{ fontSize: 11, color: "#16A34A" }}>âœ“ Saved</span>
         ) : null}
       </div>
 
@@ -354,7 +357,7 @@ function TriggerRow({
                             checked={trigger.recipientUserIds.includes(u.id)}
                             onChange={() => toggleUser(u.id)}
                           />
-                          {u.firstName} {u.lastName} <span style={{ color: "var(--text-muted)" }}>· {u.email}</span>
+                          {u.firstName} {u.lastName} <span style={{ color: "var(--text-muted)" }}>Â· {u.email}</span>
                         </label>
                       ))}
                     </div>
@@ -405,7 +408,7 @@ function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (v: b
   );
 }
 
-// ── Email tab ────────────────────────────────────────────────────────────
+// â”€â”€ Email tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function EmailTab() {
   const { authFetch } = useAuth();
   const [config, setConfig] = useState<EmailConfig | null>(null);
@@ -472,7 +475,7 @@ function EmailTab() {
     }
   };
 
-  if (loading || !config) return <p style={{ color: "var(--text-muted)" }}>Loading…</p>;
+  if (loading || !config) return <p style={{ color: "var(--text-muted)" }}>Loadingâ€¦</p>;
 
   const showMailSendBanner = test && !test.success && /Mail\.Send/i.test(test.message);
 
@@ -519,10 +522,10 @@ function EmailTab() {
 
       <div style={{ display: "flex", gap: 8 }}>
         <button type="button" className="s7-btn s7-btn--primary" onClick={() => void save()} disabled={saving}>
-          {saving ? "Saving…" : "Save"}
+          {saving ? "Savingâ€¦" : "Save"}
         </button>
         <button type="button" className="s7-btn s7-btn--ghost" onClick={() => void testConn()} disabled={testing}>
-          {testing ? "Testing…" : "Test connection"}
+          {testing ? "Testingâ€¦" : "Test connection"}
         </button>
       </div>
 
@@ -537,7 +540,7 @@ function EmailTab() {
             fontSize: 13
           }}
         >
-          {test.success ? "✓ " : "✗ "}
+          {test.success ? "âœ“ " : "âœ— "}
           {test.message}
         </div>
       ) : null}
@@ -592,7 +595,7 @@ function SharePointTestPanel() {
         ensureFolder call against the configured root.
       </p>
       <button type="button" className="s7-btn s7-btn--secondary" onClick={() => void run()} disabled={busy}>
-        {busy ? "Testing…" : "Test connection"}
+        {busy ? "Testingâ€¦" : "Test connection"}
       </button>
       {error ? (
         <p style={{ color: "var(--status-danger)", marginTop: 10 }}>{error}</p>
@@ -608,7 +611,7 @@ function SharePointTestPanel() {
             fontSize: 13
           }}
         >
-          <strong>{result.connected ? "Connected" : "Unavailable"}</strong> — mode: <code>{result.mode}</code>
+          <strong>{result.connected ? "Connected" : "Unavailable"}</strong> â€” mode: <code>{result.mode}</code>
           {result.message ? <div style={{ marginTop: 4 }}>{result.message}</div> : null}
         </div>
       ) : null}
@@ -833,7 +836,7 @@ function XeroPanel() {
       if (!r.ok) throw new Error(await r.text());
       const body = (await r.json()) as { url: string };
       window.open(body.url, "_blank", "noopener");
-      setInfo("Consent window opened — finish the flow in the new tab.");
+      setInfo("Consent window opened â€” finish the flow in the new tab.");
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -901,7 +904,7 @@ function XeroPanel() {
                 color: "#16a34a"
               }}
             >
-              Connected{status.tenantName ? ` — ${status.tenantName}` : ""}
+              Connected{status.tenantName ? ` â€” ${status.tenantName}` : ""}
             </span>
             <button
               type="button"
@@ -927,7 +930,7 @@ function XeroPanel() {
             onClick={() => void connect()}
             disabled={busy}
           >
-            {busy ? "Working…" : "Connect Xero"}
+            {busy ? "Workingâ€¦" : "Connect Xero"}
           </button>
         )}
       </div>

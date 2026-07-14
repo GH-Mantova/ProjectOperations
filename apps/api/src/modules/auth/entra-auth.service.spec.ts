@@ -151,7 +151,7 @@ describe("EntraAuthService", () => {
       expect(prismaService.role.findMany).not.toHaveBeenCalled();
     });
 
-    it("provisions a new user with the Viewer role and ssoOnly=true when the email is unknown", async () => {
+    it("gates unregistered Entra identities with a structured ENTRA_NOT_REGISTERED forbidden", async () => {
       entraTokenValidatorService.validateIdToken.mockResolvedValue({
         issuer: "issuer",
         audience: "aud",
@@ -159,43 +159,23 @@ describe("EntraAuthService", () => {
         email: "new.user@initialservices.net",
         displayName: "New User"
       });
-      const provisioned = {
-        id: "user-new",
+      usersService.findByEmailWithSecurity.mockResolvedValue(null);
+
+      const thrown = await service.authenticateWithSso("entra-token").catch((err) => err);
+
+      expect(thrown).toBeInstanceOf(ForbiddenException);
+      const body = (thrown as ForbiddenException).getResponse() as Record<string, unknown>;
+      expect(body).toMatchObject({
+        code: "ENTRA_NOT_REGISTERED",
         email: "new.user@initialservices.net",
-        firstName: "New",
-        lastName: "User",
-        isActive: true,
-        lastLoginAt: null,
-        passwordHash: "",
-        userRoles: []
-      };
-      usersService.findByEmailWithSecurity
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(provisioned);
-      prismaService.role.findMany.mockResolvedValue([
-        { id: "role-viewer", name: "Viewer" },
-        { id: "role-field", name: "Field" }
-      ]);
-      prismaService.user.create.mockResolvedValue({ id: "user-new" });
-
-      const result = await service.authenticateWithSso("entra-token");
-
-      expect(prismaService.user.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            email: "new.user@initialservices.net",
-            ssoOnly: true,
-            isActive: true,
-            firstName: "New",
-            lastName: "User",
-            userRoles: { create: [{ roleId: "role-viewer" }] }
-          })
-        })
-      );
-      expect(result.user).toBe(provisioned);
+        displayName: "New User"
+      });
+      // Auto-provisioning must NOT happen.
+      expect(prismaService.user.create).not.toHaveBeenCalled();
+      expect(prismaService.role.findMany).not.toHaveBeenCalled();
     });
 
-    it("rejects existing inactive users without attempting to provision", async () => {
+    it("rejects existing inactive users with the deactivated-account message", async () => {
       const user = {
         id: "user-inactive",
         email: "inactive@example.com",
@@ -216,8 +196,28 @@ describe("EntraAuthService", () => {
       });
       usersService.findByEmailWithSecurity.mockResolvedValue(user);
 
-      await expect(service.authenticateWithSso("entra-token")).rejects.toBeInstanceOf(ForbiddenException);
+      const thrown = await service.authenticateWithSso("entra-token").catch((err) => err);
+      expect(thrown).toBeInstanceOf(ForbiddenException);
+      const body = (thrown as ForbiddenException).getResponse();
+      // Deactivated accounts get the plain-string 403 — not the ENTRA_NOT_REGISTERED branch.
+      expect(body).not.toMatchObject({ code: "ENTRA_NOT_REGISTERED" });
       expect(prismaService.user.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("splitDisplayName", () => {
+    it("splits a normal 'First Last' display name", () => {
+      expect(service.splitDisplayName("Jane Doe", "jane@example.com")).toEqual({
+        firstName: "Jane",
+        lastName: "Doe"
+      });
+    });
+
+    it("falls back to email local-part when displayName is null", () => {
+      expect(service.splitDisplayName(null, "jane.doe@example.com")).toEqual({
+        firstName: "jane.doe",
+        lastName: "User"
+      });
     });
   });
 });

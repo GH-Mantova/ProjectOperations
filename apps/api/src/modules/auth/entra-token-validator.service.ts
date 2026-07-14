@@ -2,7 +2,7 @@ import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type { JWTPayload } from "jose";
 
-type EntraPrincipal = {
+export type EntraPrincipal = {
   issuer: string;
   audience: string;
   subject: string;

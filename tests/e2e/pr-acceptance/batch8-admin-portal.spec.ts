@@ -168,7 +168,9 @@ test.describe("Batch 8 — Admin & portal (PRs #219, #26, #29)", () => {
     // told which permission they lack.
     await expect(page.getByTestId("no-access")).toBeVisible();
     await expect(page).toHaveURL(/admin\/settings/);
-    await expect(page.getByRole("heading", { name: "Admin settings" })).toHaveCount(0);
+    // NOTE: the "Admin settings" page heading REMAINS. <NoAccess/> renders in place and the
+    // ShellLayout chrome is kept deliberately, so the user still knows where they are.
+    // Asserting the heading is absent was a leftover from the redirect era.
   });
 
   test("client portal login screen renders standalone (prompt-directed)", async ({ page }) => {

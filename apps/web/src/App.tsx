@@ -62,6 +62,7 @@ import { FieldTimesheetPage } from "./pages/field/FieldTimesheetPage";
 import { FieldDocumentsPage } from "./pages/field/FieldDocumentsPage";
 import { FieldSafetyPage } from "./pages/field/FieldSafetyPage";
 import { TimesheetApprovalPage } from "./pages/timesheets/TimesheetApprovalPage";
+import { PayrollExportPage } from "./pages/field/PayrollExportPage";
 import { UserProfilePage } from "./pages/account/UserProfilePage";
 import { AdminSettingsPage } from "./pages/AdminSettingsPage";
 import { AdminCompanyPage } from "./pages/admin/AdminCompanyPage";
@@ -206,6 +207,7 @@ export function App() {
             <Route path="/projects" element={<ProjectsListPage />} />
             <Route path="/projects/:id" element={<ProjectDetailPage />} />
             <Route path="/timesheets/approval" element={<TimesheetApprovalPage />} />
+            <Route path="/timesheets/payroll-export" element={<PayrollExportPage />} />
             <Route path="/workers" element={<WorkersListPage />} />
             <Route path="/workers/:id" element={<WorkerDetailPage />} />
             <Route path="/resources" element={<ResourcesPage />} />

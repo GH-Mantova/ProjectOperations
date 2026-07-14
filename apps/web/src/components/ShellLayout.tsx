@@ -449,6 +449,8 @@ export function ShellLayout() {
             className="shell__collapse-toggle"
             onClick={() => setCollapsed((current) => !current)}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!collapsed}
+            data-testid="sidebar-collapse-toggle"
           >
             {collapsed ? ICON_EXPAND : ICON_COLLAPSE}
           </button>

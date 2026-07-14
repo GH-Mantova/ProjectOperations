@@ -116,6 +116,7 @@ items:
     marco_question: >
       This is big. Do you want it as ONE module, or split (a) the static SWMS wizard from
       (b) the control-mapping tool? And is it Compliance-module or its own thing?
+    answer: "2026-07-14 (Marco): SPLIT the static SWMS wizard from the control-mapping tool. Both live under Compliance, with the ability to ISSUE a SWMS to a Job. Marco wants a visualization first, to confirm it matches what he envisioned."
     order: 5
 
   - id: smart-wizard
@@ -131,6 +132,7 @@ items:
     marco_question: >
       Metadata-catalog coverage is 0/195 models human-reviewed. The wizard is only as good as that
       catalog. Do you want to review the catalog first, or build the wizard against what is there?
+    answer: "2026-07-14 (Marco): REVIEW THE CATALOG FIRST. And the wizard must behave almost like a LIVE agent -- the catalog changes over time, so the wizard cannot be built against a frozen snapshot."
     order: 6
 
   # -------------------------------------------------------------------------------------------
@@ -144,6 +146,7 @@ items:
     gate_means: No technical blocker.
     needs_marco: true
     marco_question: "Workstream C was locked as full-depth. Still the call, or trim the scope?"
+    answer: "2026-07-14 (Marco): FULL-DEPTH, but REVIEW THE PLAN BEFORE STARTING -- conditions are completely different from when it was locked on 2026-07-02."
     order: 7
 
   - id: field-worker-auth-track
@@ -156,6 +159,7 @@ items:
     gate_means: No OTP/personal-email auth path exists yet.
     needs_marco: true
     marco_question: "Is the FIELD track in scope this quarter, or parked?"
+    answer: "2026-07-14 (Marco): IN SCOPE."
     order: 8
 
   - id: estimate-material-density-migration
@@ -177,6 +181,7 @@ items:
     gate_means: No technical blocker; the reference production rates already shipped (#540).
     needs_marco: true
     marco_question: "These change quoted prices. Ship as its own PR you review line-by-line?"
+    answer: "2026-07-14 (Marco): YES -- ship as its own PR, reviewed line-by-line. These change quoted prices."
     order: 10
 
   - id: repo-streamline-pass
@@ -189,6 +194,7 @@ items:
     gate_means: The script is still not in the repo.
     needs_marco: true
     marco_question: "You had a trigger phrase for this. Still want it, or drop it?"
+    answer: "2026-07-14 (Marco): OPEN QUESTION BACK TO US -- is it still necessary given the current repo setup (scheduled agents, skills agents, watcher)? Do not stage until answered."
     order: 11
 
   # -------------------------------------------------------------------------------------------
@@ -227,6 +233,7 @@ items:
     marco_question: >
       B-P0a was locked as "no PRs without you present". It gates the scheduler. Do you want to
       restart it, and which is canonical - Job or Project?
+    answer: "2026-07-14 (Marco): JOB IS CANONICAL. Still needs_marco -- it reshapes the spine of the data model and Marco wants to be present."
     order: 13
 
   - id: worker-workerprofile-merge
@@ -239,21 +246,86 @@ items:
     gate_means: Both models still exist on main - the merge has not happened.
     needs_marco: true
     marco_question: "Same gate as B-P0a. Restart it? WorkerProfile was agreed canonical."
+    answer: "2026-07-14 (Marco): RESTART IT. WorkerProfile is canonical. Still needs_marco -- same spine risk as B-P0a."
     order: 14
 
-  - id: azure-insights-provider
-    title: "Register the Microsoft.Insights provider — there is NO queryable prod telemetry"
+  - id: watcher-launcher-hardening
+    title: "Track watcher-launcher.ps1 -- the detached-launch wrapper is untracked too"
     priority: P2
     why: >
-      The Azure subscription has `Microsoft.Insights` UNREGISTERED, so there is no queryable
-      telemetry from production. Every prod diagnosis so far has been done by reading the Log Stream
-      by hand, live, while the bug is happening. That is why the quote-PDF 500 took days.
-      This is a two-minute change in the portal and it pays for itself on the next incident.
-    gate: 'true'
-    gate_means: No technical blocker - it is a portal action.
+      pr-c1 commits supervise-watcher.ps1. But the DETACHED launcher that starts it --
+      C:\po-watcher\watcher-launcher.ps1 -- is still an untracked loose file. On 2026-07-14 the
+      watcher was started as a child of a Claude Desktop shell; when Desktop restarted, the watcher
+      died with it. The fix (launch via Win32_Process.Create so it is outside the session job
+      object) currently exists ONLY as that untracked file. One git clean and the fix is gone.
+      Commit it as scripts/pr-watcher/watcher-launcher.ps1 and document it in the README.
+    gate: 'git ls-files --error-unmatch scripts/pr-watcher/supervise-watcher.ps1 > /dev/null 2>&1 && ! git ls-files --error-unmatch scripts/pr-watcher/watcher-launcher.ps1 > /dev/null 2>&1'
+    gate_means: pr-c1 has landed (supervise-watcher.ps1 is tracked) AND the launcher is still untracked.
+    needs_marco: false
+    order: 16
+
+  - id: mail-send-managed-identity
+    title: "Outlook mail: managed-identity auth (MAIL_AUTH_MODE) -- Mail.Send never tested post-MI swap"
+    priority: P2
+    why: >
+      apps/api/src/modules/email/providers/outlook.provider.ts still builds its credential with
+      ClientSecretCredential and has no MAIL_AUTH_MODE switch. Prod SharePoint/Graph already moved
+      to a system-assigned managed identity and AZURE_CLIENT_SECRET was deleted from App Service --
+      but Mail.Send was NEVER tested after that swap. The old app-registration secrets MUST NOT be
+      deleted until an email is proven to land. Prompt body is in the untracked HOLD file
+      pr-zz-mail-managed-identity-HOLD.md (size 7, gate_allow env-vars, escalates true).
+    gate: '! grep -rq "MAIL_AUTH_MODE" apps/api/src .env.example'
+    gate_means: The mail provider still has no MAIL_AUTH_MODE switch; it can only use ClientSecretCredential.
     needs_marco: true
     marco_question: >
-      AZURE = your hard stop, so this is yours: register the Microsoft.Insights resource provider
-      (Subscription -> Resource providers -> Microsoft.Insights -> Register). Without it we are
-      blind in prod and every incident is diagnosed by hand.
-    order: 15
+      AZURE/ENTRA IS YOUR HARD STOP -- nothing touches it without you. This PR is buildable, but it
+      must not be deployed or verified without your supervision. And do NOT delete the old
+      app-registration secrets until a real email is confirmed delivered. Ready to supervise it?
+    order: 17
+
+  - id: graphify-knowledge-graph
+    title: "Graphify knowledge graph -- blocked on PATH, not on code"
+    priority: P4
+    why: >
+      Blocked because the watcher's shell does not resolve the graphify binary
+      (C:\Users\Marco\.local\bin is not on its PATH). This is an ENVIRONMENT blocker, not a code
+      one, so it cannot clear itself -- the gate below only exits 0 once graphify actually resolves.
+      Prompt body is in the untracked HOLD file pr-graphify-setup-HOLD.md (size 10).
+    gate: 'command -v graphify > /dev/null 2>&1 && ! test -f .graphifyignore'
+    gate_means: The graphify binary resolves in the agent's shell AND the graph has not been built yet.
+    needs_marco: false
+    order: 18
+
+  - id: role-default-dashboards
+    title: "Role -> default dashboard mapping (RoleDefaultDashboard / defaultDashboardId)"
+    priority: P4
+    why: >
+      No role-to-default-dashboard concept exists in the schema. The HOLD file carries a
+      watcher:do-not-arm marker -- it was parked on a design question, not a technical blocker.
+      Prompt body is in the untracked HOLD file pr-role-default-dashboards-HOLD.md
+      (size 9, gate_allow migrations).
+    gate: '! grep -qE "RoleDefaultDashboard|defaultDashboardId" apps/api/prisma/schema.prisma'
+    gate_means: No role -> default-dashboard concept in the schema yet.
+    needs_marco: true
+    marco_question: >
+      Which dashboard should each role land on by default? That mapping is a business decision, not
+      a technical one -- it is why this was parked. Also: is it one default per role, or per role
+      per module?
+    order: 19
+
+  - id: siteid-notnull-backfill
+    title: "Enforce siteId NOT NULL on Tender/Job/FormSubmission/Project (backfill first)"
+    priority: P3
+    why: >
+      siteId is still nullable across Tender/Job/FormSubmission/Project. Enforcing NOT NULL needs a
+      data backfill FIRST -- and any row with no resolvable site blocks the migration. That makes it
+      a production-data change, not just a schema one. The HOLD file carries watcher:do-not-arm.
+      Prompt body is in the untracked HOLD file pr-siteid-notnull-backfill-HOLD.md
+      (size 8, gate_allow migrations).
+    gate: 'grep -qE "^[[:space:]]+siteId[[:space:]]+String\?" apps/api/prisma/schema.prisma'
+    gate_means: siteId is still nullable -- NOT NULL has not been enforced.
+    needs_marco: true
+    marco_question: >
+      This backfills PRODUCTION data and then locks the column. What should rows with no site
+      resolve to -- a default site, or do they get fixed by hand first? I will not guess this.
+    order: 20

@@ -70,18 +70,53 @@ function parseFrontMatter(text) {
  *   file missing        -> exit 2   -> the PROMPT is wrong -> REJECT (do NOT bin)
  * Getting this backwards silently discards real work.
  */
+/**
+ * Find a real bash. Premises are written in bash (`!`, `grep -q`, pipes) and Windows has neither
+ * /bin/bash nor grep.
+ *
+ * THIS BUG SHIPPED AND WAS CAUGHT ON FIRST USE: with a hardcoded shell:"/bin/bash", every premise
+ * on Windows failed to SPAWN. err.status came back undefined -> -1, which was not in the broken
+ * list, so the linter concluded "premise not satisfied => work already done" and BINNED THE PROMPT.
+ * It would have silently discarded the entire backlog while printing a cheerful green message.
+ */
+function findBash() {
+  if (process.platform !== "win32") return "/bin/bash";
+  const candidates = [
+    "C:\\Program Files\\Git\\bin\\bash.exe",
+    "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
+    process.env.ProgramFiles ? process.env.ProgramFiles + "\\Git\\bin\\bash.exe" : null,
+  ].filter(Boolean);
+  for (const c of candidates) {
+    if (existsSync(c)) return c;
+  }
+  return null;
+}
+
+const BASH = findBash();
+
 function runPremise(cmd, cwd) {
+  if (!BASH) {
+    // FAIL SAFE. Never bin work because the TOOL is broken.
+    return { needed: false, broken: true, status: -1, stderr: "no bash found (install Git for Windows)" };
+  }
   try {
-    execSync(cmd, { cwd, stdio: ["ignore", "ignore", "pipe"], shell: "/bin/bash", timeout: 60000 });
+    execSync(cmd, { cwd, stdio: ["ignore", "ignore", "pipe"], shell: BASH, timeout: 60000 });
     return { needed: true };
   } catch (err) {
     const status = typeof err.status === "number" ? err.status : -1;
     const stderr = String(err.stderr || "").trim();
+
+    // A premise is "legitimately false" ONLY on a clean non-zero exit from a command that RAN.
+    // Anything else - could not spawn, could not find the command, could not read the file - means
+    // the PROMPT (or the tool) is wrong, not that the work is done. Those REJECT; they never BIN.
+    // Getting this backwards silently discards real work, which is strictly worse than no linter.
     const broken =
-      status === 127 ||
-      status === 126 ||
-      status === 2 ||
+      status === -1 ||          // spawn failure: no shell, ENOENT, killed
+      status === 127 ||         // command not found
+      status === 126 ||         // not executable
+      status === 2 ||           // grep: file missing / usage error
       /command not found|No such file or directory|is not recognized|cannot access/i.test(stderr);
+
     return { needed: false, broken, status, stderr: stderr.slice(0, 200) };
   }
 }

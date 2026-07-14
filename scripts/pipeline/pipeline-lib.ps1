@@ -265,3 +265,118 @@ function Test-WatcherRepoClean {
         Unmerged = $unmerged
     }
 }
+
+
+# ============================================================================================
+# THE EVIDENCE GATE  (added 2026-07-14)
+# ============================================================================================
+# An agent saying "smoke passed" is not evidence. Twice a watcher agent wrote "done - verified"
+# into a PR body when the diff did not contain the artifact it named (#476, #478). The body
+# lies; the code and the check runs do not.
+#
+# So merging is gated on FACTS PULLED FROM GITHUB, never on the agent's own report.
+
+function Assert-SmokeGreen {
+    <#
+      Refuse to merge unless GitHub itself says the e2e acceptance suite CONCLUDED SUCCESS.
+
+      Two traps this closes:
+      1. "pending" is not "pass". A check still running has conclusion=null; treating null as
+         benign is how a red PR sails through.
+      2. A REQUIRED check that is simply ABSENT is not a pass either. When #544 renamed the CI
+         job, the required context stopped matching and the PR sat green-but-unmergeable. The
+         inverse - a job that vanishes and takes its gate with it - is the dangerous direction.
+    #>
+    # NOTE ON FIELD NAMES: Get-ChecksFor calls `gh pr checks --json name,state,link`, so each
+    # object carries .state - NOT .status/.conclusion (those are the `gh pr view
+    # --json statusCheckRollup` shape). Reading the wrong field yields an EMPTY string, which
+    # compares unequal to "COMPLETED" and makes every check look like it is still running. That
+    # is a gate that blocks everything forever - which at least fails safe, but is still broken.
+    #
+    # NOTE ON REQUIRED NAMES: CI job names contain EM-DASHES ("API - lint" is really
+    # "API <em-dash> lint"). Matching them with an ASCII hyphen silently never matches - the
+    # exact class of bug that left #544 green-but-unmergeable. So match on a dash-free prefix.
+    param([int]$PR, [string[]]$Required = @("tendering-e2e", "API", "Web"))
+
+    $checks = Get-ChecksFor -PR $PR
+    if (@($checks).Count -eq 0) {
+        throw ("Assert-SmokeGreen: #" + $PR + " reports NO checks at all. That is not a pass.")
+    }
+
+    $names = @()
+    foreach ($c in $checks) {
+        $names += $c.name
+        $st = "$($c.state)".ToUpper()
+
+        if ($st -eq "PENDING" -or $st -eq "QUEUED" -or $st -eq "IN_PROGRESS" -or $st -eq "") {
+            throw ("Assert-SmokeGreen: #" + $PR + " check '" + $c.name + "' is '" + $st +
+                   "' - still in flight. WAIT. Do not rebase, do not merge, do not 'retrigger'." +
+                   " Rebasing a PR whose checks are running restarts CI and loops forever.")
+        }
+        if ($st -ne "SUCCESS" -and $st -ne "SKIPPED" -and $st -ne "NEUTRAL") {
+            throw ("Assert-SmokeGreen: #" + $PR + " check '" + $c.name + "' is " + $st +
+                   ". READ THE JOB LOG before you touch anything. Never diagnose a CI failure" +
+                   " without it. And never call a failure a 'flake' to justify a re-run -" +
+                   " #544's e2e 'flake' was two tests asserting the exact bug the PR removed.")
+        }
+    }
+
+    # An absent gate is not a passed gate.
+    foreach ($r in $Required) {
+        $hit = @($names | Where-Object { $_ -like ("*" + $r + "*") })
+        if ($hit.Count -eq 0) {
+            throw ("Assert-SmokeGreen: #" + $PR + " has NO check matching '" + $r + "'. A missing" +
+                   " gate is not a green gate. Did a CI job get renamed?")
+        }
+    }
+
+    return $true
+}
+
+function Assert-BodyClaimsAreReal {
+    <#
+      DOCTRINE: trust the diff, not the prose.
+
+      Give it the artifact the PR body claims to have created. If that string is not in the
+      PR's own diff, the body is over-claiming and the PR is NOT done. This is the check that
+      would have caught #476 and #478 before they merged.
+    #>
+    param([int]$PR, [Parameter(Mandatory = $true)][string[]]$MustContain)
+
+    Push-Location $script:WATCHER
+    $diff = (gh pr diff $PR 2>$null) | Out-String
+    Pop-Location
+
+    if ([string]::IsNullOrWhiteSpace($diff)) {
+        throw ("Assert-BodyClaimsAreReal: could not read the diff for #" + $PR + ". Do not assume it is fine.")
+    }
+
+    $missing = @()
+    foreach ($needle in $MustContain) {
+        if ($diff -notmatch [regex]::Escape($needle)) { $missing += $needle }
+    }
+    if ($missing.Count -gt 0) {
+        throw ("Assert-BodyClaimsAreReal: #" + $PR + " claims artifacts that are NOT in its diff: " +
+               ($missing -join ", ") + ". The PR body is over-claiming. Do NOT merge it.")
+    }
+    return $true
+}
+
+function Assert-SmokedOrEscalate {
+    <#
+      The single call an agent makes before merging. Composes every gate in the right order.
+
+      Order matters and is not negotiable:
+        1. NEVER-MERGE list   - cheapest, and the only one whose failure is catastrophic.
+        2. checks green       - facts from GitHub, not the agent's opinion.
+        3. body claims real   - the diff actually contains what the PR says it does.
+      Only then may Merge-Pr run - and Merge-Pr itself re-reads state and asserts MERGED.
+    #>
+    param([int]$PR, [string[]]$MustContain = @())
+
+    Assert-Mergeable -PR $PR          # throws on #552 (prod data) and #538 (human identity)
+    Assert-SmokeGreen -PR $PR
+    if ($MustContain.Count -gt 0) { Assert-BodyClaimsAreReal -PR $PR -MustContain $MustContain }
+
+    return $true
+}

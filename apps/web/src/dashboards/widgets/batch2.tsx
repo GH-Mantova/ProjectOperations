@@ -53,7 +53,7 @@ export function FormApprovalsWaitingKpi(_props: WidgetProps) {
   const subtitle = overdue > 0 ? `${overdue} overdue` : total === 0 ? "Nothing waiting" : undefined;
   const accent = overdue > 0 ? "#EF4444" : total === 0 ? "#22C55E" : "#F59E0B";
   return (
-    <Link to="/forms/approvals" style={{ textDecoration: "none", color: "inherit", height: "100%", display: "block" }}>
+    <Link to="/forms" style={{ textDecoration: "none", color: "inherit", height: "100%", display: "block" }}>
       <KpiTile label="Approvals waiting" value={total} subtitle={subtitle} accent={accent} />
     </Link>
   );
@@ -82,7 +82,7 @@ export function FormApprovalsWaitingWidget(_props: WidgetProps) {
     <PanelCard
       title="Approvals waiting"
       actions={
-        <Link to="/forms/approvals" style={{ fontSize: 11 }}>
+        <Link to="/forms" style={{ fontSize: 11 }}>
           Open queue
         </Link>
       }
@@ -384,7 +384,7 @@ export function MyDayWidget(_props: WidgetProps) {
             </MyDaySection>
           ) : null}
           {counts.approvals > 0 ? (
-            <MyDaySection title="Approvals on you" href="/forms/approvals">
+            <MyDaySection title="Approvals on you" href="/forms">
               {data!.approvals.map((r) => (
                 <li key={r.id} style={{ fontSize: 12, display: "flex", justifyContent: "space-between", gap: 8 }}>
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>

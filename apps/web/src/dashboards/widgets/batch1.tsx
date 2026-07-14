@@ -260,11 +260,8 @@ export function XeroSyncHealthKpi(_props: WidgetProps) {
         : health.tone === "ok"
           ? "#22C55E"
           : "#94A3B8";
-  return (
-    <Link to="/admin/xero" style={{ textDecoration: "none", color: "inherit", height: "100%", display: "block" }}>
-      <KpiTile label="Xero sync" value={health.headline} subtitle={health.detail} accent={accent} />
-    </Link>
-  );
+  // no /admin/xero page exists yet — re-wrap in a <Link> when it lands
+  return <KpiTile label="Xero sync" value={health.headline} subtitle={health.detail} accent={accent} />;
 }
 
 // ── P2 Recent activity feed ─────────────────────────────────────────

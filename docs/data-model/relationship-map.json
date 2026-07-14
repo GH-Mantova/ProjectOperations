@@ -2,10 +2,10 @@
   "_generator": "scripts/data-model/build-relationship-map.mjs",
   "_doNotEdit": "Regenerated from schema.prisma. Do not hand-edit.",
   "generatedFrom": "apps/api/prisma/schema.prisma",
-  "schemaSha256": "94778bfa1d284b6953bea6273625d5f3f19afa0b34185052f31929f7d80d26f7",
-  "modelCount": 190,
-  "enumCount": 21,
-  "edgeCount": 280,
+  "schemaSha256": "7d7f3870ebc01cd5643b796afc08090aaa065767b88b527aa47f6866f4af2ee5",
+  "modelCount": 194,
+  "enumCount": 24,
+  "edgeCount": 288,
   "domains": {
     "Assets": [
       "Asset",
@@ -63,7 +63,8 @@
       "DocumentLink",
       "DocumentTag",
       "SharePointFileLink",
-      "SharePointFolderLink"
+      "SharePointFolderLink",
+      "SharePointFolderMapping"
     ],
     "Estimating": [
       "QuoteAssumption",
@@ -162,6 +163,7 @@
       "Notification",
       "NotificationTriggerConfig",
       "Permission",
+      "PermissionModule",
       "Persona",
       "PersonaCompanyInstruction",
       "PilotFeedback",
@@ -227,6 +229,10 @@
       "TenderScopeRevision",
       "TenderTandC"
     ],
+    "Unclassified": [
+      "CompanyLegalDocument",
+      "CompanyProfile"
+    ],
     "Workers": [
       "Competency",
       "CompetencyOverride",
@@ -243,6 +249,10 @@
     ]
   },
   "enums": {
+    "SharePointMappingEntityType": [
+      "TENDER",
+      "JOB"
+    ],
     "ApprovalDecisionKind": [
       "APPROVED",
       "REJECTED",
@@ -366,6 +376,21 @@
       "HIRE",
       "ASSET",
       "SUBCONTRACT"
+    ],
+    "CompanyEntityType": [
+      "PTY_LTD",
+      "SOLE_TRADER",
+      "PARTNERSHIP",
+      "TRUST",
+      "OTHER"
+    ],
+    "CompanyLegalDocumentType": [
+      "TERMS_AND_CONDITIONS",
+      "COVER_LETTER",
+      "STANDARD_ASSUMPTIONS",
+      "STANDARD_EXCLUSIONS",
+      "PROJECT_ALLOWANCES",
+      "PRIVACY_NOTICE"
     ]
   },
   "models": {
@@ -4494,6 +4519,41 @@
           "owning": true
         },
         {
+          "name": "sourceTenderEstimateId",
+          "dbColumn": "source_tender_estimate_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "sourceTenderEstimate",
+          "dbColumn": null,
+          "type": "TenderEstimate",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [
+              "sourceTenderEstimateId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "SetNull"
+          },
+          "owning": true
+        },
+        {
           "name": "revision",
           "dbColumn": null,
           "type": "Int",
@@ -4707,6 +4767,41 @@
           "isUnique": false,
           "hasDefault": false,
           "isUpdatedAt": false
+        },
+        {
+          "name": "issuedTermsDocumentId",
+          "dbColumn": "issued_terms_document_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "issuedTerms",
+          "dbColumn": null,
+          "type": "CompanyLegalDocument",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "QuoteIssuedTerms",
+            "fkFields": [
+              "issuedTermsDocumentId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "SetNull"
+          },
+          "owning": true
         },
         {
           "name": "createdById",
@@ -4943,6 +5038,20 @@
           ]
         },
         {
+          "field": "sourceTenderEstimate",
+          "target": "TenderEstimate",
+          "cardinality": "one-optional",
+          "relationName": null,
+          "owning": true,
+          "onDelete": "SetNull",
+          "fkFields": [
+            "sourceTenderEstimateId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
           "field": "sentBy",
           "target": "User",
           "cardinality": "one-optional",
@@ -4951,6 +5060,20 @@
           "onDelete": null,
           "fkFields": [
             "sentById"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "issuedTerms",
+          "target": "CompanyLegalDocument",
+          "cardinality": "one-optional",
+          "relationName": "QuoteIssuedTerms",
+          "owning": true,
+          "onDelete": "SetNull",
+          "fkFields": [
+            "issuedTermsDocumentId"
           ],
           "refFields": [
             "id"
@@ -5197,6 +5320,1005 @@
         }
       ],
       "referencedBy": []
+    },
+    "CompanyLegalDocument": {
+      "name": "CompanyLegalDocument",
+      "domain": "Unclassified",
+      "dbTable": "company_legal_documents",
+      "fields": [
+        {
+          "name": "id",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": true,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "profileId",
+          "dbColumn": "profile_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "profile",
+          "dbColumn": null,
+          "type": "CompanyProfile",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [
+              "profileId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "Cascade"
+          },
+          "owning": true
+        },
+        {
+          "name": "type",
+          "dbColumn": null,
+          "type": "CompanyLegalDocumentType",
+          "kind": "enum",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "version",
+          "dbColumn": null,
+          "type": "Int",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "content",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "effectiveFrom",
+          "dbColumn": "effective_from",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "effectiveTo",
+          "dbColumn": "effective_to",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "isActive",
+          "dbColumn": "is_active",
+          "type": "Boolean",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "createdById",
+          "dbColumn": "created_by_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "createdBy",
+          "dbColumn": null,
+          "type": "User",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "CompanyLegalDocCreatedBy",
+            "fkFields": [
+              "createdById"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "SetNull"
+          },
+          "owning": true
+        },
+        {
+          "name": "createdAt",
+          "dbColumn": "created_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "updatedAt",
+          "dbColumn": "updated_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": true
+        },
+        {
+          "name": "issuedOnQuotes",
+          "dbColumn": null,
+          "type": "ClientQuote",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "QuoteIssuedTerms",
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
+        },
+        {
+          "name": "issuedOnContracts",
+          "dbColumn": null,
+          "type": "Contract",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "ContractIssuedTerms",
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
+        }
+      ],
+      "relations": [
+        {
+          "field": "profile",
+          "target": "CompanyProfile",
+          "cardinality": "one",
+          "relationName": null,
+          "owning": true,
+          "onDelete": "Cascade",
+          "fkFields": [
+            "profileId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "createdBy",
+          "target": "User",
+          "cardinality": "one-optional",
+          "relationName": "CompanyLegalDocCreatedBy",
+          "owning": true,
+          "onDelete": "SetNull",
+          "fkFields": [
+            "createdById"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "issuedOnQuotes",
+          "target": "ClientQuote",
+          "cardinality": "many",
+          "relationName": "QuoteIssuedTerms",
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
+        },
+        {
+          "field": "issuedOnContracts",
+          "target": "Contract",
+          "cardinality": "many",
+          "relationName": "ContractIssuedTerms",
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
+        }
+      ],
+      "referencedBy": [
+        {
+          "from": "Contract",
+          "via": "issuedTerms",
+          "fk": "issuedTermsDocumentId"
+        },
+        {
+          "from": "ClientQuote",
+          "via": "issuedTerms",
+          "fk": "issuedTermsDocumentId"
+        }
+      ]
+    },
+    "CompanyProfile": {
+      "name": "CompanyProfile",
+      "domain": "Unclassified",
+      "dbTable": "company_profile",
+      "fields": [
+        {
+          "name": "id",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": true,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "legalName",
+          "dbColumn": "legal_name",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "tradingName",
+          "dbColumn": "trading_name",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "abn",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "acn",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "entityType",
+          "dbColumn": "entity_type",
+          "type": "CompanyEntityType",
+          "kind": "enum",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "primaryEmail",
+          "dbColumn": "primary_email",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "primaryPhone",
+          "dbColumn": "primary_phone",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "website",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "registeredAddressLine1",
+          "dbColumn": "reg_address_line1",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "registeredAddressLine2",
+          "dbColumn": "reg_address_line2",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "registeredSuburb",
+          "dbColumn": "reg_suburb",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "registeredState",
+          "dbColumn": "reg_state",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "registeredPostcode",
+          "dbColumn": "reg_postcode",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "registeredCountry",
+          "dbColumn": "reg_country",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "postalAddressLine1",
+          "dbColumn": "post_address_line1",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "postalAddressLine2",
+          "dbColumn": "post_address_line2",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "postalSuburb",
+          "dbColumn": "post_suburb",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "postalState",
+          "dbColumn": "post_state",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "postalPostcode",
+          "dbColumn": "post_postcode",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "postalCountry",
+          "dbColumn": "post_country",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "whsOfficerUserId",
+          "dbColumn": "whs_officer_user_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "whsOfficer",
+          "dbColumn": null,
+          "type": "User",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "CompanyProfileWhsOfficer",
+            "fkFields": [
+              "whsOfficerUserId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "SetNull"
+          },
+          "owning": true
+        },
+        {
+          "name": "emergencyContactName",
+          "dbColumn": "emergency_contact_name",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "emergencyContactPhone",
+          "dbColumn": "emergency_contact_phone",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "gstRate",
+          "dbColumn": "gst_rate",
+          "type": "Decimal",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "currency",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "financialYearStartMonth",
+          "dbColumn": "financial_year_start_month",
+          "type": "Int",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "timezone",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "defaultPaymentTermsDays",
+          "dbColumn": "default_payment_terms_days",
+          "type": "Int",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "defaultQuoteValidityDays",
+          "dbColumn": "default_quote_validity_days",
+          "type": "Int",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "defaultMarkupPercent",
+          "dbColumn": "default_markup_percent",
+          "type": "Decimal",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "tenderNumberPrefix",
+          "dbColumn": "tender_number_prefix",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "quoteNumberPrefix",
+          "dbColumn": "quote_number_prefix",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "jobNumberPrefix",
+          "dbColumn": "job_number_prefix",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "projectNumberPrefix",
+          "dbColumn": "project_number_prefix",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "variationNumberPrefix",
+          "dbColumn": "variation_number_prefix",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "claimNumberPrefix",
+          "dbColumn": "claim_number_prefix",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "incidentNumberPrefix",
+          "dbColumn": "incident_number_prefix",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "primaryColorHex",
+          "dbColumn": "primary_color_hex",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "secondaryColorHex",
+          "dbColumn": "secondary_color_hex",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "logoLightUrl",
+          "dbColumn": "logo_light_url",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "logoDarkUrl",
+          "dbColumn": "logo_dark_url",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "faviconUrl",
+          "dbColumn": "favicon_url",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "pdfLetterheadUrl",
+          "dbColumn": "pdf_letterhead_url",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "createdAt",
+          "dbColumn": "created_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "updatedAt",
+          "dbColumn": "updated_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": true
+        },
+        {
+          "name": "updatedById",
+          "dbColumn": "updated_by_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "licences",
+          "dbColumn": null,
+          "type": "EntityLicence",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "CompanyLicences",
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
+        },
+        {
+          "name": "insurances",
+          "dbColumn": null,
+          "type": "EntityInsurance",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "CompanyInsurances",
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
+        },
+        {
+          "name": "legalDocuments",
+          "dbColumn": null,
+          "type": "CompanyLegalDocument",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
+        }
+      ],
+      "relations": [
+        {
+          "field": "whsOfficer",
+          "target": "User",
+          "cardinality": "one-optional",
+          "relationName": "CompanyProfileWhsOfficer",
+          "owning": true,
+          "onDelete": "SetNull",
+          "fkFields": [
+            "whsOfficerUserId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "licences",
+          "target": "EntityLicence",
+          "cardinality": "many",
+          "relationName": "CompanyLicences",
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
+        },
+        {
+          "field": "insurances",
+          "target": "EntityInsurance",
+          "cardinality": "many",
+          "relationName": "CompanyInsurances",
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
+        },
+        {
+          "field": "legalDocuments",
+          "target": "CompanyLegalDocument",
+          "cardinality": "many",
+          "relationName": null,
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
+        }
+      ],
+      "referencedBy": [
+        {
+          "from": "EntityLicence",
+          "via": "companyProfile",
+          "fk": "companyProfileId"
+        },
+        {
+          "from": "EntityInsurance",
+          "via": "companyProfile",
+          "fk": "companyProfileId"
+        },
+        {
+          "from": "CompanyLegalDocument",
+          "via": "profile",
+          "fk": "profileId"
+        }
+      ]
     },
     "Competency": {
       "name": "Competency",
@@ -6200,6 +7322,41 @@
           "owning": true
         },
         {
+          "name": "issuedTermsDocumentId",
+          "dbColumn": "issued_terms_document_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "issuedTerms",
+          "dbColumn": null,
+          "type": "CompanyLegalDocument",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "ContractIssuedTerms",
+            "fkFields": [
+              "issuedTermsDocumentId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "SetNull"
+          },
+          "owning": true
+        },
+        {
           "name": "variations",
           "dbColumn": null,
           "type": "Variation",
@@ -6286,6 +7443,20 @@
           "onDelete": "Restrict",
           "fkFields": [
             "createdById"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "issuedTerms",
+          "target": "CompanyLegalDocument",
+          "cardinality": "one-optional",
+          "relationName": "ContractIssuedTerms",
+          "owning": true,
+          "onDelete": "SetNull",
+          "fkFields": [
+            "issuedTermsDocumentId"
           ],
           "refFields": [
             "id"
@@ -9891,6 +11062,41 @@
           "owning": true
         },
         {
+          "name": "companyProfileId",
+          "dbColumn": "company_profile_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "companyProfile",
+          "dbColumn": null,
+          "type": "CompanyProfile",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "CompanyInsurances",
+            "fkFields": [
+              "companyProfileId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "Cascade"
+          },
+          "owning": true
+        },
+        {
           "name": "createdAt",
           "dbColumn": "created_at",
           "type": "DateTime",
@@ -9939,6 +11145,20 @@
           "onDelete": "Cascade",
           "fkFields": [
             "subcontractorId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "companyProfile",
+          "target": "CompanyProfile",
+          "cardinality": "one-optional",
+          "relationName": "CompanyInsurances",
+          "owning": true,
+          "onDelete": "Cascade",
+          "fkFields": [
+            "companyProfileId"
           ],
           "refFields": [
             "id"
@@ -10131,6 +11351,41 @@
           "owning": true
         },
         {
+          "name": "companyProfileId",
+          "dbColumn": "company_profile_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "companyProfile",
+          "dbColumn": null,
+          "type": "CompanyProfile",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "CompanyLicences",
+            "fkFields": [
+              "companyProfileId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "Cascade"
+          },
+          "owning": true
+        },
+        {
           "name": "createdAt",
           "dbColumn": "created_at",
           "type": "DateTime",
@@ -10179,6 +11434,20 @@
           "onDelete": "Cascade",
           "fkFields": [
             "subcontractorId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "companyProfile",
+          "target": "CompanyProfile",
+          "cardinality": "one-optional",
+          "relationName": "CompanyLicences",
+          "owning": true,
+          "onDelete": "Cascade",
+          "fkFields": [
+            "companyProfileId"
           ],
           "refFields": [
             "id"
@@ -20219,6 +21488,30 @@
           "isUpdatedAt": false
         },
         {
+          "name": "label",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "isHighRisk",
+          "dbColumn": "is_high_risk",
+          "type": "Boolean",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
           "name": "createdAt",
           "dbColumn": "created_at",
           "type": "DateTime",
@@ -20281,6 +21574,63 @@
           "fk": "permissionId"
         }
       ]
+    },
+    "PermissionModule": {
+      "name": "PermissionModule",
+      "domain": "Platform",
+      "dbTable": "permission_modules",
+      "fields": [
+        {
+          "name": "name",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": true,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "label",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "createdAt",
+          "dbColumn": "created_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "updatedAt",
+          "dbColumn": "updated_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": true
+        }
+      ],
+      "relations": [],
+      "referencedBy": []
     },
     "Persona": {
       "name": "Persona",
@@ -25118,6 +26468,30 @@
           "isId": false,
           "isUnique": false,
           "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "sourceEstimateLineType",
+          "dbColumn": "source_estimate_line_type",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "sourceEstimateLineId",
+          "dbColumn": "source_estimate_line_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
           "isUpdatedAt": false
         },
         {
@@ -30809,6 +32183,111 @@
           "fk": "folderLinkId"
         }
       ]
+    },
+    "SharePointFolderMapping": {
+      "name": "SharePointFolderMapping",
+      "domain": "Documents",
+      "dbTable": "sharepoint_folder_mappings",
+      "fields": [
+        {
+          "name": "id",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": true,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "entityType",
+          "dbColumn": "entity_type",
+          "type": "SharePointMappingEntityType",
+          "kind": "enum",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": true,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "folderPath",
+          "dbColumn": "folder_path",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "isActive",
+          "dbColumn": "is_active",
+          "type": "Boolean",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "createdById",
+          "dbColumn": "created_by_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "updatedById",
+          "dbColumn": "updated_by_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "createdAt",
+          "dbColumn": "created_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "updatedAt",
+          "dbColumn": "updated_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": true
+        }
+      ],
+      "relations": [],
+      "referencedBy": []
     },
     "Shift": {
       "name": "Shift",
@@ -37467,6 +38946,25 @@
             "onDelete": null
           },
           "owning": false
+        },
+        {
+          "name": "clientQuotes",
+          "dbColumn": null,
+          "type": "ClientQuote",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
         }
       ],
       "relations": [
@@ -37493,6 +38991,16 @@
           "onDelete": null,
           "fkFields": [],
           "refFields": []
+        },
+        {
+          "field": "clientQuotes",
+          "target": "ClientQuote",
+          "cardinality": "many",
+          "relationName": null,
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
         }
       ],
       "referencedBy": [
@@ -37500,6 +39008,11 @@
           "from": "EstimateItem",
           "via": "estimate",
           "fk": "estimateId"
+        },
+        {
+          "from": "ClientQuote",
+          "via": "sourceTenderEstimate",
+          "fk": "sourceTenderEstimateId"
         }
       ]
     },
@@ -41641,6 +43154,44 @@
             "onDelete": null
           },
           "owning": false
+        },
+        {
+          "name": "companyProfilesAsWhs",
+          "dbColumn": null,
+          "type": "CompanyProfile",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "CompanyProfileWhsOfficer",
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
+        },
+        {
+          "name": "companyLegalDocsCreated",
+          "dbColumn": null,
+          "type": "CompanyLegalDocument",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "CompanyLegalDocCreatedBy",
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
         }
       ],
       "relations": [
@@ -42545,6 +44096,26 @@
           "onDelete": null,
           "fkFields": [],
           "refFields": []
+        },
+        {
+          "field": "companyProfilesAsWhs",
+          "target": "CompanyProfile",
+          "cardinality": "many",
+          "relationName": "CompanyProfileWhsOfficer",
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
+        },
+        {
+          "field": "companyLegalDocsCreated",
+          "target": "CompanyLegalDocument",
+          "cardinality": "many",
+          "relationName": "CompanyLegalDocCreatedBy",
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
         }
       ],
       "referencedBy": [
@@ -42977,6 +44548,16 @@
           "from": "TenderRateSet",
           "via": "lockedBy",
           "fk": "lockedById"
+        },
+        {
+          "from": "CompanyProfile",
+          "via": "whsOfficer",
+          "fk": "whsOfficerUserId"
+        },
+        {
+          "from": "CompanyLegalDocument",
+          "via": "createdBy",
+          "fk": "createdById"
         }
       ]
     },
@@ -47773,6 +49354,14 @@
       "relationName": "ContractCreatedBy"
     },
     {
+      "from": "Contract",
+      "to": "CompanyLegalDocument",
+      "via": "issuedTerms",
+      "fk": "issuedTermsDocumentId",
+      "onDelete": "SetNull",
+      "relationName": "ContractIssuedTerms"
+    },
+    {
       "from": "Variation",
       "to": "Contract",
       "via": "contract",
@@ -47838,11 +49427,27 @@
     },
     {
       "from": "ClientQuote",
+      "to": "TenderEstimate",
+      "via": "sourceTenderEstimate",
+      "fk": "sourceTenderEstimateId",
+      "onDelete": "SetNull",
+      "relationName": null
+    },
+    {
+      "from": "ClientQuote",
       "to": "User",
       "via": "sentBy",
       "fk": "sentById",
       "onDelete": null,
       "relationName": "QuoteSentBy"
+    },
+    {
+      "from": "ClientQuote",
+      "to": "CompanyLegalDocument",
+      "via": "issuedTerms",
+      "fk": "issuedTermsDocumentId",
+      "onDelete": "SetNull",
+      "relationName": "QuoteIssuedTerms"
     },
     {
       "from": "ClientQuote",
@@ -47949,6 +49554,14 @@
       "relationName": "SubLicences"
     },
     {
+      "from": "EntityLicence",
+      "to": "CompanyProfile",
+      "via": "companyProfile",
+      "fk": "companyProfileId",
+      "onDelete": "Cascade",
+      "relationName": "CompanyLicences"
+    },
+    {
       "from": "EntityInsurance",
       "to": "Client",
       "via": "client",
@@ -47963,6 +49576,14 @@
       "fk": "subcontractorId",
       "onDelete": "Cascade",
       "relationName": "SubInsurances"
+    },
+    {
+      "from": "EntityInsurance",
+      "to": "CompanyProfile",
+      "via": "companyProfile",
+      "fk": "companyProfileId",
+      "onDelete": "Cascade",
+      "relationName": "CompanyInsurances"
     },
     {
       "from": "CreditApplication",
@@ -48395,6 +50016,30 @@
       "fk": "requestId",
       "onDelete": "Cascade",
       "relationName": null
+    },
+    {
+      "from": "CompanyProfile",
+      "to": "User",
+      "via": "whsOfficer",
+      "fk": "whsOfficerUserId",
+      "onDelete": "SetNull",
+      "relationName": "CompanyProfileWhsOfficer"
+    },
+    {
+      "from": "CompanyLegalDocument",
+      "to": "CompanyProfile",
+      "via": "profile",
+      "fk": "profileId",
+      "onDelete": "Cascade",
+      "relationName": null
+    },
+    {
+      "from": "CompanyLegalDocument",
+      "to": "User",
+      "via": "createdBy",
+      "fk": "createdById",
+      "onDelete": "SetNull",
+      "relationName": "CompanyLegalDocCreatedBy"
     }
   ]
 }

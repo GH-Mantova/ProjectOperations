@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException
+} from "@nestjs/common";
 import { PaginationQueryDto } from "../../common/dto/pagination-query.dto";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
@@ -13,11 +18,20 @@ const roleInclude = {
   }
 } as const;
 
+// Permissions whose absence from every role would lock the /admin/settings
+// matrix out of view for non-super-users. Super-users bypass permission
+// checks, so this is defence-in-depth: it guarantees at least one role
+// still grants a support admin the ability to see the page.
+const MATRIX_ACCESS_PERMISSIONS = new Set(["permissions.view", "roles.view"]);
+
 /**
  * Business logic for role administration and role-permission linking.
  *
- * Create and update both write audit entries via AuditService. Updating
- * `permissionIds` fully replaces the role's permission set.
+ * `create`, `update`, `grantPermission`, and `revokePermission` all
+ * write audit entries via AuditService. `update` still fully replaces a
+ * role's permission set (delete-then-create); the per-row grant/revoke
+ * methods are the additive/subtractive path used by the editable matrix
+ * so a single tick in the UI does not require rewriting the whole role.
  */
 @Injectable()
 export class RolesService {
@@ -60,14 +74,6 @@ export class RolesService {
 
   /**
    * Create a role, optionally linking permissions at creation time.
-   *
-   * `isSystem` defaults to false when omitted. Writes a `roles.create`
-   * audit entry after creation.
-   *
-   * @param input - role name, description, isSystem flag and optional permission ids
-   * @param actorId - id of the acting user for audit attribution
-   * @returns the created role with rolePermissions included
-   * @throws ConflictException when a role with the same name already exists
    */
   async create(input: CreateRoleDto, actorId?: string) {
     const existing = await this.prisma.role.findUnique({ where: { name: input.name } });
@@ -107,12 +113,6 @@ export class RolesService {
    * Permission replacement is delete-then-create and is not transactional
    * with the role update itself. There is no `isSystem` guard — system
    * roles can be edited like any other. Writes a `roles.update` audit entry.
-   *
-   * @param roleId - id of the role to update
-   * @param input - partial fields (name, description, isSystem, permissionIds)
-   * @param actorId - id of the acting user for audit attribution
-   * @returns the updated role with rolePermissions included
-   * @throws NotFoundException when the role does not exist
    */
   async update(roleId: string, input: UpdateRoleDto, actorId?: string) {
     const role = await this.prisma.role.findUnique({ where: { id: roleId } });
@@ -149,5 +149,105 @@ export class RolesService {
     });
 
     return updatedRole;
+  }
+
+  /**
+   * Grant a single permission to a role. Idempotent — a duplicate grant
+   * is treated as a no-op (unique [roleId, permissionId] index absorbs it).
+   *
+   * Audit action: `role_permissions.grant`.
+   *
+   * @throws NotFoundException when the role or permission does not exist
+   */
+  async grantPermission(roleId: string, permissionId: string, actorId?: string) {
+    const [role, permission] = await Promise.all([
+      this.prisma.role.findUnique({ where: { id: roleId } }),
+      this.prisma.permission.findUnique({ where: { id: permissionId } })
+    ]);
+    if (!role) throw new NotFoundException("Role not found.");
+    if (!permission) throw new NotFoundException("Permission not found.");
+
+    const existing = await this.prisma.rolePermission.findUnique({
+      where: { roleId_permissionId: { roleId, permissionId } }
+    });
+    if (existing) {
+      return { granted: false, alreadyGranted: true };
+    }
+
+    await this.prisma.rolePermission.create({ data: { roleId, permissionId } });
+
+    await this.auditService.write({
+      actorId,
+      action: "role_permissions.grant",
+      entityType: "RolePermission",
+      entityId: `${roleId}:${permissionId}`,
+      metadata: {
+        roleId,
+        roleName: role.name,
+        permissionId,
+        permissionCode: permission.code,
+        isHighRisk: permission.isHighRisk
+      }
+    });
+
+    return { granted: true, alreadyGranted: false };
+  }
+
+  /**
+   * Revoke a single permission from a role. Idempotent — revoking a
+   * permission the role never had is a no-op.
+   *
+   * Guardrail (defence-in-depth): revoking `permissions.view` or
+   * `roles.view` is blocked if it would leave zero roles granting that
+   * permission — otherwise a non-super-user support admin could be
+   * locked out of the matrix page entirely.
+   *
+   * Audit action: `role_permissions.revoke`.
+   *
+   * @throws NotFoundException when the role or permission does not exist
+   * @throws ForbiddenException when the guardrail would fire
+   */
+  async revokePermission(roleId: string, permissionId: string, actorId?: string) {
+    const [role, permission] = await Promise.all([
+      this.prisma.role.findUnique({ where: { id: roleId } }),
+      this.prisma.permission.findUnique({ where: { id: permissionId } })
+    ]);
+    if (!role) throw new NotFoundException("Role not found.");
+    if (!permission) throw new NotFoundException("Permission not found.");
+
+    if (MATRIX_ACCESS_PERMISSIONS.has(permission.code)) {
+      const otherHolders = await this.prisma.rolePermission.count({
+        where: { permissionId, NOT: { roleId } }
+      });
+      if (otherHolders === 0) {
+        throw new ForbiddenException(
+          `Cannot revoke "${permission.code}" from the last role that grants it — non-super-user admins would lose access to the roles/permissions page. Grant it to another role first.`
+        );
+      }
+    }
+
+    const deleted = await this.prisma.rolePermission.deleteMany({
+      where: { roleId, permissionId }
+    });
+
+    if (deleted.count === 0) {
+      return { revoked: false, alreadyRevoked: true };
+    }
+
+    await this.auditService.write({
+      actorId,
+      action: "role_permissions.revoke",
+      entityType: "RolePermission",
+      entityId: `${roleId}:${permissionId}`,
+      metadata: {
+        roleId,
+        roleName: role.name,
+        permissionId,
+        permissionCode: permission.code,
+        isHighRisk: permission.isHighRisk
+      }
+    });
+
+    return { revoked: true, alreadyRevoked: false };
   }
 }

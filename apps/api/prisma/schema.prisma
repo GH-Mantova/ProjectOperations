@@ -151,6 +151,13 @@ model User {
   updateRequestedAt DateTime?       @map("update_requested_at")
   clientSessions    ClientSession[]
 
+  // Company profile — one row identifies who "we" are. Reverse relations:
+  // a user can be the assigned WHS officer, and can create legal-document
+  // versions. Both are SetNull on delete so removing a user never orphans
+  // company records.
+  companyProfilesAsWhs     CompanyProfile[]       @relation("CompanyProfileWhsOfficer")
+  companyLegalDocsCreated  CompanyLegalDocument[] @relation("CompanyLegalDocCreatedBy")
+
   @@index([isActive])
   @@index([managerId])
   @@map("users")
@@ -191,12 +198,34 @@ model Permission {
   code            String           @unique
   description     String
   module          String
+  // Human-readable, action-first label ("Edit rates and price lists"). The
+  // `code` remains the immutable identifier that guards check; `label` is
+  // the primary line the operator sees in /admin/settings.
+  label           String           @default("")
+  // Marks permissions that grant an override, bypass, or elevated write
+  // (e.g. compliance.admin, platform.admin). Frontend uses this to add a
+  // confirm step on grant. Data-driven — no hardcoded list.
+  isHighRisk      Boolean          @default(false) @map("is_high_risk")
   createdAt       DateTime         @default(now()) @map("created_at")
   updatedAt       DateTime         @updatedAt @map("updated_at")
   rolePermissions RolePermission[]
 
   @@index([module])
   @@map("permissions")
+}
+
+// Display names for permission modules. Kept as a lookup (not a hardcoded
+// frontend map, not a duplicated column on Permission) so an operator can
+// reword a module title once and it propagates to every permission in it.
+// `name` matches `Permission.module` by convention; no hard FK, so an
+// unknown module falls back to its raw string.
+model PermissionModule {
+  name      String   @id
+  label     String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("permission_modules")
 }
 
 model UserRole {
@@ -253,6 +282,29 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([action])
   @@map("audit_logs")
+}
+
+// PR-sharepoint-folder-mappings — Which SharePoint folder each business
+// entity's documents land in. Data, not code: a super-user edits the
+// folderPath in the admin UI without a redeploy. entityType is a Prisma
+// enum (not free text) because it drives module lookup — a rename here
+// must break the build, not silently break document filing.
+enum SharePointMappingEntityType {
+  TENDER
+  JOB
+}
+
+model SharePointFolderMapping {
+  id          String                      @id @default(cuid())
+  entityType  SharePointMappingEntityType @unique @map("entity_type")
+  folderPath  String                      @map("folder_path")
+  isActive    Boolean                     @default(true) @map("is_active")
+  createdById String?                     @map("created_by_id")
+  updatedById String?                     @map("updated_by_id")
+  createdAt   DateTime                    @default(now()) @map("created_at")
+  updatedAt   DateTime                    @updatedAt @map("updated_at")
+
+  @@map("sharepoint_folder_mappings")
 }
 
 model SharePointFolderLink {
@@ -1843,16 +1895,19 @@ model EstimateMaterialDensity {
 }
 
 model TenderEstimate {
-  id         String         @id @default(uuid())
-  tenderId   String         @unique @map("tender_id")
-  tender     Tender         @relation(fields: [tenderId], references: [id], onDelete: Cascade)
-  markup     Decimal        @default(30) @db.Decimal(5, 2)
-  notes      String?
-  lockedAt   DateTime?      @map("locked_at")
-  lockedById String?        @map("locked_by_id")
-  createdAt  DateTime       @default(now()) @map("created_at")
-  updatedAt  DateTime       @updatedAt @map("updated_at")
-  items      EstimateItem[]
+  id           String         @id @default(uuid())
+  tenderId     String         @unique @map("tender_id")
+  tender       Tender         @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  markup       Decimal        @default(30) @db.Decimal(5, 2)
+  notes        String?
+  lockedAt     DateTime?      @map("locked_at")
+  lockedById   String?        @map("locked_by_id")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  items        EstimateItem[]
+  // Traceability back-relation for ClientQuote.sourceTenderEstimate. Required
+  // by Prisma to name the FK from the quote side; no domain use today.
+  clientQuotes ClientQuote[]
 
   @@map("tender_estimates")
 }
@@ -3076,6 +3131,11 @@ model Contract {
   notes           String?
   createdById     String          @map("created_by_id")
   createdBy       User            @relation("ContractCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  // Effective-dated T&C version pinned at contract creation. Same rationale
+  // as ClientQuote.issuedTermsDocumentId — the executed contract must
+  // forever render the T&Cs that were in force when it was signed.
+  issuedTermsDocumentId String?                @map("issued_terms_document_id")
+  issuedTerms           CompanyLegalDocument?  @relation("ContractIssuedTerms", fields: [issuedTermsDocumentId], references: [id], onDelete: SetNull)
   variations      Variation[]
   progressClaims  ProgressClaim[]
   createdAt       DateTime        @default(now()) @map("created_at")
@@ -3203,6 +3263,12 @@ model ClientQuote {
   tender                 Tender                 @relation(fields: [tenderId], references: [id], onDelete: Cascade)
   clientId               String                 @map("client_id")
   client                 Client                 @relation(fields: [clientId], references: [id])
+  // Traceability pointer back to the internal TenderEstimate this quote was
+  // derived from. Nullable — pre-existing quotes and quotes authored without
+  // a source estimate stay NULL. SetNull so deleting the estimate leaves the
+  // quote intact but unlinked. No pricing behaviour is derived from this.
+  sourceTenderEstimateId String?                @map("source_tender_estimate_id")
+  sourceTenderEstimate   TenderEstimate?        @relation(fields: [sourceTenderEstimateId], references: [id], onDelete: SetNull)
   revision               Int                    @default(1)
   quoteRef               String                 @unique @map("quote_ref")
   status                 ClientQuoteStatus      @default(DRAFT)
@@ -3220,6 +3286,13 @@ model ClientQuote {
   sentById               String?                @map("sent_by_id")
   sentBy                 User?                  @relation("QuoteSentBy", fields: [sentById], references: [id])
   generatedPdfPath       String?                @map("generated_pdf_path")
+  // Effective-dated T&C version pinned at issue time. NULL until the quote
+  // is sent — at send-time we resolve the currently-active TERMS_AND_CONDITIONS
+  // and stamp its id here. Editing T&Cs later creates a new version; this
+  // FK still points at the old one, so the historical PDF renders the
+  // legal terms actually agreed to. See ADR: legal-doc-versioning.
+  issuedTermsDocumentId  String?                @map("issued_terms_document_id")
+  issuedTerms            CompanyLegalDocument?  @relation("QuoteIssuedTerms", fields: [issuedTermsDocumentId], references: [id], onDelete: SetNull)
   createdById            String                 @map("created_by_id")
   createdBy              User                   @relation("QuoteCreatedBy", fields: [createdById], references: [id])
   createdAt              DateTime               @default(now()) @map("created_at")
@@ -3236,24 +3309,33 @@ model ClientQuote {
   @@unique([tenderId, clientId, revision])
   @@index([tenderId])
   @@index([clientId])
+  @@index([sourceTenderEstimateId])
   @@map("client_quotes")
 }
 
 model QuoteCostLine {
-  id                 String            @id @default(cuid())
-  quoteId            String            @map("quote_id")
-  quote              ClientQuote       @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  label              String
-  description        String
-  displayDescription String?           @map("display_description")
-  price              Decimal           @db.Decimal(12, 2)
-  baseValue          Decimal           @default(0) @map("base_value") @db.Decimal(14, 2)
-  overrideAmount     Decimal?          @map("override_amount") @db.Decimal(14, 2)
-  sortOrder          Int               @default(0) @map("sort_order")
-  isVisible          Boolean           @default(true) @map("is_visible")
-  assumptions        QuoteAssumption[] @relation("CostLineAssumptions")
+  id                     String            @id @default(cuid())
+  quoteId                String            @map("quote_id")
+  quote                  ClientQuote       @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  label                  String
+  description            String
+  displayDescription     String?           @map("display_description")
+  price                  Decimal           @db.Decimal(12, 2)
+  baseValue              Decimal           @default(0) @map("base_value") @db.Decimal(14, 2)
+  overrideAmount         Decimal?          @map("override_amount") @db.Decimal(14, 2)
+  sortOrder              Int               @default(0) @map("sort_order")
+  isVisible              Boolean           @default(true) @map("is_visible")
+  // Traceability pointer back to the internal estimate line this quote line
+  // was derived from. Polymorphic because the source can be any Estimate*Line
+  // variant (labour / plant / equip / waste / cutting), which have no shared
+  // parent table to FK to — same shape used by AuditLog.entityType/entityId.
+  // Both nullable; both set together or both NULL.
+  sourceEstimateLineType String?           @map("source_estimate_line_type")
+  sourceEstimateLineId   String?           @map("source_estimate_line_id")
+  assumptions            QuoteAssumption[] @relation("CostLineAssumptions")
 
   @@index([quoteId])
+  @@index([sourceEstimateLineType, sourceEstimateLineId])
   @@map("quote_cost_lines")
 }
 
@@ -3428,12 +3510,19 @@ model EntityLicence {
   client           Client?                @relation("ClientLicences", fields: [clientId], references: [id], onDelete: Cascade)
   subcontractorId  String?                @map("subcontractor_id")
   subcontractor    SubcontractorSupplier? @relation("SubLicences", fields: [subcontractorId], references: [id], onDelete: Cascade)
+  // Company profile ownership — polymorphic reuse for OUR own licences
+  // (demolition, asbestos, QBCC). Alerted through the same compliance cron
+  // as subcontractors; never triggers auto-block (a company cannot block
+  // itself). Exactly one of client/subcontractor/companyProfile is set.
+  companyProfileId String?                @map("company_profile_id")
+  companyProfile   CompanyProfile?        @relation("CompanyLicences", fields: [companyProfileId], references: [id], onDelete: Cascade)
   createdAt        DateTime               @default(now()) @map("created_at")
   updatedAt        DateTime               @updatedAt @map("updated_at")
 
   @@index([expiryDate])
   @@index([clientId])
   @@index([subcontractorId])
+  @@index([companyProfileId])
   @@map("entity_licences")
 }
 
@@ -3451,12 +3540,18 @@ model EntityInsurance {
   client          Client?                @relation("ClientInsurances", fields: [clientId], references: [id], onDelete: Cascade)
   subcontractorId String?                @map("subcontractor_id")
   subcontractor   SubcontractorSupplier? @relation("SubInsurances", fields: [subcontractorId], references: [id], onDelete: Cascade)
+  // Company profile ownership — polymorphic reuse for OUR own insurances
+  // (public liability, workers comp, professional indemnity). Same alert
+  // path as subcontractors; no auto-block.
+  companyProfileId String?               @map("company_profile_id")
+  companyProfile  CompanyProfile?        @relation("CompanyInsurances", fields: [companyProfileId], references: [id], onDelete: Cascade)
   createdAt       DateTime               @default(now()) @map("created_at")
   updatedAt       DateTime               @updatedAt @map("updated_at")
 
   @@index([expiryDate])
   @@index([clientId])
   @@index([subcontractorId])
+  @@index([companyProfileId])
   @@map("entity_insurances")
 }
 
@@ -4470,4 +4565,150 @@ model ProcurementConfig {
   updatedAt           DateTime @updatedAt @map("updated_at")
 
   @@map("procurement_config")
+}
+
+// ── Company Profile ─────────────────────────────────────────────────────
+// SINGLETON identifying who "we" are — the one home for legalName, ABN,
+// commercial defaults, document numbering prefixes, and branding. Read by
+// every document builder (PDF, Excel, ICS), email sender, and AI prompt
+// prefix. Enforced singleton: `id` is always the sentinel string
+// "singleton" (application layer) plus a CHECK constraint at DB level for
+// defense-in-depth (same pattern as `PlatformConfig`, but hardened — if
+// you find yourself wanting a second row you want multi-tenancy, which is
+// deliberately out of scope).
+//
+// legalName vs tradingName: two different fields on purpose. legalName
+// appears on contracts, tax invoices, legal documents; tradingName is
+// what users see in UI and emails. In Australian business practice they
+// often differ (e.g. "Initial Services Group Pty Ltd" trading as
+// "Initial Services"). Retrofitting the split later means auditing every
+// document surface — do not collapse.
+//
+// Commercial defaults (gstRate, paymentTerms, markup, quote validity) are
+// SEEDS for forms only. An explicit user choice on a tender/quote/job
+// always wins. A default that silently overrides a user's entered value
+// is a data-integrity bug, not a convenience.
+enum CompanyEntityType {
+  PTY_LTD
+  SOLE_TRADER
+  PARTNERSHIP
+  TRUST
+  OTHER
+}
+
+model CompanyProfile {
+  id String @id // must always be "singleton" (enforced by CHECK constraint)
+
+  // ─ Identity ─
+  legalName   String            @map("legal_name")
+  tradingName String            @map("trading_name")
+  abn         String?
+  acn         String?
+  entityType  CompanyEntityType @default(PTY_LTD) @map("entity_type")
+
+  // ─ Contact ─
+  primaryEmail            String? @map("primary_email")
+  primaryPhone            String? @map("primary_phone")
+  website                 String?
+  registeredAddressLine1  String? @map("reg_address_line1")
+  registeredAddressLine2  String? @map("reg_address_line2")
+  registeredSuburb        String? @map("reg_suburb")
+  registeredState         String? @map("reg_state")
+  registeredPostcode      String? @map("reg_postcode")
+  registeredCountry       String  @default("Australia") @map("reg_country")
+  postalAddressLine1      String? @map("post_address_line1")
+  postalAddressLine2      String? @map("post_address_line2")
+  postalSuburb            String? @map("post_suburb")
+  postalState             String? @map("post_state")
+  postalPostcode          String? @map("post_postcode")
+  postalCountry           String  @default("Australia") @map("post_country")
+
+  // WHS officer. SetNull on user delete so we never orphan the profile.
+  whsOfficerUserId String? @map("whs_officer_user_id")
+  whsOfficer       User?   @relation("CompanyProfileWhsOfficer", fields: [whsOfficerUserId], references: [id], onDelete: SetNull)
+
+  emergencyContactName  String? @map("emergency_contact_name")
+  emergencyContactPhone String? @map("emergency_contact_phone")
+
+  // ─ Commercial defaults (SEED forms; explicit user choice always wins) ─
+  gstRate                  Decimal @default(10) @map("gst_rate") @db.Decimal(5, 2)
+  currency                 String  @default("AUD")
+  financialYearStartMonth  Int     @default(7) @map("financial_year_start_month")
+  timezone                 String  @default("Australia/Brisbane")
+  defaultPaymentTermsDays  Int     @default(25) @map("default_payment_terms_days")
+  defaultQuoteValidityDays Int     @default(30) @map("default_quote_validity_days")
+  defaultMarkupPercent     Decimal @default(15) @map("default_markup_percent") @db.Decimal(5, 2)
+
+  // ─ Document numbering (format/prefix; counters live in *NumberSequence) ─
+  tenderNumberPrefix    String @default("T") @map("tender_number_prefix")
+  quoteNumberPrefix     String @default("Q") @map("quote_number_prefix")
+  jobNumberPrefix       String @default("J") @map("job_number_prefix")
+  projectNumberPrefix   String @default("IS-P") @map("project_number_prefix")
+  variationNumberPrefix String @default("V") @map("variation_number_prefix")
+  claimNumberPrefix     String @default("PC") @map("claim_number_prefix")
+  incidentNumberPrefix  String @default("INC") @map("incident_number_prefix")
+
+  // ─ Branding ─
+  // TODO: when BrandColorScheme + BrandAsset land (staged in pr-branding-manager),
+  // replace these string fields with FKs. Until then, plain strings so the
+  // profile is usable without a second migration.
+  primaryColorHex   String  @default("#005B61") @map("primary_color_hex")
+  secondaryColorHex String  @default("#FEAA6D") @map("secondary_color_hex")
+  logoLightUrl      String? @map("logo_light_url")
+  logoDarkUrl       String? @map("logo_dark_url")
+  faviconUrl        String? @map("favicon_url")
+  pdfLetterheadUrl  String? @map("pdf_letterhead_url")
+
+  // ─ Audit trail ─
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  updatedById String?  @map("updated_by_id")
+
+  licences       EntityLicence[]        @relation("CompanyLicences")
+  insurances     EntityInsurance[]      @relation("CompanyInsurances")
+  legalDocuments CompanyLegalDocument[]
+
+  @@map("company_profile")
+}
+
+// Effective-dated, versioned company legal documents. Editing content
+// creates a NEW row; never mutates an issued version. Every issued
+// ClientQuote / Contract pins the T&C version via `issuedTermsDocumentId`
+// so a March-issued quote forever renders March's T&Cs even if the current
+// version is edited in September.
+//
+// Rationale: for a demolition contractor a quote/contract is a binding
+// agreement. Silently rewriting the terms attached to historical quotes
+// is not a cosmetic bug — it is a contractual and evidentiary problem.
+enum CompanyLegalDocumentType {
+  TERMS_AND_CONDITIONS
+  COVER_LETTER
+  STANDARD_ASSUMPTIONS
+  STANDARD_EXCLUSIONS
+  PROJECT_ALLOWANCES
+  PRIVACY_NOTICE
+}
+
+model CompanyLegalDocument {
+  id            String                   @id @default(cuid())
+  profileId     String                   @default("singleton") @map("profile_id")
+  profile       CompanyProfile           @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  type          CompanyLegalDocumentType
+  version       Int
+  content       String
+  effectiveFrom DateTime                 @map("effective_from")
+  effectiveTo   DateTime?                @map("effective_to")
+  isActive      Boolean                  @default(true) @map("is_active")
+
+  createdById String?  @map("created_by_id")
+  createdBy   User?    @relation("CompanyLegalDocCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  issuedOnQuotes    ClientQuote[] @relation("QuoteIssuedTerms")
+  issuedOnContracts Contract[]    @relation("ContractIssuedTerms")
+
+  @@unique([type, version])
+  @@index([type, isActive])
+  @@map("company_legal_documents")
 }

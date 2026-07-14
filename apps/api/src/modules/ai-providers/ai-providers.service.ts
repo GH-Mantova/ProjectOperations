@@ -210,7 +210,16 @@ export class AiProvidersService {
       ? persona.subModes.find((s) => s.name === activeSubMode) ?? null
       : null;
 
-    const layers: string[] = [intrinsicPrompt(persona, subMode)];
+    // Company context — resolved from CompanyProfile.tradingName so a
+    // re-branded deployment identifies itself correctly in the persona
+    // prefix. Falls back to legacy string only if profile is missing.
+    const profile = await this.prisma.companyProfile.findUnique({
+      where: { id: "singleton" },
+      select: { tradingName: true }
+    });
+    const layers: string[] = [
+      intrinsicPrompt(persona, subMode, { tradingName: profile?.tradingName ?? "Initial Services" })
+    ];
 
     const personaRow = await this.prisma.persona.findUnique({ where: { slug: personaSlug } });
     if (personaRow) {
@@ -332,11 +341,22 @@ function buildTenderContextBlock(tender: {
 // instructions can override it by appearing later. The tendering
 // persona's RATE_LOOKUP_CONVENTIONS appears in sub-mode descriptions
 // and overrides this baseline on the five tender-scoped sub-modes.
-export function intrinsicPrompt(persona: PersonaDefinition, subMode: PersonaSubMode | null): string {
+export type CompanyContext = {
+  /** Trading name — appears in the persona-prefix sentence. */
+  tradingName: string;
+};
+
+const DEFAULT_COMPANY_CONTEXT: CompanyContext = { tradingName: "Initial Services" };
+
+export function intrinsicPrompt(
+  persona: PersonaDefinition,
+  subMode: PersonaSubMode | null,
+  companyContext: CompanyContext = DEFAULT_COMPANY_CONTEXT
+): string {
   const lines = [
     GLOBAL_RATE_FABRICATION_PROHIBITION,
     "",
-    `You are the ${persona.displayName} for Initial Services, a South East Queensland construction company.`,
+    `You are the ${persona.displayName} for ${companyContext.tradingName}, a South East Queensland construction company.`,
     persona.description
   ];
   if (subMode) {

@@ -156,11 +156,21 @@ export class CalendarService {
       orderBy: { startAt: "asc" }
     });
 
+    // PRODID identifies the calendar producer per RFC 5545 §3.7.3. Pulled
+    // from the CompanyProfile so a re-branded deployment identifies itself
+    // correctly in downstream clients. Fallback for the (impossible in
+    // practice) case where the profile hasn't been seeded.
+    const profile = await this.prisma.companyProfile.findUnique({
+      where: { id: "singleton" },
+      select: { tradingName: true }
+    });
+    const brand = profile?.tradingName ?? "Initial Services";
+
     const stamp = formatIcsDate(new Date());
     const lines: string[] = [
       "BEGIN:VCALENDAR",
       "VERSION:2.0",
-      "PRODID:-//Initial Services//Project Operations Calendar Sync//EN",
+      `PRODID:-//${brand}//Project Operations Calendar Sync//EN`,
       "CALSCALE:GREGORIAN",
       "METHOD:PUBLISH"
     ];

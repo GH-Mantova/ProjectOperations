@@ -47,6 +47,9 @@ function buildService(opts: {
       findMany: jest.fn().mockResolvedValue(opts.existing),
       count: jest.fn().mockResolvedValue(opts.existing.filter((e) => e.status === "active").length),
       findFirst: jest.fn().mockResolvedValue(null)
+    },
+    companyProfile: {
+      findUnique: jest.fn().mockResolvedValue({ tradingName: "Initial Services" })
     }
   };
   const config = { get: (_k: string, d: unknown) => d } as never;
@@ -152,7 +155,10 @@ describe("CalendarService.buildIcsFeed", () => {
           }
         ])
       },
-      shift: { findMany: jest.fn() }
+      shift: { findMany: jest.fn() },
+      companyProfile: {
+        findUnique: jest.fn().mockResolvedValue({ tradingName: "Initial Services" })
+      }
     };
     const adapter: CalendarAdapter = {
       upsertEvent: jest.fn().mockResolvedValue({ externalEventId: "x" }),

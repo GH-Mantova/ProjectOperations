@@ -42,7 +42,12 @@ function buildService() {
       })
     }
   };
-  return { service: new PublicHolidaysService(prisma as never), rows };
+  const audit = { write: jest.fn().mockResolvedValue(undefined) };
+  return {
+    service: new PublicHolidaysService(prisma as never, audit as never),
+    rows,
+    audit
+  };
 }
 
 describe("PublicHolidaysService.list", () => {
@@ -97,15 +102,26 @@ describe("PublicHolidaysService.create", () => {
 });
 
 describe("PublicHolidaysService.remove", () => {
-  it("throws NotFound for an unknown id", async () => {
-    const { service } = buildService();
-    await expect(service.remove("missing")).rejects.toBeInstanceOf(NotFoundException);
+  it("throws NotFound for an unknown id and writes no audit", async () => {
+    const { service, audit } = buildService();
+    await expect(service.remove("missing", "actor-1")).rejects.toBeInstanceOf(NotFoundException);
+    expect(audit.write).not.toHaveBeenCalled();
   });
 
-  it("removes an existing row", async () => {
-    const { service, rows } = buildService();
+  it("removes an existing row and writes an audit row with the payload", async () => {
+    const { service, rows, audit } = buildService();
     const row = await service.create({ date: "2026-01-01", name: "NYD" });
-    await service.remove(row.id);
+    await service.remove(row.id, "actor-1");
     expect(rows).toHaveLength(0);
+    expect(audit.write).toHaveBeenCalledTimes(1);
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: "actor-1",
+        action: "publicHoliday.delete",
+        entityType: "PublicHoliday",
+        entityId: row.id,
+        metadata: expect.objectContaining({ name: "NYD", region: "QLD" })
+      })
+    );
   });
 });

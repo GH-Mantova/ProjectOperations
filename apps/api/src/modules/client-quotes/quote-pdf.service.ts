@@ -135,10 +135,11 @@ export class QuotePdfService {
     }
 
     const html = buildQuoteHtml(base, overlay);
+    const ctx = await this.exportSvc.resolvePdfCompanyContext();
     const buffer = await this.pdfRenderer.renderHtmlToPdf(html, {
       displayHeaderFooter: true,
-      headerHtml: headerTemplate(overlay.quoteRef),
-      footerHtml: footerTemplate(),
+      headerHtml: headerTemplate(overlay.quoteRef, ctx),
+      footerHtml: footerTemplate(ctx),
       margin: { top: "35mm", bottom: "22mm" },
     });
 

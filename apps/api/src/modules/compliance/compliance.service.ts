@@ -65,7 +65,12 @@ export type ExpiryRow = {
   expiryDate: Date | null;
   status: ComplianceStatus;
   daysUntilExpiry: number | null;
-  entityType: "client" | "subcontractor" | "worker";
+  // "company" — Initial Services' own licences and insurances, tracked
+  // through the CompanyProfile polymorphic FK. They flow through the same
+  // alert path as subcontractors but are NEVER auto-blocked (a company
+  // cannot block itself; an expired company demolition licence is a
+  // stop-the-business event that gets manual attention).
+  entityType: "client" | "subcontractor" | "worker" | "company";
   entityId: string;
   entityName: string;
 };
@@ -178,7 +183,10 @@ export class ComplianceService {
         where: { expiryDate: { not: null, lte: cutoff } },
         include: {
           client: { select: { id: true, name: true } },
-          subcontractor: { select: { id: true, name: true } }
+          subcontractor: { select: { id: true, name: true } },
+          // Include the company profile so we can label company-owned
+          // licences with the trading name in alert emails.
+          companyProfile: { select: { id: true, tradingName: true } }
         },
         orderBy: { expiryDate: "asc" }
       }),
@@ -186,7 +194,8 @@ export class ComplianceService {
         where: { expiryDate: { not: null, lte: cutoff } },
         include: {
           client: { select: { id: true, name: true } },
-          subcontractor: { select: { id: true, name: true } }
+          subcontractor: { select: { id: true, name: true } },
+          companyProfile: { select: { id: true, tradingName: true } }
         },
         orderBy: { expiryDate: "asc" }
       }),
@@ -205,9 +214,16 @@ export class ComplianceService {
       expiryDate: row.expiryDate,
       status: this.computeStatus(row.expiryDate),
       daysUntilExpiry: this.daysUntilExpiry(row.expiryDate),
-      entityType: row.client ? "client" : "subcontractor",
-      entityId: (row.client?.id ?? row.subcontractor?.id) ?? "",
-      entityName: (row.client?.name ?? row.subcontractor?.name) ?? "—"
+      entityType: row.companyProfile
+        ? "company"
+        : row.client
+          ? "client"
+          : "subcontractor",
+      entityId:
+        (row.companyProfile?.id ?? row.client?.id ?? row.subcontractor?.id) ?? "",
+      entityName:
+        (row.companyProfile?.tradingName ?? row.client?.name ?? row.subcontractor?.name) ??
+        "—"
     });
     const mapInsurance = (row: (typeof insurances)[number]): ExpiryRow => ({
       id: row.id,
@@ -217,9 +233,16 @@ export class ComplianceService {
       expiryDate: row.expiryDate,
       status: this.computeStatus(row.expiryDate),
       daysUntilExpiry: this.daysUntilExpiry(row.expiryDate),
-      entityType: row.client ? "client" : "subcontractor",
-      entityId: (row.client?.id ?? row.subcontractor?.id) ?? "",
-      entityName: (row.client?.name ?? row.subcontractor?.name) ?? "—"
+      entityType: row.companyProfile
+        ? "company"
+        : row.client
+          ? "client"
+          : "subcontractor",
+      entityId:
+        (row.companyProfile?.id ?? row.client?.id ?? row.subcontractor?.id) ?? "",
+      entityName:
+        (row.companyProfile?.tradingName ?? row.client?.name ?? row.subcontractor?.name) ??
+        "—"
     });
     const mapQualification = (row: (typeof qualifications)[number]): ExpiryRow => ({
       id: row.id,

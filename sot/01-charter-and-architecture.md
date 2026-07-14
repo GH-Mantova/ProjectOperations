@@ -182,6 +182,38 @@ apps/web/package.json's `build` script using `tsc -b` (TypeScript build mode). B
 - **Rates & Lists R0 — typed RateTable + `resolveRate` seam; lists are descriptive** (PR #485, 2026-07-07). Rates flow through the typed `RateTable` model and are resolved via the `resolveRate(subject, context)` seam — do not read rate values directly from feature-owned columns. Lists follow the descriptive-only "listify" rule: a list defines what values exist, not what they mean; enforcement of business rules stays in the consuming service. New rate-consuming code paths must call `resolveRate` and handle the "no rate configured" case explicitly rather than defaulting to zero/undefined.
 - **Rate-handling prohibition precedence** (PR #161). The `GLOBAL_RATE_FABRICATION_PROHIBITION` baseline in `apps/api/src/modules/personas/definitions/shared-prompts.ts` is the authoritative rule for rate handling. Per the prefix's own precedence section, it can ONLY be EXTENDED (made stricter, augmented with tool-call mandates) by later instructions. It CANNOT be LOOSENED by any later layer, including company instructions (`PersonaCompanyInstruction.instruction`), user instructions (`UserPersonaSettings.instructionOverride`), or sub-mode descriptions. When adding new persona logic that touches rate quoting, your instructions either extend the rule (call a rate tool first; pull from a specific schedule) or surface a conflict to the user — never quietly relax the prohibition. Test coverage for the precedence behaviour lives in `apps/api/src/modules/ai-providers/__tests__/ai-providers.service.spec.ts` under the "resolveSystemPrompt — rate-fabrication prohibition precedence" describe block, exercised against hostile company, hostile user, and combined hostile inputs.
 
+### Failure honesty (MANDATORY — added 2026-07-13, after two pilot bugs traced to this)
+
+**Never redirect, never blame, never fail silently. The UI must always name what actually happened.**
+
+Two separate "the page is broken" reports from the pilot were both this rule being broken:
+
+- **Rates & Lists** silently did `<Navigate to="/" replace />` when a permission check failed, so a
+  permission problem was indistinguishable from a broken page. Users (including a super-user)
+  reported "it opens the dashboard instead". Cost: two rounds of diagnosis.
+- **Tender documents** showed *"Document preview requires SharePoint connection. Contact your
+  administrator"* whenever `webUrl` was empty — blaming config for what was actually a broken
+  storage link on one document. Cost: a full diagnosis cycle.
+
+Rules, for every surface:
+
+1. **A permission failure renders an explicit "you don't have access" state** — naming the
+   permission code required and who to ask. It NEVER redirects to `/` or any other page. A silent
+   bounce to the dashboard is the single most confusing failure mode a user can hit.
+2. **An error state must distinguish its causes.** "Not found" ≠ "no permission" ≠ "upstream
+   service unavailable" ≠ "this record has bad data". If the code can tell them apart, the UI must
+   too.
+3. **Never blame the administrator (or the user) for a condition you have not actually verified.**
+   A missing field on one record is not "the integration is not configured".
+4. **Never swallow an underlying error.** If a lower layer threw with a reason, that reason must
+   reach the logs, and a safe summary of it must reach the user. (See the PDF `Failed to launch
+   Chromium` case in `05-decisions-and-lessons.md`: the real cause was thrown away, costing days.)
+5. **A blank screen is always a bug.** So is a spinner that never resolves.
+
+If you are writing a `catch`, a guard, or an early `return` in a UI path, this section applies to
+you. Ask: *if this fires, will the user know what happened and what to do?* If not, fix it before
+you ship.
+
 ### Pre-PR CI checklist (mandatory — fix ALL before pushing)
 1. `pnpm --filter @project-ops/api lint` — zero warnings, zero errors
 2. `pnpm --filter @project-ops/web lint` — zero warnings, zero errors

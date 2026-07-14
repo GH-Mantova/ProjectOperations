@@ -159,14 +159,18 @@ test.describe("Batch 8 — Admin & portal (PRs #219, #26, #29)", () => {
     await expect(page.getByTestId("roles-permissions-matrix")).toBeVisible();
   });
 
-  test("viewer is redirected away from admin settings (prompt-directed)", async ({ page }) => {
+  test("viewer sees NoAccess on admin settings, not a silent redirect (#544)", async ({ page }) => {
     await loginAsViewer(page);
     await page.goto("/admin/settings");
 
-    // Non-admins are bounced to the dashboard, not shown the page.
-    await expect(page.getByRole("heading", { name: "Operations Overview" })).toBeVisible();
-    await expect(page).not.toHaveURL(/admin\/settings/);
-    await expect(page.getByRole("heading", { name: "Admin settings" })).toHaveCount(0);
+    // #544 (failure honesty, sot/01 SECTION 6): non-admins are NOT bounced to the dashboard -
+    // that made a permission failure look exactly like a broken page. They stay here and are
+    // told which permission they lack.
+    await expect(page.getByTestId("no-access")).toBeVisible();
+    await expect(page).toHaveURL(/admin\/settings/);
+    // NOTE: the "Admin settings" page heading REMAINS. <NoAccess/> renders in place and the
+    // ShellLayout chrome is kept deliberately, so the user still knows where they are.
+    // Asserting the heading is absent was a leftover from the redirect era.
   });
 
   test("client portal login screen renders standalone (prompt-directed)", async ({ page }) => {

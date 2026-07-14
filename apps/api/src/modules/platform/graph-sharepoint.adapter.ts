@@ -12,6 +12,7 @@ import {
   DownloadFileBytesInput,
   EnsureFolderInput,
   EnsureFolderResult,
+  FolderExistsInput,
   ResolveDriveInput,
   ResolveSiteInput,
   SharePointAdapter,
@@ -151,6 +152,31 @@ export class GraphSharePointAdapter implements SharePointAdapter {
       };
     } catch (error) {
       this.logAndThrow("ensureFolder", error, {
+        siteId: input.siteId,
+        driveId: input.driveId,
+        relativePath: input.relativePath
+      });
+    }
+  }
+
+  // Read-only existence check for the folder-mappings admin flow.
+  // GET /root:/{path} returns 200 for the drive item or 404 if absent.
+  // A 404 is a legitimate "doesn't exist" — not an error. Anything else
+  // (auth, 5xx, network) throws so the admin sees the real problem
+  // instead of a silently-accepted save.
+  async folderExists(input: FolderExistsInput): Promise<boolean> {
+    try {
+      const client = this.getClient();
+      const encoded = encodeURI(input.relativePath);
+      const api = `/sites/${input.siteId}/drives/${input.driveId}/root:/${encoded}`;
+      await client.api(api).select("id").get();
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("itemNotFound") || message.includes("404")) {
+        return false;
+      }
+      this.logAndThrow("folderExists", error, {
         siteId: input.siteId,
         driveId: input.driveId,
         relativePath: input.relativePath

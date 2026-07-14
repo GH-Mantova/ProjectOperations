@@ -65,10 +65,25 @@ export class QuoteSendService {
       });
 
       const sentAt = new Date();
+      // Pin the currently-active T&C version at send time so the quote is
+      // permanently anchored to the terms actually agreed to. If T&Cs are
+      // edited later a NEW version is created; the old row stays and this
+      // FK still points at it. Nullable so a legacy quote or an edge case
+      // (no seeded T&Cs) doesn't fail the send. See ADR: legal-doc-versioning.
+      const activeTerms = await this.prisma.companyLegalDocument.findFirst({
+        where: { type: "TERMS_AND_CONDITIONS", isActive: true },
+        orderBy: { version: "desc" },
+        select: { id: true }
+      });
       await this.prisma.$transaction([
         this.prisma.clientQuote.update({
           where: { id: quoteId },
-          data: { status: "SENT", sentAt, sentById: actorId }
+          data: {
+            status: "SENT",
+            sentAt,
+            sentById: actorId,
+            issuedTermsDocumentId: activeTerms?.id ?? null
+          }
         }),
         this.prisma.quoteEmail.create({
           data: {

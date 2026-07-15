@@ -206,7 +206,7 @@ items:
     order: 18
 
   - id: role-default-dashboards
-    title: "Role -> default dashboard mapping (RoleDefaultDashboard / defaultDashboardId)"
+    title: "User default dashboard (global Home + per-user override) [was: role/module mapping]"
     priority: P4
     why: >
       No role-to-default-dashboard concept exists in the schema. The HOLD file carries a
@@ -217,15 +217,14 @@ items:
     gate_means: No role -> default-dashboard concept in the schema yet.
     needs_marco: false
     decided: >
-      2026-07-15 (Marco): PER ROLE, PER MODULE, and ADMIN-CONFIGURABLE DATA (Directors set it in
-      Admin settings; no code change to re-point a role). Schema: new model
-      RoleDefaultDashboard(roleId, module -> PermissionModule.name, dashboardId), @@unique([roleId,
-      module]). Modules are the existing PermissionModule.name keys; Roles are the existing Role
-      table; Dashboard already supports ownerRole. SPLIT (each < size 10, stage in order):
-      slice 1 = backend: schema + migration + admin CRUD API (controller/service/dto) + a resolver
-      service that returns a user's default dashboard for a module (with graceful fallback);
-      slice 2 = frontend: Admin-settings UI to manage the role x module -> dashboard mapping;
-      slice 3 = wire the landing logic to call the resolver on module entry. Stage slice 1 first.
+      2026-07-15 (Marco, SUPERSEDES the earlier per-role/per-module answer): PER USER, not per
+      role and not per module. ONE global default dashboard called "Home" that every user starts
+      on, plus a per-user override (User.defaultDashboardId) each user sets for themselves. NO
+      RoleDefaultDashboard table. Also DELETE the two generic dashboards "Operations" and
+      "Tendering" and replace them with "Home". Staged prompts:
+      docs/pr-prompts/staged/pr-user-default-dashboard.md (backend, escalates - deletes dashboard
+      rows) and pr-user-default-dashboard-ui.md (frontend, GATED on the backend). Arm the backend
+      first; arm the UI only after it merges.
     order: 19
 
   - id: siteid-notnull-backfill
@@ -239,12 +238,14 @@ items:
     needs_marco: false
     escalates: true
     decided: >
-      2026-07-15 (Marco): Enforce NOT NULL on JOB + PROJECT ONLY. Tender STAYS NULLABLE (a bid can
-      precede a site). FormSubmission is NOT a DB constraint -- handled per-form by the new item
-      formsubmission-required-site-field. For the Job/Project null rows: CREATE an "Unassigned" Site
-      (seed it if absent), backfill all null Job/Project.siteId to it, THEN enforce NOT NULL in the
-      SAME migration. Rows can be reassigned off "Unassigned" later. escalates:true -- this changes
-      PRODUCTION data, so open the PR but hold for Marco's review; do not auto-merge.
+      2026-07-15 (Marco): Enforce NOT NULL on JOB + PROJECT (pr-siteid-notnull-job-project.md,
+      Unassigned-site backfill then NOT NULL). SUPERSEDED PART: Tender NO LONGER stays nullable --
+      Marco now requires the site address be captured AT TENDER TIME. New tenders get a site via a
+      Geoapify address-autocomplete field in the wizard (pr-tender-geoapify-site-autocomplete.md,
+      find-or-create Site); THEN enforce NOT NULL on Tender after backfilling legacy tenders to the
+      "Unassigned" site (pr-tender-required-site.md, GATED on the wizard). FormSubmission stays
+      nullable (formsubmission-required-site-field). All three are escalates:true -- open PRs, hold
+      for Marco; do not auto-merge.
     order: 20
 
   # -------------------------------------------------------------------------------------------
@@ -307,3 +308,19 @@ items:
     gate_means: The script is on main (so the boot sequence can reference it) AND sot/README.md does not mention it yet.
     needs_marco: false
     order: 22
+
+  - id: tender-geoapify-site-autocomplete
+    title: "Tender wizard: Geoapify address autocomplete -> find-or-create Site"
+    priority: P2
+    why: >
+      Marco's 2026-07-15 decision that a tender's site address is captured at tender time. Adds a
+      Geoapify Address Autocomplete field to NewTenderWizard, resolves the pick to a Site
+      (find-or-create), attaches siteId. Server-side proxy reads the Geoapify key from the encrypted
+      IntegrationCredential store (#593). Precondition for pr-tender-required-site (the NOT NULL lock).
+    gate: '! grep -rq "geocode/autocomplete" apps/api/src'
+    gate_means: No Geoapify geocoding/autocomplete call exists yet (only the key slug is registered).
+    needs_marco: false
+    decided: >
+      2026-07-15 (Marco): build it. Staged at
+      docs/pr-prompts/staged/pr-tender-geoapify-site-autocomplete.md.
+    order: 23

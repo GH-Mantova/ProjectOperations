@@ -2158,6 +2158,26 @@ model PlatformConfig {
   @@map("platform_config")
 }
 
+// Third-party integration API keys (e.g. Geoapify, fuelpricesqld). Moves
+// manually-entered keys out of Azure App Service config and into the ERP so
+// they can be rotated from the UI. Encrypted at rest with the same
+// KeyEncryptionService (AES-256-GCM, BYOK_ENCRYPTION_KEY master) used by the
+// AI provider keys. Presence of valueEncrypted = "configured".
+// resolveIntegrationKey(slug) falls back to matching env var when the DB row
+// has no value, so keys already set in Azure keep working during transition.
+// This store is for THIRD-PARTY keys only — never for infra/managed-identity
+// secrets or the BYOK master itself.
+model IntegrationCredential {
+  slug            String    @id
+  label           String
+  valueEncrypted  String?   @map("value_encrypted")
+  meta            Json?
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  updatedById     String?   @map("updated_by_id")
+
+  @@map("integration_credentials")
+}
+
 // UserAiProvider and UserAiPreference models were removed in Â§5A.1 PR 8
 // (PR #132) â€” provider selection moved to persona settings. Tables dropped
 // via migration 20260502_chore_remove_legacy_ai_provider_tables.

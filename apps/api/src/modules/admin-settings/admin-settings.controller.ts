@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Put, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { Type } from "class-transformer";
 import { IsArray, IsBoolean, IsIn, IsISO8601, IsNumber, IsOptional, IsString, Min, ValidateIf } from "class-validator";
@@ -6,6 +6,7 @@ import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
+import { IntegrationKeysService } from "../../common/integrations/integration-keys.service";
 import { AdminSettingsService } from "./admin-settings.service";
 
 class UpdateTriggerDto {
@@ -32,12 +33,19 @@ class UpdateOperationsSettingsDto {
   travelRatePerKm?: number | null;
 }
 
+class SetIntegrationValueDto {
+  @IsString() value!: string;
+}
+
 @ApiTags("Admin Settings")
 @ApiBearerAuth()
 @Controller("admin/settings")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class AdminSettingsController {
-  constructor(private readonly service: AdminSettingsService) {}
+  constructor(
+    private readonly service: AdminSettingsService,
+    private readonly integrations: IntegrationKeysService
+  ) {}
 
   @Get("notifications")
   @RequirePermissions("platform.admin")
@@ -107,5 +115,39 @@ export class AdminSettingsController {
   @ApiResponse({ status: 200, description: "All active users with first role name — used by the notification recipient picker." })
   listUsers() {
     return this.service.listUsersForRecipientPicker();
+  }
+
+  // Third-party integration API keys (Geoapify, fuelpricesqld, future). Same
+  // shape as ProviderKeyManager for AI keys: the browser only ever sees
+  // configured/not-configured — never the decrypted value. Set/replace is
+  // a single PUT with the plaintext body; delete clears the encrypted
+  // column (env-var fallback may still make it "configured").
+  @Get("integrations")
+  @RequirePermissions("platform.admin")
+  @ApiOperation({ summary: "Status of every known third-party integration key (configured / source / updatedAt)." })
+  @ApiResponse({ status: 200, description: "IntegrationCredentialStatus[]" })
+  listIntegrations() {
+    return this.integrations.list();
+  }
+
+  @Put("integrations/:slug")
+  @RequirePermissions("platform.admin")
+  @ApiOperation({ summary: "Encrypt and store an integration key. Body: { value }. Never returned." })
+  @ApiResponse({ status: 200, description: "IntegrationCredentialStatus" })
+  async setIntegration(
+    @Param("slug") slug: string,
+    @Body() dto: SetIntegrationValueDto,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    if (!dto?.value || !dto.value.trim()) throw new BadRequestException("value is required.");
+    return this.integrations.setValue(slug, dto.value, actor.sub);
+  }
+
+  @Delete("integrations/:slug")
+  @RequirePermissions("platform.admin")
+  @ApiOperation({ summary: "Clear the stored value. Env-var fallback (if configured in Azure) still applies." })
+  @ApiResponse({ status: 200, description: "IntegrationCredentialStatus" })
+  clearIntegration(@Param("slug") slug: string, @CurrentUser() actor: { sub: string }) {
+    return this.integrations.clear(slug, actor.sub);
   }
 }

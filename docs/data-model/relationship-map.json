@@ -2,8 +2,8 @@
   "_generator": "scripts/data-model/build-relationship-map.mjs",
   "_doNotEdit": "Regenerated from schema.prisma. Do not hand-edit.",
   "generatedFrom": "apps/api/prisma/schema.prisma",
-  "schemaSha256": "9ee456e900aa23238dd6ebd332e724d51db2f5a8da6a2ee512610d3180ac52df",
-  "modelCount": 196,
+  "schemaSha256": "783380faea0e7da263e3bb9909d62e18ca2a819d7a497eaeffb189bd2b2bb239",
+  "modelCount": 197,
   "enumCount": 25,
   "edgeCount": 289,
   "domains": {
@@ -120,6 +120,7 @@
     ],
     "Integrations": [
       "CalendarSyncedEvent",
+      "IntegrationCredential",
       "PortalInvite",
       "PortalSession",
       "XeroConnection",
@@ -18017,6 +18018,87 @@
           "isId": false,
           "isUnique": false,
           "hasDefault": true,
+          "isUpdatedAt": false
+        }
+      ],
+      "relations": [],
+      "referencedBy": []
+    },
+    "IntegrationCredential": {
+      "name": "IntegrationCredential",
+      "domain": "Integrations",
+      "dbTable": "integration_credentials",
+      "fields": [
+        {
+          "name": "slug",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": true,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "label",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "valueEncrypted",
+          "dbColumn": "value_encrypted",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "meta",
+          "dbColumn": null,
+          "type": "Json",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "updatedAt",
+          "dbColumn": "updated_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": true
+        },
+        {
+          "name": "updatedById",
+          "dbColumn": "updated_by_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
           "isUpdatedAt": false
         }
       ],

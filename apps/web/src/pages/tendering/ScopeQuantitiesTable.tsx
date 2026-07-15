@@ -97,7 +97,15 @@ type PlantRate = {
   rate: string;
   fuelRate: string;
   isActive: boolean;
+  category: string | null;
 };
+
+// Transport items (trucks, tipper, floats) are moving to a separate
+// "Transport Fees" surface. Exclude them from the plant picker.
+// Trucks/tipper have category === "Truck"; plant floats have unit === "each way".
+function isTransportPlant(p: PlantRate): boolean {
+  return p.category === "Truck" || p.unit === "each way";
+}
 
 type WasteRate = {
   id: string;
@@ -209,7 +217,7 @@ export function ScopeQuantitiesTable({
   }, [wasteRates]);
 
   const plantOptions = useMemo<TooltipSelectOption<string>[]>(
-    () => plantRates.map((p) => ({ value: p.id, label: p.item })),
+    () => plantRates.filter((p) => !isTransportPlant(p)).map((p) => ({ value: p.id, label: p.item })),
     [plantRates]
   );
 

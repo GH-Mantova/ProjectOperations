@@ -18,6 +18,8 @@ type AssetRecord = {
   homeBase?: string | null;
   currentLocation?: string | null;
   notes?: string | null;
+  fuelConsumptionLPer100km?: string | number | null;
+  nominalLoadTonnes?: string | number | null;
   category?: { id: string; name: string } | null;
   resourceType?: { id: string; name: string } | null;
   maintenanceSummary?: {
@@ -77,7 +79,9 @@ const emptyAssetForm = {
   status: "AVAILABLE",
   homeBase: "",
   currentLocation: "",
-  notes: ""
+  notes: "",
+  fuelConsumptionLPer100km: "",
+  nominalLoadTonnes: ""
 };
 
 export function AssetsPage() {
@@ -209,9 +213,21 @@ export function AssetsPage() {
 
   const createAsset = async (event: React.FormEvent) => {
     event.preventDefault();
+    const body: Record<string, unknown> = { ...assetForm };
+    // Decimal fields — send number, or omit when blank so nulls stay nulls.
+    if (assetForm.fuelConsumptionLPer100km === "") {
+      delete body.fuelConsumptionLPer100km;
+    } else {
+      body.fuelConsumptionLPer100km = Number(assetForm.fuelConsumptionLPer100km);
+    }
+    if (assetForm.nominalLoadTonnes === "") {
+      delete body.nominalLoadTonnes;
+    } else {
+      body.nominalLoadTonnes = Number(assetForm.nominalLoadTonnes);
+    }
     const response = await authFetch("/assets", {
       method: "POST",
-      body: JSON.stringify(assetForm)
+      body: JSON.stringify(body)
     });
 
     if (!response.ok) {
@@ -435,6 +451,14 @@ export function AssetsPage() {
                   <dt>Serial number</dt>
                   <dd>{selectedAsset.serialNumber ?? "Not recorded"}</dd>
                 </div>
+                <div>
+                  <dt>Fuel consumption (L / 100 km)</dt>
+                  <dd>{selectedAsset.fuelConsumptionLPer100km ?? "Not set"}</dd>
+                </div>
+                <div>
+                  <dt>Nominal load (tonnes)</dt>
+                  <dd>{selectedAsset.nominalLoadTonnes ?? "Not set"}</dd>
+                </div>
               </dl>
 
               <div className="subsection">
@@ -559,6 +583,28 @@ export function AssetsPage() {
               <label>
                 Current location
                 <input value={assetForm.currentLocation} onChange={(event) => setAssetForm({ ...assetForm, currentLocation: event.target.value })} />
+              </label>
+              <label>
+                Fuel consumption (L / 100 km)
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={assetForm.fuelConsumptionLPer100km}
+                  onChange={(event) => setAssetForm({ ...assetForm, fuelConsumptionLPer100km: event.target.value })}
+                  placeholder="e.g. 45.0"
+                />
+              </label>
+              <label>
+                Nominal load capacity (tonnes)
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={assetForm.nominalLoadTonnes}
+                  onChange={(event) => setAssetForm({ ...assetForm, nominalLoadTonnes: event.target.value })}
+                  placeholder="Fallback only — matrix is authoritative"
+                />
               </label>
             </div>
             <label>

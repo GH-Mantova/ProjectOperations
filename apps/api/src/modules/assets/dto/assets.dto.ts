@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsBoolean, IsOptional, IsString } from "class-validator";
+import { IsBoolean, IsNumber, IsOptional, IsString, Min } from "class-validator";
 import { PaginationQueryDto } from "../../../common/dto/pagination-query.dto";
 
 /**
@@ -26,6 +26,16 @@ export class UpsertAssetCategoryDto {
   @IsOptional() @IsString() description?: string;
   /** Whether the category is selectable on new assets; defaults to true. */
   @IsOptional() @Type(() => Boolean) @IsBoolean() isActive?: boolean;
+  /**
+   * Category-level default fuel consumption (litres per 100 km). Used as a
+   * fallback by the waste-transport cost calculator when a specific Asset
+   * has no fuelConsumptionLPer100km. Nullable.
+   */
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0)
+  defaultFuelConsumptionLPer100km?: number;
+  /** Category-level default nominal load capacity (tonnes). Fallback only. */
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0)
+  defaultNominalLoadTonnes?: number;
 }
 
 /**
@@ -50,4 +60,19 @@ export class UpsertAssetDto {
   @IsOptional() @IsString() currentLocation?: string;
   /** Free-text notes for operators and maintainers. */
   @IsOptional() @IsString() notes?: string;
+  /**
+   * Per-truck fuel consumption (litres per 100 km). Marco 2026-07-15:
+   * fuel burn is a property of the individual truck, not the material
+   * carried. Feeds the T-1 waste-transport cost calculator; nullable.
+   */
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0)
+  fuelConsumptionLPer100km?: number;
+  /**
+   * Nominal load capacity (tonnes) as a fallback. The authoritative
+   * capacity source is the Transport Capacity reference table (material
+   * class × transport type) — this field only applies when no matrix row
+   * matches. Nullable.
+   */
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0)
+  nominalLoadTonnes?: number;
 }

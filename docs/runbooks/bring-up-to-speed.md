@@ -59,5 +59,33 @@ judgement to pick the trustworthy source, and instead run one deterministic swee
 | D History | git | last 30 commits on origin/main |
 | E Read-checklist | -- | what the chat must read before reporting |
 
+Extra sections added to close known blind spots:
+
+| Section | Closes | What it adds |
+|---|---|---|
+| 1 (CI per open PR) | #2 | each open PR's check rollup: N pass / N fail / N pending |
+| 4B failures/silent-exits | #3 | newest 6 files in `failed/` + `no-pr-opened/` WITH a reason snippet (e.g. "Reached max turns", "tendering-e2e fail", a standing-authority stall) |
+| 3 recent-remote | #5 | flags any PR touched on GitHub in the last 2 min -> a station may be doing gh-only work with no local lock. Adds a CAUTION verdict tier. |
+| C2 SoT content | #1 | prints `sot/README.md` IN FULL + every master's section headers (not just a file list) |
+| C3 scheduled stations | #4 | lists the station definitions on disk; checklist item 4 tells the chat to call the scheduled-tasks MCP for live enabled/next-run |
+| E checklist item 7 | #6 | mandates writing any chat-only decision into BACKLOG/sot/memory before the session ends |
+
+## Deliberately OUT of scope -- blind spot #7 (prod / DB / Azure / deploy health)
+
+The sweep does not check production health, the live database, Azure/Entra, or deploy status. This
+is intentional, not an oversight:
+
+- **Azure/Entra is Marco's hard stop** -- nothing automated touches it without his supervision, so a
+  sweep that any chat runs unattended must not reach into it.
+- **There is no queryable prod telemetry today** (Microsoft.Insights was only just registered), so
+  there is nothing reliable for a script to read; prod incidents are diagnosed by hand off the live
+  Log Stream.
+- **The sweep is meant to be safe to run in any chat at any time.** Reaching into prod/DB would make
+  it stateful and risky. Prod health is a separate, supervised action -- not part of "bring me up to
+  speed."
+
+If prod/DB status is ever wanted in the sweep, it should be a separate opt-in flag
+(`-IncludeProd`) that Marco runs deliberately, never the default.
+
 Read-only. Opens no PR, arms no prompt, deletes nothing, touches no branch. Safe to run any time,
 in any chat.

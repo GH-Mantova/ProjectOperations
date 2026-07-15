@@ -62,6 +62,32 @@ Write-Host ""
 Write-Host "  Entry point / law / routing (fetch the BLOB url; raw CDN lags):"
 Write-Host "    https://github.com/GH-Mantova/ProjectOperations/blob/main/sot/README.md"
 
+Head "C2. SoT CONTENT -- README (the law) IN FULL + every master's section headers (close blind-spot 1)"
+$readme = Join-Path $Repo "sot\README.md"
+if (Test-Path $readme) {
+  Write-Host "----- BEGIN sot/README.md -----"
+  Get-Content $readme | ForEach-Object { Write-Host $_ }
+  Write-Host "----- END sot/README.md -----"
+} else { Write-Host "  *** sot/README.md NOT FOUND" }
+Write-Host ""
+Write-Host "Section headers of the other masters (READ the full text of the ones your role needs):"
+foreach ($f in @("sot/01-charter-and-architecture.md","sot/02-roadmap-and-status.md","sot/03-progress-log.md","sot/04-data-model.md","sot/05-decisions-and-lessons.md","sot/06-active-specs.md")) {
+  $p = Join-Path $Repo $f
+  if (Test-Path $p) {
+    Write-Host ("  " + $f + ":")
+    Get-Content $p | Where-Object { $_ -match '^#{1,3}\s' } | Select-Object -First 40 | ForEach-Object { Write-Host ("      " + $_) }
+  }
+}
+Write-Host ""
+Write-Host "MEMORIES: the MEMORY.md index is auto-injected into this chat. READ the bodies of every"
+Write-Host "file under its '### READ THESE FIRST' block in full -- the one-liners are not enough."
+
+Head "C3. SCHEDULED AGENTS -- handled in section A (4C) + checklist item 4"
+Write-Host "  Section A's sweep (4C) lists the on-disk Scheduled\ folders and tails the freshest station"
+Write-Host "  summary, with the RULE that a folder or a state-file name is NOT a live task. The LIVE schedule"
+Write-Host "  (which tasks exist, enabled, next/last run) comes ONLY from the scheduled-tasks MCP -- checklist"
+Write-Host "  item 4 makes calling it mandatory and tells you how to reconcile the folders against it."
+
 Head "D. RECENT HISTORY (last 30 on origin/main)"
 git log origin/main --oneline -30 2>$null | ForEach-Object { Write-Host ("  " + $_) }
 
@@ -69,7 +95,14 @@ Head "E. READ-CHECKLIST -- do ALL of this BEFORE you report a single fact"
 Write-Host "  [ ] 1. Read sot/README.md -> follow its routing for THIS chat's title (MAIN / OldMain# / Chat# / DR#)."
 Write-Host "  [ ] 2. Read the SoT masters your role requires (MAIN/OldMain: README + 01 + 02 fully; 03/04/05/06 as needed)."
 Write-Host "  [ ] 3. Read every chat memory under the '### READ THESE FIRST' block of the auto-injected MEMORY.md -- FULLY, not the one-liners."
-Write-Host "  [ ] 4. Re-read section A above: report ONLY from [LIVE] lines; never repeat a [STALE] line; treat [FILE] as unverified."
-Write-Host "  [ ] 5. If section A says DO NOT ACT, do not stage/arm/merge -- summarise and wait."
+Write-Host "  [ ] 4. Call list_scheduled_tasks (MCP) -- the ONLY source of the live schedule. RECONCILE: live"
+Write-Host "         tasks are EXACTLY its taskIds; any Scheduled\ folder in section A/4C not in that set is a"
+Write-Host "         DELETED task's leftover folder -- ignore it. NEVER say a task 'runs' from a folder or a"
+Write-Host "         state-file name (that exact mistake happened 2026-07-15)."
+Write-Host "  [ ] 5. Re-read section A: report ONLY from [LIVE] lines; never repeat a [STALE] line; treat [FILE] as unverified."
+Write-Host "  [ ] 6. If section A says DO NOT ACT / CAUTION, do not stage/arm/merge -- summarise and wait."
+Write-Host "  [ ] 7. BEFORE you end this working session: write any decision, finding, or TODO that is not"
+Write-Host "         already in docs/pr-prompts/BACKLOG.yaml, sot/, or a memory file. Chat memory is NOT"
+Write-Host "         durable -- an agent cannot read this conversation. If it is only in chat, it is lost."
 Write-Host ""
 Write-Host "BRING-UP-TO-SPEED COMPLETE. You are current only after the checklist above is actually done."

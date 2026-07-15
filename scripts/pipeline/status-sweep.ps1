@@ -35,6 +35,14 @@ function Line($tag, $msg) { Write-Host ("  [" + $tag + "] " + $msg) }
 
 $nowUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") + "Z"
 Write-Host ("STATUS SWEEP  --  generated " + $nowUtc + "  (all facts [LIVE] unless tagged [FILE]/[STALE])")
+Write-Host ""
+Write-Host "HOW TO READ -- traps this tool exists to prevent (every one is a real mistake made 2026-07-15):"
+Write-Host "  * [LIVE]=GitHub or a running process (authoritative).  [FILE]=a snapshot, verify it.  [STALE]=proven out of date, NEVER repeat it as current."
+Write-Host "  * A local file (station report / state / needs-marco) is NOT current just because it is recent. Section 5 re-checks its PR refs against GitHub."
+Write-Host "  * A folder or a filename is NOT a running task (section 4C). The live schedule is the scheduled-tasks MCP ONLY."
+Write-Host "  * 'behind origin/main' (section B) => local git reads may be STALE. Trust origin/main + gh, not your local index."
+Write-Host "  * If ANY [BROKEN] appears in section 0, STOP: the report is unreliable until the instrument is fixed."
+Write-Host "  * Report ONLY from [LIVE] lines. If a fact you want is not [LIVE], go get it live before stating it."
 
 # ------------------------------------------------------------------------------------------------
 Section "0. INSTRUMENT POSITIVE CONTROLS (if any FAIL, do not trust this report)"
@@ -60,6 +68,12 @@ if ($ghOk) {
     $p = $open[$i]
     $d = if ($p.isDraft) { " [DRAFT]" } else { "" }
     Line "LIVE" ("   #" + $p.number + $d + "  " + $p.mergeStateStatus + "  " + $p.title)
+    # CI status per open PR (close blind-spot 2)
+    $ci = gh pr checks $p.number 2>&1
+    $pass = @($ci | Select-String -Pattern "`tpass`t", "pass" -SimpleMatch -ErrorAction SilentlyContinue).Count
+    $fail = @($ci | Select-String -Pattern "fail" -SimpleMatch -ErrorAction SilentlyContinue).Count
+    $pend = @($ci | Select-String -Pattern "pending", "in_progress", "queued" -SimpleMatch -ErrorAction SilentlyContinue).Count
+    Line "LIVE" ("      CI: " + $pass + " pass / " + $fail + " fail / " + $pend + " pending" + $(if ($fail -gt 0) { "  <-- RED, do not expect a merge" } elseif ($pend -gt 0) { "  (still running)" } else { "  (green)" }))
   }
   $merged = @((gh pr list --state merged --limit 8 --json number,title,mergedAt 2>$null | Out-String | ConvertFrom-Json))
   Line "LIVE" "MERGED (most recent 8):"
@@ -68,6 +82,11 @@ if ($ghOk) {
     $when = if ($p.mergedAt) { ($p.mergedAt -replace 'T', ' ').Substring(0, 16) + "Z" } else { "?" }
     Line "LIVE" ("   #" + $p.number + "  " + $when + "  " + $p.title)
   }
+  # is the TRUNK green? (main-branch CI health -- open-PR CI does not tell you this)
+  $mainci = gh run list --branch main --limit 3 2>$null
+  $mfail = @($mainci | Select-String -Pattern "failure", "cancelled", "timed_out" -SimpleMatch).Count
+  $mok = @($mainci | Select-String -Pattern "success" -SimpleMatch).Count
+  Line "LIVE" ("main branch CI (last 3 runs): " + $mok + " success / " + $mfail + " not-success" + $(if ($mfail -gt 0) { "  <-- TRUNK IS RED" } else { "  (trunk green)" }))
 } else {
   Line "BROKEN" "SKIPPED -- gh positive control failed above."
 }
@@ -85,6 +104,24 @@ if (Test-Path $hb) {
   $age = [int]((New-TimeSpan -Start (Get-Item $hb).LastWriteTime -End (Get-Date)).TotalMinutes)
   Line "LIVE" ("heartbeat age: " + $age + " min  (ticks only mid-run; stale + empty queue = idle, NOT wedged)")
 }
+# watcher CLONE health -- a dirty/wrong-branch clone is what makes start-watcher REFUSE to run
+if (Test-Path (Join-Path $WatcherClone ".git")) {
+  Push-Location $WatcherClone
+  $cbranch = (git rev-parse --abbrev-ref HEAD 2>$null)
+  $cdirty = @(git status --short 2>$null).Count
+  Pop-Location
+  $cflag = if ($cbranch -ne "main" -or $cdirty -gt 0) { "  <-- NOT clean-on-main; the watcher may refuse to start" } else { "" }
+  Line "LIVE" ("watcher clone: branch=" + ($cbranch) + " dirty=" + $cdirty + $cflag)
+} else { Line "LIVE" ("watcher clone MISSING at " + $WatcherClone) }
+# orphaned worktrees -- a leftover worktree means an aborted station run
+$wt = @(git worktree list 2>$null | Where-Object { $_ -notmatch "\[main\]$" -and $_ -notmatch [regex]::Escape($Repo) })
+if ($wt.Count -gt 0) {
+  Line "LIVE" ("orphaned worktrees: " + $wt.Count + " (aborted run leftovers -- investigate/prune):")
+  foreach ($x in $wt) { Line "LIVE" ("   " + $x) }
+} else { Line "LIVE" "orphaned worktrees: none" }
+# the guard hook is the safety floor (#569) -- confirm it still exists
+$guard = Join-Path $Repo ".claude\hooks\guard.mjs"
+Line "LIVE" ("guard hook (.claude/hooks/guard.mjs): " + $(if (Test-Path $guard) { "present" } else { "*** MISSING -- the skip-all-approvals floor is gone" }))
 
 # ------------------------------------------------------------------------------------------------
 Section "3. IS THE BOARD BUSY? (safe-to-act gate -- REAL mutation signals, not 'is a chat open')"
@@ -102,6 +139,19 @@ Line "LIVE" ("in-progress prompts (a station is running one): " + $inprog.Count)
 Line "LIVE" ("git index.lock  interactive/clone: " + $lockInteractive + " / " + $lockClone + "  (true = a git write is mid-flight)")
 Line "LIVE" ("git processes running: " + $gitProc.Count)
 Line "INFO" ("headless claude-code sessions: " + $headless.Count + "  (INCLUDES this chat -- informational, NOT a blocker)")
+# recent remote board activity: a station doing gh-only work (merge/label) leaves NO local lock (close blind-spot 5)
+$recent = @()
+if ($ghOk) {
+  $upd = @((gh pr list --state all --limit 10 --json number,updatedAt,state 2>$null | Out-String | ConvertFrom-Json))
+  foreach ($u in $upd) {
+    if ($u.updatedAt) {
+      $secs = (New-TimeSpan -Start ([datetime]$u.updatedAt).ToUniversalTime() -End (Get-Date).ToUniversalTime()).TotalSeconds
+      if ($secs -lt 120) { $recent += ("#" + $u.number + " " + $u.state) }
+    }
+  }
+}
+if ($recent.Count -gt 0) { Line "LIVE" ("remote board activity in last 2 min: " + ($recent -join ", ") + "  <-- a station may be doing gh-only work; prefer to wait") }
+else { Line "LIVE" "no PR touched on GitHub in the last 2 min" }
 
 # ------------------------------------------------------------------------------------------------
 Section "4. QUEUE (docs/pr-prompts on disk)"
@@ -116,6 +166,54 @@ foreach ($sub in @("in-progress","needs-marco","no-pr-opened","failed","blocked"
     Line "LIVE" ($sub + "/: " + $c.Count)
   }
 }
+
+# ------------------------------------------------------------------------------------------------
+Section "4B. RECENT FAILURES / SILENT EXITS (contents, not just counts -- close blind-spot 3)"
+# ------------------------------------------------------------------------------------------------
+foreach ($bucket in @("failed", "no-pr-opened")) {
+  $d = Join-Path $Queue $bucket
+  if (-not (Test-Path $d)) { continue }
+  $all = @(Get-ChildItem (Join-Path $d "*") -File -ErrorAction SilentlyContinue)
+  $files = @($all | Sort-Object LastWriteTime -Descending | Select-Object -First 6)
+  Line "LIVE" ($bucket + "/ (" + $all.Count + " total; newest " + $files.Count + " shown):")
+  foreach ($f in $files) {
+    $reason = ""
+    $rep = $f.FullName + ".report.md"
+    if (Test-Path $rep) { $reason = (Get-Content $rep -TotalCount 40 | Where-Object { $_ -match '\S' } | Select-Object -First 1) }
+    if (-not $reason) { $reason = (Get-Content $f.FullName -TotalCount 80 | Where-Object { $_ -match 'NO-OP|error|fail|reason|blocked|max turns' } | Select-Object -First 1) }
+    if (-not $reason) { $reason = "(no reason captured -- open the file)" }
+    $reason = ($reason -replace '[^\x20-\x7E]', ' ')
+    if ($reason.Length -gt 100) { $reason = $reason.Substring(0, 100) }
+    Line "LIVE" ("   " + $f.LastWriteTime.ToString("MM-dd HH:mm") + "  " + $f.Name + "  ::  " + $reason)
+  }
+}
+
+# ------------------------------------------------------------------------------------------------
+Section "4C. SCHEDULED AGENTS -- on-disk folders and state files are NOT the live schedule"
+# TRAP THIS SECTION EXISTS TO PREVENT (a real mistake, 2026-07-15): a Scheduled\ folder was read as
+# a running task, and a state file's fresh timestamp was attributed to a DELETED task of the same
+# name. Both wrong. A folder is not a schedule; a filename is not a writer.
+# ------------------------------------------------------------------------------------------------
+Line "INFO" "RULE: the LIVE schedule is ONLY what the scheduled-tasks MCP (list_scheduled_tasks) returns."
+Line "INFO" "      A folder in Scheduled\ can remain after a task is DELETED. A state file named after a task"
+Line "INFO" "      does NOT mean that task wrote it (the supervisor reuses old filenames). NEVER infer 'X runs'"
+Line "INFO" "      from a folder or a file named X. Report scheduled state ONLY from the MCP (checklist item)."
+$schedRoot = "C:\Users\Marco\Claude\Scheduled"
+if (Test-Path $schedRoot) {
+  $folders = @(Get-ChildItem $schedRoot -Directory | ForEach-Object { $_.Name })
+  Line "FILE" ("Scheduled\ folders on disk (" + $folders.Count + ") -- NOT proof of a live task, reconcile via MCP:")
+  Line "FILE" ("   " + ($folders -join ", "))
+}
+$stateFiles = @(Get-ChildItem (Join-Path $Queue "*state*.md") -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
+if ($stateFiles.Count -gt 0) {
+  $fresh = $stateFiles[0]
+  Line "FILE" ("freshest station summary: " + $fresh.Name + "  (" + $fresh.LastWriteTime.ToString("MM-dd HH:mm") + ") -- a SNAPSHOT by whoever last ran; verify claims against GitHub:")
+  Get-Content $fresh.FullName -Tail 22 | Where-Object { $_ -match '\S' } | ForEach-Object {
+    $t = ($_ -replace '[^\x20-\x7E]', ' ')
+    if ($t.Length -gt 118) { $t = $t.Substring(0, 118) }
+    Line "FILE" ("   | " + $t)
+  }
+} else { Line "FILE" "no station summary/state file found" }
 
 # ------------------------------------------------------------------------------------------------
 Section "5. STALE-CLAIM CROSS-CHECK  (the step that was being skipped)"
@@ -160,11 +258,13 @@ if ($nodeOk -and (Test-Path (Join-Path $Repo "scripts\pipeline\check-backlog.mjs
 Section "7. VERDICT"
 # ------------------------------------------------------------------------------------------------
 $safe = -not $boardBusy
-if ($safe) {
-  Line "LIVE" "SAFE TO ACT: no board mutation in progress (no in-progress prompt, no git lock, no git process)."
-  Line "LIVE" "   For any git WRITE, still prefer an ISOLATED worktree off origin/main. NEVER merge -- the supervisor drives the board."
+if (-not $safe) {
+  Line "LIVE" "DO NOT ACT: a board mutation is in progress (section 3 -- in-progress prompt / git lock / git process). Wait, re-run, then act."
+} elseif ($recent.Count -gt 0) {
+  Line "LIVE" "CAUTION: no local lock, but a PR was touched on GitHub in the last 2 min (section 3). A station may be doing gh-only work. Prefer to wait a minute and re-run; if you must act, use an ISOLATED worktree and touch only NEW branches/PRs."
 } else {
-  Line "LIVE" "DO NOT ACT: a board mutation is in progress (section 3). Wait, re-run this sweep, then act."
+  Line "LIVE" "SAFE TO ACT: no board mutation in progress, no recent remote activity."
+  Line "LIVE" "   For any git WRITE, still prefer an ISOLATED worktree off origin/main. NEVER merge -- the supervisor drives the board."
 }
 Write-Host ""
 Write-Host ("SWEEP COMPLETE " + $nowUtc + " -- report ONLY from [LIVE] lines; treat [FILE] as unverified; never repeat a [STALE] line as current.")

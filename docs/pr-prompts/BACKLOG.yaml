@@ -298,3 +298,17 @@ items:
     gate_means: The search-box fill() still runs on the line IMMEDIATELY after the toHaveURL assertion - i.e. nothing waits for the sites list to settle, so the race is still there. Once a settle-wait is inserted between them the grep finds no getByPlaceholder on the next line and the gate exits 1.
     needs_marco: false
     order: 15
+
+  - id: wire-bring-up-to-speed-into-boot
+    title: "Wire scripts/pipeline/bring-up-to-speed.ps1 into the SoT boot sequence"
+    priority: P3
+    why: >
+      status-sweep.ps1 + bring-up-to-speed.ps1 give every chat one deterministic,
+      GitHub-authoritative sweep (with a stale-claim cross-check) to run BEFORE any status report.
+      They shipped as tracked scripts. Make it LAW, not convention: sot/README.md's boot sequence
+      should tell every chat to run bring-up-to-speed.ps1 first and report only from its [LIVE]
+      lines. Sot-only PR (CP-24 forbids mixing code and sot/), so this is its own PR.
+    gate: 'git ls-files --error-unmatch scripts/pipeline/bring-up-to-speed.ps1 > /dev/null 2>&1 && ! grep -q "bring-up-to-speed" sot/README.md'
+    gate_means: The script is on main (so the boot sequence can reference it) AND sot/README.md does not mention it yet.
+    needs_marco: false
+    order: 21

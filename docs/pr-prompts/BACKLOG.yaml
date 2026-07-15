@@ -56,18 +56,10 @@ items:
   # -------------------------------------------------------------------------------------------
   # P2 Ã”Ã‡Ã¶ gate ALREADY RELEASED and nobody noticed. This is the item that proves the point.
   # -------------------------------------------------------------------------------------------
-  - id: branding-manager
-    title: "Branding manager Ã”Ã‡Ã¶ BrandColorScheme + BrandAsset (DB-stored, isSuperUser)"
-    priority: P2
-    why: >
-      HOLD-gated on the quote-PDF crash fix. THAT FIX MERGED 2026-07-08 (PR #518/#525/#548).
-      The gate released six days ago and nothing re-evaluated it Ã”Ã‡Ã¶ the HOLD prompt is not even in
-      the queue any more. `AdminCompanyPage.tsx:422` still carries the comment
-      "Will move to BrandColorScheme / BrandAsset FKs once those tables land."
-    gate: '! grep -q "model BrandColorScheme" apps/api/prisma/schema.prisma && grep -rq "PUPPETEER_EXECUTABLE_PATH" apps/api/src'
-    gate_means: The PDF fix is on main (blocker gone) AND the Brand tables do not exist yet.
-    needs_marco: false
-    order: 3
+  # -------------------------------------------------------------------------------------------
+  # DISCHARGED 2026-07-15 (04-scanner): branding-manager STAGED as pr-branding-manager-ready.md.
+  # Its gate had released (quote-PDF fix on main) and it was the only clean, un-staged ready item.
+  # -------------------------------------------------------------------------------------------
 
   - id: swms-interactive-module
     title: "Interactive SWMS module Ã”Ã‡Ã¶ office wizard + control-mapping tool"

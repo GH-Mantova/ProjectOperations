@@ -1917,17 +1917,25 @@ model EstimateEnclosureRate {
   @@map("estimate_enclosure_rates")
 }
 
+enum MaterialKind {
+  VOLUME
+  AREA
+  EACH
+  FACTOR
+}
+
 model EstimateMaterialDensity {
-  id           String   @id @default(cuid())
-  materialName String   @unique @map("material_name")
-  density      Decimal  @db.Decimal(8, 3)
+  id           String       @id @default(cuid())
+  materialName String       @unique @map("material_name")
+  density      Decimal      @db.Decimal(8, 3)
   unit         String // "kg/mÂ³" or "kg/mÂ²"
+  kind         MaterialKind @default(VOLUME)
   category     String? // "concrete" | "masonry" | "soil" | "sheet" | "metal" | "timber"
   notes        String?
-  isActive     Boolean  @default(true) @map("is_active")
-  sortOrder    Int      @default(0) @map("sort_order")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  isActive     Boolean      @default(true) @map("is_active")
+  sortOrder    Int          @default(0) @map("sort_order")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
 
   @@map("estimate_material_density")
 }

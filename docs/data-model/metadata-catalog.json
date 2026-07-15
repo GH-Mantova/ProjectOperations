@@ -265,6 +265,30 @@
           "filterable": false,
           "aggregations": []
         },
+        "fuelConsumptionLPer100km": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
+        },
+        "nominalLoadTonnes": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
+        },
         "createdAt": {
           "role": "system",
           "label": null,
@@ -460,6 +484,30 @@
           "label": null,
           "filterable": true,
           "aggregations": []
+        },
+        "defaultFuelConsumptionLPer100km": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
+        },
+        "defaultNominalLoadTonnes": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
         },
         "createdAt": {
           "role": "system",
@@ -8671,6 +8719,74 @@
           "role": "system",
           "label": null,
           "filterable": false,
+          "aggregations": []
+        }
+      }
+    },
+    "OperationsSettings": {
+      "domain": "Unclassified",
+      "wizardVisible": false,
+      "label": null,
+      "reviewed": false,
+      "fields": {
+        "id": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "fuelPricePerLitre": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
+        },
+        "fuelPriceSource": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "fuelPriceFetchedAt": {
+          "role": "time",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "travelRatePerKm": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
+        },
+        "updatedAt": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "updatedById": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "updatedBy": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
           "aggregations": []
         }
       }
@@ -16894,6 +17010,12 @@
           "aggregations": []
         },
         "emailProviderConfigUpdates": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "operationsSettingsUpdates": {
           "role": "system",
           "label": null,
           "filterable": false,

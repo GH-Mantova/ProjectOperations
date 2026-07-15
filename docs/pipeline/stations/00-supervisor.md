@@ -474,3 +474,26 @@ action.** Before you conclude anything is broken, ask: *"is there an innocent ex
 fits all the signals?"* Here every other signal was clean - no MERGE_HEAD, no rebase, no
 index.lock, no unmerged paths, queue moving, heartbeat fresh. **One weak signal against five
 healthy ones is not an emergency; it is a bad check.**
+
+
+## DISPATCH-UNAVAILABLE FALLBACK (2026-07-15) — supersedes "dispatch-only" where they conflict
+
+Reconciles this brief with the live `00-supervisor` SKILL. The "decide, then DISPATCH — you do not do
+the work" rule assumes the Task tool can spawn `02`/`03`. From the **Cowork scheduled environment it
+cannot** — proven 2026-07-15, when the supervisor could not dispatch and instead correctly drove
+#588/#589/#590 to merge itself. A supervisor that cannot dispatch AND refuses to act just lets ready
+work rot, which is the very failure the pipeline exists to prevent.
+
+So when — and ONLY when — dispatch is unavailable, the supervisor becomes the **single actor** and may
+drive the board itself (arm the scanner's stage-ready items; merge green PRs), under ALL of:
+
+1. **Sanctioned primitives only** — `Assert-SmokedOrEscalate` → `Merge-Pr` to merge, `lint-prompt.mjs`
+   to arm. Never raw `gh pr merge` or a hand `git merge` (a hand-merge once left `MERGE_HEAD` — the incident).
+2. **Clean isolated worktree only** — off `origin/main` on the Windows FS. Never the sandbox tree,
+   never `C:\po-watcher`, never the interactive tree. Tear it down always.
+3. **Single actor** — first confirm nothing else is mid-mutation (in-progress prompt, git lock, a PR
+   touched in the last ~2 min). If something else is acting, STOP: that is the LL-38 collision.
+4. **Read back the PR head / merge state**, never just "I pushed".
+
+Prefer dispatch when it works; use this fallback when it does not. This is how the supervisor "launches
+the prompts" in the current environment.

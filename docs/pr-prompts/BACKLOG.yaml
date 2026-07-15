@@ -220,11 +220,15 @@ items:
       pr-zz-mail-managed-identity-HOLD.md (size 7, gate_allow env-vars, escalates true).
     gate: '! grep -rq "MAIL_AUTH_MODE" apps/api/src .env.example'
     gate_means: The mail provider still has no MAIL_AUTH_MODE switch; it can only use ClientSecretCredential.
-    needs_marco: true
-    marco_question: >
-      AZURE/ENTRA IS YOUR HARD STOP -- nothing touches it without you. This PR is buildable, but it
-      must not be deployed or verified without your supervision. And do NOT delete the old
-      app-registration secrets until a real email is confirmed delivered. Ready to supervise it?
+    needs_marco: false
+    escalates: true
+    decided: >
+      2026-07-15 (Marco): BUILD THE CODE PR NOW, hold ops. Build the MAIL_AUTH_MODE switch +
+      managed-identity credential path (mirror #547). escalates:true -- open the PR but DO NOT
+      auto-merge; Marco reviews. The code is safe: default behaviour is unchanged until
+      MAIL_AUTH_MODE is set. OPS ARE SEPARATE AND MARCO-SUPERVISED and are NOT part of this PR:
+      deploy -> trigger a real access-request -> confirm the email LANDS -> only THEN delete the old
+      app-registration secrets (never alongside; LL-36).
     order: 17
 
   - id: graphify-knowledge-graph
@@ -250,28 +254,36 @@ items:
       (size 9, gate_allow migrations).
     gate: '! grep -qE "RoleDefaultDashboard|defaultDashboardId" apps/api/prisma/schema.prisma'
     gate_means: No role -> default-dashboard concept in the schema yet.
-    needs_marco: true
-    marco_question: >
-      Which dashboard should each role land on by default? That mapping is a business decision, not
-      a technical one -- it is why this was parked. Also: is it one default per role, or per role
-      per module?
+    needs_marco: false
+    decided: >
+      2026-07-15 (Marco): PER ROLE, PER MODULE, and ADMIN-CONFIGURABLE DATA (Directors set it in
+      Admin settings; no code change to re-point a role). Schema: new model
+      RoleDefaultDashboard(roleId, module -> PermissionModule.name, dashboardId), @@unique([roleId,
+      module]). Modules are the existing PermissionModule.name keys; Roles are the existing Role
+      table; Dashboard already supports ownerRole. SPLIT (each < size 10, stage in order):
+      slice 1 = backend: schema + migration + admin CRUD API (controller/service/dto) + a resolver
+      service that returns a user's default dashboard for a module (with graceful fallback);
+      slice 2 = frontend: Admin-settings UI to manage the role x module -> dashboard mapping;
+      slice 3 = wire the landing logic to call the resolver on module entry. Stage slice 1 first.
     order: 19
 
   - id: siteid-notnull-backfill
-    title: "Enforce siteId NOT NULL on Tender/Job/FormSubmission/Project (backfill first)"
+    title: "Enforce siteId NOT NULL on Job + Project (Unassigned-site backfill first)"
     priority: P3
     why: >
-      siteId is still nullable across Tender/Job/FormSubmission/Project. Enforcing NOT NULL needs a
-      data backfill FIRST -- and any row with no resolvable site blocks the migration. That makes it
-      a production-data change, not just a schema one. The HOLD file carries watcher:do-not-arm.
-      Prompt body is in the untracked HOLD file pr-siteid-notnull-backfill-HOLD.md
-      (size 8, gate_allow migrations).
-    gate: 'grep -qE "^[[:space:]]+siteId[[:space:]]+String\?" apps/api/prisma/schema.prisma'
-    gate_means: siteId is still nullable -- NOT NULL has not been enforced.
-    needs_marco: true
-    marco_question: >
-      This backfills PRODUCTION data and then locks the column. What should rows with no site
-      resolve to -- a default site, or do they get fixed by hand first? I will not guess this.
+      siteId is nullable across Tender/Job/FormSubmission/Project. Enforcing NOT NULL needs a data
+      backfill FIRST -- a production-data change, not just a schema one.
+    gate: '! ls apps/api/prisma/migrations | grep -qiE "siteid.*notnull|site_id_not_null|siteid_backfill"'
+    gate_means: The Job/Project siteId NOT NULL backfill migration has not been written yet.
+    needs_marco: false
+    escalates: true
+    decided: >
+      2026-07-15 (Marco): Enforce NOT NULL on JOB + PROJECT ONLY. Tender STAYS NULLABLE (a bid can
+      precede a site). FormSubmission is NOT a DB constraint -- handled per-form by the new item
+      formsubmission-required-site-field. For the Job/Project null rows: CREATE an "Unassigned" Site
+      (seed it if absent), backfill all null Job/Project.siteId to it, THEN enforce NOT NULL in the
+      SAME migration. Rows can be reassigned off "Unassigned" later. escalates:true -- this changes
+      PRODUCTION data, so open the PR but hold for Marco's review; do not auto-merge.
     order: 20
 
   # -------------------------------------------------------------------------------------------
@@ -299,6 +311,28 @@ items:
     needs_marco: false
     order: 15
 
+  # -------------------------------------------------------------------------------------------
+  # ADDED 2026-07-15. Spun off from the siteid decision -- FormSubmission is NOT a DB constraint.
+  # -------------------------------------------------------------------------------------------
+
+  - id: formsubmission-required-site-field
+    title: "Form builder: an 'existing sites' picker field that a form can mark required"
+    priority: P4
+    why: >
+      Marco's siteid decision: FormSubmission.siteId STAYS NULLABLE at the DB level. Instead, site
+      capture on forms is a per-form choice in the form builder -- a form author can add an
+      'existing sites' dropdown field (populated from the Site table) and mark it required. This is
+      a form-template/form-builder feature, NOT a schema NOT NULL constraint. Enforcement is per
+      form, at submission-validation time, driven by the field's required flag.
+    gate: '! grep -rqiE "site.?picker|existingSites|SITE_DROPDOWN|siteField" apps/web/src apps/api/src/modules/forms 2>/dev/null'
+    gate_means: No 'existing sites' form-field type exists yet in the form builder.
+    needs_marco: false
+    decided: >
+      2026-07-15 (Marco): build as a form-builder field type. Populate the dropdown from the Site
+      table; a form author can toggle 'required'; validate on submit. Do NOT add a DB NOT NULL on
+      FormSubmission.siteId.
+    order: 21
+
   - id: wire-bring-up-to-speed-into-boot
     title: "Wire scripts/pipeline/bring-up-to-speed.ps1 into the SoT boot sequence"
     priority: P3
@@ -311,4 +345,4 @@ items:
     gate: 'git ls-files --error-unmatch scripts/pipeline/bring-up-to-speed.ps1 > /dev/null 2>&1 && ! grep -q "bring-up-to-speed" sot/README.md'
     gate_means: The script is on main (so the boot sequence can reference it) AND sot/README.md does not mention it yet.
     needs_marco: false
-    order: 21
+    order: 22

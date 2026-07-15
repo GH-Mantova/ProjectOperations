@@ -2,9 +2,9 @@
   "_generator": "scripts/data-model/build-relationship-map.mjs",
   "_doNotEdit": "Regenerated from schema.prisma. Do not hand-edit.",
   "generatedFrom": "apps/api/prisma/schema.prisma",
-  "schemaSha256": "56cc9965a5253da0df603b9f8de5435dba33c612a30e2af95de8fbc2b0f8af01",
+  "schemaSha256": "280a911a1f4be2812f1ece621f9e645798968c46cb9dcdf7efd6c26934050fe7",
   "modelCount": 196,
-  "enumCount": 24,
+  "enumCount": 25,
   "edgeCount": 288,
   "domains": {
     "Assets": [
@@ -264,6 +264,12 @@
       "DOCUMENTS",
       "CLIENT_REQUEST",
       "IDENTIFIED_RISK"
+    ],
+    "MaterialKind": [
+      "VOLUME",
+      "AREA",
+      "EACH",
+      "FACTOR"
     ],
     "ProjectStatus": [
       "MOBILISING",
@@ -13335,6 +13341,18 @@
           "isId": false,
           "isUnique": false,
           "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "kind",
+          "dbColumn": null,
+          "type": "MaterialKind",
+          "kind": "enum",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
           "isUpdatedAt": false
         },
         {

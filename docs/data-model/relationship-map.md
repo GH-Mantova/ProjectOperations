@@ -4,9 +4,9 @@
 > Regenerate with `node scripts/data-model/build-relationship-map.mjs`.
 > Business meaning (domains, field roles) is curated in `metadata-catalog.json`.
 
-- Last updated: 2026-07-15 06:13 UTC
-- Generated from: `apps/api/prisma/schema.prisma` (sha256 `56cc9965a525`)
-- Models: 196 | Enums: 24 | FK edges: 288 | Domains: 23
+- Last updated: 2026-07-15 06:29 UTC
+- Generated from: `apps/api/prisma/schema.prisma` (sha256 `280a911a1f4b`)
+- Models: 196 | Enums: 25 | FK edges: 288 | Domains: 23
 
 ## Table of Contents
 
@@ -875,8 +875,8 @@ graph LR
 
 ### Model: EstimateMaterialDensity
 
-- Table: `estimate_material_density` | Domain: Estimating (Legacy) | Fields: 10
-- Suggested dimensions: materialName, category
+- Table: `estimate_material_density` | Domain: Estimating (Legacy) | Fields: 11
+- Suggested dimensions: materialName, kind, category
 
 ### Model: EstimatePlantLine
 
@@ -2178,6 +2178,7 @@ graph LR
 - **ContractStatus**: ACTIVE, PRACTICAL_COMPLETION, DEFECTS, CLOSED
 - **GlobalListType**: STATIC, DYNAMIC
 - **ListBindingConsumerType**: RATE_COLUMN, FORM_FIELD, MODULE_DROPDOWN
+- **MaterialKind**: VOLUME, AREA, EACH, FACTOR
 - **PreStartStatus**: DRAFT, SUBMITTED
 - **ProcurementLineCategory**: CONSUMABLE, EQUIPMENT, HIRE, ASSET, SUBCONTRACT
 - **ProcurementRequestStatus**: DRAFT, SUBMITTED, APPROVED, ISSUED, RECEIVED, CANCELLED

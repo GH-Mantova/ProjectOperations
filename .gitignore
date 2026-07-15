@@ -113,3 +113,9 @@ docs/qa/qa-run-*.md
 # docs/data-model/relationship-graph.html locally. The generator
 # (scripts/data-model/build-graph-html.mjs) and the JSON/MD sources ARE tracked.
 docs/data-model/relationship-graph.html
+
+# Graphify AST-only knowledge graph output. The full graph.json is ~19 MB on this
+# repo — too large to commit sensibly, and fully regenerable via
+# `graphify update .` (AST-only, offline, no LLM). See docs/runbooks/graphify-setup.md.
+graphify-out/
+graphify-extract.log

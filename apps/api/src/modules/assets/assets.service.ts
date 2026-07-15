@@ -94,23 +94,21 @@ export class AssetsService {
       throw new ConflictException("Asset category with that name already exists.");
     }
 
+    const categoryData = {
+      name: dto.name,
+      code: dto.code,
+      description: dto.description,
+      isActive: dto.isActive ?? true,
+      defaultFuelConsumptionLPer100km: dto.defaultFuelConsumptionLPer100km ?? null,
+      defaultNominalLoadTonnes: dto.defaultNominalLoadTonnes ?? null
+    };
     const record = id
       ? await this.prisma.assetCategory.update({
           where: { id },
-          data: {
-            name: dto.name,
-            code: dto.code,
-            description: dto.description,
-            isActive: dto.isActive ?? true
-          }
+          data: categoryData
         })
       : await this.prisma.assetCategory.create({
-          data: {
-            name: dto.name,
-            code: dto.code,
-            description: dto.description,
-            isActive: dto.isActive ?? true
-          }
+          data: categoryData
         });
 
     await this.auditService.write({
@@ -248,33 +246,26 @@ export class AssetsService {
       throw new ConflictException("Asset code or serial number already exists.");
     }
 
+    const assetData = {
+      assetCategoryId: dto.assetCategoryId ?? null,
+      resourceTypeId: dto.resourceTypeId ?? null,
+      name: dto.name,
+      assetCode: dto.assetCode,
+      serialNumber: dto.serialNumber ?? null,
+      status: dto.status ?? "AVAILABLE",
+      homeBase: dto.homeBase ?? null,
+      currentLocation: dto.currentLocation ?? null,
+      notes: dto.notes ?? null,
+      fuelConsumptionLPer100km: dto.fuelConsumptionLPer100km ?? null,
+      nominalLoadTonnes: dto.nominalLoadTonnes ?? null
+    };
     const record = id
       ? await this.prisma.asset.update({
           where: { id },
-          data: {
-            assetCategoryId: dto.assetCategoryId ?? null,
-            resourceTypeId: dto.resourceTypeId ?? null,
-            name: dto.name,
-            assetCode: dto.assetCode,
-            serialNumber: dto.serialNumber ?? null,
-            status: dto.status ?? "AVAILABLE",
-            homeBase: dto.homeBase ?? null,
-            currentLocation: dto.currentLocation ?? null,
-            notes: dto.notes ?? null
-          }
+          data: assetData
         })
       : await this.prisma.asset.create({
-          data: {
-            assetCategoryId: dto.assetCategoryId ?? null,
-            resourceTypeId: dto.resourceTypeId ?? null,
-            name: dto.name,
-            assetCode: dto.assetCode,
-            serialNumber: dto.serialNumber ?? null,
-            status: dto.status ?? "AVAILABLE",
-            homeBase: dto.homeBase ?? null,
-            currentLocation: dto.currentLocation ?? null,
-            notes: dto.notes ?? null
-          }
+          data: assetData
         });
 
     await this.auditService.write({

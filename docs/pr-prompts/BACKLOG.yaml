@@ -233,15 +233,15 @@ items:
     order: 18
 
   - id: role-default-dashboards
-    title: "Role -> default dashboard mapping (RoleDefaultDashboard / defaultDashboardId)"
+    title: "Role -> default dashboard mapping -- SLICE 1 STAGED 2026-07-15 (pr-role-default-dashboards-slice1-ready.md); slices 2 (admin UI) + 3 (landing wiring) remain"
     priority: P4
     why: >
       No role-to-default-dashboard concept exists in the schema. The HOLD file carries a
       watcher:do-not-arm marker -- it was parked on a design question, not a technical blocker.
       Prompt body is in the untracked HOLD file pr-role-default-dashboards-HOLD.md
       (size 9, gate_allow migrations).
-    gate: '! grep -qE "RoleDefaultDashboard|defaultDashboardId" apps/api/prisma/schema.prisma'
-    gate_means: No role -> default-dashboard concept in the schema yet.
+    gate: 'grep -q "model RoleDefaultDashboard" apps/api/prisma/schema.prisma && ! grep -rqiE "RoleDefaultDashboard|defaultDashboard" apps/web/src'
+    gate_means: Slice 1 (backend model + CRUD + resolver) has landed on main, but the slice-2 admin UI and slice-3 landing wiring are not yet in apps/web. Fires as READY only after slice 1 merges.
     needs_marco: false
     decided: >
       2026-07-15 (Marco): PER ROLE, PER MODULE, and ADMIN-CONFIGURABLE DATA (Directors set it in

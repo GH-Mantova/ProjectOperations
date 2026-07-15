@@ -1,6 +1,7 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Put, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
-import { IsArray, IsBoolean, IsIn, IsOptional, IsString } from "class-validator";
+import { Type } from "class-transformer";
+import { IsArray, IsBoolean, IsIn, IsISO8601, IsNumber, IsOptional, IsString, Min, ValidateIf } from "class-validator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
@@ -19,6 +20,17 @@ class UpdateEmailConfigDto {
   @IsOptional() @IsIn(["outlook", "gmail"]) provider?: string;
   @IsOptional() @IsString() senderAddress?: string;
   @IsOptional() @IsString() senderName?: string;
+}
+
+class UpdateOperationsSettingsDto {
+  @IsOptional() @ValidateIf((_, v) => v !== null) @Type(() => Number) @IsNumber() @Min(0)
+  fuelPricePerLitre?: number | null;
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsString()
+  fuelPriceSource?: string | null;
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsISO8601()
+  fuelPriceFetchedAt?: string | null;
+  @IsOptional() @ValidateIf((_, v) => v !== null) @Type(() => Number) @IsNumber() @Min(0)
+  travelRatePerKm?: number | null;
 }
 
 class SetIntegrationValueDto {
@@ -76,6 +88,25 @@ export class AdminSettingsController {
   @ApiResponse({ status: 200, description: '{ success: boolean, message: string }' })
   testEmail() {
     return this.service.testEmailConnection();
+  }
+
+  @Get("operations")
+  @RequirePermissions("platform.admin")
+  @ApiOperation({ summary: "Get the operations settings singleton (fuel price, travel rate). Creates the row on first access." })
+  @ApiResponse({ status: 200, description: "Get the operations settings singleton (fuel price, travel rate). Creates the row on first access." })
+  getOperationsSettings() {
+    return this.service.getOperationsSettings();
+  }
+
+  @Patch("operations")
+  @RequirePermissions("platform.admin")
+  @ApiOperation({ summary: "Update operations settings (fuel price / travel rate). Omit a field to leave unchanged; pass null to clear." })
+  @ApiResponse({ status: 200, description: "Update operations settings (fuel price / travel rate)." })
+  updateOperationsSettings(
+    @Body() dto: UpdateOperationsSettingsDto,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.updateOperationsSettings(actor.sub, dto);
   }
 
   @Get("users")

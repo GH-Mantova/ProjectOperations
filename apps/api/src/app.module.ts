@@ -60,6 +60,7 @@ import { ListBindingsModule } from "./modules/list-bindings/list-bindings.module
 import { CommsApprovalsModule } from "./modules/comms-approvals/comms-approvals.module";
 import { ProcurementModule } from "./modules/procurement/procurement.module";
 import { ClientVersionsModule } from "./modules/client-versions/client-versions.module";
+import { IntegrationKeysModule } from "./common/integrations/integration-keys.module";
 
 @Module({
   imports: [
@@ -71,6 +72,7 @@ import { ClientVersionsModule } from "./modules/client-versions/client-versions.
     AppConfigModule,
     SecurityModule,
     PrismaModule,
+    IntegrationKeysModule,
     HealthModule,
     EmailModule,
     AccessRequestsModule,

@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { permissionRegistry } from "../src/common/permissions/permission-registry";
 import { permissionModuleRegistry } from "../src/common/permissions/module-registry";
+import { INTEGRATION_REGISTRY } from "../src/common/integrations/integration-keys.registry";
 import { seedEstimateRates, seedRateTableProjections } from "./seed-initial-services";
 import { seedFormTemplates } from "./seed-form-templates";
 
@@ -639,6 +640,7 @@ export async function seedReferenceData(
   await seedNotificationTriggerConfigs(prisma);
   await seedPersonaRegistry(prisma);
   await seedProcurementConfig(prisma);
+  await seedIntegrationCredentials(prisma);
   // CompanyProfile singleton — insert-if-absent so manual admin edits
   // survive re-seed (CP-08 discipline).
   const { seedCompanyProfile } = await import("./seed-company-profile.js");
@@ -668,4 +670,18 @@ async function seedProcurementConfig(prisma: PrismaClient) {
       rfqThreshold: "20000"
     }
   });
+}
+
+// Ensures every registry-known integration has a row so the Admin UI can
+// list it before it's configured. Never overwrites an existing
+// valueEncrypted — the whole point is that Marco enters the key once via
+// the UI and it survives re-seed.
+async function seedIntegrationCredentials(prisma: PrismaClient) {
+  for (const definition of INTEGRATION_REGISTRY) {
+    await prisma.integrationCredential.upsert({
+      where: { slug: definition.slug },
+      update: { label: definition.label },
+      create: { slug: definition.slug, label: definition.label }
+    });
+  }
 }

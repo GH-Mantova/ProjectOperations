@@ -42,7 +42,12 @@ reconciled at most daily and is routinely a few PRs behind.
 2. **Read `docs/pipeline/DOCTRINE.md`.** ⚠️ **Non-negotiable — see "THE PIPELINE" below.** It is
    `docs/`-class by filing, but it is **binding on every chat and every agent**. If you skip it you
    will re-make mistakes that are already written down.
-3. **Check live state, in this order:**
+3. **Run the deterministic sweep FIRST, then check live state.** Before hand-gathering anything,
+   run `pwsh scripts/pipeline/bring-up-to-speed.ps1` (PowerShell 5.1: `powershell -File
+   scripts/pipeline/bring-up-to-speed.ps1`) and report ONLY from its `[LIVE]` lines — never a
+   `[STALE]` one — and obey its SAFE / CAUTION / DO-NOT-ACT verdict. It is one GitHub-authoritative
+   sweep with a stale-claim cross-check; it replaces hand-gathering, which caused every stale-file
+   status mistake. Then confirm the details, in this order:
    - Open PRs on `GH-Mantova/ProjectOperations` — this is the real "in flight" list, not `02` §2.
    - `docs/pr-prompts/` — armed `*-ready.md`, plus `failed/`, `needs-marco/`, `blocked/`, `*-HOLD.md`.
    - **Scheduled tasks: are they enabled?** If `00-supervisor` / `04-scanner` / `05-sot-keeper`

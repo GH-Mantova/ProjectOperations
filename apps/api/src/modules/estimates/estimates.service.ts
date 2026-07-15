@@ -462,6 +462,9 @@ export class EstimatesService {
       materialName: dto.materialName,
       density: new Prisma.Decimal(dto.density),
       unit: dto.unit,
+      // `kind` is optional in the DTO; Prisma will apply the schema default
+      // (VOLUME) when omitted on create. On update we only touch it if given.
+      ...(dto.kind ? { kind: dto.kind } : {}),
       category: dto.category ?? null,
       notes: dto.notes ?? null,
       isActive: dto.isActive ?? true,

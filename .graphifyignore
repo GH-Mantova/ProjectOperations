@@ -1,0 +1,17 @@
+node_modules/
+dist/
+build/
+.next/
+coverage/
+playwright-report/
+test-results/
+.turbo/
+pnpm-lock.yaml
+*.log
+*.png
+*.jpg
+*.svg
+graphify-out/
+docs/pr-prompts/processed/
+docs/pr-prompts/archive/
+docs/pr-prompts/superseded/

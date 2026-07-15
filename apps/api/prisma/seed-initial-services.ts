@@ -3392,8 +3392,11 @@ export async function seedEstimateRates(prisma: PrismaClient): Promise<void> {
       }
     });
   }
-  // Material densities — lookup table for density by material name
+  // Material densities — lookup table for density by material name.
+  // `kind` is derived from `unit` (kg/m² -> AREA, else VOLUME) so re-seeds
+  // stay aligned with the material_density_kind migration backfill.
   type MaterialDensityRow = { materialName: string; density: string; unit: string; category: string };
+  const kindFromUnit = (unit: string): "VOLUME" | "AREA" => (unit === "kg/m²" ? "AREA" : "VOLUME");
   const materialDensities: MaterialDensityRow[] = [
     // ── Existing bulk materials ──────────────────────────────────────
     { materialName: "Concrete", density: "2400", unit: "kg/m³", category: "concrete" },
@@ -3446,6 +3449,7 @@ export async function seedEstimateRates(prisma: PrismaClient): Promise<void> {
       update: {
         density: new Prisma.Decimal(row.density),
         unit: row.unit,
+        kind: kindFromUnit(row.unit),
         category: row.category,
         isActive: true,
         sortOrder: index + 1
@@ -3454,6 +3458,7 @@ export async function seedEstimateRates(prisma: PrismaClient): Promise<void> {
         materialName: row.materialName,
         density: new Prisma.Decimal(row.density),
         unit: row.unit,
+        kind: kindFromUnit(row.unit),
         category: row.category,
         isActive: true,
         sortOrder: index + 1

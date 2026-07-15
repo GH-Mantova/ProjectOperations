@@ -1,6 +1,7 @@
 import { Type } from "class-transformer";
 import {
   IsBoolean,
+  IsEnum,
   IsInt,
   IsNumber,
   IsNumberString,
@@ -8,6 +9,17 @@ import {
   IsString,
   Min
 } from "class-validator";
+
+/**
+ * Material pricing behaviour for `EstimateMaterialDensity.kind`.
+ * Foundation only — no scope-calc branch consumes EACH/FACTOR yet.
+ */
+export enum MaterialKindDto {
+  VOLUME = "VOLUME",
+  AREA = "AREA",
+  EACH = "EACH",
+  FACTOR = "FACTOR"
+}
 
 // ──────────────────────────────────────────────────────────────
 //  Rate library DTOs
@@ -170,6 +182,9 @@ export class UpsertMaterialDensityDto {
   @IsNumberString() density!: string;
   /** Density unit, e.g. "t/m3". */
   @IsString() unit!: string;
+  /** Pricing behaviour (defaults VOLUME on create). Foundation only — no
+   *  calc branch consumes EACH/FACTOR yet; downstream PRs will read this. */
+  @IsOptional() @IsEnum(MaterialKindDto) kind?: MaterialKindDto;
   /** Optional category for grouping in the picker. */
   @IsOptional() @IsString() category?: string;
   /** Optional free-text notes shown alongside the row. */

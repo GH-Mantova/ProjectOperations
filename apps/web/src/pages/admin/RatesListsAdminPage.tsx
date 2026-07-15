@@ -310,11 +310,17 @@ function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged
   const { authFetch } = useAuth();
   const [pendingError, setPendingError] = useState<string | null>(null);
   const [rowDraft, setRowDraft] = useState<Record<string, unknown> | null>(null);
+  const [editRowId, setEditRowId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<Record<string, unknown> | null>(null);
 
   const columnErrors = useMemo(() => validateColumnStructure(table.columns), [table.columns]);
   const rowErrors = useMemo(
     () => (rowDraft ? validateRowCells(table.columns, rowDraft) : []),
     [table.columns, rowDraft]
+  );
+  const editErrors = useMemo(
+    () => (editDraft ? validateRowCells(table.columns, editDraft) : []),
+    [table.columns, editDraft]
   );
 
   const handleAddColumn = async (col: {
@@ -348,7 +354,11 @@ function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged
     await onChanged();
   };
 
-  const startAddRow = () => setRowDraft(blankRowCells(table.columns));
+  const startAddRow = () => {
+    setEditRowId(null);
+    setEditDraft(null);
+    setRowDraft(blankRowCells(table.columns));
+  };
   const cancelAddRow = () => setRowDraft(null);
 
   const commitRow = async () => {
@@ -363,6 +373,40 @@ function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged
       return;
     }
     setRowDraft(null);
+    await onChanged();
+  };
+
+  const handleEditRow = (rowId: string) => {
+    const row = table.rows.find((r) => r.id === rowId);
+    if (!row) return;
+    setRowDraft(null);
+    const seed = blankRowCells(table.columns);
+    for (const c of table.columns) {
+      const raw = row.cells[c.id];
+      if (raw !== undefined && raw !== null) seed[c.id] = raw;
+    }
+    setEditRowId(rowId);
+    setEditDraft(seed);
+  };
+
+  const cancelEditRow = () => {
+    setEditRowId(null);
+    setEditDraft(null);
+  };
+
+  const commitEditRow = async () => {
+    if (!editRowId || !editDraft) return;
+    setPendingError(null);
+    const res = await authFetch(`/rates/tables/${table.id}/rows/${editRowId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ cells: editDraft })
+    });
+    if (!res.ok) {
+      setPendingError(await readApiErrorMessage(res, "Update row failed."));
+      return;
+    }
+    setEditRowId(null);
+    setEditDraft(null);
     await onChanged();
   };
 
@@ -420,10 +464,17 @@ function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged
         rows={table.rows}
         rowDraft={rowDraft}
         rowErrors={rowErrors}
+        editRowId={editRowId}
+        editDraft={editDraft}
+        editErrors={editErrors}
         onStartAdd={startAddRow}
         onCancelAdd={cancelAddRow}
         onCommitAdd={commitRow}
         onChangeDraft={(next) => setRowDraft(next)}
+        onStartEdit={handleEditRow}
+        onCancelEdit={cancelEditRow}
+        onCommitEdit={commitEditRow}
+        onChangeEditDraft={(next) => setEditDraft(next)}
         onDeleteRow={handleDeleteRow}
       />
     </div>
@@ -638,20 +689,34 @@ function RowsCard({
   rows,
   rowDraft,
   rowErrors,
+  editRowId,
+  editDraft,
+  editErrors,
   onStartAdd,
   onCancelAdd,
   onCommitAdd,
   onChangeDraft,
+  onStartEdit,
+  onCancelEdit,
+  onCommitEdit,
+  onChangeEditDraft,
   onDeleteRow
 }: {
   columns: RateColumn[];
   rows: RateRow[];
   rowDraft: Record<string, unknown> | null;
   rowErrors: Array<{ columnId: string; message: string }>;
+  editRowId: string | null;
+  editDraft: Record<string, unknown> | null;
+  editErrors: Array<{ columnId: string; message: string }>;
   onStartAdd: () => void;
   onCancelAdd: () => void;
   onCommitAdd: () => Promise<void>;
   onChangeDraft: (next: Record<string, unknown>) => void;
+  onStartEdit: (id: string) => void;
+  onCancelEdit: () => void;
+  onCommitEdit: () => Promise<void>;
+  onChangeEditDraft: (next: Record<string, unknown>) => void;
   onDeleteRow: (id: string) => Promise<void>;
 }) {
   const errorByColumn = useMemo(() => {
@@ -659,8 +724,14 @@ function RowsCard({
     rowErrors.forEach((e) => m.set(e.columnId, e.message));
     return m;
   }, [rowErrors]);
+  const editErrorByColumn = useMemo(() => {
+    const m = new Map<string, string>();
+    editErrors.forEach((e) => m.set(e.columnId, e.message));
+    return m;
+  }, [editErrors]);
 
   const canAdd = columns.length > 0;
+  const isEditing = editRowId !== null && editDraft !== null;
 
   const gridColumns = useMemo<RateGridColumn[]>(
     () => columns.map((c) => toGridColumn(c)),
@@ -685,7 +756,7 @@ function RowsCard({
     <div className="s7-card">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <h3 className="s7-type-section-heading" style={{ margin: 0 }}>Rows</h3>
-        {rowDraft ? null : (
+        {rowDraft || isEditing ? null : (
           <button
             type="button"
             className="s7-btn s7-btn--primary s7-btn--sm"
@@ -711,16 +782,84 @@ function RowsCard({
               testIdPrefix="admin-rates"
               trailingHeader={<span aria-hidden />}
               renderTrailing={(gridRow) => (
+                <span style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end" }}>
+                  <button
+                    type="button"
+                    className="s7-btn s7-btn--ghost s7-btn--sm"
+                    onClick={() => onStartEdit(gridRow.id)}
+                    disabled={isEditing || rowDraft !== null}
+                    style={{ minHeight: 32 }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="s7-btn s7-btn--ghost s7-btn--sm"
+                    onClick={() => void onDeleteRow(gridRow.id)}
+                    style={{ minHeight: 32 }}
+                  >
+                    Delete
+                  </button>
+                </span>
+              )}
+            />
+          ) : null}
+          {isEditing && editDraft ? (
+            <div
+              style={{
+                marginTop: 12,
+                padding: 12,
+                borderRadius: 6,
+                border: "1px solid var(--border, #e5e7eb)",
+                background: "rgba(0,91,97,0.06)"
+              }}
+            >
+              <div
+                style={{ fontSize: 11, textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 8 }}
+              >
+                Edit row
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+                {columns.map((c) => {
+                  const err = editErrorByColumn.get(c.id);
+                  return (
+                    <div key={c.id} style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 140 }}>
+                      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                        {c.name}
+                        {c.role === "KEY" ? " (key)" : c.role === "INFO" ? " (info)" : ""}
+                      </span>
+                      <CellEditor
+                        column={c}
+                        value={editDraft[c.id]}
+                        onChange={(v) => onChangeEditDraft({ ...editDraft, [c.id]: v })}
+                      />
+                      {err ? (
+                        <div style={{ fontSize: 11, color: "var(--status-danger, #ef4444)" }}>{err}</div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
                 <button
                   type="button"
                   className="s7-btn s7-btn--ghost s7-btn--sm"
-                  onClick={() => void onDeleteRow(gridRow.id)}
+                  onClick={onCancelEdit}
                   style={{ minHeight: 32 }}
                 >
-                  Delete
+                  Cancel
                 </button>
-              )}
-            />
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--primary s7-btn--sm"
+                  disabled={editErrors.length > 0}
+                  onClick={() => void onCommitEdit()}
+                  style={{ minHeight: 32 }}
+                >
+                  Save
+                </button>
+              </div>
+            </div>
           ) : null}
           {rowDraft ? (
             <div

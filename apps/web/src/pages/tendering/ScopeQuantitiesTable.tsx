@@ -20,6 +20,22 @@ export type ScopePlantEntry = {
   unit?: string;
 };
 
+// PR feat/scope-multi-material — additional material row on a scope item.
+// Row 1 stays on the flat materialType + L/H/D + density/sqm/m3/tonnes
+// columns of ScopeOfWorksItem; entries in `materials` are rows 2..N and
+// carry the same shape/units. The item's total tonnes/m3 is the SUM
+// across row 1 + every entry here.
+export type ScopeMaterialEntry = {
+  material?: string | null;
+  length?: number | null;
+  height?: number | null;
+  depth?: number | null;
+  density?: number | null;
+  sqm?: number | null;
+  m3?: number | null;
+  tonnes?: number | null;
+};
+
 export type ScopeItem = {
   id: string;
   tenderId: string;
@@ -59,6 +75,9 @@ export type ScopeItem = {
   materialType: string | null;
   cuttingIncluded: boolean;
   plantItems: ScopePlantEntry[] | null;
+  // PR feat/scope-multi-material — rows 2..N (row 1 lives on the flat
+  // dimension columns above). Null/undefined = no extra materials.
+  materials?: ScopeMaterialEntry[] | null;
   estimateItemId: string | null;
   provisionalAmount: string | null;
   // PR B1.7.1 — per-row totals computed server-side in listItems.
@@ -520,6 +539,28 @@ function ItemCard({
   const removePlant = (columnIndex: number) => {
     const next = (item.plantItems ?? []).filter((p) => p.columnIndex !== columnIndex);
     onPatch({ plantItems: next });
+  };
+
+  // PR feat/scope-multi-material — CRUD helpers for the rows-2..N
+  // material array. addMaterial appends an empty entry; updateMaterial
+  // patches by index; removeMaterial drops by index. Backend is an
+  // identity pass-through so the array we ship is exactly what persists.
+  const itemMaterialEntries: ScopeMaterialEntry[] = Array.isArray(item.materials)
+    ? item.materials
+    : [];
+
+  const addMaterial = () => {
+    onPatch({ materials: [...itemMaterialEntries, {}] });
+  };
+
+  const updateMaterial = (index: number, patch: Partial<ScopeMaterialEntry>) => {
+    const next = itemMaterialEntries.map((m, i) => (i === index ? { ...m, ...patch } : m));
+    onPatch({ materials: next });
+  };
+
+  const removeMaterial = (index: number) => {
+    const next = itemMaterialEntries.filter((_, i) => i !== index);
+    onPatch({ materials: next });
   };
 
   const wasteItemOptions: TooltipSelectOption<string>[] = item.wasteGroup
@@ -1099,6 +1140,36 @@ function ItemCard({
             </FieldCell>
           </div>
 
+          {/* PR feat/scope-multi-material — additional material rows
+              (rows 2..N). Row 1 is the block above; each entry below is
+              a full L/H/D + material + density + sqm/m³/tonnes cluster
+              with its own auto-derive via computeDerivedDimensions. */}
+          {itemMaterialEntries.map((entry, index) => (
+            <MaterialCluster
+              key={`material-${index}`}
+              index={index}
+              entry={entry}
+              materialOptions={materialOptions}
+              materialDensityMap={materialDensityMap}
+              disabled={isAi}
+              onChange={(patch) => updateMaterial(index, patch)}
+              onRemove={() => removeMaterial(index)}
+            />
+          ))}
+
+          {/* Item total: sum tonnes/m³ across row 1 + every material row.
+              Row 1 uses the live-derived value when the user hasn't
+              overridden it; extras use whatever was persisted on the
+              entry. Also carries the "+ Material" button so the user
+              can always add rows regardless of current material count. */}
+          <ItemMaterialTotals
+            row1Tonnes={dirty.tonnes && dims.tonnes !== "" ? Number(dims.tonnes) : derived.tonnes}
+            row1M3={dirty.m3 && dims.m3 !== "" ? Number(dims.m3) : derived.m3}
+            extras={itemMaterialEntries}
+            onAdd={addMaterial}
+            disabled={isAi}
+          />
+
           <Divider />
 
           {/* PR B4a — Classification section. Group/Item still drive the
@@ -1268,6 +1339,297 @@ function PlantCluster({
           }}
         />
       </div>
+    </div>
+  );
+}
+
+// ── MaterialCluster + ItemMaterialTotals ────────────────────────────────
+// PR feat/scope-multi-material — one repeatable material row (rows 2..N).
+// Layout mirrors the flat row-1 quantification block; each cluster
+// reuses computeDerivedDimensions so the row's own sqm/m³/tonnes fill
+// in as the user types.
+
+function MaterialCluster({
+  index,
+  entry,
+  materialOptions,
+  materialDensityMap,
+  disabled,
+  onChange,
+  onRemove
+}: {
+  index: number;
+  entry: ScopeMaterialEntry;
+  materialOptions: TooltipSelectOption<string>[];
+  materialDensityMap: Map<string, { density: string; unit: string }>;
+  disabled: boolean;
+  onChange: (patch: Partial<ScopeMaterialEntry>) => void;
+  onRemove: () => void;
+}) {
+  const numOrNull = (v: string): number | null => {
+    if (v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const strOf = (v: number | null | undefined): string =>
+    v == null ? "" : String(v);
+
+  // Live re-derive on every render so sqm/m³/tonnes reflect the current
+  // L/H/D + density. Persisted values on `entry` are the source of truth
+  // when the user hasn't touched a field this render.
+  const derived = computeDerivedDimensions({
+    length: entry.length ?? null,
+    height: entry.height ?? null,
+    depth: entry.depth ?? null,
+    density: entry.density ?? null,
+    sqm: entry.sqm ?? null,
+    m3: entry.m3 ?? null,
+    tonnes: entry.tonnes ?? null
+  });
+
+  return (
+    <div
+      style={{
+        border: "1px dashed var(--border-default, #e5e7eb)",
+        borderRadius: 6,
+        padding: 8,
+        background: "var(--surface-muted, #FAFAFA)"
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          marginBottom: 6
+        }}
+      >
+        <span className="s7-type-label" style={{ ...labelStyle, marginBottom: 0 }}>
+          Material {index + 2}
+        </span>
+        {!disabled ? (
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label={`Remove Material ${index + 2}`}
+            title={`Remove Material ${index + 2}`}
+            style={{
+              width: 16,
+              height: 16,
+              borderRadius: 999,
+              border: "1px solid var(--border-default, #e5e7eb)",
+              background: "transparent",
+              color: "var(--text-muted)",
+              cursor: "pointer",
+              fontSize: 10,
+              lineHeight: 1,
+              padding: 0
+            }}
+          >
+            ×
+          </button>
+        ) : null}
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
+        <FieldCell label="Length" width={80}>
+          <input
+            className="s7-input"
+            type="number"
+            step="0.001"
+            defaultValue={strOf(entry.length)}
+            disabled={disabled}
+            style={{ width: 80, height: 32 }}
+            onBlur={(e) => onChange({ length: numOrNull(e.target.value) })}
+          />
+        </FieldCell>
+        <FieldCell label="Height" width={80}>
+          <input
+            className="s7-input"
+            type="number"
+            step="0.001"
+            defaultValue={strOf(entry.height)}
+            disabled={disabled}
+            style={{ width: 80, height: 32 }}
+            onBlur={(e) => onChange({ height: numOrNull(e.target.value) })}
+          />
+        </FieldCell>
+        <FieldCell label="Depth" width={80}>
+          <input
+            className="s7-input"
+            type="number"
+            step="0.001"
+            defaultValue={strOf(entry.depth)}
+            disabled={disabled}
+            style={{ width: 80, height: 32 }}
+            onBlur={(e) => onChange({ depth: numOrNull(e.target.value) })}
+          />
+        </FieldCell>
+        <FieldCell label="Material" width={160}>
+          <TooltipSelect
+            value={entry.material ?? null}
+            options={materialOptions}
+            onChange={(v) => {
+              const lookup = v ? materialDensityMap.get(v) : undefined;
+              // Same kg/m³ → t/m³ conversion as the row-1 material
+              // dropdown so both rows share one density convention.
+              const newDensity = lookup
+                ? lookup.unit === "kg/m³"
+                  ? Number(lookup.density) / 1000
+                  : Number(lookup.density)
+                : null;
+              const isSheet = lookup?.unit === "kg/m²";
+              const rederived = computeDerivedDimensions({
+                length: entry.length ?? null,
+                height: entry.height ?? null,
+                depth: isSheet ? null : entry.depth ?? null,
+                density: newDensity,
+                sqm: null,
+                m3: isSheet ? null : entry.m3 ?? null,
+                tonnes: null
+              });
+              onChange({
+                material: v,
+                density: newDensity,
+                depth: isSheet ? null : entry.depth ?? null,
+                sqm: rederived.sqm,
+                m3: rederived.m3,
+                tonnes: rederived.tonnes
+              });
+            }}
+            disabled={disabled}
+            ariaLabel={`Material ${index + 2} type`}
+            style={{ height: 32 }}
+          />
+        </FieldCell>
+        <FieldCell label="Density (t/m³)" width={90}>
+          <input
+            className="s7-input"
+            type="number"
+            step="0.001"
+            defaultValue={strOf(entry.density)}
+            disabled={disabled || !!entry.material}
+            style={{
+              width: 90,
+              height: 32,
+              ...(entry.material
+                ? { backgroundColor: "var(--surface-muted, #f3f4f6)", color: "var(--text-muted, #6b7280)" }
+                : {})
+            }}
+            title={entry.material ? `Auto-set from ${entry.material}. Clear material to edit manually.` : "Manual density (tonnes per m³)"}
+            onBlur={(e) => onChange({ density: numOrNull(e.target.value) })}
+          />
+        </FieldCell>
+        <FieldCell label="Sqm" width={90}>
+          <input
+            className="s7-input"
+            type="number"
+            step="0.01"
+            defaultValue={strOf(entry.sqm ?? derived.sqm)}
+            placeholder={derived.sqm == null ? "" : String(derived.sqm)}
+            disabled={disabled}
+            style={{ width: 90, height: 32 }}
+            title="Auto = length × height. Type to override."
+            onBlur={(e) => onChange({ sqm: numOrNull(e.target.value) })}
+          />
+        </FieldCell>
+        <FieldCell label="M³" width={90}>
+          <input
+            className="s7-input"
+            type="number"
+            step="0.01"
+            defaultValue={strOf(entry.m3 ?? derived.m3)}
+            placeholder={derived.m3 == null ? "" : String(derived.m3)}
+            disabled={disabled}
+            style={{ width: 90, height: 32 }}
+            title="Auto = sqm × depth. Type to override."
+            onBlur={(e) => onChange({ m3: numOrNull(e.target.value) })}
+          />
+        </FieldCell>
+        <FieldCell label="Tonnes" width={90}>
+          <input
+            className="s7-input"
+            type="number"
+            step="0.01"
+            defaultValue={strOf(entry.tonnes ?? derived.tonnes)}
+            placeholder={derived.tonnes == null ? "" : String(derived.tonnes)}
+            disabled={disabled}
+            style={{ width: 90, height: 32 }}
+            title="Auto = m³ × density or sqm × density / 1000. Type to override."
+            onBlur={(e) => onChange({ tonnes: numOrNull(e.target.value) })}
+          />
+        </FieldCell>
+      </div>
+    </div>
+  );
+}
+
+// PR feat/scope-multi-material — per-item tonnes/m³ total across row 1
+// + every extra material row + "+ Material" button. Rendered even when
+// there are no extras so the user always has a way to add a row.
+function ItemMaterialTotals({
+  row1Tonnes,
+  row1M3,
+  extras,
+  onAdd,
+  disabled
+}: {
+  row1Tonnes: number | null;
+  row1M3: number | null;
+  extras: ScopeMaterialEntry[];
+  onAdd: () => void;
+  disabled: boolean;
+}) {
+  const sum = (a: number | null, b: number | null | undefined): number | null => {
+    const av = a == null ? 0 : Number(a);
+    const bv = b == null ? 0 : Number(b);
+    if (a == null && (b == null || !Number.isFinite(bv))) return null;
+    return Math.round((av + (Number.isFinite(bv) ? bv : 0)) * 100) / 100;
+  };
+  let totalTonnes: number | null = row1Tonnes;
+  let totalM3: number | null = row1M3;
+  for (const m of extras) {
+    totalTonnes = sum(totalTonnes, m.tonnes ?? null);
+    totalM3 = sum(totalM3, m.m3 ?? null);
+  }
+  const showTotals = extras.length > 0;
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        gap: 12,
+        flexWrap: "wrap",
+        marginTop: 4
+      }}
+    >
+      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+        {showTotals ? (
+          <>
+            Item total:{" "}
+            <strong style={{ color: "var(--text)" }}>
+              {totalTonnes == null ? "—" : `${totalTonnes} t`}
+            </strong>
+            {" · "}
+            <strong style={{ color: "var(--text)" }}>
+              {totalM3 == null ? "—" : `${totalM3} m³`}
+            </strong>
+          </>
+        ) : (
+          <span>&nbsp;</span>
+        )}
+      </div>
+      {!disabled ? (
+        <button
+          type="button"
+          className="s7-btn s7-btn--ghost s7-btn--sm"
+          onClick={onAdd}
+          title="Add another material row under this item"
+          style={{ whiteSpace: "nowrap", fontSize: 11, padding: "4px 8px" }}
+        >
+          + Material
+        </button>
+      ) : null}
     </div>
   );
 }

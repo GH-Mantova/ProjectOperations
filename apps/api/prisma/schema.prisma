@@ -2718,6 +2718,15 @@ model ScopeOfWorksItem {
   plantItems   Json? @map("plant_items")
   measurements Json?
 
+  // PR feat/scope-multi-material — additional material rows on this
+  // item. Row 1 remains stored on the flat materialType + length/height/
+  // depth/density/sqm/m3/tonnes columns above; rows 2..N live here as
+  // JSON so we can append/remove without a per-material table. Each
+  // element: { material, length, height, depth, density, sqm, m3, tonnes }
+  // — same shape and units as the flat row-1 fields. The item's total
+  // tonnes/m3 is the SUM across row 1 + every element in this array.
+  materials Json?
+
   // Provisional sum amount (discipline=Prv only). Final price = this value,
   // no markup applied. Ignored for non-Prv rows.
   provisionalAmount Decimal? @map("provisional_amount") @db.Decimal(12, 2)

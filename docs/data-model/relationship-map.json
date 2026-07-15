@@ -2,7 +2,7 @@
   "_generator": "scripts/data-model/build-relationship-map.mjs",
   "_doNotEdit": "Regenerated from schema.prisma. Do not hand-edit.",
   "generatedFrom": "apps/api/prisma/schema.prisma",
-  "schemaSha256": "8b3ac9223562b159052343a2af0449eed9409b2a0812c0e2b34a17b3b9e3bf05",
+  "schemaSha256": "bc89adad9c788f17e72280658428ecee585de8d7e1ae17330113edb5e66638ab",
   "modelCount": 195,
   "enumCount": 24,
   "edgeCount": 288,
@@ -30866,6 +30866,18 @@
         },
         {
           "name": "measurements",
+          "dbColumn": null,
+          "type": "Json",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "materials",
           "dbColumn": null,
           "type": "Json",
           "kind": "scalar",

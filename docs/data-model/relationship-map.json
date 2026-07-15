@@ -2,9 +2,9 @@
   "_generator": "scripts/data-model/build-relationship-map.mjs",
   "_doNotEdit": "Regenerated from schema.prisma. Do not hand-edit.",
   "generatedFrom": "apps/api/prisma/schema.prisma",
-  "schemaSha256": "bc89adad9c788f17e72280658428ecee585de8d7e1ae17330113edb5e66638ab",
-  "modelCount": 195,
-  "enumCount": 24,
+  "schemaSha256": "9d8e28ca03fea066ff1054f78bef0b2bffab9c9cd53a7102281ab54a2bb10ef8",
+  "modelCount": 196,
+  "enumCount": 25,
   "edgeCount": 288,
   "domains": {
     "Assets": [
@@ -120,6 +120,7 @@
     ],
     "Integrations": [
       "CalendarSyncedEvent",
+      "IntegrationCredential",
       "PortalInvite",
       "PortalSession",
       "XeroConnection",
@@ -263,6 +264,12 @@
       "DOCUMENTS",
       "CLIENT_REQUEST",
       "IDENTIFIED_RISK"
+    ],
+    "MaterialKind": [
+      "VOLUME",
+      "AREA",
+      "EACH",
+      "FACTOR"
     ],
     "ProjectStatus": [
       "MOBILISING",
@@ -13337,6 +13344,18 @@
           "isUpdatedAt": false
         },
         {
+          "name": "kind",
+          "dbColumn": null,
+          "type": "MaterialKind",
+          "kind": "enum",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
           "name": "category",
           "dbColumn": null,
           "type": "String",
@@ -17950,6 +17969,87 @@
           "isId": false,
           "isUnique": false,
           "hasDefault": true,
+          "isUpdatedAt": false
+        }
+      ],
+      "relations": [],
+      "referencedBy": []
+    },
+    "IntegrationCredential": {
+      "name": "IntegrationCredential",
+      "domain": "Integrations",
+      "dbTable": "integration_credentials",
+      "fields": [
+        {
+          "name": "slug",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": true,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "label",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "valueEncrypted",
+          "dbColumn": "value_encrypted",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "meta",
+          "dbColumn": null,
+          "type": "Json",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "updatedAt",
+          "dbColumn": "updated_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": true
+        },
+        {
+          "name": "updatedById",
+          "dbColumn": "updated_by_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
           "isUpdatedAt": false
         }
       ],

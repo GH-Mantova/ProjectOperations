@@ -89,6 +89,7 @@ model User {
   clarificationNotesCreated  TenderClarificationNote[]   @relation("TenderClarificationNoteAuthor")
   cuttingSheetItemsCreated   CuttingSheetItem[]          @relation("CuttingSheetItemCreatedBy")
   emailProviderConfigUpdates EmailProviderConfig[]
+  operationsSettingsUpdates  OperationsSettings[]        @relation("OperationsSettingsUpdatedBy")
   contractsCreated           Contract[]                  @relation("ContractCreatedBy")
   variationsCreated          Variation[]                 @relation("VariationCreatedBy")
   progressClaimsCreated      ProgressClaim[]             @relation("ProgressClaimCreatedBy")
@@ -155,8 +156,8 @@ model User {
   // a user can be the assigned WHS officer, and can create legal-document
   // versions. Both are SetNull on delete so removing a user never orphans
   // company records.
-  companyProfilesAsWhs     CompanyProfile[]       @relation("CompanyProfileWhsOfficer")
-  companyLegalDocsCreated  CompanyLegalDocument[] @relation("CompanyLegalDocCreatedBy")
+  companyProfilesAsWhs    CompanyProfile[]       @relation("CompanyProfileWhsOfficer")
+  companyLegalDocsCreated CompanyLegalDocument[] @relation("CompanyLegalDocCreatedBy")
 
   @@index([isActive])
   @@index([managerId])
@@ -720,14 +721,21 @@ model ResourceType {
 }
 
 model AssetCategory {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  code        String?  @unique
-  description String?
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  assets      Asset[]
+  id                              String   @id @default(cuid())
+  name                            String   @unique
+  code                            String?  @unique
+  description                     String?
+  isActive                        Boolean  @default(true) @map("is_active")
+  // Waste transport cost engine R3 T-0 — category-level fallbacks. An Asset
+  // resolves fuel/capacity in the order: specific Asset field → its
+  // AssetCategory default → null. Fuel consumption is per-truck (Marco
+  // 2026-07-15) so category defaults are a convenience for bulk-seeding a
+  // fleet, not a business rule.
+  defaultFuelConsumptionLPer100km Decimal? @map("default_fuel_consumption_l_per_100km") @db.Decimal(6, 2)
+  defaultNominalLoadTonnes        Decimal? @map("default_nominal_load_tonnes") @db.Decimal(8, 2)
+  createdAt                       DateTime @default(now()) @map("created_at")
+  updatedAt                       DateTime @updatedAt @map("updated_at")
+  assets                          Asset[]
 
   @@index([isActive])
   @@map("asset_categories")
@@ -835,30 +843,38 @@ model CrewWorker {
 }
 
 model Asset {
-  id                  String                  @id @default(cuid())
-  assetCategoryId     String?                 @map("asset_category_id")
-  resourceTypeId      String?                 @map("resource_type_id")
-  name                String
-  assetCode           String                  @unique @map("asset_code")
-  serialNumber        String?                 @unique @map("serial_number")
-  status              String                  @default("AVAILABLE")
-  homeBase            String?                 @map("home_base")
-  currentLocation     String?                 @map("current_location")
-  notes               String?
-  createdAt           DateTime                @default(now()) @map("created_at")
-  updatedAt           DateTime                @updatedAt @map("updated_at")
-  category            AssetCategory?          @relation(fields: [assetCategoryId], references: [id], onDelete: SetNull)
-  resourceType        ResourceType?           @relation(fields: [resourceTypeId], references: [id], onDelete: SetNull)
-  shiftAssignments    ShiftAssetAssignment[]
-  maintenancePlans    AssetMaintenancePlan[]
-  maintenanceEvents   AssetMaintenanceEvent[]
-  inspections         AssetInspection[]
-  breakdowns          AssetBreakdown[]
-  statusHistory       AssetStatusHistory[]
-  formSubmissions     FormSubmission[]
-  allocations         ProjectAllocation[]
-  scheduleAllocations ScheduleAllocation[]
-  scopePlantRefs      ScopeOfWorksItem[]      @relation("ScopeItemPlant")
+  id                       String                  @id @default(cuid())
+  assetCategoryId          String?                 @map("asset_category_id")
+  resourceTypeId           String?                 @map("resource_type_id")
+  name                     String
+  assetCode                String                  @unique @map("asset_code")
+  serialNumber             String?                 @unique @map("serial_number")
+  status                   String                  @default("AVAILABLE")
+  homeBase                 String?                 @map("home_base")
+  currentLocation          String?                 @map("current_location")
+  notes                    String?
+  // Waste transport cost engine R3 T-0 (2026-07-15).
+  // fuelConsumptionLPer100km — per-truck rate (Marco: fuel burn is a truck
+  // property, not a material property). nominalLoadTonnes is a fallback used
+  // only when the per-material Transport Capacity reference table has no row
+  // for this asset's transport type × the SoW line's material class.
+  // Both nullable → additive. Resolver falls back to AssetCategory defaults.
+  fuelConsumptionLPer100km Decimal?                @map("fuel_consumption_l_per_100km") @db.Decimal(6, 2)
+  nominalLoadTonnes        Decimal?                @map("nominal_load_tonnes") @db.Decimal(8, 2)
+  createdAt                DateTime                @default(now()) @map("created_at")
+  updatedAt                DateTime                @updatedAt @map("updated_at")
+  category                 AssetCategory?          @relation(fields: [assetCategoryId], references: [id], onDelete: SetNull)
+  resourceType             ResourceType?           @relation(fields: [resourceTypeId], references: [id], onDelete: SetNull)
+  shiftAssignments         ShiftAssetAssignment[]
+  maintenancePlans         AssetMaintenancePlan[]
+  maintenanceEvents        AssetMaintenanceEvent[]
+  inspections              AssetInspection[]
+  breakdowns               AssetBreakdown[]
+  statusHistory            AssetStatusHistory[]
+  formSubmissions          FormSubmission[]
+  allocations              ProjectAllocation[]
+  scheduleAllocations      ScheduleAllocation[]
+  scopePlantRefs           ScopeOfWorksItem[]      @relation("ScopeItemPlant")
 
   @@index([status])
   @@index([assetCategoryId])
@@ -3113,6 +3129,28 @@ model EmailProviderConfig {
   @@map("email_provider_config")
 }
 
+// Waste transport cost engine R3 T-0 (2026-07-15). Singleton pattern of
+// EmailProviderConfig — one row keyed "singleton". Holds tenant-wide
+// operations values that are not per-asset and not per-rate-table:
+//   fuelPricePerLitre    — most recent fuel price (litre). T-2 will refresh
+//                          it from an external feed; T-0 lets Marco set it
+//                          manually via the Operations tab.
+//   travelRatePerKm      — interim flat travel rate used until T-1 wires
+//                          fuel × consumption × distance into the SoW line.
+// All fields nullable → additive; nothing downstream currently reads them.
+model OperationsSettings {
+  id                 String    @id @default("singleton")
+  fuelPricePerLitre  Decimal?  @map("fuel_price_per_litre") @db.Decimal(6, 3)
+  fuelPriceSource    String?   @map("fuel_price_source")
+  fuelPriceFetchedAt DateTime? @map("fuel_price_fetched_at")
+  travelRatePerKm    Decimal?  @map("travel_rate_per_km") @db.Decimal(6, 2)
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  updatedById        String?   @map("updated_by_id")
+  updatedBy          User?     @relation("OperationsSettingsUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("operations_settings")
+}
+
 // â”€â”€ Contracts module â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // One Contract per Project. Variations and ProgressClaim roll up into the
 // Contract; numbering is globally sequential (IS-C###, IS-V###, IS-PC###)
@@ -3140,28 +3178,28 @@ enum ClaimStatus {
 }
 
 model Contract {
-  id              String          @id @default(cuid())
-  projectId       String          @unique @map("project_id")
-  project         Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  contractNumber  String          @unique @map("contract_number")
-  contractValue   Decimal         @map("contract_value") @db.Decimal(12, 2)
-  retentionPct    Decimal         @default(0) @map("retention_pct") @db.Decimal(5, 2)
-  retentionAmount Decimal         @default(0) @map("retention_amount") @db.Decimal(12, 2)
-  startDate       DateTime?       @map("start_date")
-  endDate         DateTime?       @map("end_date")
-  status          ContractStatus  @default(ACTIVE)
-  notes           String?
-  createdById     String          @map("created_by_id")
-  createdBy       User            @relation("ContractCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  id                    String                @id @default(cuid())
+  projectId             String                @unique @map("project_id")
+  project               Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contractNumber        String                @unique @map("contract_number")
+  contractValue         Decimal               @map("contract_value") @db.Decimal(12, 2)
+  retentionPct          Decimal               @default(0) @map("retention_pct") @db.Decimal(5, 2)
+  retentionAmount       Decimal               @default(0) @map("retention_amount") @db.Decimal(12, 2)
+  startDate             DateTime?             @map("start_date")
+  endDate               DateTime?             @map("end_date")
+  status                ContractStatus        @default(ACTIVE)
+  notes                 String?
+  createdById           String                @map("created_by_id")
+  createdBy             User                  @relation("ContractCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   // Effective-dated T&C version pinned at contract creation. Same rationale
   // as ClientQuote.issuedTermsDocumentId â€” the executed contract must
   // forever render the T&Cs that were in force when it was signed.
-  issuedTermsDocumentId String?                @map("issued_terms_document_id")
-  issuedTerms           CompanyLegalDocument?  @relation("ContractIssuedTerms", fields: [issuedTermsDocumentId], references: [id], onDelete: SetNull)
-  variations      Variation[]
-  progressClaims  ProgressClaim[]
-  createdAt       DateTime        @default(now()) @map("created_at")
-  updatedAt       DateTime        @updatedAt @map("updated_at")
+  issuedTermsDocumentId String?               @map("issued_terms_document_id")
+  issuedTerms           CompanyLegalDocument? @relation("ContractIssuedTerms", fields: [issuedTermsDocumentId], references: [id], onDelete: SetNull)
+  variations            Variation[]
+  progressClaims        ProgressClaim[]
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
 
   @@index([status])
   @@map("contracts")
@@ -3549,26 +3587,26 @@ model EntityLicence {
 }
 
 model EntityInsurance {
-  id              String                 @id @default(cuid())
-  insuranceType   String                 @map("insurance_type")
-  insurerName     String?                @map("insurer_name")
-  policyNumber    String?                @map("policy_number")
-  coverageAmount  Decimal?               @map("coverage_amount") @db.Decimal(14, 2)
-  expiryDate      DateTime?              @map("expiry_date")
-  documentPath    String?                @map("document_path")
-  notes           String?
-  status          String                 @default("active")
-  clientId        String?                @map("client_id")
-  client          Client?                @relation("ClientInsurances", fields: [clientId], references: [id], onDelete: Cascade)
-  subcontractorId String?                @map("subcontractor_id")
-  subcontractor   SubcontractorSupplier? @relation("SubInsurances", fields: [subcontractorId], references: [id], onDelete: Cascade)
+  id               String                 @id @default(cuid())
+  insuranceType    String                 @map("insurance_type")
+  insurerName      String?                @map("insurer_name")
+  policyNumber     String?                @map("policy_number")
+  coverageAmount   Decimal?               @map("coverage_amount") @db.Decimal(14, 2)
+  expiryDate       DateTime?              @map("expiry_date")
+  documentPath     String?                @map("document_path")
+  notes            String?
+  status           String                 @default("active")
+  clientId         String?                @map("client_id")
+  client           Client?                @relation("ClientInsurances", fields: [clientId], references: [id], onDelete: Cascade)
+  subcontractorId  String?                @map("subcontractor_id")
+  subcontractor    SubcontractorSupplier? @relation("SubInsurances", fields: [subcontractorId], references: [id], onDelete: Cascade)
   // Company profile ownership â€” polymorphic reuse for OUR own insurances
   // (public liability, workers comp, professional indemnity). Same alert
   // path as subcontractors; no auto-block.
-  companyProfileId String?               @map("company_profile_id")
-  companyProfile  CompanyProfile?        @relation("CompanyInsurances", fields: [companyProfileId], references: [id], onDelete: Cascade)
-  createdAt       DateTime               @default(now()) @map("created_at")
-  updatedAt       DateTime               @updatedAt @map("updated_at")
+  companyProfileId String?                @map("company_profile_id")
+  companyProfile   CompanyProfile?        @relation("CompanyInsurances", fields: [companyProfileId], references: [id], onDelete: Cascade)
+  createdAt        DateTime               @default(now()) @map("created_at")
+  updatedAt        DateTime               @updatedAt @map("updated_at")
 
   @@index([expiryDate])
   @@index([clientId])
@@ -4629,21 +4667,21 @@ model CompanyProfile {
   entityType  CompanyEntityType @default(PTY_LTD) @map("entity_type")
 
   // â”€ Contact â”€
-  primaryEmail            String? @map("primary_email")
-  primaryPhone            String? @map("primary_phone")
-  website                 String?
-  registeredAddressLine1  String? @map("reg_address_line1")
-  registeredAddressLine2  String? @map("reg_address_line2")
-  registeredSuburb        String? @map("reg_suburb")
-  registeredState         String? @map("reg_state")
-  registeredPostcode      String? @map("reg_postcode")
-  registeredCountry       String  @default("Australia") @map("reg_country")
-  postalAddressLine1      String? @map("post_address_line1")
-  postalAddressLine2      String? @map("post_address_line2")
-  postalSuburb            String? @map("post_suburb")
-  postalState             String? @map("post_state")
-  postalPostcode          String? @map("post_postcode")
-  postalCountry           String  @default("Australia") @map("post_country")
+  primaryEmail           String? @map("primary_email")
+  primaryPhone           String? @map("primary_phone")
+  website                String?
+  registeredAddressLine1 String? @map("reg_address_line1")
+  registeredAddressLine2 String? @map("reg_address_line2")
+  registeredSuburb       String? @map("reg_suburb")
+  registeredState        String? @map("reg_state")
+  registeredPostcode     String? @map("reg_postcode")
+  registeredCountry      String  @default("Australia") @map("reg_country")
+  postalAddressLine1     String? @map("post_address_line1")
+  postalAddressLine2     String? @map("post_address_line2")
+  postalSuburb           String? @map("post_suburb")
+  postalState            String? @map("post_state")
+  postalPostcode         String? @map("post_postcode")
+  postalCountry          String  @default("Australia") @map("post_country")
 
   // WHS officer. SetNull on user delete so we never orphan the profile.
   whsOfficerUserId String? @map("whs_officer_user_id")

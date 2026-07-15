@@ -40,6 +40,7 @@ type EmailConfig = {
 const TABS = [
   { id: "notifications", label: "Notifications" },
   { id: "email", label: "Email" },
+  { id: "operations", label: "Operations" },
   { id: "users", label: "Users" },
   { id: "access-requests", label: "Access requests" },
   { id: "ai", label: "AI & Integrations" },
@@ -95,6 +96,7 @@ export function AdminSettingsPage() {
         <div>
           {tab === "notifications" && <NotificationsTab />}
           {tab === "email" && <EmailTab />}
+          {tab === "operations" && <OperationsTab />}
           {tab === "users" && <AdminUsersTab />}
           {tab === "access-requests" && <AdminAccessRequestsTab />}
           {tab === "ai" && (
@@ -561,6 +563,154 @@ function EmailTab() {
 
       <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
         Last updated: {new Date(config.updatedAt).toLocaleString("en-AU")}
+      </div>
+    </section>
+  );
+}
+
+// ── Operations tab (fuel price + travel rate) ───────────────────────
+// Backs OperationsSettings singleton. Waste-transport cost engine R3 T-0
+// (2026-07-15): first slice — Marco enters the fuel price manually here;
+// T-2 will refresh it from a feed. travelRatePerKm is an interim flat
+// rate used by the SoW line until T-1 wires fuel × consumption × distance.
+type OperationsSettings = {
+  id: string;
+  fuelPricePerLitre: string | number | null;
+  fuelPriceSource: string | null;
+  fuelPriceFetchedAt: string | null;
+  travelRatePerKm: string | number | null;
+  updatedAt: string;
+  updatedById: string | null;
+};
+
+function OperationsTab() {
+  const { authFetch } = useAuth();
+  const [config, setConfig] = useState<OperationsSettings | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const [fuelPrice, setFuelPrice] = useState("");
+  const [fuelSource, setFuelSource] = useState("");
+  const [travelRate, setTravelRate] = useState("");
+  const loadedRef = useRef(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await authFetch("/admin/settings/operations");
+      if (!response.ok) throw new Error(await response.text());
+      const body = (await response.json()) as OperationsSettings;
+      setConfig(body);
+      if (!loadedRef.current) {
+        setFuelPrice(body.fuelPricePerLitre != null ? String(body.fuelPricePerLitre) : "");
+        setFuelSource(body.fuelPriceSource ?? "");
+        setTravelRate(body.travelRatePerKm != null ? String(body.travelRatePerKm) : "");
+        loadedRef.current = true;
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, [authFetch]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      // Blank → null (clear the value). Non-blank → number for the two
+      // decimals. Empty string stays undefined so the server leaves it alone.
+      const patch: Record<string, unknown> = {};
+      patch.fuelPricePerLitre = fuelPrice.trim() === "" ? null : Number(fuelPrice);
+      patch.fuelPriceSource = fuelSource.trim() === "" ? null : fuelSource.trim();
+      patch.travelRatePerKm = travelRate.trim() === "" ? null : Number(travelRate);
+      const response = await authFetch("/admin/settings/operations", {
+        method: "PATCH",
+        body: JSON.stringify(patch)
+      });
+      if (!response.ok) throw new Error(await response.text());
+      setConfig((await response.json()) as OperationsSettings);
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 1500);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading || !config) return <p style={{ color: "var(--text-muted)" }}>Loading…</p>;
+
+  return (
+    <section className="s7-card" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div>
+        <h2 className="s7-type-section-heading" style={{ marginTop: 0, marginBottom: 4 }}>
+          Operations / Fuel
+        </h2>
+        <p style={{ color: "var(--text-muted)", marginTop: 0, fontSize: 13 }}>
+          Fuel price and interim travel rate used by the waste-transport cost engine (R3). Per-truck
+          fuel consumption lives on each Asset; per-material load capacity lives in the Transport
+          capacity reference table under Rates &amp; Lists.
+        </p>
+      </div>
+      {error ? <p style={{ color: "var(--status-danger)" }}>{error}</p> : null}
+
+      <label className="estimate-editor__field">
+        <span>Fuel price (per litre, AUD)</span>
+        <input
+          className="s7-input"
+          type="number"
+          step="0.001"
+          min="0"
+          value={fuelPrice}
+          onChange={(e) => setFuelPrice(e.target.value)}
+          placeholder="e.g. 2.150"
+        />
+      </label>
+      <label className="estimate-editor__field">
+        <span>Fuel price source</span>
+        <input
+          className="s7-input"
+          value={fuelSource}
+          onChange={(e) => setFuelSource(e.target.value)}
+          placeholder="Manual entry / feed name (T-2 will populate this automatically)"
+        />
+      </label>
+      <label className="estimate-editor__field">
+        <span>Travel rate (per km, AUD) — interim</span>
+        <input
+          className="s7-input"
+          type="number"
+          step="0.01"
+          min="0"
+          value={travelRate}
+          onChange={(e) => setTravelRate(e.target.value)}
+          placeholder="Interim flat rate — replaced by fuel × consumption × distance in T-1"
+        />
+      </label>
+
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <button
+          type="button"
+          className="s7-btn s7-btn--primary"
+          onClick={() => void save()}
+          disabled={saving}
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+        {savedFlash ? <span style={{ fontSize: 12, color: "#16A34A" }}>✓ Saved</span> : null}
+      </div>
+
+      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+        Last updated: {new Date(config.updatedAt).toLocaleString("en-AU")}
+        {config.fuelPriceFetchedAt
+          ? ` · fuel price fetched ${new Date(config.fuelPriceFetchedAt).toLocaleString("en-AU")}`
+          : ""}
       </div>
     </section>
   );

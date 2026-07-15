@@ -5369,6 +5369,12 @@
           "filterable": false,
           "aggregations": []
         },
+        "kind": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
         "category": {
           "role": "dimension",
           "label": null,

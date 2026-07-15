@@ -43,6 +43,7 @@ const TABS = [
   { id: "users", label: "Users" },
   { id: "access-requests", label: "Access requests" },
   { id: "ai", label: "AI & Integrations" },
+  { id: "integrations", label: "Integrations / API keys" },
   { id: "platform", label: "Platform" },
   { id: "permissions", label: "Permissions" },
   { id: "client-versions", label: "Client versions" },
@@ -104,6 +105,7 @@ export function AdminSettingsPage() {
               body="Manage Anthropic, Gemini, Groq, and OpenAI API keys and the preferred provider for scope drafting. Personal AI keys live on each user's /account page."
             />
           )}
+          {tab === "integrations" && <IntegrationsKeysTab />}
           {tab === "platform" && (
             <>
               <IntegrationTab
@@ -800,6 +802,211 @@ function SharePointFolderMappingsPanel() {
         Paths are relative to the SharePoint library. A path that doesn't exist in the library will
         be rejected — create the folder in SharePoint first.
       </p>
+    </section>
+  );
+}
+
+// ── Integrations / API keys tab ─────────────────────────────────────────
+// Third-party integration keys (Geoapify, fuelpricesqld, future). Same
+// UX as ProviderKeyManager for AI keys: the browser only ever sees
+// configured/not-configured; the plaintext value is set-once-write-only.
+type IntegrationStatus = {
+  slug: string;
+  label: string;
+  description: string | null;
+  envVar: string;
+  configured: boolean;
+  source: "database" | "env" | null;
+  updatedAt: string | null;
+};
+
+function IntegrationsKeysTab() {
+  const { authFetch } = useAuth();
+  const [items, setItems] = useState<IntegrationStatus[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<IntegrationStatus | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [flash, setFlash] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await authFetch("/admin/settings/integrations");
+      if (!response.ok) throw new Error(await response.text());
+      setItems((await response.json()) as IntegrationStatus[]);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, [authFetch]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const save = async () => {
+    if (!editing) return;
+    if (!editValue.trim()) {
+      setError("Enter a key first.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await authFetch(`/admin/settings/integrations/${editing.slug}`, {
+        method: "PUT",
+        body: JSON.stringify({ value: editValue.trim() })
+      });
+      if (!response.ok) throw new Error(await response.text());
+      setFlash(`${editing.label} key saved.`);
+      setEditing(null);
+      setEditValue("");
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const clear = async (item: IntegrationStatus) => {
+    if (
+      !window.confirm(
+        `Remove the ${item.label} key? Any feature that uses it will fall back to the Azure env var (if set) or stop working.`
+      )
+    ) {
+      return;
+    }
+    try {
+      const response = await authFetch(`/admin/settings/integrations/${item.slug}`, {
+        method: "DELETE"
+      });
+      if (!response.ok) throw new Error(await response.text());
+      setFlash(`${item.label} key removed.`);
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  return (
+    <section className="s7-card">
+      <h2 className="s7-type-section-heading" style={{ marginTop: 0 }}>Integrations / API keys</h2>
+      <p style={{ color: "var(--text-muted)", margin: "0 0 12px" }}>
+        Third-party API keys stored inside the ERP (encrypted at rest with AES-256-GCM). Editing
+        here takes effect immediately — no Azure redeploy. When the encrypted value is empty, the
+        matching environment variable is used as a fallback so keys already set in Azure keep
+        working until re-entered here.
+      </p>
+      {loading ? <p style={{ color: "var(--text-muted)" }}>Loading…</p> : null}
+      {error ? <p style={{ color: "var(--status-danger)" }}>{error}</p> : null}
+      {flash ? <p style={{ color: "#16a34a", margin: "0 0 10px" }}>{flash}</p> : null}
+      {!loading && items.length > 0 ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {items.map((item) => (
+            <div
+              key={item.slug}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr auto",
+                alignItems: "center",
+                gap: 12,
+                padding: "12px 14px",
+                background: "var(--surface-card, #FFFFFF)",
+                border: "1px solid var(--border-subtle, rgba(0,0,0,0.08))",
+                borderRadius: 8
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{item.label}</div>
+                {item.description ? (
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+                    {item.description}
+                  </div>
+                ) : null}
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+                  {item.configured
+                    ? item.source === "database"
+                      ? `Configured · stored in ERP${item.updatedAt ? ` · updated ${new Date(item.updatedAt).toLocaleString("en-AU")}` : ""}`
+                      : `Configured · using ${item.envVar} env var (not yet stored in ERP)`
+                    : `Not configured · env var ${item.envVar} is also empty`}
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--primary"
+                  onClick={() => {
+                    setEditing(item);
+                    setEditValue("");
+                    setFlash(null);
+                    setError(null);
+                  }}
+                >
+                  {item.source === "database" ? "Replace" : "Configure"}
+                </button>
+                {item.source === "database" ? (
+                  <button type="button" className="s7-btn s7-btn--ghost" onClick={() => void clear(item)}>
+                    Remove
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {editing ? (
+        <div style={{ marginTop: 16, padding: 14, border: "1px solid var(--border, #e5e7eb)", borderRadius: 8 }}>
+          <div style={{ fontWeight: 600, marginBottom: 8 }}>{editing.label} API key</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
+            The key is encrypted at rest with AES-256-GCM and never displayed back.
+          </div>
+          <input
+            type="password"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            placeholder="Paste key"
+            autoFocus
+            disabled={saving}
+            style={{
+              width: "100%",
+              padding: 10,
+              fontSize: 14,
+              fontFamily: "ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace",
+              border: "1px solid var(--border-subtle, rgba(0,0,0,0.16))",
+              borderRadius: 6,
+              boxSizing: "border-box"
+            }}
+          />
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <button
+              type="button"
+              className="s7-btn s7-btn--primary"
+              onClick={() => void save()}
+              disabled={saving}
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost"
+              onClick={() => {
+                setEditing(null);
+                setEditValue("");
+                setError(null);
+              }}
+              disabled={saving}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

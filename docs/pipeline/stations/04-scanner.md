@@ -106,3 +106,30 @@ Reading config already committed to the repo is fine. Mutating tenant state is n
   do not try to retrigger checks on a dirty branch.
 - GATE-ALLOW markers must be BARE at column 0. `## GATE-ALLOW: migrations` (a markdown heading)
   does NOT match CP-11's regex and the gate fails with the marker visibly present.
+
+
+## CLEAN-TREE MANDATE (2026-07-15) — arm ONLY from a clean worktree
+
+Reconciles this brief with the live `04-scanner` SKILL. On 2026-07-15 the scanner correctly re-verified
+all 11 gates against `origin/main`, but **armed zero prompts** — because its scheduled sandbox tree was
+7 commits behind `origin/main` and dirty, with a flaky `.git` mount. Arming or linting from that tree
+would be an **unverifiable board mutation (§1)**, and a gate read against it is an **instrument lie
+(§7)**. Identifying ready work but never staging it is the gap this closes.
+
+**Before any gate check you will trust, any `lint-prompt.mjs`, or any arm:** create a clean isolated
+worktree off `origin/main` on the Windows filesystem via Desktop Commander, and do the whole thing there:
+
+```
+git -C C:\ProjectOperations2 fetch origin
+git -C C:\ProjectOperations2 worktree add C:\po-scan-<rand> origin/main
+#   cd C:\po-scan-<rand>; node scripts\pipeline\check-backlog.mjs; write + lint + arm; copy *-ready.md
+#   into C:\ProjectOperations2\docs\pr-prompts\ ONLY after lint passes
+git -C C:\ProjectOperations2 worktree remove C:\po-scan-<rand> --force ; git -C C:\ProjectOperations2 worktree prune
+```
+
+If you cannot obtain a clean worktree, DECLARE it (`NO-OP: could not arm verifiably — no clean tree`).
+Never arm from the sandbox tree; never silently skip ready items.
+
+`check-backlog.mjs` now hard-fails (exit 2) with a **STRICT-STRUCTURE GUARD** message if any `- id:` in
+BACKLOG.yaml is not at exactly 2-space indent. If you see that, the register is malformed — fix the
+indent first; do not report gate readings from a malformed file.

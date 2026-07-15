@@ -99,7 +99,30 @@ function runGate(cmd) {
   }
 }
 
-const items = parseItems(readFileSync(file, "utf8"))
+// STRICT-STRUCTURE GUARD (2026-07-15). The parser above is deliberately lenient: `/^\s*-\s+id:/`
+// matches a `- id:` at ANY indent, so a 4-space `- id:` (as swms/mail-send had) parsed "fine" here
+// while a real yaml.safe_load died at that line. Lenient-green + strict-broken is exactly the trap
+// that let a malformed BACKLOG sit on main. Refuse to report gate readings from a malformed file
+// (DOCTRINE section 7: do not trust an instrument you have not proven can read the input).
+function assertUniformItemIndent(text) {
+  const marks = [];
+  text.split(/\r?\n/).forEach((l, i) => {
+    const m = l.match(/^([ \t]*)-\s+id:/);
+    if (m) marks.push({ line: i + 1, indent: m[1].length, tab: /\t/.test(m[1]) });
+  });
+  const bad = marks.filter((m) => m.indent !== 2 || m.tab);
+  if (bad.length) {
+    console.error(RED + BOLD + "STRICT-STRUCTURE GUARD FAILED - BACKLOG.yaml is malformed." + RESET);
+    console.error(RED + "  Every '- id:' must be indented EXACTLY 2 spaces (no tabs). A lenient reader hides this;" + RESET);
+    console.error(RED + "  a strict yaml.safe_load fails on it. Fix the indent, then re-run." + RESET);
+    for (const b of bad) console.error(RED + "    line " + b.line + ": '- id:' has " + (b.tab ? "a TAB / " : "") + b.indent + "-space indent, expected 2" + RESET);
+    process.exit(2);
+  }
+}
+
+const backlogText = readFileSync(file, "utf8");
+assertUniformItemIndent(backlogText);
+const items = parseItems(backlogText)
   .sort((a, b) => Number(a.order || 999) - Number(b.order || 999));
 
 const ready = [], blocked = [], marco = [], broken = [];

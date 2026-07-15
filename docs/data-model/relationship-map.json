@@ -2,10 +2,10 @@
   "_generator": "scripts/data-model/build-relationship-map.mjs",
   "_doNotEdit": "Regenerated from schema.prisma. Do not hand-edit.",
   "generatedFrom": "apps/api/prisma/schema.prisma",
-  "schemaSha256": "e2d9b12bb83e12690392a3e6ab312a566442aedf6415aa3d74e37f7600a71f65",
-  "modelCount": 195,
+  "schemaSha256": "9ee456e900aa23238dd6ebd332e724d51db2f5a8da6a2ee512610d3180ac52df",
+  "modelCount": 196,
   "enumCount": 25,
-  "edgeCount": 288,
+  "edgeCount": 289,
   "domains": {
     "Assets": [
       "Asset",
@@ -232,7 +232,8 @@
     "Unclassified": [
       "AccessRequest",
       "CompanyLegalDocument",
-      "CompanyProfile"
+      "CompanyProfile",
+      "OperationsSettings"
     ],
     "Workers": [
       "Competency",
@@ -919,6 +920,30 @@
           "isUpdatedAt": false
         },
         {
+          "name": "fuelConsumptionLPer100km",
+          "dbColumn": "fuel_consumption_l_per_100km",
+          "type": "Decimal",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "nominalLoadTonnes",
+          "dbColumn": "nominal_load_tonnes",
+          "type": "Decimal",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
           "name": "createdAt",
           "dbColumn": "created_at",
           "type": "DateTime",
@@ -1592,6 +1617,30 @@
           "isId": false,
           "isUnique": false,
           "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "defaultFuelConsumptionLPer100km",
+          "dbColumn": "default_fuel_consumption_l_per_100km",
+          "type": "Decimal",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "defaultNominalLoadTonnes",
+          "dbColumn": "default_nominal_load_tonnes",
+          "type": "Decimal",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
           "isUpdatedAt": false
         },
         {
@@ -21592,6 +21641,137 @@
         }
       ],
       "relations": [],
+      "referencedBy": []
+    },
+    "OperationsSettings": {
+      "name": "OperationsSettings",
+      "domain": "Unclassified",
+      "dbTable": "operations_settings",
+      "fields": [
+        {
+          "name": "id",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": true,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "fuelPricePerLitre",
+          "dbColumn": "fuel_price_per_litre",
+          "type": "Decimal",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "fuelPriceSource",
+          "dbColumn": "fuel_price_source",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "fuelPriceFetchedAt",
+          "dbColumn": "fuel_price_fetched_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "travelRatePerKm",
+          "dbColumn": "travel_rate_per_km",
+          "type": "Decimal",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "updatedAt",
+          "dbColumn": "updated_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": true
+        },
+        {
+          "name": "updatedById",
+          "dbColumn": "updated_by_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "updatedBy",
+          "dbColumn": null,
+          "type": "User",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "OperationsSettingsUpdatedBy",
+            "fkFields": [
+              "updatedById"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "SetNull"
+          },
+          "owning": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "updatedBy",
+          "target": "User",
+          "cardinality": "one-optional",
+          "relationName": "OperationsSettingsUpdatedBy",
+          "owning": true,
+          "onDelete": "SetNull",
+          "fkFields": [
+            "updatedById"
+          ],
+          "refFields": [
+            "id"
+          ]
+        }
+      ],
       "referencedBy": []
     },
     "Permission": {
@@ -42600,6 +42780,25 @@
           "owning": false
         },
         {
+          "name": "operationsSettingsUpdates",
+          "dbColumn": null,
+          "type": "OperationsSettings",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "OperationsSettingsUpdatedBy",
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
+        },
+        {
           "name": "contractsCreated",
           "dbColumn": null,
           "type": "Contract",
@@ -43938,6 +44137,16 @@
           "refFields": []
         },
         {
+          "field": "operationsSettingsUpdates",
+          "target": "OperationsSettings",
+          "cardinality": "many",
+          "relationName": "OperationsSettingsUpdatedBy",
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
+        },
+        {
           "field": "contractsCreated",
           "target": "Contract",
           "cardinality": "many",
@@ -44571,6 +44780,11 @@
         },
         {
           "from": "EmailProviderConfig",
+          "via": "updatedBy",
+          "fk": "updatedById"
+        },
+        {
+          "from": "OperationsSettings",
           "via": "updatedBy",
           "fk": "updatedById"
         },
@@ -49496,6 +49710,14 @@
       "fk": "updatedById",
       "onDelete": "SetNull",
       "relationName": null
+    },
+    {
+      "from": "OperationsSettings",
+      "to": "User",
+      "via": "updatedBy",
+      "fk": "updatedById",
+      "onDelete": "SetNull",
+      "relationName": "OperationsSettingsUpdatedBy"
     },
     {
       "from": "Contract",

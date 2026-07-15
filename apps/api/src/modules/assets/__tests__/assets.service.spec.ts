@@ -152,7 +152,9 @@ describe("AssetsService.upsertCategory", () => {
         name: "Plant",
         code: "PLANT",
         description: "Heavy plant",
-        isActive: true
+        isActive: true,
+        defaultFuelConsumptionLPer100km: null,
+        defaultNominalLoadTonnes: null
       }
     });
     expect(prisma.assetCategory.update).not.toHaveBeenCalled();
@@ -172,7 +174,7 @@ describe("AssetsService.upsertCategory", () => {
     await service.upsertCategory(undefined, { name: "Retired", isActive: false }, "user-1");
 
     expect(prisma.assetCategory.create).toHaveBeenCalledWith({
-      data: { name: "Retired", code: undefined, description: undefined, isActive: false }
+      data: { name: "Retired", code: undefined, description: undefined, isActive: false, defaultFuelConsumptionLPer100km: null, defaultNominalLoadTonnes: null }
     });
   });
 
@@ -193,7 +195,7 @@ describe("AssetsService.upsertCategory", () => {
     });
     expect(prisma.assetCategory.update).toHaveBeenCalledWith({
       where: { id: "cat-9" },
-      data: { name: "Tools", code: "TLS", description: undefined, isActive: true }
+      data: { name: "Tools", code: "TLS", description: undefined, isActive: true, defaultFuelConsumptionLPer100km: null, defaultNominalLoadTonnes: null }
     });
     expect(prisma.assetCategory.create).not.toHaveBeenCalled();
     expect(audit.write).toHaveBeenCalledWith(
@@ -559,7 +561,9 @@ describe("AssetsService.upsertAsset", () => {
         status: "AVAILABLE",
         homeBase: "Yard",
         currentLocation: "Site A",
-        notes: "Routine"
+        notes: "Routine",
+        fuelConsumptionLPer100km: null,
+        nominalLoadTonnes: null
       }
     });
     expect(prisma.asset.update).not.toHaveBeenCalled();
@@ -611,7 +615,9 @@ describe("AssetsService.upsertAsset", () => {
         status: "AVAILABLE",
         homeBase: null,
         currentLocation: null,
-        notes: null
+        notes: null,
+        fuelConsumptionLPer100km: null,
+        nominalLoadTonnes: null
       }
     });
   });

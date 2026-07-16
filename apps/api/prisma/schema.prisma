@@ -100,6 +100,7 @@ model User {
   contractsCreated           Contract[]                  @relation("ContractCreatedBy")
   variationsCreated          Variation[]                 @relation("VariationCreatedBy")
   progressClaimsCreated      ProgressClaim[]             @relation("ProgressClaimCreatedBy")
+  paymentSchedulesCreated    PaymentSchedule[]           @relation("PaymentScheduleCreatedBy")
   createdQuotes              ClientQuote[]               @relation("QuoteCreatedBy")
   sentQuotes                 ClientQuote[]               @relation("QuoteSentBy")
   sentQuoteEmails            QuoteEmail[]                @relation("QuoteEmailSentBy")
@@ -3428,6 +3429,12 @@ model OperationsSettings {
   fuelPriceSource    String?   @map("fuel_price_source")
   fuelPriceFetchedAt DateTime? @map("fuel_price_fetched_at")
   travelRatePerKm    Decimal?  @map("travel_rate_per_km") @db.Decimal(6, 2)
+  // AU Security of Payment Act — statutory window (business days) in which
+  // a respondent must issue a payment schedule after receiving a payment
+  // claim. Varies by state (NSW 10, QLD 15, VIC 10, etc.); Marco sets the
+  // value for the jurisdiction the tenant operates in. NULL = fall back to
+  // SOPA_DEFAULT_RESPONSE_DAYS in the contracts service.
+  sopaResponseDays   Int?      @map("sopa_response_days")
   updatedAt          DateTime  @updatedAt @map("updated_at")
   updatedById        String?   @map("updated_by_id")
   updatedBy          User?     @relation("OperationsSettingsUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
@@ -3529,6 +3536,7 @@ model ProgressClaim {
   retentionHeld  Decimal         @default(0) @map("retention_held") @db.Decimal(12, 2)
   notes          String?
   lineItems      ClaimLineItem[]
+  paymentSchedule PaymentSchedule?
   createdById    String          @map("created_by_id")
   createdBy      User            @relation("ProgressClaimCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   createdAt      DateTime        @default(now()) @map("created_at")
@@ -3537,6 +3545,37 @@ model ProgressClaim {
   @@unique([contractId, claimMonth])
   @@index([contractId, status])
   @@map("progress_claims")
+}
+
+// AU Security of Payment Act response ("payment schedule") to a
+// ProgressClaim. Statutory: if the respondent fails to issue a schedule
+// within the state-defined window, the FULL claimed amount becomes
+// payable — that is the risk this record is designed to surface.
+// dueBy is computed at record-creation time from the claim's submission
+// date + OperationsSettings.sopaResponseDays (business days, adjusted to
+// the preceding QLD work day) and STORED so later setting changes do not
+// retro-mutate an already-issued statutory window.
+enum PaymentScheduleStatus {
+  PENDING
+  ISSUED
+  OVERDUE
+}
+
+model PaymentSchedule {
+  id              String                @id @default(cuid())
+  progressClaimId String                @unique @map("progress_claim_id")
+  progressClaim   ProgressClaim         @relation(fields: [progressClaimId], references: [id], onDelete: Cascade)
+  scheduledAmount Decimal               @map("scheduled_amount") @db.Decimal(12, 2)
+  reasons         String?
+  status          PaymentScheduleStatus @default(PENDING)
+  dueBy           DateTime              @map("due_by")
+  respondedAt     DateTime?             @map("responded_at")
+  createdById     String                @map("created_by_id")
+  createdBy       User                  @relation("PaymentScheduleCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+
+  @@map("payment_schedules")
 }
 
 model ClaimLineItem {

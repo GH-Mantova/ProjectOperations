@@ -2063,6 +2063,306 @@
         }
       }
     },
+    "Commitment": {
+      "domain": "Unclassified",
+      "wizardVisible": false,
+      "label": null,
+      "reviewed": false,
+      "fields": {
+        "id": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "jobId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "job": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "type": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "supplierId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "supplier": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "reference": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "description": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "value": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
+        },
+        "status": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "purchaseOrderId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "createdById": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "createdBy": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "createdAt": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "updatedAt": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "items": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "changes": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        }
+      }
+    },
+    "CommitmentChange": {
+      "domain": "Unclassified",
+      "wizardVisible": false,
+      "label": null,
+      "reviewed": false,
+      "fields": {
+        "id": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "commitmentId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "commitment": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "reference": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "description": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "valueChange": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
+        },
+        "status": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "approvedById": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "approvedBy": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "createdById": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "createdBy": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "createdAt": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "updatedAt": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        }
+      }
+    },
+    "CommitmentItem": {
+      "domain": "Unclassified",
+      "wizardVisible": false,
+      "label": null,
+      "reviewed": false,
+      "fields": {
+        "id": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "commitmentId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "commitment": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "description": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "costCategory": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "quantity": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
+        },
+        "unit": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "rate": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
+        },
+        "amount": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
+        },
+        "createdAt": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "updatedAt": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        }
+      }
+    },
     "CompanyLegalDocument": {
       "domain": "Unclassified",
       "wizardVisible": false,
@@ -7794,6 +8094,12 @@
           "aggregations": []
         },
         "correspondences": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "commitments": {
           "role": "system",
           "label": null,
           "filterable": false,
@@ -14724,6 +15030,12 @@
           "label": null,
           "filterable": false,
           "aggregations": []
+        },
+        "commitments": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
         }
       }
     },
@@ -17450,6 +17762,24 @@
           "aggregations": []
         },
         "companyLegalDocsCreated": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "commitmentsCreated": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "commitmentChangesCreated": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "commitmentChangesApproved": {
           "role": "system",
           "label": null,
           "filterable": false,

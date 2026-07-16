@@ -29,6 +29,16 @@ const tenderInclude = {
       lastName: true
     }
   },
+  site: {
+    select: {
+      id: true,
+      name: true,
+      addressLine1: true,
+      suburb: true,
+      state: true,
+      postcode: true
+    }
+  },
   tenderClients: {
     include: {
       client: true,
@@ -1573,6 +1583,7 @@ export class TenderingService {
       estimatedValue: dto.estimatedValue ? new Prisma.Decimal(dto.estimatedValue) : undefined,
       notes: dto.notes,
       estimator: dto.estimatorUserId ? { connect: { id: dto.estimatorUserId } } : undefined,
+      site: dto.siteId ? { connect: { id: dto.siteId } } : undefined,
       tenderClients: dto.tenderClients?.length
         ? {
             create: dto.tenderClients.map((item) => ({
@@ -1644,7 +1655,11 @@ export class TenderingService {
       probability: dto.probability ?? null,
       estimatedValue: dto.estimatedValue ? new Prisma.Decimal(dto.estimatedValue) : null,
       notes: dto.notes ?? null,
-      estimator: dto.estimatorUserId ? { connect: { id: dto.estimatorUserId } } : { disconnect: true }
+      estimator: dto.estimatorUserId ? { connect: { id: dto.estimatorUserId } } : { disconnect: true },
+      // siteId undefined = leave as-is; explicit id = connect. Wizard never
+      // clears siteId (a tender always keeps the address it was raised
+      // against once selected), so no disconnect branch here.
+      site: dto.siteId ? { connect: { id: dto.siteId } } : undefined
     };
   }
 

@@ -2,10 +2,10 @@
   "_generator": "scripts/data-model/build-relationship-map.mjs",
   "_doNotEdit": "Regenerated from schema.prisma. Do not hand-edit.",
   "generatedFrom": "apps/api/prisma/schema.prisma",
-  "schemaSha256": "f96056e6f88d2ad69795f291eba95818f821d3a9d38ae4ddc76d77ded38caf5b",
-  "modelCount": 197,
+  "schemaSha256": "d5c4c93c0c67e372b805d562560aaf88a5d0bdcf90403e28fdcbfa310ff8ea55",
+  "modelCount": 198,
   "enumCount": 25,
-  "edgeCount": 290,
+  "edgeCount": 293,
   "domains": {
     "Assets": [
       "Asset",
@@ -234,6 +234,7 @@
       "AccessRequest",
       "CompanyLegalDocument",
       "CompanyProfile",
+      "DailyDiary",
       "OperationsSettings"
     ],
     "Workers": [
@@ -9814,6 +9815,343 @@
           "onDelete": "Restrict",
           "fkFields": [
             "createdById"
+          ],
+          "refFields": [
+            "id"
+          ]
+        }
+      ],
+      "referencedBy": []
+    },
+    "DailyDiary": {
+      "name": "DailyDiary",
+      "domain": "Unclassified",
+      "dbTable": "daily_diaries",
+      "fields": [
+        {
+          "name": "id",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": true,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "projectId",
+          "dbColumn": "project_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "project",
+          "dbColumn": null,
+          "type": "Project",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [
+              "projectId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "Cascade"
+          },
+          "owning": true
+        },
+        {
+          "name": "siteId",
+          "dbColumn": "site_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "site",
+          "dbColumn": null,
+          "type": "Site",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [
+              "siteId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "SetNull"
+          },
+          "owning": true
+        },
+        {
+          "name": "date",
+          "dbColumn": null,
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "authorId",
+          "dbColumn": "author_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "author",
+          "dbColumn": null,
+          "type": "User",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "DailyDiaryAuthor",
+            "fkFields": [
+              "authorId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "Restrict"
+          },
+          "owning": true
+        },
+        {
+          "name": "weather",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "temperatureC",
+          "dbColumn": "temperature_c",
+          "type": "Decimal",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "crewSummary",
+          "dbColumn": "crew_summary",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "plantOnSite",
+          "dbColumn": "plant_on_site",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "deliveries",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "visitors",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "delays",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "notes",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "lineItems",
+          "dbColumn": "line_items",
+          "type": "Json",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "attachments",
+          "dbColumn": null,
+          "type": "Json",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "submittedAt",
+          "dbColumn": "submitted_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "createdAt",
+          "dbColumn": "created_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "updatedAt",
+          "dbColumn": "updated_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "project",
+          "target": "Project",
+          "cardinality": "one",
+          "relationName": null,
+          "owning": true,
+          "onDelete": "Cascade",
+          "fkFields": [
+            "projectId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "site",
+          "target": "Site",
+          "cardinality": "one-optional",
+          "relationName": null,
+          "owning": true,
+          "onDelete": "SetNull",
+          "fkFields": [
+            "siteId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "author",
+          "target": "User",
+          "cardinality": "one",
+          "relationName": "DailyDiaryAuthor",
+          "owning": true,
+          "onDelete": "Restrict",
+          "fkFields": [
+            "authorId"
           ],
           "refFields": [
             "id"
@@ -25168,6 +25506,25 @@
           "owning": false
         },
         {
+          "name": "dailyDiaries",
+          "dbColumn": null,
+          "type": "DailyDiary",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
+        },
+        {
           "name": "plannedStartDate",
           "dbColumn": "planned_start_date",
           "type": "DateTime",
@@ -25472,6 +25829,16 @@
           "onDelete": null,
           "fkFields": [],
           "refFields": []
+        },
+        {
+          "field": "dailyDiaries",
+          "target": "DailyDiary",
+          "cardinality": "many",
+          "relationName": null,
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
         }
       ],
       "referencedBy": [
@@ -25484,6 +25851,11 @@
           "from": "Job",
           "via": "survivingProject",
           "fk": "survivingProjectId"
+        },
+        {
+          "from": "DailyDiary",
+          "via": "project",
+          "fk": "projectId"
         },
         {
           "from": "ProjectScopeItem",
@@ -33897,6 +34269,25 @@
             "onDelete": null
           },
           "owning": false
+        },
+        {
+          "name": "dailyDiaries",
+          "dbColumn": null,
+          "type": "DailyDiary",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
         }
       ],
       "relations": [
@@ -33953,6 +34344,16 @@
           "onDelete": null,
           "fkFields": [],
           "refFields": []
+        },
+        {
+          "field": "dailyDiaries",
+          "target": "DailyDiary",
+          "cardinality": "many",
+          "relationName": null,
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
         }
       ],
       "referencedBy": [
@@ -33973,6 +34374,11 @@
         },
         {
           "from": "Project",
+          "via": "site",
+          "fk": "siteId"
+        },
+        {
+          "from": "DailyDiary",
           "via": "site",
           "fk": "siteId"
         }
@@ -43444,6 +43850,25 @@
           "owning": false
         },
         {
+          "name": "authoredDailyDiaries",
+          "dbColumn": null,
+          "type": "DailyDiary",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "DailyDiaryAuthor",
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
+        },
+        {
           "name": "sentInternalMessages",
           "dbColumn": null,
           "type": "InternalMessage",
@@ -44572,6 +44997,16 @@
           "refFields": []
         },
         {
+          "field": "authoredDailyDiaries",
+          "target": "DailyDiary",
+          "cardinality": "many",
+          "relationName": "DailyDiaryAuthor",
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
+        },
+        {
           "field": "sentInternalMessages",
           "target": "InternalMessage",
           "cardinality": "many",
@@ -44867,6 +45302,11 @@
           "from": "Project",
           "via": "createdBy",
           "fk": "createdById"
+        },
+        {
+          "from": "DailyDiary",
+          "via": "author",
+          "fk": "authorId"
         },
         {
           "from": "ProjectActivityLog",
@@ -49467,6 +49907,30 @@
       "fk": "createdById",
       "onDelete": "Restrict",
       "relationName": "ProjectCreatedBy"
+    },
+    {
+      "from": "DailyDiary",
+      "to": "Project",
+      "via": "project",
+      "fk": "projectId",
+      "onDelete": "Cascade",
+      "relationName": null
+    },
+    {
+      "from": "DailyDiary",
+      "to": "Site",
+      "via": "site",
+      "fk": "siteId",
+      "onDelete": "SetNull",
+      "relationName": null
+    },
+    {
+      "from": "DailyDiary",
+      "to": "User",
+      "via": "author",
+      "fk": "authorId",
+      "onDelete": "Restrict",
+      "relationName": "DailyDiaryAuthor"
     },
     {
       "from": "ProjectScopeItem",

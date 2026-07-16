@@ -3,7 +3,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 // ────────────────────────────────────────────────────────────────────────
 // Forms Engine — IS system templates (PR #97)
 // ────────────────────────────────────────────────────────────────────────
-// 8 templates seeded with isSystemTemplate=true. Idempotent: re-running pnpm
+// 12 templates seeded with isSystemTemplate=true. Idempotent: re-running pnpm
 // seed reconciles via upsert on FormTemplate.code. Each template carries an
 // ACTIVE FormTemplateVersion v1 + sections + fields. Approval chains
 // reference Marco (WHS) by email lookup so the chain wires up regardless of
@@ -657,7 +657,383 @@ export async function seedFormTemplates(prisma: PrismaClient): Promise<void> {
     ]
   });
 
-  // 8 — Environmental Incident Report
+  // 8a — Permit-to-Work (permit_to_work — WHS template pack)
+  // Single template covers all high-risk permit classes: hot work, confined
+  // space, working at heights, excavation, electrical isolation, live-services.
+  // Zone + type drive downstream conditional requirements (gas test, isolation
+  // tag, atmospheric monitoring).
+  await upsertSystemTemplate(prisma, {
+    code: "IS-FORM-PERMIT-TO-WORK",
+    name: "Permit-to-Work",
+    description: "High-risk work permit — hot work, confined space, heights, excavation, electrical.",
+    category: "permits",
+    settings: {
+      requiresApproval: true,
+      approvalChain: [
+        { stepNumber: 1, assignToRole: "project_manager", dueHours: 2 },
+        ...(marcoId ? [{ stepNumber: 2, assignToUserId: marcoId, dueHours: 4 }] : [])
+      ],
+      allowOffline: true,
+      pdfExport: true
+    },
+    sections: [
+      {
+        title: "Permit Details",
+        sortOrder: 0,
+        fields: [
+          { fieldKey: "permit_to_work_date", label: "Date", fieldType: "date", fieldOrder: 0, isRequired: true },
+          { fieldKey: "valid_from", label: "Valid from", fieldType: "datetime", fieldOrder: 1, isRequired: true },
+          { fieldKey: "valid_to", label: "Valid to", fieldType: "datetime", fieldOrder: 2, isRequired: true },
+          { fieldKey: "project", label: "Project", fieldType: "system_field", fieldOrder: 3, config: { source: "project" } },
+          { fieldKey: "job", label: "Job", fieldType: "system_field", fieldOrder: 4, config: { source: "job" } },
+          {
+            fieldKey: "permit_type",
+            label: "Permit type",
+            fieldType: "dropdown",
+            fieldOrder: 5,
+            isRequired: true,
+            config: {
+              options: [
+                "Hot work",
+                "Confined space",
+                "Working at heights",
+                "Excavation",
+                "Electrical isolation",
+                "Live services",
+                "Roof access"
+              ]
+            }
+          },
+          { fieldKey: "permit_zone", label: "Permit zone / location", fieldType: "short_text", fieldOrder: 6, isRequired: true },
+          { fieldKey: "work_description", label: "Description of work", fieldType: "long_text", fieldOrder: 7, isRequired: true },
+          { fieldKey: "permit_issuer", label: "Permit issuer", fieldType: "system_field", fieldOrder: 8, config: { source: "supervisor" } },
+          { fieldKey: "permit_receiver", label: "Permit receiver", fieldType: "short_text", fieldOrder: 9, isRequired: true }
+        ]
+      },
+      {
+        title: "Hazards & Controls",
+        sortOrder: 1,
+        fields: [
+          { fieldKey: "hazards_identified", label: "Hazards identified", fieldType: "long_text", fieldOrder: 0, isRequired: true },
+          { fieldKey: "isolation_required", label: "Isolation required", fieldType: "toggle", fieldOrder: 1 },
+          {
+            fieldKey: "isolation_tag_number",
+            label: "Isolation tag number",
+            fieldType: "short_text",
+            fieldOrder: 2,
+            conditions: [
+              {
+                trigger: "on_change",
+                conditionGroup: {
+                  logic: "AND",
+                  conditions: [{ fieldKey: "isolation_required", operator: "equals", value: true }]
+                },
+                actions: [{ type: "show" }, { type: "require" }]
+              }
+            ]
+          },
+          { fieldKey: "gas_test_required", label: "Gas test required", fieldType: "toggle", fieldOrder: 3 },
+          {
+            fieldKey: "gas_test_result",
+            label: "Gas test result (O₂ / LEL / CO / H₂S)",
+            fieldType: "short_text",
+            fieldOrder: 4,
+            conditions: [
+              {
+                trigger: "on_change",
+                conditionGroup: {
+                  logic: "AND",
+                  conditions: [{ fieldKey: "gas_test_required", operator: "equals", value: true }]
+                },
+                actions: [{ type: "show" }, { type: "require" }]
+              }
+            ]
+          },
+          { fieldKey: "fire_watch_required", label: "Fire watch required", fieldType: "toggle", fieldOrder: 5 },
+          {
+            fieldKey: "fire_watch_name",
+            label: "Fire watch name",
+            fieldType: "short_text",
+            fieldOrder: 6,
+            conditions: [
+              {
+                trigger: "on_change",
+                conditionGroup: {
+                  logic: "AND",
+                  conditions: [{ fieldKey: "fire_watch_required", operator: "equals", value: true }]
+                },
+                actions: [{ type: "show" }, { type: "require" }]
+              }
+            ]
+          },
+          {
+            fieldKey: "ppe_required",
+            label: "PPE required",
+            fieldType: "checkbox",
+            fieldOrder: 7,
+            config: {
+              options: [
+                "Hard hat",
+                "Safety glasses",
+                "Hi-vis",
+                "Steel caps",
+                "Gloves",
+                "P2 mask",
+                "Full face respirator",
+                "Harness",
+                "Face shield",
+                "Arc flash suit"
+              ]
+            }
+          },
+          { fieldKey: "controls", label: "Controls in place", fieldType: "long_text", fieldOrder: 8, isRequired: true },
+          { fieldKey: "swms_reference", label: "SWMS reference", fieldType: "short_text", fieldOrder: 9, isRequired: true }
+        ]
+      },
+      {
+        title: "Sign-off",
+        sortOrder: 2,
+        fields: [
+          { fieldKey: "issuer_signature", label: "Permit issuer signature", fieldType: "signature", fieldOrder: 0, isRequired: true },
+          { fieldKey: "receiver_signature", label: "Permit receiver signature", fieldType: "signature", fieldOrder: 1, isRequired: true },
+          { fieldKey: "close_out_notes", label: "Close-out notes", fieldType: "long_text", fieldOrder: 2 },
+          { fieldKey: "close_out_signature", label: "Close-out signature", fieldType: "signature", fieldOrder: 3 }
+        ]
+      }
+    ]
+  });
+
+  // 8b — Pre-Task Plan / JHA (pre_task_plan — WHS template pack)
+  // Job Hazard Analysis for tasks below the Permit-to-Work threshold.
+  // Repeating "Task Step" section lets the crew break the job into steps and
+  // record hazard + control per step.
+  await upsertSystemTemplate(prisma, {
+    code: "IS-FORM-PRE-TASK-PLAN",
+    name: "Pre-Task Plan / JHA",
+    description: "Job hazard analysis — step-by-step hazards and controls before starting work.",
+    category: "safety",
+    settings: { requiresApproval: false, allowOffline: true, pdfExport: true },
+    sections: [
+      {
+        title: "Task Details",
+        sortOrder: 0,
+        fields: [
+          { fieldKey: "pre_task_plan_date", label: "Date", fieldType: "date", fieldOrder: 0, isRequired: true },
+          { fieldKey: "job", label: "Job", fieldType: "system_field", fieldOrder: 1, config: { source: "job" } },
+          { fieldKey: "supervisor", label: "Supervisor", fieldType: "system_field", fieldOrder: 2, config: { source: "supervisor" } },
+          { fieldKey: "crew", label: "Crew / attendees", fieldType: "multi_select", fieldOrder: 3, config: { lookupEntity: "Worker" } },
+          { fieldKey: "task_description", label: "Task description", fieldType: "long_text", fieldOrder: 4, isRequired: true },
+          {
+            fieldKey: "swms_reviewed",
+            label: "SWMS reviewed with crew",
+            fieldType: "toggle",
+            fieldOrder: 5,
+            isRequired: true
+          },
+          { fieldKey: "swms_reference", label: "SWMS reference", fieldType: "short_text", fieldOrder: 6 }
+        ]
+      },
+      {
+        title: "Task Steps",
+        description: "Break the job into steps. Record hazard and control per step.",
+        sortOrder: 1,
+        fields: [
+          { fieldKey: "step_1", label: "Step 1 — description", fieldType: "short_text", fieldOrder: 0 },
+          { fieldKey: "step_1_hazard", label: "Step 1 — hazard", fieldType: "short_text", fieldOrder: 1 },
+          { fieldKey: "step_1_control", label: "Step 1 — control", fieldType: "short_text", fieldOrder: 2 },
+          { fieldKey: "step_2", label: "Step 2 — description", fieldType: "short_text", fieldOrder: 3 },
+          { fieldKey: "step_2_hazard", label: "Step 2 — hazard", fieldType: "short_text", fieldOrder: 4 },
+          { fieldKey: "step_2_control", label: "Step 2 — control", fieldType: "short_text", fieldOrder: 5 },
+          { fieldKey: "step_3", label: "Step 3 — description", fieldType: "short_text", fieldOrder: 6 },
+          { fieldKey: "step_3_hazard", label: "Step 3 — hazard", fieldType: "short_text", fieldOrder: 7 },
+          { fieldKey: "step_3_control", label: "Step 3 — control", fieldType: "short_text", fieldOrder: 8 },
+          { fieldKey: "step_4", label: "Step 4 — description", fieldType: "short_text", fieldOrder: 9 },
+          { fieldKey: "step_4_hazard", label: "Step 4 — hazard", fieldType: "short_text", fieldOrder: 10 },
+          { fieldKey: "step_4_control", label: "Step 4 — control", fieldType: "short_text", fieldOrder: 11 },
+          { fieldKey: "additional_hazards", label: "Additional hazards / notes", fieldType: "long_text", fieldOrder: 12 }
+        ]
+      },
+      {
+        title: "PPE & Sign-off",
+        sortOrder: 2,
+        fields: [
+          {
+            fieldKey: "ppe_required",
+            label: "PPE required",
+            fieldType: "checkbox",
+            fieldOrder: 0,
+            config: {
+              options: [
+                "Hard hat",
+                "Safety glasses",
+                "Hi-vis",
+                "Steel caps",
+                "Gloves",
+                "P2 mask",
+                "Harness",
+                "Hearing protection"
+              ]
+            }
+          },
+          {
+            fieldKey: "overall_risk_rating",
+            label: "Overall risk rating",
+            fieldType: "dropdown",
+            fieldOrder: 1,
+            isRequired: true,
+            config: { options: ["Low", "Medium", "High", "Extreme"] },
+            actions: [
+              {
+                trigger: "on_submit",
+                conditionGroup: {
+                  logic: "AND",
+                  conditions: [{ fieldKey: "overall_risk_rating", operator: "equals", value: "Extreme" }]
+                },
+                actions: [
+                  {
+                    type: "send_notification",
+                    notificationTarget: "supervisor",
+                    notificationMessage: "Pre-Task Plan rated Extreme risk — escalate before work commences."
+                  }
+                ]
+              }
+            ]
+          },
+          { fieldKey: "supervisor_signature", label: "Supervisor signature", fieldType: "signature", fieldOrder: 2, isRequired: true }
+        ]
+      }
+    ]
+  });
+
+  // 8c — Toolbox Talk sign-on (toolbox_talk — WHS template pack)
+  // Presenter records topic + key points; each attendee signs. Downstream
+  // analytics can tally attendance by worker for compliance reporting.
+  await upsertSystemTemplate(prisma, {
+    code: "IS-FORM-TOOLBOX-TALK",
+    name: "Toolbox Talk",
+    description: "Toolbox talk record with topic, key points, and attendee sign-on.",
+    category: "safety",
+    settings: { requiresApproval: false, allowOffline: true, pdfExport: true },
+    sections: [
+      {
+        title: "Talk Details",
+        sortOrder: 0,
+        fields: [
+          { fieldKey: "toolbox_talk_date", label: "Date", fieldType: "date", fieldOrder: 0, isRequired: true },
+          { fieldKey: "job", label: "Job", fieldType: "system_field", fieldOrder: 1, config: { source: "job" } },
+          { fieldKey: "presenter", label: "Presenter", fieldType: "system_field", fieldOrder: 2, config: { source: "supervisor" } },
+          { fieldKey: "topic", label: "Topic", fieldType: "short_text", fieldOrder: 3, isRequired: true },
+          {
+            fieldKey: "topic_category",
+            label: "Topic category",
+            fieldType: "dropdown",
+            fieldOrder: 4,
+            config: {
+              options: [
+                "Manual handling",
+                "Working at heights",
+                "Electrical safety",
+                "PPE",
+                "Housekeeping",
+                "Emergency procedures",
+                "Environmental",
+                "Recent incident",
+                "Other"
+              ]
+            }
+          },
+          { fieldKey: "duration_minutes", label: "Duration (minutes)", fieldType: "number", fieldOrder: 5 }
+        ]
+      },
+      {
+        title: "Content",
+        sortOrder: 1,
+        fields: [
+          { fieldKey: "key_points", label: "Key points discussed", fieldType: "long_text", fieldOrder: 0, isRequired: true },
+          { fieldKey: "questions_raised", label: "Questions raised", fieldType: "long_text", fieldOrder: 1 },
+          { fieldKey: "actions_agreed", label: "Actions agreed", fieldType: "long_text", fieldOrder: 2 }
+        ]
+      },
+      {
+        title: "Attendee Sign-on",
+        sortOrder: 2,
+        fields: [
+          { fieldKey: "attendees", label: "Attendees", fieldType: "multi_select", fieldOrder: 0, config: { lookupEntity: "Worker" }, isRequired: true },
+          { fieldKey: "attendee_count", label: "Number of attendees", fieldType: "number", fieldOrder: 1 },
+          { fieldKey: "presenter_signature", label: "Presenter signature", fieldType: "signature", fieldOrder: 2, isRequired: true },
+          { fieldKey: "attendees_signed", label: "All attendees signed the sign-on sheet", fieldType: "toggle", fieldOrder: 3, isRequired: true }
+        ]
+      }
+    ]
+  });
+
+  // 8d — Site Bulletin acknowledgement (site bulletin — WHS template pack)
+  // Broadcast a safety alert/bulletin and require each recipient to acknowledge
+  // they have read and understood. Used for post-incident learnings and
+  // regulator-driven communications.
+  await upsertSystemTemplate(prisma, {
+    code: "IS-FORM-SITE-BULLETIN",
+    name: "Site Bulletin Acknowledgement",
+    description: "Safety bulletin broadcast — recipient acknowledges reading and understanding.",
+    category: "safety",
+    settings: { requiresApproval: false, allowOffline: true, pdfExport: true },
+    sections: [
+      {
+        title: "Bulletin",
+        sortOrder: 0,
+        fields: [
+          { fieldKey: "bulletin_reference", label: "Bulletin reference", fieldType: "short_text", fieldOrder: 0, isRequired: true },
+          { fieldKey: "issued_date", label: "Issued date", fieldType: "date", fieldOrder: 1, isRequired: true },
+          { fieldKey: "issued_by", label: "Issued by", fieldType: "short_text", fieldOrder: 2, isRequired: true },
+          {
+            fieldKey: "bulletin_type",
+            label: "Bulletin type",
+            fieldType: "dropdown",
+            fieldOrder: 3,
+            isRequired: true,
+            config: {
+              options: [
+                "Safety alert",
+                "Lessons learned",
+                "Regulatory change",
+                "Procedure update",
+                "Environmental notice",
+                "General information"
+              ]
+            }
+          },
+          { fieldKey: "title", label: "Title", fieldType: "short_text", fieldOrder: 4, isRequired: true },
+          { fieldKey: "summary", label: "Summary", fieldType: "long_text", fieldOrder: 5, isRequired: true },
+          { fieldKey: "actions_required", label: "Actions required", fieldType: "long_text", fieldOrder: 6 },
+          { fieldKey: "attachment_reference", label: "Attachment reference", fieldType: "short_text", fieldOrder: 7 }
+        ]
+      },
+      {
+        title: "Acknowledgement",
+        sortOrder: 1,
+        fields: [
+          { fieldKey: "recipient", label: "Recipient", fieldType: "system_field", fieldOrder: 0, config: { source: "worker" } },
+          {
+            fieldKey: "read_and_understood",
+            label: "I have read and understood the bulletin",
+            fieldType: "toggle",
+            fieldOrder: 1,
+            isRequired: true
+          },
+          {
+            fieldKey: "questions_or_concerns",
+            label: "Questions or concerns",
+            fieldType: "long_text",
+            fieldOrder: 2
+          },
+          { fieldKey: "recipient_signature", label: "Recipient signature", fieldType: "signature", fieldOrder: 3, isRequired: true },
+          { fieldKey: "acknowledged_at", label: "Acknowledged at", fieldType: "datetime", fieldOrder: 4, isRequired: true }
+        ]
+      }
+    ]
+  });
+
+  // 9 — Environmental Incident Report
   await upsertSystemTemplate(prisma, {
     code: "IS-FORM-ENV-INCIDENT",
     name: "Environmental Incident Report",

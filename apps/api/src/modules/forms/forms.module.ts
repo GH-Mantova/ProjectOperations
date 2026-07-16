@@ -7,11 +7,15 @@ import { FormsService } from "./forms.service";
 import { FormsEngineController } from "./forms-engine.controller";
 import { FormsEngineService } from "./forms-engine.service";
 import { RulesEngineService } from "./rules-engine.service";
+import { FormsSnippetsController } from "./forms-snippets.controller";
+import { FormsSnippetsService } from "./forms-snippets.service";
 
 /**
  * §13 Forms and Compliance module — wires the template/submission CRUD
- * (FormsController + FormsService) and the worker-facing engine
- * (FormsEngineController + FormsEngineService + RulesEngineService).
+ * (FormsController + FormsService), the worker-facing engine
+ * (FormsEngineController + FormsEngineService + RulesEngineService),
+ * and the reusable content-snippet library
+ * (FormsSnippetsController + FormsSnippetsService).
  *
  * RulesEngineService and FormsEngineService are re-exported so other
  * modules (e.g. compliance dashboards, safety auto-creation flows) can
@@ -20,8 +24,8 @@ import { RulesEngineService } from "./rules-engine.service";
  */
 @Module({
   imports: [PrismaModule, AuditModule, PlatformModule],
-  controllers: [FormsController, FormsEngineController],
-  providers: [FormsService, FormsEngineService, RulesEngineService],
-  exports: [RulesEngineService, FormsEngineService]
+  controllers: [FormsController, FormsEngineController, FormsSnippetsController],
+  providers: [FormsService, FormsEngineService, RulesEngineService, FormsSnippetsService],
+  exports: [RulesEngineService, FormsEngineService, FormsSnippetsService]
 })
 export class FormsModule {}

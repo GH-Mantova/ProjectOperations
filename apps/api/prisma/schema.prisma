@@ -708,6 +708,11 @@ model Site {
   suburb          String?
   state           String?
   postcode        String?
+  // ERP gap C — canonical site coordinates. Populated by admin when a
+  // geofence is drawn; the SiteGeofence rows carry their own centres, so a
+  // site can host multiple named geofences (e.g. main gate + laydown yard).
+  centreLat       Decimal?         @map("centre_lat") @db.Decimal(9, 6)
+  centreLng       Decimal?         @map("centre_lng") @db.Decimal(9, 6)
   notes           String?
   createdAt       DateTime         @default(now()) @map("created_at")
   updatedAt       DateTime         @updatedAt @map("updated_at")
@@ -718,10 +723,37 @@ model Site {
   tenders         Tender[]
   assetCheckouts  AssetCheckout[]  @relation("AssetCheckoutSite")
   dailyDiaries    DailyDiary[]
+  geofences       SiteGeofence[]
 
   @@unique([name])
   @@index([clientId])
   @@map("sites")
+}
+
+// ERP gap C — geofenced clock-in/out (QuickBooks Time parity). Timesheet GPS
+// capture already existed (clockOnLat/Lng, clockOffLat/Lng); this record adds
+// the second half: a circular boundary attached to a Site so we can (a) flag
+// clock events as in/out-of-geofence for audit, and (b) tell the field app
+// which job's geofence the worker is currently standing in so it can auto-
+// select the correct allocation. No continuous tracking — evaluation runs on
+// clock-event submissions and on explicit on-demand lookups only.
+model SiteGeofence {
+  id             String      @id @default(cuid())
+  siteId         String      @map("site_id")
+  site           Site        @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  name           String
+  centreLat      Decimal     @map("centre_lat") @db.Decimal(9, 6)
+  centreLng      Decimal     @map("centre_lng") @db.Decimal(9, 6)
+  radiusMetres   Int         @map("radius_metres")
+  isActive       Boolean     @default(true) @map("is_active")
+  notes          String?
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+  clockOnEvents  Timesheet[] @relation("TimesheetClockOnGeofence")
+  clockOffEvents Timesheet[] @relation("TimesheetClockOffGeofence")
+
+  @@index([siteId, isActive])
+  @@map("site_geofences")
 }
 
 model ResourceType {
@@ -2739,6 +2771,17 @@ model Timesheet {
   clockOffLat      Decimal?          @map("clock_off_lat") @db.Decimal(9, 6)
   clockOffLng      Decimal?          @map("clock_off_lng") @db.Decimal(9, 6)
   clockOffAccuracy Decimal?          @map("clock_off_accuracy") @db.Decimal(8, 2)
+  // ERP gap C — geofence audit flags. Boolean is nullable so pre-geofence
+  // rows (and rows without GPS) stay distinguishable from a genuine "outside
+  // the geofence" reading. clockOnGeofenceId is set only when the point fell
+  // inside an active geofence at the time of evaluation; if the site has no
+  // geofence configured, both remain null.
+  clockOnInGeofence  Boolean?        @map("clock_on_in_geofence")
+  clockOffInGeofence Boolean?        @map("clock_off_in_geofence")
+  clockOnGeofenceId  String?         @map("clock_on_geofence_id")
+  clockOnGeofence    SiteGeofence?   @relation("TimesheetClockOnGeofence", fields: [clockOnGeofenceId], references: [id], onDelete: SetNull)
+  clockOffGeofenceId String?         @map("clock_off_geofence_id")
+  clockOffGeofence   SiteGeofence?   @relation("TimesheetClockOffGeofence", fields: [clockOffGeofenceId], references: [id], onDelete: SetNull)
   status           TimesheetStatus   @default(DRAFT)
   submittedAt      DateTime?         @map("submitted_at")
   approvedById     String?           @map("approved_by_id")

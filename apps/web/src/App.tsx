@@ -69,6 +69,7 @@ import { PayrollExportPage } from "./pages/field/PayrollExportPage";
 import { UserProfilePage } from "./pages/account/UserProfilePage";
 import { AdminSettingsPage } from "./pages/AdminSettingsPage";
 import { AdminCompanyPage } from "./pages/admin/AdminCompanyPage";
+import { DataModelMapPage } from "./pages/admin/DataModelMapPage";
 import { AiSettingsPage } from "./personas/pages/AiSettingsPage";
 import { ContractsListPage } from "./pages/contracts/ContractsListPage";
 import { ContractDetailPage } from "./pages/contracts/ContractDetailPage";
@@ -236,6 +237,7 @@ export function App() {
             <Route path="/admin/platform" element={<PlatformPage />} />
             <Route path="/admin/settings" element={<AdminSettingsPage />} />
             <Route path="/admin/company" element={<AdminCompanyPage />} />
+            <Route path="/admin/data-model" element={<DataModelMapPage />} />
             <Route path="/admin/ai-settings" element={<AiSettingsPage />} />
             <Route path="/contracts" element={<ContractsListPage />} />
             <Route path="/contracts/:id" element={<ContractDetailPage />} />

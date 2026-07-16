@@ -8,6 +8,8 @@ import { JpmService } from "./jpm.service";
 import { ProjectsController } from "./projects.controller";
 import { ProjectsService } from "./projects.service";
 import { ProjectsTimelineController } from "./projects-timeline.controller";
+import { PunchItemsController } from "./punch-items.controller";
+import { PunchItemsService } from "./punch-items.service";
 
 /**
  * NestJS module for §8 Jobs and Delivery — owns the Projects HTTP surface
@@ -23,8 +25,14 @@ import { ProjectsTimelineController } from "./projects-timeline.controller";
  */
 @Module({
   imports: [AuditModule, PlatformModule],
-  controllers: [ProjectsController, GanttController, ProjectsTimelineController, JpmController],
-  providers: [ProjectsService, GanttService, JpmService],
-  exports: [ProjectsService, GanttService, JpmService]
+  controllers: [
+    ProjectsController,
+    GanttController,
+    ProjectsTimelineController,
+    JpmController,
+    PunchItemsController
+  ],
+  providers: [ProjectsService, GanttService, JpmService, PunchItemsService],
+  exports: [ProjectsService, GanttService, JpmService, PunchItemsService]
 })
 export class ProjectsModule {}

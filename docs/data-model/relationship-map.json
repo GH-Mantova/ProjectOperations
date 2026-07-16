@@ -2,10 +2,10 @@
   "_generator": "scripts/data-model/build-relationship-map.mjs",
   "_doNotEdit": "Regenerated from schema.prisma. Do not hand-edit.",
   "generatedFrom": "apps/api/prisma/schema.prisma",
-  "schemaSha256": "f96056e6f88d2ad69795f291eba95818f821d3a9d38ae4ddc76d77ded38caf5b",
-  "modelCount": 197,
+  "schemaSha256": "4618149d2d59c418e59633940ecc644253445ac38b74bb35b2908a285ba8cfde",
+  "modelCount": 198,
   "enumCount": 25,
-  "edgeCount": 290,
+  "edgeCount": 295,
   "domains": {
     "Assets": [
       "Asset",
@@ -234,7 +234,8 @@
       "AccessRequest",
       "CompanyLegalDocument",
       "CompanyProfile",
-      "OperationsSettings"
+      "OperationsSettings",
+      "PunchItem"
     ],
     "Workers": [
       "Competency",
@@ -15894,6 +15895,25 @@
             "onDelete": null
           },
           "owning": false
+        },
+        {
+          "name": "punchItems",
+          "dbColumn": null,
+          "type": "PunchItem",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
         }
       ],
       "relations": [
@@ -16058,9 +16078,24 @@
           "onDelete": null,
           "fkFields": [],
           "refFields": []
+        },
+        {
+          "field": "punchItems",
+          "target": "PunchItem",
+          "cardinality": "many",
+          "relationName": null,
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
         }
       ],
       "referencedBy": [
+        {
+          "from": "PunchItem",
+          "via": "submission",
+          "fk": "submissionId"
+        },
         {
           "from": "FormApproval",
           "via": "submission",
@@ -18881,6 +18916,25 @@
             "onDelete": null
           },
           "owning": false
+        },
+        {
+          "name": "punchItems",
+          "dbColumn": null,
+          "type": "PunchItem",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
         }
       ],
       "relations": [
@@ -19087,6 +19141,16 @@
           "onDelete": null,
           "fkFields": [],
           "refFields": []
+        },
+        {
+          "field": "punchItems",
+          "target": "PunchItem",
+          "cardinality": "many",
+          "relationName": null,
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
         }
       ],
       "referencedBy": [
@@ -19107,6 +19171,11 @@
         },
         {
           "from": "JobIssue",
+          "via": "job",
+          "fk": "jobId"
+        },
+        {
+          "from": "PunchItem",
           "via": "job",
           "fk": "jobId"
         },
@@ -26477,6 +26546,393 @@
         }
       ],
       "relations": [],
+      "referencedBy": []
+    },
+    "PunchItem": {
+      "name": "PunchItem",
+      "domain": "Unclassified",
+      "dbTable": "punch_items",
+      "fields": [
+        {
+          "name": "id",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": true,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "jobId",
+          "dbColumn": "job_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "title",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "description",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "location",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "status",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "raisedById",
+          "dbColumn": "raised_by_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "assignedToId",
+          "dbColumn": "assigned_to_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "dueAt",
+          "dbColumn": "due_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "closedAt",
+          "dbColumn": "closed_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "closedById",
+          "dbColumn": "closed_by_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "closureNote",
+          "dbColumn": "closure_note",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "photoUrl",
+          "dbColumn": "photo_url",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "submissionId",
+          "dbColumn": "submission_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "createdAt",
+          "dbColumn": "created_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "updatedAt",
+          "dbColumn": "updated_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": true
+        },
+        {
+          "name": "job",
+          "dbColumn": null,
+          "type": "Job",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [
+              "jobId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "Cascade"
+          },
+          "owning": true
+        },
+        {
+          "name": "raisedBy",
+          "dbColumn": null,
+          "type": "User",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "PunchItemRaisedBy",
+            "fkFields": [
+              "raisedById"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "Restrict"
+          },
+          "owning": true
+        },
+        {
+          "name": "assignedTo",
+          "dbColumn": null,
+          "type": "User",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "PunchItemAssignee",
+            "fkFields": [
+              "assignedToId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "SetNull"
+          },
+          "owning": true
+        },
+        {
+          "name": "closedBy",
+          "dbColumn": null,
+          "type": "User",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "PunchItemClosedBy",
+            "fkFields": [
+              "closedById"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "SetNull"
+          },
+          "owning": true
+        },
+        {
+          "name": "submission",
+          "dbColumn": null,
+          "type": "FormSubmission",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [
+              "submissionId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "SetNull"
+          },
+          "owning": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "job",
+          "target": "Job",
+          "cardinality": "one",
+          "relationName": null,
+          "owning": true,
+          "onDelete": "Cascade",
+          "fkFields": [
+            "jobId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "raisedBy",
+          "target": "User",
+          "cardinality": "one",
+          "relationName": "PunchItemRaisedBy",
+          "owning": true,
+          "onDelete": "Restrict",
+          "fkFields": [
+            "raisedById"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "assignedTo",
+          "target": "User",
+          "cardinality": "one-optional",
+          "relationName": "PunchItemAssignee",
+          "owning": true,
+          "onDelete": "SetNull",
+          "fkFields": [
+            "assignedToId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "closedBy",
+          "target": "User",
+          "cardinality": "one-optional",
+          "relationName": "PunchItemClosedBy",
+          "owning": true,
+          "onDelete": "SetNull",
+          "fkFields": [
+            "closedById"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "submission",
+          "target": "FormSubmission",
+          "cardinality": "one-optional",
+          "relationName": null,
+          "owning": true,
+          "onDelete": "SetNull",
+          "fkFields": [
+            "submissionId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        }
+      ],
       "referencedBy": []
     },
     "PurchaseOrder": {
@@ -42342,6 +42798,63 @@
           "owning": false
         },
         {
+          "name": "raisedPunchItems",
+          "dbColumn": null,
+          "type": "PunchItem",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "PunchItemRaisedBy",
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
+        },
+        {
+          "name": "assignedPunchItems",
+          "dbColumn": null,
+          "type": "PunchItem",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "PunchItemAssignee",
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
+        },
+        {
+          "name": "closedPunchItems",
+          "dbColumn": null,
+          "type": "PunchItem",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "PunchItemClosedBy",
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
+        },
+        {
           "name": "approvedVariations",
           "dbColumn": null,
           "type": "JobVariation",
@@ -43992,6 +44505,36 @@
           "refFields": []
         },
         {
+          "field": "raisedPunchItems",
+          "target": "PunchItem",
+          "cardinality": "many",
+          "relationName": "PunchItemRaisedBy",
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
+        },
+        {
+          "field": "assignedPunchItems",
+          "target": "PunchItem",
+          "cardinality": "many",
+          "relationName": "PunchItemAssignee",
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
+        },
+        {
+          "field": "closedPunchItems",
+          "target": "PunchItem",
+          "cardinality": "many",
+          "relationName": "PunchItemClosedBy",
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
+        },
+        {
           "field": "approvedVariations",
           "target": "JobVariation",
           "cardinality": "many",
@@ -44787,6 +45330,21 @@
           "from": "JobIssue",
           "via": "reportedBy",
           "fk": "reportedById"
+        },
+        {
+          "from": "PunchItem",
+          "via": "raisedBy",
+          "fk": "raisedById"
+        },
+        {
+          "from": "PunchItem",
+          "via": "assignedTo",
+          "fk": "assignedToId"
+        },
+        {
+          "from": "PunchItem",
+          "via": "closedBy",
+          "fk": "closedById"
         },
         {
           "from": "JobVariation",
@@ -48899,6 +49457,46 @@
       "fk": "reportedById",
       "onDelete": "SetNull",
       "relationName": "JobIssueReporter"
+    },
+    {
+      "from": "PunchItem",
+      "to": "Job",
+      "via": "job",
+      "fk": "jobId",
+      "onDelete": "Cascade",
+      "relationName": null
+    },
+    {
+      "from": "PunchItem",
+      "to": "User",
+      "via": "raisedBy",
+      "fk": "raisedById",
+      "onDelete": "Restrict",
+      "relationName": "PunchItemRaisedBy"
+    },
+    {
+      "from": "PunchItem",
+      "to": "User",
+      "via": "assignedTo",
+      "fk": "assignedToId",
+      "onDelete": "SetNull",
+      "relationName": "PunchItemAssignee"
+    },
+    {
+      "from": "PunchItem",
+      "to": "User",
+      "via": "closedBy",
+      "fk": "closedById",
+      "onDelete": "SetNull",
+      "relationName": "PunchItemClosedBy"
+    },
+    {
+      "from": "PunchItem",
+      "to": "FormSubmission",
+      "via": "submission",
+      "fk": "submissionId",
+      "onDelete": "SetNull",
+      "relationName": null
     },
     {
       "from": "JobVariation",

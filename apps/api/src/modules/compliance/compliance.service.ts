@@ -8,6 +8,41 @@ import {
   checkCompetencyGate
 } from "./competency-gate";
 
+// ─── Worker-competency expiry types ────────────────────────────────────────
+
+/**
+ * A single expiring/expired worker competency row returned by
+ * {@link ComplianceService.expiringCompetencies}.
+ *
+ * `daysUntilExpiry` is negative for already-expired rows, which sorts them to
+ * the top of urgency-ordered lists. `status` mirrors the existing
+ * {@link ComplianceStatus} vocabulary so the frontend can reuse the same
+ * tone-map helper.
+ */
+export type WorkerCompetencyRow = {
+  id: string;
+  workerId: string;
+  workerName: string;
+  competencyId: string;
+  competencyName: string;
+  competencyCode: string | null;
+  expiresAt: Date | null;
+  status: "expired" | "expiring_soon" | "active";
+  daysUntilExpiry: number | null;
+};
+
+/**
+ * Shape returned by {@link ComplianceService.workerCompetencyFlags} — surfaces
+ * expiry state on a worker-level DTO without exposing raw DB rows.
+ */
+export type WorkerCompetencyFlags = {
+  workerId: string;
+  hasExpiredCompetencies: boolean;
+  hasExpiringCompetencies: boolean;
+  expiringCount: number;
+  expiredCount: number;
+};
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const QUAL_TYPES = [
@@ -538,6 +573,237 @@ export class ComplianceService {
     });
   }
 
+  // ─── Worker competency expiry ────────────────────────────────────────────
+
+  /**
+   * Query worker competencies expiring (or already expired) within
+   * `horizonDays` days.
+   *
+   * Uses `WorkerCompetency.expiresAt` — distinct from
+   * `WorkerQualification.expiryDate` which covers a different competency
+   * model. Results include already-expired rows (`expiresAt < now`) so the
+   * caller gets the full picture without a second query. Ordered by
+   * `expiresAt` ascending (nulls last via explicit sort), so the most urgent
+   * rows surface first.
+   *
+   * `horizonDays` is a parameter — NOT hardcoded. Callers supply the window;
+   * the scheduled digest reads it from the `NotificationTriggerConfig` metadata
+   * field or falls back to 60 days.
+   *
+   * @param horizonDays Look-ahead window in days. Expired rows are always
+   *   included regardless of this value.
+   * @returns Array of {@link WorkerCompetencyRow}, sorted by expiry ascending.
+   */
+  async expiringCompetencies(horizonDays: number): Promise<WorkerCompetencyRow[]> {
+    const now = new Date();
+    const cutoff = new Date(now.getTime() + horizonDays * DAY_MS);
+
+    const rows = await this.prisma.workerCompetency.findMany({
+      where: {
+        expiresAt: { not: null, lte: cutoff }
+      },
+      include: {
+        worker: { select: { id: true, firstName: true, lastName: true } },
+        competency: { select: { id: true, name: true, code: true } }
+      },
+      orderBy: { expiresAt: "asc" }
+    });
+
+    return rows.map((r) => {
+      const daysUntil =
+        r.expiresAt
+          ? Math.ceil((r.expiresAt.getTime() - now.getTime()) / DAY_MS)
+          : null;
+      const status: WorkerCompetencyRow["status"] =
+        daysUntil === null
+          ? "active"
+          : daysUntil < 0
+            ? "expired"
+            : "expiring_soon";
+      return {
+        id: r.id,
+        workerId: r.worker.id,
+        workerName: `${r.worker.firstName} ${r.worker.lastName}`,
+        competencyId: r.competency.id,
+        competencyName: r.competency.name,
+        competencyCode: r.competency.code,
+        expiresAt: r.expiresAt,
+        status,
+        daysUntilExpiry: daysUntil
+      };
+    });
+  }
+
+  /**
+   * Return competency expiry flags for a single worker.
+   *
+   * Used to decorate worker-detail views with a lightweight expiry indicator
+   * without loading the full competency list. `hasExpiringCompetencies` is
+   * true when any competency expires within 60 days; `hasExpiredCompetencies`
+   * is true when any competency's `expiresAt` is in the past.
+   *
+   * @param workerId The Worker (not WorkerProfile) ID.
+   * @returns {@link WorkerCompetencyFlags} for the given worker.
+   */
+  async workerCompetencyFlags(workerId: string): Promise<WorkerCompetencyFlags> {
+    const now = new Date();
+    const horizon60 = new Date(now.getTime() + 60 * DAY_MS);
+
+    const rows = await this.prisma.workerCompetency.findMany({
+      where: { workerId, expiresAt: { not: null } },
+      select: { expiresAt: true }
+    });
+
+    let expiredCount = 0;
+    let expiringCount = 0;
+    for (const r of rows) {
+      if (!r.expiresAt) continue;
+      if (r.expiresAt < now) {
+        expiredCount += 1;
+      } else if (r.expiresAt <= horizon60) {
+        expiringCount += 1;
+      }
+    }
+
+    return {
+      workerId,
+      hasExpiredCompetencies: expiredCount > 0,
+      hasExpiringCompetencies: expiringCount > 0,
+      expiringCount,
+      expiredCount
+    };
+  }
+
+  /**
+   * Send the competency expiry digest email + in-app notifications.
+   *
+   * Reads the `competency.expiry_digest` {@link NotificationTriggerConfig}
+   * for `isEnabled`, `deliveryMethod`, and `recipientUserIds` /
+   * `recipientRoles`. If the trigger is disabled or has no recipients,
+   * returns `{ sent: 0 }` without error. The `horizonDays` parameter
+   * controls the look-ahead window and defaults to 60 when no value is
+   * supplied — callers (admin on-demand and the cron) both pass it
+   * explicitly so the value is never hardcoded here.
+   *
+   * Digest groups rows by worker so the email is readable when many
+   * competencies are near-expiry. No dedup is applied — the digest is
+   * designed to run once per day and the volume is intentionally low
+   * (safety-critical tickets only).
+   *
+   * @param horizonDays Look-ahead window (days). Defaults to 60.
+   * @returns Count of in-app notification rows created + 1 if email sent.
+   */
+  async competencyExpiryDigest(horizonDays = 60): Promise<{ sent: number; rows: number }> {
+    const rows = await this.expiringCompetencies(horizonDays);
+    if (rows.length === 0) return { sent: 0, rows: 0 };
+
+    const trigger = await this.prisma.notificationTriggerConfig.findUnique({
+      where: { trigger: "competency.expiry_digest" }
+    });
+
+    // If not seeded yet or admin has disabled, skip silently.
+    if (!trigger || !trigger.isEnabled) {
+      this.logger.debug("competency.expiry_digest trigger not enabled — skipping digest");
+      return { sent: 0, rows: rows.length };
+    }
+
+    const recipients = await this.resolveDigestRecipients(
+      trigger.recipientUserIds,
+      trigger.recipientRoles
+    );
+    if (recipients.length === 0) {
+      this.logger.debug("no recipients configured for competency.expiry_digest");
+      return { sent: 0, rows: rows.length };
+    }
+
+    // Group by worker for a readable digest.
+    const byWorker = new Map<string, WorkerCompetencyRow[]>();
+    for (const r of rows) {
+      const existing = byWorker.get(r.workerId);
+      if (existing) {
+        existing.push(r);
+      } else {
+        byWorker.set(r.workerId, [r]);
+      }
+    }
+
+    const expiredCount = rows.filter((r) => r.status === "expired").length;
+    const subject = expiredCount > 0
+      ? `[URGENT] ${expiredCount} worker competencies EXPIRED + ${rows.length - expiredCount} expiring — IS Operations`
+      : `${rows.length} worker competencies expiring within ${horizonDays} days — IS Operations`;
+
+    const html = this.renderCompetencyDigestEmail(byWorker, horizonDays);
+    const text = rows
+      .map(
+        (r) =>
+          `${r.workerName} — ${r.competencyName}${r.competencyCode ? ` (${r.competencyCode})` : ""} — ${
+            r.expiresAt ? new Date(r.expiresAt).toISOString().slice(0, 10) : "no expiry"
+          } (${r.daysUntilExpiry ?? "—"} days)`
+      )
+      .join("\n");
+
+    let sent = 0;
+
+    if (trigger.deliveryMethod !== "inapp") {
+      void this.email.sendNotificationEmail({
+        trigger: "competency.expiry_digest",
+        subject,
+        html,
+        text
+      });
+      sent += 1;
+    }
+
+    for (const user of recipients) {
+      await this.notifications.create({
+        userId: user.id,
+        title: subject,
+        body: `${rows.length} worker competenc${rows.length === 1 ? "y" : "ies"} need attention. Visit the Compliance page for details.`,
+        severity: expiredCount > 0 ? "HIGH" : "LOW",
+        linkUrl: "/compliance"
+      });
+      sent += 1;
+    }
+
+    return { sent, rows: rows.length };
+  }
+
+  /**
+   * Scheduled competency expiry digest — runs at 21:30 UTC (7:30am AEST).
+   * Half-hour offset from the main compliance cron to avoid DB contention.
+   *
+   * Reads horizon from the `competency.expiry_digest` trigger config
+   * `description` field suffix `[horizon=N]` if present; falls back to 60.
+   * Recipient list and enabled state are also read from that config row,
+   * so Marco can update them from Admin Settings without a code change.
+   */
+  @Cron("30 21 * * *", { name: "competency-expiry-digest", timeZone: "UTC" })
+  async runCompetencyExpiryDigest(): Promise<void> {
+    try {
+      const triggerConfig = await this.prisma.notificationTriggerConfig.findUnique({
+        where: { trigger: "competency.expiry_digest" },
+        select: { description: true }
+      });
+
+      // Allow horizon to be embedded in description as "[horizon=N]"
+      // so Marco can change it from Admin Settings without a deploy.
+      let horizonDays = 60;
+      if (triggerConfig?.description) {
+        const match = /\[horizon=(\d+)\]/.exec(triggerConfig.description);
+        if (match) {
+          horizonDays = parseInt(match[1], 10);
+        }
+      }
+
+      const result = await this.competencyExpiryDigest(horizonDays);
+      this.logger.log(
+        `Competency expiry digest: ${result.rows} competencies in window, ${result.sent} notifications sent.`
+      );
+    } catch (err) {
+      this.logger.error(`Competency expiry digest failed: ${(err as Error).message}`);
+    }
+  }
+
   // ─── Worker qualifications CRUD ─────────────────────────────────────────
   /**
    * List a worker's qualifications, decorated with a derived `status`.
@@ -766,6 +1032,88 @@ export class ComplianceService {
         </tr></thead>
         <tbody>${tableRows}</tbody>
       </table>
+    </div>`;
+  }
+
+  /**
+   * Resolve the actual `User` rows that should receive the competency digest.
+   *
+   * Tries explicit `recipientUserIds` first; falls back to users carrying any
+   * of the `recipientRoles` (matched via `Role.name`). If both are empty,
+   * falls back to users with `compliance.admin` permission — the WHS officer
+   * always gets safety-critical alerts even if the trigger config is
+   * unconfigured.
+   */
+  private async resolveDigestRecipients(
+    recipientUserIds: string[],
+    recipientRoles: string[]
+  ): Promise<Array<{ id: string; email: string }>> {
+    if (recipientUserIds.length > 0) {
+      return this.prisma.user.findMany({
+        where: { id: { in: recipientUserIds }, isActive: true },
+        select: { id: true, email: true }
+      });
+    }
+    if (recipientRoles.length > 0) {
+      return this.prisma.user.findMany({
+        where: {
+          isActive: true,
+          userRoles: { some: { role: { name: { in: recipientRoles } } } }
+        },
+        select: { id: true, email: true }
+      });
+    }
+    // Fallback: compliance admins always get safety-critical competency alerts.
+    return this.findComplianceAdmins();
+  }
+
+  private renderCompetencyDigestEmail(
+    byWorker: Map<string, WorkerCompetencyRow[]>,
+    horizonDays: number
+  ): string {
+    const hasExpired = Array.from(byWorker.values())
+      .flat()
+      .some((r) => r.status === "expired");
+    const headerColour = hasExpired ? "#dc2626" : "#f97316";
+    const totalRows = Array.from(byWorker.values()).reduce((acc, r) => acc + r.length, 0);
+
+    const workerBlocks = Array.from(byWorker.entries())
+      .map(([, rows]) => {
+        const workerName = rows[0].workerName;
+        const tableRows = rows
+          .map(
+            (r) => `<tr>
+            <td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">${r.competencyName}${r.competencyCode ? ` (${r.competencyCode})` : ""}</td>
+            <td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">${r.expiresAt ? new Date(r.expiresAt).toLocaleDateString("en-AU") : "—"}</td>
+            <td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;color:${r.status === "expired" ? "#dc2626" : r.status === "expiring_soon" ? "#f97316" : "#16a34a"}">${
+              r.daysUntilExpiry === null ? "—" : r.daysUntilExpiry < 0 ? `${Math.abs(r.daysUntilExpiry)}d overdue` : `${r.daysUntilExpiry}d`
+            }</td>
+            <td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:11px;text-transform:uppercase;color:#fff">
+              <span style="background:${r.status === "expired" ? "#dc2626" : "#f97316"};padding:1px 6px;border-radius:999px">${r.status === "expired" ? "Expired" : "Expiring"}</span>
+            </td>
+          </tr>`
+          )
+          .join("");
+        return `<div style="margin-bottom:16px">
+          <h3 style="margin:0 0 4px;font-size:14px">${workerName}</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead><tr style="background:#f6f6f6">
+              <th style="padding:4px 8px;text-align:left;font-size:11px;text-transform:uppercase;color:#6b7280">Competency</th>
+              <th style="padding:4px 8px;text-align:left;font-size:11px;text-transform:uppercase;color:#6b7280">Expiry</th>
+              <th style="padding:4px 8px;text-align:left;font-size:11px;text-transform:uppercase;color:#6b7280">Days</th>
+              <th style="padding:4px 8px;text-align:left;font-size:11px;text-transform:uppercase;color:#6b7280">Status</th>
+            </tr></thead>
+            <tbody>${tableRows}</tbody>
+          </table>
+        </div>`;
+      })
+      .join("");
+
+    return `<div style="font-family:Arial,sans-serif;font-size:14px;color:#0f1117">
+      <h2 style="color:${headerColour};margin:0 0 8px">Worker competency expiry digest</h2>
+      <p style="margin:0 0 16px;color:#374151">${totalRows} competenc${totalRows === 1 ? "y" : "ies"} across ${byWorker.size} worker${byWorker.size === 1 ? "" : "s"} within the next ${horizonDays} days (expired items included).</p>
+      <p style="margin:0 0 16px">Review at <a href="/compliance">the compliance dashboard</a>.</p>
+      ${workerBlocks}
     </div>`;
   }
 

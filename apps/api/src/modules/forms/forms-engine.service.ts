@@ -86,7 +86,13 @@ const submissionDetailInclude = {
   approvals: { orderBy: { stepNumber: "asc" } },
   triggeredRecords: true,
   attachments: true,
-  signatures: true
+  signatures: true,
+  correctiveActions: {
+    orderBy: { createdAt: "asc" as const },
+    include: {
+      assignedTo: { select: { id: true, firstName: true, lastName: true } }
+    }
+  }
 } as const;
 
 /**
@@ -725,6 +731,27 @@ export class FormsEngineService {
                 recordId
               }
             });
+            // Notify the assignee for corrective actions created by the engine.
+            if (action.recordType === "corrective_action") {
+              const ca = await this.prisma.correctiveAction.findUnique({
+                where: { id: recordId },
+                select: { assignedToId: true, title: true }
+              });
+              if (ca?.assignedToId) {
+                void this.notifications
+                  .create(
+                    {
+                      userId: ca.assignedToId,
+                      title: "Corrective action assigned",
+                      body: `You have been assigned a corrective action: ${ca.title}`,
+                      severity: "warning",
+                      linkUrl: `/forms/corrective-actions/${recordId}`
+                    },
+                    submission.submittedById ?? undefined
+                  )
+                  .catch(() => undefined);
+              }
+            }
           }
         } else if (action.type === "send_notification") {
           await this.dispatchNotification(action, submission);
@@ -813,6 +840,47 @@ export class FormsEngineService {
           summary:
             this.stringValue(values, "defect_details") ??
             "Plant pre-start flagged as not safe to operate"
+        }
+      });
+      return created.id;
+    }
+
+    if (action.recordType === "corrective_action") {
+      const title =
+        action.correctiveActionTitle ??
+        this.stringValue(values, "corrective_action_title") ??
+        "Corrective action raised from form";
+      const description =
+        action.correctiveActionDescription ??
+        this.stringValue(values, "description") ??
+        this.stringValue(values, "corrective_action_description") ??
+        null;
+      const priority = action.correctiveActionPriority ?? "medium";
+      // Resolve assignee from context — the rule can supply a role, or
+      // the engine falls back to the form's supervisor/PM context.
+      const assignedToRole =
+        action.correctiveActionAssignToRole ??
+        action.notificationTarget ??
+        null;
+      const ctxSupervisor = ctx.supervisorId ?? null;
+      const ctxPM = ctx.projectManagerId ?? null;
+      const assignedToId: string | null =
+        assignedToRole === "supervisor"
+          ? ctxSupervisor
+          : assignedToRole === "project_manager"
+            ? ctxPM
+            : null;
+
+      const created = await this.prisma.correctiveAction.create({
+        data: {
+          submissionId: submission.id,
+          sourceFieldKey: action.target ?? null,
+          title,
+          description,
+          assignedToId,
+          assignedToRole,
+          priority,
+          status: "open"
         }
       });
       return created.id;

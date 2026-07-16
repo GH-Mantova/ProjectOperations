@@ -119,6 +119,8 @@ model User {
   safetyIncidentsClosed      SafetyIncident[]            @relation("SafetyIncidentCloser")
   hazardsReported            HazardObservation[]         @relation("HazardReporter")
   hazardsAssigned            HazardObservation[]         @relation("HazardAssignee")
+  correctiveActionsAssigned  CorrectiveAction[]          @relation("CorrectiveActionAssignee")
+  correctiveActionsClosed    CorrectiveAction[]          @relation("CorrectiveActionCloser")
   personaInstructionUpdates  PersonaCompanyInstruction[] @relation("PersonaInstructionUpdater")
   personaSettings            UserPersonaSettings[]
   pilotFeedback              PilotFeedback[]             @relation("PilotFeedbackUser")
@@ -165,6 +167,11 @@ model User {
   // company records.
   companyProfilesAsWhs    CompanyProfile[]       @relation("CompanyProfileWhsOfficer")
   companyLegalDocsCreated CompanyLegalDocument[] @relation("CompanyLegalDocCreatedBy")
+
+  // Commitments (ERP gap A — cost control)
+  commitmentsCreated        Commitment[]       @relation("CommitmentCreatedBy")
+  commitmentChangesCreated  CommitmentChange[] @relation("CommitmentChangeCreatedBy")
+  commitmentChangesApproved CommitmentChange[] @relation("CommitmentChangeApprovedBy")
 
   @@index([isActive])
   @@index([managerId])
@@ -1242,6 +1249,7 @@ model Job {
   formSubmissions    FormSubmission[]
   closeout           JobCloseout?
   correspondences    CorrespondenceThread[] @relation("JobCorrespondence")
+  commitments        Commitment[]
 
   @@index([clientId])
   @@index([status])
@@ -1746,6 +1754,7 @@ model FormSubmission {
   gpsLng            Decimal?              @map("gps_lng") @db.Decimal(10, 7)
   approvals         FormApproval[]
   triggeredRecords  FormTriggeredRecord[]
+  correctiveActions CorrectiveAction[]
 
   @@index([templateVersionId, submittedAt])
   @@index([jobId])
@@ -1788,6 +1797,43 @@ model FormTriggeredRecord {
   @@index([submissionId])
   @@index([recordType, recordId])
   @@map("form_triggered_records")
+}
+
+// ─── Forms Engine (this PR) — corrective-action / CAPA close-out ────────────
+//
+// A CorrectiveAction is raised when a form submission triggers a
+// `create_corrective_action` on_submit action (e.g. a Fail answer on an
+// inspection). It is linked back to the submission via FormTriggeredRecord
+// (recordType = "corrective_action") and tracked through open →
+// in_progress → closed. The optional submissionId foreign-key enables
+// the submission detail page to list all actions the form raised.
+
+model CorrectiveAction {
+  id              String          @id @default(cuid())
+  submissionId    String?         @map("submission_id")
+  submission      FormSubmission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+  sourceFieldKey  String?         @map("source_field_key")
+  title           String
+  description     String?
+  assignedToId    String?         @map("assigned_to_id")
+  assignedTo      User?           @relation("CorrectiveActionAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedToRole  String?         @map("assigned_to_role")
+  dueAt           DateTime?       @map("due_at")
+  priority        String          @default("medium")
+  status          String          @default("open")
+  closedAt        DateTime?       @map("closed_at")
+  closedById      String?         @map("closed_by_id")
+  closedBy        User?           @relation("CorrectiveActionCloser", fields: [closedById], references: [id], onDelete: SetNull)
+  closeOutNote    String?         @map("close_out_note")
+  evidencePath    String?         @map("evidence_path")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  @@index([submissionId])
+  @@index([assignedToId])
+  @@index([status])
+  @@index([dueAt])
+  @@map("corrective_actions")
 }
 
 model FormSchedule {
@@ -2209,12 +2255,12 @@ model PlatformConfig {
 // This store is for THIRD-PARTY keys only — never for infra/managed-identity
 // secrets or the BYOK master itself.
 model IntegrationCredential {
-  slug            String    @id
-  label           String
-  valueEncrypted  String?   @map("value_encrypted")
-  meta            Json?
-  updatedAt       DateTime  @updatedAt @map("updated_at")
-  updatedById     String?   @map("updated_by_id")
+  slug           String   @id
+  label          String
+  valueEncrypted String?  @map("value_encrypted")
+  meta           Json?
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  updatedById    String?  @map("updated_by_id")
 
   @@map("integration_credentials")
 }
@@ -3673,6 +3719,7 @@ model SubcontractorSupplier {
   creditApplications CreditApplication[]     @relation("SubCreditApps")
   creditEntries      SupplierCreditEntry[]   @relation("SupplierCreditEntries")
   rateTables         RateTable[]             @relation("RateTableSupplier")
+  commitments        Commitment[]
 
   @@index([entityType])
   @@index([prequalStatus])
@@ -4838,15 +4885,19 @@ model CompanyProfile {
   incidentNumberPrefix  String @default("INC") @map("incident_number_prefix")
 
   // â”€ Branding â”€
-  // TODO: when BrandColorScheme + BrandAsset land (staged in pr-branding-manager),
-  // replace these string fields with FKs. Until then, plain strings so the
-  // profile is usable without a second migration.
+  // Legacy string columns kept as fallback while callers migrate to the
+  // BrandColorScheme + BrandAsset relations below. A later contract PR
+  // will drop these once every reader has been repointed.
   primaryColorHex   String  @default("#005B61") @map("primary_color_hex")
   secondaryColorHex String  @default("#FEAA6D") @map("secondary_color_hex")
   logoLightUrl      String? @map("logo_light_url")
   logoDarkUrl       String? @map("logo_dark_url")
   faviconUrl        String? @map("favicon_url")
   pdfLetterheadUrl  String? @map("pdf_letterhead_url")
+
+  activeColorSchemeId String?           @map("active_color_scheme_id")
+  activeColorScheme   BrandColorScheme? @relation("CompanyProfileActiveColorScheme", fields: [activeColorSchemeId], references: [id], onDelete: SetNull)
+  brandAssets         BrandAsset[]      @relation("CompanyProfileBrandAssets")
 
   // â”€ Audit trail â”€
   createdAt   DateTime @default(now()) @map("created_at")
@@ -4858,6 +4909,46 @@ model CompanyProfile {
   legalDocuments CompanyLegalDocument[]
 
   @@map("company_profile")
+}
+
+// Named palette of brand colours. Additive to CompanyProfile.primaryColorHex /
+// secondaryColorHex — the singleton points at a scheme via activeColorSchemeId
+// while the string fallbacks stay in place until a later contract PR removes
+// them. Only super-users mutate these (BrandingController enforces).
+model BrandColorScheme {
+  id                String   @id @default(cuid())
+  name              String   @unique
+  primaryColorHex   String   @map("primary_color_hex")
+  secondaryColorHex String   @map("secondary_color_hex")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  activeOn CompanyProfile[] @relation("CompanyProfileActiveColorScheme")
+
+  @@map("brand_color_scheme")
+}
+
+enum BrandAssetKind {
+  LOGO_LIGHT
+  LOGO_DARK
+  FAVICON
+  PDF_LETTERHEAD
+}
+
+// Per-kind asset URLs for the CompanyProfile singleton. Additive to the
+// legacy logoLightUrl / logoDarkUrl / faviconUrl / pdfLetterheadUrl columns.
+// (@@unique on profileId + kind enforces one asset per kind per profile.)
+model BrandAsset {
+  id        String         @id @default(cuid())
+  profileId String         @default("singleton") @map("profile_id")
+  profile   CompanyProfile @relation("CompanyProfileBrandAssets", fields: [profileId], references: [id], onDelete: Cascade)
+  kind      BrandAssetKind
+  url       String
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+
+  @@unique([profileId, kind])
+  @@map("brand_asset")
 }
 
 // Effective-dated, versioned company legal documents. Editing content
@@ -4900,4 +4991,98 @@ model CompanyLegalDocument {
   @@unique([type, version])
   @@index([type, isActive])
   @@map("company_legal_documents")
+}
+
+// ── Commitments (ERP gap A — cost control) ─────────────────────────────────
+// Committed costs (subcontracts, purchase orders to tip sites / haulage /
+// plant hire / subbies) tracked against a Job budget. Distinct from
+// ProcurementRequest (an internal purchase-requisition workflow); a
+// Commitment is the budget-facing record of a contracted spend obligation.
+//
+// Budget view equation: budget vs committed vs actual (actuals posted by
+// Accounts outside this system for now — a separate PR will wire them).
+//
+// CommitmentChange captures scope variations / VO to the original value.
+
+enum CommitmentType {
+  SUBCONTRACT
+  PURCHASE_ORDER
+  HIRE
+  OTHER
+}
+
+enum CommitmentStatus {
+  DRAFT
+  APPROVED
+  CLOSED
+  CANCELLED
+}
+
+enum CommitmentChangeStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Commitment {
+  id              String                 @id @default(cuid())
+  jobId           String                 @map("job_id")
+  job             Job                    @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  type            CommitmentType
+  supplierId      String?                @map("supplier_id")
+  supplier        SubcontractorSupplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  reference       String
+  description     String
+  value           Decimal                @db.Decimal(14, 2)
+  status          CommitmentStatus       @default(DRAFT)
+  // Optional link to the procurement PO that triggered this commitment.
+  purchaseOrderId String?                @unique @map("purchase_order_id")
+  createdById     String                 @map("created_by_id")
+  createdBy       User                   @relation("CommitmentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+
+  items   CommitmentItem[]
+  changes CommitmentChange[]
+
+  @@index([jobId, status])
+  @@index([supplierId])
+  @@map("commitments")
+}
+
+model CommitmentItem {
+  id           String   @id @default(cuid())
+  commitmentId String   @map("commitment_id")
+  commitment   Commitment @relation(fields: [commitmentId], references: [id], onDelete: Cascade)
+  description  String
+  costCategory String?  @map("cost_category")
+  quantity     Decimal  @default(1) @db.Decimal(14, 4)
+  unit         String   @default("lump")
+  rate         Decimal? @db.Decimal(14, 2)
+  amount       Decimal  @db.Decimal(14, 2)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([commitmentId])
+  @@map("commitment_items")
+}
+
+model CommitmentChange {
+  id            String                 @id @default(cuid())
+  commitmentId  String                 @map("commitment_id")
+  commitment    Commitment             @relation(fields: [commitmentId], references: [id], onDelete: Cascade)
+  reference     String
+  description   String
+  valueChange   Decimal                @map("value_change") @db.Decimal(14, 2)
+  status        CommitmentChangeStatus @default(DRAFT)
+  approvedById  String?                @map("approved_by_id")
+  approvedBy    User?                  @relation("CommitmentChangeApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  createdById   String                 @map("created_by_id")
+  createdBy     User                   @relation("CommitmentChangeCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt     DateTime               @default(now()) @map("created_at")
+  updatedAt     DateTime               @updatedAt @map("updated_at")
+
+  @@index([commitmentId, status])
+  @@map("commitment_changes")
 }

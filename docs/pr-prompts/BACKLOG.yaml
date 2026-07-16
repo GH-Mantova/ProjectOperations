@@ -364,3 +364,49 @@ items:
     gate_means: The View-link .first().click() is still followed within two lines by the bare toHaveURL assertion, with no settle-wait inserted, so the race is still present. Once a settle-wait or waitForURL is inserted between the click and the URL assertion, toHaveURL no longer appears in the two lines after the click and the gate exits 1.
     needs_marco: false
     order: 24
+
+  - id: ui-acceptance-1-schema-fields
+    title: "UI acceptance review Phase 1 - optional ui_shots/ui_intent prompt-schema fields"
+    priority: P3
+    why: >
+      Phase 1 of the UI Acceptance Review (sot/06-active-specs.md). Adds the OPTIONAL ui_shots /
+      ui_intent prompt-schema fields + lint support so a prompt can declare a UI intent. Non-breaking.
+      Head of a strict 3-phase chain that MUST arm in order.
+    gate: '! grep -q "ui_intent" scripts/pipeline/lint-prompt.mjs'
+    gate_means: The lint does not yet understand ui_intent, so Phase 1 has not shipped. No prerequisite - this one arms first.
+    needs_marco: false
+    decided: >
+      2026-07-16 (Marco): build the UI acceptance review as a phased chain, armed AUTONOMOUSLY in
+      STRICT order: (1) this item first; (2) ui-acceptance-2a-capture only AFTER this merges; (3)
+      ui-acceptance-2b-reviewer only AFTER 2a merges. Each phase's gate stays blocked until the prior
+      phase is on main, so out-of-order arming is impossible. Prompt body:
+      docs/pr-prompts/staged/pr-ui-acceptance-1-schema-fields.md.
+    order: 25
+
+  - id: ui-acceptance-2a-capture
+    title: "UI acceptance review Phase 2a - capture ui_shots screenshots in the smoke harness"
+    priority: P3
+    why: >
+      Phase 2a. Adds tests/e2e/pr-acceptance/ui-shots.spec.ts + smoke-pr.ps1 wiring to screenshot a
+      prompt's declared ui_shots into smoke-artifacts. Captures only; judges nothing. GATED on Phase 1.
+    gate: 'grep -q "ui_intent" scripts/pipeline/lint-prompt.mjs && ! ls tests/e2e/pr-acceptance | grep -q "ui-shots.spec.ts"'
+    gate_means: Passes ONLY once Phase 1 (ui_intent in lint-prompt.mjs) is on main AND ui-shots.spec.ts is still absent. Until Phase 1 merges it stays BLOCKED - that hold is intentional.
+    needs_marco: false
+    decided: >
+      2026-07-16 (Marco): arm ONLY after ui-acceptance-1-schema-fields has merged. Prompt body:
+      docs/pr-prompts/staged/pr-ui-acceptance-2a-capture.md.
+    order: 26
+
+  - id: ui-acceptance-2b-reviewer
+    title: "UI acceptance review Phase 2b - ui-reviewer agent + supervisor dispatch"
+    priority: P3
+    why: >
+      Phase 2b. Adds the ui-reviewer agent (vision, advisory; only an objective missing control FAILs)
+      + a 00-supervisor dispatch rule for apps/web PRs. GATED on Phase 2a so screenshots exist to read.
+    gate: 'ls tests/e2e/pr-acceptance | grep -q "ui-shots.spec.ts" && ! ls .claude/agents | grep -q "ui-reviewer.md"'
+    gate_means: Passes ONLY once Phase 2a (ui-shots.spec.ts) is on main AND ui-reviewer.md is still absent. Until Phase 2a merges it stays BLOCKED - that hold is intentional.
+    needs_marco: false
+    decided: >
+      2026-07-16 (Marco): arm ONLY after ui-acceptance-2a-capture has merged. Prompt body:
+      docs/pr-prompts/staged/pr-ui-acceptance-2b-reviewer.md.
+    order: 27

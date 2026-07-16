@@ -1740,12 +1740,17 @@ model FormField {
   conditions   Json                  @default("[]")
   validations  Json                  @default("[]")
   actions      Json                  @default("[]")
+  // PR forms-content-library: when fieldType is "content_block", this
+  // code references a FormContentSnippet.code for resolved HTML rendering.
+  // A soft reference (no FK) so snippet deletion never blocks form edits.
+  snippetCode  String?               @map("snippet_code")
   createdAt    DateTime              @default(now()) @map("created_at")
   section      FormSection           @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   values       FormSubmissionValue[]
 
   @@unique([sectionId, fieldKey])
   @@index([sectionId, fieldOrder])
+  @@index([snippetCode])
   @@map("form_fields")
 }
 
@@ -1982,6 +1987,28 @@ model FormSignature {
 
   @@index([submissionId])
   @@map("form_signatures")
+}
+
+// ─── Forms Content Snippet Library (PR forms-content-library) ──────────────
+// Stores reusable HTML blocks (legal text, T&Cs, privacy notices, etc.) that
+// can be referenced from FormField rows via snippetCode. Authoring happens
+// once; every form field with fieldType="content_block" that carries a
+// snippetCode is resolved at template-fetch time.
+
+model FormContentSnippet {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  category  String   @default("general")
+  bodyHtml  String   @map("body_html")
+  version   Int      @default(1)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([category])
+  @@index([isActive])
+  @@map("form_content_snippets")
 }
 
 model EstimateLabourRate {

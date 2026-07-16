@@ -7,6 +7,8 @@ import { FormsService } from "./forms.service";
 import { FormsEngineController } from "./forms-engine.controller";
 import { FormsEngineService } from "./forms-engine.service";
 import { RulesEngineService } from "./rules-engine.service";
+import { FormsSnippetsController } from "./forms-snippets.controller";
+import { FormsSnippetsService } from "./forms-snippets.service";
 import { CorrectiveActionsController } from "./corrective-actions.controller";
 import { CorrectiveActionsService } from "./corrective-actions.service";
 import { PublicLinkController } from "./public-link.controller";
@@ -14,8 +16,10 @@ import { PublicLinkService } from "./public-link.service";
 
 /**
  * §13 Forms and Compliance module — wires the template/submission CRUD
- * (FormsController + FormsService) and the worker-facing engine
- * (FormsEngineController + FormsEngineService + RulesEngineService).
+ * (FormsController + FormsService), the worker-facing engine
+ * (FormsEngineController + FormsEngineService + RulesEngineService),
+ * and the reusable content-snippet library
+ * (FormsSnippetsController + FormsSnippetsService).
  *
  * Also registers the corrective-action (CAPA) close-out loop:
  * CorrectiveActionsController + CorrectiveActionsService.
@@ -30,8 +34,8 @@ import { PublicLinkService } from "./public-link.service";
  */
 @Module({
   imports: [PrismaModule, AuditModule, PlatformModule],
-  controllers: [FormsController, FormsEngineController, CorrectiveActionsController, PublicLinkController],
-  providers: [FormsService, FormsEngineService, RulesEngineService, CorrectiveActionsService, PublicLinkService],
-  exports: [RulesEngineService, FormsEngineService]
+  controllers: [FormsController, FormsEngineController, FormsSnippetsController, CorrectiveActionsController, PublicLinkController],
+  providers: [FormsService, FormsEngineService, RulesEngineService, FormsSnippetsService, CorrectiveActionsService, PublicLinkService],
+  exports: [RulesEngineService, FormsEngineService, FormsSnippetsService]
 })
 export class FormsModule {}

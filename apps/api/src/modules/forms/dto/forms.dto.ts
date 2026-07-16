@@ -49,6 +49,12 @@ export class FormFieldInputDto {
    * image blocks). Mirrors the `FormField.config` column added by PR #97.
    */
   @IsOptional() config?: unknown;
+  /**
+   * For `content_block` fields: the unique code of a FormContentSnippet
+   * whose bodyHtml is rendered at fill time. Resolved and attached as
+   * `_snippet` on the field when a template version is fetched.
+   */
+  @IsOptional() @IsString() snippetCode?: string;
 }
 
 /**

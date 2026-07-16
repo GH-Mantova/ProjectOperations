@@ -67,7 +67,7 @@ Status key: **GAP** (near-zero in code) · **PARTIAL** (foundation exists, capab
 | **Barcode / QR asset tagging + scan-to-identify** | **GAP** (`barcode`/`qr`=0) | TS | Tag every excavator, attachment, tool, skip bin, PPE item; scan in the field. No physical-tag layer today. |
 | **Asset check-out / custody chain** ("who has it, due back when") | **GAP** (`checkout`=0) | TS | Currently done on a *Jotform* key-checkout form — bring it into the asset record with history. |
 | **Asset reservations / forward bookings** | **GAP** (`reservation`=2) | DIFF | Reserve a machine/tool for a future window; prevents double-booking across jobs (asset-hire concept). |
-| **Depreciation** (multi-method) | **GAP** (`depreciation`=0) | DIFF | Plant on the balance sheet; also a standing D365 "decide" item — confirm Xero doesn't already own this before building. |
+| ~~Depreciation~~ | **DROPPED (decided 2026-07-15)** | — | **Xero-only. The ERP does NOT track depreciation** — Marco's decision. `pr-erp-asset-depreciation` prompt withdrawn. |
 | **Plant pre-start + service history + operator authorisation on the asset** | **PARTIAL** | TS | Assets + maintenance exist; tie the pre-start (forms) + service history + operator ticket to the machine record. |
 | **Warranty / insurance expiry alerts; consumable min-max** | **PARTIAL** | DIFF | Inventory exists; warranty/insurance expiry + insured-vs-uninsured flags are thin. |
 | **Utilisation / hours / odometer / telematics-driven servicing** | **GAP** (`telematics`/`odometer`=0) | DIFF (defer heavy IoT) | Service plant by hours, not guesswork; full telematics is a later/optional integration. |
@@ -120,7 +120,7 @@ and **asset/time** (barcode/checkout/depreciation, geofenced time, dockets) gaps
 ## 4. Deliberately NOT building (decide, don't assume)
 - **BIM / coordination-issues** (Procore) — N/A at this scale.
 - **Heavy telematics/IoT** — defer; a later integration, not a core build.
-- **Depreciation** — *decide* vs letting Xero own it (consistent with "keep Xero as the ledger").
+- **Depreciation** — **DECIDED 2026-07-15: Xero-only; the ERP does NOT track depreciation** (consistent with "keep Xero as the ledger"). Prompt dropped.
 - Anything that duplicates the **forms engine** — permits, inductions, pre-task plans, SWMS, inspections,
   site sign-in are templates on the engine, not new subsystems.
 
@@ -129,7 +129,7 @@ and **asset/time** (barcode/checkout/depreciation, geofenced time, dockets) gaps
 ## 5. Decisions to record (for Marco)
 1. Confirm **daily site diary** + **commitments** as the next two commercial builds (highest-value gaps).
 2. Confirm **geofenced timesheet** direction (extend `Timesheet`, GPS via the field PWA).
-3. **Asset lifecycle**: approve barcode/QR + check-out custody + reservations; *decide* depreciation (build vs Xero).
+3. **Asset lifecycle**: barcode/QR + check-out custody + reservations approved. **Depreciation DECIDED: Xero-only — the ERP does not track it (prompt dropped).**
 4. Treat HammerTech-class WHS features as **forms-engine template packs**, not modules.
 5. Verify-then-close the two "PARTIAL/legal" items: **SOPA payment-schedule** response on claims, and
    **proactive competency-expiry alerting**.

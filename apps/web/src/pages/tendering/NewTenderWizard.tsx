@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { AddressAutocomplete, type AddressSuggestion } from "../../components/AddressAutocomplete";
 import "./newTenderWizard.css";
 import { lockRateSet } from "./ratesTabApi";
 import { QuickAddBuilderModal } from "./QuickAddBuilderModal";
@@ -142,7 +143,13 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
 
   // Step 1 — Project
   const [title, setTitle] = useState("");
+  // `siteAddress` is the text visible in the input; `resolvedSiteId` is the
+  // linked Site.id set once the user picks a suggestion. The wizard cannot
+  // advance past Project without a resolved site so every tender gets a real
+  // Site link (siteId), not just a free-text description.
   const [siteAddress, setSiteAddress] = useState("");
+  const [resolvedSiteId, setResolvedSiteId] = useState<string | null>(null);
+  const [resolvingSite, setResolvingSite] = useState(false);
   const [estimatorUserId, setEstimatorUserId] = useState("");
 
   // Step 2 — Builders
@@ -174,6 +181,8 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
     setError(null);
     setTitle("");
     setSiteAddress("");
+    setResolvedSiteId(null);
+    setResolvingSite(false);
     setEstimatorUserId("");
     setBuilders([]);
     setPrimaryClientId("");
@@ -231,6 +240,23 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
         setServerTenderClients(tender.tenderClients ?? []);
         setTitle((prev) => prev || tender.title || "");
         setEstimatorUserId((prev) => prev || tender.estimatorUserId || "");
+        // Resume path: if the tender already has a site link, rehydrate the
+        // visible address + the resolved id so the user can advance without
+        // re-picking. Formatted-address display prefers the site name.
+        if (tender.siteId) {
+          setResolvedSiteId((prev) => prev ?? tender.siteId);
+          if (tender.site) {
+            const parts = [
+              tender.site.addressLine1,
+              tender.site.suburb,
+              tender.site.state,
+              tender.site.postcode
+            ]
+              .filter(Boolean)
+              .join(", ");
+            setSiteAddress((prev) => prev || parts || tender.site.name || "");
+          }
+        }
         // Rebuild builder drafts from server state so resume-flow shows saved builders.
         const rebuilt: BuilderDraft[] = (tender.tenderClients ?? []).map((tc: ServerTenderClient) => ({
           clientId: tc.clientId,
@@ -330,6 +356,11 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
       .join("\n");
     if (desc) payload.description = desc;
     if (estimatorUserId) payload.estimatorUserId = estimatorUserId;
+    // resolvedSiteId is set by the AddressAutocomplete onSelect handler once
+    // the user picks a suggestion — attach it here so the draft is linked to
+    // the real Site record (not just the free-text description) from the
+    // first save.
+    if (resolvedSiteId) payload.siteId = resolvedSiteId;
     const res = await authFetch("/tenders", { method: "POST", body: JSON.stringify(payload) });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
@@ -409,9 +440,48 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
         draftId: flow.draftId,
         title,
         estimatorUserId,
-        siteAddress
+        siteAddress,
+        siteId: resolvedSiteId
       });
       if (patch) await patchDraft(flow.draftId, patch);
+    }
+  }
+
+  // Called by AddressAutocomplete once the user picks a suggestion. Sends the
+  // structured address to /geo/sites/resolve which returns the matched-or-
+  // created Site.id; that id is what actually links the tender to a Site.
+  // Failures surface as an inline error so the user can retry — we never
+  // silently drop the site link.
+  async function handleAddressSelect(suggestion: AddressSuggestion) {
+    setResolvingSite(true);
+    setError(null);
+    try {
+      const res = await authFetch("/geo/sites/resolve", {
+        method: "POST",
+        body: JSON.stringify({
+          formatted: suggestion.formatted,
+          addressLine1: suggestion.addressLine1,
+          suburb: suggestion.suburb,
+          state: suggestion.state,
+          postcode: suggestion.postcode
+        })
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message ?? "Could not link this address to a site.");
+      }
+      const data = (await res.json()) as { site: { id: string }; created: boolean };
+      setResolvedSiteId(data.site.id);
+      // If the draft already exists, patch it immediately so a reload picks
+      // up the site link even if the user closes without pressing Next.
+      if (flow.draftId) {
+        await patchDraft(flow.draftId, { title: title.trim(), siteId: data.site.id });
+      }
+    } catch (err) {
+      setError((err as Error).message);
+      setResolvedSiteId(null);
+    } finally {
+      setResolvingSite(false);
     }
   }
 
@@ -440,6 +510,14 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
   const handleNextFromProject = async () => {
     if (!title.trim()) {
       setError("Project name is required.");
+      return;
+    }
+    // Marco (2026-07-15): a tender's site address must be captured at tender
+    // time. Block advance until the user has picked a suggestion (which sets
+    // resolvedSiteId) — free-text was the exact reason every tender.siteId
+    // was null before this PR.
+    if (!resolvedSiteId) {
+      setError("Select a site address from the suggestions before continuing.");
       return;
     }
     setBusy(true);
@@ -808,6 +886,7 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
       // Ensure any final field edits are flushed.
       const patch: Record<string, unknown> = { title: title.trim() };
       if (estimatorUserId) patch.estimatorUserId = estimatorUserId;
+      if (resolvedSiteId) patch.siteId = resolvedSiteId;
       const desc = siteAddress.trim() ? `Site: ${siteAddress.trim()}` : "";
       if (desc) patch.description = desc;
       await patchDraft(flow.draftId, patch);
@@ -910,7 +989,15 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
                 title={title}
                 onTitleChange={setTitle}
                 siteAddress={siteAddress}
-                onSiteChange={setSiteAddress}
+                onSiteChange={(v) => {
+                  setSiteAddress(v);
+                  // Editing the address after a pick invalidates the resolved
+                  // link — the user has to pick again from the suggestions.
+                  if (resolvedSiteId) setResolvedSiteId(null);
+                }}
+                onAddressSelect={handleAddressSelect}
+                resolvedSiteId={resolvedSiteId}
+                resolvingSite={resolvingSite}
                 users={users}
                 estimatorUserId={estimatorUserId}
                 onEstimatorChange={setEstimatorUserId}
@@ -1130,6 +1217,9 @@ function StepProject(props: {
   onTitleChange: (v: string) => void;
   siteAddress: string;
   onSiteChange: (v: string) => void;
+  onAddressSelect: (suggestion: AddressSuggestion) => void;
+  resolvedSiteId: string | null;
+  resolvingSite: boolean;
   users: UserOption[];
   estimatorUserId: string;
   onEstimatorChange: (v: string) => void;
@@ -1149,14 +1239,24 @@ function StepProject(props: {
         />
         <span className="new-tender-wizard__hint">Use EstimateOne (E1) information preferably.</span>
       </label>
-      <label className="tender-form__field">
+      <label className="tender-form__field" htmlFor="new-tender-site-address">
         <span className="s7-type-label">Site / address</span>
-        <input
-          className="s7-input"
+        <AddressAutocomplete
+          inputId="new-tender-site-address"
           value={props.siteAddress}
-          onChange={(e) => props.onSiteChange(e.target.value)}
+          onValueChange={props.onSiteChange}
+          onSelect={props.onAddressSelect}
+          required
           placeholder="123 Example Rd, Brisbane QLD"
+          dataTestId="new-tender-site-address"
         />
+        <span className="new-tender-wizard__hint">
+          {props.resolvingSite
+            ? "Linking address to site…"
+            : props.resolvedSiteId
+              ? "Address linked to site record. Editing clears the link."
+              : "Start typing, then pick a suggestion — required to continue."}
+        </span>
       </label>
       <label className="tender-form__field">
         <span className="s7-type-label">Tender reference</span>

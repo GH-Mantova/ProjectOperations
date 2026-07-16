@@ -62,6 +62,7 @@ import { CommsApprovalsModule } from "./modules/comms-approvals/comms-approvals.
 import { ProcurementModule } from "./modules/procurement/procurement.module";
 import { ClientVersionsModule } from "./modules/client-versions/client-versions.module";
 import { IntegrationKeysModule } from "./common/integrations/integration-keys.module";
+import { GeocodingModule } from "./modules/geocoding/geocoding.module";
 
 @Module({
   imports: [
@@ -130,7 +131,8 @@ import { IntegrationKeysModule } from "./common/integrations/integration-keys.mo
     ListBindingsModule,
     CommsApprovalsModule,
     ProcurementModule,
-    ClientVersionsModule
+    ClientVersionsModule,
+    GeocodingModule
   ]
 })
 export class AppModule {}

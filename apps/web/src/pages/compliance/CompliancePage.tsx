@@ -31,7 +31,20 @@ type BlockedSub = {
   complianceBlockedAt: string | null;
 };
 
+type WorkerCompetencyRow = {
+  id: string;
+  workerId: string;
+  workerName: string;
+  competencyId: string;
+  competencyName: string;
+  competencyCode: string | null;
+  expiresAt: string | null;
+  status: "expired" | "expiring_soon" | "active";
+  daysUntilExpiry: number | null;
+};
+
 const DAY_OPTIONS = [7, 14, 30, 60, 90];
+const COMPETENCY_HORIZON_OPTIONS = [30, 60, 90, 180, 365];
 const TYPE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "all", label: "All" },
   { value: "licence", label: "Licences" },
@@ -83,6 +96,15 @@ export function CompliancePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Worker competency register state
+  const [competencyHorizon, setCompetencyHorizon] = useState<number>(60);
+  const [workerFilter, setWorkerFilter] = useState<string>("");
+  const [competencyFilter, setCompetencyFilter] = useState<string>("");
+  const [showExpiredCompetencies, setShowExpiredCompetencies] = useState(true);
+  const [workerCompetencies, setWorkerCompetencies] = useState<WorkerCompetencyRow[]>([]);
+  const [competencyLoading, setCompetencyLoading] = useState(true);
+  const [competencyError, setCompetencyError] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -101,9 +123,29 @@ export function CompliancePage() {
     }
   }, [authFetch, days]);
 
+  const loadCompetencies = useCallback(async () => {
+    setCompetencyLoading(true);
+    setCompetencyError(null);
+    try {
+      const resp = await authFetch(
+        `/compliance/worker-competencies/expiring?horizonDays=${competencyHorizon}`
+      );
+      if (!resp.ok) throw new Error(await resp.text());
+      setWorkerCompetencies((await resp.json()) as WorkerCompetencyRow[]);
+    } catch (err) {
+      setCompetencyError((err as Error).message);
+    } finally {
+      setCompetencyLoading(false);
+    }
+  }, [authFetch, competencyHorizon]);
+
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    void loadCompetencies();
+  }, [loadCompetencies]);
 
   const allRows = useMemo<ExpiryRow[]>(() => {
     if (!data) return [];
@@ -132,6 +174,31 @@ export function CompliancePage() {
   }, [allRows, blocked.length]);
 
   const sidebarBadgeCount = useMemo(() => countComplianceAlerts(data), [data]);
+
+  const filteredCompetencies = useMemo(() => {
+    return workerCompetencies.filter((r) => {
+      if (!showExpiredCompetencies && r.status === "expired") return false;
+      if (workerFilter && !r.workerName.toLowerCase().includes(workerFilter.toLowerCase())) return false;
+      if (
+        competencyFilter &&
+        !r.competencyName.toLowerCase().includes(competencyFilter.toLowerCase()) &&
+        !(r.competencyCode ?? "").toLowerCase().includes(competencyFilter.toLowerCase())
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [workerCompetencies, showExpiredCompetencies, workerFilter, competencyFilter]);
+
+  const competencySummary = useMemo(() => {
+    let expired = 0;
+    let expiring = 0;
+    for (const r of workerCompetencies) {
+      if (r.status === "expired") expired += 1;
+      else if (r.status === "expiring_soon") expiring += 1;
+    }
+    return { expired, expiring };
+  }, [workerCompetencies]);
 
   const unblock = async (id: string) => {
     if (!isAdmin) return;
@@ -320,6 +387,219 @@ export function CompliancePage() {
           </table>
         </div>
       )}
+
+      {/* ── Worker competency expiry register ──────────────────────────────── */}
+      <section style={{ marginTop: 32 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+          <h2 className="s7-type-section-heading" style={{ margin: 0 }}>
+            Worker competency expiry register
+          </h2>
+          {competencySummary.expired > 0 ? (
+            <span
+              style={{
+                background: "#dc2626",
+                color: "#fff",
+                fontSize: 11,
+                fontWeight: 600,
+                padding: "2px 8px",
+                borderRadius: 999
+              }}
+            >
+              {competencySummary.expired} expired
+            </span>
+          ) : null}
+          {competencySummary.expiring > 0 ? (
+            <span
+              style={{
+                background: "#f97316",
+                color: "#fff",
+                fontSize: 11,
+                fontWeight: 600,
+                padding: "2px 8px",
+                borderRadius: 999
+              }}
+            >
+              {competencySummary.expiring} expiring
+            </span>
+          ) : null}
+        </div>
+        <p style={{ color: "var(--text-muted)", margin: "0 0 12px", fontSize: 13 }}>
+          Worker tickets and competencies (asbestos, demolition supervisor, etc.) expiring within the
+          selected horizon. Overdue rows are highlighted in red.
+        </p>
+
+        {/* Filter bar */}
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            alignItems: "center",
+            flexWrap: "wrap",
+            padding: 10,
+            background: "var(--surface-subtle, rgba(0,0,0,0.02))",
+            borderRadius: 6,
+            marginBottom: 12
+          }}
+        >
+          <FilterChips
+            label="Horizon"
+            value={String(competencyHorizon)}
+            options={COMPETENCY_HORIZON_OPTIONS.map((d) => ({ value: String(d), label: `${d}d` }))}
+            onChange={(v) => setCompetencyHorizon(Number(v))}
+          />
+          <div style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+            <label style={{ fontSize: 12, color: "var(--text-muted)" }}>Worker:</label>
+            <input
+              type="text"
+              value={workerFilter}
+              onChange={(e) => setWorkerFilter(e.target.value)}
+              placeholder="Filter by name..."
+              style={{
+                fontSize: 12,
+                padding: "3px 8px",
+                borderRadius: 4,
+                border: "1px solid var(--border, #e5e7eb)",
+                minWidth: 140
+              }}
+            />
+          </div>
+          <div style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+            <label style={{ fontSize: 12, color: "var(--text-muted)" }}>Competency:</label>
+            <input
+              type="text"
+              value={competencyFilter}
+              onChange={(e) => setCompetencyFilter(e.target.value)}
+              placeholder="Filter by name/code..."
+              style={{
+                fontSize: 12,
+                padding: "3px 8px",
+                borderRadius: 4,
+                border: "1px solid var(--border, #e5e7eb)",
+                minWidth: 160
+              }}
+            />
+          </div>
+          <label style={{ fontSize: 13, display: "inline-flex", gap: 4, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={showExpiredCompetencies}
+              onChange={(e) => setShowExpiredCompetencies(e.target.checked)}
+            />
+            Show expired
+          </label>
+        </div>
+
+        {competencyError ? (
+          <p style={{ color: "var(--status-danger)" }}>{competencyError}</p>
+        ) : competencyLoading ? (
+          <p style={{ color: "var(--text-muted)" }}>Loading competency register...</p>
+        ) : filteredCompetencies.length === 0 ? (
+          workerCompetencies.length === 0 ? (
+            <EmptyState
+              icon="✅"
+              heading="All competencies current"
+              subtext="No worker competencies are expiring or expired within the selected horizon."
+            />
+          ) : (
+            <EmptyState
+              icon="🔍"
+              heading="No competencies match your current filter"
+              subtext="Clear the worker or competency filter, include expired rows, or widen the horizon."
+              action={
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--secondary"
+                  style={{ minHeight: 44 }}
+                  onClick={() => {
+                    setWorkerFilter("");
+                    setCompetencyFilter("");
+                    setShowExpiredCompetencies(true);
+                  }}
+                >
+                  Clear filters
+                </button>
+              }
+            />
+          )
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead style={{ background: "var(--surface-muted, #f6f6f6)" }}>
+                <tr>
+                  {["Worker", "Competency", "Code", "Expires", "Days", "Status"].map((h) => (
+                    <th
+                      key={h}
+                      style={{
+                        padding: "6px 8px",
+                        textAlign: "left",
+                        fontSize: 10,
+                        textTransform: "uppercase",
+                        color: "var(--text-muted)"
+                      }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredCompetencies.map((r) => {
+                  const isOverdue = r.status === "expired";
+                  return (
+                    <tr
+                      key={r.id}
+                      style={{
+                        borderTop: "1px solid var(--border, #e5e7eb)",
+                        background: isOverdue ? "rgba(220,38,38,0.04)" : undefined
+                      }}
+                    >
+                      <td style={{ padding: "6px 8px" }}>
+                        <strong>{r.workerName}</strong>
+                      </td>
+                      <td style={{ padding: "6px 8px", fontSize: 12 }}>{r.competencyName}</td>
+                      <td style={{ padding: "6px 8px", fontSize: 11, color: "var(--text-muted)" }}>
+                        {r.competencyCode ?? "—"}
+                      </td>
+                      <td style={{ padding: "6px 8px", fontSize: 12 }}>{fmtDate(r.expiresAt)}</td>
+                      <td
+                        style={{
+                          padding: "6px 8px",
+                          fontSize: 12,
+                          color: isOverdue
+                            ? "#dc2626"
+                            : (r.daysUntilExpiry ?? 999) <= 30
+                              ? "#f97316"
+                              : "var(--text-default)"
+                        }}
+                      >
+                        {r.daysUntilExpiry === null
+                          ? "—"
+                          : r.daysUntilExpiry < 0
+                            ? `${Math.abs(r.daysUntilExpiry)}d overdue`
+                            : `${r.daysUntilExpiry}d`}
+                      </td>
+                      <td style={{ padding: "6px 8px" }}>
+                        <span
+                          style={{
+                            fontSize: 10,
+                            padding: "1px 6px",
+                            background: isOverdue ? "#dc2626" : "#f97316",
+                            color: "#fff",
+                            borderRadius: 999,
+                            textTransform: "uppercase"
+                          }}
+                        >
+                          {isOverdue ? "Expired" : "Expiring"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       {blocked.length > 0 ? (
         <section style={{ marginTop: 24 }}>

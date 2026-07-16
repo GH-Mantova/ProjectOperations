@@ -154,13 +154,14 @@ items:
       present, because it reshapes the spine of the data model.
     gate: 'grep -q "^model Job " apps/api/prisma/schema.prisma && grep -q "^model Project " apps/api/prisma/schema.prisma'
     gate_means: Both models still exist on main - the merge has not happened.
-    needs_marco: true
+    needs_marco: false
     marco_note: >
-      BLOCKED 2026-07-16 (Cowork): canonical direction CONTRADICTS the shipped schema. BACKLOG-DECISIONS
-      #1 (07-14) says "Job canonical / merge Project into Job", but sot/02 (07-15) AND main say survivor
-      = Project (Project.legacyJobId + Project.jobNumber + Project.sourceJob; Job.survivingProjectId /
-      relation JobSurvivingProject). #500 Phase A built Project-as-survivor. Do NOT stage a slice until
-      Marco confirms which survives; if Project, update BACKLOG-DECISIONS #1 to match.
+      RESOLVED 2026-07-16 (Marco): JOB is canonical; everything relevant folds into Job; Project dropped
+      last. This REVERSES the shipped Phase-A direction (#500 built Project-as-survivor) and sot/02's
+      "survivor Project" -- both must be reconciled to Job (flag for 05-sot-keeper). SLICE 0 (the ordered
+      slice plan, no code) STAGED as pr-job-project-merge-plan-ready.md; code slices follow the plan doc,
+      one <=10-file PR each, additive->backfill->re-point->drop-Project-last. B-P0b (Worker) stays after
+      this, never concurrent.
     order: 13
 
   - id: worker-workerprofile-merge

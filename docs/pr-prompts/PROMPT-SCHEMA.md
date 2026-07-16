@@ -2,6 +2,54 @@
 
 Enforced by `scripts/pipeline/lint-prompt.mjs`. **A prompt that fails the lint never reaches an agent.**
 
+---
+
+## ⛔ A PROMPT IS NOT REAL UNTIL IT IS COMMITTED TO `origin/main`
+
+**Staging a prompt = committing the `*-ready.md` / `*-HOLD.md` file to `origin/main` via a
+docs-only PR. A prompt that exists only as an untracked file in a working tree is NOT staged.**
+
+Why (confirmed 2026-07-15, a full Cowork session's worth of prompts nearly lost this way):
+
+- **The stations run in a fresh worktree off `origin/main`.** `04-scanner`, the code-writer
+  agents, `05-sot-keeper` — they see ONLY what is committed. An untracked prompt in someone's
+  local tree is **invisible** to them. (04 literally reported it could not stage already-decided
+  items because "their bodies live in untracked HOLD files, invisible to agents.")
+- **`git clean` deletes untracked files** — it has wiped the queue before
+  (`docs/`-class working files are not safe just because they're in the right folder).
+- The watcher *may* dispatch a loose untracked `-ready.md` from the real tree, but that is the
+  only reader that can, it's fragile, and nothing else in the pipeline knows the prompt exists.
+
+**Rule for anyone (human or agent) who authors or stages a prompt:**
+1. Write the `pr-*.md` file with valid front-matter (this schema).
+2. **Commit it to `origin/main` in a docs-only PR** (only `docs/**` — never mix code or `sot/`,
+   or CP-24 fails). The PR body can be one line: "stage prompt(s) for the queue."
+3. Only after that merge is the prompt real, durable, and visible to every station.
+
+A staged-but-uncommitted prompt is a TODO, not a queue entry. If you cannot push to `main`
+yourself (e.g. Cowork/sandbox — GitHub MCP writes 403), hand the exact file list + commit to
+whoever can, and say plainly that the prompt is not queued until it lands.
+
+---
+
+## ⛔ IF A PROMPT TOUCHES `schema.prisma`, IT MUST REGENERATE THE DATA-MODEL MAP
+
+Any prompt whose `scope` includes `apps/api/prisma/schema.prisma` MUST instruct the agent to run
+`node scripts/data-model/build-relationship-map.mjs` and commit the regenerated
+`docs/data-model/relationship-map.json` + `relationship-map.md` + `metadata-catalog.json`, and MUST
+add `docs/data-model/**` to `scope`. The CI **data-model drift check**
+(`build-relationship-map.mjs --check`) hard-fails a schema change that leaves the generated map
+stale — it sank #593 (integration-keys). The map is `docs/`-class, so committing it alongside the
+code is CP-24-safe. The agent opens the PR and exits before CI runs, so it will NOT see the red
+check and fix-forward on its own — the prompt must make the regen part of the work up front.
+
+**Two more things a schema/service PR must do up front (both sank #595):**
+1. **Declare `GATE-ALLOW: migrations`** as a bare line at column 0 of the PR body — CP-11 hard-fails
+   an undeclared migration. (This is separate from the `gate_allow: migrations` front-matter.)
+2. **Update the affected unit specs.** Changing a service's Prisma `create`/`update` payload breaks
+   that service's `*.spec.ts` `toHaveBeenCalledWith(...)` assertions — add the new fields to the
+   expected objects in the same PR, or the API test job fails.
+
 ## Why this exists
 
 Of 194 historical failures, **34 were stale prompts** — an agent booting, grepping, discovering the

@@ -148,28 +148,16 @@ items:
     decided_in_BACKLOG_DECISIONS_md: "Same gate as B-P0a. Restart it? WorkerProfile was agreed canonical."
     order: 14
 
-  - id: mail-send-managed-identity
-    title: "Outlook mail: managed-identity auth (MAIL_AUTH_MODE) -- Mail.Send never tested post-MI swap"
-    priority: P2
-    why: >
-      apps/api/src/modules/email/providers/outlook.provider.ts still builds its credential with
-      ClientSecretCredential and has no MAIL_AUTH_MODE switch. Prod SharePoint/Graph already moved
-      to a system-assigned managed identity and AZURE_CLIENT_SECRET was deleted from App Service --
-      but Mail.Send was NEVER tested after that swap. The old app-registration secrets MUST NOT be
-      deleted until an email is proven to land. Prompt body is in the untracked HOLD file
-      pr-zz-mail-managed-identity-HOLD.md (size 7, gate_allow env-vars, escalates true).
-    gate: '! grep -rq "MAIL_AUTH_MODE" apps/api/src .env.example'
-    gate_means: The mail provider still has no MAIL_AUTH_MODE switch; it can only use ClientSecretCredential.
-    needs_marco: false
-    escalates: true
-    decided: >
-      2026-07-15 (Marco): BUILD THE CODE PR NOW, hold ops. Build the MAIL_AUTH_MODE switch +
-      managed-identity credential path (mirror #547). escalates:true -- open the PR but DO NOT
-      auto-merge; Marco reviews. The code is safe: default behaviour is unchanged until
-      MAIL_AUTH_MODE is set. OPS ARE SEPARATE AND MARCO-SUPERVISED and are NOT part of this PR:
-      deploy -> trigger a real access-request -> confirm the email LANDS -> only THEN delete the old
-      app-registration secrets (never alongside; LL-36).
-    order: 17
+  # DISCHARGED 2026-07-17 (04-scanner): the CODE work is ALREADY AN OPEN PR -- #602
+  # "feat(email): MAIL_AUTH_MODE managed-identity for Outlook Graph (mirror #547)" touches exactly
+  # apps/api/src/modules/email/providers/outlook.provider.ts + .env.example + a new
+  # apps/api/src/modules/email/__tests__/outlook.auth-mode.spec.ts. The absence-gate
+  # ('! grep MAIL_AUTH_MODE apps/api/src .env.example') fired only because #602 has not merged yet --
+  # a false-ready of the SAME CLASS as the siteid / geoapify entries already discharged above.
+  # Marco's 2026-07-15 "BUILD THE CODE PR NOW, hold ops" decision is satisfied by #602 (escalates:
+  # Marco reviews; the ops sequence deploy -> real access-request -> confirm email LANDS -> only THEN
+  # delete the old app-registration secrets is Marco-supervised, never alongside; LL-36).
+  # One place, never two -- its home is #602.
 
   - id: graphify-knowledge-graph
     title: "Graphify knowledge graph -- blocked on PATH, not on code"

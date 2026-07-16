@@ -2,10 +2,10 @@
   "_generator": "scripts/data-model/build-relationship-map.mjs",
   "_doNotEdit": "Regenerated from schema.prisma. Do not hand-edit.",
   "generatedFrom": "apps/api/prisma/schema.prisma",
-  "schemaSha256": "ecd1729ca3a28e800c035d88ed082ea31a8d04cab57f3014ce9ccda4e4401a37",
-  "modelCount": 202,
-  "enumCount": 28,
-  "edgeCount": 303,
+  "schemaSha256": "074a3c045467aa6965b79eb659482afaa0aa5b14731bd3c71da1f00e21fa3291",
+  "modelCount": 204,
+  "enumCount": 29,
+  "edgeCount": 305,
   "domains": {
     "Assets": [
       "Asset",
@@ -232,6 +232,8 @@
     ],
     "Unclassified": [
       "AccessRequest",
+      "BrandAsset",
+      "BrandColorScheme",
       "Commitment",
       "CommitmentChange",
       "CommitmentItem",
@@ -397,6 +399,12 @@
       "PARTNERSHIP",
       "TRUST",
       "OTHER"
+    ],
+    "BrandAssetKind": [
+      "LOGO_LIGHT",
+      "LOGO_DARK",
+      "FAVICON",
+      "PDF_LETTERHEAD"
     ],
     "CompanyLegalDocumentType": [
       "TERMS_AND_CONDITIONS",
@@ -2849,6 +2857,242 @@
         }
       ],
       "referencedBy": []
+    },
+    "BrandAsset": {
+      "name": "BrandAsset",
+      "domain": "Unclassified",
+      "dbTable": "brand_asset",
+      "fields": [
+        {
+          "name": "id",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": true,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "profileId",
+          "dbColumn": "profile_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "profile",
+          "dbColumn": null,
+          "type": "CompanyProfile",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "CompanyProfileBrandAssets",
+            "fkFields": [
+              "profileId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "Cascade"
+          },
+          "owning": true
+        },
+        {
+          "name": "kind",
+          "dbColumn": null,
+          "type": "BrandAssetKind",
+          "kind": "enum",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "url",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "createdAt",
+          "dbColumn": "created_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "updatedAt",
+          "dbColumn": "updated_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "profile",
+          "target": "CompanyProfile",
+          "cardinality": "one",
+          "relationName": "CompanyProfileBrandAssets",
+          "owning": true,
+          "onDelete": "Cascade",
+          "fkFields": [
+            "profileId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        }
+      ],
+      "referencedBy": []
+    },
+    "BrandColorScheme": {
+      "name": "BrandColorScheme",
+      "domain": "Unclassified",
+      "dbTable": "brand_color_scheme",
+      "fields": [
+        {
+          "name": "id",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": true,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "name",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": true,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "primaryColorHex",
+          "dbColumn": "primary_color_hex",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "secondaryColorHex",
+          "dbColumn": "secondary_color_hex",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "createdAt",
+          "dbColumn": "created_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "updatedAt",
+          "dbColumn": "updated_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": true
+        },
+        {
+          "name": "activeOn",
+          "dbColumn": null,
+          "type": "CompanyProfile",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "CompanyProfileActiveColorScheme",
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
+        }
+      ],
+      "relations": [
+        {
+          "field": "activeOn",
+          "target": "CompanyProfile",
+          "cardinality": "many",
+          "relationName": "CompanyProfileActiveColorScheme",
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
+        }
+      ],
+      "referencedBy": [
+        {
+          "from": "CompanyProfile",
+          "via": "activeColorScheme",
+          "fk": "activeColorSchemeId"
+        }
+      ]
     },
     "CalendarSyncedEvent": {
       "name": "CalendarSyncedEvent",
@@ -7126,6 +7370,60 @@
           "isUpdatedAt": false
         },
         {
+          "name": "activeColorSchemeId",
+          "dbColumn": "active_color_scheme_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "activeColorScheme",
+          "dbColumn": null,
+          "type": "BrandColorScheme",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "CompanyProfileActiveColorScheme",
+            "fkFields": [
+              "activeColorSchemeId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "SetNull"
+          },
+          "owning": true
+        },
+        {
+          "name": "brandAssets",
+          "dbColumn": null,
+          "type": "BrandAsset",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "CompanyProfileBrandAssets",
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
+        },
+        {
           "name": "createdAt",
           "dbColumn": "created_at",
           "type": "DateTime",
@@ -7235,6 +7533,30 @@
           ]
         },
         {
+          "field": "activeColorScheme",
+          "target": "BrandColorScheme",
+          "cardinality": "one-optional",
+          "relationName": "CompanyProfileActiveColorScheme",
+          "owning": true,
+          "onDelete": "SetNull",
+          "fkFields": [
+            "activeColorSchemeId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "brandAssets",
+          "target": "BrandAsset",
+          "cardinality": "many",
+          "relationName": "CompanyProfileBrandAssets",
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
+        },
+        {
           "field": "licences",
           "target": "EntityLicence",
           "cardinality": "many",
@@ -7275,6 +7597,11 @@
           "from": "EntityInsurance",
           "via": "companyProfile",
           "fk": "companyProfileId"
+        },
+        {
+          "from": "BrandAsset",
+          "via": "profile",
+          "fk": "profileId"
         },
         {
           "from": "CompanyLegalDocument",
@@ -52428,6 +52755,22 @@
       "fk": "whsOfficerUserId",
       "onDelete": "SetNull",
       "relationName": "CompanyProfileWhsOfficer"
+    },
+    {
+      "from": "CompanyProfile",
+      "to": "BrandColorScheme",
+      "via": "activeColorScheme",
+      "fk": "activeColorSchemeId",
+      "onDelete": "SetNull",
+      "relationName": "CompanyProfileActiveColorScheme"
+    },
+    {
+      "from": "BrandAsset",
+      "to": "CompanyProfile",
+      "via": "profile",
+      "fk": "profileId",
+      "onDelete": "Cascade",
+      "relationName": "CompanyProfileBrandAssets"
     },
     {
       "from": "CompanyLegalDocument",

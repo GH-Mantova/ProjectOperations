@@ -88,3 +88,38 @@ Next prod incident: query it.
   merge `pr-zz-mail-managed-identity` → deploy → trigger a real access-request → **confirm the email
   lands** → **only then** delete the old app-registration secrets.
   **Verification BEFORE the irreversible step, never alongside it** (LL-36).
+
+
+---
+
+# Addendum -- Marco, 2026-07-15 (supersedes two earlier answers)
+
+Two decisions recorded earlier on 2026-07-15 were **revised by Marco the same day**. The revised
+answers below WIN. Staged prompt bodies live in `docs/pr-prompts/staged/` (authored, not yet armed).
+
+## A. Default dashboard -- **PER USER** (supersedes per-role/per-module)
+
+One global default dashboard **"Home"** that every user starts on, plus a per-user override
+(`User.defaultDashboardId`) each user sets for themselves. **No RoleDefaultDashboard table.** Also:
+**delete the two generic dashboards "Operations" and "Tendering"** and replace with "Home".
+- Backend + data (escalates, deletes rows): `staged/pr-user-default-dashboard.md`
+- Frontend (gated on backend): `staged/pr-user-default-dashboard-ui.md`
+
+## B. Site on Tender -- **REQUIRED at tender time** (supersedes "Tender stays nullable")
+
+A tender's physical **site address must be captured at tender time.** Today NewTenderWizard stores
+site as FREE TEXT folded into the description and never links a Site record -- which is why every
+tender.siteId is null. Plan:
+1. `staged/pr-tender-geoapify-site-autocomplete.md` -- replace the free-text field with a Geoapify
+   address-autocomplete (server-side proxy reads the existing "geoapify" integration key) that
+   find-or-creates a Site and sets siteId.
+2. `staged/pr-tender-required-site.md` (escalates, GATED on #1) -- backfill legacy tenders to
+   "Unassigned", then NOT NULL on Tender + DTO validation.
+Job + Project NOT NULL is unchanged: `staged/pr-siteid-notnull-job-project.md` (escalates).
+FormSubmission stays nullable (`formsubmission-required-site-field`, per-form required field).
+
+## C. Mail managed identity -- unchanged, Marco supervising ops NOW
+
+Build-the-code-PR-now decision stands (`mail-send-managed-identity`, escalates). Marco confirmed he
+will supervise the ops sequence: deploy -> trigger a real access-request -> confirm the email LANDS
+-> only THEN delete the old app-registration secrets (never alongside; LL-36).

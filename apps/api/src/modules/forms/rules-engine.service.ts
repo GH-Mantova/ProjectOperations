@@ -65,7 +65,11 @@ export interface RuleAction {
   type: RuleActionType;
   target?: string;
   value?: unknown;
-  recordType?: "safety_incident" | "hazard_observation" | "maintenance_job";
+  recordType?: "safety_incident" | "hazard_observation" | "maintenance_job" | "corrective_action";
+  correctiveActionTitle?: string;
+  correctiveActionDescription?: string;
+  correctiveActionPriority?: "low" | "medium" | "high" | "critical";
+  correctiveActionAssignToRole?: string;
   notificationTarget?: string; // role or userId
   notificationMessage?: string;
 }

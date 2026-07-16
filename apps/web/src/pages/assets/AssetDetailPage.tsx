@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
@@ -57,6 +57,8 @@ type Asset = {
   name: string;
   assetCode: string;
   serialNumber?: string | null;
+  barcode?: string | null;
+  qrValue?: string | null;
   status: string;
   homeBase?: string | null;
   currentLocation?: string | null;
@@ -80,7 +82,19 @@ type DocumentItem = {
   fileLink?: { name: string; webUrl: string } | null;
 };
 
-type Tab = "overview" | "maintenance" | "shifts" | "documents";
+type CheckoutRecord = {
+  id: string;
+  checkedOutAt: string;
+  checkedInAt?: string | null;
+  dueBackAt?: string | null;
+  notes?: string | null;
+  holderWorker?: { id: string; firstName: string; lastName: string } | null;
+  holderUser?: { id: string; firstName: string; lastName: string; email: string } | null;
+  site?: { id: string; name: string } | null;
+  job?: { id: string; jobNumber: string; name: string } | null;
+};
+
+type Tab = "overview" | "custody" | "maintenance" | "shifts" | "documents";
 
 const STATUS_CLASS: Record<string, string> = {
   AVAILABLE: "s7-badge s7-badge--active",
@@ -98,6 +112,181 @@ function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString();
 }
 
+function holderLabel(co: CheckoutRecord): string {
+  if (co.holderWorker) return `${co.holderWorker.firstName} ${co.holderWorker.lastName} (worker)`;
+  if (co.holderUser) return `${co.holderUser.firstName} ${co.holderUser.lastName} (${co.holderUser.email})`;
+  if (co.job) return `Job ${co.job.jobNumber} — ${co.job.name}`;
+  if (co.site) return `Site: ${co.site.name}`;
+  return "Unknown holder";
+}
+
+// ---------------------------------------------------------------------------
+// Checkout modal
+// ---------------------------------------------------------------------------
+
+type CheckoutModalProps = {
+  assetId: string;
+  onClose: () => void;
+  onDone: () => void;
+  authFetch: (url: string, init?: RequestInit) => Promise<Response>;
+};
+
+function CheckoutModal({ assetId, onClose, onDone, authFetch }: CheckoutModalProps) {
+  const [holderWorkerId, setHolderWorkerId] = useState("");
+  const [dueBackAt, setDueBackAt] = useState("");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      const body: Record<string, string> = {};
+      if (holderWorkerId) body.holderWorkerId = holderWorkerId;
+      if (dueBackAt) body.dueBackAt = new Date(dueBackAt).toISOString();
+      if (notes) body.notes = notes;
+      const resp = await authFetch(`/assets/${assetId}/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      if (!resp.ok) {
+        const data = (await resp.json()) as { message?: string };
+        throw new Error(data.message ?? "Checkout failed.");
+      }
+      onDone();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="modal-overlay" role="dialog" aria-modal aria-label="Check out asset">
+      <div className="modal-panel" style={{ maxWidth: 420 }}>
+        <h2 className="s7-type-section-heading" style={{ marginTop: 0 }}>Check out asset</h2>
+        {error ? <p className="s7-form-error">{error}</p> : null}
+        <form onSubmit={handleSubmit}>
+          <div className="s7-form-field">
+            <label className="s7-label" htmlFor="co-worker">Holder worker ID (optional)</label>
+            <input
+              id="co-worker"
+              className="s7-input"
+              value={holderWorkerId}
+              onChange={(e) => setHolderWorkerId(e.target.value)}
+              placeholder="Worker ID"
+            />
+          </div>
+          <div className="s7-form-field">
+            <label className="s7-label" htmlFor="co-due">Due back</label>
+            <input
+              id="co-due"
+              type="datetime-local"
+              className="s7-input"
+              value={dueBackAt}
+              onChange={(e) => setDueBackAt(e.target.value)}
+            />
+          </div>
+          <div className="s7-form-field">
+            <label className="s7-label" htmlFor="co-notes">Notes</label>
+            <textarea
+              id="co-notes"
+              className="s7-input"
+              rows={2}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+            <button type="submit" className="s7-btn s7-btn--primary" disabled={saving}>
+              {saving ? "Checking out…" : "Check out"}
+            </button>
+            <button type="button" className="s7-btn s7-btn--secondary" onClick={onClose}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Check-in modal
+// ---------------------------------------------------------------------------
+
+type CheckinModalProps = {
+  assetId: string;
+  onClose: () => void;
+  onDone: () => void;
+  authFetch: (url: string, init?: RequestInit) => Promise<Response>;
+};
+
+function CheckinModal({ assetId, onClose, onDone, authFetch }: CheckinModalProps) {
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      const resp = await authFetch(`/assets/${assetId}/checkin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes: notes || undefined })
+      });
+      if (!resp.ok) {
+        const data = (await resp.json()) as { message?: string };
+        throw new Error(data.message ?? "Check-in failed.");
+      }
+      onDone();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="modal-overlay" role="dialog" aria-modal aria-label="Check in asset">
+      <div className="modal-panel" style={{ maxWidth: 380 }}>
+        <h2 className="s7-type-section-heading" style={{ marginTop: 0 }}>Check in asset</h2>
+        {error ? <p className="s7-form-error">{error}</p> : null}
+        <form onSubmit={handleSubmit}>
+          <div className="s7-form-field">
+            <label className="s7-label" htmlFor="ci-notes">Return notes (optional)</label>
+            <textarea
+              id="ci-notes"
+              className="s7-input"
+              rows={2}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Condition on return, mileage, etc."
+            />
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+            <button type="submit" className="s7-btn s7-btn--primary" disabled={saving}>
+              {saving ? "Checking in…" : "Check in"}
+            </button>
+            <button type="button" className="s7-btn s7-btn--secondary" onClick={onClose}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main page
+// ---------------------------------------------------------------------------
+
 export function AssetDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { authFetch } = useAuth();
@@ -106,28 +295,28 @@ export function AssetDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
   const [documents, setDocuments] = useState<DocumentItem[] | null>(null);
+  const [checkouts, setCheckouts] = useState<CheckoutRecord[] | null>(null);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [checkinOpen, setCheckinOpen] = useState(false);
+
+  const loadAsset = useCallback(async () => {
+    if (!id) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await authFetch(`/assets/${id}`);
+      if (!response.ok) throw new Error("Asset not found.");
+      setAsset((await response.json()) as Asset);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, [authFetch, id]);
 
   useEffect(() => {
-    if (!id) return;
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const response = await authFetch(`/assets/${id}`);
-        if (!response.ok) throw new Error("Asset not found.");
-        const data = (await response.json()) as Asset;
-        if (!cancelled) setAsset(data);
-      } catch (err) {
-        if (!cancelled) setError((err as Error).message);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [authFetch, id]);
+    loadAsset();
+  }, [loadAsset]);
 
   useEffect(() => {
     if (tab !== "documents" || !id) return;
@@ -139,6 +328,22 @@ export function AssetDetailPage() {
         return;
       }
       if (!cancelled) setDocuments(await response.json());
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch, id, tab]);
+
+  useEffect(() => {
+    if (tab !== "custody" || !id) return;
+    let cancelled = false;
+    (async () => {
+      const response = await authFetch(`/assets/${id}/checkouts`);
+      if (!response.ok) {
+        if (!cancelled) setCheckouts([]);
+        return;
+      }
+      if (!cancelled) setCheckouts(await response.json());
     })();
     return () => {
       cancelled = true;
@@ -165,7 +370,6 @@ export function AssetDetailPage() {
     const allScheduled = [...scheduled, ...scheduledFromPlan];
     const next = allScheduled.length > 0 ? new Date(Math.min(...allScheduled)).toISOString() : null;
 
-    // Total downtime = sum of breakdown durations (resolved breakdowns only; open ones counted to today).
     const now = Date.now();
     const downtimeMs = asset.breakdowns.reduce((sum, breakdown) => {
       const start = new Date(breakdown.reportedAt).getTime();
@@ -176,6 +380,25 @@ export function AssetDetailPage() {
 
     return { lastService: last, nextService: next, totalDowntimeDays: downtimeDays };
   }, [asset]);
+
+  /** Whether the asset is currently checked out (open checkout exists). */
+  const openCheckout = useMemo(() => {
+    if (!checkouts) return null;
+    return checkouts.find((co) => !co.checkedInAt) ?? null;
+  }, [checkouts]);
+
+  function handleCheckoutDone() {
+    setCheckoutOpen(false);
+    // Reload checkouts list and switch to custody tab
+    setCheckouts(null);
+    setTab("custody");
+  }
+
+  function handleCheckinDone() {
+    setCheckinOpen(false);
+    setCheckouts(null);
+    setTab("custody");
+  }
 
   if (loading && !asset) {
     return (
@@ -193,7 +416,7 @@ export function AssetDetailPage() {
         <EmptyState
           heading="Asset not found"
           subtext={error ?? "This asset doesn't exist or has been removed."}
-          action={<Link to="/assets" className="s7-btn s7-btn--primary">← Back to assets</Link>}
+          action={<Link to="/assets" className="s7-btn s7-btn--primary">Back to assets</Link>}
         />
       </div>
     );
@@ -232,7 +455,24 @@ export function AssetDetailPage() {
 
   return (
     <div className="worker-detail">
-      <Link to="/assets" className="tender-detail__back">← Back to assets</Link>
+      {checkoutOpen ? (
+        <CheckoutModal
+          assetId={asset.id}
+          onClose={() => setCheckoutOpen(false)}
+          onDone={handleCheckoutDone}
+          authFetch={authFetch}
+        />
+      ) : null}
+      {checkinOpen ? (
+        <CheckinModal
+          assetId={asset.id}
+          onClose={() => setCheckinOpen(false)}
+          onDone={handleCheckinDone}
+          authFetch={authFetch}
+        />
+      ) : null}
+
+      <Link to="/assets" className="tender-detail__back">Back to assets</Link>
 
       <header className="asset-detail__header">
         <div className="asset-detail__photo" aria-hidden>
@@ -247,19 +487,48 @@ export function AssetDetailPage() {
             {asset.category?.name ?? "Uncategorised"}
             {asset.homeBase ? ` · ${asset.homeBase}` : ""}
           </p>
+          {/* Barcode / QR display */}
+          {asset.barcode || asset.qrValue ? (
+            <p style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>
+              {asset.barcode ? <span>Barcode: <code>{asset.barcode}</code></span> : null}
+              {asset.barcode && asset.qrValue ? "  ·  " : null}
+              {asset.qrValue ? (
+                <span>
+                  QR: <code>{asset.qrValue}</code>
+                  {/* Follow-up: render QR image when qrcode.react is added as a dep */}
+                </span>
+              ) : null}
+            </p>
+          ) : null}
         </div>
         <div className="worker-detail__badges">
           <span className={STATUS_CLASS[asset.status] ?? "s7-badge s7-badge--neutral"}>
             {asset.status.replace(/_/g, " ")}
           </span>
+          {/* Checkout / check-in action buttons */}
+          <button
+            type="button"
+            className="s7-btn s7-btn--sm s7-btn--secondary"
+            onClick={() => { setTab("custody"); setCheckouts(null); setCheckoutOpen(true); }}
+          >
+            Check out
+          </button>
+          <button
+            type="button"
+            className="s7-btn s7-btn--sm s7-btn--secondary"
+            onClick={() => { setTab("custody"); setCheckouts(null); setCheckinOpen(true); }}
+          >
+            Check in
+          </button>
         </div>
       </header>
 
       <nav className="tender-detail__tabs job-detail__tabs" role="tablist">
         {([
           ["overview", "Overview"],
-          ["maintenance", `Maintenance history (${asset.maintenanceEvents.length + asset.inspections.length + asset.breakdowns.length})`],
-          ["shifts", `Assigned shifts (${asset.shiftAssignments.length})`],
+          ["custody", "Custody"],
+          ["maintenance", `Maintenance (${asset.maintenanceEvents.length + asset.inspections.length + asset.breakdowns.length})`],
+          ["shifts", `Shifts (${asset.shiftAssignments.length})`],
           ["documents", "Documents"]
         ] as Array<[Tab, string]>).map(([key, label]) => (
           <button
@@ -304,6 +573,69 @@ export function AssetDetailPage() {
               <p>{asset.notes}</p>
             </div>
           ) : null}
+        </section>
+      ) : null}
+
+      {tab === "custody" ? (
+        <section className="s7-card">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <h3 className="s7-type-section-heading" style={{ margin: 0 }}>Custody history</h3>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                className="s7-btn s7-btn--sm s7-btn--primary"
+                onClick={() => setCheckoutOpen(true)}
+              >
+                Check out
+              </button>
+              <button
+                type="button"
+                className="s7-btn s7-btn--sm s7-btn--secondary"
+                onClick={() => setCheckinOpen(true)}
+              >
+                Check in
+              </button>
+            </div>
+          </div>
+
+          {checkouts === null ? (
+            <Skeleton width="100%" height={80} />
+          ) : checkouts.length === 0 ? (
+            <EmptyState heading="No custody records" subtext="Check-outs and returns will appear here." />
+          ) : (
+            <div className="s7-table-scroll">
+              <table className="s7-table">
+                <thead>
+                  <tr>
+                    <th>Holder</th>
+                    <th>Checked out</th>
+                    <th>Due back</th>
+                    <th>Checked in</th>
+                    <th>Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {checkouts.map((co) => (
+                    <tr key={co.id}>
+                      <td>{holderLabel(co)}</td>
+                      <td>{formatDateTime(co.checkedOutAt)}</td>
+                      <td>{formatDate(co.dueBackAt)}</td>
+                      <td>
+                        {co.checkedInAt ? (
+                          formatDateTime(co.checkedInAt)
+                        ) : (
+                          <span className="s7-badge s7-badge--warning">Open</span>
+                        )}
+                      </td>
+                      <td style={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {co.notes ?? "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
       ) : null}
 

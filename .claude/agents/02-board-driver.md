@@ -65,6 +65,31 @@ branch is DIRTY, even that does nothing Ã¢â‚¬â€ fix the conflict firs
 
 ---
 
+## VISION REVIEW -- appearance is NOT proved by the functional smoke
+
+The functional e2e suite proves that flows *work*. It does not prove that the screen *looks right* --
+that check used to be the manual "Marco test", and it never scaled. On a UI PR, after the functional
+walk in rule 6 passes and the servers are still up:
+
+1. **CAPTURE.** Write a `screens.json` (one `{ name, path, waitFor? }` per screen the PR body names
+   as visual acceptance) and run
+   `node scripts/pipeline/visual-smoke.mjs --pr {n} --base http://localhost:5174 --screens <file>`.
+   It logs in as the seed admin and writes `docs/pr-reviews/pr-{n}-smoke/{name}.png`, one PNG per
+   entry. It asserts nothing.
+2. **VISION REVIEW.** OPEN each PNG. Judge it against the PR's stated visual acceptance criteria:
+   layout intact (no overlap / cut-off / blank region), the elements the body claims are visibly
+   present, nav/shell renders, spacing and colours plausibly match the design tokens. Record a
+   `screen | PASS/FAIL | reason` row in the smoke PASS table. **A visual FAIL is a smoke FAIL** --
+   route it through rule 6's FAIL branch (reproduce-first + fix-forward, or escalate if exhausted).
+3. **This REPLACES the manual "Marco test" for appearance.** Routine "does it look right" is decided
+   here. Escalate to Marco ONLY on a genuinely ambiguous aesthetic judgement (novel design token,
+   brand-guideline call, subjective density/hierarchy question) -- never on a screen that is clearly
+   right or clearly wrong.
+
+Do NOT bolt on a pixel differ (Percy / Argos / `toHaveScreenshot`). The reviewer is *this agent*,
+which is vision-capable; baselines rot, differs are brittle, and the model is already the right
+tool for the acceptance check being asked for.
+
 ## NEVER DIAGNOSE CI FROM THE DIFF
 
     gh run view <run-id> --job <job-id> --log

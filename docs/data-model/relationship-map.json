@@ -2,10 +2,10 @@
   "_generator": "scripts/data-model/build-relationship-map.mjs",
   "_doNotEdit": "Regenerated from schema.prisma. Do not hand-edit.",
   "generatedFrom": "apps/api/prisma/schema.prisma",
-  "schemaSha256": "f96056e6f88d2ad69795f291eba95818f821d3a9d38ae4ddc76d77ded38caf5b",
-  "modelCount": 197,
-  "enumCount": 25,
-  "edgeCount": 290,
+  "schemaSha256": "867a89cfddd77502949daec9179933c8544c95b703ca14a165d4f404471981bd",
+  "modelCount": 200,
+  "enumCount": 28,
+  "edgeCount": 297,
   "domains": {
     "Assets": [
       "Asset",
@@ -232,6 +232,9 @@
     ],
     "Unclassified": [
       "AccessRequest",
+      "Commitment",
+      "CommitmentChange",
+      "CommitmentItem",
       "CompanyLegalDocument",
       "CompanyProfile",
       "OperationsSettings"
@@ -400,6 +403,24 @@
       "STANDARD_EXCLUSIONS",
       "PROJECT_ALLOWANCES",
       "PRIVACY_NOTICE"
+    ],
+    "CommitmentType": [
+      "SUBCONTRACT",
+      "PURCHASE_ORDER",
+      "HIRE",
+      "OTHER"
+    ],
+    "CommitmentStatus": [
+      "DRAFT",
+      "APPROVED",
+      "CLOSED",
+      "CANCELLED"
+    ],
+    "CommitmentChangeStatus": [
+      "DRAFT",
+      "PENDING",
+      "APPROVED",
+      "REJECTED"
     ]
   },
   "models": {
@@ -5511,6 +5532,748 @@
           "onDelete": "Cascade",
           "fkFields": [
             "userId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        }
+      ],
+      "referencedBy": []
+    },
+    "Commitment": {
+      "name": "Commitment",
+      "domain": "Unclassified",
+      "dbTable": "commitments",
+      "fields": [
+        {
+          "name": "id",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": true,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "jobId",
+          "dbColumn": "job_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "job",
+          "dbColumn": null,
+          "type": "Job",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [
+              "jobId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "Restrict"
+          },
+          "owning": true
+        },
+        {
+          "name": "type",
+          "dbColumn": null,
+          "type": "CommitmentType",
+          "kind": "enum",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "supplierId",
+          "dbColumn": "supplier_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "supplier",
+          "dbColumn": null,
+          "type": "SubcontractorSupplier",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [
+              "supplierId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "SetNull"
+          },
+          "owning": true
+        },
+        {
+          "name": "reference",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "description",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "value",
+          "dbColumn": null,
+          "type": "Decimal",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "status",
+          "dbColumn": null,
+          "type": "CommitmentStatus",
+          "kind": "enum",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "purchaseOrderId",
+          "dbColumn": "purchase_order_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": true,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "createdById",
+          "dbColumn": "created_by_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "createdBy",
+          "dbColumn": null,
+          "type": "User",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "CommitmentCreatedBy",
+            "fkFields": [
+              "createdById"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "Restrict"
+          },
+          "owning": true
+        },
+        {
+          "name": "createdAt",
+          "dbColumn": "created_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "updatedAt",
+          "dbColumn": "updated_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": true
+        },
+        {
+          "name": "items",
+          "dbColumn": null,
+          "type": "CommitmentItem",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
+        },
+        {
+          "name": "changes",
+          "dbColumn": null,
+          "type": "CommitmentChange",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
+        }
+      ],
+      "relations": [
+        {
+          "field": "job",
+          "target": "Job",
+          "cardinality": "one",
+          "relationName": null,
+          "owning": true,
+          "onDelete": "Restrict",
+          "fkFields": [
+            "jobId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "supplier",
+          "target": "SubcontractorSupplier",
+          "cardinality": "one-optional",
+          "relationName": null,
+          "owning": true,
+          "onDelete": "SetNull",
+          "fkFields": [
+            "supplierId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "createdBy",
+          "target": "User",
+          "cardinality": "one",
+          "relationName": "CommitmentCreatedBy",
+          "owning": true,
+          "onDelete": "Restrict",
+          "fkFields": [
+            "createdById"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "items",
+          "target": "CommitmentItem",
+          "cardinality": "many",
+          "relationName": null,
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
+        },
+        {
+          "field": "changes",
+          "target": "CommitmentChange",
+          "cardinality": "many",
+          "relationName": null,
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
+        }
+      ],
+      "referencedBy": [
+        {
+          "from": "CommitmentItem",
+          "via": "commitment",
+          "fk": "commitmentId"
+        },
+        {
+          "from": "CommitmentChange",
+          "via": "commitment",
+          "fk": "commitmentId"
+        }
+      ]
+    },
+    "CommitmentChange": {
+      "name": "CommitmentChange",
+      "domain": "Unclassified",
+      "dbTable": "commitment_changes",
+      "fields": [
+        {
+          "name": "id",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": true,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "commitmentId",
+          "dbColumn": "commitment_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "commitment",
+          "dbColumn": null,
+          "type": "Commitment",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [
+              "commitmentId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "Cascade"
+          },
+          "owning": true
+        },
+        {
+          "name": "reference",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "description",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "valueChange",
+          "dbColumn": "value_change",
+          "type": "Decimal",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "status",
+          "dbColumn": null,
+          "type": "CommitmentChangeStatus",
+          "kind": "enum",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "approvedById",
+          "dbColumn": "approved_by_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "approvedBy",
+          "dbColumn": null,
+          "type": "User",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "CommitmentChangeApprovedBy",
+            "fkFields": [
+              "approvedById"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "SetNull"
+          },
+          "owning": true
+        },
+        {
+          "name": "createdById",
+          "dbColumn": "created_by_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "createdBy",
+          "dbColumn": null,
+          "type": "User",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "CommitmentChangeCreatedBy",
+            "fkFields": [
+              "createdById"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "Restrict"
+          },
+          "owning": true
+        },
+        {
+          "name": "createdAt",
+          "dbColumn": "created_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "updatedAt",
+          "dbColumn": "updated_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "commitment",
+          "target": "Commitment",
+          "cardinality": "one",
+          "relationName": null,
+          "owning": true,
+          "onDelete": "Cascade",
+          "fkFields": [
+            "commitmentId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "approvedBy",
+          "target": "User",
+          "cardinality": "one-optional",
+          "relationName": "CommitmentChangeApprovedBy",
+          "owning": true,
+          "onDelete": "SetNull",
+          "fkFields": [
+            "approvedById"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "createdBy",
+          "target": "User",
+          "cardinality": "one",
+          "relationName": "CommitmentChangeCreatedBy",
+          "owning": true,
+          "onDelete": "Restrict",
+          "fkFields": [
+            "createdById"
+          ],
+          "refFields": [
+            "id"
+          ]
+        }
+      ],
+      "referencedBy": []
+    },
+    "CommitmentItem": {
+      "name": "CommitmentItem",
+      "domain": "Unclassified",
+      "dbTable": "commitment_items",
+      "fields": [
+        {
+          "name": "id",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": true,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "commitmentId",
+          "dbColumn": "commitment_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "commitment",
+          "dbColumn": null,
+          "type": "Commitment",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [
+              "commitmentId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "Cascade"
+          },
+          "owning": true
+        },
+        {
+          "name": "description",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "costCategory",
+          "dbColumn": "cost_category",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "quantity",
+          "dbColumn": null,
+          "type": "Decimal",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "unit",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "rate",
+          "dbColumn": null,
+          "type": "Decimal",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "amount",
+          "dbColumn": null,
+          "type": "Decimal",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "createdAt",
+          "dbColumn": "created_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "updatedAt",
+          "dbColumn": "updated_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "commitment",
+          "target": "Commitment",
+          "cardinality": "one",
+          "relationName": null,
+          "owning": true,
+          "onDelete": "Cascade",
+          "fkFields": [
+            "commitmentId"
           ],
           "refFields": [
             "id"
@@ -18881,6 +19644,25 @@
             "onDelete": null
           },
           "owning": false
+        },
+        {
+          "name": "commitments",
+          "dbColumn": null,
+          "type": "Commitment",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
         }
       ],
       "relations": [
@@ -19087,6 +19869,16 @@
           "onDelete": null,
           "fkFields": [],
           "refFields": []
+        },
+        {
+          "field": "commitments",
+          "target": "Commitment",
+          "cardinality": "many",
+          "relationName": null,
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
         }
       ],
       "referencedBy": [
@@ -19147,6 +19939,11 @@
         },
         {
           "from": "CorrespondenceThread",
+          "via": "job",
+          "fk": "jobId"
+        },
+        {
+          "from": "Commitment",
           "via": "job",
           "fk": "jobId"
         }
@@ -35752,6 +36549,25 @@
             "onDelete": null
           },
           "owning": false
+        },
+        {
+          "name": "commitments",
+          "dbColumn": null,
+          "type": "Commitment",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
         }
       ],
       "relations": [
@@ -35828,6 +36644,16 @@
           "onDelete": null,
           "fkFields": [],
           "refFields": []
+        },
+        {
+          "field": "commitments",
+          "target": "Commitment",
+          "cardinality": "many",
+          "relationName": null,
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
         }
       ],
       "referencedBy": [
@@ -35858,6 +36684,11 @@
         },
         {
           "from": "RateTable",
+          "via": "supplier",
+          "fk": "supplierId"
+        },
+        {
+          "from": "Commitment",
           "via": "supplier",
           "fk": "supplierId"
         }
@@ -43702,6 +44533,63 @@
             "onDelete": null
           },
           "owning": false
+        },
+        {
+          "name": "commitmentsCreated",
+          "dbColumn": null,
+          "type": "Commitment",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "CommitmentCreatedBy",
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
+        },
+        {
+          "name": "commitmentChangesCreated",
+          "dbColumn": null,
+          "type": "CommitmentChange",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "CommitmentChangeCreatedBy",
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
+        },
+        {
+          "name": "commitmentChangesApproved",
+          "dbColumn": null,
+          "type": "CommitmentChange",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "CommitmentChangeApprovedBy",
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
         }
       ],
       "relations": [
@@ -44650,6 +45538,36 @@
           "onDelete": null,
           "fkFields": [],
           "refFields": []
+        },
+        {
+          "field": "commitmentsCreated",
+          "target": "Commitment",
+          "cardinality": "many",
+          "relationName": "CommitmentCreatedBy",
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
+        },
+        {
+          "field": "commitmentChangesCreated",
+          "target": "CommitmentChange",
+          "cardinality": "many",
+          "relationName": "CommitmentChangeCreatedBy",
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
+        },
+        {
+          "field": "commitmentChangesApproved",
+          "target": "CommitmentChange",
+          "cardinality": "many",
+          "relationName": "CommitmentChangeApprovedBy",
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
         }
       ],
       "referencedBy": [
@@ -45095,6 +46013,21 @@
         },
         {
           "from": "CompanyLegalDocument",
+          "via": "createdBy",
+          "fk": "createdById"
+        },
+        {
+          "from": "Commitment",
+          "via": "createdBy",
+          "fk": "createdById"
+        },
+        {
+          "from": "CommitmentChange",
+          "via": "approvedBy",
+          "fk": "approvedById"
+        },
+        {
+          "from": "CommitmentChange",
           "via": "createdBy",
           "fk": "createdById"
         }
@@ -50595,6 +51528,62 @@
       "fk": "createdById",
       "onDelete": "SetNull",
       "relationName": "CompanyLegalDocCreatedBy"
+    },
+    {
+      "from": "Commitment",
+      "to": "Job",
+      "via": "job",
+      "fk": "jobId",
+      "onDelete": "Restrict",
+      "relationName": null
+    },
+    {
+      "from": "Commitment",
+      "to": "SubcontractorSupplier",
+      "via": "supplier",
+      "fk": "supplierId",
+      "onDelete": "SetNull",
+      "relationName": null
+    },
+    {
+      "from": "Commitment",
+      "to": "User",
+      "via": "createdBy",
+      "fk": "createdById",
+      "onDelete": "Restrict",
+      "relationName": "CommitmentCreatedBy"
+    },
+    {
+      "from": "CommitmentItem",
+      "to": "Commitment",
+      "via": "commitment",
+      "fk": "commitmentId",
+      "onDelete": "Cascade",
+      "relationName": null
+    },
+    {
+      "from": "CommitmentChange",
+      "to": "Commitment",
+      "via": "commitment",
+      "fk": "commitmentId",
+      "onDelete": "Cascade",
+      "relationName": null
+    },
+    {
+      "from": "CommitmentChange",
+      "to": "User",
+      "via": "approvedBy",
+      "fk": "approvedById",
+      "onDelete": "SetNull",
+      "relationName": "CommitmentChangeApprovedBy"
+    },
+    {
+      "from": "CommitmentChange",
+      "to": "User",
+      "via": "createdBy",
+      "fk": "createdById",
+      "onDelete": "Restrict",
+      "relationName": "CommitmentChangeCreatedBy"
     }
   ]
 }

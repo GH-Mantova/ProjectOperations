@@ -107,11 +107,15 @@ docs/qa/qa-test-data-registry.md
 docs/qa/.qa-run.lock
 docs/qa/qa-run-*.md
 
-# Data-model interactive graph — a 100KB+ artifact fully regenerated from
-# relationship-map.json on every schema change. Committing it churns every
-# data-model PR. It is derivable: run `pnpm data-model:build` and open
-# docs/data-model/relationship-graph.html locally. The generator
-# (scripts/data-model/build-graph-html.mjs) and the JSON/MD sources ARE tracked.
+# Data-model artefacts — all fully regenerated from apps/api/prisma/schema.prisma
+# on every schema change. Committing them churns every open feature PR because
+# GitHub's "merge main into <branch>" then re-conflicts these files on the other
+# open branches. They are derivable: run `pnpm data-model:build` locally.
+# The generators (scripts/data-model/build-relationship-map.mjs and
+# build-graph-html.mjs) ARE tracked; only their outputs are ignored.
+docs/data-model/relationship-map.json
+docs/data-model/relationship-map.md
+docs/data-model/metadata-catalog.json
 docs/data-model/relationship-graph.html
 
 # Graphify AST-only knowledge graph output. The full graph.json is ~19 MB on this

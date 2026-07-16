@@ -1,0 +1,48 @@
+/* AddressAutocomplete — Geoapify-backed suggestion dropdown for site/address
+ * fields. Sits inside a form field label; the dropdown pops below the input
+ * and is dismissed on outside click. */
+.address-autocomplete {
+  position: relative;
+  width: 100%;
+}
+.address-autocomplete__results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  background: var(--surface-card, #fff);
+  border: 1px solid var(--border-default, #D1D5DB);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.1);
+  max-height: 280px;
+  overflow-y: auto;
+  margin-top: 4px;
+}
+.address-autocomplete__item {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  min-height: 44px;
+  font: inherit;
+  color: inherit;
+}
+.address-autocomplete__item:hover,
+.address-autocomplete__item:focus {
+  background: var(--surface-page, #F7F8FA);
+  outline: none;
+}
+.address-autocomplete__item-primary {
+  display: block;
+  font-size: 13px;
+  color: var(--text-primary, #111827);
+}
+.address-autocomplete__empty {
+  padding: 12px;
+  font-size: 13px;
+  color: var(--text-secondary, #6B7280);
+}

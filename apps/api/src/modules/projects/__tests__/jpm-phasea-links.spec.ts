@@ -54,9 +54,9 @@ describe("Job/Project merge Phase A — backfill + reconciliation", () => {
     clientId = client.id;
 
     const [tA, tB, tC] = await Promise.all([
-      prisma.tender.create({ data: { tenderNumber: TENDER_A, title: "ZZTEST-JPMA A" } }),
-      prisma.tender.create({ data: { tenderNumber: TENDER_B, title: "ZZTEST-JPMA B" } }),
-      prisma.tender.create({ data: { tenderNumber: TENDER_C, title: "ZZTEST-JPMA C" } })
+      prisma.tender.create({ data: { tenderNumber: TENDER_A, title: "ZZTEST-JPMA A", siteId: "site-unassigned" } }),
+      prisma.tender.create({ data: { tenderNumber: TENDER_B, title: "ZZTEST-JPMA B", siteId: "site-unassigned" } }),
+      prisma.tender.create({ data: { tenderNumber: TENDER_C, title: "ZZTEST-JPMA C", siteId: "site-unassigned" } })
     ]);
     tenderAId = tA.id;
     tenderBId = tB.id;

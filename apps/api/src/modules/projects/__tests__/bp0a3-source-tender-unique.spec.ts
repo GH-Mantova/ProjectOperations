@@ -72,7 +72,7 @@ describe("B-P0a-3 — unique sourceTenderId on Project", () => {
     clientId = client.id;
 
     const tender = await prisma.tender.create({
-      data: { tenderNumber: "ZZTEST-BP0A3-T1", title: "ZZTEST-BP0A3 tender" }
+      data: { tenderNumber: "ZZTEST-BP0A3-T1", title: "ZZTEST-BP0A3 tender", siteId: "site-unassigned" }
     });
     tenderId = tender.id;
   });

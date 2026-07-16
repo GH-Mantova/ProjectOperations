@@ -53,7 +53,17 @@ type ActivityResponse = {
   limit: number;
 };
 
-type Tab = "overview" | "scope" | "schedule" | "documents" | "team" | "activity";
+type Tab = "overview" | "scope" | "schedule" | "diary" | "documents" | "team" | "activity";
+
+const TAB_LABEL: Record<Tab, string> = {
+  overview: "Overview",
+  scope: "Scope",
+  schedule: "Schedule",
+  diary: "Daily Diary",
+  documents: "Documents",
+  team: "Team",
+  activity: "Activity"
+};
 
 const STATUS_LABEL: Record<string, string> = {
   MOBILISING: "Mobilising",
@@ -232,7 +242,7 @@ export function ProjectDetailPage() {
       </header>
 
       <nav className="admin-page__tabs" role="tablist" aria-label="Project sections">
-        {(["overview", "scope", "schedule", "documents", "team", "activity"] as Tab[]).map((key) => {
+        {(["overview", "scope", "schedule", "diary", "documents", "team", "activity"] as Tab[]).map((key) => {
           const isActive = tab === key;
           return (
             <button
@@ -246,7 +256,7 @@ export function ProjectDetailPage() {
               className={isActive ? "admin-page__tab admin-page__tab--active" : "admin-page__tab"}
               onClick={() => setTab(key)}
             >
-              {key[0].toUpperCase() + key.slice(1)}
+              {TAB_LABEL[key]}
             </button>
           );
         })}
@@ -265,6 +275,11 @@ export function ProjectDetailPage() {
       {tab === "schedule" && (
         <div role="tabpanel" id="project-tabpanel-schedule" aria-labelledby="project-tab-schedule">
           <ScheduleTab project={project} />
+        </div>
+      )}
+      {tab === "diary" && (
+        <div role="tabpanel" id="project-tabpanel-diary" aria-labelledby="project-tab-diary">
+          <DailyDiaryTab project={project} />
         </div>
       )}
       {tab === "documents" && (
@@ -1893,6 +1908,383 @@ function RequiredQualificationsModal({
         >
           {submitting ? "Saving…" : "Save"}
         </button>
+      </div>
+    </CenteredModal>
+  );
+}
+
+// ── Daily Diary tab (ERP gap A) ────────────────────────────────────────────
+// Today-first: the "New for today" button is disabled once a diary exists for
+// today so the one-per-day invariant is enforced at the UI too, not just at
+// the DB. History is a simple reverse-chronological table; clicking a row
+// opens the same modal editor. Submitted rows show a small badge and, per
+// the service, only the author or an admin can un-submit them.
+
+type DailyDiary = {
+  id: string;
+  projectId: string;
+  siteId: string | null;
+  date: string;
+  authorId: string;
+  weather: string | null;
+  temperatureC: string | null;
+  crewSummary: string | null;
+  plantOnSite: string | null;
+  deliveries: string | null;
+  visitors: string | null;
+  delays: string | null;
+  notes: string | null;
+  lineItems: unknown[];
+  attachments: unknown[];
+  submittedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  author: { id: string; firstName: string; lastName: string } | null;
+  site: { id: string; name: string } | null;
+};
+
+function todayISO(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function DailyDiaryTab({ project }: { project: ProjectDetail }) {
+  const { authFetch, user } = useAuth();
+  const canManage = user?.permissions?.includes("projects.manage") ?? false;
+  const [items, setItems] = useState<DailyDiary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<DailyDiary | "new" | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await authFetch(`/projects/${project.id}/daily-diary?limit=50`);
+      if (!r.ok) throw new Error(await r.text());
+      const body = (await r.json()) as { items: DailyDiary[] };
+      setItems(body.items);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, [authFetch, project.id]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const today = todayISO();
+  const todaysDiary = items.find((d) => d.date === today) ?? null;
+
+  return (
+    <div style={{ display: "grid", gap: 16 }}>
+      <section className="s7-card">
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 12 }}>
+          <h3 className="s7-type-section-heading" style={{ margin: 0 }}>Daily Site Diary</h3>
+          <span style={{ color: "var(--text-muted)", fontSize: 13 }}>
+            One per calendar day — the evidentiary record for delay / variation / dispute defence.
+          </span>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+            {canManage ? (
+              todaysDiary ? (
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--primary s7-btn--sm"
+                  onClick={() => setEditing(todaysDiary)}
+                >
+                  Open today’s diary
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--primary s7-btn--sm"
+                  onClick={() => setEditing("new")}
+                >
+                  + New for today
+                </button>
+              )
+            ) : null}
+          </div>
+        </div>
+
+        {error ? (
+          <div role="alert" style={{ background: "#FCEBEB", color: "#A32D2D", padding: "8px 12px", borderRadius: 6, fontSize: 13 }}>
+            {error}
+          </div>
+        ) : null}
+
+        {loading ? (
+          <Skeleton width="100%" height={140} />
+        ) : items.length === 0 ? (
+          <EmptyState
+            heading="No diaries yet"
+            subtext={canManage ? "Start today’s diary to begin the record." : "No diaries have been recorded for this project."}
+          />
+        ) : (
+          <table className="admin-page__table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Weather</th>
+                <th>Author</th>
+                <th>Status</th>
+                <th style={{ width: 80 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((d) => (
+                <tr key={d.id}>
+                  <td style={{ fontVariantNumeric: "tabular-nums" }}>{d.date}</td>
+                  <td>{d.weather ?? "—"}</td>
+                  <td>{d.author ? `${d.author.firstName} ${d.author.lastName}` : "—"}</td>
+                  <td>
+                    {d.submittedAt ? (
+                      <span style={{ color: "#3B6D11", fontSize: 12, fontWeight: 500 }}>Submitted</span>
+                    ) : (
+                      <span style={{ color: "var(--text-muted)", fontSize: 12 }}>Draft</span>
+                    )}
+                  </td>
+                  <td>
+                    <button type="button" className="s7-btn s7-btn--ghost s7-btn--sm" onClick={() => setEditing(d)}>
+                      {canManage ? "Edit" : "View"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      {editing ? (
+        <DailyDiaryEditor
+          projectId={project.id}
+          diary={editing === "new" ? null : editing}
+          canManage={canManage}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            void load();
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function DailyDiaryEditor({
+  projectId,
+  diary,
+  canManage,
+  onClose,
+  onSaved
+}: {
+  projectId: string;
+  diary: DailyDiary | null;
+  canManage: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { authFetch } = useAuth();
+  const [date, setDate] = useState(diary?.date ?? todayISO());
+  const [weather, setWeather] = useState(diary?.weather ?? "");
+  const [temperatureC, setTemperatureC] = useState(diary?.temperatureC ?? "");
+  const [crewSummary, setCrewSummary] = useState(diary?.crewSummary ?? "");
+  const [plantOnSite, setPlantOnSite] = useState(diary?.plantOnSite ?? "");
+  const [deliveries, setDeliveries] = useState(diary?.deliveries ?? "");
+  const [visitors, setVisitors] = useState(diary?.visitors ?? "");
+  const [delays, setDelays] = useState(diary?.delays ?? "");
+  const [notes, setNotes] = useState(diary?.notes ?? "");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const readOnly = !canManage;
+
+  const save = async (submit: boolean) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const payload = {
+        weather: weather || undefined,
+        temperatureC: temperatureC || undefined,
+        crewSummary: crewSummary || undefined,
+        plantOnSite: plantOnSite || undefined,
+        deliveries: deliveries || undefined,
+        visitors: visitors || undefined,
+        delays: delays || undefined,
+        notes: notes || undefined,
+        ...(submit ? { submittedAt: new Date().toISOString() } : {})
+      };
+      const r = diary
+        ? await authFetch(`/projects/${projectId}/daily-diary/${diary.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          })
+        : await authFetch(`/projects/${projectId}/daily-diary`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ date, ...payload })
+          });
+      if (!r.ok) throw new Error(await r.text());
+      onSaved();
+    } catch (e) {
+      setErr((e as Error).message);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <CenteredModal
+      onClose={onClose}
+      title={diary ? `Diary — ${diary.date}` : `New diary — ${date}`}
+      subtitle={diary?.submittedAt ? `Submitted ${new Date(diary.submittedAt).toLocaleString()}` : "Draft"}
+      busy={busy}
+      maxWidth={640}
+    >
+      <div style={{ display: "grid", gap: 12 }}>
+        {!diary ? (
+          <label style={{ display: "grid", gap: 4 }}>
+            <span className="s7-type-label">Date</span>
+            <input
+              type="date"
+              className="s7-input"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              disabled={readOnly}
+            />
+          </label>
+        ) : null}
+
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
+          <label style={{ display: "grid", gap: 4 }}>
+            <span className="s7-type-label">Weather</span>
+            <input
+              type="text"
+              className="s7-input"
+              value={weather}
+              onChange={(e) => setWeather(e.target.value)}
+              placeholder="Overcast, showers PM"
+              disabled={readOnly}
+            />
+          </label>
+          <label style={{ display: "grid", gap: 4 }}>
+            <span className="s7-type-label">Temp (°C)</span>
+            <input
+              type="number"
+              step="0.1"
+              className="s7-input"
+              value={temperatureC}
+              onChange={(e) => setTemperatureC(e.target.value)}
+              disabled={readOnly}
+            />
+          </label>
+        </div>
+
+        <label style={{ display: "grid", gap: 4 }}>
+          <span className="s7-type-label">Crew on site</span>
+          <textarea
+            className="s7-input"
+            rows={2}
+            value={crewSummary}
+            onChange={(e) => setCrewSummary(e.target.value)}
+            placeholder="Headcount, roles, subbies"
+            disabled={readOnly}
+          />
+        </label>
+
+        <label style={{ display: "grid", gap: 4 }}>
+          <span className="s7-type-label">Plant on site</span>
+          <textarea
+            className="s7-input"
+            rows={2}
+            value={plantOnSite}
+            onChange={(e) => setPlantOnSite(e.target.value)}
+            placeholder="Excavator 5T, Truck IS-T04, etc."
+            disabled={readOnly}
+          />
+        </label>
+
+        <label style={{ display: "grid", gap: 4 }}>
+          <span className="s7-type-label">Deliveries</span>
+          <textarea
+            className="s7-input"
+            rows={2}
+            value={deliveries}
+            onChange={(e) => setDeliveries(e.target.value)}
+            disabled={readOnly}
+          />
+        </label>
+
+        <label style={{ display: "grid", gap: 4 }}>
+          <span className="s7-type-label">Visitors</span>
+          <textarea
+            className="s7-input"
+            rows={2}
+            value={visitors}
+            onChange={(e) => setVisitors(e.target.value)}
+            disabled={readOnly}
+          />
+        </label>
+
+        <label style={{ display: "grid", gap: 4 }}>
+          <span className="s7-type-label">Delays / events</span>
+          <textarea
+            className="s7-input"
+            rows={3}
+            value={delays}
+            onChange={(e) => setDelays(e.target.value)}
+            placeholder="Delays, disruptions, stand-downs — the dispute-defence field"
+            disabled={readOnly}
+          />
+        </label>
+
+        <label style={{ display: "grid", gap: 4 }}>
+          <span className="s7-type-label">Notes</span>
+          <textarea
+            className="s7-input"
+            rows={3}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            disabled={readOnly}
+          />
+        </label>
+
+        {err ? (
+          <div role="alert" style={{ background: "#FCEBEB", color: "#A32D2D", padding: "8px 12px", borderRadius: 6, fontSize: 13 }}>
+            {err}
+          </div>
+        ) : null}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+          <button type="button" className="s7-btn s7-btn--ghost" onClick={onClose} disabled={busy}>
+            {readOnly ? "Close" : "Cancel"}
+          </button>
+          {!readOnly ? (
+            <>
+              <button
+                type="button"
+                className="s7-btn s7-btn--secondary"
+                onClick={() => void save(false)}
+                disabled={busy}
+              >
+                {busy ? "Saving…" : "Save draft"}
+              </button>
+              {!diary?.submittedAt ? (
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--primary"
+                  onClick={() => void save(true)}
+                  disabled={busy}
+                >
+                  {busy ? "Submitting…" : "Save & submit"}
+                </button>
+              ) : null}
+            </>
+          ) : null}
+        </div>
       </div>
     </CenteredModal>
   );

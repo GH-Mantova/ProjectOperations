@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
@@ -49,6 +49,7 @@ type TemplateVersion = {
       helpText?: string | null;
       optionsJson?: unknown;
       config?: Record<string, unknown> | null;
+      snippetCode?: string | null;
     }>;
   }>;
   rules: Array<{
@@ -129,7 +130,8 @@ export function FormDesignerPage() {
               placeholder: field.placeholder ?? undefined,
               helpText: field.helpText ?? undefined,
               options: Array.isArray(field.optionsJson) ? (field.optionsJson as string[]) : undefined,
-              config: (field.config ?? undefined) as Record<string, unknown> | undefined
+              config: (field.config ?? undefined) as Record<string, unknown> | undefined,
+              snippetCode: field.snippetCode ?? undefined
             }))
           })),
           rules: latest.rules.map((rule) => ({
@@ -618,6 +620,7 @@ function FieldTabBody({
   const isSurvey = SURVEY_TYPES.has(field.fieldType);
   const isAdvanced = ADVANCED_TYPES.has(field.fieldType);
   const isImage = field.fieldType === "image";
+  const isContentBlock = field.fieldType === "content_block";
 
   if (tab === "general") {
     return (
@@ -658,6 +661,12 @@ function FieldTabBody({
               placeholder="https://…"
             />
           </label>
+        ) : null}
+        {isContentBlock ? (
+          <ContentBlockSnippetPicker
+            value={field.snippetCode ?? ""}
+            onChange={(code) => onChange({ snippetCode: code || undefined })}
+          />
         ) : null}
         {isLayout ? null : (
           <div className="fv2-tgl">
@@ -1003,6 +1012,88 @@ function AdvancedOptionsEditor({
   return (
     <div className="fv2-props__empty" style={{ padding: 0 }}>
       No options to configure for this field type.
+    </div>
+  );
+}
+
+// ── Content block snippet picker ─────────────────────────────────────────
+
+type SnippetSummary = {
+  id: string;
+  code: string;
+  name: string;
+  category: string;
+  version: number;
+};
+
+/**
+ * Property-panel picker for content_block fields.
+ *
+ * Fetches the snippet library from GET /forms/snippets and renders a
+ * searchable select + inline preview of the selected snippet's metadata.
+ * The parent manages the actual `snippetCode` value via `onChange`.
+ */
+function ContentBlockSnippetPicker({
+  value,
+  onChange
+}: {
+  value: string;
+  onChange: (code: string) => void;
+}) {
+  const { authFetch } = useAuth();
+  const [snippets, setSnippets] = useState<SnippetSummary[]>([]);
+  const [loading, setLoading] = useState(false);
+  const fetchedRef = useRef(false);
+
+  useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+    setLoading(true);
+    void authFetch("/forms/snippets?page=1&pageSize=200")
+      .then(async (r) => {
+        if (!r.ok) return;
+        const body = (await r.json()) as { items: SnippetSummary[] };
+        setSnippets(body.items ?? []);
+      })
+      .catch(() => undefined)
+      .finally(() => setLoading(false));
+  }, [authFetch]);
+
+  const selected = snippets.find((s) => s.code === value);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        Content snippet
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          style={{ fontSize: 12 }}
+          disabled={loading}
+        >
+          <option value="">— select a snippet —</option>
+          {snippets.map((s) => (
+            <option key={s.id} value={s.code}>
+              [{s.category}] {s.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {loading ? (
+        <Skeleton width="80%" height={12} />
+      ) : selected ? (
+        <div style={{ fontSize: 11, color: "var(--fv2-muted, #64748B)", lineHeight: 1.4 }}>
+          Code: <code style={{ fontSize: 11 }}>{selected.code}</code>
+          {" · "}v{selected.version}
+        </div>
+      ) : value ? (
+        <div style={{ fontSize: 11, color: "#B91C1C" }}>
+          Snippet <code style={{ fontSize: 11 }}>{value}</code> not found or inactive.
+        </div>
+      ) : null}
+      <p style={{ fontSize: 11, color: "var(--fv2-muted, #64748B)", margin: 0 }}>
+        Manage snippets under Admin &rarr; Forms &rarr; Content Library.
+      </p>
     </div>
   );
 }

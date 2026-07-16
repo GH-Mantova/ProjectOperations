@@ -814,6 +814,7 @@ model Worker {
   availabilityWindows AvailabilityWindow[]
   roleSuitabilities   WorkerRoleSuitability[]
   formSubmissions     FormSubmission[]
+  dockets             Docket[]
 
   @@index([status])
   @@index([resourceTypeId])
@@ -882,6 +883,7 @@ model Asset {
   allocations              ProjectAllocation[]
   scheduleAllocations      ScheduleAllocation[]
   scopePlantRefs           ScopeOfWorksItem[]      @relation("ScopeItemPlant")
+  dockets                  Docket[]
 
   @@index([status])
   @@index([assetCategoryId])
@@ -1208,6 +1210,7 @@ model Job {
   formSubmissions    FormSubmission[]
   closeout           JobCloseout?
   correspondences    CorrespondenceThread[] @relation("JobCorrespondence")
+  dockets            Docket[]
 
   @@index([clientId])
   @@index([status])
@@ -3835,6 +3838,75 @@ model HazardNumberSequence {
   lastNumber Int @default(0) @map("last_number")
 
   @@map("hazard_number_sequences")
+}
+
+// Haulage / Delivery Dockets (feat/erp-haulage-dockets).
+// Digital docket capture for drivers in the field (skip-bin/waste cartage,
+// plant hire). Mirrors Assignar docket workflow. DocketNumberSequence issues
+// atomic sequential DKT-NNNNNN numbers, same pattern as SafetyIncident.
+enum DocketType {
+  DELIVERY
+  HAULAGE
+  DISPOSAL
+}
+
+model DocketNumberSequence {
+  id         Int @id @default(1)
+  lastNumber Int @default(0) @map("last_number")
+
+  @@map("docket_number_sequences")
+}
+
+model Docket {
+  id           String     @id @default(cuid())
+  docketNumber String     @unique @map("docket_number")
+  type         DocketType
+
+  jobId    String? @map("job_id")
+  job      Job?    @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  assetId  String? @map("asset_id")
+  asset    Asset?  @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  workerId String  @map("worker_id")
+  worker   Worker  @relation(fields: [workerId], references: [id], onDelete: Restrict)
+
+  materialWasteType String?  @map("material_waste_type")
+  quantity          Decimal? @db.Decimal(10, 3)
+  unit              String?
+
+  fromLocation String? @map("from_location")
+  toLocation   String? @map("to_location")
+
+  signedByName String?  @map("signed_by_name")
+  gpsLat       Decimal? @map("gps_lat") @db.Decimal(10, 7)
+  gpsLng       Decimal? @map("gps_lng") @db.Decimal(10, 7)
+
+  status     String   @default("CAPTURED")
+  capturedAt DateTime @map("captured_at")
+
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+  attachments DocketAttachment[]
+
+  @@index([jobId])
+  @@index([assetId])
+  @@index([workerId])
+  @@index([capturedAt])
+  @@index([type, status])
+  @@map("dockets")
+}
+
+model DocketAttachment {
+  id         String   @id @default(cuid())
+  docketId   String   @map("docket_id")
+  docket     Docket   @relation(fields: [docketId], references: [id], onDelete: Cascade)
+  // kind values: "signature" | "photo" | "weighbridge"
+  kind       String
+  storageUrl String   @map("storage_url")
+  mimeType   String?  @map("mime_type")
+  capturedAt DateTime @map("captured_at")
+
+  @@index([docketId])
+  @@map("docket_attachments")
 }
 
 // â”€â”€â”€ Worker availability (PR #85) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

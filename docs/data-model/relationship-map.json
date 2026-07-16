@@ -2,10 +2,10 @@
   "_generator": "scripts/data-model/build-relationship-map.mjs",
   "_doNotEdit": "Regenerated from schema.prisma. Do not hand-edit.",
   "generatedFrom": "apps/api/prisma/schema.prisma",
-  "schemaSha256": "f96056e6f88d2ad69795f291eba95818f821d3a9d38ae4ddc76d77ded38caf5b",
-  "modelCount": 197,
-  "enumCount": 25,
-  "edgeCount": 290,
+  "schemaSha256": "524c656c22147df16b379abde365b20e51b478608227fab7fc5ea564fc77696f",
+  "modelCount": 200,
+  "enumCount": 26,
+  "edgeCount": 294,
   "domains": {
     "Assets": [
       "Asset",
@@ -234,6 +234,9 @@
       "AccessRequest",
       "CompanyLegalDocument",
       "CompanyProfile",
+      "Docket",
+      "DocketAttachment",
+      "DocketNumberSequence",
       "OperationsSettings"
     ],
     "Workers": [
@@ -336,6 +339,11 @@
       "DRAFT",
       "SENT",
       "SUPERSEDED"
+    ],
+    "DocketType": [
+      "DELIVERY",
+      "HAULAGE",
+      "DISPOSAL"
     ],
     "StockMovementType": [
       "RECEIVE",
@@ -1203,6 +1211,25 @@
             "onDelete": null
           },
           "owning": false
+        },
+        {
+          "name": "dockets",
+          "dbColumn": null,
+          "type": "Docket",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
         }
       ],
       "relations": [
@@ -1333,6 +1360,16 @@
           "onDelete": null,
           "fkFields": [],
           "refFields": []
+        },
+        {
+          "field": "dockets",
+          "target": "Docket",
+          "cardinality": "many",
+          "relationName": null,
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
         }
       ],
       "referencedBy": [
@@ -1385,6 +1422,11 @@
           "from": "ScopeOfWorksItem",
           "via": "plantAsset",
           "fk": "plantAssetId"
+        },
+        {
+          "from": "Docket",
+          "via": "asset",
+          "fk": "assetId"
         }
       ]
     },
@@ -10262,6 +10304,530 @@
       ],
       "referencedBy": []
     },
+    "Docket": {
+      "name": "Docket",
+      "domain": "Unclassified",
+      "dbTable": "dockets",
+      "fields": [
+        {
+          "name": "id",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": true,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "docketNumber",
+          "dbColumn": "docket_number",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": true,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "type",
+          "dbColumn": null,
+          "type": "DocketType",
+          "kind": "enum",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "jobId",
+          "dbColumn": "job_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "job",
+          "dbColumn": null,
+          "type": "Job",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [
+              "jobId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "SetNull"
+          },
+          "owning": true
+        },
+        {
+          "name": "assetId",
+          "dbColumn": "asset_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "asset",
+          "dbColumn": null,
+          "type": "Asset",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [
+              "assetId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "SetNull"
+          },
+          "owning": true
+        },
+        {
+          "name": "workerId",
+          "dbColumn": "worker_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "worker",
+          "dbColumn": null,
+          "type": "Worker",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [
+              "workerId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "Restrict"
+          },
+          "owning": true
+        },
+        {
+          "name": "materialWasteType",
+          "dbColumn": "material_waste_type",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "quantity",
+          "dbColumn": null,
+          "type": "Decimal",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "unit",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "fromLocation",
+          "dbColumn": "from_location",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "toLocation",
+          "dbColumn": "to_location",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "signedByName",
+          "dbColumn": "signed_by_name",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "gpsLat",
+          "dbColumn": "gps_lat",
+          "type": "Decimal",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "gpsLng",
+          "dbColumn": "gps_lng",
+          "type": "Decimal",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "status",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "capturedAt",
+          "dbColumn": "captured_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "createdAt",
+          "dbColumn": "created_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "updatedAt",
+          "dbColumn": "updated_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": true
+        },
+        {
+          "name": "attachments",
+          "dbColumn": null,
+          "type": "DocketAttachment",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
+        }
+      ],
+      "relations": [
+        {
+          "field": "job",
+          "target": "Job",
+          "cardinality": "one-optional",
+          "relationName": null,
+          "owning": true,
+          "onDelete": "SetNull",
+          "fkFields": [
+            "jobId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "asset",
+          "target": "Asset",
+          "cardinality": "one-optional",
+          "relationName": null,
+          "owning": true,
+          "onDelete": "SetNull",
+          "fkFields": [
+            "assetId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "worker",
+          "target": "Worker",
+          "cardinality": "one",
+          "relationName": null,
+          "owning": true,
+          "onDelete": "Restrict",
+          "fkFields": [
+            "workerId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "attachments",
+          "target": "DocketAttachment",
+          "cardinality": "many",
+          "relationName": null,
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
+        }
+      ],
+      "referencedBy": [
+        {
+          "from": "DocketAttachment",
+          "via": "docket",
+          "fk": "docketId"
+        }
+      ]
+    },
+    "DocketAttachment": {
+      "name": "DocketAttachment",
+      "domain": "Unclassified",
+      "dbTable": "docket_attachments",
+      "fields": [
+        {
+          "name": "id",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": true,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "docketId",
+          "dbColumn": "docket_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "docket",
+          "dbColumn": null,
+          "type": "Docket",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [
+              "docketId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "Cascade"
+          },
+          "owning": true
+        },
+        {
+          "name": "kind",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "storageUrl",
+          "dbColumn": "storage_url",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "mimeType",
+          "dbColumn": "mime_type",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "capturedAt",
+          "dbColumn": "captured_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        }
+      ],
+      "relations": [
+        {
+          "field": "docket",
+          "target": "Docket",
+          "cardinality": "one",
+          "relationName": null,
+          "owning": true,
+          "onDelete": "Cascade",
+          "fkFields": [
+            "docketId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        }
+      ],
+      "referencedBy": []
+    },
+    "DocketNumberSequence": {
+      "name": "DocketNumberSequence",
+      "domain": "Unclassified",
+      "dbTable": "docket_number_sequences",
+      "fields": [
+        {
+          "name": "id",
+          "dbColumn": null,
+          "type": "Int",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": true,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "lastNumber",
+          "dbColumn": "last_number",
+          "type": "Int",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        }
+      ],
+      "relations": [],
+      "referencedBy": []
+    },
     "DocumentAccessRule": {
       "name": "DocumentAccessRule",
       "domain": "Documents",
@@ -18881,6 +19447,25 @@
             "onDelete": null
           },
           "owning": false
+        },
+        {
+          "name": "dockets",
+          "dbColumn": null,
+          "type": "Docket",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
         }
       ],
       "relations": [
@@ -19087,6 +19672,16 @@
           "onDelete": null,
           "fkFields": [],
           "refFields": []
+        },
+        {
+          "field": "dockets",
+          "target": "Docket",
+          "cardinality": "many",
+          "relationName": null,
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
         }
       ],
       "referencedBy": [
@@ -19144,6 +19739,11 @@
           "from": "Project",
           "via": "sourceJob",
           "fk": "sourceJobId"
+        },
+        {
+          "from": "Docket",
+          "via": "job",
+          "fk": "jobId"
         },
         {
           "from": "CorrespondenceThread",
@@ -46231,6 +46831,25 @@
             "onDelete": null
           },
           "owning": false
+        },
+        {
+          "name": "dockets",
+          "dbColumn": null,
+          "type": "Docket",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
         }
       ],
       "relations": [
@@ -46321,6 +46940,16 @@
           "onDelete": null,
           "fkFields": [],
           "refFields": []
+        },
+        {
+          "field": "dockets",
+          "target": "Docket",
+          "cardinality": "many",
+          "relationName": null,
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
         }
       ],
       "referencedBy": [
@@ -46351,6 +46980,11 @@
         },
         {
           "from": "FormSubmission",
+          "via": "worker",
+          "fk": "workerId"
+        },
+        {
+          "from": "Docket",
           "via": "worker",
           "fk": "workerId"
         }
@@ -50291,6 +50925,38 @@
       "fk": "assignedToId",
       "onDelete": null,
       "relationName": "HazardAssignee"
+    },
+    {
+      "from": "Docket",
+      "to": "Job",
+      "via": "job",
+      "fk": "jobId",
+      "onDelete": "SetNull",
+      "relationName": null
+    },
+    {
+      "from": "Docket",
+      "to": "Asset",
+      "via": "asset",
+      "fk": "assetId",
+      "onDelete": "SetNull",
+      "relationName": null
+    },
+    {
+      "from": "Docket",
+      "to": "Worker",
+      "via": "worker",
+      "fk": "workerId",
+      "onDelete": "Restrict",
+      "relationName": null
+    },
+    {
+      "from": "DocketAttachment",
+      "to": "Docket",
+      "via": "docket",
+      "fk": "docketId",
+      "onDelete": "Cascade",
+      "relationName": null
     },
     {
       "from": "WorkerLeave",

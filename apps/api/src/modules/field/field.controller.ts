@@ -27,7 +27,13 @@ import {
   UpdateTimesheetDto,
   WorkerLocationConsentDto
 } from "./dto/field.dto";
+import {
+  CreateDocketAttachmentDto,
+  CreateDocketDto,
+  DocketListQueryDto
+} from "./dto/docket.dto";
 import { FieldService } from "./field.service";
+import { DocketService } from "./docket.service";
 
 type RequestUser = { sub: string; permissions: string[] };
 
@@ -40,7 +46,10 @@ function ctx(user: RequestUser) {
 @Controller("field")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class FieldController {
-  constructor(private readonly service: FieldService) {}
+  constructor(
+    private readonly service: FieldService,
+    private readonly docketService: DocketService
+  ) {}
 
   // ── Allocations + documents ───────────────────────────────────────────
   @Get("my-allocations")
@@ -255,5 +264,50 @@ export class FieldController {
     @CurrentUser() user: RequestUser
   ) {
     return this.service.rejectTimesheet(id, dto, ctx(user));
+  }
+
+  // ── Dockets ───────────────────────────────────────────────────────────────
+
+  @Post("dockets")
+  @RequirePermissions("field.view")
+  @ApiOperation({ summary: "Capture a new delivery / haulage / disposal docket." })
+  @ApiResponse({ status: 201, description: "Docket created with a sequential DKT-XXXXXX number." })
+  createDocket(@Body() dto: CreateDocketDto) {
+    return this.docketService.createDocket(dto);
+  }
+
+  @Get("dockets")
+  @RequirePermissions("field.view")
+  @ApiOperation({ summary: "List dockets with optional filters (jobId, assetId, workerId, type, status, from, to)." })
+  @ApiResponse({ status: 200, description: "Paginated docket list." })
+  listDockets(@Query() query: DocketListQueryDto) {
+    return this.docketService.listDockets(query);
+  }
+
+  @Get("dockets/export.csv")
+  @RequirePermissions("field.manage")
+  @Header("Content-Type", "text/csv; charset=utf-8")
+  @Header("Content-Disposition", "attachment; filename=\"dockets.csv\"")
+  @ApiOperation({ summary: "Export dockets as CSV (field.manage required). Same filters as list." })
+  @ApiProduces("text/csv")
+  @ApiResponse({ status: 200, description: "CSV payload." })
+  exportDocketsCsv(@Query() query: DocketListQueryDto) {
+    return this.docketService.exportCsv(query);
+  }
+
+  @Get("dockets/:id")
+  @RequirePermissions("field.view")
+  @ApiOperation({ summary: "Get a single docket by ID including attachments." })
+  @ApiResponse({ status: 404, description: "Docket not found." })
+  getDocket(@Param("id") id: string) {
+    return this.docketService.getDocket(id);
+  }
+
+  @Post("dockets/:id/attachments")
+  @RequirePermissions("field.view")
+  @ApiOperation({ summary: "Attach a photo, signature, or weighbridge slip to a docket." })
+  @ApiResponse({ status: 201, description: "Attachment created." })
+  addDocketAttachment(@Param("id") id: string, @Body() dto: CreateDocketAttachmentDto) {
+    return this.docketService.addAttachment(id, dto);
   }
 }

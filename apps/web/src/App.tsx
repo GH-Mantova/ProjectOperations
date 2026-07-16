@@ -61,8 +61,10 @@ import { FieldPreStartPage } from "./pages/field/FieldPreStartPage";
 import { FieldTimesheetPage } from "./pages/field/FieldTimesheetPage";
 import { FieldDocumentsPage } from "./pages/field/FieldDocumentsPage";
 import { FieldSafetyPage } from "./pages/field/FieldSafetyPage";
+import { FieldDocketPage } from "./pages/field/FieldDocketPage";
 import { TimesheetApprovalPage } from "./pages/timesheets/TimesheetApprovalPage";
 import { PayrollExportPage } from "./pages/field/PayrollExportPage";
+import { DocketsRegisterPage } from "./pages/dockets/DocketsRegisterPage";
 import { UserProfilePage } from "./pages/account/UserProfilePage";
 import { AdminSettingsPage } from "./pages/AdminSettingsPage";
 import { AdminCompanyPage } from "./pages/admin/AdminCompanyPage";
@@ -171,6 +173,7 @@ export function App() {
             <Route path="timesheet" element={<FieldTimesheetPage />} />
             <Route path="documents" element={<FieldDocumentsPage />} />
             <Route path="safety" element={<FieldSafetyPage />} />
+            <Route path="dockets" element={<FieldDocketPage />} />
           </Route>
           <Route element={<ShellLayout />}>
             <Route
@@ -208,6 +211,7 @@ export function App() {
             <Route path="/projects/:id" element={<ProjectDetailPage />} />
             <Route path="/timesheets/approval" element={<TimesheetApprovalPage />} />
             <Route path="/timesheets/payroll-export" element={<PayrollExportPage />} />
+            <Route path="/dockets" element={<DocketsRegisterPage />} />
             <Route path="/workers" element={<WorkersListPage />} />
             <Route path="/workers/:id" element={<WorkerDetailPage />} />
             <Route path="/resources" element={<ResourcesPage />} />

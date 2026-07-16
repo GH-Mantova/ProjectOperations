@@ -2,10 +2,10 @@
   "_generator": "scripts/data-model/build-relationship-map.mjs",
   "_doNotEdit": "Regenerated from schema.prisma. Do not hand-edit.",
   "generatedFrom": "apps/api/prisma/schema.prisma",
-  "schemaSha256": "8699b16d4f2b465e940d0e8e1ab8cb4e0f5f72e9e5f7ed3cd6dac6f2b2f6953b",
+  "schemaSha256": "44ba8830b25dabd7d407a79025d4fab1cf02d38fcbcca06083a0309bf78c603d",
   "modelCount": 198,
   "enumCount": 25,
-  "edgeCount": 294,
+  "edgeCount": 295,
   "domains": {
     "Assets": [
       "Asset",
@@ -10397,6 +10397,25 @@
             "onDelete": null
           },
           "owning": false
+        },
+        {
+          "name": "usersDefaultedTo",
+          "dbColumn": null,
+          "type": "User",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "UserDefaultDashboard",
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
         }
       ],
       "relations": [
@@ -10437,9 +10456,24 @@
           "onDelete": null,
           "fkFields": [],
           "refFields": []
+        },
+        {
+          "field": "usersDefaultedTo",
+          "target": "User",
+          "cardinality": "many",
+          "relationName": "UserDefaultDashboard",
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
         }
       ],
       "referencedBy": [
+        {
+          "from": "User",
+          "via": "defaultDashboard",
+          "fk": "defaultDashboardId"
+        },
         {
           "from": "DashboardWidget",
           "via": "dashboard",
@@ -42233,6 +42267,18 @@
           "isUpdatedAt": false
         },
         {
+          "name": "defaultDashboardId",
+          "dbColumn": "default_dashboard_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
           "name": "createdBy",
           "dbColumn": null,
           "type": "User",
@@ -42293,6 +42339,29 @@
             "relationName": "UserManager",
             "fkFields": [
               "managerId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "SetNull"
+          },
+          "owning": true
+        },
+        {
+          "name": "defaultDashboard",
+          "dbColumn": null,
+          "type": "Dashboard",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "UserDefaultDashboard",
+            "fkFields": [
+              "defaultDashboardId"
             ],
             "refFields": [
               "id"
@@ -44158,6 +44227,20 @@
           "onDelete": "SetNull",
           "fkFields": [
             "managerId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "defaultDashboard",
+          "target": "Dashboard",
+          "cardinality": "one-optional",
+          "relationName": "UserDefaultDashboard",
+          "owning": true,
+          "onDelete": "SetNull",
+          "fkFields": [
+            "defaultDashboardId"
           ],
           "refFields": [
             "id"
@@ -48750,6 +48833,14 @@
       "fk": "managerId",
       "onDelete": "SetNull",
       "relationName": "UserManager"
+    },
+    {
+      "from": "User",
+      "to": "Dashboard",
+      "via": "defaultDashboard",
+      "fk": "defaultDashboardId",
+      "onDelete": "SetNull",
+      "relationName": "UserDefaultDashboard"
     },
     {
       "from": "ClientSession",

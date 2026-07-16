@@ -113,6 +113,8 @@ model User {
   safetyIncidentsClosed      SafetyIncident[]            @relation("SafetyIncidentCloser")
   hazardsReported            HazardObservation[]         @relation("HazardReporter")
   hazardsAssigned            HazardObservation[]         @relation("HazardAssignee")
+  correctiveActionsAssigned  CorrectiveAction[]          @relation("CorrectiveActionAssignee")
+  correctiveActionsClosed    CorrectiveAction[]          @relation("CorrectiveActionCloser")
   personaInstructionUpdates  PersonaCompanyInstruction[] @relation("PersonaInstructionUpdater")
   personaSettings            UserPersonaSettings[]
   pilotFeedback              PilotFeedback[]             @relation("PilotFeedbackUser")
@@ -1705,6 +1707,7 @@ model FormSubmission {
   gpsLng            Decimal?              @map("gps_lng") @db.Decimal(10, 7)
   approvals         FormApproval[]
   triggeredRecords  FormTriggeredRecord[]
+  correctiveActions CorrectiveAction[]
 
   @@index([templateVersionId, submittedAt])
   @@index([jobId])
@@ -1747,6 +1750,43 @@ model FormTriggeredRecord {
   @@index([submissionId])
   @@index([recordType, recordId])
   @@map("form_triggered_records")
+}
+
+// ─── Forms Engine (this PR) — corrective-action / CAPA close-out ────────────
+//
+// A CorrectiveAction is raised when a form submission triggers a
+// `create_corrective_action` on_submit action (e.g. a Fail answer on an
+// inspection). It is linked back to the submission via FormTriggeredRecord
+// (recordType = "corrective_action") and tracked through open →
+// in_progress → closed. The optional submissionId foreign-key enables
+// the submission detail page to list all actions the form raised.
+
+model CorrectiveAction {
+  id              String          @id @default(cuid())
+  submissionId    String?         @map("submission_id")
+  submission      FormSubmission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+  sourceFieldKey  String?         @map("source_field_key")
+  title           String
+  description     String?
+  assignedToId    String?         @map("assigned_to_id")
+  assignedTo      User?           @relation("CorrectiveActionAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedToRole  String?         @map("assigned_to_role")
+  dueAt           DateTime?       @map("due_at")
+  priority        String          @default("medium")
+  status          String          @default("open")
+  closedAt        DateTime?       @map("closed_at")
+  closedById      String?         @map("closed_by_id")
+  closedBy        User?           @relation("CorrectiveActionCloser", fields: [closedById], references: [id], onDelete: SetNull)
+  closeOutNote    String?         @map("close_out_note")
+  evidencePath    String?         @map("evidence_path")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  @@index([submissionId])
+  @@index([assignedToId])
+  @@index([status])
+  @@index([dueAt])
+  @@map("corrective_actions")
 }
 
 model FormSchedule {

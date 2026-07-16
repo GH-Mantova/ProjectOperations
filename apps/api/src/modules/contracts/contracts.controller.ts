@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Put, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { ContractStatus, VariationStatus } from "@prisma/client";
 import { IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, Min } from "class-validator";
@@ -127,6 +127,26 @@ class UpdateClaimItemDto {
   @IsOptional() @Type(() => Number) @IsNumber() thisClaimAmount?: number;
   /** Updated line description. */
   @IsOptional() @IsString() description?: string;
+}
+
+/**
+ * Body for `PUT /contracts/:id/claims/:claimId/payment-schedule` — record
+ * the AU Security of Payment payment-schedule response for a claim.
+ *
+ * `dueBy` is computed server-side from the claim's submissionDate (or
+ * claimMonth when unsubmitted) plus the configurable statutory window
+ * (OperationsSettings.sopaResponseDays; QLD BIF default 15 business days)
+ * and stored — later setting changes do NOT retro-mutate the stored
+ * window. Omit `respondedAt` to leave it at `now()`; pass `null` to keep
+ * the schedule in PENDING (drafting).
+ */
+class UpsertPaymentScheduleDto {
+  /** Amount the respondent proposes to pay against the claim (AUD). */
+  @Type(() => Number) @IsNumber() scheduledAmount!: number;
+  /** Free-text reasons for withholding when scheduledAmount < claimed. */
+  @IsOptional() @IsString() reasons?: string | null;
+  /** ISO 8601 date the schedule was issued. Defaults to now; pass null to leave PENDING. */
+  @IsOptional() @IsDateString() respondedAt?: string | null;
 }
 
 /**
@@ -480,5 +500,38 @@ export class ContractsController {
     @Body() dto: PayClaimDto
   ) {
     return this.service.payClaim(id, claimId, dto);
+  }
+
+  @Put(":id/claims/:claimId/payment-schedule")
+  @RequirePermissions("finance.manage")
+  @ApiOperation({
+    summary:
+      "Upsert the AU Security of Payment payment-schedule response for a claim. dueBy is computed server-side from the configurable statutory window (OperationsSettings.sopaResponseDays; QLD default 15 business days) and stored — later setting changes do NOT retro-mutate the window."
+  })
+  @ApiParam({ name: "id", description: "Contract id." })
+  @ApiParam({ name: "claimId", description: "Progress-claim id." })
+  @ApiResponse({ status: 200, description: "Payment schedule created or updated." })
+  @ApiResponse({ status: 404, description: "Claim not found for this contract." })
+  /**
+   * Upsert the AU Security of Payment payment-schedule response for a
+   * claim. First call creates the record with a stored dueBy computed
+   * from claim.submissionDate (or claimMonth) + OperationsSettings
+   * .sopaResponseDays business days; subsequent calls update
+   * scheduledAmount / reasons / respondedAt while preserving that dueBy.
+   *
+   * @param id      - contract id
+   * @param claimId - progress-claim id
+   * @param dto     - scheduledAmount + optional reasons / respondedAt
+   * @returns the upserted payment schedule
+   * @throws NotFoundException when the claim is missing or belongs to another contract
+   * @throws BadRequestException when scheduledAmount is negative
+   */
+  upsertPaymentSchedule(
+    @Param("id") id: string,
+    @Param("claimId") claimId: string,
+    @Body() dto: UpsertPaymentScheduleDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.service.upsertPaymentSchedule(id, claimId, user.sub, dto);
   }
 }

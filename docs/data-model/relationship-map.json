@@ -2,10 +2,10 @@
   "_generator": "scripts/data-model/build-relationship-map.mjs",
   "_doNotEdit": "Regenerated from schema.prisma. Do not hand-edit.",
   "generatedFrom": "apps/api/prisma/schema.prisma",
-  "schemaSha256": "9723453aaef1241e848358ad2f7e2791bfe87316514b9d69315adad082ec8460",
-  "modelCount": 197,
-  "enumCount": 25,
-  "edgeCount": 290,
+  "schemaSha256": "460e7fca8b4707760c1ac3a9457800a788297f8c4e0918e7247a21ae355964d5",
+  "modelCount": 198,
+  "enumCount": 26,
+  "edgeCount": 292,
   "domains": {
     "Assets": [
       "Asset",
@@ -234,7 +234,8 @@
       "AccessRequest",
       "CompanyLegalDocument",
       "CompanyProfile",
-      "OperationsSettings"
+      "OperationsSettings",
+      "PaymentSchedule"
     ],
     "Workers": [
       "Competency",
@@ -331,6 +332,11 @@
       "SUBMITTED",
       "APPROVED",
       "PAID"
+    ],
+    "PaymentScheduleStatus": [
+      "PENDING",
+      "ISSUED",
+      "OVERDUE"
     ],
     "ClientQuoteStatus": [
       "DRAFT",
@@ -21825,6 +21831,18 @@
           "isUpdatedAt": false
         },
         {
+          "name": "sopaResponseDays",
+          "dbColumn": "sopa_response_days",
+          "type": "Int",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
           "name": "updatedAt",
           "dbColumn": "updated_at",
           "type": "DateTime",
@@ -21882,6 +21900,210 @@
           "onDelete": "SetNull",
           "fkFields": [
             "updatedById"
+          ],
+          "refFields": [
+            "id"
+          ]
+        }
+      ],
+      "referencedBy": []
+    },
+    "PaymentSchedule": {
+      "name": "PaymentSchedule",
+      "domain": "Unclassified",
+      "dbTable": "payment_schedules",
+      "fields": [
+        {
+          "name": "id",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": true,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "progressClaimId",
+          "dbColumn": "progress_claim_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": true,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "progressClaim",
+          "dbColumn": null,
+          "type": "ProgressClaim",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [
+              "progressClaimId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "Cascade"
+          },
+          "owning": true
+        },
+        {
+          "name": "scheduledAmount",
+          "dbColumn": "scheduled_amount",
+          "type": "Decimal",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "reasons",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "status",
+          "dbColumn": null,
+          "type": "PaymentScheduleStatus",
+          "kind": "enum",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "dueBy",
+          "dbColumn": "due_by",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "respondedAt",
+          "dbColumn": "responded_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "createdById",
+          "dbColumn": "created_by_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "createdBy",
+          "dbColumn": null,
+          "type": "User",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "PaymentScheduleCreatedBy",
+            "fkFields": [
+              "createdById"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "Restrict"
+          },
+          "owning": true
+        },
+        {
+          "name": "createdAt",
+          "dbColumn": "created_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "updatedAt",
+          "dbColumn": "updated_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "progressClaim",
+          "target": "ProgressClaim",
+          "cardinality": "one",
+          "relationName": null,
+          "owning": true,
+          "onDelete": "Cascade",
+          "fkFields": [
+            "progressClaimId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "createdBy",
+          "target": "User",
+          "cardinality": "one",
+          "relationName": "PaymentScheduleCreatedBy",
+          "owning": true,
+          "onDelete": "Restrict",
+          "fkFields": [
+            "createdById"
           ],
           "refFields": [
             "id"
@@ -24253,6 +24475,25 @@
           "owning": false
         },
         {
+          "name": "paymentSchedule",
+          "dbColumn": null,
+          "type": "PaymentSchedule",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
+        },
+        {
           "name": "createdById",
           "dbColumn": "created_by_id",
           "type": "String",
@@ -24338,6 +24579,16 @@
           "refFields": []
         },
         {
+          "field": "paymentSchedule",
+          "target": "PaymentSchedule",
+          "cardinality": "one-optional",
+          "relationName": null,
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
+        },
+        {
           "field": "createdBy",
           "target": "User",
           "cardinality": "one",
@@ -24353,6 +24604,11 @@
         }
       ],
       "referencedBy": [
+        {
+          "from": "PaymentSchedule",
+          "via": "progressClaim",
+          "fk": "progressClaimId"
+        },
         {
           "from": "ClaimLineItem",
           "via": "claim",
@@ -43019,6 +43275,25 @@
           "owning": false
         },
         {
+          "name": "paymentSchedulesCreated",
+          "dbColumn": null,
+          "type": "PaymentSchedule",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "PaymentScheduleCreatedBy",
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
+        },
+        {
           "name": "createdQuotes",
           "dbColumn": null,
           "type": "ClientQuote",
@@ -44354,6 +44629,16 @@
           "refFields": []
         },
         {
+          "field": "paymentSchedulesCreated",
+          "target": "PaymentSchedule",
+          "cardinality": "many",
+          "relationName": "PaymentScheduleCreatedBy",
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
+        },
+        {
           "field": "createdQuotes",
           "target": "ClientQuote",
           "cardinality": "many",
@@ -44977,6 +45262,11 @@
         },
         {
           "from": "ProgressClaim",
+          "via": "createdBy",
+          "fk": "createdById"
+        },
+        {
+          "from": "PaymentSchedule",
           "via": "createdBy",
           "fk": "createdById"
         },
@@ -49959,6 +50249,22 @@
       "fk": "createdById",
       "onDelete": "Restrict",
       "relationName": "ProgressClaimCreatedBy"
+    },
+    {
+      "from": "PaymentSchedule",
+      "to": "ProgressClaim",
+      "via": "progressClaim",
+      "fk": "progressClaimId",
+      "onDelete": "Cascade",
+      "relationName": null
+    },
+    {
+      "from": "PaymentSchedule",
+      "to": "User",
+      "via": "createdBy",
+      "fk": "createdById",
+      "onDelete": "Restrict",
+      "relationName": "PaymentScheduleCreatedBy"
     },
     {
       "from": "ClaimLineItem",

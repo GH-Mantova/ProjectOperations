@@ -6,6 +6,16 @@ import { can } from "../../auth/permissions";
 type ContractStatus = "ACTIVE" | "PRACTICAL_COMPLETION" | "DEFECTS" | "CLOSED";
 type VariationStatus = "RECEIVED" | "PRICED" | "SUBMITTED" | "APPROVED";
 type ClaimStatus = "DRAFT" | "SUBMITTED" | "APPROVED" | "PAID";
+type PaymentScheduleStatus = "PENDING" | "ISSUED" | "OVERDUE";
+
+type PaymentSchedule = {
+  id: string;
+  status: PaymentScheduleStatus;
+  dueBy: string;
+  scheduledAmount: string;
+  respondedAt: string | null;
+  reasons?: string | null;
+};
 
 type Variation = {
   id: string;
@@ -30,6 +40,7 @@ type ClaimHeader = {
   totalApproved: string | null;
   totalPaid: string | null;
   submissionDate: string | null;
+  paymentSchedule?: PaymentSchedule | null;
 };
 
 type Contract = {
@@ -481,15 +492,21 @@ function ClaimEditor({
   const { authFetch } = useAuth();
   const [items, setItems] = useState<ClaimLineItem[]>([]);
   const [totalClaimed, setTotalClaimed] = useState(0);
+  const [paymentSchedule, setPaymentSchedule] = useState<PaymentSchedule | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const response = await authFetch(`/contracts/${contractId}/claims/${claimId}`);
       if (!response.ok) throw new Error(await response.text());
-      const body = (await response.json()) as { lineItems: ClaimLineItem[]; totalClaimed: string };
+      const body = (await response.json()) as {
+        lineItems: ClaimLineItem[];
+        totalClaimed: string;
+        paymentSchedule: PaymentSchedule | null;
+      };
       setItems(body.lineItems);
       setTotalClaimed(Number(body.totalClaimed ?? 0));
+      setPaymentSchedule(body.paymentSchedule ?? null);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -533,6 +550,20 @@ function ClaimEditor({
       if (!response.ok) throw new Error(await response.text());
       await onRefresh();
       await load();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const savePaymentSchedule = async (body: { scheduledAmount: number; reasons?: string | null; respondedAt?: string | null }) => {
+    try {
+      const response = await authFetch(`/contracts/${contractId}/claims/${claimId}/payment-schedule`, {
+        method: "PUT",
+        body: JSON.stringify(body)
+      });
+      if (!response.ok) throw new Error(await response.text());
+      await load();
+      await onRefresh();
     } catch (err) {
       setError((err as Error).message);
     }
@@ -611,6 +642,144 @@ function ClaimEditor({
           ) : null}
         </div>
       </div>
+
+      <PaymentSchedulePanel
+        schedule={paymentSchedule}
+        totalClaimed={totalClaimed}
+        canManage={canManage}
+        onSave={savePaymentSchedule}
+      />
     </div>
+  );
+}
+
+// AU Security of Payment Act response panel — statutory dueBy is computed
+// server-side from the configurable window and stored on the record; this
+// panel surfaces it plus a status pill (PENDING / ISSUED / OVERDUE) so
+// Accounts sees at a glance whether the response is at risk of triggering
+// the full-claim-payable default.
+const PS_STATUS_COLOR: Record<PaymentScheduleStatus, string> = {
+  PENDING: "#FEAA6D",
+  ISSUED: "#22C55E",
+  OVERDUE: "#DC2626"
+};
+
+function PaymentSchedulePanel({
+  schedule,
+  totalClaimed,
+  canManage,
+  onSave
+}: {
+  schedule: PaymentSchedule | null;
+  totalClaimed: number;
+  canManage: boolean;
+  onSave: (body: { scheduledAmount: number; reasons?: string | null; respondedAt?: string | null }) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [amount, setAmount] = useState<string>(schedule?.scheduledAmount ?? String(totalClaimed));
+  const [reasons, setReasons] = useState<string>(schedule?.reasons ?? "");
+  const [markResponded, setMarkResponded] = useState<boolean>(!!schedule?.respondedAt || schedule === null);
+
+  useEffect(() => {
+    setAmount(schedule?.scheduledAmount ?? String(totalClaimed));
+    setReasons(schedule?.reasons ?? "");
+    setMarkResponded(!!schedule?.respondedAt || schedule === null);
+  }, [schedule, totalClaimed]);
+
+  const daysUntilDue = schedule
+    ? Math.floor((new Date(schedule.dueBy).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+    : null;
+  const dueLabel = daysUntilDue === null
+    ? "—"
+    : daysUntilDue < 0
+      ? `${Math.abs(daysUntilDue)} day${Math.abs(daysUntilDue) === 1 ? "" : "s"} overdue`
+      : daysUntilDue === 0
+        ? "Due today"
+        : `${daysUntilDue} day${daysUntilDue === 1 ? "" : "s"} remaining`;
+
+  return (
+    <section style={{ marginTop: 16, padding: 12, background: "var(--surface-muted, #F6F6F6)", borderRadius: 6 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <div>
+          <h4 style={{ margin: 0, fontSize: 14 }}>Payment schedule (AU Security of Payment)</h4>
+          <p style={{ margin: "4px 0 0", fontSize: 11, color: "var(--text-muted)" }}>
+            Missing the statutory response window can make the full claimed amount payable.
+          </p>
+        </div>
+        {schedule ? (
+          <span style={{ padding: "2px 10px", borderRadius: 999, background: PS_STATUS_COLOR[schedule.status], color: "#fff", fontSize: 11, fontWeight: 600 }}>
+            {schedule.status}
+          </span>
+        ) : (
+          <span style={{ padding: "2px 10px", borderRadius: 999, background: "#9CA3AF", color: "#fff", fontSize: 11, fontWeight: 600 }}>
+            NOT ISSUED
+          </span>
+        )}
+      </div>
+
+      {schedule ? (
+        <dl style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 4, margin: "0 0 8px", fontSize: 12 }}>
+          <dt style={{ color: "var(--text-muted)" }}>Statutory due-by</dt>
+          <dd style={{ margin: 0 }}>
+            {new Date(schedule.dueBy).toLocaleDateString("en-AU", { day: "2-digit", month: "short", year: "numeric" })}
+            <span style={{ marginLeft: 8, color: daysUntilDue !== null && daysUntilDue < 0 ? "#DC2626" : "var(--text-muted)" }}>({dueLabel})</span>
+          </dd>
+          <dt style={{ color: "var(--text-muted)" }}>Scheduled amount</dt>
+          <dd style={{ margin: 0 }}>{fmt(schedule.scheduledAmount)}</dd>
+          {schedule.respondedAt ? (
+            <>
+              <dt style={{ color: "var(--text-muted)" }}>Responded</dt>
+              <dd style={{ margin: 0 }}>{fmtDate(schedule.respondedAt)}</dd>
+            </>
+          ) : null}
+          {schedule.reasons ? (
+            <>
+              <dt style={{ color: "var(--text-muted)" }}>Reasons</dt>
+              <dd style={{ margin: 0, whiteSpace: "pre-wrap" }}>{schedule.reasons}</dd>
+            </>
+          ) : null}
+        </dl>
+      ) : null}
+
+      {canManage && !editing ? (
+        <button type="button" className="s7-btn s7-btn--ghost s7-btn--sm" onClick={() => setEditing(true)}>
+          {schedule ? "Edit schedule" : "Record payment schedule"}
+        </button>
+      ) : null}
+
+      {editing ? (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const n = Number(amount);
+            if (Number.isNaN(n) || n < 0) return;
+            void onSave({
+              scheduledAmount: n,
+              reasons: reasons.trim() || null,
+              respondedAt: markResponded ? new Date().toISOString() : null
+            });
+            setEditing(false);
+          }}
+          style={{ display: "grid", gap: 6, marginTop: 8, fontSize: 12 }}
+        >
+          <label style={{ display: "grid", gap: 2 }}>
+            Scheduled amount ($)
+            <input className="s7-input" type="number" step="0.01" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} required />
+          </label>
+          <label style={{ display: "grid", gap: 2 }}>
+            Reasons (if scheduled &lt; claimed)
+            <textarea className="s7-input" rows={2} value={reasons} onChange={(e) => setReasons(e.target.value)} />
+          </label>
+          <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <input type="checkbox" checked={markResponded} onChange={(e) => setMarkResponded(e.target.checked)} />
+            Mark as issued now
+          </label>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button type="button" className="s7-btn s7-btn--ghost" onClick={() => setEditing(false)}>Cancel</button>
+            <button type="submit" className="s7-btn s7-btn--primary">Save schedule</button>
+          </div>
+        </form>
+      ) : null}
+    </section>
   );
 }

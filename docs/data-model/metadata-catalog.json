@@ -8777,6 +8777,18 @@
             "count"
           ]
         },
+        "sopaResponseDays": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
+        },
         "updatedAt": {
           "role": "system",
           "label": null,
@@ -8793,6 +8805,92 @@
           "role": "dimension",
           "label": null,
           "filterable": true,
+          "aggregations": []
+        }
+      }
+    },
+    "PaymentSchedule": {
+      "domain": "Unclassified",
+      "wizardVisible": false,
+      "label": null,
+      "reviewed": false,
+      "fields": {
+        "id": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "progressClaimId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "progressClaim": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "scheduledAmount": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
+        },
+        "reasons": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "status": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "dueBy": {
+          "role": "time",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "respondedAt": {
+          "role": "time",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "createdById": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "createdBy": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "createdAt": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "updatedAt": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
           "aggregations": []
         }
       }
@@ -9872,6 +9970,12 @@
           "aggregations": []
         },
         "lineItems": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "paymentSchedule": {
           "role": "system",
           "label": null,
           "filterable": false,
@@ -17058,6 +17162,12 @@
           "aggregations": []
         },
         "progressClaimsCreated": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "paymentSchedulesCreated": {
           "role": "system",
           "label": null,
           "filterable": false,

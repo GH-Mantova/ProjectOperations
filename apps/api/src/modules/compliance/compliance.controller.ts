@@ -41,6 +41,14 @@ class CompetencyCheckQuery {
   @IsString() requiredQuals!: string;
 }
 
+class ExpiringCompetenciesQuery {
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(365) horizonDays?: number;
+}
+
+class TriggerDigestDto {
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(365) horizonDays?: number;
+}
+
 /**
  * HTTP surface for the compliance module — §13 Forms & Compliance.
  *
@@ -317,5 +325,68 @@ export class ComplianceController {
       throw new BadRequestException("reason is required when blocking.");
     }
     return this.service.manualBlock(id, dto.blocked, dto.reason ?? null);
+  }
+
+  // ─── Worker competency expiry ──────────────────────────────────────────
+
+  /**
+   * Expiring and expired worker competencies within `horizonDays` days.
+   *
+   * Queries `WorkerCompetency.expiresAt` (distinct from
+   * `WorkerQualification.expiryDate`). The `horizonDays` window is
+   * configurable per-call — the frontend passes whatever the operator
+   * selected; the scheduled digest reads it from the trigger config. Expired
+   * rows (expiresAt < now) are always included.
+   *
+   * @param q.horizonDays Look-ahead window in days. Optional, defaults to 60,
+   *   must be between 1 and 365 inclusive.
+   * @returns Array of {@link WorkerCompetencyRow} sorted by expiry ascending.
+   */
+  @Get("worker-competencies/expiring")
+  @RequirePermissions("compliance.view")
+  @ApiOperation({
+    summary: "Worker competencies expiring within horizonDays (default 60). Expired rows always included."
+  })
+  @ApiQuery({ name: "horizonDays", required: false })
+  @ApiResponse({ status: 200, description: "Array of expiring/expired WorkerCompetencyRow." })
+  expiringCompetencies(@Query() q: ExpiringCompetenciesQuery) {
+    return this.service.expiringCompetencies(q.horizonDays ?? 60);
+  }
+
+  /**
+   * Competency expiry flags for a single worker.
+   *
+   * Returns `hasExpiredCompetencies`, `hasExpiringCompetencies`, and counts —
+   * used to decorate worker-detail views without loading the full competency
+   * list. The expiring horizon is fixed at 60 days for this flag endpoint.
+   *
+   * @param workerId Worker (not WorkerProfile) ID.
+   * @returns {@link WorkerCompetencyFlags} for the worker.
+   */
+  @Get("workers/:workerId/competency-flags")
+  @RequirePermissions("compliance.view")
+  @ApiOperation({ summary: "Competency expiry flags for a single worker (expired / expiring within 60 days)." })
+  @ApiResponse({ status: 200, description: "WorkerCompetencyFlags." })
+  workerCompetencyFlags(@Param("workerId") workerId: string) {
+    return this.service.workerCompetencyFlags(workerId);
+  }
+
+  /**
+   * Manually trigger the competency expiry digest right now.
+   *
+   * Same logic as the scheduled cron — reads the `competency.expiry_digest`
+   * trigger config for `isEnabled` and recipients. The `horizonDays` body
+   * param overrides the cron default (60) for on-demand runs. Useful for
+   * testing digest email formatting or recovering from a cron outage.
+   *
+   * @param dto.horizonDays Look-ahead window in days. Optional, defaults to 60.
+   * @returns `{ sent, rows }` — notification count and competencies in window.
+   */
+  @Post("worker-competencies/digest/send-now")
+  @RequirePermissions("compliance.admin")
+  @ApiOperation({ summary: "Manually trigger the competency expiry digest email + in-app notifications." })
+  @ApiResponse({ status: 201, description: "{ sent, rows } — notification count and competencies in window." })
+  async sendCompetencyDigestNow(@Body() dto: TriggerDigestDto) {
+    return this.service.competencyExpiryDigest(dto.horizonDays ?? 60);
   }
 }

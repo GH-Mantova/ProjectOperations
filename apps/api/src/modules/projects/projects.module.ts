@@ -1,6 +1,8 @@
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { PlatformModule } from "../platform/platform.module";
+import { DailyDiaryController } from "./daily-diary.controller";
+import { DailyDiaryService } from "./daily-diary.service";
 import { GanttController } from "./gantt.controller";
 import { GanttService } from "./gantt.service";
 import { JpmController } from "./jpm.controller";
@@ -30,9 +32,10 @@ import { PunchItemsService } from "./punch-items.service";
     GanttController,
     ProjectsTimelineController,
     JpmController,
-    PunchItemsController
+    PunchItemsController,
+    DailyDiaryController
   ],
-  providers: [ProjectsService, GanttService, JpmService, PunchItemsService],
-  exports: [ProjectsService, GanttService, JpmService, PunchItemsService]
+  providers: [ProjectsService, GanttService, JpmService, PunchItemsService, DailyDiaryService],
+  exports: [ProjectsService, GanttService, JpmService, PunchItemsService, DailyDiaryService]
 })
 export class ProjectsModule {}

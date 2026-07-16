@@ -16,6 +16,7 @@ import { DocumentsModule } from "./modules/documents/documents.module";
 import { EmailModule } from "./modules/email/email.module";
 import { ClientQuotesModule } from "./modules/client-quotes/client-quotes.module";
 import { CompanyProfileModule } from "./modules/company-profile/company-profile.module";
+import { BrandingModule } from "./modules/branding/branding.module";
 import { EstimateExportModule } from "./modules/estimate-export/estimate-export.module";
 import { EstimatesModule } from "./modules/estimates/estimates.module";
 import { FormsModule } from "./modules/forms/forms.module";
@@ -86,6 +87,7 @@ import { IntegrationKeysModule } from "./common/integrations/integration-keys.mo
     DocumentsModule,
     ClientQuotesModule,
     CompanyProfileModule,
+    BrandingModule,
     EstimateExportModule,
     EstimatesModule,
     PdfRenderingModule,

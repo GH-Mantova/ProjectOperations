@@ -2,15 +2,16 @@
   "_generator": "scripts/data-model/build-relationship-map.mjs",
   "_doNotEdit": "Regenerated from schema.prisma. Do not hand-edit.",
   "generatedFrom": "apps/api/prisma/schema.prisma",
-  "schemaSha256": "783380faea0e7da263e3bb9909d62e18ca2a819d7a497eaeffb189bd2b2bb239",
-  "modelCount": 197,
+  "schemaSha256": "8699b16d4f2b465e940d0e8e1ab8cb4e0f5f72e9e5f7ed3cd6dac6f2b2f6953b",
+  "modelCount": 198,
   "enumCount": 25,
-  "edgeCount": 289,
+  "edgeCount": 294,
   "domains": {
     "Assets": [
       "Asset",
       "AssetBreakdown",
       "AssetCategory",
+      "AssetCheckout",
       "AssetInspection",
       "AssetMaintenanceEvent",
       "AssetMaintenancePlan",
@@ -873,6 +874,30 @@
           "isUpdatedAt": false
         },
         {
+          "name": "barcode",
+          "dbColumn": "barcode",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": true,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "qrValue",
+          "dbColumn": "qr_value",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": true,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
           "name": "status",
           "dbColumn": null,
           "type": "String",
@@ -1203,6 +1228,25 @@
             "onDelete": null
           },
           "owning": false
+        },
+        {
+          "name": "checkouts",
+          "dbColumn": null,
+          "type": "AssetCheckout",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
         }
       ],
       "relations": [
@@ -1333,9 +1377,24 @@
           "onDelete": null,
           "fkFields": [],
           "refFields": []
+        },
+        {
+          "field": "checkouts",
+          "target": "AssetCheckout",
+          "cardinality": "many",
+          "relationName": null,
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
         }
       ],
       "referencedBy": [
+        {
+          "from": "AssetCheckout",
+          "via": "asset",
+          "fk": "assetId"
+        },
         {
           "from": "ShiftAssetAssignment",
           "via": "asset",
@@ -1707,6 +1766,345 @@
           "fk": "assetCategoryId"
         }
       ]
+    },
+    "AssetCheckout": {
+      "name": "AssetCheckout",
+      "domain": "Assets",
+      "dbTable": "asset_checkouts",
+      "fields": [
+        {
+          "name": "id",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": true,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "assetId",
+          "dbColumn": "asset_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "holderWorkerId",
+          "dbColumn": "holder_worker_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "holderUserId",
+          "dbColumn": "holder_user_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "siteId",
+          "dbColumn": "site_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "jobId",
+          "dbColumn": "job_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "checkedOutAt",
+          "dbColumn": "checked_out_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "dueBackAt",
+          "dbColumn": "due_back_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "checkedInAt",
+          "dbColumn": "checked_in_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "notes",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "createdAt",
+          "dbColumn": "created_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "updatedAt",
+          "dbColumn": "updated_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": true
+        },
+        {
+          "name": "asset",
+          "dbColumn": null,
+          "type": "Asset",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [
+              "assetId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "Cascade"
+          },
+          "owning": true
+        },
+        {
+          "name": "holderWorker",
+          "dbColumn": null,
+          "type": "Worker",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "AssetCheckoutHolderWorker",
+            "fkFields": [
+              "holderWorkerId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "SetNull"
+          },
+          "owning": true
+        },
+        {
+          "name": "holderUser",
+          "dbColumn": null,
+          "type": "User",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "AssetCheckoutHolderUser",
+            "fkFields": [
+              "holderUserId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "SetNull"
+          },
+          "owning": true
+        },
+        {
+          "name": "site",
+          "dbColumn": null,
+          "type": "Site",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "AssetCheckoutSite",
+            "fkFields": [
+              "siteId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "SetNull"
+          },
+          "owning": true
+        },
+        {
+          "name": "job",
+          "dbColumn": null,
+          "type": "Job",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "AssetCheckoutJob",
+            "fkFields": [
+              "jobId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "SetNull"
+          },
+          "owning": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "asset",
+          "target": "Asset",
+          "cardinality": "one",
+          "relationName": null,
+          "owning": true,
+          "onDelete": "Cascade",
+          "fkFields": [
+            "assetId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "holderWorker",
+          "target": "Worker",
+          "cardinality": "one-optional",
+          "relationName": "AssetCheckoutHolderWorker",
+          "owning": true,
+          "onDelete": "SetNull",
+          "fkFields": [
+            "holderWorkerId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "holderUser",
+          "target": "User",
+          "cardinality": "one-optional",
+          "relationName": "AssetCheckoutHolderUser",
+          "owning": true,
+          "onDelete": "SetNull",
+          "fkFields": [
+            "holderUserId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "site",
+          "target": "Site",
+          "cardinality": "one-optional",
+          "relationName": "AssetCheckoutSite",
+          "owning": true,
+          "onDelete": "SetNull",
+          "fkFields": [
+            "siteId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "job",
+          "target": "Job",
+          "cardinality": "one-optional",
+          "relationName": "AssetCheckoutJob",
+          "owning": true,
+          "onDelete": "SetNull",
+          "fkFields": [
+            "jobId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        }
+      ],
+      "referencedBy": []
     },
     "AssetInspection": {
       "name": "AssetInspection",
@@ -18847,6 +19245,25 @@
             "onDelete": null
           },
           "owning": false
+        },
+        {
+          "name": "assetCheckouts",
+          "dbColumn": null,
+          "type": "AssetCheckout",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "AssetCheckoutJob",
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
         }
       ],
       "relations": [
@@ -19053,9 +19470,24 @@
           "onDelete": null,
           "fkFields": [],
           "refFields": []
+        },
+        {
+          "field": "assetCheckouts",
+          "target": "AssetCheckout",
+          "cardinality": "many",
+          "relationName": "AssetCheckoutJob",
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
         }
       ],
       "referencedBy": [
+        {
+          "from": "AssetCheckout",
+          "via": "job",
+          "fk": "jobId"
+        },
         {
           "from": "JobConversion",
           "via": "job",
@@ -33863,6 +34295,25 @@
             "onDelete": null
           },
           "owning": false
+        },
+        {
+          "name": "assetCheckouts",
+          "dbColumn": null,
+          "type": "AssetCheckout",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "AssetCheckoutSite",
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
         }
       ],
       "relations": [
@@ -33919,9 +34370,24 @@
           "onDelete": null,
           "fkFields": [],
           "refFields": []
+        },
+        {
+          "field": "assetCheckouts",
+          "target": "AssetCheckout",
+          "cardinality": "many",
+          "relationName": "AssetCheckoutSite",
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
         }
       ],
       "referencedBy": [
+        {
+          "from": "AssetCheckout",
+          "via": "site",
+          "fk": "siteId"
+        },
         {
           "from": "Tender",
           "via": "site",
@@ -43633,6 +44099,25 @@
             "onDelete": null
           },
           "owning": false
+        },
+        {
+          "name": "assetCheckouts",
+          "dbColumn": null,
+          "type": "AssetCheckout",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "AssetCheckoutHolderUser",
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
         }
       ],
       "relations": [
@@ -44567,6 +45052,16 @@
           "onDelete": null,
           "fkFields": [],
           "refFields": []
+        },
+        {
+          "field": "assetCheckouts",
+          "target": "AssetCheckout",
+          "cardinality": "many",
+          "relationName": "AssetCheckoutHolderUser",
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
         }
       ],
       "referencedBy": [
@@ -44654,6 +45149,11 @@
           "from": "Worker",
           "via": "user",
           "fk": "userId"
+        },
+        {
+          "from": "AssetCheckout",
+          "via": "holderUser",
+          "fk": "holderUserId"
         },
         {
           "from": "Tender",
@@ -46148,6 +46648,25 @@
             "onDelete": null
           },
           "owning": false
+        },
+        {
+          "name": "assetCheckouts",
+          "dbColumn": null,
+          "type": "AssetCheckout",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "AssetCheckoutHolderWorker",
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
         }
       ],
       "relations": [
@@ -46238,6 +46757,16 @@
           "onDelete": null,
           "fkFields": [],
           "refFields": []
+        },
+        {
+          "field": "assetCheckouts",
+          "target": "AssetCheckout",
+          "cardinality": "many",
+          "relationName": "AssetCheckoutHolderWorker",
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
         }
       ],
       "referencedBy": [
@@ -46245,6 +46774,11 @@
           "from": "CrewWorker",
           "via": "worker",
           "fk": "workerId"
+        },
+        {
+          "from": "AssetCheckout",
+          "via": "holderWorker",
+          "fk": "holderWorkerId"
         },
         {
           "from": "WorkerCompetency",
@@ -48480,6 +49014,46 @@
       "fk": "resourceTypeId",
       "onDelete": "SetNull",
       "relationName": null
+    },
+    {
+      "from": "AssetCheckout",
+      "to": "Asset",
+      "via": "asset",
+      "fk": "assetId",
+      "onDelete": "Cascade",
+      "relationName": null
+    },
+    {
+      "from": "AssetCheckout",
+      "to": "Worker",
+      "via": "holderWorker",
+      "fk": "holderWorkerId",
+      "onDelete": "SetNull",
+      "relationName": "AssetCheckoutHolderWorker"
+    },
+    {
+      "from": "AssetCheckout",
+      "to": "User",
+      "via": "holderUser",
+      "fk": "holderUserId",
+      "onDelete": "SetNull",
+      "relationName": "AssetCheckoutHolderUser"
+    },
+    {
+      "from": "AssetCheckout",
+      "to": "Site",
+      "via": "site",
+      "fk": "siteId",
+      "onDelete": "SetNull",
+      "relationName": "AssetCheckoutSite"
+    },
+    {
+      "from": "AssetCheckout",
+      "to": "Job",
+      "via": "job",
+      "fk": "jobId",
+      "onDelete": "SetNull",
+      "relationName": "AssetCheckoutJob"
     },
     {
       "from": "WorkerCompetency",

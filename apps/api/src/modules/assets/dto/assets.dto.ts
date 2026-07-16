@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsBoolean, IsNumber, IsOptional, IsString, Min } from "class-validator";
+import { IsBoolean, IsDateString, IsNumber, IsOptional, IsString, Min } from "class-validator";
 import { PaginationQueryDto } from "../../../common/dto/pagination-query.dto";
 
 /**
@@ -75,4 +75,43 @@ export class UpsertAssetDto {
    */
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0)
   nominalLoadTonnes?: number;
+
+  /**
+   * 1D barcode value (e.g. Code128 scan output). Must be unique across all assets if set.
+   * Used by GET /assets/scan/:code to locate this asset from a scanner.
+   */
+  @IsOptional() @IsString() barcode?: string;
+
+  /**
+   * QR code payload string. Must be unique if set. The web UI renders this as a
+   * QR image when present. Falls back to showing the string if QR renderer unavailable.
+   */
+  @IsOptional() @IsString() qrValue?: string;
+}
+
+/**
+ * Payload for checking out an asset to a holder (worker, user, site, or job).
+ * Rejects with 409 if the asset already has an open checkout (checkedInAt IS NULL).
+ */
+export class CheckoutAssetDto {
+  /** Worker who takes physical custody (optional). */
+  @IsOptional() @IsString() holderWorkerId?: string;
+  /** Office/admin user who takes custody (optional). */
+  @IsOptional() @IsString() holderUserId?: string;
+  /** Site the asset is sent to (optional). */
+  @IsOptional() @IsString() siteId?: string;
+  /** Job the asset is assigned to (optional). */
+  @IsOptional() @IsString() jobId?: string;
+  /** ISO date-time when the asset is expected to return. */
+  @IsOptional() @IsDateString() dueBackAt?: string;
+  /** Free-text notes (e.g. purpose of checkout, condition on issue). */
+  @IsOptional() @IsString() notes?: string;
+}
+
+/**
+ * Payload for checking an asset back in (closing an open checkout).
+ */
+export class CheckinAssetDto {
+  /** Optional notes recorded at return (e.g. condition on return). */
+  @IsOptional() @IsString() notes?: string;
 }

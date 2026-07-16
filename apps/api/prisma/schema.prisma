@@ -158,6 +158,7 @@ model User {
   // company records.
   companyProfilesAsWhs    CompanyProfile[]       @relation("CompanyProfileWhsOfficer")
   companyLegalDocsCreated CompanyLegalDocument[] @relation("CompanyLegalDocCreatedBy")
+  assetCheckouts          AssetCheckout[]        @relation("AssetCheckoutHolderUser")
 
   @@index([isActive])
   @@index([managerId])
@@ -699,6 +700,7 @@ model Site {
   projects        Project[]
   formSubmissions FormSubmission[]
   tenders         Tender[]
+  assetCheckouts  AssetCheckout[]  @relation("AssetCheckoutSite")
 
   @@unique([name])
   @@index([clientId])
@@ -807,6 +809,7 @@ model Worker {
   availabilityWindows AvailabilityWindow[]
   roleSuitabilities   WorkerRoleSuitability[]
   formSubmissions     FormSubmission[]
+  assetCheckouts      AssetCheckout[]           @relation("AssetCheckoutHolderWorker")
 
   @@index([status])
   @@index([resourceTypeId])
@@ -849,6 +852,12 @@ model Asset {
   name                     String
   assetCode                String                  @unique @map("asset_code")
   serialNumber             String?                 @unique @map("serial_number")
+  // Barcode / QR tag support (AssetTiger parity). Both nullable and additive.
+  // barcode — 1D barcode value (e.g. Code128, QR string scanned as plain text).
+  // qrValue — canonical QR payload; if set, the web UI renders a QR image.
+  // Scan lookup endpoint matches barcode OR qrValue OR assetCode (fallback).
+  barcode                  String?                 @unique @map("barcode")
+  qrValue                  String?                 @unique @map("qr_value")
   status                   String                  @default("AVAILABLE")
   homeBase                 String?                 @map("home_base")
   currentLocation          String?                 @map("current_location")
@@ -875,11 +884,44 @@ model Asset {
   allocations              ProjectAllocation[]
   scheduleAllocations      ScheduleAllocation[]
   scopePlantRefs           ScopeOfWorksItem[]      @relation("ScopeItemPlant")
+  checkouts                AssetCheckout[]
 
   @@index([status])
   @@index([assetCategoryId])
   @@index([resourceTypeId])
   @@map("assets")
+}
+
+// AssetCheckout — custody chain record. Retires the Jotform "Grice Office Key Checkout"
+// form: every check-out and check-in is now tracked here instead of Jotform.
+// Service-layer guard enforces "at most one open checkout per asset" (checkedInAt IS NULL).
+// Prisma cannot enforce partial uniqueness portably, so the check is in AssetsService.checkoutAsset.
+model AssetCheckout {
+  id              String    @id @default(cuid())
+  assetId         String    @map("asset_id")
+  // Holder: at most one of holderWorkerId / holderUserId / siteId / jobId is typically set,
+  // but any combination is allowed (e.g. asset on a job at a specific site).
+  holderWorkerId  String?   @map("holder_worker_id")
+  holderUserId    String?   @map("holder_user_id")
+  siteId          String?   @map("site_id")
+  jobId           String?   @map("job_id")
+  checkedOutAt    DateTime  @default(now()) @map("checked_out_at")
+  dueBackAt       DateTime? @map("due_back_at")
+  checkedInAt     DateTime? @map("checked_in_at")
+  notes           String?
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  asset           Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  holderWorker    Worker?   @relation("AssetCheckoutHolderWorker", fields: [holderWorkerId], references: [id], onDelete: SetNull)
+  holderUser      User?     @relation("AssetCheckoutHolderUser", fields: [holderUserId], references: [id], onDelete: SetNull)
+  site            Site?     @relation("AssetCheckoutSite", fields: [siteId], references: [id], onDelete: SetNull)
+  job             Job?      @relation("AssetCheckoutJob", fields: [jobId], references: [id], onDelete: SetNull)
+
+  // Index for fast "open checkout" lookup (checkedInAt IS NULL rows).
+  @@index([assetId, checkedInAt])
+  @@index([holderWorkerId])
+  @@index([holderUserId])
+  @@map("asset_checkouts")
 }
 
 model WorkerCompetency {
@@ -1201,6 +1243,7 @@ model Job {
   formSubmissions    FormSubmission[]
   closeout           JobCloseout?
   correspondences    CorrespondenceThread[] @relation("JobCorrespondence")
+  assetCheckouts     AssetCheckout[]        @relation("AssetCheckoutJob")
 
   @@index([clientId])
   @@index([status])

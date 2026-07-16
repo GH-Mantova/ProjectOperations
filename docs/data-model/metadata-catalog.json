@@ -1029,6 +1029,106 @@
         }
       }
     },
+    "BrandAsset": {
+      "domain": "Unclassified",
+      "wizardVisible": false,
+      "label": null,
+      "reviewed": false,
+      "fields": {
+        "id": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "profileId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "profile": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "kind": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "url": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "createdAt": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "updatedAt": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        }
+      }
+    },
+    "BrandColorScheme": {
+      "domain": "Unclassified",
+      "wizardVisible": false,
+      "label": null,
+      "reviewed": false,
+      "fields": {
+        "id": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "name": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "primaryColorHex": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "secondaryColorHex": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "createdAt": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "updatedAt": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "activeOn": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        }
+      }
+    },
     "CalendarSyncedEvent": {
       "domain": "Integrations",
       "wizardVisible": true,
@@ -2757,6 +2857,24 @@
         },
         "pdfLetterheadUrl": {
           "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "activeColorSchemeId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "activeColorScheme": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "brandAssets": {
+          "role": "system",
           "label": null,
           "filterable": false,
           "aggregations": []

@@ -292,6 +292,32 @@ describe("buildProjectStepFlushPayload (Project step flush)", () => {
     });
     expect(patch).not.toHaveProperty("description");
   });
+
+  it("includes siteId when the wizard has resolved a Site link", () => {
+    const patch = buildProjectStepFlushPayload({
+      draftId: "t-1",
+      title: "Site civil works",
+      estimatorUserId: "",
+      siteAddress: "123 Example Rd, Brisbane QLD",
+      siteId: "site-42"
+    });
+    expect(patch).toMatchObject({
+      title: "Site civil works",
+      siteId: "site-42",
+      description: "Site: 123 Example Rd, Brisbane QLD"
+    });
+  });
+
+  it("omits siteId when the address has not been resolved yet", () => {
+    const patch = buildProjectStepFlushPayload({
+      draftId: "t-1",
+      title: "Site civil works",
+      estimatorUserId: "",
+      siteAddress: "123 Example Rd",
+      siteId: null
+    });
+    expect(patch).not.toHaveProperty("siteId");
+  });
 });
 
 // Discard-draft action wires the confirm modal to the existing hard-delete

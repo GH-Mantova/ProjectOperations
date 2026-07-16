@@ -273,6 +273,7 @@ export function buildProjectStepFlushPayload(input: {
   title: string;
   estimatorUserId: string;
   siteAddress: string;
+  siteId?: string | null;
 }): Record<string, unknown> | null {
   if (!input.draftId) return null;
   const trimmedTitle = input.title.trim();
@@ -281,6 +282,7 @@ export function buildProjectStepFlushPayload(input: {
   if (input.estimatorUserId) patch.estimatorUserId = input.estimatorUserId;
   const site = input.siteAddress.trim();
   if (site) patch.description = `Site: ${site}`;
+  if (input.siteId) patch.siteId = input.siteId;
   return patch;
 }
 

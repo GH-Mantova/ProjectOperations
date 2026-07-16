@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { AdminAccessRequestsTab } from "./admin/AdminAccessRequestsTab";
@@ -46,6 +46,7 @@ const TABS = [
   { id: "ai", label: "AI & Integrations" },
   { id: "integrations", label: "Integrations / API keys" },
   { id: "platform", label: "Platform" },
+  { id: "geofences", label: "Site geofences" },
   { id: "permissions", label: "Permissions" },
   { id: "client-versions", label: "Client versions" },
   { id: "audit", label: "Audit log" }
@@ -120,6 +121,7 @@ export function AdminSettingsPage() {
               <XeroPanel />
             </>
           )}
+          {tab === "geofences" && <SiteGeofencesTab />}
           {tab === "permissions" && <AdminRolesPermissionsTab />}
           {tab === "client-versions" && <AdminClientVersionsTab />}
           {tab === "audit" && <StubCard title="System audit log" body="Coming soon. All admin actions are recorded." />}
@@ -1294,6 +1296,292 @@ function XeroPanel() {
 
       {info ? <p style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 10 }}>{info}</p> : null}
       {error ? <p style={{ color: "var(--status-danger)", marginTop: 10 }}>{error}</p> : null}
+    </section>
+  );
+}
+
+// ── ERP gap C — Site geofences admin tab ──────────────────────────────
+// Draw/set a circular geofence per site. Field workers' clock-on GPS is
+// checked against active geofences to auto-select the correct job and
+// flag out-of-geofence timesheets.
+type GeofenceRow = {
+  id: string;
+  siteId: string;
+  siteName: string;
+  siteCode: string | null;
+  name: string;
+  centreLat: string;
+  centreLng: string;
+  radiusMetres: number;
+  isActive: boolean;
+  notes: string | null;
+};
+
+type SiteOption = { id: string; name: string; code: string | null };
+
+function SiteGeofencesTab() {
+  const { authFetch } = useAuth();
+  const [rows, setRows] = useState<GeofenceRow[] | null>(null);
+  const [sites, setSites] = useState<SiteOption[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const [draft, setDraft] = useState<{
+    siteId: string;
+    name: string;
+    centreLat: string;
+    centreLng: string;
+    radiusMetres: string;
+    isActive: boolean;
+    notes: string;
+  }>({ siteId: "", name: "", centreLat: "", centreLng: "", radiusMetres: "150", isActive: true, notes: "" });
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const [gRes, sRes] = await Promise.all([
+        authFetch("/field/geofences"),
+        authFetch("/master-data/sites?limit=500")
+      ]);
+      if (!gRes.ok) throw new Error(await gRes.text());
+      if (!sRes.ok) throw new Error(await sRes.text());
+      setRows((await gRes.json()) as GeofenceRow[]);
+      const sitesBody = (await sRes.json()) as { items: SiteOption[] };
+      setSites(sitesBody.items);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }, [authFetch]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function pickMyLocation() {
+    if (!navigator.geolocation) {
+      setError("Geolocation not supported on this device.");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setDraft((d) => ({
+          ...d,
+          centreLat: pos.coords.latitude.toFixed(6),
+          centreLng: pos.coords.longitude.toFixed(6)
+        }));
+      },
+      (err) => setError(`Could not get location: ${err.message}`),
+      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 0 }
+    );
+  }
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSaveMsg(null);
+    const lat = Number(draft.centreLat);
+    const lng = Number(draft.centreLng);
+    const radius = Number(draft.radiusMetres);
+    if (!draft.siteId || !draft.name.trim()) {
+      setError("Site and name are required.");
+      return;
+    }
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      setError("Centre lat/lng must be valid numbers.");
+      return;
+    }
+    if (!Number.isFinite(radius) || radius < 10 || radius > 5000) {
+      setError("Radius must be between 10 and 5000 metres.");
+      return;
+    }
+    try {
+      const res = await authFetch("/field/geofences", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          siteId: draft.siteId,
+          name: draft.name.trim(),
+          centreLat: lat,
+          centreLng: lng,
+          radiusMetres: radius,
+          isActive: draft.isActive,
+          notes: draft.notes.trim() || undefined
+        })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setSaveMsg(`Geofence "${draft.name.trim()}" saved.`);
+      setDraft({ siteId: "", name: "", centreLat: "", centreLng: "", radiusMetres: "150", isActive: true, notes: "" });
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function toggleActive(row: GeofenceRow) {
+    try {
+      const res = await authFetch(`/field/geofences/${row.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: !row.isActive })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function remove(row: GeofenceRow) {
+    if (!window.confirm(`Delete geofence "${row.name}"? Timesheet audit references will be cleared to null.`)) return;
+    try {
+      const res = await authFetch(`/field/geofences/${row.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(await res.text());
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  return (
+    <section className="s7-card">
+      <h2 className="s7-type-section-heading" style={{ marginTop: 0 }}>Site geofences</h2>
+      <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
+        Attach a circular boundary to a site so worker clock-ins auto-select the correct job and get flagged if they fall outside the fence. GPS capture is unaffected — this only adds the boundary check.
+      </p>
+
+      <form onSubmit={submit} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 16 }}>
+        <label style={{ gridColumn: "span 2" }}>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Site</div>
+          <select
+            value={draft.siteId}
+            onChange={(e) => setDraft({ ...draft, siteId: e.target.value })}
+            style={{ width: "100%", padding: 8 }}
+          >
+            <option value="">Select a site…</option>
+            {sites.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}{s.code ? ` (${s.code})` : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Name</div>
+          <input
+            type="text"
+            value={draft.name}
+            onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+            style={{ width: "100%", padding: 8 }}
+            placeholder="e.g. Main gate"
+          />
+        </label>
+        <label>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Radius (metres)</div>
+          <input
+            type="number"
+            min={10}
+            max={5000}
+            step={10}
+            value={draft.radiusMetres}
+            onChange={(e) => setDraft({ ...draft, radiusMetres: e.target.value })}
+            style={{ width: "100%", padding: 8 }}
+          />
+        </label>
+        <label>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Centre latitude</div>
+          <input
+            type="number"
+            step="any"
+            value={draft.centreLat}
+            onChange={(e) => setDraft({ ...draft, centreLat: e.target.value })}
+            style={{ width: "100%", padding: 8 }}
+          />
+        </label>
+        <label>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Centre longitude</div>
+          <input
+            type="number"
+            step="any"
+            value={draft.centreLng}
+            onChange={(e) => setDraft({ ...draft, centreLng: e.target.value })}
+            style={{ width: "100%", padding: 8 }}
+          />
+        </label>
+        <label style={{ gridColumn: "span 2" }}>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Notes (optional)</div>
+          <textarea
+            value={draft.notes}
+            onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
+            rows={2}
+            style={{ width: "100%", padding: 8 }}
+          />
+        </label>
+        <div style={{ gridColumn: "span 2", display: "flex", gap: 8, alignItems: "center" }}>
+          <button type="button" className="s7-btn s7-btn--ghost" onClick={() => void pickMyLocation()}>
+            Use my current location
+          </button>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+            <input
+              type="checkbox"
+              checked={draft.isActive}
+              onChange={(e) => setDraft({ ...draft, isActive: e.target.checked })}
+            />
+            Active
+          </label>
+          <button type="submit" className="s7-btn s7-btn--primary" style={{ marginLeft: "auto" }}>
+            Add geofence
+          </button>
+        </div>
+      </form>
+
+      {saveMsg ? <p style={{ color: "var(--status-success, #16a34a)", marginTop: 12 }}>{saveMsg}</p> : null}
+      {error ? <p style={{ color: "var(--status-danger)", marginTop: 10 }}>{error}</p> : null}
+
+      <div style={{ marginTop: 24 }}>
+        {rows === null ? (
+          <p style={{ color: "var(--text-muted)" }}>Loading…</p>
+        ) : rows.length === 0 ? (
+          <p style={{ color: "var(--text-muted)" }}>No site geofences configured yet.</p>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ textAlign: "left", borderBottom: "1px solid var(--border, #e5e5e5)" }}>
+                <th style={{ padding: "8px 6px" }}>Site</th>
+                <th style={{ padding: "8px 6px" }}>Geofence</th>
+                <th style={{ padding: "8px 6px" }}>Centre</th>
+                <th style={{ padding: "8px 6px" }}>Radius</th>
+                <th style={{ padding: "8px 6px" }}>Status</th>
+                <th style={{ padding: "8px 6px" }} />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} style={{ borderBottom: "1px solid var(--border, #f0f0f0)" }}>
+                  <td style={{ padding: "8px 6px" }}>{r.siteName}{r.siteCode ? ` (${r.siteCode})` : ""}</td>
+                  <td style={{ padding: "8px 6px" }}>{r.name}</td>
+                  <td style={{ padding: "8px 6px", fontFamily: "monospace", fontSize: 12 }}>
+                    {r.centreLat}, {r.centreLng}
+                  </td>
+                  <td style={{ padding: "8px 6px" }}>{r.radiusMetres} m</td>
+                  <td style={{ padding: "8px 6px" }}>{r.isActive ? "Active" : "Inactive"}</td>
+                  <td style={{ padding: "8px 6px", textAlign: "right" }}>
+                    <button type="button" className="s7-btn s7-btn--ghost" onClick={() => void toggleActive(r)}>
+                      {r.isActive ? "Deactivate" : "Activate"}
+                    </button>
+                    <button
+                      type="button"
+                      className="s7-btn s7-btn--ghost"
+                      style={{ marginLeft: 6, color: "var(--status-danger)" }}
+                      onClick={() => void remove(r)}
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </section>
   );
 }

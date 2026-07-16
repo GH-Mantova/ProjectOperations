@@ -77,33 +77,17 @@ items:
       (b) the control-mapping tool? And is it Compliance-module or its own thing?
     order: 5
 
-  - id: smart-wizard
-    title: "Smart Wizard Ã”Ã‡Ã¶ metadata-driven dashboard builder (no LLM)"
-    priority: P3
-    why: >
-      The POINT of the data-model-map work. The enabling generator (relationship-map +
-      metadata-catalog) shipped in #531/#532/#536 Ã”Ã‡Ã¶ but the wizard itself has ZERO artifacts on main
-      and no prompt. The scaffolding got built and the building never did.
-    gate: 'test -z "$(git grep -il "SmartWizard" origin/main -- apps/web 2>/dev/null)"'
-    gate_means: No SmartWizard artifacts on main; the metadata catalog it depends on already exists.
-    needs_marco: false
-    decided_in_BACKLOG_DECISIONS_md: >
-      Metadata-catalog coverage is 0/195 models human-reviewed. The wizard is only as good as that
-      catalog. Do you want to review the catalog first, or build the wizard against what is there?
-    order: 6
+  # DISCHARGED 2026-07-16 (Cowork): STAGED + ARMED as pr-smart-wizard-runtime-catalog-ready.md
+  # (per BACKLOG-DECISIONS #4: reads the metadata catalog at RUNTIME via a GET /meta/catalog seam --
+  # no codegen, no baked-in model list. Catalog review remains a separate parallel task). One place.
+  # (its home is now the prompt file.)
 
   # -------------------------------------------------------------------------------------------
   # P4 Ã”Ã‡Ã¶ real, but genuinely waiting on Marco
   # -------------------------------------------------------------------------------------------
-  - id: qa-workstream-c
-    title: "QA Workstream C Ã”Ã‡Ã¶ full-depth compliance suites into CI"
-    priority: P4
-    why: "Locked as a decision 2026-07-02. Never started. 12 days idle."
-    gate: '! test -d apps/api/src/compliance/__tests__'
-    gate_means: The full-depth compliance test suite Workstream C is meant to produce does not exist yet.
-    needs_marco: false
-    decided_in_BACKLOG_DECISIONS_md: "Workstream C was locked as full-depth. Still the call, or trim the scope?"
-    order: 7
+  # DISCHARGED 2026-07-16 (Cowork): STAGED + ARMED as pr-qa-workstream-c-audit-ready.md
+  # (per BACKLOG-DECISIONS #5: re-review the 2026-07-02 plan against today's suite FIRST, then fill
+  # only genuine gaps; deliverable is docs/qa/workstream-c-coverage-audit.md). One place, never two.
 
   # DISCHARGED 2026-07-16 (Cowork): STAGED + ARMED as pr-field-worker-otp-auth-ready.md
   # (escalates: OTP provider + hashed-code model; delivery is a PLUGGABLE PORT that only logs the code
@@ -126,19 +110,11 @@ items:
   # That is the whole lesson, twice: if it is not in a file an agent reads, it does not exist.
   # -------------------------------------------------------------------------------------------
 
-  - id: split-native-browser-dialogs
-    title: "Replace native browser dialogs Ã”Ã‡Ã¶ SPLIT into 4 prompts (the original blew the turn cap)"
-    priority: P2
-    why: >
-      `pr-replace-native-browser-dialogs` tried to migrate 48 call sites in ONE run. It hit
-      "Reached max turns (240)" Ã”Ã‡Ã¶ DOUBLE the normal budget Ã”Ã‡Ã¶ left 33 uncommitted files in the shared
-      tree, and killed the queue for 13 hours. It sits in `failed/` and nobody owns it.
-      RAISING THE TURN CAP DOES NOT HELP. SPLITTING DOES. This is also exactly why the intake lint
-      rejects `size > 10`. Rewrite it as ~4 prompts, each under the cap, each independently shippable.
-    gate: 'grep -rq "window.confirm\|window.alert" apps/web/src'
-    gate_means: Native browser dialogs are still in the web app.
-    needs_marco: false
-    order: 12
+  # DISCHARGED 2026-07-16 (Cowork): STAGED. Foundation armed as pr-dialogs-foundation-ready.md
+  # (ConfirmDialog + useConfirm primitive). The 43 remaining call sites were split into SIX staged,
+  # foundation-gated prompts: docs/pr-prompts/staged/pr-dialogs-migrate-{tendering-a,tendering-b,
+  # admin,personas-dashboards,misc-a,misc-b}.md -- arm each only AFTER the foundation merges to main.
+  # One place, never two.
 
   - id: job-project-model-merge
     title: "Job / Project model merge (B-P0a)"
@@ -151,9 +127,13 @@ items:
     gate: 'grep -q "^model Job " apps/api/prisma/schema.prisma && grep -q "^model Project " apps/api/prisma/schema.prisma'
     gate_means: Both models still exist on main - the merge has not happened.
     needs_marco: false
-    decided_in_BACKLOG_DECISIONS_md: >
-      B-P0a was locked as "no PRs without you present". It gates the scheduler. Do you want to
-      restart it, and which is canonical - Job or Project?
+    marco_note: >
+      RESOLVED 2026-07-16 (Marco): JOB is canonical; everything relevant folds into Job; Project dropped
+      last. This REVERSES the shipped Phase-A direction (#500 built Project-as-survivor) and sot/02's
+      "survivor Project" -- both must be reconciled to Job (flag for 05-sot-keeper). SLICE 0 (the ordered
+      slice plan, no code) STAGED as pr-job-project-merge-plan-ready.md; code slices follow the plan doc,
+      one <=10-file PR each, additive->backfill->re-point->drop-Project-last. B-P0b (Worker) stays after
+      this, never concurrent.
     order: 13
 
   - id: worker-workerprofile-merge
@@ -261,23 +241,10 @@ items:
   # ADDED 2026-07-15. Spun off from the siteid decision -- FormSubmission is NOT a DB constraint.
   # -------------------------------------------------------------------------------------------
 
-  - id: formsubmission-required-site-field
-    title: "Form builder: an 'existing sites' picker field that a form can mark required"
-    priority: P4
-    why: >
-      Marco's siteid decision: FormSubmission.siteId STAYS NULLABLE at the DB level. Instead, site
-      capture on forms is a per-form choice in the form builder -- a form author can add an
-      'existing sites' dropdown field (populated from the Site table) and mark it required. This is
-      a form-template/form-builder feature, NOT a schema NOT NULL constraint. Enforcement is per
-      form, at submission-validation time, driven by the field's required flag.
-    gate: '! grep -rqiE "site.?picker|existingSites|SITE_DROPDOWN|siteField" apps/web/src apps/api/src/modules/forms 2>/dev/null'
-    gate_means: No 'existing sites' form-field type exists yet in the form builder.
-    needs_marco: false
-    decided: >
-      2026-07-15 (Marco): build as a form-builder field type. Populate the dropdown from the Site
-      table; a form author can toggle 'required'; validate on submit. Do NOT add a DB NOT NULL on
-      FormSubmission.siteId.
-    order: 21
+  # DISCHARGED 2026-07-16 (Cowork): STAGED + ARMED as pr-forms-existing-sites-field-ready.md. The
+  # registered gate was BROKEN -- it grepped apps/web/src broadly and false-matched dashboard widget
+  # code (WidgetSettingsPopover.tsx), which would have binned the prompt as stale. The armed prompt's
+  # premise is rescoped to the forms module only. One place, never two.
 
   - id: wire-bring-up-to-speed-into-boot
     title: "Wire scripts/pipeline/bring-up-to-speed.ps1 into the SoT boot sequence"

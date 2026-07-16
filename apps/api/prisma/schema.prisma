@@ -171,6 +171,7 @@ model User {
   // company records.
   companyProfilesAsWhs    CompanyProfile[]       @relation("CompanyProfileWhsOfficer")
   companyLegalDocsCreated CompanyLegalDocument[] @relation("CompanyLegalDocCreatedBy")
+  assetCheckouts          AssetCheckout[]        @relation("AssetCheckoutHolderUser")
 
   // Commitments (ERP gap A — cost control)
   commitmentsCreated        Commitment[]       @relation("CommitmentCreatedBy")
@@ -710,6 +711,11 @@ model Site {
   suburb          String?
   state           String?
   postcode        String?
+  // ERP gap C — canonical site coordinates. Populated by admin when a
+  // geofence is drawn; the SiteGeofence rows carry their own centres, so a
+  // site can host multiple named geofences (e.g. main gate + laydown yard).
+  centreLat       Decimal?         @map("centre_lat") @db.Decimal(9, 6)
+  centreLng       Decimal?         @map("centre_lng") @db.Decimal(9, 6)
   notes           String?
   createdAt       DateTime         @default(now()) @map("created_at")
   updatedAt       DateTime         @updatedAt @map("updated_at")
@@ -718,11 +724,39 @@ model Site {
   projects        Project[]
   formSubmissions FormSubmission[]
   tenders         Tender[]
+  assetCheckouts  AssetCheckout[]  @relation("AssetCheckoutSite")
   dailyDiaries    DailyDiary[]
+  geofences       SiteGeofence[]
 
   @@unique([name])
   @@index([clientId])
   @@map("sites")
+}
+
+// ERP gap C — geofenced clock-in/out (QuickBooks Time parity). Timesheet GPS
+// capture already existed (clockOnLat/Lng, clockOffLat/Lng); this record adds
+// the second half: a circular boundary attached to a Site so we can (a) flag
+// clock events as in/out-of-geofence for audit, and (b) tell the field app
+// which job's geofence the worker is currently standing in so it can auto-
+// select the correct allocation. No continuous tracking — evaluation runs on
+// clock-event submissions and on explicit on-demand lookups only.
+model SiteGeofence {
+  id             String      @id @default(cuid())
+  siteId         String      @map("site_id")
+  site           Site        @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  name           String
+  centreLat      Decimal     @map("centre_lat") @db.Decimal(9, 6)
+  centreLng      Decimal     @map("centre_lng") @db.Decimal(9, 6)
+  radiusMetres   Int         @map("radius_metres")
+  isActive       Boolean     @default(true) @map("is_active")
+  notes          String?
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+  clockOnEvents  Timesheet[] @relation("TimesheetClockOnGeofence")
+  clockOffEvents Timesheet[] @relation("TimesheetClockOffGeofence")
+
+  @@index([siteId, isActive])
+  @@map("site_geofences")
 }
 
 model ResourceType {
@@ -827,6 +861,7 @@ model Worker {
   availabilityWindows AvailabilityWindow[]
   roleSuitabilities   WorkerRoleSuitability[]
   formSubmissions     FormSubmission[]
+  assetCheckouts      AssetCheckout[]           @relation("AssetCheckoutHolderWorker")
 
   @@index([status])
   @@index([resourceTypeId])
@@ -869,6 +904,12 @@ model Asset {
   name                     String
   assetCode                String                  @unique @map("asset_code")
   serialNumber             String?                 @unique @map("serial_number")
+  // Barcode / QR tag support (AssetTiger parity). Both nullable and additive.
+  // barcode — 1D barcode value (e.g. Code128, QR string scanned as plain text).
+  // qrValue — canonical QR payload; if set, the web UI renders a QR image.
+  // Scan lookup endpoint matches barcode OR qrValue OR assetCode (fallback).
+  barcode                  String?                 @unique @map("barcode")
+  qrValue                  String?                 @unique @map("qr_value")
   status                   String                  @default("AVAILABLE")
   homeBase                 String?                 @map("home_base")
   currentLocation          String?                 @map("current_location")
@@ -895,11 +936,44 @@ model Asset {
   allocations              ProjectAllocation[]
   scheduleAllocations      ScheduleAllocation[]
   scopePlantRefs           ScopeOfWorksItem[]      @relation("ScopeItemPlant")
+  checkouts                AssetCheckout[]
 
   @@index([status])
   @@index([assetCategoryId])
   @@index([resourceTypeId])
   @@map("assets")
+}
+
+// AssetCheckout — custody chain record. Retires the Jotform "Grice Office Key Checkout"
+// form: every check-out and check-in is now tracked here instead of Jotform.
+// Service-layer guard enforces "at most one open checkout per asset" (checkedInAt IS NULL).
+// Prisma cannot enforce partial uniqueness portably, so the check is in AssetsService.checkoutAsset.
+model AssetCheckout {
+  id              String    @id @default(cuid())
+  assetId         String    @map("asset_id")
+  // Holder: at most one of holderWorkerId / holderUserId / siteId / jobId is typically set,
+  // but any combination is allowed (e.g. asset on a job at a specific site).
+  holderWorkerId  String?   @map("holder_worker_id")
+  holderUserId    String?   @map("holder_user_id")
+  siteId          String?   @map("site_id")
+  jobId           String?   @map("job_id")
+  checkedOutAt    DateTime  @default(now()) @map("checked_out_at")
+  dueBackAt       DateTime? @map("due_back_at")
+  checkedInAt     DateTime? @map("checked_in_at")
+  notes           String?
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  asset           Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  holderWorker    Worker?   @relation("AssetCheckoutHolderWorker", fields: [holderWorkerId], references: [id], onDelete: SetNull)
+  holderUser      User?     @relation("AssetCheckoutHolderUser", fields: [holderUserId], references: [id], onDelete: SetNull)
+  site            Site?     @relation("AssetCheckoutSite", fields: [siteId], references: [id], onDelete: SetNull)
+  job             Job?      @relation("AssetCheckoutJob", fields: [jobId], references: [id], onDelete: SetNull)
+
+  // Index for fast "open checkout" lookup (checkedInAt IS NULL rows).
+  @@index([assetId, checkedInAt])
+  @@index([holderWorkerId])
+  @@index([holderUserId])
+  @@map("asset_checkouts")
 }
 
 model WorkerCompetency {
@@ -1222,6 +1296,7 @@ model Job {
   closeout           JobCloseout?
   correspondences    CorrespondenceThread[] @relation("JobCorrespondence")
   punchItems         PunchItem[]
+  assetCheckouts     AssetCheckout[]        @relation("AssetCheckoutJob")
   commitments        Commitment[]
 
   @@index([clientId])
@@ -2735,6 +2810,17 @@ model Timesheet {
   clockOffLat      Decimal?          @map("clock_off_lat") @db.Decimal(9, 6)
   clockOffLng      Decimal?          @map("clock_off_lng") @db.Decimal(9, 6)
   clockOffAccuracy Decimal?          @map("clock_off_accuracy") @db.Decimal(8, 2)
+  // ERP gap C — geofence audit flags. Boolean is nullable so pre-geofence
+  // rows (and rows without GPS) stay distinguishable from a genuine "outside
+  // the geofence" reading. clockOnGeofenceId is set only when the point fell
+  // inside an active geofence at the time of evaluation; if the site has no
+  // geofence configured, both remain null.
+  clockOnInGeofence  Boolean?        @map("clock_on_in_geofence")
+  clockOffInGeofence Boolean?        @map("clock_off_in_geofence")
+  clockOnGeofenceId  String?         @map("clock_on_geofence_id")
+  clockOnGeofence    SiteGeofence?   @relation("TimesheetClockOnGeofence", fields: [clockOnGeofenceId], references: [id], onDelete: SetNull)
+  clockOffGeofenceId String?         @map("clock_off_geofence_id")
+  clockOffGeofence   SiteGeofence?   @relation("TimesheetClockOffGeofence", fields: [clockOffGeofenceId], references: [id], onDelete: SetNull)
   status           TimesheetStatus   @default(DRAFT)
   submittedAt      DateTime?         @map("submitted_at")
   approvedById     String?           @map("approved_by_id")

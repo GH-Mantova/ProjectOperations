@@ -1,12 +1,18 @@
 # 02 — Roadmap & Status
 
-**Last updated:** 2026-07-13 (AEST) · **Owner:** MAIN chat (doc-reconcile PRs only).
+**Last updated:** 2026-07-15 (AEST) · **Owner:** any chat, via doc-reconcile PR (sot/ only, per CP-24).
 Single forward-looking roadmap for ProjectOperations. Supersedes the old `roadmap.md`,
 `development-plan.md`, `development-backlog.md`, and the sanity-check/QA planning docs.
 
 **State legend:** ✅ Done (merged to `main`) · 🔧 In-PR (open PR now) · 📦 Staged (prompt
 written, not yet a PR) · 🧊 Awaiting-staging (agreed/needed, no prompt yet) · 💡 Idea
 (raised, not decided). ⚠ = doc-vs-code conflict to confirm against the codebase (see §7).
+
+> **"What's next on the pipeline?"** — answer from this file: §2 (open PRs) + §3 (staged prompts
+> ready to arm/PR) + §4 (agreed, not yet staged). This is the CURATED roadmap and must be kept
+> current on every doc-reconcile PR. For the LIVE PR/board state, run
+> `scripts/pipeline/bring-up-to-speed.ps1` and trust its `[LIVE]` lines over any line here. Detailed
+> per-gap rationale lives in `docs/architecture/drafts/` (forms + D365/M365 + competitor gap analyses).
 
 ---
 
@@ -55,6 +61,32 @@ OAuth2, MYOB CSV, M365 SSO + local JWT + Super User, AI providers + BYOK encrypt
 - **`rev-503-smoke-verify`, `rev-506-apitest-verify`, `rev-508`** — verification re-runs for the open PRs above.
 - **`pr-cors-multi-origin`** — parse `CORS_ORIGIN` as comma-separated list for custom-domain cutover (e.g. operations.initialservices.net) without breaking the azurestaticapps host. Backend config only.
 - **`pr-fv2-fields-basic`** (currently `-HOLD`) — Forms FV2 basic/survey/layout field wire-ups (email, phone, address, time, radio, rating, scale/nps, heading, paragraph, divider, image). Gate was "after F-1 merges" — **F-1 (#499) has merged, so this can be activated now** by renaming to `-ready`.
+
+### 3a. 📦 Forms & inspection engine — gap prompts (staged 2026-07-15; PR #609 for durability)
+
+Forensic code check found the forms engine ~75% built (PR #97). These target only verified residual gaps.
+Armed (`-ready`, buildable now): `pr-forms-content-library` (reusable snippets + template clone — kills the
+pasted-T&C duplication), `pr-forms-scoring-passfail`, `pr-forms-corrective-actions`, `pr-forms-public-kiosk-qr`,
+`pr-forms-submission-pdf`. HOLD (gated): `pr-forms-ai-build-from-pdf` (needs a doc-AI key via integration-keys).
+Detail: `docs/architecture/drafts/form-inspection-engine-spec.md` (Part 6 = implementation status).
+
+### 3b. 📦 ERP-wide gap prompts vs Assignar/TSheets/AssetTiger/HammerTech/Procore (staged 2026-07-15)
+
+Grep-grounded (progress-claims, variations, RFI, GPS timesheets, competency-gated scheduling already exist —
+excluded). Armed (`-ready`): `pr-erp-daily-site-diary`, `pr-erp-commitments-budget`, `pr-erp-asset-barcode-checkout`
+(barcode/QR + custody + reservations), `pr-erp-timesheet-geofencing` (GPS exists → geofence only),
+`pr-erp-haulage-dockets`, `pr-erp-competency-expiry-alerts`, `pr-erp-punch-snag-list`, `pr-erp-sopa-payment-schedule`,
+`pr-erp-whs-template-packs` (seed). HOLD (gated/decision): `pr-erp-cost-to-complete` (after commitments),
+`pr-erp-asset-depreciation` (DECISION: build vs Xero), `pr-erp-live-crew-map` (after geofencing),
+`pr-erp-muster-headcount` (after public/kiosk sign-in), `pr-erp-subbie-prequal` (VERIFY existing prequal first).
+Detail: `docs/architecture/drafts/erp-vs-competitors-gap-analysis.md`.
+
+### 3c. 📦 D365/M365 parity — staged earlier (see `docs/architecture/drafts/d365-*`)
+
+~23 items staged in prior batches (Expenses, procurement three-way-match, RSO, BI layer, billing rigor,
+Xero-deepening, CRM lead/opportunity; UX pack; cases, KB, HR-leave, customer-voice) + v2 net-new (BC
+Sustainability/waste-emissions ledger, Field Service asset service-history/agreements, financial dimensions,
+Power Pages external portal). See `project_d365_parity_program` + `project_jotform_and_d365_v2_gap`.
 
 ---
 

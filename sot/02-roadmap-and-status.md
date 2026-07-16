@@ -76,9 +76,9 @@ Grep-grounded (progress-claims, variations, RFI, GPS timesheets, competency-gate
 excluded). Armed (`-ready`): `pr-erp-daily-site-diary`, `pr-erp-commitments-budget`, `pr-erp-asset-barcode-checkout`
 (barcode/QR + custody + reservations), `pr-erp-timesheet-geofencing` (GPS exists → geofence only),
 `pr-erp-haulage-dockets`, `pr-erp-competency-expiry-alerts`, `pr-erp-punch-snag-list`, `pr-erp-sopa-payment-schedule`,
-`pr-erp-whs-template-packs` (seed). HOLD (gated/decision): `pr-erp-cost-to-complete` (after commitments),
-`pr-erp-asset-depreciation` (DECISION: build vs Xero), `pr-erp-live-crew-map` (after geofencing),
+`pr-erp-whs-template-packs` (seed). HOLD (gated/verify): `pr-erp-cost-to-complete` (after commitments), `pr-erp-live-crew-map` (after geofencing),
 `pr-erp-muster-headcount` (after public/kiosk sign-in), `pr-erp-subbie-prequal` (VERIFY existing prequal first).
+**DECIDED 2026-07-15 — asset depreciation is Xero-only; the ERP does NOT track it (prompt dropped).**
 Detail: `docs/architecture/drafts/erp-vs-competitors-gap-analysis.md`.
 
 ### 3c. 📦 D365/M365 parity — staged earlier (see `docs/architecture/drafts/d365-*`)

@@ -4,6 +4,7 @@ import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { ErrorBoundary } from "../../components/ErrorBoundary";
 import { CorrespondencePanel } from "../../components/correspondence/CorrespondencePanel";
+import { PunchTab } from "../../components/punch/PunchTab";
 
 type JobActivity = {
   id: string;
@@ -95,7 +96,7 @@ type JobDetail = {
   } | null;
 };
 
-type Tab = "overview" | "stages" | "issues" | "variations" | "progress" | "documents" | "history" | "commitments";
+type Tab = "overview" | "stages" | "issues" | "variations" | "progress" | "punch" | "documents" | "history" | "commitments";
 
 type CommitmentSummaryItem = {
   id: string;
@@ -382,6 +383,7 @@ export function JobDetailPage() {
           ["issues", `Issues (${job.issues.length})`],
           ["variations", `Variations (${job.variations.length})`],
           ["progress", `Progress (${job.progressEntries.length})`],
+          ["punch", "Punch / Snag"],
           ["commitments", "Commitments"],
           ["documents", "Documents"],
           ["history", `History (${job.statusHistory.length})`]
@@ -610,6 +612,12 @@ export function JobDetailPage() {
             </ul>
           )}
         </section>
+        </ErrorBoundary>
+      ) : null}
+
+      {tab === "punch" ? (
+        <ErrorBoundary sectionName="Punch / Snag">
+          <PunchTab jobId={job.id} />
         </ErrorBoundary>
       ) : null}
 

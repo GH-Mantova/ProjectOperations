@@ -288,7 +288,11 @@ export class ScopeWasteService {
           wasteGroup: true,
           wasteItem: true,
           tonnes: true,
-          m3: true
+          m3: true,
+          // PR feat/scope-multi-material — rows 2..N of the material list.
+          // Item's contribution to a waste group is the sum of tonnes/m³
+          // across the flat row 1 fields AND every entry in materials.
+          materials: true
         }
       }),
       this.prisma.estimateWasteRate.findMany({ where: { isActive: true } })
@@ -304,8 +308,21 @@ export class ScopeWasteService {
     for (const i of items) {
       if (!i.wasteIncluded) continue;
       if (!i.wasteGroup || !i.wasteItem) continue;
-      const tonnes = i.tonnes == null ? 0 : Number(i.tonnes);
-      const m3 = i.m3 == null ? 0 : Number(i.m3);
+      let tonnes = i.tonnes == null ? 0 : Number(i.tonnes);
+      let m3 = i.m3 == null ? 0 : Number(i.m3);
+      // PR feat/scope-multi-material — fold rows 2..N of the material
+      // list into the item's tonnes/m³ contribution. Non-numeric or
+      // negative entries are ignored (defensive — JSON column is not
+      // schema-validated at the DB layer).
+      const materials = Array.isArray(i.materials)
+        ? (i.materials as Array<{ tonnes?: unknown; m3?: unknown }>)
+        : [];
+      for (const m of materials) {
+        const mt = Number(m?.tonnes);
+        const mm = Number(m?.m3);
+        if (Number.isFinite(mt) && mt > 0) tonnes += mt;
+        if (Number.isFinite(mm) && mm > 0) m3 += mm;
+      }
       if (!(tonnes > 0) && !(m3 > 0)) continue;
       // PR B4a.2 — null-byte delimiter so a group/item pair like
       // ("A B", "C") cannot collide with ("A", "B C"). User input

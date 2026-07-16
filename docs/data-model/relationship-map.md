@@ -4,8 +4,8 @@
 > Regenerate with `node scripts/data-model/build-relationship-map.mjs`.
 > Business meaning (domains, field roles) is curated in `metadata-catalog.json`.
 
-- Last updated: 2026-07-16 00:48 UTC
-- Generated from: `apps/api/prisma/schema.prisma` (sha256 `f96056e6f88d`)
+- Last updated: 2026-07-16 02:16 UTC
+- Generated from: `apps/api/prisma/schema.prisma` (sha256 `9723453aaef1`)
 - Models: 197 | Enums: 25 | FK edges: 290 | Domains: 23
 
 ## Table of Contents
@@ -746,7 +746,7 @@ graph LR
 
 ### Model: ScopeOfWorksItem
 
-- Table: `scope_of_works_items` | Domain: Estimating | Fields: 70
+- Table: `scope_of_works_items` | Domain: Estimating | Fields: 71
 - Belongs to (FK out):
   - `tender` -> **Tender** (tenderId, onDelete Cascade)
   - `card` -> **ScopeCard** (cardId, onDelete SetNull)

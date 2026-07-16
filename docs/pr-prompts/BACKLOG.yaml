@@ -110,19 +110,11 @@ items:
   # That is the whole lesson, twice: if it is not in a file an agent reads, it does not exist.
   # -------------------------------------------------------------------------------------------
 
-  - id: split-native-browser-dialogs
-    title: "Replace native browser dialogs Ã”Ã‡Ã¶ SPLIT into 4 prompts (the original blew the turn cap)"
-    priority: P2
-    why: >
-      `pr-replace-native-browser-dialogs` tried to migrate 48 call sites in ONE run. It hit
-      "Reached max turns (240)" Ã”Ã‡Ã¶ DOUBLE the normal budget Ã”Ã‡Ã¶ left 33 uncommitted files in the shared
-      tree, and killed the queue for 13 hours. It sits in `failed/` and nobody owns it.
-      RAISING THE TURN CAP DOES NOT HELP. SPLITTING DOES. This is also exactly why the intake lint
-      rejects `size > 10`. Rewrite it as ~4 prompts, each under the cap, each independently shippable.
-    gate: 'grep -rq "window.confirm\|window.alert" apps/web/src'
-    gate_means: Native browser dialogs are still in the web app.
-    needs_marco: false
-    order: 12
+  # DISCHARGED 2026-07-16 (Cowork): STAGED. Foundation armed as pr-dialogs-foundation-ready.md
+  # (ConfirmDialog + useConfirm primitive). The 43 remaining call sites were split into SIX staged,
+  # foundation-gated prompts: docs/pr-prompts/staged/pr-dialogs-migrate-{tendering-a,tendering-b,
+  # admin,personas-dashboards,misc-a,misc-b}.md -- arm each only AFTER the foundation merges to main.
+  # One place, never two.
 
   - id: job-project-model-merge
     title: "Job / Project model merge (B-P0a)"
@@ -249,23 +241,10 @@ items:
   # ADDED 2026-07-15. Spun off from the siteid decision -- FormSubmission is NOT a DB constraint.
   # -------------------------------------------------------------------------------------------
 
-  - id: formsubmission-required-site-field
-    title: "Form builder: an 'existing sites' picker field that a form can mark required"
-    priority: P4
-    why: >
-      Marco's siteid decision: FormSubmission.siteId STAYS NULLABLE at the DB level. Instead, site
-      capture on forms is a per-form choice in the form builder -- a form author can add an
-      'existing sites' dropdown field (populated from the Site table) and mark it required. This is
-      a form-template/form-builder feature, NOT a schema NOT NULL constraint. Enforcement is per
-      form, at submission-validation time, driven by the field's required flag.
-    gate: '! grep -rqiE "site.?picker|existingSites|SITE_DROPDOWN|siteField" apps/web/src apps/api/src/modules/forms 2>/dev/null'
-    gate_means: No 'existing sites' form-field type exists yet in the form builder.
-    needs_marco: false
-    decided: >
-      2026-07-15 (Marco): build as a form-builder field type. Populate the dropdown from the Site
-      table; a form author can toggle 'required'; validate on submit. Do NOT add a DB NOT NULL on
-      FormSubmission.siteId.
-    order: 21
+  # DISCHARGED 2026-07-16 (Cowork): STAGED + ARMED as pr-forms-existing-sites-field-ready.md. The
+  # registered gate was BROKEN -- it grepped apps/web/src broadly and false-matched dashboard widget
+  # code (WidgetSettingsPopover.tsx), which would have binned the prompt as stale. The armed prompt's
+  # premise is rescoped to the forms module only. One place, never two.
 
   - id: wire-bring-up-to-speed-into-boot
     title: "Wire scripts/pipeline/bring-up-to-speed.ps1 into the SoT boot sequence"

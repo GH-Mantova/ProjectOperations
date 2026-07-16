@@ -6,6 +6,7 @@ import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { ListUsersQueryDto } from "./dto/list-users-query.dto";
+import { UpdateDefaultDashboardDto } from "./dto/update-default-dashboard.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
 import { UsersService } from "./users.service";
 
@@ -65,6 +66,40 @@ export class UsersController {
   @ApiResponse({ status: 201, description: "Create a user." })
   create(@Body() dto: CreateUserDto, @CurrentUser() actor: { sub: string }) {
     return this.usersService.create(dto, actor.sub);
+  }
+
+  /**
+   * Get the acting user's effective default dashboard.
+   *
+   * Returns their per-user override if set and still accessible,
+   * otherwise the global "Home" dashboard. No admin permission required
+   * — every authenticated user reads their own default.
+   */
+  @Get("me/default-dashboard")
+  @ApiOperation({ summary: "Get the current user's effective default dashboard" })
+  @ApiResponse({ status: 200, description: "The current user's effective default dashboard." })
+  getMyDefaultDashboard(@CurrentUser() actor: { sub: string }) {
+    return this.usersService.resolveDefaultDashboard(actor.sub);
+  }
+
+  /**
+   * Set the acting user's personal default dashboard.
+   *
+   * Pass `dashboardId: null` to clear the override and fall back to the
+   * global "Home" dashboard. Users may only set their own default
+   * (route is scoped to `me`) and only to a dashboard they can access
+   * — the service rejects targets they cannot see.
+   */
+  @Patch("me/default-dashboard")
+  @ApiOperation({ summary: "Set the current user's personal default dashboard" })
+  @ApiResponse({ status: 200, description: "The effective default dashboard after the update." })
+  @ApiResponse({ status: 403, description: "The user does not have access to the target dashboard." })
+  @ApiResponse({ status: 404, description: "Target dashboard does not exist." })
+  setMyDefaultDashboard(
+    @Body() dto: UpdateDefaultDashboardDto,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.usersService.setDefaultDashboard(actor.sub, dto.dashboardId);
   }
 
   /**

@@ -9,6 +9,8 @@ import { FormsEngineService } from "./forms-engine.service";
 import { RulesEngineService } from "./rules-engine.service";
 import { FormsSnippetsController } from "./forms-snippets.controller";
 import { FormsSnippetsService } from "./forms-snippets.service";
+import { CorrectiveActionsController } from "./corrective-actions.controller";
+import { CorrectiveActionsService } from "./corrective-actions.service";
 
 /**
  * §13 Forms and Compliance module — wires the template/submission CRUD
@@ -17,6 +19,9 @@ import { FormsSnippetsService } from "./forms-snippets.service";
  * and the reusable content-snippet library
  * (FormsSnippetsController + FormsSnippetsService).
  *
+ * Also registers the corrective-action (CAPA) close-out loop:
+ * CorrectiveActionsController + CorrectiveActionsService.
+ *
  * RulesEngineService and FormsEngineService are re-exported so other
  * modules (e.g. compliance dashboards, safety auto-creation flows) can
  * reuse the rule evaluator and the lifecycle service without owning a
@@ -24,8 +29,8 @@ import { FormsSnippetsService } from "./forms-snippets.service";
  */
 @Module({
   imports: [PrismaModule, AuditModule, PlatformModule],
-  controllers: [FormsController, FormsEngineController, FormsSnippetsController],
-  providers: [FormsService, FormsEngineService, RulesEngineService, FormsSnippetsService],
+  controllers: [FormsController, FormsEngineController, FormsSnippetsController, CorrectiveActionsController],
+  providers: [FormsService, FormsEngineService, RulesEngineService, FormsSnippetsService, CorrectiveActionsService],
   exports: [RulesEngineService, FormsEngineService, FormsSnippetsService]
 })
 export class FormsModule {}

@@ -32,9 +32,15 @@ model User {
   createdById                String?                     @map("created_by_id")
   updatedById                String?                     @map("updated_by_id")
   managerId                  String?                     @map("manager_id")
+  // Per-user override of the global "Home" default dashboard. NULL means
+  // the user has not chosen one — the resolver falls back to the seeded
+  // "Home" dashboard. onDelete: SetNull so deleting a dashboard reverts
+  // its owners to the global default rather than orphaning the FK.
+  defaultDashboardId         String?                     @map("default_dashboard_id")
   createdBy                  User?                       @relation("UserCreatedBy", fields: [createdById], references: [id])
   updatedBy                  User?                       @relation("UserUpdatedBy", fields: [updatedById], references: [id])
   manager                    User?                       @relation("UserManager", fields: [managerId], references: [id], onDelete: SetNull)
+  defaultDashboard           Dashboard?                  @relation("UserDefaultDashboard", fields: [defaultDashboardId], references: [id], onDelete: SetNull)
   createdUsers               User[]                      @relation("UserCreatedBy")
   updatedUsers               User[]                      @relation("UserUpdatedBy")
   directReports              User[]                      @relation("UserManager")
@@ -553,6 +559,7 @@ model Dashboard {
   ownerUser   User?             @relation("DashboardOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
   ownerRole   Role?             @relation("DashboardOwnerRole", fields: [ownerRoleId], references: [id], onDelete: SetNull)
   widgets     DashboardWidget[]
+  usersDefaultedTo User[]        @relation("UserDefaultDashboard")
 
   @@index([scope])
   @@index([ownerUserId])

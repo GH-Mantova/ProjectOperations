@@ -343,6 +343,33 @@ async function main() {
   await prisma.userRole.deleteMany({ where: { userId: viewerUser.id } });
   await prisma.userRole.create({ data: { userId: viewerUser.id, roleId: viewerRole.id } });
 
+  // Global "Home" dashboard — the fallback default all users land on
+  // when they have not set their own default_dashboard_id. Also seeded
+  // by migration 20260716120000_user_default_dashboard; kept in sync
+  // here so a `prisma db seed` after a manual rename resets the name.
+  await prisma.dashboard.upsert({
+    where: { id: "seed-home-dashboard" },
+    update: {
+      name: "Home",
+      description:
+        "Global default dashboard — every user starts here unless they pick a personal default.",
+      scope: "GLOBAL",
+      ownerUserId: null,
+      ownerRoleId: null,
+      isDefault: true
+    },
+    create: {
+      id: "seed-home-dashboard",
+      name: "Home",
+      description:
+        "Global default dashboard — every user starts here unless they pick a personal default.",
+      scope: "GLOBAL",
+      ownerUserId: null,
+      ownerRoleId: null,
+      isDefault: true
+    }
+  });
+
   const adminUser = await prisma.user.findUnique({
     where: { email: "admin@projectops.local" }
   });
@@ -3687,71 +3714,52 @@ async function main() {
 async function seedUserDashboards(prisma: PrismaClient) {
   const users = await prisma.user.findMany({ select: { id: true } });
 
-  const defaults: Array<{ slug: string; name: string; widgets: string[] }> = [
-    {
-      slug: "operations",
-      name: "Operations Overview",
-      widgets: [
-        "ops_active_jobs_kpi",
-        "ops_tender_pipeline_kpi",
-        "ops_open_issues_kpi",
-        "ops_upcoming_maintenance_kpi",
-        "ops_jobs_by_status_donut",
-        "ops_tender_pipeline_donut",
-        "ops_monthly_revenue_line",
-        "ops_form_submissions_bar",
-        "ops_maintenance_bar"
-      ]
-    },
-    {
-      slug: "tendering",
-      name: "Tender Dashboard",
-      widgets: [
-        "ten_active_pipeline_kpi",
-        "ten_submitted_mtd_kpi",
-        "ten_win_rate_kpi",
-        "ten_avg_lead_time_kpi",
-        "ten_due_this_week",
-        "ten_follow_up_queue",
-        "ten_win_rate_chart",
-        "ten_pipeline_by_estimator",
-        "ten_recent_wins"
-      ]
-    }
-  ];
+  // Marco 2026-07-15: every user starts on ONE global default dashboard
+  // called "Home". Per-user overrides live on users.default_dashboard_id
+  // (see PATCH /users/me/default-dashboard). The two old generic
+  // seed dashboards ("operations", "tendering") were removed in
+  // migration 20260716120000_user_default_dashboard.
+  const home = {
+    slug: "home",
+    name: "Home",
+    widgets: [
+      "ops_active_jobs_kpi",
+      "ops_tender_pipeline_kpi",
+      "ops_open_issues_kpi",
+      "ops_upcoming_maintenance_kpi"
+    ]
+  };
 
   for (const user of users) {
-    for (const def of defaults) {
-      const config = {
-        period: "30d",
-        widgets: def.widgets.map((type, order) => ({
-          id: `${type}-default`,
-          type,
-          visible: true,
-          order,
-          config: { period: null, filters: {} }
-        }))
-      };
-      const existing = await prisma.userDashboard.findUnique({
-        where: { userId_slug_isSystem: { userId: user.id, slug: def.slug, isSystem: true } }
+    const config = {
+      period: "30d",
+      widgets: home.widgets.map((type, order) => ({
+        id: `${type}-default`,
+        type,
+        visible: true,
+        order,
+        config: { period: null, filters: {} }
+      }))
+    };
+    const existing = await prisma.userDashboard.findUnique({
+      where: { userId_slug_isSystem: { userId: user.id, slug: home.slug, isSystem: true } }
+    });
+    if (existing) {
+      await prisma.userDashboard.update({
+        where: { id: existing.id },
+        data: { name: home.name, config }
       });
-      if (existing) {
-        await prisma.userDashboard.update({
-          where: { id: existing.id },
-          data: { name: def.name, config }
-        });
-      } else {
-        await prisma.userDashboard.create({
-          data: {
-            userId: user.id,
-            name: def.name,
-            slug: def.slug,
-            isSystem: true,
-            isDefault: true,
-            config
-          }
-        });
-      }
+    } else {
+      await prisma.userDashboard.create({
+        data: {
+          userId: user.id,
+          name: home.name,
+          slug: home.slug,
+          isSystem: true,
+          isDefault: true,
+          config
+        }
+      });
     }
   }
 }

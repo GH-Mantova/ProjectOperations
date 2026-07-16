@@ -1,4 +1,10 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException
+} from "@nestjs/common";
 import { PaginationQueryDto } from "../../common/dto/pagination-query.dto";
 import { PasswordService } from "../../common/security/password.service";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -335,5 +341,117 @@ export class UsersService {
     if (!user) {
       throw new NotFoundException("User not found.");
     }
+  }
+
+  /**
+   * Set the acting user's personal default dashboard.
+   *
+   * Marco 2026-07-15: default-dashboard model is per-USER, not per-role
+   * or per-module. Passing `null` clears the override so the resolver
+   * falls back to the global "Home" dashboard.
+   *
+   * Guard: the target dashboard must be visible to the user (GLOBAL, or
+   * owned by them, or owned by one of their roles) — same visibility
+   * rule DashboardsService.render enforces.
+   */
+  async setDefaultDashboard(userId: string, dashboardId: string | null) {
+    if (dashboardId !== null) {
+      const dashboard = await this.prisma.dashboard.findUnique({
+        where: { id: dashboardId },
+        select: { id: true, scope: true, ownerUserId: true, ownerRoleId: true }
+      });
+      if (!dashboard) {
+        throw new NotFoundException("Dashboard not found.");
+      }
+      const roleIds = await this.getRoleIds(userId);
+      const canSee =
+        dashboard.scope === "GLOBAL" ||
+        dashboard.ownerUserId === userId ||
+        (dashboard.ownerRoleId !== null && roleIds.includes(dashboard.ownerRoleId));
+      if (!canSee) {
+        throw new ForbiddenException("You do not have access to this dashboard.");
+      }
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { defaultDashboardId: dashboardId }
+    });
+
+    await this.auditService.write({
+      actorId: userId,
+      action: "users.setDefaultDashboard",
+      entityType: "User",
+      entityId: userId,
+      metadata: { dashboardId }
+    });
+
+    return this.resolveDefaultDashboard(userId);
+  }
+
+  /**
+   * Resolve the effective default dashboard for a user.
+   *
+   * Returns the user's `defaultDashboardId` target if set and still
+   * accessible, otherwise the global "Home" dashboard (id
+   * `seed-home-dashboard`). If an override points at a dashboard that
+   * was deleted (ON DELETE SET NULL clears the FK) or that the user has
+   * lost access to, the caller still lands on Home with
+   * `isFallback: true`.
+   */
+  async resolveDefaultDashboard(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { defaultDashboardId: true }
+    });
+
+    if (user?.defaultDashboardId) {
+      const chosen = await this.prisma.dashboard.findUnique({
+        where: { id: user.defaultDashboardId },
+        select: {
+          id: true,
+          name: true,
+          scope: true,
+          ownerUserId: true,
+          ownerRoleId: true,
+          isDefault: true
+        }
+      });
+      if (chosen) {
+        const roleIds = await this.getRoleIds(userId);
+        const canSee =
+          chosen.scope === "GLOBAL" ||
+          chosen.ownerUserId === userId ||
+          (chosen.ownerRoleId !== null && roleIds.includes(chosen.ownerRoleId));
+        if (canSee) {
+          return {
+            id: chosen.id,
+            name: chosen.name,
+            scope: chosen.scope,
+            isDefault: chosen.isDefault,
+            isFallback: false
+          };
+        }
+      }
+    }
+
+    const home = await this.prisma.dashboard.findUnique({
+      where: { id: "seed-home-dashboard" },
+      select: { id: true, name: true, scope: true, isDefault: true }
+    });
+
+    if (!home) {
+      throw new NotFoundException("Home dashboard is missing.");
+    }
+
+    return { ...home, isFallback: true };
+  }
+
+  private async getRoleIds(userId: string) {
+    const roles = await this.prisma.userRole.findMany({
+      where: { userId },
+      select: { roleId: true }
+    });
+    return roles.map((role) => role.roleId);
   }
 }

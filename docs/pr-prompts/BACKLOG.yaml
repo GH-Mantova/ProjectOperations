@@ -343,3 +343,24 @@ items:
       2026-07-15 (Marco): build it. Staged at
       docs/pr-prompts/staged/pr-tender-geoapify-site-autocomplete.md.
     order: 23
+
+  - id: flaky-batch8-documents-archive-tohaveurl-race
+    title: "Flaky e2e: batch8-documents-archive detail toHaveURL race reddens unrelated PRs"
+    priority: P2
+    why: >
+      In tests/e2e/pr-acceptance/batch8-documents-archive.spec.ts (test "archive detail opens
+      read-only from the register's View link") the toHaveURL assertion on the archive-detail URL,
+      run immediately after clicking the register View link, times out. It reddened PR #608 (1 failed
+      / 141 passed) whose diff was the per-user default-dashboard feature, which cannot reach the
+      Archive route, and it passed on a bare re-run. MECHANISM (same class as
+      flaky-batch5-sites-post-delete-race): the test clicks the View link and immediately asserts
+      toHaveURL, but the click can fire before the Archive register rows have settled, so .first()
+      resolves against a stale row and the SPA route transition never lands on the detail URL. FIX
+      DIRECTION: after navigating to the archive register, wait for its rows to settle before
+      clicking View, and prefer page.waitForURL over a bare toHaveURL. COST IF LEFT: it keeps
+      randomly reddening unrelated PRs and burning e2e cycles, and trains agents to re-run for green
+      - which DOCTRINE section 2 forbids.
+    gate: "grep -A2 -F '.first().click();' tests/e2e/pr-acceptance/batch8-documents-archive.spec.ts | grep -q 'toHaveURL'"
+    gate_means: The View-link .first().click() is still followed within two lines by the bare toHaveURL assertion, with no settle-wait inserted, so the race is still present. Once a settle-wait or waitForURL is inserted between the click and the URL assertion, toHaveURL no longer appears in the two lines after the click and the gate exits 1.
+    needs_marco: false
+    order: 24

@@ -89,38 +89,18 @@ items:
   # (per BACKLOG-DECISIONS #5: re-review the 2026-07-02 plan against today's suite FIRST, then fill
   # only genuine gaps; deliverable is docs/qa/workstream-c-coverage-audit.md). One place, never two.
 
-  - id: field-worker-auth-track
-    title: "FIELD worker auth track (personal email / OTP), vs OFFICE (Entra)"
-    priority: P4
-    why: >
-      Designed for Ã”Ã‡Ã¶ the `kind` discriminator already exists on AccessRequest, deliberately baked in
-      by #538. This is genuine future work, not an accident. Recorded so it does not evaporate.
-    gate: '! grep -rq "OTP\|otpCode" apps/api/src/modules/auth'
-    gate_means: No OTP/personal-email auth path exists yet.
-    needs_marco: false
-    decided_in_BACKLOG_DECISIONS_md: "Is the FIELD track in scope this quarter, or parked?"
-    order: 8
+  # DISCHARGED 2026-07-16 (Cowork): STAGED + ARMED as pr-field-worker-otp-auth-ready.md
+  # (escalates: OTP provider + hashed-code model; delivery is a PLUGGABLE PORT that only logs the code
+  # -- NO prod email/Graph/Azure wiring, per the mail hard-stop. Marco confirmed IN SCOPE 2026-07-16).
+  # One place, never two.
 
-  - id: estimate-material-density-migration
-    title: "Migrate EstimateMaterialDensity into the flexible RateTable system"
-    priority: P4
-    why: "Named a follow-up when the Rates architecture was locked. Never staged."
-    gate: 'grep -q "model EstimateMaterialDensity" apps/api/prisma/schema.prisma'
-    gate_means: The rigid table still exists on main.
-    needs_marco: false
-    order: 9
+  # DISCHARGED 2026-07-16 (Cowork): STAGED + ARMED as pr-estimate-density-ratetable-ready.md
+  # (escalates: own reviewable PR, regenerates the data-model map in-PR, keeps prices byte-identical,
+  # deprecates the old model in-place rather than dropping it to stay <=10 files). One place, never two.
 
-  - id: task-time-waste-weight-calculators
-    title: "Task-time and waste-weight calculators (qty/rate, volume x density)"
-    priority: P4
-    why: >
-      Deliberately held back Ã”Ã‡Ã¶ these CHANGE QUOTE NUMBERS, so they must not ride along with a
-      refactor. Needs to be its own reviewable PR.
-    gate: '! grep -rqiE "taskTimeCalculator|wasteWeightCalculator" apps/api/src'
-    gate_means: Neither calculator exists on main yet.
-    needs_marco: false
-    decided_in_BACKLOG_DECISIONS_md: "These change quoted prices. Ship as its own PR you review line-by-line?"
-    order: 10
+  # DISCHARGED 2026-07-16 (Cowork): STAGED + ARMED as pr-estimate-task-waste-calculators-ready.md
+  # (escalates: own reviewable PR, service+display only, PR body carries a before/after worked example
+  # per BACKLOG-DECISIONS #7). One place, never two.
 
   # -------------------------------------------------------------------------------------------
   # ADDED 2026-07-14, second pass. THE REGISTER ITSELF HAD GAPS.

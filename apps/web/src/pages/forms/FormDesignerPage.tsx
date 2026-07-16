@@ -327,6 +327,23 @@ export function FormDesignerPage() {
             Card
           </button>
         </div>
+        <PassThresholdControl
+          templateSettings={template.settings}
+          onSave={async (nextThreshold) => {
+            if (!templateId) return;
+            try {
+              const base = ((template.settings as Record<string, unknown> | null | undefined) ?? {}) as Record<string, unknown>;
+              const nextSettings = { ...base, passThresholdPct: nextThreshold };
+              const res = await authFetch(`/forms/templates/${templateId}`, {
+                method: "PATCH",
+                body: JSON.stringify({ settings: nextSettings })
+              });
+              if (res.ok) setTemplate((await res.json()) as Template);
+            } catch {
+              /* silent — user can retry */
+            }
+          }}
+        />
         <button type="button" className="fv2-tbtn">Versions</button>
         <button
           type="button"
@@ -732,18 +749,21 @@ function FieldTabBody({
     }
     if (isChoice) {
       return (
-        <label>
-          Choices (one per line)
-          <textarea
-            value={optionsText}
-            onChange={(e) => setOptionsText(e.target.value)}
-            onBlur={() =>
-              onChange({
-                options: optionsText.split("\n").map((line) => line.trim()).filter(Boolean)
-              })
-            }
-          />
-        </label>
+        <>
+          <label>
+            Choices (one per line)
+            <textarea
+              value={optionsText}
+              onChange={(e) => setOptionsText(e.target.value)}
+              onBlur={() =>
+                onChange({
+                  options: optionsText.split("\n").map((line) => line.trim()).filter(Boolean)
+                })
+              }
+            />
+          </label>
+          <ScoringEditor field={field} config={config} patchConfig={patchConfig} />
+        </>
       );
     }
     if (isAdvanced) {
@@ -1003,6 +1023,236 @@ function AdvancedOptionsEditor({
   return (
     <div className="fv2-props__empty" style={{ padding: 0 }}>
       No options to configure for this field type.
+    </div>
+  );
+}
+
+// ── Inspection scoring editors (this PR) ─────────────────────────────────
+
+type ResponseOptionRow = {
+  value: string;
+  label?: string;
+  score: number;
+  isPassing?: boolean;
+  isNA?: boolean;
+  color?: string;
+};
+
+type ResponseSetShape = { key?: string; name?: string; options: ResponseOptionRow[] };
+
+const DEFAULT_PASS_FAIL_SET: ResponseSetShape = {
+  name: "Pass / Fail / N/A",
+  options: [
+    { value: "pass", label: "Pass", score: 1, isPassing: true, color: "#16A34A" },
+    { value: "fail", label: "Fail", score: 0, isPassing: false, color: "#DC2626" },
+    { value: "na",   label: "N/A",  score: 0, isNA: true,       color: "#64748B" }
+  ]
+};
+
+function PassThresholdControl({
+  templateSettings,
+  onSave
+}: {
+  templateSettings: unknown;
+  onSave: (nextThreshold: number | null) => Promise<void>;
+}) {
+  const initial = (() => {
+    const raw = (templateSettings as { passThresholdPct?: number } | null | undefined)?.passThresholdPct;
+    return typeof raw === "number" && Number.isFinite(raw) ? String(raw) : "";
+  })();
+  const [text, setText] = useState(initial);
+  useEffect(() => setText(initial), [initial]);
+  return (
+    <label
+      style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--fv2-muted, #64748B)" }}
+      title="Pass threshold — submissions with scorePct ≥ this value are marked PASS."
+    >
+      Pass ≥
+      <input
+        type="number"
+        min={0}
+        max={100}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => {
+          if (text === "") {
+            void onSave(null);
+            return;
+          }
+          const n = Number(text);
+          if (!Number.isFinite(n)) return;
+          void onSave(Math.max(0, Math.min(100, n)));
+        }}
+        style={{ width: 56, padding: 4, fontSize: 12 }}
+      />
+      %
+    </label>
+  );
+}
+
+/**
+ * Per-field scoring editor for choice fields.
+ *
+ * Adds a "Score this question" toggle, a weight input, and an inline
+ * response-set editor. When enabled, the field's config.scoreConfig is
+ * populated with an inline response set (default Pass/Fail/N-A) that
+ * FormsEngineService.computeScoring reads at submit time. Values entered
+ * for each option are what land in FormSubmission.score.
+ */
+function ScoringEditor({
+  field,
+  config,
+  patchConfig
+}: {
+  field: DraftField;
+  config: Record<string, unknown>;
+  patchConfig: (patch: Record<string, unknown>) => void;
+}) {
+  const scoreConfig = (config.scoreConfig ?? undefined) as
+    | {
+        weight?: number;
+        countsTowardScore?: boolean;
+        responseSet?: ResponseSetShape;
+      }
+    | undefined;
+  const enabled = Boolean(scoreConfig);
+  const set = scoreConfig?.responseSet ?? DEFAULT_PASS_FAIL_SET;
+  const weight = scoreConfig?.weight ?? 1;
+
+  const enable = () => {
+    patchConfig({
+      scoreConfig: {
+        weight: 1,
+        countsTowardScore: true,
+        responseSet: DEFAULT_PASS_FAIL_SET
+      }
+    });
+  };
+  const disable = () => patchConfig({ scoreConfig: undefined });
+
+  const updateOption = (idx: number, patch: Partial<ResponseOptionRow>) => {
+    const next = set.options.map((o, i) => (i === idx ? { ...o, ...patch } : o));
+    patchConfig({
+      scoreConfig: { ...scoreConfig, responseSet: { ...set, options: next } }
+    });
+  };
+  const addOption = () => {
+    patchConfig({
+      scoreConfig: {
+        ...scoreConfig,
+        responseSet: {
+          ...set,
+          options: [...set.options, { value: `opt_${set.options.length + 1}`, label: "New", score: 0 }]
+        }
+      }
+    });
+  };
+  const removeOption = (idx: number) => {
+    patchConfig({
+      scoreConfig: {
+        ...scoreConfig,
+        responseSet: { ...set, options: set.options.filter((_, i) => i !== idx) }
+      }
+    });
+  };
+
+  return (
+    <div style={{ marginTop: 12, borderTop: "1px solid var(--fv2-border, #E2E8F0)", paddingTop: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+        <strong style={{ fontSize: 12 }}>Inspection scoring</strong>
+        <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}>
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) => (e.target.checked ? enable() : disable())}
+          />
+          Score this question
+        </label>
+      </div>
+      {enabled ? (
+        <>
+          <label style={{ display: "block", fontSize: 12, marginBottom: 8 }}>
+            Weight
+            <input
+              type="number"
+              min={0}
+              step={0.5}
+              value={weight}
+              onChange={(e) =>
+                patchConfig({
+                  scoreConfig: { ...scoreConfig, weight: Number(e.target.value) || 1 }
+                })
+              }
+              style={{ width: 80, marginLeft: 8 }}
+            />
+          </label>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Response set</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {set.options.map((opt, idx) => (
+              <div
+                key={idx}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr 60px 60px 60px auto",
+                  gap: 4,
+                  alignItems: "center"
+                }}
+              >
+                <input
+                  type="text"
+                  value={opt.label ?? opt.value}
+                  onChange={(e) => updateOption(idx, { label: e.target.value })}
+                  placeholder="Label"
+                />
+                <input
+                  type="text"
+                  value={opt.value}
+                  onChange={(e) => updateOption(idx, { value: e.target.value })}
+                  placeholder="value"
+                />
+                <input
+                  type="number"
+                  value={opt.score}
+                  onChange={(e) => updateOption(idx, { score: Number(e.target.value) || 0 })}
+                  aria-label="Score"
+                  title="Score for this option"
+                />
+                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }} title="Marks this option as passing">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(opt.isPassing)}
+                    onChange={(e) => updateOption(idx, { isPassing: e.target.checked, isNA: e.target.checked ? false : opt.isNA })}
+                  />
+                  Pass
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }} title="Not applicable — excluded from score and max">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(opt.isNA)}
+                    onChange={(e) => updateOption(idx, { isNA: e.target.checked, isPassing: e.target.checked ? false : opt.isPassing })}
+                  />
+                  N/A
+                </label>
+                <button type="button" className="fv2-danger" onClick={() => removeOption(idx)} aria-label={`Remove ${opt.label ?? opt.value}`}>
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+          <button type="button" className="fv2-tbtn" onClick={addOption} style={{ marginTop: 6 }}>
+            + Add option
+          </button>
+          <p style={{ fontSize: 11, color: "var(--fv2-muted, #64748B)", margin: "6px 0 0" }}>
+            The submitter's answer is matched by <code>value</code>. Server computes the
+            weighted score on submit against the template's Pass threshold.
+          </p>
+        </>
+      ) : (
+        <p style={{ fontSize: 11, color: "var(--fv2-muted, #64748B)", margin: 0 }}>
+          Turn on scoring to add a Pass/Fail/N-A response set and give this question
+          a weight toward the submission's total score.
+        </p>
+      )}
     </div>
   );
 }

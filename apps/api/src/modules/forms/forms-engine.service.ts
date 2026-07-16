@@ -62,13 +62,181 @@ type ApprovalChainStep = {
   dueHours?: number;
 };
 
+/** One option in an inspection response set (e.g. Pass / Fail / N/A). */
+export type ResponseSetOption = {
+  value: string;
+  label?: string;
+  score: number;
+  isPassing?: boolean;
+  isNA?: boolean;
+  color?: string;
+};
+
+/** Response set — a reusable set of scoreable choices used by inspection fields. */
+export type ResponseSet = {
+  key?: string;
+  name?: string;
+  options: ResponseSetOption[];
+};
+
+/** Field-level scoring metadata stored in FormField.config.scoreConfig. */
+export type FieldScoreConfig = {
+  /** Multiplier applied to the option's score. Defaults to 1. */
+  weight?: number;
+  /** When false the field is skipped entirely — even a scored option won't count. */
+  countsTowardScore?: boolean;
+  /** Inline response set for this field, or a key into template.settings.responseSets. */
+  responseSet?: ResponseSet;
+  responseSetKey?: string;
+};
+
 type TemplateSettings = {
   requiresApproval?: boolean;
   approvalChain?: ApprovalChainStep[];
   pdfExport?: boolean;
   allowOffline?: boolean;
   complianceGates?: string[];
+  /** Threshold in [0,100] that a submission's scorePct must meet to PASS. */
+  passThresholdPct?: number;
+  /** Named response sets that fields can reference by key. */
+  responseSets?: Record<string, ResponseSet>;
 };
+
+export type SubmissionScoring = {
+  score: number | null;
+  maxScore: number | null;
+  scorePct: number | null;
+  outcome: "PASS" | "FAIL" | "PARTIAL" | "NA" | null;
+  perSection: Array<{ sectionId: string; title: string; score: number; maxScore: number }>;
+};
+
+/**
+ * Compute an inspection score for a submission from field-level scoreConfig
+ * and choice-level response sets.
+ *
+ * Pure and exported so the unit tests and the web builder can share the
+ * exact same math. Fields without a scoreConfig or without a valid option
+ * match are treated as unscored — they contribute 0 to both score and
+ * maxScore. NA options are excluded from maxScore so a genuinely
+ * not-applicable line doesn't drag the percentage down.
+ *
+ * Outcome rules (against `passThresholdPct`, default 100):
+ *   - maxScore === 0 → NA (nothing was actually scored)
+ *   - scorePct >= threshold → PASS
+ *   - scorePct <= 0 → FAIL
+ *   - otherwise PARTIAL
+ */
+export function computeScoring(
+  template: {
+    settings?: unknown;
+    sections?: Array<{
+      id?: string;
+      title?: string;
+      fields?: Array<{
+        fieldKey: string;
+        fieldType: string;
+        config?: unknown;
+        optionsJson?: unknown;
+      }>;
+    }>;
+  },
+  values: ValueMap
+): SubmissionScoring {
+  const settings = (template.settings ?? {}) as TemplateSettings;
+  const threshold =
+    typeof settings.passThresholdPct === "number" &&
+    Number.isFinite(settings.passThresholdPct)
+      ? Math.max(0, Math.min(100, settings.passThresholdPct))
+      : 100;
+  const catalog = settings.responseSets ?? {};
+
+  const perSection: SubmissionScoring["perSection"] = [];
+  let total = 0;
+  let totalMax = 0;
+
+  for (const section of template.sections ?? []) {
+    let sectionScore = 0;
+    let sectionMax = 0;
+    for (const field of section.fields ?? []) {
+      const config = (field.config ?? {}) as { scoreConfig?: FieldScoreConfig };
+      const sc = config.scoreConfig;
+      if (!sc) continue;
+      if (sc.countsTowardScore === false) continue;
+      const weight = typeof sc.weight === "number" && Number.isFinite(sc.weight) ? sc.weight : 1;
+
+      const set: ResponseSet | undefined =
+        sc.responseSet ?? (sc.responseSetKey ? catalog[sc.responseSetKey] : undefined);
+      const options = set?.options ?? [];
+      if (options.length === 0) continue;
+
+      const raw = values[field.fieldKey];
+      const match = options.find((o) => o.value === raw);
+      const optionMax = options.reduce(
+        (acc, o) => (o.isNA ? acc : Math.max(acc, o.score)),
+        0
+      );
+
+      if (match?.isNA) {
+        // NA: neither score nor max counts.
+        continue;
+      }
+      if (match) {
+        sectionScore += match.score * weight;
+        sectionMax += optionMax * weight;
+      } else {
+        // Unanswered scored field — still contributes to maxScore so the
+        // percentage reflects skipped work.
+        sectionMax += optionMax * weight;
+      }
+    }
+    total += sectionScore;
+    totalMax += sectionMax;
+    perSection.push({
+      sectionId: section.id ?? "",
+      title: section.title ?? "",
+      score: round2(sectionScore),
+      maxScore: round2(sectionMax)
+    });
+  }
+
+  if (totalMax === 0) {
+    return {
+      score: null,
+      maxScore: null,
+      scorePct: null,
+      outcome: hasAnyScoreConfig(template) ? "NA" : null,
+      perSection
+    };
+  }
+
+  const pct = (total / totalMax) * 100;
+  const rounded = round2(pct);
+  const outcome: SubmissionScoring["outcome"] =
+    rounded >= threshold ? "PASS" : rounded <= 0 ? "FAIL" : "PARTIAL";
+  return {
+    score: round2(total),
+    maxScore: round2(totalMax),
+    scorePct: rounded,
+    outcome,
+    perSection
+  };
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function hasAnyScoreConfig(template: {
+  sections?: Array<{ fields?: Array<{ config?: unknown }> }>;
+}): boolean {
+  for (const s of template.sections ?? []) {
+    for (const f of s.fields ?? []) {
+      const cfg = (f.config ?? {}) as { scoreConfig?: FieldScoreConfig };
+      if (cfg.scoreConfig) return true;
+    }
+  }
+  return false;
+}
 
 const submissionDetailInclude = {
   templateVersion: {
@@ -297,22 +465,30 @@ export class FormsEngineService {
       throw new UnprocessableEntityException({ complianceFailures: gateResult.failures });
     }
 
-    // 3. Mark submitted, capture GPS
+    // 3. Compute inspection score + outcome (null when template has no
+    // scoreConfig anywhere — the field is just a data-collection form).
+    const scoring = computeScoring(template, merged);
+
+    // 4. Mark submitted, capture GPS + scoring result
     const updated = await this.prisma.formSubmission.update({
       where: { id: submission.id },
       data: {
         status: "submitted",
         submittedAt: new Date(),
         gpsLat: gpsLat !== undefined ? new Prisma.Decimal(gpsLat) : null,
-        gpsLng: gpsLng !== undefined ? new Prisma.Decimal(gpsLng) : null
+        gpsLng: gpsLng !== undefined ? new Prisma.Decimal(gpsLng) : null,
+        score: scoring.score !== null ? new Prisma.Decimal(scoring.score) : null,
+        maxScore: scoring.maxScore !== null ? new Prisma.Decimal(scoring.maxScore) : null,
+        scorePct: scoring.scorePct !== null ? new Prisma.Decimal(scoring.scorePct) : null,
+        outcome: scoring.outcome
       }
     });
 
-    // 4. Run on_submit actions — create records, send notifications
+    // 5. Run on_submit actions — create records, send notifications
     const actions = this.rules.collectOnSubmitActions(template, merged);
     await this.executeServerActions(actions, updated, merged);
 
-    // 5. Approval chain (if configured)
+    // 6. Approval chain (if configured)
     if (settings.requiresApproval && Array.isArray(settings.approvalChain) && settings.approvalChain.length > 0) {
       await this.createApprovalChain(updated.id, settings.approvalChain);
       const firstStep = settings.approvalChain[0];
@@ -562,7 +738,7 @@ export class FormsEngineService {
    * same bucket. See QA S3-006.
    *
    * @param filters - optional submittedAt date range and templateId
-   * @returns `{ totalSubmissions, byStatus, overdueApprovals }`
+   * @returns `{ totalSubmissions, byStatus, overdueApprovals, byOutcome, avgScorePct }`
    */
   async getAnalytics(filters: { from?: string; to?: string; templateId?: string } = {}) {
     const where: Prisma.FormSubmissionWhereInput = {
@@ -570,7 +746,7 @@ export class FormsEngineService {
       ...(filters.to ? { submittedAt: { lte: new Date(filters.to) } } : {}),
       ...(filters.templateId ? { templateVersion: { templateId: filters.templateId } } : {})
     };
-    const [total, byStatusRows, overdue] = await Promise.all([
+    const [total, byStatusRows, overdue, byOutcomeRows, scoreAgg] = await Promise.all([
       this.prisma.formSubmission.count({ where }),
       this.prisma.formSubmission.groupBy({
         by: ["status"],
@@ -579,6 +755,16 @@ export class FormsEngineService {
       }),
       this.prisma.formApproval.count({
         where: { status: "pending", dueAt: { lt: new Date() } }
+      }),
+      // Scoring roll-up — only rows with a computed outcome contribute.
+      this.prisma.formSubmission.groupBy({
+        by: ["outcome"],
+        where: { ...where, outcome: { not: null } },
+        _count: { _all: true }
+      }),
+      this.prisma.formSubmission.aggregate({
+        where: { ...where, scorePct: { not: null } },
+        _avg: { scorePct: true }
       })
     ]);
     const byStatus: Record<string, number> = {};
@@ -586,7 +772,19 @@ export class FormsEngineService {
       const key = row.status.toLowerCase();
       byStatus[key] = (byStatus[key] ?? 0) + row._count._all;
     }
-    return { totalSubmissions: total, byStatus, overdueApprovals: overdue };
+    const byOutcome: Record<string, number> = {};
+    for (const row of byOutcomeRows) {
+      if (!row.outcome) continue;
+      byOutcome[row.outcome] = (byOutcome[row.outcome] ?? 0) + row._count._all;
+    }
+    const avgScorePct = scoreAgg._avg.scorePct !== null ? Number(scoreAgg._avg.scorePct) : null;
+    return {
+      totalSubmissions: total,
+      byStatus,
+      overdueApprovals: overdue,
+      byOutcome,
+      avgScorePct
+    };
   }
 
   /**

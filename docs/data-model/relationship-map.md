@@ -4,8 +4,8 @@
 > Regenerate with `node scripts/data-model/build-relationship-map.mjs`.
 > Business meaning (domains, field roles) is curated in `metadata-catalog.json`.
 
-- Last updated: 2026-07-16 04:48 UTC
-- Generated from: `apps/api/prisma/schema.prisma` (sha256 `074a3c045467`)
+- Last updated: 2026-07-16 05:28 UTC
+- Generated from: `apps/api/prisma/schema.prisma` (sha256 `22ad7355b980`)
 - Models: 204 | Enums: 29 | FK edges: 305 | Domains: 23
 
 ## Table of Contents
@@ -981,7 +981,7 @@ graph LR
 
 ### Model: FormSubmission
 
-- Table: `form_submissions` | Domain: Forms | Fields: 33
+- Table: `form_submissions` | Domain: Forms | Fields: 37
 - Belongs to (FK out):
   - `templateVersion` -> **FormTemplateVersion** (templateVersionId, onDelete Restrict)
   - `submittedBy` -> **User** (submittedById, onDelete SetNull)
@@ -999,7 +999,8 @@ graph LR
   - `triggeredRecords` -> **FormTriggeredRecord**[]
   - `correctiveActions` -> **CorrectiveAction**[]
 - Referenced by: **CorrectiveAction**, **FormApproval**, **FormAttachment**, **FormSignature**, **FormSubmissionValue**, **FormTriggeredRecord**
-- Suggested dimensions: status, templateVersion, submittedBy, job, client, asset, worker, site, shift
+- Suggested measures: score, maxScore, scorePct
+- Suggested dimensions: status, templateVersion, submittedBy, job, client, asset, worker, site, shift, outcome
 - Time fields: submittedAt
 
 ### Model: FormSubmissionValue

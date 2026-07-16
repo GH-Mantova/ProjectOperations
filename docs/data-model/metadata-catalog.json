@@ -7224,6 +7224,48 @@
           "label": null,
           "filterable": false,
           "aggregations": []
+        },
+        "score": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
+        },
+        "maxScore": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
+        },
+        "scorePct": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
+        },
+        "outcome": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
         }
       }
     },

@@ -38,6 +38,24 @@ type Field = {
   conditions?: FieldRule[];
 };
 
+type ResponseSetOption = {
+  value: string;
+  label?: string;
+  score: number;
+  isPassing?: boolean;
+  isNA?: boolean;
+  color?: string;
+};
+
+type ResponseSet = { key?: string; name?: string; options: ResponseSetOption[] };
+
+type FieldScoreConfig = {
+  weight?: number;
+  countsTowardScore?: boolean;
+  responseSet?: ResponseSet;
+  responseSetKey?: string;
+};
+
 type Section = {
   id: string;
   title: string;
@@ -161,6 +179,67 @@ function fieldRequired(field: Field, values: ValueMap): boolean {
     }
   }
   return required;
+}
+
+// ── Client-side scoring (mirrors server computeScoring for live UI) ──────
+// Server is authoritative on submit; this just powers the running-score
+// summary so the inspector can see progress as they answer.
+
+function resolveResponseSet(
+  field: Field,
+  templateSettings: unknown
+): ResponseSet | null {
+  const cfg = (field.config ?? {}) as { scoreConfig?: FieldScoreConfig };
+  const sc = cfg.scoreConfig;
+  if (!sc) return null;
+  if (sc.responseSet && Array.isArray(sc.responseSet.options)) return sc.responseSet;
+  const catalog = ((templateSettings ?? {}) as { responseSets?: Record<string, ResponseSet> })
+    .responseSets;
+  if (sc.responseSetKey && catalog?.[sc.responseSetKey]) return catalog[sc.responseSetKey];
+  return null;
+}
+
+function fieldIsScored(field: Field): boolean {
+  const cfg = (field.config ?? {}) as { scoreConfig?: FieldScoreConfig };
+  return Boolean(cfg.scoreConfig && cfg.scoreConfig.countsTowardScore !== false);
+}
+
+type LiveScore = { score: number; maxScore: number; pct: number | null };
+
+function computeLiveScore(
+  sections: Section[],
+  values: ValueMap,
+  templateSettings: unknown
+): LiveScore {
+  let score = 0;
+  let maxScore = 0;
+  for (const section of sections) {
+    for (const field of section.fields ?? []) {
+      if (!fieldIsScored(field)) continue;
+      const set = resolveResponseSet(field, templateSettings);
+      if (!set || set.options.length === 0) continue;
+      const cfg = (field.config ?? {}) as { scoreConfig?: FieldScoreConfig };
+      const weight =
+        typeof cfg.scoreConfig?.weight === "number" && Number.isFinite(cfg.scoreConfig.weight)
+          ? cfg.scoreConfig.weight
+          : 1;
+      const optionMax = set.options.reduce(
+        (acc, o) => (o.isNA ? acc : Math.max(acc, o.score)),
+        0
+      );
+      const raw = values[field.fieldKey];
+      const match = set.options.find((o) => o.value === raw);
+      if (match?.isNA) continue;
+      if (match) {
+        score += match.score * weight;
+        maxScore += optionMax * weight;
+      } else {
+        maxScore += optionMax * weight;
+      }
+    }
+  }
+  const pct = maxScore > 0 ? Math.round((score / maxScore) * 10000) / 100 : null;
+  return { score, maxScore, pct };
 }
 
 // ── Initial values from the persisted submission rows ────────────────────
@@ -531,6 +610,14 @@ export function FormFillPage() {
   const currentCardField = isCard ? visibleFields[cardStep] : null;
   const cardFieldsRendered = isCard && currentCardField ? [currentCardField] : visibleFields;
 
+  const templateSettings = submission.templateVersion.template.settings;
+  const passThresholdPct = (() => {
+    const raw = (templateSettings as { passThresholdPct?: number } | null | undefined)?.passThresholdPct;
+    return typeof raw === "number" && Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : null;
+  })();
+  const liveScore = computeLiveScore(sections, values, templateSettings);
+  const showScore = liveScore.maxScore > 0;
+
   const totalSteps = isCard
     ? sections.reduce((n, s) => n + Math.max(1, s.fields.length), 0)
     : sections.length;
@@ -600,6 +687,30 @@ export function FormFillPage() {
         </div>
       ) : null}
 
+      {showScore ? (
+        <div
+          data-testid="form-fill-score"
+          style={{
+            padding: "8px 12px",
+            background: "#F0F9FF",
+            color: "#0369A1",
+            borderRadius: 6,
+            fontSize: 12,
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 8
+          }}
+        >
+          <span>
+            Running score: <strong>{liveScore.score.toFixed(2)}</strong> / {liveScore.maxScore.toFixed(2)}
+            {liveScore.pct !== null ? <> · <strong>{liveScore.pct.toFixed(2)}%</strong></> : null}
+          </span>
+          {passThresholdPct !== null ? (
+            <span>Pass threshold: {passThresholdPct}%</span>
+          ) : null}
+        </div>
+      ) : null}
+
       {(ctx.jobId || ctx.projectId || ctx.supervisorId) ? (
         <details className="s7-card" style={{ padding: "8px 12px" }}>
           <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--text-muted)" }}>
@@ -633,6 +744,7 @@ export function FormFillPage() {
                 error={errorMsg}
                 context={ctx as Record<string, string | undefined>}
                 gps={gps}
+                responseSet={resolveResponseSet(field, templateSettings)}
               />
             );
           })}
@@ -696,7 +808,8 @@ function FieldRender({
   onChange,
   error,
   context,
-  gps
+  gps,
+  responseSet
 }: {
   field: Field;
   required: boolean;
@@ -705,6 +818,7 @@ function FieldRender({
   error?: string;
   context: Record<string, string | undefined>;
   gps: { lat?: number; lng?: number; status: string; message?: string };
+  responseSet: ResponseSet | null;
 }) {
   const config = (field.config ?? {}) as Record<string, unknown>;
   const options = (config.options ?? []) as string[];
@@ -777,7 +891,15 @@ function FieldRender({
       {field.helpText ? (
         <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "0 0 6px" }}>{field.helpText}</p>
       ) : null}
-      <FieldInput field={field} value={value} onChange={onChange} options={options} context={context} gps={gps} />
+      <FieldInput
+        field={field}
+        value={value}
+        onChange={onChange}
+        options={options}
+        context={context}
+        gps={gps}
+        responseSet={responseSet}
+      />
       {error ? <p style={{ fontSize: 11, color: "var(--status-danger, #DC2626)", marginTop: 4 }}>{error}</p> : null}
     </div>
   );
@@ -789,7 +911,8 @@ function FieldInput({
   onChange,
   options,
   context,
-  gps
+  gps,
+  responseSet
 }: {
   field: Field;
   value: unknown;
@@ -797,9 +920,20 @@ function FieldInput({
   options: string[];
   context: Record<string, string | undefined>;
   gps: { lat?: number; lng?: number; status: string; message?: string };
+  responseSet: ResponseSet | null;
 }) {
   const t = field.fieldType;
   const config = (field.config ?? {}) as Record<string, unknown>;
+
+  // Inspection-scored choice fields render as colour-coded response-set
+  // buttons regardless of the underlying dropdown/radio field type — the
+  // response set is what the inspector cares about, not the widget flavour.
+  if (
+    responseSet &&
+    (t === "radio" || t === "dropdown" || t === "button_group" || t === "multiple_choice")
+  ) {
+    return <ResponseSetInput field={field} value={value} onChange={onChange} responseSet={responseSet} />;
+  }
 
   switch (t) {
     case "short_text":
@@ -1725,6 +1859,66 @@ function TableCellInput({
       onChange={(e) => onChange(e.target.value)}
       style={{ width: "100%", padding: 6, fontSize: 13 }}
     />
+  );
+}
+
+/**
+ * ResponseSetInput — colour-coded pass/fail buttons for an inspection field.
+ *
+ * Renders one button per option; when selected the button paints in the
+ * option's colour (defaults keyed off isPassing/isNA so a Pass/Fail/NA set
+ * looks right without extra config). Options with `isPassing:true` fall
+ * back to green, non-passing to red, isNA to grey.
+ */
+function ResponseSetInput({
+  field,
+  value,
+  onChange,
+  responseSet
+}: {
+  field: Field;
+  value: unknown;
+  onChange: (v: unknown) => void;
+  responseSet: ResponseSet;
+}) {
+  const options = responseSet.options ?? [];
+  const active = typeof value === "string" ? value : "";
+  return (
+    <div
+      role="radiogroup"
+      aria-label={field.label}
+      style={{ display: "flex", flexWrap: "wrap", gap: 8 }}
+    >
+      {options.map((opt) => {
+        const on = active === opt.value;
+        const defaultColor = opt.isNA ? "#64748B" : opt.isPassing ? "#16A34A" : "#DC2626";
+        const color = opt.color ?? defaultColor;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            onClick={() => onChange(on ? null : opt.value)}
+            style={{
+              minWidth: 88,
+              minHeight: 44,
+              padding: "8px 16px",
+              borderRadius: 6,
+              border: "2px solid",
+              borderColor: color,
+              background: on ? color : "transparent",
+              color: on ? "#fff" : color,
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: "pointer"
+            }}
+          >
+            {opt.label ?? opt.value}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

@@ -2,7 +2,7 @@
   "_generator": "scripts/data-model/build-relationship-map.mjs",
   "_doNotEdit": "Regenerated from schema.prisma. Do not hand-edit.",
   "generatedFrom": "apps/api/prisma/schema.prisma",
-  "schemaSha256": "074a3c045467aa6965b79eb659482afaa0aa5b14731bd3c71da1f00e21fa3291",
+  "schemaSha256": "22ad7355b9804dfc9a5c39bfb90e4cd1d3ab17fb8ca6300e823080e951c7d565",
   "modelCount": 204,
   "enumCount": 29,
   "edgeCount": 305,
@@ -17655,6 +17655,54 @@
             "onDelete": null
           },
           "owning": false
+        },
+        {
+          "name": "score",
+          "dbColumn": null,
+          "type": "Decimal",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "maxScore",
+          "dbColumn": "max_score",
+          "type": "Decimal",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "scorePct",
+          "dbColumn": "score_pct",
+          "type": "Decimal",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "outcome",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
         }
       ],
       "relations": [

@@ -58,6 +58,22 @@ type CompanyProfile = {
   };
 };
 
+type Branding = {
+  activeColorSchemeId: string | null;
+  activeColorScheme: {
+    id: string;
+    name: string;
+    primaryColorHex: string;
+    secondaryColorHex: string;
+  } | null;
+  assets: {
+    LOGO_LIGHT: string | null;
+    LOGO_DARK: string | null;
+    FAVICON: string | null;
+    PDF_LETTERHEAD: string | null;
+  };
+};
+
 type LegalDocument = {
   id: string;
   type:
@@ -133,6 +149,7 @@ export function humaniseError(raw: string | null): string {
 export function AdminCompanyPage() {
   const { user, authFetch } = useAuth();
   const [profile, setProfile] = useState<CompanyProfile | null>(null);
+  const [branding, setBranding] = useState<Branding | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -164,6 +181,27 @@ export function AdminCompanyPage() {
   useEffect(() => {
     void loadProfile();
   }, [loadProfile]);
+
+  useEffect(() => {
+    // Best-effort: if the branding endpoint isn't reachable we keep rendering
+    // the legacy string fields on the profile — the guarantee here is "prefer
+    // the relation when present, fall back to the string" so a missing
+    // branding fetch is not fatal.
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await authFetch("/admin/branding");
+        if (!res.ok) return;
+        const data = (await res.json()) as Branding;
+        if (!cancelled) setBranding(data);
+      } catch {
+        // ignore — legacy fallback remains
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch]);
 
   const bootstrapProfile = useCallback(async () => {
     setCreating(true);
@@ -307,7 +345,12 @@ export function AdminCompanyPage() {
             <NumberingSection profile={profile} onPatch={patchField} savedFlash={savedFlash} />
           )}
           {section === "branding" && (
-            <BrandingSection profile={profile} onPatch={patchField} savedFlash={savedFlash} />
+            <BrandingSection
+              profile={profile}
+              branding={branding}
+              onPatch={patchField}
+              savedFlash={savedFlash}
+            />
           )}
           {section === "legal" && <LegalDocumentsSection authFetch={authFetch} />}
           {section === "compliance" && <ComplianceSection authFetch={authFetch} />}
@@ -499,20 +542,38 @@ function NumberingSection({ profile, onPatch, savedFlash }: SectionProps) {
   );
 }
 
-function BrandingSection({ profile, onPatch, savedFlash }: SectionProps) {
+function BrandingSection({
+  profile,
+  branding,
+  onPatch,
+  savedFlash
+}: SectionProps & { branding: Branding | null }) {
+  // Prefer the relation values when present; fall back to the CompanyProfile
+  // string columns. Writes still go through PATCH /admin/company/profile —
+  // the /admin/branding endpoints exist for callers that manipulate schemes
+  // and assets directly and keep the legacy columns mirrored.
+  const scheme = branding?.activeColorScheme ?? null;
+  const primary = scheme?.primaryColorHex ?? profile.primaryColorHex;
+  const secondary = scheme?.secondaryColorHex ?? profile.secondaryColorHex;
+  const logoLight = branding?.assets.LOGO_LIGHT ?? profile.logoLightUrl;
+  const logoDark = branding?.assets.LOGO_DARK ?? profile.logoDarkUrl;
+  const favicon = branding?.assets.FAVICON ?? profile.faviconUrl;
+  const letterhead = branding?.assets.PDF_LETTERHEAD ?? profile.pdfLetterheadUrl;
   return (
     <div>
       <h2 style={{ marginTop: 0 }}>Branding</h2>
       <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
-        Colors and asset URLs. Will move to <code>BrandColorScheme</code> /{" "}
-        <code>BrandAsset</code> FKs once those tables land.
+        Colors and asset URLs.{" "}
+        {scheme
+          ? `Active palette: ${scheme.name}.`
+          : "No active palette selected — showing legacy string fields."}
       </p>
-      <Field label="Primary color (hex)" field="primaryColorHex" value={profile.primaryColorHex} onPatch={onPatch} savedFlash={savedFlash} />
-      <Field label="Secondary color (hex)" field="secondaryColorHex" value={profile.secondaryColorHex} onPatch={onPatch} savedFlash={savedFlash} />
-      <Field label="Logo light URL" field="logoLightUrl" value={profile.logoLightUrl} onPatch={onPatch} savedFlash={savedFlash} />
-      <Field label="Logo dark URL" field="logoDarkUrl" value={profile.logoDarkUrl} onPatch={onPatch} savedFlash={savedFlash} />
-      <Field label="Favicon URL" field="faviconUrl" value={profile.faviconUrl} onPatch={onPatch} savedFlash={savedFlash} />
-      <Field label="PDF letterhead URL" field="pdfLetterheadUrl" value={profile.pdfLetterheadUrl} onPatch={onPatch} savedFlash={savedFlash} />
+      <Field label="Primary color (hex)" field="primaryColorHex" value={primary} onPatch={onPatch} savedFlash={savedFlash} />
+      <Field label="Secondary color (hex)" field="secondaryColorHex" value={secondary} onPatch={onPatch} savedFlash={savedFlash} />
+      <Field label="Logo light URL" field="logoLightUrl" value={logoLight} onPatch={onPatch} savedFlash={savedFlash} />
+      <Field label="Logo dark URL" field="logoDarkUrl" value={logoDark} onPatch={onPatch} savedFlash={savedFlash} />
+      <Field label="Favicon URL" field="faviconUrl" value={favicon} onPatch={onPatch} savedFlash={savedFlash} />
+      <Field label="PDF letterhead URL" field="pdfLetterheadUrl" value={letterhead} onPatch={onPatch} savedFlash={savedFlash} />
     </div>
   );
 }

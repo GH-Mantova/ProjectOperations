@@ -37,7 +37,9 @@ export type FieldType =
   | "lookup"
   | "calculation"
   | "table"
-  | "terms";
+  | "terms"
+  // Content library (forms-content-library)
+  | "content_block";
 
 /**
  * Static-layout field types render read-only content and never contribute a
@@ -48,7 +50,9 @@ export const LAYOUT_ONLY_TYPES: ReadonlySet<string> = new Set<string>([
   "heading",
   "paragraph",
   "divider",
-  "image"
+  "image",
+  // content_block renders a snippet's HTML at fill-time; no submission value
+  "content_block"
 ]);
 
 export function isLayoutOnlyType(fieldType: string): boolean {
@@ -89,6 +93,8 @@ export type DraftField = {
   helpText?: string;
   options?: string[];
   config?: Record<string, unknown>;
+  /** For content_block fields — the code of the referenced FormContentSnippet. */
+  snippetCode?: string;
 };
 
 export type DraftSection = {
@@ -180,7 +186,8 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
       { type: "heading", label: "Heading", icon: "H" },
       { type: "paragraph", label: "Paragraph", icon: "¶" },
       { type: "divider", label: "Divider", icon: "—" },
-      { type: "image", label: "Image", icon: "\u{1F5BC}" }
+      { type: "image", label: "Image", icon: "\u{1F5BC}" },
+      { type: "content_block", label: "Content block", icon: "\u{1F4D1}", badge: "snippet" }
     ]
   },
   {
@@ -459,6 +466,8 @@ export type FieldPublishPayload = {
   helpText?: string;
   optionsJson?: unknown;
   config: Record<string, unknown>;
+  /** Populated for content_block fields — the snippet code to resolve at fill time. */
+  snippetCode?: string;
 };
 
 /**
@@ -487,6 +496,7 @@ export function fieldToPublishPayload(field: DraftField): FieldPublishPayload {
     placeholder: field.placeholder,
     helpText: field.helpText,
     optionsJson: field.options,
-    config: mergedConfig
+    config: mergedConfig,
+    ...(field.snippetCode ? { snippetCode: field.snippetCode } : {})
   };
 }

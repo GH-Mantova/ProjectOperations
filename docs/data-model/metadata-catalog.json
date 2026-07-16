@@ -12799,6 +12799,12 @@
           "filterable": false,
           "aggregations": []
         },
+        "materials": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
         "provisionalAmount": {
           "role": "measure",
           "label": null,

@@ -2,7 +2,7 @@ import { ConflictException, Injectable, NotFoundException } from "@nestjs/common
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
-import { AssetsQueryDto, UpsertAssetCategoryDto, UpsertAssetDto } from "./dto/assets.dto";
+import { AssetsQueryDto, CheckinAssetDto, CheckoutAssetDto, UpsertAssetCategoryDto, UpsertAssetDto } from "./dto/assets.dto";
 
 const assetInclude = {
   category: true,
@@ -43,6 +43,22 @@ const assetInclude = {
   }
 } as const;
 
+/** Include shape for AssetCheckout records returned to callers. */
+const checkoutInclude = {
+  holderWorker: {
+    select: { id: true, firstName: true, lastName: true }
+  },
+  holderUser: {
+    select: { id: true, firstName: true, lastName: true, email: true }
+  },
+  site: {
+    select: { id: true, name: true }
+  },
+  job: {
+    select: { id: true, jobNumber: true, name: true }
+  }
+} as const;
+
 /**
  * Business logic for assets and asset categories (Module 11).
  *
@@ -51,6 +67,9 @@ const assetInclude = {
  * maintenance summary (COMPLIANT / DUE_SOON / OVERDUE / IN_MAINTENANCE /
  * UNAVAILABLE) plus a scheduler impact (NONE / WARN / BLOCK) from active
  * maintenance plans, open breakdowns, failed inspections, and asset status.
+ *
+ * Also provides checkout/checkin custody tracking and barcode/QR scan lookup
+ * (AssetTiger parity), retiring the Jotform "Grice Office Key Checkout" form.
  */
 @Injectable()
 export class AssetsService {
@@ -221,29 +240,31 @@ export class AssetsService {
   /**
    * Create (id undefined) or update (id given) an asset.
    *
-   * Rejects duplicate assetCode or serialNumber across other assets, writes
-   * an `assets.create` / `assets.update` audit entry, and returns the full
-   * asset detail via getAsset. Status defaults to AVAILABLE when omitted.
+   * Rejects duplicate assetCode, serialNumber, barcode, or qrValue across
+   * other assets. Writes an `assets.create` / `assets.update` audit entry.
+   * Status defaults to AVAILABLE when omitted.
    *
    * @param id - existing asset id, or undefined to create
    * @param dto - asset fields
    * @param actorId - acting user id recorded in the audit entry
    * @returns the full asset detail (same shape as getAsset)
-   * @throws ConflictException when assetCode or serialNumber already exists
+   * @throws ConflictException when assetCode, serialNumber, barcode, or qrValue clashes
    */
   async upsertAsset(id: string | undefined, dto: UpsertAssetDto, actorId?: string) {
+    const orClauses: Prisma.AssetWhereInput[] = [{ assetCode: dto.assetCode }];
+    if (dto.serialNumber) orClauses.push({ serialNumber: dto.serialNumber });
+    if (dto.barcode) orClauses.push({ barcode: dto.barcode });
+    if (dto.qrValue) orClauses.push({ qrValue: dto.qrValue });
+
     const duplicate = await this.prisma.asset.findFirst({
       where: {
-        OR: [
-          { assetCode: dto.assetCode },
-          ...(dto.serialNumber ? [{ serialNumber: dto.serialNumber }] : [])
-        ],
+        OR: orClauses,
         ...(id ? { NOT: { id } } : {})
       }
     });
 
     if (duplicate) {
-      throw new ConflictException("Asset code or serial number already exists.");
+      throw new ConflictException("Asset code, serial number, barcode, or QR value already exists.");
     }
 
     const assetData = {
@@ -252,6 +273,8 @@ export class AssetsService {
       name: dto.name,
       assetCode: dto.assetCode,
       serialNumber: dto.serialNumber ?? null,
+      barcode: dto.barcode ?? null,
+      qrValue: dto.qrValue ?? null,
       status: dto.status ?? "AVAILABLE",
       homeBase: dto.homeBase ?? null,
       currentLocation: dto.currentLocation ?? null,
@@ -276,6 +299,156 @@ export class AssetsService {
     });
 
     return this.getAsset(record.id);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Checkout / check-in (custody chain)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Check out an asset to a holder (worker, user, site, or job).
+   *
+   * Enforces the "at most one open checkout per asset" invariant: if any
+   * AssetCheckout row for this asset has checkedInAt IS NULL, the request is
+   * rejected with 409. Prisma cannot enforce partial uniqueness portably on
+   * NULL columns, so the guard lives here.
+   *
+   * @param assetId - asset to check out
+   * @param dto - holder identifiers and optional due-back date / notes
+   * @param actorId - acting user for the audit log
+   * @returns the created AssetCheckout record with holder details
+   * @throws NotFoundException when the asset does not exist
+   * @throws ConflictException when the asset already has an open checkout
+   */
+  async checkoutAsset(assetId: string, dto: CheckoutAssetDto, actorId?: string) {
+    const asset = await this.prisma.asset.findUnique({ where: { id: assetId }, select: { id: true } });
+    if (!asset) throw new NotFoundException("Asset not found.");
+
+    // Service-layer guard: at most one open checkout per asset.
+    const openCheckout = await this.prisma.assetCheckout.findFirst({
+      where: { assetId, checkedInAt: null }
+    });
+    if (openCheckout) {
+      throw new ConflictException("Asset already has an open checkout — check it in first.");
+    }
+
+    const record = await this.prisma.assetCheckout.create({
+      data: {
+        assetId,
+        holderWorkerId: dto.holderWorkerId ?? null,
+        holderUserId: dto.holderUserId ?? null,
+        siteId: dto.siteId ?? null,
+        jobId: dto.jobId ?? null,
+        dueBackAt: dto.dueBackAt ? new Date(dto.dueBackAt) : null,
+        notes: dto.notes ?? null
+      },
+      include: checkoutInclude
+    });
+
+    await this.auditService.write({
+      actorId,
+      action: "assets.checkout",
+      entityType: "AssetCheckout",
+      entityId: record.id,
+      metadata: { assetId }
+    });
+
+    return record;
+  }
+
+  /**
+   * Check in an asset (close the open checkout for this asset).
+   *
+   * Sets checkedInAt to now on the most recent open checkout. Optionally
+   * appends check-in notes (appended to any existing checkout notes with " | ").
+   *
+   * @param assetId - asset to check in
+   * @param dto - optional notes recorded on return
+   * @param actorId - acting user for the audit log
+   * @returns the updated AssetCheckout record
+   * @throws NotFoundException when the asset doesn't exist or has no open checkout
+   */
+  async checkinAsset(assetId: string, dto: CheckinAssetDto, actorId?: string) {
+    const asset = await this.prisma.asset.findUnique({ where: { id: assetId }, select: { id: true } });
+    if (!asset) throw new NotFoundException("Asset not found.");
+
+    const openCheckout = await this.prisma.assetCheckout.findFirst({
+      where: { assetId, checkedInAt: null },
+      orderBy: { checkedOutAt: "desc" }
+    });
+    if (!openCheckout) {
+      throw new NotFoundException("No open checkout found for this asset.");
+    }
+
+    // Append check-in notes to existing notes if both are present.
+    let notes = openCheckout.notes ?? null;
+    if (dto.notes) {
+      notes = notes ? `${notes} | ${dto.notes}` : dto.notes;
+    }
+
+    const record = await this.prisma.assetCheckout.update({
+      where: { id: openCheckout.id },
+      data: { checkedInAt: new Date(), notes },
+      include: checkoutInclude
+    });
+
+    await this.auditService.write({
+      actorId,
+      action: "assets.checkin",
+      entityType: "AssetCheckout",
+      entityId: record.id,
+      metadata: { assetId }
+    });
+
+    return record;
+  }
+
+  /**
+   * List custody history for an asset, newest first.
+   *
+   * @param assetId - asset id
+   * @returns all AssetCheckout records with holder details, newest first
+   * @throws NotFoundException when the asset does not exist
+   */
+  async listCheckouts(assetId: string) {
+    const asset = await this.prisma.asset.findUnique({ where: { id: assetId }, select: { id: true } });
+    if (!asset) throw new NotFoundException("Asset not found.");
+
+    return this.prisma.assetCheckout.findMany({
+      where: { assetId },
+      include: checkoutInclude,
+      orderBy: { checkedOutAt: "desc" }
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Barcode / QR scan lookup
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Look up an asset by barcode, QR value, or asset code.
+   *
+   * Matches Asset.barcode OR Asset.qrValue OR (fallback) Asset.assetCode.
+   * Designed for scanner integrations — the caller does not need to know which
+   * field the scanned value maps to.
+   *
+   * @param code - scanned value (barcode string, QR payload, or asset code)
+   * @returns the matched asset with full detail (same shape as getAsset)
+   * @throws NotFoundException when no asset matches the scanned code
+   */
+  async scanAsset(code: string) {
+    const asset = await this.prisma.asset.findFirst({
+      where: {
+        OR: [{ barcode: code }, { qrValue: code }, { assetCode: code }]
+      },
+      select: { id: true }
+    });
+
+    if (!asset) {
+      throw new NotFoundException(`No asset found for scan code "${code}".`);
+    }
+
+    return this.getAsset(asset.id);
   }
 
   private buildMaintenanceSummary(asset: {

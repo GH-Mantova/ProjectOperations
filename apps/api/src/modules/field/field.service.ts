@@ -11,13 +11,17 @@ import { NotificationsService } from "../platform/notifications.service";
 import {
   BulkApproveTimesheetsDto,
   CreatePreStartDto,
+  CreateSiteGeofenceDto,
   CreateTimesheetDto,
   FieldListQueryDto,
+  GeofenceLookupQueryDto,
+  ListSiteGeofencesQueryDto,
   ManageTimesheetQueryDto,
   PayrollExportQueryDto,
   RejectTimesheetDto,
   TimesheetSummaryQueryDto,
   UpdatePreStartDto,
+  UpdateSiteGeofenceDto,
   UpdateTimesheetDto
 } from "./dto/field.dto";
 import {
@@ -152,6 +156,208 @@ export class FieldService {
     if (rows.length > 0) {
       await this.prisma.workerLocationLog.createMany({ data: rows });
     }
+  }
+
+  // ── ERP gap C — geofence evaluation ───────────────────────────────────
+  // Distance in metres between two lat/lng points using the Haversine
+  // formula. Good enough for site-scale geofences (radius up to a few km);
+  // we don't need geodesic ellipsoid corrections at this range.
+  private haversineMetres(aLat: number, aLng: number, bLat: number, bLng: number): number {
+    const R = 6_371_000;
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const dLat = toRad(bLat - aLat);
+    const dLng = toRad(bLng - aLng);
+    const s1 = Math.sin(dLat / 2);
+    const s2 = Math.sin(dLng / 2);
+    const h = s1 * s1 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * s2 * s2;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+  }
+
+  // Resolve the geofence a lat/lng falls inside for the site attached to
+  // this project. Returns null if the project has no site, the site has
+  // no active geofences, or the point is outside every active geofence.
+  // When multiple geofences overlap, the closest centre wins.
+  private async resolveGeofenceForProject(
+    projectId: string,
+    lat: number,
+    lng: number
+  ): Promise<{ id: string; distanceMetres: number } | null> {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { siteId: true }
+    });
+    if (!project?.siteId) return null;
+    const fences = await this.prisma.siteGeofence.findMany({
+      where: { siteId: project.siteId, isActive: true },
+      select: { id: true, centreLat: true, centreLng: true, radiusMetres: true }
+    });
+    let best: { id: string; distanceMetres: number } | null = null;
+    for (const f of fences) {
+      const d = this.haversineMetres(lat, lng, Number(f.centreLat), Number(f.centreLng));
+      if (d <= f.radiusMetres && (best === null || d < best.distanceMetres)) {
+        best = { id: f.id, distanceMetres: d };
+      }
+    }
+    return best;
+  }
+
+  private async evaluateGeofenceForTimesheet(
+    projectId: string,
+    lat: number | undefined,
+    lng: number | undefined
+  ): Promise<{ inGeofence: boolean | null; geofenceId: string | null }> {
+    if (lat === undefined || lng === undefined) return { inGeofence: null, geofenceId: null };
+    const hit = await this.resolveGeofenceForProject(projectId, lat, lng);
+    if (hit) return { inGeofence: true, geofenceId: hit.id };
+    // A point was submitted but no active fence contains it. Only flag
+    // "outside" when the site actually has at least one active geofence
+    // configured — otherwise the concept doesn't apply and the flag stays
+    // null.
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { siteId: true }
+    });
+    if (!project?.siteId) return { inGeofence: null, geofenceId: null };
+    const count = await this.prisma.siteGeofence.count({
+      where: { siteId: project.siteId, isActive: true }
+    });
+    return { inGeofence: count > 0 ? false : null, geofenceId: null };
+  }
+
+  // Field-app helper: given a live position, return the worker's active
+  // allocations whose project sits inside a geofence covering that point.
+  // Used to auto-select the correct job on clock-in.
+  async lookupAllocationsAtPosition(actor: ActorContext, query: GeofenceLookupQueryDto) {
+    const worker = await this.resolveWorkerProfile(actor.userId);
+    const today = startOfDay(new Date());
+    const allocations = await this.prisma.projectAllocation.findMany({
+      where: {
+        workerProfileId: worker.id,
+        type: "WORKER",
+        project: { status: { in: ["MOBILISING", "ACTIVE"] } },
+        OR: [{ endDate: null }, { endDate: { gte: today } }]
+      },
+      include: {
+        project: {
+          select: { id: true, projectNumber: true, name: true, siteId: true, site: { select: { id: true, name: true } } }
+        }
+      }
+    });
+
+    const siteIds = Array.from(
+      new Set(allocations.map((a) => a.project.siteId).filter((s): s is string => Boolean(s)))
+    );
+    if (siteIds.length === 0) return { matches: [] };
+
+    const fences = await this.prisma.siteGeofence.findMany({
+      where: { siteId: { in: siteIds }, isActive: true },
+      select: {
+        id: true,
+        siteId: true,
+        name: true,
+        centreLat: true,
+        centreLng: true,
+        radiusMetres: true
+      }
+    });
+
+    const hitsBySite = new Map<string, { id: string; name: string; distanceMetres: number }>();
+    for (const f of fences) {
+      const d = this.haversineMetres(query.lat, query.lng, Number(f.centreLat), Number(f.centreLng));
+      if (d <= f.radiusMetres) {
+        const current = hitsBySite.get(f.siteId);
+        if (!current || d < current.distanceMetres) {
+          hitsBySite.set(f.siteId, { id: f.id, name: f.name, distanceMetres: d });
+        }
+      }
+    }
+
+    const matches = allocations
+      .filter((a) => a.project.siteId && hitsBySite.has(a.project.siteId))
+      .map((a) => {
+        const hit = hitsBySite.get(a.project.siteId as string)!;
+        return {
+          allocationId: a.id,
+          projectId: a.project.id,
+          projectNumber: a.project.projectNumber,
+          projectName: a.project.name,
+          siteId: a.project.siteId,
+          siteName: a.project.site?.name ?? null,
+          geofence: {
+            id: hit.id,
+            name: hit.name,
+            distanceMetres: Math.round(hit.distanceMetres)
+          }
+        };
+      })
+      .sort((a, b) => a.geofence.distanceMetres - b.geofence.distanceMetres);
+
+    return { matches };
+  }
+
+  // ── Admin CRUD for SiteGeofence ───────────────────────────────────────
+  async listSiteGeofences(query: ListSiteGeofencesQueryDto) {
+    const where: Prisma.SiteGeofenceWhereInput = {};
+    if (query.siteId) where.siteId = query.siteId;
+    if (query.activeOnly) where.isActive = true;
+    const rows = await this.prisma.siteGeofence.findMany({
+      where,
+      orderBy: [{ site: { name: "asc" } }, { name: "asc" }],
+      include: { site: { select: { id: true, name: true, code: true } } }
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      siteId: r.siteId,
+      siteName: r.site.name,
+      siteCode: r.site.code,
+      name: r.name,
+      centreLat: r.centreLat.toString(),
+      centreLng: r.centreLng.toString(),
+      radiusMetres: r.radiusMetres,
+      isActive: r.isActive,
+      notes: r.notes,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt
+    }));
+  }
+
+  async createSiteGeofence(dto: CreateSiteGeofenceDto) {
+    const site = await this.prisma.site.findUnique({ where: { id: dto.siteId } });
+    if (!site) throw new NotFoundException("Site not found.");
+    return this.prisma.siteGeofence.create({
+      data: {
+        siteId: dto.siteId,
+        name: dto.name,
+        centreLat: new Prisma.Decimal(dto.centreLat),
+        centreLng: new Prisma.Decimal(dto.centreLng),
+        radiusMetres: dto.radiusMetres,
+        isActive: dto.isActive ?? true,
+        notes: dto.notes ?? null
+      }
+    });
+  }
+
+  async updateSiteGeofence(id: string, dto: UpdateSiteGeofenceDto) {
+    const existing = await this.prisma.siteGeofence.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException("Geofence not found.");
+    return this.prisma.siteGeofence.update({
+      where: { id },
+      data: {
+        name: dto.name,
+        centreLat: dto.centreLat !== undefined ? new Prisma.Decimal(dto.centreLat) : undefined,
+        centreLng: dto.centreLng !== undefined ? new Prisma.Decimal(dto.centreLng) : undefined,
+        radiusMetres: dto.radiusMetres,
+        isActive: dto.isActive,
+        notes: dto.notes
+      }
+    });
+  }
+
+  async deleteSiteGeofence(id: string) {
+    const existing = await this.prisma.siteGeofence.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException("Geofence not found.");
+    await this.prisma.siteGeofence.delete({ where: { id } });
+    return { deleted: true };
   }
 
   async myAllocations(actor: ActorContext) {
@@ -498,6 +704,12 @@ export class FieldService {
     // recorded explicit location consent on their profile. If consent is
     // absent, the lat/lng silently drops — the timesheet still saves.
     const includeGps = worker.locationConsent;
+    const onGeo = includeGps
+      ? await this.evaluateGeofenceForTimesheet(allocation.projectId, dto.clockOnLat, dto.clockOnLng)
+      : { inGeofence: null, geofenceId: null };
+    const offGeo = includeGps
+      ? await this.evaluateGeofenceForTimesheet(allocation.projectId, dto.clockOffLat, dto.clockOffLng)
+      : { inGeofence: null, geofenceId: null };
     const created = await this.prisma.timesheet.create({
       data: {
         projectId: allocation.projectId,
@@ -523,6 +735,10 @@ export class FieldService {
           includeGps && dto.clockOffAccuracy !== undefined
             ? new Prisma.Decimal(dto.clockOffAccuracy)
             : null,
+        clockOnInGeofence: onGeo.inGeofence,
+        clockOnGeofenceId: onGeo.geofenceId,
+        clockOffInGeofence: offGeo.inGeofence,
+        clockOffGeofenceId: offGeo.geofenceId,
         status: "DRAFT"
       }
     });
@@ -546,6 +762,17 @@ export class FieldService {
     }
 
     const includeGps = worker.locationConsent;
+    // Re-evaluate geofence only when the corresponding lat/lng was resent
+    // in the update. Absent lat/lng means "leave the existing flag alone",
+    // matching the pattern used by the other GPS columns.
+    const onGeo =
+      includeGps && dto.clockOnLat !== undefined && dto.clockOnLng !== undefined
+        ? await this.evaluateGeofenceForTimesheet(existing.projectId, dto.clockOnLat, dto.clockOnLng)
+        : null;
+    const offGeo =
+      includeGps && dto.clockOffLat !== undefined && dto.clockOffLng !== undefined
+        ? await this.evaluateGeofenceForTimesheet(existing.projectId, dto.clockOffLat, dto.clockOffLng)
+        : null;
     const updated = await this.prisma.timesheet.update({
       where: { id },
       data: {
@@ -569,7 +796,11 @@ export class FieldService {
         clockOffAccuracy:
           includeGps && dto.clockOffAccuracy !== undefined
             ? new Prisma.Decimal(dto.clockOffAccuracy)
-            : undefined
+            : undefined,
+        clockOnInGeofence: onGeo?.inGeofence ?? undefined,
+        clockOnGeofenceId: onGeo?.geofenceId ?? undefined,
+        clockOffInGeofence: offGeo?.inGeofence ?? undefined,
+        clockOffGeofenceId: offGeo?.geofenceId ?? undefined
       }
     });
 

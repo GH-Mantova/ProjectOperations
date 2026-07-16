@@ -153,3 +153,90 @@ export class BulkApproveTimesheetsDto {
   @ArrayMaxSize(50)
   timesheetIds!: string[];
 }
+
+// ── ERP gap C — SiteGeofence CRUD + lookup ─────────────────────────────
+export class CreateSiteGeofenceDto {
+  @ApiProperty() @IsString() siteId!: string;
+  @ApiProperty({ maxLength: 120 }) @IsString() @MaxLength(120) name!: string;
+  @ApiProperty({ minimum: -90, maximum: 90 })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  centreLat!: number;
+  @ApiProperty({ minimum: -180, maximum: 180 })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  centreLng!: number;
+  @ApiProperty({ minimum: 10, maximum: 5000, description: "Radius in metres. 10m floor stops GPS noise; 5km ceiling stops accidental country-wide fences." })
+  @Type(() => Number)
+  @IsInt()
+  @Min(10)
+  @Max(5000)
+  radiusMetres!: number;
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) notes?: string;
+}
+
+export class UpdateSiteGeofenceDto {
+  @ApiPropertyOptional({ maxLength: 120 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  name?: string;
+  @ApiPropertyOptional({ minimum: -90, maximum: 90 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  centreLat?: number;
+  @ApiPropertyOptional({ minimum: -180, maximum: 180 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  centreLng?: number;
+  @ApiPropertyOptional({ minimum: 10, maximum: 5000 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(10)
+  @Max(5000)
+  radiusMetres?: number;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() isActive?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) notes?: string;
+}
+
+export class GeofenceLookupQueryDto {
+  @ApiProperty({ minimum: -90, maximum: 90 })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  lat!: number;
+  @ApiProperty({ minimum: -180, maximum: 180 })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  lng!: number;
+}
+
+export class ListSiteGeofencesQueryDto {
+  @ApiPropertyOptional({ description: "Restrict to a single site." })
+  @IsOptional()
+  @IsString()
+  siteId?: string;
+  @ApiPropertyOptional({ description: "Return only active geofences.", default: false })
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  activeOnly?: boolean;
+}

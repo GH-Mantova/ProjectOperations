@@ -4058,3 +4058,85 @@ Admin write assertions never mutate seeded data: POST rows send empty bodies (DT
 after the guards pass — all four top-level create DTOs have required fields), PATCH/DELETE rows target
 non-existent ids (404 after the guards pass).
 
+
+# UI Acceptance Review (visual verification in the pipeline) - Design
+
+Status: proposed 2026-07-16 (Marco). Adds a soft, vision-based "does the rendered UI match intent"
+check to the pipeline, on top of the deterministic gates.
+
+## Problem
+
+The deterministic gates (build, lint, e2e assertions, grep-for-named-artifact, CI conclusion) prove
+that named DOM nodes and artifacts EXIST. They do not prove a rendered screen LOOKS and BEHAVES
+right: layout, field sizing, controls on the correct row, delete affordances present. UI/UX
+regressions ship green (e.g. the multi-material waste controls rendered once at the bottom instead
+of inline per material). Marco catches these by eye today.
+
+## Governing principle - this is a SOFT check, not a deterministic gate
+
+DOCTRINE section 7 is "the exit code decides, not your opinion of it." A vision judgment is an
+opinion, not an exit code, so it must never HARD-block a merge on taste. Therefore:
+
+- HARD-FAIL only on an OBJECTIVE miss - a control the prompt explicitly required is provably absent
+  from the captured screenshot. This blocks like a red required check.
+- ESCALATE taste / layout / "feels cramped" concerns to Marco as an advisory comment; never block on
+  them, never silently pass them.
+- Never let a UI opinion silently block or silently pass (mirrors never-exit-silently).
+
+## What already exists - REUSE, do not rebuild
+
+- `scripts/pipeline/smoke-pr.ps1` boots API+web on a seeded DB in a real browser and already sets
+  `PWTEST_SCREENSHOT_DIR` = `<worktree>/smoke-artifacts`. `playwright.config.ts` currently captures
+  `screenshot: only-on-failure`; `playwright.reuse.config.ts` reuses a running server for speed.
+- Stations run headless `claude --print` on vision-capable models (opus / sonnet / haiku); the
+  `Read` tool ingests PNGs.
+- `.claude/agents/pr-fix-reviewer.md` already reviews a PR against its originating prompt and returns
+  a fixed VERDICT block; it never merges and never edits the branch.
+- `.claude/agents/00-supervisor.md` dispatches exactly one specialist per work type via the Agent
+  tool.
+
+## Design - three small additions
+
+1. Prompt schema (optional, non-breaking). Add two optional fields to `docs/pr-prompts/PROMPT-SCHEMA.md`
+   and `scripts/pipeline/lint-prompt.mjs`:
+   - `ui_shots:` - a list of `{ route, name }` screenshots to capture on the seeded app.
+   - `ui_intent:` - a plain-language checklist of what "correct" looks like (e.g. "waste controls
+     inline on each material row, delete on rows 2+ only, one row wide").
+   Prompts that touch `apps/web/**` SHOULD declare them; absence means no UI review (full back-compat).
+
+2. Capture. A dedicated acceptance-shot step (or the code-writer, following the convention) navigates
+   each `ui_shots` route on the already-seeded app and writes a named PNG to `PWTEST_SCREENSHOT_DIR`.
+   Deterministic; reuses the running-server config. No new renderer.
+
+3. Judge. A `ui-reviewer` agent (vision-capable; a sibling of `pr-fix-reviewer`, model sonnet or
+   haiku), dispatched by `00-supervisor` whenever a PR touches `apps/web/**` AND declares `ui_intent`.
+   It `Read`s the captured shots plus `ui_intent` and returns a UI-VERDICT block:
+   - PASS - every declared control / behaviour is visibly present and placed as described.
+   - CONCERN - a taste / layout issue for a human to judge. Advisory only; escalates to Marco.
+   - FAIL - an objective miss (a required control is absent from the shot). Blocks like a red check.
+   Same guardrails as `pr-fix-reviewer`: never merges, never edits the branch.
+
+## Merge interaction
+
+- FAIL -> treated as a failed required check: do not merge; fix-forward or re-fire the prompt.
+- CONCERN -> advisory PR comment + escalate to Marco; does NOT block the supervisor's auto-merge
+  unless Marco holds it.
+- PASS or no `ui_intent` -> no effect; the existing deterministic gates decide the merge.
+
+## Non-goals
+
+- No pixel-diff visual-regression baselines (brittle, needs goldens, cannot judge intent).
+- The reviewer does not gate on subjective quality - only objective presence / placement.
+
+## Phasing (each independently shippable, <= 10 files)
+
+- Phase 1 (plumbing): `ui_shots` / `ui_intent` schema fields + lint support + the capture convention
+  wired to `smoke-artifacts`.
+- Phase 2 (judgment): the `ui-reviewer` agent + `00-supervisor` dispatch rule + the FAIL/CONCERN
+  merge interaction.
+
+## Open confirmation before Phase 2
+
+Confirm the headless `claude --print` invocation in this environment actually passes a PNG through to
+the model (vision enabled for these agents). The models are vision-capable; the CLI/tool path must be
+verified end-to-end with one real screenshot before the reviewer is trusted.

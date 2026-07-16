@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { CenteredModal, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
@@ -52,6 +52,17 @@ type PendingApprovalRow = {
 };
 
 type Tab = "templates" | "my-submissions" | "approvals" | "analytics";
+
+type PublicLink = {
+  id: string;
+  token: string;
+  mode: string;
+  isActive: boolean;
+  label?: string | null;
+  expiresAt?: string | null;
+  submissionCount: number;
+  maxSubmissions?: number | null;
+};
 
 // ── Category palette ─────────────────────────────────────────────────────
 // Each category gets a colour bar at the top of its template card and a pill
@@ -138,6 +149,7 @@ export function FormsListPage() {
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<FormTemplate | null>(null);
   const [confirmArchive, setConfirmArchive] = useState<FormTemplate | null>(null);
+  const [shareTemplate, setShareTemplate] = useState<FormTemplate | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -353,6 +365,7 @@ export function FormsListPage() {
           onDuplicate={(t) => void duplicateTemplate(t)}
           onArchiveConfirm={(t) => setConfirmArchive(t)}
           onDeleteConfirm={(t) => setConfirmDelete(t)}
+          onShare={(t) => setShareTemplate(t)}
           actionBusy={actionBusy}
         />
       ) : null}
@@ -416,6 +429,13 @@ export function FormsListPage() {
         </CenteredModal>
       ) : null}
 
+      {shareTemplate ? (
+        <ShareQrModal
+          template={shareTemplate}
+          onClose={() => setShareTemplate(null)}
+        />
+      ) : null}
+
       {tab === "my-submissions" ? <MySubmissionsTab loading={loading} submissions={submissions} /> : null}
 
       {tab === "approvals" && canApprove ? (
@@ -448,6 +468,7 @@ function TemplatesTab({
   onDuplicate,
   onArchiveConfirm,
   onDeleteConfirm,
+  onShare,
   actionBusy
 }: {
   loading: boolean;
@@ -468,6 +489,7 @@ function TemplatesTab({
   onDuplicate: (t: FormTemplate) => void;
   onArchiveConfirm: (t: FormTemplate) => void;
   onDeleteConfirm: (t: FormTemplate) => void;
+  onShare: (t: FormTemplate) => void;
   actionBusy: string | null;
 }) {
   const categories = ["all", ...Object.keys(CATEGORY_LABEL)];
@@ -619,6 +641,7 @@ function TemplatesTab({
                         onDuplicate={onDuplicate}
                         onArchive={onArchiveConfirm}
                         onDelete={onDeleteConfirm}
+                        onShare={onShare}
                       />
                     ) : null}
                   </div>
@@ -936,7 +959,8 @@ function TemplateManageActions({
   onEdit,
   onDuplicate,
   onArchive,
-  onDelete
+  onDelete,
+  onShare
 }: {
   template: FormTemplate;
   actionBusy: string | null;
@@ -944,6 +968,7 @@ function TemplateManageActions({
   onDuplicate: (t: FormTemplate) => void;
   onArchive: (t: FormTemplate) => void;
   onDelete: (t: FormTemplate) => void;
+  onShare: (t: FormTemplate) => void;
 }) {
   const auth = formTemplateAuthority(template);
   const isSystem = Boolean(template.isSystemTemplate);
@@ -997,6 +1022,16 @@ function TemplateManageActions({
       >
         Delete
       </button>
+      <button
+        type="button"
+        className="s7-btn s7-btn--ghost s7-btn--sm"
+        onClick={() => onShare(template)}
+        disabled={busy}
+        title="Share via public link or QR code (kiosk / no-login capture)"
+        style={{ minHeight: 32 }}
+      >
+        Share / QR
+      </button>
     </div>
   );
 }
@@ -1012,5 +1047,330 @@ function TabButton({ active, onClick, label }: { active: boolean; onClick: () =>
     >
       {label}
     </button>
+  );
+}
+
+// ── Share / QR modal (PR #621) ────────────────────────────────────────────
+
+/**
+ * Modal to mint public/kiosk links for a template and display the public URL
+ * with a browser-native QR code (via navigator.share or a copyable URL).
+ *
+ * Lists existing active links for the template so managers can deactivate
+ * or see how many submissions each link has received.
+ */
+function ShareQrModal({
+  template,
+  onClose
+}: {
+  template: FormTemplate;
+  onClose: () => void;
+}) {
+  const { authFetch } = useAuth();
+  const urlInputRef = useRef<HTMLInputElement>(null);
+
+  const [links, setLinks] = useState<PublicLink[]>([]);
+  const [loadingLinks, setLoadingLinks] = useState(true);
+  const [minting, setMinting] = useState(false);
+  const [mode, setMode] = useState<"public" | "kiosk">("public");
+  const [label, setLabel] = useState("");
+  const [mintError, setMintError] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const loadLinks = useCallback(async () => {
+    setLoadingLinks(true);
+    try {
+      const res = await authFetch(`/forms/public-links?templateId=${template.id}`);
+      if (res.ok) {
+        setLinks((await res.json()) as PublicLink[]);
+      }
+    } finally {
+      setLoadingLinks(false);
+    }
+  }, [authFetch, template.id]);
+
+  useEffect(() => {
+    void loadLinks();
+  }, [loadLinks]);
+
+  const mintLink = async () => {
+    setMinting(true);
+    setMintError(null);
+    try {
+      const res = await authFetch("/forms/public-links", {
+        method: "POST",
+        body: JSON.stringify({
+          templateId: template.id,
+          mode,
+          label: label.trim() || undefined
+        })
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { message?: string };
+        throw new Error(body.message ?? "Failed to create link");
+      }
+      setLabel("");
+      await loadLinks();
+    } catch (err) {
+      setMintError((err as Error).message);
+    } finally {
+      setMinting(false);
+    }
+  };
+
+  const toggleLink = async (link: PublicLink) => {
+    setTogglingId(link.id);
+    try {
+      await authFetch(`/forms/public-links/${link.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isActive: !link.isActive })
+      });
+      await loadLinks();
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  const publicUrl = (link: PublicLink) => {
+    const origin = window.location.origin;
+    return `${origin}/forms/public/${link.token}`;
+  };
+
+  const copyUrl = async (link: PublicLink) => {
+    try {
+      await navigator.clipboard.writeText(publicUrl(link));
+      setCopiedId(link.id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch {
+      if (urlInputRef.current) {
+        urlInputRef.current.select();
+        document.execCommand("copy");
+        setCopiedId(link.id);
+        setTimeout(() => setCopiedId(null), 2000);
+      }
+    }
+  };
+
+  return (
+    <CenteredModal
+      title={`Share — ${template.name}`}
+      onClose={onClose}
+      maxWidth={560}
+      footer={
+        <button type="button" className="s7-btn s7-btn--ghost" onClick={onClose}>
+          Close
+        </button>
+      }
+    >
+      <div style={{ fontSize: 13 }}>
+        <p style={{ margin: "0 0 16px", color: "var(--text-muted)", fontSize: 12 }}>
+          Public/kiosk links let anyone fill this form without logging in — for site sign-ins,
+          visitor inductions, toolbox talk sign-ons, and muster sheets.
+        </p>
+
+        {/* Mint a new link */}
+        <div
+          style={{
+            padding: 14,
+            background: "var(--surface-muted, #F6F6F6)",
+            borderRadius: 8,
+            marginBottom: 16
+          }}
+        >
+          <h4 style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 600 }}>Create new link</h4>
+
+          <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
+            <label style={{ fontWeight: 500, minWidth: 50 }}>Mode</label>
+            <select
+              value={mode}
+              onChange={(e) => setMode(e.target.value as "public" | "kiosk")}
+              className="s7-input"
+              style={{ flex: 1, fontSize: 13 }}
+            >
+              <option value="public">Public — one or many submits via shared link</option>
+              <option value="kiosk">Kiosk — shared device, auto-resets after submit</option>
+            </select>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <label style={{ fontWeight: 500, minWidth: 50 }}>Label</label>
+            <input
+              type="text"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="Optional label (e.g. Site Gate)"
+              className="s7-input"
+              style={{ flex: 1, fontSize: 13 }}
+            />
+          </div>
+
+          {mintError && (
+            <p style={{ margin: "8px 0 0", color: "#DC2626", fontSize: 12 }}>{mintError}</p>
+          )}
+
+          <button
+            type="button"
+            className="s7-btn s7-btn--primary s7-btn--sm"
+            style={{
+              marginTop: 10,
+              background: "#FEAA6D",
+              color: "#242424",
+              borderColor: "#FEAA6D"
+            }}
+            disabled={minting}
+            onClick={() => void mintLink()}
+          >
+            {minting ? "Creating..." : "Create link"}
+          </button>
+        </div>
+
+        {/* Existing links */}
+        <h4 style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 600 }}>
+          Active links for this template
+        </h4>
+
+        {loadingLinks ? (
+          <Skeleton width="100%" height={60} />
+        ) : links.length === 0 ? (
+          <p style={{ color: "var(--text-muted)", fontSize: 12 }}>
+            No links yet. Create one above.
+          </p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {links.map((link) => {
+              const url = publicUrl(link);
+              const isCopied = copiedId === link.id;
+              const isToggling = togglingId === link.id;
+              return (
+                <div
+                  key={link.id}
+                  style={{
+                    padding: 12,
+                    border: "1px solid",
+                    borderColor: link.isActive ? "#D1FAE5" : "#E5E7EB",
+                    borderRadius: 6,
+                    background: link.isActive ? "#F0FDF4" : "#F9FAFB",
+                    opacity: link.isActive ? 1 : 0.7
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                      marginBottom: 6
+                    }}
+                  >
+                    <div>
+                      <span
+                        style={{
+                          fontWeight: 600,
+                          fontSize: 12,
+                          marginRight: 6
+                        }}
+                      >
+                        {link.label ?? "(unlabelled)"}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: 10,
+                          padding: "2px 6px",
+                          borderRadius: 999,
+                          background: link.mode === "kiosk" ? "#005B61" : "#3B82F6",
+                          color: "#fff",
+                          textTransform: "uppercase",
+                          fontWeight: 600
+                        }}
+                      >
+                        {link.mode}
+                      </span>
+                      {!link.isActive && (
+                        <span
+                          style={{
+                            marginLeft: 6,
+                            fontSize: 10,
+                            padding: "2px 6px",
+                            borderRadius: 999,
+                            background: "#FEE2E2",
+                            color: "#B91C1C",
+                            fontWeight: 600
+                          }}
+                        >
+                          Inactive
+                        </span>
+                      )}
+                    </div>
+                    <span style={{ fontSize: 11, color: "#6B7280" }}>
+                      {link.submissionCount} submit{link.submissionCount !== 1 ? "s" : ""}
+                      {link.maxSubmissions ? ` / ${link.maxSubmissions} max` : ""}
+                    </span>
+                  </div>
+
+                  {/* URL row */}
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 6,
+                      alignItems: "center"
+                    }}
+                  >
+                    <input
+                      ref={urlInputRef}
+                      readOnly
+                      value={url}
+                      style={{
+                        flex: 1,
+                        fontSize: 11,
+                        padding: "4px 8px",
+                        border: "1px solid #D1D5DB",
+                        borderRadius: 4,
+                        background: "#fff",
+                        fontFamily: "monospace",
+                        color: "#374151"
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="s7-btn s7-btn--ghost s7-btn--sm"
+                      onClick={() => void copyUrl(link)}
+                      title="Copy URL"
+                    >
+                      {isCopied ? "Copied!" : "Copy"}
+                    </button>
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="s7-btn s7-btn--ghost s7-btn--sm"
+                      title="Open in new tab"
+                    >
+                      Open
+                    </a>
+                    <button
+                      type="button"
+                      className="s7-btn s7-btn--ghost s7-btn--sm"
+                      disabled={isToggling}
+                      onClick={() => void toggleLink(link)}
+                      style={{ color: link.isActive ? "#DC2626" : "#16A34A" }}
+                      title={link.isActive ? "Deactivate this link" : "Reactivate this link"}
+                    >
+                      {isToggling ? "..." : link.isActive ? "Deactivate" : "Reactivate"}
+                    </button>
+                  </div>
+
+                  {/* QR hint */}
+                  <p style={{ margin: "6px 0 0", fontSize: 11, color: "#9CA3AF" }}>
+                    Scan or share this URL. For a printable QR code, paste the URL into a QR
+                    generator (e.g. qr.io).
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </CenteredModal>
   );
 }

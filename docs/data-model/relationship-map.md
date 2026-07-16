@@ -4,9 +4,9 @@
 > Regenerate with `node scripts/data-model/build-relationship-map.mjs`.
 > Business meaning (domains, field roles) is curated in `metadata-catalog.json`.
 
-- Last updated: 2026-07-15 12:19 UTC
-- Generated from: `apps/api/prisma/schema.prisma` (sha256 `783380faea0e`)
-- Models: 197 | Enums: 25 | FK edges: 289 | Domains: 23
+- Last updated: 2026-07-16 00:48 UTC
+- Generated from: `apps/api/prisma/schema.prisma` (sha256 `f96056e6f88d`)
+- Models: 197 | Enums: 25 | FK edges: 290 | Domains: 23
 
 ## Table of Contents
 
@@ -121,6 +121,7 @@ graph LR
   jobs --> sites
   jobs --> tendering
   jobs --> workers
+  platform --> dashboards
   projects --> assets
   projects --> directory
   projects --> jobs
@@ -437,13 +438,14 @@ graph LR
 
 ### Model: Dashboard
 
-- Table: `dashboards` | Domain: Dashboards | Fields: 12
+- Table: `dashboards` | Domain: Dashboards | Fields: 13
 - Belongs to (FK out):
   - `ownerUser` -> **User** (ownerUserId, onDelete SetNull)
   - `ownerRole` -> **Role** (ownerRoleId, onDelete SetNull)
 - Has many:
   - `widgets` -> **DashboardWidget**[]
-- Referenced by: **DashboardWidget**
+  - `usersDefaultedTo` -> **User**[]
+- Referenced by: **DashboardWidget**, **User**
 - Suggested dimensions: scope, ownerRoleId, ownerUser, ownerRole
 
 ### Model: DashboardWidget
@@ -1467,11 +1469,12 @@ graph LR
 
 ### Model: User
 
-- Table: `users` | Domain: Platform | Fields: 116
+- Table: `users` | Domain: Platform | Fields: 118
 - Belongs to (FK out):
   - `createdBy` -> **User** (createdById)
   - `updatedBy` -> **User** (updatedById)
   - `manager` -> **User** (managerId, onDelete SetNull)
+  - `defaultDashboard` -> **Dashboard** (defaultDashboardId, onDelete SetNull)
 - Has many:
   - `createdUsers` -> **User**[]
   - `updatedUsers` -> **User**[]
@@ -1564,7 +1567,7 @@ graph LR
   - `worker` -> **Worker**
   - `workerProfile` -> **WorkerProfile**
 - Referenced by: **ApprovalDecision**, **AuditLog**, **CalendarSyncedEvent**, **Client**, **ClientQuote**, **ClientSession**, **CompanyLegalDocument**, **CompanyProfile**, **CompetencyOverride**, **ComplianceAlert**, **Contact**, **Contract**, **Conversation**, **CorrespondenceMessage**, **CreditApplication**, **CuttingSheetItem**, **Dashboard**, **DocumentLink**, **EmailProviderConfig**, **EstimateExport**, **FormApproval**, **FormSchedule**, **FormSubmission**, **GlobalList**, **GlobalListItem**, **HazardObservation**, **InternalMessage**, **Job**, **JobActivity**, **JobCloseout**, **JobIssue**, **JobProgressEntry**, **JobStatusHistory**, **JobVariation**, **Notification**, **OperationsSettings**, **PersonaCompanyInstruction**, **PilotFeedback**, **ProgressClaim**, **Project**, **ProjectActivityLog**, **ProjectAllocation**, **QuoteEmail**, **RefreshToken**, **SafetyIncident**, **ScheduleAllocation**, **ScopeCard**, **ScopeOfWorksItem**, **ScopeWasteItem**, **Shift**, **SubcontractorDocument**, **SubcontractorSupplier**, **SupplierCreditEntry**, **Tender**, **TenderClarificationNote**, **TenderClientNote**, **TenderEntry**, **TenderFilterPreset**, **TenderFollowUp**, **TenderNote**, **TenderRateSet**, **TenderScopeRevision**, **Timesheet**, **User**, **UserDashboard**, **UserPersonaSettings**, **UserRole**, **Variation**, **Worker**, **WorkerLeave**, **WorkerProfile**, **WorkerQualification**
-- Suggested dimensions: createdBy, updatedBy, manager
+- Suggested dimensions: createdBy, updatedBy, manager, defaultDashboard
 - Time fields: lastLoginAt, anthropicKeyValidatedAt, openaiKeyValidatedAt, geminiKeyValidatedAt, groqKeyValidatedAt, updateRequestedAt
 
 ### Model: UserPersonaSettings

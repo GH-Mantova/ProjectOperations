@@ -95,7 +95,26 @@ type JobDetail = {
   } | null;
 };
 
-type Tab = "overview" | "stages" | "issues" | "variations" | "progress" | "documents" | "history";
+type Tab = "overview" | "stages" | "issues" | "variations" | "progress" | "documents" | "history" | "commitments";
+
+type CommitmentSummaryItem = {
+  id: string;
+  reference: string;
+  description: string;
+  type: string;
+  status: string;
+  supplier: { id: string; name: string } | null;
+  originalValue: string;
+  approvedChangesSum: string;
+  adjustedValue: string;
+};
+
+type CommitmentBudgetSummary = {
+  jobId: string;
+  committedTotal: string;
+  approvedTotal: string;
+  commitments: CommitmentSummaryItem[];
+};
 
 type DocumentItem = {
   id: string;
@@ -172,6 +191,7 @@ export function JobDetailPage() {
   const [tab, setTab] = useState<Tab>("overview");
   const [expandedStages, setExpandedStages] = useState<Set<string>>(new Set());
   const [documents, setDocuments] = useState<DocumentItem[] | null>(null);
+  const [commitmentSummary, setCommitmentSummary] = useState<CommitmentBudgetSummary | null>(null);
 
   const reload = async () => {
     if (!id) return;
@@ -210,6 +230,23 @@ export function JobDetailPage() {
       }
       const data = await response.json();
       if (!cancelled) setDocuments(data);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, id, authFetch]);
+
+  useEffect(() => {
+    if (tab !== "commitments" || !id) return;
+    let cancelled = false;
+    (async () => {
+      const response = await authFetch(`/commitments/budget-summary?jobId=${id}`);
+      if (!response.ok) {
+        if (!cancelled) setCommitmentSummary({ jobId: id, committedTotal: "0", approvedTotal: "0", commitments: [] });
+        return;
+      }
+      const data = (await response.json()) as CommitmentBudgetSummary;
+      if (!cancelled) setCommitmentSummary(data);
     })();
     return () => {
       cancelled = true;
@@ -345,6 +382,7 @@ export function JobDetailPage() {
           ["issues", `Issues (${job.issues.length})`],
           ["variations", `Variations (${job.variations.length})`],
           ["progress", `Progress (${job.progressEntries.length})`],
+          ["commitments", "Commitments"],
           ["documents", "Documents"],
           ["history", `History (${job.statusHistory.length})`]
         ] as Array<[Tab, string]>).map(([key, label]) => (
@@ -570,6 +608,79 @@ export function JobDetailPage() {
                 </li>
               ))}
             </ul>
+          )}
+        </section>
+        </ErrorBoundary>
+      ) : null}
+
+      {tab === "commitments" ? (
+        <ErrorBoundary sectionName="Commitments">
+        <section className="s7-card">
+          {commitmentSummary === null ? (
+            <Skeleton width="60%" height={14} />
+          ) : (
+            <>
+              <div className="job-detail__overview" style={{ marginBottom: 20 }}>
+                <div className="s7-card job-detail__overview-kpi">
+                  <span className="s7-type-label">Committed (incl. drafts)</span>
+                  <strong className="job-detail__overview-value">
+                    {formatCurrency(commitmentSummary.committedTotal)}
+                  </strong>
+                </div>
+                <div className="s7-card job-detail__overview-kpi">
+                  <span className="s7-type-label">Approved commitments</span>
+                  <strong className="job-detail__overview-value">
+                    {formatCurrency(commitmentSummary.approvedTotal)}
+                  </strong>
+                </div>
+              </div>
+              {commitmentSummary.commitments.length === 0 ? (
+                <EmptyState
+                  heading="No commitments"
+                  subtext="Subcontract and purchase order commitments against this job will appear here."
+                />
+              ) : (
+                <div className="s7-table-scroll">
+                  <table className="s7-table">
+                    <thead>
+                      <tr>
+                        <th>Reference</th>
+                        <th>Description</th>
+                        <th>Type</th>
+                        <th>Supplier</th>
+                        <th>Status</th>
+                        <th style={{ textAlign: "right" }}>Original value</th>
+                        <th style={{ textAlign: "right" }}>Approved changes</th>
+                        <th style={{ textAlign: "right" }}>Adjusted value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {commitmentSummary.commitments.map((c) => (
+                        <tr key={c.id}>
+                          <td><strong>{c.reference}</strong></td>
+                          <td>{c.description}</td>
+                          <td><span className="s7-badge s7-badge--neutral">{c.type}</span></td>
+                          <td>{c.supplier?.name ?? "—"}</td>
+                          <td>
+                            <span className={
+                              c.status === "APPROVED" ? "s7-badge s7-badge--active" :
+                              c.status === "CLOSED" ? "s7-badge s7-badge--info" :
+                              c.status === "CANCELLED" ? "s7-badge s7-badge--danger" :
+                              "s7-badge s7-badge--neutral"
+                            }>
+                              {c.status}
+                            </span>
+                          </td>
+                          <td style={{ textAlign: "right" }}>{formatCurrency(c.originalValue)}</td>
+                          <td style={{ textAlign: "right" }}>{formatCurrency(c.approvedChangesSum)}</td>
+                          <td style={{ textAlign: "right" }}><strong>{formatCurrency(c.adjustedValue)}</strong></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
           )}
         </section>
         </ErrorBoundary>

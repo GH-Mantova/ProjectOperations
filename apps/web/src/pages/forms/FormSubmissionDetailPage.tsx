@@ -37,6 +37,17 @@ type TriggeredRecord = {
   createdAt: string;
 };
 
+type CorrectiveActionSummary = {
+  id: string;
+  title: string;
+  status: "open" | "in_progress" | "closed";
+  priority: "low" | "medium" | "high" | "critical";
+  dueAt: string | null;
+  assignedTo?: { id: string; firstName: string; lastName: string } | null;
+  assignedToRole?: string | null;
+  closedAt?: string | null;
+};
+
 type Submission = {
   id: string;
   status: string;
@@ -57,6 +68,7 @@ type Submission = {
   }>;
   approvals: Approval[];
   triggeredRecords: TriggeredRecord[];
+  correctiveActions: CorrectiveActionSummary[];
   templateVersion: {
     id: string;
     versionNumber: number;
@@ -353,6 +365,38 @@ export function FormSubmissionDetailPage() {
               </li>
             ))}
           </ul>
+        </section>
+      ) : null}
+
+      {/* Corrective actions panel */}
+      {submission.correctiveActions.length > 0 ? (
+        <section className="s7-card" style={{ padding: 14 }}>
+          <h3 style={{ margin: "0 0 10px", fontSize: 14 }}>
+            Corrective actions raised by this submission ({submission.correctiveActions.length})
+          </h3>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {submission.correctiveActions.map((ca) => {
+              const statusColor = ca.status === "closed" ? "#166534" : ca.status === "in_progress" ? "#1D4ED8" : "#92400E";
+              const isOverdue = ca.status !== "closed" && ca.dueAt && new Date(ca.dueAt) < new Date();
+              return (
+                <Link key={ca.id} to={`/forms/corrective-actions/${ca.id}`} style={{ textDecoration: "none", color: "inherit" }}>
+                  <div style={{ padding: "10px 12px", background: "var(--bg-subtle, #F6F6F6)", borderRadius: 6, display: "flex", gap: 12, alignItems: "center" }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{ca.title}</div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                        {ca.assignedTo ? `${ca.assignedTo.firstName} ${ca.assignedTo.lastName}` : ca.assignedToRole ?? "Unassigned"}
+                        {ca.dueAt ? ` · Due ${new Date(ca.dueAt).toLocaleDateString()}` : ""}
+                        {isOverdue ? " · OVERDUE" : ""}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: statusColor, textTransform: "capitalize", whiteSpace: "nowrap" }}>
+                      {ca.status.replace("_", " ")}
+                    </span>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
         </section>
       ) : null}
 

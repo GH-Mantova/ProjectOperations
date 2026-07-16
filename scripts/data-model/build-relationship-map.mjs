@@ -15,6 +15,10 @@
 //
 // Run:  node scripts/data-model/build-relationship-map.mjs
 // Check (CI drift): node scripts/data-model/build-relationship-map.mjs --check
+//   The --check mode does NOT compare against a committed output file (the
+//   generated JSON/MD are gitignored - committing them churned every open PR).
+//   It re-runs the parser against apps/api/prisma/schema.prisma and fails if
+//   the schema references any model/enum the generator cannot resolve.
 //
 // ASCII-only on purpose (Windows / PS 5.1 friendly). No external deps.
 // ---------------------------------------------------------------------------
@@ -535,15 +539,25 @@ function main() {
   const catalogStr = JSON.stringify(catalog, null, 2) + '\n';
 
   if (CHECK_MODE) {
-    const cur = existsSync(JSON_PATH) ? readFileSync(JSON_PATH, 'utf8') : '';
-    // Compare on schemaSha + structure only (ignore timestamp in md).
-    const curSha = cur.match(/"schemaSha256":\s*"([0-9a-f]+)"/);
-    if (!curSha || curSha[1] !== schemaSha) {
-      console.error('DRIFT: relationship-map.json is stale vs schema.prisma.');
-      console.error('Run: node scripts/data-model/build-relationship-map.mjs');
+    // The generated outputs are gitignored, so there is no committed file to
+    // diff against. The gate's job is instead to prove the generator still
+    // parses the current schema without hitting an unresolvable model/enum
+    // reference - i.e. schema.prisma is internally consistent for this tool.
+    const unresolved = [];
+    for (const modelName of Object.keys(graph.models)) {
+      const m = graph.models[modelName];
+      for (const f of m.fields) {
+        if (f.kind === 'unknown') {
+          unresolved.push(`${modelName}.${f.name} -> ${f.type}`);
+        }
+      }
+    }
+    if (unresolved.length > 0) {
+      console.error('DRIFT: relationship-map generator cannot resolve these field types against schema.prisma:');
+      for (const u of unresolved) console.error(`  - ${u}`);
       process.exit(1);
     }
-    console.log('OK: relationship map is in sync with schema.prisma.');
+    console.log(`OK: generator ran cleanly against schema.prisma (${jsonObj.modelCount} models, ${Object.keys(jsonObj.enums).length} enums, ${jsonObj.edgeCount} edges).`);
     return;
   }
 

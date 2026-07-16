@@ -1,6 +1,7 @@
 import { defineConfig, type PluginOption } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,6 +18,41 @@ const packageJson = JSON.parse(
 // the same on the API side.
 const BUILD_SHA = process.env.VITE_BUILD_SHA ?? "dev";
 const BUILT_AT = new Date().toISOString();
+
+// Emits /data-model.html into the build output by regenerating the
+// interactive relationship graph at build time (scripts/data-model/*). The
+// generated file is gitignored — publishing it here is the only way the
+// super-user DataModelMapPage can iframe it at the deployed URL. The
+// staticwebapp.config.json navigationFallback excludes this path so SWA
+// serves the HTML directly instead of rewriting to /index.html.
+function emitDataModelMap(): PluginOption {
+  const repoRoot = resolve(__dirname, "..", "..");
+  const scriptsDir = resolve(repoRoot, "scripts", "data-model");
+  const graphHtmlPath = resolve(repoRoot, "docs", "data-model", "relationship-graph.html");
+  return {
+    name: "projectops-emit-data-model-map",
+    apply: "build",
+    buildStart() {
+      execFileSync(
+        process.execPath,
+        [resolve(scriptsDir, "build-relationship-map.mjs")],
+        { stdio: "inherit", cwd: repoRoot }
+      );
+      execFileSync(
+        process.execPath,
+        [resolve(scriptsDir, "build-graph-html.mjs")],
+        { stdio: "inherit", cwd: repoRoot }
+      );
+    },
+    generateBundle() {
+      this.emitFile({
+        type: "asset",
+        fileName: "data-model.html",
+        source: readFileSync(graphHtmlPath, "utf-8")
+      });
+    }
+  };
+}
 
 // Emits a top-level version.json into the build output. The file is served
 // no-cache (see apps/web/public/staticwebapp.config.json) so operators can
@@ -85,7 +121,8 @@ export default defineConfig({
       },
       devOptions: { enabled: false }
     }),
-    emitVersionJson()
+    emitVersionJson(),
+    emitDataModelMap()
   ],
   resolve: {
     extensions: [".tsx", ".ts", ".jsx", ".js", ".mjs", ".json"],

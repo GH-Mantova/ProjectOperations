@@ -11,6 +11,8 @@ import { FormsSnippetsController } from "./forms-snippets.controller";
 import { FormsSnippetsService } from "./forms-snippets.service";
 import { CorrectiveActionsController } from "./corrective-actions.controller";
 import { CorrectiveActionsService } from "./corrective-actions.service";
+import { PublicLinkController } from "./public-link.controller";
+import { PublicLinkService } from "./public-link.service";
 
 /**
  * §13 Forms and Compliance module — wires the template/submission CRUD
@@ -22,6 +24,9 @@ import { CorrectiveActionsService } from "./corrective-actions.service";
  * Also registers the corrective-action (CAPA) close-out loop:
  * CorrectiveActionsController + CorrectiveActionsService.
  *
+ * Also wires the public/kiosk/QR capture layer (PR #621):
+ * PublicLinkController + PublicLinkService for unauthenticated form capture.
+ *
  * RulesEngineService and FormsEngineService are re-exported so other
  * modules (e.g. compliance dashboards, safety auto-creation flows) can
  * reuse the rule evaluator and the lifecycle service without owning a
@@ -29,8 +34,8 @@ import { CorrectiveActionsService } from "./corrective-actions.service";
  */
 @Module({
   imports: [PrismaModule, AuditModule, PlatformModule],
-  controllers: [FormsController, FormsEngineController, FormsSnippetsController, CorrectiveActionsController],
-  providers: [FormsService, FormsEngineService, RulesEngineService, FormsSnippetsService, CorrectiveActionsService],
+  controllers: [FormsController, FormsEngineController, FormsSnippetsController, CorrectiveActionsController, PublicLinkController],
+  providers: [FormsService, FormsEngineService, RulesEngineService, FormsSnippetsService, CorrectiveActionsService, PublicLinkService],
   exports: [RulesEngineService, FormsEngineService, FormsSnippetsService]
 })
 export class FormsModule {}

@@ -381,6 +381,30 @@ export async function seedNotificationTriggerConfigs(prisma: PrismaClient) {
       trigger: "project.created",
       label: "Project created from tender",
       description: "Sent when a won tender is converted to a project"
+    },
+    // Compliance expiry reminder — daily digest for licences, insurances, and
+    // worker qualifications. Seeded enabled with Marco as recipient so the WHS
+    // officer gets safety-critical alerts from day one.
+    {
+      trigger: "compliance.expiry_reminder",
+      label: "Compliance expiry reminder",
+      description: "Daily digest: licences, insurances, and worker qualifications expiring or expired.",
+      isEnabled: true,
+      deliveryMethod: "both",
+      recipientUserIds: ["user-supervisor-001"]
+    },
+    // Worker competency expiry digest — proactive alert for WorkerCompetency
+    // ticket expiry (asbestos, demolition-supervisor, etc). The description
+    // may carry a [horizon=N] suffix to configure the look-ahead window from
+    // Admin Settings without a deploy (default: 60 days). Seeded enabled with
+    // Marco as recipient.
+    {
+      trigger: "competency.expiry_digest",
+      label: "Worker competency expiry digest",
+      description: "Daily digest: worker competencies (tickets) expiring or expired. Append [horizon=N] to set the look-ahead window in days (default 60).",
+      isEnabled: true,
+      deliveryMethod: "both",
+      recipientUserIds: ["user-supervisor-001"]
     }
   ];
   for (const t of triggers) {

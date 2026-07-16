@@ -26,6 +26,9 @@ type NavItem = {
   // not have the permission. The route itself still renders a NoAccess page
   // if a user reaches the URL directly (defence-in-depth).
   requiresPermission?: string;
+  // Stricter than adminOnly on the parent group: hide the item unless the
+  // user has isSuperUser === true (a regular Admin role is not enough).
+  superUserOnly?: boolean;
 };
 
 type NavGroup = {
@@ -290,7 +293,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/admin/rates-lists", label: "Rates & Lists", icon: ICON_TENDERING },
       { to: "/admin/estimate-rates", label: "Legacy estimate rates", icon: ICON_TENDERING },
       { to: "/admin/job-roles", label: "Job Roles", icon: ICON_AUDIT },
-      { to: "/admin/ai-settings", label: "AI Settings", icon: ICON_AUDIT }
+      { to: "/admin/ai-settings", label: "AI Settings", icon: ICON_AUDIT },
+      { to: "/admin/data-model", label: "Data-model map", icon: ICON_AUDIT, superUserOnly: true }
     ]
   }
 ];
@@ -355,6 +359,7 @@ const BREADCRUMBS: Record<string, string> = {
   "/admin/platform": "Platform",
   "/admin/settings": "Admin Settings",
   "/admin/company": "Company Profile",
+  "/admin/data-model": "Data-model map",
   "/admin/job-roles": "Job Roles",
   "/contracts": "Contracts"
 };
@@ -454,7 +459,11 @@ export function ShellLayout() {
     .filter((group) => !group.adminOnly || isAdmin)
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => !item.requiresPermission || can(user, item.requiresPermission))
+      items: group.items.filter((item) => {
+        if (item.superUserOnly && user?.isSuperUser !== true) return false;
+        if (item.requiresPermission && !can(user, item.requiresPermission)) return false;
+        return true;
+      })
     }))
     .filter((group) => group.items.length > 0);
 

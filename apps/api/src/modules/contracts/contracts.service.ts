@@ -1,14 +1,19 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { Cron, CronExpression } from "@nestjs/schedule";
-import { ClaimStatus, ContractStatus, Prisma, VariationStatus } from "@prisma/client";
+import { ClaimStatus, ContractStatus, PaymentScheduleStatus, Prisma, VariationStatus } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { EmailService } from "../email/email.service";
 import { NotificationsService } from "../platform/notifications.service";
-import { adjustToPrecedingWorkday } from "./public-holidays";
+import { adjustToPrecedingWorkday, isAustralianPublicHoliday } from "./public-holidays";
 
 const CONTRACT_SEQ_ID = 1;
 // PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
 const DISCIPLINE_ORDER = ["DEM", "CIV", "ASB", "Other"] as const;
+// AU Security of Payment Act — fallback statutory response window in
+// BUSINESS days. Used only when OperationsSettings.sopaResponseDays is
+// NULL. QLD BIF Act = 15 business days; NSW/VIC SOPA = 10. Admin sets
+// the tenant's value via the Operations Settings singleton.
+const SOPA_DEFAULT_RESPONSE_DAYS = 15;
 
 type Actor = { id: string; permissions: ReadonlySet<string> };
 
@@ -92,7 +97,23 @@ export class ContractsService {
       include: {
         project: { include: { client: true } },
         variations: { orderBy: { variationNumber: "asc" } },
-        progressClaims: { orderBy: { claimMonth: "desc" }, select: { id: true, claimNumber: true, claimMonth: true, status: true, totalClaimed: true, totalApproved: true, totalPaid: true, submissionDate: true } }
+        progressClaims: {
+          orderBy: { claimMonth: "desc" },
+          select: {
+            id: true,
+            claimNumber: true,
+            claimMonth: true,
+            status: true,
+            totalClaimed: true,
+            totalApproved: true,
+            totalPaid: true,
+            submissionDate: true,
+            retentionHeld: true,
+            paymentSchedule: {
+              select: { id: true, status: true, dueBy: true, scheduledAmount: true, respondedAt: true }
+            }
+          }
+        }
       }
     });
     if (!contract) throw new NotFoundException("Contract not found.");
@@ -333,9 +354,117 @@ export class ContractsService {
   async getClaim(contractId: string, claimId: string) {
     const claim = await this.prisma.progressClaim.findUnique({
       where: { id: claimId },
-      include: { lineItems: { orderBy: [{ sortOrder: "asc" }] }, contract: true }
+      include: {
+        lineItems: { orderBy: [{ sortOrder: "asc" }] },
+        contract: true,
+        paymentSchedule: true
+      }
     });
     if (!claim || claim.contractId !== contractId) throw new NotFoundException("Claim not found.");
+    return this.decoratePaymentScheduleStatus(claim);
+  }
+
+  // ── Payment schedule (AU Security of Payment) ────────────────────────
+  /**
+   * Create or update the AU Security of Payment payment-schedule response
+   * for a progress claim.
+   *
+   * Statutory intent: if the respondent does not issue a schedule within
+   * the state-defined window (OperationsSettings.sopaResponseDays, or
+   * SOPA_DEFAULT_RESPONSE_DAYS when unset — 15 QLD business days) the
+   * FULL claimed amount is payable. `dueBy` is computed at record
+   * creation from the claim's submissionDate (or claimMonth) plus that
+   * many BUSINESS days, then rolled BACK to the preceding QLD workday
+   * per the existing holiday helper, and STORED so a later settings
+   * change does not retro-mutate an already-issued schedule.
+   *
+   * @param contractId - contract the claim must belong to
+   * @param claimId    - progress-claim id
+   * @param actorId    - user id stored as createdById on first insert
+   * @param dto        - scheduledAmount + optional reasons; passing
+   *                     `respondedAt` (or omitting when scheduledAmount
+   *                     is set) marks the schedule ISSUED.
+   * @throws NotFoundException when the claim is missing or on another contract
+   * @throws BadRequestException when scheduledAmount is negative
+   */
+  async upsertPaymentSchedule(
+    contractId: string,
+    claimId: string,
+    actorId: string,
+    dto: { scheduledAmount: number; reasons?: string | null; respondedAt?: string | null }
+  ) {
+    if (dto.scheduledAmount < 0) {
+      throw new BadRequestException("scheduledAmount must be >= 0.");
+    }
+    const claim = await this.prisma.progressClaim.findUnique({
+      where: { id: claimId },
+      include: { paymentSchedule: true }
+    });
+    if (!claim || claim.contractId !== contractId) throw new NotFoundException("Claim not found.");
+
+    const existing = claim.paymentSchedule;
+    const respondedAt = dto.respondedAt === null
+      ? null
+      : dto.respondedAt
+        ? new Date(dto.respondedAt)
+        : existing?.respondedAt ?? new Date();
+    const status: PaymentScheduleStatus = respondedAt ? PaymentScheduleStatus.ISSUED : PaymentScheduleStatus.PENDING;
+    const scheduledAmount = new Prisma.Decimal(dto.scheduledAmount);
+    const reasons = dto.reasons === undefined ? existing?.reasons ?? null : dto.reasons;
+
+    if (existing) {
+      // Preserve the originally-computed dueBy — later setting changes
+      // must not retro-mutate the statutory window on an already-issued
+      // schedule (see model comment).
+      return this.prisma.paymentSchedule.update({
+        where: { id: existing.id },
+        data: { scheduledAmount, reasons, status, respondedAt }
+      });
+    }
+    const responseDays = await this.getSopaResponseDays();
+    const anchor = claim.submissionDate ?? claim.claimMonth;
+    const dueBy = adjustToPrecedingWorkday(addBusinessDays(anchor, responseDays));
+    return this.prisma.paymentSchedule.create({
+      data: {
+        progressClaimId: claimId,
+        scheduledAmount,
+        reasons,
+        status,
+        dueBy,
+        respondedAt,
+        createdById: actorId
+      }
+    });
+  }
+
+  /**
+   * Compute the effective SOPA response window (business days). Reads
+   * `OperationsSettings.sopaResponseDays` (singleton) and falls back to
+   * `SOPA_DEFAULT_RESPONSE_DAYS` when unset — the singleton row is
+   * created on first read by the admin-settings service.
+   */
+  async getSopaResponseDays(): Promise<number> {
+    const settings = await this.prisma.operationsSettings.findUnique({
+      where: { id: "singleton" },
+      select: { sopaResponseDays: true }
+    });
+    return settings?.sopaResponseDays ?? SOPA_DEFAULT_RESPONSE_DAYS;
+  }
+
+  /**
+   * Return the claim with paymentSchedule.status flipped to OVERDUE for
+   * read-side rendering when the stored dueBy has passed and no response
+   * has been recorded. The DB value stays PENDING so an admin still sees
+   * that no schedule has been issued; a nightly job can persist OVERDUE
+   * separately once the alerting requirement lands.
+   */
+  private decoratePaymentScheduleStatus<T extends { paymentSchedule: { status: PaymentScheduleStatus; dueBy: Date; respondedAt: Date | null } | null }>(
+    claim: T
+  ): T {
+    const ps = claim.paymentSchedule;
+    if (ps && !ps.respondedAt && ps.status === PaymentScheduleStatus.PENDING && ps.dueBy.getTime() < Date.now()) {
+      return { ...claim, paymentSchedule: { ...ps, status: PaymentScheduleStatus.OVERDUE } };
+    }
     return claim;
   }
 
@@ -748,6 +877,26 @@ export class ContractsService {
 
 function startOfMonth(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+}
+
+// Add N BUSINESS days (skipping Sat/Sun + QLD public holidays). Used by
+// the SOPA payment-schedule dueBy calc, then paired with
+// adjustToPrecedingWorkday so the anchor-day math never lands on a
+// weekend/holiday.
+function addBusinessDays(from: Date, businessDays: number): Date {
+  const d = new Date(from);
+  let remaining = businessDays;
+  // Safety cap at 4× the requested days — with weekends + a handful of
+  // holidays this covers even a 30-day request in ~50 iterations.
+  const cap = Math.max(1, businessDays) * 4 + 14;
+  let iter = 0;
+  while (remaining > 0 && iter < cap) {
+    d.setUTCDate(d.getUTCDate() + 1);
+    const dow = d.getUTCDay();
+    if (dow !== 0 && dow !== 6 && !isAustralianPublicHoliday(d)) remaining -= 1;
+    iter += 1;
+  }
+  return d;
 }
 
 function nextCutoffDate(today: Date, day: number): Date {

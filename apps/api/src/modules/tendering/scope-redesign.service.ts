@@ -674,15 +674,24 @@ export class ScopeRedesignService {
     });
     if (!card) throw new NotFoundException("Scope card not found on this tender.");
 
+    // PR feat/scope-material-inline-waste — cuttingIncluded is now per
+    // material (Material 1 = item.cuttingIncluded; Material 2..N =
+    // entry.cuttingIncluded). Fetch every non-excluded item on the card
+    // and filter in-memory so items that opted in ONLY via a Material
+    // 2+ entry aren't missed by a where clause that scoped to item-level
+    // cuttingIncluded=true. Card sizes are small (< a few hundred rows)
+    // so pulling the full set is cheap.
     const items = await this.prisma.scopeOfWorksItem.findMany({
-      where: { tenderId, cardId, status: { not: "excluded" }, cuttingIncluded: true },
+      where: { tenderId, cardId, status: { not: "excluded" } },
       select: {
         wbsCode: true,
         description: true,
         length: true,
         depth: true,
         material: true,
-        materialType: true
+        materialType: true,
+        cuttingIncluded: true,
+        materials: true
       }
     });
 
@@ -696,21 +705,69 @@ export class ScopeRedesignService {
     const payloads: RowPayload[] = [];
     const warnings: string[] = [];
 
-    for (const item of items) {
-      const length = item.length == null ? 0 : Number(item.length);
-      const depth = item.depth == null ? 0 : Number(item.depth);
-      if (!(length > 0) || !(depth > 0)) continue;
+    // Emit one payload per cutting-flagged material. Material 1 reuses
+    // the item's flat length/depth/material inference; Material 2..N
+    // each contribute a distinct saw-cut row derived from the entry's
+    // own length/depth/material.
+    const pushPayload = (
+      wbsRef: string,
+      description: string | null,
+      length: number,
+      depth: number,
+      materialLabel: string | null
+    ) => {
+      if (!(length > 0) || !(depth > 0)) return;
       const depthMm = Math.round(depth * 1000);
       if (depthMm > 2000) {
-        warnings.push(`${item.wbsCode}: depth ${depthMm}mm — please verify`);
+        warnings.push(`${wbsRef}: depth ${depthMm}mm — please verify`);
       }
       payloads.push({
-        wbsRef: item.wbsCode,
-        description: item.description ?? null,
+        wbsRef,
+        description,
         depthMm,
         quantityLm: new Prisma.Decimal(length),
-        material: inferCuttingMaterial(item)
+        material: materialLabel
       });
+    };
+
+    for (const item of items) {
+      if (item.cuttingIncluded === true) {
+        const length = item.length == null ? 0 : Number(item.length);
+        const depth = item.depth == null ? 0 : Number(item.depth);
+        pushPayload(
+          item.wbsCode,
+          item.description ?? null,
+          length,
+          depth,
+          inferCuttingMaterial(item)
+        );
+      }
+      const materials = Array.isArray(item.materials)
+        ? (item.materials as Array<{
+            length?: unknown;
+            depth?: unknown;
+            material?: unknown;
+            cuttingIncluded?: unknown;
+          }>)
+        : [];
+      for (const m of materials) {
+        if (m?.cuttingIncluded !== true) continue;
+        const length = Number(m?.length);
+        const depth = Number(m?.depth);
+        if (!Number.isFinite(length) || !Number.isFinite(depth)) continue;
+        const materialLabel = inferCuttingMaterial({
+          material: typeof m?.material === "string" ? m.material : null,
+          materialType: null,
+          description: item.description ?? null
+        });
+        pushPayload(
+          item.wbsCode,
+          item.description ?? null,
+          length,
+          depth,
+          materialLabel
+        );
+      }
     }
 
     const result = await this.prisma.$transaction(async (tx) => {

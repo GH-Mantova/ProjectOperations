@@ -171,7 +171,11 @@ class ScopeItemFieldsBase {
   // PR feat/scope-multi-material — additional material rows (rows 2..N).
   // Row 1 stays on the flat materialType + L/H/D + density/sqm/m3/tonnes
   // columns; this array carries the extras. Each element:
-  //   { material, length, height, depth, density, sqm, m3, tonnes }
+  //   { material, length, height, depth, density, sqm, m3, tonnes,
+  //     wasteGroup?, wasteItem?, wasteIncluded?, cuttingIncluded? }
+  // PR feat/scope-material-inline-waste added the four waste-classification
+  // keys so each material can be attributed to its own (group, item) in
+  // the sum-from-above aggregator.
   // Backend is an identity pass-through (no re-derivation) — same
   // contract as plantItems/measurements.
   @ApiPropertyOptional({ type: "array", items: { type: "object" } })

@@ -34,6 +34,15 @@ export type ScopeMaterialEntry = {
   sqm?: number | null;
   m3?: number | null;
   tonnes?: number | null;
+  // PR feat/scope-material-inline-waste — waste classification moved
+  // per-material so a mixed item can attribute each material's tonnage
+  // to a different (wasteGroup, wasteItem). Material 1 uses the item's
+  // flat wasteGroup/wasteItem/wasteIncluded/cuttingIncluded columns;
+  // Material 2..N carry their own here.
+  wasteGroup?: string | null;
+  wasteItem?: string | null;
+  wasteIncluded?: boolean;
+  cuttingIncluded?: boolean;
 };
 
 export type ScopeItem = {
@@ -971,48 +980,51 @@ function ItemCard({
 
           {/* PR B4a — Quantification section. Four raw dimension inputs
               (L/H/D/density) drive auto-derivation of sqm/m³/tonnes;
-              user can override any derived value by typing. ChargeBy
-              toggle picks the preferred billing unit for the waste
-              aggregator (null = inherit facility rate.unit). All 8
-              fields are controlled and submit a single PATCH on blur. */}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
-            <FieldCell label="Length" width={80}>
+              user can override any derived value by typing.
+              PR feat/scope-material-inline-waste — the waste-classification
+              cells now live inline on this row (after Tonnes) so that
+              Material 1's classification sits alongside its dimensions
+              rather than in a separate bottom block. flex-wrap is off and
+              the row scrolls horizontally on narrow viewports so the
+              full picture stays on one line. */}
+          <div style={{ display: "flex", flexWrap: "nowrap", gap: 8, alignItems: "flex-end", overflowX: "auto" }}>
+            <FieldCell label="Length" width={70}>
               <input
                 className="s7-input"
                 type="number"
                 step="0.001"
                 value={dims.length}
                 disabled={isAi}
-                style={{ width: 80, height: 32 }}
+                style={{ width: 70, height: 32 }}
                 onChange={(e) => setDim("length", e.target.value)}
                 onBlur={persistDims}
               />
             </FieldCell>
-            <FieldCell label="Height" width={80}>
+            <FieldCell label="Height" width={70}>
               <input
                 className="s7-input"
                 type="number"
                 step="0.001"
                 value={dims.height}
                 disabled={isAi}
-                style={{ width: 80, height: 32 }}
+                style={{ width: 70, height: 32 }}
                 onChange={(e) => setDim("height", e.target.value)}
                 onBlur={persistDims}
               />
             </FieldCell>
-            <FieldCell label="Depth" width={80}>
+            <FieldCell label="Depth" width={70}>
               <input
                 className="s7-input"
                 type="number"
                 step="0.001"
                 value={dims.depth}
                 disabled={isAi}
-                style={{ width: 80, height: 32 }}
+                style={{ width: 70, height: 32 }}
                 onChange={(e) => setDim("depth", e.target.value)}
                 onBlur={persistDims}
               />
             </FieldCell>
-            <FieldCell label="Material" width={160}>
+            <FieldCell label="Material" width={140}>
               <TooltipSelect
                 value={item.materialType}
                 options={materialOptions}
@@ -1061,7 +1073,7 @@ function ItemCard({
                 style={{ height: 32 }}
               />
             </FieldCell>
-            <FieldCell label="Density (t/m³)" width={90}>
+            <FieldCell label="Density (t/m³)" width={80}>
               <input
                 className="s7-input"
                 type="number"
@@ -1069,7 +1081,7 @@ function ItemCard({
                 value={dims.density}
                 disabled={isAi || !!item.materialType}
                 style={{
-                  width: 90,
+                  width: 80,
                   height: 32,
                   ...(item.materialType
                     ? { backgroundColor: "var(--surface-muted, #f3f4f6)", color: "var(--text-muted, #6b7280)" }
@@ -1080,7 +1092,7 @@ function ItemCard({
                 onBlur={persistDims}
               />
             </FieldCell>
-            <FieldCell label="Sqm" width={90}>
+            <FieldCell label="Sqm" width={80}>
               <OverrideField
                 isOverridden={dirty.sqm}
                 onRevert={() => {
@@ -1095,14 +1107,14 @@ function ItemCard({
                   value={valueFor("sqm")}
                   placeholder={placeholderFor("sqm")}
                   disabled={isAi}
-                  style={{ width: 90, height: 32 }}
+                  style={{ width: 80, height: 32 }}
                   title="Auto = length × height. Type to override."
                   onChange={(e) => setDim("sqm", e.target.value)}
                   onBlur={persistDims}
                 />
               </OverrideField>
             </FieldCell>
-            <FieldCell label="M³" width={90}>
+            <FieldCell label="M³" width={80}>
               <OverrideField
                 isOverridden={dirty.m3}
                 onRevert={() => {
@@ -1117,14 +1129,14 @@ function ItemCard({
                   value={valueFor("m3")}
                   placeholder={placeholderFor("m3")}
                   disabled={isAi}
-                  style={{ width: 90, height: 32 }}
+                  style={{ width: 80, height: 32 }}
                   title="Auto = sqm × depth. Type to override."
                   onChange={(e) => setDim("m3", e.target.value)}
                   onBlur={persistDims}
                 />
               </OverrideField>
             </FieldCell>
-            <FieldCell label="Tonnes" width={90}>
+            <FieldCell label="Tonnes" width={80}>
               <OverrideField
                 isOverridden={dirty.tonnes}
                 onRevert={() => {
@@ -1139,19 +1151,68 @@ function ItemCard({
                   value={valueFor("tonnes")}
                   placeholder={placeholderFor("tonnes")}
                   disabled={isAi}
-                  style={{ width: 90, height: 32 }}
+                  style={{ width: 80, height: 32 }}
                   title="Auto = m³ × density or sqm × density / 1000. Type to override."
                   onChange={(e) => setDim("tonnes", e.target.value)}
                   onBlur={persistDims}
                 />
               </OverrideField>
             </FieldCell>
+            {/* PR feat/scope-material-inline-waste — Material 1 waste
+                controls, bound to the item-level columns. Material 2..N
+                get the same set on their own row inside MaterialCluster.
+                Keep the aria-labels "Waste group"/"Waste item"/"Include
+                in waste summary"/"Include in cutting summary" (no
+                material suffix) so existing acceptance tests that scope
+                to Material 1 keep working. */}
+            <FieldCell label="Waste group" width={120}>
+              <TooltipSelect
+                value={item.wasteGroup}
+                options={wasteGroupOptions}
+                onChange={(v) => onPatch({ wasteGroup: v, wasteItem: null })}
+                disabled={isAi}
+                ariaLabel="Waste group"
+                style={{ height: 32 }}
+              />
+            </FieldCell>
+            <FieldCell label="Waste item" width={140}>
+              <TooltipSelect
+                value={item.wasteItem}
+                options={wasteItemOptions}
+                onChange={(v) => onPatch({ wasteItem: v })}
+                disabled={isAi || !item.wasteGroup}
+                ariaLabel="Waste item"
+                style={{ height: 32 }}
+              />
+            </FieldCell>
+            <FieldCell label="Waste?" width={54}>
+              <input
+                type="checkbox"
+                checked={item.wasteIncluded === true}
+                disabled={isAi}
+                onChange={(e) => onPatch({ wasteIncluded: e.target.checked })}
+                aria-label="Include in waste summary"
+                style={{ width: 20, height: 20, marginBottom: 6 }}
+              />
+            </FieldCell>
+            <FieldCell label="Cutting?" width={62}>
+              <input
+                type="checkbox"
+                checked={item.cuttingIncluded === true}
+                disabled={isAi}
+                onChange={(e) => onPatch({ cuttingIncluded: e.target.checked })}
+                aria-label="Include in cutting summary"
+                style={{ width: 20, height: 20, marginBottom: 6 }}
+              />
+            </FieldCell>
           </div>
 
           {/* PR feat/scope-multi-material — additional material rows
               (rows 2..N). Row 1 is the block above; each entry below is
               a full L/H/D + material + density + sqm/m³/tonnes cluster
-              with its own auto-derive via computeDerivedDimensions. */}
+              with its own auto-derive via computeDerivedDimensions plus
+              (PR feat/scope-material-inline-waste) inline per-material
+              waste/cutting classification + delete. */}
           {itemMaterialEntries.map((entry, index) => (
             <MaterialCluster
               key={`material-${index}`}
@@ -1159,6 +1220,8 @@ function ItemCard({
               entry={entry}
               materialOptions={materialOptions}
               materialDensityMap={materialDensityMap}
+              wasteGroupOptions={wasteGroupOptions}
+              wasteItemsByGroup={wasteItemsByGroup}
               disabled={isAi}
               onChange={(patch) => updateMaterial(index, patch)}
               onRemove={() => removeMaterial(index)}
@@ -1180,63 +1243,10 @@ function ItemCard({
 
           <Divider />
 
-          {/* PR B4a — Classification section. Group/Item still drive the
-              waste aggregator (group key); Waste? and Cutting? checkboxes
-              flag the row for the two respective aggregators (cutting
-              aggregator wired in B4b). */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr auto auto",
-              gap: 12,
-              alignItems: "end"
-            }}
-          >
-            <FieldCell label="Waste group">
-              <TooltipSelect
-                value={item.wasteGroup}
-                options={wasteGroupOptions}
-                onChange={(v) => onPatch({ wasteGroup: v, wasteItem: null })}
-                disabled={isAi}
-                ariaLabel="Waste group"
-                style={{ height: 32 }}
-              />
-            </FieldCell>
-            <FieldCell label="Waste item">
-              <TooltipSelect
-                value={item.wasteItem}
-                options={wasteItemOptions}
-                onChange={(v) => onPatch({ wasteItem: v })}
-                disabled={isAi || !item.wasteGroup}
-                ariaLabel="Waste item"
-                style={{ height: 32 }}
-              />
-            </FieldCell>
-            <FieldCell label="Waste?">
-              <input
-                type="checkbox"
-                checked={item.wasteIncluded === true}
-                disabled={isAi}
-                onChange={(e) => onPatch({ wasteIncluded: e.target.checked })}
-                aria-label="Include in waste summary"
-                style={{ width: 20, height: 20, marginBottom: 6 }}
-              />
-            </FieldCell>
-            <FieldCell label="Cutting?">
-              <input
-                type="checkbox"
-                checked={item.cuttingIncluded === true}
-                disabled={isAi}
-                onChange={(e) => onPatch({ cuttingIncluded: e.target.checked })}
-                aria-label="Include in cutting summary"
-                style={{ width: 20, height: 20, marginBottom: 6 }}
-              />
-            </FieldCell>
-          </div>
-
-          <Divider />
-
-          {/* Section C: notes (full width, 4-row textarea + expand modal). */}
+          {/* Section C: notes (full width, 4-row textarea + expand modal).
+              PR feat/scope-material-inline-waste — the old bottom
+              Waste group/item/Waste?/Cutting? block was removed here;
+              those controls now render inline per material. */}
           <NotesField
             value={item.notes}
             onSave={(v) => onPatch({ notes: v })}
@@ -1362,6 +1372,8 @@ function MaterialCluster({
   entry,
   materialOptions,
   materialDensityMap,
+  wasteGroupOptions,
+  wasteItemsByGroup,
   disabled,
   onChange,
   onRemove
@@ -1370,6 +1382,8 @@ function MaterialCluster({
   entry: ScopeMaterialEntry;
   materialOptions: TooltipSelectOption<string>[];
   materialDensityMap: Map<string, { density: string; unit: string }>;
+  wasteGroupOptions: TooltipSelectOption<string>[];
+  wasteItemsByGroup: Map<string, string[]>;
   disabled: boolean;
   onChange: (patch: Partial<ScopeMaterialEntry>) => void;
   onRemove: () => void;
@@ -1395,6 +1409,14 @@ function MaterialCluster({
     tonnes: entry.tonnes ?? null
   });
 
+  // PR feat/scope-material-inline-waste — waste item options for THIS
+  // material's chosen group (independent from Material 1's group).
+  const wasteItemOptions: TooltipSelectOption<string>[] = entry.wasteGroup
+    ? (wasteItemsByGroup.get(entry.wasteGroup) ?? []).map((w) => ({ value: w, label: w }))
+    : [];
+
+  const materialNo = index + 2;
+
   return (
     <div
       style={{
@@ -1413,66 +1435,44 @@ function MaterialCluster({
         }}
       >
         <span className="s7-type-label" style={{ ...labelStyle, marginBottom: 0 }}>
-          Material {index + 2}
+          Material {materialNo}
         </span>
-        {!disabled ? (
-          <button
-            type="button"
-            onClick={onRemove}
-            aria-label={`Remove Material ${index + 2}`}
-            title={`Remove Material ${index + 2}`}
-            style={{
-              width: 16,
-              height: 16,
-              borderRadius: 999,
-              border: "1px solid var(--border-default, #e5e7eb)",
-              background: "transparent",
-              color: "var(--text-muted)",
-              cursor: "pointer",
-              fontSize: 10,
-              lineHeight: 1,
-              padding: 0
-            }}
-          >
-            ×
-          </button>
-        ) : null}
       </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
-        <FieldCell label="Length" width={80}>
+      <div style={{ display: "flex", flexWrap: "nowrap", gap: 8, alignItems: "flex-end", overflowX: "auto" }}>
+        <FieldCell label="Length" width={70}>
           <input
             className="s7-input"
             type="number"
             step="0.001"
             defaultValue={strOf(entry.length)}
             disabled={disabled}
-            style={{ width: 80, height: 32 }}
+            style={{ width: 70, height: 32 }}
             onBlur={(e) => onChange({ length: numOrNull(e.target.value) })}
           />
         </FieldCell>
-        <FieldCell label="Height" width={80}>
+        <FieldCell label="Height" width={70}>
           <input
             className="s7-input"
             type="number"
             step="0.001"
             defaultValue={strOf(entry.height)}
             disabled={disabled}
-            style={{ width: 80, height: 32 }}
+            style={{ width: 70, height: 32 }}
             onBlur={(e) => onChange({ height: numOrNull(e.target.value) })}
           />
         </FieldCell>
-        <FieldCell label="Depth" width={80}>
+        <FieldCell label="Depth" width={70}>
           <input
             className="s7-input"
             type="number"
             step="0.001"
             defaultValue={strOf(entry.depth)}
             disabled={disabled}
-            style={{ width: 80, height: 32 }}
+            style={{ width: 70, height: 32 }}
             onBlur={(e) => onChange({ depth: numOrNull(e.target.value) })}
           />
         </FieldCell>
-        <FieldCell label="Material" width={160}>
+        <FieldCell label="Material" width={140}>
           <TooltipSelect
             value={entry.material ?? null}
             options={materialOptions}
@@ -1505,11 +1505,11 @@ function MaterialCluster({
               });
             }}
             disabled={disabled}
-            ariaLabel={`Material ${index + 2} type`}
+            ariaLabel={`Material ${materialNo} type`}
             style={{ height: 32 }}
           />
         </FieldCell>
-        <FieldCell label="Density (t/m³)" width={90}>
+        <FieldCell label="Density (t/m³)" width={80}>
           <input
             className="s7-input"
             type="number"
@@ -1517,7 +1517,7 @@ function MaterialCluster({
             defaultValue={strOf(entry.density)}
             disabled={disabled || !!entry.material}
             style={{
-              width: 90,
+              width: 80,
               height: 32,
               ...(entry.material
                 ? { backgroundColor: "var(--surface-muted, #f3f4f6)", color: "var(--text-muted, #6b7280)" }
@@ -1527,7 +1527,7 @@ function MaterialCluster({
             onBlur={(e) => onChange({ density: numOrNull(e.target.value) })}
           />
         </FieldCell>
-        <FieldCell label="Sqm" width={90}>
+        <FieldCell label="Sqm" width={80}>
           <input
             className="s7-input"
             type="number"
@@ -1535,12 +1535,12 @@ function MaterialCluster({
             defaultValue={strOf(entry.sqm ?? derived.sqm)}
             placeholder={derived.sqm == null ? "" : String(derived.sqm)}
             disabled={disabled}
-            style={{ width: 90, height: 32 }}
+            style={{ width: 80, height: 32 }}
             title="Auto = length × height. Type to override."
             onBlur={(e) => onChange({ sqm: numOrNull(e.target.value) })}
           />
         </FieldCell>
-        <FieldCell label="M³" width={90}>
+        <FieldCell label="M³" width={80}>
           <input
             className="s7-input"
             type="number"
@@ -1548,12 +1548,12 @@ function MaterialCluster({
             defaultValue={strOf(entry.m3 ?? derived.m3)}
             placeholder={derived.m3 == null ? "" : String(derived.m3)}
             disabled={disabled}
-            style={{ width: 90, height: 32 }}
+            style={{ width: 80, height: 32 }}
             title="Auto = sqm × depth. Type to override."
             onBlur={(e) => onChange({ m3: numOrNull(e.target.value) })}
           />
         </FieldCell>
-        <FieldCell label="Tonnes" width={90}>
+        <FieldCell label="Tonnes" width={80}>
           <input
             className="s7-input"
             type="number"
@@ -1561,11 +1561,77 @@ function MaterialCluster({
             defaultValue={strOf(entry.tonnes ?? derived.tonnes)}
             placeholder={derived.tonnes == null ? "" : String(derived.tonnes)}
             disabled={disabled}
-            style={{ width: 90, height: 32 }}
+            style={{ width: 80, height: 32 }}
             title="Auto = m³ × density or sqm × density / 1000. Type to override."
             onBlur={(e) => onChange({ tonnes: numOrNull(e.target.value) })}
           />
         </FieldCell>
+        {/* PR feat/scope-material-inline-waste — per-material waste
+            controls. Bound to this entry's own wasteGroup/wasteItem/
+            wasteIncluded/cuttingIncluded so the sum-from-above aggregator
+            can attribute each material's tonnage to a different group. */}
+        <FieldCell label="Waste group" width={120}>
+          <TooltipSelect
+            value={entry.wasteGroup ?? null}
+            options={wasteGroupOptions}
+            onChange={(v) => onChange({ wasteGroup: v, wasteItem: null })}
+            disabled={disabled}
+            ariaLabel={`Material ${materialNo} waste group`}
+            style={{ height: 32 }}
+          />
+        </FieldCell>
+        <FieldCell label="Waste item" width={140}>
+          <TooltipSelect
+            value={entry.wasteItem ?? null}
+            options={wasteItemOptions}
+            onChange={(v) => onChange({ wasteItem: v })}
+            disabled={disabled || !entry.wasteGroup}
+            ariaLabel={`Material ${materialNo} waste item`}
+            style={{ height: 32 }}
+          />
+        </FieldCell>
+        <FieldCell label="Waste?" width={54}>
+          <input
+            type="checkbox"
+            checked={entry.wasteIncluded === true}
+            disabled={disabled}
+            onChange={(e) => onChange({ wasteIncluded: e.target.checked })}
+            aria-label={`Material ${materialNo} include in waste summary`}
+            style={{ width: 20, height: 20, marginBottom: 6 }}
+          />
+        </FieldCell>
+        <FieldCell label="Cutting?" width={62}>
+          <input
+            type="checkbox"
+            checked={entry.cuttingIncluded === true}
+            disabled={disabled}
+            onChange={(e) => onChange({ cuttingIncluded: e.target.checked })}
+            aria-label={`Material ${materialNo} include in cutting summary`}
+            style={{ width: 20, height: 20, marginBottom: 6 }}
+          />
+        </FieldCell>
+        {/* PR feat/scope-material-inline-waste — inline delete for
+            Material 2+. Material 1 has no delete (it is the item's
+            primary row); removal fires up through onRemove. */}
+        {!disabled ? (
+          <div style={{ display: "flex", alignItems: "flex-end", paddingBottom: 4 }}>
+            <button
+              type="button"
+              onClick={onRemove}
+              aria-label={`Remove Material ${materialNo}`}
+              title={`Remove Material ${materialNo}`}
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              style={{
+                color: "var(--status-danger, #EF4444)",
+                fontSize: 14,
+                padding: "4px 8px",
+                height: 32
+              }}
+            >
+              🗑
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );

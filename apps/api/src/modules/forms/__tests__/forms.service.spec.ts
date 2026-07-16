@@ -169,7 +169,8 @@ function buildPrismaMock() {
 function buildService() {
   const { prisma, tx } = buildPrismaMock();
   const audit = { write: jest.fn().mockResolvedValue(undefined) };
-  const service = new FormsService(prisma as never, audit as never);
+  const snippets = new Proxy({}, { get: () => jest.fn() });
+  const service = new FormsService(prisma as never, audit as never, snippets as never);
   return { service, prisma, tx, audit };
 }
 

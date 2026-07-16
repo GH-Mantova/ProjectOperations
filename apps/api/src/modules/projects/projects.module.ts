@@ -1,6 +1,8 @@
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { PlatformModule } from "../platform/platform.module";
+import { DailyDiaryController } from "./daily-diary.controller";
+import { DailyDiaryService } from "./daily-diary.service";
 import { GanttController } from "./gantt.controller";
 import { GanttService } from "./gantt.service";
 import { JpmController } from "./jpm.controller";
@@ -23,8 +25,14 @@ import { ProjectsTimelineController } from "./projects-timeline.controller";
  */
 @Module({
   imports: [AuditModule, PlatformModule],
-  controllers: [ProjectsController, GanttController, ProjectsTimelineController, JpmController],
-  providers: [ProjectsService, GanttService, JpmService],
-  exports: [ProjectsService, GanttService, JpmService]
+  controllers: [
+    ProjectsController,
+    GanttController,
+    ProjectsTimelineController,
+    JpmController,
+    DailyDiaryController
+  ],
+  providers: [ProjectsService, GanttService, JpmService, DailyDiaryService],
+  exports: [ProjectsService, GanttService, JpmService, DailyDiaryService]
 })
 export class ProjectsModule {}

@@ -30,15 +30,15 @@ function buildPrismaMock(opts: {
   const scopeCardFindFirst: AsyncMock = jest.fn(async () =>
     opts.card === undefined ? { id: "card-1", tenderId: "tender-1" } : opts.card
   );
-  // findMany on scopeOfWorksItem must respect the cuttingIncluded
-  // filter applied by the service — mock receives the where clause and
-  // returns matching items so the spec exercises the same filtering
-  // path as production.
-  const scopeOfWorksItemFindMany: AsyncMock = jest.fn(async (args: unknown) => {
-    const where = (args as { where?: Record<string, unknown> })?.where ?? {};
-    const onlyCuttingIncluded = (where as { cuttingIncluded?: boolean }).cuttingIncluded === true;
-    const all = opts.scopeItems ?? [];
-    return onlyCuttingIncluded ? all.filter((i) => i.cuttingIncluded) : all;
+  // PR feat/scope-material-inline-waste — the service no longer filters
+  // items in the DB where clause; instead it pulls every non-excluded
+  // item on the card and filters in-memory (so Material 2..N entries
+  // with cuttingIncluded=true still contribute). The mock therefore
+  // returns whatever fixture is supplied and lets the service do the
+  // filtering. Older tests that seed cuttingIncluded=false rely on the
+  // service's per-item guard to skip them.
+  const scopeOfWorksItemFindMany: AsyncMock = jest.fn(async (_args: unknown) => {
+    return opts.scopeItems ?? [];
   });
   const cuttingDeleteMany: AsyncMock = jest.fn(async () => ({ count: opts.deletedCount ?? 0 }));
   const cuttingCreate: AsyncMock = jest.fn(async (args: unknown) => {

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Header,
   Param,
@@ -17,13 +18,17 @@ import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import {
   BulkApproveTimesheetsDto,
   CreatePreStartDto,
+  CreateSiteGeofenceDto,
   CreateTimesheetDto,
   FieldListQueryDto,
+  GeofenceLookupQueryDto,
+  ListSiteGeofencesQueryDto,
   ManageTimesheetQueryDto,
   PayrollExportQueryDto,
   RejectTimesheetDto,
   TimesheetSummaryQueryDto,
   UpdatePreStartDto,
+  UpdateSiteGeofenceDto,
   UpdateTimesheetDto,
   WorkerLocationConsentDto
 } from "./dto/field.dto";
@@ -309,5 +314,52 @@ export class FieldController {
   @ApiResponse({ status: 201, description: "Attachment created." })
   addDocketAttachment(@Param("id") id: string, @Body() dto: CreateDocketAttachmentDto) {
     return this.docketService.addAttachment(id, dto);
+  }
+
+  // ── ERP gap C — geofence lookup + admin CRUD ──────────────────────────
+  @Get("geofences/at")
+  @RequirePermissions("field.view")
+  @ApiOperation({
+    summary:
+      "Return the signed-in worker's active allocations whose project site has an active geofence covering the supplied lat/lng. Used by the field app to auto-select the right job on clock-in."
+  })
+  @ApiResponse({ status: 200, description: "Matching allocations sorted by proximity to the geofence centre." })
+  geofencesAtPosition(@Query() query: GeofenceLookupQueryDto, @CurrentUser() user: RequestUser) {
+    return this.service.lookupAllocationsAtPosition(ctx(user), query);
+  }
+
+  @Get("geofences")
+  @RequirePermissions("field.manage")
+  @ApiOperation({ summary: "List site geofences (admin). Optional siteId + activeOnly filters." })
+  @ApiResponse({ status: 200, description: "List of geofences with site name/code." })
+  listSiteGeofences(@Query() query: ListSiteGeofencesQueryDto) {
+    return this.service.listSiteGeofences(query);
+  }
+
+  @Post("geofences")
+  @RequirePermissions("field.manage")
+  @ApiOperation({ summary: "Create a site geofence (admin)." })
+  @ApiResponse({ status: 201, description: "Created geofence." })
+  @ApiResponse({ status: 404, description: "Site not found." })
+  createSiteGeofence(@Body() dto: CreateSiteGeofenceDto) {
+    return this.service.createSiteGeofence(dto);
+  }
+
+  @Patch("geofences/:id")
+  @RequirePermissions("field.manage")
+  @ApiOperation({ summary: "Update a site geofence (admin). Any subset of fields may be sent." })
+  @ApiResponse({ status: 200, description: "Updated geofence." })
+  @ApiResponse({ status: 404, description: "Geofence not found." })
+  updateSiteGeofence(@Param("id") id: string, @Body() dto: UpdateSiteGeofenceDto) {
+    return this.service.updateSiteGeofence(id, dto);
+  }
+
+  @Delete("geofences/:id")
+  @RequirePermissions("field.manage")
+  @ApiOperation({ summary: "Delete a site geofence (admin). Historical Timesheet references are cleared to null via ON DELETE SET NULL." })
+  @ApiResponse({ status: 200, description: "Deleted." })
+  @ApiResponse({ status: 404, description: "Geofence not found." })
+  deleteSiteGeofence(@Param("id") id: string) {
+    return this.service.deleteSiteGeofence(id);
   }
 }

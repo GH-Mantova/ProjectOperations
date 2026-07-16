@@ -1,5 +1,6 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Query, Res, UseGuards } from "@nestjs/common";
+import { ApiBearerAuth, ApiOperation, ApiProduces, ApiResponse, ApiTags } from "@nestjs/swagger";
+import type { Response } from "express";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
@@ -11,6 +12,7 @@ import {
   UpsertFormTemplateDto
 } from "./dto/forms.dto";
 import { FormsService } from "./forms.service";
+import { SubmissionPdfService } from "./submission-pdf.service";
 
 /**
  * REST endpoints for form template authoring and raw submission CRUD.
@@ -23,7 +25,10 @@ import { FormsService } from "./forms.service";
 @Controller("forms")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class FormsController {
-  constructor(private readonly service: FormsService) {}
+  constructor(
+    private readonly service: FormsService,
+    private readonly submissionPdf: SubmissionPdfService
+  ) {}
 
   /**
    * List form templates.
@@ -193,6 +198,35 @@ export class FormsController {
    * @throws NotFoundException when the template version does not exist
    * @throws ConflictException when a required field is missing from the payload
    */
+  /**
+   * Render a submission to a branded PDF (evidence pack).
+   *
+   * Composes the submission's answers, signatures, attachments, GPS coordinates
+   * and timestamp into a printable A4 document using the same headless-Chromium
+   * pipeline as the quote PDF, with letterhead/footer resolved from CompanyProfile.
+   *
+   * @param id - submission id
+   * @param res - express response; the PDF is streamed as attachment
+   * @throws NotFoundException when the submission does not exist
+   */
+  @Get("submissions/:id/pdf")
+  @RequirePermissions("forms.view")
+  @ApiOperation({ summary: "Render a form submission as a branded PDF evidence pack" })
+  @ApiProduces("application/pdf")
+  @ApiResponse({ status: 200, description: "PDF stream with <template-code>_<submission-id-slug>.pdf filename." })
+  @ApiResponse({ status: 404, description: "Form submission not found." })
+  @Header("Cache-Control", "no-store")
+  async submissionPdfDownload(
+    @Param("id") id: string,
+    @Res({ passthrough: false }) res: Response
+  ): Promise<void> {
+    const { buffer, filename } = await this.submissionPdf.renderSubmissionPdf(id);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Length", String(buffer.length));
+    res.end(buffer);
+  }
+
   @Post("versions/:versionId/submissions")
   @RequirePermissions("forms.manage")
   @ApiOperation({ summary: "Submit a form against a specific template version" })

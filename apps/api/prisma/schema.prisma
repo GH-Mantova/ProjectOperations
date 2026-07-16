@@ -2259,12 +2259,12 @@ model PlatformConfig {
 // This store is for THIRD-PARTY keys only — never for infra/managed-identity
 // secrets or the BYOK master itself.
 model IntegrationCredential {
-  slug            String    @id
-  label           String
-  valueEncrypted  String?   @map("value_encrypted")
-  meta            Json?
-  updatedAt       DateTime  @updatedAt @map("updated_at")
-  updatedById     String?   @map("updated_by_id")
+  slug           String   @id
+  label          String
+  valueEncrypted String?  @map("value_encrypted")
+  meta           Json?
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  updatedById    String?  @map("updated_by_id")
 
   @@map("integration_credentials")
 }
@@ -4881,6 +4881,10 @@ model CompanyProfile {
   // TODO: when BrandColorScheme + BrandAsset land (staged in pr-branding-manager),
   // replace these string fields with FKs. Until then, plain strings so the
   // profile is usable without a second migration.
+  // â”€ Branding â”€
+  // Legacy string columns kept as fallback while callers migrate to the
+  // BrandColorScheme + BrandAsset relations below. A later contract PR
+  // will drop these once every reader has been repointed.
   primaryColorHex   String  @default("#005B61") @map("primary_color_hex")
   secondaryColorHex String  @default("#FEAA6D") @map("secondary_color_hex")
   logoLightUrl      String? @map("logo_light_url")
@@ -4889,6 +4893,11 @@ model CompanyProfile {
   pdfLetterheadUrl  String? @map("pdf_letterhead_url")
 
   // â"€ Audit trail â"€
+  activeColorSchemeId String?           @map("active_color_scheme_id")
+  activeColorScheme   BrandColorScheme? @relation("CompanyProfileActiveColorScheme", fields: [activeColorSchemeId], references: [id], onDelete: SetNull)
+  brandAssets         BrandAsset[]      @relation("CompanyProfileBrandAssets")
+
+  // â”€ Audit trail â”€
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
   updatedById String?  @map("updated_by_id")
@@ -4898,6 +4907,46 @@ model CompanyProfile {
   legalDocuments CompanyLegalDocument[]
 
   @@map("company_profile")
+}
+
+// Named palette of brand colours. Additive to CompanyProfile.primaryColorHex /
+// secondaryColorHex — the singleton points at a scheme via activeColorSchemeId
+// while the string fallbacks stay in place until a later contract PR removes
+// them. Only super-users mutate these (BrandingController enforces).
+model BrandColorScheme {
+  id                String   @id @default(cuid())
+  name              String   @unique
+  primaryColorHex   String   @map("primary_color_hex")
+  secondaryColorHex String   @map("secondary_color_hex")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  activeOn CompanyProfile[] @relation("CompanyProfileActiveColorScheme")
+
+  @@map("brand_color_scheme")
+}
+
+enum BrandAssetKind {
+  LOGO_LIGHT
+  LOGO_DARK
+  FAVICON
+  PDF_LETTERHEAD
+}
+
+// Per-kind asset URLs for the CompanyProfile singleton. Additive to the
+// legacy logoLightUrl / logoDarkUrl / faviconUrl / pdfLetterheadUrl columns.
+// (@@unique on profileId + kind enforces one asset per kind per profile.)
+model BrandAsset {
+  id        String         @id @default(cuid())
+  profileId String         @default("singleton") @map("profile_id")
+  profile   CompanyProfile @relation("CompanyProfileBrandAssets", fields: [profileId], references: [id], onDelete: Cascade)
+  kind      BrandAssetKind
+  url       String
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+
+  @@unique([profileId, kind])
+  @@map("brand_asset")
 }
 
 // Effective-dated, versioned company legal documents. Editing content

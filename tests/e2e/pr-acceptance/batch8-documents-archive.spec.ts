@@ -37,13 +37,13 @@ test.describe("Batch 8 — Archive route (prompt-directed; no inventory rows)", 
     for (const header of ["Job #", "Name", "Client", "Closed", "Status"]) {
       await expect(page.getByRole("columnheader", { name: header })).toBeVisible();
     }
-    await expect(page.getByRole("link", { name: "View" }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: "View", exact: true }).first()).toBeVisible();
     await expect(page.getByText(/^(ARCHIVED|CLOSED)$/).first()).toBeVisible();
   });
 
   test("archive detail opens read-only from the register's View link", async ({ page }) => {
     await page.goto("/archive");
-    await page.getByRole("link", { name: "View" }).first().click();
+    await page.getByRole("link", { name: "View", exact: true }).first().click();
 
     await expect(page).toHaveURL(/\/archive\/.+/);
     // Detail header is "{jobNumber} — {name}" with the read-only subtitle.

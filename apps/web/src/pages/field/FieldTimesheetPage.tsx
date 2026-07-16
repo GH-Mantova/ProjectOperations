@@ -225,6 +225,35 @@ function NewTimesheet({
     };
   }, [authFetch]);
 
+  // ERP gap C — after a clock-on GPS reading, ask the API which of the
+  // worker's allocations sits inside a geofence covering the point. If
+  // exactly one matches and no job is picked yet, auto-select it and
+  // surface the site name to the worker. Silent failure if the endpoint
+  // errors — the manual dropdown still works.
+  async function autoPickJobFromGeofence(lat: number, lng: number) {
+    try {
+      const res = await authFetch(`/field/geofences/at?lat=${lat}&lng=${lng}`);
+      if (!res.ok) return;
+      const body = (await res.json()) as {
+        matches: { allocationId: string; projectNumber: string; projectName: string; siteName: string | null; geofence: { name: string; distanceMetres: number } }[];
+      };
+      if (body.matches.length === 0) {
+        setGpsStatus((prev) => `${prev ?? ""} · No matching site geofence — pick your job manually.`.trim());
+        return;
+      }
+      const top = body.matches[0];
+      if (!allocationId) {
+        setAllocationId(top.allocationId);
+      }
+      const suffix = body.matches.length > 1 ? ` (+${body.matches.length - 1} other site${body.matches.length - 1 === 1 ? "" : "s"} nearby)` : "";
+      setGpsStatus(
+        `In geofence "${top.geofence.name}" at ${top.projectNumber} — ${top.projectName}${suffix}`
+      );
+    } catch {
+      // Best-effort — do not disturb the clock-in flow if the lookup fails.
+    }
+  }
+
   async function captureGps(slot: "on" | "off") {
     if (!navigator.geolocation) {
       setGpsStatus("Geolocation not supported on this device.");
@@ -245,6 +274,9 @@ function NewTimesheet({
         if (slot === "on") setClockOnGps(reading);
         else setClockOffGps(reading);
         setGpsStatus(`${slot === "on" ? "Clock-on" : "Clock-off"} pinned (±${Math.round(reading.accuracy)}m)`);
+        if (slot === "on") {
+          void autoPickJobFromGeofence(reading.lat, reading.lng);
+        }
       },
       (err) => setGpsStatus(`Could not get location: ${err.message}`),
       { enableHighAccuracy: true, timeout: 10_000, maximumAge: 0 }

@@ -2,10 +2,10 @@
   "_generator": "scripts/data-model/build-relationship-map.mjs",
   "_doNotEdit": "Regenerated from schema.prisma. Do not hand-edit.",
   "generatedFrom": "apps/api/prisma/schema.prisma",
-  "schemaSha256": "0c1b8ea67fa8eb20163b5cb7fdfa53afc107943bd880adda0ff1b857c89b07e0",
-  "modelCount": 198,
+  "schemaSha256": "95d9d0416ffe846f342445d9ae0a08ed0a1ed3b067d46640224e2d7888c052a5",
+  "modelCount": 199,
   "enumCount": 25,
-  "edgeCount": 293,
+  "edgeCount": 296,
   "domains": {
     "Assets": [
       "Asset",
@@ -205,7 +205,8 @@
       "SchedulingConflict"
     ],
     "Sites": [
-      "Site"
+      "Site",
+      "SiteGeofence"
     ],
     "Tendering": [
       "Tender",
@@ -34148,6 +34149,30 @@
           "isUpdatedAt": false
         },
         {
+          "name": "centreLat",
+          "dbColumn": "centre_lat",
+          "type": "Decimal",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "centreLng",
+          "dbColumn": "centre_lng",
+          "type": "Decimal",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
           "name": "notes",
           "dbColumn": null,
           "type": "String",
@@ -34300,6 +34325,25 @@
             "onDelete": null
           },
           "owning": false
+        },
+        {
+          "name": "geofences",
+          "dbColumn": null,
+          "type": "SiteGeofence",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
         }
       ],
       "relations": [
@@ -34366,9 +34410,24 @@
           "onDelete": null,
           "fkFields": [],
           "refFields": []
+        },
+        {
+          "field": "geofences",
+          "target": "SiteGeofence",
+          "cardinality": "many",
+          "relationName": null,
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
         }
       ],
       "referencedBy": [
+        {
+          "from": "SiteGeofence",
+          "via": "site",
+          "fk": "siteId"
+        },
         {
           "from": "Tender",
           "via": "site",
@@ -34393,6 +34452,242 @@
           "from": "DailyDiary",
           "via": "site",
           "fk": "siteId"
+        }
+      ]
+    },
+    "SiteGeofence": {
+      "name": "SiteGeofence",
+      "domain": "Sites",
+      "dbTable": "site_geofences",
+      "fields": [
+        {
+          "name": "id",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": true,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "siteId",
+          "dbColumn": "site_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "site",
+          "dbColumn": null,
+          "type": "Site",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [
+              "siteId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "Cascade"
+          },
+          "owning": true
+        },
+        {
+          "name": "name",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "centreLat",
+          "dbColumn": "centre_lat",
+          "type": "Decimal",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "centreLng",
+          "dbColumn": "centre_lng",
+          "type": "Decimal",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "radiusMetres",
+          "dbColumn": "radius_metres",
+          "type": "Int",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "isActive",
+          "dbColumn": "is_active",
+          "type": "Boolean",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "notes",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "createdAt",
+          "dbColumn": "created_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "updatedAt",
+          "dbColumn": "updated_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": true
+        },
+        {
+          "name": "clockOnEvents",
+          "dbColumn": null,
+          "type": "Timesheet",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "TimesheetClockOnGeofence",
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
+        },
+        {
+          "name": "clockOffEvents",
+          "dbColumn": null,
+          "type": "Timesheet",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "TimesheetClockOffGeofence",
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
+        }
+      ],
+      "relations": [
+        {
+          "field": "site",
+          "target": "Site",
+          "cardinality": "one",
+          "relationName": null,
+          "owning": true,
+          "onDelete": "Cascade",
+          "fkFields": [
+            "siteId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "clockOnEvents",
+          "target": "Timesheet",
+          "cardinality": "many",
+          "relationName": "TimesheetClockOnGeofence",
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
+        },
+        {
+          "field": "clockOffEvents",
+          "target": "Timesheet",
+          "cardinality": "many",
+          "relationName": "TimesheetClockOffGeofence",
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
+        }
+      ],
+      "referencedBy": [
+        {
+          "from": "Timesheet",
+          "via": "clockOnGeofence",
+          "fk": "clockOnGeofenceId"
+        },
+        {
+          "from": "Timesheet",
+          "via": "clockOffGeofence",
+          "fk": "clockOffGeofenceId"
         }
       ]
     },
@@ -41805,6 +42100,100 @@
           "isUpdatedAt": false
         },
         {
+          "name": "clockOnInGeofence",
+          "dbColumn": "clock_on_in_geofence",
+          "type": "Boolean",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "clockOffInGeofence",
+          "dbColumn": "clock_off_in_geofence",
+          "type": "Boolean",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "clockOnGeofenceId",
+          "dbColumn": "clock_on_geofence_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "clockOnGeofence",
+          "dbColumn": null,
+          "type": "SiteGeofence",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "TimesheetClockOnGeofence",
+            "fkFields": [
+              "clockOnGeofenceId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "SetNull"
+          },
+          "owning": true
+        },
+        {
+          "name": "clockOffGeofenceId",
+          "dbColumn": "clock_off_geofence_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "clockOffGeofence",
+          "dbColumn": null,
+          "type": "SiteGeofence",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "TimesheetClockOffGeofence",
+            "fkFields": [
+              "clockOffGeofenceId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "SetNull"
+          },
+          "owning": true
+        },
+        {
           "name": "status",
           "dbColumn": null,
           "type": "TimesheetStatus",
@@ -41997,6 +42386,34 @@
           "onDelete": "Cascade",
           "fkFields": [
             "allocationId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "clockOnGeofence",
+          "target": "SiteGeofence",
+          "cardinality": "one-optional",
+          "relationName": "TimesheetClockOnGeofence",
+          "owning": true,
+          "onDelete": "SetNull",
+          "fkFields": [
+            "clockOnGeofenceId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "clockOffGeofence",
+          "target": "SiteGeofence",
+          "cardinality": "one-optional",
+          "relationName": "TimesheetClockOffGeofence",
+          "owning": true,
+          "onDelete": "SetNull",
+          "fkFields": [
+            "clockOffGeofenceId"
           ],
           "refFields": [
             "id"
@@ -48961,6 +49378,14 @@
       "relationName": null
     },
     {
+      "from": "SiteGeofence",
+      "to": "Site",
+      "via": "site",
+      "fk": "siteId",
+      "onDelete": "Cascade",
+      "relationName": null
+    },
+    {
       "from": "JobRoleRequirement",
       "to": "JobRole",
       "via": "jobRole",
@@ -50119,6 +50544,22 @@
       "fk": "allocationId",
       "onDelete": "Cascade",
       "relationName": null
+    },
+    {
+      "from": "Timesheet",
+      "to": "SiteGeofence",
+      "via": "clockOnGeofence",
+      "fk": "clockOnGeofenceId",
+      "onDelete": "SetNull",
+      "relationName": "TimesheetClockOnGeofence"
+    },
+    {
+      "from": "Timesheet",
+      "to": "SiteGeofence",
+      "via": "clockOffGeofence",
+      "fk": "clockOffGeofenceId",
+      "onDelete": "SetNull",
+      "relationName": "TimesheetClockOffGeofence"
     },
     {
       "from": "Timesheet",

@@ -13877,6 +13877,18 @@
           "filterable": false,
           "aggregations": []
         },
+        "centreLat": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "centreLng": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
         "notes": {
           "role": "attribute",
           "label": null,
@@ -13926,6 +13938,98 @@
           "aggregations": []
         },
         "dailyDiaries": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "geofences": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        }
+      }
+    },
+    "SiteGeofence": {
+      "domain": "Sites",
+      "wizardVisible": true,
+      "label": null,
+      "reviewed": false,
+      "fields": {
+        "id": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "siteId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "site": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "name": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "centreLat": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "centreLng": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "radiusMetres": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "isActive": {
+          "role": "filter",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "notes": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "createdAt": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "updatedAt": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "clockOnEvents": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "clockOffEvents": {
           "role": "system",
           "label": null,
           "filterable": false,
@@ -16665,6 +16769,42 @@
           "role": "measure-candidate",
           "label": null,
           "filterable": false,
+          "aggregations": []
+        },
+        "clockOnInGeofence": {
+          "role": "filter",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "clockOffInGeofence": {
+          "role": "filter",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "clockOnGeofenceId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "clockOnGeofence": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "clockOffGeofenceId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "clockOffGeofence": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
           "aggregations": []
         },
         "status": {

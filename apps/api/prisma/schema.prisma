@@ -1191,7 +1191,7 @@ model Job {
   name               String
   description        String?
   clientId           String                 @map("client_id")
-  siteId             String?                @map("site_id")
+  siteId             String                 @map("site_id")
   sourceTenderId     String?                @unique @map("source_tender_id")
   survivingProjectId String?                @unique @map("surviving_project_id")
   status             String                 @default("PLANNING")
@@ -1200,7 +1200,7 @@ model Job {
   createdAt          DateTime               @default(now()) @map("created_at")
   updatedAt          DateTime               @updatedAt @map("updated_at")
   client             Client                 @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  site               Site?                  @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  site               Site                   @relation(fields: [siteId], references: [id], onDelete: Restrict)
   sourceTender       Tender?                @relation(fields: [sourceTenderId], references: [id], onDelete: SetNull)
   survivingProject   Project?               @relation("JobSurvivingProject", fields: [survivingProjectId], references: [id], onDelete: SetNull)
   reverseSourceOf    Project?               @relation("ProjectSourceJob")
@@ -2291,8 +2291,8 @@ model Project {
   reverseSurvivorOf       Job?                 @relation("JobSurvivingProject")
   clientId                String               @map("client_id")
   client                  Client               @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  siteId                  String?              @map("site_id")
-  site                    Site?                @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  siteId                  String               @map("site_id")
+  site                    Site                 @relation(fields: [siteId], references: [id], onDelete: Restrict)
   siteAddressLine1        String               @map("site_address_line1")
   siteAddressLine2        String?              @map("site_address_line2")
   siteAddressSuburb       String               @map("site_address_suburb")

@@ -175,6 +175,36 @@ export function isRunTimedOut(elapsedMs, capMs) {
   return capMs > 0 && elapsedMs >= capMs;
 }
 
+// Filter `git ls-files --others --exclude-standard` output down to the ready-
+// or HOLD-form prompt filenames sitting at the top of the queue dir.
+//
+// Why this exists: a *-ready.md prompt that is untracked in origin/main is
+// invisible to worktree stations (04-scanner, 01-code-writer, 05-sot-keeper —
+// they all start from a fresh clone of main), can be wiped by `git clean`,
+// and — worst of all — start-watcher.ps1 stashes untracked files via
+// `git stash push --include-untracked` whenever the tracked tree is dirty at
+// startup, which has SILENTLY MOVED staged prompts out of the queue.
+// PROMPT-SCHEMA.md now says "a prompt is not real until committed to
+// origin/main"; this parser is the machine half of that rule.
+//
+// Pure + exported so the log-tag emission is unit-testable without spawning
+// git. Callers run `git -C PROMPT_DIR ls-files ...`, so paths are relative to
+// PROMPT_DIR — a path with a separator lives in a subdir (paused/, processed/,
+// failed/, ...) and is NOT a top-level queue entry.
+export function parseUntrackedReadyPrompts(porcelain) {
+  const out = [];
+  if (!porcelain) return out;
+  for (const raw of String(porcelain).split(/\r?\n/)) {
+    const name = raw.trim();
+    if (!name) continue;
+    if (name.includes("/") || name.includes("\\")) continue;
+    if (/-ready\.md$/i.test(name) || /-HOLD\.md$/i.test(name)) {
+      out.push(name);
+    }
+  }
+  return out;
+}
+
 // Extract worktree paths from `git worktree list --porcelain`, excluding the
 // main working tree. Pure + exported for unit testing.
 export function parseWorktreePaths(porcelain, mainPath) {
@@ -1568,6 +1598,53 @@ async function scanExisting() {
   }
 }
 
+// Preflight: warn (loudly, with the greppable tag `untracked-ready-prompt`)
+// for any top-level *-ready.md / *-HOLD.md sitting in PROMPT_DIR that is
+// UNTRACKED in the enclosing git repo. Warning only — the watcher will still
+// dispatch an untracked -ready.md; the queue path is unchanged. Returns the
+// count so main() can fold it into the preflight summary.
+async function warnOnUntrackedReadyPrompts() {
+  let porcelain;
+  try {
+    porcelain = await new Promise((resolve, reject) => {
+      const out = [];
+      const err = [];
+      const child = spawn(
+        "git",
+        ["-C", PROMPT_DIR, "ls-files", "--others", "--exclude-standard", "--", "."],
+        { shell: true },
+      );
+      child.stdout.on("data", (c) => out.push(c));
+      child.stderr.on("data", (c) => err.push(c));
+      child.on("error", reject);
+      child.on("close", (code) => {
+        if (code !== 0) {
+          return reject(new Error(Buffer.concat(err).toString("utf-8").trim() || `exit ${code}`));
+        }
+        resolve(Buffer.concat(out).toString("utf-8"));
+      });
+    });
+  } catch (e) {
+    log("watcher", `untracked-prompt scan skipped: ${e.message}`);
+    return 0;
+  }
+
+  const names = parseUntrackedReadyPrompts(porcelain);
+  if (names.length === 0) return 0;
+
+  log(
+    "WARN",
+    `untracked-ready-prompt: ${names.length} ready/HOLD prompt(s) in ${PROMPT_DIR} are UNTRACKED in git. ` +
+      `Untracked prompts are invisible to worktree stations, lost on \`git clean\`, and can be STASHED AWAY ` +
+      `by start-watcher.ps1 (git stash push --include-untracked) when the tracked tree is dirty. ` +
+      `Commit each to origin/main via a docs-only PR to make it real. Files: ${names.join(", ")}`,
+  );
+  for (const n of names) {
+    log("WARN", `untracked-ready-prompt: ${n}`);
+  }
+  return names.length;
+}
+
 // Periodic rescan — fallback for fs.watch events lost by the OS. Walks
 // the watched directory and queues any -ready.md file not already seen.
 // The `seen` Set covers both queued and in-flight prompts, so the dedupe
@@ -1689,6 +1766,9 @@ async function main() {
   await sweepMalformedLiteralPathDirs();
   await reapPreviousChildren();
   await sweepOrphanWorktrees();
+
+  const untrackedCount = await warnOnUntrackedReadyPrompts();
+  log("watcher", `preflight: untracked-ready-prompt count = ${untrackedCount}`);
 
   await scanExisting();
 

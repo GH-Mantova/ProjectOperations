@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { DefaultDashboardSection } from "./DefaultDashboardSection";
 import { GlobalListsSection } from "./GlobalListsSection";
 
 // §5A.1 PR 8 (PR #132): the legacy "My AI providers" section was removed
@@ -17,6 +18,8 @@ export function UserProfilePage() {
           Signed in as <strong>{user.firstName} {user.lastName}</strong> · {user.email}
         </p>
       ) : null}
+
+      <DefaultDashboardSection />
 
       <GlobalListsSection isAdmin={isAdmin} />
 

@@ -1,4 +1,4 @@
-import { useEffect, type ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 import { Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { runDraftPurgeJob } from "./drafts";
@@ -57,6 +57,7 @@ import { JobRolesPage } from "./pages/admin/JobRolesPage";
 import { RatesListsAdminPage } from "./pages/admin/RatesListsAdminPage";
 import { UserDashboardPage } from "./pages/dashboards/UserDashboardPage";
 import { DashboardRedirectPage } from "./pages/dashboards/DashboardRedirectPage";
+import { GlobalDashboardPage } from "./pages/dashboards/GlobalDashboardPage";
 import { FieldLayout } from "./layouts/FieldLayout";
 import { FieldAllocationsPage } from "./pages/field/FieldAllocationsPage";
 import { FieldPreStartPage } from "./pages/field/FieldPreStartPage";
@@ -103,19 +104,74 @@ function FieldOnlyGuard({ children }: { children: ReactElement }) {
   return children;
 }
 
+// Global "Home" dashboard id — seeded by migration
+// 20260716120000_user_default_dashboard. When the resolver returns this
+// id we stay on the frontend's Home (`/` -> DashboardPlaceholderPage);
+// any other id means the user has picked a personal default and we
+// redirect them to the standalone renderer.
+const HOME_DASHBOARD_ID = "seed-home-dashboard";
+
 function RootRedirect({ children }: { children: ReactElement }) {
-  const { user } = useAuth();
-  if (user) {
-    const hasField = user.permissions.includes("field.view");
-    const hasDesktop =
-      user.permissions.includes("projects.view") ||
-      user.permissions.includes("tenders.view") ||
-      user.permissions.includes("users.view") ||
-      user.permissions.includes("dashboards.view");
-    if (hasField && !hasDesktop) {
-      return <Navigate to="/field/allocations" replace />;
+  const { user, authFetch } = useAuth();
+  const hasField = user?.permissions.includes("field.view") ?? false;
+  const hasDesktop =
+    (user?.permissions.includes("projects.view") ||
+      user?.permissions.includes("tenders.view") ||
+      user?.permissions.includes("users.view") ||
+      user?.permissions.includes("dashboards.view")) ??
+    false;
+  const fieldOnly = Boolean(user) && hasField && !hasDesktop;
+
+  // `undefined` = resolver still in flight; `null` = confirmed no
+  // personal default (stay on children); string = navigate there.
+  const [redirect, setRedirect] = useState<string | null | undefined>(
+    user ? (fieldOnly ? "/field/allocations" : undefined) : null
+  );
+
+  useEffect(() => {
+    if (!user) {
+      setRedirect(null);
+      return;
     }
+    if (fieldOnly) {
+      setRedirect("/field/allocations");
+      return;
+    }
+    let cancelled = false;
+    setRedirect(undefined);
+    void authFetch("/users/me/default-dashboard")
+      .then(async (response) => {
+        if (cancelled) return;
+        if (!response.ok) {
+          setRedirect(null);
+          return;
+        }
+        const body = (await response.json()) as { id?: string; isFallback?: boolean };
+        // Fallback (no override) OR the override IS Home: stay on `/`
+        // so the existing DashboardPlaceholderPage renders. Non-Home
+        // overrides route to the standalone renderer.
+        if (!body?.id || body.isFallback || body.id === HOME_DASHBOARD_ID) {
+          setRedirect(null);
+        } else {
+          setRedirect(`/dashboards/global/${body.id}`);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setRedirect(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, fieldOnly, authFetch]);
+
+  if (redirect === undefined) {
+    return (
+      <div style={{ padding: 40, textAlign: "center", color: "var(--text-muted)" }}>
+        Loading your dashboard…
+      </div>
+    );
   }
+  if (redirect) return <Navigate to={redirect} replace />;
   return children;
 }
 
@@ -245,6 +301,7 @@ export function App() {
                 (or to / if they have none). /dashboards/:id still serves the
                 user-owned dashboard system built on DashboardCanvas. */}
             <Route path="/dashboards" element={<DashboardRedirectPage />} />
+            <Route path="/dashboards/global/:id" element={<GlobalDashboardPage />} />
             <Route path="/dashboards/:id" element={<UserDashboardPage />} />
             <Route path="/master-data" element={<MasterDataWorkspacePage />} />
             <Route path="/sites" element={<SitesListPage />} />

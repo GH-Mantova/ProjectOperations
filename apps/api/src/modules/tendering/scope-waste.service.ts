@@ -298,48 +298,67 @@ export class ScopeWasteService {
       this.prisma.estimateWasteRate.findMany({ where: { isActive: true } })
     ]);
 
-    // Aggregate by (wasteGroup, wasteItem). Skip items missing the
-    // group/item pair or with neither tonnes nor m³ contributing.
+    // Aggregate by (wasteGroup, wasteItem). Skip contributions missing
+    // the group/item pair or with neither tonnes nor m³.
+    //
+    // PR feat/scope-material-inline-waste — attribution is now per
+    // MATERIAL, not per item. Material 1 (item.tonnes/m3 + item.waste*)
+    // and each entry in item.materials contribute independently, each
+    // to their OWN (wasteGroup, wasteItem). A single-material item is
+    // unchanged (its only contribution is Material 1); a mixed item now
+    // splits its tonnage across whatever waste types its materials use.
     type GroupKey = string;
     const totals = new Map<
       GroupKey,
       { wasteGroup: string; wasteType: string; tonnes: number; m3: number }
     >();
-    for (const i of items) {
-      if (!i.wasteIncluded) continue;
-      if (!i.wasteGroup || !i.wasteItem) continue;
-      let tonnes = i.tonnes == null ? 0 : Number(i.tonnes);
-      let m3 = i.m3 == null ? 0 : Number(i.m3);
-      // PR feat/scope-multi-material — fold rows 2..N of the material
-      // list into the item's tonnes/m³ contribution. Non-numeric or
-      // negative entries are ignored (defensive — JSON column is not
-      // schema-validated at the DB layer).
-      const materials = Array.isArray(i.materials)
-        ? (i.materials as Array<{ tonnes?: unknown; m3?: unknown }>)
-        : [];
-      for (const m of materials) {
-        const mt = Number(m?.tonnes);
-        const mm = Number(m?.m3);
-        if (Number.isFinite(mt) && mt > 0) tonnes += mt;
-        if (Number.isFinite(mm) && mm > 0) m3 += mm;
-      }
-      if (!(tonnes > 0) && !(m3 > 0)) continue;
-      // PR B4a.2 — null-byte delimiter so a group/item pair like
-      // ("A B", "C") cannot collide with ("A", "B C"). User input
-      // never contains \x00 in practice, but a space delimiter would
-      // collapse those two distinct pairs into the same key.
-      const key = `${i.wasteGroup}\x00${i.wasteItem}`;
+    // PR B4a.2 — null-byte delimiter so a group/item pair like
+    // ("A B", "C") cannot collide with ("A", "B C"). User input never
+    // contains \x00 in practice, but a space delimiter would collapse
+    // those two distinct pairs into the same key.
+    const addContribution = (
+      wasteGroup: string,
+      wasteItem: string,
+      tonnes: number,
+      m3: number
+    ) => {
+      if (!(tonnes > 0) && !(m3 > 0)) return;
+      const key = `${wasteGroup}\x00${wasteItem}`;
       const existing = totals.get(key);
       if (existing) {
         existing.tonnes += tonnes;
         existing.m3 += m3;
       } else {
-        totals.set(key, {
-          wasteGroup: i.wasteGroup,
-          wasteType: i.wasteItem,
-          tonnes,
-          m3
-        });
+        totals.set(key, { wasteGroup, wasteType: wasteItem, tonnes, m3 });
+      }
+    };
+    for (const i of items) {
+      // Material 1 — item's flat waste columns + flat tonnes/m3.
+      if (i.wasteIncluded && i.wasteGroup && i.wasteItem) {
+        const tonnes = i.tonnes == null ? 0 : Number(i.tonnes);
+        const m3 = i.m3 == null ? 0 : Number(i.m3);
+        addContribution(i.wasteGroup, i.wasteItem, tonnes, m3);
+      }
+      // Material 2..N — each entry carries its own waste classification.
+      const materials = Array.isArray(i.materials)
+        ? (i.materials as Array<{
+            tonnes?: unknown;
+            m3?: unknown;
+            wasteGroup?: unknown;
+            wasteItem?: unknown;
+            wasteIncluded?: unknown;
+          }>)
+        : [];
+      for (const m of materials) {
+        if (m?.wasteIncluded !== true) continue;
+        const wg = typeof m?.wasteGroup === "string" ? m.wasteGroup : null;
+        const wi = typeof m?.wasteItem === "string" ? m.wasteItem : null;
+        if (!wg || !wi) continue;
+        const mt = Number(m?.tonnes);
+        const mm = Number(m?.m3);
+        const tonnes = Number.isFinite(mt) && mt > 0 ? mt : 0;
+        const m3v = Number.isFinite(mm) && mm > 0 ? mm : 0;
+        addContribution(wg, wi, tonnes, m3v);
       }
     }
 

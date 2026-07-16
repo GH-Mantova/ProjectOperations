@@ -166,6 +166,11 @@ model User {
   companyProfilesAsWhs    CompanyProfile[]       @relation("CompanyProfileWhsOfficer")
   companyLegalDocsCreated CompanyLegalDocument[] @relation("CompanyLegalDocCreatedBy")
 
+  // Commitments (ERP gap A — cost control)
+  commitmentsCreated        Commitment[]       @relation("CommitmentCreatedBy")
+  commitmentChangesCreated  CommitmentChange[] @relation("CommitmentChangeCreatedBy")
+  commitmentChangesApproved CommitmentChange[] @relation("CommitmentChangeApprovedBy")
+
   @@index([isActive])
   @@index([managerId])
   @@map("users")
@@ -1210,6 +1215,7 @@ model Job {
   formSubmissions    FormSubmission[]
   closeout           JobCloseout?
   correspondences    CorrespondenceThread[] @relation("JobCorrespondence")
+  commitments        Commitment[]
 
   @@index([clientId])
   @@index([status])
@@ -3630,6 +3636,7 @@ model SubcontractorSupplier {
   creditApplications CreditApplication[]     @relation("SubCreditApps")
   creditEntries      SupplierCreditEntry[]   @relation("SupplierCreditEntries")
   rateTables         RateTable[]             @relation("RateTableSupplier")
+  commitments        Commitment[]
 
   @@index([entityType])
   @@index([prequalStatus])
@@ -4857,4 +4864,98 @@ model CompanyLegalDocument {
   @@unique([type, version])
   @@index([type, isActive])
   @@map("company_legal_documents")
+}
+
+// ── Commitments (ERP gap A — cost control) ─────────────────────────────────
+// Committed costs (subcontracts, purchase orders to tip sites / haulage /
+// plant hire / subbies) tracked against a Job budget. Distinct from
+// ProcurementRequest (an internal purchase-requisition workflow); a
+// Commitment is the budget-facing record of a contracted spend obligation.
+//
+// Budget view equation: budget vs committed vs actual (actuals posted by
+// Accounts outside this system for now — a separate PR will wire them).
+//
+// CommitmentChange captures scope variations / VO to the original value.
+
+enum CommitmentType {
+  SUBCONTRACT
+  PURCHASE_ORDER
+  HIRE
+  OTHER
+}
+
+enum CommitmentStatus {
+  DRAFT
+  APPROVED
+  CLOSED
+  CANCELLED
+}
+
+enum CommitmentChangeStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Commitment {
+  id              String                 @id @default(cuid())
+  jobId           String                 @map("job_id")
+  job             Job                    @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  type            CommitmentType
+  supplierId      String?                @map("supplier_id")
+  supplier        SubcontractorSupplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  reference       String
+  description     String
+  value           Decimal                @db.Decimal(14, 2)
+  status          CommitmentStatus       @default(DRAFT)
+  // Optional link to the procurement PO that triggered this commitment.
+  purchaseOrderId String?                @unique @map("purchase_order_id")
+  createdById     String                 @map("created_by_id")
+  createdBy       User                   @relation("CommitmentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+
+  items   CommitmentItem[]
+  changes CommitmentChange[]
+
+  @@index([jobId, status])
+  @@index([supplierId])
+  @@map("commitments")
+}
+
+model CommitmentItem {
+  id           String   @id @default(cuid())
+  commitmentId String   @map("commitment_id")
+  commitment   Commitment @relation(fields: [commitmentId], references: [id], onDelete: Cascade)
+  description  String
+  costCategory String?  @map("cost_category")
+  quantity     Decimal  @default(1) @db.Decimal(14, 4)
+  unit         String   @default("lump")
+  rate         Decimal? @db.Decimal(14, 2)
+  amount       Decimal  @db.Decimal(14, 2)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([commitmentId])
+  @@map("commitment_items")
+}
+
+model CommitmentChange {
+  id            String                 @id @default(cuid())
+  commitmentId  String                 @map("commitment_id")
+  commitment    Commitment             @relation(fields: [commitmentId], references: [id], onDelete: Cascade)
+  reference     String
+  description   String
+  valueChange   Decimal                @map("value_change") @db.Decimal(14, 2)
+  status        CommitmentChangeStatus @default(DRAFT)
+  approvedById  String?                @map("approved_by_id")
+  approvedBy    User?                  @relation("CommitmentChangeApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  createdById   String                 @map("created_by_id")
+  createdBy     User                   @relation("CommitmentChangeCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt     DateTime               @default(now()) @map("created_at")
+  updatedAt     DateTime               @updatedAt @map("updated_at")
+
+  @@index([commitmentId, status])
+  @@map("commitment_changes")
 }

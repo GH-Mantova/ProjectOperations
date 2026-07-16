@@ -42,6 +42,7 @@ import { FormsListPage } from "./pages/forms/FormsListPage";
 import { FormDesignerPage } from "./pages/forms/FormDesignerPage";
 import { FormFillPage } from "./pages/forms/FormFillPage";
 import { FormSubmissionDetailPage } from "./pages/forms/FormSubmissionDetailPage";
+import { PublicFormFillPage } from "./pages/forms/PublicFormFillPage";
 import { CorrectiveActionsPage } from "./pages/forms/CorrectiveActionsPage";
 import { CorrectiveActionDetailPage } from "./pages/forms/CorrectiveActionDetailPage";
 import { DocumentsWorkspacePage } from "./pages/documents/DocumentsWorkspacePage";
@@ -154,6 +155,8 @@ export function App() {
             </Route>
           </Route>
           <Route path="/login" element={<LoginPage />} />
+          {/* Public / kiosk form capture routes — no auth required (PR #621) */}
+          <Route path="/forms/public/:token" element={<PublicFormFillPage />} />
         <Route element={<ProtectedRoute />}>
           <Route
             path="/field"

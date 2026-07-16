@@ -97,11 +97,40 @@ foreach ($openPr in @($board)) {
 Write-Host ("   open: " + @($board).Count)
 
 # ---------------------------------------------------------------------------------------------
-# 4. THE SPECIFIC PR
+# 4. THE PROMPT QUEUE -- any untracked-ready-prompt files sitting in docs/pr-prompts/?
+# ---------------------------------------------------------------------------------------------
+# A *-ready.md or *-HOLD.md that is UNTRACKED in git is invisible to the worktree stations,
+# lost on `git clean`, and can be STASHED AWAY by start-watcher.ps1
+# (git stash push --include-untracked) when the tracked tree is dirty at startup. The near-miss
+# on 2026-07-15 was 15 staged-but-untracked prompts; PROMPT-SCHEMA.md now says "a prompt is not
+# real until committed to origin/main" and this section is the machine half of that rule.
+# WARNING, not blocking -- surface the count so the operator commits them before proceeding.
+Write-Host ""
+Write-Host "4. PROMPT QUEUE (docs/pr-prompts/)"
+$promptDir = "C:\po-watcher\ProjectOperations\docs\pr-prompts"
+if (Test-Path $promptDir) {
+    $untracked = @(git -C $promptDir ls-files --others --exclude-standard -- . 2>$null)
+    $stray = @($untracked | Where-Object { $_ -and ($_ -notmatch "[\\/]") -and ($_ -match "-(ready|HOLD)\.md$") })
+    if ($stray.Count -gt 0) {
+        Write-Host ("   >>> untracked-ready-prompt: " + $stray.Count + " ready/HOLD prompt(s) are UNTRACKED in git.") -ForegroundColor Yellow
+        Write-Host "   >>> Untracked prompts are invisible to worktree stations, lost on 'git clean', and"
+        Write-Host "   >>> can be STASHED AWAY by start-watcher.ps1 when the tracked tree is dirty."
+        Write-Host "   >>> Commit each to origin/main via a docs-only PR to make them real."
+        foreach ($p in $stray) { Write-Host ("     - " + $p) -ForegroundColor Yellow }
+        $busy += ("untracked-ready-prompt: " + $stray.Count + " ready/HOLD prompt(s) not committed to origin/main")
+    } else {
+        Write-Host "   no untracked-ready-prompt entries"
+    }
+} else {
+    Write-Host ("   prompt dir not found at " + $promptDir + " -- skipping untracked-ready-prompt scan")
+}
+
+# ---------------------------------------------------------------------------------------------
+# 5. THE SPECIFIC PR
 # ---------------------------------------------------------------------------------------------
 if ($PR -gt 0) {
     Write-Host ""
-    Write-Host ("4. PR #" + $PR)
+    Write-Host ("5. PR #" + $PR)
     $target = ((gh pr view $PR --json state,mergeStateStatus,autoMergeRequest,headRefOid | Out-String) | ConvertFrom-Json)
     Write-Host ("   state = " + $target.state)
     if ($target.state -ne "OPEN") {

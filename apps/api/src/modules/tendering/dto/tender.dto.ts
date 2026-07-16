@@ -123,6 +123,7 @@ export class UpsertTenderDto {
   title!: string;
   @IsOptional() @IsString() description?: string;
   @IsOptional() @IsString() estimatorUserId?: string;
+  @IsOptional() @IsString() siteId?: string;
   @IsOptional() @IsString() status?: string;
   @IsOptional() @IsDateString() dueDate?: string;
   @IsOptional() @IsDateString() proposedStartDate?: string;

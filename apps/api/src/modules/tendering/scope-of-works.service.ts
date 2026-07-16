@@ -143,6 +143,13 @@ function numericFieldsFrom(dto: Partial<UpdateScopeItemDto & CreateScopeItemDto>
       dto.plantItems !== undefined ? (dto.plantItems as unknown as Prisma.InputJsonValue) : undefined,
     measurements:
       dto.measurements !== undefined ? (dto.measurements as unknown as Prisma.InputJsonValue) : undefined,
+    // PR feat/scope-multi-material — pass-through of the additional
+    // materials array. Row 1 stays on flat columns; rows 2..N live
+    // here. Backend does not re-derive per-row sqm/m3/tonnes — the
+    // frontend ships each row's full picture on save (same contract as
+    // the flat row-1 dimension fields; see B4a.5 note above).
+    materials:
+      dto.materials !== undefined ? (dto.materials as unknown as Prisma.InputJsonValue) : undefined,
     // PR B1.6 — canonical items table columns. wasteItem completes the
     // group/item pair; wasteIncluded flags this row for the waste
     // aggregator.

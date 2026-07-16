@@ -42,6 +42,8 @@ import { FormsListPage } from "./pages/forms/FormsListPage";
 import { FormDesignerPage } from "./pages/forms/FormDesignerPage";
 import { FormFillPage } from "./pages/forms/FormFillPage";
 import { FormSubmissionDetailPage } from "./pages/forms/FormSubmissionDetailPage";
+import { CorrectiveActionsPage } from "./pages/forms/CorrectiveActionsPage";
+import { CorrectiveActionDetailPage } from "./pages/forms/CorrectiveActionDetailPage";
 import { DocumentsWorkspacePage } from "./pages/documents/DocumentsWorkspacePage";
 import { MasterDataWorkspacePage } from "./pages/master-data/MasterDataWorkspacePage";
 import { SubcontractorsPage } from "./pages/directory/SubcontractorsPage";
@@ -225,6 +227,8 @@ export function App() {
             <Route path="/forms/designer/:templateId" element={<FormDesignerPage />} />
             <Route path="/forms/fill/:submissionId" element={<FormFillPage />} />
             <Route path="/forms/submissions/:id" element={<FormSubmissionDetailPage />} />
+            <Route path="/forms/corrective-actions" element={<CorrectiveActionsPage />} />
+            <Route path="/forms/corrective-actions/:id" element={<CorrectiveActionDetailPage />} />
             <Route path="/documents" element={<DocumentsWorkspacePage />} />
             <Route path="/admin/users" element={<UsersPage />} />
             <Route path="/admin/roles" element={<RolesPage />} />

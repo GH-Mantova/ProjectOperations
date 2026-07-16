@@ -21,11 +21,21 @@ import {
 // not paraphrased or reformatted. Later edits create a new version; the
 // v1 row is never mutated.
 export async function seedCompanyProfile(prisma: PrismaClient) {
+  const defaultScheme = await seedDefaultBrandColorScheme(prisma);
+
   const existing = await prisma.companyProfile.findUnique({ where: { id: "singleton" } });
   if (existing) {
     // Profile already exists — a user may have edited it. Do NOT overwrite.
     // Still ensure the v1 legal documents exist (insert-if-absent) so a
-    // partial-seed state can recover.
+    // partial-seed state can recover. Also wire activeColorSchemeId to the
+    // default palette if it hasn't been set — a NULL FK on an existing
+    // profile means the branding-manager migration hit before this seed.
+    if (existing.activeColorSchemeId === null) {
+      await prisma.companyProfile.update({
+        where: { id: "singleton" },
+        data: { activeColorSchemeId: defaultScheme.id }
+      });
+    }
     await seedLegalDocumentsV1(prisma);
     return existing;
   }
@@ -74,14 +84,33 @@ export async function seedCompanyProfile(prisma: PrismaClient) {
       claimNumberPrefix: "PC",
       incidentNumberPrefix: "INC",
 
-      // Branding — from BRAND constant in tc-text.const.ts.
+      // Branding — from BRAND constant in tc-text.const.ts. Legacy string
+      // fallbacks are kept in lock-step with the default BrandColorScheme
+      // seeded above so both readers see the same palette.
       primaryColorHex: "#005B61",
-      secondaryColorHex: "#FEAA6D"
+      secondaryColorHex: "#FEAA6D",
+      activeColorSchemeId: defaultScheme.id
     }
   });
 
   await seedLegalDocumentsV1(prisma);
   return profile;
+}
+
+// The "Default" brand palette. Idempotent upsert (never deleteMany-then-create)
+// so a manual admin edit of the palette survives a `pnpm seed` re-run — same
+// CP-08 discipline the profile row itself uses.
+async function seedDefaultBrandColorScheme(prisma: PrismaClient) {
+  return prisma.brandColorScheme.upsert({
+    where: { name: "Default" },
+    update: {},
+    create: {
+      id: "brand-scheme-default",
+      name: "Default",
+      primaryColorHex: "#005B61",
+      secondaryColorHex: "#FEAA6D"
+    }
+  });
 }
 
 // Legal documents are seeded as version 1, effective from 2020-01-01

@@ -2,10 +2,10 @@
   "_generator": "scripts/data-model/build-relationship-map.mjs",
   "_doNotEdit": "Regenerated from schema.prisma. Do not hand-edit.",
   "generatedFrom": "apps/api/prisma/schema.prisma",
-  "schemaSha256": "f265a9fe76954767000255b6974c91fa68ed2bea1c926e2f06e829352d1f8e2a",
-  "modelCount": 201,
+  "schemaSha256": "ecd1729ca3a28e800c035d88ed082ea31a8d04cab57f3014ce9ccda4e4401a37",
+  "modelCount": 202,
   "enumCount": 28,
-  "edgeCount": 300,
+  "edgeCount": 303,
   "domains": {
     "Assets": [
       "Asset",
@@ -237,6 +237,7 @@
       "CommitmentItem",
       "CompanyLegalDocument",
       "CompanyProfile",
+      "CorrectiveAction",
       "DailyDiary",
       "OperationsSettings"
     ],
@@ -8812,6 +8813,319 @@
       ],
       "referencedBy": []
     },
+    "CorrectiveAction": {
+      "name": "CorrectiveAction",
+      "domain": "Unclassified",
+      "dbTable": "corrective_actions",
+      "fields": [
+        {
+          "name": "id",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": true,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "submissionId",
+          "dbColumn": "submission_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "submission",
+          "dbColumn": null,
+          "type": "FormSubmission",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [
+              "submissionId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "SetNull"
+          },
+          "owning": true
+        },
+        {
+          "name": "sourceFieldKey",
+          "dbColumn": "source_field_key",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "title",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "description",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "assignedToId",
+          "dbColumn": "assigned_to_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "assignedTo",
+          "dbColumn": null,
+          "type": "User",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "CorrectiveActionAssignee",
+            "fkFields": [
+              "assignedToId"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "SetNull"
+          },
+          "owning": true
+        },
+        {
+          "name": "assignedToRole",
+          "dbColumn": "assigned_to_role",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "dueAt",
+          "dbColumn": "due_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "priority",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "status",
+          "dbColumn": null,
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "closedAt",
+          "dbColumn": "closed_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "closedById",
+          "dbColumn": "closed_by_id",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "closedBy",
+          "dbColumn": null,
+          "type": "User",
+          "kind": "relation",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "CorrectiveActionCloser",
+            "fkFields": [
+              "closedById"
+            ],
+            "refFields": [
+              "id"
+            ],
+            "onDelete": "SetNull"
+          },
+          "owning": true
+        },
+        {
+          "name": "closeOutNote",
+          "dbColumn": "close_out_note",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "evidencePath",
+          "dbColumn": "evidence_path",
+          "type": "String",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": true,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "createdAt",
+          "dbColumn": "created_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": true,
+          "isUpdatedAt": false
+        },
+        {
+          "name": "updatedAt",
+          "dbColumn": "updated_at",
+          "type": "DateTime",
+          "kind": "scalar",
+          "isList": false,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "submission",
+          "target": "FormSubmission",
+          "cardinality": "one-optional",
+          "relationName": null,
+          "owning": true,
+          "onDelete": "SetNull",
+          "fkFields": [
+            "submissionId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "assignedTo",
+          "target": "User",
+          "cardinality": "one-optional",
+          "relationName": "CorrectiveActionAssignee",
+          "owning": true,
+          "onDelete": "SetNull",
+          "fkFields": [
+            "assignedToId"
+          ],
+          "refFields": [
+            "id"
+          ]
+        },
+        {
+          "field": "closedBy",
+          "target": "User",
+          "cardinality": "one-optional",
+          "relationName": "CorrectiveActionCloser",
+          "owning": true,
+          "onDelete": "SetNull",
+          "fkFields": [
+            "closedById"
+          ],
+          "refFields": [
+            "id"
+          ]
+        }
+      ],
+      "referencedBy": []
+    },
     "CorrespondenceMessage": {
       "name": "CorrespondenceMessage",
       "domain": "Communications",
@@ -16995,6 +17309,25 @@
             "onDelete": null
           },
           "owning": false
+        },
+        {
+          "name": "correctiveActions",
+          "dbColumn": null,
+          "type": "CorrectiveAction",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": null,
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
         }
       ],
       "relations": [
@@ -17159,6 +17492,16 @@
           "onDelete": null,
           "fkFields": [],
           "refFields": []
+        },
+        {
+          "field": "correctiveActions",
+          "target": "CorrectiveAction",
+          "cardinality": "many",
+          "relationName": null,
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
         }
       ],
       "referencedBy": [
@@ -17169,6 +17512,11 @@
         },
         {
           "from": "FormTriggeredRecord",
+          "via": "submission",
+          "fk": "submissionId"
+        },
+        {
+          "from": "CorrectiveAction",
           "via": "submission",
           "fk": "submissionId"
         },
@@ -44636,6 +44984,44 @@
           "owning": false
         },
         {
+          "name": "correctiveActionsAssigned",
+          "dbColumn": null,
+          "type": "CorrectiveAction",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "CorrectiveActionAssignee",
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
+        },
+        {
+          "name": "correctiveActionsClosed",
+          "dbColumn": null,
+          "type": "CorrectiveAction",
+          "kind": "relation",
+          "isList": true,
+          "isOptional": false,
+          "isId": false,
+          "isUnique": false,
+          "hasDefault": false,
+          "isUpdatedAt": false,
+          "relation": {
+            "relationName": "CorrectiveActionCloser",
+            "fkFields": [],
+            "refFields": [],
+            "onDelete": null
+          },
+          "owning": false
+        },
+        {
           "name": "personaInstructionUpdates",
           "dbColumn": null,
           "type": "PersonaCompanyInstruction",
@@ -45867,6 +46253,26 @@
           "refFields": []
         },
         {
+          "field": "correctiveActionsAssigned",
+          "target": "CorrectiveAction",
+          "cardinality": "many",
+          "relationName": "CorrectiveActionAssignee",
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
+        },
+        {
+          "field": "correctiveActionsClosed",
+          "target": "CorrectiveAction",
+          "cardinality": "many",
+          "relationName": "CorrectiveActionCloser",
+          "owning": false,
+          "onDelete": null,
+          "fkFields": [],
+          "refFields": []
+        },
+        {
           "field": "personaInstructionUpdates",
           "target": "PersonaCompanyInstruction",
           "cardinality": "many",
@@ -46187,6 +46593,16 @@
           "from": "FormApproval",
           "via": "assignedTo",
           "fk": "assignedToId"
+        },
+        {
+          "from": "CorrectiveAction",
+          "via": "assignedTo",
+          "fk": "assignedToId"
+        },
+        {
+          "from": "CorrectiveAction",
+          "via": "closedBy",
+          "fk": "closedById"
         },
         {
           "from": "FormSchedule",
@@ -50620,6 +51036,30 @@
       "fk": "submissionId",
       "onDelete": "Cascade",
       "relationName": null
+    },
+    {
+      "from": "CorrectiveAction",
+      "to": "FormSubmission",
+      "via": "submission",
+      "fk": "submissionId",
+      "onDelete": "SetNull",
+      "relationName": null
+    },
+    {
+      "from": "CorrectiveAction",
+      "to": "User",
+      "via": "assignedTo",
+      "fk": "assignedToId",
+      "onDelete": "SetNull",
+      "relationName": "CorrectiveActionAssignee"
+    },
+    {
+      "from": "CorrectiveAction",
+      "to": "User",
+      "via": "closedBy",
+      "fk": "closedById",
+      "onDelete": "SetNull",
+      "relationName": "CorrectiveActionCloser"
     },
     {
       "from": "FormSchedule",

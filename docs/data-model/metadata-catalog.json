@@ -4042,6 +4042,12 @@
           "label": null,
           "filterable": false,
           "aggregations": []
+        },
+        "usersDefaultedTo": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
         }
       }
     },
@@ -16801,6 +16807,12 @@
           "filterable": false,
           "aggregations": []
         },
+        "defaultDashboardId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
         "createdBy": {
           "role": "dimension",
           "label": null,
@@ -16814,6 +16826,12 @@
           "aggregations": []
         },
         "manager": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "defaultDashboard": {
           "role": "dimension",
           "label": null,
           "filterable": true,

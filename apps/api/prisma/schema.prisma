@@ -64,6 +64,9 @@ model User {
   ownedActivities            JobActivity[]               @relation("JobActivityOwner")
   ledShifts                  Shift[]                     @relation("ShiftLead")
   reportedJobIssues          JobIssue[]                  @relation("JobIssueReporter")
+  raisedPunchItems           PunchItem[]                 @relation("PunchItemRaisedBy")
+  assignedPunchItems         PunchItem[]                 @relation("PunchItemAssignee")
+  closedPunchItems           PunchItem[]                 @relation("PunchItemClosedBy")
   approvedVariations         JobVariation[]              @relation("JobVariationApprover")
   progressEntries            JobProgressEntry[]          @relation("JobProgressEntryAuthor")
   statusChanges              JobStatusHistory[]          @relation("JobStatusHistoryActor")
@@ -558,19 +561,19 @@ model SearchEntry {
 }
 
 model Dashboard {
-  id          String            @id @default(cuid())
-  name        String
-  description String?
-  scope       String
-  ownerUserId String?           @map("owner_user_id")
-  ownerRoleId String?           @map("owner_role_id")
-  isDefault   Boolean           @default(false) @map("is_default")
-  createdAt   DateTime          @default(now()) @map("created_at")
-  updatedAt   DateTime          @updatedAt @map("updated_at")
-  ownerUser   User?             @relation("DashboardOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
-  ownerRole   Role?             @relation("DashboardOwnerRole", fields: [ownerRoleId], references: [id], onDelete: SetNull)
-  widgets     DashboardWidget[]
-  usersDefaultedTo User[]        @relation("UserDefaultDashboard")
+  id               String            @id @default(cuid())
+  name             String
+  description      String?
+  scope            String
+  ownerUserId      String?           @map("owner_user_id")
+  ownerRoleId      String?           @map("owner_role_id")
+  isDefault        Boolean           @default(false) @map("is_default")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  ownerUser        User?             @relation("DashboardOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  ownerRole        Role?             @relation("DashboardOwnerRole", fields: [ownerRoleId], references: [id], onDelete: SetNull)
+  widgets          DashboardWidget[]
+  usersDefaultedTo User[]            @relation("UserDefaultDashboard")
 
   @@index([scope])
   @@index([ownerUserId])
@@ -1295,6 +1298,7 @@ model Job {
   formSubmissions    FormSubmission[]
   closeout           JobCloseout?
   correspondences    CorrespondenceThread[] @relation("JobCorrespondence")
+  punchItems         PunchItem[]
   dockets            Docket[]
   assetCheckouts     AssetCheckout[]        @relation("AssetCheckoutJob")
   commitments        Commitment[]
@@ -1383,6 +1387,40 @@ model JobIssue {
   @@index([jobId, status])
   @@index([severity])
   @@map("job_issues")
+}
+
+// ─── ERP gap A/commercial — punch / snag / defect list ───────────────
+// Job-scoped handover / make-good close-out list (Procore parity).
+// Raised from ad-hoc inspections OR linked back to a FormSubmission /
+// corrective action row when the item was generated from a checklist.
+// Status graph: OPEN → IN_PROGRESS → CLOSED. Cascade delete on job.
+model PunchItem {
+  id           String          @id @default(cuid())
+  jobId        String          @map("job_id")
+  title        String
+  description  String?
+  location     String?
+  status       String          @default("OPEN")
+  raisedById   String          @map("raised_by_id")
+  assignedToId String?         @map("assigned_to_id")
+  dueAt        DateTime?       @map("due_at")
+  closedAt     DateTime?       @map("closed_at")
+  closedById   String?         @map("closed_by_id")
+  closureNote  String?         @map("closure_note")
+  photoUrl     String?         @map("photo_url")
+  submissionId String?         @map("submission_id")
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+  job          Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  raisedBy     User            @relation("PunchItemRaisedBy", fields: [raisedById], references: [id], onDelete: Restrict)
+  assignedTo   User?           @relation("PunchItemAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  closedBy     User?           @relation("PunchItemClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+  submission   FormSubmission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+
+  @@index([jobId, status])
+  @@index([assignedToId, status])
+  @@index([dueAt])
+  @@map("punch_items")
 }
 
 model JobVariation {
@@ -1808,6 +1846,7 @@ model FormSubmission {
   gpsLng            Decimal?              @map("gps_lng") @db.Decimal(10, 7)
   approvals         FormApproval[]
   triggeredRecords  FormTriggeredRecord[]
+  punchItems        PunchItem[]
   correctiveActions CorrectiveAction[]
   // PR #621 -- public/kiosk submissions link back to the originating token
   publicLinkId      String?               @map("public_link_id")

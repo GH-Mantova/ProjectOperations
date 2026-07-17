@@ -31,6 +31,7 @@ describe("ScheduleAllocation multi-role guard (schedule_alloc_worker_uniq)", () 
       where: { project: { projectNumber: "ZZTEST-BP0A1-P1" } }
     });
     await prisma.project.deleteMany({ where: { projectNumber: "ZZTEST-BP0A1-P1" } });
+    await prisma.site.deleteMany({ where: { name: "ZZTEST-BP0A1 Site" } });
     await prisma.workerProfile.deleteMany({ where: { lastName: "ZZTEST-BP0A1" } });
     await prisma.jobRole.deleteMany({ where: { name: { startsWith: "ZZTEST-BP0A1-" } } });
     await prisma.client.deleteMany({ where: { name: "ZZTEST-BP0A1 Client" } });
@@ -55,11 +56,16 @@ describe("ScheduleAllocation multi-role guard (schedule_alloc_worker_uniq)", () 
     });
     clientId = client.id;
 
+    const site = await prisma.site.create({
+      data: { name: "ZZTEST-BP0A1 Site", clientId }
+    });
+
     const project = await prisma.project.create({
       data: {
         projectNumber: "ZZTEST-BP0A1-P1",
         name: "ZZTEST-BP0A1 Multi-role guard project",
         clientId,
+        siteId: site.id,
         siteAddressLine1: "1 Test St",
         siteAddressSuburb: "Brisbane",
         siteAddressState: "QLD",

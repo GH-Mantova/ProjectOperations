@@ -15,6 +15,11 @@ import type { ListProjectsQueryDto, ProjectStatusDto, UpdateProjectDto } from ".
 
 type ActorContext = { userId: string; permissions: ReadonlySet<string> };
 
+// Project.siteId is NOT NULL (see migration 20260716140000_site_id_not_null_backfill).
+// Projects created before a Site is known point at the seeded "Unassigned" Site
+// so the row stays valid; users can reassign later from the project page.
+const UNASSIGNED_SITE_ID = "site-unassigned";
+
 const TEAM_FIELDS = ["projectManagerId", "supervisorId", "estimatorId", "whsOfficerId"] as const;
 type TeamField = (typeof TEAM_FIELDS)[number];
 
@@ -219,6 +224,7 @@ export class ProjectsService {
           projectNumber,
           name: dto.name,
           clientId: dto.clientId,
+          siteId: UNASSIGNED_SITE_ID,
           siteAddressLine1: dto.siteAddressLine1,
           siteAddressLine2: dto.siteAddressLine2,
           siteAddressSuburb: dto.siteAddressSuburb,
@@ -704,6 +710,7 @@ export class ProjectsService {
           status: ProjectStatus.MOBILISING,
           sourceTenderId: tender.id,
           clientId: primaryLink.clientId,
+          siteId: UNASSIGNED_SITE_ID,
           siteAddressLine1: "TBC",
           siteAddressSuburb: "TBC",
           siteAddressState: "QLD",

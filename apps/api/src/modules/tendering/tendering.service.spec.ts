@@ -29,6 +29,7 @@ describe("TenderingService", () => {
         {
           tenderNumber: "T-001",
           title: "Test tender",
+          siteId: "site-unassigned",
           tenderClients: [
             { clientId: "client-1", isAwarded: true },
             { clientId: "client-2", isAwarded: true }

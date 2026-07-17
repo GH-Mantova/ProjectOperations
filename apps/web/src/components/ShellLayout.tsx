@@ -6,6 +6,7 @@ import { buildInfo } from "../buildInfo";
 import { NotificationsDropdown } from "./NotificationsDropdown";
 import { CommandPalette } from "./CommandPalette";
 import { FeedbackButton } from "./FeedbackButton";
+import { ThemeToggle } from "./ThemeToggle";
 import { NewDashboardModal } from "../dashboards/NewDashboardModal";
 import { useUserDashboards, useUserDashboardsActions } from "../dashboards/userDashboards";
 import { PersonaProvider } from "../personas/PersonaContext";
@@ -671,6 +672,7 @@ export function ShellLayout() {
             >
               {ICON_SEARCH}
             </button>
+            <ThemeToggle />
             <FeedbackButton />
             <button
               type="button"

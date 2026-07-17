@@ -25,6 +25,8 @@ import { WeatherService } from "./weather.service";
 import { AutomationsController } from "./automations.controller";
 import { AutomationsService } from "./automations.service";
 import { AutomationEngineService } from "./automation-engine.service";
+import { TimelineController } from "./timeline.controller";
+import { TimelineService } from "./timeline.service";
 
 @Module({
   imports: [AuditModule],
@@ -40,7 +42,8 @@ import { AutomationEngineService } from "./automation-engine.service";
     WeatherController,
     PlatformConfigController,
     AiProvidersController,
-    AutomationsController
+    AutomationsController,
+    TimelineController
   ],
   providers: [
     MockSharePointAdapter,
@@ -67,7 +70,8 @@ import { AutomationEngineService } from "./automation-engine.service";
     WeatherService,
     PlatformConfigService,
     AutomationEngineService,
-    AutomationsService
+    AutomationsService,
+    TimelineService
   ],
   exports: [
     SharePointService,
@@ -77,7 +81,8 @@ import { AutomationEngineService } from "./automation-engine.service";
     DashboardsService,
     UserDashboardsService,
     PlatformConfigService,
-    AutomationEngineService
+    AutomationEngineService,
+    TimelineService
   ]
 })
 export class PlatformModule {}

@@ -186,6 +186,9 @@ model User {
   casesAssigned             Case[]             @relation("CaseAssignedTo")
   caseCommentsAuthored      CaseComment[]      @relation("CaseCommentAuthor")
 
+  // Universal activity Timeline — every note/system entry a user authors.
+  activityEntriesAuthored   ActivityEntry[]    @relation("ActivityEntryAuthor")
+
   @@index([isActive])
   @@index([managerId])
   @@map("users")
@@ -4707,6 +4710,37 @@ model CorrespondenceMessage {
 
   @@index([threadId, createdAt])
   @@map("correspondence_messages")
+}
+
+// Universal activity Timeline (D365 parity). Polymorphic — one row per
+// note/status-change/attachment/system event on any host record. The
+// timeline endpoint MERGES these rows with existing signals (correspondence
+// messages, job status history, progress entries, document links) rather
+// than duplicating them, so this table stores only what has no home
+// elsewhere: user-authored notes plus auto-generated system entries.
+//
+// `entityType` uses the Prisma model name (e.g. "Job", "Tender", "Client",
+// "Contact") so the timeline route can be dropped onto any detail page
+// without adding foreign keys per host.
+model ActivityEntry {
+  id         String   @id @default(cuid())
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  // note | status | attachment | system
+  kind       String
+  body       String
+  // Optional structured payload — e.g. { fromStatus, toStatus } for a
+  // status entry, or { fileName, url } for an attachment entry.
+  metadata   Json?
+  authorId   String?  @map("author_id")
+  documentId String?  @map("document_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  author User? @relation("ActivityEntryAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, createdAt])
+  @@index([authorId])
+  @@map("activity_entries")
 }
 
 // PR-216 â€" Calendar Sync (mock-mode). One row per (user, source item)

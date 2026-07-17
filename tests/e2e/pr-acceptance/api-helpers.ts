@@ -267,6 +267,7 @@ export async function createFixtureTender(
     {
       title: `${B6_PREFIX} fixture — ${slug}`,
       status,
+      siteId: "site-unassigned",
       tenderClients: [{ clientId: "client-001", isAwarded: true }]
     }
   );
@@ -381,6 +382,7 @@ export async function createB7FixtureProject(
     tenderNumber,
     title: `${B7_PREFIX} fixture — ${slug}`,
     status: "AWARDED",
+    siteId: "site-unassigned",
     tenderClients: [{ clientId: "client-001", isAwarded: true }]
   });
   const project = await apiFetch<{ id: string; projectNumber: string }>(

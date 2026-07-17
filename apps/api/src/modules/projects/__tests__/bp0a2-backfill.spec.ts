@@ -92,10 +92,10 @@ describe("B-P0a-2 backfill — Job attributes onto Project", () => {
     siteId = site.id;
 
     const tenderA = await prisma.tender.create({
-      data: { tenderNumber: "ZZTEST-BP0A2-T1", title: "ZZTEST-BP0A2 tender A" }
+      data: { tenderNumber: "ZZTEST-BP0A2-T1", title: "ZZTEST-BP0A2 tender A", siteId: site.id }
     });
     const tenderC = await prisma.tender.create({
-      data: { tenderNumber: "ZZTEST-BP0A2-T2", title: "ZZTEST-BP0A2 tender C" }
+      data: { tenderNumber: "ZZTEST-BP0A2-T2", title: "ZZTEST-BP0A2 tender C", siteId: site.id }
     });
 
     // Pair A — mapped via shared sourceTenderId; carries a Site; ACTIVE status.

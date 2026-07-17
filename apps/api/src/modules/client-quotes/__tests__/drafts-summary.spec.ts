@@ -53,7 +53,8 @@ describe("ClientQuotesService.getDraftsSummary — batch 2 widget", () => {
       data: {
         tenderNumber: "ZZTEST-B2-DS-T",
         title: "ZZTEST B2 DS Tender",
-        status: "DRAFT"
+        status: "DRAFT",
+        siteId: "site-unassigned"
       }
     });
     tenderId = tender.id;

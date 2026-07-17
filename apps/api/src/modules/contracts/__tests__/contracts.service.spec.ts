@@ -165,10 +165,16 @@ function buildService(extraPrisma: Record<string, unknown> = {}) {
 
   const notifications = { create: notificationCreate };
   const email = { sendNotificationEmail };
+  const audit = { write: jest.fn().mockResolvedValue(undefined) };
 
-  const service = new ContractsService(prisma as never, notifications as never, email as never);
+  const service = new ContractsService(
+    prisma as never,
+    notifications as never,
+    email as never,
+    audit as never
+  );
 
-  return { service, prisma, notifications, notificationCreate, email, sendNotificationEmail };
+  return { service, prisma, notifications, notificationCreate, email, sendNotificationEmail, audit };
 }
 
 const actor = (...permissions: string[]) => ({ id: "user-1", permissions: new Set(permissions) });

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
+import { BillingTab } from "./BillingTab";
 
 type ContractStatus = "ACTIVE" | "PRACTICAL_COMPLETION" | "DEFECTS" | "CLOSED";
 type VariationStatus = "RECEIVED" | "PRICED" | "SUBMITTED" | "APPROVED";
@@ -82,7 +83,7 @@ const CLAIM_STATUS_COLOR: Record<ClaimStatus, string> = {
   PAID: "#22C55E"
 };
 
-type Tab = "overview" | "variations" | "claims";
+type Tab = "overview" | "variations" | "claims" | "billing";
 
 export function ContractDetailPage() {
   const { id } = useParams();
@@ -142,7 +143,7 @@ export function ContractDetailPage() {
       </header>
 
       <nav role="tablist" style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border, #e5e7eb)", marginBottom: 16 }}>
-        {(["overview", "variations", "claims"] as Tab[]).map((t) => {
+        {(["overview", "variations", "claims", "billing"] as Tab[]).map((t) => {
           const active = t === tab;
           return (
             <button
@@ -158,7 +159,13 @@ export function ContractDetailPage() {
                 cursor: "pointer"
               }}
             >
-              {t === "overview" ? "Overview" : t === "variations" ? `Variations (${contract.variations.length})` : `Progress claims (${contract.progressClaims.length})`}
+              {t === "overview"
+                ? "Overview"
+                : t === "variations"
+                  ? `Variations (${contract.variations.length})`
+                  : t === "claims"
+                    ? `Progress claims (${contract.progressClaims.length})`
+                    : "Billing & rev-rec"}
             </button>
           );
         })}
@@ -174,8 +181,10 @@ export function ContractDetailPage() {
         />
       ) : tab === "variations" ? (
         <VariationsTab contract={contract} canManage={canManage} onRefresh={load} />
-      ) : (
+      ) : tab === "claims" ? (
         <ClaimsTab contract={contract} canManage={canManage} canAdmin={canAdmin} onRefresh={load} />
+      ) : (
+        <BillingTab contractId={contract.id} canManage={canManage} onRefresh={load} />
       )}
     </div>
   );

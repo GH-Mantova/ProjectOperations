@@ -1,6 +1,12 @@
-import { Body, Controller, Get, Param, Patch, Post, Put, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from "@nestjs/swagger";
-import { ContractStatus, VariationStatus } from "@prisma/client";
+import {
+  BillingMilestoneAmountType,
+  BillingMilestoneStatus,
+  BillingMilestoneTrigger,
+  ContractStatus,
+  VariationStatus
+} from "@prisma/client";
 import { IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, Min } from "class-validator";
 import { Type } from "class-transformer";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
@@ -182,6 +188,63 @@ class ListContractsQuery extends PaginationQueryDto {
   @IsOptional() @IsIn(Object.values(ContractStatus)) status?: ContractStatus;
   /** Filter to contracts on a single project. */
   @IsOptional() @IsString() projectId?: string;
+}
+
+/**
+ * Body for `POST /contracts/:id/milestones` — create a billing milestone.
+ *
+ * Exactly one trigger field (per `triggerType`) and one amount source
+ * (per `amountType`) must be supplied; the service normalises the
+ * others to null.
+ */
+class CreateMilestoneDto {
+  @IsString() name!: string;
+  @IsOptional() @IsString() description?: string;
+  @IsIn(Object.values(BillingMilestoneTrigger)) triggerType!: BillingMilestoneTrigger;
+  @IsOptional() @IsDateString() triggerDate?: string;
+  @IsOptional() @Type(() => Number) @IsNumber() triggerPercent?: number;
+  @IsOptional() @IsString() triggerEvent?: string;
+  @IsIn(Object.values(BillingMilestoneAmountType)) amountType!: BillingMilestoneAmountType;
+  @IsOptional() @Type(() => Number) @IsNumber() amount?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() amountPercent?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) sortOrder?: number;
+}
+
+/**
+ * Body for `PATCH /contracts/:id/milestones/:milestoneId` — partial update.
+ *
+ * Status may only be flipped between PENDING and DUE; CLAIMED is set
+ * server-side when a claim is raised from the milestone.
+ */
+class UpdateMilestoneDto {
+  @IsOptional() @IsString() name?: string;
+  @IsOptional() @IsString() description?: string | null;
+  @IsOptional() @IsIn(Object.values(BillingMilestoneTrigger)) triggerType?: BillingMilestoneTrigger;
+  @IsOptional() @IsDateString() triggerDate?: string | null;
+  @IsOptional() @Type(() => Number) @IsNumber() triggerPercent?: number | null;
+  @IsOptional() @IsString() triggerEvent?: string | null;
+  @IsOptional() @IsIn(Object.values(BillingMilestoneAmountType)) amountType?: BillingMilestoneAmountType;
+  @IsOptional() @Type(() => Number) @IsNumber() amount?: number | null;
+  @IsOptional() @Type(() => Number) @IsNumber() amountPercent?: number | null;
+  @IsOptional() @IsIn(Object.values(BillingMilestoneStatus)) status?: BillingMilestoneStatus;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) sortOrder?: number;
+}
+
+/**
+ * Body for `POST /contracts/:id/milestones/:milestoneId/claim` — raise a
+ * claim from a DUE milestone. `claimMonth` defaults to the first of the
+ * current month when omitted.
+ */
+class RaiseMilestoneClaimDto {
+  @IsOptional() @IsDateString() claimMonth?: string;
+}
+
+/**
+ * Body for `POST /contracts/:id/claims/pro-forma` — create a pro-forma
+ * DRAFT claim.
+ */
+class CreateProFormaClaimDto {
+  @IsDateString() claimMonth!: string;
 }
 
 function actor(user: AuthenticatedUser) {
@@ -500,6 +563,91 @@ export class ContractsController {
     @Body() dto: PayClaimDto
   ) {
     return this.service.payClaim(id, claimId, dto);
+  }
+
+  // ── Billing milestones ──────────────────────────────────────────────
+  @Get(":id/milestones")
+  @RequirePermissions("finance.view")
+  @ApiOperation({ summary: "List billing milestones with a computed status (PENDING/DUE/CLAIMED)." })
+  @ApiParam({ name: "id", description: "Contract id." })
+  listMilestones(@Param("id") id: string) {
+    return this.service.listMilestones(id);
+  }
+
+  @Post(":id/milestones")
+  @RequirePermissions("finance.manage")
+  @ApiOperation({ summary: "Add a billing milestone (starts PENDING)." })
+  createMilestone(
+    @Param("id") id: string,
+    @Body() dto: CreateMilestoneDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.service.createMilestone(id, user.sub, dto);
+  }
+
+  @Patch(":id/milestones/:milestoneId")
+  @RequirePermissions("finance.manage")
+  @ApiOperation({ summary: "Update a billing milestone. status only accepts the PENDING ↔ DUE transition." })
+  updateMilestone(
+    @Param("id") id: string,
+    @Param("milestoneId") milestoneId: string,
+    @Body() dto: UpdateMilestoneDto
+  ) {
+    return this.service.updateMilestone(id, milestoneId, dto);
+  }
+
+  @Delete(":id/milestones/:milestoneId")
+  @RequirePermissions("finance.manage")
+  @ApiOperation({ summary: "Delete a milestone that has not yet been CLAIMED." })
+  deleteMilestone(@Param("id") id: string, @Param("milestoneId") milestoneId: string) {
+    return this.service.deleteMilestone(id, milestoneId);
+  }
+
+  @Post(":id/milestones/:milestoneId/claim")
+  @RequirePermissions("finance.manage")
+  @ApiOperation({
+    summary:
+      "Raise a DRAFT claim from a DUE milestone. Reuses a monthly DRAFT if one exists, otherwise creates a new one."
+  })
+  raiseMilestoneClaim(
+    @Param("id") id: string,
+    @Param("milestoneId") milestoneId: string,
+    @Body() dto: RaiseMilestoneClaimDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.service.raiseClaimFromMilestone(id, milestoneId, user.sub, dto);
+  }
+
+  // ── Pro-forma / revenue recognition ─────────────────────────────────
+  @Post(":id/claims/pro-forma/preview")
+  @RequirePermissions("finance.view")
+  @ApiOperation({
+    summary:
+      "Preview a pro-forma claim for a month WITHOUT persisting it — same line-item build as createClaim, no claim number consumed."
+  })
+  previewProForma(@Param("id") id: string, @Body() dto: CreateProFormaClaimDto) {
+    return this.service.previewProForma(id, dto);
+  }
+
+  @Post(":id/claims/pro-forma")
+  @RequirePermissions("finance.manage")
+  @ApiOperation({ summary: "Create a pro-forma DRAFT claim (isProForma=true) for review before issuing." })
+  createProFormaClaim(
+    @Param("id") id: string,
+    @Body() dto: CreateProFormaClaimDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.service.createProFormaClaim(id, user.sub, dto);
+  }
+
+  @Get(":id/revenue-recognition")
+  @RequirePermissions("finance.view")
+  @ApiOperation({
+    summary:
+      "Operational revenue-recognition view: contract value + approved variations, billed-to-date, recognised-to-date, paid-to-date, retention held. No GL posting — Xero owns the ledger."
+  })
+  revenueRecognition(@Param("id") id: string) {
+    return this.service.revenueRecognition(id);
   }
 
   @Put(":id/claims/:claimId/payment-schedule")

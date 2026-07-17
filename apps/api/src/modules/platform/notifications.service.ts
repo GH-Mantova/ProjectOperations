@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
+import { AutomationEngineService } from "./automation-engine.service";
 import { CreateNotificationDto } from "./dto/create-notification.dto";
 import { CreateManualFollowUpDto } from "./dto/create-manual-follow-up.dto";
 import { ResolveManualFollowUpDto } from "./dto/resolve-manual-follow-up.dto";
@@ -13,7 +14,8 @@ import { TriageFollowUpNotificationDto } from "./dto/triage-follow-up-notificati
 export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly auditService: AuditService
+    private readonly auditService: AuditService,
+    private readonly automationEngine: AutomationEngineService
   ) {}
 
   listForUser(userId: string) {
@@ -92,6 +94,22 @@ export class NotificationsService {
       entityType: "Notification",
       entityId: notification.id,
       metadata: { userId: input.userId, severity: input.severity }
+    });
+
+    // Publish to the automation engine. The engine's `notify` handler writes
+    // via Prisma directly rather than this method, so rules cannot cascade.
+    await this.automationEngine.dispatch({
+      entity: "Notification",
+      event: "created",
+      entityId: notification.id,
+      payload: {
+        userId: notification.userId,
+        title: notification.title,
+        body: notification.body,
+        severity: notification.severity,
+        linkUrl: notification.linkUrl ?? null
+      },
+      actorId: actorId ?? null
     });
 
     return notification;

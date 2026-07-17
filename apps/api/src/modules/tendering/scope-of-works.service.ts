@@ -169,7 +169,13 @@ function numericFieldsFrom(dto: Partial<UpdateScopeItemDto & CreateScopeItemDto>
     density: dto.density !== undefined ? toDecimal(narrowToNumber(dto.density)) : undefined,
     tonnes: dto.tonnes !== undefined ? toDecimal(narrowToNumber(dto.tonnes)) : undefined,
     chargeBy: dto.chargeBy,
-    cuttingIncluded: dto.cuttingIncluded
+    cuttingIncluded: dto.cuttingIncluded,
+    // PR feat/scope-each-factor — row-1 kind/quantity/factor for
+    // EACH (per-item) and FACTOR (sqm × factor) material kinds.
+    // materialKind stored as plain String column (mirrors enum label).
+    materialKind: dto.materialKind !== undefined ? (dto.materialKind ?? null) : undefined,
+    quantity: dto.quantity !== undefined ? toDecimal(narrowToNumber(dto.quantity)) : undefined,
+    factor: dto.factor !== undefined ? toDecimal(narrowToNumber(dto.factor)) : undefined
   };
 }
 

@@ -84,7 +84,9 @@ describe("JobsService.createJob (G5 — server-generated canonical IDs + race-fi
     expect(data.name).toBe("Manual Test Job");
     expect(data.clientId).toBe("client-1");
     expect(data.status).toBe("PLANNING");
-    expect(data.siteId).toBeNull();
+    // siteId defaults to the seeded "Unassigned" Site since siteId became NOT
+    // NULL in 20260716140000_site_id_not_null_backfill.
+    expect(data.siteId).toBe("site-unassigned");
     expect(mocks.auditWrite).toHaveBeenCalledTimes(1);
     const auditArgs = mocks.auditWrite.mock.calls[0]?.[0] as { action: string; entityType: string };
     expect(auditArgs.action).toBe("jobs.create");

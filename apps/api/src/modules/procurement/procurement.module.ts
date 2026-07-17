@@ -8,9 +8,13 @@ import { CommitmentController } from "./commitment.controller";
 import { CommitmentService } from "./commitment.service";
 import { ProcurementController } from "./procurement.controller";
 import { ProcurementService } from "./procurement.service";
+import { VendorInvoiceController } from "./vendor-invoice.controller";
+import { VendorInvoiceService } from "./vendor-invoice.service";
 
 /**
  * PR-488 slice 1 — procurement request → approval → PO / receipt spine.
+ * PR-629 slice 3 — three-way match: VendorInvoice + variance approval +
+ *   PoReconcileAudit for project-close audit.
  * ERP gap A (this PR) — CommitmentService / CommitmentController: budget-facing
  * commitment (subcontract / PO) tracking against Job.
  *
@@ -20,8 +24,8 @@ import { ProcurementService } from "./procurement.service";
  */
 @Module({
   imports: [PrismaModule, AuditModule, AuthorizationModule, EmailModule, InventoryModule],
-  controllers: [ProcurementController, CommitmentController],
-  providers: [ProcurementService, CommitmentService],
-  exports: [ProcurementService, CommitmentService]
+  controllers: [ProcurementController, CommitmentController, VendorInvoiceController],
+  providers: [ProcurementService, CommitmentService, VendorInvoiceService],
+  exports: [ProcurementService, CommitmentService, VendorInvoiceService]
 })
 export class ProcurementModule {}

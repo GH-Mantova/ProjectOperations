@@ -5736,3 +5736,49 @@ model BusinessProcessInstance {
   @@index([currentStageId])
   @@map("business_process_instances")
 }
+
+// ─── Automation engine (MVP slice 1) ────────────────────────────────────────
+// Admin-configurable "when X, do Y" rules that sit alongside (not inside) the
+// forms rules engine. `trigger` = { entity, event }. `conditions` = a small
+// JSON expression evaluated against the event payload. `actions` = a WHITELISTED
+// array — the engine refuses anything not in AutomationEngineService.ACTION_HANDLERS,
+// so a rule can never invoke arbitrary code.
+model AutomationRule {
+  id            String              @id @default(cuid())
+  name          String
+  description   String?
+  triggerEntity String              @map("trigger_entity")
+  triggerEvent  String              @map("trigger_event")
+  conditions    Json?
+  actions       Json
+  enabled       Boolean             @default(true)
+  createdById   String?             @map("created_by_id")
+  updatedById   String?             @map("updated_by_id")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+  runs          AutomationRuleRun[]
+
+  @@index([triggerEntity, triggerEvent, enabled])
+  @@map("automation_rules")
+}
+
+// Immutable run log — one row per (rule, event) evaluation. `matched` says the
+// conditions passed; `succeeded` says every action executed cleanly. Kept small:
+// no result payload, just the action types that ran and the first error string.
+model AutomationRuleRun {
+  id         String         @id @default(cuid())
+  ruleId     String         @map("rule_id")
+  entity     String
+  entityId   String?        @map("entity_id")
+  event      String
+  matched    Boolean
+  succeeded  Boolean
+  error      String?
+  actionsRun Json?          @map("actions_run")
+  createdAt  DateTime       @default(now()) @map("created_at")
+  rule       AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([ruleId, createdAt])
+  @@index([entity, entityId])
+  @@map("automation_rule_runs")
+}

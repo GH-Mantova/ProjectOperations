@@ -15,6 +15,7 @@ import { ScopeCardsTab } from "./scope-cards/ScopeCardsTab";
 import { RatesTab } from "./RatesTab";
 import { AssumptionsExclusionsFloatingEditor } from "./AssumptionsExclusionsFloatingEditor";
 import { ProcessStageBar } from "../../components/ProcessStageBar";
+import { AssistPanel, useCanUseAssist } from "../../components/AssistPanel";
 
 type TenderDetail = {
   id: string;
@@ -158,6 +159,8 @@ export function TenderDetailPage() {
   const [deletePreflight, setDeletePreflight] = useState<{ _count: Record<string, number> } | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [aeEditorOpen, setAeEditorOpen] = useState(false);
+  const [assistOpen, setAssistOpen] = useState(false);
+  const canUseAssist = useCanUseAssist();
   // G5 — "Mark as new revision" confirm flow.
   const [bumpOpen, setBumpOpen] = useState(false);
   const [bumpReason, setBumpReason] = useState("");
@@ -448,6 +451,16 @@ export function TenderDetailPage() {
                 onClick={() => setConvertOpen(true)}
               >
                 Convert to project →
+              </button>
+            ) : null}
+            {canUseAssist ? (
+              <button
+                type="button"
+                className="s7-btn s7-btn--secondary s7-btn--sm"
+                onClick={() => setAssistOpen(true)}
+                title="Summarise, draft, or explain — powered by your configured AI provider"
+              >
+                AI assist
               </button>
             ) : null}
           </div>
@@ -913,8 +926,53 @@ export function TenderDetailPage() {
           readOnly={!canManageTenders}
         />
       )}
+
+      <AssistPanel
+        open={assistOpen}
+        onClose={() => setAssistOpen(false)}
+        surface="tender"
+        subject={tender ? `${tender.tenderNumber} — ${tender.title}` : undefined}
+        getContext={() => buildTenderAssistContext(tender)}
+      />
     </div>
   );
+}
+
+// Serialises the tender's visible fields into a compact plain-text block
+// the AI can reason over. Kept text-only on purpose — the /assist
+// endpoint enforces a 12000-char cap and rendering markdown/HTML in the
+// panel would tempt the model to structure output for a richer surface
+// than we provide.
+function buildTenderAssistContext(tender: TenderDetail | null): string {
+  if (!tender) return "";
+  const lines: string[] = [];
+  lines.push(`Tender: ${tender.tenderNumber} — ${tender.title}`);
+  lines.push(`Status: ${tender.status}`);
+  if (tender.description) lines.push(`Description: ${tender.description}`);
+  if (tender.estimatedValue) lines.push(`Estimated value: ${tender.estimatedValue}`);
+  if (typeof tender.probability === "number") {
+    lines.push(`Probability: ${tender.probability}%`);
+  }
+  if (tender.dueDate) lines.push(`Due date: ${tender.dueDate}`);
+  if (tender.proposedStartDate) lines.push(`Proposed start: ${tender.proposedStartDate}`);
+  if (tender.estimator) {
+    lines.push(`Estimator: ${tender.estimator.firstName} ${tender.estimator.lastName}`);
+  }
+  if (tender.tenderClients.length > 0) {
+    lines.push(
+      `Clients: ${tender.tenderClients.map((c) => c.client.name).join("; ")}`
+    );
+  }
+  if (tender.notes) lines.push(`Notes: ${tender.notes}`);
+  if (tender.clarifications.length > 0) {
+    lines.push(
+      `Open clarifications: ${tender.clarifications
+        .filter((c) => c.status !== "CLOSED")
+        .map((c) => c.subject)
+        .join("; ") || "(none open)"}`
+    );
+  }
+  return lines.join("\n");
 }
 
 // Click-to-edit text block for free-form fields (description, notes). Shows

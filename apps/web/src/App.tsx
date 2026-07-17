@@ -58,6 +58,7 @@ import { SafetyPage } from "./pages/safety/SafetyPage";
 import { EstimateRatesAdminPage } from "./pages/EstimateRatesAdminPage";
 import { JobRolesPage } from "./pages/admin/JobRolesPage";
 import { RatesListsAdminPage } from "./pages/admin/RatesListsAdminPage";
+import { AutomationsPage } from "./pages/admin/AutomationsPage";
 import { UserDashboardPage } from "./pages/dashboards/UserDashboardPage";
 import { DashboardRedirectPage } from "./pages/dashboards/DashboardRedirectPage";
 import { GlobalDashboardPage } from "./pages/dashboards/GlobalDashboardPage";
@@ -310,6 +311,7 @@ export function App() {
             <Route path="/contracts/:id" element={<ContractDetailPage />} />
             <Route path="/admin/estimate-rates" element={<EstimateRatesAdminPage />} />
             <Route path="/admin/rates-lists" element={<RatesListsAdminPage />} />
+            <Route path="/admin/automations" element={<AutomationsPage />} />
             <Route path="/admin/job-roles" element={<JobRolesPage />} />
             <Route path="/account" element={<UserProfilePage />} />
             <Route path="/notifications" element={<NotificationsPage />} />

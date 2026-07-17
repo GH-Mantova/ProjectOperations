@@ -25,6 +25,8 @@ import { WeatherService } from "./weather.service";
 import { AutomationsController } from "./automations.controller";
 import { AutomationsService } from "./automations.service";
 import { AutomationEngineService } from "./automation-engine.service";
+import { SavedViewsController } from "./saved-views.controller";
+import { SavedViewsService } from "./saved-views.service";
 
 @Module({
   imports: [AuditModule],
@@ -40,7 +42,8 @@ import { AutomationEngineService } from "./automation-engine.service";
     WeatherController,
     PlatformConfigController,
     AiProvidersController,
-    AutomationsController
+    AutomationsController,
+    SavedViewsController
   ],
   providers: [
     MockSharePointAdapter,
@@ -67,7 +70,8 @@ import { AutomationEngineService } from "./automation-engine.service";
     WeatherService,
     PlatformConfigService,
     AutomationEngineService,
-    AutomationsService
+    AutomationsService,
+    SavedViewsService
   ],
   exports: [
     SharePointService,

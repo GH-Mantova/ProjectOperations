@@ -118,6 +118,11 @@ tender.siteId is null. Plan:
 Job + Project NOT NULL is unchanged: `staged/pr-siteid-notnull-job-project.md` (escalates).
 FormSubmission stays nullable (`formsubmission-required-site-field`, per-form required field).
 
+**RESOLVED 2026-07-17.** All three staged prompts above have shipped or become open PRs, so the
+`staged/` copies were removed (one place, never two): (1) the Geoapify wizard shipped as **#641**
+(MERGED); (2) Tender NOT NULL is open PR **#646**; (3) Job/Project NOT NULL is open PR **#642**. #642
+and #646 are green + mergeable and left unmerged for Marco (escalates:true).
+
 ## C. Mail managed identity -- unchanged, Marco supervising ops NOW
 
 Build-the-code-PR-now decision stands (`mail-send-managed-identity`, escalates). Marco confirmed he

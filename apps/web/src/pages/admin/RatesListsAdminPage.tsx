@@ -163,6 +163,32 @@ function RateTablesPanel() {
   const [loadingSelected, setLoadingSelected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newTableOpen, setNewTableOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const exportRates = useCallback(async () => {
+    setExporting(true);
+    setError(null);
+    try {
+      const res = await authFetch("/rates/export");
+      if (!res.ok) throw new Error(await readApiErrorMessage(res, "Export failed."));
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition") ?? "";
+      const match = /filename="?([^";]+)"?/i.exec(disposition);
+      const filename = match?.[1] ?? `rates-lists-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setExporting(false);
+    }
+  }, [authFetch]);
 
   const loadTables = useCallback(async () => {
     setLoading(true);
@@ -222,14 +248,26 @@ function RateTablesPanel() {
       <aside className="s7-card" style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <strong>Tables</strong>
-          <button
-            type="button"
-            className="s7-btn s7-btn--primary s7-btn--sm"
-            onClick={() => setNewTableOpen(true)}
-            style={{ minHeight: 32 }}
-          >
-            + New
-          </button>
+          <div style={{ display: "inline-flex", gap: 6 }}>
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={() => void exportRates()}
+              disabled={exporting}
+              title="Download rates & lists as .xlsx (round-trip: edit and re-import in a later release)."
+              style={{ minHeight: 32 }}
+            >
+              {exporting ? "Exporting…" : "Export"}
+            </button>
+            <button
+              type="button"
+              className="s7-btn s7-btn--primary s7-btn--sm"
+              onClick={() => setNewTableOpen(true)}
+              style={{ minHeight: 32 }}
+            >
+              + New
+            </button>
+          </div>
         </div>
         {loading ? (
           <SkeletonList count={5} rowHeight={20} />

@@ -33,6 +33,7 @@ describe("Job/Project merge Phase A — backfill + reconciliation", () => {
     await prisma.job.deleteMany({ where: { jobNumber: { startsWith: "ZZTEST-JPMA-" } } });
     await prisma.project.deleteMany({ where: { projectNumber: { startsWith: "ZZTEST-JPMA-" } } });
     await prisma.tender.deleteMany({ where: { tenderNumber: { startsWith: "ZZTEST-JPMA-" } } });
+    await prisma.site.deleteMany({ where: { name: "ZZTEST-JPMA Site" } });
     await prisma.client.deleteMany({ where: { name: "ZZTEST-JPMA Client" } });
     await prisma.user.deleteMany({ where: { email: "zztest-jpma@projectops.local" } });
   }
@@ -53,6 +54,11 @@ describe("Job/Project merge Phase A — backfill + reconciliation", () => {
     const client = await prisma.client.create({ data: { name: "ZZTEST-JPMA Client" } });
     clientId = client.id;
 
+    const site = await prisma.site.create({
+      data: { name: "ZZTEST-JPMA Site", clientId }
+    });
+    const siteId = site.id;
+
     const [tA, tB, tC] = await Promise.all([
       prisma.tender.create({ data: { tenderNumber: TENDER_A, title: "ZZTEST-JPMA A", siteId: "site-unassigned" } }),
       prisma.tender.create({ data: { tenderNumber: TENDER_B, title: "ZZTEST-JPMA B", siteId: "site-unassigned" } }),
@@ -64,13 +70,14 @@ describe("Job/Project merge Phase A — backfill + reconciliation", () => {
 
     // Pair: Job + Project both from tender A -> should link.
     await prisma.job.create({
-      data: { jobNumber: "ZZTEST-JPMA-J1", name: "J1", clientId, sourceTenderId: tenderAId }
+      data: { jobNumber: "ZZTEST-JPMA-J1", name: "J1", clientId, siteId, sourceTenderId: tenderAId }
     });
     await prisma.project.create({
       data: {
         projectNumber: "ZZTEST-JPMA-P1",
         name: "P1",
         clientId,
+        siteId,
         sourceTenderId: tenderAId,
         siteAddressLine1: "",
         siteAddressSuburb: "",
@@ -83,7 +90,7 @@ describe("Job/Project merge Phase A — backfill + reconciliation", () => {
 
     // Orphan job (tender B has a job but no project) -> stays NULL.
     await prisma.job.create({
-      data: { jobNumber: "ZZTEST-JPMA-J2", name: "J2", clientId, sourceTenderId: tenderBId }
+      data: { jobNumber: "ZZTEST-JPMA-J2", name: "J2", clientId, siteId, sourceTenderId: tenderBId }
     });
 
     // Orphan project (tender C has a project but no job) -> stays NULL.
@@ -92,6 +99,7 @@ describe("Job/Project merge Phase A — backfill + reconciliation", () => {
         projectNumber: "ZZTEST-JPMA-P2",
         name: "P2",
         clientId,
+        siteId,
         sourceTenderId: tenderCId,
         siteAddressLine1: "",
         siteAddressSuburb: "",

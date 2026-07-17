@@ -623,8 +623,8 @@ function ItemCard({
   // differs from what auto-derive would produce from raw inputs alone).
   const [dirty, setDirty] = useState({ sqm: false, m3: false, tonnes: false });
   // PR feat/scope-each-factor — local state for row-1 EACH/FACTOR scalars.
-  const [row1Quantity, setRow1Quantity] = useState(initDim(item.quantity));
-  const [row1Factor, setRow1Factor] = useState(initDim(item.factor));
+  const [row1Quantity, setRow1Quantity] = useState(initDim(item.quantity ?? null));
+  const [row1Factor, setRow1Factor] = useState(initDim(item.factor ?? null));
 
   // Re-sync local state when the upstream row is refreshed.
   useEffect(() => {
@@ -638,8 +638,8 @@ function ItemCard({
       tonnes: initDim(item.tonnes)
     });
     // PR feat/scope-each-factor — sync row-1 EACH/FACTOR scalars.
-    setRow1Quantity(initDim(item.quantity));
-    setRow1Factor(initDim(item.factor));
+    setRow1Quantity(initDim(item.quantity ?? null));
+    setRow1Factor(initDim(item.factor ?? null));
 
     const autoDerived = computeDerivedDimensions({
       length: item.length == null ? null : Number(item.length),

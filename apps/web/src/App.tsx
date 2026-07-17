@@ -32,6 +32,8 @@ import { SchedulerGridPage } from "./pages/scheduler/SchedulerGridPage";
 import { CalendarSyncPage } from "./pages/calendar/CalendarSyncPage";
 import { WorkersListPage } from "./pages/workers/WorkersListPage";
 import { WorkerDetailPage } from "./pages/workers/WorkerDetailPage";
+import { WorkerLeaveApprovalsPage } from "./pages/workers/WorkerLeaveApprovalsPage";
+import { FieldLeavePage } from "./pages/field/FieldLeavePage";
 import { AssetsListPage } from "./pages/assets/AssetsListPage";
 import { AssetDetailPage } from "./pages/assets/AssetDetailPage";
 import { InventoryPage } from "./pages/inventory/InventoryPage";
@@ -57,6 +59,7 @@ import { SafetyPage } from "./pages/safety/SafetyPage";
 import { EstimateRatesAdminPage } from "./pages/EstimateRatesAdminPage";
 import { JobRolesPage } from "./pages/admin/JobRolesPage";
 import { RatesListsAdminPage } from "./pages/admin/RatesListsAdminPage";
+import { AutomationsPage } from "./pages/admin/AutomationsPage";
 import { UserDashboardPage } from "./pages/dashboards/UserDashboardPage";
 import { DashboardRedirectPage } from "./pages/dashboards/DashboardRedirectPage";
 import { GlobalDashboardPage } from "./pages/dashboards/GlobalDashboardPage";
@@ -88,6 +91,8 @@ import { PortalJobsPage } from "./portal/pages/PortalJobsPage";
 import { PortalQuotesPage } from "./portal/pages/PortalQuotesPage";
 import { PortalDocumentsPage } from "./portal/pages/PortalDocumentsPage";
 import { PortalAccountPage } from "./portal/pages/PortalAccountPage";
+import { CasesListPage } from "./pages/cases/CasesListPage";
+import { CaseDetailPage } from "./pages/cases/CaseDetailPage";
 import { OfflineProvider } from "./offline/OfflineContext";
 import { OfflineIndicator } from "./offline/OfflineIndicator";
 import { InstallPrompt } from "./offline/InstallPrompt";
@@ -237,6 +242,7 @@ export function App() {
             <Route path="documents" element={<FieldDocumentsPage />} />
             <Route path="safety" element={<FieldSafetyPage />} />
             <Route path="dockets" element={<FieldDocketPage />} />
+            <Route path="leave" element={<FieldLeavePage />} />
           </Route>
           <Route element={<ShellLayout />}>
             <Route
@@ -276,6 +282,7 @@ export function App() {
             <Route path="/timesheets/payroll-export" element={<PayrollExportPage />} />
             <Route path="/dockets" element={<DocketsRegisterPage />} />
             <Route path="/workers" element={<WorkersListPage />} />
+            <Route path="/workers/leave-approvals" element={<WorkerLeaveApprovalsPage />} />
             <Route path="/workers/:id" element={<WorkerDetailPage />} />
             <Route path="/resources" element={<ResourcesPage />} />
             <Route path="/assets" element={<AssetsListPage />} />
@@ -305,6 +312,7 @@ export function App() {
             <Route path="/contracts/:id" element={<ContractDetailPage />} />
             <Route path="/admin/estimate-rates" element={<EstimateRatesAdminPage />} />
             <Route path="/admin/rates-lists" element={<RatesListsAdminPage />} />
+            <Route path="/admin/automations" element={<AutomationsPage />} />
             <Route path="/admin/job-roles" element={<JobRolesPage />} />
             <Route path="/account" element={<UserProfilePage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
@@ -319,6 +327,8 @@ export function App() {
             <Route path="/sites/:id" element={<SiteDetailPage />} />
             <Route path="/compliance" element={<CompliancePage />} />
             <Route path="/safety" element={<SafetyPage />} />
+            <Route path="/cases" element={<CasesListPage />} />
+            <Route path="/cases/:id" element={<CaseDetailPage />} />
             <Route path="/directory/subcontractors" element={<SubcontractorsPage />} />
             <Route path="/directory/contacts" element={<ContactsPage />} />
             <Route path="/archive" element={<ArchivePage />} />

@@ -99,7 +99,14 @@ export const permissionRegistry = [
   // Expenses (D365-parity slice 1 — PR-expenses-slice1).
   { code: "expenses.view", module: "expenses", label: "View expense submissions", description: "View expense submissions and their status" },
   { code: "expenses.manage", module: "expenses", label: "Create and submit expense claims", description: "Create, edit, and submit expense claims" },
-  { code: "expenses.approve", module: "expenses", label: "Approve or reject expense submissions", description: "Approve or reject submitted expense claims — routed via AuthorityService", isHighRisk: true }
+  { code: "expenses.approve", module: "expenses", label: "Approve or reject expense submissions", description: "Approve or reject submitted expense claims — routed via AuthorityService", isHighRisk: true },
+  // Case management (slice 1, PR cases-slice1).
+  { code: "cases.view", module: "cases", label: "View cases (defects, warranty, RFIs, complaints)", description: "View case register, detail, and comment thread" },
+  { code: "cases.manage", module: "cases", label: "Create and manage cases", description: "Raise cases, update status, assign, and post comments" },
+  // Automation engine (MVP slice 1). Cross-module Power-Automate-style rules.
+  // Manage is high-risk: a rule fires on domain events across the platform.
+  { code: "automations.view", module: "platform", label: "View automation rules", description: "View admin-configured automation rules and their run log" },
+  { code: "automations.manage", module: "platform", label: "Create and edit automation rules", description: "Create, edit, enable and disable admin-configured automation rules", isHighRisk: true }
 ] as const;
 
 export type PermissionRegistryEntry = (typeof permissionRegistry)[number];

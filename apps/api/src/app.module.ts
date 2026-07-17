@@ -64,6 +64,7 @@ import { ClientVersionsModule } from "./modules/client-versions/client-versions.
 import { IntegrationKeysModule } from "./common/integrations/integration-keys.module";
 import { GeocodingModule } from "./modules/geocoding/geocoding.module";
 import { ExpensesModule } from "./modules/expenses/expenses.module";
+import { CasesModule } from "./modules/cases/cases.module";
 
 @Module({
   imports: [
@@ -134,7 +135,8 @@ import { ExpensesModule } from "./modules/expenses/expenses.module";
     ProcurementModule,
     ClientVersionsModule,
     GeocodingModule,
-    ExpensesModule
+    ExpensesModule,
+    CasesModule
   ]
 })
 export class AppModule {}

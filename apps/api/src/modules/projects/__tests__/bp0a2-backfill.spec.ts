@@ -92,10 +92,10 @@ describe("B-P0a-2 backfill — Job attributes onto Project", () => {
     siteId = site.id;
 
     const tenderA = await prisma.tender.create({
-      data: { tenderNumber: "ZZTEST-BP0A2-T1", title: "ZZTEST-BP0A2 tender A" }
+      data: { tenderNumber: "ZZTEST-BP0A2-T1", title: "ZZTEST-BP0A2 tender A", siteId: site.id }
     });
     const tenderC = await prisma.tender.create({
-      data: { tenderNumber: "ZZTEST-BP0A2-T2", title: "ZZTEST-BP0A2 tender C" }
+      data: { tenderNumber: "ZZTEST-BP0A2-T2", title: "ZZTEST-BP0A2 tender C", siteId: site.id }
     });
 
     // Pair A — mapped via shared sourceTenderId; carries a Site; ACTIVE status.
@@ -114,6 +114,7 @@ describe("B-P0a-2 backfill — Job attributes onto Project", () => {
         projectNumber: "ZZTEST-BP0A2-P1",
         name: "ZZTEST-BP0A2 Project A",
         clientId: client.id,
+        siteId: site.id,
         sourceTenderId: tenderA.id,
         siteAddressLine1: "",
         siteAddressSuburb: "",
@@ -126,11 +127,17 @@ describe("B-P0a-2 backfill — Job attributes onto Project", () => {
     projectAId = projectA.id;
 
     // Pair B — tender-less Job mapped on (clientId, lower(name)); COMPLETE status.
+    // NOTE: Job.siteId + Project.siteId became NOT NULL in
+    // 20260716140000_site_id_not_null_backfill, so both rows must reference a
+    // Site. The "existing address on Project, no Site on Job" scenario the old
+    // NULL-column path exercised is now unrepresentable; the assertion below
+    // just checks the Site pointer survives when the mapper has no better one.
     jobB = await prisma.job.create({
       data: {
         jobNumber: "ZZTEST-BP0A2-J2",
         name: "ZZTEST-BP0A2 Name Match",
         clientId: client.id,
+        siteId: site.id,
         status: "COMPLETE"
       }
     });
@@ -139,6 +146,7 @@ describe("B-P0a-2 backfill — Job attributes onto Project", () => {
         projectNumber: "ZZTEST-BP0A2-P2",
         name: "zztest-bp0a2 NAME match",
         clientId: client.id,
+        siteId: site.id,
         siteAddressLine1: "7 Existing St",
         siteAddressSuburb: "Beenleigh",
         siteAddressState: "QLD",
@@ -156,6 +164,7 @@ describe("B-P0a-2 backfill — Job attributes onto Project", () => {
         jobNumber: "ZZTEST-BP0A2-J3",
         name: "ZZTEST-BP0A2 Job C",
         clientId: client.id,
+        siteId: site.id,
         sourceTenderId: tenderC.id,
         status: "COMPLETE"
       }
@@ -165,6 +174,7 @@ describe("B-P0a-2 backfill — Job attributes onto Project", () => {
         projectNumber: "ZZTEST-BP0A2-P3",
         name: "ZZTEST-BP0A2 Project C",
         clientId: client.id,
+        siteId: site.id,
         sourceTenderId: tenderC.id,
         status: ProjectStatus.ACTIVE,
         siteAddressLine1: "9 Progressed Ave",
@@ -202,8 +212,8 @@ describe("B-P0a-2 backfill — Job attributes onto Project", () => {
     expect(projectB.legacyJobId).toBe(jobB.id);
     expect(projectB.jobNumber).toBe(jobB.jobNumber);
     expect(projectB.status).toBe(ProjectStatus.CLOSED);
-    // No Site on Job B — existing (non-empty) address data untouched.
-    expect(projectB.siteId).toBeNull();
+    // Site pointer survives (both rows always carry one post-NOT-NULL).
+    expect(projectB.siteId).toBe(siteId);
     expect(projectB.siteAddressLine1).toBe("7 Existing St");
   });
 

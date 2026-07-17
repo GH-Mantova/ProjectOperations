@@ -28,6 +28,7 @@ describe("MyDayService.getMyDay — batch 2 widget", () => {
       where: { project: { projectNumber: "ZZTEST-B2-MD-P" } }
     });
     await prisma.project.deleteMany({ where: { projectNumber: "ZZTEST-B2-MD-P" } });
+    await prisma.site.deleteMany({ where: { name: "ZZTEST-B2-MD Site" } });
     await prisma.workerProfile.deleteMany({ where: { lastName: "ZZTEST-B2-MD" } });
     await prisma.formApproval.deleteMany({
       where: { submission: { templateVersion: { template: { code: "ZZTEST-B2-MD" } } } }
@@ -72,11 +73,15 @@ describe("MyDayService.getMyDay — batch 2 widget", () => {
     otherUserId = other.id;
     const client = await prisma.client.create({ data: { name: "ZZTEST-B2-MD Client" } });
     clientId = client.id;
+    const site = await prisma.site.create({
+      data: { name: "ZZTEST-B2-MD Site", clientId }
+    });
     const project = await prisma.project.create({
       data: {
         projectNumber: "ZZTEST-B2-MD-P",
         name: "ZZTEST-B2-MD Project",
         clientId,
+        siteId: site.id,
         siteAddressLine1: "1 Test St",
         siteAddressSuburb: "Brisbane",
         siteAddressState: "QLD",

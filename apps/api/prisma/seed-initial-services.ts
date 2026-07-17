@@ -1439,6 +1439,7 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
         description: seed.description,
         status: seed.status,
         estimatorUserId,
+        siteId: "site-unassigned",
         dueDate,
         proposedStartDate,
         leadTimeDays: 21,

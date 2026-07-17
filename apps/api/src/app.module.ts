@@ -63,6 +63,7 @@ import { ProcurementModule } from "./modules/procurement/procurement.module";
 import { ClientVersionsModule } from "./modules/client-versions/client-versions.module";
 import { IntegrationKeysModule } from "./common/integrations/integration-keys.module";
 import { GeocodingModule } from "./modules/geocoding/geocoding.module";
+import { SurveysModule } from "./modules/surveys/surveys.module";
 
 @Module({
   imports: [
@@ -132,7 +133,8 @@ import { GeocodingModule } from "./modules/geocoding/geocoding.module";
     CommsApprovalsModule,
     ProcurementModule,
     ClientVersionsModule,
-    GeocodingModule
+    GeocodingModule,
+    SurveysModule
   ]
 })
 export class AppModule {}

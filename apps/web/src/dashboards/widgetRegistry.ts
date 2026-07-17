@@ -129,6 +129,7 @@ import {
 import { SiteWeatherWidget } from "./widgets/weather";
 import { CustomBuilderWidget } from "./CustomBuilderWidget";
 import { CUSTOM_WIDGET_TYPE } from "./customWidget";
+import { ClientSatisfactionKpi } from "./widgets/surveys";
 
 const TENDER_STAGE_OPTIONS = [
   { value: "DRAFT", label: "Identified" },
@@ -863,6 +864,15 @@ export const WIDGETS: WidgetMeta[] = [
       }
     ],
     component: StaticNoteWidget
+  },
+  // ── Customer Voice ───────────────────────────────────────────────────────
+  {
+    type: "cv_client_satisfaction_kpi",
+    name: "Client satisfaction",
+    category: "operations",
+    size: "kpi",
+    description: "Mean satisfaction score across all client survey responses in the last 30 days.",
+    component: ClientSatisfactionKpi
   }
 ];
 

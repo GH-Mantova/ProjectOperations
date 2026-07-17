@@ -75,6 +75,12 @@ items:
     decided_in_BACKLOG_DECISIONS_md: >
       This is big. Do you want it as ONE module, or split (a) the static SWMS wizard from
       (b) the control-mapping tool? And is it Compliance-module or its own thing?
+    marco_note: >
+      RESOLVED 2026-07-17 (Marco): SPLIT into two independently-shippable tracks -- (A) the static
+      SWMS wizard and (B) the control-mapping tool; (A) ships without (B). Module-home (Compliance
+      vs standalone) still open -- the plan defaults to a standalone SWMS module surfaced under
+      Compliance and flags it for confirmation. SLICE 0 (ordered build plan, no code) STAGED as
+      pr-swms-build-plan-ready.md. Stays in-register until the build ships. One place, never two.
     order: 5
 
   # DISCHARGED 2026-07-16 (Cowork): STAGED + ARMED as pr-smart-wizard-runtime-catalog-ready.md
@@ -146,6 +152,12 @@ items:
     gate_means: Both models still exist on main - the merge has not happened.
     needs_marco: false
     decided_in_BACKLOG_DECISIONS_md: "Same gate as B-P0a. Restart it? WorkerProfile was agreed canonical."
+    marco_note: >
+      RESOLVED 2026-07-17 (Marco): RESTART B-P0b. WorkerProfile is canonical; everything relevant folds
+      into WorkerProfile; Worker dropped last. SLICE 0 (ordered slice plan, no code) STAGED as
+      pr-worker-workerprofile-merge-plan-ready.md. HARD SEQUENCING: code slices must NOT run
+      concurrently with B-P0a (Job/Project) -- both regenerate the data-model map. Flag sot reconcile
+      for 05-sot-keeper.
     order: 14
 
   # DISCHARGED 2026-07-17 (04-scanner): the CODE work is ALREADY AN OPEN PR -- #602

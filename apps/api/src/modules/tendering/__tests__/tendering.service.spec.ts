@@ -79,6 +79,7 @@ describe("TenderingService.update — partial semantics", () => {
       {
         tenderNumber: "T260612-ACME-Rev1",
         title: "still here",
+        siteId: "site-1",
         tenderClients: [{ clientId: "client-1" }]
       },
       "user-1"
@@ -114,6 +115,7 @@ describe("TenderingService.update — partial semantics", () => {
       {
         tenderNumber: "T260612-ACME-Rev1",
         title: "clear notes",
+        siteId: "site-1",
         tenderNotes: []
       },
       "user-1"
@@ -138,6 +140,7 @@ describe("TenderingService.update — partial semantics", () => {
       {
         tenderNumber: "T260612-ACME-Rev1",
         title: "one note",
+        siteId: "site-1",
         tenderNotes: [{ body: "hello" }]
       },
       "user-1"
@@ -160,6 +163,7 @@ describe("TenderingService.update — partial semantics", () => {
       {
         tenderNumber: "T260612-ACME-Rev1",
         title: "full replace",
+        siteId: "site-1",
         tenderClients: [{ clientId: "client-1" }],
         tenderNotes: [{ body: "note" }],
         clarifications: [{ subject: "subj" }],

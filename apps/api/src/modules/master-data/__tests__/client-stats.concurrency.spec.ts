@@ -45,6 +45,7 @@ describe("OWN-1 ClientStatsService — atomic increment under concurrency", () =
           tenderNumber: `OWN1-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 8)}`,
           title: `OWN-1 concurrency ${i}`,
           status: "DRAFT",
+          siteId: "site-unassigned",
           tenderClients: {
             create: { clientId }
           }

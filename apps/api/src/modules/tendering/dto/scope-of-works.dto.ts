@@ -171,17 +171,27 @@ class ScopeItemFieldsBase {
   // PR feat/scope-multi-material — additional material rows (rows 2..N).
   // Row 1 stays on the flat materialType + L/H/D + density/sqm/m3/tonnes
   // columns; this array carries the extras. Each element:
-  //   { material, length, height, depth, density, sqm, m3, tonnes,
-  //     wasteGroup?, wasteItem?, wasteIncluded?, cuttingIncluded? }
+  //   { material, kind?, length, height, depth, density, sqm, m3, tonnes,
+  //     quantity?, factor?, wasteGroup?, wasteItem?, wasteIncluded?, cuttingIncluded? }
   // PR feat/scope-material-inline-waste added the four waste-classification
   // keys so each material can be attributed to its own (group, item) in
   // the sum-from-above aggregator.
+  // PR feat/scope-each-factor added kind/quantity/factor for EACH/FACTOR kinds.
   // Backend is an identity pass-through (no re-derivation) — same
   // contract as plantItems/measurements.
   @ApiPropertyOptional({ type: "array", items: { type: "object" } })
   @IsOptional()
   @IsArray()
   materials?: unknown;
+
+  // PR feat/scope-each-factor — row-1 kind/quantity/factor scalars.
+  // kind is stored as a plain string (mirrors MaterialKind enum values).
+  // quantity and factor are decimal inputs for EACH and FACTOR respectively.
+  @ApiPropertyOptional({ enum: ["VOLUME", "AREA", "EACH", "FACTOR"] })
+  @IsOptional() @IsIn(["VOLUME", "AREA", "EACH", "FACTOR"]) materialKind?: string | null;
+
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() quantity?: number | null;
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() factor?: number | null;
 }
 
 /** Body for creating a scope item (discipline + rowType + description required). */

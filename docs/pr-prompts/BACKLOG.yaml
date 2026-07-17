@@ -183,6 +183,8 @@ items:
   # absence-gate (no migration yet) fired every scanner run because the staged prompt has not merged.
   # escalates:true (production-data backfill); Marco arms/reviews it. Removed per "one place, never
   # two." Related staged PRs: pr-tender-required-site.md (GATED on the Geoapify wizard).
+  # UPDATE 2026-07-17: staged/pr-siteid-notnull-job-project.md REMOVED - it is now open PR #642
+  # (green + mergeable, left unmerged for Marco). See BACKLOG-DECISIONS.md section B (RESOLVED).
 
   # -------------------------------------------------------------------------------------------
   # ADDED 2026-07-15 by STATION 03. Found by 02-board-driver on live CI, not by design review.
@@ -237,6 +239,9 @@ items:
   # at the top of this file ("When an item IS staged, delete it here. One place, never two.") this
   # entry was a false-ready -- its absence-gate fired every scanner run because the staged prompt has
   # not merged yet. escalates:true; Marco arms it when ready (it gates pr-tender-required-site).
+  # UPDATE 2026-07-17: staged/pr-tender-geoapify-site-autocomplete.md REMOVED - shipped as #641
+  # (MERGED); staged/pr-tender-required-site.md REMOVED - now open PR #646 (green + mergeable, left
+  # unmerged for Marco). See BACKLOG-DECISIONS.md section B (RESOLVED).
 
   # DISCHARGED 2026-07-16 (04-scanner): STAGED as pr-qa-flaky-batch8-archive-race-ready.md
   # (lint ADMIT, size 2). Its prompt file is now its home. One place, never two.

@@ -15,6 +15,7 @@ import { ScopeCardsTab } from "./scope-cards/ScopeCardsTab";
 import { RatesTab } from "./RatesTab";
 import { AssumptionsExclusionsFloatingEditor } from "./AssumptionsExclusionsFloatingEditor";
 import { AssistPanel, useCanUseAssist } from "../../components/AssistPanel";
+import { RecordHistory } from "../../components/RecordHistory";
 
 type TenderDetail = {
   id: string;
@@ -65,7 +66,7 @@ type TenderDetail = {
 
 import { TENDER_STATUS_LABEL as STAGE_LABEL, TENDER_STATUS_ACCENT as STAGE_ACCENT } from "./tenderStatusLabels";
 
-type Tab = "overview" | "scope" | "rates" | "quote";
+type Tab = "overview" | "scope" | "rates" | "quote" | "history";
 
 type EstimateSummaryPayload = {
   estimateId: string | null;
@@ -136,6 +137,7 @@ export function TenderDetailPage() {
     if (location.pathname.endsWith("/scope")) return "scope";
     if (location.pathname.endsWith("/rates")) return "rates";
     if (location.pathname.endsWith("/quote")) return "quote";
+    if (location.pathname.endsWith("/history")) return "history";
     return "overview";
   }, [location.pathname]);
 
@@ -230,6 +232,7 @@ export function TenderDetailPage() {
       if (detail === "scope") navigate(`/tenders/${id}/scope`);
       else if (detail === "rates") navigate(`/tenders/${id}/rates`);
       else if (detail === "quote") navigate(`/tenders/${id}/quote`);
+      else if (detail === "history") navigate(`/tenders/${id}/history`);
       else if (detail === "overview") navigate(`/tenders/${id}`);
     };
     window.addEventListener("tender-detail:switch-tab", handler);
@@ -495,6 +498,15 @@ export function TenderDetailPage() {
             onClick={() => navigate(`/tenders/${id}/quote`)}
           >
             Quote
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "history"}
+            className={tab === "history" ? "tender-detail__tab tender-detail__tab--active" : "tender-detail__tab"}
+            onClick={() => navigate(`/tenders/${id}/history`)}
+          >
+            History
           </button>
         </nav>
 
@@ -773,6 +785,10 @@ export function TenderDetailPage() {
             }}
             canManage={canManageTenders}
           />
+        )}
+
+        {tab === "history" && (
+          <RecordHistory entityType="Tender" entityId={tender.id} />
         )}
 
       </div>

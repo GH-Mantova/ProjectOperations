@@ -181,6 +181,9 @@ model User {
   commitmentChangesCreated  CommitmentChange[] @relation("CommitmentChangeCreatedBy")
   commitmentChangesApproved CommitmentChange[] @relation("CommitmentChangeApprovedBy")
 
+  // Customer Voice surveys
+  surveyResponsesCreated    SurveyResponse[]   @relation("SurveyResponseCreatedBy")
+
   // Case management (slice 1)
   casesRaised               Case[]             @relation("CaseRaisedBy")
   casesAssigned             Case[]             @relation("CaseAssignedTo")
@@ -673,6 +676,7 @@ model Client {
   portalInvites       PortalInvite[]
   clarificationNotes  TenderClarificationNote[] @relation("ClientTenderClarificationNotes")
   correspondences     CorrespondenceThread[]    @relation("ClientCorrespondence")
+  surveyResponses     SurveyResponse[]          @relation("ClientSurveyResponses")
   cases               Case[]                    @relation("CaseClient")
 
   @@unique([name])
@@ -1310,6 +1314,7 @@ model Job {
   dockets            Docket[]
   assetCheckouts     AssetCheckout[]        @relation("AssetCheckoutJob")
   commitments        Commitment[]
+  surveyResponses    SurveyResponse[]       @relation("JobSurveyResponses")
   cases              Case[]                 @relation("CaseJob")
 
   @@index([clientId])
@@ -2531,6 +2536,7 @@ model Project {
   hazardObservations      HazardObservation[]
   ganttTasks              GanttTask[]
   dailyDiaries            DailyDiary[]
+  surveyResponses         SurveyResponse[]     @relation("ProjectSurveyResponses")
   plannedStartDate        DateTime?            @map("planned_start_date")
   plannedEndDate          DateTime?            @map("planned_end_date")
   createdAt               DateTime             @default(now()) @map("created_at")
@@ -5578,6 +5584,54 @@ model CommitmentChange {
 
   @@index([commitmentId, status])
   @@map("commitment_changes")
+}
+
+// --- Customer Voice / Satisfaction Surveys (PR feat/customer-voice-surveys) ---
+// Survey = reusable template. questions is a JSON array of:
+//   { id: string, prompt: string, type: "rating" | "text", required: boolean,
+//     min?: number, max?: number }
+// One default post-job survey is seeded (isDefault = true).
+model Survey {
+  id          String           @id @default(cuid())
+  name        String
+  description String?
+  questions   Json
+  isDefault   Boolean          @default(false) @map("is_default")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+  responses   SurveyResponse[]
+
+  @@map("surveys")
+}
+
+// SurveyResponse = one client's captured answers to a Survey.
+// answers is a JSON array of: { questionId: string, value: string | number }
+// overallScore is the mean of numeric (rating) answers, on the same 1-5 scale
+// as Client.preferenceScore (stored as Float for precision before rounding).
+// After creation the service writes the rounded mean back to Client.preferenceScore.
+model SurveyResponse {
+  id           String   @id @default(cuid())
+  surveyId     String   @map("survey_id")
+  survey       Survey   @relation(fields: [surveyId], references: [id], onDelete: Restrict)
+  clientId     String   @map("client_id")
+  client       Client   @relation("ClientSurveyResponses", fields: [clientId], references: [id], onDelete: Restrict)
+  jobId        String?  @map("job_id")
+  job          Job?     @relation("JobSurveyResponses", fields: [jobId], references: [id], onDelete: SetNull)
+  projectId    String?  @map("project_id")
+  project      Project? @relation("ProjectSurveyResponses", fields: [projectId], references: [id], onDelete: SetNull)
+  answers      Json
+  overallScore Float    @map("overall_score")
+  submittedAt  DateTime @default(now()) @map("submitted_at")
+  createdById  String?  @map("created_by_id")
+  createdBy    User?    @relation("SurveyResponseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([surveyId])
+  @@index([clientId])
+  @@index([jobId])
+  @@index([projectId])
+  @@map("survey_responses")
 }
 
 // ── Case management (slice 1) ────────────────────────────────────────────────

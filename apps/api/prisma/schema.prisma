@@ -1848,6 +1848,16 @@ model FormSubmission {
   triggeredRecords  FormTriggeredRecord[]
   punchItems        PunchItem[]
   correctiveActions CorrectiveAction[]
+  // Inspection scoring (this PR). Computed by FormsEngineService.submitForm
+  // from field-level scoreConfig weights and choice-level response-set
+  // scores. `score` and `maxScore` are the achieved and possible weighted
+  // sums; `scorePct` is (score / maxScore * 100) rounded to two decimals;
+  // `outcome` is one of PASS/FAIL/PARTIAL/NA vs the template's
+  // `settings.passThresholdPct`. All null when scoring is not configured.
+  score             Decimal?              @db.Decimal(10, 2)
+  maxScore          Decimal?              @map("max_score") @db.Decimal(10, 2)
+  scorePct          Decimal?              @map("score_pct") @db.Decimal(5, 2)
+  outcome           String?
   // PR #621 -- public/kiosk submissions link back to the originating token
   publicLinkId      String?               @map("public_link_id")
   publicLink        FormPublicLink?       @relation(fields: [publicLinkId], references: [id], onDelete: SetNull)
@@ -1857,6 +1867,7 @@ model FormSubmission {
   @@index([assetId])
   @@index([workerId])
   @@index([shiftId])
+  @@index([outcome])
   @@index([publicLinkId])
   @@map("form_submissions")
 }

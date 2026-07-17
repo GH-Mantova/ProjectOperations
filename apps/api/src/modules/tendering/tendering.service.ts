@@ -788,6 +788,8 @@ export class TenderingService {
         estimatedValue: source.estimatedValue ?? undefined,
         notes: source.notes,
         estimator: source.estimatorUserId ? { connect: { id: source.estimatorUserId } } : undefined,
+        // siteId is NOT NULL post-2026-07-17; the source always has one.
+        site: { connect: { id: source.siteId } },
         tenderClients: source.tenderClients.length
           ? {
               create: source.tenderClients.map((item) => ({
@@ -1405,6 +1407,10 @@ export class TenderingService {
     const createdIds: string[] = [];
     const skipped: Array<{ tenderNumber: string; reason: string }> = [];
     const existingNumbers = await this.findExistingTenderNumbers(rows.map((row) => row.tenderNumber).filter(Boolean));
+    // Site is required on Tender (2026-07-17). CSV rows don't carry an
+    // address, so imported historical tenders land on the "Unassigned"
+    // placeholder site and can be reassigned via the Sites picker.
+    const unassignedSiteId = await this.getUnassignedSiteId();
 
     for (const row of rows) {
       if (!row.tenderNumber || !row.title) {
@@ -1436,6 +1442,7 @@ export class TenderingService {
           proposedStartDate: row.proposedStartDate,
           leadTimeDays: row.leadTimeDays ? Number(row.leadTimeDays) : undefined,
           estimatorUserId: row.estimatorUserId,
+          siteId: unassignedSiteId,
           tenderClients: clientIds.map((clientId, index) => ({
             clientId,
             isAwarded: index === 0 && row.awardedClientName
@@ -1487,6 +1494,28 @@ export class TenderingService {
     if (!tender) {
       throw new NotFoundException("Tender not found.");
     }
+  }
+
+  // Placeholder Site used by the CSV import path (which has no address column)
+  // now that Tender.siteId is NOT NULL. The row is created by the
+  // 20260717120000_tender_siteid_not_null migration with id 'site-unassigned';
+  // the name lookup here is a safety net if someone renamed the stable id.
+  private async getUnassignedSiteId(): Promise<string> {
+    const byId = await this.prisma.site.findUnique({
+      where: { id: "site-unassigned" },
+      select: { id: true }
+    });
+    if (byId) return byId.id;
+    const byName = await this.prisma.site.findFirst({
+      where: { name: "Unassigned" },
+      select: { id: true }
+    });
+    if (!byName) {
+      throw new Error(
+        'CSV import cannot proceed: the "Unassigned" placeholder Site is missing. Re-run the 20260717120000_tender_siteid_not_null migration.'
+      );
+    }
+    return byName.id;
   }
 
   private parseImportCsv(csvText: string) {
@@ -1583,7 +1612,7 @@ export class TenderingService {
       estimatedValue: dto.estimatedValue ? new Prisma.Decimal(dto.estimatedValue) : undefined,
       notes: dto.notes,
       estimator: dto.estimatorUserId ? { connect: { id: dto.estimatorUserId } } : undefined,
-      site: dto.siteId ? { connect: { id: dto.siteId } } : undefined,
+      site: { connect: { id: dto.siteId } },
       tenderClients: dto.tenderClients?.length
         ? {
             create: dto.tenderClients.map((item) => ({
@@ -1656,10 +1685,9 @@ export class TenderingService {
       estimatedValue: dto.estimatedValue ? new Prisma.Decimal(dto.estimatedValue) : null,
       notes: dto.notes ?? null,
       estimator: dto.estimatorUserId ? { connect: { id: dto.estimatorUserId } } : { disconnect: true },
-      // siteId undefined = leave as-is; explicit id = connect. Wizard never
-      // clears siteId (a tender always keeps the address it was raised
-      // against once selected), so no disconnect branch here.
-      site: dto.siteId ? { connect: { id: dto.siteId } } : undefined
+      // siteId is required on the DTO (post-2026-07-17 NOT NULL). Every
+      // update reconnects — a tender always carries a site.
+      site: { connect: { id: dto.siteId } }
     };
   }
 

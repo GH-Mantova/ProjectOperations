@@ -181,16 +181,16 @@ describe("B-P0a-2b — Project shells for unmapped Jobs", () => {
     expect(seq.lastNumber).toBeGreaterThanOrEqual(shellNumber);
   });
 
-  it("maps a site-less PLANNING Job to a shell with empty address and MOBILISING", async () => {
+  it("maps a PLANNING Job with a site to a shell carrying that site's address and MOBILISING", async () => {
     const shell = await prisma.project.findUniqueOrThrow({ where: { legacyJobId: jobZ.id } });
     expect(shell.jobNumber).toBe(jobZ.jobNumber);
     expect(shell.status).toBe(ProjectStatus.MOBILISING);
     // Job Z carries the fixture site (siteId is NOT NULL post-migration).
     expect(shell.siteId).toBe(siteId);
-    expect(shell.siteAddressLine1).toBe("");
-    expect(shell.siteAddressSuburb).toBe("");
-    expect(shell.siteAddressState).toBe("");
-    expect(shell.siteAddressPostcode).toBe("");
+    expect(shell.siteAddressLine1).toBe("11 Shell Ct");
+    expect(shell.siteAddressSuburb).toBe("Yatala");
+    expect(shell.siteAddressState).toBe("QLD");
+    expect(shell.siteAddressPostcode).toBe("4207");
   });
 
   it("skips a Job already mapped via legacyJobId", async () => {

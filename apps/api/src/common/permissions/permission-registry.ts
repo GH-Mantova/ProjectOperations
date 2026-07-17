@@ -95,7 +95,11 @@ export const permissionRegistry = [
   { code: "procurement.view", module: "procurement", label: "View procurement requests and purchase orders", description: "View procurement requests and purchase orders" },
   { code: "procurement.manage", module: "procurement", label: "Draft, edit and submit procurement requests", description: "Create, edit, submit, cancel procurement requests" },
   { code: "procurement.approve", module: "procurement", label: "Approve procurement requests and issue POs", description: "Approve procurement requests and issue purchase orders", isHighRisk: true },
-  { code: "procurement.receive", module: "procurement", label: "Record goods receipt against a PO line", description: "Record receipt of goods against a procurement line" }
+  { code: "procurement.receive", module: "procurement", label: "Record goods receipt against a PO line", description: "Record receipt of goods against a procurement line" },
+  // Expenses (D365-parity slice 1 — PR-expenses-slice1).
+  { code: "expenses.view", module: "expenses", label: "View expense submissions", description: "View expense submissions and their status" },
+  { code: "expenses.manage", module: "expenses", label: "Create and submit expense claims", description: "Create, edit, and submit expense claims" },
+  { code: "expenses.approve", module: "expenses", label: "Approve or reject expense submissions", description: "Approve or reject submitted expense claims — routed via AuthorityService", isHighRisk: true }
 ] as const;
 
 export type PermissionRegistryEntry = (typeof permissionRegistry)[number];

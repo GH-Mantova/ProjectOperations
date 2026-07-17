@@ -4,6 +4,8 @@ import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { JOB_STATUS_LABELS } from "../../constants/statuses";
 import { progressPercent } from "./jobsListLogic";
+import { ViewSwitcher, useViewSwitcher } from "../../components/ViewSwitcher";
+import { JobsKanbanView } from "./JobsKanbanView";
 
 type JobListItem = {
   id: string;
@@ -36,8 +38,6 @@ const STATUS_CLASS: Record<string, string> = {
   COMPLETE: "s7-badge s7-badge--neutral"
 };
 
-type View = "cards" | "table";
-
 type Client = { id: string; name: string };
 type Site = { id: string; name: string };
 type Worker = { id: string; firstName: string; lastName: string };
@@ -50,7 +50,7 @@ function initials(firstName?: string, lastName?: string): string {
 export function JobsListPage() {
   const { authFetch } = useAuth();
   const navigate = useNavigate();
-  const [view, setView] = useState<View>("cards");
+  const [view, setView] = useViewSwitcher("jobs-list", ["grid", "kanban", "table"] as const, "grid");
   const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [sites, setSites] = useState<Site[]>([]);
@@ -153,26 +153,13 @@ export function JobsListPage() {
           <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>Delivery workspace</h1>
         </div>
         <div className="jobs-page__header-actions">
-          <div className="tender-page__view-toggle" role="tablist" aria-label="View">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === "cards"}
-              className={view === "cards" ? "tender-page__view-btn tender-page__view-btn--active" : "tender-page__view-btn"}
-              onClick={() => setView("cards")}
-            >
-              Cards
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === "table"}
-              className={view === "table" ? "tender-page__view-btn tender-page__view-btn--active" : "tender-page__view-btn"}
-              onClick={() => setView("table")}
-            >
-              Table
-            </button>
-          </div>
+          <ViewSwitcher
+            listId="jobs-list"
+            views={["grid", "kanban", "table"] as const}
+            value={view}
+            onChange={setView}
+            ariaLabel="Jobs view"
+          />
           <button type="button" className="s7-btn s7-btn--primary" onClick={() => setNewOpen(true)}>
             + New job
           </button>
@@ -245,7 +232,7 @@ export function JobsListPage() {
         />
       </div>
 
-      {view === "cards" ? (
+      {view === "grid" ? (
         <section className="jobs-grid">
           {loading ? (
             Array.from({ length: 6 }).map((_, index) => (
@@ -295,6 +282,12 @@ export function JobsListPage() {
             })
           )}
         </section>
+      ) : view === "kanban" ? (
+        <JobsKanbanView
+          jobs={filtered}
+          loading={loading}
+          onJobStatusChanged={reload}
+        />
       ) : (
         <div className="s7-table-scroll">
           <table className="s7-table">

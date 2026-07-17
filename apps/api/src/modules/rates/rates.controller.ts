@@ -1,5 +1,6 @@
-import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Res, UseGuards } from "@nestjs/common";
+import { ApiBearerAuth, ApiOperation, ApiProduces, ApiResponse, ApiTags } from "@nestjs/swagger";
+import type { Response } from "express";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
@@ -11,6 +12,7 @@ import { CreateRateColumnDto, UpdateRateColumnDto } from "./dto/rate-column.dto"
 import { CreateRateRowDto, UpdateRateRowDto } from "./dto/rate-row.dto";
 import { RateTablesService } from "./rate-tables.service";
 import { RateResolverService } from "./rate-resolver.service";
+import { RatesExportService } from "./rates-export.service";
 
 const PLATFORM_ADMIN = "platform.admin";
 
@@ -21,8 +23,30 @@ const PLATFORM_ADMIN = "platform.admin";
 export class RatesController {
   constructor(
     private readonly tables: RateTablesService,
-    private readonly resolver: RateResolverService
+    private readonly resolver: RateResolverService,
+    private readonly exporter: RatesExportService
   ) {}
+
+  // ── Export ───────────────────────────────────────────────────────────
+
+  @Get("export")
+  @RequirePermissions("rates.manage")
+  @ApiOperation({
+    summary:
+      "Export the live Rates & Lists surface as an .xlsx (one tab per surface). Half 1 of the round-trip — the import PR consumes the same shape."
+  })
+  @ApiProduces("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+  @ApiResponse({ status: 200, description: "Rates workbook stream." })
+  async exportRates(@Res({ passthrough: false }) res: Response): Promise<void> {
+    const { buffer, filename } = await this.exporter.buildWorkbook();
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Length", String(buffer.length));
+    res.end(buffer);
+  }
 
   // ── Tables ───────────────────────────────────────────────────────────
 

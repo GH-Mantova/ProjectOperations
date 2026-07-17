@@ -5,6 +5,8 @@ import { can, isAdminUser } from "../auth/permissions";
 import { buildInfo } from "../buildInfo";
 import { NotificationsDropdown } from "./NotificationsDropdown";
 import { CommandPalette } from "./CommandPalette";
+import { GlobalSearch } from "./GlobalSearch";
+import { QuickCreate } from "./QuickCreate";
 import { FeedbackButton } from "./FeedbackButton";
 import { NewDashboardModal } from "../dashboards/NewDashboardModal";
 import { useUserDashboards, useUserDashboardsActions } from "../dashboards/userDashboards";
@@ -239,6 +241,13 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: ICON_AUDIT,
         match: (path) => path.startsWith("/safety"),
         badge: "safety"
+      },
+      {
+        to: "/cases",
+        label: "Cases",
+        icon: ICON_AUDIT,
+        match: (path) => path.startsWith("/cases"),
+        requiresPermission: "cases.view"
       }
     ]
   },
@@ -342,6 +351,7 @@ const BREADCRUMBS: Record<string, string> = {
   "/assets": "Assets",
   "/inventory": "Inventory",
   "/procurement": "Procurement",
+  "/cases": "Cases",
   "/maintenance": "Maintenance",
   "/master-data": "Master Data",
   "/documents": "Documents",
@@ -634,6 +644,8 @@ export function ShellLayout() {
             <span className="shell__breadcrumb-current">{breadcrumb}</span>
           </div>
           <div className="shell__topbar-actions">
+            <GlobalSearch />
+            <QuickCreate />
             <div className="shell__topbar-bell-wrap">
               <button
                 ref={bellRef}
@@ -658,8 +670,8 @@ export function ShellLayout() {
               type="button"
               className="shell__topbar-action"
               onClick={() => setPaletteOpen(true)}
-              aria-label="Search (Cmd/Ctrl+K)"
-              title="Search (Cmd/Ctrl+K)"
+              aria-label="Search palette (Cmd/Ctrl+K)"
+              title="Search palette (Cmd/Ctrl+K)"
             >
               {ICON_SEARCH}
             </button>

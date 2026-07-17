@@ -95,7 +95,14 @@ export const permissionRegistry = [
   { code: "procurement.view", module: "procurement", label: "View procurement requests and purchase orders", description: "View procurement requests and purchase orders" },
   { code: "procurement.manage", module: "procurement", label: "Draft, edit and submit procurement requests", description: "Create, edit, submit, cancel procurement requests" },
   { code: "procurement.approve", module: "procurement", label: "Approve procurement requests and issue POs", description: "Approve procurement requests and issue purchase orders", isHighRisk: true },
-  { code: "procurement.receive", module: "procurement", label: "Record goods receipt against a PO line", description: "Record receipt of goods against a procurement line" }
+  { code: "procurement.receive", module: "procurement", label: "Record goods receipt against a PO line", description: "Record receipt of goods against a procurement line" },
+  // Case management (slice 1, PR cases-slice1).
+  { code: "cases.view", module: "cases", label: "View cases (defects, warranty, RFIs, complaints)", description: "View case register, detail, and comment thread" },
+  { code: "cases.manage", module: "cases", label: "Create and manage cases", description: "Raise cases, update status, assign, and post comments" },
+  // Automation engine (MVP slice 1). Cross-module Power-Automate-style rules.
+  // Manage is high-risk: a rule fires on domain events across the platform.
+  { code: "automations.view", module: "platform", label: "View automation rules", description: "View admin-configured automation rules and their run log" },
+  { code: "automations.manage", module: "platform", label: "Create and edit automation rules", description: "Create, edit, enable and disable admin-configured automation rules", isHighRisk: true }
 ] as const;
 
 export type PermissionRegistryEntry = (typeof permissionRegistry)[number];

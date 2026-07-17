@@ -89,6 +89,7 @@ model User {
   rejectedTimesheets         Timesheet[]                 @relation("TimesheetRejecter")
   approvedWorkerLeaves       WorkerLeave[]               @relation("WorkerLeaveApprover")
   requestedWorkerLeaves      WorkerLeave[]               @relation("WorkerLeaveRequester")
+  approvedLeaveRequests      LeaveRequest[]              @relation("LeaveRequestApprover")
   formApprovalAssignments    FormApproval[]              @relation("FormApprovalAssignee")
   formScheduleAssignments    FormSchedule[]              @relation("FormScheduleAssignee")
   formPublicLinksCreated     FormPublicLink[]            @relation("FormPublicLinkCreator")
@@ -182,6 +183,11 @@ model User {
 
   // Customer Voice surveys
   surveyResponsesCreated    SurveyResponse[]   @relation("SurveyResponseCreatedBy")
+
+  // Case management (slice 1)
+  casesRaised               Case[]             @relation("CaseRaisedBy")
+  casesAssigned             Case[]             @relation("CaseAssignedTo")
+  caseCommentsAuthored      CaseComment[]      @relation("CaseCommentAuthor")
 
   @@index([isActive])
   @@index([managerId])
@@ -671,6 +677,7 @@ model Client {
   clarificationNotes  TenderClarificationNote[] @relation("ClientTenderClarificationNotes")
   correspondences     CorrespondenceThread[]    @relation("ClientCorrespondence")
   surveyResponses     SurveyResponse[]          @relation("ClientSurveyResponses")
+  cases               Case[]                    @relation("CaseClient")
 
   @@unique([name])
   @@index([status])
@@ -1308,6 +1315,7 @@ model Job {
   assetCheckouts     AssetCheckout[]        @relation("AssetCheckoutJob")
   commitments        Commitment[]
   surveyResponses    SurveyResponse[]       @relation("JobSurveyResponses")
+  cases              Case[]                 @relation("CaseJob")
 
   @@index([clientId])
   @@index([status])
@@ -2533,6 +2541,7 @@ model Project {
   plannedEndDate          DateTime?            @map("planned_end_date")
   createdAt               DateTime             @default(now()) @map("created_at")
   updatedAt               DateTime             @updatedAt @map("updated_at")
+  cases                   Case[]               @relation("CaseProject")
 
   @@index([status])
   @@index([clientId])
@@ -2660,6 +2669,7 @@ model WorkerProfile {
   locationLogs             WorkerLocationLog[]
   leaves                   WorkerLeave[]
   unavailabilities         WorkerUnavailability[]
+  leaveRequests             LeaveRequest[]
   createdAt                DateTime               @default(now()) @map("created_at")
   updatedAt                DateTime               @updatedAt @map("updated_at")
 
@@ -4331,6 +4341,7 @@ model WorkerLeave {
   approvedById    String?       @map("approved_by_id")
   approvedBy      User?         @relation("WorkerLeaveApprover", fields: [approvedById], references: [id], onDelete: SetNull)
   approvedAt      DateTime?     @map("approved_at")
+  leaveRequest    LeaveRequest?  @relation("LeaveRequestWorkerLeave")
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
@@ -4352,6 +4363,52 @@ model WorkerUnavailability {
 
   @@index([workerProfileId, startDate])
   @@map("worker_unavailability")
+}
+
+// --- HR self-service leave requests (feat/hr-leave-selfservice) ---
+//
+// LeaveRequest is the formal HR record a worker submits for time off.
+// On APPROVAL a corresponding WorkerLeave row is written so the scheduler
+// calendar overlay (which reads WorkerLeave) immediately respects the leave
+// without a separate step.
+//
+// Approval authority is resolved via User.managerId (the org hierarchy) and
+// the AuthorityService seam -- never hard-coded.
+
+model LeaveRequest {
+  id              String             @id @default(cuid())
+  workerId        String             @map("worker_id")
+  worker          WorkerProfile      @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  type            LeaveRequestType
+  startDate       DateTime           @map("start_date")
+  endDate         DateTime           @map("end_date")
+  hours           Float?
+  reason          String?
+  status          LeaveRequestStatus @default(PENDING)
+  approvedById    String?            @map("approved_by_id")
+  approvedBy      User?              @relation("LeaveRequestApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt      DateTime?          @map("approved_at")
+  workerLeaveId   String?            @unique @map("worker_leave_id")
+  workerLeave     WorkerLeave?       @relation("LeaveRequestWorkerLeave", fields: [workerLeaveId], references: [id], onDelete: SetNull)
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  @@index([workerId, startDate])
+  @@index([status])
+  @@map("leave_requests")
+}
+
+enum LeaveRequestType {
+  ANNUAL
+  PERSONAL
+  UNPAID
+  OTHER
+}
+
+enum LeaveRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 // â"€â"€â"€ GPS clock-on (PR #84) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -5113,11 +5170,114 @@ model PurchaseOrder {
   emailSentAt        DateTime? @map("email_sent_at")
   createdAt          DateTime  @default(now()) @map("created_at")
 
-  request ProcurementRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  request        ProcurementRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  vendorInvoices VendorInvoice[]
+  reconcileAudit PoReconcileAudit?
 
   @@index([requestId])
   @@index([issuedToSupplierId])
   @@map("purchase_orders")
+}
+
+// -- Three-way match (PR-629 slice 3) ----------------------------------------
+// VendorInvoice: a supplier's invoice against a PurchaseOrder.
+// Three-way match compares PO lines (ordered) vs receipt (received on the
+// parent ProcurementRequest) vs invoice lines (billed) and flags variances
+// outside the configurable tolerance bands. Matched invoices become
+// READY_TO_PAY; variances above tolerance are held (HELD) pending approval via
+// the AuthorityService seam. PoReconcileAudit captures the final close action
+// for project-close audit.
+
+enum InvoiceMatchStatus {
+  PENDING    // posted but match not yet run
+  MATCHED    // all lines within tolerance → ready to pay
+  HELD       // variance above tolerance → requires approval
+  APPROVED   // variance approved (authority seam) → ready to pay
+  REJECTED   // invoice rejected after review
+}
+
+// Vendor invoice posted against a PurchaseOrder.
+model VendorInvoice {
+  id                String             @id @default(cuid())
+  purchaseOrderId   String             @map("purchase_order_id")
+  invoiceNumber     String             @map("invoice_number")
+  supplierId        String             @map("supplier_id")
+  invoiceDate       DateTime           @map("invoice_date") @db.Date
+  dueDate           DateTime?          @map("due_date") @db.Date
+  currencyCode      String             @default("AUD") @map("currency_code")
+  // Total as stated on the supplier invoice (before our match verdict).
+  invoicedTotal     Decimal            @map("invoiced_total") @db.Decimal(14, 2)
+  matchStatus       InvoiceMatchStatus @default(PENDING) @map("match_status")
+  // Variance approval — populated when matchStatus moves to APPROVED.
+  approvedById      String?            @map("approved_by_id")
+  approvedAt        DateTime?          @map("approved_at")
+  // Authority-seam rule that authorised the variance, if any.
+  authorityRuleId   String?            @map("authority_rule_id")
+  notes             String?
+  createdById       String             @map("created_by_id")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+
+  purchaseOrder PurchaseOrder     @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  lines         VendorInvoiceLine[]
+
+  @@unique([purchaseOrderId, invoiceNumber])
+  @@index([purchaseOrderId])
+  @@index([supplierId])
+  @@index([matchStatus])
+  @@map("vendor_invoices")
+}
+
+// Per-line breakdown of a VendorInvoice — the "billed" column in the 3-way match.
+// orderedQty and orderedUnitPrice come from the matched ProcurementLine (the PO side).
+// receivedQty comes from the GoodsReceipt (receipt side — currently the request line
+// quantity as recorded at RECEIVED status; a future GoodsReceipt model can refine this).
+model VendorInvoiceLine {
+  id              String   @id @default(cuid())
+  invoiceId       String   @map("invoice_id")
+  // Reference back to the ProcurementLine this line was matched against (nullable
+  // for additional charges not in the PO).
+  procurementLineId String? @map("procurement_line_id")
+  description     String
+  // Three-way quantities and prices.
+  orderedQty      Decimal? @map("ordered_qty")      @db.Decimal(14, 4)
+  receivedQty     Decimal? @map("received_qty")     @db.Decimal(14, 4)
+  billedQty       Decimal  @map("billed_qty")       @db.Decimal(14, 4)
+  orderedUnitPrice  Decimal? @map("ordered_unit_price")  @db.Decimal(14, 4)
+  billedUnitPrice   Decimal  @map("billed_unit_price")   @db.Decimal(14, 4)
+  billedLineTotal   Decimal  @map("billed_line_total")   @db.Decimal(14, 2)
+  // Computed variance flags (filled in by the match run).
+  qtyVariance       Decimal? @map("qty_variance")       @db.Decimal(14, 4)
+  priceVariance     Decimal? @map("price_variance")     @db.Decimal(14, 4)
+  // True when this line's variance exceeds the configured tolerance.
+  withinTolerance   Boolean  @default(true) @map("within_tolerance")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  invoice VendorInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@index([procurementLineId])
+  @@map("vendor_invoice_lines")
+}
+
+// Reconcile / close audit record for a PurchaseOrder — one per PO, written
+// when the PO is fully matched and signed-off. Feeds the project-close audit.
+model PoReconcileAudit {
+  id               String   @id @default(cuid())
+  purchaseOrderId  String   @unique @map("purchase_order_id")
+  reconciledById   String   @map("reconciled_by_id")
+  reconciledAt     DateTime @map("reconciled_at")
+  poTotal          Decimal  @map("po_total")       @db.Decimal(14, 2)
+  invoicedTotal    Decimal  @map("invoiced_total") @db.Decimal(14, 2)
+  // Net variance (invoicedTotal - poTotal); negative = under-billed.
+  netVariance      Decimal  @map("net_variance")   @db.Decimal(14, 2)
+  notes            String?
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+
+  @@index([purchaseOrderId])
+  @@map("po_reconcile_audits")
 }
 
 // Singleton (id="singleton") â€" sourcing-gate value bands per POL 1.2.14.
@@ -5125,11 +5285,14 @@ model PurchaseOrder {
 // operator must record `quoteEvidenceRef` on the request. At or above
 // `rfqThreshold` a formal RFQ is expected. Numbers seeded, not hardcoded.
 model ProcurementConfig {
-  id                  String   @id
-  minQuoteThreshold   Decimal  @default(5000) @map("min_quote_threshold") @db.Decimal(14, 2)
-  requiredQuotesAtMin Int      @default(3) @map("required_quotes_at_min")
-  rfqThreshold        Decimal  @default(20000) @map("rfq_threshold") @db.Decimal(14, 2)
-  updatedAt           DateTime @updatedAt @map("updated_at")
+  id                     String   @id
+  minQuoteThreshold      Decimal  @default(5000)  @map("min_quote_threshold")       @db.Decimal(14, 2)
+  requiredQuotesAtMin    Int      @default(3)     @map("required_quotes_at_min")
+  rfqThreshold           Decimal  @default(20000) @map("rfq_threshold")              @db.Decimal(14, 2)
+  // Three-way match tolerance (PR-629 slice 3). 0 = exact match required.
+  matchQtyTolerancePct   Decimal  @default(0)     @map("match_qty_tolerance_pct")    @db.Decimal(5, 2)
+  matchPriceTolerancePct Decimal  @default(0)     @map("match_price_tolerance_pct")  @db.Decimal(5, 2)
+  updatedAt              DateTime @updatedAt      @map("updated_at")
 
   @@map("procurement_config")
 }
@@ -5469,4 +5632,144 @@ model SurveyResponse {
   @@index([jobId])
   @@index([projectId])
   @@map("survey_responses")
+}
+
+// ── Case management (slice 1) ────────────────────────────────────────────────
+// D365 Customer Service parity for construction: defects, warranty items,
+// RFIs and complaints tracked through to resolution.
+
+enum CaseType {
+  defect
+  warranty
+  rfi
+  complaint
+  other
+}
+
+enum CaseStatus {
+  open
+  in_progress
+  waiting
+  resolved
+  closed
+}
+
+enum CasePriority {
+  low
+  medium
+  high
+  urgent
+}
+
+model CaseNumberSequence {
+  id         Int @id @default(1)
+  lastNumber Int @default(0) @map("last_number")
+
+  @@map("case_number_sequences")
+}
+
+model Case {
+  id           String       @id @default(cuid())
+  // CASE-YYYY-NNN format, unique, generated by service
+  number       String       @unique
+  type         CaseType     @default(other)
+  title        String
+  description  String?
+  status       CaseStatus   @default(open)
+  priority     CasePriority @default(medium)
+
+  // Optional links to Client, Job, Project
+  clientId     String?      @map("client_id")
+  client       Client?      @relation("CaseClient", fields: [clientId], references: [id], onDelete: SetNull)
+
+  jobId        String?      @map("job_id")
+  job          Job?         @relation("CaseJob", fields: [jobId], references: [id], onDelete: SetNull)
+
+  projectId    String?      @map("project_id")
+  project      Project?     @relation("CaseProject", fields: [projectId], references: [id], onDelete: SetNull)
+
+  // Who raised it and who is assigned
+  raisedById   String       @map("raised_by_id")
+  raisedBy     User         @relation("CaseRaisedBy", fields: [raisedById], references: [id], onDelete: Restrict)
+
+  assignedToId String?      @map("assigned_to_id")
+  assignedTo   User?        @relation("CaseAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  // SLA / resolution fields
+  dueAt        DateTime?    @map("due_at")
+  resolvedAt   DateTime?    @map("resolved_at")
+  resolution   String?
+
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  comments     CaseComment[]
+
+  @@index([status, priority])
+  @@index([clientId])
+  @@index([jobId])
+  @@index([projectId])
+  @@index([raisedById])
+  @@index([assignedToId])
+  @@index([dueAt])
+  @@map("cases")
+}
+
+model CaseComment {
+  id        String   @id @default(cuid())
+  caseId    String   @map("case_id")
+  case      Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  authorId  String   @map("author_id")
+  author    User     @relation("CaseCommentAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  body      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([caseId])
+  @@map("case_comments")
+}
+
+// ─── Automation engine (MVP slice 1) ────────────────────────────────────────
+// Admin-configurable "when X, do Y" rules that sit alongside (not inside) the
+// forms rules engine. `trigger` = { entity, event }. `conditions` = a small
+// JSON expression evaluated against the event payload. `actions` = a WHITELISTED
+// array — the engine refuses anything not in AutomationEngineService.ACTION_HANDLERS,
+// so a rule can never invoke arbitrary code.
+model AutomationRule {
+  id            String              @id @default(cuid())
+  name          String
+  description   String?
+  triggerEntity String              @map("trigger_entity")
+  triggerEvent  String              @map("trigger_event")
+  conditions    Json?
+  actions       Json
+  enabled       Boolean             @default(true)
+  createdById   String?             @map("created_by_id")
+  updatedById   String?             @map("updated_by_id")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+  runs          AutomationRuleRun[]
+
+  @@index([triggerEntity, triggerEvent, enabled])
+  @@map("automation_rules")
+}
+
+// Immutable run log — one row per (rule, event) evaluation. `matched` says the
+// conditions passed; `succeeded` says every action executed cleanly. Kept small:
+// no result payload, just the action types that ran and the first error string.
+model AutomationRuleRun {
+  id         String         @id @default(cuid())
+  ruleId     String         @map("rule_id")
+  entity     String
+  entityId   String?        @map("entity_id")
+  event      String
+  matched    Boolean
+  succeeded  Boolean
+  error      String?
+  actionsRun Json?          @map("actions_run")
+  createdAt  DateTime       @default(now()) @map("created_at")
+  rule       AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([ruleId, createdAt])
+  @@index([entity, entityId])
+  @@map("automation_rule_runs")
 }

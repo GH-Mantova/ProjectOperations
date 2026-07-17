@@ -182,9 +182,9 @@ model User {
   commitmentChangesApproved CommitmentChange[] @relation("CommitmentChangeApprovedBy")
 
   // Case management (slice 1)
-  casesRaised               Case[]             @relation("CaseRaisedBy")
-  casesAssigned             Case[]             @relation("CaseAssignedTo")
-  caseCommentsAuthored      CaseComment[]      @relation("CaseCommentAuthor")
+  casesRaised          Case[]        @relation("CaseRaisedBy")
+  casesAssigned        Case[]        @relation("CaseAssignedTo")
+  caseCommentsAuthored CaseComment[] @relation("CaseCommentAuthor")
 
   @@index([isActive])
   @@index([managerId])
@@ -871,7 +871,7 @@ model Worker {
   roleSuitabilities   WorkerRoleSuitability[]
   formSubmissions     FormSubmission[]
   dockets             Docket[]
-  assetCheckouts      AssetCheckout[]           @relation("AssetCheckoutHolderWorker")
+  assetCheckouts      AssetCheckout[]         @relation("AssetCheckoutHolderWorker")
 
   @@index([status])
   @@index([resourceTypeId])
@@ -960,25 +960,25 @@ model Asset {
 // Service-layer guard enforces "at most one open checkout per asset" (checkedInAt IS NULL).
 // Prisma cannot enforce partial uniqueness portably, so the check is in AssetsService.checkoutAsset.
 model AssetCheckout {
-  id              String    @id @default(cuid())
-  assetId         String    @map("asset_id")
+  id             String    @id @default(cuid())
+  assetId        String    @map("asset_id")
   // Holder: at most one of holderWorkerId / holderUserId / siteId / jobId is typically set,
   // but any combination is allowed (e.g. asset on a job at a specific site).
-  holderWorkerId  String?   @map("holder_worker_id")
-  holderUserId    String?   @map("holder_user_id")
-  siteId          String?   @map("site_id")
-  jobId           String?   @map("job_id")
-  checkedOutAt    DateTime  @default(now()) @map("checked_out_at")
-  dueBackAt       DateTime? @map("due_back_at")
-  checkedInAt     DateTime? @map("checked_in_at")
-  notes           String?
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
-  asset           Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  holderWorker    Worker?   @relation("AssetCheckoutHolderWorker", fields: [holderWorkerId], references: [id], onDelete: SetNull)
-  holderUser      User?     @relation("AssetCheckoutHolderUser", fields: [holderUserId], references: [id], onDelete: SetNull)
-  site            Site?     @relation("AssetCheckoutSite", fields: [siteId], references: [id], onDelete: SetNull)
-  job             Job?      @relation("AssetCheckoutJob", fields: [jobId], references: [id], onDelete: SetNull)
+  holderWorkerId String?   @map("holder_worker_id")
+  holderUserId   String?   @map("holder_user_id")
+  siteId         String?   @map("site_id")
+  jobId          String?   @map("job_id")
+  checkedOutAt   DateTime  @default(now()) @map("checked_out_at")
+  dueBackAt      DateTime? @map("due_back_at")
+  checkedInAt    DateTime? @map("checked_in_at")
+  notes          String?
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  asset          Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  holderWorker   Worker?   @relation("AssetCheckoutHolderWorker", fields: [holderWorkerId], references: [id], onDelete: SetNull)
+  holderUser     User?     @relation("AssetCheckoutHolderUser", fields: [holderUserId], references: [id], onDelete: SetNull)
+  site           Site?     @relation("AssetCheckoutSite", fields: [siteId], references: [id], onDelete: SetNull)
+  job            Job?      @relation("AssetCheckoutJob", fields: [jobId], references: [id], onDelete: SetNull)
 
   // Index for fast "open checkout" lookup (checkedInAt IS NULL rows).
   @@index([assetId, checkedInAt])
@@ -1926,25 +1926,25 @@ model FormTriggeredRecord {
 // the submission detail page to list all actions the form raised.
 
 model CorrectiveAction {
-  id              String          @id @default(cuid())
-  submissionId    String?         @map("submission_id")
-  submission      FormSubmission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
-  sourceFieldKey  String?         @map("source_field_key")
-  title           String
-  description     String?
-  assignedToId    String?         @map("assigned_to_id")
-  assignedTo      User?           @relation("CorrectiveActionAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
-  assignedToRole  String?         @map("assigned_to_role")
-  dueAt           DateTime?       @map("due_at")
-  priority        String          @default("medium")
-  status          String          @default("open")
-  closedAt        DateTime?       @map("closed_at")
-  closedById      String?         @map("closed_by_id")
-  closedBy        User?           @relation("CorrectiveActionCloser", fields: [closedById], references: [id], onDelete: SetNull)
-  closeOutNote    String?         @map("close_out_note")
-  evidencePath    String?         @map("evidence_path")
-  createdAt       DateTime        @default(now()) @map("created_at")
-  updatedAt       DateTime        @updatedAt @map("updated_at")
+  id             String          @id @default(cuid())
+  submissionId   String?         @map("submission_id")
+  submission     FormSubmission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+  sourceFieldKey String?         @map("source_field_key")
+  title          String
+  description    String?
+  assignedToId   String?         @map("assigned_to_id")
+  assignedTo     User?           @relation("CorrectiveActionAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedToRole String?         @map("assigned_to_role")
+  dueAt          DateTime?       @map("due_at")
+  priority       String          @default("medium")
+  status         String          @default("open")
+  closedAt       DateTime?       @map("closed_at")
+  closedById     String?         @map("closed_by_id")
+  closedBy       User?           @relation("CorrectiveActionCloser", fields: [closedById], references: [id], onDelete: SetNull)
+  closeOutNote   String?         @map("close_out_note")
+  evidencePath   String?         @map("evidence_path")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
 
   @@index([submissionId])
   @@index([assignedToId])
@@ -2663,7 +2663,7 @@ model WorkerProfile {
   locationLogs             WorkerLocationLog[]
   leaves                   WorkerLeave[]
   unavailabilities         WorkerUnavailability[]
-  leaveRequests             LeaveRequest[]
+  leaveRequests            LeaveRequest[]
   createdAt                DateTime               @default(now()) @map("created_at")
   updatedAt                DateTime               @updatedAt @map("updated_at")
 
@@ -2844,47 +2844,47 @@ model PreStartChecklist {
 }
 
 model Timesheet {
-  id               String            @id @default(cuid())
-  projectId        String            @map("project_id")
-  project          Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  workerProfileId  String            @map("worker_profile_id")
-  workerProfile    WorkerProfile     @relation(fields: [workerProfileId], references: [id], onDelete: Cascade)
-  allocationId     String            @map("allocation_id")
-  allocation       ProjectAllocation @relation(fields: [allocationId], references: [id], onDelete: Cascade)
-  date             DateTime
-  hoursWorked      Decimal           @map("hours_worked") @db.Decimal(4, 2)
-  breakMinutes     Int               @default(0) @map("break_minutes")
-  description      String?
-  clockOnTime      DateTime?         @map("clock_on_time")
-  clockOffTime     DateTime?         @map("clock_off_time")
-  clockOnLat       Decimal?          @map("clock_on_lat") @db.Decimal(9, 6)
-  clockOnLng       Decimal?          @map("clock_on_lng") @db.Decimal(9, 6)
-  clockOnAccuracy  Decimal?          @map("clock_on_accuracy") @db.Decimal(8, 2)
-  clockOffLat      Decimal?          @map("clock_off_lat") @db.Decimal(9, 6)
-  clockOffLng      Decimal?          @map("clock_off_lng") @db.Decimal(9, 6)
-  clockOffAccuracy Decimal?          @map("clock_off_accuracy") @db.Decimal(8, 2)
+  id                 String            @id @default(cuid())
+  projectId          String            @map("project_id")
+  project            Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workerProfileId    String            @map("worker_profile_id")
+  workerProfile      WorkerProfile     @relation(fields: [workerProfileId], references: [id], onDelete: Cascade)
+  allocationId       String            @map("allocation_id")
+  allocation         ProjectAllocation @relation(fields: [allocationId], references: [id], onDelete: Cascade)
+  date               DateTime
+  hoursWorked        Decimal           @map("hours_worked") @db.Decimal(4, 2)
+  breakMinutes       Int               @default(0) @map("break_minutes")
+  description        String?
+  clockOnTime        DateTime?         @map("clock_on_time")
+  clockOffTime       DateTime?         @map("clock_off_time")
+  clockOnLat         Decimal?          @map("clock_on_lat") @db.Decimal(9, 6)
+  clockOnLng         Decimal?          @map("clock_on_lng") @db.Decimal(9, 6)
+  clockOnAccuracy    Decimal?          @map("clock_on_accuracy") @db.Decimal(8, 2)
+  clockOffLat        Decimal?          @map("clock_off_lat") @db.Decimal(9, 6)
+  clockOffLng        Decimal?          @map("clock_off_lng") @db.Decimal(9, 6)
+  clockOffAccuracy   Decimal?          @map("clock_off_accuracy") @db.Decimal(8, 2)
   // ERP gap C — geofence audit flags. Boolean is nullable so pre-geofence
   // rows (and rows without GPS) stay distinguishable from a genuine "outside
   // the geofence" reading. clockOnGeofenceId is set only when the point fell
   // inside an active geofence at the time of evaluation; if the site has no
   // geofence configured, both remain null.
-  clockOnInGeofence  Boolean?        @map("clock_on_in_geofence")
-  clockOffInGeofence Boolean?        @map("clock_off_in_geofence")
-  clockOnGeofenceId  String?         @map("clock_on_geofence_id")
-  clockOnGeofence    SiteGeofence?   @relation("TimesheetClockOnGeofence", fields: [clockOnGeofenceId], references: [id], onDelete: SetNull)
-  clockOffGeofenceId String?         @map("clock_off_geofence_id")
-  clockOffGeofence   SiteGeofence?   @relation("TimesheetClockOffGeofence", fields: [clockOffGeofenceId], references: [id], onDelete: SetNull)
-  status           TimesheetStatus   @default(DRAFT)
-  submittedAt      DateTime?         @map("submitted_at")
-  approvedById     String?           @map("approved_by_id")
-  approvedBy       User?             @relation("TimesheetApprover", fields: [approvedById], references: [id], onDelete: SetNull)
-  approvedAt       DateTime?         @map("approved_at")
-  rejectedReason   String?           @map("rejected_reason")
-  rejectedById     String?           @map("rejected_by_id")
-  rejectedBy       User?             @relation("TimesheetRejecter", fields: [rejectedById], references: [id], onDelete: SetNull)
-  rejectedAt       DateTime?         @map("rejected_at")
-  createdAt        DateTime          @default(now()) @map("created_at")
-  updatedAt        DateTime          @updatedAt @map("updated_at")
+  clockOnInGeofence  Boolean?          @map("clock_on_in_geofence")
+  clockOffInGeofence Boolean?          @map("clock_off_in_geofence")
+  clockOnGeofenceId  String?           @map("clock_on_geofence_id")
+  clockOnGeofence    SiteGeofence?     @relation("TimesheetClockOnGeofence", fields: [clockOnGeofenceId], references: [id], onDelete: SetNull)
+  clockOffGeofenceId String?           @map("clock_off_geofence_id")
+  clockOffGeofence   SiteGeofence?     @relation("TimesheetClockOffGeofence", fields: [clockOffGeofenceId], references: [id], onDelete: SetNull)
+  status             TimesheetStatus   @default(DRAFT)
+  submittedAt        DateTime?         @map("submitted_at")
+  approvedById       String?           @map("approved_by_id")
+  approvedBy         User?             @relation("TimesheetApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt         DateTime?         @map("approved_at")
+  rejectedReason     String?           @map("rejected_reason")
+  rejectedById       String?           @map("rejected_by_id")
+  rejectedBy         User?             @relation("TimesheetRejecter", fields: [rejectedById], references: [id], onDelete: SetNull)
+  rejectedAt         DateTime?         @map("rejected_at")
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
 
   @@unique([workerProfileId, allocationId, date])
   @@index([projectId, date])
@@ -3584,27 +3584,27 @@ model Variation {
 }
 
 model ProgressClaim {
-  id             String          @id @default(cuid())
-  contractId     String          @map("contract_id")
-  contract       Contract        @relation(fields: [contractId], references: [id], onDelete: Cascade)
-  claimNumber    String          @unique @map("claim_number")
-  claimMonth     DateTime        @map("claim_month")
-  submissionDate DateTime?       @map("submission_date")
-  status         ClaimStatus     @default(DRAFT)
-  totalClaimed   Decimal         @default(0) @map("total_claimed") @db.Decimal(12, 2)
-  totalApproved  Decimal?        @map("total_approved") @db.Decimal(12, 2)
-  totalPaid      Decimal?        @map("total_paid") @db.Decimal(12, 2)
-  paidDate       DateTime?       @map("paid_date")
-  retentionHeld  Decimal         @default(0) @map("retention_held") @db.Decimal(12, 2)
-  notes          String?
-  lineItems      ClaimLineItem[]
-  paymentSchedule PaymentSchedule?
+  id                String             @id @default(cuid())
+  contractId        String             @map("contract_id")
+  contract          Contract           @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  claimNumber       String             @unique @map("claim_number")
+  claimMonth        DateTime           @map("claim_month")
+  submissionDate    DateTime?          @map("submission_date")
+  status            ClaimStatus        @default(DRAFT)
+  totalClaimed      Decimal            @default(0) @map("total_claimed") @db.Decimal(12, 2)
+  totalApproved     Decimal?           @map("total_approved") @db.Decimal(12, 2)
+  totalPaid         Decimal?           @map("total_paid") @db.Decimal(12, 2)
+  paidDate          DateTime?          @map("paid_date")
+  retentionHeld     Decimal            @default(0) @map("retention_held") @db.Decimal(12, 2)
+  notes             String?
+  lineItems         ClaimLineItem[]
+  paymentSchedule   PaymentSchedule?
   billingMilestones BillingMilestone[]
-  isProForma     Boolean         @default(false) @map("is_pro_forma")
-  createdById    String          @map("created_by_id")
-  createdBy      User            @relation("ProgressClaimCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  createdAt      DateTime        @default(now()) @map("created_at")
-  updatedAt      DateTime        @updatedAt @map("updated_at")
+  isProForma        Boolean            @default(false) @map("is_pro_forma")
+  createdById       String             @map("created_by_id")
+  createdBy         User               @relation("ProgressClaimCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
 
   @@unique([contractId, claimMonth])
   @@index([contractId, status])
@@ -3685,28 +3685,28 @@ enum BillingMilestoneStatus {
 }
 
 model BillingMilestone {
-  id              String                      @id @default(cuid())
-  contractId      String                      @map("contract_id")
-  contract        Contract                    @relation(fields: [contractId], references: [id], onDelete: Cascade)
-  name            String
-  description     String?
-  triggerType     BillingMilestoneTrigger     @map("trigger_type")
+  id             String                     @id @default(cuid())
+  contractId     String                     @map("contract_id")
+  contract       Contract                   @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  triggerType    BillingMilestoneTrigger    @map("trigger_type")
   // Only one of the trigger fields is meaningful — enforced in the service
   // to keep the model shape flat and easy to query.
-  triggerDate     DateTime?                   @map("trigger_date")
-  triggerPercent  Decimal?                    @map("trigger_percent") @db.Decimal(5, 2)
-  triggerEvent    String?                     @map("trigger_event")
-  amountType      BillingMilestoneAmountType  @map("amount_type")
-  amount          Decimal?                    @db.Decimal(12, 2)
-  amountPercent   Decimal?                    @map("amount_percent") @db.Decimal(5, 2)
-  status          BillingMilestoneStatus      @default(PENDING)
-  claimId         String?                     @map("claim_id")
-  claim           ProgressClaim?              @relation(fields: [claimId], references: [id], onDelete: SetNull)
-  sortOrder       Int                         @default(0) @map("sort_order")
-  createdById     String                      @map("created_by_id")
-  createdBy       User                        @relation("BillingMilestoneCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  createdAt       DateTime                    @default(now()) @map("created_at")
-  updatedAt       DateTime                    @updatedAt @map("updated_at")
+  triggerDate    DateTime?                  @map("trigger_date")
+  triggerPercent Decimal?                   @map("trigger_percent") @db.Decimal(5, 2)
+  triggerEvent   String?                    @map("trigger_event")
+  amountType     BillingMilestoneAmountType @map("amount_type")
+  amount         Decimal?                   @db.Decimal(12, 2)
+  amountPercent  Decimal?                   @map("amount_percent") @db.Decimal(5, 2)
+  status         BillingMilestoneStatus     @default(PENDING)
+  claimId        String?                    @map("claim_id")
+  claim          ProgressClaim?             @relation(fields: [claimId], references: [id], onDelete: SetNull)
+  sortOrder      Int                        @default(0) @map("sort_order")
+  createdById    String                     @map("created_by_id")
+  createdBy      User                       @relation("BillingMilestoneCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt      DateTime                   @default(now()) @map("created_at")
+  updatedAt      DateTime                   @updatedAt @map("updated_at")
 
   @@index([contractId, status])
   @@map("billing_milestones")
@@ -4335,7 +4335,7 @@ model WorkerLeave {
   approvedById    String?       @map("approved_by_id")
   approvedBy      User?         @relation("WorkerLeaveApprover", fields: [approvedById], references: [id], onDelete: SetNull)
   approvedAt      DateTime?     @map("approved_at")
-  leaveRequest    LeaveRequest?  @relation("LeaveRequestWorkerLeave")
+  leaveRequest    LeaveRequest? @relation("LeaveRequestWorkerLeave")
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
@@ -4370,22 +4370,22 @@ model WorkerUnavailability {
 // the AuthorityService seam -- never hard-coded.
 
 model LeaveRequest {
-  id              String             @id @default(cuid())
-  workerId        String             @map("worker_id")
-  worker          WorkerProfile      @relation(fields: [workerId], references: [id], onDelete: Cascade)
-  type            LeaveRequestType
-  startDate       DateTime           @map("start_date")
-  endDate         DateTime           @map("end_date")
-  hours           Float?
-  reason          String?
-  status          LeaveRequestStatus @default(PENDING)
-  approvedById    String?            @map("approved_by_id")
-  approvedBy      User?              @relation("LeaveRequestApprover", fields: [approvedById], references: [id], onDelete: SetNull)
-  approvedAt      DateTime?          @map("approved_at")
-  workerLeaveId   String?            @unique @map("worker_leave_id")
-  workerLeave     WorkerLeave?       @relation("LeaveRequestWorkerLeave", fields: [workerLeaveId], references: [id], onDelete: SetNull)
-  createdAt       DateTime           @default(now()) @map("created_at")
-  updatedAt       DateTime           @updatedAt @map("updated_at")
+  id            String             @id @default(cuid())
+  workerId      String             @map("worker_id")
+  worker        WorkerProfile      @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  type          LeaveRequestType
+  startDate     DateTime           @map("start_date")
+  endDate       DateTime           @map("end_date")
+  hours         Float?
+  reason        String?
+  status        LeaveRequestStatus @default(PENDING)
+  approvedById  String?            @map("approved_by_id")
+  approvedBy    User?              @relation("LeaveRequestApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt    DateTime?          @map("approved_at")
+  workerLeaveId String?            @unique @map("worker_leave_id")
+  workerLeave   WorkerLeave?       @relation("LeaveRequestWorkerLeave", fields: [workerLeaveId], references: [id], onDelete: SetNull)
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
 
   @@index([workerId, startDate])
   @@index([status])
@@ -5183,36 +5183,36 @@ model PurchaseOrder {
 // for project-close audit.
 
 enum InvoiceMatchStatus {
-  PENDING    // posted but match not yet run
-  MATCHED    // all lines within tolerance → ready to pay
-  HELD       // variance above tolerance → requires approval
-  APPROVED   // variance approved (authority seam) → ready to pay
-  REJECTED   // invoice rejected after review
+  PENDING // posted but match not yet run
+  MATCHED // all lines within tolerance → ready to pay
+  HELD // variance above tolerance → requires approval
+  APPROVED // variance approved (authority seam) → ready to pay
+  REJECTED // invoice rejected after review
 }
 
 // Vendor invoice posted against a PurchaseOrder.
 model VendorInvoice {
-  id                String             @id @default(cuid())
-  purchaseOrderId   String             @map("purchase_order_id")
-  invoiceNumber     String             @map("invoice_number")
-  supplierId        String             @map("supplier_id")
-  invoiceDate       DateTime           @map("invoice_date") @db.Date
-  dueDate           DateTime?          @map("due_date") @db.Date
-  currencyCode      String             @default("AUD") @map("currency_code")
+  id              String             @id @default(cuid())
+  purchaseOrderId String             @map("purchase_order_id")
+  invoiceNumber   String             @map("invoice_number")
+  supplierId      String             @map("supplier_id")
+  invoiceDate     DateTime           @map("invoice_date") @db.Date
+  dueDate         DateTime?          @map("due_date") @db.Date
+  currencyCode    String             @default("AUD") @map("currency_code")
   // Total as stated on the supplier invoice (before our match verdict).
-  invoicedTotal     Decimal            @map("invoiced_total") @db.Decimal(14, 2)
-  matchStatus       InvoiceMatchStatus @default(PENDING) @map("match_status")
+  invoicedTotal   Decimal            @map("invoiced_total") @db.Decimal(14, 2)
+  matchStatus     InvoiceMatchStatus @default(PENDING) @map("match_status")
   // Variance approval — populated when matchStatus moves to APPROVED.
-  approvedById      String?            @map("approved_by_id")
-  approvedAt        DateTime?          @map("approved_at")
+  approvedById    String?            @map("approved_by_id")
+  approvedAt      DateTime?          @map("approved_at")
   // Authority-seam rule that authorised the variance, if any.
-  authorityRuleId   String?            @map("authority_rule_id")
-  notes             String?
-  createdById       String             @map("created_by_id")
-  createdAt         DateTime           @default(now()) @map("created_at")
-  updatedAt         DateTime           @updatedAt @map("updated_at")
+  authorityRuleId String?            @map("authority_rule_id")
+  notes           String?
+  createdById     String             @map("created_by_id")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
 
-  purchaseOrder PurchaseOrder     @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  purchaseOrder PurchaseOrder       @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
   lines         VendorInvoiceLine[]
 
   @@unique([purchaseOrderId, invoiceNumber])
@@ -5227,25 +5227,25 @@ model VendorInvoice {
 // receivedQty comes from the GoodsReceipt (receipt side — currently the request line
 // quantity as recorded at RECEIVED status; a future GoodsReceipt model can refine this).
 model VendorInvoiceLine {
-  id              String   @id @default(cuid())
-  invoiceId       String   @map("invoice_id")
+  id                String   @id @default(cuid())
+  invoiceId         String   @map("invoice_id")
   // Reference back to the ProcurementLine this line was matched against (nullable
   // for additional charges not in the PO).
-  procurementLineId String? @map("procurement_line_id")
-  description     String
+  procurementLineId String?  @map("procurement_line_id")
+  description       String
   // Three-way quantities and prices.
-  orderedQty      Decimal? @map("ordered_qty")      @db.Decimal(14, 4)
-  receivedQty     Decimal? @map("received_qty")     @db.Decimal(14, 4)
-  billedQty       Decimal  @map("billed_qty")       @db.Decimal(14, 4)
-  orderedUnitPrice  Decimal? @map("ordered_unit_price")  @db.Decimal(14, 4)
-  billedUnitPrice   Decimal  @map("billed_unit_price")   @db.Decimal(14, 4)
-  billedLineTotal   Decimal  @map("billed_line_total")   @db.Decimal(14, 2)
+  orderedQty        Decimal? @map("ordered_qty") @db.Decimal(14, 4)
+  receivedQty       Decimal? @map("received_qty") @db.Decimal(14, 4)
+  billedQty         Decimal  @map("billed_qty") @db.Decimal(14, 4)
+  orderedUnitPrice  Decimal? @map("ordered_unit_price") @db.Decimal(14, 4)
+  billedUnitPrice   Decimal  @map("billed_unit_price") @db.Decimal(14, 4)
+  billedLineTotal   Decimal  @map("billed_line_total") @db.Decimal(14, 2)
   // Computed variance flags (filled in by the match run).
-  qtyVariance       Decimal? @map("qty_variance")       @db.Decimal(14, 4)
-  priceVariance     Decimal? @map("price_variance")     @db.Decimal(14, 4)
+  qtyVariance       Decimal? @map("qty_variance") @db.Decimal(14, 4)
+  priceVariance     Decimal? @map("price_variance") @db.Decimal(14, 4)
   // True when this line's variance exceeds the configured tolerance.
   withinTolerance   Boolean  @default(true) @map("within_tolerance")
-  createdAt       DateTime @default(now()) @map("created_at")
+  createdAt         DateTime @default(now()) @map("created_at")
 
   invoice VendorInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
@@ -5257,16 +5257,16 @@ model VendorInvoiceLine {
 // Reconcile / close audit record for a PurchaseOrder — one per PO, written
 // when the PO is fully matched and signed-off. Feeds the project-close audit.
 model PoReconcileAudit {
-  id               String   @id @default(cuid())
-  purchaseOrderId  String   @unique @map("purchase_order_id")
-  reconciledById   String   @map("reconciled_by_id")
-  reconciledAt     DateTime @map("reconciled_at")
-  poTotal          Decimal  @map("po_total")       @db.Decimal(14, 2)
-  invoicedTotal    Decimal  @map("invoiced_total") @db.Decimal(14, 2)
+  id              String   @id @default(cuid())
+  purchaseOrderId String   @unique @map("purchase_order_id")
+  reconciledById  String   @map("reconciled_by_id")
+  reconciledAt    DateTime @map("reconciled_at")
+  poTotal         Decimal  @map("po_total") @db.Decimal(14, 2)
+  invoicedTotal   Decimal  @map("invoiced_total") @db.Decimal(14, 2)
   // Net variance (invoicedTotal - poTotal); negative = under-billed.
-  netVariance      Decimal  @map("net_variance")   @db.Decimal(14, 2)
-  notes            String?
-  createdAt        DateTime @default(now()) @map("created_at")
+  netVariance     Decimal  @map("net_variance") @db.Decimal(14, 2)
+  notes           String?
+  createdAt       DateTime @default(now()) @map("created_at")
 
   purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
 
@@ -5280,13 +5280,13 @@ model PoReconcileAudit {
 // `rfqThreshold` a formal RFQ is expected. Numbers seeded, not hardcoded.
 model ProcurementConfig {
   id                     String   @id
-  minQuoteThreshold      Decimal  @default(5000)  @map("min_quote_threshold")       @db.Decimal(14, 2)
-  requiredQuotesAtMin    Int      @default(3)     @map("required_quotes_at_min")
-  rfqThreshold           Decimal  @default(20000) @map("rfq_threshold")              @db.Decimal(14, 2)
+  minQuoteThreshold      Decimal  @default(5000) @map("min_quote_threshold") @db.Decimal(14, 2)
+  requiredQuotesAtMin    Int      @default(3) @map("required_quotes_at_min")
+  rfqThreshold           Decimal  @default(20000) @map("rfq_threshold") @db.Decimal(14, 2)
   // Three-way match tolerance (PR-629 slice 3). 0 = exact match required.
-  matchQtyTolerancePct   Decimal  @default(0)     @map("match_qty_tolerance_pct")    @db.Decimal(5, 2)
-  matchPriceTolerancePct Decimal  @default(0)     @map("match_price_tolerance_pct")  @db.Decimal(5, 2)
-  updatedAt              DateTime @updatedAt      @map("updated_at")
+  matchQtyTolerancePct   Decimal  @default(0) @map("match_qty_tolerance_pct") @db.Decimal(5, 2)
+  matchPriceTolerancePct Decimal  @default(0) @map("match_price_tolerance_pct") @db.Decimal(5, 2)
+  updatedAt              DateTime @updatedAt @map("updated_at")
 
   @@map("procurement_config")
 }
@@ -5545,36 +5545,36 @@ model Commitment {
 }
 
 model CommitmentItem {
-  id           String   @id @default(cuid())
-  commitmentId String   @map("commitment_id")
+  id           String     @id @default(cuid())
+  commitmentId String     @map("commitment_id")
   commitment   Commitment @relation(fields: [commitmentId], references: [id], onDelete: Cascade)
   description  String
-  costCategory String?  @map("cost_category")
-  quantity     Decimal  @default(1) @db.Decimal(14, 4)
-  unit         String   @default("lump")
-  rate         Decimal? @db.Decimal(14, 2)
-  amount       Decimal  @db.Decimal(14, 2)
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  costCategory String?    @map("cost_category")
+  quantity     Decimal    @default(1) @db.Decimal(14, 4)
+  unit         String     @default("lump")
+  rate         Decimal?   @db.Decimal(14, 2)
+  amount       Decimal    @db.Decimal(14, 2)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
 
   @@index([commitmentId])
   @@map("commitment_items")
 }
 
 model CommitmentChange {
-  id            String                 @id @default(cuid())
-  commitmentId  String                 @map("commitment_id")
-  commitment    Commitment             @relation(fields: [commitmentId], references: [id], onDelete: Cascade)
-  reference     String
-  description   String
-  valueChange   Decimal                @map("value_change") @db.Decimal(14, 2)
-  status        CommitmentChangeStatus @default(DRAFT)
-  approvedById  String?                @map("approved_by_id")
-  approvedBy    User?                  @relation("CommitmentChangeApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
-  createdById   String                 @map("created_by_id")
-  createdBy     User                   @relation("CommitmentChangeCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  createdAt     DateTime               @default(now()) @map("created_at")
-  updatedAt     DateTime               @updatedAt @map("updated_at")
+  id           String                 @id @default(cuid())
+  commitmentId String                 @map("commitment_id")
+  commitment   Commitment             @relation(fields: [commitmentId], references: [id], onDelete: Cascade)
+  reference    String
+  description  String
+  valueChange  Decimal                @map("value_change") @db.Decimal(14, 2)
+  status       CommitmentChangeStatus @default(DRAFT)
+  approvedById String?                @map("approved_by_id")
+  approvedBy   User?                  @relation("CommitmentChangeApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  createdById  String                 @map("created_by_id")
+  createdBy    User                   @relation("CommitmentChangeCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt    DateTime               @default(now()) @map("created_at")
+  updatedAt    DateTime               @updatedAt @map("updated_at")
 
   @@index([commitmentId, status])
   @@map("commitment_changes")
@@ -5615,41 +5615,41 @@ model CaseNumberSequence {
 }
 
 model Case {
-  id           String       @id @default(cuid())
+  id          String       @id @default(cuid())
   // CASE-YYYY-NNN format, unique, generated by service
-  number       String       @unique
-  type         CaseType     @default(other)
-  title        String
-  description  String?
-  status       CaseStatus   @default(open)
-  priority     CasePriority @default(medium)
+  number      String       @unique
+  type        CaseType     @default(other)
+  title       String
+  description String?
+  status      CaseStatus   @default(open)
+  priority    CasePriority @default(medium)
 
   // Optional links to Client, Job, Project
-  clientId     String?      @map("client_id")
-  client       Client?      @relation("CaseClient", fields: [clientId], references: [id], onDelete: SetNull)
+  clientId String? @map("client_id")
+  client   Client? @relation("CaseClient", fields: [clientId], references: [id], onDelete: SetNull)
 
-  jobId        String?      @map("job_id")
-  job          Job?         @relation("CaseJob", fields: [jobId], references: [id], onDelete: SetNull)
+  jobId String? @map("job_id")
+  job   Job?    @relation("CaseJob", fields: [jobId], references: [id], onDelete: SetNull)
 
-  projectId    String?      @map("project_id")
-  project      Project?     @relation("CaseProject", fields: [projectId], references: [id], onDelete: SetNull)
+  projectId String?  @map("project_id")
+  project   Project? @relation("CaseProject", fields: [projectId], references: [id], onDelete: SetNull)
 
   // Who raised it and who is assigned
-  raisedById   String       @map("raised_by_id")
-  raisedBy     User         @relation("CaseRaisedBy", fields: [raisedById], references: [id], onDelete: Restrict)
+  raisedById String @map("raised_by_id")
+  raisedBy   User   @relation("CaseRaisedBy", fields: [raisedById], references: [id], onDelete: Restrict)
 
-  assignedToId String?      @map("assigned_to_id")
-  assignedTo   User?        @relation("CaseAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedToId String? @map("assigned_to_id")
+  assignedTo   User?   @relation("CaseAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
 
   // SLA / resolution fields
-  dueAt        DateTime?    @map("due_at")
-  resolvedAt   DateTime?    @map("resolved_at")
-  resolution   String?
+  dueAt      DateTime? @map("due_at")
+  resolvedAt DateTime? @map("resolved_at")
+  resolution String?
 
-  createdAt    DateTime     @default(now()) @map("created_at")
-  updatedAt    DateTime     @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  comments     CaseComment[]
+  comments CaseComment[]
 
   @@index([status, priority])
   @@index([clientId])
@@ -5672,4 +5672,67 @@ model CaseComment {
 
   @@index([caseId])
   @@map("case_comments")
+}
+
+// ── Business Process Flow (D365 stage-bar parity, MVP slice 1) ────────
+// Config-driven stage bar pinned to a record. A BusinessProcessFlow is
+// the definition (which entity + ordered stages + required-field keys per
+// stage); a BusinessProcessInstance is one record's live position on it.
+// Stages are NOT hardcoded — they live in the DB so admins can reshape
+// the flow without a code change. Slice 1 wires this to Tender only.
+model BusinessProcessFlow {
+  id         String                    @id @default(cuid())
+  entityType String                    @map("entity_type")
+  name       String
+  active     Boolean                   @default(true)
+  createdAt  DateTime                  @default(now()) @map("created_at")
+  updatedAt  DateTime                  @updatedAt @map("updated_at")
+  stages     BusinessProcessStage[]
+  instances  BusinessProcessInstance[]
+
+  @@unique([entityType, name])
+  @@index([entityType, active])
+  @@map("business_process_flows")
+}
+
+model BusinessProcessStage {
+  id                 String                    @id @default(cuid())
+  flowId             String                    @map("flow_id")
+  flow               BusinessProcessFlow       @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  name               String
+  order              Int
+  // JSON array of required field keys on the target entity, e.g.
+  // ["estimatedValue", "dueDate"]. The engine enforces "present + not
+  // null" before allowing an instance to advance past this stage.
+  requiredFieldsJson Json                      @default("[]") @map("required_fields_json")
+  createdAt          DateTime                  @default(now()) @map("created_at")
+  updatedAt          DateTime                  @updatedAt @map("updated_at")
+  currentInstances   BusinessProcessInstance[] @relation("BusinessProcessInstanceCurrentStage")
+
+  @@unique([flowId, order])
+  @@index([flowId])
+  @@map("business_process_stages")
+}
+
+model BusinessProcessInstance {
+  id             String               @id @default(cuid())
+  flowId         String               @map("flow_id")
+  flow           BusinessProcessFlow  @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  entityType     String               @map("entity_type")
+  // Free-text FK — not a hard relation because the target table varies
+  // by entityType. The service resolves the row against the correct
+  // Prisma model and enforces existence.
+  entityId       String               @map("entity_id")
+  currentStageId String               @map("current_stage_id")
+  currentStage   BusinessProcessStage @relation("BusinessProcessInstanceCurrentStage", fields: [currentStageId], references: [id], onDelete: Restrict)
+  // Append-only history of stage transitions:
+  //   [{ stageId, enteredAt, byUserId }]
+  historyJson    Json                 @default("[]") @map("history_json")
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
+
+  @@unique([entityType, entityId])
+  @@index([flowId])
+  @@index([currentStageId])
+  @@map("business_process_instances")
 }

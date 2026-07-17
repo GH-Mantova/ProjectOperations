@@ -20,6 +20,7 @@ import {
 } from "./seed-initial-services";
 import { seedFormTemplates } from "./seed-form-templates";
 import { seedCompanyProfile } from "./seed-company-profile";
+import { seedBusinessProcessFlows } from "./seed-business-process-flows";
 import { SCOPE_CARD_DEFAULTS } from "../src/modules/tendering/scope/card-defaults";
 
 const databaseUrl =
@@ -3714,6 +3715,9 @@ async function main() {
   // CompanyProfile singleton + v1 legal documents. Insert-if-absent so a
   // manual admin edit survives re-seed (CP-08 discipline).
   await seedCompanyProfile(prisma);
+  // Tender stage-bar flow. Insert-if-absent so admin edits to stages
+  // survive re-seed.
+  await seedBusinessProcessFlows(prisma);
 }
 
 async function seedUserDashboards(prisma: PrismaClient) {

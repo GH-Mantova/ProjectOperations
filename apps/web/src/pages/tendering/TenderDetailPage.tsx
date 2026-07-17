@@ -14,6 +14,7 @@ import { ConvertToProjectModal } from "./ConvertToProjectModal";
 import { ScopeCardsTab } from "./scope-cards/ScopeCardsTab";
 import { RatesTab } from "./RatesTab";
 import { AssumptionsExclusionsFloatingEditor } from "./AssumptionsExclusionsFloatingEditor";
+import { ProcessStageBar } from "../../components/ProcessStageBar";
 
 type TenderDetail = {
   id: string;
@@ -369,6 +370,12 @@ export function TenderDetailPage() {
     <div className="tender-detail">
       <div className="tender-detail__main">
         <Link to="/tenders" className="tender-detail__back">← Back to pipeline</Link>
+        <ProcessStageBar
+          endpoint={`/tenders/${tender.id}/process-flow`}
+          authFetch={authFetch}
+          canAdvance={canManageTenders}
+          onAdvanced={() => void reload()}
+        />
         <div className="tender-detail__title-row">
           <div>
             <p className="s7-type-label">{tender.tenderNumber}</p>

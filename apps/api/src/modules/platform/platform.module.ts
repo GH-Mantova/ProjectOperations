@@ -22,6 +22,8 @@ import { MyDayController } from "./my-day.controller";
 import { MyDayService } from "./my-day.service";
 import { WeatherController } from "./weather.controller";
 import { WeatherService } from "./weather.service";
+import { TenderProcessFlowController } from "./process-flows.controller";
+import { ProcessFlowsService } from "./process-flows.service";
 
 @Module({
   imports: [AuditModule],
@@ -36,7 +38,8 @@ import { WeatherService } from "./weather.service";
     MyDayController,
     WeatherController,
     PlatformConfigController,
-    AiProvidersController
+    AiProvidersController,
+    TenderProcessFlowController
   ],
   providers: [
     MockSharePointAdapter,
@@ -61,7 +64,8 @@ import { WeatherService } from "./weather.service";
     UserDashboardsService,
     MyDayService,
     WeatherService,
-    PlatformConfigService
+    PlatformConfigService,
+    ProcessFlowsService
   ],
   exports: [
     SharePointService,
@@ -70,7 +74,8 @@ import { WeatherService } from "./weather.service";
     SearchService,
     DashboardsService,
     UserDashboardsService,
-    PlatformConfigService
+    PlatformConfigService,
+    ProcessFlowsService
   ]
 })
 export class PlatformModule {}

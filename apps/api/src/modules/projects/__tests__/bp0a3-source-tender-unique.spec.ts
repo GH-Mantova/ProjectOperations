@@ -33,12 +33,14 @@ describe("B-P0a-3 — unique sourceTenderId on Project", () => {
 
   let userId: string;
   let clientId: string;
+  let siteId: string;
   let tenderId: string;
 
   const projectData = (projectNumber: string, sourceTenderId: string | null) => ({
     projectNumber,
     name: `ZZTEST-BP0A3 ${projectNumber}`,
     clientId,
+    siteId,
     sourceTenderId,
     siteAddressLine1: "",
     siteAddressSuburb: "",
@@ -51,6 +53,7 @@ describe("B-P0a-3 — unique sourceTenderId on Project", () => {
   async function cleanup(): Promise<void> {
     await prisma.project.deleteMany({ where: { projectNumber: { startsWith: "ZZTEST-BP0A3-" } } });
     await prisma.tender.deleteMany({ where: { tenderNumber: { startsWith: "ZZTEST-BP0A3-" } } });
+    await prisma.site.deleteMany({ where: { name: "ZZTEST-BP0A3 Site" } });
     await prisma.client.deleteMany({ where: { name: "ZZTEST-BP0A3 Client" } });
     await prisma.user.deleteMany({ where: { email: "zztest-bp0a3@projectops.local" } });
   }
@@ -70,6 +73,11 @@ describe("B-P0a-3 — unique sourceTenderId on Project", () => {
 
     const client = await prisma.client.create({ data: { name: "ZZTEST-BP0A3 Client" } });
     clientId = client.id;
+
+    const site = await prisma.site.create({
+      data: { name: "ZZTEST-BP0A3 Site", clientId }
+    });
+    siteId = site.id;
 
     const tender = await prisma.tender.create({
       data: { tenderNumber: "ZZTEST-BP0A3-T1", title: "ZZTEST-BP0A3 tender" }

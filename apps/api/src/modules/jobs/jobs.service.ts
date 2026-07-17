@@ -36,6 +36,11 @@ import {
 import { JobQueryDto } from "./dto/job-query.dto";
 import { JobNumberService } from "./job-number.service";
 
+// Job.siteId is NOT NULL (see migration 20260716140000_site_id_not_null_backfill).
+// When a caller omits a site we point the row at the seeded "Unassigned" Site so
+// the row stays valid; users can reassign later from the job page.
+const UNASSIGNED_SITE_ID = "site-unassigned";
+
 const tenderConversionInclude = {
   estimator: {
     select: {
@@ -489,7 +494,7 @@ export class JobsService {
           name: dto.name.trim(),
           description: dto.description?.trim() || null,
           clientId,
-          siteId: dto.siteId?.trim() || null,
+          siteId: dto.siteId?.trim() || UNASSIGNED_SITE_ID,
           status: dto.status?.trim() || "PLANNING",
           projectManagerId: dto.projectManagerId?.trim() || null,
           supervisorId: dto.supervisorId?.trim() || null
@@ -534,7 +539,7 @@ export class JobsService {
       data: {
         name: dto.name,
         description: dto.description,
-        siteId: dto.siteId ?? null,
+        siteId: dto.siteId ?? UNASSIGNED_SITE_ID,
         projectManagerId: dto.projectManagerId ?? null,
         supervisorId: dto.supervisorId ?? null
       }
@@ -1247,7 +1252,7 @@ export class JobsService {
           name: dto.name,
           description: dto.description ?? tender.description ?? null,
           clientId: awardedContractedClient.clientId,
-          siteId: dto.siteId ?? null,
+          siteId: dto.siteId ?? UNASSIGNED_SITE_ID,
           sourceTenderId: tenderId,
           status: "PLANNING",
           projectManagerId: dto.projectManagerId ?? null,
@@ -1431,7 +1436,7 @@ export class JobsService {
             name: dto.name,
             description: dto.description ?? tender.description ?? null,
             clientId: awardedContractedClient.clientId,
-            siteId: dto.siteId ?? null,
+            siteId: dto.siteId ?? UNASSIGNED_SITE_ID,
             sourceTenderId: tenderId,
             status: "ACTIVE",
             projectManagerId: dto.projectManagerId ?? null,

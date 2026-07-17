@@ -75,6 +75,7 @@ async function main() {
       // this supplied value is intentionally ignored by the API.
       tenderNumber: `TEN-COMP-${now}`,
       title: `Compliance Tender ${now}`,
+      siteId: sites.items[0].id,
       description: "Automated compliance smoke tender.",
       estimatorUserId: planner.id,
       status: "SUBMITTED",

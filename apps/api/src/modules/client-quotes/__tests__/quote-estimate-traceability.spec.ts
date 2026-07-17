@@ -50,7 +50,7 @@ describe("Quote → Estimate traceability round-trip", () => {
     });
     const client = await prisma.client.create({ data: { name: "ZZTEST-TRACE Client" } });
     const tender = await prisma.tender.create({
-      data: { tenderNumber: "ZZTEST-TRACE-T", title: "Trace", status: "DRAFT" }
+      data: { tenderNumber: "ZZTEST-TRACE-T", title: "Trace", status: "DRAFT", siteId: "site-unassigned" }
     });
     const estimate = await prisma.tenderEstimate.create({
       data: {

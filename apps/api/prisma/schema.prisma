@@ -1023,7 +1023,7 @@ model Tender {
   description         String?
   estimatorUserId     String?                   @map("estimator_user_id")
   assignedEstimatorId String?                   @map("assigned_estimator_id")
-  siteId              String?                   @map("site_id")
+  siteId              String                    @map("site_id")
   status              String                    @default("DRAFT")
   dueDate             DateTime?                 @map("due_date")
   proposedStartDate   DateTime?                 @map("proposed_start_date")
@@ -1040,7 +1040,7 @@ model Tender {
   updatedAt           DateTime                  @updatedAt @map("updated_at")
   estimator           User?                     @relation("TenderEstimator", fields: [estimatorUserId], references: [id], onDelete: SetNull)
   assignedEstimator   User?                     @relation("TenderAssignedEstimator", fields: [assignedEstimatorId], references: [id], onDelete: SetNull)
-  site                Site?                     @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  site                Site                      @relation(fields: [siteId], references: [id], onDelete: Restrict)
   tenderClients       TenderClient[]
   tenderNotes         TenderNote[]
   clarifications      TenderClarification[]

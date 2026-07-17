@@ -22,6 +22,9 @@ import { MyDayController } from "./my-day.controller";
 import { MyDayService } from "./my-day.service";
 import { WeatherController } from "./weather.controller";
 import { WeatherService } from "./weather.service";
+import { AutomationsController } from "./automations.controller";
+import { AutomationsService } from "./automations.service";
+import { AutomationEngineService } from "./automation-engine.service";
 
 @Module({
   imports: [AuditModule],
@@ -36,7 +39,8 @@ import { WeatherService } from "./weather.service";
     MyDayController,
     WeatherController,
     PlatformConfigController,
-    AiProvidersController
+    AiProvidersController,
+    AutomationsController
   ],
   providers: [
     MockSharePointAdapter,
@@ -61,7 +65,9 @@ import { WeatherService } from "./weather.service";
     UserDashboardsService,
     MyDayService,
     WeatherService,
-    PlatformConfigService
+    PlatformConfigService,
+    AutomationEngineService,
+    AutomationsService
   ],
   exports: [
     SharePointService,
@@ -70,7 +76,8 @@ import { WeatherService } from "./weather.service";
     SearchService,
     DashboardsService,
     UserDashboardsService,
-    PlatformConfigService
+    PlatformConfigService,
+    AutomationEngineService
   ]
 })
 export class PlatformModule {}

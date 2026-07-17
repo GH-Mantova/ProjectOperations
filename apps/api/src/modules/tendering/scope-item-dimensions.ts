@@ -22,6 +22,13 @@
  * Raw Quantification inputs for a scope item: length/height/depth in
  * metres, density in t/m³ (or kg/m² for the sheet-material fallback),
  * plus optional explicit overrides for the three derived fields.
+ *
+ * PR feat/scope-each-factor — kind selects the formula branch:
+ *   VOLUME (default): tonnes = m³ × density
+ *   AREA:             tonnes = sqm × density / 1000
+ *   EACH:             tonnes = quantity × (perItemWeightKg / 1000)
+ *   FACTOR:           tonnes = sqm × factor
+ * quantity and factor are only meaningful for EACH and FACTOR respectively.
  */
 export type DimensionInput = {
   length?: number | null;
@@ -31,6 +38,10 @@ export type DimensionInput = {
   sqm?: number | null; // explicit override
   m3?: number | null; // explicit override
   tonnes?: number | null; // explicit override
+  // PR feat/scope-each-factor
+  kind?: "VOLUME" | "AREA" | "EACH" | "FACTOR" | null;
+  quantity?: number | null; // for EACH: count of items
+  factor?: number | null; // for FACTOR: sqm multiplier
 };
 
 /** Derived dimension values; null means "could not be derived / cleared". */
@@ -91,15 +102,25 @@ export function computeDerivedDimensions(input: DimensionInput): DerivedDimensio
     m3 = null;
   }
 
-  // tonnes: explicit override wins. Otherwise:
-  //   - if m³ > 0 → m³ × density (density treated as t/m³ for volumes)
-  //   - else if sqm > 0 → sqm × density / 1000 (PR B4a.5 sheet-material
-  //     fallback: density treated as kg/m², divided by 1000 to convert
-  //     kg → tonnes)
-  //   - else null
+  // tonnes: explicit override wins. Otherwise branch on kind:
+  //   EACH   → quantity × (density / 1000), where density stores perItemWeightKg.
+  //   FACTOR → sqm × factor (no density divide).
+  //   VOLUME (default) → m³ × density.
+  //   AREA   → sqm × density / 1000 (PR B4a.5 sheet-material fallback).
+  // PR feat/scope-each-factor — kind is optional; null/undefined falls
+  // through to the legacy VOLUME/AREA chain for backward compat.
+  const kind = input.kind ?? null;
+  const quantity = pos(input.quantity);
+  const factor = pos(input.factor);
   let tonnes: number | null;
   if (input.tonnes !== null && input.tonnes !== undefined && Number.isFinite(input.tonnes)) {
     tonnes = round2(input.tonnes);
+  } else if (kind === "EACH") {
+    // tonnes = quantity × (perItemWeightKg ÷ 1000)
+    tonnes = quantity !== null && density !== null ? round2(quantity * (density / 1000)) : null;
+  } else if (kind === "FACTOR") {
+    // tonnes = sqm × factor
+    tonnes = sqm !== null && sqm > 0 && factor !== null ? round2(sqm * factor) : null;
   } else if (m3 !== null && m3 > 0 && density !== null) {
     tonnes = round2(m3 * density);
   } else if (sqm !== null && sqm > 0 && density !== null) {

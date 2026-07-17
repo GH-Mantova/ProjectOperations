@@ -3073,10 +3073,24 @@ model ScopeOfWorksItem {
   // item. Row 1 remains stored on the flat materialType + length/height/
   // depth/density/sqm/m3/tonnes columns above; rows 2..N live here as
   // JSON so we can append/remove without a per-material table. Each
-  // element: { material, length, height, depth, density, sqm, m3, tonnes }
-  // — same shape and units as the flat row-1 fields. The item's total
-  // tonnes/m3 is the SUM across row 1 + every element in this array.
+  // element: { material, kind?, length, height, depth, density, sqm, m3,
+  //   tonnes, quantity?, factor?, wasteGroup?, wasteItem?,
+  //   wasteIncluded?, cuttingIncluded? }
+  // kind drives which formula is used (VOLUME/AREA/EACH/FACTOR).
+  // quantity (for EACH) and factor (for FACTOR) carry the user input.
+  // The item's total tonnes/m3 is the SUM across row 1 + every element.
   materials Json?
+
+  // PR feat/scope-each-factor — row-1 kind/quantity/factor scalars.
+  // materialKind mirrors EstimateMaterialDensity.kind for row 1:
+  //   null/"VOLUME" → m³×density, null/"AREA" → sqm×density/1000,
+  //   "EACH" → qty×(density/1000), "FACTOR" → sqm×factor.
+  // quantity is the per-item count for EACH (tonnes = qty × perItemWeightKg/1000).
+  // factor is the user-supplied multiplier for FACTOR (tonnes = sqm × factor).
+  // All nullable; existing rows leave them null and keep VOLUME behaviour.
+  materialKind String?  @map("material_kind")
+  quantity     Decimal? @db.Decimal(12, 3)
+  factor       Decimal? @db.Decimal(12, 6)
 
   // Provisional sum amount (discipline=Prv only). Final price = this value,
   // no markup applied. Ignored for non-Prv rows.

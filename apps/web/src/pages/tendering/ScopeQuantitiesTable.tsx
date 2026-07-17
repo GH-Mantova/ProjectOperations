@@ -27,6 +27,11 @@ export type ScopePlantEntry = {
 // across row 1 + every entry here.
 export type ScopeMaterialEntry = {
   material?: string | null;
+  // PR feat/scope-each-factor — kind drives formula; quantity for EACH;
+  // factor for FACTOR.
+  kind?: "VOLUME" | "AREA" | "EACH" | "FACTOR" | null;
+  quantity?: number | null;
+  factor?: number | null;
   length?: number | null;
   height?: number | null;
   depth?: number | null;
@@ -87,6 +92,10 @@ export type ScopeItem = {
   // PR feat/scope-multi-material — rows 2..N (row 1 lives on the flat
   // dimension columns above). Null/undefined = no extra materials.
   materials?: ScopeMaterialEntry[] | null;
+  // PR feat/scope-each-factor — row-1 kind/quantity/factor.
+  materialKind?: "VOLUME" | "AREA" | "EACH" | "FACTOR" | null;
+  quantity?: string | null;
+  factor?: string | null;
   estimateItemId: string | null;
   provisionalAmount: string | null;
   // PR B1.7.1 — per-row totals computed server-side in listItems.
@@ -130,6 +139,8 @@ type MaterialDensityRate = {
   materialName: string;
   density: string;
   unit: string;
+  // PR feat/scope-each-factor — kind drives which formula is used.
+  kind?: "VOLUME" | "AREA" | "EACH" | "FACTOR" | null;
   category: string | null;
   isActive: boolean;
 };
@@ -235,10 +246,16 @@ export function ScopeQuantitiesTable({
     [materialDensities]
   );
 
-  // Map materialName → density for quick lookup on select.
+  // Map materialName → density/unit/kind for quick lookup on select.
   const materialDensityMap = useMemo(() => {
-    const map = new Map<string, { density: string; unit: string }>();
-    for (const d of materialDensities) map.set(d.materialName, { density: d.density, unit: d.unit });
+    const map = new Map<string, { density: string; unit: string; kind: "VOLUME" | "AREA" | "EACH" | "FACTOR" }>();
+    for (const d of materialDensities) {
+      map.set(d.materialName, {
+        density: d.density,
+        unit: d.unit,
+        kind: (d.kind ?? "VOLUME") as "VOLUME" | "AREA" | "EACH" | "FACTOR"
+      });
+    }
     return map;
   }, [materialDensities]);
 
@@ -501,7 +518,7 @@ type ItemCardProps = {
   wasteGroupOptions: TooltipSelectOption<string>[];
   wasteItemsByGroup: Map<string, string[]>;
   materialOptions: TooltipSelectOption<string>[];
-  materialDensityMap: Map<string, { density: string; unit: string }>;
+  materialDensityMap: Map<string, { density: string; unit: string; kind: "VOLUME" | "AREA" | "EACH" | "FACTOR" }>;
   isPending: boolean;
   onPatch: (body: Record<string, unknown>) => void;
   onConfirm: () => void;
@@ -525,6 +542,10 @@ function ItemCard({
   onExclude,
   onDelete
 }: ItemCardProps) {
+  // PR feat/scope-each-factor — active kind for row 1. Sourced from
+  // persisted materialKind (set when material is selected); defaults to
+  // VOLUME so existing rows behave identically.
+  const row1Kind: "VOLUME" | "AREA" | "EACH" | "FACTOR" = (item.materialKind as "VOLUME" | "AREA" | "EACH" | "FACTOR") ?? "VOLUME";
   const isAi = item.aiProposed && item.status !== "confirmed";
   const confidence = item.aiConfidence ? CONFIDENCE_STYLE[item.aiConfidence] : null;
   const baseBg = isAi ? "#FEF3C7" : "var(--surface-card, #fff)";
@@ -601,6 +622,9 @@ function ItemCard({
   // Track which derived fields hold an explicit override (saved value
   // differs from what auto-derive would produce from raw inputs alone).
   const [dirty, setDirty] = useState({ sqm: false, m3: false, tonnes: false });
+  // PR feat/scope-each-factor — local state for row-1 EACH/FACTOR scalars.
+  const [row1Quantity, setRow1Quantity] = useState(initDim(item.quantity));
+  const [row1Factor, setRow1Factor] = useState(initDim(item.factor));
 
   // Re-sync local state when the upstream row is refreshed.
   useEffect(() => {
@@ -613,6 +637,9 @@ function ItemCard({
       density: initDim(item.density),
       tonnes: initDim(item.tonnes)
     });
+    // PR feat/scope-each-factor — sync row-1 EACH/FACTOR scalars.
+    setRow1Quantity(initDim(item.quantity));
+    setRow1Factor(initDim(item.factor));
 
     const autoDerived = computeDerivedDimensions({
       length: item.length == null ? null : Number(item.length),
@@ -629,7 +656,7 @@ function ItemCard({
       m3: isDimensionOverride(item.m3, autoDerived.m3),
       tonnes: isDimensionOverride(item.tonnes, autoDerived.tonnes)
     });
-  }, [item.id, item.length, item.height, item.depth, item.sqm, item.m3, item.density, item.tonnes]);
+  }, [item.id, item.length, item.height, item.depth, item.sqm, item.m3, item.density, item.tonnes, item.quantity, item.factor]);
 
   const setDim = (k: DimKey, v: string) => {
     setDims((s) => ({ ...s, [k]: v }));
@@ -673,9 +700,13 @@ function ItemCard({
       density: dims.density === "" ? null : Number(dims.density),
       sqm: dirty.sqm && dims.sqm !== "" ? Number(dims.sqm) : null,
       m3: dirty.m3 && dims.m3 !== "" ? Number(dims.m3) : null,
-      tonnes: dirty.tonnes && dims.tonnes !== "" ? Number(dims.tonnes) : null
+      tonnes: dirty.tonnes && dims.tonnes !== "" ? Number(dims.tonnes) : null,
+      // PR feat/scope-each-factor
+      kind: row1Kind,
+      quantity: row1Quantity === "" ? null : Number(row1Quantity),
+      factor: row1Factor === "" ? null : Number(row1Factor)
     }),
-    [dims, dirty]
+    [dims, dirty, row1Kind, row1Quantity, row1Factor]
   );
   const derived = useMemo(() => computeDerivedDimensions(parsed), [parsed]);
 
@@ -725,7 +756,12 @@ function ItemCard({
       density: parsed.density,
       sqm: sqmToSave,
       m3: m3ToSave,
-      tonnes: tonnesToSave
+      tonnes: tonnesToSave,
+      // PR feat/scope-each-factor — always ship kind/quantity/factor so
+      // the server's stored values stay consistent with the formula in use.
+      materialKind: row1Kind,
+      quantity: parsed.quantity,
+      factor: parsed.factor
     });
   };
 
@@ -1038,6 +1074,8 @@ function ItemCard({
                         ? Number(lookup.density) / 1000
                         : Number(lookup.density))
                     : null;
+                  // PR feat/scope-each-factor — capture kind from lookup.
+                  const newKind = lookup?.kind ?? "VOLUME";
 
                   // Recompute derived quantities with the new density so
                   // sqm/m³/tonnes update immediately.
@@ -1053,19 +1091,27 @@ function ItemCard({
                     density: newDensity,
                     sqm: dirty.sqm && dims.sqm !== "" ? Number(dims.sqm) : null,
                     m3: isSheet ? null : (dirty.m3 && dims.m3 !== "" ? Number(dims.m3) : null),
-                    tonnes: null // always rederive tonnes from new density
+                    tonnes: null, // always rederive tonnes from new density
+                    kind: newKind as "VOLUME" | "AREA" | "EACH" | "FACTOR",
+                    quantity: row1Quantity === "" ? null : Number(row1Quantity),
+                    factor: row1Factor === "" ? null : Number(row1Factor)
                   };
                   const rederived = computeDerivedDimensions(newParsed);
 
                   onPatch({
                     materialType: v,
+                    materialKind: newKind,
                     density: newDensity,
                     length: newParsed.length,
                     height: newParsed.height,
                     depth: newParsed.depth,
                     sqm: rederived.sqm,
                     m3: rederived.m3,
-                    tonnes: rederived.tonnes
+                    tonnes: rederived.tonnes,
+                    // Reset quantity/factor when kind changes to avoid
+                    // stale values being used with the wrong formula.
+                    quantity: newKind === "EACH" ? newParsed.quantity : null,
+                    factor: newKind === "FACTOR" ? newParsed.factor : null
                   });
                 }}
                 disabled={isAi}
@@ -1073,25 +1119,69 @@ function ItemCard({
                 style={{ height: 32 }}
               />
             </FieldCell>
-            <FieldCell label="Density (t/m³)" width={80}>
-              <input
-                className="s7-input"
-                type="number"
-                step="0.001"
-                value={dims.density}
-                disabled={isAi || !!item.materialType}
-                style={{
-                  width: 80,
-                  height: 32,
-                  ...(item.materialType
-                    ? { backgroundColor: "var(--surface-muted, #f3f4f6)", color: "var(--text-muted, #6b7280)" }
-                    : {})
-                }}
-                title={item.materialType ? `Auto-set from ${item.materialType}. Clear material to edit manually.` : "Manual density (tonnes per m³)"}
-                onChange={(e) => setDim("density", e.target.value)}
-                onBlur={persistDims}
-              />
-            </FieldCell>
+            {/* PR feat/scope-each-factor — show density (for VOLUME/AREA),
+                or Factor input (for FACTOR), or per-item weight (for EACH).
+                For EACH the density column is relabelled "kg/item" because
+                EstimateMaterialDensity.density holds perItemWeightKg. */}
+            {row1Kind === "FACTOR" ? (
+              <FieldCell label="Factor" width={80}>
+                <input
+                  className="s7-input"
+                  type="number"
+                  step="0.0001"
+                  value={row1Factor}
+                  disabled={isAi}
+                  style={{ width: 80, height: 32 }}
+                  placeholder="0.0"
+                  title="Factor: tonnes = sqm × factor"
+                  onChange={(e) => setRow1Factor(e.target.value)}
+                  onBlur={persistDims}
+                />
+              </FieldCell>
+            ) : (
+              <FieldCell label={row1Kind === "EACH" ? "kg/item" : "Density (t/m³)"} width={80}>
+                <input
+                  className="s7-input"
+                  type="number"
+                  step="0.001"
+                  value={dims.density}
+                  disabled={isAi || !!item.materialType}
+                  style={{
+                    width: 80,
+                    height: 32,
+                    ...(item.materialType
+                      ? { backgroundColor: "var(--surface-muted, #f3f4f6)", color: "var(--text-muted, #6b7280)" }
+                      : {})
+                  }}
+                  title={
+                    item.materialType
+                      ? `Auto-set from ${item.materialType}. Clear material to edit manually.`
+                      : row1Kind === "EACH"
+                        ? "Per-item weight in kg (tonnes = qty × kg/1000)"
+                        : "Manual density (tonnes per m³)"
+                  }
+                  onChange={(e) => setDim("density", e.target.value)}
+                  onBlur={persistDims}
+                />
+              </FieldCell>
+            )}
+            {/* PR feat/scope-each-factor — Quantity input for EACH kind. */}
+            {row1Kind === "EACH" ? (
+              <FieldCell label="Quantity" width={80}>
+                <input
+                  className="s7-input"
+                  type="number"
+                  step="1"
+                  value={row1Quantity}
+                  disabled={isAi}
+                  style={{ width: 80, height: 32 }}
+                  placeholder="0"
+                  title="Number of items (tonnes = qty × kg/item ÷ 1000)"
+                  onChange={(e) => setRow1Quantity(e.target.value)}
+                  onBlur={persistDims}
+                />
+              </FieldCell>
+            ) : null}
             <FieldCell label="Sqm" width={80}>
               <OverrideField
                 isOverridden={dirty.sqm}
@@ -1381,13 +1471,15 @@ function MaterialCluster({
   index: number;
   entry: ScopeMaterialEntry;
   materialOptions: TooltipSelectOption<string>[];
-  materialDensityMap: Map<string, { density: string; unit: string }>;
+  materialDensityMap: Map<string, { density: string; unit: string; kind: "VOLUME" | "AREA" | "EACH" | "FACTOR" }>;
   wasteGroupOptions: TooltipSelectOption<string>[];
   wasteItemsByGroup: Map<string, string[]>;
   disabled: boolean;
   onChange: (patch: Partial<ScopeMaterialEntry>) => void;
   onRemove: () => void;
 }) {
+  // PR feat/scope-each-factor — active kind for this material row.
+  const matKind: "VOLUME" | "AREA" | "EACH" | "FACTOR" = (entry.kind ?? "VOLUME") as "VOLUME" | "AREA" | "EACH" | "FACTOR";
   const numOrNull = (v: string): number | null => {
     if (v === "") return null;
     const n = Number(v);
@@ -1399,6 +1491,8 @@ function MaterialCluster({
   // Live re-derive on every render so sqm/m³/tonnes reflect the current
   // L/H/D + density. Persisted values on `entry` are the source of truth
   // when the user hasn't touched a field this render.
+  // PR feat/scope-each-factor — pass kind/quantity/factor so EACH/FACTOR
+  // branches fire correctly.
   const derived = computeDerivedDimensions({
     length: entry.length ?? null,
     height: entry.height ?? null,
@@ -1406,7 +1500,10 @@ function MaterialCluster({
     density: entry.density ?? null,
     sqm: entry.sqm ?? null,
     m3: entry.m3 ?? null,
-    tonnes: entry.tonnes ?? null
+    tonnes: entry.tonnes ?? null,
+    kind: matKind,
+    quantity: entry.quantity ?? null,
+    factor: entry.factor ?? null
   });
 
   // PR feat/scope-material-inline-waste — waste item options for THIS
@@ -1485,6 +1582,8 @@ function MaterialCluster({
                   ? Number(lookup.density) / 1000
                   : Number(lookup.density)
                 : null;
+              // PR feat/scope-each-factor — capture kind from lookup.
+              const newKind = lookup?.kind ?? "VOLUME";
               const isSheet = lookup?.unit === "kg/m²";
               const rederived = computeDerivedDimensions({
                 length: entry.length ?? null,
@@ -1493,15 +1592,21 @@ function MaterialCluster({
                 density: newDensity,
                 sqm: null,
                 m3: isSheet ? null : entry.m3 ?? null,
-                tonnes: null
+                tonnes: null,
+                kind: newKind as "VOLUME" | "AREA" | "EACH" | "FACTOR",
+                quantity: newKind === "EACH" ? entry.quantity ?? null : null,
+                factor: newKind === "FACTOR" ? entry.factor ?? null : null
               });
               onChange({
                 material: v,
+                kind: newKind as "VOLUME" | "AREA" | "EACH" | "FACTOR",
                 density: newDensity,
                 depth: isSheet ? null : entry.depth ?? null,
                 sqm: rederived.sqm,
                 m3: rederived.m3,
-                tonnes: rederived.tonnes
+                tonnes: rederived.tonnes,
+                quantity: newKind === "EACH" ? entry.quantity ?? null : null,
+                factor: newKind === "FACTOR" ? entry.factor ?? null : null
               });
             }}
             disabled={disabled}
@@ -1509,24 +1614,80 @@ function MaterialCluster({
             style={{ height: 32 }}
           />
         </FieldCell>
-        <FieldCell label="Density (t/m³)" width={80}>
-          <input
-            className="s7-input"
-            type="number"
-            step="0.001"
-            defaultValue={strOf(entry.density)}
-            disabled={disabled || !!entry.material}
-            style={{
-              width: 80,
-              height: 32,
-              ...(entry.material
-                ? { backgroundColor: "var(--surface-muted, #f3f4f6)", color: "var(--text-muted, #6b7280)" }
-                : {})
-            }}
-            title={entry.material ? `Auto-set from ${entry.material}. Clear material to edit manually.` : "Manual density (tonnes per m³)"}
-            onBlur={(e) => onChange({ density: numOrNull(e.target.value) })}
-          />
-        </FieldCell>
+        {/* PR feat/scope-each-factor — show Factor input (FACTOR kind) or
+            density/kg-per-item (VOLUME/AREA/EACH). */}
+        {matKind === "FACTOR" ? (
+          <FieldCell label="Factor" width={80}>
+            <input
+              className="s7-input"
+              type="number"
+              step="0.0001"
+              defaultValue={strOf(entry.factor)}
+              disabled={disabled}
+              style={{ width: 80, height: 32 }}
+              placeholder="0.0"
+              title="Factor: tonnes = sqm × factor"
+              onBlur={(e) => {
+                const newFactor = numOrNull(e.target.value);
+                const rederived = computeDerivedDimensions({
+                  sqm: entry.sqm ?? null,
+                  kind: "FACTOR",
+                  factor: newFactor
+                });
+                onChange({ factor: newFactor, tonnes: rederived.tonnes });
+              }}
+            />
+          </FieldCell>
+        ) : (
+          <FieldCell label={matKind === "EACH" ? "kg/item" : "Density (t/m³)"} width={80}>
+            <input
+              className="s7-input"
+              type="number"
+              step="0.001"
+              defaultValue={strOf(entry.density)}
+              disabled={disabled || !!entry.material}
+              style={{
+                width: 80,
+                height: 32,
+                ...(entry.material
+                  ? { backgroundColor: "var(--surface-muted, #f3f4f6)", color: "var(--text-muted, #6b7280)" }
+                  : {})
+              }}
+              title={
+                entry.material
+                  ? `Auto-set from ${entry.material}. Clear material to edit manually.`
+                  : matKind === "EACH"
+                    ? "Per-item weight in kg (tonnes = qty × kg/1000)"
+                    : "Manual density (tonnes per m³)"
+              }
+              onBlur={(e) => onChange({ density: numOrNull(e.target.value) })}
+            />
+          </FieldCell>
+        )}
+        {/* PR feat/scope-each-factor — Quantity input for EACH kind. */}
+        {matKind === "EACH" ? (
+          <FieldCell label="Quantity" width={80}>
+            <input
+              className="s7-input"
+              type="number"
+              step="1"
+              defaultValue={strOf(entry.quantity)}
+              disabled={disabled}
+              style={{ width: 80, height: 32 }}
+              placeholder="0"
+              title="Number of items (tonnes = qty × kg/item ÷ 1000)"
+              onBlur={(e) => {
+                const newQty = numOrNull(e.target.value);
+                const rederived = computeDerivedDimensions({
+                  density: entry.density ?? null,
+                  kind: "EACH",
+                  quantity: newQty
+                });
+                onChange({ quantity: newQty, tonnes: rederived.tonnes });
+              }}
+            />
+          </FieldCell>
+        ) : null}
         <FieldCell label="Sqm" width={80}>
           <input
             className="s7-input"

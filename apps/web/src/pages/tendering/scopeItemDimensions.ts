@@ -11,6 +11,10 @@ export type DimensionInput = {
   sqm?: number | null;
   m3?: number | null;
   tonnes?: number | null;
+  // PR feat/scope-each-factor
+  kind?: "VOLUME" | "AREA" | "EACH" | "FACTOR" | null;
+  quantity?: number | null; // for EACH: count of items
+  factor?: number | null; // for FACTOR: sqm multiplier
 };
 
 export type DerivedDimensions = {
@@ -54,12 +58,22 @@ export function computeDerivedDimensions(input: DimensionInput): DerivedDimensio
     m3 = null;
   }
 
-  // PR B4a.5 — tonnes fallback chain: explicit > m³×density > sqm×density/1000.
-  // Sqm fallback treats density as kg/m² (sheet materials); divide by
-  // 1000 to convert kg → tonnes. Mirror of the API helper.
+  // PR B4a.5 — tonnes fallback chain: explicit > kind-branch > legacy chain.
+  // PR feat/scope-each-factor — kind selects the formula:
+  //   EACH:   quantity × (density / 1000) where density = perItemWeightKg
+  //   FACTOR: sqm × factor
+  //   default (VOLUME/AREA/null): m³×density then sqm×density/1000
+  // Mirror of the API helper.
+  const kind = input.kind ?? null;
+  const quantity = pos(input.quantity);
+  const factor = pos(input.factor);
   let tonnes: number | null;
   if (input.tonnes !== null && input.tonnes !== undefined && Number.isFinite(input.tonnes)) {
     tonnes = round2(input.tonnes);
+  } else if (kind === "EACH") {
+    tonnes = quantity !== null && density !== null ? round2(quantity * (density / 1000)) : null;
+  } else if (kind === "FACTOR") {
+    tonnes = sqm !== null && sqm > 0 && factor !== null ? round2(sqm * factor) : null;
   } else if (m3 !== null && m3 > 0 && density !== null) {
     tonnes = round2(m3 * density);
   } else if (sqm !== null && sqm > 0 && density !== null) {

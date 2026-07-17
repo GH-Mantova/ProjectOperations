@@ -89,6 +89,7 @@ model User {
   rejectedTimesheets         Timesheet[]                 @relation("TimesheetRejecter")
   approvedWorkerLeaves       WorkerLeave[]               @relation("WorkerLeaveApprover")
   requestedWorkerLeaves      WorkerLeave[]               @relation("WorkerLeaveRequester")
+  approvedLeaveRequests      LeaveRequest[]              @relation("LeaveRequestApprover")
   formApprovalAssignments    FormApproval[]              @relation("FormApprovalAssignee")
   formScheduleAssignments    FormSchedule[]              @relation("FormScheduleAssignee")
   formPublicLinksCreated     FormPublicLink[]            @relation("FormPublicLinkCreator")
@@ -2653,6 +2654,7 @@ model WorkerProfile {
   locationLogs             WorkerLocationLog[]
   leaves                   WorkerLeave[]
   unavailabilities         WorkerUnavailability[]
+  leaveRequests             LeaveRequest[]
   createdAt                DateTime               @default(now()) @map("created_at")
   updatedAt                DateTime               @updatedAt @map("updated_at")
 
@@ -4269,6 +4271,7 @@ model WorkerLeave {
   approvedById    String?       @map("approved_by_id")
   approvedBy      User?         @relation("WorkerLeaveApprover", fields: [approvedById], references: [id], onDelete: SetNull)
   approvedAt      DateTime?     @map("approved_at")
+  leaveRequest    LeaveRequest?  @relation("LeaveRequestWorkerLeave")
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
@@ -4290,6 +4293,52 @@ model WorkerUnavailability {
 
   @@index([workerProfileId, startDate])
   @@map("worker_unavailability")
+}
+
+// --- HR self-service leave requests (feat/hr-leave-selfservice) ---
+//
+// LeaveRequest is the formal HR record a worker submits for time off.
+// On APPROVAL a corresponding WorkerLeave row is written so the scheduler
+// calendar overlay (which reads WorkerLeave) immediately respects the leave
+// without a separate step.
+//
+// Approval authority is resolved via User.managerId (the org hierarchy) and
+// the AuthorityService seam -- never hard-coded.
+
+model LeaveRequest {
+  id              String             @id @default(cuid())
+  workerId        String             @map("worker_id")
+  worker          WorkerProfile      @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  type            LeaveRequestType
+  startDate       DateTime           @map("start_date")
+  endDate         DateTime           @map("end_date")
+  hours           Float?
+  reason          String?
+  status          LeaveRequestStatus @default(PENDING)
+  approvedById    String?            @map("approved_by_id")
+  approvedBy      User?              @relation("LeaveRequestApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt      DateTime?          @map("approved_at")
+  workerLeaveId   String?            @unique @map("worker_leave_id")
+  workerLeave     WorkerLeave?       @relation("LeaveRequestWorkerLeave", fields: [workerLeaveId], references: [id], onDelete: SetNull)
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  @@index([workerId, startDate])
+  @@index([status])
+  @@map("leave_requests")
+}
+
+enum LeaveRequestType {
+  ANNUAL
+  PERSONAL
+  UNPAID
+  OTHER
+}
+
+enum LeaveRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 // â"€â"€â"€ GPS clock-on (PR #84) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€

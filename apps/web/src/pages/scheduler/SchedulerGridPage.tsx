@@ -30,6 +30,15 @@ type EligibleWorker = {
   reasons: string[];
 };
 
+type WorkerSuggestion = {
+  targetType: "WORKER";
+  worker: { id: string; firstName: string; lastName: string; role: string | null };
+  score: number;
+  eligible: boolean;
+  reasons: string[];
+  breakdown: { roleFit: number; availability: number; proximity: number };
+};
+
 type DragState = {
   groupId: string;
   rowKey: string;
@@ -65,6 +74,8 @@ export function SchedulerGridPage() {
   const [pickerWorkers, setPickerWorkers] = useState<EligibleWorker[] | null>(null);
   const [pickerShowAll, setPickerShowAll] = useState(false);
   const [pickerError, setPickerError] = useState<string | null>(null);
+  const [pickerSuggestMode, setPickerSuggestMode] = useState(false);
+  const [pickerSuggestions, setPickerSuggestions] = useState<WorkerSuggestion[] | null>(null);
 
   const [drag, setDrag] = useState<DragState>(null);
   const dragRowRef = useRef<DragState>(null);
@@ -192,6 +203,8 @@ export function SchedulerGridPage() {
   const openPickerForCell = (date: string, projectId: string, jobRoleId: string | null, rowKey?: string) => {
     setPickerError(null);
     setPickerShowAll(false);
+    setPickerSuggestMode(false);
+    setPickerSuggestions(null);
     setPicker({ date, projectId, jobRoleId, rowKey });
   };
 
@@ -222,6 +235,38 @@ export function SchedulerGridPage() {
       alive = false;
     };
   }, [authFetch, picker, pickerShowAll]);
+
+  useEffect(() => {
+    let alive = true;
+    if (!picker || !pickerSuggestMode || !picker.projectId) {
+      setPickerSuggestions(null);
+      return;
+    }
+    void (async () => {
+      try {
+        const params = new URLSearchParams({
+          date: picker.date,
+          projectId: picker.projectId,
+          includeIneligible: pickerShowAll ? "true" : "false"
+        });
+        if (picker.jobRoleId) params.set("jobRoleId", picker.jobRoleId);
+        const r = await authFetch(`/scheduler/suggestions?${params.toString()}`);
+        if (!alive) return;
+        if (!r.ok) {
+          setPickerError("Could not load suggestions.");
+          setPickerSuggestions([]);
+          return;
+        }
+        const j = (await r.json()) as { suggestions: WorkerSuggestion[] };
+        setPickerSuggestions(j.suggestions);
+      } catch {
+        if (alive) setPickerError("Could not load suggestions.");
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [authFetch, picker, pickerShowAll, pickerSuggestMode]);
 
   const upsertCell = async (
     date: string,
@@ -602,12 +647,15 @@ export function SchedulerGridPage() {
           projects={projects}
           jobRoles={jobRoles}
           workers={pickerWorkers}
+          suggestions={pickerSuggestions}
+          suggestMode={pickerSuggestMode}
           showAll={pickerShowAll}
           error={pickerError}
           onChangeRole={(jobRoleId) => setPicker((p) => (p ? { ...p, jobRoleId } : p))}
           onChangeProject={(projectId) => setPicker((p) => (p ? { ...p, projectId } : p))}
           onChangeDate={(date) => setPicker((p) => (p ? { ...p, date } : p))}
           onToggleShowAll={(v) => setPickerShowAll(v)}
+          onToggleSuggestMode={(v) => setPickerSuggestMode(v)}
           onClose={() => setPicker(null)}
           onPick={handlePickWorker}
         />
@@ -812,12 +860,15 @@ type PickerModalProps = {
   projects: Project[];
   jobRoles: JobRole[];
   workers: EligibleWorker[] | null;
+  suggestions: WorkerSuggestion[] | null;
+  suggestMode: boolean;
   showAll: boolean;
   error: string | null;
   onChangeProject: (id: string) => void;
   onChangeRole: (id: string) => void;
   onChangeDate: (date: string) => void;
   onToggleShowAll: (v: boolean) => void;
+  onToggleSuggestMode: (v: boolean) => void;
   onClose: () => void;
   onPick: (worker: EligibleWorker) => void | Promise<void>;
 };
@@ -827,12 +878,15 @@ function PickerModal({
   projects,
   jobRoles,
   workers,
+  suggestions,
+  suggestMode,
   showAll,
   error,
   onChangeProject,
   onChangeRole,
   onChangeDate,
   onToggleShowAll,
+  onToggleSuggestMode,
   onClose,
   onPick
 }: PickerModalProps) {
@@ -908,13 +962,67 @@ function PickerModal({
             />
             Show all available (drop competency filter)
           </label>
+          <label className="sched-grid__toggle" style={{ marginTop: 4 }}>
+            <input
+              type="checkbox"
+              checked={suggestMode}
+              onChange={(e) => onToggleSuggestMode(e.target.checked)}
+              data-testid="picker-suggest"
+            />
+            Suggest (rank by fit, availability, proximity)
+          </label>
           {error ? (
             <div className="tender-page__error" role="alert" style={{ marginTop: 8 }}>
               {error}
             </div>
           ) : null}
           <div style={{ marginTop: 12 }}>
-            {!picker.jobRoleId || !picker.projectId ? (
+            {suggestMode ? (
+              !picker.projectId ? (
+                <p style={{ color: "var(--text-muted)" }}>Pick a project to see ranked suggestions.</p>
+              ) : suggestions === null ? (
+                <Skeleton height={24} />
+              ) : suggestions.length === 0 ? (
+                <EmptyState
+                  heading="No suggestions"
+                  subtext="Toggle Show all to include ineligible candidates."
+                />
+              ) : (
+                <ul className="sched-grid__picker-list" data-testid="picker-suggest-list">
+                  {suggestions.map((s) => (
+                    <li key={s.worker.id}>
+                      <button
+                        type="button"
+                        className={`sched-grid__picker-item${s.eligible ? "" : " sched-grid__picker-item--ineligible"}`}
+                        onClick={() =>
+                          void onPick({
+                            worker: s.worker,
+                            eligible: s.eligible,
+                            reasons: s.reasons.filter((r) => r.startsWith("blocker:")).map((r) => r.slice("blocker:".length))
+                          })
+                        }
+                        style={TOUCH}
+                        title={s.reasons.join(" • ")}
+                      >
+                        <span className="sched-resource__avatar">
+                          {(s.worker.firstName[0] ?? "") + (s.worker.lastName[0] ?? "")}
+                        </span>
+                        <span className="sched-resource__meta">
+                          <span className="sched-resource__name">
+                            {s.worker.firstName} {s.worker.lastName}
+                            <span className="s7-badge" style={{ marginLeft: 6 }}>{s.score}</span>
+                          </span>
+                          <span className="sched-resource__role">
+                            fit {s.breakdown.roleFit} · avail {s.breakdown.availability} · prox {s.breakdown.proximity}
+                          </span>
+                        </span>
+                        {!s.eligible ? <span className="s7-badge s7-badge--warning">Override</span> : null}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )
+            ) : !picker.jobRoleId || !picker.projectId ? (
               <p style={{ color: "var(--text-muted)" }}>Pick a project and role to see eligible workers.</p>
             ) : workers === null ? (
               <Skeleton height={24} />

@@ -78,7 +78,7 @@ function buildPrismaMock(): {
   };
 } {
   const sub = {
-    findMany: jest.fn(),
+    findMany: jest.fn().mockResolvedValue([]),
     findUnique: jest.fn(),
     create: jest.fn().mockImplementation(async ({ data }: AnyData) => ({ id: "sub-new", ...data })),
     update: jest

@@ -92,7 +92,7 @@ describe("B-P0a-2b — Project shells for unmapped Jobs", () => {
     siteId = site.id;
 
     const tenderX = await prisma.tender.create({
-      data: { tenderNumber: "ZZTEST-BP0A2B-T1", title: "ZZTEST-BP0A2B tender X" }
+      data: { tenderNumber: "ZZTEST-BP0A2B-T1", title: "ZZTEST-BP0A2B tender X", siteId: site.id }
     });
     tenderXId = tenderX.id;
 

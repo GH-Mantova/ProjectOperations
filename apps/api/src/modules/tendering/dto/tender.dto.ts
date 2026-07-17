@@ -123,7 +123,10 @@ export class UpsertTenderDto {
   title!: string;
   @IsOptional() @IsString() description?: string;
   @IsOptional() @IsString() estimatorUserId?: string;
-  @IsOptional() @IsString() siteId?: string;
+  // Site is captured at wizard time (Geoapify autocomplete) and required
+  // going forward. Legacy tenders were backfilled to the "Unassigned" Site
+  // by the 20260717120000_tender_siteid_not_null migration.
+  @IsString() siteId!: string;
   @IsOptional() @IsString() status?: string;
   @IsOptional() @IsDateString() dueDate?: string;
   @IsOptional() @IsDateString() proposedStartDate?: string;

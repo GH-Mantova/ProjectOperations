@@ -5,6 +5,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { ErrorBoundary } from "../../components/ErrorBoundary";
 import { CorrespondencePanel } from "../../components/correspondence/CorrespondencePanel";
 import { PunchTab } from "../../components/punch/PunchTab";
+import { AssistPanel, useCanUseAssist } from "../../components/AssistPanel";
 
 type JobActivity = {
   id: string;
@@ -193,6 +194,8 @@ export function JobDetailPage() {
   const [expandedStages, setExpandedStages] = useState<Set<string>>(new Set());
   const [documents, setDocuments] = useState<DocumentItem[] | null>(null);
   const [commitmentSummary, setCommitmentSummary] = useState<CommitmentBudgetSummary | null>(null);
+  const [assistOpen, setAssistOpen] = useState(false);
+  const canUseAssist = useCanUseAssist();
 
   const reload = async () => {
     if (!id) return;
@@ -370,6 +373,16 @@ export function JobDetailPage() {
             <Link to={`/archive/${job.id}`} className="s7-btn s7-btn--secondary s7-btn--sm">
               View archive →
             </Link>
+          ) : null}
+          {canUseAssist ? (
+            <button
+              type="button"
+              className="s7-btn s7-btn--secondary s7-btn--sm"
+              onClick={() => setAssistOpen(true)}
+              title="Summarise, draft, or explain — powered by your configured AI provider"
+            >
+              AI assist
+            </button>
           ) : null}
         </div>
       </header>
@@ -755,6 +768,51 @@ export function JobDetailPage() {
           <CorrespondencePanel ownerKind="job" ownerId={job.id} />
         </section>
       </ErrorBoundary>
+
+      <AssistPanel
+        open={assistOpen}
+        onClose={() => setAssistOpen(false)}
+        surface="job"
+        subject={`${job.jobNumber} — ${job.name}`}
+        getContext={() => buildJobAssistContext(job, totalActivities, completedActivities, openIssueCount)}
+      />
     </div>
   );
+}
+
+// See TenderDetailPage's buildTenderAssistContext for rationale — this
+// mirrors the pattern for jobs: compact plain text summarising what the
+// user can see on the page. Counts are passed in from the outer
+// component so we don't re-walk stages here.
+function buildJobAssistContext(
+  job: JobDetail,
+  totalActivities: number,
+  completedActivities: number,
+  openIssueCount: number
+): string {
+  const lines: string[] = [];
+  lines.push(`Job: ${job.jobNumber} — ${job.name}`);
+  lines.push(`Status: ${job.status}`);
+  lines.push(`Client: ${job.client.name}`);
+  if (job.site) lines.push(`Site: ${job.site.name}`);
+  if (job.projectManager) {
+    lines.push(
+      `Project manager: ${job.projectManager.firstName} ${job.projectManager.lastName}`
+    );
+  }
+  if (job.supervisor) {
+    lines.push(`Supervisor: ${job.supervisor.firstName} ${job.supervisor.lastName}`);
+  }
+  if (job.description) lines.push(`Description: ${job.description}`);
+  lines.push(`Stages: ${job.stages.length}`);
+  lines.push(`Activities: ${totalActivities} (${completedActivities} complete)`);
+  lines.push(
+    `Issues: ${job.issues.length} total, ${openIssueCount} open`
+  );
+  lines.push(`Variations: ${job.variations.length}`);
+  lines.push(`Progress entries: ${job.progressEntries.length}`);
+  if (job.progressEntries[0]) {
+    lines.push(`Latest progress: ${job.progressEntries[0].summary}`);
+  }
+  return lines.join("\n");
 }

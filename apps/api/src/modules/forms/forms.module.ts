@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { PrismaModule } from "../../prisma/prisma.module";
 import { AuditModule } from "../audit/audit.module";
+import { PdfRenderingModule } from "../pdf-rendering/pdf-rendering.module";
 import { PlatformModule } from "../platform/platform.module";
 import { FormsController } from "./forms.controller";
 import { FormsService } from "./forms.service";
@@ -11,6 +12,7 @@ import { FormsSnippetsController } from "./forms-snippets.controller";
 import { FormsSnippetsService } from "./forms-snippets.service";
 import { CorrectiveActionsController } from "./corrective-actions.controller";
 import { CorrectiveActionsService } from "./corrective-actions.service";
+import { SubmissionPdfService } from "./submission-pdf.service";
 import { PublicLinkController } from "./public-link.controller";
 import { PublicLinkService } from "./public-link.service";
 
@@ -33,9 +35,17 @@ import { PublicLinkService } from "./public-link.service";
  * second copy of the contracts.
  */
 @Module({
-  imports: [PrismaModule, AuditModule, PlatformModule],
+  imports: [PrismaModule, AuditModule, PlatformModule, PdfRenderingModule],
   controllers: [FormsController, FormsEngineController, FormsSnippetsController, CorrectiveActionsController, PublicLinkController],
-  providers: [FormsService, FormsEngineService, RulesEngineService, FormsSnippetsService, CorrectiveActionsService, PublicLinkService],
+  providers: [
+    FormsService,
+    FormsEngineService,
+    RulesEngineService,
+    FormsSnippetsService,
+    CorrectiveActionsService,
+    SubmissionPdfService,
+    PublicLinkService
+  ],
   exports: [RulesEngineService, FormsEngineService, FormsSnippetsService]
 })
 export class FormsModule {}

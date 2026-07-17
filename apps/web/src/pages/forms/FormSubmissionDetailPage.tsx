@@ -57,6 +57,10 @@ type Submission = {
   context?: Record<string, string | undefined> | null;
   gpsLat: string | number | null;
   gpsLng: string | number | null;
+  score: string | number | null;
+  maxScore: string | number | null;
+  scorePct: string | number | null;
+  outcome: "PASS" | "FAIL" | "PARTIAL" | "NA" | null;
   values: Array<{
     fieldKey: string;
     valueText: string | null;
@@ -75,6 +79,16 @@ type Submission = {
     template: { id: string; name: string; category?: string | null };
     sections: Section[];
   };
+};
+
+const OUTCOME_STYLE: Record<
+  NonNullable<Submission["outcome"]>,
+  { bg: string; fg: string; label: string }
+> = {
+  PASS:    { bg: "#DCFCE7", fg: "#166534", label: "PASS" },
+  FAIL:    { bg: "#FEE2E2", fg: "#B91C1C", label: "FAIL" },
+  PARTIAL: { bg: "#FEF3C7", fg: "#92400E", label: "PARTIAL" },
+  NA:      { bg: "#E2E8F0", fg: "#1F2937", label: "N/A" }
 };
 
 const STATUS_BANNER: Record<string, { bg: string; fg: string; label: string }> = {
@@ -312,6 +326,8 @@ export function FormSubmissionDetailPage() {
         ) : null}
       </div>
 
+      {submission.outcome ? <ScoreBanner submission={submission} /> : null}
+
       <section className="s7-card" style={{ padding: 14 }}>
         <h1 style={{ margin: 0, fontSize: 20 }}>{submission.templateVersion.template.name}</h1>
         <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
@@ -521,6 +537,43 @@ function Info({ label, value }: { label: string; value: string }) {
     <div>
       <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase" }}>{label}</div>
       <div style={{ fontSize: 13 }}>{value}</div>
+    </div>
+  );
+}
+
+function ScoreBanner({ submission }: { submission: Submission }) {
+  const outcome = submission.outcome;
+  if (!outcome) return null;
+  const style = OUTCOME_STYLE[outcome];
+  const score = submission.score !== null ? Number(submission.score) : null;
+  const maxScore = submission.maxScore !== null ? Number(submission.maxScore) : null;
+  const scorePct = submission.scorePct !== null ? Number(submission.scorePct) : null;
+  return (
+    <div
+      data-testid="form-submission-score-banner"
+      style={{
+        background: style.bg,
+        color: style.fg,
+        padding: 14,
+        borderRadius: 8,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+        flexWrap: "wrap"
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <span style={{ fontSize: 20, fontWeight: 800, letterSpacing: 0.5 }}>{style.label}</span>
+        {scorePct !== null ? (
+          <span style={{ fontSize: 15, fontWeight: 700 }}>{scorePct.toFixed(2)}%</span>
+        ) : null}
+      </div>
+      {score !== null && maxScore !== null ? (
+        <div style={{ fontSize: 13 }}>
+          Score {score.toFixed(2)} / {maxScore.toFixed(2)}
+        </div>
+      ) : null}
     </div>
   );
 }

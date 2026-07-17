@@ -1,6 +1,15 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { Cron, CronExpression } from "@nestjs/schedule";
-import { ClaimStatus, ContractStatus, PaymentScheduleStatus, Prisma, VariationStatus } from "@prisma/client";
+import {
+  BillingMilestoneAmountType,
+  BillingMilestoneStatus,
+  BillingMilestoneTrigger,
+  ClaimStatus,
+  ContractStatus,
+  PaymentScheduleStatus,
+  Prisma,
+  VariationStatus
+} from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { EmailService } from "../email/email.service";
 import { NotificationsService } from "../platform/notifications.service";
@@ -779,6 +788,496 @@ export class ContractsService {
         });
       }
     }
+  }
+
+  // ── Billing milestones (D365-parity Tier 3) ─────────────────────────
+  /**
+   * List billing milestones for a contract, ordered by sortOrder then id.
+   * Milestone `status` is refreshed on read from the trigger — a DATE
+   * trigger whose date has passed, or a PERCENT_COMPLETE trigger whose
+   * threshold has been reached by billed-to-date/contract-value, flips
+   * PENDING → DUE. EVENT triggers stay PENDING until an operator marks
+   * them DUE explicitly (they can't be evaluated server-side).
+   *
+   * @param contractId - contract id (must exist)
+   * @returns milestones with computed status
+   * @throws NotFoundException when the contract does not exist
+   */
+  async listMilestones(contractId: string) {
+    await this.requireContract(contractId);
+    const [milestones, contract, billedToDate] = await Promise.all([
+      this.prisma.billingMilestone.findMany({
+        where: { contractId },
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+        include: { claim: { select: { id: true, claimNumber: true, status: true } } }
+      }),
+      this.prisma.contract.findUnique({ where: { id: contractId }, select: { contractValue: true } }),
+      this.sumBilledToDate(contractId)
+    ]);
+    const contractValue = contract ? Number(contract.contractValue) : 0;
+    const pct = contractValue > 0 ? (billedToDate / contractValue) * 100 : 0;
+    return milestones.map((m) => ({
+      ...m,
+      computedStatus: this.evaluateMilestoneStatus(m, pct)
+    }));
+  }
+
+  /**
+   * Create a billing milestone on a contract. Exactly one trigger and
+   * one amount source must be set (matching the trigger/amount type);
+   * the reciprocal fields are cleared server-side.
+   *
+   * @throws NotFoundException when the contract does not exist
+   * @throws BadRequestException when required fields for the chosen types are missing
+   */
+  async createMilestone(
+    contractId: string,
+    actorId: string,
+    dto: {
+      name: string;
+      description?: string;
+      triggerType: BillingMilestoneTrigger;
+      triggerDate?: string;
+      triggerPercent?: number;
+      triggerEvent?: string;
+      amountType: BillingMilestoneAmountType;
+      amount?: number;
+      amountPercent?: number;
+      sortOrder?: number;
+    }
+  ) {
+    await this.requireContract(contractId);
+    const trigger = this.normaliseMilestoneTrigger(dto);
+    const amountData = this.normaliseMilestoneAmount(dto);
+    return this.prisma.billingMilestone.create({
+      data: {
+        contractId,
+        name: dto.name,
+        description: dto.description ?? null,
+        ...trigger,
+        ...amountData,
+        sortOrder: dto.sortOrder ?? 0,
+        createdById: actorId
+      }
+    });
+  }
+
+  /**
+   * Update a milestone. Trigger / amount fields are re-normalised so a
+   * type switch clears the fields that no longer apply. Setting status
+   * directly is allowed only for the PENDING ↔ DUE transition (CLAIMED
+   * is set by raising a claim from the milestone).
+   *
+   * @throws NotFoundException when the milestone is missing or on another contract
+   * @throws BadRequestException on an invalid status transition
+   */
+  async updateMilestone(
+    contractId: string,
+    milestoneId: string,
+    dto: {
+      name?: string;
+      description?: string | null;
+      triggerType?: BillingMilestoneTrigger;
+      triggerDate?: string | null;
+      triggerPercent?: number | null;
+      triggerEvent?: string | null;
+      amountType?: BillingMilestoneAmountType;
+      amount?: number | null;
+      amountPercent?: number | null;
+      status?: BillingMilestoneStatus;
+      sortOrder?: number;
+    }
+  ) {
+    const existing = await this.prisma.billingMilestone.findUnique({ where: { id: milestoneId } });
+    if (!existing || existing.contractId !== contractId) throw new NotFoundException("Milestone not found.");
+    if (dto.status && dto.status !== existing.status) {
+      if (existing.status === BillingMilestoneStatus.CLAIMED) {
+        throw new BadRequestException("Cannot change status of a CLAIMED milestone.");
+      }
+      if (dto.status === BillingMilestoneStatus.CLAIMED) {
+        throw new BadRequestException("Raise a claim from the milestone to mark it CLAIMED.");
+      }
+    }
+    const patch: Prisma.BillingMilestoneUpdateInput = {
+      name: dto.name,
+      description: dto.description,
+      status: dto.status,
+      sortOrder: dto.sortOrder
+    };
+    if (dto.triggerType) {
+      Object.assign(patch, this.normaliseMilestoneTrigger({
+        triggerType: dto.triggerType,
+        triggerDate: dto.triggerDate ?? undefined,
+        triggerPercent: dto.triggerPercent ?? undefined,
+        triggerEvent: dto.triggerEvent ?? undefined
+      }));
+    }
+    if (dto.amountType) {
+      Object.assign(patch, this.normaliseMilestoneAmount({
+        amountType: dto.amountType,
+        amount: dto.amount ?? undefined,
+        amountPercent: dto.amountPercent ?? undefined
+      }));
+    }
+    return this.prisma.billingMilestone.update({ where: { id: milestoneId }, data: patch });
+  }
+
+  /**
+   * Delete a milestone that has not yet been claimed. CLAIMED milestones
+   * are preserved to keep the audit trail; unlink via the claim instead.
+   *
+   * @throws NotFoundException when the milestone is missing or on another contract
+   * @throws BadRequestException when the milestone is already CLAIMED
+   */
+  async deleteMilestone(contractId: string, milestoneId: string) {
+    const existing = await this.prisma.billingMilestone.findUnique({ where: { id: milestoneId } });
+    if (!existing || existing.contractId !== contractId) throw new NotFoundException("Milestone not found.");
+    if (existing.status === BillingMilestoneStatus.CLAIMED) {
+      throw new BadRequestException("Cannot delete a CLAIMED milestone.");
+    }
+    await this.prisma.billingMilestone.delete({ where: { id: milestoneId } });
+    return { deleted: true };
+  }
+
+  /**
+   * Raise a DRAFT progress claim from a DUE milestone. The milestone is
+   * linked to the new claim and flipped to CLAIMED. `claimMonth` defaults
+   * to the first of the current month (UTC) when omitted; a monthly
+   * DRAFT claim for that month is reused if one exists, otherwise a new
+   * one is created with a single milestone line item.
+   *
+   * @throws NotFoundException when the milestone / contract are missing
+   * @throws BadRequestException when the milestone is not DUE
+   */
+  async raiseClaimFromMilestone(
+    contractId: string,
+    milestoneId: string,
+    actorId: string,
+    dto: { claimMonth?: string } = {}
+  ) {
+    const contract = await this.prisma.contract.findUnique({ where: { id: contractId } });
+    if (!contract) throw new NotFoundException("Contract not found.");
+    const milestone = await this.prisma.billingMilestone.findUnique({ where: { id: milestoneId } });
+    if (!milestone || milestone.contractId !== contractId) throw new NotFoundException("Milestone not found.");
+    const contractValue = Number(contract.contractValue);
+    const billed = await this.sumBilledToDate(contractId);
+    const pct = contractValue > 0 ? (billed / contractValue) * 100 : 0;
+    const status = this.evaluateMilestoneStatus(milestone, pct);
+    if (status !== BillingMilestoneStatus.DUE) {
+      throw new BadRequestException("Milestone must be DUE before a claim can be raised from it.");
+    }
+    const amount = this.milestoneAmount(milestone, contractValue);
+    const claimMonth = startOfMonth(dto.claimMonth ? new Date(dto.claimMonth) : new Date());
+    const draft = await this.prisma.progressClaim.findFirst({
+      where: { contractId, claimMonth, status: ClaimStatus.DRAFT }
+    });
+    const claim = draft
+      ? await this.prisma.progressClaim.update({
+          where: { id: draft.id },
+          data: {
+            totalClaimed: { increment: new Prisma.Decimal(amount.toFixed(2)) },
+            lineItems: {
+              create: {
+                discipline: "Milestone",
+                description: `MS — ${milestone.name}`.slice(0, 500),
+                contractValue: new Prisma.Decimal(amount.toFixed(2)),
+                previouslyClaimed: new Prisma.Decimal(0),
+                thisClaimAmount: new Prisma.Decimal(amount.toFixed(2)),
+                sortOrder: 2000 + (await this.prisma.claimLineItem.count({ where: { claimId: draft.id } }))
+              }
+            }
+          }
+        })
+      : await this.prisma.progressClaim.create({
+          data: {
+            contractId,
+            claimNumber: await this.nextClaimNumber(),
+            claimMonth,
+            status: ClaimStatus.DRAFT,
+            totalClaimed: new Prisma.Decimal(amount.toFixed(2)),
+            createdById: actorId,
+            lineItems: {
+              create: {
+                discipline: "Milestone",
+                description: `MS — ${milestone.name}`.slice(0, 500),
+                contractValue: new Prisma.Decimal(amount.toFixed(2)),
+                previouslyClaimed: new Prisma.Decimal(0),
+                thisClaimAmount: new Prisma.Decimal(amount.toFixed(2)),
+                sortOrder: 2000
+              }
+            }
+          }
+        });
+    await this.prisma.billingMilestone.update({
+      where: { id: milestoneId },
+      data: { status: BillingMilestoneStatus.CLAIMED, claimId: claim.id }
+    });
+    return this.getClaim(contractId, claim.id);
+  }
+
+  // ── Pro-forma preview ────────────────────────────────────────────────
+  /**
+   * Return a pro-forma preview for a claim month without persisting it.
+   * Same line-item build as `createClaim` (scope discipline subtotals,
+   * carried-forward previouslyClaimed, APPROVED variations not yet on
+   * a prior claim), but no rows are written and no claim number is
+   * consumed. Used by the UI's "Preview draft" flow.
+   *
+   * @throws NotFoundException when the contract does not exist
+   */
+  async previewProForma(contractId: string, dto: { claimMonth: string }) {
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractId },
+      include: { project: true }
+    });
+    if (!contract) throw new NotFoundException("Contract not found.");
+    const claimMonth = startOfMonth(new Date(dto.claimMonth));
+    const tenderId = contract.project.sourceTenderId;
+    const disciplineSubtotals = tenderId ? await this.scopeDisciplineSubtotals(tenderId) : {};
+    const priorClaims = await this.prisma.progressClaim.findMany({
+      where: { contractId, status: { in: [ClaimStatus.APPROVED, ClaimStatus.PAID] } },
+      include: { lineItems: true }
+    });
+    const priorByDiscipline: Record<string, number> = {};
+    for (const c of priorClaims) {
+      for (const li of c.lineItems) {
+        if (!li.discipline) continue;
+        priorByDiscipline[li.discipline] = (priorByDiscipline[li.discipline] ?? 0) + Number(li.thisClaimAmount);
+      }
+    }
+    const priorVariationIds = new Set(
+      priorClaims.flatMap((c) => c.lineItems.map((li) => li.variationId).filter((v): v is string => !!v))
+    );
+    const approvedVariations = await this.prisma.variation.findMany({
+      where: {
+        contractId,
+        status: VariationStatus.APPROVED,
+        id: { notIn: Array.from(priorVariationIds) }
+      }
+    });
+
+    const lineItems: Array<{
+      discipline: string;
+      description: string;
+      contractValue: number;
+      previouslyClaimed: number;
+      thisClaimAmount: number;
+      variationId: string | null;
+      sortOrder: number;
+    }> = [];
+    DISCIPLINE_ORDER.forEach((d, i) => {
+      const subtotal = disciplineSubtotals[d] ?? 0;
+      if (subtotal === 0) return;
+      lineItems.push({
+        discipline: d,
+        description: describeDiscipline(d),
+        contractValue: Number(subtotal.toFixed(2)),
+        previouslyClaimed: Number((priorByDiscipline[d] ?? 0).toFixed(2)),
+        thisClaimAmount: 0,
+        variationId: null,
+        sortOrder: i
+      });
+    });
+    approvedVariations.forEach((v, i) => {
+      lineItems.push({
+        discipline: "Variation",
+        description: `VAR ${v.variationNumber} — ${v.description}`.slice(0, 500),
+        contractValue: v.approvedAmount ? Number(v.approvedAmount) : 0,
+        previouslyClaimed: 0,
+        thisClaimAmount: 0,
+        variationId: v.id,
+        sortOrder: 1000 + i
+      });
+    });
+    return {
+      contractId,
+      claimMonth: claimMonth.toISOString(),
+      isProForma: true as const,
+      lineItems,
+      totalContractValue: Number(lineItems.reduce((s, li) => s + li.contractValue, 0).toFixed(2)),
+      totalPreviouslyClaimed: Number(lineItems.reduce((s, li) => s + li.previouslyClaimed, 0).toFixed(2))
+    };
+  }
+
+  /**
+   * Create a pro-forma DRAFT claim (same shape as a normal claim, but
+   * flagged `isProForma=true`). Same conflict rules apply — one claim
+   * per contract + month, whether pro-forma or not — so callers should
+   * either delete/mark the pro-forma before issuing the real claim, or
+   * flip the flag off once the pro-forma is approved.
+   */
+  async createProFormaClaim(contractId: string, actorId: string, dto: { claimMonth: string }) {
+    const claim = await this.createClaim(contractId, actorId, dto);
+    return this.prisma.progressClaim.update({
+      where: { id: claim.id },
+      data: { isProForma: true },
+      include: { lineItems: { orderBy: { sortOrder: "asc" } } }
+    });
+  }
+
+  // ── Revenue recognition ─────────────────────────────────────────────
+  /**
+   * Return the operational revenue-recognition view for a contract:
+   * contract value + approved variations = revised value; billed-to-date
+   * (sum of totalClaimed on SUBMITTED/APPROVED/PAID claims — pro-forma
+   * DRAFTs excluded); recognised-to-date (sum of totalApproved on
+   * APPROVED/PAID claims, treating client approval as the recognition
+   * event); paid-to-date; retention held. No GL posting — Xero owns the
+   * ledger; this is the operational view + the number the Xero push
+   * uses.
+   *
+   * @throws NotFoundException when the contract does not exist
+   */
+  async revenueRecognition(contractId: string) {
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractId },
+      include: {
+        variations: { where: { status: VariationStatus.APPROVED } },
+        progressClaims: {
+          select: {
+            id: true,
+            status: true,
+            totalClaimed: true,
+            totalApproved: true,
+            totalPaid: true,
+            retentionHeld: true,
+            isProForma: true
+          }
+        }
+      }
+    });
+    if (!contract) throw new NotFoundException("Contract not found.");
+    const contractValue = Number(contract.contractValue);
+    const approvedVariationsTotal = contract.variations.reduce(
+      (s, v) => s + Number(v.approvedAmount ?? 0),
+      0
+    );
+    const revisedValue = contractValue + approvedVariationsTotal;
+    const nonProForma = contract.progressClaims.filter((c) => !c.isProForma);
+    const billedToDate = nonProForma
+      .filter((c) => c.status !== ClaimStatus.DRAFT)
+      .reduce((s, c) => s + Number(c.totalClaimed ?? 0), 0);
+    const recognisedToDate = nonProForma
+      .filter((c) => c.status === ClaimStatus.APPROVED || c.status === ClaimStatus.PAID)
+      .reduce((s, c) => s + Number(c.totalApproved ?? 0), 0);
+    const paidToDate = nonProForma
+      .filter((c) => c.status === ClaimStatus.PAID)
+      .reduce((s, c) => s + Number(c.totalPaid ?? 0), 0);
+    const retentionHeld = nonProForma.reduce((s, c) => s + Number(c.retentionHeld ?? 0), 0);
+    const round = (n: number) => Number(n.toFixed(2));
+    return {
+      contractId,
+      contractValue: round(contractValue),
+      approvedVariationsTotal: round(approvedVariationsTotal),
+      revisedValue: round(revisedValue),
+      billedToDate: round(billedToDate),
+      recognisedToDate: round(recognisedToDate),
+      paidToDate: round(paidToDate),
+      outstandingBilled: round(billedToDate - paidToDate),
+      unbilledRemaining: round(revisedValue - billedToDate),
+      unrecognisedRemaining: round(revisedValue - recognisedToDate),
+      retentionHeld: round(retentionHeld),
+      percentBilled: revisedValue > 0 ? round((billedToDate / revisedValue) * 100) : 0,
+      percentRecognised: revisedValue > 0 ? round((recognisedToDate / revisedValue) * 100) : 0
+    };
+  }
+
+  // ── Milestone helpers ────────────────────────────────────────────────
+  private evaluateMilestoneStatus(
+    m: { status: BillingMilestoneStatus; triggerType: BillingMilestoneTrigger; triggerDate: Date | null; triggerPercent: Prisma.Decimal | null },
+    percentComplete: number
+  ): BillingMilestoneStatus {
+    if (m.status !== BillingMilestoneStatus.PENDING) return m.status;
+    if (m.triggerType === BillingMilestoneTrigger.DATE && m.triggerDate && m.triggerDate.getTime() <= Date.now()) {
+      return BillingMilestoneStatus.DUE;
+    }
+    if (m.triggerType === BillingMilestoneTrigger.PERCENT_COMPLETE && m.triggerPercent && percentComplete >= Number(m.triggerPercent)) {
+      return BillingMilestoneStatus.DUE;
+    }
+    return BillingMilestoneStatus.PENDING;
+  }
+
+  private milestoneAmount(
+    m: { amountType: BillingMilestoneAmountType; amount: Prisma.Decimal | null; amountPercent: Prisma.Decimal | null },
+    contractValue: number
+  ): number {
+    if (m.amountType === BillingMilestoneAmountType.FIXED) return Number(m.amount ?? 0);
+    return Number((contractValue * Number(m.amountPercent ?? 0)) / 100);
+  }
+
+  private normaliseMilestoneTrigger(dto: {
+    triggerType: BillingMilestoneTrigger;
+    triggerDate?: string;
+    triggerPercent?: number;
+    triggerEvent?: string;
+  }): {
+    triggerType: BillingMilestoneTrigger;
+    triggerDate: Date | null;
+    triggerPercent: Prisma.Decimal | null;
+    triggerEvent: string | null;
+  } {
+    if (dto.triggerType === BillingMilestoneTrigger.DATE) {
+      if (!dto.triggerDate) throw new BadRequestException("triggerDate is required when triggerType=DATE.");
+      return {
+        triggerType: dto.triggerType,
+        triggerDate: new Date(dto.triggerDate),
+        triggerPercent: null,
+        triggerEvent: null
+      };
+    }
+    if (dto.triggerType === BillingMilestoneTrigger.PERCENT_COMPLETE) {
+      if (dto.triggerPercent === undefined) {
+        throw new BadRequestException("triggerPercent is required when triggerType=PERCENT_COMPLETE.");
+      }
+      return {
+        triggerType: dto.triggerType,
+        triggerDate: null,
+        triggerPercent: new Prisma.Decimal(dto.triggerPercent),
+        triggerEvent: null
+      };
+    }
+    if (!dto.triggerEvent) throw new BadRequestException("triggerEvent is required when triggerType=EVENT.");
+    return {
+      triggerType: dto.triggerType,
+      triggerDate: null,
+      triggerPercent: null,
+      triggerEvent: dto.triggerEvent
+    };
+  }
+
+  private normaliseMilestoneAmount(dto: {
+    amountType: BillingMilestoneAmountType;
+    amount?: number;
+    amountPercent?: number;
+  }): {
+    amountType: BillingMilestoneAmountType;
+    amount: Prisma.Decimal | null;
+    amountPercent: Prisma.Decimal | null;
+  } {
+    if (dto.amountType === BillingMilestoneAmountType.FIXED) {
+      if (dto.amount === undefined) throw new BadRequestException("amount is required when amountType=FIXED.");
+      return {
+        amountType: dto.amountType,
+        amount: new Prisma.Decimal(dto.amount),
+        amountPercent: null
+      };
+    }
+    if (dto.amountPercent === undefined) {
+      throw new BadRequestException("amountPercent is required when amountType=PERCENT_OF_CONTRACT.");
+    }
+    return {
+      amountType: dto.amountType,
+      amount: null,
+      amountPercent: new Prisma.Decimal(dto.amountPercent)
+    };
+  }
+
+  private async sumBilledToDate(contractId: string): Promise<number> {
+    const claims = await this.prisma.progressClaim.findMany({
+      where: { contractId, status: { in: [ClaimStatus.SUBMITTED, ClaimStatus.APPROVED, ClaimStatus.PAID] }, isProForma: false },
+      select: { totalClaimed: true }
+    });
+    return claims.reduce((s, c) => s + Number(c.totalClaimed ?? 0), 0);
   }
 
   // ── Private helpers ──────────────────────────────────────────────────

@@ -32,6 +32,8 @@ import { SchedulerGridPage } from "./pages/scheduler/SchedulerGridPage";
 import { CalendarSyncPage } from "./pages/calendar/CalendarSyncPage";
 import { WorkersListPage } from "./pages/workers/WorkersListPage";
 import { WorkerDetailPage } from "./pages/workers/WorkerDetailPage";
+import { WorkerLeaveApprovalsPage } from "./pages/workers/WorkerLeaveApprovalsPage";
+import { FieldLeavePage } from "./pages/field/FieldLeavePage";
 import { AssetsListPage } from "./pages/assets/AssetsListPage";
 import { AssetDetailPage } from "./pages/assets/AssetDetailPage";
 import { InventoryPage } from "./pages/inventory/InventoryPage";
@@ -238,6 +240,7 @@ export function App() {
             <Route path="documents" element={<FieldDocumentsPage />} />
             <Route path="safety" element={<FieldSafetyPage />} />
             <Route path="dockets" element={<FieldDocketPage />} />
+            <Route path="leave" element={<FieldLeavePage />} />
           </Route>
           <Route element={<ShellLayout />}>
             <Route
@@ -277,6 +280,7 @@ export function App() {
             <Route path="/timesheets/payroll-export" element={<PayrollExportPage />} />
             <Route path="/dockets" element={<DocketsRegisterPage />} />
             <Route path="/workers" element={<WorkersListPage />} />
+            <Route path="/workers/leave-approvals" element={<WorkerLeaveApprovalsPage />} />
             <Route path="/workers/:id" element={<WorkerDetailPage />} />
             <Route path="/resources" element={<ResourcesPage />} />
             <Route path="/assets" element={<AssetsListPage />} />

@@ -25,6 +25,12 @@ Reuse the existing page components as panels inside the shell. Keep existing rou
 them into the shell, e.g. `/admin/users` -> `/settings/administration/users` or render in-shell).
 Role-gate the Administration section so non-admin roles never see it.
 
+This shell REPLACES the current `AdminSettingsPage` (`/admin/settings`), which already hosts these
+tabs but is built with ad-hoc inline styles and a hand-rolled grid. Rebuild it with the design-system
+(`AppCard`, `s7-type-page-heading`, theme tokens) instead of inline styles, AND fix the ~11 mojibake
+characters in that file (corrupted em-dashes/apostrophes such as `â€"` -> `—`, `â€™` -> `’`) — save the
+file as UTF-8. This closes the `/admin/settings` "broken page" report.
+
 ## Do NOT
 - Do NOT change auth/permission logic itself — only gate visibility of the Administration section
   using the existing role checks.

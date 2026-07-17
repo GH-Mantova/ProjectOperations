@@ -203,6 +203,25 @@ class UpdatePrequalDto {
 }
 
 /**
+ * Payload for `POST /directory/duplicate-check`. Returns an advisory list
+ * of possible duplicate Client / Subcontractor / Supplier records so the
+ * create form can render a "possible duplicates" panel. Non-blocking:
+ * no field is required beyond `scope`; providing more fields simply
+ * improves the score.
+ */
+class DuplicateCheckDto {
+  @IsString() @IsIn(["client", "subcontractor", "supplier"]) scope!: string;
+  @IsOptional() @IsString() name?: string | null;
+  @IsOptional() @IsString() tradingName?: string | null;
+  @IsOptional() @IsString() legalName?: string | null;
+  @IsOptional() @IsString() abn?: string | null;
+  @IsOptional() @IsString() acn?: string | null;
+  @IsOptional() @IsString() email?: string | null;
+  @IsOptional() @IsString() phone?: string | null;
+  @IsOptional() @IsString() excludeId?: string | null;
+}
+
+/**
  * HTTP surface for the directory module — subcontractors / suppliers and the
  * licences, insurances, credit applications, documents, and contacts that
  * hang off them. Also exposes nested licence / insurance / credit-application
@@ -251,6 +270,19 @@ export class DirectoryController {
   @ApiResponse({ status: 200, description: "Alerts sorted by expiry (most urgent first)." })
   expiryAlerts() {
     return this.service.expiryAlerts();
+  }
+
+  /**
+   * Advisory duplicate detection for a proposed Client / Subcontractor /
+   * Supplier. Non-blocking — the create endpoints do not consult this
+   * result. See {@link DirectoryService.duplicateCheck}.
+   */
+  @Post("directory/duplicate-check")
+  @RequirePermissions("directory.view")
+  @ApiOperation({ summary: "Return possible-duplicate candidates for a proposed directory entry (advisory)." })
+  @ApiResponse({ status: 200, description: "Array of candidate matches, sorted by score." })
+  duplicateCheck(@Body() dto: DuplicateCheckDto) {
+    return this.service.duplicateCheck(dto as never);
   }
 
   /** Full subcontractor record (contacts, licences, insurances, docs, credit apps); bank fields masked without `directory.finance`. */

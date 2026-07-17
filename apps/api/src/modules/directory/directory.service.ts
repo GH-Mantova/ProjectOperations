@@ -1,5 +1,11 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
+import {
+  findDuplicates,
+  type DuplicateCandidate,
+  type OrganisationCandidateInput,
+  type OrganisationScope
+} from "./duplicate-check.util";
 
 const BANK_FIELDS = ["bankName", "bankAccountName", "bankBsb", "bankAccountNumber"] as const;
 
@@ -210,6 +216,22 @@ export class DirectoryService {
       } as never
     });
 
+    // Advisory duplicate warning — attached to the response for the UI to
+    // surface. Non-blocking: the row is already created above. We match the
+    // freshly-created row too, so exclude it explicitly.
+    const scope: OrganisationScope = dto.entityType === "supplier" ? "supplier" : "subcontractor";
+    (entity as Record<string, unknown>).duplicateCandidates = await findDuplicates(this.prisma, {
+      scope,
+      name: typeof dto.name === "string" ? dto.name : null,
+      tradingName: typeof dto.tradingName === "string" ? dto.tradingName : null,
+      legalName: typeof dto.legalName === "string" ? dto.legalName : null,
+      abn: typeof dto.abn === "string" ? dto.abn : null,
+      acn: typeof dto.acn === "string" ? dto.acn : null,
+      email: typeof dto.email === "string" ? dto.email : null,
+      phone: typeof dto.phone === "string" ? dto.phone : null,
+      excludeId: entity.id
+    });
+
     // Auto-create primary contact for private_person entities
     if (dto.businessType === "private_person") {
       const [firstName, ...rest] = String(dto.name).split(" ");
@@ -284,6 +306,19 @@ export class DirectoryService {
         prequalReviewedBy: actorId
       }
     });
+  }
+
+  /**
+   * Advisory duplicate detection for a proposed Client / Subcontractor /
+   * Supplier. Returns a scored candidate list (see
+   * {@link findDuplicates}). Callers surface the result as a soft warning
+   * on create screens — the workflow is never blocked.
+   */
+  async duplicateCheck(input: OrganisationCandidateInput): Promise<DuplicateCandidate[]> {
+    if (!input.scope || !["client", "subcontractor", "supplier"].includes(input.scope)) {
+      throw new BadRequestException("scope must be one of: client, subcontractor, supplier");
+    }
+    return findDuplicates(this.prisma, input);
   }
 
   // ─── Contacts (thin wrappers over the polymorphic Contact model) ────────

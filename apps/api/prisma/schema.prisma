@@ -104,6 +104,7 @@ model User {
   variationsCreated          Variation[]                 @relation("VariationCreatedBy")
   progressClaimsCreated      ProgressClaim[]             @relation("ProgressClaimCreatedBy")
   paymentSchedulesCreated    PaymentSchedule[]           @relation("PaymentScheduleCreatedBy")
+  billingMilestonesCreated   BillingMilestone[]          @relation("BillingMilestoneCreatedBy")
   createdQuotes              ClientQuote[]               @relation("QuoteCreatedBy")
   sentQuotes                 ClientQuote[]               @relation("QuoteSentBy")
   sentQuoteEmails            QuoteEmail[]                @relation("QuoteEmailSentBy")
@@ -3547,6 +3548,7 @@ model Contract {
   issuedTerms           CompanyLegalDocument? @relation("ContractIssuedTerms", fields: [issuedTermsDocumentId], references: [id], onDelete: SetNull)
   variations            Variation[]
   progressClaims        ProgressClaim[]
+  billingMilestones     BillingMilestone[]
   createdAt             DateTime              @default(now()) @map("created_at")
   updatedAt             DateTime              @updatedAt @map("updated_at")
 
@@ -3595,6 +3597,8 @@ model ProgressClaim {
   notes          String?
   lineItems      ClaimLineItem[]
   paymentSchedule PaymentSchedule?
+  billingMilestones BillingMilestone[]
+  isProForma     Boolean         @default(false) @map("is_pro_forma")
   createdById    String          @map("created_by_id")
   createdBy      User            @relation("ProgressClaimCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   createdAt      DateTime        @default(now()) @map("created_at")
@@ -3652,6 +3656,58 @@ model ClaimLineItem {
 
   @@index([claimId])
   @@map("claim_line_items")
+}
+
+// ── Billing milestones (D365-parity Tier 3) ─────────────────────────────
+// Named milestones on a contract — a trigger (date / % complete / event)
+// flips the milestone from PENDING → DUE; raising a claim from a DUE
+// milestone links it here and marks it CLAIMED. Sits ALONGSIDE the
+// existing monthly progress-claim flow (which stays the spine for AU
+// construction); milestones are additive, not a replacement. Amount is
+// either a fixed AUD figure OR a percentage of the contract value.
+enum BillingMilestoneTrigger {
+  DATE
+  PERCENT_COMPLETE
+  EVENT
+}
+
+enum BillingMilestoneAmountType {
+  FIXED
+  PERCENT_OF_CONTRACT
+}
+
+enum BillingMilestoneStatus {
+  PENDING
+  DUE
+  CLAIMED
+}
+
+model BillingMilestone {
+  id              String                      @id @default(cuid())
+  contractId      String                      @map("contract_id")
+  contract        Contract                    @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  name            String
+  description     String?
+  triggerType     BillingMilestoneTrigger     @map("trigger_type")
+  // Only one of the trigger fields is meaningful — enforced in the service
+  // to keep the model shape flat and easy to query.
+  triggerDate     DateTime?                   @map("trigger_date")
+  triggerPercent  Decimal?                    @map("trigger_percent") @db.Decimal(5, 2)
+  triggerEvent    String?                     @map("trigger_event")
+  amountType      BillingMilestoneAmountType  @map("amount_type")
+  amount          Decimal?                    @db.Decimal(12, 2)
+  amountPercent   Decimal?                    @map("amount_percent") @db.Decimal(5, 2)
+  status          BillingMilestoneStatus      @default(PENDING)
+  claimId         String?                     @map("claim_id")
+  claim           ProgressClaim?              @relation(fields: [claimId], references: [id], onDelete: SetNull)
+  sortOrder       Int                         @default(0) @map("sort_order")
+  createdById     String                      @map("created_by_id")
+  createdBy       User                        @relation("BillingMilestoneCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt       DateTime                    @default(now()) @map("created_at")
+  updatedAt       DateTime                    @updatedAt @map("updated_at")
+
+  @@index([contractId, status])
+  @@map("billing_milestones")
 }
 
 model ContractNumberSequence {

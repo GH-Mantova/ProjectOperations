@@ -1,6 +1,11 @@
 import { Logger, ServiceUnavailableException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { ClientSecretCredential } from "@azure/identity";
+import {
+  ClientSecretCredential,
+  CredentialUnavailableError,
+  ManagedIdentityCredential,
+  TokenCredential
+} from "@azure/identity";
 import { Client } from "@microsoft/microsoft-graph-client";
 import { TokenCredentialAuthenticationProvider } from "@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials";
 import { sanitiseProviderError } from "../../ai-providers/error-sanitiser";
@@ -37,11 +42,97 @@ export function resolveMailCreds(env: NodeJS.ProcessEnv): MailCreds {
   };
 }
 
+export type MailAuthMode = "managed-identity" | "client-secret";
+
+// Explicit selection over DefaultAzureCredential's silent fallback chain,
+// mirroring SHAREPOINT_AUTH_MODE in graph-sharepoint.adapter.ts (#547).
+// Unset → client-secret so existing deployments, local dev and CI keep working.
+export function resolveMailAuthMode(config: {
+  get: <T = string>(key: string) => T | undefined;
+}): MailAuthMode {
+  const raw = (config.get<string>("MAIL_AUTH_MODE") ?? "client-secret").trim().toLowerCase();
+  if (raw === "managed-identity") return "managed-identity";
+  if (raw === "" || raw === "client-secret") return "client-secret";
+  throw new ServiceUnavailableException(
+    `MAIL_AUTH_MODE must be "managed-identity" or "client-secret" (got "${raw}").`
+  );
+}
+
+// Module-level so unit tests can exercise both branches; `logOnce` fires once
+// per process — pass a no-op in tests via resetMailAuthModeLoggedForTests().
+let mailAuthModeLogged = false;
+export function resetMailAuthModeLoggedForTests(): void {
+  mailAuthModeLogged = false;
+}
+
+// Builds the Graph credential for the chosen mode. managed-identity needs no
+// secret (production: the App Service system-assigned identity holds Mail.Send);
+// a missing IMDS endpoint surfaces an honest error naming MAIL_AUTH_MODE, and
+// the client-secret branch names the EXACT missing env var — per sot/01 §6
+// (failure honesty), so a misconfigured mailer can never fail silently again.
+export function buildMailCredential(
+  mode: MailAuthMode,
+  config: { get: <T = string>(key: string) => T | undefined },
+  logOnce: (line: string) => void
+): TokenCredential {
+  if (mode === "managed-identity") {
+    const userAssignedClientId = config.get<string>("AZURE_MANAGED_IDENTITY_CLIENT_ID");
+    const base = userAssignedClientId
+      ? new ManagedIdentityCredential({ clientId: userAssignedClientId })
+      : new ManagedIdentityCredential();
+
+    if (!mailAuthModeLogged) {
+      logOnce(
+        `Outlook mail Graph auth: managed-identity (${userAssignedClientId ? `user-assigned clientId=${userAssignedClientId}` : "system-assigned"})`
+      );
+      mailAuthModeLogged = true;
+    }
+
+    return {
+      async getToken(scopes, options) {
+        try {
+          return await base.getToken(scopes, options);
+        } catch (err) {
+          if (err instanceof CredentialUnavailableError) {
+            throw new ServiceUnavailableException(
+              `MAIL_AUTH_MODE=managed-identity but no managed identity is available in this environment. Managed identity only works when the API runs on an Azure host (App Service / Container Apps / VM) with an identity assigned. For local development or CI, set MAIL_AUTH_MODE=client-secret. Underlying error: ${err.message}`
+            );
+          }
+          throw err;
+        }
+      }
+    };
+  }
+
+  const creds = resolveMailCreds(process.env);
+  const tenantId = creds.tenantId ?? config.get<string>("SHAREPOINT_TENANT_ID") ?? null;
+  const clientId = creds.clientId ?? config.get<string>("SHAREPOINT_CLIENT_ID") ?? null;
+  const clientSecret = creds.clientSecret ?? config.get<string>("SHAREPOINT_CLIENT_SECRET") ?? null;
+
+  if (!tenantId || !clientId || !clientSecret) {
+    const missing: string[] = [];
+    if (!tenantId) missing.push("AZURE_MAIL_TENANT_ID (or SHAREPOINT_TENANT_ID)");
+    if (!clientId) missing.push("AZURE_MAIL_CLIENT_ID (or SHAREPOINT_CLIENT_ID)");
+    if (!clientSecret) missing.push("AZURE_MAIL_CLIENT_SECRET (or SHAREPOINT_CLIENT_SECRET)");
+    throw new ServiceUnavailableException(
+      `Outlook email (MAIL_AUTH_MODE=client-secret) is missing required env var(s): ${missing.join(", ")}. On Azure set MAIL_AUTH_MODE=managed-identity instead — no secret is needed.`
+    );
+  }
+
+  if (!mailAuthModeLogged) {
+    logOnce(`Outlook mail Graph auth: client-secret (clientId=${clientId})`);
+    mailAuthModeLogged = true;
+  }
+
+  return new ClientSecretCredential(tenantId, clientId, clientSecret);
+}
+
 /**
- * Outlook/Microsoft 365 email provider. Uses the app-only (client credentials)
- * Graph flow to POST /users/{senderAddress}/sendMail. The service principal
- * must be granted the Mail.Send application permission in Entra ID — without
- * it, sendMail raises with a clear message so the admin UI can surface it.
+ * Outlook/Microsoft 365 email provider. Uses the app-only Graph flow to POST
+ * /users/{senderAddress}/sendMail. Auth is selected by MAIL_AUTH_MODE
+ * (managed-identity | client-secret). The identity must hold the Mail.Send
+ * application permission in Entra ID — without it, sendMail raises with a clear
+ * message so the admin UI can surface it.
  */
 export class OutlookEmailProvider implements EmailProvider {
   readonly name = "outlook" as const;
@@ -107,18 +198,11 @@ export class OutlookEmailProvider implements EmailProvider {
 
   private getClient(): Client {
     if (this.client) return this.client;
-    const creds = resolveMailCreds(process.env);
-    // Fall back to ConfigService for the legacy SHAREPOINT_* names too, in
-    // case Nest's config has been seeded from a non-process.env source.
-    const tenantId = creds.tenantId ?? this.config.get<string>("SHAREPOINT_TENANT_ID") ?? null;
-    const clientId = creds.clientId ?? this.config.get<string>("SHAREPOINT_CLIENT_ID") ?? null;
-    const clientSecret = creds.clientSecret ?? this.config.get<string>("SHAREPOINT_CLIENT_SECRET") ?? null;
-    if (!tenantId || !clientId || !clientSecret) {
-      throw new ServiceUnavailableException(
-        "Outlook email requires AZURE_MAIL_TENANT_ID, AZURE_MAIL_CLIENT_ID, and AZURE_MAIL_CLIENT_SECRET (or the legacy SHAREPOINT_* equivalents)."
-      );
-    }
-    const credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
+    // Mode selects the credential: managed-identity (prod, no secret) or
+    // client-secret (local/CI). Both throw an honest, specific error when
+    // unconfigured — see buildMailCredential.
+    const mode = resolveMailAuthMode(this.config);
+    const credential = buildMailCredential(mode, this.config, (line) => this.logger.log(line));
     const authProvider = new TokenCredentialAuthenticationProvider(credential, {
       scopes: ["https://graph.microsoft.com/.default"]
     });

@@ -1,5 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
+import {
+  findDuplicateContacts,
+  type ContactCandidateInput,
+  type DuplicateContactCandidate
+} from "../directory/duplicate-check.util";
 
 /**
  * The fixed vocabulary of organisation types a {@link Contact} can be
@@ -144,7 +149,7 @@ export class ContactsService {
     }
     await this.requireOrganisation(organisationType, organisationId);
 
-    return this.prisma.$transaction(async (tx) => {
+    const created = await this.prisma.$transaction(async (tx) => {
       if (input.isPrimary) {
         await tx.contact.updateMany({
           where: { organisationType, organisationId, isPrimary: true },
@@ -171,6 +176,20 @@ export class ContactsService {
         }
       });
     });
+
+    // Advisory duplicate warning — attached to the create response so the
+    // UI can render "similar contacts already exist". Non-blocking.
+    const duplicateCandidates = await findDuplicateContacts(this.prisma, {
+      organisationType,
+      organisationId,
+      firstName: created.firstName,
+      lastName: created.lastName,
+      email: created.email,
+      phone: created.phone,
+      mobile: created.mobile,
+      excludeId: created.id
+    });
+    return { ...created, duplicateCandidates };
   }
 
   /**
@@ -253,6 +272,20 @@ export class ContactsService {
     const existing = await this.prisma.contact.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException("Contact not found.");
     return this.prisma.contact.update({ where: { id }, data: { isActive: false } });
+  }
+
+  /**
+   * Advisory duplicate detection for a proposed Contact. Returns a scored
+   * candidate list (see {@link findDuplicateContacts}). Callers surface
+   * the result as a soft warning on create screens — the workflow is
+   * never blocked.
+   */
+  async duplicateCheck(input: ContactCandidateInput): Promise<DuplicateContactCandidate[]> {
+    if (!input.organisationType) {
+      throw new BadRequestException("organisationType is required.");
+    }
+    this.assertOrgType(input.organisationType);
+    return findDuplicateContacts(this.prisma, input);
   }
 
   private assertOrgType(value: string): asserts value is OrgType {

@@ -50,6 +50,7 @@ model User {
   notifications              Notification[]
   dashboards                 Dashboard[]                 @relation("DashboardOwner")
   userDashboards             UserDashboard[]
+  savedViews                 SavedView[]
   worker                     Worker?
   workerProfile              WorkerProfile?
   estimatedTenders           Tender[]                    @relation("TenderEstimator")
@@ -2353,6 +2354,28 @@ model UserDashboard {
   @@unique([userId, slug, isSystem])
   @@index([userId])
   @@map("user_dashboards")
+}
+
+/// Per-user personalisation of a list view (filters, columns, sort). Modeled
+/// on Dynamics 365 personal views: any list-style page can offer named views
+/// scoped to the current user + entityType, plus one default per (user,
+/// entityType).
+model SavedView {
+  id         String   @id @default(uuid())
+  ownerId    String   @map("owner_id")
+  owner      User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  entityType String   @map("entity_type")
+  name       String
+  filters    Json     @default("{}")
+  columns    Json     @default("[]")
+  sort       Json?
+  isDefault  Boolean  @default(false) @map("is_default")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@unique([ownerId, entityType, name])
+  @@index([ownerId, entityType])
+  @@map("saved_views")
 }
 
 model TenderScopeRevision {

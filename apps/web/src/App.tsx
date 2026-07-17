@@ -97,6 +97,8 @@ import { OfflineProvider } from "./offline/OfflineContext";
 import { OfflineIndicator } from "./offline/OfflineIndicator";
 import { InstallPrompt } from "./offline/InstallPrompt";
 import { UpdatePromptToast } from "./pwa/UpdatePromptToast";
+import { SurveyCaptureFormPage } from "./pages/surveys/SurveyCaptureFormPage";
+import { ClientSatisfactionPage } from "./pages/surveys/ClientSatisfactionPage";
 
 function ProtectedRoute() {
   const { isAuthenticated } = useAuth();
@@ -333,6 +335,8 @@ export function App() {
             <Route path="/directory/contacts" element={<ContactsPage />} />
             <Route path="/archive" element={<ArchivePage />} />
             <Route path="/archive/:jobId" element={<ArchiveDetailPage />} />
+            <Route path="/surveys/capture" element={<SurveyCaptureFormPage />} />
+            <Route path="/surveys/satisfaction" element={<ClientSatisfactionPage />} />
           </Route>
         </Route>
           <Route path="*" element={<NotFoundPage />} />

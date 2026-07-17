@@ -239,6 +239,13 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: ICON_AUDIT,
         match: (path) => path.startsWith("/safety"),
         badge: "safety"
+      },
+      {
+        to: "/cases",
+        label: "Cases",
+        icon: ICON_AUDIT,
+        match: (path) => path.startsWith("/cases"),
+        requiresPermission: "cases.view"
       }
     ]
   },
@@ -342,6 +349,7 @@ const BREADCRUMBS: Record<string, string> = {
   "/assets": "Assets",
   "/inventory": "Inventory",
   "/procurement": "Procurement",
+  "/cases": "Cases",
   "/maintenance": "Maintenance",
   "/master-data": "Master Data",
   "/documents": "Documents",

@@ -34,5 +34,6 @@ export const permissionModuleRegistry: Array<{ name: string; label: string }> = 
   { name: "rates", label: "Rates and price lists" },
   { name: "lists", label: "List bindings" },
   { name: "approvals", label: "Approvals and internal messages" },
-  { name: "procurement", label: "Procurement" }
+  { name: "procurement", label: "Procurement" },
+  { name: "cases", label: "Case management" }
 ];

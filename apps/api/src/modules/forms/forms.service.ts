@@ -8,6 +8,7 @@ import {
   UpdateFormTemplateMetadataDto,
   UpsertFormTemplateDto
 } from "./dto/forms.dto";
+import { FormsSnippetsService } from "./forms-snippets.service";
 
 const templateInclude = {
   versions: {
@@ -64,7 +65,8 @@ const submissionInclude = {
 export class FormsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly auditService: AuditService
+    private readonly auditService: AuditService,
+    private readonly snippetsService: FormsSnippetsService
   ) {}
 
   /**
@@ -117,7 +119,49 @@ export class FormsService {
       throw new NotFoundException("Form template not found.");
     }
 
-    return template;
+    return this.resolveTemplateSnippets(template);
+  }
+
+  /**
+   * Resolve any `snippetCode` references in the template's fields.
+   *
+   * For each field with a non-null `snippetCode`, the corresponding
+   * FormContentSnippet row is attached as `_snippet` on the field object.
+   * Fields without a snippetCode get `_snippet: null`. This keeps the
+   * response self-contained — callers do not need a second round-trip to
+   * render content_block fields.
+   */
+  private async resolveTemplateSnippets<T extends ReturnType<typeof Object.assign>>(template: T): Promise<T> {
+    const codes = new Set<string>();
+    const asAny = template as { versions?: Array<{ sections?: Array<{ fields?: Array<{ snippetCode?: string | null }> }> }> };
+    for (const version of asAny.versions ?? []) {
+      for (const section of version.sections ?? []) {
+        for (const field of section.fields ?? []) {
+          if (field.snippetCode) codes.add(field.snippetCode);
+        }
+      }
+    }
+
+    if (codes.size === 0) return template;
+
+    const snippets = await this.snippetsService.resolveSnippetsByCode(Array.from(codes));
+    const snippetMap = new Map(snippets.filter(Boolean).map((s) => [s!.code, s]));
+
+    const withSnippets = {
+      ...asAny,
+      versions: (asAny.versions ?? []).map((version) => ({
+        ...version,
+        sections: (version.sections ?? []).map((section) => ({
+          ...section,
+          fields: (section.fields ?? []).map((field) => ({
+            ...field,
+            _snippet: field.snippetCode ? (snippetMap.get(field.snippetCode) ?? null) : null
+          }))
+        }))
+      }))
+    };
+
+    return withSnippets as unknown as T;
   }
 
   /**
@@ -492,7 +536,8 @@ export class FormsService {
               placeholder: field.placeholder ?? undefined,
               helpText: field.helpText ?? undefined,
               optionsJson: field.optionsJson ?? undefined,
-              config: field.config ?? undefined
+              config: field.config ?? undefined,
+              snippetCode: (field as { snippetCode?: string | null }).snippetCode ?? undefined
             }))
           }))
         : [{ title: "Section 1", sectionOrder: 1, fields: [] }],
@@ -614,7 +659,8 @@ export class FormsService {
             placeholder: field.placeholder ?? null,
             helpText: field.helpText ?? null,
             optionsJson: field.optionsJson ?? Prisma.JsonNull,
-            config: (field.config ?? {}) as Prisma.InputJsonValue
+            config: (field.config ?? {}) as Prisma.InputJsonValue,
+            snippetCode: field.snippetCode ?? null
           }))
         });
       }

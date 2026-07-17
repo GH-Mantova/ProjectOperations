@@ -64,6 +64,9 @@ model User {
   ownedActivities            JobActivity[]               @relation("JobActivityOwner")
   ledShifts                  Shift[]                     @relation("ShiftLead")
   reportedJobIssues          JobIssue[]                  @relation("JobIssueReporter")
+  raisedPunchItems           PunchItem[]                 @relation("PunchItemRaisedBy")
+  assignedPunchItems         PunchItem[]                 @relation("PunchItemAssignee")
+  closedPunchItems           PunchItem[]                 @relation("PunchItemClosedBy")
   approvedVariations         JobVariation[]              @relation("JobVariationApprover")
   progressEntries            JobProgressEntry[]          @relation("JobProgressEntryAuthor")
   statusChanges              JobStatusHistory[]          @relation("JobStatusHistoryActor")
@@ -100,6 +103,7 @@ model User {
   contractsCreated           Contract[]                  @relation("ContractCreatedBy")
   variationsCreated          Variation[]                 @relation("VariationCreatedBy")
   progressClaimsCreated      ProgressClaim[]             @relation("ProgressClaimCreatedBy")
+  paymentSchedulesCreated    PaymentSchedule[]           @relation("PaymentScheduleCreatedBy")
   createdQuotes              ClientQuote[]               @relation("QuoteCreatedBy")
   sentQuotes                 ClientQuote[]               @relation("QuoteSentBy")
   sentQuoteEmails            QuoteEmail[]                @relation("QuoteEmailSentBy")
@@ -557,19 +561,19 @@ model SearchEntry {
 }
 
 model Dashboard {
-  id          String            @id @default(cuid())
-  name        String
-  description String?
-  scope       String
-  ownerUserId String?           @map("owner_user_id")
-  ownerRoleId String?           @map("owner_role_id")
-  isDefault   Boolean           @default(false) @map("is_default")
-  createdAt   DateTime          @default(now()) @map("created_at")
-  updatedAt   DateTime          @updatedAt @map("updated_at")
-  ownerUser   User?             @relation("DashboardOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
-  ownerRole   Role?             @relation("DashboardOwnerRole", fields: [ownerRoleId], references: [id], onDelete: SetNull)
-  widgets     DashboardWidget[]
-  usersDefaultedTo User[]        @relation("UserDefaultDashboard")
+  id               String            @id @default(cuid())
+  name             String
+  description      String?
+  scope            String
+  ownerUserId      String?           @map("owner_user_id")
+  ownerRoleId      String?           @map("owner_role_id")
+  isDefault        Boolean           @default(false) @map("is_default")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  ownerUser        User?             @relation("DashboardOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  ownerRole        Role?             @relation("DashboardOwnerRole", fields: [ownerRoleId], references: [id], onDelete: SetNull)
+  widgets          DashboardWidget[]
+  usersDefaultedTo User[]            @relation("UserDefaultDashboard")
 
   @@index([scope])
   @@index([ownerUserId])
@@ -858,6 +862,7 @@ model Worker {
   availabilityWindows AvailabilityWindow[]
   roleSuitabilities   WorkerRoleSuitability[]
   formSubmissions     FormSubmission[]
+  dockets             Docket[]
   assetCheckouts      AssetCheckout[]           @relation("AssetCheckoutHolderWorker")
 
   @@index([status])
@@ -933,6 +938,7 @@ model Asset {
   allocations              ProjectAllocation[]
   scheduleAllocations      ScheduleAllocation[]
   scopePlantRefs           ScopeOfWorksItem[]      @relation("ScopeItemPlant")
+  dockets                  Docket[]
   checkouts                AssetCheckout[]
 
   @@index([status])
@@ -1292,6 +1298,8 @@ model Job {
   formSubmissions    FormSubmission[]
   closeout           JobCloseout?
   correspondences    CorrespondenceThread[] @relation("JobCorrespondence")
+  punchItems         PunchItem[]
+  dockets            Docket[]
   assetCheckouts     AssetCheckout[]        @relation("AssetCheckoutJob")
   commitments        Commitment[]
 
@@ -1379,6 +1387,40 @@ model JobIssue {
   @@index([jobId, status])
   @@index([severity])
   @@map("job_issues")
+}
+
+// ─── ERP gap A/commercial — punch / snag / defect list ───────────────
+// Job-scoped handover / make-good close-out list (Procore parity).
+// Raised from ad-hoc inspections OR linked back to a FormSubmission /
+// corrective action row when the item was generated from a checklist.
+// Status graph: OPEN → IN_PROGRESS → CLOSED. Cascade delete on job.
+model PunchItem {
+  id           String          @id @default(cuid())
+  jobId        String          @map("job_id")
+  title        String
+  description  String?
+  location     String?
+  status       String          @default("OPEN")
+  raisedById   String          @map("raised_by_id")
+  assignedToId String?         @map("assigned_to_id")
+  dueAt        DateTime?       @map("due_at")
+  closedAt     DateTime?       @map("closed_at")
+  closedById   String?         @map("closed_by_id")
+  closureNote  String?         @map("closure_note")
+  photoUrl     String?         @map("photo_url")
+  submissionId String?         @map("submission_id")
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+  job          Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  raisedBy     User            @relation("PunchItemRaisedBy", fields: [raisedById], references: [id], onDelete: Restrict)
+  assignedTo   User?           @relation("PunchItemAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  closedBy     User?           @relation("PunchItemClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+  submission   FormSubmission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+
+  @@index([jobId, status])
+  @@index([assignedToId, status])
+  @@index([dueAt])
+  @@map("punch_items")
 }
 
 model JobVariation {
@@ -1740,12 +1782,17 @@ model FormField {
   conditions   Json                  @default("[]")
   validations  Json                  @default("[]")
   actions      Json                  @default("[]")
+  // PR forms-content-library: when fieldType is "content_block", this
+  // code references a FormContentSnippet.code for resolved HTML rendering.
+  // A soft reference (no FK) so snippet deletion never blocks form edits.
+  snippetCode  String?               @map("snippet_code")
   createdAt    DateTime              @default(now()) @map("created_at")
   section      FormSection           @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   values       FormSubmissionValue[]
 
   @@unique([sectionId, fieldKey])
   @@index([sectionId, fieldOrder])
+  @@index([snippetCode])
   @@map("form_fields")
 }
 
@@ -1799,6 +1846,7 @@ model FormSubmission {
   gpsLng            Decimal?              @map("gps_lng") @db.Decimal(10, 7)
   approvals         FormApproval[]
   triggeredRecords  FormTriggeredRecord[]
+  punchItems        PunchItem[]
   correctiveActions CorrectiveAction[]
   // PR #621 -- public/kiosk submissions link back to the originating token
   publicLinkId      String?               @map("public_link_id")
@@ -1982,6 +2030,28 @@ model FormSignature {
 
   @@index([submissionId])
   @@map("form_signatures")
+}
+
+// ─── Forms Content Snippet Library (PR forms-content-library) ──────────────
+// Stores reusable HTML blocks (legal text, T&Cs, privacy notices, etc.) that
+// can be referenced from FormField rows via snippetCode. Authoring happens
+// once; every form field with fieldType="content_block" that carries a
+// snippetCode is resolved at template-fetch time.
+
+model FormContentSnippet {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  category  String   @default("general")
+  bodyHtml  String   @map("body_html")
+  version   Int      @default(1)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([category])
+  @@index([isActive])
+  @@map("form_content_snippets")
 }
 
 model EstimateLabourRate {
@@ -3398,6 +3468,12 @@ model OperationsSettings {
   fuelPriceSource    String?   @map("fuel_price_source")
   fuelPriceFetchedAt DateTime? @map("fuel_price_fetched_at")
   travelRatePerKm    Decimal?  @map("travel_rate_per_km") @db.Decimal(6, 2)
+  // AU Security of Payment Act — statutory window (business days) in which
+  // a respondent must issue a payment schedule after receiving a payment
+  // claim. Varies by state (NSW 10, QLD 15, VIC 10, etc.); Marco sets the
+  // value for the jurisdiction the tenant operates in. NULL = fall back to
+  // SOPA_DEFAULT_RESPONSE_DAYS in the contracts service.
+  sopaResponseDays   Int?      @map("sopa_response_days")
   updatedAt          DateTime  @updatedAt @map("updated_at")
   updatedById        String?   @map("updated_by_id")
   updatedBy          User?     @relation("OperationsSettingsUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
@@ -3499,6 +3575,7 @@ model ProgressClaim {
   retentionHeld  Decimal         @default(0) @map("retention_held") @db.Decimal(12, 2)
   notes          String?
   lineItems      ClaimLineItem[]
+  paymentSchedule PaymentSchedule?
   createdById    String          @map("created_by_id")
   createdBy      User            @relation("ProgressClaimCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   createdAt      DateTime        @default(now()) @map("created_at")
@@ -3507,6 +3584,37 @@ model ProgressClaim {
   @@unique([contractId, claimMonth])
   @@index([contractId, status])
   @@map("progress_claims")
+}
+
+// AU Security of Payment Act response ("payment schedule") to a
+// ProgressClaim. Statutory: if the respondent fails to issue a schedule
+// within the state-defined window, the FULL claimed amount becomes
+// payable — that is the risk this record is designed to surface.
+// dueBy is computed at record-creation time from the claim's submission
+// date + OperationsSettings.sopaResponseDays (business days, adjusted to
+// the preceding QLD work day) and STORED so later setting changes do not
+// retro-mutate an already-issued statutory window.
+enum PaymentScheduleStatus {
+  PENDING
+  ISSUED
+  OVERDUE
+}
+
+model PaymentSchedule {
+  id              String                @id @default(cuid())
+  progressClaimId String                @unique @map("progress_claim_id")
+  progressClaim   ProgressClaim         @relation(fields: [progressClaimId], references: [id], onDelete: Cascade)
+  scheduledAmount Decimal               @map("scheduled_amount") @db.Decimal(12, 2)
+  reasons         String?
+  status          PaymentScheduleStatus @default(PENDING)
+  dueBy           DateTime              @map("due_by")
+  respondedAt     DateTime?             @map("responded_at")
+  createdById     String                @map("created_by_id")
+  createdBy       User                  @relation("PaymentScheduleCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+
+  @@map("payment_schedules")
 }
 
 model ClaimLineItem {
@@ -4057,6 +4165,77 @@ model HazardNumberSequence {
   @@map("hazard_number_sequences")
 }
 
+// Haulage / Delivery Dockets (feat/erp-haulage-dockets).
+// Digital docket capture for drivers in the field (skip-bin/waste cartage,
+// plant hire). Mirrors Assignar docket workflow. DocketNumberSequence issues
+// atomic sequential DKT-NNNNNN numbers, same pattern as SafetyIncident.
+enum DocketType {
+  DELIVERY
+  HAULAGE
+  DISPOSAL
+}
+
+model DocketNumberSequence {
+  id         Int @id @default(1)
+  lastNumber Int @default(0) @map("last_number")
+
+  @@map("docket_number_sequences")
+}
+
+model Docket {
+  id           String     @id @default(cuid())
+  docketNumber String     @unique @map("docket_number")
+  type         DocketType
+
+  jobId    String? @map("job_id")
+  job      Job?    @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  assetId  String? @map("asset_id")
+  asset    Asset?  @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  workerId String  @map("worker_id")
+  worker   Worker  @relation(fields: [workerId], references: [id], onDelete: Restrict)
+
+  materialWasteType String?  @map("material_waste_type")
+  quantity          Decimal? @db.Decimal(10, 3)
+  unit              String?
+
+  fromLocation String? @map("from_location")
+  toLocation   String? @map("to_location")
+
+  signedByName String?  @map("signed_by_name")
+  gpsLat       Decimal? @map("gps_lat") @db.Decimal(10, 7)
+  gpsLng       Decimal? @map("gps_lng") @db.Decimal(10, 7)
+
+  status     String   @default("CAPTURED")
+  capturedAt DateTime @map("captured_at")
+
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+  attachments DocketAttachment[]
+
+  @@index([jobId])
+  @@index([assetId])
+  @@index([workerId])
+  @@index([capturedAt])
+  @@index([type, status])
+  @@map("dockets")
+}
+
+model DocketAttachment {
+  id         String   @id @default(cuid())
+  docketId   String   @map("docket_id")
+  docket     Docket   @relation(fields: [docketId], references: [id], onDelete: Cascade)
+  // kind values: "signature" | "photo" | "weighbridge"
+  kind       String
+  storageUrl String   @map("storage_url")
+  mimeType   String?  @map("mime_type")
+  capturedAt DateTime @map("captured_at")
+
+  @@index([docketId])
+  @@map("docket_attachments")
+}
+
+// â”€â”€â”€ Worker availability (PR #85) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//
 // â"€â"€â"€ Worker availability (PR #85) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 // Two distinct concepts:
 //   WorkerLeave         â€" approved time off with type (annual/sick/personal/...)

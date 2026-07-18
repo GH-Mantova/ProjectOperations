@@ -38,6 +38,7 @@ import { AssetsListPage } from "./pages/assets/AssetsListPage";
 import { AssetDetailPage } from "./pages/assets/AssetDetailPage";
 import { InventoryPage } from "./pages/inventory/InventoryPage";
 import { ProcurementPage } from "./pages/procurement/ProcurementPage";
+import { ExpensesPage } from "./pages/expenses/ExpensesPage";
 import { MaintenancePage as MaintenanceDashboardPage } from "./pages/maintenance/MaintenancePage";
 import { PlantUtilisationReportPage } from "./pages/maintenance/PlantUtilisationReportPage";
 import { FormsListPage } from "./pages/forms/FormsListPage";
@@ -49,6 +50,7 @@ import { CorrectiveActionsPage } from "./pages/forms/CorrectiveActionsPage";
 import { CorrectiveActionDetailPage } from "./pages/forms/CorrectiveActionDetailPage";
 import { DocumentsWorkspacePage } from "./pages/documents/DocumentsWorkspacePage";
 import { MasterDataWorkspacePage } from "./pages/master-data/MasterDataWorkspacePage";
+import { ClientsGridPage } from "./pages/master-data/ClientsGridPage";
 import { SubcontractorsPage } from "./pages/directory/SubcontractorsPage";
 import { ContactsPage } from "./pages/directory/ContactsPage";
 import { SitesListPage } from "./pages/sites/SitesListPage";
@@ -96,6 +98,8 @@ import { OfflineProvider } from "./offline/OfflineContext";
 import { OfflineIndicator } from "./offline/OfflineIndicator";
 import { InstallPrompt } from "./offline/InstallPrompt";
 import { UpdatePromptToast } from "./pwa/UpdatePromptToast";
+import { SurveyCaptureFormPage } from "./pages/surveys/SurveyCaptureFormPage";
+import { ClientSatisfactionPage } from "./pages/surveys/ClientSatisfactionPage";
 
 function ProtectedRoute() {
   const { isAuthenticated } = useAuth();
@@ -273,6 +277,7 @@ export function App() {
             <Route path="/tenders/:id/scope" element={<TenderDetailPage />} />
             <Route path="/tenders/:id/quote" element={<TenderDetailPage />} />
             <Route path="/tenders/:id/rates" element={<TenderDetailPage />} />
+            <Route path="/tenders/:id/history" element={<TenderDetailPage />} />
             <Route path="/jobs" element={<JobsListPage />} />
             <Route path="/jobs/:id" element={<JobDetailPage />} />
             <Route path="/projects" element={<ProjectsListPage />} />
@@ -288,6 +293,7 @@ export function App() {
             <Route path="/assets/:id" element={<AssetDetailPage />} />
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/procurement" element={<ProcurementPage />} />
+            <Route path="/expenses" element={<ExpensesPage />} />
             <Route path="/maintenance" element={<MaintenanceDashboardPage />} />
             <Route path="/maintenance/utilisation" element={<PlantUtilisationReportPage />} />
             <Route path="/forms" element={<FormsListPage />} />
@@ -321,6 +327,7 @@ export function App() {
             <Route path="/dashboards/global/:id" element={<GlobalDashboardPage />} />
             <Route path="/dashboards/:id" element={<UserDashboardPage />} />
             <Route path="/master-data" element={<MasterDataWorkspacePage />} />
+            <Route path="/master-data/clients-grid" element={<ClientsGridPage />} />
             <Route path="/sites" element={<SitesListPage />} />
             <Route path="/sites/:id" element={<SiteDetailPage />} />
             <Route path="/compliance" element={<CompliancePage />} />
@@ -331,6 +338,8 @@ export function App() {
             <Route path="/directory/contacts" element={<ContactsPage />} />
             <Route path="/archive" element={<ArchivePage />} />
             <Route path="/archive/:jobId" element={<ArchiveDetailPage />} />
+            <Route path="/surveys/capture" element={<SurveyCaptureFormPage />} />
+            <Route path="/surveys/satisfaction" element={<ClientSatisfactionPage />} />
           </Route>
         </Route>
           <Route path="*" element={<NotFoundPage />} />

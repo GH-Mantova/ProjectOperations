@@ -3718,6 +3718,54 @@ async function main() {
   // Tender stage-bar flow. Insert-if-absent so admin edits to stages
   // survive re-seed.
   await seedBusinessProcessFlows(prisma);
+  // Customer Voice — one default post-job survey (idempotent by name).
+  await seedDefaultSurvey(prisma);
+}
+
+async function seedDefaultSurvey(prisma: PrismaClient) {
+  const name = "Post-Job Client Satisfaction";
+  const existing = await prisma.survey.findFirst({ where: { name } });
+  if (existing) return; // idempotent — do not duplicate on re-seed
+
+  await prisma.survey.create({
+    data: {
+      name,
+      description: "Standard post-job survey sent to clients after job completion.",
+      isDefault: true,
+      questions: [
+        {
+          id: "q1",
+          prompt: "How satisfied were you with the overall service?",
+          type: "rating",
+          required: true,
+          min: 1,
+          max: 5
+        },
+        {
+          id: "q2",
+          prompt: "How likely are you to recommend us? (NPS-lite)",
+          type: "rating",
+          required: true,
+          min: 1,
+          max: 5
+        },
+        {
+          id: "q3",
+          prompt: "How well did we communicate during the job?",
+          type: "rating",
+          required: true,
+          min: 1,
+          max: 5
+        },
+        {
+          id: "q4",
+          prompt: "Any comments or suggestions?",
+          type: "text",
+          required: false
+        }
+      ]
+    }
+  });
 }
 
 async function seedUserDashboards(prisma: PrismaClient) {

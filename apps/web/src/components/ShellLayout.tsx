@@ -8,6 +8,7 @@ import { CommandPalette } from "./CommandPalette";
 import { GlobalSearch } from "./GlobalSearch";
 import { QuickCreate } from "./QuickCreate";
 import { FeedbackButton } from "./FeedbackButton";
+import { ThemeToggle } from "./ThemeToggle";
 import { NewDashboardModal } from "../dashboards/NewDashboardModal";
 import { useUserDashboards, useUserDashboardsActions } from "../dashboards/userDashboards";
 import { PersonaProvider } from "../personas/PersonaContext";
@@ -221,6 +222,13 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/assets", label: "Assets", icon: ICON_ASSETS },
       { to: "/inventory", label: "Inventory", icon: ICON_ASSETS },
       { to: "/procurement", label: "Procurement", icon: ICON_ASSETS },
+      {
+        to: "/expenses",
+        label: "Expenses",
+        icon: ICON_ASSETS,
+        match: (path: string) => path.startsWith("/expenses"),
+        requiresPermission: "expenses.view"
+      },
       { to: "/maintenance", label: "Maintenance", icon: ICON_MAINTENANCE },
       { to: "/forms", label: "Forms", icon: ICON_FORMS },
       {
@@ -351,6 +359,7 @@ const BREADCRUMBS: Record<string, string> = {
   "/assets": "Assets",
   "/inventory": "Inventory",
   "/procurement": "Procurement",
+  "/expenses": "Expenses",
   "/cases": "Cases",
   "/maintenance": "Maintenance",
   "/master-data": "Master Data",
@@ -675,6 +684,7 @@ export function ShellLayout() {
             >
               {ICON_SEARCH}
             </button>
+            <ThemeToggle />
             <FeedbackButton />
             <button
               type="button"

@@ -973,7 +973,7 @@ textarea {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #ffffff;
+  background: var(--surface-card);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
   transform: translateX(0);
   transition: transform 120ms ease;
@@ -1373,7 +1373,7 @@ textarea {
   gap: 8px;
 }
 .sow-item {
-  background: white;
+  background: var(--surface-card);
   border-radius: 8px;
   border: 1px solid var(--border-subtle, rgba(0,0,0,0.08));
 }
@@ -1454,7 +1454,7 @@ textarea {
   font-size: 13px;
 }
 .sow-items-table th {
-  background: #F1EFE8;
+  background: var(--surface-subtle);
   font-weight: 600;
   text-align: left;
   padding: 6px 8px;
@@ -1484,7 +1484,7 @@ textarea {
 .sow-cell-input:focus,
 .sow-cell-input:hover {
   border-color: var(--border-subtle, rgba(0,0,0,0.15));
-  background: white;
+  background: var(--surface-card);
   outline: none;
 }
 .sow-cell-input--num {
@@ -3472,7 +3472,7 @@ textarea {
   width: 100%;
   border: 1px solid var(--border-default, #E5E7EB);
   border-radius: var(--radius-md, 8px);
-  background: #FFFFFF;
+  background: var(--surface-card);
   touch-action: none;
 }
 
@@ -4070,7 +4070,7 @@ textarea {
 .tendering-focus-list__item,
 .tendering-readiness-list__item {
   border: 1px solid rgba(19, 34, 56, 0.08);
-  background: white;
+  background: var(--surface-card);
   border-radius: 16px;
 }
 
@@ -4471,7 +4471,7 @@ textarea {
 .crm-directory__item {
   width: 100%;
   border: 1px solid rgba(19, 34, 56, 0.07);
-  background: white;
+  background: var(--surface-card);
   border-radius: 14px;
   padding: 12px 14px;
   display: grid;
@@ -4565,7 +4565,7 @@ textarea {
   gap: 4px;
   padding: 12px;
   border-radius: 12px;
-  background: white;
+  background: var(--surface-card);
   border: 1px solid rgba(19, 34, 56, 0.06);
 }
 
@@ -4879,7 +4879,7 @@ textarea {
   gap: 6px;
   padding: 12px;
   border-radius: 12px;
-  background: white;
+  background: var(--surface-card);
   border: 1px solid rgba(19, 34, 56, 0.08);
 }
 
@@ -4900,7 +4900,7 @@ textarea {
   align-items: start;
   padding: 12px;
   border-radius: 12px;
-  background: white;
+  background: var(--surface-card);
   border: 1px solid rgba(19, 34, 56, 0.08);
 }
 
@@ -5076,7 +5076,7 @@ textarea {
   padding: 12px;
   border-radius: 12px;
   border: 1px solid rgba(19, 34, 56, 0.07);
-  background: white;
+  background: var(--surface-card);
 }
 
 .muted-text {
@@ -5167,7 +5167,7 @@ textarea {
 .planner-group__header {
   width: 100%;
   border: 1px solid rgba(19, 34, 56, 0.08);
-  background: white;
+  background: var(--surface-card);
   border-radius: 12px;
   padding: 10px 12px;
   display: flex;
@@ -5209,7 +5209,7 @@ textarea {
 .scheduler-tree__leaf {
   text-align: left;
   border: 1px solid rgba(19, 34, 56, 0.1);
-  background: white;
+  background: var(--surface-card);
   border-radius: 10px;
   padding: 8px 10px;
   cursor: pointer;
@@ -5264,7 +5264,7 @@ textarea {
   min-height: 68px;
   border-radius: 12px;
   border: 1px solid rgba(19, 34, 56, 0.08);
-  background: white;
+  background: var(--surface-card);
 }
 
 .scheduler-matrix__header {
@@ -5348,7 +5348,7 @@ textarea {
   min-height: 72px;
   border-radius: 12px;
   border: 1px solid rgba(19, 34, 56, 0.08);
-  background: white;
+  background: var(--surface-card);
 }
 
 .scheduler-gantt__header {
@@ -5437,7 +5437,7 @@ textarea {
   min-height: 54px;
   border-radius: 10px;
   border: 1px solid rgba(19, 34, 56, 0.08);
-  background: white;
+  background: var(--surface-card);
   display: grid;
   place-items: center;
   gap: 2px;
@@ -5485,7 +5485,7 @@ textarea {
   padding: 10px 12px;
   border-radius: 12px;
   border: 1px solid rgba(19, 34, 56, 0.08);
-  background: white;
+  background: var(--surface-card);
   text-align: left;
   cursor: pointer;
 }
@@ -5575,7 +5575,7 @@ textarea {
 .planner-list-card {
   width: 100%;
   border: 1px solid rgba(19, 34, 56, 0.08);
-  background: white;
+  background: var(--surface-card);
   border-radius: 12px;
   padding: 12px;
   display: grid;
@@ -5908,7 +5908,7 @@ textarea {
 
 .tendering-topbar-button {
   border: 1px solid rgba(19, 34, 56, 0.1);
-  background: white;
+  background: var(--surface-card);
   color: #355066;
   border-radius: 9px;
   padding: 6px 10px;
@@ -5994,7 +5994,7 @@ textarea {
   padding: 8px 11px;
   border-radius: 9px;
   border: 1px solid #d1dce5;
-  background: white;
+  background: var(--surface-card);
 }
 
 .tendering-filter-row {
@@ -6014,13 +6014,13 @@ textarea {
   padding: 6px 10px;
   border-radius: 999px;
   border: 1px solid rgba(19, 34, 56, 0.1);
-  background: white;
+  background: var(--surface-card);
   font-size: 0.88rem;
 }
 
 .tendering-filter-chip {
   border: 1px solid rgba(19, 34, 56, 0.08);
-  background: white;
+  background: var(--surface-card);
   border-radius: 999px;
   padding: 5px 10px;
   font-weight: 700;
@@ -6081,7 +6081,7 @@ textarea {
   min-width: 1080px;
   border: 1px solid rgba(19, 34, 56, 0.08);
   border-radius: 14px;
-  background: white;
+  background: var(--surface-card);
   box-shadow: 0 8px 22px rgba(18, 52, 77, 0.04);
 }
 
@@ -6122,7 +6122,7 @@ textarea {
 .tendering-table__row {
   width: 100%;
   border: 0;
-  background: white;
+  background: var(--surface-card);
   border-bottom: 1px solid rgba(19, 34, 56, 0.06);
   cursor: pointer;
 }
@@ -6161,7 +6161,7 @@ textarea {
 .tendering-register-card {
   text-align: left;
   border: 1px solid rgba(19, 34, 56, 0.07);
-  background: #fff;
+  background: var(--surface-card);
   border-radius: 12px;
   padding: 12px 14px;
   display: grid;
@@ -6327,7 +6327,7 @@ textarea {
   gap: 6px;
   padding: 8px;
   border-radius: 10px;
-  background: white;
+  background: var(--surface-card);
   border: 1px solid rgba(19, 34, 56, 0.07);
   box-shadow: 0 1px 0 rgba(19, 34, 56, 0.03);
   transition:
@@ -6424,7 +6424,7 @@ textarea {
   gap: 14px;
   padding: 22px;
   border-radius: 22px;
-  background: #ffffff;
+  background: var(--surface-card);
   border: 1px solid rgba(19, 34, 56, 0.12);
   box-shadow: 0 24px 50px rgba(18, 52, 77, 0.18);
 }
@@ -6492,7 +6492,7 @@ textarea {
 .tendering-forecast-strip__chip {
   min-width: 150px;
   border: 1px solid rgba(19, 34, 56, 0.08);
-  background: white;
+  background: var(--surface-card);
   border-radius: 12px;
   padding: 9px 11px;
   text-align: left;
@@ -6558,7 +6558,7 @@ textarea {
 
 .tendering-forecast-card__deal {
   border: 1px solid rgba(19, 34, 56, 0.08);
-  background: white;
+  background: var(--surface-card);
   border-radius: 12px;
   padding: 10px;
   display: grid;
@@ -6623,7 +6623,7 @@ textarea {
   gap: 4px;
   padding: 14px;
   border-radius: 14px;
-  background: white;
+  background: var(--surface-card);
   border: 1px solid rgba(19, 34, 56, 0.08);
 }
 
@@ -6914,7 +6914,7 @@ textarea {
   gap: 4px;
   padding: 12px;
   border-radius: 12px;
-  background: white;
+  background: var(--surface-card);
   border: 1px solid rgba(19, 34, 56, 0.08);
 }
 
@@ -6945,7 +6945,7 @@ textarea {
   gap: 6px;
   padding: 12px;
   border-radius: 12px;
-  background: white;
+  background: var(--surface-card);
   border: 1px solid rgba(19, 34, 56, 0.08);
 }
 
@@ -7143,7 +7143,7 @@ textarea {
 .tendering-activity-quick-form {
   padding: 12px;
   border-radius: 14px;
-  background: white;
+  background: var(--surface-card);
   border: 1px solid rgba(19, 34, 56, 0.08);
 }
 
@@ -7167,7 +7167,7 @@ textarea {
   align-items: start;
   padding: 12px;
   border-radius: 12px;
-  background: white;
+  background: var(--surface-card);
   border: 1px solid rgba(19, 34, 56, 0.08);
 }
 
@@ -8903,7 +8903,7 @@ textarea {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: white;
+  background: var(--surface-card);
   transition: transform 150ms ease;
   box-shadow: 0 1px 2px rgba(0,0,0,0.2);
 }
@@ -9472,7 +9472,7 @@ textarea {
   font-size: 13px;
   font-family: inherit;
   color: var(--text-primary, #1F2937);
-  background: #FFFFFF;
+  background: var(--surface-card);
   border: 1px solid var(--border-subtle, rgba(0,0,0,0.16));
   border-radius: 4px;
   resize: vertical;
@@ -9939,4 +9939,195 @@ textarea {
 @media (max-width: 768px) {
   .sched-grid__head { flex-direction: column; align-items: flex-start; }
   .sched-grid__actions { width: 100%; }
+}
+
+/* ---------------------------------------------------------------------------
+   ViewSwitcher — reusable view-type toggle (feat/ux-view-switcher)
+   --------------------------------------------------------------------------- */
+
+.view-switcher {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  background: var(--border-subtle, #F3F4F6);
+  border-radius: var(--radius-md, 8px);
+}
+
+.view-switcher__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary, #6B7280);
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: var(--radius-sm, 6px);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+  white-space: nowrap;
+}
+
+.view-switcher__btn:hover {
+  color: var(--text-primary, #0F1117);
+}
+
+.view-switcher__btn--active {
+  background: var(--surface-card, #FFFFFF);
+  color: var(--text-primary, #0F1117);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.view-switcher__label {
+  display: inline;
+}
+
+@media (max-width: 640px) {
+  .view-switcher__label {
+    display: none;
+  }
+  .view-switcher__btn {
+    padding: 0 8px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Jobs Kanban board (feat/ux-view-switcher)
+   --------------------------------------------------------------------------- */
+
+.jobs-kanban {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+@media (max-width: 1024px) {
+  .jobs-kanban {
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .jobs-kanban {
+    grid-template-columns: 1fr;
+  }
+}
+
+.jobs-kanban-col {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-muted, #F6F6F6);
+  border-radius: var(--radius-lg, 12px);
+  border: 2px solid transparent;
+  transition: border-color 120ms ease;
+  min-height: 200px;
+}
+
+.jobs-kanban-col--drag-over {
+  border-color: var(--brand-accent, #FEAA6D);
+}
+
+.jobs-kanban-col__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--border-default, #E5E7EB);
+}
+
+.jobs-kanban-col__accent {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.jobs-kanban-col__title {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary, #6B7280);
+}
+
+.jobs-kanban-col__count {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary, #6B7280);
+  background: var(--border-default, #E5E7EB);
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
+.jobs-kanban-col__body {
+  flex: 1;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.jobs-kanban-col__empty {
+  font-size: 12px;
+  color: var(--text-disabled, #9CA3AF);
+  text-align: center;
+  padding: 20px 0;
+  margin: 0;
+}
+
+/* Kanban card */
+
+.jobs-kanban-card {
+  background: var(--surface-card, #FFFFFF);
+  border: 1px solid var(--border-default, #E5E7EB);
+  border-radius: var(--radius-md, 8px);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: grab;
+  box-shadow: var(--shadow-card, 0 1px 3px rgba(0,0,0,0.06));
+  transition: box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.jobs-kanban-card:active {
+  cursor: grabbing;
+}
+
+.jobs-kanban-card:hover {
+  border-color: var(--brand-accent, #FEAA6D);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.jobs-kanban-card--skel {
+  cursor: default;
+}
+
+.jobs-kanban-card--skel:hover {
+  border-color: var(--border-default, #E5E7EB);
+  box-shadow: var(--shadow-card, 0 1px 3px rgba(0,0,0,0.06));
+}
+
+.jobs-kanban-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.jobs-kanban-card__title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary, #0F1117);
+  text-decoration: none;
+  line-height: 1.3;
+}
+
+.jobs-kanban-card__title:hover {
+  text-decoration: underline;
 }

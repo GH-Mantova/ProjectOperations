@@ -27,6 +27,8 @@ import { ProcessFlowsService } from "./process-flows.service";
 import { AutomationsController } from "./automations.controller";
 import { AutomationsService } from "./automations.service";
 import { AutomationEngineService } from "./automation-engine.service";
+import { SavedViewsController } from "./saved-views.controller";
+import { SavedViewsService } from "./saved-views.service";
 
 @Module({
   imports: [AuditModule],
@@ -43,7 +45,8 @@ import { AutomationEngineService } from "./automation-engine.service";
     PlatformConfigController,
     AiProvidersController,
     TenderProcessFlowController,
-    AutomationsController
+    AutomationsController,
+    SavedViewsController
   ],
   providers: [
     MockSharePointAdapter,
@@ -71,7 +74,8 @@ import { AutomationEngineService } from "./automation-engine.service";
     PlatformConfigService,
     ProcessFlowsService,
     AutomationEngineService,
-    AutomationsService
+    AutomationsService,
+    SavedViewsService
   ],
   exports: [
     SharePointService,

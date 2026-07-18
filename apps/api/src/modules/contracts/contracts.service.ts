@@ -11,6 +11,7 @@ import {
   VariationStatus
 } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { AuditService } from "../audit/audit.service";
 import { EmailService } from "../email/email.service";
 import { NotificationsService } from "../platform/notifications.service";
 import { adjustToPrecedingWorkday, isAustralianPublicHoliday } from "./public-holidays";
@@ -50,7 +51,8 @@ export class ContractsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
-    private readonly email: EmailService
+    private readonly email: EmailService,
+    private readonly audit: AuditService
   ) {}
 
   // ── Contracts ────────────────────────────────────────────────────────
@@ -158,7 +160,7 @@ export class ContractsService {
       orderBy: { version: "desc" },
       select: { id: true }
     });
-    return this.prisma.contract.create({
+    const created = await this.prisma.contract.create({
       data: {
         projectId: dto.projectId,
         contractNumber,
@@ -172,6 +174,18 @@ export class ContractsService {
       },
       include: { project: { include: { client: true } } }
     });
+    await this.audit.write({
+      actorId,
+      action: "contracts.create",
+      entityType: "Contract",
+      entityId: created.id,
+      metadata: {
+        contractNumber: created.contractNumber,
+        projectId: created.projectId,
+        contractValue: created.contractValue.toString()
+      }
+    });
+    return created;
   }
 
   /**
@@ -198,7 +212,20 @@ export class ContractsService {
     if (dto.contractValue !== undefined && !actor.permissions.has("finance.admin")) {
       throw new BadRequestException("Only finance.admin can change contractValue after creation.");
     }
-    return this.prisma.contract.update({
+    const changed: Record<string, { from: string | null; to: string | null }> = {};
+    const track = (field: string, before: unknown, after: unknown) => {
+      if (after === undefined) return;
+      const b = before === null || before === undefined ? null : String(before);
+      const a = after === null ? null : String(after);
+      if (b !== a) changed[field] = { from: b, to: a };
+    };
+    track("contractValue", existing.contractValue.toString(), dto.contractValue);
+    track("retentionPct", existing.retentionPct.toString(), dto.retentionPct);
+    track("startDate", existing.startDate?.toISOString() ?? null, dto.startDate === null ? null : dto.startDate);
+    track("endDate", existing.endDate?.toISOString() ?? null, dto.endDate === null ? null : dto.endDate);
+    track("status", existing.status, dto.status);
+    track("notes", existing.notes, dto.notes);
+    const updated = await this.prisma.contract.update({
       where: { id },
       data: {
         contractValue: dto.contractValue !== undefined ? new Prisma.Decimal(dto.contractValue) : undefined,
@@ -209,6 +236,16 @@ export class ContractsService {
         notes: dto.notes
       }
     });
+    if (Object.keys(changed).length) {
+      await this.audit.write({
+        actorId: actor.id,
+        action: "contracts.update",
+        entityType: "Contract",
+        entityId: id,
+        metadata: { changed }
+      });
+    }
+    return updated;
   }
 
   // ── Variations ───────────────────────────────────────────────────────

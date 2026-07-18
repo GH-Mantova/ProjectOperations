@@ -156,27 +156,12 @@ items:
     needs_marco: false
     order: 18
 
-  - id: role-default-dashboards
-    title: "User default dashboard (global Home + per-user override) [was: role/module mapping]"
-    priority: P4
-    why: >
-      No role-to-default-dashboard concept exists in the schema. The HOLD file carries a
-      watcher:do-not-arm marker -- it was parked on a design question, not a technical blocker.
-      Prompt body is in the untracked HOLD file pr-role-default-dashboards-HOLD.md
-      (size 9, gate_allow migrations).
-    gate: '! grep -qE "RoleDefaultDashboard|defaultDashboardId" apps/api/prisma/schema.prisma'
-    gate_means: No role -> default-dashboard concept in the schema yet.
-    needs_marco: false
-    decided: >
-      2026-07-15 (Marco, SUPERSEDES the earlier per-role/per-module answer): PER USER, not per
-      role and not per module. ONE global default dashboard called "Home" that every user starts
-      on, plus a per-user override (User.defaultDashboardId) each user sets for themselves. NO
-      RoleDefaultDashboard table. Also DELETE the two generic dashboards "Operations" and
-      "Tendering" and replace them with "Home". Staged prompts:
-      docs/pr-prompts/staged/pr-user-default-dashboard.md (backend, escalates - deletes dashboard
-      rows) and pr-user-default-dashboard-ui.md (frontend, GATED on the backend). Arm the backend
-      first; arm the UI only after it merges.
-    order: 19
+  # DISCHARGED 2026-07-18 (04-scanner): SHIPPED. Per-user default dashboard (User.defaultDashboardId
+  # + "Home" fallback) landed as #608 (5a6e97f); apps/api/prisma/schema.prisma now carries
+  # defaultDashboardId. The absence-gate ('! grep defaultDashboardId schema.prisma') correctly
+  # flipped to non-zero once the field shipped, so this item can never be READY again. Removed per
+  # "one place, never two." NOTE: staged/pr-user-default-dashboard.md + -ui.md may now be stale
+  # (shipped by #608) -- flagged for supervisor review, not deleted here.
 
   # DISCHARGED 2026-07-16 (04-scanner): its prompt body ALREADY EXISTS at
   # docs/pr-prompts/staged/pr-siteid-notnull-job-project.md (committed to main). False-ready: the
@@ -190,26 +175,11 @@ items:
   # ADDED 2026-07-15 by STATION 03. Found by 02-board-driver on live CI, not by design review.
   # -------------------------------------------------------------------------------------------
 
-  - id: flaky-batch5-sites-post-delete-race
-    title: "Flaky e2e: batch5-sites post-delete empty-state race reddens unrelated PRs"
-    priority: P2
-    why: >
-      In tests/e2e/pr-acceptance/batch5-sites.spec.ts (test "fresh site lifecycle - empty states,
-      edit in place, delete") the post-delete assertion
-      `expect(page.getByText("No sites match the current filters.")).toBeVisible()` times out after
-      10s with "element(s) not found". It reddened PR #583 (1 failed / 141 passed) whose diff was
-      THREE DOCS-ONLY FILES that cannot reach the Sites page, and it passed on a bare re-run.
-      MECHANISM (a race, not a flake to be re-run away): `toHaveURL(/\/sites$/)` resolves the instant
-      the URL changes - BEFORE the Sites register finishes its post-delete fetch. The `fill()` on the
-      search box is then clobbered by the list re-render, the filter never applies, and the
-      empty-state text never appears. FIX DIRECTION: after the post-delete navigation, wait for the
-      sites list itself to settle (rows / loading state), not merely the URL, before filling search.
-      COST IF LEFT: it will keep randomly reddening unrelated PRs and burning e2e cycles, and it
-      trains agents to re-run for green - which DOCTRINE section 2 explicitly forbids.
-    gate: "grep -A1 -F 'await expect(page).toHaveURL(/\/sites$/);' tests/e2e/pr-acceptance/batch5-sites.spec.ts | grep -q 'getByPlaceholder'"
-    gate_means: The search-box fill() still runs on the line IMMEDIATELY after the toHaveURL assertion - i.e. nothing waits for the sites list to settle, so the race is still there. Once a settle-wait is inserted between them the grep finds no getByPlaceholder on the next line and the gate exits 1.
-    needs_marco: false
-    order: 15
+  # DISCHARGED 2026-07-18 (04-scanner): FIXED on main. tests/e2e/pr-acceptance/batch5-sites.spec.ts
+  # now inserts a settle-wait -- await expect(getByRole("cell", { name: SITE_001_NAME })).toBeVisible()
+  # -- between the toHaveURL(/sites$/) assertion and the search fill(), exactly the prescribed fix.
+  # The gate (getByPlaceholder on the line immediately after toHaveURL) correctly reads non-zero: the
+  # post-delete race is gone. Removed per "one place, never two."
 
   # -------------------------------------------------------------------------------------------
   # ADDED 2026-07-15. Spun off from the siteid decision -- FormSubmission is NOT a DB constraint.
@@ -220,19 +190,10 @@ items:
   # code (WidgetSettingsPopover.tsx), which would have binned the prompt as stale. The armed prompt's
   # premise is rescoped to the forms module only. One place, never two.
 
-  - id: wire-bring-up-to-speed-into-boot
-    title: "Wire scripts/pipeline/bring-up-to-speed.ps1 into the SoT boot sequence"
-    priority: P3
-    why: >
-      status-sweep.ps1 + bring-up-to-speed.ps1 give every chat one deterministic,
-      GitHub-authoritative sweep (with a stale-claim cross-check) to run BEFORE any status report.
-      They shipped as tracked scripts. Make it LAW, not convention: sot/README.md's boot sequence
-      should tell every chat to run bring-up-to-speed.ps1 first and report only from its [LIVE]
-      lines. Sot-only PR (CP-24 forbids mixing code and sot/), so this is its own PR.
-    gate: 'git ls-files --error-unmatch scripts/pipeline/bring-up-to-speed.ps1 > /dev/null 2>&1 && ! grep -q "bring-up-to-speed" sot/README.md'
-    gate_means: The script is on main (so the boot sequence can reference it) AND sot/README.md does not mention it yet.
-    needs_marco: false
-    order: 22
+  # DISCHARGED 2026-07-18 (04-scanner): WIRED. sot/README.md boot sequence (lines 46-47) now tells
+  # every chat to run bring-up-to-speed.ps1 and report ONLY from its [LIVE] lines. The gate
+  # ('script tracked AND README does NOT mention it') correctly flipped to non-zero once README
+  # referenced it. Work done -- removed per "one place, never two."
 
   # DISCHARGED 2026-07-16 (04-scanner): its prompt body ALREADY EXISTS at
   # docs/pr-prompts/staged/pr-tender-geoapify-site-autocomplete.md (committed to main). Per the rule

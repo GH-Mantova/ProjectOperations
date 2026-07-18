@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
 import { BillingTab } from "./BillingTab";
+import { RecordHistory } from "../../components/RecordHistory";
 
 type ContractStatus = "ACTIVE" | "PRACTICAL_COMPLETION" | "DEFECTS" | "CLOSED";
 type VariationStatus = "RECEIVED" | "PRICED" | "SUBMITTED" | "APPROVED";
@@ -83,7 +84,7 @@ const CLAIM_STATUS_COLOR: Record<ClaimStatus, string> = {
   PAID: "#22C55E"
 };
 
-type Tab = "overview" | "variations" | "claims" | "billing";
+type Tab = "overview" | "variations" | "claims" | "billing" | "history";
 
 export function ContractDetailPage() {
   const { id } = useParams();
@@ -143,7 +144,7 @@ export function ContractDetailPage() {
       </header>
 
       <nav role="tablist" style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border, #e5e7eb)", marginBottom: 16 }}>
-        {(["overview", "variations", "claims", "billing"] as Tab[]).map((t) => {
+        {(["overview", "variations", "claims", "billing", "history"] as Tab[]).map((t) => {
           const active = t === tab;
           return (
             <button
@@ -165,7 +166,9 @@ export function ContractDetailPage() {
                   ? `Variations (${contract.variations.length})`
                   : t === "claims"
                     ? `Progress claims (${contract.progressClaims.length})`
-                    : "Billing & rev-rec"}
+                    : t === "billing"
+                      ? "Billing & rev-rec"
+                      : "History"}
             </button>
           );
         })}
@@ -183,8 +186,10 @@ export function ContractDetailPage() {
         <VariationsTab contract={contract} canManage={canManage} onRefresh={load} />
       ) : tab === "claims" ? (
         <ClaimsTab contract={contract} canManage={canManage} canAdmin={canAdmin} onRefresh={load} />
-      ) : (
+      ) : tab === "billing" ? (
         <BillingTab contractId={contract.id} canManage={canManage} onRefresh={load} />
+      ) : (
+        <RecordHistory entityType="Contract" entityId={contract.id} />
       )}
     </div>
   );

@@ -547,6 +547,23 @@ export async function seedGlobalLists(prisma: PrismaClient, adminUserId: string)
         { value: "civil", label: "Civil" },
         { value: "other", label: "Other" }
       ]
+    },
+    // Expenses (D365-parity slice 1). Idempotent upsert — safe to re-run.
+    {
+      slug: "expense-categories",
+      name: "Expense categories",
+      description:
+        "Categories available when submitting an expense claim. Director-configurable — add or archive items without a code change.",
+      items: [
+        { value: "fuel", label: "Fuel" },
+        { value: "materials", label: "Materials" },
+        { value: "tools-equipment", label: "Tools/Equipment" },
+        { value: "travel", label: "Travel" },
+        { value: "meals", label: "Meals" },
+        { value: "ppe", label: "PPE" },
+        { value: "subcontractor", label: "Subcontractor" },
+        { value: "other", label: "Other" }
+      ]
     }
   ];
 

@@ -86,6 +86,22 @@ class UpdateContactDto {
 }
 
 /**
+ * Payload for `POST /contacts/duplicate-check`. Returns advisory
+ * possible-duplicate Contact candidates so the create form can render a
+ * soft warning. Non-blocking; only `organisationType` is required.
+ */
+class DuplicateContactCheckDto {
+  @IsString() @IsIn(ORG_TYPES as unknown as string[]) organisationType!: string;
+  @IsOptional() @IsString() organisationId?: string | null;
+  @IsOptional() @IsString() firstName?: string | null;
+  @IsOptional() @IsString() lastName?: string | null;
+  @IsOptional() @IsString() email?: string | null;
+  @IsOptional() @IsString() phone?: string | null;
+  @IsOptional() @IsString() mobile?: string | null;
+  @IsOptional() @IsString() excludeId?: string | null;
+}
+
+/**
  * HTTP surface for the cross-organisation polymorphic Contact CRUD — list,
  * get, create, patch, and soft-delete contacts that may be anchored to a
  * CLIENT, SUBCONTRACTOR, or SUPPLIER.
@@ -116,6 +132,19 @@ export class ContactsController {
   @ApiQuery({ name: "limit", required: false })
   list(@Query() q: ListContactsQueryDto) {
     return this.service.list(q);
+  }
+
+  /**
+   * Advisory duplicate detection for a proposed contact. Non-blocking —
+   * the create endpoint returns `duplicateCandidates` on success but does
+   * not consult this endpoint. See {@link ContactsService.duplicateCheck}.
+   */
+  @Post("duplicate-check")
+  @RequirePermissions("directory.view")
+  @ApiOperation({ summary: "Return possible-duplicate candidates for a proposed contact (advisory)." })
+  @ApiResponse({ status: 200, description: "Array of candidate matches, sorted by score." })
+  duplicateCheck(@Body() dto: DuplicateContactCheckDto) {
+    return this.service.duplicateCheck(dto as never);
   }
 
   /** Fetch a single contact by id, or 404. */

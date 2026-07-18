@@ -27,6 +27,8 @@ import { AutomationsService } from "./automations.service";
 import { AutomationEngineService } from "./automation-engine.service";
 import { TimelineController } from "./timeline.controller";
 import { TimelineService } from "./timeline.service";
+import { SavedViewsController } from "./saved-views.controller";
+import { SavedViewsService } from "./saved-views.service";
 
 @Module({
   imports: [AuditModule],
@@ -43,7 +45,8 @@ import { TimelineService } from "./timeline.service";
     PlatformConfigController,
     AiProvidersController,
     AutomationsController,
-    TimelineController
+    TimelineController,
+    SavedViewsController
   ],
   providers: [
     MockSharePointAdapter,
@@ -71,7 +74,8 @@ import { TimelineService } from "./timeline.service";
     PlatformConfigService,
     AutomationEngineService,
     AutomationsService,
-    TimelineService
+    TimelineService,
+    SavedViewsService
   ],
   exports: [
     SharePointService,

@@ -22,6 +22,8 @@ import { MyDayController } from "./my-day.controller";
 import { MyDayService } from "./my-day.service";
 import { WeatherController } from "./weather.controller";
 import { WeatherService } from "./weather.service";
+import { TenderProcessFlowController } from "./process-flows.controller";
+import { ProcessFlowsService } from "./process-flows.service";
 import { AutomationsController } from "./automations.controller";
 import { AutomationsService } from "./automations.service";
 import { AutomationEngineService } from "./automation-engine.service";
@@ -44,6 +46,7 @@ import { SavedViewsService } from "./saved-views.service";
     WeatherController,
     PlatformConfigController,
     AiProvidersController,
+    TenderProcessFlowController,
     AutomationsController,
     TimelineController,
     SavedViewsController
@@ -72,6 +75,7 @@ import { SavedViewsService } from "./saved-views.service";
     MyDayService,
     WeatherService,
     PlatformConfigService,
+    ProcessFlowsService,
     AutomationEngineService,
     AutomationsService,
     TimelineService,
@@ -85,6 +89,7 @@ import { SavedViewsService } from "./saved-views.service";
     DashboardsService,
     UserDashboardsService,
     PlatformConfigService,
+    ProcessFlowsService,
     AutomationEngineService,
     TimelineService
   ]

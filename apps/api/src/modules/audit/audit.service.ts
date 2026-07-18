@@ -79,4 +79,26 @@ export class AuditService {
       pageSize: query.pageSize
     };
   }
+
+  /**
+   * List audit-log entries for a single record — the per-record "who
+   * changed what, when" history surfaced on detail-page History tabs.
+   *
+   * Filters on the `(entityType, entityId)` composite index and returns
+   * newest-first, capped to `take` (default 200). The caller is
+   * responsible for record-level permission gating; this method returns
+   * whatever entries exist for the pair.
+   */
+  listByEntity(entityType: string, entityId: string, take = 200) {
+    return this.prisma.auditLog.findMany({
+      where: { entityType, entityId },
+      include: {
+        actor: {
+          select: { id: true, email: true, firstName: true, lastName: true }
+        }
+      },
+      orderBy: { createdAt: "desc" },
+      take
+    });
+  }
 }

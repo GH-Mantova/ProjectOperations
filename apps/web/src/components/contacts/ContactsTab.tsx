@@ -3,6 +3,7 @@ import { readApiErrorMessage } from "../../lib/api-errors";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { DraftBanner, SaveDraftButton, useFormDraft } from "../../drafts";
+import { DuplicateContactWarning } from "../directory/DuplicateWarning";
 
 export type ContactRecord = {
   id: string;
@@ -683,6 +684,20 @@ export function ContactFormModal({
             />
           </label>
         </div>
+
+        {!existing ? (
+          <DuplicateContactWarning
+            input={{
+              organisationType,
+              organisationId,
+              firstName: form.firstName,
+              lastName: form.lastName,
+              email: form.email,
+              phone: form.phone,
+              mobile: form.mobile
+            }}
+          />
+        ) : null}
 
         {err ? <p style={{ color: "var(--status-danger)", marginTop: 8 }}>{err}</p> : null}
 

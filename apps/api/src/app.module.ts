@@ -64,6 +64,7 @@ import { ClientVersionsModule } from "./modules/client-versions/client-versions.
 import { IntegrationKeysModule } from "./common/integrations/integration-keys.module";
 import { GeocodingModule } from "./modules/geocoding/geocoding.module";
 import { ExpensesModule } from "./modules/expenses/expenses.module";
+import { SurveysModule } from "./modules/surveys/surveys.module";
 import { CasesModule } from "./modules/cases/cases.module";
 
 @Module({
@@ -136,6 +137,7 @@ import { CasesModule } from "./modules/cases/cases.module";
     ClientVersionsModule,
     GeocodingModule,
     ExpensesModule,
+    SurveysModule,
     CasesModule
   ]
 })

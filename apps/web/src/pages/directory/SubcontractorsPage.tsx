@@ -3,6 +3,7 @@ import { readApiErrorMessage } from "../../lib/api-errors";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { ContactsTab } from "../../components/contacts/ContactsTab";
+import { DuplicateWarning } from "../../components/directory/DuplicateWarning";
 
 type Subcontractor = {
   id: string;
@@ -1350,6 +1351,20 @@ function CreateSubcontractorModal({
             </select>
           </label>
         </div>
+
+        <DuplicateWarning
+          input={{
+            scope: form.entityType === "supplier" ? "supplier" : "subcontractor",
+            name: form.name,
+            tradingName: form.tradingName,
+            abn: form.abn,
+            email: form.email,
+            phone: form.phone
+          }}
+          onUseExisting={(candidate) => {
+            onCreated(candidate.id);
+          }}
+        />
 
         {err ? <p style={{ color: "var(--status-danger)", marginTop: 8 }}>{err}</p> : null}
 

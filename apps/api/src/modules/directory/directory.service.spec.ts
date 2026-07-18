@@ -24,9 +24,11 @@ function buildPrismaMock(overrides: {
   const prisma = {
     subcontractorSupplier: {
       findUnique,
+      findMany: jest.fn(async () => []),
       create: subCreate,
       update: subUpdate
     },
+    client: { findMany: jest.fn(async () => []) },
     contact: { create: jest.fn() }
   } as never;
   return { prisma, mocks: { subCreate, subUpdate, findUnique } };

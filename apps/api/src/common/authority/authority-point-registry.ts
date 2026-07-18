@@ -22,6 +22,11 @@ export const authorityPointRegistry = [
     key: "comms.approval.overrule",
     module: "correspondence",
     description: "Overrule a prior correspondence approval decision"
+  },
+  {
+    key: "expenses.approve",
+    module: "expenses",
+    description: "Approve an expense claim (amount checked against configurable ceiling)"
   }
 ] as const;
 

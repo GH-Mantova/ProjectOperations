@@ -222,6 +222,13 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/assets", label: "Assets", icon: ICON_ASSETS },
       { to: "/inventory", label: "Inventory", icon: ICON_ASSETS },
       { to: "/procurement", label: "Procurement", icon: ICON_ASSETS },
+      {
+        to: "/expenses",
+        label: "Expenses",
+        icon: ICON_ASSETS,
+        match: (path: string) => path.startsWith("/expenses"),
+        requiresPermission: "expenses.view"
+      },
       { to: "/maintenance", label: "Maintenance", icon: ICON_MAINTENANCE },
       { to: "/forms", label: "Forms", icon: ICON_FORMS },
       {
@@ -352,6 +359,7 @@ const BREADCRUMBS: Record<string, string> = {
   "/assets": "Assets",
   "/inventory": "Inventory",
   "/procurement": "Procurement",
+  "/expenses": "Expenses",
   "/cases": "Cases",
   "/maintenance": "Maintenance",
   "/master-data": "Master Data",

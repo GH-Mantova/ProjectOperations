@@ -126,9 +126,13 @@ test.describe("Batch 6 — Projects + Jobs (PRs #17, #39, #40, #242, #250, #267,
       await expect(page.getByRole("tab", { name: tab })).toBeVisible();
     }
 
-    // Overview KPI strip.
+    // Overview KPI strip. Scoped to the KPI cards rather than the whole page:
+    // the universal Timeline (PR #672) renders its filter tabs outside the tab
+    // conditionals, so it is always in the DOM and its "Progress" filter makes
+    // a page-wide exact-text match for "Progress" a strict-mode violation.
+    const overviewKpis = page.locator(".job-detail__overview-kpi");
     for (const label of ["Total activities", "Open issues", "Variations value", "Progress"]) {
-      await expect(page.getByText(label, { exact: true })).toBeVisible();
+      await expect(overviewKpis.getByText(label, { exact: true })).toBeVisible();
     }
 
     // Toggle one activity's completion and cycle it back to its original

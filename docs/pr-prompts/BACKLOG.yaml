@@ -69,8 +69,23 @@ items:
       (7 sections, 102 controls, 410 control rows, 31 SOP-SWMS). TWO PR prompts were WRITTEN in
       `SWMS-PR-prompts.md` and never copied into the queue. Zero SWMS files exist on main.
       Prototype still only in `C:\ProjectOperations-Reference\Interactive SWMS\`.
-    gate: 'test -z "$(git ls-tree -r --name-only origin/main | grep -i swms)"'
-    gate_means: No SWMS artifacts on main Ã”Ã‡Ã¶ the work is entirely unstarted.
+    # GATE REPAIRED 2026-07-19 (04-scanner). The previous gate was
+    #   test -z "$(git ls-tree -r --name-only origin/main | grep -i swms)"
+    # which matched ANY path containing "swms" -- including its own staged prompt,
+    # docs/pr-prompts/pr-swms-build-plan-ready.md. From the moment SLICE 0 was armed, that gate read
+    # BLOCKED permanently and could never fire again, so "stays in-register until the build ships"
+    # (marco_note below) was silently inert: nothing was watching. A dead gate and a real blocker are
+    # indistinguishable from the outside, which is the whole failure mode this register exists to end.
+    #
+    # Simply excluding the queue tree was NOT the fix: with docs/pr-prompts/ excluded nothing else
+    # matches, so the gate flips to READY on EVERY scan -- the same false-ready churn that got the
+    # siteid / geoapify / job-project entries discharged. The real blocker is that SLICE 0 has not
+    # shipped: pr-swms-build-plan-ready.md writes docs/architecture/drafts/swms-build-slice-plan.md,
+    # and that file does not exist on main yet. So the gate now fires at exactly the right moment --
+    # when the build PLAN exists and the module build has not begun -- which is what Marco's
+    # "stays in-register until the build ships" actually means in executable form.
+    gate: 'test -f docs/architecture/drafts/swms-build-slice-plan.md && test -z "$(git ls-tree -r --name-only origin/main | grep -i swms | grep -v "^docs/")"'
+    gate_means: The SLICE 0 build plan has shipped AND no SWMS module code exists yet -- the build can start.
     needs_marco: false
     decided_in_BACKLOG_DECISIONS_md: >
       This is big. Do you want it as ONE module, or split (a) the static SWMS wizard from
@@ -143,18 +158,20 @@ items:
   # delete the old app-registration secrets is Marco-supervised, never alongside; LL-36).
   # One place, never two -- its home is #602.
 
-  - id: graphify-knowledge-graph
-    title: "Graphify knowledge graph -- blocked on PATH, not on code"
-    priority: P4
-    why: >
-      Blocked because the watcher's shell does not resolve the graphify binary
-      (C:\Users\Marco\.local\bin is not on its PATH). This is an ENVIRONMENT blocker, not a code
-      one, so it cannot clear itself -- the gate below only exits 0 once graphify actually resolves.
-      Prompt body is in the untracked HOLD file pr-graphify-setup-HOLD.md (size 10).
-    gate: 'command -v graphify > /dev/null 2>&1 && ! test -f .graphifyignore'
-    gate_means: The graphify binary resolves in the agent's shell AND the graph has not been built yet.
-    needs_marco: false
-    order: 18
+  # DISCHARGED 2026-07-19 (04-scanner): SHIPPED. The graphify knowledge graph landed as PR #589
+  # (9dc695c) "chore(graphify): commit AST-only knowledge graph setup (Option A)" -- 13,986 nodes /
+  # 40,840 edges over 1,226 code files, with `.graphifyignore` and `docs/runbooks/graphify-setup.md`
+  # both tracked on main. `graphify-out/graph.json` is deliberately git-ignored (~19 MB, regenerable),
+  # so the ABSENCE of a committed graph artifact is by design and must not be read as "not built".
+  #
+  # The registered gate could never have reported this. Verified in Git bash (the same shell
+  # check-backlog.mjs spawns), with `test -z ""` / `test -z "x"` run first as positive+negative
+  # controls: `command -v graphify` now EXITS 0 -- the stated ENVIRONMENT blocker (binary not on
+  # PATH) has cleared -- but the gate's second clause `! test -f .graphifyignore` exits 1, because
+  # the fix ITSELF committed `.graphifyignore`. The gate was written so that shipping the work
+  # permanently falsifies it: it reads BLOCKED forever and can never flip to READY. That is the
+  # inverse of the premise rule (a premise must DIE when the fix lands; this gate died INSTEAD of
+  # firing). Removed per "one place, never two."
 
   # DISCHARGED 2026-07-18 (04-scanner): SHIPPED. Per-user default dashboard (User.defaultDashboardId
   # + "Home" fallback) landed as #608 (5a6e97f); apps/api/prisma/schema.prisma now carries
@@ -162,6 +179,21 @@ items:
   # flipped to non-zero once the field shipped, so this item can never be READY again. Removed per
   # "one place, never two." NOTE: staged/pr-user-default-dashboard.md + -ui.md may now be stale
   # (shipped by #608) -- flagged for supervisor review, not deleted here.
+  #
+  # RESOLVED 2026-07-19 (04-scanner) -- the two staged prompts were NOT both stale; they split:
+  #   * staged/pr-user-default-dashboard.md    -> BINNED. Its premise
+  #       '! grep -q "defaultDashboardId" apps/api/prisma/schema.prisma'
+  #     is dead: the field is on main at schema.prisma:39/43 (migration
+  #     20260716120000_user_default_dashboard, #608). Arming it would have burned a whole agent run
+  #     re-doing shipped work.
+  #   * staged/pr-user-default-dashboard-ui.md -> ARMED as pr-user-default-dashboard-ui-ready.md.
+  #     Its premise '! grep -rq "defaultDashboardId" apps/web/src' STILL HOLDS -- the string appears
+  #     nowhere under apps/web/src, so the web half was never built. Its blocker (the schema field)
+  #     cleared when #608 merged on 2026-07-16 and the prompt then sat unarmed in staged/ for three
+  #     days with nothing watching it -- the exact Branding-manager failure this register exists to
+  #     prevent, recurring in the ONE tree the register does not gate: staged/.
+  #     Lint: ADMIT (size 6). FOLLOW-UP for the supervisor: staged/ has no gate mechanism at all, so
+  #     a blocker clearing for any staged prompt is still noticed by nobody.
 
   # DISCHARGED 2026-07-16 (04-scanner): its prompt body ALREADY EXISTS at
   # docs/pr-prompts/staged/pr-siteid-notnull-job-project.md (committed to main). False-ready: the

@@ -101,6 +101,7 @@ import { InstallPrompt } from "./offline/InstallPrompt";
 import { UpdatePromptToast } from "./pwa/UpdatePromptToast";
 import { SurveyCaptureFormPage } from "./pages/surveys/SurveyCaptureFormPage";
 import { ClientSatisfactionPage } from "./pages/surveys/ClientSatisfactionPage";
+import { ConfirmProvider } from "./hooks/useConfirm";
 
 function ProtectedRoute() {
   const { isAuthenticated } = useAuth();
@@ -211,6 +212,7 @@ export function App() {
           portal routes are online-only, so they don't need the IndexedDB
           outbox / online-state listeners running for every navigation. */}
       <PortalAuthProvider>
+        <ConfirmProvider>
         <Routes>
           <Route path="/portal/login" element={<PortalLoginPage />} />
           <Route path="/portal/accept-invite" element={<PortalAcceptInvitePage />} />
@@ -346,6 +348,7 @@ export function App() {
         </Route>
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
+        </ConfirmProvider>
       </PortalAuthProvider>
     </AuthProvider>
   );

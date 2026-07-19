@@ -1,0 +1,88 @@
+# =============================================================================================
+# THE LESSONS LEDGER - lessons we have already PAID FOR, each with an executable regression test.
+#
+# WHY THIS EXISTS
+#   sot/05-decisions-and-lessons.md records lessons in prose. Prose cannot notice when a lesson
+#   stops being true. Every fix in this repo is one careless revert away from being un-fixed, and
+#   nothing would say so - the incident would simply happen a second time and be re-diagnosed from
+#   scratch. That has already happened more than once (the dirty-tree pull broke local HEAD twice).
+#
+#   A lesson with an executable regression test is a lesson the system can KEEP. This file is the
+#   difference between "we wrote that down somewhere" and "the machine will tell us if it comes
+#   back".
+#
+# SEMANTICS - THE POLARITY IS INVERTED vs BACKLOG.yaml AND ESCALATIONS.yaml. READ THIS TWICE.
+#   regressed_when: a shell command run at repo root against the CURRENT checkout.
+#     exit 0      -> REGRESSED. The bad state is BACK. This is an ALARM, not an all-clear.
+#     non-zero    -> HOLDING. The fix is still in place. This is the good, boring, normal case.
+#     cannot run  -> BROKEN. Fix the instrument. Never read a broken gate as "holding" - that is
+#                    how a regression hides.
+#
+#   Write regressed_when to describe the BAD state, so it goes green-to-red the moment the fix is
+#   undone. If you write it against the GOOD state you have built an alarm that fires constantly
+#   and will be ignored within a week.
+#
+# RULES
+#   - Point it at the ARTIFACT, never at a PR number. PRs merge without the work landing.
+#   - Every entry names the incident that bought the lesson. A lesson with no scar is a preference.
+#   - `- id:` items are indented EXACTLY 2 spaces (the indent guard refuses to read otherwise).
+#   - A LESSON ENTERS THIS LEDGER ONLY ONCE ITS FIX IS ON MAIN - ideally added by the very PR that
+#     lands the fix. Add it earlier and the ledger reports a permanent regression for work that was
+#     simply never done yet, and an alarm that is always on is an alarm nobody reads. The first
+#     draft of this file broke that rule with the plant-pills quarantine and fired on day one.
+#   - MATCH AN INVOCATION, NOT A MENTION. The first draft's `grep -q "pnpm prisma:migrate"` matched
+#     the COMMENT in smoke-pr.ps1 explaining why that command must not be used - so the fix's own
+#     documentation tripped its regression test. Anchor the pattern so prose cannot satisfy it.
+# =============================================================================================
+
+lessons:
+  - id: smoke-runs-against-dev-database
+    title: The smoke harness must never migrate or seed the developer's live database
+    learned: 2026-07-20
+    cost: >
+      Every UI PR with an unticked test plan escalated to Marco instead of being verified,
+      because running the smoke would have mutated real local data. #672 sat green but unmerged.
+    regressed_when: '! grep -q "SMOKE-DB-REPOINT-FAILED" scripts/pipeline/smoke-pr.ps1'
+    fix_ref: PR #693
+
+  - id: smoke-uses-interactive-migrate-dev
+    title: A headless harness must use `migrate deploy`, never the interactive `migrate dev`
+    learned: 2026-07-20
+    cost: >
+      `pnpm prisma:migrate` is `prisma migrate dev`, which prompts. Headless nobody answers, it
+      exits 130, and the run reads as "this branch is broken" when the harness asked a question.
+    regressed_when: 'grep -qE "^[^#]*pnpm prisma:migrate" scripts/pipeline/smoke-pr.ps1'
+    fix_ref: PR #693
+    gate_note: >
+      Anchored to exclude comment lines. The unanchored form matched the comment that explains
+      why migrate dev is wrong, so the fix's own documentation fired its regression test.
+
+  - id: permission-code-absent-from-registry
+    title: A @RequirePermissions code missing from the registry is a permanently-false gate
+    learned: 2026-07-18
+    cost: >
+      PermissionsGuard is fail-closed and PermissionsService upserts only registry entries, so an
+      unregistered code can never be granted to anyone. Shipped twice - workers.manage (#658) and
+      clients.* (#655) - each locking a whole feature to super-users while CI stayed green.
+    regressed_when: '! test -f apps/api/src/common/__tests__/permission-registry-coverage.guard.spec.ts'
+    fix_ref: PR #689
+
+  - id: escalation-closed-by-pr-state
+    title: A merged PR is not a shipped fix - close escalations on the ARTIFACT, not the PR
+    learned: 2026-07-20
+    cost: >
+      status-sweep declared the clients-perms escalation DEAD because #674 merged. #674 changed
+      exactly one file - the prompt. The defect stayed live on main for days while every chat was
+      instructed to stop reporting it. Arming PRs, doc PRs and revert PRs all merge too.
+    regressed_when: '! test -f scripts/pipeline/check-escalations.mjs'
+    fix_ref: this PR
+
+# DELIBERATELY NOT YET LISTED - flaky-plant-pills-unquarantined.
+# The quarantine (pr-quarantine-tendering-e2e-plant-pills) is armed but has not landed on main, so
+# a regression test for it would fire permanently and train everyone to ignore this file. That PR
+# adds its own lesson entry when it lands:
+#
+#   - id: flaky-plant-pills-unquarantined
+#     regressed_when: 'grep -qE "^\s*test\(\"plant pills" tests/e2e/pr-acceptance/batch3-scope-items.spec.ts'
+#
+# (anchored so the skipped form `test.skip("plant pills` does NOT match).

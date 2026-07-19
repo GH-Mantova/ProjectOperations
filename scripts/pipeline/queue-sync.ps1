@@ -68,7 +68,7 @@ if (Test-Path $Ledger) {
     }
 }
 
-$materialised = 0; $skipShipped = 0; $skipPresent = 0; $skipConsumed = 0; $skipEscalates = 0
+$materialised = 0; $skipShipped = 0; $skipPresent = 0; $skipConsumed = 0; $escalating = 0
 
 foreach ($path in $armed) {
     $name = Split-Path $path -Leaf
@@ -108,21 +108,21 @@ foreach ($path in $armed) {
         continue
     }
 
-    # Escalation gate. A prompt marked `escalates: true` is blocked on a decision only Marco
-    # can make (commercial impact, auth design, an open namespace question). Lint ADMITs those
-    # happily -- the premise is still true -- so lint alone is NOT sufficient. Without this
-    # check the first dry run would have auto-armed exactly the three prompts sitting on
-    # Marco's desk. Deliberately NOT ledgered: they must stay visible until he answers.
+    # Escalation flag. `escalates: true` marks work whose PR must NOT BE MERGED without Marco
+    # (commercial impact, auth surface, authorization registry). It does NOT mean "do not run".
+    # Marco's ruling 2026-07-20, and every escalating prompt already says so in its own body:
+    #   "'Do NOT auto-merge' means: open the PR and LEAVE IT UNMERGED. It does not mean wait
+    #    for approval before starting. Finishing the work and then asking for permission is
+    #    indistinguishable from failing - the work is discarded either way."
+    # An earlier revision of THIS script gated at ARM time and held three prompts idle, which
+    # is precisely the stall the standing-authority rule exists to prevent. The block belongs
+    # at MERGE time (the supervisor), not here. We still count and label them so the
+    # supervisor knows which open PRs it must not touch.
     $escalates = $false
     foreach ($fmLine in (Get-Content $tmp -TotalCount 40)) {
         if ($fmLine -match '^\s*escalates:\s*true\s*$') { $escalates = $true; break }
     }
-    if ($escalates) {
-        $skipEscalates++
-        Say "NEEDS-MARCO" ($name + " -- escalates:true, blocked on a decision; not armed")
-        Remove-Item $tmp -Force -ErrorAction SilentlyContinue
-        continue
-    }
+    if ($escalates) { $escalating++ }
 
     if ($DryRun) {
         Say "would-arm" $name
@@ -148,10 +148,10 @@ foreach ($path in $armed) {
 
 Say "summary" ("armed=" + $materialised + "  already-in-queue=" + $skipPresent +
     "  already-consumed=" + $skipConsumed + "  shipped-stale=" + $skipShipped +
-    "  needs-marco=" + $skipEscalates)
-if ($skipEscalates -gt 0) {
-    Say "ACTION" ([string]$skipEscalates + " armed prompt(s) are blocked on a Marco decision and were NOT run. " +
-        "They stay armed on main and will be re-reported every cycle until answered.")
+    "  escalating(do-not-merge)=" + $escalating)
+if ($escalating -gt 0) {
+    Say "ACTION" ([string]$escalating + " armed prompt(s) are escalating: they WILL run and open PRs, " +
+        "but the supervisor must NOT merge them without Marco. Merge-time gate, not arm-time.")
 }
 
 # Drift alarm: this is the number that silently grew to 83 while nobody was looking.

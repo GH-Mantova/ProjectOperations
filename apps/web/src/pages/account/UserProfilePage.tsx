@@ -1,5 +1,5 @@
-import { useMemo } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { isAdminUser } from "../../auth/permissions";
 import { DefaultDashboardSection } from "./DefaultDashboardSection";
 import { GlobalListsSection } from "./GlobalListsSection";
 
@@ -8,7 +8,7 @@ import { GlobalListsSection } from "./GlobalListsSection";
 // page (/admin/ai-settings) under per-persona override controls.
 export function UserProfilePage() {
   const { user } = useAuth();
-  const isAdmin = useMemo(() => user?.roles?.some((r) => r.name === "Admin") ?? false, [user]);
+  const isAdmin = isAdminUser(user);
 
   return (
     <div style={{ padding: "24px", maxWidth: 980 }}>

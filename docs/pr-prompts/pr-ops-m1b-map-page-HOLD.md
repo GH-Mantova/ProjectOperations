@@ -1,59 +1,49 @@
 ---
-premise: '! grep -q "ops-map" apps/web/src/App.tsx'
-premise_means: There is no Ops-Map page/route yet.
+premise: '! grep -rEq "leaflet|maplibre|MapContainer" apps/web/src'
+premise_means: There is no map component anywhere in the web app yet.
 scope:
-  - apps/web/src/pages/ops/**
-  - apps/web/src/App.tsx
-  - apps/web/src/components/ShellLayout.tsx
-  - apps/api/src/modules/waste-facilities/**
+  - apps/web/src/pages/admin/**
+  - apps/web/src/components/**
   - package.json
   - pnpm-lock.yaml
-done_when: pnpm build && pnpm lint && grep -q "ops-map" apps/web/src/App.tsx
-size: 8
+done_when: pnpm build && pnpm lint && grep -rEq "leaflet|maplibre" apps/web/src
+size: 6
 gate_allow: dependencies
 seed_only: false
 escalates: false
 ---
-<!-- watcher: do-not-arm | GATED: arm after pr-ops-m1-facility-register MERGED. Geoapify keys already in Azure. -->
-# HOLD — Ops-Map M-1b: the map page
+<!-- watcher: do-not-arm | GATED: arm after pr-ops-m1-locations-register has MERGED to main (verify: grep -q "model MapLocation" apps/api/prisma/schema.prisma) -->
 
-STATUS: DRAFTED, STAGED, **DO NOT ARM YET**. The map canvas of slice M-1 (split out for size).
-Read `ops-map-waste-facilities-DRAFT.md` §1.2 (mockup is the contract), §4.2 (Operations nav),
-§5 (M-1), decision 12 (Geoapify primary → MapTiler fallback), and the mockup
-`docs/design/mockups/site-map-tipfinder-mockup.html`. **ARM ONLY** after
-`pr-ops-m1-facility-register` merged (needs `WasteFacility` + office coords). Geoapify key +
-backup are already in Azure.
+# HOLD — Map view inside the Settings "Map locations" tab
 
-## What to build
-Branch: `feat/ops-m1b-map-page`. Reviewer: `GH-Mantova`. Dependency: Leaflet (single `pnpm add`,
-lockfile same commit). Bare `GATE-ALLOW: dependencies` at column 0. No migration.
+STATUS: DRAFTED, STAGED, **DO NOT ARM YET**. Marco redesigned this 2026-07-20: the map is a
+panel **inside the existing Settings > Map locations tab**, NOT a standalone `/ops-map` page.
+**ARM ONLY** after `pr-ops-m1-locations-register` has merged (it creates `MapLocation` + the tab).
 
-1. A `/ops-map` page (route in `App.tsx`) rendering a Leaflet map on **Geoapify** tiles. Resolve
-   the key server-side via `resolveIntegrationKey('geoapify')` if `pr-integration-keys-settings`
-   is on main, else read `GEOAPIFY_KEY` from config (already in Azure) — always through a thin
-   API-side config endpoint, never exposing the raw key to the browser. Graceful fallback to plain
-   OSM tiles / plain background if tiles fail — pins still render.
-2. Layers (mockup L52-60): **job sites** (active `Project.siteAddress*` + the `Site` register),
-   **office** (`OperationsSettings` office coords), **waste facilities** (`WasteFacility`).
-   Read-only map-layers endpoint(s) in the `waste-facilities` module returning the pins.
-   Workers/live-vehicles layers are later phases — not here.
-3. Nav item in the **Operations** group (`ShellLayout.tsx` NAV_GROUPS), beside Sites (§4.2).
-4. **No finder panel** (that is M-2) and **no routing/geocoding-at-request** — pins from stored
-   coordinates only.
+## What to build (when armed)
+Branch: `feat/ops-m1b-map-view`. Reviewer: `GH-Mantova`. No migration. Adds a map library —
+bare `GATE-ALLOW: dependencies` at column 0 and commit the lockfile in the same commit.
+
+1. A map panel at the top of the Settings > Map locations tab, rendering every active
+   `MapLocation` that has lat/lng as a pin.
+2. Pin styling by kind and state: TIP with rates = accent pin, TIP with "rates needed" = warning
+   pin, POI = pin styled by its category. Include the office/company location if available.
+3. Clicking a pin selects that row in the table below; the filter chips (All / Tips / Points of
+   interest) filter the pins too. Clicking a row centres the map on its pin.
+4. Use a lightweight OSS map (leaflet or maplibre) with a free raster tile source. Do NOT add a
+   paid/keyed map provider. Geocoding already happens via `AddressAutocomplete` (Geoapify,
+   server-side key) — do NOT geocode here.
 
 ## Do NOT
-- Do NOT add the tip-finder, costing, or `TipRecommendationLog` (M-2).
-- Do NOT call Geoapify from anywhere that leaks the key to the browser without the config
-  endpoint pattern. Do NOT touch Azure/prod.
+- Do NOT create a top-level `/ops-map` route. Do NOT build the tip finder or any costing
+  (that is m2). Do NOT add a map API key or touch Azure/prod.
 
 > **You have STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR. Do not ask.**
-> **"Do NOT auto-merge" means: open the PR and LEAVE IT UNMERGED.** It does **not** mean "wait for
-> approval before starting", and it does **not** mean "do the work then ask permission to push".
-> There is no human in this run. **Finishing the work and then asking for permission is
-> indistinguishable from failing** — the work is discarded either way.
+> **"Do NOT auto-merge" means: open the PR and LEAVE IT UNMERGED.** There is no human in this run.
+> Finishing the work and then asking for permission is indistinguishable from failing.
 
 ## Guardrails
-- One attempt. Already on `main` → `NO-OP: <reason>`. Never stand by for approval.
-- If `WasteFacility` is not on `main`, STOP with `NO-OP: predecessor pr-ops-m1 not merged`.
+- One attempt. Already on `main` -> `NO-OP: <reason>`. Never stand by for approval.
+- If `model MapLocation` is not on `main`, STOP with `NO-OP: predecessor m1 not merged`.
 - Read the CI job log before diagnosing failures. `pnpm build` + `pnpm lint` must pass.
-- Do NOT auto-merge — open the PR and leave it for Marco.
+- Do NOT auto-merge - open the PR and leave it for Marco.

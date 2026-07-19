@@ -83,9 +83,13 @@ export class AdminSettingsController {
   @RequirePermissions("platform.admin")
   @ApiOperation({
     summary:
-      "Verify the configured email provider can reach the mail server. Never throws — returns { success, message } in the 200 body."
+      "Verify the configured email provider can reach the mail server. Never throws — returns { success, message, diagnosis } in the 200 body."
   })
-  @ApiResponse({ status: 200, description: '{ success: boolean, message: string }' })
+  @ApiResponse({
+    status: 200,
+    description:
+      "{ success: boolean, message: string, diagnosis: { provider, authMode, senderAddress, credentialResolved, detail } }"
+  })
   testEmail() {
     return this.service.testEmailConnection();
   }

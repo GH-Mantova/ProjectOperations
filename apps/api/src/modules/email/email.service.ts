@@ -1,9 +1,17 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../../prisma/prisma.service";
-import { OutlookEmailProvider } from "./providers/outlook.provider";
+import {
+  OutlookEmailProvider,
+  buildMailCredential,
+  resolveMailAuthMode,
+  type MailAuthMode
+} from "./providers/outlook.provider";
 import { GmailEmailProvider } from "./providers/gmail.provider";
 import type { EmailProvider } from "./email-provider.interface";
+import type { EmailConnectionDiagnosis } from "./email-connection-diagnosis";
+
+export type { EmailConnectionDiagnosis } from "./email-connection-diagnosis";
 
 export type NotificationEmailInput = {
   trigger: string;
@@ -24,15 +32,24 @@ export class EmailService {
   ) {}
 
   async resolveProvider(): Promise<EmailProvider> {
+    const info = await this.resolveProviderInfo();
+    if (info.provider === "gmail") return new GmailEmailProvider();
+    return new OutlookEmailProvider(this.config, info.senderAddress);
+  }
+
+  private async resolveProviderInfo(): Promise<{
+    provider: "outlook" | "gmail";
+    senderAddress: string;
+  }> {
     const record = await this.prisma.emailProviderConfig.findUnique({
       where: { id: CONFIG_SINGLETON_ID }
     });
-    const providerName = record?.provider ?? "outlook";
+    const provider: "outlook" | "gmail" = record?.provider === "gmail" ? "gmail" : "outlook";
     // Fallback chain: EmailProviderConfig.senderAddress → CompanyProfile.primaryEmail
     // → hardcoded. The hardcoded value is only reached if the profile row is
     // missing (i.e. seed hasn't run), which never happens in normal
     // operation.
-    let senderAddress = record?.senderAddress;
+    let senderAddress = record?.senderAddress ?? null;
     if (!senderAddress) {
       const profile = await this.prisma.companyProfile.findUnique({
         where: { id: "singleton" },
@@ -40,8 +57,7 @@ export class EmailService {
       });
       senderAddress = profile?.primaryEmail ?? "marco@initialservices.net";
     }
-    if (providerName === "gmail") return new GmailEmailProvider();
-    return new OutlookEmailProvider(this.config, senderAddress);
+    return { provider, senderAddress };
   }
 
   /**
@@ -86,13 +102,106 @@ export class EmailService {
     }
   }
 
-  async verifyConnection(): Promise<{ success: boolean; message: string }> {
+  /**
+   * Verify the configured email provider can actually reach the mail server
+   * and return a structured diagnosis alongside the pass/fail flag. The
+   * diagnosis names the resolved auth mode, the sender the provider would use,
+   * whether the token credential could be built, and (on failure) a
+   * secret-free explanation naming the exact missing env var if applicable.
+   *
+   * This method NEVER throws — the admin UI expects a 200 with a body it can
+   * render. See sot/01 §6 (failure honesty).
+   */
+  async verifyConnection(): Promise<{
+    success: boolean;
+    message: string;
+    diagnosis: EmailConnectionDiagnosis;
+  }> {
+    const { provider: providerName, senderAddress } = await this.resolveProviderInfo();
+
+    if (providerName === "gmail") {
+      const message = "Gmail provider not yet configured. Coming soon.";
+      return {
+        success: false,
+        message,
+        diagnosis: {
+          provider: "gmail",
+          authMode: null,
+          senderAddress,
+          credentialResolved: false,
+          detail: message
+        }
+      };
+    }
+
+    // Outlook path. Resolve MAIL_AUTH_MODE explicitly so an invalid value
+    // surfaces as its own diagnosis category (not a generic connection failure).
+    let authMode: MailAuthMode;
     try {
-      const provider = await this.resolveProvider();
-      const res = await provider.verifyConnection();
-      return { success: true, message: res.message };
+      authMode = resolveMailAuthMode(this.config);
     } catch (err) {
-      return { success: false, message: err instanceof Error ? err.message : String(err) };
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        success: false,
+        message: msg,
+        diagnosis: {
+          provider: "outlook",
+          authMode: null,
+          senderAddress,
+          credentialResolved: false,
+          detail: `MAIL_AUTH_MODE could not be resolved: ${msg}`
+        }
+      };
+    }
+
+    // Build the credential up-front so we can report credentialResolved
+    // independently of whether the Graph RPC ultimately succeeds. Reuses the
+    // service logger so buildMailCredential's once-per-process startup log
+    // still fires on the diagnostic path.
+    try {
+      buildMailCredential(authMode, this.config, (line) => this.logger.log(line));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        success: false,
+        message: msg,
+        diagnosis: {
+          provider: "outlook",
+          authMode,
+          senderAddress,
+          credentialResolved: false,
+          detail: msg
+        }
+      };
+    }
+
+    try {
+      const provider = new OutlookEmailProvider(this.config, senderAddress);
+      const res = await provider.verifyConnection();
+      return {
+        success: true,
+        message: res.message,
+        diagnosis: {
+          provider: "outlook",
+          authMode,
+          senderAddress,
+          credentialResolved: true,
+          detail: `Verified via ${authMode} against sender ${senderAddress}.`
+        }
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        success: false,
+        message: msg,
+        diagnosis: {
+          provider: "outlook",
+          authMode,
+          senderAddress,
+          credentialResolved: true,
+          detail: `Credential built (${authMode}) but the Graph verifyConnection call failed: ${msg}`
+        }
+      };
     }
   }
 

@@ -43,9 +43,15 @@ test.describe("Batch 8 — Archive route (prompt-directed; no inventory rows)", 
 
   test("archive detail opens read-only from the register's View link", async ({ page }) => {
     await page.goto("/archive");
-    await page.getByRole("link", { name: "View", exact: true }).first().click();
+    // Wait for the register to settle before clicking — otherwise `.first()`
+    // can resolve against a stale placeholder row and the SPA transition
+    // never lands on the detail URL (see flaky-batch5-sites-post-delete-race).
+    const viewLink = page.getByRole("link", { name: "View", exact: true }).first();
+    await expect(viewLink).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    await viewLink.click();
 
-    await expect(page).toHaveURL(/\/archive\/.+/);
+    await page.waitForURL(/\/archive\/.+/);
     // Detail header is "{jobNumber} — {name}" with the read-only subtitle.
     await expect(page.getByText(/Read-only archive record/)).toBeVisible();
     // Collapsible panels render as toggle buttons ("▾ {title}").

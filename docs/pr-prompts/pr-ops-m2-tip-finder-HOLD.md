@@ -12,6 +12,8 @@ size: 9
 gate_allow: migrations
 seed_only: false
 escalates: false
+requires_file_on_main:
+  - apps/web/src/components/LocationsMap.tsx
 ---
 <!-- watcher: do-not-arm | GATED: arm after pr-ops-m1b-map-page has MERGED to main (verify: grep -rEq "leaflet|maplibre" apps/web/src) -->
 
@@ -40,7 +42,9 @@ Branch: `feat/ops-m2-tip-finder`. Reviewer: `GH-Mantova`. Migration: YES - addit
    MapLocation, wasteTypeCode, loadTonnes, projectId/originType, distanceKm and the cost
    components (prices change; history must not).
 4. Endpoints `POST /waste/recommendations` (compute) and `POST /waste/recommendations/accept`
-   (write log), guarded by an existing registered permission code.
+   (write log), guarded by an existing registered permission code. **The service MUST be created
+   at exactly `apps/api/src/modules/map-locations/tip-recommendations.service.ts`** — the next
+   slice declares `requires_file_on_main` against that path, so the name is a contract.
 
 ## Do NOT
 - Do NOT create/read `WasteFacilityPrice` — disposal price via the resolver only.

@@ -10,6 +10,8 @@ size: 6
 gate_allow: none
 seed_only: false
 escalates: false
+requires_file_on_main:
+  - apps/api/src/modules/map-locations/tip-recommendations.service.ts
 ---
 
 # HOLD — Launch the tip finder from the tender waste row
@@ -19,10 +21,10 @@ Settings, but choosing a facility on a waste row should be able to *ask* for the
 
 **ARM ONLY** after `pr-ops-m2-tip-finder` has merged. Verify on `main`:
 `grep -q "model TipRecommendationLog" apps/api/prisma/schema.prisma`.
-NOTE: the watcher CANNOT enforce this ordering — its `requires-merged` directive only parses from a
-leading HTML comment at line 1, which is mutually exclusive with the lint front-matter above. Whoever
-arms this must check the predecessor by hand. (Once `requires_merged:` exists as a front-matter key,
-add it here.)
+ORDERING: the `requires_file_on_main` key above names m2's service file, so once
+`pr-watcher-frontmatter-dependencies` has merged the watcher will DEFER this prompt until that file
+is on main and release it automatically. Until that lands the key is inert — so if this is armed
+early, whoever arms it must check the predecessor by hand.
 
 ## What to build (when armed)
 

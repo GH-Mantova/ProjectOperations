@@ -11,6 +11,8 @@ size: 6
 gate_allow: dependencies
 seed_only: false
 escalates: false
+requires_file_on_main:
+  - apps/api/src/modules/map-locations/map-locations.module.ts
 ---
 <!-- watcher: do-not-arm | GATED: arm after pr-ops-m1-locations-register has MERGED to main (verify: grep -q "model MapLocation" apps/api/prisma/schema.prisma) -->
 
@@ -25,7 +27,9 @@ Branch: `feat/ops-m1b-map-view`. Reviewer: `GH-Mantova`. No migration. Adds a ma
 bare `GATE-ALLOW: dependencies` at column 0 and commit the lockfile in the same commit.
 
 1. A map panel at the top of the Settings > Map locations tab, rendering every active
-   `MapLocation` that has lat/lng as a pin.
+   `MapLocation` that has lat/lng as a pin. **The map component MUST be created at exactly
+   `apps/web/src/components/LocationsMap.tsx`** — the next slice declares
+   `requires_file_on_main` against that path, so the name is a contract.
 2. Pin styling by kind and state: TIP with rates = accent pin, TIP with "rates needed" = warning
    pin, POI = pin styled by its category. Include the office/company location if available.
 3. Clicking a pin selects that row in the table below; the filter chips (All / Tips / Points of

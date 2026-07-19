@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactElement } from "react";
 import { Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
+import { can, canAny } from "./auth/permissions";
 import { runDraftPurgeJob } from "./drafts";
 import { LoginPage } from "./pages/LoginPage";
 import { ShellLayout } from "./components/ShellLayout";
@@ -112,7 +113,7 @@ function FieldOnlyGuard({ children }: { children: ReactElement }) {
   // Field-only users (have field.view but not projects.view / tenders.view / users.view) are
   // redirected here from the root. If a desktop user lands on /field/* they can still use it.
   if (!user) return children;
-  const hasField = user.permissions.includes("field.view");
+  const hasField = can(user, "field.view");
   if (!hasField) return <Navigate to="/" replace />;
   return children;
 }
@@ -126,13 +127,14 @@ const HOME_DASHBOARD_ID = "seed-home-dashboard";
 
 function RootRedirect({ children }: { children: ReactElement }) {
   const { user, authFetch } = useAuth();
-  const hasField = user?.permissions.includes("field.view") ?? false;
-  const hasDesktop =
-    (user?.permissions.includes("projects.view") ||
-      user?.permissions.includes("tenders.view") ||
-      user?.permissions.includes("users.view") ||
-      user?.permissions.includes("dashboards.view")) ??
-    false;
+  const hasField = can(user, "field.view");
+  const hasDesktop = canAny(
+    user,
+    "projects.view",
+    "tenders.view",
+    "users.view",
+    "dashboards.view"
+  );
   const fieldOnly = Boolean(user) && hasField && !hasDesktop;
 
   // `undefined` = resolver still in flight; `null` = confirmed no

@@ -88,6 +88,19 @@ Write-Host "  summary, with the RULE that a folder or a state-file name is NOT a
 Write-Host "  (which tasks exist, enabled, next/last run) comes ONLY from the scheduled-tasks MCP -- checklist"
 Write-Host "  item 4 makes calling it mandatory and tells you how to reconcile the folders against it."
 
+Head "C4. ESCALATIONS + LESSONS (executable, artifact-based -- not PR-state guesswork)"
+Write-Host "  Escalations close on EVIDENCE. 'Which PR closed this?' is the wrong question: arming"
+Write-Host "  PRs, doc PRs and revert PRs all merge. #674 merged and closed nothing (it changed one"
+Write-Host "  prompt file), yet the sweep declared that escalation DEAD for days. These gates grep"
+Write-Host "  main for the ARTIFACT instead."
+& node (Join-Path $Repo "scripts\pipeline\check-escalations.mjs")
+Write-Host ""
+& node (Join-Path $Repo "scripts\pipeline\check-lessons.mjs")
+if ($LASTEXITCODE -eq 2) {
+  Write-Host ""
+  Write-Host "  *** A LESSON HAS REGRESSED (above). Something already fixed has come back. Treat this"
+  Write-Host "  *** as a hard stop for shipping until it is understood."
+}
 Head "D. RECENT HISTORY (last 30 on origin/main)"
 git log origin/main --oneline -30 2>$null | ForEach-Object { Write-Host ("  " + $_) }
 

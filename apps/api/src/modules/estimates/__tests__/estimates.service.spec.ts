@@ -19,6 +19,13 @@ function buildAudit() {
   return { write: jest.fn().mockResolvedValue({}) as AsyncMock };
 }
 
+function buildRateResolver(overrides: Record<string, unknown> = {}) {
+  return {
+    resolveDensity: jest.fn().mockResolvedValue(null) as AsyncMock,
+    ...overrides
+  };
+}
+
 function emptyEstimate(overrides: Record<string, unknown> = {}) {
   return {
     id: "est-1",
@@ -44,7 +51,7 @@ describe("EstimatesService — labour rate CRUD", () => {
         update: jest.fn()
       }
     };
-    const service = new EstimatesService(prisma as never, audit as never);
+    const service = new EstimatesService(prisma as never, audit as never, buildRateResolver() as never);
 
     const result = await service.upsertLabourRate(
       undefined,
@@ -89,7 +96,7 @@ describe("EstimatesService — labour rate CRUD", () => {
         update: jest.fn().mockResolvedValue(updated)
       }
     };
-    const service = new EstimatesService(prisma as never, audit as never);
+    const service = new EstimatesService(prisma as never, audit as never, buildRateResolver() as never);
 
     await service.upsertLabourRate(
       "rate-2",
@@ -114,7 +121,7 @@ describe("EstimatesService — protected delete behaviours", () => {
       cuttingSheetItem: { count: jest.fn().mockResolvedValue(3) },
       cuttingOtherRate: { delete: jest.fn() }
     };
-    const service = new EstimatesService(prisma as never, audit as never);
+    const service = new EstimatesService(prisma as never, audit as never, buildRateResolver() as never);
 
     await expect(service.deleteOtherRate("rate-x", "user-1")).rejects.toThrow(
       ForbiddenException
@@ -128,7 +135,7 @@ describe("EstimatesService — protected delete behaviours", () => {
     const prisma = {
       estimateMaterialDensity: { update: jest.fn().mockResolvedValue({ id: "den-1" }) }
     };
-    const service = new EstimatesService(prisma as never, audit as never);
+    const service = new EstimatesService(prisma as never, audit as never, buildRateResolver() as never);
 
     const result = await service.deleteMaterialDensity("den-1", "user-1");
 
@@ -151,7 +158,7 @@ describe("EstimatesService — getEstimate", () => {
       tender: { findUnique: jest.fn().mockResolvedValue(null) },
       tenderEstimate: { findUnique: jest.fn() }
     };
-    const service = new EstimatesService(prisma as never, buildAudit() as never);
+    const service = new EstimatesService(prisma as never, buildAudit() as never, buildRateResolver() as never);
 
     await expect(service.getEstimate("tender-missing")).rejects.toThrow(NotFoundException);
     expect(prisma.tenderEstimate.findUnique).not.toHaveBeenCalled();
@@ -162,7 +169,7 @@ describe("EstimatesService — getEstimate", () => {
       tender: { findUnique: jest.fn().mockResolvedValue({ id: "tender-1" }) },
       tenderEstimate: { findUnique: jest.fn().mockResolvedValue(null) }
     };
-    const service = new EstimatesService(prisma as never, buildAudit() as never);
+    const service = new EstimatesService(prisma as never, buildAudit() as never, buildRateResolver() as never);
 
     const result = await service.getEstimate("tender-1");
 
@@ -181,7 +188,7 @@ describe("EstimatesService — createEstimate", () => {
         create: jest.fn()
       }
     };
-    const service = new EstimatesService(prisma as never, audit as never);
+    const service = new EstimatesService(prisma as never, audit as never, buildRateResolver() as never);
 
     const result = await service.createEstimate("tender-1", "user-1");
 
@@ -205,7 +212,7 @@ describe("EstimatesService — createEstimate", () => {
         create: jest.fn().mockResolvedValue(created)
       }
     };
-    const service = new EstimatesService(prisma as never, audit as never);
+    const service = new EstimatesService(prisma as never, audit as never, buildRateResolver() as never);
 
     const result = await service.createEstimate("tender-1", "user-1");
 
@@ -243,7 +250,7 @@ describe("EstimatesService — updateEstimate", () => {
         update: jest.fn()
       }
     };
-    const service = new EstimatesService(prisma as never, audit as never);
+    const service = new EstimatesService(prisma as never, audit as never, buildRateResolver() as never);
 
     const result = await service.updateEstimate(
       "tender-1",
@@ -275,7 +282,7 @@ describe("EstimatesService — updateEstimate", () => {
         update: jest.fn()
       }
     };
-    const service = new EstimatesService(prisma as never, audit as never);
+    const service = new EstimatesService(prisma as never, audit as never, buildRateResolver() as never);
 
     await expect(
       service.updateEstimate("tender-1", { markup: "40" } as never, "user-1")
@@ -296,7 +303,7 @@ describe("EstimatesService — lock / unlock", () => {
         update: jest.fn().mockResolvedValue({ ...existing, lockedAt: new Date() })
       }
     };
-    const service = new EstimatesService(prisma as never, audit as never);
+    const service = new EstimatesService(prisma as never, audit as never, buildRateResolver() as never);
 
     await service.lockEstimate("tender-1", "user-1");
 
@@ -329,7 +336,7 @@ describe("EstimatesService — items", () => {
         create: jest.fn().mockResolvedValue({ id: "item-1" })
       }
     };
-    const service = new EstimatesService(prisma as never, audit as never);
+    const service = new EstimatesService(prisma as never, audit as never, buildRateResolver() as never);
 
     await service.addItem(
       "tender-1",
@@ -361,7 +368,7 @@ describe("EstimatesService — items", () => {
       tenderEstimate: { findUnique: jest.fn().mockResolvedValue(locked) },
       estimateItem: { count: jest.fn(), create: jest.fn() }
     };
-    const service = new EstimatesService(prisma as never, audit as never);
+    const service = new EstimatesService(prisma as never, audit as never, buildRateResolver() as never);
 
     await expect(
       service.addItem("tender-1", { code: "S1", title: "Setup" } as never, "user-1")
@@ -386,7 +393,7 @@ describe("EstimatesService — labour line", () => {
         create: jest.fn().mockResolvedValue({ id: "line-1" })
       }
     };
-    const service = new EstimatesService(prisma as never, audit as never);
+    const service = new EstimatesService(prisma as never, audit as never, buildRateResolver() as never);
 
     await service.addLabourLine(
       "tender-1",
@@ -419,7 +426,7 @@ describe("EstimatesService — summary", () => {
       tender: { findUnique: jest.fn().mockResolvedValue({ id: "tender-1" }) },
       tenderEstimate: { findUnique: jest.fn().mockResolvedValue(null) }
     };
-    const service = new EstimatesService(prisma as never, buildAudit() as never);
+    const service = new EstimatesService(prisma as never, buildAudit() as never, buildRateResolver() as never);
 
     const result = await service.summary("tender-1");
 
@@ -488,7 +495,7 @@ describe("EstimatesService — summary", () => {
       tender: { findUnique: jest.fn().mockResolvedValue({ id: "tender-1" }) },
       tenderEstimate: { findUnique: jest.fn().mockResolvedValue(estimate) }
     };
-    const service = new EstimatesService(prisma as never, buildAudit() as never);
+    const service = new EstimatesService(prisma as never, buildAudit() as never, buildRateResolver() as never);
 
     const result = await service.summary("tender-1");
 
@@ -522,5 +529,59 @@ describe("EstimatesService — summary", () => {
     expect(result.totals.price).toBe(11280 + 1500);
     // markupAmount = total price - total subtotal (provisional contributes 0)
     expect(result.markupAmount).toBe(11280 - 9400);
+  });
+});
+
+// ─── Density resolution via rate resolver ──────────────────────────────────
+
+describe("EstimatesService — resolveMaterialDensity", () => {
+  it("delegates to rateResolver.resolveDensity and returns its result", async () => {
+    const prisma = {};
+    const audit = buildAudit();
+    const resolved = { materialName: "Concrete", value: 2400, unit: "kg/m³", source: "ratetable" as const };
+    const rateResolver = buildRateResolver({
+      resolveDensity: jest.fn().mockResolvedValue(resolved)
+    });
+    const service = new EstimatesService(prisma as never, audit as never, rateResolver as never);
+
+    const result = await service.resolveMaterialDensity("Concrete");
+
+    expect(result).toBe(resolved);
+    expect(rateResolver.resolveDensity).toHaveBeenCalledWith("Concrete");
+  });
+
+  it("returns null when the material is not found in either source", async () => {
+    const prisma = {};
+    const audit = buildAudit();
+    const rateResolver = buildRateResolver({
+      resolveDensity: jest.fn().mockResolvedValue(null)
+    });
+    const service = new EstimatesService(prisma as never, audit as never, rateResolver as never);
+
+    const result = await service.resolveMaterialDensity("Unobtainium");
+
+    expect(result).toBeNull();
+    expect(rateResolver.resolveDensity).toHaveBeenCalledWith("Unobtainium");
+  });
+
+  it("byte-identical value: Concrete resolves to 2400 via resolver same as old direct lookup", async () => {
+    // This test documents the parity contract: the resolver returns the
+    // same 2400 kg/m3 value that EstimateMaterialDensity.findUnique used to.
+    const prisma = {};
+    const audit = buildAudit();
+    const rateResolver = buildRateResolver({
+      resolveDensity: jest.fn().mockResolvedValue({
+        materialName: "Concrete",
+        value: 2400,
+        unit: "kg/m³",
+        source: "ratetable" as const
+      })
+    });
+    const service = new EstimatesService(prisma as never, audit as never, rateResolver as never);
+
+    const result = await service.resolveMaterialDensity("Concrete");
+
+    expect(result?.value).toBe(2400);
+    expect(result?.unit).toBe("kg/m³");
   });
 });

@@ -30,6 +30,17 @@ export type RateParityResult = {
 };
 
 /**
+ * The resolved density for a named material.
+ * `value` is in the same unit as the source row (kg/m3 or kg/m2).
+ */
+export type ResolvedDensity = {
+  materialName: string;
+  value: number;
+  unit: string;
+  source: "ratetable" | "legacy";
+};
+
+/**
  * Single seam every future consumer will call: `resolveRate(slug, keys)`.
  * R0 reads from the eight legacy rate tables via a slug→adapter map so
  * pricing behaviour is byte-identical. New `RateTable` rows are also
@@ -202,6 +213,70 @@ export class RateResolverService {
     if (raw === undefined || raw === null || raw === "") return null;
     const value = Number(raw);
     return Number.isFinite(value) ? value : null;
+  }
+
+  /**
+   * Resolve the density (kg/m3 or kg/m2) for a named material.
+   *
+   * Primary source: the `material-density` reference RateTable seeded from
+   * the 44 `EstimateMaterialDensity` rows. If that lookup misses (e.g. before
+   * the RateTable projection has been seeded) the method falls back to reading
+   * `EstimateMaterialDensity` directly, keeping byte-identical output for
+   * every seeded material.
+   *
+   * Returns `null` when neither source has a matching active row.
+   */
+  async resolveDensity(materialName: string): Promise<ResolvedDensity | null> {
+    // Primary: RateTable reference table (slug = "material-density")
+    const table = await this.prisma.rateTable.findUnique({
+      where: { slug: "material-density" },
+      include: { columns: true }
+    });
+
+    if (table) {
+      const materialCol = table.columns.find(
+        (c) => c.name.trim().toLowerCase() === "material"
+      );
+      const densityCol = table.columns.find(
+        (c) => c.name.trim().toLowerCase() === "density"
+      );
+      const unitCol = table.columns.find(
+        (c) => c.name.trim().toLowerCase() === "unit"
+      );
+
+      if (materialCol && densityCol) {
+        const rows = await this.prisma.rateRow.findMany({
+          where: { rateTableId: table.id, isActive: true }
+        });
+        const match = rows.find((r) => {
+          const cells = (r.cells as Record<string, unknown> | null) ?? {};
+          return norm(cells[materialCol.id]) === norm(materialName);
+        });
+        if (match) {
+          const cells = (match.cells as Record<string, unknown>) ?? {};
+          const raw = cells[densityCol.id];
+          const value = Number(raw);
+          if (raw !== undefined && raw !== null && Number.isFinite(value)) {
+            const unit = unitCol
+              ? String(cells[unitCol.id] ?? "kg/m³")
+              : "kg/m³";
+            return { materialName, value, unit, source: "ratetable" };
+          }
+        }
+      }
+    }
+
+    // Fallback: legacy EstimateMaterialDensity table
+    const legacyRow = await this.prisma.estimateMaterialDensity.findUnique({
+      where: { materialName }
+    });
+    if (!legacyRow || !legacyRow.isActive) return null;
+    return {
+      materialName,
+      value: Number(legacyRow.density.toString()),
+      unit: legacyRow.unit,
+      source: "legacy"
+    };
   }
 
   private getCanonicalSource(): RatesCanonicalSource {

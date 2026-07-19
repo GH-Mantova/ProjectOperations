@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/commo
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
+import { RateResolverService } from "../rates/rate-resolver.service";
 import {
   UpdateAssumptionDto,
   UpdateCuttingLineDto,
@@ -70,7 +71,8 @@ function round2(value: number): number {
 export class EstimatesService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly auditService: AuditService
+    private readonly auditService: AuditService,
+    private readonly rateResolver: RateResolverService
   ) {}
 
   // ──────────────────────────────────────────────────────────────
@@ -499,6 +501,24 @@ export class EstimatesService {
       entityId: id
     });
     return { id };
+  }
+
+  /**
+   * Resolve the density for a named material via the RateTable seam.
+   *
+   * Primary source is the `material-density` reference RateTable (seeded
+   * from `EstimateMaterialDensity`). Falls back to reading
+   * `EstimateMaterialDensity` directly when the RateTable projection is
+   * absent. Returns `null` when neither source has a matching active row.
+   *
+   * Output is byte-identical to a direct `estimateMaterialDensity.findUnique`
+   * for every seeded row — the density value is preserved exactly.
+   *
+   * @param materialName - e.g. "Concrete", "Plasterboard 13mm (sheet)"
+   * @returns resolved density or null when the material is unknown
+   */
+  async resolveMaterialDensity(materialName: string) {
+    return this.rateResolver.resolveDensity(materialName);
   }
 
   // Other rates — flat-fee / unit-priced cutting-sheet catalogue

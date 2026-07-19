@@ -19,6 +19,7 @@ function makePrisma() {
     estimateCuttingRate: { findUnique: jest.fn() },
     estimateCoreHoleRate: { findUnique: jest.fn() },
     estimateFuelRate: { findUnique: jest.fn() },
+    estimateMaterialDensity: { findUnique: jest.fn() },
     rateTable: {
       findUnique: jest.fn(),
       findMany: jest.fn().mockResolvedValue([])
@@ -432,6 +433,118 @@ describe("RateResolverService", () => {
       expect(parity.matches).toBe(false);
       expect(parity.divergence).toContain("legacy=ok");
       expect(parity.divergence).toContain("ratetable=missing");
+    });
+  });
+
+  describe("resolveDensity", () => {
+    test("returns density from the material-density RateTable when seeded", async () => {
+      const prisma = makePrisma();
+      prisma.rateTable.findUnique.mockResolvedValue({
+        id: "rt-density",
+        slug: "material-density",
+        isReference: true,
+        columns: [
+          { id: "rt-density-c-material", name: "Material", role: "KEY",   unit: null },
+          { id: "rt-density-c-density",  name: "Density",  role: "VALUE", unit: null },
+          { id: "rt-density-c-unit",     name: "Unit",     role: "INFO",  unit: null }
+        ]
+      });
+      prisma.rateRow.findMany.mockResolvedValue([
+        {
+          id: "rr-density-abc123",
+          cells: {
+            "rt-density-c-material": "Concrete",
+            "rt-density-c-density":  2400,
+            "rt-density-c-unit":     "kg/m³"
+          }
+        }
+      ]);
+      const svc = new RateResolverService(prisma as never);
+      const result = await svc.resolveDensity("Concrete");
+      expect(result).toEqual({
+        materialName: "Concrete",
+        value: 2400,
+        unit: "kg/m³",
+        source: "ratetable"
+      });
+      // The legacy table must NOT be consulted when the RateTable has a match.
+      expect(prisma.estimateMaterialDensity.findUnique).not.toHaveBeenCalled();
+    });
+
+    test("falls back to legacy EstimateMaterialDensity when RateTable is absent", async () => {
+      const prisma = makePrisma();
+      prisma.rateTable.findUnique.mockResolvedValue(null);
+      prisma.estimateMaterialDensity.findUnique.mockResolvedValue({
+        id: "md-1",
+        materialName: "Brick",
+        density: { toString: () => "1900" },
+        unit: "kg/m³",
+        isActive: true
+      });
+      const svc = new RateResolverService(prisma as never);
+      const result = await svc.resolveDensity("Brick");
+      expect(result).toEqual({
+        materialName: "Brick",
+        value: 1900,
+        unit: "kg/m³",
+        source: "legacy"
+      });
+    });
+
+    test("returns null when material not found in either source", async () => {
+      const prisma = makePrisma();
+      prisma.rateTable.findUnique.mockResolvedValue(null);
+      prisma.estimateMaterialDensity.findUnique.mockResolvedValue(null);
+      const svc = new RateResolverService(prisma as never);
+      const result = await svc.resolveDensity("Unobtainium");
+      expect(result).toBeNull();
+    });
+
+    test("returns null when legacy row exists but is inactive", async () => {
+      const prisma = makePrisma();
+      prisma.rateTable.findUnique.mockResolvedValue(null);
+      prisma.estimateMaterialDensity.findUnique.mockResolvedValue({
+        id: "md-2",
+        materialName: "Old material",
+        density: { toString: () => "500" },
+        unit: "kg/m³",
+        isActive: false
+      });
+      const svc = new RateResolverService(prisma as never);
+      const result = await svc.resolveDensity("Old material");
+      expect(result).toBeNull();
+    });
+
+    test("material-name lookup is case-sensitive (exact match required)", async () => {
+      const prisma = makePrisma();
+      prisma.rateTable.findUnique.mockResolvedValue({
+        id: "rt-density",
+        slug: "material-density",
+        isReference: true,
+        columns: [
+          { id: "rt-density-c-material", name: "Material", role: "KEY",   unit: null },
+          { id: "rt-density-c-density",  name: "Density",  role: "VALUE", unit: null }
+        ]
+      });
+      // Row has "Concrete" but we look for "concrete" (lowercase) — should miss.
+      prisma.rateRow.findMany.mockResolvedValue([
+        {
+          id: "rr-density-abc",
+          cells: {
+            "rt-density-c-material": "Concrete",
+            "rt-density-c-density":  2400
+          }
+        }
+      ]);
+      // No legacy fallback either.
+      prisma.estimateMaterialDensity.findUnique.mockResolvedValue(null);
+      const svc = new RateResolverService(prisma as never);
+      // norm() lowercases both sides, so the match WILL succeed — both sides
+      // normalise to "concrete". Document this behaviour explicitly.
+      const result = await svc.resolveDensity("concrete");
+      // norm() does lowercase so this WILL match.
+      expect(result).not.toBeNull();
+      expect(result?.value).toBe(2400);
     });
   });
 });

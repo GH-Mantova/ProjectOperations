@@ -1,6 +1,7 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { can } from "../../auth/permissions";
 
 // Expense management — D365-parity slice 1 (capture + approval).
 // Field/PWA capture (slice 2), receipt OCR (slice 3), and Xero push are
@@ -114,8 +115,8 @@ export function ExpensesPage() {
   const [rejectReason, setRejectReason] = useState("");
   const [showRejectInput, setShowRejectInput] = useState(false);
 
-  const canManage = user?.permissions.includes("expenses.manage") ?? false;
-  const canApprove = user?.permissions.includes("expenses.approve") ?? false;
+  const canManage = can(user, "expenses.manage");
+  const canApprove = can(user, "expenses.approve");
 
   async function loadExpenses(status?: string) {
     setLoading(true);

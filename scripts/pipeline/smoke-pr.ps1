@@ -124,7 +124,11 @@ if ($LASTEXITCODE -ne 0) { Die "pnpm lint failed" 1 }
 # The exit code is checked HERE. It previously was not: the only check sat after `pnpm seed`,
 # so `` referred to the seed and ANY migrate failure was silently swallowed.
 Step "prisma migrate deploy (smoke DB)"
-pnpm exec prisma migrate deploy --schema apps/api/prisma/schema.prisma 2>&1 | Select-Object -Last 5 | ForEach-Object { Write-Output ("    " + $_) }
+# `prisma` is a dependency of the API workspace ONLY - there is no prisma binary in the repo-root
+# node_modules/.bin, so a bare `pnpm exec prisma` from the root dies with ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL
+# ("'prisma' is not recognized"). Filter to the api workspace so pnpm resolves apps/api's own binary;
+# the schema then resolves from that package and needs no --schema flag.
+pnpm --filter @project-ops/api exec prisma migrate deploy 2>&1 | Select-Object -Last 5 | ForEach-Object { Write-Output ("    " + $_) }
 if ($LASTEXITCODE -ne 0) { Die "SMOKE-MIGRATE-FAILED: prisma migrate deploy failed against $SmokeDb - fix the migration; do NOT re-run blind" 1 }
 
 Step "seed"

@@ -1,0 +1,69 @@
+# =============================================================================================
+# THE ESCALATION REGISTER - things genuinely waiting on Marco, with an EXECUTABLE close test.
+#
+# WHY THIS EXISTS (the failure that created it, 2026-07-20)
+#   status-sweep.ps1 cross-checked escalation notes by reading the state of the PRs they
+#   referenced. `clients-perms-namespace-decision` referenced #674; #674 was MERGED; the sweep
+#   therefore declared the escalation DEAD and told every chat to stop reporting it.
+#
+#   But #674 changed exactly ONE file: docs/pr-prompts/pr-qa-clients-perms-registry-ready.md.
+#   It merged the PROMPT, not the FIX. `clients.manage` and `clients.view` were still absent from
+#   permission-registry.ts, so the surveys API was still inaccessible to every non-super-user -
+#   days after the defect was found and "closed".
+#
+#   A MERGED PR IS NOT A SHIPPED FIX. "Which PR closed this?" is the wrong question, because
+#   arming PRs, revert PRs and doc PRs all merge too. The right question is
+#   "IS THE ARTIFACT ON MAIN?" - and that is a command, not a judgement.
+#
+# SEMANTICS - read carefully, the polarity is the opposite of BACKLOG.yaml
+#   resolved_when: a shell command run at repo root against the CURRENT checkout.
+#     exit 0      -> RESOLVED. The fix is demonstrably on main. Auto-close it; stop reporting it.
+#     non-zero    -> STILL OPEN. Keep escalating it, however many PRs claim to have closed it.
+#     cannot run  -> BROKEN. Report the broken instrument. NEVER read a broken gate as "resolved" -
+#                    that would silently discard a real escalation, which is the worst outcome here.
+#
+# RULES
+#   - Point resolved_when at the ARTIFACT (a grep for the shipped code, a test -f for the file).
+#     NEVER at a PR number, a branch name, or a queue file - those close without the work landing.
+#   - Run it from a CURRENT checkout. A stale tree greps missing files and reports false CLOSED.
+#   - `- id:` items are indented EXACTLY 2 spaces (the indent guard refuses to read otherwise).
+# =============================================================================================
+
+escalations:
+  - id: clients-perms-namespace
+    title: Register clients.view / clients.manage, or retarget surveys to directory.*
+    raised: 2026-07-18
+    asked_of: marco
+    decision: >
+      ANSWERED 2026-07-20 - register the clients.* codes exactly as the controller asks
+      (minimal path, no access-model change). Who is granted them is a separate call.
+    resolved_when: 'grep -q "clients.manage" apps/api/src/common/permissions/permission-registry.ts'
+    note: >
+      Declared DEAD by the sweep on 2026-07-19 because #674 merged. #674 merged only the prompt
+      file. This gate greps the registry itself, so it cannot be fooled the same way. The fix
+      prompt is armed; this closes by itself the moment the code lands.
+
+  - id: smoke-gate-nonfunctional
+    title: smoke-pr.ps1 could not pass for any branch, so no agent could verify a UI PR
+    raised: 2026-07-19
+    asked_of: marco
+    decision: >
+      ANSWERED 2026-07-20 - give the smoke its own database and let agents run it unattended.
+    resolved_when: 'grep -q "SMOKE-DB-REPOINT-FAILED" scripts/pipeline/smoke-pr.ps1'
+    note: >
+      Three defects: .env pointed DATABASE_URL at the developer's live dev DB; migrate dev is
+      interactive and exited 130 headless; the exit check sat after seed so migrate failures were
+      swallowed. Fixed by #693 (+ #697 resolving prisma from the api workspace).
+
+  - id: queue-armed-by-commit-noop
+    title: Arming a prompt by committing to main was a no-op; the watcher never saw it
+    raised: 2026-07-19
+    asked_of: marco
+    decision: >
+      ANSWERED 2026-07-20 - bring the tree current, and reconcile the queue automatically
+      instead of pulling the developer's working tree on a schedule.
+    resolved_when: 'test -f scripts/pipeline/queue-sync.ps1'
+    note: >
+      The interactive tree ran 83 commits behind, so 23 prompts were armed on main and 0 were
+      visible on disk. #687 proved it: merged, armed a prompt, ran nothing. The tree was brought
+      current by hand; this gate closes when the durable reconciler (#695) lands on main.

@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
+import { RatesModule } from "../rates/rates.module";
 import { EstimatesController } from "./estimates.controller";
 import { EstimatesService } from "./estimates.service";
 
@@ -14,7 +15,7 @@ import { EstimatesService } from "./estimates.service";
  * controller.
  */
 @Module({
-  imports: [AuditModule],
+  imports: [AuditModule, RatesModule],
   controllers: [EstimatesController],
   providers: [EstimatesService],
   exports: [EstimatesService]

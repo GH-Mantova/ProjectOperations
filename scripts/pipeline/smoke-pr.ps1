@@ -48,6 +48,29 @@ $onBranch = (git rev-parse --abbrev-ref HEAD).Trim()
 if ($onBranch -ne $Branch) { Die ("worktree is on '" + $onBranch + "', not '" + $Branch + "'") 1 }
 Step ("READBACK: " + $onBranch + " @ " + $head)
 
+# --- provision .env into this fresh worktree. -------------------------------------------
+# .env and apps/api/.env are untracked on purpose (secrets), so a fresh worktree receives
+# NEITHER. Without DATABASE_URL, prisma dies P1012 and every smoke reports a branch defect
+# when the real fault is a missing harness env. A tool that cannot run must fail LOUD, never
+# fail quiet - so we copy the env files from the main tree and abort with SMOKE-ENV-MISSING
+# if we cannot. See docs/pr-prompts/pr-fix-smoke-env-provisioning-ready.md.
+$MainTree = "C:\ProjectOperations2"
+$SrcRoot  = Join-Path $MainTree ".env"
+$SrcApi   = Join-Path $MainTree "apps\api\.env"
+$DstRoot  = Join-Path $Worktree ".env"
+$DstApi   = Join-Path $Worktree "apps\api\.env"
+$DstApiDir = Split-Path $DstApi -Parent
+if (-not (Test-Path $DstApiDir)) { New-Item -ItemType Directory -Path $DstApiDir -Force | Out-Null }
+if (Test-Path $SrcRoot) { Copy-Item -Path $SrcRoot -Destination $DstRoot -Force }
+if (Test-Path $SrcApi)  { Copy-Item -Path $SrcApi  -Destination $DstApi  -Force }
+$hasDbUrl = $false
+if (Test-Path $DstApi)  { if (Select-String -Path $DstApi  -Pattern '^DATABASE_URL=' -Quiet) { $hasDbUrl = $true } }
+if (Test-Path $DstRoot) { if (Select-String -Path $DstRoot -Pattern '^DATABASE_URL=' -Quiet) { $hasDbUrl = $true } }
+if (-not (Test-Path $DstApi) -or -not $hasDbUrl) {
+    Die "SMOKE-ENV-MISSING: could not provision .env into the smoke worktree from $MainTree - the smoke result would be meaningless, refusing to continue." 1
+}
+Step ("provisioned .env from " + $MainTree + " (root=" + (Test-Path $DstRoot) + ", apps/api=" + (Test-Path $DstApi) + ")")
+
 # --- build. A smoke against a stale dist/ proves nothing. --------------------------------
 Step "pnpm install"
 pnpm install --frozen-lockfile 2>&1 | Select-Object -Last 3 | ForEach-Object { Write-Output ("    " + $_) }

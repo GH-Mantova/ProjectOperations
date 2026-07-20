@@ -32,7 +32,8 @@
     "data-model:build": "node scripts/data-model/build-relationship-map.mjs && node scripts/data-model/build-graph-html.mjs",
     "data-model:check": "node scripts/data-model/build-relationship-map.mjs --check",
     "xero:import-contacts": "pnpm --filter @project-ops/api xero:import-contacts",
-    "pr:watch": "node scripts/pr-watcher/index.mjs"
+    "pr:watch": "node scripts/pr-watcher/index.mjs",
+    "rates:fallback-audit": "node scripts/rates/fallback-audit.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",

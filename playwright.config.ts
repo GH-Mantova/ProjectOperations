@@ -32,7 +32,15 @@ export default defineConfig({
     // tests/e2e/auth.setup.ts. Keeps per-test logins off the auth rate limit.
     {
       name: "setup",
-      testMatch: /auth\.setup\.ts/
+      testMatch: /auth\.setup\.ts/,
+      // The webServer `url` check only proves the dev server has BOUND the port - it answers
+      // `/` from memory long before it has transformed the module graph. The FIRST real
+      // navigation therefore pays the whole cold-compile cost and blew the global 60s budget,
+      // while the 2nd and 3rd logins - same URL, same helper - completed in ~25s each off the
+      // warm cache. Because every browser project `dependencies: ["setup"]`, that one timeout
+      // took all 139 acceptance tests down with it and the run read as a red BRANCH when
+      // nothing about the branch had been exercised. Give the cold path its own budget.
+      timeout: 180_000
     },
     {
       name: "chromium",

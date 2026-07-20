@@ -204,6 +204,91 @@ export class RateResolverService {
     return Number.isFinite(value) ? value : null;
   }
 
+  /**
+   * List every material density row, ordered as the estimating UI
+   * expects (active first, then category, then material name).
+   *
+   * Reads from `EstimateMaterialDensity` — the legacy model is still
+   * write-authoritative for THIS PR (deprecate-in-place). Callers
+   * that previously hit prisma directly should route here so that when
+   * the storage flips to `RateTable` in the follow-up PR they need no
+   * further change.
+   *
+   * Byte-identical to a direct `prisma.estimateMaterialDensity.findMany`
+   * with the same ordering.
+   */
+  async listMaterialDensities() {
+    return this.prisma.estimateMaterialDensity.findMany({
+      orderBy: [{ isActive: "desc" }, { category: "asc" }, { materialName: "asc" }]
+    });
+  }
+
+  /**
+   * Single-material density lookup for pricing / waste-weight paths.
+   * Returns `null` on any miss so callers can pick a fallback without
+   * wrapping in try/catch.
+   *
+   * Legacy-first — the `estimate_material_density` row is the source of
+   * truth for this PR. If the legacy row is missing we fall through to
+   * the RateTable projection (seeded by the migration + seed) so a
+   * caller written against the new seam still gets an answer during
+   * the deprecate-in-place window.
+   *
+   * Density is returned as `Number(row.density)` — the same conversion
+   * every existing consumer uses — so numbers are byte-identical to
+   * the pre-cutover lookup.
+   */
+  async resolveMaterialDensity(
+    materialName: string
+  ): Promise<{ density: number; unit: string; kind: string; category: string | null } | null> {
+    const legacy = await this.prisma.estimateMaterialDensity.findUnique({
+      where: { materialName }
+    });
+    if (legacy) {
+      return {
+        density: Number(legacy.density),
+        unit: legacy.unit,
+        kind: String(legacy.kind),
+        category: legacy.category
+      };
+    }
+
+    const table = await this.prisma.rateTable.findUnique({
+      where: { slug: "material-densities" },
+      include: { columns: true }
+    });
+    if (!table) return null;
+    const byKey = new Map(table.columns.map((c) => [c.name.toLowerCase(), c] as const));
+    const materialCol = byKey.get("material");
+    const densityCol = byKey.get("density");
+    const unitCol = byKey.get("unit");
+    const kindCol = byKey.get("kind");
+    const categoryCol = byKey.get("category");
+    if (!materialCol || !densityCol) return null;
+
+    const rows = await this.prisma.rateRow.findMany({
+      where: { rateTableId: table.id, isActive: true }
+    });
+    const wanted = materialName.trim().toLowerCase();
+    const match = rows.find((r) => {
+      const cells = (r.cells as Record<string, unknown> | null) ?? {};
+      const v = cells[materialCol.id] ?? cells[materialCol.name];
+      return String(v ?? "").trim().toLowerCase() === wanted;
+    });
+    if (!match) return null;
+    const cells = (match.cells as Record<string, unknown> | null) ?? {};
+    const density = Number(cells[densityCol.id]);
+    if (!Number.isFinite(density)) return null;
+    return {
+      density,
+      unit: unitCol ? String(cells[unitCol.id] ?? "") : "",
+      kind: kindCol ? String(cells[kindCol.id] ?? "") : "VOLUME",
+      category: categoryCol
+        ? (String(cells[categoryCol.id] ?? "") || null)
+        : null
+    };
+  }
+
   private getCanonicalSource(): RatesCanonicalSource {
     return parseRatesCanonicalSource(process.env.RATES_CANONICAL_SOURCE);
   }

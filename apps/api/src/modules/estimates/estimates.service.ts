@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/commo
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
+import { sumLabourTaskHours } from "./estimate-calculators";
 import {
   UpdateAssumptionDto,
   UpdateCuttingLineDto,
@@ -1348,7 +1349,17 @@ export class EstimatesService {
         markup: 0,
         locked: false,
         items: [],
-        totals: { labour: 0, equip: 0, plant: 0, waste: 0, cutting: 0, subtotal: 0, price: 0 },
+        totals: {
+          labour: 0,
+          equip: 0,
+          plant: 0,
+          waste: 0,
+          cutting: 0,
+          subtotal: 0,
+          price: 0,
+          taskHours: 0,
+          wasteTonnes: 0
+        },
         markupAmount: 0
       };
     }
@@ -1373,7 +1384,9 @@ export class EstimatesService {
           cutting: 0,
           subtotal: amount,
           markup: 0,
-          price: amount
+          price: amount,
+          taskHours: 0,
+          wasteTonnes: 0
         };
       }
 
@@ -1385,6 +1398,23 @@ export class EstimatesService {
       const subtotal = round2(labour + equip + plant + waste + cutting);
       const markup = toNumber(item.markup);
       const price = round2(subtotal * (1 + markup / 100));
+      // SoT §10 calculators (BACKLOG-DECISIONS.md #7). These are
+      // *display-only* derived aggregates — they do not feed pricing.
+      // taskHours: Σ (persons × days × 8h) across labour lines, via the
+      //   task-time calculator. Surfaces "how many crew-hours does this
+      //   scope commit to?" for estimator review.
+      // wasteTonnes: Σ qtyTonnes across waste lines (the persisted value).
+      //   Kept as its own summary field so the UI does not have to
+      //   re-derive it, and so a future switch to volume × density (via
+      //   wasteWeightFromTonneDensity) is one call-site.
+      const taskHours = round2(
+        sumLabourTaskHours(
+          item.labourLines.map((l) => ({ qty: toNumber(l.qty), days: toNumber(l.days) }))
+        )
+      );
+      const wasteTonnes = round2(
+        item.wasteLines.reduce((sum: number, l) => sum + toNumber(l.qtyTonnes), 0)
+      );
       return {
         itemId: item.id,
         code: item.code,
@@ -1398,11 +1428,23 @@ export class EstimatesService {
         cutting,
         subtotal,
         markup,
-        price
+        price,
+        taskHours,
+        wasteTonnes
       };
     });
 
-    type Totals = { labour: number; equip: number; plant: number; waste: number; cutting: number; subtotal: number; price: number };
+    type Totals = {
+      labour: number;
+      equip: number;
+      plant: number;
+      waste: number;
+      cutting: number;
+      subtotal: number;
+      price: number;
+      taskHours: number;
+      wasteTonnes: number;
+    };
     const totals = items.reduce<Totals>(
       (acc, item) => {
         acc.labour += item.labour;
@@ -1412,9 +1454,21 @@ export class EstimatesService {
         acc.cutting += item.cutting;
         acc.subtotal += item.subtotal;
         acc.price += item.price;
+        acc.taskHours += item.taskHours;
+        acc.wasteTonnes += item.wasteTonnes;
         return acc;
       },
-      { labour: 0, equip: 0, plant: 0, waste: 0, cutting: 0, subtotal: 0, price: 0 }
+      {
+        labour: 0,
+        equip: 0,
+        plant: 0,
+        waste: 0,
+        cutting: 0,
+        subtotal: 0,
+        price: 0,
+        taskHours: 0,
+        wasteTonnes: 0
+      }
     );
 
     for (const key of Object.keys(totals) as Array<keyof typeof totals>) {

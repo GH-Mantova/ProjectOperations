@@ -245,6 +245,14 @@ export function ScopeWasteTab({
     () => rows.reduce((sum, r) => sum + (r.lineTotal ? Number(r.lineTotal) : 0), 0),
     [rows]
   );
+  // SoT §10 waste-weight calculator surface (BACKLOG-DECISIONS.md #7):
+  // display-only Σ tonnes across all rows so estimators can eyeball the
+  // total waste volume they're pricing against. Pure sum — the server's
+  // wasteWeightCalculator seam owns the m³ × density → tonnes math.
+  const totalTonnes = useMemo(
+    () => rows.reduce((sum, r) => (r.qty ? sum + Number(r.qty) : sum), 0),
+    [rows]
+  );
 
   return (
     <section className="s7-card" style={{ marginTop: 16 }}>
@@ -273,6 +281,8 @@ export function ScopeWasteTab({
             />
           ) : null}
           <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+            Total: <strong style={{ color: "var(--text)" }}>{totalTonnes.toFixed(2)} t</strong>
+            <span> · </span>
             Subtotal: <strong style={{ color: "var(--text)" }}>{fmtCurrency(subtotal)}</strong>
             {tenderMarkup !== undefined ? (
               <>

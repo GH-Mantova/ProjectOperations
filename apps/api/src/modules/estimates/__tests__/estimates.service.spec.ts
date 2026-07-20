@@ -428,9 +428,61 @@ describe("EstimatesService — summary", () => {
       markup: 0,
       locked: false,
       items: [],
-      totals: { labour: 0, equip: 0, plant: 0, waste: 0, cutting: 0, subtotal: 0, price: 0 },
+      totals: {
+        labour: 0,
+        equip: 0,
+        plant: 0,
+        waste: 0,
+        cutting: 0,
+        subtotal: 0,
+        price: 0,
+        taskHours: 0,
+        wasteTonnes: 0
+      },
       markupAmount: 0
     });
+  });
+
+  it("surfaces per-item taskHours (Σ persons×days×8) and wasteTonnes (Σ qtyTonnes) totals", async () => {
+    const itemA = {
+      id: "item-a",
+      code: "A",
+      itemNumber: 1,
+      title: "Item A",
+      isProvisional: false,
+      markup: decimal("30"),
+      provisionalAmount: null,
+      // 2 × 5 = 10 person-days → 80 hours; and a solo 3 × 2 = 6 → 48; total 128 h
+      labourLines: [
+        { qty: decimal("2"), days: decimal("5"), rate: decimal("500") },
+        { qty: decimal("3"), days: decimal("2"), rate: decimal("400") }
+      ],
+      equipLines: [],
+      plantLines: [],
+      wasteLines: [
+        { qtyTonnes: decimal("4.2"), tonRate: decimal("150"), loads: 0, loadRate: decimal("0") },
+        { qtyTonnes: decimal("1.3"), tonRate: decimal("90"), loads: 0, loadRate: decimal("0") }
+      ],
+      cuttingLines: []
+    };
+    const estimate = {
+      id: "est-1",
+      markup: decimal("30"),
+      lockedAt: null,
+      items: [itemA]
+    };
+    const prisma = {
+      tender: { findUnique: jest.fn().mockResolvedValue({ id: "tender-1" }) },
+      tenderEstimate: { findUnique: jest.fn().mockResolvedValue(estimate) }
+    };
+    const service = new EstimatesService(prisma as never, buildAudit() as never);
+
+    const result = await service.summary("tender-1");
+    const a = result.items.find((i: { itemId: string }) => i.itemId === "item-a")!;
+    expect(a.taskHours).toBe(128);
+    expect(a.wasteTonnes).toBe(5.5);
+    expect(result.totals.taskHours).toBe(128);
+    expect(result.totals.wasteTonnes).toBe(5.5);
   });
 
   it("computes per-line costs, applies item markup, and rolls up totals + markupAmount", async () => {

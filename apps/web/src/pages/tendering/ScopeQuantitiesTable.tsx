@@ -984,6 +984,11 @@ function ItemCard({
                 }}
               />
             </FieldCell>
+            {/* SoT §10 task-time calculator surface (BACKLOG-DECISIONS.md #7).
+                Display-only hint: Σ persons × days × 8h. Matches the
+                summary API's per-item `taskHours` field. Estimators use
+                this to eyeball crew commitment vs. scope quantity. */}
+            <TaskHoursHint men={item.men} days={item.days} />
 
             {itemPlantEntries.map((entry) => (
               <PlantCluster
@@ -1886,6 +1891,38 @@ function FieldCell({
         {label}
       </span>
       {children}
+    </div>
+  );
+}
+
+// Task-time hint: `qty × days × 8h`. Mirrors the API's `sumLabourTaskHours`
+// which delegates to `taskTimeCalculator(personDays, 1/8)`. Display only —
+// pricing is unchanged.
+function TaskHoursHint({ men, days }: { men: string | null; days: string | null }) {
+  const menNum = men === null || men === "" ? null : Number(men);
+  const daysNum = days === null || days === "" ? null : Number(days);
+  const hours =
+    menNum !== null &&
+    daysNum !== null &&
+    Number.isFinite(menNum) &&
+    Number.isFinite(daysNum) &&
+    menNum >= 0 &&
+    daysNum >= 0
+      ? menNum * daysNum * 8
+      : null;
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "flex-end",
+        paddingBottom: 8,
+        fontSize: 11,
+        color: "var(--text-muted)",
+        whiteSpace: "nowrap"
+      }}
+      title="Task hours ≈ persons × days × 8h (SoT §10 task-time calculator)"
+    >
+      ≈ {hours === null ? "—" : `${hours.toFixed(1)} h`}
     </div>
   );
 }

@@ -91,6 +91,7 @@ function buildService(extraPrisma: Record<string, unknown> = {}) {
       create: jest.fn().mockResolvedValue({ id: "prog-1", entryType: "PROGRESS" })
     },
     jobStatusHistory: { create: jest.fn().mockResolvedValue({}) },
+    activityEntry: { create: jest.fn().mockResolvedValue({}) },
     tender: {
       findUnique: jest.fn().mockResolvedValue(tenderRow()),
       update: jest.fn().mockResolvedValue({})

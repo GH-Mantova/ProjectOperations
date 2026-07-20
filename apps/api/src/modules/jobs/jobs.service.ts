@@ -782,6 +782,20 @@ export class JobsService {
       }
     });
 
+    // Timeline auto-log — issues don't have their own history table on the
+    // job the way status changes do, so surface them via ActivityEntry so
+    // they appear in the universal timeline control.
+    await this.prisma.activityEntry.create({
+      data: {
+        entityType: "Job",
+        entityId: jobId,
+        kind: "system",
+        body: `Issue raised: ${dto.title}`,
+        authorId: actorId ?? null,
+        metadata: { issueId: issue.id, severity: issue.severity }
+      }
+    });
+
     await this.auditService.write({
       actorId,
       action: "jobs.issue.create",

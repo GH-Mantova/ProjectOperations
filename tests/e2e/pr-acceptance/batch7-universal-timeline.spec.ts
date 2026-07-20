@@ -65,9 +65,26 @@ async function openSeedJob(page: Page): Promise<string> {
   return jobId as string;
 }
 
-/** The panel renders its list only once the GET /timeline round-trip settles. */
+/**
+ * Wait for the timeline fetch to actually RESOLVE.
+ *
+ * The obvious version of this — waiting for "Loading…" to disappear — is a lie, and it cost a
+ * red board on 2026-07-20. The panel's <section> renders IMMEDIATELY, before the GET /timeline
+ * request is even issued, so "Loading…" is legitimately absent at t=0: the wait returns instantly
+ * and the caller reads an empty list. Absence of a spinner is not evidence the data arrived.
+ *
+ * Wait for a POSITIVE end state instead — either rows exist, or the component has decided there
+ * are none and rendered its empty state. Both mean the round-trip finished.
+ */
 async function timelineSettled(page: Page): Promise<void> {
-  await expect(page.getByText("Loading…")).toHaveCount(0, { timeout: 15_000 });
+  await expect
+    .poll(
+      async () =>
+        (await page.getByTestId("timeline-item").count()) > 0 ||
+        (await page.getByText("Nothing on the timeline yet.").count()) > 0,
+      { timeout: 15_000, message: "timeline never finished loading (no rows and no empty state)" }
+    )
+    .toBe(true);
 }
 
 test.describe("Batch 7 — Universal activity Timeline (PR #672)", () => {
@@ -139,14 +156,25 @@ test.describe("Batch 7 — Universal activity Timeline (PR #672)", () => {
   });
 
   test("filter chips — Files narrows to attachments, All restores (test plan 5)", async ({
-    page
+    page,
+    request
   }) => {
-    await openSeedJob(page);
+    // Guarantee at least one row EXISTS rather than hoping the seed carries one or that the
+    // preceding note test ran first. The original version asserted `totalAll > 0` and blamed
+    // "fixture drift" when it saw zero — which was really this test reading the list before the
+    // fetch resolved. Own the fixture; do not inherit it from seed state or test order.
+    const token = await apiToken(request);
+    const seedJobId = await openSeedJob(page);
+    await apiFetch(request, token, "POST", `/timeline/Job/${seedJobId}/notes`, {
+      body: `E2E-TL-${runId()} filter-chip fixture`
+    });
+    await page.reload();
+    await expect(page.getByTestId("timeline-panel")).toBeVisible({ timeout: 15_000 });
     await timelineSettled(page);
 
     const items = page.getByTestId("timeline-item");
     const totalAll = await items.count();
-    expect(totalAll, "seed job has no timeline entries — fixture drift").toBeGreaterThan(0);
+    expect(totalAll, "timeline is empty even after seeding a note — real regression").toBeGreaterThan(0);
 
     await page.getByTestId("timeline-filter-attachment").click();
     await expect(page.getByTestId("timeline-filter-attachment")).toHaveAttribute(

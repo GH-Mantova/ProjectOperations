@@ -5,7 +5,13 @@ import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 //   deadLetter       — mutations that exceeded MAX_ATTEMPTS (PR F FIX 3)
 //   meta             — last-sync timestamps, etc.
 
-export type PendingKind = "field-timesheet" | "field-prestart" | "safety-incident" | "safety-hazard";
+export type PendingKind =
+  | "field-timesheet"
+  | "field-prestart"
+  | "safety-incident"
+  | "safety-hazard"
+  | "field-expense"
+  | "field-expense-submit";
 
 export type PendingMutation = {
   id: string;

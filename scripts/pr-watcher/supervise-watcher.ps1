@@ -36,6 +36,9 @@
 #   PR_WATCHER_CRASH_WAIT_SEC seconds to wait after a crash exit=1 (default 60)
 #   PR_WATCHER_MAX_SAME_FAIL  identical consecutive exit-1 failures tolerated before
 #                             the supervisor escalates and stops (default 5)
+#   PR_WATCHER_ADOPT_POLL_SEC seconds between liveness polls while supervising an
+#                             ADOPTED (already-running, previously orphaned) watcher
+#                             (default 60)
 
 $ErrorActionPreference = "Continue"
 
@@ -57,6 +60,8 @@ $crashWaitSec = 60
 if ($env:PR_WATCHER_CRASH_WAIT_SEC) { $crashWaitSec = [int]$env:PR_WATCHER_CRASH_WAIT_SEC }
 $maxSameFail = 5
 if ($env:PR_WATCHER_MAX_SAME_FAIL) { $maxSameFail = [int]$env:PR_WATCHER_MAX_SAME_FAIL }
+$adoptPollSec = 60
+if ($env:PR_WATCHER_ADOPT_POLL_SEC) { $adoptPollSec = [int]$env:PR_WATCHER_ADOPT_POLL_SEC }
 
 $supLog = Join-Path $here "logs\supervisor.log"
 New-Item -ItemType Directory -Path (Split-Path $supLog) -Force | Out-Null
@@ -218,10 +223,42 @@ while ($true) {
         continue
     }
     else {
-        # Exit 0 = deliberate stop (Ctrl+C) or the single-instance guard found
-        # an already-running watcher. Respect it and stop supervising so a
-        # manual Ctrl+C actually stops things. (The watcher is an fs.watch
-        # daemon, so it does NOT exit 0 on an empty queue.)
+        # Exit 0 has TWO very different causes and conflating them is a bug:
+        #
+        #   a) start-watcher.ps1's SINGLE-INSTANCE guard found a watcher node
+        #      ALREADY running, so it declined to start a second one and exit 0'd.
+        #   b) a deliberate stop -- Ctrl+C.
+        #
+        # (a) is the ORPHANED-NODE case: a node is alive but NO wrapper is
+        # supervising it, because a previous wrapper was killed and left it
+        # behind. That state was self-perpetuating (found 2026-07-20): relaunching
+        # the wrapper made start-watcher exit 0 immediately, this branch treated it
+        # as a deliberate stop, and the wrapper died within seconds -- while
+        # logging what looked like a successful restart. The node stayed
+        # unsupervised, so nothing would restart it when it eventually died.
+        #
+        # ADOPT it instead: do not start a second node (the guard is right), just
+        # sit and watch the existing one. When it goes away, loop round and start
+        # a fresh one -- which is exactly what supervising means.
+        $reason = Get-ChildFailureReason -OutputLines $childOut.ToArray() -CloneRoot $env:PR_WATCHER_REPO_ROOT
+        if ($reason -match 'SINGLE-INSTANCE') {
+            Sup-Log "ADOPT: a watcher node is already running and no wrapper was supervising it. Adopting rather than exiting. ($reason)"
+            $sameCount     = 0
+            $lastReasonKey = ""
+            while ($true) {
+                Start-Sleep -Seconds $adoptPollSec
+                $alive = @(Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
+                           Where-Object { $_.CommandLine -match "pr-watcher[\\/]index\.mjs" })
+                if ($alive.Count -eq 0) {
+                    Sup-Log "ADOPT: the adopted watcher has exited. Starting a fresh one."
+                    break
+                }
+            }
+            continue
+        }
+
+        # Genuine Ctrl+C. Respect it so a manual stop actually stops things.
+        # (The watcher is an fs.watch daemon, so it does NOT exit 0 on an empty queue.)
         Sup-Log "Watcher exited cleanly (exit 0). Treating as a deliberate stop. Supervisor exiting."
         break
     }

@@ -88,6 +88,30 @@ working there. Conflict work happens in a **disposable worktree**, never a share
 
 Escalating is not failure. **Escalating something in this list is doing your job correctly.**
 
+### 5b. `needs-marco/` IS THE ONLY REAL STOP — `escalates: true` STOPS NOTHING
+
+Ruled by Marco, 2026-07-20 — *"run, open PR, block merge only."*
+
+**`escalates: true` in a prompt's frontmatter gates the MERGE, not the RUN.** It is advisory
+metadata about the work. Nothing in `scripts/pr-watcher/**` reads it; `lint-prompt.mjs` admits
+escalating prompts happily. **This is deliberate and will not be "fixed" with a watcher guard** —
+one stop beats two, because a flag that *sometimes* halts execution competes with the folder that
+*always* does, and agents end up trusting the weaker one.
+
+- **A loose armed `docs/pr-prompts/*-ready.md` WILL RUN**, whatever its frontmatter says.
+  **Arming a prompt IS the decision to run it.** `escalates: true` on an armed prompt does *not*
+  mean "safely parked".
+- To stop something, **MOVE THE FILE** to `docs/pr-prompts/needs-marco/`. Location is the
+  contract; frontmatter is a note. Nothing else stops it.
+- **Do NOT blanket-quarantine `escalates: true` prompts.** On 2026-07-20 a supervisor cycle swept
+  four into `needs-marco/` on the strength of the flag alone — after Marco had explicitly asked
+  for them to run. That sweep is why the `clients.*` permanently-false gate sat unfixed on main
+  for days. **A cautious-looking sweep is not free; it silently discards work Marco asked for.**
+  Quarantine only what Marco personally names, or what hits a genuine hard stop from the list
+  above.
+- The right handling of an escalating prompt is: **run it, open the PR, and label it
+  do-not-merge.** Merging is the gate — not starting.
+
 ## 6. NEVER EXIT SILENTLY
 
 There is no human in a headless run. **10 runs died waiting for an answer to a question nobody was

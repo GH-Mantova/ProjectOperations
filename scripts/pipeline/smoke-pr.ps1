@@ -34,6 +34,16 @@ function Die($msg, $code) { Write-Output ""; Write-Output ("SMOKE FAILED: " + $m
 Step ("smoking branch: " + $Branch)
 
 # --- isolated worktree. NEVER smoke in Marco's tree or the watcher's clone. -------------
+# Test for .git, NOT the directory. `git worktree prune` removes the REGISTRATION but leaves the
+# FILES behind, so a bare `Test-Path $Worktree` sees a directory, skips creation, and the script
+# then Set-Location's into something git does not recognise. Every later git call dies with
+# "fatal: not a git repository" and the run ends on the misleading
+# "worktree is on '', not '<branch>'". Clear the orphan and rebuild it.
+if ((Test-Path $Worktree) -and -not (Test-Path (Join-Path $Worktree ".git"))) {
+    Step ("removing ORPHANED " + $Worktree + " (directory present, no .git - pruned registration)")
+    Remove-Item $Worktree -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path $Worktree) { Die ("could not remove orphaned worktree " + $Worktree + " - remove it by hand and re-run") 1 }
+}
 if (-not (Test-Path $Worktree)) {
     Step ("creating worktree " + $Worktree)
     git -C "C:\ProjectOperations2" worktree add $Worktree $Branch 2>&1 | ForEach-Object { Write-Output ("    " + $_) }

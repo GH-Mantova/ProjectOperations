@@ -198,24 +198,62 @@ came back up. If the restart fails, escalate loudly.
 **Never restart on BUSY.** Killing a healthy agent mid-merge is worse than the stall you were trying
 to fix. The heartbeat is the guard: fresh heartbeat means it is working, however quiet it looks.
 
-## 3b. LOOP - a prompt processed more than once
+## 3b. ENSURE-UP - an ORPHANED node (wrapper absent) is a fault. Fix it.
+
+Ruled by Marco, 2026-07-20: **relaunch the wrapper whenever it is absent but the node is alive.**
+
+`restart-watcher-if-wedged.ps1 -Fix` only acts when prompts are ARMED (with 0 armed it reports
+"OK - nothing armed" and starts nothing), so a watcher that is *running but unsupervised* is
+invisible to it. That state - node alive, no `supervise-watcher.ps1` wrapper - means **nothing will
+restart the watcher when it eventually dies.** It is a real fault, not a curiosity.
+
+Run this every cycle. You run ON the Windows box, so a LOCAL process check is allowed (the
+"no ps/grep across an OS boundary" rule is about a *sandbox* agent, not this one):
+
+    $node = @(Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
+              Where-Object { $_.CommandLine -match 'pr-watcher[\\/]index\.mjs' })
+    $wrap = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
+              Where-Object { $_.CommandLine -match '-File.*supervise-watcher\.ps1' })
+    if ($wrap.Count -eq 0) {
+        Start-Process powershell.exe -WindowStyle Hidden -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass',
+          '-File','C:\ProjectOperations2\scripts\pr-watcher\supervise-watcher.ps1'
+        Write-Output "ENSURE-UP: wrapper was ABSENT (node=$($node.Count)) - relaunched."
+    } else {
+        Write-Output "ENSURE-UP: wrapper present (node=$($node.Count) wrapper=$($wrap.Count)) - no action."
+    }
+
+Then **re-check after ~30s that the wrapper is still alive** - see the trap below.
+
+**The trap this replaced (found 2026-07-20).** The old block relaunched only when BOTH node and
+wrapper were absent, because relaunching with a node alive looked unsafe. It is not unsafe - the
+SINGLE-INSTANCE guard in `start-watcher.ps1` refuses to start a second node - but until this was
+fixed it was **useless**: the guard exits **0**, and `supervise-watcher.ps1` treated exit 0 as a
+deliberate Ctrl+C stop and broke out of its loop. The relaunched wrapper died within seconds while
+logging what looked like a clean restart.
+
+`supervise-watcher.ps1` now distinguishes the two exit-0 causes and **ADOPTS** an already-running
+node (polls it, and starts a fresh one when it goes away) instead of exiting. So the relaunch above
+is now both safe and effective. **A wrapper that exits within ~30s of relaunch means the adopt path
+regressed - escalate rather than relaunching it in a loop.**
+
+## 3c. LOOP - a prompt processed more than once
 
 The queue is eating itself. Rename the offending `*-ready.md` to `*-LOOPING.md` so it cannot run a
 third time. Report it with the reason.
 
-## 3c. HANG - an agent running >45 min
+## 3d. HANG - an agent running >45 min
 
 Per `sot/05`, a 75-minute run is a **hang, not slow tests** (classic cause: an apitest worktree where
 the API never booted because env vars were not carried in). Report the PID, start time, and duration.
 Do not kill it silently - say what you found first.
 
-## 3d. Silent no-ops (`no-pr-opened/`)
+## 3e. Silent no-ops (`no-pr-opened/`)
 
 An agent exited 0 without opening a PR - **the worst failure mode, because it looks like success.**
 Read the `.log`, state the real reason, and say whether the prompt is still valid. Do not silently
 re-arm it.
 
-## 3e. Orphaned worktrees in `C:\po-worktrees`
+## 3f. Orphaned worktrees in `C:\po-worktrees`
 
 Leftovers from aborted apitest runs. List them with ages. **Run `git status --short` in each before
 suggesting deletion.** Never delete unsupervised.

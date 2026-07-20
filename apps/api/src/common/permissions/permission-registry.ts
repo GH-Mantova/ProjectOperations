@@ -109,6 +109,11 @@ export const permissionRegistry = [
   // Manage is high-risk: a rule fires on domain events across the platform.
   { code: "automations.view", module: "platform", label: "View automation rules", description: "View admin-configured automation rules and their run log" },
   { code: "automations.manage", module: "platform", label: "Create and edit automation rules", description: "Create, edit, enable and disable admin-configured automation rules", isHighRisk: true },
+  // Knowledge Base / SOP library (case management slice 2, PR feat/cases-knowledge-base).
+  // knowledge.view allows reading PUBLISHED articles; knowledge.manage adds
+  // DRAFT visibility plus create, update, publish, and delete.
+  { code: "knowledge.view", module: "knowledge", label: "View published KB articles", description: "Browse and search the internal Knowledge Base — published articles only" },
+  { code: "knowledge.manage", module: "knowledge", label: "Create and manage KB articles", description: "Create, edit, publish and delete KB articles (including drafts)" },
   // Reporting / BI layer (slice 1). Cross-module read-only report surface,
   // aggregating existing tables. Sits beside per-module dashboard widgets —
   // this is the tabular/exportable side (Excel / CSV / PDF).

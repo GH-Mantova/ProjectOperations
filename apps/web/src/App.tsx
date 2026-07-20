@@ -34,6 +34,7 @@ import { CalendarSyncPage } from "./pages/calendar/CalendarSyncPage";
 import { WorkersListPage } from "./pages/workers/WorkersListPage";
 import { WorkerDetailPage } from "./pages/workers/WorkerDetailPage";
 import { WorkerLeaveApprovalsPage } from "./pages/workers/WorkerLeaveApprovalsPage";
+import { LiveCrewMapPage } from "./pages/workers/LiveCrewMapPage";
 import { FieldLeavePage } from "./pages/field/FieldLeavePage";
 import { AssetsListPage } from "./pages/assets/AssetsListPage";
 import { AssetDetailPage } from "./pages/assets/AssetDetailPage";
@@ -291,6 +292,7 @@ export function App() {
             <Route path="/timesheets/payroll-export" element={<PayrollExportPage />} />
             <Route path="/dockets" element={<DocketsRegisterPage />} />
             <Route path="/workers" element={<WorkersListPage />} />
+            <Route path="/workers/live-crew" element={<LiveCrewMapPage />} />
             <Route path="/workers/leave-approvals" element={<WorkerLeaveApprovalsPage />} />
             <Route path="/workers/:id" element={<WorkerDetailPage />} />
             <Route path="/resources" element={<ResourcesPage />} />

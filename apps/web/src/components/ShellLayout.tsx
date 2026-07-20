@@ -212,6 +212,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/scheduler", label: "Scheduler", icon: ICON_SCHEDULER },
       { to: "/scheduler/availability-report", label: "Availability report", icon: ICON_SCHEDULER },
       { to: "/scheduler/grid", label: "Scheduler Grid", icon: ICON_SCHEDULER },
+      { to: "/workers/live-crew", label: "Live crew map", icon: ICON_SCHEDULER, requiresPermission: "scheduler.view" },
       { to: "/account/calendar-sync", label: "Calendar Sync", icon: ICON_SCHEDULER },
       {
         to: "/sites",
@@ -364,6 +365,7 @@ const BREADCRUMBS: Record<string, string> = {
   "/tenders/contacts": "Tender Contacts",
   "/tenders/settings": "Tendering Settings",
   "/workers": "Workers",
+  "/workers/live-crew": "Live crew map",
   "/resources": "Workers (legacy)",
   "/assets": "Assets",
   "/inventory": "Inventory",

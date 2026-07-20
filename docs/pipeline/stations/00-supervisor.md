@@ -497,3 +497,50 @@ drive the board itself (arm the scanner's stage-ready items; merge green PRs), u
 
 Prefer dispatch when it works; use this fallback when it does not. This is how the supervisor "launches
 the prompts" in the current environment.
+
+---
+
+## 🧰 YOUR SCRIPTS — the registry is the source of truth
+
+**`docs/pipeline/SCRIPT-REGISTRY.md`** lists every script in this repo, its owner, whether it
+mutates, and when to call it. Read it rather than guessing from a filename — and rather than
+writing a new script that already exists.
+
+You own **board mutation** and **watcher health**. Nobody else merges; nobody else restarts the
+watcher.
+
+**Read-only — build the whole picture BEFORE acting (§1):**
+
+- `scripts/pipeline/bring-up-to-speed.ps1` — **start here, every cycle.** The ONE status entry
+  point. Report only its `[LIVE]` lines and obey its SAFE / CAUTION / DO-NOT-ACT verdict.
+- `scripts/board-status.ps1` — open PRs and their real merge state.
+- `scripts/pipeline/read-gate-failure.ps1` — **before diagnosing ANY red.** Never diagnose a
+  failure from the PR page; read the job log.
+- `scripts/pipeline/why-blocked.ps1` — a PR is BLOCKED with every visible check green.
+- `scripts/pipeline/check-gate-markers.ps1` — CP-11/12/13 red (missing `GATE-ALLOW`).
+- `scripts/pipeline/assess-conflicts.ps1` — assess, do **not** resolve, a DIRTY PR.
+- `scripts/watcher-loop-check.ps1`, `scripts/pipeline/find-watcher.ps1` — watcher looks idle.
+  Identify it by COMMAND LINE, never "it's a node process".
+- `scripts/pipeline/preflight.ps1` — before mutating a staged prompt, branch or PR.
+
+**Mutating — your own hands:**
+
+- `scripts/pipeline/pipeline-lib.ps1` — **dot-source it. Never hand-roll a board operation.**
+  Merging is `Assert-SmokedOrEscalate` → `Merge-Pr`, never raw `gh pr merge`.
+- `scripts/pipeline/smoke-pr.ps1` — the exit code decides, not your reading of it. A FAIL whose
+  only failure is `auth.setup.ts` verified **nothing**: the acceptance tests never ran.
+- `scripts/pipeline/merge-queue.ps1`, `monitor-board.ps1` — BEHIND is not a failure, it is a rebase.
+- `scripts/pipeline/enable-automerge.ps1` — only after the content gate has passed.
+- `scripts/pipeline/queue-sync.ps1` — reconciles prompts armed **by commit** into the **filesystem**
+  queue the watcher actually reads. Run it when those two disagree.
+- `scripts/pipeline/fix-datamodel-drift.ps1`, `resolve-and-regen.ps1` — **regenerate a generated
+  file, never hand-merge it**, and regenerate AFTER the final rebase.
+- `scripts/pipeline/fix-gate-markers.ps1` — a PR-body edit alone does NOT retrigger the workflow.
+- `scripts/restart-watcher-if-wedged.ps1` — the sanctioned WEDGED check (`-WhatIf`, then `-Fix`).
+  An idle watcher with 0 armed prompts is CORRECT, not wedged.
+- `scripts/clear-stale-index-lock.ps1` — prove the lock is stale first.
+
+**Not yours:** everything under the SCANNER and MARCO-ONLY headings in the registry, and the
+`scripts/pr-watcher/*` internals — the watcher owns its own lifecycle. Scripts listed under
+**Archaeology** are named for one historical incident; do not call them. The playbook you want is
+in `sot/05-decisions-and-lessons.md`.

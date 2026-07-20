@@ -12,10 +12,9 @@ gate_allow: migrations
 seed_only: false
 escalates: false
 ---
-<!-- watcher: do-not-arm | GATED: arm only after pr-r3-t0-transport-capacity-fuel AND pr-scope-multi-material have MERGED to main -->
-# HOLD — R3 T-1: waste transport cost engine (Raj R3, core)
+# R3 T-1: waste transport cost engine (Raj R3, core)
 
-STATUS: DRAFTED, STAGED, **DO NOT ARM YET**. Second slice of the waste transport cost engine
+STATUS: ARMED - RUN NOW.
 (`docs/architecture/drafts/waste-transport-cost-engine-DRAFT.md`, §2 formula).
 **ARM ONLY** after `pr-r3-t0-transport-capacity-fuel` (capacity/fuel fields + OperationsSettings)
 AND `pr-scope-multi-material` (so "sum from above" can total the material rows) have merged.

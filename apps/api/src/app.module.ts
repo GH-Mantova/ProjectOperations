@@ -66,6 +66,7 @@ import { GeocodingModule } from "./modules/geocoding/geocoding.module";
 import { ExpensesModule } from "./modules/expenses/expenses.module";
 import { SurveysModule } from "./modules/surveys/surveys.module";
 import { CasesModule } from "./modules/cases/cases.module";
+import { KnowledgeModule } from "./modules/knowledge/knowledge.module";
 import { ReportingModule } from "./modules/reporting/reporting.module";
 
 @Module({
@@ -140,6 +141,7 @@ import { ReportingModule } from "./modules/reporting/reporting.module";
     ExpensesModule,
     SurveysModule,
     CasesModule,
+    KnowledgeModule,
     ReportingModule
   ]
 })

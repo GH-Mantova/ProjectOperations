@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { KbSearchModal } from "../knowledge/KbSearchModal";
 
 // Case management slice 1 — detail page.
 // Shows full case details, status transitions, comments thread, and assignment.
@@ -112,6 +113,9 @@ export function CaseDetailPage() {
   // Status transition
   const [transitioning, setTransitioning] = useState(false);
   const [transitionError, setTransitionError] = useState<string | null>(null);
+
+  // KB search modal (navigate-only affordance — no join table)
+  const [showKbSearch, setShowKbSearch] = useState(false);
 
   const commentRef = useRef<HTMLTextAreaElement>(null);
 
@@ -328,6 +332,39 @@ export function CaseDetailPage() {
             ))}
           </div>
         </div>
+      )}
+
+      {/* KB search affordance */}
+      <div style={{ marginBottom: 20 }}>
+        <button
+          onClick={() => setShowKbSearch(true)}
+          style={{
+            padding: "8px 16px",
+            borderRadius: 6,
+            border: "1px solid var(--color-teal, #005B61)",
+            background: "#fff",
+            color: "var(--color-teal, #005B61)",
+            cursor: "pointer",
+            fontWeight: 600,
+            fontSize: 13,
+            minHeight: 40
+          }}
+        >
+          Search Knowledge Base
+        </button>
+        <span style={{ fontSize: 12, color: "var(--text-muted, #888)", marginLeft: 10 }}>
+          Find a relevant SOP or how-to article
+        </span>
+      </div>
+
+      {showKbSearch && (
+        <KbSearchModal
+          onClose={() => setShowKbSearch(false)}
+          onSelect={(articleId) => {
+            setShowKbSearch(false);
+            navigate(`/knowledge/${articleId}`);
+          }}
+        />
       )}
 
       {/* Comments thread */}

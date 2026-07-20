@@ -44,9 +44,10 @@ export function TenderingSettingsPage() {
           }}
         >
           {entries.map(([key, value]) => (
-            <label key={key}>
+            <label key={key} className="estimate-editor__field">
               <span>{key}</span>
               <input
+                className="s7-input"
                 value={labels[key as keyof typeof labels]}
                 onChange={(event) =>
                   setLabels((current) => ({
@@ -59,9 +60,12 @@ export function TenderingSettingsPage() {
             </label>
           ))}
           <div className="inline-fields">
-            <button type="submit">Save labels</button>
+            <button type="submit" className="s7-btn s7-btn--primary">
+              Save labels
+            </button>
             <button
               type="button"
+              className="s7-btn s7-btn--ghost"
               onClick={() => {
                 setLabels(defaultTenderingLabels);
                 writeTenderingLabels(defaultTenderingLabels);

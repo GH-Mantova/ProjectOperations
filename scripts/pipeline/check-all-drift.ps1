@@ -1,6 +1,25 @@
 # Is the data-model map stale on ANY open PR? Report only. Pure ASCII.
 $ErrorActionPreference = "Continue"
-Set-Location "C:\po-fix"
+
+# Resolve the repo directory instead of assuming one. A bare Set-Location to a missing path
+# does NOT stop this script (ErrorActionPreference is "Continue") - it falls through and runs
+# every git/gh call below against the caller's directory, then prints a report that looks
+# authoritative. A checker that cannot locate its repo must refuse to run, not guess.
+$repoCandidates = @("C:\po-watcher\ProjectOperations", "C:\ProjectOperations2")
+$repoDir = $null
+foreach ($candidate in $repoCandidates) {
+    if (Test-Path $candidate) { $repoDir = $candidate; break }
+}
+if (-not $repoDir) {
+    Write-Host "FATAL: no repo directory found. Tried: C:\po-watcher\ProjectOperations, C:\ProjectOperations2"
+    exit 1
+}
+Set-Location $repoDir
+if ((Get-Location).Path -ne $repoDir) {
+    Write-Host ("FATAL: Set-Location to " + $repoDir + " did not take; now at " + (Get-Location).Path)
+    exit 1
+}
+
 git fetch origin --quiet 2>$null
 
 $raw = gh pr list --state open --limit 40 --json number,headRefName | ConvertFrom-Json

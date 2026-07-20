@@ -1,10 +1,10 @@
-# PREFLIGHT â€” run this BEFORE touching ANY staged prompt, branch, or PR.
+# PREFLIGHT - run this BEFORE touching ANY staged prompt, branch, or PR.
 #
 # MARCO'S STANDING INSTRUCTION (2026-07-14):
 #   "ALWAYS check both the watcher, the supervisor, and GitHub BEFORE trying to make changes to any
-#    staged PR. The supervisor is doing its job â€” don't merge anything yourself."
+#    staged PR. The supervisor is doing its job - don't merge anything yourself."
 #
-# WHY THIS EXISTS â€” I broke the concurrency rule TWICE in one afternoon, having written it myself:
+# WHY THIS EXISTS - I broke the concurrency rule TWICE in one afternoon, having written it myself:
 #   1. I staged pr-b1/pr-b2 while the SUPERVISOR was concurrently staging pr-a1b/pr-a2b for the SAME
 #      work. Two prompts, one job, two PRs, guaranteed conflict.
 #   2. I edited PR #570 while it was MERGING under me. Auto-merge fired, deleted the branch, and my
@@ -24,7 +24,7 @@ $busy = @()
 Write-Host "=============== PREFLIGHT ===============" -ForegroundColor Cyan
 
 # ---------------------------------------------------------------------------------------------
-# 1. THE WATCHER â€” is it mid-run on a prompt?
+# 1. THE WATCHER - is it mid-run on a prompt?
 # ---------------------------------------------------------------------------------------------
 Write-Host ""
 Write-Host "1. WATCHER"
@@ -56,7 +56,7 @@ Write-Host ("   repo on: " + $branch + $(if ($midMerge) { "   *** MID-MERGE/REBA
 if ($midMerge) { $busy += "the watcher's repo is MID-MERGE (corrupt)" }
 
 # ---------------------------------------------------------------------------------------------
-# 2. THE SUPERVISOR â€” is a scheduled station running right now?
+# 2. THE SUPERVISOR - is a scheduled station running right now?
 # ---------------------------------------------------------------------------------------------
 Write-Host ""
 Write-Host "2. SCHEDULED STATIONS"
@@ -80,11 +80,31 @@ if ($stationBusy) {
 }
 
 # ---------------------------------------------------------------------------------------------
-# 3. GITHUB â€” what is the board actually doing?
+# 3. GITHUB - what is the board actually doing?
 # ---------------------------------------------------------------------------------------------
 Write-Host ""
 Write-Host "3. GITHUB"
-Set-Location "C:\po-fix"
+
+# Resolve the repo directory instead of assuming one. A bare Set-Location to a missing path
+# does NOT stop this script (ErrorActionPreference is "Continue") - it falls through and runs
+# the git/gh calls below against whatever directory the caller happened to be in, then prints
+# a board summary that looks authoritative. Refuse to report rather than report the wrong tree.
+# Variable names here are deliberately NOT $c / $pr - see the case-insensitivity note below.
+$repoCandidates = @("C:\po-watcher\ProjectOperations", "C:\ProjectOperations2")
+$repoDir = $null
+foreach ($candidate in $repoCandidates) {
+    if (Test-Path $candidate) { $repoDir = $candidate; break }
+}
+if (-not $repoDir) {
+    Write-Host "FATAL: no repo directory found. Tried: C:\po-watcher\ProjectOperations, C:\ProjectOperations2"
+    exit 1
+}
+Set-Location $repoDir
+if ((Get-Location).Path -ne $repoDir) {
+    Write-Host ("FATAL: Set-Location to " + $repoDir + " did not take; now at " + (Get-Location).Path)
+    exit 1
+}
+
 git fetch origin --quiet
 $board = (gh pr list --state open --json "number,title,mergeStateStatus,autoMergeRequest" | Out-String) | ConvertFrom-Json
 # NOTE: this loop variable is $openPr, NOT $pr. PowerShell variables are CASE-INSENSITIVE, so a

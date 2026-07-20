@@ -84,6 +84,5 @@ describe("ShellLayout nav — orphaned routes are reachable (QA S3-021)", () => 
     expect(tendering!.match!("/tenders")).toBe(true);
     expect(tendering!.match!("/tenders/contacts")).toBe(false);
     expect(tendering!.match!("/tenders/settings")).toBe(false);
-    expect(tendering!.match!("/tenders/dashboard")).toBe(false);
   });
 });

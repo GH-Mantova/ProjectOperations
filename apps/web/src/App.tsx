@@ -13,7 +13,6 @@ import { PermissionsPage } from "./pages/PermissionsPage";
 import { AuditLogsPage } from "./pages/AuditLogsPage";
 import { PlatformPage } from "./pages/PlatformPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
-import { TenderingDashboardPage } from "./pages/tendering/TenderingDashboardPage";
 import { TenderClientsPage } from "./pages/TenderClientsPage";
 import { TenderContactsPage } from "./pages/TenderContactsPage";
 import { TenderingSettingsPage } from "./pages/TenderingSettingsPage";
@@ -268,7 +267,6 @@ export function App() {
             <Route path="/scheduler/grid" element={<SchedulerGridPage />} />
             <Route path="/account/calendar-sync" element={<CalendarSyncPage />} />
             <Route path="/tenders" element={<TenderingPage />} />
-            <Route path="/tenders/dashboard" element={<TenderingDashboardPage />} />
             {/* Codex-era /pipeline + /workspace + /create wrappers were
                 retired in PR #78 alongside the Playwright spec rewrite. The
                 routes redirect to the redesigned register so older bookmarks

@@ -173,7 +173,6 @@ export const NAV_GROUPS: NavGroup[] = [
         match: (path) =>
           path === "/tenders" ||
           (path.startsWith("/tenders/") &&
-            !path.startsWith("/tenders/dashboard") &&
             !path.startsWith("/tenders/reports") &&
             !path.startsWith("/tenders/contacts") &&
             !path.startsWith("/tenders/settings"))
@@ -366,7 +365,6 @@ const BREADCRUMBS: Record<string, string> = {
   "/scheduler/grid": "Scheduler Grid",
   "/forms": "Forms",
   "/tenders": "Tendering",
-  "/tenders/dashboard": "Tender Dashboard",
   "/tenders/reports": "Tender Reports",
   "/tenders/contacts": "Tender Contacts",
   "/tenders/settings": "Tendering Settings",
@@ -541,18 +539,10 @@ export function ShellLayout() {
               to="/"
               end
               className={({ isActive }) => (isActive ? "shell__nav-link shell__nav-link--active" : "shell__nav-link")}
-              title={collapsed ? "Operations" : undefined}
+              title={collapsed ? "Home" : undefined}
             >
               <span className="shell__nav-icon">{ICON_DASHBOARD}</span>
-              <span className="shell__nav-label">Operations</span>
-            </NavLink>
-            <NavLink
-              to="/tenders/dashboard"
-              className={location.pathname.startsWith("/tenders/dashboard") ? "shell__nav-link shell__nav-link--active" : "shell__nav-link"}
-              title={collapsed ? "Tendering" : undefined}
-            >
-              <span className="shell__nav-icon">{ICON_DASHBOARD}</span>
-              <span className="shell__nav-label">Tendering</span>
+              <span className="shell__nav-label">Home</span>
             </NavLink>
             {customDashboards.map((d) => {
               const to = `/dashboards/${d.id}`;

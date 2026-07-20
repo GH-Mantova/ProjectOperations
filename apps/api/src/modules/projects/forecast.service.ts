@@ -84,7 +84,7 @@ export class ForecastService {
 
     const variancePct =
       budget.greaterThan(0)
-        ? variance.div(budget).mul(100).toDecimalPlaces(2).toString()
+        ? variance.div(budget).mul(100).toFixed(2)
         : null;
 
     return {

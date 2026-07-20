@@ -1,8 +1,11 @@
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { PlatformModule } from "../platform/platform.module";
+import { ProcurementModule } from "../procurement/procurement.module";
 import { DailyDiaryController } from "./daily-diary.controller";
 import { DailyDiaryService } from "./daily-diary.service";
+import { ForecastController } from "./forecast.controller";
+import { ForecastService } from "./forecast.service";
 import { GanttController } from "./gantt.controller";
 import { GanttService } from "./gantt.service";
 import { JpmController } from "./jpm.controller";
@@ -24,18 +27,22 @@ import { PunchItemsService } from "./punch-items.service";
  * `PlatformModule` (for the notifications + email services) as imports.
  * The two services are exported so they can be consumed by adjacent modules
  * (e.g. tender conversion).
+ *
+ * `ProcurementModule` is imported so that {@link ForecastService} can inject
+ * {@link CommitmentService} (which is exported from ProcurementModule).
  */
 @Module({
-  imports: [AuditModule, PlatformModule],
+  imports: [AuditModule, PlatformModule, ProcurementModule],
   controllers: [
     ProjectsController,
     GanttController,
     ProjectsTimelineController,
     JpmController,
     PunchItemsController,
-    DailyDiaryController
+    DailyDiaryController,
+    ForecastController
   ],
-  providers: [ProjectsService, GanttService, JpmService, PunchItemsService, DailyDiaryService],
-  exports: [ProjectsService, GanttService, JpmService, PunchItemsService, DailyDiaryService]
+  providers: [ProjectsService, GanttService, JpmService, PunchItemsService, DailyDiaryService, ForecastService],
+  exports: [ProjectsService, GanttService, JpmService, PunchItemsService, DailyDiaryService, ForecastService]
 })
 export class ProjectsModule {}

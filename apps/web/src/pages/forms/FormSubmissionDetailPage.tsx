@@ -116,9 +116,18 @@ function valueOf(submission: Submission, fieldKey: string): unknown {
   return undefined;
 }
 
-function renderValue(field: Field, value: unknown): React.ReactNode {
+function renderValue(
+  field: Field,
+  value: unknown,
+  siteNames?: Record<string, string>
+): React.ReactNode {
   if (value === null || value === undefined || value === "") {
     return <span style={{ color: "var(--text-muted)" }}>—</span>;
+  }
+  if (field.fieldType === "existing_site") {
+    const id = String(value);
+    const name = siteNames?.[id];
+    return name ? <span>{name}</span> : <span style={{ color: "var(--text-muted)" }}>{id}</span>;
   }
   switch (field.fieldType) {
     case "toggle":
@@ -248,6 +257,7 @@ export function FormSubmissionDetailPage() {
   const [openComment, setOpenComment] = useState<"approve" | "reject" | null>(null);
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
+  const [siteNames, setSiteNames] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -263,6 +273,34 @@ export function FormSubmissionDetailPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Only fetch the site directory when the template actually has an
+  // existing_site picker — most templates don't, so this keeps the detail
+  // page a single request.
+  useEffect(() => {
+    if (!submission) return;
+    const hasSitePicker = submission.templateVersion.sections.some((s) =>
+      s.fields.some((f) => f.fieldType === "existing_site")
+    );
+    if (!hasSitePicker) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await authFetch(`/forms/site-options`);
+        if (!res.ok) return;
+        const body = (await res.json()) as Array<{ id: string; name: string }>;
+        if (cancelled) return;
+        const map: Record<string, string> = {};
+        for (const s of body) map[s.id] = s.name;
+        setSiteNames(map);
+      } catch {
+        // Non-fatal — the detail page still renders the raw id.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [submission, authFetch]);
 
   if (error) {
     return (
@@ -362,7 +400,7 @@ export function FormSubmissionDetailPage() {
                 const v = valueOf(submission, field.fieldKey);
                 if (v === undefined || v === null || v === "") return null;
                 return (
-                  <FieldRow key={field.id} field={field} value={v} />
+                  <FieldRow key={field.id} field={field} value={v} siteNames={siteNames} />
                 );
               })}
           </dl>
@@ -578,11 +616,19 @@ function ScoreBanner({ submission }: { submission: Submission }) {
   );
 }
 
-function FieldRow({ field, value }: { field: Field; value: unknown }) {
+function FieldRow({
+  field,
+  value,
+  siteNames
+}: {
+  field: Field;
+  value: unknown;
+  siteNames?: Record<string, string>;
+}) {
   return (
     <>
       <dt style={{ color: "var(--text-muted)", fontSize: 12 }}>{field.label}</dt>
-      <dd style={{ margin: 0, fontSize: 13 }}>{renderValue(field, value)}</dd>
+      <dd style={{ margin: 0, fontSize: 13 }}>{renderValue(field, value, siteNames)}</dd>
     </>
   );
 }

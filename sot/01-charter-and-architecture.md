@@ -312,43 +312,56 @@ PORTAL_PUBLIC_URL=
 ## SECTION 9 — SIDEBAR NAVIGATION (definitive — do not deviate)
 
 ```
-COMMERCIAL
-  Tendering          → /tenders/pipeline
-  Contracts          → /contracts
+1. DASHBOARDS
+   Home                 → /
 
-OPERATIONS
-  Projects           → /projects
-  Jobs               → /jobs
-  Scheduler          → /scheduler
-  Sites              → /sites
-  Assets             → /assets
-  Maintenance        → /maintenance
-  Forms              → /forms
-  Safety             → /safety
+2. ESTIMATING
+   Tenders              → /tenders
+   Contracts            → /contracts
+   Tender Settings      → /tenders/settings
+   Directory            → /directory
+                          (tabs: Clients | Subcontractors & Suppliers | Contacts)
+   Rates & Lists        → /admin/rates-lists
+   Reports              → /tenders/reports
+   Variations           → (future)
+
+3. PROJECTS
+   Jobs                 → /jobs   (merged Jobs+Projects; label "Jobs")
+   Sites                → /sites
+
+4. OPERATIONS
+   Scheduler            → /scheduler
+                          (view tabs: Board | Grid | Availability)
+   Assets & Equipment   → Assets | Inventory | Maintenance
+   Procurement          → /procurement
+
+5. HR
+   Workers              → /workers   (absorbs /resources)
+   Payroll Export       → /timesheets/payroll-export
+   Timesheet Approval   → /timesheets/approval
+
+6. SAFETY & COMPLIANCE
+   Safety               → /safety
+   Compliance           → /compliance
+   Forms                → /forms
+   Documents            → /documents   (Archived tab folds /archive)
+
+7. SETTINGS  (role-gated)
+   Personal:            Account | Notifications | Calendar sync
+   Company:             Company | AI Settings | Data Model
+   Administration (admin/super only):
+                        Users | Roles | Permissions | Audit | Platform | Job Roles
 
 FIELD (FieldLayout, mobile only — bottom nav)
   Allocations        → /field/allocations
   Pre-start          → /field/pre-start
   Timesheet          → /field/timesheet
   Safety             → /field/safety
-
-DIRECTORY
-  Clients            → /clients
-  Subcontractors     → /directory/subcontractors
-                       (label: "Subcontractors & Suppliers" — truncate to "Subcontractors"
-                        in sidebar if needed, full label in page header)
-  Contacts           → /directory/contacts
-
-PLATFORM
-  Dashboard          → /dashboards  (+ button creates new dashboard)
-  Compliance         → /compliance
-  Documents          → /documents
-  Archive            → /archive
-
-ADMIN (Admin + Super User only — hidden for all other roles)
-  Admin Settings     → /admin/settings
-  Rates & Lists      → /admin/estimate-rates
 ```
+
+> Implementation is staged separately. Deletions of `/tenders/dashboard`, the two seeded
+> dashboards, and `/admin/estimate-rates` are tracked as follow-ups — this section defines
+> the target IA, not the migration order.
 
 ---
 

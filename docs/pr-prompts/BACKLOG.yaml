@@ -61,6 +61,27 @@ items:
   # Its gate had released (quote-PDF fix on main) and it was the only clean, un-staged ready item.
   # -------------------------------------------------------------------------------------------
 
+  - id: flaky-batch3-plant-pills
+    title: "Fix the plant-pills e2e race and un-quarantine the spec"
+    priority: P2
+    why: >
+      tests/e2e/pr-acceptance/batch3-scope-items.spec.ts "plant pills: add a plant cluster, set
+      qty/days, remove it" is CONFIRMED FLAKY, not failing: on 2026-07-19 it failed and then passed
+      on the IDENTICAL sha, on a docs-only PR that could not have affected it. tendering-e2e is a
+      required status check on a serialised (no merge queue, strict) main, so a single flake there
+      blocks EVERY queued PR, not just its own. Marco's decision 2026-07-20 was to QUARANTINE the
+      one spec and track the real fix here - not to add retries and not to weaken branch protection.
+      The suspected cause is the same class as the sites post-delete race: an assertion that proceeds
+      before the list has settled. The real work is fixing that race, then removing the test.skip.
+    gate: '! grep -q "test.skip(\"plant pills" tests/e2e/pr-acceptance/batch3-scope-items.spec.ts'
+    gate_means: The quarantine is no longer in place - the spec is running again, so either someone fixed the race or the skip was lost and this needs attention.
+    needs_marco: false
+    marco_note: >
+      DECIDED 2026-07-20 (Marco): quarantine the single spec, keep tendering-e2e required, no blanket
+      Playwright retries, no branch-protection change. Re-enable ONLY with a fix for the underlying
+      race, as its own reviewable PR.
+    order: 6
+
   - id: swms-interactive-module
     title: "Interactive SWMS module Ã”Ã‡Ã¶ office wizard + control-mapping tool"
     priority: P3

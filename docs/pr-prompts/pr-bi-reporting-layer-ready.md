@@ -11,10 +11,9 @@ gate_allow: none
 seed_only: false
 escalates: false
 ---
-<!-- watcher: arm-eligible | D365-parity Tier 3 (Power BI-class reporting) | slice 1 -->
-# HOLD — BI / reporting layer (slice 1)
+# BI / reporting layer (slice 1)
 
-STATUS: DRAFTED, STAGED, arm-eligible. Tier 3. Today analytics are per-module dashboard widgets;
+STATUS: ARMED - RUN NOW.
 this adds a cross-module reporting surface (the Power-BI-class gap), slice 1.
 
 ## What to build

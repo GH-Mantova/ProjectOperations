@@ -113,7 +113,11 @@ export const permissionRegistry = [
   // knowledge.view allows reading PUBLISHED articles; knowledge.manage adds
   // DRAFT visibility plus create, update, publish, and delete.
   { code: "knowledge.view", module: "knowledge", label: "View published KB articles", description: "Browse and search the internal Knowledge Base — published articles only" },
-  { code: "knowledge.manage", module: "knowledge", label: "Create and manage KB articles", description: "Create, edit, publish and delete KB articles (including drafts)" }
+  { code: "knowledge.manage", module: "knowledge", label: "Create and manage KB articles", description: "Create, edit, publish and delete KB articles (including drafts)" },
+  // Reporting / BI layer (slice 1). Cross-module read-only report surface,
+  // aggregating existing tables. Sits beside per-module dashboard widgets —
+  // this is the tabular/exportable side (Excel / CSV / PDF).
+  { code: "reporting.view", module: "reporting", label: "View cross-module reports", description: "View and export the cross-module reporting surface (pipeline, win-rate, jobs, competency expiry, asset utilisation)" }
 ] as const;
 
 export type PermissionRegistryEntry = (typeof permissionRegistry)[number];

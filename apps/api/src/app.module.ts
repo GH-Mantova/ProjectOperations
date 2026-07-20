@@ -67,6 +67,7 @@ import { ExpensesModule } from "./modules/expenses/expenses.module";
 import { SurveysModule } from "./modules/surveys/surveys.module";
 import { CasesModule } from "./modules/cases/cases.module";
 import { KnowledgeModule } from "./modules/knowledge/knowledge.module";
+import { ReportingModule } from "./modules/reporting/reporting.module";
 
 @Module({
   imports: [
@@ -140,7 +141,8 @@ import { KnowledgeModule } from "./modules/knowledge/knowledge.module";
     ExpensesModule,
     SurveysModule,
     CasesModule,
-    KnowledgeModule
+    KnowledgeModule,
+    ReportingModule
   ]
 })
 export class AppModule {}

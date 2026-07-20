@@ -36,17 +36,18 @@ export function TenderingSettingsPage() {
           </p>
         </div>
         <form
-          className="admin-form"
           onSubmit={(event) => {
             event.preventDefault();
             writeTenderingLabels(labels);
             setSavedAt(new Date().toLocaleTimeString());
           }}
+          style={{ display: "grid", gap: 14 }}
         >
           {entries.map(([key, value]) => (
-            <label key={key}>
-              <span>{key}</span>
+            <label key={key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{key}</span>
               <input
+                className="s7-input"
                 value={labels[key as keyof typeof labels]}
                 onChange={(event) =>
                   setLabels((current) => ({
@@ -59,9 +60,13 @@ export function TenderingSettingsPage() {
             </label>
           ))}
           <div className="inline-fields">
-            <button type="submit">Save labels</button>
+            <button type="submit" className="s7-btn s7-btn--primary" style={{ minHeight: 40 }}>
+              Save labels
+            </button>
             <button
               type="button"
+              className="s7-btn s7-btn--ghost"
+              style={{ minHeight: 40 }}
               onClick={() => {
                 setLabels(defaultTenderingLabels);
                 writeTenderingLabels(defaultTenderingLabels);

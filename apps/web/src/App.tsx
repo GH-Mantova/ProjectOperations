@@ -96,6 +96,8 @@ import { PortalDocumentsPage } from "./portal/pages/PortalDocumentsPage";
 import { PortalAccountPage } from "./portal/pages/PortalAccountPage";
 import { CasesListPage } from "./pages/cases/CasesListPage";
 import { CaseDetailPage } from "./pages/cases/CaseDetailPage";
+import { KbListPage } from "./pages/knowledge/KbListPage";
+import { KbArticlePage } from "./pages/knowledge/KbArticlePage";
 import { ReportsPage } from "./pages/reports/ReportsPage";
 import { OfflineProvider } from "./offline/OfflineContext";
 import { OfflineIndicator } from "./offline/OfflineIndicator";
@@ -341,6 +343,8 @@ export function App() {
             <Route path="/safety" element={<SafetyPage />} />
             <Route path="/cases" element={<CasesListPage />} />
             <Route path="/cases/:id" element={<CaseDetailPage />} />
+            <Route path="/knowledge" element={<KbListPage />} />
+            <Route path="/knowledge/:id" element={<KbArticlePage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/directory/subcontractors" element={<SubcontractorsPage />} />
             <Route path="/directory/contacts" element={<ContactsPage />} />

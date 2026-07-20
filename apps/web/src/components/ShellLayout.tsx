@@ -297,7 +297,16 @@ export const NAV_GROUPS: NavGroup[] = [
         match: (path) => path.startsWith("/compliance"),
         badge: "compliance"
       },
-      { to: "/archive", label: "Archive", icon: ICON_ARCHIVE, match: (path) => path.startsWith("/archive") }
+      { to: "/archive", label: "Archive", icon: ICON_ARCHIVE, match: (path) => path.startsWith("/archive") },
+      {
+        // Cross-module BI reporting layer (reporting slice 1). Sits under
+        // Platform beside dashboards — this is the tabular/exportable side.
+        to: "/reports",
+        label: "Reports",
+        icon: ICON_AUDIT,
+        match: (path) => path.startsWith("/reports"),
+        requiresPermission: "reporting.view"
+      }
     ]
   },
   {
@@ -365,6 +374,7 @@ const BREADCRUMBS: Record<string, string> = {
   "/master-data": "Master Data",
   "/documents": "Documents",
   "/archive": "Archive",
+  "/reports": "Reports",
   "/account": "My account",
   "/account/calendar-sync": "Calendar Sync",
   "/notifications": "Notifications",

@@ -1316,6 +1316,8 @@ function FieldInput({
       return <PhotoInput value={value as string[] | null} onChange={onChange} maxCount={Number(config.maxCount ?? 5)} />;
     case "lookup":
       return <LookupInput field={field} value={value} onChange={onChange} />;
+    case "existing_site":
+      return <ExistingSiteInput field={field} value={value} onChange={onChange} />;
     case "calculation":
       return <CalculationDisplay field={field} />;
     case "table":
@@ -1650,6 +1652,72 @@ function LookupInput({
         {items.map((it) => (
           <option key={it.id} value={it.value}>
             {it.label}
+          </option>
+        ))}
+      </select>
+      {error ? (
+        <p style={{ fontSize: 11, color: "var(--status-danger, #DC2626)", marginTop: 4 }}>{error}</p>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * Existing site picker — dropdown of Site rows sourced from the forms
+ * engine (`GET /forms/site-options`). Value stored on the submission is
+ * the Site.id string; required-field enforcement is handled by the
+ * generic `fieldRequired && isEmpty` check in `validateSection` and by
+ * the server's `validateExistingSiteValues` at submit time.
+ */
+function ExistingSiteInput({
+  field,
+  value,
+  onChange
+}: {
+  field: Field;
+  value: unknown;
+  onChange: (v: unknown) => void;
+}) {
+  const { authFetch } = useAuth();
+  const [sites, setSites] = useState<Array<{ id: string; name: string }>>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    (async () => {
+      try {
+        const res = await authFetch(`/forms/site-options`);
+        if (!res.ok) throw new Error(`Could not load sites`);
+        const body = (await res.json()) as Array<{ id: string; name: string }>;
+        if (!cancelled) setSites(body);
+      } catch (err) {
+        if (!cancelled) setError((err as Error).message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch]);
+
+  return (
+    <>
+      <select
+        className="s7-input"
+        value={(value as string) ?? ""}
+        onChange={(e) => onChange(e.target.value || null)}
+        disabled={loading}
+        style={{ width: "100%", fontSize: 14, padding: 10 }}
+        aria-label={field.label}
+      >
+        <option value="">{loading ? "Loading…" : "Select a site…"}</option>
+        {sites.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.name}
           </option>
         ))}
       </select>

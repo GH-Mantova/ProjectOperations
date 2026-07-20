@@ -4,6 +4,7 @@ import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { ErrorBoundary } from "../../components/ErrorBoundary";
 import { CorrespondencePanel } from "../../components/correspondence/CorrespondencePanel";
+import { Timeline } from "../../components/timeline/Timeline";
 import { PunchTab } from "../../components/punch/PunchTab";
 import { AssistPanel, useCanUseAssist } from "../../components/AssistPanel";
 
@@ -762,6 +763,12 @@ export function JobDetailPage() {
         </section>
         </ErrorBoundary>
       ) : null}
+
+      <ErrorBoundary sectionName="Timeline">
+        <section className="s7-card">
+          <Timeline entityType="Job" entityId={job.id} />
+        </section>
+      </ErrorBoundary>
 
       <ErrorBoundary sectionName="Correspondence">
         <section className="s7-card">

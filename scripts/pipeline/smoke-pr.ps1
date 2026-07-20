@@ -34,6 +34,16 @@ function Die($msg, $code) { Write-Output ""; Write-Output ("SMOKE FAILED: " + $m
 Step ("smoking branch: " + $Branch)
 
 # --- isolated worktree. NEVER smoke in Marco's tree or the watcher's clone. -------------
+# Test for .git, NOT the directory. `git worktree prune` removes the REGISTRATION but leaves the
+# FILES behind, so a bare `Test-Path $Worktree` sees a directory, skips creation, and the script
+# then Set-Location's into something git does not recognise. Every later git call dies with
+# "fatal: not a git repository" and the run ends on the misleading
+# "worktree is on '', not '<branch>'". Clear the orphan and rebuild it.
+if ((Test-Path $Worktree) -and -not (Test-Path (Join-Path $Worktree ".git"))) {
+    Step ("removing ORPHANED " + $Worktree + " (directory present, no .git - pruned registration)")
+    Remove-Item $Worktree -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path $Worktree) { Die ("could not remove orphaned worktree " + $Worktree + " - remove it by hand and re-run") 1 }
+}
 if (-not (Test-Path $Worktree)) {
     Step ("creating worktree " + $Worktree)
     git -C "C:\ProjectOperations2" worktree add $Worktree $Branch 2>&1 | ForEach-Object { Write-Output ("    " + $_) }
@@ -70,6 +80,34 @@ if (-not (Test-Path $DstApi) -or -not $hasDbUrl) {
     Die "SMOKE-ENV-MISSING: could not provision .env into the smoke worktree from $MainTree - the smoke result would be meaningless, refusing to continue." 1
 }
 Step ("provisioned .env from " + $MainTree + " (root=" + (Test-Path $DstRoot) + ", apps/api=" + (Test-Path $DstApi) + ")")
+# --- repoint this run at its OWN database. -----------------------------------------------
+# The .env just copied points DATABASE_URL at the developer's LIVE dev database. Running
+# migrate + seed against that mutates real local data, which is precisely why smoking a
+# branch was a hard stop for every agent and why UI PRs piled up unsmoked. The smoke owns
+# $SmokeDb outright: it may be migrated, seeded and truncated freely because nothing else
+# reads it. If the rewrite cannot be proven, ABORT - never silently smoke the dev database.
+$SmokeDb = if ($env:SMOKE_DATABASE_NAME) { $env:SMOKE_DATABASE_NAME } else { "project_operations_smoke" }
+$repointed = $false
+foreach ($envFile in @($DstRoot, $DstApi)) {
+    if (-not (Test-Path $envFile)) { continue }
+    $newLines = @()
+    foreach ($line in (Get-Content $envFile)) {
+        if ($line -match '^(DATABASE_URL=.*/)([^/?]+)(\?.*)?$') {
+            $prefix = $Matches[1]
+            $suffix = ""
+            if ($Matches.Count -ge 4 -and $Matches[3]) { $suffix = $Matches[3] }
+            $newLines += ($prefix + $SmokeDb + $suffix)
+            $repointed = $true
+        } else {
+            $newLines += $line
+        }
+    }
+    Set-Content -Path $envFile -Value $newLines -Encoding ASCII
+}
+if (-not $repointed) {
+    Die "SMOKE-DB-REPOINT-FAILED: no DATABASE_URL line could be rewritten to $SmokeDb - refusing to smoke against the developer database." 1
+}
+Step ("smoke DB: " + $SmokeDb + " (developer database untouched)")
 
 # --- build. A smoke against a stale dist/ proves nothing. --------------------------------
 Step "pnpm install"
@@ -88,8 +126,22 @@ pnpm lint 2>&1 | Select-Object -Last 3 | ForEach-Object { Write-Output ("    " +
 if ($LASTEXITCODE -ne 0) { Die "pnpm lint failed" 1 }
 
 # --- migrate + seed. Seeded users are how we log in; there is no real identity here. -----
-Step "prisma migrate + seed"
-pnpm prisma:migrate 2>&1 | Select-Object -Last 3 | ForEach-Object { Write-Output ("    " + $_) }
+# Use `migrate deploy`, NOT `pnpm prisma:migrate` (which is `migrate dev`). `migrate dev` is
+# INTERACTIVE: in a headless harness nobody answers its prompt, so it exits 130 and the run
+# reads as "this branch is broken" when the truth is "the harness asked a question". deploy
+# is forward-only and non-interactive.
+#
+# The exit code is checked HERE. It previously was not: the only check sat after `pnpm seed`,
+# so `` referred to the seed and ANY migrate failure was silently swallowed.
+Step "prisma migrate deploy (smoke DB)"
+# `prisma` is a dependency of the API workspace ONLY - there is no prisma binary in the repo-root
+# node_modules/.bin, so a bare `pnpm exec prisma` from the root dies with ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL
+# ("'prisma' is not recognized"). Filter to the api workspace so pnpm resolves apps/api's own binary;
+# the schema then resolves from that package and needs no --schema flag.
+pnpm --filter @project-ops/api exec prisma migrate deploy 2>&1 | Select-Object -Last 5 | ForEach-Object { Write-Output ("    " + $_) }
+if ($LASTEXITCODE -ne 0) { Die "SMOKE-MIGRATE-FAILED: prisma migrate deploy failed against $SmokeDb - fix the migration; do NOT re-run blind" 1 }
+
+Step "seed"
 pnpm seed 2>&1 | Select-Object -Last 3 | ForEach-Object { Write-Output ("    " + $_) }
 if ($LASTEXITCODE -ne 0) { Die "seed failed - every e2e login depends on it" 1 }
 

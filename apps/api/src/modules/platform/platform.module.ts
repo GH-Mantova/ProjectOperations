@@ -27,6 +27,8 @@ import { ProcessFlowsService } from "./process-flows.service";
 import { AutomationsController } from "./automations.controller";
 import { AutomationsService } from "./automations.service";
 import { AutomationEngineService } from "./automation-engine.service";
+import { TimelineController } from "./timeline.controller";
+import { TimelineService } from "./timeline.service";
 import { SavedViewsController } from "./saved-views.controller";
 import { SavedViewsService } from "./saved-views.service";
 
@@ -46,6 +48,7 @@ import { SavedViewsService } from "./saved-views.service";
     AiProvidersController,
     TenderProcessFlowController,
     AutomationsController,
+    TimelineController,
     SavedViewsController
   ],
   providers: [
@@ -75,6 +78,7 @@ import { SavedViewsService } from "./saved-views.service";
     ProcessFlowsService,
     AutomationEngineService,
     AutomationsService,
+    TimelineService,
     SavedViewsService
   ],
   exports: [
@@ -86,7 +90,8 @@ import { SavedViewsService } from "./saved-views.service";
     UserDashboardsService,
     PlatformConfigService,
     ProcessFlowsService,
-    AutomationEngineService
+    AutomationEngineService,
+    TimelineService
   ]
 })
 export class PlatformModule {}

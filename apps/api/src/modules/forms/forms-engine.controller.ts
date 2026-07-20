@@ -251,6 +251,19 @@ export class FormsEngineController {
   }
 
   /**
+   * Lightweight site directory for the "existing_site" form field type —
+   * `{ id, name }[]` ordered by name. Gated on `forms.submit` so form
+   * fillers can populate the picker without holding `masterdata.view`.
+   */
+  @Get("site-options")
+  @RequirePermissions("forms.submit")
+  @ApiOperation({ summary: "List sites (id, name) for the existing_site form field picker." })
+  @ApiResponse({ status: 200, description: "Array of { id, name } ordered by name." })
+  siteOptions() {
+    return this.engine.getSiteOptions();
+  }
+
+  /**
    * Dashboard widget aggregate — number of pre-start submissions logged
    * today (server-local calendar day). "Expected" denominator is DEFERRED
    * to B-P0c; this returns count-only by design.

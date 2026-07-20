@@ -456,6 +456,15 @@ export class FormsEngineService {
       throw new UnprocessableEntityException({ errors: validation.errors });
     }
 
+    // 1b. Referential validation for existing_site picker fields. The rule
+    // engine only knows types + required; whether the chosen Site.id is real
+    // must be checked against the Site table. Runs after the pure validation
+    // so its errors surface with the same 422 shape.
+    const siteErrors = await this.validateExistingSiteValues(template, merged);
+    if (Object.keys(siteErrors).length > 0) {
+      throw new UnprocessableEntityException({ errors: siteErrors });
+    }
+
     // 2. Compliance gates
     const gateResult = await this.rules.checkComplianceGates(
       { category: template.template.category, settings },
@@ -1216,6 +1225,61 @@ export class FormsEngineService {
       else if (r.valueJson !== null) out[r.fieldKey] = r.valueJson;
     }
     return out;
+  }
+
+  /**
+   * Lightweight site directory for the "existing_site" form field type —
+   * returns `{ id, name }` for every Site row, ordered by name.
+   *
+   * Exposed on the forms engine (gated `forms.submit`) so form fillers can
+   * populate the picker without needing the broader `masterdata.view`
+   * permission required by `/master-data/sites`.
+   */
+  async getSiteOptions(): Promise<Array<{ id: string; name: string }>> {
+    return this.prisma.site.findMany({
+      select: { id: true, name: true },
+      orderBy: { name: "asc" }
+    });
+  }
+
+  /**
+   * Validate submitted values for every `existing_site` field against the
+   * Site table — non-empty values must resolve to a real `Site.id`.
+   * Empty/missing values are left to the pure required-field check.
+   *
+   * Returns a map of fieldKey → human-readable error, empty when all values
+   * are valid. Runs one DB query total, no matter how many pickers a
+   * template has.
+   */
+  private async validateExistingSiteValues(
+    template: { sections?: Array<{ fields?: Array<{ fieldKey: string; label: string; fieldType: string }> }> },
+    values: ValueMap
+  ): Promise<Record<string, string>> {
+    const targets: Array<{ fieldKey: string; label: string; siteId: string }> = [];
+    for (const section of template.sections ?? []) {
+      for (const field of section.fields ?? []) {
+        if (field.fieldType !== "existing_site") continue;
+        const raw = values[field.fieldKey];
+        if (raw === undefined || raw === null || raw === "") continue;
+        targets.push({ fieldKey: field.fieldKey, label: field.label, siteId: String(raw) });
+      }
+    }
+    if (targets.length === 0) return {};
+
+    const ids = Array.from(new Set(targets.map((t) => t.siteId)));
+    const rows = await this.prisma.site.findMany({
+      where: { id: { in: ids } },
+      select: { id: true }
+    });
+    const found = new Set(rows.map((r) => r.id));
+
+    const errors: Record<string, string> = {};
+    for (const t of targets) {
+      if (!found.has(t.siteId)) {
+        errors[t.fieldKey] = `${t.label} must be an existing site.`;
+      }
+    }
+    return errors;
   }
 
   private shapeValue(fieldType: string, raw: unknown) {

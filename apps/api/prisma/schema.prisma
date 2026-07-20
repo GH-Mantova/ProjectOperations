@@ -196,6 +196,9 @@ model User {
   casesAssigned        Case[]        @relation("CaseAssignedTo")
   caseCommentsAuthored CaseComment[] @relation("CaseCommentAuthor")
 
+  // Knowledge Base / SOP library (slice 2 — KB articles authored by this user).
+  kbArticlesAuthored KbArticle[] @relation("KbArticleAuthor")
+
   // Universal activity Timeline — every note/system entry a user authors.
   activityEntriesAuthored   ActivityEntry[]    @relation("ActivityEntryAuthor")
 
@@ -6018,4 +6021,34 @@ model AutomationRuleRun {
   @@index([ruleId, createdAt])
   @@index([entity, entityId])
   @@map("automation_rule_runs")
+}
+
+// ── Knowledge Base / SOP Library (case management slice 2) ──────────────────
+// Internal-only library of asbestos procedures, safe work methods, common
+// defect fixes, and how-tos. Not portal-facing. Authors draft articles;
+// knowledge.manage holders can publish them.
+
+enum KbArticleStatus {
+  DRAFT
+  PUBLISHED
+}
+
+model KbArticle {
+  id       String          @id @default(cuid())
+  title    String
+  body     String
+  category String
+  tags     String[]        @default([])
+  status   KbArticleStatus @default(DRAFT)
+
+  authorId String @map("author_id")
+  author   User   @relation("KbArticleAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([category])
+  @@index([authorId])
+  @@map("kb_articles")
 }

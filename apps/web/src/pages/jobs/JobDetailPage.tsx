@@ -119,6 +119,20 @@ type CommitmentBudgetSummary = {
   commitments: CommitmentSummaryItem[];
 };
 
+type CostForecast = {
+  jobId: string;
+  budgetSource: "project" | "unset";
+  budget: string;
+  committed: string;
+  actualInvoiced: string;
+  actualExpenses: string;
+  actualToDate: string;
+  remainingCommitted: string;
+  forecastAtCompletion: string;
+  variance: string;
+  variancePct: string | null;
+};
+
 type DocumentItem = {
   id: string;
   title: string;
@@ -195,6 +209,7 @@ export function JobDetailPage() {
   const [expandedStages, setExpandedStages] = useState<Set<string>>(new Set());
   const [documents, setDocuments] = useState<DocumentItem[] | null>(null);
   const [commitmentSummary, setCommitmentSummary] = useState<CommitmentBudgetSummary | null>(null);
+  const [costForecast, setCostForecast] = useState<CostForecast | null>(null);
   const [assistOpen, setAssistOpen] = useState(false);
   const canUseAssist = useCanUseAssist();
 
@@ -252,6 +267,23 @@ export function JobDetailPage() {
       }
       const data = (await response.json()) as CommitmentBudgetSummary;
       if (!cancelled) setCommitmentSummary(data);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, id, authFetch]);
+
+  useEffect(() => {
+    if (tab !== "commitments" || !id) return;
+    let cancelled = false;
+    (async () => {
+      const response = await authFetch(`/projects/jobs/${id}/cost-to-complete`);
+      if (!response.ok) {
+        // On error leave as null — the section will stay hidden gracefully
+        return;
+      }
+      const data = (await response.json()) as CostForecast;
+      if (!cancelled) setCostForecast(data);
     })();
     return () => {
       cancelled = true;
@@ -642,6 +674,56 @@ export function JobDetailPage() {
             <Skeleton width="60%" height={14} />
           ) : (
             <>
+              {costForecast !== null ? (
+                <div className="job-detail__overview" style={{ marginBottom: 20 }}>
+                  <div className="s7-card job-detail__overview-kpi">
+                    <span className="s7-type-label">Budget</span>
+                    <strong className="job-detail__overview-value">
+                      {formatCurrency(costForecast.budget)}
+                    </strong>
+                    {costForecast.budgetSource === "unset" ? (
+                      <span className="s7-type-meta" style={{ color: "var(--s7-color-text-muted, #888)", fontSize: "0.75rem" }}>
+                        No linked project
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="s7-card job-detail__overview-kpi">
+                    <span className="s7-type-label">Actual to date</span>
+                    <strong className="job-detail__overview-value">
+                      {formatCurrency(costForecast.actualToDate)}
+                    </strong>
+                  </div>
+                  <div className="s7-card job-detail__overview-kpi">
+                    <span className="s7-type-label">Committed</span>
+                    <strong className="job-detail__overview-value">
+                      {formatCurrency(costForecast.committed)}
+                    </strong>
+                  </div>
+                  <div className="s7-card job-detail__overview-kpi">
+                    <span className="s7-type-label">Forecast at completion</span>
+                    <strong className="job-detail__overview-value">
+                      {formatCurrency(costForecast.forecastAtCompletion)}
+                    </strong>
+                  </div>
+                  <div className="s7-card job-detail__overview-kpi">
+                    <span className="s7-type-label">Variance</span>
+                    <strong
+                      className="job-detail__overview-value"
+                      style={{ color: Number(costForecast.variance) < 0 ? "var(--s7-color-danger, #c0392b)" : "var(--s7-color-success, #27ae60)" }}
+                    >
+                      {formatCurrency(costForecast.variance)}
+                    </strong>
+                    {costForecast.variancePct !== null ? (
+                      <span
+                        className={Number(costForecast.variance) < 0 ? "s7-badge s7-badge--danger" : "s7-badge s7-badge--active"}
+                        style={{ marginTop: 4 }}
+                      >
+                        {Number(costForecast.variance) < 0 ? "" : "+"}{costForecast.variancePct}%
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
               <div className="job-detail__overview" style={{ marginBottom: 20 }}>
                 <div className="s7-card job-detail__overview-kpi">
                   <span className="s7-type-label">Committed (incl. drafts)</span>

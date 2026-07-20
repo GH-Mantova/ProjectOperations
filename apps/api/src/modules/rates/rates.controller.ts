@@ -1,5 +1,27 @@
-import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Res, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiProduces, ApiResponse, ApiTags } from "@nestjs/swagger";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Res,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors
+} from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
+import {
+  ApiBearerAuth,
+  ApiConsumes,
+  ApiOperation,
+  ApiProduces,
+  ApiResponse,
+  ApiTags
+} from "@nestjs/swagger";
 import type { Response } from "express";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
@@ -10,9 +32,11 @@ import { CreateRateTableDto } from "./dto/create-rate-table.dto";
 import { UpdateRateTableDto } from "./dto/update-rate-table.dto";
 import { CreateRateColumnDto, UpdateRateColumnDto } from "./dto/rate-column.dto";
 import { CreateRateRowDto, UpdateRateRowDto } from "./dto/rate-row.dto";
+import { RatesImportApplyDto } from "./dto/rates-import.dto";
 import { RateTablesService } from "./rate-tables.service";
 import { RateResolverService } from "./rate-resolver.service";
 import { RatesExportService } from "./rates-export.service";
+import { RatesImportService } from "./rates-import.service";
 
 const PLATFORM_ADMIN = "platform.admin";
 
@@ -24,7 +48,8 @@ export class RatesController {
   constructor(
     private readonly tables: RateTablesService,
     private readonly resolver: RateResolverService,
-    private readonly exporter: RatesExportService
+    private readonly exporter: RatesExportService,
+    private readonly importer: RatesImportService
   ) {}
 
   // ── Export ───────────────────────────────────────────────────────────
@@ -46,6 +71,36 @@ export class RatesController {
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.setHeader("Content-Length", String(buffer.length));
     res.end(buffer);
+  }
+
+  // ── Import (round-trip half 2) ───────────────────────────────────────
+
+  @Post("import/preview")
+  @RequirePermissions("rates.manage")
+  @UseInterceptors(FileInterceptor("file"))
+  @ApiConsumes("multipart/form-data")
+  @ApiOperation({
+    summary:
+      "Parse an edited rates workbook and return a preview diff (add / change / no-change per surface). Writes NOTHING."
+  })
+  @ApiResponse({ status: 200, description: "Preview diff with operations for /import/apply." })
+  @ApiResponse({ status: 400, description: "No file, wrong file type, or corrupt workbook." })
+  async importPreview(@UploadedFile() file?: Express.Multer.File) {
+    if (!file || !file.buffer || file.buffer.length === 0) {
+      throw new BadRequestException("Upload an .xlsx file in the 'file' field.");
+    }
+    return this.importer.preview(file.buffer);
+  }
+
+  @Post("import/apply")
+  @RequirePermissions("rates.manage")
+  @ApiOperation({
+    summary:
+      "Apply the operations from /import/preview. Idempotent — a re-run with unchanged data is a no-op."
+  })
+  @ApiResponse({ status: 200, description: "Counts of adds/updates per surface." })
+  async importApply(@Body() dto: RatesImportApplyDto) {
+    return this.importer.apply(dto.operations ?? []);
   }
 
   // ── Tables ───────────────────────────────────────────────────────────

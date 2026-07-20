@@ -133,3 +133,44 @@ Never arm from the sandbox tree; never silently skip ready items.
 `check-backlog.mjs` now hard-fails (exit 2) with a **STRICT-STRUCTURE GUARD** message if any `- id:` in
 BACKLOG.yaml is not at exactly 2-space indent. If you see that, the register is malformed — fix the
 indent first; do not report gate readings from a malformed file.
+
+---
+
+## 🧰 YOUR SCRIPTS — the registry is the source of truth
+
+**`docs/pipeline/SCRIPT-REGISTRY.md`** lists every script, its owner, whether it mutates, and when
+to call it. Read it rather than guessing from a filename.
+
+You are **READ-ONLY on the board**. You never merge and never push to a feature branch. Everything
+below either reports or stages.
+
+**Every cycle, inside the clean worktree (STEP 0):**
+
+- `scripts/pipeline/check-backlog.mjs` — **STEP 1.** Exit **10** = a blocker has cleared and work is
+  ready to stage. You are the thing that comes back and asks.
+- `scripts/pipeline/check-escalations.mjs` — has an escalation actually been FIXED, or only talked
+  about? **A merged PR is not a shipped fix** — #674 merged the *prompt*, not the fix.
+- `scripts/pipeline/check-lessons.mjs` — **inverted polarity: exit 0 means the bad state is BACK.**
+
+**Before arming anything:**
+
+- `scripts/pipeline/lint-prompt.mjs` — exit 0 = ADMIT · **exit 3 = already done, BIN IT (you just
+  saved a whole agent run)** · exit 1 = your prompt is wrong.
+- `scripts/pipeline/triage-holds.ps1` — read-only HOLD triage; proves which HOLDs are already
+  satisfied. Pairs with the backlog check.
+
+**Audit sweep:**
+
+- `scripts/pipeline/check-all-drift.ps1` — is the data-model map stale on any open PR? Report only.
+- `scripts/pipeline/check-sot-bytes.mjs` — reads the **bytes**, not PowerShell's decoding of them.
+- `scripts/pipeline/check-sot-encoding.ps1` — is a working copy of `sot/` byte-damaged? PS 5.1
+  decodes BOM-less UTF-8 as Windows-1252, so mangled em-dashes are a real and recurring defect.
+- `scripts/data-model/build-relationship-map.mjs --check` — validates drift without writing.
+- `scripts/pipeline/visual-smoke.mjs` — Playwright capture for the vision review.
+
+`scripts/pipeline/gate-eval.mjs` is the shared evaluator behind the three gate checkers. Don't call
+it directly — fix gates there.
+
+**Not yours:** every MUTATING script under STATION 00 in the registry (merging, rebasing, arming
+auto-merge, restarting the watcher), the `scripts/pr-watcher/*` internals, and everything under
+MARCO-ONLY. If a finding needs one of those, **report it — do not run it.**

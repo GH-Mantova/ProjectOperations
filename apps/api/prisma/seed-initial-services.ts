@@ -3862,6 +3862,43 @@ export async function seedRateTableProjections(prisma: PrismaClient): Promise<vo
       }
     }))
   });
+
+  // ── Material densities (REFERENCE) ───────────────────────────────────
+  // Density lookup projected from EstimateMaterialDensity. Flagged
+  // `isReference` so it never appears as a priced override in a locked
+  // tender rate-set snapshot. `RateResolverService.listMaterialDensities`
+  // and `resolveMaterialDensity` are the read seam; writes still go
+  // through `estimates.service` → `estimate_material_density` for this
+  // PR (deprecate-in-place) so the two stores stay aligned on re-seed.
+  const densityRows = await prisma.estimateMaterialDensity.findMany({
+    orderBy: [{ sortOrder: "asc" }, { materialName: "asc" }]
+  });
+  await upsertTable({
+    id: "rt-md",
+    slug: "material-densities",
+    name: "Material densities",
+    description:
+      "Density lookup by material name (projection of EstimateMaterialDensity). Reference — not priced.",
+    isReference: true,
+    columns: [
+      { key: "material", name: "Material", dataType: "TEXT", role: "KEY", sortOrder: 1 },
+      { key: "density", name: "Density", dataType: "NUMBER", role: "VALUE", unit: "kg/m³", sortOrder: 2 },
+      { key: "unit", name: "Unit", dataType: "TEXT", role: "INFO", sortOrder: 3 },
+      { key: "kind", name: "Kind", dataType: "TEXT", role: "INFO", sortOrder: 4 },
+      { key: "category", name: "Category", dataType: "TEXT", role: "INFO", sortOrder: 5 }
+    ],
+    rows: densityRows.map((r, idx) => ({
+      id: `rr-md-${rowSlug(r.materialName)}`,
+      sortOrder: r.sortOrder || idx + 1,
+      cells: {
+        material: r.materialName,
+        density: Number(r.density),
+        unit: r.unit,
+        kind: String(r.kind),
+        category: r.category ?? ""
+      }
+    }))
+  });
 }
 
 export async function seedBusinessDirectoryDemos(prisma: PrismaClient): Promise<void> {

@@ -19,6 +19,10 @@ function makePrisma() {
     estimateCuttingRate: { findUnique: jest.fn() },
     estimateCoreHoleRate: { findUnique: jest.fn() },
     estimateFuelRate: { findUnique: jest.fn() },
+    estimateMaterialDensity: {
+      findUnique: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([])
+    },
     rateTable: {
       findUnique: jest.fn(),
       findMany: jest.fn().mockResolvedValue([])
@@ -432,6 +436,88 @@ describe("RateResolverService", () => {
       expect(parity.matches).toBe(false);
       expect(parity.divergence).toContain("legacy=ok");
       expect(parity.divergence).toContain("ratetable=missing");
+    });
+  });
+
+  describe("material densities", () => {
+    test("listMaterialDensities delegates to prisma with the estimating UI order", async () => {
+      const prisma = makePrisma();
+      const rows = [{ id: "den-1" }, { id: "den-2" }];
+      prisma.estimateMaterialDensity.findMany.mockResolvedValue(rows);
+      const svc = new RateResolverService(prisma as never);
+      const out = await svc.listMaterialDensities();
+      expect(out).toBe(rows);
+      expect(prisma.estimateMaterialDensity.findMany).toHaveBeenCalledWith({
+        orderBy: [{ isActive: "desc" }, { category: "asc" }, { materialName: "asc" }]
+      });
+    });
+
+    test("resolveMaterialDensity is byte-identical to a direct legacy lookup", async () => {
+      const prisma = makePrisma();
+      prisma.estimateMaterialDensity.findUnique.mockResolvedValue({
+        id: "den-concrete",
+        materialName: "Concrete",
+        density: "2400",
+        unit: "kg/m³",
+        kind: "VOLUME",
+        category: "concrete"
+      });
+      const svc = new RateResolverService(prisma as never);
+      const out = await svc.resolveMaterialDensity("Concrete");
+      expect(out).toEqual({
+        density: 2400,
+        unit: "kg/m³",
+        kind: "VOLUME",
+        category: "concrete"
+      });
+      // Byte-identical guard: Number(row.density) is what pre-cutover
+      // consumers computed; the resolver returns the same numeric value.
+      expect(out?.density).toBe(Number("2400"));
+      expect(prisma.rateTable.findUnique).not.toHaveBeenCalled();
+    });
+
+    test("resolveMaterialDensity falls back to the RateTable projection when legacy is missing", async () => {
+      const prisma = makePrisma();
+      prisma.estimateMaterialDensity.findUnique.mockResolvedValue(null);
+      prisma.rateTable.findUnique.mockResolvedValue({
+        id: "rt-md",
+        slug: "material-densities",
+        columns: [
+          { id: "rt-md-c-material", name: "Material", role: "KEY" },
+          { id: "rt-md-c-density", name: "Density", role: "VALUE", unit: "kg/m³" },
+          { id: "rt-md-c-unit", name: "Unit", role: "INFO" },
+          { id: "rt-md-c-kind", name: "Kind", role: "INFO" },
+          { id: "rt-md-c-category", name: "Category", role: "INFO" }
+        ]
+      });
+      prisma.rateRow.findMany.mockResolvedValue([
+        {
+          id: "rr-md-concrete",
+          cells: {
+            "rt-md-c-material": "Concrete",
+            "rt-md-c-density": 2400,
+            "rt-md-c-unit": "kg/m³",
+            "rt-md-c-kind": "VOLUME",
+            "rt-md-c-category": "concrete"
+          }
+        }
+      ]);
+      const svc = new RateResolverService(prisma as never);
+      const out = await svc.resolveMaterialDensity("Concrete");
+      expect(out).toEqual({
+        density: 2400,
+        unit: "kg/m³",
+        kind: "VOLUME",
+        category: "concrete"
+      });
+    });
+
+    test("resolveMaterialDensity returns null when neither source has the material", async () => {
+      const prisma = makePrisma();
+      prisma.estimateMaterialDensity.findUnique.mockResolvedValue(null);
+      prisma.rateTable.findUnique.mockResolvedValue(null);
+      const svc = new RateResolverService(prisma as never);
+      expect(await svc.resolveMaterialDensity("Unobtainium")).toBeNull();
     });
   });
 });

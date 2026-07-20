@@ -67,6 +67,7 @@ import { ExpensesModule } from "./modules/expenses/expenses.module";
 import { SurveysModule } from "./modules/surveys/surveys.module";
 import { CasesModule } from "./modules/cases/cases.module";
 import { KnowledgeModule } from "./modules/knowledge/knowledge.module";
+import { MapLocationsModule } from "./modules/map-locations/map-locations.module";
 import { ReportingModule } from "./modules/reporting/reporting.module";
 
 @Module({
@@ -142,6 +143,7 @@ import { ReportingModule } from "./modules/reporting/reporting.module";
     SurveysModule,
     CasesModule,
     KnowledgeModule,
+    MapLocationsModule,
     ReportingModule
   ]
 })

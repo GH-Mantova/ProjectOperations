@@ -564,6 +564,19 @@ export async function seedGlobalLists(prisma: PrismaClient, adminUserId: string)
         { value: "subcontractor", label: "Subcontractor" },
         { value: "other", label: "Other" }
       ]
+    },
+    {
+      slug: "poi-categories",
+      name: "POI categories",
+      description:
+        "Point-of-interest categories for the map locations register. Referenced by MapLocation records with kind=POI.",
+      items: [
+        { value: "supplier", label: "Supplier" },
+        { value: "subcontractor", label: "Subcontractor" },
+        { value: "hospital", label: "Hospital" },
+        { value: "depot", label: "Depot" },
+        { value: "other", label: "Other" }
+      ]
     }
   ];
 

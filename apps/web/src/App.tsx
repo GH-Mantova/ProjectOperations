@@ -80,6 +80,7 @@ import { AdminSettingsPage } from "./pages/AdminSettingsPage";
 import { AdminCompanyPage } from "./pages/admin/AdminCompanyPage";
 import { DataModelMapPage } from "./pages/admin/DataModelMapPage";
 import { AiSettingsPage } from "./personas/pages/AiSettingsPage";
+import { SettingsShell, AdminOnly, SuperUserOnly } from "./components/SettingsShell";
 import { ContractsListPage } from "./pages/contracts/ContractsListPage";
 import { ContractDetailPage } from "./pages/contracts/ContractDetailPage";
 import { PortalAuthProvider } from "./portal/PortalAuthContext";
@@ -266,7 +267,7 @@ export function App() {
             <Route path="/scheduler" element={<SchedulerWorkspacePage />} />
             <Route path="/scheduler/availability-report" element={<AvailabilityReportPage />} />
             <Route path="/scheduler/grid" element={<SchedulerGridPage />} />
-            <Route path="/account/calendar-sync" element={<CalendarSyncPage />} />
+            <Route path="/account/calendar-sync" element={<Navigate to="/settings/calendar-sync" replace />} />
             <Route path="/tenders" element={<TenderingPage />} />
             <Route path="/tenders/dashboard" element={<TenderingDashboardPage />} />
             {/* Codex-era /pipeline + /workspace + /create wrappers were
@@ -310,23 +311,100 @@ export function App() {
             <Route path="/forms/corrective-actions" element={<CorrectiveActionsPage />} />
             <Route path="/forms/corrective-actions/:id" element={<CorrectiveActionDetailPage />} />
             <Route path="/documents" element={<DocumentsWorkspacePage />} />
-            <Route path="/admin/users" element={<UsersPage />} />
-            <Route path="/admin/roles" element={<RolesPage />} />
-            <Route path="/admin/permissions" element={<PermissionsPage />} />
-            <Route path="/admin/audit" element={<AuditLogsPage />} />
-            <Route path="/admin/platform" element={<PlatformPage />} />
-            <Route path="/admin/settings" element={<AdminSettingsPage />} />
-            <Route path="/admin/company" element={<AdminCompanyPage />} />
-            <Route path="/admin/data-model" element={<DataModelMapPage />} />
-            <Route path="/admin/ai-settings" element={<AiSettingsPage />} />
+            {/* Unified Settings shell (feat/settings-shell) — folds the
+                scattered /account, /notifications and /admin/* pages into one
+                place with a left sub-nav. Legacy routes redirect in so old
+                bookmarks and inbound links keep working. */}
+            <Route path="/settings" element={<SettingsShell />}>
+              <Route index element={<Navigate to="account" replace />} />
+              <Route path="account" element={<UserProfilePage />} />
+              <Route path="notifications" element={<NotificationsPage />} />
+              <Route path="calendar-sync" element={<CalendarSyncPage />} />
+              <Route path="company" element={<AdminCompanyPage />} />
+              <Route path="ai" element={<AiSettingsPage />} />
+              <Route
+                path="data-model"
+                element={
+                  <SuperUserOnly>
+                    <DataModelMapPage />
+                  </SuperUserOnly>
+                }
+              />
+              <Route
+                path="administration/system"
+                element={
+                  <AdminOnly>
+                    <AdminSettingsPage />
+                  </AdminOnly>
+                }
+              />
+              <Route
+                path="administration/users"
+                element={
+                  <AdminOnly>
+                    <UsersPage />
+                  </AdminOnly>
+                }
+              />
+              <Route
+                path="administration/roles"
+                element={
+                  <AdminOnly>
+                    <RolesPage />
+                  </AdminOnly>
+                }
+              />
+              <Route
+                path="administration/permissions"
+                element={
+                  <AdminOnly>
+                    <PermissionsPage />
+                  </AdminOnly>
+                }
+              />
+              <Route
+                path="administration/audit"
+                element={
+                  <AdminOnly>
+                    <AuditLogsPage />
+                  </AdminOnly>
+                }
+              />
+              <Route
+                path="administration/platform"
+                element={
+                  <AdminOnly>
+                    <PlatformPage />
+                  </AdminOnly>
+                }
+              />
+              <Route
+                path="administration/job-roles"
+                element={
+                  <AdminOnly>
+                    <JobRolesPage />
+                  </AdminOnly>
+                }
+              />
+            </Route>
+            {/* Legacy path redirects — keep bookmarks working. */}
+            <Route path="/admin/users" element={<Navigate to="/settings/administration/users" replace />} />
+            <Route path="/admin/roles" element={<Navigate to="/settings/administration/roles" replace />} />
+            <Route path="/admin/permissions" element={<Navigate to="/settings/administration/permissions" replace />} />
+            <Route path="/admin/audit" element={<Navigate to="/settings/administration/audit" replace />} />
+            <Route path="/admin/platform" element={<Navigate to="/settings/administration/platform" replace />} />
+            <Route path="/admin/settings" element={<Navigate to="/settings/administration/system" replace />} />
+            <Route path="/admin/company" element={<Navigate to="/settings/company" replace />} />
+            <Route path="/admin/data-model" element={<Navigate to="/settings/data-model" replace />} />
+            <Route path="/admin/ai-settings" element={<Navigate to="/settings/ai" replace />} />
             <Route path="/contracts" element={<ContractsListPage />} />
             <Route path="/contracts/:id" element={<ContractDetailPage />} />
             <Route path="/admin/estimate-rates" element={<EstimateRatesAdminPage />} />
             <Route path="/admin/rates-lists" element={<RatesListsAdminPage />} />
             <Route path="/admin/automations" element={<AutomationsPage />} />
-            <Route path="/admin/job-roles" element={<JobRolesPage />} />
-            <Route path="/account" element={<UserProfilePage />} />
-            <Route path="/notifications" element={<NotificationsPage />} />
+            <Route path="/admin/job-roles" element={<Navigate to="/settings/administration/job-roles" replace />} />
+            <Route path="/account" element={<Navigate to="/settings/account" replace />} />
+            <Route path="/notifications" element={<Navigate to="/settings/notifications" replace />} />
             {/* /dashboards now redirects to the user's first custom dashboard
                 (or to / if they have none). /dashboards/:id still serves the
                 user-owned dashboard system built on DashboardCanvas. */}

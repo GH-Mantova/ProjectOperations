@@ -212,7 +212,6 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/scheduler", label: "Scheduler", icon: ICON_SCHEDULER },
       { to: "/scheduler/availability-report", label: "Availability report", icon: ICON_SCHEDULER },
       { to: "/scheduler/grid", label: "Scheduler Grid", icon: ICON_SCHEDULER },
-      { to: "/account/calendar-sync", label: "Calendar Sync", icon: ICON_SCHEDULER },
       {
         to: "/sites",
         label: "Sites",
@@ -317,17 +316,22 @@ export const NAV_GROUPS: NavGroup[] = [
     ]
   },
   {
+    // Settings is a single entry into the unified SettingsShell. The old
+    // scattered /admin/* and /account* pages redirect into /settings/*.
+    // Rates & Lists / legacy estimate rates stay under Admin because they
+    // are not user-facing settings — they're pricing catalogues.
     id: "admin",
     label: "Admin",
     adminOnly: true,
     items: [
-      { to: "/admin/settings", label: "Admin Settings", icon: ICON_AUDIT },
-      { to: "/admin/company", label: "Company Profile", icon: ICON_CLIENTS },
+      {
+        to: "/settings",
+        label: "Settings",
+        icon: ICON_AUDIT,
+        match: (path) => path === "/settings" || path.startsWith("/settings/")
+      },
       { to: "/admin/rates-lists", label: "Rates & Lists", icon: ICON_TENDERING },
-      { to: "/admin/estimate-rates", label: "Legacy estimate rates", icon: ICON_TENDERING },
-      { to: "/admin/job-roles", label: "Job Roles", icon: ICON_AUDIT },
-      { to: "/admin/ai-settings", label: "AI Settings", icon: ICON_AUDIT },
-      { to: "/admin/data-model", label: "Data-model map", icon: ICON_AUDIT, superUserOnly: true }
+      { to: "/admin/estimate-rates", label: "Legacy estimate rates", icon: ICON_TENDERING }
     ]
   }
 ];
@@ -387,6 +391,14 @@ const BREADCRUMBS: Record<string, string> = {
   "/account/calendar-sync": "Calendar Sync",
   "/notifications": "Notifications",
   "/dashboards": "Dashboards",
+  "/settings": "Settings",
+  "/settings/account": "Settings",
+  "/settings/notifications": "Settings",
+  "/settings/calendar-sync": "Settings",
+  "/settings/company": "Settings",
+  "/settings/ai": "Settings",
+  "/settings/data-model": "Settings",
+  "/settings/administration": "Settings",
   "/admin/users": "Users",
   "/admin/roles": "Roles",
   "/admin/estimate-rates": "Legacy estimate rates",
@@ -707,7 +719,7 @@ export function ShellLayout() {
             <button
               type="button"
               className="shell__topbar-avatar"
-              onClick={() => navigate("/account")}
+              onClick={() => navigate("/settings/account")}
               aria-label={`Account — signed in as ${user?.firstName} ${user?.lastName}`}
               title="My account"
             >

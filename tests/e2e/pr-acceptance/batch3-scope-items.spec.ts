@@ -243,7 +243,13 @@ test.describe("Batch 3 — Scope of Works items (PRs #43, #44, #60, #72, #175, #
     }
   });
 
-  test("plant pills: add a plant cluster, set qty/days, remove it (PRs #241, #72)", async ({
+  // QUARANTINED 2026-07-20 - flaky, not broken. Failed then PASSED on the identical sha
+  // on a docs-only PR (2026-07-19). tendering-e2e is a required check on a serialised
+  // merge path, so one flake here blocks every queued PR. Tracked in BACKLOG.yaml as
+  // flaky-batch3-plant-pills. Re-enable ONLY with a fix for the underlying race - the
+  // suspected cause is the same class as flaky-batch5-sites-post-delete-race: an
+  // assertion that proceeds before the list has settled.
+  test.skip("plant pills: add a plant cluster, set qty/days, remove it (PRs #241, #72)", async ({
     page,
     request
   }) => {

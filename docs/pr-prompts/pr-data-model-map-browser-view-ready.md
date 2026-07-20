@@ -9,10 +9,9 @@ gate_allow: none
 seed_only: false
 escalates: false
 ---
-<!-- watcher: arm-eligible | browser view of the data-model map (Marco add-on 2026-07-16) -->
 # Data-model map - viewable from the deployed web app (super-user)
 
-STATUS: DRAFTED, STAGED, arm-eligible. Add-on to Marco's Option 1 decision:
+STATUS: ARMED - RUN NOW.
 docs/pr-prompts/needs-marco/generated-map-conflict-treadmill-20260716.md. Independent of the untrack
 prompt - can build in either order. The relationship-graph.html is gitignored (generated locally),
 so today the map is NOT viewable at the deployed URL; this gives Marco a real link.

@@ -133,6 +133,86 @@ export class XeroController {
     return this.service.createInvoiceFromProgressClaim(claimId, user.sub);
   }
 
+  // ── Bill endpoints (ACCPAY) ────────────────────────────────────────────────
+
+  @Post("bills/from-expense/:expenseId")
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions("finance.manage")
+  @ApiOperation({
+    summary:
+      "Push an ACCPAY bill to Xero from an approved reimbursable Expense. " +
+      "Idempotent: returns the existing Xero bill ID if already pushed. " +
+      "On Xero failure the expense is unaffected; the push is queued for automatic retry."
+  })
+  @ApiResponse({
+    status: 201,
+    description:
+      "Push result: { ok, xeroInvoiceId, queued? }. queued=true means Xero was unavailable and the push will be retried automatically."
+  })
+  pushExpenseBill(
+    @Param("expenseId") expenseId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.service.pushBill(expenseId, user.sub);
+  }
+
+  @Post("bills/from-vendor-invoice/:vendorInvoiceId")
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions("finance.manage")
+  @ApiOperation({
+    summary:
+      "Push an ACCPAY bill to Xero from a 3-way-matched VendorInvoice (MATCHED or APPROVED). " +
+      "Idempotent: returns the existing Xero bill ID if already pushed. " +
+      "On Xero failure the vendor invoice is unaffected; the push is queued for automatic retry."
+  })
+  @ApiResponse({
+    status: 201,
+    description: "Push result: { ok, xeroInvoiceId, queued? }."
+  })
+  pushVendorInvoiceBill(
+    @Param("vendorInvoiceId") vendorInvoiceId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.service.pushVendorInvoiceBill(vendorInvoiceId, user.sub);
+  }
+
+  @Post("sync-payment-status")
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions("finance.admin")
+  @ApiOperation({
+    summary:
+      "Manually trigger the payment-status pull from Xero for all known bills. " +
+      "Also runs automatically every 6 hours. " +
+      "Records paid/awaiting-payment status in XeroSyncLog (pull direction). " +
+      "ProgressClaim.totalPaid and paidDate are also updated when a claim invoice is fully paid."
+  })
+  @ApiResponse({
+    status: 201,
+    description: "Sync result: { synced, paid, errors }."
+  })
+  syncPaymentStatus() {
+    return this.service.syncPaymentStatus();
+  }
+
+  @Get("payment-status/:entityType/:entityId")
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions("finance.manage")
+  @ApiOperation({
+    summary:
+      "Return the latest known Xero payment status for an entity (Expense, VendorInvoice, or ProgressClaim). " +
+      "Returns null when no pull log exists (not yet synced or Xero not connected)."
+  })
+  @ApiResponse({
+    status: 200,
+    description: "{ status, xeroId, syncedAt } or null."
+  })
+  getPaymentStatus(
+    @Param("entityType") entityType: string,
+    @Param("entityId") entityId: string
+  ) {
+    return this.service.getPaymentStatus(entityType, entityId);
+  }
+
   @Get("sync-logs")
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions("platform.admin")

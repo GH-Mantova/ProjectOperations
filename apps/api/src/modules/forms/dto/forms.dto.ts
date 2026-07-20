@@ -31,7 +31,14 @@ export class FormFieldInputDto {
   @IsString() fieldKey!: string;
   /** Human label shown to the worker filling the form. */
   @IsString() label!: string;
-  /** Field type identifier (text/number/date/select/etc.); shapes value coercion at submit. */
+  /**
+   * Field type identifier (text/number/date/select/etc.); shapes value coercion at submit.
+   *
+   * Includes the `existing_site` picker — a dropdown of `Site` rows whose value
+   * is a Site.id. When `isRequired`, submit enforces "must choose a site"
+   * per-form at validation time; the DB column `FormSubmission.siteId` remains
+   * nullable (per-form choice, not a schema constraint).
+   */
   @IsString() fieldType!: string;
   /** Render order within the section (ascending). */
   @Type(() => Number) @IsInt() fieldOrder!: number;

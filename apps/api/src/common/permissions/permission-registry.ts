@@ -108,7 +108,11 @@ export const permissionRegistry = [
   // Automation engine (MVP slice 1). Cross-module Power-Automate-style rules.
   // Manage is high-risk: a rule fires on domain events across the platform.
   { code: "automations.view", module: "platform", label: "View automation rules", description: "View admin-configured automation rules and their run log" },
-  { code: "automations.manage", module: "platform", label: "Create and edit automation rules", description: "Create, edit, enable and disable admin-configured automation rules", isHighRisk: true }
+  { code: "automations.manage", module: "platform", label: "Create and edit automation rules", description: "Create, edit, enable and disable admin-configured automation rules", isHighRisk: true },
+  // Reporting / BI layer (slice 1). Cross-module read-only report surface,
+  // aggregating existing tables. Sits beside per-module dashboard widgets —
+  // this is the tabular/exportable side (Excel / CSV / PDF).
+  { code: "reporting.view", module: "reporting", label: "View cross-module reports", description: "View and export the cross-module reporting surface (pipeline, win-rate, jobs, competency expiry, asset utilisation)" }
 ] as const;
 
 export type PermissionRegistryEntry = (typeof permissionRegistry)[number];

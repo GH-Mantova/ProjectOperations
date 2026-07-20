@@ -121,6 +121,31 @@ exactly this.** Stop hand-writing it.
 `true` for production data writes, production auth, or anything touching Azure/Entra/SharePoint.
 The pipeline will **build the PR but never merge it** — it goes to Marco.
 
+**`escalates: true` DOES NOT STOP THE PROMPT FROM RUNNING. It gates the MERGE, not the RUN.**
+
+Ruled by Marco, 2026-07-20 — *"run, open PR, block merge only"*:
+
+* The flag is **advisory metadata about the work**, not an instruction to the watcher. Nothing in
+  `scripts/pr-watcher/**` reads it, and `lint-prompt.mjs` admits escalating prompts happily. This
+  is deliberate and **will not be "fixed" with a watcher guard** — one stop beats two, because a
+  flag that *sometimes* halts execution competes with the folder that *always* does, and agents
+  end up trusting the weaker one.
+* **`docs/pr-prompts/needs-marco/` is the ONLY real stop.** Location is the contract; frontmatter
+  is a note. To prevent something from running, **MOVE THE FILE**. Nothing else works.
+* Therefore **a loose armed `*-ready.md` WILL BE EXECUTED**, whatever its frontmatter says.
+  **Arming a prompt IS the decision to run it.** Never read `escalates: true` on an armed prompt
+  as "safely parked" — it is not parked.
+* **Do NOT blanket-quarantine `escalates: true` prompts.** On 2026-07-20 a supervisor cycle swept
+  four into `needs-marco/` on the strength of the flag alone — after Marco had explicitly asked
+  for them to run. That sweep is why the `clients.*` permanently-false gate sat unfixed on main
+  for days. Quarantine only what Marco personally names, or what hits a genuine hard stop
+  (Azure/Entra/SharePoint, destructive, production auth, real human identity).
+* `scripts/pipeline/queue-sync.ps1` **arms escalating prompts like any other** and simply counts
+  them as `escalating(do-not-merge)`, printing an ACTION line telling the supervisor which open
+  PRs it must not merge. An earlier revision of that script gated at ARM time and held three
+  prompts idle — the exact stall the standing-authority rule exists to prevent. The block belongs
+  at MERGE time, not at arm time.
+
 ---
 
 ---

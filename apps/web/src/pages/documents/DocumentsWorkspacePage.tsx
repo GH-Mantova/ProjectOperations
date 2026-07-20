@@ -1,7 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { resolveContextRailLabel } from "./contextRailLabels";
+import { ArchivePage } from "../archive/ArchivePage";
+
+type DocumentsTab = "documents" | "archived";
+
+const DOCUMENTS_TABS: Array<{ id: DocumentsTab; label: string }> = [
+  { id: "documents", label: "Documents" },
+  { id: "archived", label: "Archived" }
+];
+
+const VALID_DOC_TABS: ReadonlySet<DocumentsTab> = new Set(DOCUMENTS_TABS.map((t) => t.id));
+
+function resolveDocumentsTab(raw: string | null): DocumentsTab {
+  return raw && (VALID_DOC_TABS as Set<string>).has(raw) ? (raw as DocumentsTab) : "documents";
+}
 
 type DocumentItem = {
   id: string;
@@ -93,6 +108,56 @@ function formatSize(bytes?: number | null): string {
 }
 
 export function DocumentsWorkspacePage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [tab, setTab] = useState<DocumentsTab>(resolveDocumentsTab(searchParams.get("tab")));
+
+  useEffect(() => {
+    const fromUrl = resolveDocumentsTab(searchParams.get("tab"));
+    if (fromUrl !== tab) setTab(fromUrl);
+  }, [searchParams, tab]);
+
+  const changeTab = (next: DocumentsTab) => {
+    if (next === tab) return;
+    const nextParams = new URLSearchParams(searchParams);
+    if (next === "documents") nextParams.delete("tab");
+    else nextParams.set("tab", next);
+    setSearchParams(nextParams, { replace: true });
+    setTab(next);
+  };
+
+  return (
+    <div className="docs-page">
+      <header className="workers-page__header">
+        <div>
+          <p className="s7-type-label">Data</p>
+          <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>Documents</h1>
+        </div>
+        <div className="tender-page__view-toggle" role="tablist" aria-label="Documents tabs">
+          {DOCUMENTS_TABS.map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === entry.id}
+              className={
+                tab === entry.id
+                  ? "tender-page__view-btn tender-page__view-btn--active"
+                  : "tender-page__view-btn"
+              }
+              onClick={() => changeTab(entry.id)}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      {tab === "documents" ? <DocumentsTab /> : <ArchivePage />}
+    </div>
+  );
+}
+
+function DocumentsTab() {
   const { authFetch } = useAuth();
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -196,12 +261,8 @@ export function DocumentsWorkspacePage() {
   };
 
   return (
-    <div className="docs-page">
-      <header className="workers-page__header">
-        <div>
-          <p className="s7-type-label">Data</p>
-          <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>Documents</h1>
-        </div>
+    <>
+      <div style={{ display: "flex", justifyContent: "flex-end", margin: "8px 0" }}>
         <button
           type="button"
           className="s7-btn s7-btn--primary"
@@ -216,7 +277,7 @@ export function DocumentsWorkspacePage() {
         >
           + Upload
         </button>
-      </header>
+      </div>
 
       {error ? <div className="tender-page__error" role="alert">{error}</div> : null}
 
@@ -384,7 +445,7 @@ export function DocumentsWorkspacePage() {
           onError={setError}
         />
       ) : null}
-    </div>
+    </>
   );
 }
 

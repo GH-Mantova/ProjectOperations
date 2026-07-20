@@ -15,8 +15,6 @@ import { PlatformPage } from "./pages/PlatformPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { TenderingDashboardPage } from "./pages/tendering/TenderingDashboardPage";
 import { TenderingSettingsPage } from "./pages/TenderingSettingsPage";
-import { ResourcesPage } from "./pages/ResourcesPage";
-import { ArchivePage } from "./pages/archive/ArchivePage";
 import { ArchiveDetailPage } from "./pages/archive/ArchiveDetailPage";
 import { TenderingPage } from "./pages/tendering/TenderingPage";
 import { TenderDetailPage } from "./pages/tendering/TenderDetailPage";
@@ -297,7 +295,6 @@ export function App() {
             <Route path="/workers" element={<WorkersListPage />} />
             <Route path="/workers/leave-approvals" element={<WorkerLeaveApprovalsPage />} />
             <Route path="/workers/:id" element={<WorkerDetailPage />} />
-            <Route path="/resources" element={<ResourcesPage />} />
             <Route path="/assets" element={<AssetsListPage />} />
             <Route path="/assets/:id" element={<AssetDetailPage />} />
             <Route path="/inventory" element={<InventoryPage />} />
@@ -358,7 +355,9 @@ export function App() {
               path="/directory/contacts"
               element={<Navigate to="/directory?tab=contacts" replace />}
             />
-            <Route path="/archive" element={<ArchivePage />} />
+            {/* Archive folded into Documents as an "Archived" tab. The list
+                view redirects; per-job archive detail still renders inline. */}
+            <Route path="/archive" element={<Navigate to="/documents?tab=archived" replace />} />
             <Route path="/archive/:jobId" element={<ArchiveDetailPage />} />
             <Route path="/surveys/capture" element={<SurveyCaptureFormPage />} />
             <Route path="/surveys/satisfaction" element={<ClientSatisfactionPage />} />

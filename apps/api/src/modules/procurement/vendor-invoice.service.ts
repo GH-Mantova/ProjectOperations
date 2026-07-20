@@ -3,12 +3,14 @@ import {
   ConflictException,
   Injectable,
   Logger,
-  NotFoundException
+  NotFoundException,
+  Optional
 } from "@nestjs/common";
 import { InvoiceMatchStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { AuthorityService } from "../authorization/authority.service";
+import { XeroService } from "../xero/xero.service";
 import type {
   ApproveInvoiceVarianceDto,
   CreateVendorInvoiceDto,
@@ -45,12 +47,9 @@ const VARIANCE_APPROVE_ACTION = "procurement.invoice.variance.approve";
  * ReconcilePo closes the PO once all its invoices are MATCHED or APPROVED,
  * writing a PoReconcileAudit record for the project-close audit.
  *
- * What is NOT done here (deferred by the work order):
- *  - Pushing the matched bill to Xero (Xero-deepening slice).
- *  - Auto-payment — operator initiates payment manually.
- *  - A separate GoodsReceipt model — we read receivedQty from the
- *    ProcurementLine as-supplied by the caller (who reads the RECEIVED
- *    request lines). Future slice can refine.
+ * Xero-deepening: after createInvoice completes with MATCHED status, or after
+ * approveVariance moves to APPROVED, pushVendorInvoiceBill fires async to Xero.
+ * Graceful failure — the invoice record is always saved first.
  */
 @Injectable()
 export class VendorInvoiceService {
@@ -59,7 +58,10 @@ export class VendorInvoiceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly authority: AuthorityService
+    private readonly authority: AuthorityService,
+    // Optional so that the module can boot without Xero configured.
+    // When present, a bill is pushed to Xero after 3-way match completes.
+    @Optional() private readonly xeroService: XeroService | null
   ) {}
 
   // ── Reads ──────────────────────────────────────────────────────────────
@@ -189,6 +191,19 @@ export class VendorInvoiceService {
       `VendorInvoice ${invoice.id} posted against PO ${po.poNumber}: ${matchStatus}`
     );
 
+    // Xero-deepening: push a Xero ACCPAY bill when the invoice lands as MATCHED
+    // (all lines within tolerance). Fire-and-forget — the invoice record is
+    // already committed; Xero failure queues for retry but does not block here.
+    if (matchStatus === InvoiceMatchStatus.MATCHED && this.xeroService) {
+      void this.xeroService.pushVendorInvoiceBill(invoice.id, actorId).catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `createInvoice: Xero pushVendorInvoiceBill failed for VendorInvoice ${invoice.id}: ` +
+            `${message} (invoice record not affected)`
+        );
+      });
+    }
+
     return invoice;
   }
 
@@ -255,6 +270,19 @@ export class VendorInvoiceService {
         authorityRuleId: decision.matchedRuleId ?? null
       }
     });
+
+    // Xero-deepening: push a Xero ACCPAY bill after variance approval moves the
+    // invoice to APPROVED (ready-to-pay). Fire-and-forget — invoice record already
+    // committed; Xero failure queues for retry and does not block.
+    if (this.xeroService) {
+      void this.xeroService.pushVendorInvoiceBill(id, actorId).catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `approveVariance: Xero pushVendorInvoiceBill failed for VendorInvoice ${id}: ` +
+            `${message} (variance approval not affected)`
+        );
+      });
+    }
 
     return updated;
   }

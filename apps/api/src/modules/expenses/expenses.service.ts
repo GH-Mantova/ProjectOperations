@@ -3,12 +3,14 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
-  NotFoundException
+  NotFoundException,
+  Optional
 } from "@nestjs/common";
 import { ExpenseStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { AuthorityService } from "../authorization/authority.service";
+import { XeroService } from "../xero/xero.service";
 import type {
   CreateExpenseDto,
   ListExpensesQueryDto,
@@ -31,6 +33,9 @@ const EXPENSE_APPROVE_ACTION = "expenses.approve";
  *   SUBMITTED → APPROVED | REJECTED (by approver holding expenses.approve)
  *   APPROVED → REIMBURSED (by admin/finance)
  *   REJECTED → DRAFT (edit and re-submit)
+ *
+ * Xero-deepening: on approval, pushBill is called fire-and-forget.
+ * The expense approval succeeds regardless of Xero availability.
  */
 @Injectable()
 export class ExpensesService {
@@ -39,7 +44,10 @@ export class ExpensesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly authority: AuthorityService
+    private readonly authority: AuthorityService,
+    // Optional so that the module can boot without Xero configured.
+    // When present, a bill is pushed to Xero on every expense approval.
+    @Optional() private readonly xeroService: XeroService | null
   ) {}
 
   // ── Reads ──────────────────────────────────────────────────────────────
@@ -236,6 +244,20 @@ export class ExpensesService {
       entityId: id,
       metadata: { amount: existing.amount?.toString() ?? null }
     });
+
+    // Xero-deepening: fire-and-forget bill push after approval.
+    // The expense record is already saved — Xero failure does NOT roll back the
+    // approval. Failed pushes are queued in XeroSyncLog (pending_retry) and
+    // retried automatically by XeroService.replayFailedBillPushes.
+    if (this.xeroService) {
+      void this.xeroService.pushBill(id, actorId).catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `approveExpense: Xero pushBill failed for expense ${id}: ${message} ` +
+            "(expense approval not affected)"
+        );
+      });
+    }
 
     return updated;
   }

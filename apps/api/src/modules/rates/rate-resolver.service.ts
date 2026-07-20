@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { parseRatesCanonicalSource, RatesCanonicalSource } from "../../config/app.config";
 
@@ -47,6 +47,8 @@ export type RateParityResult = {
  */
 @Injectable()
 export class RateResolverService {
+  private readonly logger = new Logger(RateResolverService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async resolveRate(tableSlug: string, keys: Record<string, unknown>): Promise<ResolvedRate> {
@@ -56,7 +58,14 @@ export class RateResolverService {
       const flexible = await this.tryRateTable(tableSlug, keys);
       if (flexible) return flexible;
       const legacy = await this.tryLegacy(tableSlug, keys);
-      if (legacy) return legacy;
+      if (legacy) {
+        this.logger.warn({
+          event: "ratetable-miss-fell-back-to-legacy",
+          slug: tableSlug,
+          keys
+        });
+        return legacy;
+      }
       throw new NotFoundException(
         `No rate table with slug "${tableSlug}" (canonical source: ratetable).`
       );

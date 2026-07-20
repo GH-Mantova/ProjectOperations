@@ -17,6 +17,8 @@ import { AuthService } from "./auth.service";
 import { EntraAuthService } from "./entra-auth.service";
 import { EntraTokenValidatorService } from "./entra-token-validator.service";
 import { LocalAuthProvider } from "./local-auth.provider";
+import { OtpAuthProvider } from "./otp-auth.provider";
+import { LoggingOtpDelivery, OTP_DELIVERY_PORT } from "./otp-delivery.port";
 
 @Module({
   imports: [
@@ -41,7 +43,11 @@ import { LocalAuthProvider } from "./local-auth.provider";
     LocalAuthProvider,
     AuthProviderService,
     EntraTokenValidatorService,
-    EntraAuthService
+    EntraAuthService,
+    OtpAuthProvider,
+    // Dev/CI delivery: logs the code. Production email delivery (Graph
+    // / SMTP) is a separate, Marco-supervised adapter registered later.
+    { provide: OTP_DELIVERY_PORT, useClass: LoggingOtpDelivery }
   ],
   exports: [AuthService, EntraAuthService, EntraTokenValidatorService]
 })

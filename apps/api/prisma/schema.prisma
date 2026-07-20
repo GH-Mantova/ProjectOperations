@@ -342,6 +342,24 @@ model AccessRequest {
   @@map("access_requests")
 }
 
+// FIELD-worker one-time-code challenges. OFFICE staff keep Entra SSO;
+// FIELD workers authenticate by personal email + a short-lived numeric
+// code. The code is HASHED at rest (never stored plaintext), bound to a
+// lowercased email, and consumable exactly once within the expiry window.
+// attempts caps brute force per challenge; consumedAt marks single-use.
+model OtpChallenge {
+  id          String    @id @default(cuid())
+  email       String
+  codeHash    String    @map("code_hash")
+  expiresAt   DateTime  @map("expires_at")
+  attempts    Int       @default(0)
+  consumedAt  DateTime? @map("consumed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([email, expiresAt])
+  @@map("otp_challenges")
+}
+
 // PR-sharepoint-folder-mappings â€" Which SharePoint folder each business
 // entity's documents land in. Data, not code: a super-user edits the
 // folderPath in the admin UI without a redeploy. entityType is a Prisma

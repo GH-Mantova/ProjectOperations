@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { EmptyState, SkeletonList } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
@@ -154,6 +154,30 @@ function TopTabButton({
 
 // ── Rate tables panel ────────────────────────────────────────────────────
 
+type SurfaceKey = "waste" | "density" | "plant" | "transport";
+
+type ImportDiffEntry = {
+  naturalKey: string;
+  id?: string;
+  from?: Record<string, unknown>;
+  to?: Record<string, unknown>;
+  values?: Record<string, unknown>;
+  changedFields?: string[];
+};
+
+type ImportSurfaceDiff = {
+  label: string;
+  adds: ImportDiffEntry[];
+  changes: ImportDiffEntry[];
+  noChangeCount: number;
+};
+
+type ImportPreview = {
+  surfaces: Record<SurfaceKey, ImportSurfaceDiff>;
+  warnings: string[];
+  operations: unknown[];
+};
+
 function RateTablesPanel() {
   const { authFetch } = useAuth();
   const [tables, setTables] = useState<RateTableSummary[]>([]);
@@ -164,6 +188,9 @@ function RateTablesPanel() {
   const [error, setError] = useState<string | null>(null);
   const [newTableOpen, setNewTableOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const exportRates = useCallback(async () => {
     setExporting(true);
@@ -221,6 +248,47 @@ function RateTablesPanel() {
     [authFetch]
   );
 
+  const previewImport = useCallback(
+    async (file: File) => {
+      setImporting(true);
+      setError(null);
+      try {
+        const form = new FormData();
+        form.append("file", file);
+        const res = await authFetch("/rates/import/preview", { method: "POST", body: form });
+        if (!res.ok) throw new Error(await readApiErrorMessage(res, "Preview failed."));
+        setImportPreview((await res.json()) as ImportPreview);
+      } catch (err) {
+        setError((err as Error).message);
+      } finally {
+        setImporting(false);
+      }
+    },
+    [authFetch]
+  );
+
+  const applyImport = useCallback(
+    async (preview: ImportPreview) => {
+      setImporting(true);
+      setError(null);
+      try {
+        const res = await authFetch("/rates/import/apply", {
+          method: "POST",
+          body: JSON.stringify({ operations: preview.operations })
+        });
+        if (!res.ok) throw new Error(await readApiErrorMessage(res, "Apply failed."));
+        setImportPreview(null);
+        await loadTables();
+        if (selectedId) await loadSelected(selectedId);
+      } catch (err) {
+        setError((err as Error).message);
+      } finally {
+        setImporting(false);
+      }
+    },
+    [authFetch, loadTables, loadSelected, selectedId]
+  );
+
   useEffect(() => {
     void loadTables();
   }, [loadTables]);
@@ -254,11 +322,32 @@ function RateTablesPanel() {
               className="s7-btn s7-btn--ghost s7-btn--sm"
               onClick={() => void exportRates()}
               disabled={exporting}
-              title="Download rates & lists as .xlsx (round-trip: edit and re-import in a later release)."
+              title="Download rates & lists as .xlsx (edit and re-import via Import)."
               style={{ minHeight: 32 }}
             >
               {exporting ? "Exporting…" : "Export"}
             </button>
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importing}
+              title="Upload an edited rates workbook. Shows a preview diff before applying."
+              style={{ minHeight: 32 }}
+            >
+              {importing ? "Reading…" : "Import"}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void previewImport(f);
+                e.target.value = "";
+              }}
+            />
             <button
               type="button"
               className="s7-btn s7-btn--primary s7-btn--sm"
@@ -338,8 +427,187 @@ function RateTablesPanel() {
       {newTableOpen ? (
         <NewRateTableModal onClose={() => setNewTableOpen(false)} onSubmit={handleCreateTable} />
       ) : null}
+
+      {importPreview ? (
+        <ImportPreviewModal
+          preview={importPreview}
+          busy={importing}
+          onCancel={() => setImportPreview(null)}
+          onConfirm={() => void applyImport(importPreview)}
+        />
+      ) : null}
     </div>
   );
+}
+
+// ── Import preview modal ─────────────────────────────────────────────────
+
+function ImportPreviewModal({
+  preview,
+  busy,
+  onCancel,
+  onConfirm
+}: {
+  preview: ImportPreview;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const surfaces: SurfaceKey[] = ["waste", "density", "plant", "transport"];
+  const totalAdds = surfaces.reduce((sum, s) => sum + preview.surfaces[s].adds.length, 0);
+  const totalChanges = surfaces.reduce((sum, s) => sum + preview.surfaces[s].changes.length, 0);
+  const totalNoChange = surfaces.reduce((sum, s) => sum + preview.surfaces[s].noChangeCount, 0);
+  const hasChanges = totalAdds > 0 || totalChanges > 0;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Import preview"
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15,23,42,0.35)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 40,
+        padding: 20
+      }}
+      onClick={onCancel}
+    >
+      <div
+        className="s7-card"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "min(1000px, 100%)",
+          maxHeight: "90vh",
+          overflow: "auto",
+          display: "flex",
+          flexDirection: "column",
+          gap: 12
+        }}
+      >
+        <h3 className="s7-type-section-heading" style={{ margin: 0 }}>
+          Import preview
+        </h3>
+        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+          <strong>{totalAdds}</strong> add · <strong>{totalChanges}</strong> change ·{" "}
+          <strong>{totalNoChange}</strong> unchanged
+          {preview.warnings.length > 0 ? (
+            <>
+              {" "}
+              · <strong>{preview.warnings.length}</strong> warning
+              {preview.warnings.length === 1 ? "" : "s"}
+            </>
+          ) : null}
+        </div>
+
+        {preview.warnings.length > 0 ? (
+          <div
+            style={{
+              padding: 10,
+              borderRadius: 6,
+              background: "rgba(245,158,11,0.08)",
+              borderLeft: "3px solid #f59e0b",
+              fontSize: 12
+            }}
+          >
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>Warnings</div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {preview.warnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {surfaces.map((s) => (
+          <ImportSurfaceSection key={s} diff={preview.surfaces[s]} />
+        ))}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, paddingTop: 8 }}>
+          <button
+            type="button"
+            className="s7-btn s7-btn--ghost"
+            onClick={onCancel}
+            disabled={busy}
+            style={{ minHeight: 40 }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="s7-btn s7-btn--primary"
+            onClick={onConfirm}
+            disabled={busy || !hasChanges}
+            title={!hasChanges ? "Nothing to apply — file matches the current data." : undefined}
+            style={{ minHeight: 40 }}
+          >
+            {busy ? "Applying…" : hasChanges ? `Apply ${totalAdds + totalChanges} change${totalAdds + totalChanges === 1 ? "" : "s"}` : "No changes"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ImportSurfaceSection({ diff }: { diff: ImportSurfaceDiff }) {
+  const total = diff.adds.length + diff.changes.length + diff.noChangeCount;
+  if (total === 0) return null;
+  return (
+    <section style={{ borderTop: "1px solid var(--border, #e5e7eb)", paddingTop: 12 }}>
+      <h4 style={{ margin: "0 0 6px", fontSize: 13 }}>
+        {diff.label}{" "}
+        <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 400 }}>
+          — {diff.adds.length} add / {diff.changes.length} change / {diff.noChangeCount} unchanged
+        </span>
+      </h4>
+      {diff.adds.length > 0 ? (
+        <details open={diff.adds.length <= 5}>
+          <summary style={{ fontSize: 12, cursor: "pointer" }}>Add ({diff.adds.length})</summary>
+          <ul style={{ margin: "4px 0", paddingLeft: 18, fontSize: 12 }}>
+            {diff.adds.map((a, i) => (
+              <li key={i}>
+                <strong>{a.naturalKey}</strong> — {formatValues(a.values ?? {})}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+      {diff.changes.length > 0 ? (
+        <details open={diff.changes.length <= 5}>
+          <summary style={{ fontSize: 12, cursor: "pointer" }}>Change ({diff.changes.length})</summary>
+          <ul style={{ margin: "4px 0", paddingLeft: 18, fontSize: 12 }}>
+            {diff.changes.map((c, i) => (
+              <li key={i}>
+                <strong>{c.naturalKey}</strong>
+                {c.changedFields && c.changedFields.length > 0 ? (
+                  <>
+                    {" "}
+                    <span style={{ color: "var(--text-muted)" }}>
+                      ({c.changedFields.join(", ")})
+                    </span>
+                  </>
+                ) : null}
+                <div style={{ color: "var(--text-muted)", marginLeft: 12 }}>
+                  from: {formatValues(c.from ?? {})}
+                </div>
+                <div style={{ marginLeft: 12 }}>to: {formatValues(c.to ?? {})}</div>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+    </section>
+  );
+}
+
+function formatValues(values: Record<string, unknown>): string {
+  return Object.entries(values)
+    .filter(([, v]) => v !== null && v !== undefined && v !== "")
+    .map(([k, v]) => `${k}=${v}`)
+    .join(", ");
 }
 
 // ── Rate table detail ────────────────────────────────────────────────────

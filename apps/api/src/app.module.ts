@@ -30,6 +30,7 @@ import { ContactsModule } from "./modules/contacts/contacts.module";
 import { DirectoryModule } from "./modules/directory/directory.module";
 import { SafetyModule } from "./modules/safety/safety.module";
 import { MasterDataModule } from "./modules/master-data/master-data.module";
+import { MetadataModule } from "./modules/metadata/metadata.module";
 import { PdfRenderingModule } from "./modules/pdf-rendering/pdf-rendering.module";
 import { PermissionsModule } from "./modules/permissions/permissions.module";
 import { PilotFeedbackModule } from "./modules/pilot-feedback/pilot-feedback.module";
@@ -110,6 +111,7 @@ import { ReportingModule } from "./modules/reporting/reporting.module";
     MaintenanceModule,
     InventoryModule,
     MasterDataModule,
+    MetadataModule,
     DirectoryModule,
     ContactsModule,
     ComplianceModule,

@@ -43,6 +43,19 @@ type WorkerCompetencyRow = {
   daysUntilExpiry: number | null;
 };
 
+type PrequalDashboard = {
+  counts: Record<string, number>;
+  riskMix: Record<string, number>;
+  expiringSoon: Array<{
+    id: string;
+    subcontractorId: string;
+    subcontractorName: string;
+    expiresAt: string | null;
+    riskRating: string | null;
+  }>;
+  subcontractorsWithoutPrequal: Array<{ id: string; name: string; prequalStatus: string }>;
+};
+
 const DAY_OPTIONS = [7, 14, 30, 60, 90];
 const COMPETENCY_HORIZON_OPTIONS = [30, 60, 90, 180, 365];
 const TYPE_OPTIONS: Array<{ value: string; label: string }> = [
@@ -105,6 +118,10 @@ export function CompliancePage() {
   const [competencyLoading, setCompetencyLoading] = useState(true);
   const [competencyError, setCompetencyError] = useState<string | null>(null);
 
+  // Subcontractor prequalification dashboard
+  const [prequal, setPrequal] = useState<PrequalDashboard | null>(null);
+  const [prequalError, setPrequalError] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -139,6 +156,17 @@ export function CompliancePage() {
     }
   }, [authFetch, competencyHorizon]);
 
+  const loadPrequal = useCallback(async () => {
+    setPrequalError(null);
+    try {
+      const resp = await authFetch("/compliance/prequal/dashboard");
+      if (!resp.ok) throw new Error(await resp.text());
+      setPrequal((await resp.json()) as PrequalDashboard);
+    } catch (err) {
+      setPrequalError((err as Error).message);
+    }
+  }, [authFetch]);
+
   useEffect(() => {
     void load();
   }, [load]);
@@ -146,6 +174,10 @@ export function CompliancePage() {
   useEffect(() => {
     void loadCompetencies();
   }, [loadCompetencies]);
+
+  useEffect(() => {
+    void loadPrequal();
+  }, [loadPrequal]);
 
   const allRows = useMemo<ExpiryRow[]>(() => {
     if (!data) return [];
@@ -598,6 +630,108 @@ export function CompliancePage() {
               </tbody>
             </table>
           </div>
+        )}
+      </section>
+
+      {/* ── Subcontractor prequalification ─────────────────────────────────── */}
+      <section style={{ marginTop: 32 }} data-testid="prequal-section">
+        <h2 className="s7-type-section-heading" style={{ margin: "0 0 8px" }}>
+          Subcontractor prequalification
+        </h2>
+        <p style={{ color: "var(--text-muted)", margin: "0 0 12px", fontSize: 13 }}>
+          Structured review cycles across the subcontractor base. Approvals capture a snapshot
+          of insurances, licences, and safety documents at the point of verification.
+        </p>
+        {prequalError ? (
+          <p style={{ color: "var(--status-danger)" }}>{prequalError}</p>
+        ) : !prequal ? (
+          <p style={{ color: "var(--text-muted)" }}>Loading prequalification rollup…</p>
+        ) : (
+          <>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                gap: 10,
+                marginBottom: 14
+              }}
+            >
+              <SummaryCard label="Approved" value={prequal.counts.approved ?? 0} bg="#16a34a" />
+              <SummaryCard label="Under review" value={(prequal.counts.submitted ?? 0) + (prequal.counts.under_review ?? 0)} bg="#eab308" />
+              <SummaryCard label="Expired" value={prequal.counts.expired ?? 0} bg="#dc2626" />
+              <SummaryCard label="Missing prequal" value={prequal.subcontractorsWithoutPrequal.length} bg="#7f1d1d" />
+            </div>
+
+            {Object.keys(prequal.riskMix).length > 0 ? (
+              <div style={{ display: "inline-flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+                {(["low", "medium", "high"] as const).map((risk) => {
+                  const count = prequal.riskMix[risk] ?? 0;
+                  if (count === 0) return null;
+                  const bg = risk === "high" ? "#dc2626" : risk === "medium" ? "#f97316" : "#16a34a";
+                  return (
+                    <span
+                      key={risk}
+                      data-testid={`prequal-risk-${risk}`}
+                      style={{
+                        background: bg,
+                        color: "#fff",
+                        fontSize: 11,
+                        fontWeight: 600,
+                        padding: "2px 10px",
+                        borderRadius: 999,
+                        textTransform: "uppercase"
+                      }}
+                    >
+                      {count} {risk} risk
+                    </span>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            {prequal.expiringSoon.length > 0 ? (
+              <div style={{ marginBottom: 16 }}>
+                <h3 style={{ fontSize: 13, textTransform: "uppercase", color: "var(--text-muted)", margin: "0 0 6px" }}>
+                  Expiring within 30 days
+                </h3>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                    <thead style={{ background: "var(--surface-muted, #f6f6f6)" }}>
+                      <tr>
+                        {["Subcontractor", "Risk", "Expires"].map((h) => (
+                          <th key={h} style={{ padding: "6px 8px", textAlign: "left", fontSize: 10, textTransform: "uppercase", color: "var(--text-muted)" }}>
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {prequal.expiringSoon.map((row) => (
+                        <tr key={row.id} style={{ borderTop: "1px solid var(--border, #e5e7eb)" }}>
+                          <td style={{ padding: "6px 8px" }}><strong>{row.subcontractorName}</strong></td>
+                          <td style={{ padding: "6px 8px", fontSize: 12, textTransform: "capitalize" }}>{row.riskRating ?? "—"}</td>
+                          <td style={{ padding: "6px 8px", fontSize: 12 }}>{fmtDate(row.expiresAt)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
+
+            {prequal.subcontractorsWithoutPrequal.length > 0 ? (
+              <details>
+                <summary style={{ cursor: "pointer", fontSize: 13, color: "var(--text-muted)" }}>
+                  {prequal.subcontractorsWithoutPrequal.length} active subs have never been prequalified
+                </summary>
+                <ul style={{ margin: "8px 0 0 18px", fontSize: 13 }}>
+                  {prequal.subcontractorsWithoutPrequal.map((s) => (
+                    <li key={s.id}>{s.name}</li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+          </>
         )}
       </section>
 

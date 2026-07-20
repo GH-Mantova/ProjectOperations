@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { CenteredModal, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { formTemplateAuthority } from "./formTemplateAuthority";
+import { ImportFromPdfModal } from "./ImportFromPdfModal";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -150,6 +151,7 @@ export function FormsListPage() {
   const [confirmDelete, setConfirmDelete] = useState<FormTemplate | null>(null);
   const [confirmArchive, setConfirmArchive] = useState<FormTemplate | null>(null);
   const [shareTemplate, setShareTemplate] = useState<FormTemplate | null>(null);
+  const [showImport, setShowImport] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -361,6 +363,7 @@ export function FormsListPage() {
           setShowArchived={setShowArchived}
           archivedCount={archivedCount}
           onNew={() => void createBlankTemplate()}
+          onImport={() => setShowImport(true)}
           onEdit={(t) => navigate(`/forms/designer/${t.id}`)}
           onDuplicate={(t) => void duplicateTemplate(t)}
           onArchiveConfirm={(t) => setConfirmArchive(t)}
@@ -436,6 +439,16 @@ export function FormsListPage() {
         />
       ) : null}
 
+      {showImport ? (
+        <ImportFromPdfModal
+          onClose={() => setShowImport(false)}
+          onCreated={(templateId) => {
+            setShowImport(false);
+            navigate(`/forms/designer/${templateId}`);
+          }}
+        />
+      ) : null}
+
       {tab === "my-submissions" ? <MySubmissionsTab loading={loading} submissions={submissions} /> : null}
 
       {tab === "approvals" && canApprove ? (
@@ -464,6 +477,7 @@ function TemplatesTab({
   setShowArchived,
   archivedCount,
   onNew,
+  onImport,
   onEdit,
   onDuplicate,
   onArchiveConfirm,
@@ -485,6 +499,7 @@ function TemplatesTab({
   setShowArchived: (v: boolean) => void;
   archivedCount: number;
   onNew: () => void;
+  onImport: () => void;
   onEdit: (t: FormTemplate) => void;
   onDuplicate: (t: FormTemplate) => void;
   onArchiveConfirm: (t: FormTemplate) => void;
@@ -516,6 +531,14 @@ function TemplatesTab({
               {showArchived ? "← Back to active" : `Archived${archivedCount ? ` (${archivedCount})` : ""}`}
             </button>
             <div style={{ flex: 1 }} />
+            <button
+              type="button"
+              className="s7-btn s7-btn--secondary"
+              onClick={onImport}
+              title="Upload a paper form as a PDF; AI drafts a matching template you can review"
+            >
+              Import from PDF…
+            </button>
             <button
               type="button"
               className="s7-btn s7-btn--primary"

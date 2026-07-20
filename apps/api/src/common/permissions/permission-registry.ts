@@ -103,6 +103,9 @@ export const permissionRegistry = [
   // Case management (slice 1, PR cases-slice1).
   { code: "cases.view", module: "cases", label: "View cases (defects, warranty, RFIs, complaints)", description: "View case register, detail, and comment thread" },
   { code: "cases.manage", module: "cases", label: "Create and manage cases", description: "Raise cases, update status, assign, and post comments" },
+  // CRM — Lead + Opportunity pipeline (slice 1, feat-crm-lead-opportunity).
+  { code: "crm.view", module: "crm", label: "View CRM leads, opportunities and forecast", description: "View leads, opportunity board, opportunity detail, and weighted forecast" },
+  { code: "crm.manage", module: "crm", label: "Manage CRM leads and opportunities", description: "Create/edit leads and opportunities, move stages, convert lead→opportunity and opportunity→tender" },
   // Worker leave management (PR #658 gate — see prompt).
   { code: "workers.manage", module: "workers", label: "Manage worker leave and org structure", description: "List all leave requests, view the org chart, and approve or reject leave" },
   // Automation engine (MVP slice 1). Cross-module Power-Automate-style rules.

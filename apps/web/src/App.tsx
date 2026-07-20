@@ -95,6 +95,8 @@ import { PortalDocumentsPage } from "./portal/pages/PortalDocumentsPage";
 import { PortalAccountPage } from "./portal/pages/PortalAccountPage";
 import { CasesListPage } from "./pages/cases/CasesListPage";
 import { CaseDetailPage } from "./pages/cases/CaseDetailPage";
+import { CrmBoardPage } from "./pages/crm/CrmBoardPage";
+import { OpportunityDetailPage } from "./pages/crm/OpportunityDetailPage";
 import { OfflineProvider } from "./offline/OfflineContext";
 import { OfflineIndicator } from "./offline/OfflineIndicator";
 import { InstallPrompt } from "./offline/InstallPrompt";
@@ -338,6 +340,8 @@ export function App() {
             <Route path="/safety" element={<SafetyPage />} />
             <Route path="/cases" element={<CasesListPage />} />
             <Route path="/cases/:id" element={<CaseDetailPage />} />
+            <Route path="/crm" element={<CrmBoardPage />} />
+            <Route path="/crm/opportunities/:id" element={<OpportunityDetailPage />} />
             <Route path="/directory/subcontractors" element={<SubcontractorsPage />} />
             <Route path="/directory/contacts" element={<ContactsPage />} />
             <Route path="/archive" element={<ArchivePage />} />

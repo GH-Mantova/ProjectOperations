@@ -33,6 +33,7 @@ export type FieldType =
   // Site & WHS
   | "signature"
   | "image_capture"
+  | "existing_site"
   // Advanced (F-4)
   | "lookup"
   | "calculation"
@@ -144,7 +145,8 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
     label: "Site & WHS",
     entries: [
       { type: "image_capture", label: "Photo", icon: "\u{1F4F7}" },
-      { type: "signature", label: "Signature", icon: "✍" }
+      { type: "signature", label: "Signature", icon: "✍" },
+      { type: "existing_site", label: "Existing site", icon: "\u{1F3D7}" }
     ]
   },
   {
@@ -247,7 +249,8 @@ const DEFAULT_LABEL: Partial<Record<string, string>> = {
   lookup: "Lookup",
   calculation: "Calculated total",
   table: "Table",
-  terms: "Terms & conditions"
+  terms: "Terms & conditions",
+  existing_site: "Site"
 };
 
 function defaultConfigFor(fieldType: FieldType | string): Record<string, unknown> | undefined {

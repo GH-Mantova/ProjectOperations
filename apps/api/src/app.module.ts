@@ -67,6 +67,7 @@ import { ExpensesModule } from "./modules/expenses/expenses.module";
 import { SurveysModule } from "./modules/surveys/surveys.module";
 import { CasesModule } from "./modules/cases/cases.module";
 import { CrmModule } from "./modules/crm/crm.module";
+import { ReportingModule } from "./modules/reporting/reporting.module";
 
 @Module({
   imports: [
@@ -140,7 +141,8 @@ import { CrmModule } from "./modules/crm/crm.module";
     ExpensesModule,
     SurveysModule,
     CasesModule,
-    CrmModule
+    CrmModule,
+    ReportingModule
   ]
 })
 export class AppModule {}

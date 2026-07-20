@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/commo
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
+import { RateResolverService } from "../rates/rate-resolver.service";
 import {
   UpdateAssumptionDto,
   UpdateCuttingLineDto,
@@ -70,7 +71,8 @@ function round2(value: number): number {
 export class EstimatesService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly auditService: AuditService
+    private readonly auditService: AuditService,
+    private readonly rateResolver: RateResolverService
   ) {}
 
   // ──────────────────────────────────────────────────────────────
@@ -441,16 +443,18 @@ export class EstimatesService {
     return { id };
   }
 
-  // Material density — lookup table for density by material name
+  // Material density — lookup table for density by material name.
+  // Reads delegate to `RateResolverService`, the density read seam
+  // (see rate-resolver.service.ts). Legacy `EstimateMaterialDensity`
+  // remains write-authoritative here for this PR (deprecate-in-place).
   /**
    * List material densities, active first then by category and name.
    *
-   * @returns all EstimateMaterialDensity rows
+   * @returns density rows via the resolver seam (byte-identical to a
+   *          direct `estimateMaterialDensity.findMany` today)
    */
   listMaterialDensities() {
-    return this.prisma.estimateMaterialDensity.findMany({
-      orderBy: [{ isActive: "desc" }, { category: "asc" }, { materialName: "asc" }]
-    });
+    return this.rateResolver.listMaterialDensities();
   }
   /**
    * Create (id undefined) or update (id given) a material density; audited.

@@ -66,6 +66,7 @@ import { GeocodingModule } from "./modules/geocoding/geocoding.module";
 import { ExpensesModule } from "./modules/expenses/expenses.module";
 import { SurveysModule } from "./modules/surveys/surveys.module";
 import { CasesModule } from "./modules/cases/cases.module";
+import { ReportingModule } from "./modules/reporting/reporting.module";
 
 @Module({
   imports: [
@@ -138,7 +139,8 @@ import { CasesModule } from "./modules/cases/cases.module";
     GeocodingModule,
     ExpensesModule,
     SurveysModule,
-    CasesModule
+    CasesModule,
+    ReportingModule
   ]
 })
 export class AppModule {}

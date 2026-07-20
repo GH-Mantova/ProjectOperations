@@ -123,6 +123,8 @@ model User {
   clientsAsClaimReminder     Client[]                    @relation("ClaimReminderUser")
   qualificationsCreated      WorkerQualification[]       @relation("QualificationCreatedBy")
   complianceAlertsSent       ComplianceAlert[]           @relation("ComplianceAlertRecipient")
+  prequalRequestsCreated     PrequalificationRequest[]   @relation("PrequalRequestCreator")
+  prequalRequestsVerified    PrequalificationRequest[]   @relation("PrequalRequestVerifier")
   safetyIncidentsReported    SafetyIncident[]            @relation("SafetyIncidentReporter")
   safetyIncidentsClosed      SafetyIncident[]            @relation("SafetyIncidentCloser")
   hazardsReported            HazardObservation[]         @relation("HazardReporter")
@@ -197,6 +199,8 @@ model User {
   // CRM — Leads + Opportunities (sales pipeline that sits BEFORE a Tender).
   leadsOwned          Lead[]        @relation("LeadOwner")
   opportunitiesOwned  Opportunity[] @relation("OpportunityOwner")
+  // Knowledge Base / SOP library (slice 2 — KB articles authored by this user).
+  kbArticlesAuthored KbArticle[] @relation("KbArticleAuthor")
 
   // Universal activity Timeline — every note/system entry a user authors.
   activityEntriesAuthored   ActivityEntry[]    @relation("ActivityEntryAuthor")
@@ -4047,6 +4051,7 @@ model SubcontractorSupplier {
   creditEntries      SupplierCreditEntry[]   @relation("SupplierCreditEntries")
   rateTables         RateTable[]             @relation("RateTableSupplier")
   commitments        Commitment[]
+  prequalRequests    PrequalificationRequest[]
 
   @@index([entityType])
   @@index([prequalStatus])
@@ -4185,6 +4190,50 @@ model SubcontractorDocument {
 
   @@index([subcontractorId])
   @@map("subcontractor_documents")
+}
+
+// Structured prequalification workflow for a subcontractor. A row represents
+// one review cycle (typically annual) that captures the state of the sub's
+// insurances, licences and safety documents at the time of verification,
+// stamps a risk rating, and drives the `SubcontractorSupplier.prequalStatus`
+// summary field. Unlike the summary field, this table preserves history so
+// prior review cycles remain auditable when the sub renews.
+//
+// The `snapshot` JSON field captures a point-in-time list of the
+// EntityInsurance / EntityLicence / SubcontractorDocument IDs that were on
+// file at verification, plus their expiry dates and types — this is the
+// authoritative record of "what did we verify" and survives later edits to
+// those underlying rows.
+model PrequalificationRequest {
+  id              String                @id @default(cuid())
+  subcontractorId String                @map("subcontractor_id")
+  subcontractor   SubcontractorSupplier @relation(fields: [subcontractorId], references: [id], onDelete: Cascade)
+  // draft | submitted | under_review | approved | rejected | expired
+  status          String                @default("draft")
+  submittedAt     DateTime?             @map("submitted_at")
+  verifiedById    String?               @map("verified_by_id")
+  verifiedBy      User?                 @relation("PrequalRequestVerifier", fields: [verifiedById], references: [id])
+  verifiedAt      DateTime?             @map("verified_at")
+  // low | medium | high — set at verification time.
+  riskRating      String?               @map("risk_rating")
+  // Expiry of the prequal itself (typically 12 months after verifiedAt).
+  // Populated by the daily compliance cron flipping status → "expired".
+  expiresAt       DateTime?             @map("expires_at")
+  notes           String?
+  rejectionReason String?               @map("rejection_reason")
+  // Point-in-time capture of insurance/licence/document IDs, types, and
+  // expiry dates that were on file at verification. Shape:
+  // { insurances: [{id, type, expiryDate}], licences: [...], documents: [...] }
+  snapshot        Json?
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+  createdById     String                @map("created_by_id")
+  createdBy       User                  @relation("PrequalRequestCreator", fields: [createdById], references: [id])
+
+  @@index([subcontractorId])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("prequalification_requests")
 }
 
 // â"€â"€â"€ Compliance tracking (PR #79) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -6097,4 +6146,34 @@ model Opportunity {
   @@index([expectedCloseDate])
   @@index([nextActionAt])
   @@map("opportunities")
+}
+
+// ── Knowledge Base / SOP Library (case management slice 2) ──────────────────
+// Internal-only library of asbestos procedures, safe work methods, common
+// defect fixes, and how-tos. Not portal-facing. Authors draft articles;
+// knowledge.manage holders can publish them.
+
+enum KbArticleStatus {
+  DRAFT
+  PUBLISHED
+}
+
+model KbArticle {
+  id       String          @id @default(cuid())
+  title    String
+  body     String
+  category String
+  tags     String[]        @default([])
+  status   KbArticleStatus @default(DRAFT)
+
+  authorId String @map("author_id")
+  author   User   @relation("KbArticleAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([category])
+  @@index([authorId])
+  @@map("kb_articles")
 }

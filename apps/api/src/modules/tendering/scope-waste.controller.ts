@@ -39,6 +39,16 @@ class UpsertWasteDto {
   @IsOptional() @Type(() => Number) @IsNumber() ratePerLoad?: number | null;
   @IsOptional() @IsString() notes?: string | null;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) sortOrder?: number;
+  // R3 T-1 - waste transport cost engine inputs. All optional; the
+  // engine only fires when transportRateId + qtyTrucks +
+  // loadsPerTruckPerDay + capacityPerLoad are all populated.
+  @IsOptional() @IsString() transportRateId?: string | null;
+  @IsOptional() @IsString() assetId?: string | null;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) qtyTrucks?: number | null;
+  @IsOptional() @Type(() => Number) @IsNumber() loadsPerTruckPerDay?: number | null;
+  @IsOptional() @Type(() => Number) @IsNumber() capacityPerLoad?: number | null;
+  @IsOptional() @IsString() capacityUnit?: string | null;
+  @IsOptional() @Type(() => Number) @IsNumber() dailyKm?: number | null;
 }
 
 class ReorderEntryDto {
@@ -159,6 +169,39 @@ export class ScopeWasteController {
   @ApiResponse({ status: 200, description: "Delete a waste row." })
   remove(@Param("tenderId") tenderId: string, @Param("itemId") itemId: string) {
     return this.service.remove(tenderId, itemId);
+  }
+
+  /**
+   * R3 T-1 - variance check for a single waste line. Returns the
+   * currently-live disposal + fuel rates alongside the snapshots the
+   * engine recorded at pricing time, plus a boolean the UI uses to
+   * render an "Escalate for confirmation" flag.
+   *
+   * Read-only. The escalate action is a separate POST.
+   */
+  @Get(":itemId/variance")
+  @RequirePermissions("estimates.view")
+  @ApiOperation({ summary: "R3 T-1 variance check - compare snapshot rates against current live rates for a waste line." })
+  @ApiResponse({ status: 200, description: "R3 T-1 variance check - compare snapshot rates against current live rates for a waste line." })
+  variance(@Param("tenderId") tenderId: string, @Param("itemId") itemId: string) {
+    return this.service.variance(tenderId, itemId);
+  }
+
+  /**
+   * R3 T-1 - fire the "waste_line.rate_variance_escalated" trigger.
+   * Creates an in-app Notification for each configured recipient. Does
+   * NOT auto-reprice the line (Marco 2026-07-15 - the human confirms).
+   */
+  @Post(":itemId/escalate-variance")
+  @RequirePermissions("estimates.manage")
+  @ApiOperation({ summary: "R3 T-1 escalate a waste-line rate variance to the responsible role. Does not auto-reprice." })
+  @ApiResponse({ status: 201, description: "R3 T-1 escalate a waste-line rate variance to the responsible role. Does not auto-reprice." })
+  escalateVariance(
+    @Param("tenderId") tenderId: string,
+    @Param("itemId") itemId: string,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.escalateVariance(tenderId, itemId, actor.sub);
   }
 
   /**

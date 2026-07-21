@@ -105,7 +105,7 @@ const rates: WasteRate[] = [
 describe("ScopeWasteService.sumFromAbove (PR B4a)", () => {
   it("throws NotFoundException when the card is not in the tender", async () => {
     const { prisma } = buildPrismaMock({ card: null });
-    const svc = new ScopeWasteService(prisma as never);
+    const svc = new ScopeWasteService(prisma as never, {} as never, {} as never);
     await expect(svc.sumFromAbove("tender-1", "missing", "user-1")).rejects.toBeInstanceOf(
       NotFoundException
     );
@@ -122,7 +122,7 @@ describe("ScopeWasteService.sumFromAbove (PR B4a)", () => {
       ],
       wasteRates: rates
     });
-    const svc = new ScopeWasteService(prisma as never);
+    const svc = new ScopeWasteService(prisma as never, {} as never, {} as never);
     const result = await svc.sumFromAbove("tender-1", "card-1", "user-1");
     expect(result).toEqual({ replaced: 0, created: 2 });
     expect(mocks.scopeWasteItemCreate).toHaveBeenCalledTimes(2);
@@ -149,7 +149,7 @@ describe("ScopeWasteService.sumFromAbove (PR B4a)", () => {
       ],
       wasteRates: rates
     });
-    const svc = new ScopeWasteService(prisma as never);
+    const svc = new ScopeWasteService(prisma as never, {} as never, {} as never);
     await svc.sumFromAbove("tender-1", "card-1", "user-1");
     const data = (mocks.scopeWasteItemCreate.mock.calls[0]?.[0] as { data: Record<string, unknown> }).data;
     expect(data.unit).toBe("m³");
@@ -166,7 +166,7 @@ describe("ScopeWasteService.sumFromAbove (PR B4a)", () => {
       ],
       wasteRates: rates
     });
-    const svc = new ScopeWasteService(prisma as never);
+    const svc = new ScopeWasteService(prisma as never, {} as never, {} as never);
     const result = await svc.sumFromAbove("tender-1", "card-1", "user-1");
     expect(result).toEqual({ replaced: 0, created: 0 });
     expect(mocks.scopeWasteItemCreate).not.toHaveBeenCalled();
@@ -182,7 +182,7 @@ describe("ScopeWasteService.sumFromAbove (PR B4a)", () => {
       ],
       wasteRates: rates
     });
-    const svc = new ScopeWasteService(prisma as never);
+    const svc = new ScopeWasteService(prisma as never, {} as never, {} as never);
     const result = await svc.sumFromAbove("tender-1", "card-1", "user-1");
     expect(result).toEqual({ replaced: 0, created: 0 });
     expect(mocks.scopeWasteItemCreate).not.toHaveBeenCalled();
@@ -195,7 +195,7 @@ describe("ScopeWasteService.sumFromAbove (PR B4a)", () => {
       ],
       wasteRates: rates
     });
-    const svc = new ScopeWasteService(prisma as never);
+    const svc = new ScopeWasteService(prisma as never, {} as never, {} as never);
     const result = await svc.sumFromAbove("tender-1", "card-1", "user-1");
     expect(result).toEqual({ replaced: 0, created: 1 });
     const data = (mocks.scopeWasteItemCreate.mock.calls[0]?.[0] as { data: Record<string, unknown> }).data;
@@ -210,7 +210,7 @@ describe("ScopeWasteService.sumFromAbove (PR B4a)", () => {
       ],
       wasteRates: rates
     });
-    const svc = new ScopeWasteService(prisma as never);
+    const svc = new ScopeWasteService(prisma as never, {} as never, {} as never);
     const result = await svc.sumFromAbove("tender-1", "card-1", "user-1");
     expect(result).toEqual({ replaced: 0, created: 1 });
     const data = (mocks.scopeWasteItemCreate.mock.calls[0]?.[0] as { data: Record<string, unknown> }).data;
@@ -231,7 +231,7 @@ describe("ScopeWasteService.sumFromAbove (PR B4a)", () => {
       wasteRates: rates,
       deletedCount: 3
     });
-    const svc = new ScopeWasteService(prisma as never);
+    const svc = new ScopeWasteService(prisma as never, {} as never, {} as never);
     const result = await svc.sumFromAbove("tender-1", "card-1", "user-1");
     expect(result).toEqual({ replaced: 3, created: 1 });
     const deleteArgs = (mocks.scopeWasteItemDeleteMany.mock.calls[0]?.[0] ?? {}) as {
@@ -244,7 +244,7 @@ describe("ScopeWasteService.sumFromAbove (PR B4a)", () => {
 
   it("returns { replaced: 0, created: 0 } when there are no contributing items", async () => {
     const { prisma } = buildPrismaMock({ scopeItems: [], wasteRates: rates });
-    const svc = new ScopeWasteService(prisma as never);
+    const svc = new ScopeWasteService(prisma as never, {} as never, {} as never);
     const result = await svc.sumFromAbove("tender-1", "card-1", "user-1");
     expect(result).toEqual({ replaced: 0, created: 0 });
   });
@@ -269,7 +269,7 @@ describe("ScopeWasteService.sumFromAbove (PR B4a)", () => {
         }
       ]
     });
-    const svc = new ScopeWasteService(prisma as never);
+    const svc = new ScopeWasteService(prisma as never, {} as never, {} as never);
     await svc.sumFromAbove("tender-1", "card-1", "user-1");
     const data = (mocks.scopeWasteItemCreate.mock.calls[0]?.[0] as { data: Record<string, unknown> }).data;
     expect(data.wasteFacility).toBe("Cleanaway Lytton");
@@ -286,7 +286,7 @@ describe("ScopeWasteService.sumFromAbove (PR B4a)", () => {
       ],
       wasteRates: rates
     });
-    const svc = new ScopeWasteService(prisma as never);
+    const svc = new ScopeWasteService(prisma as never, {} as never, {} as never);
     const result = await svc.sumFromAbove("tender-1", "card-1", "user-1");
     expect(result).toEqual({ replaced: 0, created: 1 });
     const data = (mocks.scopeWasteItemCreate.mock.calls[0]?.[0] as { data: Record<string, unknown> }).data;
@@ -304,7 +304,7 @@ describe("ScopeWasteService.sumFromAbove (PR B4a)", () => {
       ],
       wasteRates: []
     });
-    const svc = new ScopeWasteService(prisma as never);
+    const svc = new ScopeWasteService(prisma as never, {} as never, {} as never);
     const result = await svc.sumFromAbove("tender-1", "card-1", "user-1");
     expect(result).toEqual({ replaced: 0, created: 2 });
     const calls = mocks.scopeWasteItemCreate.mock.calls.map(

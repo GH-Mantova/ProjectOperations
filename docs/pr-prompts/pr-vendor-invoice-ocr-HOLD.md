@@ -14,9 +14,20 @@ escalates: false
 <!-- watcher: do-not-arm | GATED: arm after pr-procurement-three-way-match AND pr-integration-keys-settings MERGED, and Marco has entered a doc-AI key in Integration settings -->
 # HOLD — Vendor-invoice OCR intake
 
-STATUS: DRAFTED, STAGED, DO NOT ARM YET. Tier 2. **ARM ONLY** after `pr-procurement-three-way-match`
-(VendorInvoice model + match) AND `pr-integration-keys-settings` merged, and Marco has entered a
-document-AI key. `GATE-ALLOW: env-vars`. No migration.
+STATUS: DRAFTED, STAGED, DO NOT ARM YET - but the CODE gates are now CLEARED. Re-verified against
+origin/main 285e779 on 2026-07-20: `model VendorInvoice` IS on main (three-way-match shipped) and
+`resolveIntegrationKey` IS on main (integration-keys shipped). **The ONLY thing still missing is a
+document-AI key entered in Integration settings by Marco.** Arm the moment he confirms the key is in.
+`GATE-ALLOW: env-vars`. No migration.
+
+PROVIDER: **Azure Document Intelligence** (prebuilt-invoice model) - chosen 2026-07-20 because the
+tenant is already Microsoft (Entra, SharePoint, Graph managed identity), so it adds no new vendor
+relationship. Build against its prebuilt-invoice response shape.
+
+**HARD STOP - AZURE.** You may write the client code, the config plumbing and the runbook. You must
+NOT create the Azure resource, register anything in Entra, set any App Service setting, or run any
+`az` / `Connect-MgGraph` command that writes. Marco does all of that himself. Resolve the key
+ONLY through `resolveIntegrationKey('doc-ai')` (DB-first, env fallback) at runtime.
 
 ## What to build
 Branch: `feat/vendor-invoice-ocr`. Reviewer: `GH-Mantova`.

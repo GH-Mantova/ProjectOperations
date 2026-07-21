@@ -11,7 +11,9 @@ export type PendingKind =
   | "safety-incident"
   | "safety-hazard"
   | "field-expense"
-  | "field-expense-submit";
+  | "field-expense-submit"
+  | "site-signin"
+  | "site-signout";
 
 export type PendingMutation = {
   id: string;

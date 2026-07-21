@@ -135,7 +135,8 @@ export async function seedOperationalRoles(prisma: PrismaClient) {
       "directory.view",
       "compliance.view",
       "safety.view",
-      "safety.manage"
+      "safety.manage",
+      "sites.view"
     ]
   );
 
@@ -182,7 +183,8 @@ export async function seedOperationalRoles(prisma: PrismaClient) {
       "compliance.admin",
       "safety.view",
       "safety.manage",
-      "safety.admin"
+      "safety.admin",
+      "sites.view"
     ]
   );
 
@@ -237,7 +239,7 @@ export async function seedOperationalRoles(prisma: PrismaClient) {
   const fieldWorkerRole = await seedRoleWithPermissions(
     "Field Worker",
     "Mobile field access — own allocations, pre-starts, timesheets, documents.",
-    ["field.view", "notifications.view", "safety.view", "safety.manage"]
+    ["field.view", "notifications.view", "safety.view", "safety.manage", "sites.view", "sites.manage"]
   );
 
   return {

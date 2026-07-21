@@ -10131,3 +10131,153 @@ textarea {
 .jobs-kanban-card__title:hover {
   text-decoration: underline;
 }
+
+/* ── Settings shell (feat/settings-shell) ─────────────────────────────
+   Single Settings area with a left sub-nav grouped by audience
+   (Personal / Company / Administration). Uses design-system tokens
+   only — no hard-coded colours. */
+.settings-shell {
+  padding: 24px;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.settings-shell__header {
+  margin-bottom: 20px;
+}
+
+.settings-shell__layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+.settings-shell__nav {
+  position: sticky;
+  top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 16px 8px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+
+.settings-shell__nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-shell__nav-group-label {
+  margin: 0 0 4px;
+  padding: 0 10px;
+  color: var(--text-secondary);
+}
+
+.settings-shell__nav-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-shell__nav-link {
+  display: block;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  color: var(--text-primary);
+  text-decoration: none;
+  border-left: 3px solid transparent;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.settings-shell__nav-link:hover {
+  background: var(--surface-hover);
+}
+
+.settings-shell__nav-link--active {
+  background: var(--brand-primary-light);
+  color: var(--brand-primary);
+  font-weight: 600;
+  border-left-color: var(--brand-primary);
+}
+
+.settings-shell__content {
+  min-width: 0;
+}
+
+@media (max-width: 800px) {
+  .settings-shell__layout {
+    grid-template-columns: 1fr;
+  }
+  .settings-shell__nav {
+    position: static;
+  }
+}
+
+/* ── Admin settings tabs (rebuilt with design-system tokens) ────────── */
+.admin-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.admin-settings__header {
+  padding-bottom: 4px;
+}
+
+.admin-settings__layout {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 24px;
+}
+
+.admin-settings__tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-settings__tab {
+  text-align: left;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 14px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.admin-settings__tab:hover {
+  background: var(--surface-hover);
+}
+
+.admin-settings__tab--active {
+  background: var(--brand-primary-light);
+  color: var(--brand-primary);
+  font-weight: 600;
+  border-left-color: var(--brand-primary);
+}
+
+.admin-settings__panel {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+@media (max-width: 800px) {
+  .admin-settings__layout {
+    grid-template-columns: 1fr;
+  }
+}

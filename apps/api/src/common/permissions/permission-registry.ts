@@ -117,7 +117,10 @@ export const permissionRegistry = [
   // Reporting / BI layer (slice 1). Cross-module read-only report surface,
   // aggregating existing tables. Sits beside per-module dashboard widgets —
   // this is the tabular/exportable side (Excel / CSV / PDF).
-  { code: "reporting.view", module: "reporting", label: "View cross-module reports", description: "View and export the cross-module reporting surface (pipeline, win-rate, jobs, competency expiry, asset utilisation)" }
+  { code: "reporting.view", module: "reporting", label: "View cross-module reports", description: "View and export the cross-module reporting surface (pipeline, win-rate, jobs, competency expiry, asset utilisation)" },
+  // Site sign-in / sign-out (WHS spine — muster roll reads this back).
+  { code: "sites.view", module: "sites", label: "View who is currently signed in on a site", description: "View site sign-in/out attendance — current on-site headcount and my own attendance" },
+  { code: "sites.manage", module: "sites", label: "Sign in and sign out of a site", description: "Record site sign-in / sign-out for the field worker app" }
 ] as const;
 
 export type PermissionRegistryEntry = (typeof permissionRegistry)[number];

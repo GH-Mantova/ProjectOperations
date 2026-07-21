@@ -15,7 +15,7 @@ escalates: false
 ---
 # HOLD - ERP: live muster / evacuation headcount
 
-STATUS: DRAFTED, STAGED, DO NOT ARM YET. Gate re-checked against origin/main 285e779 on 2026-07-20: site sign-in does NOT exist yet, so the muster roll has no attendance source. Its predecessor had never been written at all - `pr-erp-site-signin` was authored and ARMED on 2026-07-20 to close that gap. ARM THIS when `grep -q "model SiteAttendance" apps/api/prisma/schema.prisma` passes on main; read the open attendances (`signedOutAt` NULL) as the on-site roll.
+STATUS: ARMED 2026-07-21 by Station 04 at Marco's request. Gate SATISFIED: `model SiteAttendance` IS on origin/main b6e63cb (site sign-in shipped), so the muster roll now has an attendance source. Read the open attendances (`signedOutAt` NULL) as the on-site roll.
 
 ## What to build (when armed)
 Branch: `feat/erp-muster-headcount`. Reviewer: `GH-Mantova`. Migration: YES. `GATE-ALLOW: migrations`.

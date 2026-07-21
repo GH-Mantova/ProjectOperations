@@ -185,11 +185,11 @@ model User {
   commitmentChangesApproved CommitmentChange[] @relation("CommitmentChangeApprovedBy")
 
   // Expenses (D365-parity slice 1)
-  expensesSubmitted         Expense[]          @relation("ExpenseSubmittedBy")
-  expensesApproved          Expense[]          @relation("ExpenseApprovedBy")
+  expensesSubmitted Expense[] @relation("ExpenseSubmittedBy")
+  expensesApproved  Expense[] @relation("ExpenseApprovedBy")
 
   // Customer Voice surveys
-  surveyResponsesCreated    SurveyResponse[]   @relation("SurveyResponseCreatedBy")
+  surveyResponsesCreated SurveyResponse[] @relation("SurveyResponseCreatedBy")
 
   // Case management (slice 1)
   casesRaised          Case[]        @relation("CaseRaisedBy")
@@ -203,7 +203,7 @@ model User {
   kbArticlesAuthored KbArticle[] @relation("KbArticleAuthor")
 
   // Universal activity Timeline — every note/system entry a user authors.
-  activityEntriesAuthored   ActivityEntry[]    @relation("ActivityEntryAuthor")
+  activityEntriesAuthored ActivityEntry[] @relation("ActivityEntryAuthor")
 
   @@index([isActive])
   @@index([managerId])
@@ -974,6 +974,9 @@ model Asset {
   scopePlantRefs           ScopeOfWorksItem[]      @relation("ScopeItemPlant")
   dockets                  Docket[]
   checkouts                AssetCheckout[]
+  // R3 T-1 — waste transport lines that reference this asset for its
+  // fuelConsumptionLPer100km / nominalLoadTonnes fallback.
+  wasteTransportItems      ScopeWasteItem[]        @relation("ScopeWasteItemAsset")
 
   @@index([status])
   @@index([assetCategoryId])
@@ -2120,16 +2123,18 @@ model EstimateLabourRate {
 }
 
 model EstimatePlantRate {
-  id        String   @id @default(uuid())
-  item      String   @unique
-  category  String?
-  unit      String   @default("day")
-  rate      Decimal  @db.Decimal(10, 2)
-  fuelRate  Decimal  @default(0) @map("fuel_rate") @db.Decimal(10, 2)
-  isActive  Boolean  @default(true) @map("is_active")
-  sortOrder Int      @default(0) @map("sort_order")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id                  String           @id @default(uuid())
+  item                String           @unique
+  category            String?
+  unit                String           @default("day")
+  rate                Decimal          @db.Decimal(10, 2)
+  fuelRate            Decimal          @default(0) @map("fuel_rate") @db.Decimal(10, 2)
+  isActive            Boolean          @default(true) @map("is_active")
+  sortOrder           Int              @default(0) @map("sort_order")
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+  // R3 T-1 — waste transport lines reference a Transport Fees row here.
+  wasteTransportItems ScopeWasteItem[] @relation("ScopeWasteItemTransportRate")
 
   @@map("estimate_plant_rates")
 }
@@ -3181,22 +3186,22 @@ model ScopeOfWorksItem {
 // wasteLoads / wasteType / wasteFacility columns on ScopeOfWorksItem are
 // retained for backward compat but no longer written by new code.
 model ScopeWasteItem {
-  id            String    @id @default(cuid())
-  tenderId      String    @map("tender_id")
-  tender        Tender    @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  id                      String             @id @default(cuid())
+  tenderId                String             @map("tender_id")
+  tender                  Tender             @relation(fields: [tenderId], references: [id], onDelete: Cascade)
   // PR A2 â€" parent card. PR B-followup â€" promoted from nullable to
   // required. Per-card subtable became canonical in B3; zero orphan
   // rows existed at promotion time. onDelete changed from SetNull
   // (would violate NOT NULL) to Cascade â€" deleting a scope card
   // removes its waste rows.
-  cardId        String    @map("card_id")
-  card          ScopeCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
-  discipline    String
-  wbsRef        String?   @map("wbs_ref")
-  description   String
-  wasteGroup    String?   @map("waste_group")
-  wasteType     String?   @map("waste_type")
-  wasteFacility String?   @map("waste_facility")
+  cardId                  String             @map("card_id")
+  card                    ScopeCard          @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  discipline              String
+  wbsRef                  String?            @map("wbs_ref")
+  description             String
+  wasteGroup              String?            @map("waste_group")
+  wasteType               String?            @map("waste_type")
+  wasteFacility           String?            @map("waste_facility")
   // PR B4a â€" this column carried the aggregated waste quantity in
   // tonnes; PR B4a made it billable against either tonnes or mÂ³
   // depending on the facility's rate unit. The name became a lie once
@@ -3204,34 +3209,72 @@ model ScopeWasteItem {
   // now `qty` (chore/schema-hygiene-waste). The `waste_tonnes` DB
   // column was renamed to `qty` in the same PR â€" see migration
   // `20260701_chore_schema_hygiene_waste_rename_qty`.
-  qty           Decimal?  @db.Decimal(10, 3)
+  qty                     Decimal?           @db.Decimal(10, 3)
   // PR B4a â€" mÂ³ companion to `qty` (previously wasteTonnes). Aggregator
   // writes both; facility's rate.unit decides which side the line
   // total bills against.
-  m3            Decimal?  @db.Decimal(10, 2)
-  wasteLoads    Int?      @map("waste_loads")
+  m3                      Decimal?           @db.Decimal(10, 2)
+  wasteLoads              Int?               @map("waste_loads")
   // PR B3 â€" unit drives the facility filter on the summary subtable.
   // PR B4a â€" facility filter on the subtable no longer narrows by
   // unit; this column now carries the facility's rate unit forward
   // for display (read-only badge on the row).
-  unit          String?
+  unit                    String?
   // PR B3 â€" true when this row was created by "Sum from above" and
   // can be replaced on regeneration. Manual rows (default false) are
   // preserved across regenerations.
-  autoSummed    Boolean   @default(false) @map("auto_summed")
-  truckDays     Decimal?  @map("truck_days") @db.Decimal(5, 1)
-  ratePerTonne  Decimal?  @map("rate_per_tonne") @db.Decimal(10, 2)
-  ratePerLoad   Decimal?  @map("rate_per_load") @db.Decimal(10, 2)
-  lineTotal     Decimal?  @map("line_total") @db.Decimal(12, 2)
-  notes         String?
-  sortOrder     Int       @default(0) @map("sort_order")
-  createdById   String    @map("created_by_id")
-  createdBy     User      @relation("ScopeWasteItemCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  autoSummed              Boolean            @default(false) @map("auto_summed")
+  truckDays               Decimal?           @map("truck_days") @db.Decimal(5, 1)
+  ratePerTonne            Decimal?           @map("rate_per_tonne") @db.Decimal(10, 2)
+  ratePerLoad             Decimal?           @map("rate_per_load") @db.Decimal(10, 2)
+  lineTotal               Decimal?           @map("line_total") @db.Decimal(12, 2)
+  // R3 T-1 (2026-07-20) - waste transport cost engine. All additive
+  // and nullable. Legacy /3 truck-days path stays intact; when the new
+  // columns are populated the engine derives duration_days + line_total
+  // from them and folds the ratePerTonne/ratePerLoad path back to the
+  // Sum-from-above aggregator only.
+  //   transportRateId          -> EstimatePlantRate row (Transport Fees, $/day)
+  //   assetId                  -> Asset supplying fuelConsumptionLPer100km and
+  //                               nominalLoadTonnes fallbacks
+  //   qtyTrucks                -> trucks running the line
+  //   loadsPerTruckPerDay      -> truck productivity (legacy default 3)
+  //   capacityPerLoad          -> default PULLED from Transport Capacity
+  //                               reference table (material x transport);
+  //                               per-line override wins locally, does NOT
+  //                               push back to the table
+  //   capacityUnit             -> "t" or "m3" - picks qty vs m3 for loads
+  //   dailyKm                  -> manual km-per-truck-per-day for the fuel
+  //                               term (T-2/T-3 wire map + live feed)
+  //   transportCost/fuelCost/disposalCost -> snapshot components folded
+  //                                          into lineTotal
+  //   quotedDisposalRate / quotedFuelPricePerLitre -> price snapshot the
+  //                               variance flag compares against the current
+  //                               live rate
+  transportRateId         String?            @map("transport_rate_id")
+  transportRate           EstimatePlantRate? @relation("ScopeWasteItemTransportRate", fields: [transportRateId], references: [id], onDelete: SetNull)
+  assetId                 String?            @map("asset_id")
+  asset                   Asset?             @relation("ScopeWasteItemAsset", fields: [assetId], references: [id], onDelete: SetNull)
+  qtyTrucks               Int?               @map("qty_trucks")
+  loadsPerTruckPerDay     Decimal?           @map("loads_per_truck_per_day") @db.Decimal(4, 1)
+  capacityPerLoad         Decimal?           @map("capacity_per_load") @db.Decimal(8, 2)
+  capacityUnit            String?            @map("capacity_unit")
+  dailyKm                 Decimal?           @map("daily_km") @db.Decimal(8, 1)
+  transportCost           Decimal?           @map("transport_cost") @db.Decimal(12, 2)
+  fuelCost                Decimal?           @map("fuel_cost") @db.Decimal(12, 2)
+  disposalCost            Decimal?           @map("disposal_cost") @db.Decimal(12, 2)
+  quotedDisposalRate      Decimal?           @map("quoted_disposal_rate") @db.Decimal(10, 2)
+  quotedFuelPricePerLitre Decimal?           @map("quoted_fuel_price_per_litre") @db.Decimal(6, 3)
+  notes                   String?
+  sortOrder               Int                @default(0) @map("sort_order")
+  createdById             String             @map("created_by_id")
+  createdBy               User               @relation("ScopeWasteItemCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt               DateTime           @default(now()) @map("created_at")
+  updatedAt               DateTime           @updatedAt @map("updated_at")
 
   @@index([tenderId, discipline])
   @@index([cardId])
+  @@index([transportRateId])
+  @@index([assetId])
   @@map("scope_waste_items")
 }
 
@@ -4048,11 +4091,11 @@ model SubcontractorSupplier {
   createdBy             User      @relation("SubcontractorCreatedBy", fields: [createdById], references: [id])
 
   documents          SubcontractorDocument[]
-  licences           EntityLicence[]         @relation("SubLicences")
-  insurances         EntityInsurance[]       @relation("SubInsurances")
-  creditApplications CreditApplication[]     @relation("SubCreditApps")
-  creditEntries      SupplierCreditEntry[]   @relation("SupplierCreditEntries")
-  rateTables         RateTable[]             @relation("RateTableSupplier")
+  licences           EntityLicence[]           @relation("SubLicences")
+  insurances         EntityInsurance[]         @relation("SubInsurances")
+  creditApplications CreditApplication[]       @relation("SubCreditApps")
+  creditEntries      SupplierCreditEntry[]     @relation("SupplierCreditEntries")
+  rateTables         RateTable[]               @relation("RateTableSupplier")
   commitments        Commitment[]
   prequalRequests    PrequalificationRequest[]
 
@@ -5748,34 +5791,34 @@ model ExpenseNumberSequence {
 }
 
 model Expense {
-  id                  String        @id @default(cuid())
+  id                String        @id @default(cuid())
   // Human-readable reference: EXP-YYYY-NNN (e.g. EXP-2026-001)
-  number              String        @unique
-  submittedById       String        @map("submitted_by_id")
-  submittedBy         User          @relation("ExpenseSubmittedBy", fields: [submittedById], references: [id], onDelete: Restrict)
+  number            String        @unique
+  submittedById     String        @map("submitted_by_id")
+  submittedBy       User          @relation("ExpenseSubmittedBy", fields: [submittedById], references: [id], onDelete: Restrict)
   // Optional cost allocation — at most one of these is set
-  projectId           String?       @map("project_id")
-  project             Project?      @relation("ExpenseProject", fields: [projectId], references: [id], onDelete: SetNull)
-  jobId               String?       @map("job_id")
-  job                 Job?          @relation("ExpenseJob", fields: [jobId], references: [id], onDelete: SetNull)
+  projectId         String?       @map("project_id")
+  project           Project?      @relation("ExpenseProject", fields: [projectId], references: [id], onDelete: SetNull)
+  jobId             String?       @map("job_id")
+  job               Job?          @relation("ExpenseJob", fields: [jobId], references: [id], onDelete: SetNull)
   // Category is a string bound to the `expense-categories` GlobalList
-  category            String
-  description         String
-  spentOn             DateTime      @map("spent_on") @db.Date
-  amount              Decimal       @db.Decimal(10, 2)
-  gst                 Decimal?      @db.Decimal(10, 2)
-  paymentMethod       String?       @map("payment_method")
+  category          String
+  description       String
+  spentOn           DateTime      @map("spent_on") @db.Date
+  amount            Decimal       @db.Decimal(10, 2)
+  gst               Decimal?      @db.Decimal(10, 2)
+  paymentMethod     String?       @map("payment_method")
   // Link to a DocumentLink record (SharePoint-backed receipt attachment)
-  receiptDocumentId   String?       @map("receipt_document_id")
-  receiptDocument     DocumentLink? @relation("ExpenseReceipt", fields: [receiptDocumentId], references: [id], onDelete: SetNull)
-  status              ExpenseStatus @default(DRAFT)
-  approvedById        String?       @map("approved_by_id")
-  approvedBy          User?         @relation("ExpenseApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
-  approvedAt          DateTime?     @map("approved_at")
-  rejectionReason     String?       @map("rejection_reason")
-  notes               String?
-  createdAt           DateTime      @default(now()) @map("created_at")
-  updatedAt           DateTime      @updatedAt @map("updated_at")
+  receiptDocumentId String?       @map("receipt_document_id")
+  receiptDocument   DocumentLink? @relation("ExpenseReceipt", fields: [receiptDocumentId], references: [id], onDelete: SetNull)
+  status            ExpenseStatus @default(DRAFT)
+  approvedById      String?       @map("approved_by_id")
+  approvedBy        User?         @relation("ExpenseApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt        DateTime?     @map("approved_at")
+  rejectionReason   String?       @map("rejection_reason")
+  notes             String?
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
 
   @@index([submittedById])
   @@index([status])

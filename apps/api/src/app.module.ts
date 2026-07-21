@@ -68,6 +68,7 @@ import { ExpensesModule } from "./modules/expenses/expenses.module";
 import { SurveysModule } from "./modules/surveys/surveys.module";
 import { CasesModule } from "./modules/cases/cases.module";
 import { KnowledgeModule } from "./modules/knowledge/knowledge.module";
+import { CrmModule } from "./modules/crm/crm.module";
 import { MapLocationsModule } from "./modules/map-locations/map-locations.module";
 import { ReportingModule } from "./modules/reporting/reporting.module";
 import { SitesModule } from "./modules/sites/sites.module";
@@ -146,6 +147,7 @@ import { SitesModule } from "./modules/sites/sites.module";
     SurveysModule,
     CasesModule,
     KnowledgeModule,
+    CrmModule,
     MapLocationsModule,
     ReportingModule,
     SitesModule

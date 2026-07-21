@@ -161,6 +161,13 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Commercial",
     items: [
       {
+        to: "/crm",
+        label: "CRM (Leads & Opportunities)",
+        icon: ICON_TENDERING,
+        match: (path) => path.startsWith("/crm"),
+        requiresPermission: "crm.view"
+      },
+      {
         to: "/tenders",
         label: "Tendering",
         icon: ICON_TENDERING,
@@ -374,6 +381,7 @@ const BREADCRUMBS: Record<string, string> = {
   "/expenses": "Expenses",
   "/cases": "Cases",
   "/knowledge": "Knowledge Base",
+  "/crm": "CRM",
   "/maintenance": "Maintenance",
   "/master-data": "Master Data",
   "/directory": "Directory",

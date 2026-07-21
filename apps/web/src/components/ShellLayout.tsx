@@ -32,6 +32,9 @@ type NavItem = {
   // Stricter than adminOnly on the parent group: hide the item unless the
   // user has isSuperUser === true (a regular Admin role is not enough).
   superUserOnly?: boolean;
+  // Collapsible sub-group children (rendered indented under the parent).
+  // When set, the item itself is a toggle button rather than a NavLink.
+  children?: NavItem[];
 };
 
 type NavGroup = {
@@ -155,10 +158,17 @@ const ICON_EXPAND = (
   </svg>
 );
 
+// Sidebar structure — 7 approved groups (Marco 2026-07-17). The Dashboards
+// group is rendered separately in ShellLayout (it owns the "+ new dashboard"
+// affordance and the dynamic list of user-created dashboards); NAV_GROUPS
+// carries the other six. This PR only changes menu structure/labels/ordering
+// and role gating — routes are unchanged (Directory still points at
+// /master-data, Rates & Lists at /admin/rates-lists, etc.). Later staged PRs
+// will move/merge pages behind these menu entries.
 export const NAV_GROUPS: NavGroup[] = [
   {
-    id: "commercial",
-    label: "Commercial",
+    id: "estimating",
+    label: "Estimating",
     items: [
       {
         to: "/crm",
@@ -169,7 +179,7 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       {
         to: "/tenders",
-        label: "Tendering",
+        label: "Tenders",
         icon: ICON_TENDERING,
         match: (path) =>
           path === "/tenders" ||
@@ -180,22 +190,43 @@ export const NAV_GROUPS: NavGroup[] = [
             !path.startsWith("/tenders/settings"))
       },
       {
-        to: "/tenders/contacts",
-        label: "Tender Contacts",
-        icon: ICON_WORKERS,
-        match: (path) => path.startsWith("/tenders/contacts")
-      },
-      {
-        to: "/tenders/settings",
-        label: "Tendering Settings",
-        icon: ICON_AUDIT,
-        match: (path) => path.startsWith("/tenders/settings")
-      },
-      {
         to: "/contracts",
         label: "Contracts",
         icon: ICON_CONTRACTS,
         match: (path) => path === "/contracts" || path.startsWith("/contracts/")
+      },
+      {
+        to: "/tenders/settings",
+        label: "Tender Settings",
+        icon: ICON_AUDIT,
+        match: (path) => path.startsWith("/tenders/settings")
+      },
+      {
+        to: "/master-data",
+        label: "Directory",
+        icon: ICON_CLIENTS,
+        match: (path) => path.startsWith("/master-data") || path.startsWith("/directory/")
+      },
+      { to: "/admin/rates-lists", label: "Rates & Lists", icon: ICON_TENDERING },
+      {
+        to: "/reports",
+        label: "Reports",
+        icon: ICON_AUDIT,
+        match: (path) => path.startsWith("/reports"),
+        requiresPermission: "reporting.view"
+      }
+    ]
+  },
+  {
+    id: "projects",
+    label: "Projects",
+    items: [
+      { to: "/jobs", label: "Jobs", icon: ICON_JOBS },
+      {
+        to: "/sites",
+        label: "Sites",
+        icon: ICON_SITES,
+        match: (path) => path.startsWith("/sites")
       }
     ]
   },
@@ -204,13 +235,6 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Operations",
     items: [
       {
-        to: "/projects",
-        label: "Projects",
-        icon: ICON_CONTRACTS,
-        match: (path) => path === "/projects" || path.startsWith("/projects/")
-      },
-      { to: "/jobs", label: "Jobs", icon: ICON_JOBS },
-      {
         to: "/scheduler",
         label: "Scheduler",
         icon: ICON_SCHEDULER,
@@ -218,23 +242,26 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       { to: "/workers/live-crew", label: "Live crew map", icon: ICON_SCHEDULER, requiresPermission: "scheduler.view" },
       {
-        to: "/sites",
-        label: "Sites",
-        icon: ICON_SITES,
-        match: (path) => path.startsWith("/sites") || path.startsWith("/master-data?tab=sites")
-      },
-      { to: "/assets", label: "Assets", icon: ICON_ASSETS },
-      { to: "/inventory", label: "Inventory", icon: ICON_ASSETS },
-      { to: "/procurement", label: "Procurement", icon: ICON_ASSETS },
-      {
-        to: "/expenses",
-        label: "Expenses",
+        // Collapsible sub-group per Marco 2026-07-17. The parent is a toggle
+        // button, not a route — /assets, /inventory, /maintenance remain the
+        // real destinations.
+        to: "operations/assets-equipment",
+        label: "Assets & Equipment",
         icon: ICON_ASSETS,
-        match: (path: string) => path.startsWith("/expenses"),
-        requiresPermission: "expenses.view"
+        children: [
+          { to: "/assets", label: "Assets", icon: ICON_ASSETS },
+          { to: "/inventory", label: "Inventory", icon: ICON_ASSETS },
+          { to: "/maintenance", label: "Maintenance", icon: ICON_MAINTENANCE }
+        ]
       },
-      { to: "/maintenance", label: "Maintenance", icon: ICON_MAINTENANCE },
-      { to: "/forms", label: "Forms", icon: ICON_FORMS },
+      { to: "/procurement", label: "Procurement", icon: ICON_ASSETS }
+    ]
+  },
+  {
+    id: "hr",
+    label: "HR",
+    items: [
+      { to: "/workers", label: "Workers", icon: ICON_WORKERS },
       {
         // §7 payroll export: dedicated page over the existing CSV endpoint.
         // Requires field.manage; NoAccess surfaces the missing code when a
@@ -246,8 +273,18 @@ export const NAV_GROUPS: NavGroup[] = [
         requiresPermission: "field.manage"
       },
       {
-        // Safety lives under OPERATIONS per project_instructions §9. Badge
-        // surfaces open incidents — see SafetyBadge below.
+        to: "/timesheets/approval",
+        label: "Timesheet Approval",
+        icon: ICON_FORMS,
+        match: (path) => path.startsWith("/timesheets/approval")
+      }
+    ]
+  },
+  {
+    id: "safety",
+    label: "Safety & Compliance",
+    items: [
+      {
         to: "/safety",
         label: "Safety",
         icon: ICON_AUDIT,
@@ -267,74 +304,28 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: ICON_AUDIT,
         match: (path) => path.startsWith("/knowledge"),
         requiresPermission: "knowledge.view"
-      }
-    ]
-  },
-  {
-    id: "directory",
-    label: "Directory",
-    items: [
-      {
-        to: "/directory?tab=clients",
-        label: "Clients",
-        icon: ICON_CLIENTS,
-        match: (path) => path === "/directory" || path.startsWith("/directory?tab=clients")
       },
       {
-        to: "/directory?tab=subcontractors",
-        label: "Subcontractors & Suppliers",
-        icon: ICON_CLIENTS,
-        match: (path) =>
-          path.startsWith("/directory?tab=subcontractors") ||
-          path.startsWith("/directory/subcontractors")
-      },
-      {
-        to: "/directory?tab=contacts",
-        label: "Contacts",
-        icon: ICON_WORKERS,
-        match: (path) =>
-          path.startsWith("/directory?tab=contacts") ||
-          path.startsWith("/directory/contacts")
-      }
-    ]
-  },
-  {
-    id: "platform",
-    label: "Platform",
-    items: [
-      { to: "/documents", label: "Documents", icon: ICON_DOCUMENTS },
-      {
-        // Compliance kept under PLATFORM per spec; badge surfaces expiring +
-        // expired counts so Marco sees alerts at a glance.
         to: "/compliance",
         label: "Compliance",
         icon: ICON_AUDIT,
         match: (path) => path.startsWith("/compliance"),
         badge: "compliance"
       },
-      {
-        // Cross-module BI reporting layer (reporting slice 1). Sits under
-        // Platform beside dashboards — this is the tabular/exportable side.
-        to: "/reports",
-        label: "Reports",
-        icon: ICON_AUDIT,
-        match: (path) => path.startsWith("/reports"),
-        requiresPermission: "reporting.view"
-      }
+      { to: "/forms", label: "Forms", icon: ICON_FORMS },
+      { to: "/documents", label: "Documents", icon: ICON_DOCUMENTS }
     ]
   },
   {
-    id: "admin",
-    label: "Admin",
+    // Single entry that opens the Settings shell. Administration items
+    // (users, roles, permissions, audit, company profile, data-model, etc.)
+    // are surfaced inside the shell itself and remain admin/super-only via
+    // this group-level gate.
+    id: "settings",
+    label: "Settings",
     adminOnly: true,
     items: [
-      { to: "/admin/settings", label: "Admin Settings", icon: ICON_AUDIT },
-      { to: "/admin/company", label: "Company Profile", icon: ICON_CLIENTS },
-      { to: "/admin/rates-lists", label: "Rates & Lists", icon: ICON_TENDERING },
-      { to: "/admin/estimate-rates", label: "Legacy estimate rates", icon: ICON_TENDERING },
-      { to: "/admin/job-roles", label: "Job Roles", icon: ICON_AUDIT },
-      { to: "/admin/ai-settings", label: "AI Settings", icon: ICON_AUDIT },
-      { to: "/admin/data-model", label: "Data-model map", icon: ICON_AUDIT, superUserOnly: true }
+      { to: "/admin/settings", label: "Settings", icon: ICON_ROLES }
     ]
   }
 ];
@@ -548,18 +539,10 @@ export function ShellLayout() {
               to="/"
               end
               className={({ isActive }) => (isActive ? "shell__nav-link shell__nav-link--active" : "shell__nav-link")}
-              title={collapsed ? "Operations" : undefined}
+              title={collapsed ? "Home" : undefined}
             >
               <span className="shell__nav-icon">{ICON_DASHBOARD}</span>
-              <span className="shell__nav-label">Operations</span>
-            </NavLink>
-            <NavLink
-              to="/tenders/dashboard"
-              className={location.pathname.startsWith("/tenders/dashboard") ? "shell__nav-link shell__nav-link--active" : "shell__nav-link"}
-              title={collapsed ? "Tendering" : undefined}
-            >
-              <span className="shell__nav-icon">{ICON_DASHBOARD}</span>
-              <span className="shell__nav-label">Tendering</span>
+              <span className="shell__nav-label">Home</span>
             </NavLink>
             {customDashboards.map((d) => {
               const to = `/dashboards/${d.id}`;
@@ -597,24 +580,23 @@ export function ShellLayout() {
           {filteredGroups.map((group) => (
             <div key={group.id} className="shell__nav-group">
               <p className="shell__nav-group-label">{group.label}</p>
-              {group.items.map((item) => {
-                const isActive = item.match ? item.match(location.pathname) : location.pathname === item.to || location.pathname.startsWith(item.to + "/");
-                const badgeKind = (item as { badge?: "safety" | "compliance" }).badge;
-                return (
-                  <NavLink
+              {group.items.map((item) =>
+                item.children && item.children.length > 0 ? (
+                  <NavSubGroup
                     key={`${group.id}-${item.to}-${item.label}`}
-                    to={item.to}
-                    className={isActive ? "shell__nav-link shell__nav-link--active" : "shell__nav-link"}
-                    title={collapsed ? item.label : undefined}
-                    end={item.to === "/"}
-                  >
-                    <span className="shell__nav-icon">{item.icon}</span>
-                    <span className="shell__nav-label">{item.label}</span>
-                    {badgeKind === "safety" ? <SidebarSafetyBadge /> : null}
-                    {badgeKind === "compliance" ? <SidebarComplianceBadge /> : null}
-                  </NavLink>
-                );
-              })}
+                    item={item}
+                    collapsed={collapsed}
+                    pathname={location.pathname}
+                  />
+                ) : (
+                  <NavLeaf
+                    key={`${group.id}-${item.to}-${item.label}`}
+                    item={item}
+                    collapsed={collapsed}
+                    pathname={location.pathname}
+                  />
+                )
+              )}
             </div>
           ))}
         </nav>
@@ -738,6 +720,75 @@ export function ShellLayout() {
       <PersonaWindow />
     </div>
     </PersonaProvider>
+  );
+}
+
+function isItemActive(item: NavItem, pathname: string): boolean {
+  if (item.match) return item.match(pathname);
+  if (item.to === "/") return pathname === "/";
+  return pathname === item.to || pathname.startsWith(item.to + "/");
+}
+
+function NavLeaf({
+  item,
+  collapsed,
+  pathname
+}: {
+  item: NavItem;
+  collapsed: boolean;
+  pathname: string;
+}) {
+  const active = isItemActive(item, pathname);
+  return (
+    <NavLink
+      to={item.to}
+      className={active ? "shell__nav-link shell__nav-link--active" : "shell__nav-link"}
+      title={collapsed ? item.label : undefined}
+      end={item.to === "/"}
+    >
+      <span className="shell__nav-icon">{item.icon}</span>
+      <span className="shell__nav-label">{item.label}</span>
+      {item.badge === "safety" ? <SidebarSafetyBadge /> : null}
+      {item.badge === "compliance" ? <SidebarComplianceBadge /> : null}
+    </NavLink>
+  );
+}
+
+function NavSubGroup({
+  item,
+  collapsed,
+  pathname
+}: {
+  item: NavItem;
+  collapsed: boolean;
+  pathname: string;
+}) {
+  const children = item.children ?? [];
+  const anyChildActive = children.some((child) => isItemActive(child, pathname));
+  const [expanded, setExpanded] = useState<boolean>(anyChildActive);
+  const open = expanded || anyChildActive;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setExpanded((current) => !current)}
+        className={anyChildActive ? "shell__nav-link shell__nav-link--active" : "shell__nav-link"}
+        aria-expanded={open}
+        title={collapsed ? item.label : undefined}
+        style={{ background: "transparent", border: "none", textAlign: "left", cursor: "pointer", width: "100%", font: "inherit" }}
+      >
+        <span className="shell__nav-icon">{item.icon}</span>
+        <span className="shell__nav-label">{item.label}</span>
+        <span aria-hidden style={{ marginLeft: "auto", fontSize: 10, opacity: 0.6 }}>{open ? "▾" : "▸"}</span>
+      </button>
+      {open
+        ? children.map((child) => (
+            <div key={`${item.to}-${child.to}`} style={{ paddingLeft: 14 }}>
+              <NavLeaf item={child} collapsed={collapsed} pathname={pathname} />
+            </div>
+          ))
+        : null}
+    </>
   );
 }
 

@@ -405,6 +405,16 @@ export async function seedNotificationTriggerConfigs(prisma: PrismaClient) {
       isEnabled: true,
       deliveryMethod: "both",
       recipientUserIds: ["user-supervisor-001"]
+    },
+    // R3 T-1 (2026-07-20) — waste transport cost engine variance escalation.
+    // Seeded disabled: recipients pick roles from Admin Settings. Fires when an
+    // estimator clicks "Escalate for confirmation" on a waste line whose
+    // disposal or fuel rate has moved since the line was priced. Does NOT
+    // auto-reprice (Marco 2026-07-15) — the human confirms or repricess.
+    {
+      trigger: "waste_line.rate_variance_escalated",
+      label: "Waste line rate variance escalated",
+      description: 'Fires when an estimator escalates a waste line whose disposal or fuel rate has moved since the line was priced. The system does not auto-reprice.'
     }
   ];
   for (const t of triggers) {

@@ -114,7 +114,7 @@ type View = "cards" | "table";
 
 type AuthFetch = ReturnType<typeof useAuth>["authFetch"];
 
-function ClientsTab({ authFetch }: { authFetch: AuthFetch }) {
+export function ClientsTab({ authFetch }: { authFetch: AuthFetch }) {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

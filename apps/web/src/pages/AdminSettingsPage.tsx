@@ -7,6 +7,7 @@ import { NoAccess } from "../components/NoAccess";
 import { AdminUsersTab } from "./admin/AdminUsersTab";
 import { AdminRolesPermissionsTab } from "./admin/AdminRolesPermissionsTab";
 import { AdminClientVersionsTab } from "./admin/AdminClientVersionsTab";
+import { MapLocationsTab } from "./admin/MapLocationsTab";
 
 type Trigger = {
   id: string;
@@ -49,6 +50,7 @@ const TABS = [
   { id: "geofences", label: "Site geofences" },
   { id: "permissions", label: "Permissions" },
   { id: "client-versions", label: "Client versions" },
+  { id: "map-locations", label: "Map locations" },
   { id: "audit", label: "Audit log" }
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
@@ -118,6 +120,7 @@ export function AdminSettingsPage() {
           {tab === "geofences" && <SiteGeofencesTab />}
           {tab === "permissions" && <AdminRolesPermissionsTab />}
           {tab === "client-versions" && <AdminClientVersionsTab />}
+          {tab === "map-locations" && <MapLocationsTab />}
           {tab === "audit" && <StubCard title="System audit log" body="Coming soon. All admin actions are recorded." />}
         </div>
       </div>

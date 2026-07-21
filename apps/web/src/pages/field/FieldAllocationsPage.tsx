@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { useOffline } from "../../offline/OfflineContext";
 
 type FetchError = { status: number; message: string };
 
@@ -133,6 +134,7 @@ export function FieldAllocationsPage() {
 
   return (
     <div>
+      <SiteSignInCard />
       {allocations.map((a) => {
         const stage = STATUS_COLOUR[a.projectStatus] ?? STATUS_COLOUR.ACTIVE;
         const fullAddress = formatAddress(a.siteAddress);
@@ -217,5 +219,211 @@ export function FieldAllocationsPage() {
         );
       })}
     </div>
+  );
+}
+
+// Site sign-in / sign-out. Sits above the allocations list because it is the
+// WHS spine: knowing who is on site drives the muster/evacuation view. Uses
+// the shared offline outbox so a worker on a site with no signal can still
+// sign in — the mutation syncs when connectivity returns.
+type AvailableSite = { id: string; name: string; addressLine1: string | null; suburb: string | null; state: string | null };
+type CurrentAttendance = { id: string; siteId: string; signedInAt: string; site: { id: string; name: string } };
+
+// Local optimistic-state shape captured while offline so the button reflects
+// the intended state before the mutation reaches the server.
+type PendingState =
+  | { kind: "signed-in"; siteId: string; siteName: string; at: string }
+  | { kind: "signed-out" };
+
+function SiteSignInCard() {
+  const { authFetch } = useAuth();
+  const { offlineFetch, online, flush } = useOffline();
+  const [current, setCurrent] = useState<CurrentAttendance | null | undefined>(undefined);
+  const [sites, setSites] = useState<AvailableSite[]>([]);
+  const [chosenSiteId, setChosenSiteId] = useState<string>("");
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [pending, setPending] = useState<PendingState | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const [mineRes, sitesRes] = await Promise.all([
+        authFetch("/sites/attendance/mine"),
+        authFetch("/sites/attendance/available-sites")
+      ]);
+      if (mineRes.ok) {
+        const body = (await mineRes.json()) as CurrentAttendance | null;
+        setCurrent(body);
+      }
+      if (sitesRes.ok) {
+        const list = (await sitesRes.json()) as AvailableSite[];
+        setSites(list);
+        setChosenSiteId((prev) => prev || list[0]?.id || "");
+      }
+      // Server round-trip succeeded → the local optimistic marker can go.
+      setPending(null);
+    } catch {
+      // Offline / network hiccup — keep whatever we last knew. The
+      // optimistic `pending` marker (if any) covers the UI state.
+    }
+  }, [authFetch]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  // When the browser comes back online the OfflineProvider flushes the
+  // outbox automatically; re-pull our own view so state re-syncs.
+  useEffect(() => {
+    if (online) void refresh();
+  }, [online, refresh]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const doSignIn = async () => {
+    if (!chosenSiteId || busy) return;
+    setBusy(true);
+    const site = sites.find((s) => s.id === chosenSiteId);
+    try {
+      const result = await offlineFetch(
+        "/sites/attendance/sign-in",
+        { method: "POST", body: { siteId: chosenSiteId } },
+        "site-signin"
+      );
+      if (result.queued) {
+        setPending({ kind: "signed-in", siteId: chosenSiteId, siteName: site?.name ?? "site", at: new Date().toISOString() });
+        setToast("Signed in offline — will sync when back online.");
+      } else if (result.response && result.response.ok) {
+        setToast(`Signed in at ${site?.name ?? "site"}.`);
+        await refresh();
+      } else {
+        setToast("Sign-in failed. Try again.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doSignOut = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const result = await offlineFetch(
+        "/sites/attendance/sign-out",
+        { method: "POST", body: {} },
+        "site-signout"
+      );
+      if (result.queued) {
+        setPending({ kind: "signed-out" });
+        setToast("Signed out offline — will sync when back online.");
+      } else if (result.response && result.response.ok) {
+        setToast("Signed out.");
+        await refresh();
+        void flush();
+      } else {
+        setToast("Sign-out failed. Try again.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Effective state: server truth, overridden by any pending offline mutation.
+  const effectiveSignedIn =
+    pending?.kind === "signed-in"
+      ? { siteId: pending.siteId, siteName: pending.siteName, at: pending.at, pending: true }
+      : pending?.kind === "signed-out"
+      ? null
+      : current
+      ? { siteId: current.siteId, siteName: current.site.name, at: current.signedInAt, pending: false }
+      : null;
+
+  if (current === undefined) {
+    return (
+      <div className="field-card" aria-busy="true">
+        <Skeleton width="60%" height={16} />
+      </div>
+    );
+  }
+
+  return (
+    <article
+      className="field-card"
+      style={{
+        background: effectiveSignedIn ? "color-mix(in srgb, #005B61 12%, #fff)" : "#fff",
+        borderLeft: effectiveSignedIn ? "4px solid #005B61" : "4px solid #FEAA6D"
+      }}
+    >
+      <p style={{ margin: 0, fontSize: 12, color: "#6B7280", textTransform: "uppercase", letterSpacing: 0.5 }}>
+        Site attendance
+      </p>
+      {effectiveSignedIn ? (
+        <>
+          <h2 style={{ margin: "4px 0 2px", fontSize: 18, fontFamily: "Syne, Outfit, sans-serif" }}>
+            Signed in at <strong>{effectiveSignedIn.siteName}</strong>
+          </h2>
+          <p style={{ margin: "0 0 12px", fontSize: 13, color: "#374151" }}>
+            Since {new Date(effectiveSignedIn.at).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })}
+            {effectiveSignedIn.pending ? " · pending sync" : ""}
+          </p>
+          <button
+            type="button"
+            className="field-btn field-btn--teal"
+            onClick={doSignOut}
+            disabled={busy}
+            style={{ width: "100%" }}
+          >
+            {busy ? "Signing out…" : "Sign out of site"}
+          </button>
+        </>
+      ) : (
+        <>
+          <h2 style={{ margin: "4px 0 8px", fontSize: 18, fontFamily: "Syne, Outfit, sans-serif" }}>
+            Not signed in
+          </h2>
+          {sites.length === 0 ? (
+            <p style={{ margin: 0, fontSize: 13, color: "#6B7280" }}>
+              No sites available. Your allocations decide which sites you can sign in to.
+            </p>
+          ) : (
+            <>
+              <label className="field-label" htmlFor="site-signin-picker">Site</label>
+              <select
+                id="site-signin-picker"
+                className="field-input"
+                value={chosenSiteId}
+                onChange={(e) => setChosenSiteId(e.target.value)}
+                style={{ marginBottom: 10 }}
+              >
+                {sites.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                    {s.suburb ? ` — ${s.suburb}` : ""}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="field-btn"
+                onClick={doSignIn}
+                disabled={busy || !chosenSiteId}
+                style={{ width: "100%" }}
+              >
+                {busy ? "Signing in…" : "Sign in to site"}
+              </button>
+            </>
+          )}
+        </>
+      )}
+      {toast ? (
+        <p role="status" style={{ marginTop: 8, marginBottom: 0, fontSize: 12, color: "#005B61" }}>
+          {toast}
+        </p>
+      ) : null}
+    </article>
   );
 }

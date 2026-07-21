@@ -25,10 +25,7 @@ const SRC_ROOT = path.resolve(__dirname, "..", "..");
 // Codes enforced today but not yet registered. Each has an armed fix prompt;
 // DELETE the entry from this list when its PR merges — do not add new ones.
 //   clients.view/.manage      -> pr-qa-clients-perms-registry-ready.md
-const KNOWN_UNREGISTERED = new Set<string>([
-  "clients.view",
-  "clients.manage"
-]);
+const KNOWN_UNREGISTERED = new Set<string>([]);
 
 interface Occurrence {
   code: string;

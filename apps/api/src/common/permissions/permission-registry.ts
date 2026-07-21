@@ -106,6 +106,9 @@ export const permissionRegistry = [
   // CRM — Lead + Opportunity pipeline (slice 1, feat-crm-lead-opportunity).
   { code: "crm.view", module: "crm", label: "View CRM leads, opportunities and forecast", description: "View leads, opportunity board, opportunity detail, and weighted forecast" },
   { code: "crm.manage", module: "crm", label: "Manage CRM leads and opportunities", description: "Create/edit leads and opportunities, move stages, convert lead→opportunity and opportunity→tender" },
+  // Clients / customer voice (PR #655 gate — surveys.controller.ts).
+  { code: "clients.view", module: "clients", label: "View client surveys and satisfaction", description: "View surveys and read client satisfaction rollups" },
+  { code: "clients.manage", module: "clients", label: "Manage client surveys", description: "Create surveys and record survey responses" },
   // Worker leave management (PR #658 gate — see prompt).
   { code: "workers.manage", module: "workers", label: "Manage worker leave and org structure", description: "List all leave requests, view the org chart, and approve or reject leave" },
   // Automation engine (MVP slice 1). Cross-module Power-Automate-style rules.

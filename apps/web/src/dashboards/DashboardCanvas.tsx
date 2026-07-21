@@ -31,6 +31,7 @@ import {
 } from "./types";
 import { CustomisePanel } from "./CustomisePanel";
 import { WidgetGalleryModal } from "./WidgetGalleryModal";
+import { SmartWizardModal } from "./SmartWizardModal";
 import { insertWidgetAt, removeWidgetById } from "./widgetGallery";
 import { DashboardSwitcher } from "./DashboardSwitcher";
 import { DeleteDashboardModal } from "./DeleteDashboardModal";
@@ -69,6 +70,7 @@ export function DashboardCanvas({
   const [error, setError] = useState<string | null>(null);
   const [customiseOpen, setCustomiseOpen] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
+  const [smartWizardOpen, setSmartWizardOpen] = useState(false);
   // Placement mode — explicit state, never derived from sibling state.
   const [placementActive, setPlacementActive] = useState(false);
   const [pendingWidget, setPendingWidget] = useState<WidgetConfigEntry | null>(null);
@@ -393,6 +395,15 @@ export function DashboardCanvas({
               >
                 + Add widget
               </button>
+              <button
+                type="button"
+                className="s7-btn s7-btn--secondary s7-btn--sm"
+                onClick={() => setSmartWizardOpen(true)}
+                data-testid="smart-wizard-button"
+                title="Build a widget from live metadata (reads /meta/catalog at runtime)"
+              >
+                ✨ Smart Wizard
+              </button>
               <button type="button" className="s7-btn s7-btn--secondary s7-btn--sm" onClick={() => setCustomiseOpen(true)}>
                 Customise
               </button>
@@ -508,6 +519,16 @@ export function DashboardCanvas({
           globalPeriod={active.config.period as WidgetPeriod}
           onClose={() => setGalleryOpen(false)}
           onAdd={beginPlacement}
+        />
+      ) : null}
+
+      {active && smartWizardOpen ? (
+        <SmartWizardModal
+          onClose={() => setSmartWizardOpen(false)}
+          onAdd={(entry) => {
+            setSmartWizardOpen(false);
+            beginPlacement(entry);
+          }}
         />
       ) : null}
 

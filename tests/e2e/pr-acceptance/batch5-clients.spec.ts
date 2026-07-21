@@ -93,7 +93,8 @@ test.describe("Batch 5 — Clients & master-data workspace (PRs #23, #335, #337)
   test("Workers → strip navigates to /resources", async ({ page }) => {
     await openClientsTab(page);
     await page.getByRole("tab", { name: "Workers" }).click();
-    await expect(page).toHaveURL(/\/resources/);
+    // §9 fold: Resources is absorbed into Workers — the tab now lands on /workers.
+    await expect(page).toHaveURL(/\/workers/);
     await expect(page.getByText("Workers in scope")).toBeVisible();
   });
 

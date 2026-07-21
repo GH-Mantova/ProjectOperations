@@ -10,6 +10,7 @@ import { LoginDto } from "./dto/login.dto";
 import { RefreshTokenDto } from "./dto/refresh-token.dto";
 import { ResetPasswordDto } from "./dto/reset-password.dto";
 import { SsoLoginDto } from "./dto/sso-login.dto";
+import { RequestOtpDto, VerifyOtpDto } from "./dto/otp-login.dto";
 
 const THROTTLED_RESPONSE = {
   status: 429,
@@ -56,6 +57,28 @@ export class AuthController {
   @ApiResponse(THROTTLED_RESPONSE)
   loginWithSso(@Body() dto: SsoLoginDto) {
     return this.authService.loginWithSso(dto);
+  }
+
+  @Post("request-otp")
+  @UseGuards(ThrottlerGuard)
+  @ApiOperation({
+    summary:
+      "FIELD worker: request a one-time code for a personal email. Response is uniform whether or not the email matches a user (no account-enumeration oracle)."
+  })
+  @ApiResponse({ status: 201, description: "OTP request accepted; if the email matches an active user a code has been dispatched via the configured delivery port." })
+  @ApiResponse(THROTTLED_RESPONSE)
+  requestOtp(@Body() dto: RequestOtpDto) {
+    return this.authService.requestOtp(dto);
+  }
+
+  @Post("verify-otp")
+  @UseGuards(ThrottlerGuard)
+  @ApiOperation({ summary: "FIELD worker: verify a one-time code and exchange it for the standard access/refresh token envelope." })
+  @ApiResponse({ status: 201, description: "OTP verified; returns accessToken, refreshToken, and user (same envelope as /auth/login)." })
+  @ApiResponse({ status: 401, description: "Code is invalid, expired, already used, or rate-limited." })
+  @ApiResponse(THROTTLED_RESPONSE)
+  verifyOtp(@Body() dto: VerifyOtpDto) {
+    return this.authService.verifyOtp(dto);
   }
 
   @Post("refresh")

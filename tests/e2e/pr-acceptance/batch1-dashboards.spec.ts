@@ -80,28 +80,9 @@ test.describe("Batch 1 — Dashboards, KPIs & Widgets (PRs #6, #15, #29, #30, #3
     await expect(page.getByText("Active jobs", { exact: true }).first()).toBeVisible();
   });
 
-  // ── Tender dashboard ──────────────────────────────────────────────────────
-
-  test("tender dashboard renders at /tenders/dashboard without empty screen", async ({ page }) => {
-    await loginAsAdmin(page);
-    await page.goto("/tenders/dashboard");
-    // Wait for network settle so widgets have a chance to load
-    await page.waitForLoadState("networkidle");
-    // Customise button is the sentinel that the canvas loaded an active dashboard
-    await expect(page.getByRole("button", { name: "Customise" })).toBeVisible();
-    // No generic error alert
-    const errorAlert = page.getByRole("alert").first();
-    const hasError = await errorAlert.isVisible().catch(() => false);
-    expect(hasError).toBe(false);
-  });
-
-  test("tender dashboard Recent wins section is present", async ({ page }) => {
-    await loginAsAdmin(page);
-    await page.goto("/tenders/dashboard");
-    await page.waitForLoadState("networkidle");
-    // "Recent wins" is a widget visible in the tender dashboard default config
-    await expect(page.getByText("Recent wins", { exact: true }).first()).toBeVisible();
-  });
+  // §9: the seeded Tender dashboard (/tenders/dashboard) was retired — its
+  // render/Recent-wins tests were removed with it. The operations/home
+  // dashboard (/) is covered above.
 
   // ── Sidebar Dashboards group integrity ───────────────────────────────────
 

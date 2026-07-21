@@ -14,8 +14,6 @@ import { AuditLogsPage } from "./pages/AuditLogsPage";
 import { PlatformPage } from "./pages/PlatformPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { TenderingDashboardPage } from "./pages/tendering/TenderingDashboardPage";
-import { TenderClientsPage } from "./pages/TenderClientsPage";
-import { TenderContactsPage } from "./pages/TenderContactsPage";
 import { TenderingSettingsPage } from "./pages/TenderingSettingsPage";
 import { ResourcesPage } from "./pages/ResourcesPage";
 import { ArchivePage } from "./pages/archive/ArchivePage";
@@ -52,8 +50,7 @@ import { CorrectiveActionDetailPage } from "./pages/forms/CorrectiveActionDetail
 import { DocumentsWorkspacePage } from "./pages/documents/DocumentsWorkspacePage";
 import { MasterDataWorkspacePage } from "./pages/master-data/MasterDataWorkspacePage";
 import { ClientsGridPage } from "./pages/master-data/ClientsGridPage";
-import { SubcontractorsPage } from "./pages/directory/SubcontractorsPage";
-import { ContactsPage } from "./pages/directory/ContactsPage";
+import { DirectoryPage } from "./pages/directory/DirectoryPage";
 import { SitesListPage } from "./pages/sites/SitesListPage";
 import { SiteDetailPage } from "./pages/sites/SiteDetailPage";
 import { CompliancePage } from "./pages/compliance/CompliancePage";
@@ -278,8 +275,13 @@ export function App() {
             <Route path="/tenders/pipeline" element={<Navigate to="/tenders" replace />} />
             <Route path="/tenders/create" element={<Navigate to="/tenders" replace />} />
             <Route path="/tenders/workspace" element={<Navigate to="/tenders" replace />} />
-            <Route path="/tenders/clients" element={<TenderClientsPage />} />
-            <Route path="/tenders/contacts" element={<TenderContactsPage />} />
+            {/* Unified Directory redirects — /tenders/{clients,contacts} were
+                per-tender views onto the same client/contact records that now
+                live on the single Directory surface. TenderClientsPage /
+                TenderContactsPage are still exported for anything importing
+                them directly, but the routes now feed the tabbed page. */}
+            <Route path="/tenders/clients" element={<Navigate to="/directory?tab=clients" replace />} />
+            <Route path="/tenders/contacts" element={<Navigate to="/directory?tab=contacts" replace />} />
             <Route path="/tenders/settings" element={<TenderingSettingsPage />} />
             <Route path="/tenders/reports" element={<TenderingReportsPage />} />
             <Route path="/tenders/:id" element={<TenderDetailPage />} />
@@ -348,8 +350,18 @@ export function App() {
             <Route path="/crm" element={<CrmBoardPage />} />
             <Route path="/crm/opportunities/:id" element={<OpportunityDetailPage />} />
             <Route path="/reports" element={<ReportsPage />} />
-            <Route path="/directory/subcontractors" element={<SubcontractorsPage />} />
-            <Route path="/directory/contacts" element={<ContactsPage />} />
+            <Route path="/directory" element={<DirectoryPage />} />
+            {/* Legacy per-surface directory routes redirect into the unified
+                Directory tabs. Kept as redirects (not removed) so old bookmarks,
+                shared links, and any lingering deep-links keep working. */}
+            <Route
+              path="/directory/subcontractors"
+              element={<Navigate to="/directory?tab=subcontractors" replace />}
+            />
+            <Route
+              path="/directory/contacts"
+              element={<Navigate to="/directory?tab=contacts" replace />}
+            />
             <Route path="/archive" element={<ArchivePage />} />
             <Route path="/archive/:jobId" element={<ArchiveDetailPage />} />
             <Route path="/surveys/capture" element={<SurveyCaptureFormPage />} />

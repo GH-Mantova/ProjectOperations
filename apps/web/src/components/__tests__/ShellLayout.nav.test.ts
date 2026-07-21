@@ -81,7 +81,7 @@ describe("ShellLayout nav — 7 approved groups (2026-07-17 restructure)", () =>
   it("Settings surfaces a single entry that opens the Settings shell", () => {
     const settings = NAV_GROUPS.find((g) => g.id === "settings");
     expect(settings?.items).toHaveLength(1);
-    expect(settings?.items[0]?.to).toBe("/admin/settings");
+    expect(settings?.items[0]?.to).toBe("/settings");
     expect(settings?.items[0]?.label).toBe("Settings");
   });
 

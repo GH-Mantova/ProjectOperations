@@ -233,7 +233,12 @@ export const NAV_GROUPS: NavGroup[] = [
     id: "operations",
     label: "Operations",
     items: [
-      { to: "/scheduler", label: "Scheduler", icon: ICON_SCHEDULER },
+      {
+        to: "/scheduler",
+        label: "Scheduler",
+        icon: ICON_SCHEDULER,
+        match: (path) => path.startsWith("/scheduler")
+      },
       {
         // Collapsible sub-group per Marco 2026-07-17. The parent is a toggle
         // button, not a route — /assets, /inventory, /maintenance remain the
@@ -353,8 +358,6 @@ const BREADCRUMBS: Record<string, string> = {
   "/timesheets/payroll-export": "Payroll Export",
   "/jobs": "Jobs",
   "/scheduler": "Scheduler",
-  "/scheduler/availability-report": "Availability report",
-  "/scheduler/grid": "Scheduler Grid",
   "/forms": "Forms",
   "/tenders": "Tendering",
   "/tenders/dashboard": "Tender Dashboard",

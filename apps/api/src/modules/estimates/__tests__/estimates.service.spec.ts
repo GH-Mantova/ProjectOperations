@@ -485,7 +485,7 @@ describe("EstimatesService — summary", () => {
       tender: { findUnique: jest.fn().mockResolvedValue({ id: "tender-1" }) },
       tenderEstimate: { findUnique: jest.fn().mockResolvedValue(estimate) }
     };
-    const service = new EstimatesService(prisma as never, buildAudit() as never);
+    const service = new EstimatesService(prisma as never, buildAudit() as never, buildResolver() as never);
 
     const result = await service.summary("tender-1");
     const a = result.items.find((i: { itemId: string }) => i.itemId === "item-a")!;

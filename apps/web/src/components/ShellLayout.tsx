@@ -216,6 +216,7 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: ICON_SCHEDULER,
         match: (path) => path.startsWith("/scheduler")
       },
+      { to: "/workers/live-crew", label: "Live crew map", icon: ICON_SCHEDULER, requiresPermission: "scheduler.view" },
       {
         to: "/sites",
         label: "Sites",
@@ -375,6 +376,8 @@ const BREADCRUMBS: Record<string, string> = {
   "/tenders/contacts": "Tender Contacts",
   "/tenders/settings": "Tendering Settings",
   "/workers": "Workers",
+  "/workers/live-crew": "Live crew map",
+  "/resources": "Workers (legacy)",
   "/assets": "Assets",
   "/inventory": "Inventory",
   "/procurement": "Procurement",

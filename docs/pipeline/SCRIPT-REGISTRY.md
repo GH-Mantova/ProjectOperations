@@ -26,6 +26,7 @@ These run in response to something Marco types, not on a schedule.
 | `pipeline\bring-up-to-speed.ps1` | **"status"**, "bring me up to speed", "catch up" | READ-ONLY | The ONE status entry point. Emits `[LIVE]` / `[STALE]` / `[FILE]` lines and a SAFE / CAUTION / DO-NOT-ACT verdict. **Report ONLY `[LIVE]` lines; never repeat a `[STALE]` one; obey the verdict.** Never hand-gather a status instead of running this. |
 | `pipeline\status-sweep.ps1` | "sweep", "what changed" | READ-ONLY | Deterministic board+queue sweep. Feeds `bring-up-to-speed`. |
 | `board-status.ps1` | "board", "what's open" | READ-ONLY | Bare live board: open PRs, mergeStateStatus, checks. |
+| `security-audit.ps1` | "security audit", "check github settings" | READ-ONLY | Repo security baseline check (secret scanning, Actions token, ruleset, collaborators/keys/hooks, alert counts). Exit 0 = clean, 2 = drift. Run weekly by the `weekly-security-audit` scheduled task. |
 
 ---
 

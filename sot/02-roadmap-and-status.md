@@ -1,6 +1,6 @@
 # 02 — Roadmap & Status
 
-**Last updated:** 2026-07-15 (AEST) · **Owner:** any chat, via doc-reconcile PR (sot/ only, per CP-24).
+**Last updated:** 2026-07-21 (AEST) · **Owner:** any chat, via doc-reconcile PR (sot/ only, per CP-24).
 Single forward-looking roadmap for ProjectOperations. Supersedes the old `roadmap.md`,
 `development-plan.md`, `development-backlog.md`, and the sanity-check/QA planning docs.
 
@@ -44,15 +44,40 @@ OAuth2, MYOB CSV, M365 SSO + local JWT + Super User, AI providers + BYOK encrypt
 
 ---
 
-## 2. 🔧 In-PR — open right now (5)
+## 2. 🔧 In-PR — open right now (26)
 
-| PR | Title | Status / blocker |
+> Live snapshot read from GitHub at reconcile time (2026-07-21). For richer status/blocker
+> detail run `scripts/pipeline/bring-up-to-speed.ps1` — its `[LIVE]` lines beat this table
+> the moment it drifts.
+
+| PR | Title | Notes |
 |---|---|---|
-| #503 | Dashboards widget batch 1 (8–9 quick wins) | UI-only; shepherd smoke-verify in progress (`rev-503-smoke-verify`). Residual: "Who's away"/"Leave pending" show misleading zeros — `workers.controller` `@Get(":id")` shadows `/leaves` + `/unavailability` (pre-existing 404, not in #503's diff). **Needs Marco decision A/B/C — see §6.** |
-| #504 | Seed tender-package-disciplines GlobalList into prod | Fixes New Tender wizard 404 in prod (`prisma migrate deploy` never runs the TS seed). Insert-if-absent migration. |
-| #506 | Grant Marco super-user (seed parity with Sean) | `rev-506-apitest-verify` ready to run then merge. |
-| #507 | Never-stale PWA + build SHA stamped end-to-end | Reviewer verdict **FIX**: code is correct; only blocker is a missing `GATE-ALLOW: dependencies` marker for 5 new `workbox-*` deps. Edits `deploy.yml` → will **not** auto-merge (goes live on next push to `main`). **Marco's call — see §6.** |
-| #508 | Client-version telemetry (admin build visibility + reload nudge) | Companion to #507. `rev-508` ready. |
+| #705 | feat(estimates): task-time + waste-weight calculator seam (SoT §10) | `do-not-merge` (escalates → Marco) |
+| #708 | feat(auth): FIELD-worker OTP provider (personal email + short-lived code) | `do-not-merge` (escalates → Marco) |
+| #717 | docs(queue): arm 14 gate-cleared prompts, unblock the held set, re-hold 2 destructive | `do-not-merge` (escalates → Marco) |
+| #722 | feat(crm): lead + opportunity pipeline slice 1 (Tier 4) | |
+| #724 | docs(queue): arm prompt — frontend super-user parity for 4 residual bare capability flags | |
+| #725 | feat(erp): live crew map + nearest on-clock worker | |
+| #729 | feat(field): expense capture on the field PWA (slice 2) | |
+| #730 | fix(tenders): use design-system form controls on /tenders/settings | |
+| #731 | docs(pr-prompts): stage TenderClient cascade JobConversion guard prompt | |
+| #732 | feat(erp): site sign-in / sign-out (WHS spine for who is on site right now) | |
+| #733 | feat(forms): AI build-a-form-from-PDF (draft, never auto-publishes) | |
+| #734 | feat(directory): unified Clients / Subs & Suppliers / Contacts tabbed page | |
+| #735 | feat(ux): fold Archive into Documents and Resources into Workers | |
+| #737 | chore(routes): remove dead /tenders/dashboard route | |
+| #738 | feat(scheduler): one page with Board / Grid / Availability view tabs | |
+| #739 | feat(settings): unified SettingsShell for personal/company/administration | |
+| #741 | feat(ops): map locations register (ops-m1) | |
+| #742 | fix(permissions): register clients.view / clients.manage (permanently-false gate from #655) | |
+| #744 | test(compliance): Workstream-C audit + fill prequal gap | |
+| #745 | feat(tendering): waste transport cost engine (R3 T-1) | |
+| #746 | feat(nav): reorganise desktop sidebar into the 7 approved groups (structure only) | |
+| #747 | feat(rates): fallback-audit script + ratetable-miss warn signal (pr-524 phase-D gate) | |
+| #748 | feat(rates): xlsx import with preview/confirm (round-trip half 2) | |
+| #749 | chore(data-model): audit FormSubmission siteId nulls before NOT NULL flip | |
+| #750 | feat(dashboards): Smart Wizard shell reads metadata catalog at runtime | |
+| #751 | docs(swms): SLICE 0 — ordered SPLIT build plan (Tracks A + B) | |
 
 ---
 

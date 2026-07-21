@@ -508,13 +508,28 @@ function runGit(args) {
 
 // --- Dependency gating (front-matter) ---
 //
-// Prompts may declare dependencies as HTML comments at the very top:
-//   <!-- watcher: requires-merged: 380, 379 -->
-//   <!-- watcher: requires-file-on-main: tests/e2e/pr-acceptance/helpers.ts -->
-// Parsing stops at the first line that isn't blank or a watcher comment, so
-// the directives must come before any prompt content.
-// Parses one trimmed line as a watcher directive using plain string ops
-// (no regex — CodeQL js/polynomial-redos). Returns { key, value } or null.
+// Prompts declare dependencies in one of two forms. The front-matter form is
+// the one to use, because it is the only form that passes intake lint
+// (lint-prompt.mjs REJECTs NO_FRONT_MATTER unless `---` starts at line 1).
+//
+//   YAML front-matter (preferred):
+//     ---
+//     requires_merged:
+//       - 380
+//       - 379
+//     requires_file_on_main:
+//       - apps/web/src/hooks/useConfirm.tsx
+//     ---
+//
+//   Legacy HTML comment (still honoured for back-compat):
+//     <!-- watcher: requires-merged: 380, 379 -->
+//     <!-- watcher: requires-file-on-main: tests/e2e/pr-acceptance/helpers.ts -->
+//
+// Effective dep set is the UNION of both forms, de-duplicated. Parsing avoids
+// regex quantifiers (CodeQL js/polynomial-redos).
+
+// Parses one trimmed line as a watcher directive using plain string ops.
+// Returns { key, value } or null.
 function parseWatcherDirective(t) {
   if (!t.startsWith("<!--") || !t.endsWith("-->")) return null;
   const inner = t.slice(4, -3).trim();
@@ -527,6 +542,102 @@ function parseWatcherDirective(t) {
   const value = rest.slice(colon + 1).trim();
   if (value === "") return null;
   return { key, value };
+}
+
+// Strip a single pair of matching surrounding quotes ('...' or "...").
+function stripQuotes(v) {
+  if (v.length < 2) return v;
+  const q = v[0];
+  if ((q === "'" || q === '"') && v[v.length - 1] === q) return v.slice(1, -1);
+  return v;
+}
+
+// True iff the string is a non-empty identifier of [a-zA-Z0-9_].
+function isBareIdentifier(s) {
+  if (s.length === 0) return false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    const ok =
+      (c >= "a" && c <= "z") ||
+      (c >= "A" && c <= "Z") ||
+      (c >= "0" && c <= "9") ||
+      c === "_";
+    if (!ok) return false;
+  }
+  return true;
+}
+
+// True iff line begins with whitespace, followed by "-", followed by ws or EOL.
+// Column-0 dashes are NOT list items (matches lint-prompt.mjs behaviour).
+function indentedListValue(line) {
+  if (line.length === 0) return null;
+  if (line[0] !== " " && line[0] !== "\t") return null;
+  let j = 0;
+  while (j < line.length && (line[j] === " " || line[j] === "\t")) j++;
+  if (line[j] !== "-") return null;
+  if (j + 1 < line.length && line[j + 1] !== " " && line[j + 1] !== "\t") return null;
+  return line.slice(j + 1).trim();
+}
+
+// Hand-parses the YAML front-matter block for dependency keys. Uses only
+// plain string operations (no regex with quantifiers). Returns entries
+// merged into `deps` in-place.
+function readYamlFrontMatterDeps(body, deps) {
+  const lines = body.split("\n");
+  let start = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (t === "---") {
+      start = i;
+      break;
+    }
+    if (t === "") continue;
+    // Skip leading legacy watcher HTML comments so the two forms can co-exist.
+    if (parseWatcherDirective(t)) continue;
+    return;
+  }
+  if (start === -1) return;
+  let end = -1;
+  for (let i = start + 1; i < lines.length; i++) {
+    if (lines[i].trim() === "---") {
+      end = i;
+      break;
+    }
+  }
+  if (end === -1) return;
+
+  let currentKey = null;
+  for (let i = start + 1; i < end; i++) {
+    const line = lines[i];
+    if (line.trim() === "" || line.trim().startsWith("#")) continue;
+
+    const listVal = indentedListValue(line);
+    if (listVal !== null) {
+      if (currentKey === "requires_merged") {
+        const n = Number(listVal);
+        if (Number.isInteger(n) && n > 0) deps.requiresMerged.push(n);
+      } else if (currentKey === "requires_file_on_main") {
+        if (listVal !== "") deps.requiresFilesOnMain.push(listVal);
+      }
+      continue;
+    }
+
+    if (line[0] === " " || line[0] === "\t") continue;
+    const colon = line.indexOf(":");
+    if (colon <= 0) continue;
+    const key = line.slice(0, colon);
+    if (!isBareIdentifier(key)) continue;
+    currentKey = key.toLowerCase();
+    const inline = stripQuotes(line.slice(colon + 1).trim());
+    if (inline === "") continue;
+    if (currentKey === "requires_merged") {
+      const n = Number(inline);
+      if (Number.isInteger(n) && n > 0) deps.requiresMerged.push(n);
+    } else if (currentKey === "requires_file_on_main") {
+      deps.requiresFilesOnMain.push(inline);
+    }
+    currentKey = null;
+  }
 }
 
 export function parseWatcherFrontMatter(body) {
@@ -547,6 +658,9 @@ export function parseWatcherFrontMatter(body) {
     }
     // Unknown watcher keys are ignored (forward-compat).
   }
+  readYamlFrontMatterDeps(body, deps);
+  deps.requiresMerged = [...new Set(deps.requiresMerged)];
+  deps.requiresFilesOnMain = [...new Set(deps.requiresFilesOnMain)];
   return deps;
 }
 

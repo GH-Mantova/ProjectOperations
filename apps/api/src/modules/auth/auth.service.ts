@@ -11,6 +11,8 @@ import { EntraLoginDto } from "./dto/entra-login.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RefreshTokenDto } from "./dto/refresh-token.dto";
 import { ResetPasswordDto } from "./dto/reset-password.dto";
+import { RequestOtpDto, VerifyOtpDto } from "./dto/otp-login.dto";
+import { OtpAuthProvider } from "./otp-auth.provider";
 
 @Injectable()
 export class AuthService {
@@ -22,8 +24,20 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly auditService: AuditService,
     private readonly authProviderService: AuthProviderService,
-    private readonly entraAuthService: EntraAuthService
+    private readonly entraAuthService: EntraAuthService,
+    private readonly otpAuthProvider: OtpAuthProvider
   ) {}
+
+  requestOtp(input: RequestOtpDto) {
+    return this.otpAuthProvider.requestCode(input);
+  }
+
+  async verifyOtp(input: VerifyOtpDto) {
+    const { user, permissions } = await this.otpAuthProvider.verifyCode(input);
+    return this.finishLogin(user.id, user.email, permissions, user, {
+      provider: "otp"
+    });
+  }
 
   async login(input: LoginDto) {
     const { user, permissions } = await this.authProviderService.authenticate(input);

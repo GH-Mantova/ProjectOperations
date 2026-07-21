@@ -772,6 +772,7 @@ model Site {
   assetCheckouts  AssetCheckout[]  @relation("AssetCheckoutSite")
   dailyDiaries    DailyDiary[]
   geofences       SiteGeofence[]
+  attendances     SiteAttendance[]
 
   @@unique([name])
   @@index([clientId])
@@ -1349,6 +1350,7 @@ model Job {
   expenses           Expense[]              @relation("ExpenseJob")
   surveyResponses    SurveyResponse[]       @relation("JobSurveyResponses")
   cases              Case[]                 @relation("CaseJob")
+  siteAttendances    SiteAttendance[]
 
   @@index([clientId])
   @@index([status])
@@ -2726,6 +2728,7 @@ model WorkerProfile {
   leaves                   WorkerLeave[]
   unavailabilities         WorkerUnavailability[]
   leaveRequests            LeaveRequest[]
+  siteAttendances          SiteAttendance[]
   createdAt                DateTime               @default(now()) @map("created_at")
   updatedAt                DateTime               @updatedAt @map("updated_at")
 
@@ -6069,4 +6072,32 @@ model KbArticle {
   @@index([category])
   @@index([authorId])
   @@map("kb_articles")
+}
+
+// Site sign-in / sign-out — the WHS spine for "who is on site right now".
+// One row per worker-visit: `signedInAt` set on arrival, `signedOutAt` null while
+// the worker is still on site. This is a fact (attendance), not an intention —
+// deliberately separate from Shift/ScheduleAllocation to keep the muster roll
+// honest. Idempotency lives in the service: signing in twice without signing
+// out returns the existing open row rather than creating a duplicate.
+model SiteAttendance {
+  id              String        @id @default(cuid())
+  siteId          String        @map("site_id")
+  workerProfileId String        @map("worker_profile_id")
+  signedInAt      DateTime      @default(now()) @map("signed_in_at")
+  signedOutAt     DateTime?     @map("signed_out_at")
+  jobId           String?       @map("job_id")
+  method          String?
+  notes           String?
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  site            Site          @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  workerProfile   WorkerProfile @relation(fields: [workerProfileId], references: [id], onDelete: Cascade)
+  job             Job?          @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  // Partial-index shape: "who is on site now" is the hot query the muster roll
+  // will run, and it's cheap when signedOutAt is often null.
+  @@index([siteId, signedOutAt])
+  @@index([workerProfileId, signedOutAt])
+  @@map("site_attendances")
 }

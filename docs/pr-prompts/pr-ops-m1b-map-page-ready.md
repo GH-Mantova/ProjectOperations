@@ -14,13 +14,12 @@ escalates: false
 requires_file_on_main:
   - apps/api/src/modules/map-locations/map-locations.module.ts
 ---
-<!-- watcher: do-not-arm | GATED: arm after pr-ops-m1-locations-register has MERGED to main (verify: grep -q "model MapLocation" apps/api/prisma/schema.prisma) -->
+# Map view inside the Settings "Map locations" tab
 
-# HOLD — Map view inside the Settings "Map locations" tab
-
-STATUS: DRAFTED, STAGED, **DO NOT ARM YET**. Marco redesigned this 2026-07-20: the map is a
-panel **inside the existing Settings > Map locations tab**, NOT a standalone `/ops-map` page.
-**ARM ONLY** after `pr-ops-m1-locations-register` has merged (it creates `MapLocation` + the tab).
+STATUS: ARMED 2026-07-21 by Station 04 at Marco's request. Gate SATISFIED: `model MapLocation`
+and `apps/api/src/modules/map-locations/map-locations.module.ts` ARE on origin/main b6e63cb
+(m1 locations-register merged). The map is a panel **inside the existing Settings > Map locations
+tab**, NOT a standalone `/ops-map` page.
 
 ## What to build (when armed)
 Branch: `feat/ops-m1b-map-view`. Reviewer: `GH-Mantova`. No migration. Adds a map library —

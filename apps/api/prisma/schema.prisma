@@ -6099,6 +6099,39 @@ model KbArticle {
   @@map("kb_articles")
 }
 
+// ── Map Locations register (ops-m1) ─────────────────────────────────────────
+// Tip sites and Points of Interest used by the operations map and the waste
+// transport cost engine. TIPs carry a `facility` string that matches
+// EstimateWasteRate.facility (plain string join — not an FK); ratesStatus is
+// derived at query time, never stored.
+// POI categories come from the "poi-categories" GlobalList.
+
+enum MapLocationKind {
+  TIP
+  POI
+}
+
+model MapLocation {
+  id           String          @id @default(cuid())
+  name         String
+  kind         MapLocationKind
+  categoryId   String?         @map("category_id")
+  addressLine1 String          @map("address_line1")
+  suburb       String
+  state        String
+  postcode     String
+  latitude     Decimal?        @db.Decimal(10, 7)
+  longitude    Decimal?        @db.Decimal(10, 7)
+  facility     String?
+  notes        String?
+  isActive     Boolean         @default(true) @map("is_active")
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+
+  @@index([kind, facility])
+  @@index([isActive])
+  @@map("map_locations")
+}
 // Site sign-in / sign-out — the WHS spine for "who is on site right now".
 // One row per worker-visit: `signedInAt` set on arrival, `signedOutAt` null while
 // the worker is still on site. This is a fact (attendance), not an intention —

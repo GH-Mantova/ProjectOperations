@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { useAuth } from "../../auth/AuthContext";
 import { NotesField } from "../../components";
@@ -38,6 +38,19 @@ type WasteRow = {
   lineTotal: string | null;
   notes: string | null;
   sortOrder: number;
+  // R3 T-1 - waste transport cost engine columns.
+  transportRateId: string | null;
+  assetId: string | null;
+  qtyTrucks: number | null;
+  loadsPerTruckPerDay: string | null;
+  capacityPerLoad: string | null;
+  capacityUnit: string | null;
+  dailyKm: string | null;
+  transportCost: string | null;
+  fuelCost: string | null;
+  disposalCost: string | null;
+  quotedDisposalRate: string | null;
+  quotedFuelPricePerLitre: string | null;
 };
 
 type WasteRate = {
@@ -49,6 +62,33 @@ type WasteRate = {
   tonRate: string;
   loadRate: string;
   isActive: boolean;
+};
+
+// R3 T-1 - Transport Fees are EstimatePlantRate rows where category === "Truck"
+// or unit === "each way" (mirrors rates-export.service isTransportPlantRate).
+type PlantRate = {
+  id: string;
+  item: string;
+  unit: string;
+  rate: string;
+  fuelRate: string;
+  isActive: boolean;
+  category: string | null;
+};
+
+function isTransportPlantRate(p: PlantRate): boolean {
+  return p.category === "Truck" || p.unit === "each way";
+}
+
+type VarianceResult = {
+  itemId: string;
+  quotedDisposalRate: number | null;
+  currentDisposalRate: number | null;
+  quotedFuelPricePerLitre: number | null;
+  currentFuelPricePerLitre: number | null;
+  disposalDelta: number | null;
+  fuelDelta: number | null;
+  hasVariance: boolean;
 };
 
 function ceilHalf(value: number): number {
@@ -100,6 +140,12 @@ export function ScopeWasteTab({
   const { authFetch } = useAuth();
   const [rows, setRows] = useState<WasteRow[]>([]);
   const [rates, setRates] = useState<WasteRate[]>([]);
+  // R3 T-1 - Transport Fees plant rates for the transport picker.
+  const [transportRates, setTransportRates] = useState<PlantRate[]>([]);
+  // R3 T-1 - per-row expand toggle for the cost-engine detail panel.
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  // R3 T-1 - variance check results keyed by row id (populated on expand).
+  const [variance, setVariance] = useState<Record<string, VarianceResult>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -112,15 +158,20 @@ export function ScopeWasteTab({
       const wasteUrl = cardId
         ? `/tenders/${tenderId}/scope/waste?cardId=${encodeURIComponent(cardId)}`
         : `/tenders/${tenderId}/scope/waste?discipline=${discipline}`;
-      const [rowsResp, ratesResp] = await Promise.all([
+      const [rowsResp, ratesResp, plantResp] = await Promise.all([
         authFetch(wasteUrl),
-        authFetch(`/estimate-rates/waste`)
+        authFetch(`/estimate-rates/waste`),
+        authFetch(`/estimate-rates/plant`)
       ]);
       if (!rowsResp.ok) throw new Error(await rowsResp.text());
       setRows((await rowsResp.json()) as WasteRow[]);
       if (ratesResp.ok) {
         const arr = (await ratesResp.json()) as WasteRate[];
         setRates(arr.filter((r) => r.isActive));
+      }
+      if (plantResp.ok) {
+        const arr = (await plantResp.json()) as PlantRate[];
+        setTransportRates(arr.filter((r) => r.isActive && isTransportPlantRate(r)));
       }
     } catch (err) {
       setError((err as Error).message);
@@ -231,6 +282,41 @@ export function ScopeWasteTab({
     await load();
   };
 
+  // R3 T-1 - toggle the engine detail panel for a row; fetch variance on open.
+  const toggleExpand = async (id: string) => {
+    const next = !expanded[id];
+    setExpanded((prev) => ({ ...prev, [id]: next }));
+    if (next && !variance[id]) {
+      const response = await authFetch(`/tenders/${tenderId}/scope/waste/${id}/variance`);
+      if (response.ok) {
+        const v = (await response.json()) as VarianceResult;
+        setVariance((prev) => ({ ...prev, [id]: v }));
+      }
+    }
+  };
+
+  const escalateVariance = async (id: string) => {
+    if (!canManage) return;
+    const ok = window.confirm(
+      "Escalate this waste line for confirmation? The system does not auto-reprice - the responsible role will confirm."
+    );
+    if (!ok) return;
+    const response = await authFetch(
+      `/tenders/${tenderId}/scope/waste/${id}/escalate-variance`,
+      { method: "POST" }
+    );
+    if (!response.ok) {
+      setError(await readApiErrorMessage(response));
+      return;
+    }
+    const result = (await response.json()) as { escalated: boolean; recipients: number };
+    if (!result.escalated) {
+      setError(
+        "The 'waste_line.rate_variance_escalated' trigger is not enabled. Ask an admin to enable it in Notification Settings."
+      );
+    }
+  };
+
   const deleteRow = async (id: string) => {
     if (!window.confirm("Delete this waste row?")) return;
     const response = await authFetch(`/tenders/${tenderId}/scope/waste/${id}`, { method: "DELETE" });
@@ -315,6 +401,7 @@ export function ScopeWasteTab({
             <thead style={{ background: "var(--surface-muted, #F6F6F6)" }}>
               <tr>
                 {[
+                  "",
                   "WBS",
                   "Description",
                   "Group",
@@ -324,7 +411,7 @@ export function ScopeWasteTab({
                   "Tonnes",
                   "M³",
                   "Loads",
-                  "Truck days",
+                  "Duration",
                   "$/unit",
                   "$/Load",
                   "Line total",
@@ -357,14 +444,28 @@ export function ScopeWasteTab({
                 const billingUnit = row.unit === "m³" ? "m³" : "t";
                 const rateLabel = billingUnit === "m³" ? "$/m³" : "$/t";
                 const rowTint = noFacility ? "rgba(254, 170, 109, 0.12)" : undefined;
+                const isExpanded = !!expanded[row.id];
+                const rowVariance = variance[row.id];
+                const engineFired = row.transportRateId != null && row.qtyTrucks != null;
                 return (
+                <Fragment key={row.id}>
                 <tr
-                  key={row.id}
                   style={{
                     borderTop: "1px solid var(--border, #e5e7eb)",
                     background: rowTint
                   }}
                 >
+                  <td style={{ padding: 2, textAlign: "center" }}>
+                    <button
+                      type="button"
+                      className="s7-btn s7-btn--ghost s7-btn--sm"
+                      onClick={() => void toggleExpand(row.id)}
+                      title={isExpanded ? "Hide transport & cost" : "Show transport & cost"}
+                      style={{ padding: "0 6px", fontSize: 11 }}
+                    >
+                      {isExpanded ? "−" : "+"}
+                    </button>
+                  </td>
                   <td style={{ padding: 2 }}>
                     <select
                       value={row.wbsRef ?? ""}
@@ -573,9 +674,13 @@ export function ScopeWasteTab({
                     />
                   </td>
                   <td style={{ padding: 2, fontSize: 12, color: "var(--text-muted)", textAlign: "right" }}>
-                    {row.wasteLoads !== null && row.wasteLoads !== undefined
-                      ? ceilHalf(row.wasteLoads / 3).toFixed(1) + " d"
-                      : "—"}
+                    {/* R3 T-1 - truckDays is now server-derived (engine ceil,
+                        or legacy /3 fallback). Show as-is. */}
+                    {row.truckDays !== null && row.truckDays !== undefined && row.truckDays !== ""
+                      ? Number(row.truckDays).toFixed(1) + " d"
+                      : row.wasteLoads !== null && row.wasteLoads !== undefined
+                        ? ceilHalf(row.wasteLoads / 3).toFixed(1) + " d"
+                        : "—"}
                   </td>
                   <td style={{ padding: 2 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
@@ -627,6 +732,154 @@ export function ScopeWasteTab({
                     ) : null}
                   </td>
                 </tr>
+                {isExpanded ? (
+                <tr style={{ background: "var(--surface-muted, #F6F6F6)" }}>
+                  <td colSpan={15} style={{ padding: "10px 12px" }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
+                      <label style={{ display: "flex", flexDirection: "column", fontSize: 11, color: "var(--text-muted)" }}>
+                        Transport item
+                        <select
+                          className="s7-select s7-input--sm"
+                          value={row.transportRateId ?? ""}
+                          disabled={!canManage}
+                          onChange={(e) => {
+                            const next = e.target.value || null;
+                            void patchRow(row.id, { transportRateId: next });
+                          }}
+                          style={{ minWidth: 200 }}
+                        >
+                          <option value="">— pick a truck / transport —</option>
+                          {transportRates.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.item} (${Number(p.rate).toFixed(0)}/{p.unit})
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label style={{ display: "flex", flexDirection: "column", fontSize: 11, color: "var(--text-muted)" }}>
+                        Trucks
+                        <input
+                          className="s7-input s7-input--sm"
+                          type="number"
+                          min={0}
+                          defaultValue={row.qtyTrucks ?? ""}
+                          disabled={!canManage}
+                          onBlur={(e) => {
+                            const n = e.target.value === "" ? null : Math.trunc(Number(e.target.value));
+                            if (n !== row.qtyTrucks) void patchRow(row.id, { qtyTrucks: n });
+                          }}
+                          style={{ width: 60, textAlign: "right" }}
+                        />
+                      </label>
+                      <label style={{ display: "flex", flexDirection: "column", fontSize: 11, color: "var(--text-muted)" }}>
+                        Loads / truck / day
+                        <input
+                          className="s7-input s7-input--sm"
+                          type="number"
+                          step="0.1"
+                          defaultValue={row.loadsPerTruckPerDay ?? ""}
+                          disabled={!canManage}
+                          onBlur={(e) => {
+                            const n = e.target.value === "" ? null : Number(e.target.value);
+                            if (String(n) !== String(row.loadsPerTruckPerDay))
+                              void patchRow(row.id, { loadsPerTruckPerDay: n });
+                          }}
+                          style={{ width: 70, textAlign: "right" }}
+                        />
+                      </label>
+                      <label style={{ display: "flex", flexDirection: "column", fontSize: 11, color: "var(--text-muted)" }}>
+                        Capacity / load
+                        <input
+                          className="s7-input s7-input--sm"
+                          type="number"
+                          step="0.01"
+                          defaultValue={row.capacityPerLoad ?? ""}
+                          disabled={!canManage}
+                          onBlur={(e) => {
+                            const n = e.target.value === "" ? null : Number(e.target.value);
+                            if (String(n) !== String(row.capacityPerLoad))
+                              void patchRow(row.id, { capacityPerLoad: n });
+                          }}
+                          style={{ width: 80, textAlign: "right" }}
+                          title="Default from the Transport Capacity table; per-line override stays local"
+                        />
+                      </label>
+                      <label style={{ display: "flex", flexDirection: "column", fontSize: 11, color: "var(--text-muted)" }}>
+                        Capacity unit
+                        <select
+                          className="s7-select s7-input--sm"
+                          value={row.capacityUnit ?? ""}
+                          disabled={!canManage}
+                          onChange={(e) => {
+                            const next = e.target.value || null;
+                            void patchRow(row.id, { capacityUnit: next });
+                          }}
+                          style={{ width: 70 }}
+                        >
+                          <option value="">—</option>
+                          <option value="t">t</option>
+                          <option value="m3">m³</option>
+                        </select>
+                      </label>
+                      <label style={{ display: "flex", flexDirection: "column", fontSize: 11, color: "var(--text-muted)" }}>
+                        Daily km (per truck)
+                        <input
+                          className="s7-input s7-input--sm"
+                          type="number"
+                          step="0.1"
+                          defaultValue={row.dailyKm ?? ""}
+                          disabled={!canManage}
+                          onBlur={(e) => {
+                            const n = e.target.value === "" ? null : Number(e.target.value);
+                            if (String(n) !== String(row.dailyKm))
+                              void patchRow(row.id, { dailyKm: n });
+                          }}
+                          style={{ width: 80, textAlign: "right" }}
+                          title="Manual until T-2/T-3 wire live fuel price + map distance. Leave blank to set fuel term = 0."
+                        />
+                      </label>
+                    </div>
+                    <div style={{ display: "flex", gap: 16, marginTop: 10, fontSize: 12, flexWrap: "wrap" }}>
+                      <span>Transport cost: <strong>{fmtCurrency(row.transportCost)}</strong></span>
+                      <span>Fuel cost (of that): <strong>{fmtCurrency(row.fuelCost)}</strong></span>
+                      <span>Disposal cost: <strong>{fmtCurrency(row.disposalCost)}</strong></span>
+                      <span>Line total: <strong>{fmtCurrency(row.lineTotal)}</strong></span>
+                      {!engineFired ? (
+                        <span style={{ color: "var(--text-muted)" }}>
+                          Engine idle — pick a transport item + trucks + loads/day + capacity/load.
+                        </span>
+                      ) : null}
+                    </div>
+                    {rowVariance && rowVariance.hasVariance ? (
+                      <div style={{ marginTop: 10, padding: 8, background: "rgba(254, 170, 109, 0.16)", borderRadius: 4, fontSize: 12 }}>
+                        <strong style={{ color: "#B45309" }}>Rate variance since quoted:</strong>{" "}
+                        {rowVariance.disposalDelta != null ? (
+                          <span>
+                            disposal ${rowVariance.quotedDisposalRate ?? "?"} → ${rowVariance.currentDisposalRate ?? "?"}
+                            {" "}
+                          </span>
+                        ) : null}
+                        {rowVariance.fuelDelta != null ? (
+                          <span>
+                            · fuel ${rowVariance.quotedFuelPricePerLitre ?? "?"}/L → ${rowVariance.currentFuelPricePerLitre ?? "?"}/L
+                          </span>
+                        ) : null}
+                        {canManage ? (
+                          <button
+                            type="button"
+                            className="s7-btn s7-btn--ghost s7-btn--sm"
+                            style={{ marginLeft: 12 }}
+                            onClick={() => void escalateVariance(row.id)}
+                          >
+                            Escalate for confirmation
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </td>
+                </tr>
+                ) : null}
+                </Fragment>
                 );
               })}
             </tbody>

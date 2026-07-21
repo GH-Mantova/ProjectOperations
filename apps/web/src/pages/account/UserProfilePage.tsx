@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { isAdminUser } from "../../auth/permissions";
 import { DefaultDashboardSection } from "./DefaultDashboardSection";
@@ -22,6 +23,19 @@ export function UserProfilePage() {
       <DefaultDashboardSection />
 
       <GlobalListsSection isAdmin={isAdmin} />
+
+      <section className="s7-card" style={{ marginTop: 24 }}>
+        <h2 className="s7-type-section-heading" style={{ marginTop: 0, marginBottom: 4 }}>
+          Calendar sync
+        </h2>
+        <p style={{ color: "var(--text-muted)", marginTop: 0, fontSize: 13 }}>
+          Connect a personal Google or Outlook calendar so your assigned shifts appear alongside
+          the rest of your schedule.
+        </p>
+        <Link to="/account/calendar-sync" className="s7-btn s7-btn--secondary s7-btn--sm">
+          Open calendar sync
+        </Link>
+      </section>
 
       <section className="s7-card" style={{ marginTop: 24 }}>
         <h2 className="s7-type-section-heading" style={{ marginTop: 0, marginBottom: 4 }}>

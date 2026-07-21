@@ -25,9 +25,7 @@ import { JobsListPage } from "./pages/jobs/JobsListPage";
 import { JobDetailPage } from "./pages/jobs/JobDetailPage";
 import { ProjectsListPage } from "./pages/projects/ProjectsListPage";
 import { ProjectDetailPage } from "./pages/projects/ProjectDetailPage";
-import { SchedulerWorkspacePage } from "./pages/scheduler/SchedulerWorkspacePage";
-import { AvailabilityReportPage } from "./pages/scheduler/AvailabilityReportPage";
-import { SchedulerGridPage } from "./pages/scheduler/SchedulerGridPage";
+import { SchedulerHomePage } from "./pages/scheduler/SchedulerHomePage";
 import { CalendarSyncPage } from "./pages/calendar/CalendarSyncPage";
 import { WorkersListPage } from "./pages/workers/WorkersListPage";
 import { WorkerDetailPage } from "./pages/workers/WorkerDetailPage";
@@ -260,9 +258,10 @@ export function App() {
                 </RootRedirect>
               }
             />
-            <Route path="/scheduler" element={<SchedulerWorkspacePage />} />
-            <Route path="/scheduler/availability-report" element={<AvailabilityReportPage />} />
-            <Route path="/scheduler/grid" element={<SchedulerGridPage />} />
+            <Route path="/scheduler" element={<SchedulerHomePage />} />
+            {/* Legacy sub-routes retired in favour of ?view= tabs on the
+                consolidated Scheduler page. Handled by SchedulerHomePage. */}
+            <Route path="/scheduler/:legacyView" element={<SchedulerHomePage />} />
             <Route path="/account/calendar-sync" element={<CalendarSyncPage />} />
             <Route path="/tenders" element={<TenderingPage />} />
             <Route path="/tenders/dashboard" element={<TenderingDashboardPage />} />

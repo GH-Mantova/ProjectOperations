@@ -49,6 +49,11 @@ describe("AuthService", () => {
     })
   };
 
+  const otpAuthProvider = {
+    requestCode: jest.fn(),
+    verifyCode: jest.fn()
+  };
+
   const service = new AuthService(
     prisma as never,
     usersService as never,
@@ -57,7 +62,8 @@ describe("AuthService", () => {
     configService,
     auditService as never,
     authProviderService as never,
-    entraAuthService as never
+    entraAuthService as never,
+    otpAuthProvider as never
   );
 
   beforeEach(() => {

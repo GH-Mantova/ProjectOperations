@@ -176,7 +176,7 @@ export function TenderingReportsPage() {
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <Link to="/tenders/dashboard" className="s7-btn s7-btn--secondary s7-btn--sm">← Back to dashboard</Link>
+          <Link to="/tenders" className="s7-btn s7-btn--secondary s7-btn--sm">← Back to tenders</Link>
         </div>
       </header>
 

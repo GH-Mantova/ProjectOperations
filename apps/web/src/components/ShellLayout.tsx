@@ -190,7 +190,6 @@ export const NAV_GROUPS: NavGroup[] = [
         match: (path) =>
           path === "/tenders" ||
           (path.startsWith("/tenders/") &&
-            !path.startsWith("/tenders/dashboard") &&
             !path.startsWith("/tenders/reports") &&
             !path.startsWith("/tenders/contacts") &&
             !path.startsWith("/tenders/settings"))
@@ -373,7 +372,6 @@ const BREADCRUMBS: Record<string, string> = {
   "/scheduler": "Scheduler",
   "/forms": "Forms",
   "/tenders": "Tendering",
-  "/tenders/dashboard": "Tender Dashboard",
   "/tenders/reports": "Tender Reports",
   "/tenders/contacts": "Tender Contacts",
   "/tenders/settings": "Tendering Settings",

@@ -133,10 +133,12 @@ describe("ShellLayout nav — 7 approved groups (2026-07-17 restructure)", () =>
     ]);
   });
 
-  it("Safety & Compliance carries Safety, Compliance, Forms, Documents (in order)", () => {
+  it("Safety & Compliance carries Safety, Cases, Knowledge Base, Compliance, Forms, Documents (in order)", () => {
     const safety = NAV_GROUPS.find((g) => g.id === "safety");
     expect(safety?.items.map((i) => [i.label, i.to])).toEqual([
       ["Safety", "/safety"],
+      ["Cases", "/cases"],
+      ["Knowledge Base", "/knowledge"],
       ["Compliance", "/compliance"],
       ["Forms", "/forms"],
       ["Documents", "/documents"]

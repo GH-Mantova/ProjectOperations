@@ -316,15 +316,20 @@ export const NAV_GROUPS: NavGroup[] = [
     ]
   },
   {
-    // Single entry that opens the Settings shell. Administration items
-    // (users, roles, permissions, audit, company profile, data-model, etc.)
-    // are surfaced inside the shell itself and remain admin/super-only via
-    // this group-level gate.
+    // Single entry that opens the unified Settings shell (#739). The old
+    // scattered /admin/* and /account/* pages redirect into /settings/*.
+    // Administration items are surfaced inside the shell and remain
+    // admin/super-only via this group-level gate.
     id: "settings",
     label: "Settings",
     adminOnly: true,
     items: [
-      { to: "/admin/settings", label: "Settings", icon: ICON_ROLES }
+      {
+        to: "/settings",
+        label: "Settings",
+        icon: ICON_ROLES,
+        match: (path) => path === "/settings" || path.startsWith("/settings/")
+      }
     ]
   }
 ];
@@ -383,6 +388,14 @@ const BREADCRUMBS: Record<string, string> = {
   "/account/calendar-sync": "Calendar Sync",
   "/notifications": "Notifications",
   "/dashboards": "Dashboards",
+  "/settings": "Settings",
+  "/settings/account": "Settings",
+  "/settings/notifications": "Settings",
+  "/settings/calendar-sync": "Settings",
+  "/settings/company": "Settings",
+  "/settings/ai": "Settings",
+  "/settings/data-model": "Settings",
+  "/settings/administration": "Settings",
   "/admin/users": "Users",
   "/admin/roles": "Roles",
   "/admin/estimate-rates": "Legacy estimate rates",
@@ -694,7 +707,7 @@ export function ShellLayout() {
             <button
               type="button"
               className="shell__topbar-avatar"
-              onClick={() => navigate("/account")}
+              onClick={() => navigate("/settings/account")}
               aria-label={`Account — signed in as ${user?.firstName} ${user?.lastName}`}
               title="My account"
             >

@@ -64,40 +64,34 @@ export function AdminSettingsPage() {
   if (!isAdmin) return <NoAccess required="role:Admin" title="Admin settings requires the Admin role" />;
 
   return (
-    <div style={{ padding: 24, maxWidth: 1200 }}>
-      <h1 className="s7-type-page-heading" style={{ marginTop: 0 }}>Admin settings</h1>
-      <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
-        System configuration â€” notifications, email delivery, integrations, and audit history.
-      </p>
+    <div className="admin-settings">
+      <header className="admin-settings__header">
+        <h2 className="s7-type-page-heading" style={{ margin: 0 }}>Admin settings</h2>
+        <p style={{ color: "var(--text-muted)", margin: "4px 0 0" }}>
+          System configuration — notifications, email delivery, integrations, and audit history.
+        </p>
+      </header>
 
-      <div style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: 24, marginTop: 24 }}>
-        <nav aria-label="Settings sections" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          {TABS.map((t) => {
-            const active = tab === t.id;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setTab(t.id)}
-                style={{
-                  textAlign: "left",
-                  padding: "8px 12px",
-                  borderRadius: 6,
-                  border: "none",
-                  background: active ? "rgba(0,91,97,0.08)" : "transparent",
-                  color: active ? "#005B61" : "var(--text)",
-                  fontWeight: active ? 600 : 400,
-                  cursor: "pointer",
-                  borderLeft: active ? "3px solid #005B61" : "3px solid transparent"
-                }}
-              >
-                {t.label}
-              </button>
-            );
-          })}
+      <div className="admin-settings__layout">
+        <nav className="admin-settings__tabs" aria-label="Admin settings sections">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={
+                tab === t.id
+                  ? "admin-settings__tab admin-settings__tab--active"
+                  : "admin-settings__tab"
+              }
+              aria-current={tab === t.id ? "page" : undefined}
+            >
+              {t.label}
+            </button>
+          ))}
         </nav>
 
-        <div>
+        <div className="admin-settings__panel">
           {tab === "notifications" && <NotificationsTab />}
           {tab === "email" && <EmailTab />}
           {tab === "operations" && <OperationsTab />}
@@ -115,7 +109,7 @@ export function AdminSettingsPage() {
             <>
               <IntegrationTab
                 href="/admin/platform"
-                label="Platform integrations â€” SharePoint"
+                label="Platform integrations — SharePoint"
                 body="SharePoint tenant, site, and library bindings plus the root folder tree used by Project Operations. SHAREPOINT_MODE is set by environment."
               />
               <SharePointTestPanel />
@@ -153,7 +147,7 @@ function StubCard({ title, body }: { title: string; body: string }) {
   );
 }
 
-// â”€â”€ Notifications tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Notifications tab ────────────────────────────────────────────────────
 function NotificationsTab() {
   const { authFetch } = useAuth();
   const [triggers, setTriggers] = useState<Trigger[]>([]);
@@ -200,7 +194,7 @@ function NotificationsTab() {
     }
   };
 
-  if (loading) return <p style={{ color: "var(--text-muted)" }}>Loadingâ€¦</p>;
+  if (loading) return <p style={{ color: "var(--text-muted)" }}>Loading…</p>;
 
   const enabled = triggers.filter((t) => t.isEnabled);
   const disabled = triggers.filter((t) => !t.isEnabled);
@@ -299,7 +293,7 @@ function TriggerRow({
           <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{trigger.description}</div>
         </div>
         {savedFlash ? (
-          <span style={{ fontSize: 11, color: "#16A34A" }}>âœ“ Saved</span>
+          <span style={{ fontSize: 11, color: "#16A34A" }}>✓ Saved</span>
         ) : null}
       </div>
 
@@ -366,7 +360,7 @@ function TriggerRow({
                             checked={trigger.recipientUserIds.includes(u.id)}
                             onChange={() => toggleUser(u.id)}
                           />
-                          {u.firstName} {u.lastName} <span style={{ color: "var(--text-muted)" }}>Â· {u.email}</span>
+                          {u.firstName} {u.lastName} <span style={{ color: "var(--text-muted)" }}>· {u.email}</span>
                         </label>
                       ))}
                     </div>
@@ -417,7 +411,7 @@ function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (v: b
   );
 }
 
-// â”€â”€ Email tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Email tab ────────────────────────────────────────────────────────────
 function EmailTab() {
   const { authFetch } = useAuth();
   const [config, setConfig] = useState<EmailConfig | null>(null);
@@ -484,7 +478,7 @@ function EmailTab() {
     }
   };
 
-  if (loading || !config) return <p style={{ color: "var(--text-muted)" }}>Loadingâ€¦</p>;
+  if (loading || !config) return <p style={{ color: "var(--text-muted)" }}>Loading…</p>;
 
   const showMailSendBanner = test && !test.success && /Mail\.Send/i.test(test.message);
 
@@ -531,10 +525,10 @@ function EmailTab() {
 
       <div style={{ display: "flex", gap: 8 }}>
         <button type="button" className="s7-btn s7-btn--primary" onClick={() => void save()} disabled={saving}>
-          {saving ? "Savingâ€¦" : "Save"}
+          {saving ? "Saving…" : "Save"}
         </button>
         <button type="button" className="s7-btn s7-btn--ghost" onClick={() => void testConn()} disabled={testing}>
-          {testing ? "Testingâ€¦" : "Test connection"}
+          {testing ? "Testing…" : "Test connection"}
         </button>
       </div>
 
@@ -549,7 +543,7 @@ function EmailTab() {
             fontSize: 13
           }}
         >
-          {test.success ? "âœ“ " : "âœ— "}
+          {test.success ? "✓ " : "✗ "}
           {test.message}
         </div>
       ) : null}
@@ -752,7 +746,7 @@ function SharePointTestPanel() {
         ensureFolder call against the configured root.
       </p>
       <button type="button" className="s7-btn s7-btn--secondary" onClick={() => void run()} disabled={busy}>
-        {busy ? "Testingâ€¦" : "Test connection"}
+        {busy ? "Testing…" : "Test connection"}
       </button>
       {error ? (
         <p style={{ color: "var(--status-danger)", marginTop: 10 }}>{error}</p>
@@ -768,7 +762,7 @@ function SharePointTestPanel() {
             fontSize: 13
           }}
         >
-          <strong>{result.connected ? "Connected" : "Unavailable"}</strong> â€” mode: <code>{result.mode}</code>
+          <strong>{result.connected ? "Connected" : "Unavailable"}</strong> — mode: <code>{result.mode}</code>
           {result.message ? <div style={{ marginTop: 4 }}>{result.message}</div> : null}
         </div>
       ) : null}
@@ -1198,7 +1192,7 @@ function XeroPanel() {
       if (!r.ok) throw new Error(await r.text());
       const body = (await r.json()) as { url: string };
       window.open(body.url, "_blank", "noopener");
-      setInfo("Consent window opened â€” finish the flow in the new tab.");
+      setInfo("Consent window opened — finish the flow in the new tab.");
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -1266,7 +1260,7 @@ function XeroPanel() {
                 color: "#16a34a"
               }}
             >
-              Connected{status.tenantName ? ` â€” ${status.tenantName}` : ""}
+              Connected{status.tenantName ? ` — ${status.tenantName}` : ""}
             </span>
             <button
               type="button"
@@ -1292,7 +1286,7 @@ function XeroPanel() {
             onClick={() => void connect()}
             disabled={busy}
           >
-            {busy ? "Workingâ€¦" : "Connect Xero"}
+            {busy ? "Working…" : "Connect Xero"}
           </button>
         )}
       </div>

@@ -398,7 +398,10 @@ export function App() {
             <Route path="/admin/permissions" element={<Navigate to="/settings/administration/permissions" replace />} />
             <Route path="/admin/audit" element={<Navigate to="/settings/administration/audit" replace />} />
             <Route path="/admin/platform" element={<Navigate to="/settings/administration/platform" replace />} />
-            <Route path="/admin/settings" element={<Navigate to="/settings/administration/system" replace />} />
+            {/* #544 (sot/01 §6): non-admins must see NoAccess AT /admin/settings,
+                not a silent redirect. AdminOnly redirects admins to the shell and
+                renders <NoAccess/> in place for everyone else. */}
+            <Route path="/admin/settings" element={<AdminOnly><Navigate to="/settings/administration/system" replace /></AdminOnly>} />
             <Route path="/admin/company" element={<Navigate to="/settings/company" replace />} />
             <Route path="/admin/data-model" element={<Navigate to="/settings/data-model" replace />} />
             <Route path="/admin/ai-settings" element={<Navigate to="/settings/ai" replace />} />

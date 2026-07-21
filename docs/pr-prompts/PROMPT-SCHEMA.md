@@ -204,6 +204,29 @@ Before you finish, ask: **"Is there a PR number in my output?"**
 - **No, because I could not do it** → say `NO-OP: <reason>`. Correct, and honest.
 - **No, because I am waiting for someone** → **WRONG. There is nobody. Open the PR.**
 
+## Optional: execution-order dependencies
+
+Declare in front-matter — this is the ONLY form the intake lint admits (it REJECTs
+`NO_FRONT_MATTER` if `---` is not on line 1, which is why the older HTML-comment
+form was mutually exclusive with the lint and never actually usable):
+
+```yaml
+---
+requires_merged:
+  - 380
+  - 379
+requires_file_on_main:
+  - apps/web/src/hooks/useConfirm.tsx
+---
+```
+
+Inline scalar also works: `requires_file_on_main: path/to/file.ts`. The watcher
+DEFERS a prompt whose deps are unmet and re-checks it on the next rescan; a
+gh/git error counts as unmet (fail closed).
+
+The legacy `<!-- watcher: requires-... -->` HTML-comment form still parses (for
+back-compat) but cannot pass the intake lint — do not use it in new prompts.
+
 ## Lint failures you will hit
 
 | Failure | Meaning |

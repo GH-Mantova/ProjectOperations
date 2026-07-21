@@ -65,6 +65,7 @@ import { FieldTimesheetPage } from "./pages/field/FieldTimesheetPage";
 import { FieldDocumentsPage } from "./pages/field/FieldDocumentsPage";
 import { FieldSafetyPage } from "./pages/field/FieldSafetyPage";
 import { FieldDocketPage } from "./pages/field/FieldDocketPage";
+import { FieldExpensePage } from "./pages/field/FieldExpensePage";
 import { TimesheetApprovalPage } from "./pages/timesheets/TimesheetApprovalPage";
 import { PayrollExportPage } from "./pages/field/PayrollExportPage";
 import { DocketsRegisterPage } from "./pages/dockets/DocketsRegisterPage";
@@ -245,6 +246,7 @@ export function App() {
             <Route path="documents" element={<FieldDocumentsPage />} />
             <Route path="safety" element={<FieldSafetyPage />} />
             <Route path="dockets" element={<FieldDocketPage />} />
+            <Route path="expenses" element={<FieldExpensePage />} />
             <Route path="leave" element={<FieldLeavePage />} />
           </Route>
           <Route element={<ShellLayout />}>

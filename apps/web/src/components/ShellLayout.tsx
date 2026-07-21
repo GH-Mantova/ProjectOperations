@@ -271,22 +271,26 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Directory",
     items: [
       {
-        to: "/master-data?tab=clients",
+        to: "/directory?tab=clients",
         label: "Clients",
         icon: ICON_CLIENTS,
-        match: (path) => path.startsWith("/master-data")
+        match: (path) => path === "/directory" || path.startsWith("/directory?tab=clients")
       },
       {
-        to: "/directory/subcontractors",
+        to: "/directory?tab=subcontractors",
         label: "Subcontractors & Suppliers",
         icon: ICON_CLIENTS,
-        match: (path) => path.startsWith("/directory/subcontractors")
+        match: (path) =>
+          path.startsWith("/directory?tab=subcontractors") ||
+          path.startsWith("/directory/subcontractors")
       },
       {
-        to: "/directory/contacts",
+        to: "/directory?tab=contacts",
         label: "Contacts",
         icon: ICON_WORKERS,
-        match: (path) => path.startsWith("/directory/contacts")
+        match: (path) =>
+          path.startsWith("/directory?tab=contacts") ||
+          path.startsWith("/directory/contacts")
       }
     ]
   },
@@ -380,6 +384,7 @@ const BREADCRUMBS: Record<string, string> = {
   "/knowledge": "Knowledge Base",
   "/maintenance": "Maintenance",
   "/master-data": "Master Data",
+  "/directory": "Directory",
   "/documents": "Documents",
   "/archive": "Archive",
   "/reports": "Reports",

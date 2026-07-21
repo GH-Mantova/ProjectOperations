@@ -357,18 +357,6 @@ test.describe("Batch 2 — Tendering pipeline + register (PRs #16, #28-#30, #43,
     await expect(page.getByText("T260407-GOLD-Rev1", { exact: true }).first()).toBeVisible();
   });
 
-  // ── Tendering dashboard ────────────────────────────────────────────────────
-
-  test("tender dashboard renders KPIs, follow-up queue, recent wins — no compliance artifacts", async ({ page }) => {
-    await page.goto("/tenders/dashboard");
-    await page.waitForLoadState("networkidle");
-    for (const label of ["Active pipeline", "Submitted MTD", "Win rate YTD", "Avg lead time"]) {
-      await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
-    }
-    await expect(page.getByText("Follow-up queue", { exact: true }).first()).toBeVisible();
-    await expect(page.getByText("Recent wins", { exact: true }).first()).toBeVisible();
-    // PR #30 — compliance smoke artifacts must not leak into the dashboard.
-    await expect(page.getByText(/TEN-COMP-/)).toHaveCount(0);
-    await expect(page.getByText(/Compliance Tender/)).toHaveCount(0);
-  });
+  // §9: the seeded Tendering dashboard (/tenders/dashboard) was retired; its
+  // KPI/follow-up/recent-wins acceptance test was removed with it.
 });

@@ -208,10 +208,12 @@ export const NAV_GROUPS: NavGroup[] = [
         match: (path) => path === "/projects" || path.startsWith("/projects/")
       },
       { to: "/jobs", label: "Jobs", icon: ICON_JOBS },
-      { to: "/scheduler", label: "Scheduler", icon: ICON_SCHEDULER },
-      { to: "/scheduler/availability-report", label: "Availability report", icon: ICON_SCHEDULER },
-      { to: "/scheduler/grid", label: "Scheduler Grid", icon: ICON_SCHEDULER },
-      { to: "/account/calendar-sync", label: "Calendar Sync", icon: ICON_SCHEDULER },
+      {
+        to: "/scheduler",
+        label: "Scheduler",
+        icon: ICON_SCHEDULER,
+        match: (path) => path.startsWith("/scheduler")
+      },
       {
         to: "/sites",
         label: "Sites",
@@ -365,8 +367,6 @@ const BREADCRUMBS: Record<string, string> = {
   "/timesheets/payroll-export": "Payroll Export",
   "/jobs": "Jobs",
   "/scheduler": "Scheduler",
-  "/scheduler/availability-report": "Availability report",
-  "/scheduler/grid": "Scheduler Grid",
   "/forms": "Forms",
   "/tenders": "Tendering",
   "/tenders/reports": "Tender Reports",

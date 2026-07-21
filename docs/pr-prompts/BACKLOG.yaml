@@ -82,42 +82,15 @@ items:
       race, as its own reviewable PR.
     order: 6
 
-  - id: swms-interactive-module
-    title: "Interactive SWMS module Ã”Ã‡Ã¶ office wizard + control-mapping tool"
-    priority: P3
-    why: >
-      The largest body of unshipped design work. Backbone fully extracted from the Rev 5 template
-      (7 sections, 102 controls, 410 control rows, 31 SOP-SWMS). TWO PR prompts were WRITTEN in
-      `SWMS-PR-prompts.md` and never copied into the queue. Zero SWMS files exist on main.
-      Prototype still only in `C:\ProjectOperations-Reference\Interactive SWMS\`.
-    # GATE REPAIRED 2026-07-19 (04-scanner). The previous gate was
-    #   test -z "$(git ls-tree -r --name-only origin/main | grep -i swms)"
-    # which matched ANY path containing "swms" -- including its own staged prompt,
-    # docs/pr-prompts/pr-swms-build-plan-ready.md. From the moment SLICE 0 was armed, that gate read
-    # BLOCKED permanently and could never fire again, so "stays in-register until the build ships"
-    # (marco_note below) was silently inert: nothing was watching. A dead gate and a real blocker are
-    # indistinguishable from the outside, which is the whole failure mode this register exists to end.
-    #
-    # Simply excluding the queue tree was NOT the fix: with docs/pr-prompts/ excluded nothing else
-    # matches, so the gate flips to READY on EVERY scan -- the same false-ready churn that got the
-    # siteid / geoapify / job-project entries discharged. The real blocker is that SLICE 0 has not
-    # shipped: pr-swms-build-plan-ready.md writes docs/architecture/drafts/swms-build-slice-plan.md,
-    # and that file does not exist on main yet. So the gate now fires at exactly the right moment --
-    # when the build PLAN exists and the module build has not begun -- which is what Marco's
-    # "stays in-register until the build ships" actually means in executable form.
-    gate: 'test -f docs/architecture/drafts/swms-build-slice-plan.md && test -z "$(git ls-tree -r --name-only origin/main | grep -i swms | grep -v "^docs/")"'
-    gate_means: The SLICE 0 build plan has shipped AND no SWMS module code exists yet -- the build can start.
-    needs_marco: false
-    decided_in_BACKLOG_DECISIONS_md: >
-      This is big. Do you want it as ONE module, or split (a) the static SWMS wizard from
-      (b) the control-mapping tool? And is it Compliance-module or its own thing?
-    marco_note: >
-      RESOLVED 2026-07-17 (Marco): SPLIT into two independently-shippable tracks -- (A) the static
-      SWMS wizard and (B) the control-mapping tool; (A) ships without (B). Module-home (Compliance
-      vs standalone) still open -- the plan defaults to a standalone SWMS module surfaced under
-      Compliance and flags it for confirmation. SLICE 0 (ordered build plan, no code) STAGED as
-      pr-swms-build-plan-ready.md. Stays in-register until the build ships. One place, never two.
-    order: 5
+  # DISCHARGED 2026-07-21 (04-scanner): its gate RELEASED. SLICE 0 (the ordered build plan) shipped
+  # as PR #751 -- docs/architecture/drafts/swms-build-slice-plan.md is now on origin/main and NO SWMS
+  # module code exists yet, so the gate fired exactly as designed ("the build can start"). The FIRST
+  # code slice, A1 (SWMS template catalog tables SwmsTemplate/Section/Control/ControlRow -- schema +
+  # migration only, size 3, escalates:true so Marco reviews the foundational table design), is STAGED
+  # as pr-swms-a1-template-catalog-ready.md (lint: ADMIT). Subsequent slices (A2..A11, B1..B5) are
+  # armed one at a time and OWNED BY THE BUILD-PLAN CHAIN -- exactly as B-P0a/B-P0b were discharged
+  # once their SLICE-0 plan prompts were staged. Leaving the item here would false-fire READY on every
+  # scan (A1 unmerged => no swms code yet => gate still passes) and re-stage A1. One place, never two.
 
   # DISCHARGED 2026-07-16 (Cowork): STAGED + ARMED as pr-smart-wizard-runtime-catalog-ready.md
   # (per BACKLOG-DECISIONS #4: reads the metadata catalog at RUNTIME via a GET /meta/catalog seam --

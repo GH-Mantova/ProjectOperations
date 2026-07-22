@@ -44,40 +44,19 @@ OAuth2, MYOB CSV, M365 SSO + local JWT + Super User, AI providers + BYOK encrypt
 
 ---
 
-## 2. 🔧 In-PR — open right now (26)
+## 2. 🔧 In-PR — open right now (1)
 
-> Live snapshot read from GitHub at reconcile time (2026-07-21). For richer status/blocker
+> Live snapshot read from GitHub at reconcile time (2026-07-22). For richer status/blocker
 > detail run `scripts/pipeline/bring-up-to-speed.ps1` — its `[LIVE]` lines beat this table
 > the moment it drifts.
 
 | PR | Title | Notes |
 |---|---|---|
-| #705 | feat(estimates): task-time + waste-weight calculator seam (SoT §10) | `do-not-merge` (escalates → Marco) |
-| #708 | feat(auth): FIELD-worker OTP provider (personal email + short-lived code) | `do-not-merge` (escalates → Marco) |
-| #717 | docs(queue): arm 14 gate-cleared prompts, unblock the held set, re-hold 2 destructive | `do-not-merge` (escalates → Marco) |
-| #722 | feat(crm): lead + opportunity pipeline slice 1 (Tier 4) | |
-| #724 | docs(queue): arm prompt — frontend super-user parity for 4 residual bare capability flags | |
-| #725 | feat(erp): live crew map + nearest on-clock worker | |
-| #729 | feat(field): expense capture on the field PWA (slice 2) | |
-| #730 | fix(tenders): use design-system form controls on /tenders/settings | |
-| #731 | docs(pr-prompts): stage TenderClient cascade JobConversion guard prompt | |
-| #732 | feat(erp): site sign-in / sign-out (WHS spine for who is on site right now) | |
-| #733 | feat(forms): AI build-a-form-from-PDF (draft, never auto-publishes) | |
-| #734 | feat(directory): unified Clients / Subs & Suppliers / Contacts tabbed page | |
 | #735 | feat(ux): fold Archive into Documents and Resources into Workers | |
-| #737 | chore(routes): remove dead /tenders/dashboard route | |
-| #738 | feat(scheduler): one page with Board / Grid / Availability view tabs | |
-| #739 | feat(settings): unified SettingsShell for personal/company/administration | |
-| #741 | feat(ops): map locations register (ops-m1) | |
-| #742 | fix(permissions): register clients.view / clients.manage (permanently-false gate from #655) | |
-| #744 | test(compliance): Workstream-C audit + fill prequal gap | |
-| #745 | feat(tendering): waste transport cost engine (R3 T-1) | |
-| #746 | feat(nav): reorganise desktop sidebar into the 7 approved groups (structure only) | |
-| #747 | feat(rates): fallback-audit script + ratetable-miss warn signal (pr-524 phase-D gate) | |
-| #748 | feat(rates): xlsx import with preview/confirm (round-trip half 2) | |
-| #749 | chore(data-model): audit FormSubmission siteId nulls before NOT NULL flip | |
-| #750 | feat(dashboards): Smart Wizard shell reads metadata catalog at runtime | |
-| #751 | docs(swms): SLICE 0 — ordered SPLIT build plan (Tracks A + B) | |
+
+The previous In-PR batch (#705–#751) has since closed out as `main` advanced to #762 —
+merged or closed. Per-PR history lives in `03-progress-log.md` and the merged-batch summary in
+§1; run `bring-up-to-speed.ps1` for the authoritative live list.
 
 ---
 

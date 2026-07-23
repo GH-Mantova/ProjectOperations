@@ -1226,3 +1226,108 @@ merge queue select **#552, the production-data PR**.
 **If your instrument breaks mid-task, say so.** `NO-OP: my check was broken; here is what I could not
 measure.` That is a **success**. Reporting a verdict obtained from a broken instrument is the worst
 outcome available — worse than doing nothing, because someone will act on it.
+
+
+## Lessons LL-42 to LL-56 -- migrated from Cowork chat memory (2026-07-23)
+
+These lessons existed only in Cowork chat memory files, which NO agent in a worktree can read
+(the exact failure mode LL-38-era audits found in the backlog). Migrated here so every station,
+watcher run and chat sees them. Format unchanged: symptom -> root cause -> fix -> standing guard.
+
+### Tooling / shell (Windows dev box)
+
+**LL-42 | 2026-07 | Global `npx prisma` is v7 and false-fails the repo's v6 schema.**
+Root cause: version skew between the global binary and the repo pin. Fix/Standing guard: always run
+the REPO binary (`pnpm exec prisma` / `node_modules\.bin\prisma`) for validate/migrate; a validation
+failure from the global binary is the instrument lying (LL-39), not a schema bug.
+
+**LL-43 | 2026-07 | PowerShell `>` redirection writes UTF-16; node/git apply then choke on the BOM. The DC shell layer also EATS `$` in inline commands.**
+Root cause: PS 5.1 default encoding + MCP shell quoting. Fix: byte-exact writes go through cmd
+redirection (`cmd /c "... > file"`) or `git diff --output=<file>`; anything using `$` variables is
+written to a `.ps1` file and run with `-File`, never inlined. Standing guard: scripts stay pure
+ASCII (LL-22 companion); a mojibake em-dash in output is usually the READER, not the file.
+
+### CI / gates / GitHub behaviours
+
+**LL-44 | 2026-07-20 | Spinner-absence is a FAKE WAIT: an e2e spec waiting for "Loading..." to vanish read an empty list and blamed "fixture drift" (PR #707).**
+Root cause: the panel renders BEFORE the fetch is issued, so the loading text is legitimately
+absent at t=0 -- absence means "finished" OR "not started". Fix/Standing guard: wait for a POSITIVE
+end state (expected row, explicit empty-state text, or waitForResponse armed before navigation);
+a test that depends on pre-existing rows must CREATE them via apiFetch, not inherit seed state; and
+never write a failure message asserting a cause you have not proven.
+
+**LL-45 | 2026-07-20 | Permission-registry coverage guard is blind to object-literal permission maps; unregistered codes ship as permanently-false gates with CI green (4th occurrence: workers.manage #658, clients.* #655, clients/contacts.view #672).**
+Root cause: the guard extracts only `@RequirePermissions(` decorators; PermissionsService upserts
+only registered codes and PermissionsGuard is fail-closed. Second trap: `user.permissions` is NEVER
+expanded for super-users (isSuperUser is a separate JWT claim), so hand-rolled
+`permissions.includes(...)` checks deny super-users. Standing guard: audits grep BOTH
+`@RequirePermissions(` and bare "module.action" string literals, with a positive control
+(jobs.view must resolve); hand-rolled checks follow the house pattern in
+workers/leave-request.service.ts (isSuperUser ||).
+
+**LL-46 | 2026-07-20 | `gh pr view` can serve a STALE head sha right after a push.**
+Fix/Standing guard: `git ls-remote` is the truth for the current head; run it before reasoning
+about whether CI ran on the latest commit. Related: CodeQL required-context non-dispatch -- a PR
+BLOCKED with every visible check green usually needs a NEW sha pushed, not a rerun.
+
+### Watcher / automation pipeline
+
+**LL-47 | 2026-07-20 | Get-Board renders EMPTY labels for every PR; filtering do-not-merge off its output would have merged #705/#708/#717, all labelled.**
+Root cause: labels do not survive into the rendered rows -- "no labels" is indistinguishable from
+"labels not retrieved" (LL-39 shape #4). Standing guard: before any merge decision, re-read labels
+per-PR with `gh pr view <n> --json labels`. Also: `[datetime]$pr.updatedAt` localises UTC -- call
+.ToUniversalTime() before age arithmetic or Brisbane offsets go ~600 min negative.
+
+**LL-48 | 2026-07-20 | Set-PrBody THREW "marker NOT bare at column 0" after a write that had SUCCEEDED (PR #721); the natural retry would have churned the body.**
+Root cause: GitHub read-after-write lag inside the primitive's own read-back. Standing guard: on a
+Set-PrBody throw, verify independently (dump body via cmd redirection, regex-check in node) before
+any re-write; only re-write if the marker is genuinely absent.
+
+**LL-49 | 2026-07-20 | A prompt quarantined to failed/ or no-pr-opened/ usually stays COMMITTED as armed on origin/main -- restoring the FS copy re-arms it with NO new PR.**
+Root cause: the watcher moves only the filesystem copy (armed by COMMIT, consumed by FILESYSTEM).
+Standing guard: `git ls-tree origin/main -- docs/pr-prompts` before re-arming; before restoring,
+lint must ADMIT, the premise must re-pass live with a positive control, and the BODY must be
+re-read for gates. A transient API-error failure is infrastructure, not a code verdict -- the
+prompt is a re-arm candidate.
+
+**LL-50 | 2026-07-20 | The watcher's queuePaused flag is IN-MEMORY with no reset path; PAUSED_SUMMARY.md's "move the prompts back" remedy is a NO-OP against the live paused process. A single transient API error froze 20 unrelated prompts.**
+Root cause: pauseQueue() fires on ANY agent exit != 0; nothing persists or expires the flag.
+Standing guard: the ONLY recovery is restarting the watcher DETACHED, then restoring
+paused/*-ready.md. Diagnose via heartbeat.log LastWriteTime far in the past with node still alive.
+
+**LL-51 | 2026-07-21 | Watcher ALIVE with a fresh-ish heartbeat but frozen N commits behind main: another chat left uncommitted changes in the live clone, tripping the do-not-pull-over-local-changes guard.**
+Root cause: work done directly in C:\po-watcher\ProjectOperations (the LL-38 never-touch rule,
+violated). Fix order: preserve the work read-only (git diff --output + copy untracked out), stop
+the WRAPPER before the node, `git reset --hard origin/main`, relaunch DETACHED via
+watcher-launcher + Win32_Process.Create, verify node+wrapper survive >40s and clone is 0-behind.
+Standing guard: other chats work in throwaway worktrees, never in the clone. (Recurred 2026-07-22/23;
+recovered same way, rescued reviews landed as PR #768.)
+
+**LL-52 | 2026-07-20 | enable-automerge.ps1 ignores the do-not-merge LABEL -- run blanket, it would arm auto-merge on the very PRs Marco parks.**
+Root cause: the script excludes only DIRTY and the hardcoded NEVER list (552, 538). Standing guard:
+enable GitHub native auto-merge SELECTIVELY per-PR after reading labels per LL-47; GitHub auto-merge
+enforces required checks only, NOT an unticked in-body acceptance checklist, so confirm intent
+before arming UI PRs.
+
+### Prompt-writing lessons (for PR prompt authors)
+
+**LL-53 | 2026-07-20 | A 15-file batch arming sweep armed an IRREVERSIBLE table-drop prompt whose "Arm ONLY when..." gate lived in the BODY, below the STATUS block the transform touched.**
+Standing guard: before arming, Select-String the WHOLE file for Arm ONLY / DO NOT ARM / irreversible
+/ drop / Marco; check each predecessor by grepping its ARTIFACT on a clean origin/main worktree with
+a positive control; anything irreversible or Marco-gated is an ESCALATE, never an arm; re-run the
+residual sweep after arming and require 0 hits.
+
+**LL-54 | 2026-07-15 | A premise grepped for a line the fix KEPT (wrapped, not deleted) -- lint said ADMIT forever on shipped work. Mirror bug: MustContain needles naming PRE-EXISTING symbols false-fail healthy PRs.**
+Standing guard: write premises against the ABSENCE of the fix ("would this command fail if the fix
+landed exactly as described?"); choose MustContain needles that name only what the diff ADDS.
+
+**LL-55 | 2026-07-20 | lint-prompt.mjs SILENTLY DROPS column-0 list items in frontmatter ("MISSING_FIELD: scope" on a prompt that visibly has one); watcher dependency comments and lint frontmatter both demand line 1, so they are mutually exclusive.**
+Standing guard: indent all frontmatter list items; run lint-prompt.mjs and require exit 0 before
+arming; do not chain prompts with the HTML-comment dependency form (use the frontmatter keys from
+PR #760).
+
+**LL-56 | 2026-07-16 | check-backlog "READY" is necessary, NOT sufficient: a 12-ready scan contained ZERO clean auto-stages (open design questions, stale duplicates of staged/ prompts, escalates items, already-shipped work).**
+Standing guard: before staging a READY item confirm (1) no open decision in BACKLOG-DECISIONS.md,
+(2) no staged/ prompt already exists for it, (3) no escalates / production / Azure hard-stop.
+Absence-gates on big items read READY until the whole workstream ships -- treat them as "not done",
+never as "stage me now".

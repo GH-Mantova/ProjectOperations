@@ -205,6 +205,10 @@ model User {
   // Universal activity Timeline — every note/system entry a user authors.
   activityEntriesAuthored ActivityEntry[] @relation("ActivityEntryAuthor")
 
+  // Muster / evacuation roll-call
+  musterEventsStarted  MusterEvent[]    @relation("MusterEventStartedBy")
+  musterAttendeesChecked MusterAttendee[] @relation("MusterAttendeeCheckedBy")
+
   @@index([isActive])
   @@index([managerId])
   @@map("users")
@@ -780,6 +784,7 @@ model Site {
   dailyDiaries    DailyDiary[]
   geofences       SiteGeofence[]
   attendances     SiteAttendance[]
+  musterEvents    MusterEvent[]
 
   @@unique([name])
   @@index([clientId])
@@ -2743,6 +2748,7 @@ model WorkerProfile {
   unavailabilities         WorkerUnavailability[]
   leaveRequests            LeaveRequest[]
   siteAttendances          SiteAttendance[]
+  musterAttendees          MusterAttendee[]       @relation("MusterAttendeeWorker")
   createdAt                DateTime               @default(now()) @map("created_at")
   updatedAt                DateTime               @updatedAt @map("updated_at")
 
@@ -6292,13 +6298,80 @@ model SiteAttendance {
   notes           String?
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
-  site            Site          @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  workerProfile   WorkerProfile @relation(fields: [workerProfileId], references: [id], onDelete: Cascade)
-  job             Job?          @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  site            Site             @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  workerProfile   WorkerProfile    @relation(fields: [workerProfileId], references: [id], onDelete: Cascade)
+  job             Job?             @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  musterAttendees MusterAttendee[]
 
   // Partial-index shape: "who is on site now" is the hot query the muster roll
   // will run, and it's cheap when signedOutAt is often null.
   @@index([siteId, signedOutAt])
   @@index([workerProfileId, signedOutAt])
   @@map("site_attendances")
+}
+
+// ─── Muster / evacuation roll-call ──────────────────────────────────────────
+// A MusterEvent is initiated by a WHS officer during an evacuation drill or
+// emergency. Starting the event snapshots all currently-signed-in attendees
+// (SiteAttendance rows with signedOutAt IS NULL) into MusterAttendee rows
+// with status UNKNOWN. Officers then check off each person as ACCOUNTED or
+// MISSING. The event is closed once all persons are resolved.
+//
+// Status lifecycle: ACTIVE -> COMPLETED | CANCELLED
+// Attendee status lifecycle: UNKNOWN -> ACCOUNTED | MISSING
+
+enum MusterEventStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum MusterAttendeeStatus {
+  UNKNOWN
+  ACCOUNTED
+  MISSING
+}
+
+model MusterEvent {
+  id            String            @id @default(cuid())
+  siteId        String            @map("site_id")
+  startedAt     DateTime          @default(now()) @map("started_at")
+  startedById   String            @map("started_by_id")
+  status        MusterEventStatus @default(ACTIVE)
+  completedAt   DateTime?         @map("completed_at")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+
+  site        Site           @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  startedBy   User           @relation("MusterEventStartedBy", fields: [startedById], references: [id], onDelete: Restrict)
+  attendees   MusterAttendee[]
+
+  @@index([siteId, status])
+  @@index([startedAt])
+  @@map("muster_events")
+}
+
+model MusterAttendee {
+  id               String               @id @default(cuid())
+  musterEventId    String               @map("muster_event_id")
+  // siteAttendanceId links back to the snapshot source — the open SiteAttendance
+  // row that was active when the muster started. Nullable because a manually-
+  // added person (e.g. visitor not yet in attendance) may not have a row.
+  siteAttendanceId String?              @map("site_attendance_id")
+  workerProfileId  String               @map("worker_profile_id")
+  status           MusterAttendeeStatus @default(UNKNOWN)
+  checkedAt        DateTime?            @map("checked_at")
+  checkedById      String?              @map("checked_by_id")
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+
+  musterEvent    MusterEvent    @relation(fields: [musterEventId], references: [id], onDelete: Cascade)
+  siteAttendance SiteAttendance? @relation(fields: [siteAttendanceId], references: [id], onDelete: SetNull)
+  workerProfile  WorkerProfile  @relation("MusterAttendeeWorker", fields: [workerProfileId], references: [id], onDelete: Cascade)
+  checkedBy      User?          @relation("MusterAttendeeCheckedBy", fields: [checkedById], references: [id], onDelete: SetNull)
+
+  // One snapshot row per worker per muster event.
+  @@unique([musterEventId, workerProfileId])
+  @@index([musterEventId, status])
+  @@map("muster_attendees")
 }

@@ -304,3 +304,20 @@ items:
     gate_means: The schema does not define the field yet; dies when the schema documents it.
     needs_marco: false
     order: 10
+
+  - id: synthetic-integration-fixtures
+    title: "Synthetic fixtures / mock servers for external integrations (Xero, Graph, Jotform)"
+    priority: P3
+    why: >
+      Integration code cannot be CI-tested against real tenants (Azure/tenant hard stop; no
+      sandbox accounts wired into CI), so retry/idempotency/degrade paths ship unexercised.
+      Deliverable: a testing/synthetic-fixtures area with mock servers (msw or equivalent
+      already in the pnpm toolchain) modelling the Xero, Graph-mail and Jotform surfaces the
+      audit identifies, plus at least one CI spec per integration exercising the Case A/Case B
+      flows in docs/architecture/drafts/idempotency-pattern.md (duplicate-key replay, mid-call
+      failure + reaper, circuit-open degrade). Sequenced AFTER the audit because the audit's
+      call-site inventory defines what the mocks must model.
+    gate: 'test -f docs/qa/integration-idempotency-audit.md'
+    gate_means: 'READY only once the idempotency audit document exists on main; until then the blocker (no call-site inventory) stands. Dies as a blocker the moment the audit ships.'
+    needs_marco: false
+    order: 11

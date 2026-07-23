@@ -10,8 +10,8 @@ export function TenderClientsPage() {
       contextTitle="Tendering client view"
       contextBody="Use this screen to keep tender-facing client accounts clean and ready for deal work. For the full cross-module reference-data hub, open Master Data."
       contextLinks={[
-        { to: "/tenders/create", label: "Create tender" },
-        { to: "/tenders/pipeline", label: "Open pipeline" },
+        { to: "/tenders", label: "Create tender" },
+        { to: "/tenders", label: "Open pipeline" },
         { to: "/master-data", label: "Open Master Data hub" }
       ]}
     />

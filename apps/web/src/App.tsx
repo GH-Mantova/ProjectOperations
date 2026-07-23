@@ -14,6 +14,8 @@ import { AuditLogsPage } from "./pages/AuditLogsPage";
 import { PlatformPage } from "./pages/PlatformPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { TenderingSettingsPage } from "./pages/TenderingSettingsPage";
+import { ResourcesPage } from "./pages/ResourcesPage";
+import { ArchivePage } from "./pages/archive/ArchivePage";
 import { ArchiveDetailPage } from "./pages/archive/ArchiveDetailPage";
 import { TenderingPage } from "./pages/tendering/TenderingPage";
 import { TenderDetailPage } from "./pages/tendering/TenderDetailPage";
@@ -49,6 +51,7 @@ import { ClientsGridPage } from "./pages/master-data/ClientsGridPage";
 import { DirectoryPage } from "./pages/directory/DirectoryPage";
 import { SitesListPage } from "./pages/sites/SitesListPage";
 import { SiteDetailPage } from "./pages/sites/SiteDetailPage";
+import { MusterPage } from "./pages/sites/MusterPage";
 import { CompliancePage } from "./pages/compliance/CompliancePage";
 import { SafetyPage } from "./pages/safety/SafetyPage";
 import { EstimateRatesAdminPage } from "./pages/EstimateRatesAdminPage";
@@ -299,6 +302,7 @@ export function App() {
             <Route path="/workers/live-crew" element={<LiveCrewMapPage />} />
             <Route path="/workers/leave-approvals" element={<WorkerLeaveApprovalsPage />} />
             <Route path="/workers/:id" element={<WorkerDetailPage />} />
+            <Route path="/resources" element={<ResourcesPage />} />
             <Route path="/assets" element={<AssetsListPage />} />
             <Route path="/assets/:id" element={<AssetDetailPage />} />
             <Route path="/inventory" element={<InventoryPage />} />
@@ -420,6 +424,7 @@ export function App() {
             <Route path="/master-data/clients-grid" element={<ClientsGridPage />} />
             <Route path="/sites" element={<SitesListPage />} />
             <Route path="/sites/:id" element={<SiteDetailPage />} />
+            <Route path="/sites/:siteId/muster/:eventId" element={<MusterPage />} />
             <Route path="/compliance" element={<CompliancePage />} />
             <Route path="/safety" element={<SafetyPage />} />
             <Route path="/cases" element={<CasesListPage />} />
@@ -441,9 +446,7 @@ export function App() {
               path="/directory/contacts"
               element={<Navigate to="/directory?tab=contacts" replace />}
             />
-            {/* Archive folded into Documents as an "Archived" tab. The list
-                view redirects; per-job archive detail still renders inline. */}
-            <Route path="/archive" element={<Navigate to="/documents?tab=archived" replace />} />
+            <Route path="/archive" element={<ArchivePage />} />
             <Route path="/archive/:jobId" element={<ArchiveDetailPage />} />
             <Route path="/surveys/capture" element={<SurveyCaptureFormPage />} />
             <Route path="/surveys/satisfaction" element={<ClientSatisfactionPage />} />

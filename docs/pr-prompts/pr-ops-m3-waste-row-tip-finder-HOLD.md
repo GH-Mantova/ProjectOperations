@@ -6,7 +6,7 @@ scope:
   - apps/web/src/components/**
   - apps/api/src/modules/map-locations/**
 done_when: pnpm build && pnpm lint && grep -rEqi "TipFinderDrawer|findTip" apps/web/src/pages/tendering
-size: 6
+size: 7
 gate_allow: none
 seed_only: false
 escalates: false
@@ -47,6 +47,15 @@ Branch: `feat/ops-m3-waste-row-tip-finder`. Reviewer: `GH-Mantova`. No migration
 5. Graceful edges: if the row has no waste type or tonnes, open the finder with those fields empty
    and let the user fill them — never block. If the tender's site has no coordinates, show a short
    hint pointing at Settings > Map locations instead of erroring.
+6. **Daily km (Marco 2026-07-23):** add a "Map" button beside the "Daily km (per truck)" input on
+   each waste row. It opens the same finder/map focused on the row's current facility's TIP
+   `MapLocation` so the user can eyeball the run to the tip. And on "use this facility" (step 3),
+   ALSO auto-fill the row's `dailyKm` with the round trip: `round(haversine_km × 2, 1)` from the
+   tender site coords to the tip's lat/lng — the same distance the m2 costing already computed; do
+   NOT recompute it a second way. The input stays fully editable (auto-fill is a starting point,
+   never a lock); if the user has already typed a dailyKm, do not overwrite it silently — show the
+   suggested value next to the field and let them click it to apply. If the tip has no coordinates,
+   skip the auto-fill and leave the field manual, with the same Settings > Map locations hint.
 
 ## Do NOT
 - Do NOT re-implement the ranking/costing logic — m2 owns it.

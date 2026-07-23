@@ -214,8 +214,11 @@ test.describe("Batch 5 — Directory & workers legacy (PR #19 + batch scope)", (
     await expect(page.getByRole("row", { name: companyName })).toBeHidden();
   });
 
-  test("workers legacy page renders KPI strip and search", async ({ page }) => {
-    await page.goto("/resources");
+  test("workers page renders KPI strip and search", async ({ page }) => {
+    // §9 fold: /resources is absorbed into /workers as tabbed sub-views. The
+    // KPI strip + "Name or employee code" search live on non-Roster tabs
+    // (rendered by ResourcesPage), so target ?tab=availability.
+    await page.goto("/workers?tab=availability");
     for (const label of [
       "Workers in scope",
       "Unavailable right now",

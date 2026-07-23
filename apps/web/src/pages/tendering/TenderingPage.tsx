@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
+import { CrmBoardContent } from "../crm/CrmBoardPage";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { NewTenderWizard } from "./NewTenderWizard";
+
+type TopTab = "tenders" | "crm";
 
 type TenderListItem = {
   id: string;
@@ -281,6 +284,14 @@ function filtersEqual(a: Filters, b: Filters): boolean {
 export function TenderingPage() {
   const { authFetch, user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab: TopTab = searchParams.get("tab") === "crm" ? "crm" : "tenders";
+  const setActiveTab = (next: TopTab) => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (next === "crm") nextParams.set("tab", "crm");
+    else nextParams.delete("tab");
+    setSearchParams(nextParams, { replace: true });
+  };
   const [view, setView] = useState<View>("pipeline");
   const [tenders, setTenders] = useState<TenderListItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -601,6 +612,11 @@ export function TenderingPage() {
 
   return (
     <div className="tender-page">
+      <TopTabStrip active={activeTab} onChange={setActiveTab} />
+      {activeTab === "crm" ? (
+        <CrmBoardContent />
+      ) : (
+      <>
       <header className="tender-page__header">
         <div>
           <p className="s7-type-label">Tendering</p>
@@ -764,6 +780,53 @@ export function TenderingPage() {
           onCancel={() => { setDeleteTarget(null); setDeletePreflight(null); }}
         />
       ) : null}
+      </>
+      )}
+    </div>
+  );
+}
+
+function TopTabStrip({ active, onChange }: { active: TopTab; onChange: (next: TopTab) => void }) {
+  const tabs: { key: TopTab; label: string }[] = [
+    { key: "tenders", label: "Tenders" },
+    { key: "crm", label: "CRM" }
+  ];
+  return (
+    <div
+      role="tablist"
+      aria-label="Tendering sections"
+      style={{
+        display: "flex",
+        gap: 4,
+        borderBottom: "1px solid #e5e7eb",
+        marginBottom: 12
+      }}
+    >
+      {tabs.map((t) => {
+        const isActive = active === t.key;
+        return (
+          <button
+            key={t.key}
+            type="button"
+            role="tab"
+            aria-selected={isActive}
+            onClick={() => onChange(t.key)}
+            style={{
+              padding: "10px 16px",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              fontWeight: isActive ? 600 : 400,
+              borderBottom: isActive
+                ? "2px solid var(--color-orange, #FEAA6D)"
+                : "2px solid transparent",
+              minHeight: 44
+            }}
+          >
+            {t.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

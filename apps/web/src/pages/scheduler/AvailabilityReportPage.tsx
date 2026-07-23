@@ -134,7 +134,7 @@ export function AvailabilityReportPage() {
       <header className="workers-page__header">
         <div>
           <p className="s7-type-label">Scheduler</p>
-          <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>Availability heatmap</h1>
+          <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>Availability report</h1>
           <p className="s7-type-body" style={{ margin: "6px 0 0", color: "var(--text-secondary, #6b7280)" }}>
             Per-group available/total per day. TOTAL AVAILABLE row counts unique people by name. Archived workers excluded.
           </p>

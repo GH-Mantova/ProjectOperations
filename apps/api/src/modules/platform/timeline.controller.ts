@@ -13,8 +13,8 @@ import { TimelineService, type TimelineItem } from "./timeline.service";
 const VIEW_PERMISSIONS: Record<string, string> = {
   Job: "jobs.view",
   Tender: "tenders.view",
-  Client: "clients.view",
-  Contact: "contacts.view"
+  Client: "directory.view",
+  Contact: "directory.view"
 };
 
 class AddNoteDto {
@@ -79,6 +79,7 @@ export class TimelineController {
   private ensureViewer(entityType: string, user: AuthenticatedUser) {
     const required = VIEW_PERMISSIONS[entityType];
     if (!required) return;
+    if (user?.isSuperUser) return;
     const permissions = user?.permissions ?? [];
     if (permissions.includes(required)) return;
     throw new ForbiddenException(`Missing required permission: ${required}`);

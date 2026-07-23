@@ -87,7 +87,7 @@ test.describe("Batch 6 — Projects + Jobs (PRs #17, #39, #40, #242, #250, #267,
     page
   }) => {
     await page.goto("/jobs");
-    await expect(page.getByRole("heading", { name: "Delivery workspace" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Jobs" })).toBeVisible();
 
     // Cards view (default) renders canonical job numbers.
     await expect(page.getByText("J260315-QUEE-001", { exact: true })).toBeVisible();

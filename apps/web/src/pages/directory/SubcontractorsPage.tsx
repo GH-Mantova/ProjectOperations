@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { can } from "../../auth/permissions";
 import { ContactsTab } from "../../components/contacts/ContactsTab";
 import { DuplicateWarning } from "../../components/directory/DuplicateWarning";
 
@@ -121,8 +122,8 @@ function fmtDate(iso: string | null): string {
 
 export function SubcontractorsPage() {
   const { authFetch, user } = useAuth();
-  const canManage = Boolean(user?.permissions?.includes("directory.manage"));
-  const canAdmin = Boolean(user?.permissions?.includes("directory.admin"));
+  const canManage = can(user, "directory.manage");
+  const canAdmin = can(user, "directory.admin");
 
   const [items, setItems] = useState<Subcontractor[]>([]);
   const [categories, setCategories] = useState<string[]>([]);

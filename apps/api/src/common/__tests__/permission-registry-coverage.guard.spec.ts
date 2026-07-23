@@ -59,6 +59,14 @@ function collectSourceFiles(dir: string, out: string[] = []): string[] {
 const DECORATOR_RE = /^\s*@RequirePermissions\(([\s\S]*?)\)/gm;
 const STRING_LITERAL_RE = /["']([^"']+)["']/g;
 
+// Object-literal permission maps: `const XYZ_PERMISSIONS: Record<string, string> = { ... }`.
+// Timeline (PR #672) hand-rolled a per-entity gate outside the decorator API,
+// which the decorator extractor could not see; two of its four codes shipped
+// unregistered as permanently-false gates. This extractor scans the map body
+// and asserts each dotted string-literal code is registered.
+const PERMISSION_MAP_RE = /(?:const|let|var)\s+([A-Z][A-Z0-9_]*(?:PERMISSION|PERMS)[A-Z0-9_]*)\s*:\s*Record<\s*string\s*,\s*string\s*>\s*=\s*\{([\s\S]*?)\}/gm;
+const DOTTED_CODE_RE = /["']([a-z][a-z0-9]*\.[a-z][a-z0-9_]*)["']/g;
+
 function extractOccurrences(files: string[]): Occurrence[] {
   const occurrences: Occurrence[] = [];
   for (const file of files) {
@@ -78,9 +86,28 @@ function extractOccurrences(files: string[]): Occurrence[] {
   return occurrences;
 }
 
+function extractMapOccurrences(files: string[]): Occurrence[] {
+  const occurrences: Occurrence[] = [];
+  for (const file of files) {
+    const src = fs.readFileSync(file, "utf8");
+    let map: RegExpExecArray | null;
+    PERMISSION_MAP_RE.lastIndex = 0;
+    while ((map = PERMISSION_MAP_RE.exec(src)) !== null) {
+      const body = map[2];
+      DOTTED_CODE_RE.lastIndex = 0;
+      let str: RegExpExecArray | null;
+      while ((str = DOTTED_CODE_RE.exec(body)) !== null) {
+        occurrences.push({ code: str[1], file: path.relative(SRC_ROOT, file) });
+      }
+    }
+  }
+  return occurrences;
+}
+
 describe("Permission-registry coverage guard — every @RequirePermissions code must be in permissionRegistry", () => {
   const files = collectSourceFiles(SRC_ROOT);
   const occurrences = extractOccurrences(files);
+  const mapOccurrences = extractMapOccurrences(files);
   const registryCodes = new Set<string>(permissionRegistry.map((p) => p.code));
 
   // Positive control. A regex that silently matches nothing would otherwise
@@ -92,9 +119,17 @@ describe("Permission-registry coverage guard — every @RequirePermissions code 
     expect(uniqueCodes.size).toBeGreaterThan(20);
   });
 
+  // Positive control for the object-literal-map extractor. Timeline's
+  // `VIEW_PERMISSIONS` map is a known site; if this floor drops to zero the
+  // extractor silently matched nothing and the guard is a placebo.
+  it("extractor found permission-map codes across the API (positive control)", () => {
+    const uniqueCodes = new Set(mapOccurrences.map((o) => o.code));
+    expect(uniqueCodes.size).toBeGreaterThan(0);
+  });
+
   it("every enforced code is present in permissionRegistry (or on the KNOWN_UNREGISTERED allowlist)", () => {
     const offenders: string[] = [];
-    for (const { code, file } of occurrences) {
+    for (const { code, file } of [...occurrences, ...mapOccurrences]) {
       if (registryCodes.has(code)) continue;
       if (KNOWN_UNREGISTERED.has(code)) continue;
       offenders.push(`  - "${code}" enforced at ${file} is not in permission-registry.ts`);

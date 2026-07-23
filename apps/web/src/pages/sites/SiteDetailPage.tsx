@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { CenteredModal, KpiCard } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { SiteFormModal, type SiteFormClientOption } from "./SiteFormModal";
+import { SiteHeadcountWidget } from "./SiteHeadcountWidget";
 import {
   formatKpiCount,
   formatSiteAddress,
@@ -444,15 +445,18 @@ export function SiteDetailPage() {
 
       {tab === "overview" ? (
         <>
+          {/* Live on-site headcount + muster starter */}
+          <SiteHeadcountWidget siteId={detail.id} />
+
           {detail.notes ? (
-            <section className="s7-card" style={{ padding: 16, marginBottom: 16 }}>
+            <section className="s7-card" style={{ padding: 16, marginBottom: 16, marginTop: 16 }}>
               <h3 className="s7-type-section-heading" style={{ margin: "0 0 8px" }}>
                 Access notes / hazards
               </h3>
               <p style={{ whiteSpace: "pre-wrap", margin: 0, fontSize: 13 }}>{detail.notes}</p>
             </section>
           ) : null}
-          <section className="s7-card" style={{ padding: 16 }}>
+          <section className="s7-card" style={{ padding: 16, marginTop: detail.notes ? 0 : 16 }}>
             <h3 className="s7-type-section-heading" style={{ margin: "0 0 8px" }}>Summary</h3>
             <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)" }}>
               Site at {address} with {projectsCount}{" "}

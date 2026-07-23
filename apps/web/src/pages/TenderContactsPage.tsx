@@ -10,8 +10,8 @@ export function TenderContactsPage() {
       contextTitle="Tendering contact view"
       contextBody="Use this screen to maintain the people you need for deal communication. The shared Master Data hub still owns the broader reusable reference layer across the ERP."
       contextLinks={[
-        { to: "/tenders/create", label: "Create tender" },
-        { to: "/tenders/pipeline", label: "Open pipeline" },
+        { to: "/tenders", label: "Create tender" },
+        { to: "/tenders", label: "Open pipeline" },
         { to: "/master-data", label: "Open Master Data hub" }
       ]}
     />

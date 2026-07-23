@@ -232,3 +232,92 @@ items:
 
   # DISCHARGED 2026-07-16 (04-scanner): STAGED as pr-qa-flaky-batch8-archive-race-ready.md
   # (lint ADMIT, size 2). Its prompt file is now its home. One place, never two.
+
+  # -------------------------------------------------------------------------------------------
+  # ADDED 2026-07-23 (Cowork + Marco): systems-development hardening pass. Benchmarked the
+  # pipeline against external spec-driven-development guidance; these four are the gaps that
+  # survived review. Everything else on that list already exists in a stronger, executable form.
+  # -------------------------------------------------------------------------------------------
+
+  - id: integration-ownership-map
+    title: "sot/01: Integration ownership map (system-of-record per external integration)"
+    priority: P3
+    why: >
+      sot/04 maps internal domain ownership, but no single artifact states, per EXTERNAL
+      integration (Xero, SharePoint/Graph mail, Jotform, OTP email), which side owns which data,
+      the ingestion strategy (poll/webhook/manual), and the failure posture. Integration logic is
+      being written against tribal knowledge (e.g. "Xero stays the ledger" lives in a locked
+      decision, not next to the data contract). Deliverable: an "Integration ownership" section in
+      sot/01 via a dedicated doc-reconcile PR (sot-only; CP-24).
+    gate: '! grep -q "Integration ownership" sot/01-charter-and-architecture.md'
+    gate_means: sot/01 has no Integration ownership section yet; the gate dies the moment the section lands on main.
+    needs_marco: false
+    marco_note: >
+      Content needs Marco's review of the Xero/SharePoint rows before merge (he owns those
+      integrations operationally) - build it, open the doc-reconcile PR, leave unmerged.
+    order: 7
+
+  - id: integration-idempotency-audit
+    title: "Audit external-integration surfaces for idempotency keys + retry/degrade behaviour"
+    priority: P2
+    why: >
+      No repo-wide check exists that a retried call to Xero, Graph mail, or Jotform ingestion
+      cannot duplicate an invoice, a sent email, or an imported submission, nor that a downstream
+      integration failure degrades gracefully instead of failing the user action. Forms v2 sec 4.4
+      has the philosophy (submission survives, delivery log); this audit measures the rest of the
+      codebase against it. Deliverable: docs/qa/integration-idempotency-audit.md listing each
+      integration call site, its idempotency mechanism (or NONE), its retry semantics, and a
+      severity-ranked fix list (fixes become their own gated items/prompts).
+    gate: '! test -f docs/qa/integration-idempotency-audit.md'
+    gate_means: The audit document does not exist on main yet; dies when the audit ships.
+    needs_marco: false
+    order: 8
+
+  - id: scanner-adversarial-prompt-critique
+    title: "04-scanner: adversarial critique pass over staged/armed prompts (attack the PLAN before a run burns on it)"
+    priority: P3
+    why: >
+      Post-code review is strong (pr-reviews, Assert-BodyClaimsAreReal, smoke exit codes) but the
+      PLAN is only mechanically linted: nobody attacks a staged prompt's design for missed callers,
+      edge cases, perf or security before the watcher spends an agent run on it. Deliverable: an
+      "ADVERSARIAL PROMPT CRITIQUE" section in docs/pipeline/stations/04-scanner.md (the scanner is
+      already read-only and already sweeps prompts) defining a critique checklist -- does the scope
+      miss a call site, does the premise die when the fix lands (LL-54), what is the rollback if
+      the migration half-lands, which existing guard could this trip -- with findings filed as
+      report lines, never as prompt edits (report-not-run rule).
+    gate: '! grep -q "ADVERSARIAL PROMPT CRITIQUE" docs/pipeline/stations/04-scanner.md'
+    gate_means: The scanner brief has no critique section yet; dies when the section lands.
+    needs_marco: false
+    order: 9
+
+  - id: prompt-schema-rollback-field
+    title: "PROMPT-SCHEMA: rollback_strategy field, REQUIRED for migration-touching prompts"
+    priority: P3
+    why: >
+      Prompts define scope and premise but not what to do when a change half-lands (LL-29: a
+      turn-capped agent left a migration applied with all code uncommitted). Deliverable: add an
+      optional rollback_strategy frontmatter field to docs/pr-prompts/PROMPT-SCHEMA.md, REQUIRED
+      by lint-prompt.mjs whenever the scope touches prisma/migrations, stating how to revert or
+      fix-forward if the run dies mid-flight. Lint change ships in the same PR as the schema doc
+      (docs+scripts is not a CP-24 mix; sot/ is untouched).
+    gate: '! grep -q "rollback_strategy" docs/pr-prompts/PROMPT-SCHEMA.md'
+    gate_means: The schema does not define the field yet; dies when the schema documents it.
+    needs_marco: false
+    order: 10
+
+  - id: synthetic-integration-fixtures
+    title: "Synthetic fixtures / mock servers for external integrations (Xero, Graph, Jotform)"
+    priority: P3
+    why: >
+      Integration code cannot be CI-tested against real tenants (Azure/tenant hard stop; no
+      sandbox accounts wired into CI), so retry/idempotency/degrade paths ship unexercised.
+      Deliverable: a testing/synthetic-fixtures area with mock servers (msw or equivalent
+      already in the pnpm toolchain) modelling the Xero, Graph-mail and Jotform surfaces the
+      audit identifies, plus at least one CI spec per integration exercising the Case A/Case B
+      flows in docs/architecture/drafts/idempotency-pattern.md (duplicate-key replay, mid-call
+      failure + reaper, circuit-open degrade). Sequenced AFTER the audit because the audit's
+      call-site inventory defines what the mocks must model.
+    gate: 'test -f docs/qa/integration-idempotency-audit.md'
+    gate_means: 'READY only once the idempotency audit document exists on main; until then the blocker (no call-site inventory) stands. Dies as a blocker the moment the audit ships.'
+    needs_marco: false
+    order: 11

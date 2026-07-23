@@ -1,8 +1,78 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { CenteredModal, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
+import { ResourcesPage, type ResourcesSection } from "../ResourcesPage";
+
+type WorkersTab = "roster" | "availability" | "suitability" | "competencies";
+
+const WORKERS_TABS: Array<{ id: WorkersTab; label: string }> = [
+  { id: "roster", label: "Roster" },
+  { id: "availability", label: "Availability" },
+  { id: "suitability", label: "Suitability" },
+  { id: "competencies", label: "Competencies" }
+];
+
+const VALID_TABS: ReadonlySet<WorkersTab> = new Set(WORKERS_TABS.map((t) => t.id));
+
+function resolveWorkersTab(raw: string | null): WorkersTab {
+  return raw && (VALID_TABS as Set<string>).has(raw) ? (raw as WorkersTab) : "roster";
+}
+
+export function WorkersListPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [tab, setTab] = useState<WorkersTab>(resolveWorkersTab(searchParams.get("tab")));
+
+  useEffect(() => {
+    const fromUrl = resolveWorkersTab(searchParams.get("tab"));
+    if (fromUrl !== tab) setTab(fromUrl);
+  }, [searchParams, tab]);
+
+  const changeTab = (next: WorkersTab) => {
+    if (next === tab) return;
+    const nextParams = new URLSearchParams(searchParams);
+    if (next === "roster") nextParams.delete("tab");
+    else nextParams.set("tab", next);
+    setSearchParams(nextParams, { replace: true });
+    setTab(next);
+  };
+
+  return (
+    <div className="admin-page">
+      <header className="admin-page__header">
+        <div>
+          <p className="s7-type-label">Workforce</p>
+          <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>Workers</h1>
+          <p style={{ color: "var(--text-muted)", marginTop: 4 }}>
+            HR roster plus availability, suitability, and competencies for the Scheduler.
+          </p>
+        </div>
+      </header>
+
+      <nav className="admin-page__tabs" role="tablist" aria-label="Workers tabs" style={{ marginBottom: 16 }}>
+        {WORKERS_TABS.map((entry) => (
+          <button
+            key={entry.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === entry.id}
+            className={tab === entry.id ? "admin-page__tab admin-page__tab--active" : "admin-page__tab"}
+            onClick={() => changeTab(entry.id)}
+          >
+            {entry.label}
+          </button>
+        ))}
+      </nav>
+
+      {tab === "roster" ? (
+        <WorkersRosterTab />
+      ) : (
+        <ResourcesPage section={tab as ResourcesSection} />
+      )}
+    </div>
+  );
+}
 
 type WorkerRow = {
   id: string;
@@ -18,7 +88,7 @@ type WorkerRow = {
 
 type ListResponse = { items: WorkerRow[]; total: number; page: number; limit: number };
 
-export function WorkersListPage() {
+function WorkersRosterTab() {
   const { authFetch, user } = useAuth();
   const [data, setData] = useState<ListResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -58,34 +128,25 @@ export function WorkersListPage() {
   }, [toast]);
 
   return (
-    <div className="admin-page">
-      <header className="admin-page__header">
-        <div>
-          <p className="s7-type-label">Workforce</p>
-          <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>Workers</h1>
-          <p style={{ color: "var(--text-muted)", marginTop: 4 }}>
-            HR / compliance roster. Mobile login provisioning is handled separately.
-          </p>
-        </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <input
-            className="s7-input"
-            placeholder="Search name or role…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ minWidth: 260 }}
-          />
-          {canManage ? (
-            <button
-              type="button"
-              className="s7-btn s7-btn--primary"
-              onClick={() => setAddOpen(true)}
-            >
-              Add worker
-            </button>
-          ) : null}
-        </div>
-      </header>
+    <>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "flex-end", marginBottom: 12 }}>
+        <input
+          className="s7-input"
+          placeholder="Search name or role…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{ minWidth: 260 }}
+        />
+        {canManage ? (
+          <button
+            type="button"
+            className="s7-btn s7-btn--primary"
+            onClick={() => setAddOpen(true)}
+          >
+            Add worker
+          </button>
+        ) : null}
+      </div>
 
       <nav className="admin-page__tabs" role="tablist" aria-label="Active filter">
         <button
@@ -219,7 +280,7 @@ export function WorkersListPage() {
           }}
         />
       ) : null}
-    </div>
+    </>
   );
 }
 

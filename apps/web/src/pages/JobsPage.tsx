@@ -1195,7 +1195,7 @@ export function JobsPage() {
               : "No archived jobs yet."}
           </p>
           <Link
-            to="/archive"
+            to="/documents?tab=archived"
             style={{ minHeight: 44, display: "inline-flex", alignItems: "center", fontWeight: 500 }}
           >
             View in Archive →

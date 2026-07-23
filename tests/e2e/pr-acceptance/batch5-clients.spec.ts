@@ -93,7 +93,11 @@ test.describe("Batch 5 — Clients & master-data workspace (PRs #23, #335, #337)
   test("Workers → strip navigates to /resources", async ({ page }) => {
     await openClientsTab(page);
     await page.getByRole("tab", { name: "Workers" }).click();
-    await expect(page).toHaveURL(/\/resources/);
+    // §9 fold: Resources is absorbed into Workers — the tab now lands on /workers.
+    // The KPI strip only renders on non-Roster tabs (Availability et al.), so
+    // switch to that tab before asserting the KPI text.
+    await expect(page).toHaveURL(/\/workers/);
+    await page.goto("/workers?tab=availability");
     await expect(page.getByText("Workers in scope")).toBeVisible();
   });
 

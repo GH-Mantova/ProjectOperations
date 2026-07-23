@@ -93,11 +93,11 @@ export function MasterDataWorkspacePage() {
             Sites
           </button>
           <Link
-            to="/resources"
+            to="/workers"
             className="tender-page__view-btn"
             role="tab"
             aria-selected={false}
-            title="Workers live in the Resources workspace"
+            title="Workers live in the Workers workspace"
           >
             Workers →
           </Link>

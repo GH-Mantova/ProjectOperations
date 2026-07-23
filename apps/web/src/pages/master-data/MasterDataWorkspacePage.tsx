@@ -71,7 +71,9 @@ export function MasterDataWorkspacePage() {
       <header className="workers-page__header">
         <div>
           <p className="s7-type-label">Data</p>
-          <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>Master data</h1>
+          <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>
+            {tab === "clients" ? "Clients" : tab === "sites" ? "Sites" : "Contacts"}
+          </h1>
         </div>
         <div className="tender-page__view-toggle" role="tablist">
           <button

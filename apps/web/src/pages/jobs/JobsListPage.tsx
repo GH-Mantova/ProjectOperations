@@ -150,7 +150,7 @@ export function JobsListPage() {
       <header className="jobs-page__header">
         <div>
           <p className="s7-type-label">Jobs</p>
-          <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>Delivery workspace</h1>
+          <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>Jobs</h1>
         </div>
         <div className="jobs-page__header-actions">
           <ViewSwitcher

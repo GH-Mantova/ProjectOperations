@@ -170,7 +170,7 @@ export function TenderingReportsPage() {
       <header className="admin-page__header">
         <div>
           <p className="s7-type-label">Tendering</p>
-          <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>Estimating reports</h1>
+          <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>Tender Reports</h1>
           <p style={{ color: "var(--text-muted)", marginTop: 4 }}>
             Scorecard views across estimators, pipeline stages, and clients.
           </p>

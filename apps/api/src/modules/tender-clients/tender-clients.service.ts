@@ -1,9 +1,13 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
+import { AuditService } from "../audit/audit.service";
 
 @Injectable()
 export class TenderClientsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService
+  ) {}
 
   async addClient(tenderId: string, clientId: string, relationshipType?: string) {
     await this.requireTender(tenderId);
@@ -33,7 +37,26 @@ export class TenderClientsService {
     if (remaining <= 1) {
       throw new BadRequestException("A tender must have at least one client.");
     }
+    // TenderClient → JobConversion is onDelete: Cascade in schema.prisma. If
+    // this client has already been converted to a Job, a raw delete would
+    // silently drop the JobConversion row (and any TenderClientPackage
+    // rows) that ties the tender to the resulting Job. Refuse instead.
+    const conversion = await this.prisma.jobConversion.findUnique({
+      where: { tenderClientId: existing.id },
+      select: { id: true }
+    });
+    if (conversion) {
+      throw new BadRequestException(
+        "This client has been converted to a job and cannot be removed from the tender."
+      );
+    }
     await this.prisma.tenderClient.delete({ where: { id: existing.id } });
+    await this.audit.write({
+      action: "tenders.client.remove",
+      entityType: "TenderClient",
+      entityId: existing.id,
+      metadata: { tenderId, clientId }
+    });
     return this.listClients(tenderId);
   }
 

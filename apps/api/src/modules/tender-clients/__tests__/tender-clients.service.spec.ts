@@ -65,6 +65,12 @@ function buildService(extraPrisma: Record<string, unknown> = {}) {
       create: jest.fn().mockResolvedValue(tenderClientRow()),
       delete: jest.fn().mockResolvedValue(tenderClientRow())
     },
+    // TenderClient → JobConversion cascades in schema.prisma. removeClient
+    // guards the delete by looking up whether a conversion exists for the
+    // link; default to no conversion so unrelated tests are unaffected.
+    jobConversion: {
+      findUnique: jest.fn().mockResolvedValue(null)
+    },
     // Mocked so tests can prove the wizard's per-client attach/detach path
     // does NOT deleteMany child collections the way `tendering.service.ts`
     // updateTender does when it processes a PATCH /tenders/:id
@@ -93,9 +99,11 @@ function buildService(extraPrisma: Record<string, unknown> = {}) {
     ...extraPrisma
   };
 
-  const service = new TenderClientsService(prisma as never);
+  const audit = { write: jest.fn().mockResolvedValue(undefined) };
 
-  return { service, prisma };
+  const service = new TenderClientsService(prisma as never, audit as never);
+
+  return { service, prisma, audit };
 }
 
 // ─── addClient ─────────────────────────────────────────────────────────────
@@ -190,7 +198,7 @@ describe("TenderClientsService.addClient", () => {
 
 describe("TenderClientsService.removeClient", () => {
   it("deletes the link found for this tender+client and returns the refreshed list", async () => {
-    const { service, prisma } = buildService();
+    const { service, prisma, audit } = buildService();
     (prisma.tenderClient as { findFirst: jest.Mock }).findFirst.mockResolvedValueOnce(
       tenderClientRow({ id: "tc-77" })
     );
@@ -203,10 +211,37 @@ describe("TenderClientsService.removeClient", () => {
     expect((prisma.tenderClient as { findFirst: jest.Mock }).findFirst).toHaveBeenCalledWith({
       where: { tenderId: "tender-1", clientId: "client-1" }
     });
+    expect((prisma.jobConversion as { findUnique: jest.Mock }).findUnique).toHaveBeenCalledWith({
+      where: { tenderClientId: "tc-77" },
+      select: { id: true }
+    });
     expect((prisma.tenderClient as { delete: jest.Mock }).delete).toHaveBeenCalledWith({
       where: { id: "tc-77" }
     });
+    expect(audit.write).toHaveBeenCalledWith({
+      action: "tenders.client.remove",
+      entityType: "TenderClient",
+      entityId: "tc-77",
+      metadata: { tenderId: "tender-1", clientId: "client-1" }
+    });
     expect(result).toEqual(remaining);
+  });
+
+  it("throws BadRequestException without deleting when a JobConversion exists for the link (cascade-loss guard)", async () => {
+    const { service, prisma, audit } = buildService();
+    (prisma.tenderClient as { findFirst: jest.Mock }).findFirst.mockResolvedValueOnce(
+      tenderClientRow({ id: "tc-77" })
+    );
+    (prisma.tenderClient as { count: jest.Mock }).count.mockResolvedValueOnce(2);
+    (prisma.jobConversion as { findUnique: jest.Mock }).findUnique.mockResolvedValueOnce({
+      id: "jc-1"
+    });
+
+    await expect(service.removeClient("tender-1", "client-1")).rejects.toBeInstanceOf(
+      BadRequestException
+    );
+    expect((prisma.tenderClient as { delete: jest.Mock }).delete).not.toHaveBeenCalled();
+    expect(audit.write).not.toHaveBeenCalled();
   });
 
   it("throws NotFoundException when the client is not linked to this tender (scoped detach)", async () => {

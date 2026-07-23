@@ -255,6 +255,31 @@ sequential numbers when hotfixes are inserted. Always record BOTH in progress.md
   Chain PR: #83.1 (conceptual)
   GitHub PR: #84 (actual GitHub number)
 
+### Append-only movement rule (BINDING for new work -- Marco, 2026-07-23)
+
+For any NEW or materially-reworked model whose state is financial, quantity-bearing, or
+compliance-significant (claims, variations, inventory levels, asset usage, attendance/sign-in,
+anything an auditor could ask "who changed this, when, from what to what"):
+
+- The source of truth is APPEND-ONLY movement/history rows, not an in-place counter or mutable
+  balance field. Each row records the delta or transition, the actor, and the timestamp.
+- A denormalised CURRENT value on the parent record is allowed (and usually wanted) for query
+  performance -- the exact shape locked in sot/06 Forms Engine v2 sec 3.3 (AssetUsageReading rows
+  + denormalised current readings). The current value is derived; the rows are the truth.
+- Precedents on main: AssetStatusHistory, site sign-in/out, progress-claim lines with number
+  sequences. Follow them.
+
+Explicit scope limits (do not over-apply):
+- NO retrofit mandate. Existing counters are reworked only when their module is being materially
+  reworked anyway, or a specific audit finding flags them. Never as a blanket migration sweep.
+- Derived/presentational values are EXEMPT (same principle as the "Rates needed is DERIVED" rule)
+  -- do not create movement rows for values computable from other stored state.
+- This does NOT reimplement accounting. Xero remains the ledger (locked decision); financial
+  movement rows here are operational audit trail, not a general ledger.
+
+Composes with docs/architecture/drafts/idempotency-pattern.md: an append-only movement row makes
+duplicate application detectable; an in-place decrement does not.
+
 ---
 
 ## SECTION 7 — KEY ENVIRONMENT VARIABLES

@@ -604,7 +604,7 @@ export function TenderingPage() {
       <header className="tender-page__header">
         <div>
           <p className="s7-type-label">Tendering</p>
-          <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>Pipeline</h1>
+          <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>Tendering</h1>
         </div>
         <div className="tender-page__header-actions">
           <div className="tender-page__view-toggle" role="tablist" aria-label="View">

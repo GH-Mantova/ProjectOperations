@@ -45,7 +45,7 @@ test.describe("Tendering — redesigned register + pipeline", () => {
     await page.goto("/tenders");
     // Heading + view toggles + new-tender CTA are always rendered, regardless
     // of which view (Pipeline / Register) is currently active.
-    await expect(page.getByRole("heading", { name: "Pipeline", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Tendering", exact: true })).toBeVisible();
     await expect(page.getByRole("tab", { name: "Pipeline", exact: true })).toBeVisible();
     await expect(page.getByRole("tab", { name: "Register", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "+ New tender" })).toBeVisible();
@@ -103,10 +103,10 @@ test.describe("Tendering — redesigned register + pipeline", () => {
     // breaks (e.g. a 404 page or a stuck spinner).
     await page.goto("/tenders/workspace");
     await page.waitForLoadState("networkidle");
-    await expect(page.getByRole("heading", { name: "Pipeline", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Tendering", exact: true })).toBeVisible();
 
     await page.goto("/tenders/create");
     await page.waitForLoadState("networkidle");
-    await expect(page.getByRole("heading", { name: "Pipeline", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Tendering", exact: true })).toBeVisible();
   });
 });

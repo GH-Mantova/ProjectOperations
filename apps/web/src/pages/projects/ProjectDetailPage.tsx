@@ -475,7 +475,7 @@ function ScopeTab({ project }: { project: ProjectDetail }) {
 
 function ScheduleTab({ project }: { project: ProjectDetail }) {
   const { authFetch, user } = useAuth();
-  const canManage = user?.permissions?.includes("projects.manage") ?? false;
+  const canManage = can(user, "projects.manage");
   const [tasks, setTasks] = useState<GanttTask[]>([]);
   const [view, setView] = useState<"gantt" | "list">("gantt");
   const [zoom, setZoom] = useState<"week" | "month" | "quarter">("week");
@@ -1953,7 +1953,7 @@ function todayISO(): string {
 
 function DailyDiaryTab({ project }: { project: ProjectDetail }) {
   const { authFetch, user } = useAuth();
-  const canManage = user?.permissions?.includes("projects.manage") ?? false;
+  const canManage = can(user, "projects.manage");
   const [items, setItems] = useState<DailyDiary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

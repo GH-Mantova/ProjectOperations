@@ -28,8 +28,17 @@ const emptySuitabilityForm = {
   notes: ""
 };
 
-export function ResourcesPage() {
+export type ResourcesSection = "all" | "availability" | "suitability" | "competencies";
+
+export interface ResourcesPageProps {
+  section?: ResourcesSection;
+}
+
+export function ResourcesPage({ section = "all" }: ResourcesPageProps = {}) {
   const { authFetch } = useAuth();
+  const showAvailability = section === "all" || section === "availability";
+  const showSuitability = section === "all" || section === "suitability";
+  const showCompetencies = section === "all" || section === "competencies";
   const [workers, setWorkers] = useState<WorkerRecord[]>([]);
   const [selectedWorkerId, setSelectedWorkerId] = useState("");
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
@@ -279,6 +288,7 @@ export function ResourcesPage() {
               </div>
 
               <div className="compact-two-up">
+                {showAvailability ? (
                 <section className="subsection">
                   <div className="split-header">
                     <strong>Availability windows</strong>
@@ -301,7 +311,9 @@ export function ResourcesPage() {
                     ) : null}
                   </div>
                 </section>
+                ) : null}
 
+                {showSuitability ? (
                 <section className="subsection">
                   <div className="split-header">
                     <strong>Role suitability</strong>
@@ -322,6 +334,7 @@ export function ResourcesPage() {
                     ) : null}
                   </div>
                 </section>
+                ) : null}
               </div>
             </div>
           ) : (
@@ -330,6 +343,7 @@ export function ResourcesPage() {
         </AppCard>
 
         <div className="compact-two-up">
+          {showAvailability ? (
           <AppCard title="Availability Windows" subtitle="Capture leave, training, or blocked periods">
             <form className="admin-form" onSubmit={submitAvailability}>
               <label>
@@ -365,7 +379,9 @@ export function ResourcesPage() {
               <button type="submit">Save Availability</button>
             </form>
           </AppCard>
+          ) : null}
 
+          {showSuitability ? (
           <AppCard title="Role Suitability" subtitle="Track whether workers suit specific shift roles">
             <form className="admin-form" onSubmit={submitSuitability}>
               <label>
@@ -398,6 +414,35 @@ export function ResourcesPage() {
               <button type="submit">Save Suitability</button>
             </form>
           </AppCard>
+          ) : null}
+
+          {showCompetencies ? (
+          <AppCard title="Competencies" subtitle="Skills captured against each worker profile">
+            {selectedWorker ? (
+              <div className="stack-grid">
+                <div>
+                  <strong>{selectedWorker.firstName} {selectedWorker.lastName}</strong>
+                  <p className="muted-text">
+                    {selectedWorker.competencies.length} competency
+                    {selectedWorker.competencies.length === 1 ? "" : "ies"} recorded
+                  </p>
+                </div>
+                <div className="resource-tags">
+                  {selectedWorker.competencies.length ? selectedWorker.competencies.map((entry) => (
+                    <span key={entry.competency.id} className="resource-tag">
+                      {entry.competency.name}
+                      {entry.expiresAt
+                        ? ` · expires ${new Date(entry.expiresAt).toLocaleDateString()}`
+                        : ""}
+                    </span>
+                  )) : <span className="muted-text">No competencies recorded yet. Add competencies from the worker profile page.</span>}
+                </div>
+              </div>
+            ) : (
+              <p className="muted-text">Select a worker from the rail to view their competencies.</p>
+            )}
+          </AppCard>
+          ) : null}
         </div>
       </div>
     </div>

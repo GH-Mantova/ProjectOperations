@@ -135,7 +135,7 @@ export function ArchiveDetailPage() {
     return (
       <AppCard title="Archive detail" subtitle="Unable to load">
         <p className="error-text">{error ?? "Record not found."}</p>
-        <Link to="/archive">← Back to Archive</Link>
+        <Link to="/documents?tab=archived">← Back to Archive</Link>
       </AppCard>
     );
   }
@@ -148,7 +148,7 @@ export function ArchiveDetailPage() {
       subtitle={`Read-only archive record · exported ${new Date(data.exportedAt).toLocaleString()}`}
       actions={
         <div style={{ display: "flex", gap: 8 }}>
-          <Link to="/archive" style={{ minHeight: 44, display: "inline-flex", alignItems: "center" }}>
+          <Link to="/documents?tab=archived" style={{ minHeight: 44, display: "inline-flex", alignItems: "center" }}>
             ← Archive
           </Link>
           <button type="button" onClick={downloadExport} style={{ minHeight: 44, padding: "8px 16px" }}>

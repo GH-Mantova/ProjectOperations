@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import {
+  TENDER_STATUS_ACCENT,
+  TENDER_STATUS_LABEL,
+  type TenderStatus
+} from "../tendering/tenderStatusLabels";
 
 // CRM slice 1 — Opportunity kanban board + weighted-forecast summary + lead
 // intake side panel. Sits BEFORE Tendering in the sales pipeline; a firmed
@@ -26,6 +31,7 @@ type Opportunity = {
   nextActionAt: string | null;
   nextActionNote: string | null;
   convertedTenderId: string | null;
+  convertedTender: { id: string; tenderNumber: string; status: string } | null;
   createdAt: string;
 };
 
@@ -85,7 +91,7 @@ function parseValue(v: string | null): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-export function CrmBoardPage() {
+export function CrmBoardContent() {
   const { authFetch } = useAuth();
   const navigate = useNavigate();
 
@@ -434,9 +440,13 @@ export function CrmBoardPage() {
                           Next: {fmtDate(opp.nextActionAt)}
                         </div>
                       )}
-                      {opp.convertedTenderId && (
-                        <div style={{ fontSize: 11, color: "#16a34a", marginTop: 4, fontWeight: 600 }}>
-                          → Tender created
+                      {opp.convertedTender && (
+                        <div style={{ marginTop: 6 }}>
+                          <TenderChip
+                            tenderId={opp.convertedTender.id}
+                            tenderNumber={opp.convertedTender.tenderNumber}
+                            status={opp.convertedTender.status}
+                          />
                         </div>
                       )}
                     </div>
@@ -655,6 +665,33 @@ function Modal({ children, onClose }: { children: React.ReactNode; onClose: () =
         {children}
       </div>
     </div>
+  );
+}
+
+function TenderChip({
+  tenderId, tenderNumber, status
+}: { tenderId: string; tenderNumber: string; status: string }) {
+  const navigate = useNavigate();
+  const known = (status in TENDER_STATUS_LABEL) as boolean;
+  const label = known ? TENDER_STATUS_LABEL[status as TenderStatus] : status;
+  const accent = known ? TENDER_STATUS_ACCENT[status as TenderStatus] : "#6B7280";
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); navigate(`/tenders/${tenderId}`); }}
+      title={`Open tender ${tenderNumber}`}
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 6,
+        padding: "2px 8px", borderRadius: 999,
+        border: `1px solid ${accent}`, background: "#fff",
+        color: accent, fontSize: 11, fontWeight: 600, cursor: "pointer",
+        maxWidth: "100%"
+      }}
+    >
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {tenderNumber} · {label}
+      </span>
+    </button>
   );
 }
 

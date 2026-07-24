@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { useConfirm } from "../../hooks/useConfirm";
 import { can } from "../../auth/permissions";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { NewTenderWizard } from "./NewTenderWizard";
@@ -280,6 +281,7 @@ function filtersEqual(a: Filters, b: Filters): boolean {
 
 export function TenderingPage() {
   const { authFetch, user } = useAuth();
+  const confirm = useConfirm();
   const navigate = useNavigate();
   const [view, setView] = useState<View>("pipeline");
   const [tenders, setTenders] = useState<TenderListItem[]>([]);
@@ -543,7 +545,13 @@ export function TenderingPage() {
   };
 
   const deletePreset = async (id: string) => {
-    if (!window.confirm("Delete this filter preset?")) return;
+    const ok = await confirm({
+      title: "Delete filter preset",
+      message: "Delete this filter preset?",
+      confirmLabel: "Delete",
+      variant: "danger"
+    });
+    if (!ok) return;
     try {
       const response = await authFetch(`/tenders/filter-presets/${id}`, { method: "DELETE" });
       if (!response.ok) throw new Error(await response.text());

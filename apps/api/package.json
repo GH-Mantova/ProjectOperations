@@ -51,7 +51,7 @@
     "puppeteer": "23.11.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "sharp": "^0.33.0",
+    "sharp": "^0.35.0",
     "swagger-ui-express": "^5.0.1",
     "xero-node": "^15.0.1"
   },

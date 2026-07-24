@@ -66,6 +66,12 @@ export type ConvertToTenderInput = {
   proposedStartDate?: string | null;
 };
 
+export type GenerateDraftTenderInput = {
+  siteId: string;
+  title?: string;
+  clientId?: string;
+};
+
 /**
  * Service for CRM Lead + Opportunity pipeline.
  *
@@ -247,6 +253,62 @@ export class CrmService {
       });
       return opp;
     });
+  }
+
+  /**
+   * One-click "Generate draft tender" from a lead. Composes the two existing
+   * conversion steps (`convertLeadToOpportunity` → `convertOpportunityToTender`)
+   * so a CRM lead lands as a DRAFT Tender without the user round-tripping
+   * through the opportunity board.
+   *
+   * Idempotent: if the lead's opportunity already has a `convertedTenderId`,
+   * returns 409 with that tender id.
+   *
+   * @throws BadRequestException When siteId is missing, or the lead has no
+   *   linked client and no clientId is supplied.
+   * @throws ConflictException When a draft tender has already been generated
+   *   for this lead.
+   */
+  async generateDraftTender(
+    leadId: string,
+    input: GenerateDraftTenderInput,
+    actorId?: string
+  ) {
+    if (!input.siteId?.trim()) {
+      throw new BadRequestException(
+        "siteId is required to generate a draft tender."
+      );
+    }
+
+    const lead = await this.prisma.lead.findUnique({
+      where: { id: leadId },
+      include: {
+        convertedOpportunity: {
+          select: { id: true, convertedTenderId: true }
+        }
+      }
+    });
+    if (!lead) throw new NotFoundException(`Lead ${leadId} not found.`);
+
+    if (lead.convertedOpportunity?.convertedTenderId) {
+      throw new ConflictException(
+        `Lead ${leadId} already has a draft tender ${lead.convertedOpportunity.convertedTenderId}.`
+      );
+    }
+
+    let opportunityId = lead.convertedOpportunityId;
+    if (!opportunityId) {
+      const opp = await this.convertLeadToOpportunity(leadId, {
+        clientId: input.clientId
+      });
+      opportunityId = opp.id;
+    }
+
+    return this.convertOpportunityToTender(
+      opportunityId,
+      { siteId: input.siteId, title: input.title },
+      actorId
+    );
   }
 
   // ── Opportunities ────────────────────────────────────────────────────────

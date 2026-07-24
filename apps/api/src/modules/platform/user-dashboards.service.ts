@@ -42,6 +42,17 @@ function isPlatformAdmin(actor: DashboardActor): boolean {
   return Boolean(actor.isSuperUser) || (actor.permissions ?? []).includes("platform.admin");
 }
 
+// Prisma P2002 = unique-constraint violation. Checked structurally (not via
+// instanceof) so it holds for PrismaClientKnownRequestError in production and
+// for plain { code: "P2002" } errors in unit tests.
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: string }).code === "P2002"
+  );
+}
+
 @Injectable()
 export class UserDashboardsService {
   constructor(
@@ -71,16 +82,34 @@ export class UserDashboardsService {
   }
 
   async create(userId: string, dto: CreateUserDashboardDto) {
-    const record = await this.prisma.userDashboard.create({
-      data: {
-        userId,
-        name: dto.name,
-        slug: dto.slug,
-        isSystem: false,
-        isDefault: false,
-        config: dto.config as unknown as Prisma.InputJsonValue
+    let record;
+    try {
+      record = await this.prisma.userDashboard.create({
+        data: {
+          userId,
+          name: dto.name,
+          slug: dto.slug,
+          isSystem: false,
+          isDefault: false,
+          config: dto.config as unknown as Prisma.InputJsonValue
+        }
+      });
+    } catch (error) {
+      // Concurrent create race: two clients (e.g. parallel e2e workers, two open
+      // tabs) both see the dashboard absent and both POST. The DB's
+      // @@unique([userId, slug, isSystem]) is the arbiter — on P2002, return the
+      // row the winner created instead of throwing (idempotency-pattern Case A:
+      // create first, let the unique constraint arbitrate; never check-then-create).
+      if (isUniqueViolation(error)) {
+        const existing = await this.prisma.userDashboard.findFirst({
+          where: { userId, slug: dto.slug, isSystem: false }
+        });
+        if (existing) {
+          return existing;
+        }
       }
-    });
+      throw error;
+    }
     await this.audit.write({
       actorId: userId,
       action: "userDashboards.create",

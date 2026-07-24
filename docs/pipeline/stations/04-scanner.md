@@ -174,3 +174,49 @@ it directly — fix gates there.
 **Not yours:** every MUTATING script under STATION 00 in the registry (merging, rebasing, arming
 auto-merge, restarting the watcher), the `scripts/pr-watcher/*` internals, and everything under
 MARCO-ONLY. If a finding needs one of those, **report it — do not run it.**
+
+---
+
+## ADVERSARIAL PROMPT CRITIQUE
+
+Post-code review is strong (pr-reviews, `Assert-BodyClaimsAreReal`, smoke exit codes), but the
+PLAN of a staged/armed prompt is only mechanically linted. Before the watcher spends a full agent
+run on a prompt, attack its DESIGN. This pass runs against every staged/armed prompt the scanner
+sees in `docs/pr-prompts/` (including HOLDs about to release). It is a **design critique**, not a
+code review.
+
+**Report-not-run rule (critical, non-negotiable).** Findings from this pass are filed as **REPORT
+LINES** in the scanner's own output (a new `## ADVERSARIAL PROMPT CRITIQUE` block in `qa-findings.md`
+for that run, one bullet per prompt critiqued, evidence + severity). The scanner **NEVER edits the
+prompt under critique**, never rewrites its scope, never patches its premise, never re-stages it. The
+scanner does not rewrite other stations' prompts; it flags them. Marco or the owning station acts on
+the report. A silent auto-fix would poison the very design review this section exists to enable.
+
+For each staged/armed prompt, work the following checklist and file a report line for each hit:
+
+- **Missed callers in `scope`.** Grep the repo for every symbol/route/component the prompt names.
+  If a call site is touched by the fix but not listed in `scope`, flag it — a half-migrated symbol
+  ships a broken build (or worse, a silently-inconsistent one). Cite the missed path(s).
+- **Premise doesn't die on landing (LL-54).** Re-read the `premise` command as if the fix has
+  already shipped. If it will *still* evaluate true, the prompt will re-fire forever after merge.
+  Flag it and suggest a premise that inverts once the change lands (existence of the new symbol,
+  absence of the old one, updated test, etc.).
+- **Rollback for migration-touching work (LL-29).** If the prompt edits `prisma/schema.prisma`,
+  a `prisma/migrations/*` folder, or a data-backfill script, the prompt MUST spell out what
+  happens if it half-lands (migration applied, code not; or vice-versa). Flag the absence of an
+  explicit rollback / reversibility note. Migration-scoped prompts also require the
+  `rollback_strategy` frontmatter field.
+- **Guards/gates this change could trip.** Check the change against the standing tripwires:
+  CP-11 (`GATE-ALLOW` marker must be bare at column 0), CP-24 (data-model map drift), the
+  route-shadowing guard baseline, the permission registry (any new `@RequirePermissions("X")` or
+  frontend `permissions.includes("X")` needs a matching entry), and the data-model relationship
+  map. Flag which guard is likely to red-fail on this PR so the owning station can pre-empt it.
+- **Honest `size`.** Compare the declared `size` against the real blast radius implied by the
+  `scope` + the greps above. If a `size: 1` prompt touches five files across two apps and adds a
+  new migration, flag it as a split waiting to happen — the watcher's per-run turn budget will
+  chew through the context and either time out or ship half the work.
+
+Severity guidance for report lines: missed caller or dead premise = S2 (prompt is broken as
+authored); missing rollback on a migration prompt = S2; missing guard-trip warning = S3; dishonest
+`size` = S3. Fold sibling prompts that share a defect into ONE report line with the blast radius
+noted, same as elsewhere in Part 0.

@@ -503,6 +503,28 @@ checks green → merge) needs no local file access.
 - **Restart required**: a running watcher must be restarted to pick up this
   behaviour.
 
+### Settled-verdict archival
+
+Verdict files (`docs/pr-reviews/pr-{N}-review.md`) are UNTRACKED in the live
+watcher clone — the reviewer writes them locally. The watcher periodically
+sweeps them out of the tree once the PR they belong to is settled, so the
+clone doesn't accumulate dirty untracked files and status-sweeps stay clean.
+
+- **When it runs**: once at startup (after the untracked-prompt preflight)
+  and once per rescan cycle (`PR_WATCHER_RESCAN_MIN`, default 5 min).
+- **What it moves**: for each `docs/pr-reviews/pr-N-review.md`, `gh pr view N
+  --json state` is queried. If the state is `MERGED` or `CLOSED`, the file
+  is MOVED (never deleted) to `..\verdicts-archive` — a sibling directory
+  OUTSIDE the repo tree, so git never sees it and no gitignore entry is
+  required. Files for `OPEN` PRs stay exactly where they are; the
+  tests-docs auto-merge path and verdict mirror still read them in place.
+- **Failure behaviour**: if the state query fails (rate limit, offline gh),
+  the file is LEFT IN PLACE and a `[review]` log line records the skip. A
+  failed call is not a meaningful "PR is stale" signal — we would rather
+  leak a verdict for another cycle than silently delete one.
+- **Never throws**: the sweep is wrapped in try/catch at the call site so a
+  crash cannot stall startup or the rescan loop.
+
 ### Double-start guard
 
 The watcher writes a lockfile (`scripts/pr-watcher/.watcher.lock`) containing

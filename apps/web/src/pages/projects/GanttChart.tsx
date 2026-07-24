@@ -9,6 +9,7 @@ import {
 } from "@dnd-kit/core";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { useConfirm } from "../../hooks/useConfirm";
 import { daysFromPx, shiftDatesByDays } from "./ganttDragMath";
 
 export type GanttTask = {
@@ -57,6 +58,7 @@ function pxPerDay(zoom: GanttChartProps["zoom"]): number {
 
 export function GanttChart({ projectId, tasks, zoom, canManage, onChanged }: GanttChartProps) {
   const { authFetch } = useAuth();
+  const confirm = useConfirm();
   const [editingTask, setEditingTask] = useState<GanttTask | null>(null);
   // Optimistic copy of tasks so drag-end can reflect immediately. The prop
   // remains the source of truth — we resync on every change.
@@ -299,7 +301,13 @@ export function GanttChart({ projectId, tasks, zoom, canManage, onChanged }: Gan
             onChanged();
           }}
           onDelete={async () => {
-            if (!window.confirm(`Delete "${editingTask.title}"?`)) return;
+            const ok = await confirm({
+              title: "Delete task",
+              message: `Delete "${editingTask.title}"?`,
+              confirmLabel: "Delete",
+              variant: "danger"
+            });
+            if (!ok) return;
             const r = await authFetch(`/projects/${projectId}/gantt/${editingTask.id}`, {
               method: "DELETE"
             });

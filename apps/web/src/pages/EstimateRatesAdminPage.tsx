@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -97,6 +98,11 @@ type MaterialDensity = {
   density: string;
   unit: string;
   category: string | null;
+  // Default waste classification auto-applied on the scope card when
+  // this material is picked; plain strings matching an active
+  // EstimateWasteRate row's (wasteGroup, wasteType).
+  defaultWasteGroup: string | null;
+  defaultWasteItem: string | null;
   isActive: boolean;
   sortOrder: number;
 };
@@ -115,6 +121,10 @@ type ColumnDef<T> = {
   step?: string;
   render?: (value: string) => ReactNode;
   widthPct?: number;
+  // When set, the input renders with an HTML datalist so the user gets
+  // autocomplete against the known values (e.g. active waste groups /
+  // waste items) while free-typing stays allowed for new mappings.
+  datalistOptions?: string[];
 };
 
 export function EstimateRatesAdminPage() {
@@ -218,7 +228,23 @@ export function EstimateRatesAdminPage() {
   const fuelFiltered = filterRows(fuel, search, (r) => `${r.item} ${r.unit}`);
   const enclosureFiltered = filterRows(enclosure, search, (r) => `${r.enclosureType} ${r.unit}`);
   const otherFiltered = filterRows(other, search, (r) => `${r.description} ${r.unit}`);
-  const densityFiltered = filterRows(density, search, (r) => `${r.materialName} ${r.unit} ${r.category ?? ""}`);
+  const densityFiltered = filterRows(
+    density,
+    search,
+    (r) => `${r.materialName} ${r.unit} ${r.category ?? ""} ${r.defaultWasteGroup ?? ""} ${r.defaultWasteItem ?? ""}`
+  );
+
+  // Waste group / item options for the density table's default-waste
+  // columns. Sourced from active EstimateWasteRate rows so the admin's
+  // suggestions match the same options the scope card offers today.
+  // Plain derivation (not useMemo) — this file's early `if (!canView)`
+  // return sits above, so a hook here would break the rules-of-hooks
+  // order for viewers who lack the permission.
+  const activeWaste = waste.filter((w) => w.isActive);
+  const wasteGroupSuggestions = Array.from(
+    new Set(activeWaste.map((w) => w.wasteGroup).filter((g): g is string => !!g))
+  ).sort();
+  const wasteItemSuggestions = Array.from(new Set(activeWaste.map((w) => w.wasteType))).sort();
 
   const countFor: Record<Tab, number> = {
     labour: labour.length,
@@ -457,18 +483,39 @@ export function EstimateRatesAdminPage() {
           {tab === "density" && (
             <>
               <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 0 }}>
-                Material densities used by the scope item form. Density auto-populates when a material is selected.
+                Material densities used by the scope item form. Density plus the default waste group/item auto-populate when a material is selected on a scope row.
               </p>
               <RatesTable
                 rows={densityFiltered}
                 columns={[
-                  { key: "materialName", label: "Material", type: "text", widthPct: 30 },
-                  { key: "density", label: "Density", type: "number", step: "0.001", widthPct: 18 },
-                  { key: "unit", label: "Unit", type: "text", widthPct: 15 },
-                  { key: "category", label: "Category", type: "text", widthPct: 20 }
+                  { key: "materialName", label: "Material", type: "text", widthPct: 22 },
+                  { key: "density", label: "Density", type: "number", step: "0.001", widthPct: 12 },
+                  { key: "unit", label: "Unit", type: "text", widthPct: 10 },
+                  { key: "category", label: "Category", type: "text", widthPct: 14 },
+                  {
+                    key: "defaultWasteGroup",
+                    label: "Default waste group",
+                    type: "text",
+                    widthPct: 18,
+                    datalistOptions: wasteGroupSuggestions
+                  },
+                  {
+                    key: "defaultWasteItem",
+                    label: "Default waste item",
+                    type: "text",
+                    widthPct: 18,
+                    datalistOptions: wasteItemSuggestions
+                  }
                 ]}
                 basePath="/estimate-rates/material-densities"
-                addDefaults={{ materialName: "", density: "0", unit: "kg/m³", category: "" }}
+                addDefaults={{
+                  materialName: "",
+                  density: "0",
+                  unit: "kg/m³",
+                  category: "",
+                  defaultWasteGroup: "",
+                  defaultWasteItem: ""
+                }}
                 deleteLabel={(r) => r.materialName}
                 canAdmin={canAdmin}
                 saving={saving}
@@ -553,17 +600,29 @@ function RatesTable<T extends { id: string }>({
     <div>
       {canAdmin ? (
         <div className="admin-page__add-row">
-          {columns.map((col) => (
-            <input
-              key={col.key}
-              className="s7-input"
-              type={col.type ?? "text"}
-              step={col.step}
-              value={addDraft[col.key] ?? ""}
-              onChange={(e) => setAddDraft((prev) => ({ ...prev, [col.key]: e.target.value }))}
-              placeholder={col.label}
-            />
-          ))}
+          {columns.map((col) => {
+            const listId = col.datalistOptions ? `rates-dl-add-${basePath}-${col.key}` : undefined;
+            return (
+              <Fragment key={col.key}>
+                <input
+                  className="s7-input"
+                  type={col.type ?? "text"}
+                  step={col.step}
+                  list={listId}
+                  value={addDraft[col.key] ?? ""}
+                  onChange={(e) => setAddDraft((prev) => ({ ...prev, [col.key]: e.target.value }))}
+                  placeholder={col.label}
+                />
+                {listId ? (
+                  <datalist id={listId}>
+                    {col.datalistOptions!.map((opt) => (
+                      <option key={opt} value={opt} />
+                    ))}
+                  </datalist>
+                ) : null}
+              </Fragment>
+            );
+          })}
           <button type="button" className="s7-btn s7-btn--primary s7-btn--sm" onClick={() => void submitAdd()} disabled={addDisabled}>
             Add
           </button>
@@ -750,17 +809,28 @@ function EditableRateRow<T extends { id: string }>({
     >
       {columns.map((col) => {
         const displayValue = String((row as unknown as Record<string, unknown>)[col.key] ?? "");
+        const listId = col.datalistOptions ? `rates-dl-edit-${basePath}-${row.id}-${col.key}` : undefined;
         return (
           <td key={col.key}>
             {editing ? (
-              <input
-                className="s7-input s7-input--sm"
-                type={col.type ?? "text"}
-                step={col.step}
-                value={draft[col.key] ?? ""}
-                onChange={(e) => setDraft((prev) => ({ ...prev, [col.key]: e.target.value }))}
-                onFocus={(e) => e.currentTarget.select()}
-              />
+              <>
+                <input
+                  className="s7-input s7-input--sm"
+                  type={col.type ?? "text"}
+                  step={col.step}
+                  list={listId}
+                  value={draft[col.key] ?? ""}
+                  onChange={(e) => setDraft((prev) => ({ ...prev, [col.key]: e.target.value }))}
+                  onFocus={(e) => e.currentTarget.select()}
+                />
+                {listId ? (
+                  <datalist id={listId}>
+                    {col.datalistOptions!.map((opt) => (
+                      <option key={opt} value={opt} />
+                    ))}
+                  </datalist>
+                ) : null}
+              </>
             ) : col.render ? (
               col.render(displayValue)
             ) : (

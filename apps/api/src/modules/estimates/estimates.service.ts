@@ -472,6 +472,10 @@ export class EstimatesService {
       ...(dto.kind ? { kind: dto.kind } : {}),
       category: dto.category ?? null,
       notes: dto.notes ?? null,
+      // Empty string → null so the admin can clear the mapping by blanking
+      // the cell (RatesTable sends empty strings, not undefined).
+      defaultWasteGroup: dto.defaultWasteGroup ? dto.defaultWasteGroup : null,
+      defaultWasteItem: dto.defaultWasteItem ? dto.defaultWasteItem : null,
       isActive: dto.isActive ?? true,
       sortOrder: dto.sortOrder ?? 0
     };

@@ -142,7 +142,22 @@ type MaterialDensityRate = {
   // PR feat/scope-each-factor — kind drives which formula is used.
   kind?: "VOLUME" | "AREA" | "EACH" | "FACTOR" | null;
   category: string | null;
+  // PR feat/scope-material-waste-autofill — default waste classification.
+  // When present, the scope row's wasteGroup/wasteItem are auto-set from
+  // these when the user picks the material, and the pickers are hidden.
+  defaultWasteGroup?: string | null;
+  defaultWasteItem?: string | null;
   isActive: boolean;
+};
+
+// Lookup shape used by the material dropdowns to derive density + waste
+// defaults in a single map read.
+type MaterialLookup = {
+  density: string;
+  unit: string;
+  kind: "VOLUME" | "AREA" | "EACH" | "FACTOR";
+  defaultWasteGroup: string | null;
+  defaultWasteItem: string | null;
 };
 
 const CONFIDENCE_STYLE: Record<string, { bg: string; fg: string; label: string }> = {
@@ -246,14 +261,18 @@ export function ScopeQuantitiesTable({
     [materialDensities]
   );
 
-  // Map materialName → density/unit/kind for quick lookup on select.
+  // Map materialName → density/unit/kind + default waste for quick lookup
+  // on select. The defaults let the scope card auto-fill wasteGroup/
+  // wasteItem so the per-row pickers can be hidden when a mapping exists.
   const materialDensityMap = useMemo(() => {
-    const map = new Map<string, { density: string; unit: string; kind: "VOLUME" | "AREA" | "EACH" | "FACTOR" }>();
+    const map = new Map<string, MaterialLookup>();
     for (const d of materialDensities) {
       map.set(d.materialName, {
         density: d.density,
         unit: d.unit,
-        kind: (d.kind ?? "VOLUME") as "VOLUME" | "AREA" | "EACH" | "FACTOR"
+        kind: (d.kind ?? "VOLUME") as "VOLUME" | "AREA" | "EACH" | "FACTOR",
+        defaultWasteGroup: d.defaultWasteGroup ?? null,
+        defaultWasteItem: d.defaultWasteItem ?? null
       });
     }
     return map;
@@ -518,7 +537,7 @@ type ItemCardProps = {
   wasteGroupOptions: TooltipSelectOption<string>[];
   wasteItemsByGroup: Map<string, string[]>;
   materialOptions: TooltipSelectOption<string>[];
-  materialDensityMap: Map<string, { density: string; unit: string; kind: "VOLUME" | "AREA" | "EACH" | "FACTOR" }>;
+  materialDensityMap: Map<string, MaterialLookup>;
   isPending: boolean;
   onPatch: (body: Record<string, unknown>) => void;
   onConfirm: () => void;
@@ -604,6 +623,19 @@ function ItemCard({
   const wasteItemOptions: TooltipSelectOption<string>[] = item.wasteGroup
     ? (wasteItemsByGroup.get(item.wasteGroup) ?? []).map((w) => ({ value: w, label: w }))
     : [];
+
+  // PR feat/scope-material-waste-autofill — true when the row's selected
+  // material carries a default (wasteGroup, wasteItem) mapping. When
+  // true, the pickers are hidden and a read-only summary is shown;
+  // when false, the pickers stay visible (fallback) with an amber
+  // "no default mapping" hint so nothing silently drops from waste
+  // aggregation.
+  const row1MaterialLookup = item.materialType ? materialDensityMap.get(item.materialType) : undefined;
+  const row1WasteAutofilled =
+    !!row1MaterialLookup?.defaultWasteGroup &&
+    !!row1MaterialLookup?.defaultWasteItem &&
+    item.wasteGroup === row1MaterialLookup.defaultWasteGroup &&
+    item.wasteItem === row1MaterialLookup.defaultWasteItem;
 
   // PR B4a / B4a.5 — controlled state for the 7 dimension fields.
   // Held as strings so we can distinguish "" (no value) from "0".
@@ -1103,6 +1135,19 @@ function ItemCard({
                   };
                   const rederived = computeDerivedDimensions(newParsed);
 
+                  // PR feat/scope-material-waste-autofill — apply the
+                  // catalog's default (wasteGroup, wasteItem) when the
+                  // material carries one. If it doesn't, preserve any
+                  // value the user set by hand — the fallback pickers
+                  // stay visible so the row is never dropped from
+                  // aggregation. Empty selection ("no material") clears
+                  // the auto values but not manual ones.
+                  const wasteDefaults = lookup
+                    ? lookup.defaultWasteGroup && lookup.defaultWasteItem
+                      ? { wasteGroup: lookup.defaultWasteGroup, wasteItem: lookup.defaultWasteItem }
+                      : {} // material chosen, but no mapping → keep manual pickers' values
+                    : {};
+
                   onPatch({
                     materialType: v,
                     materialKind: newKind,
@@ -1116,7 +1161,8 @@ function ItemCard({
                     // Reset quantity/factor when kind changes to avoid
                     // stale values being used with the wrong formula.
                     quantity: newKind === "EACH" ? newParsed.quantity : null,
-                    factor: newKind === "FACTOR" ? newParsed.factor : null
+                    factor: newKind === "FACTOR" ? newParsed.factor : null,
+                    ...wasteDefaults
                   });
                 }}
                 disabled={isAi}
@@ -1253,33 +1299,72 @@ function ItemCard({
                 />
               </OverrideField>
             </FieldCell>
-            {/* PR feat/scope-material-inline-waste — Material 1 waste
-                controls, bound to the item-level columns. Material 2..N
-                get the same set on their own row inside MaterialCluster.
-                Keep the aria-labels "Waste group"/"Waste item"/"Include
+            {/* PR feat/scope-material-waste-autofill — waste group/item
+                are now auto-derived from the selected material's
+                defaults on EstimateMaterialDensity. The two pickers
+                only render when the material has no default mapping
+                yet (fallback), so users can still classify the row.
+                The written values on item.wasteGroup/item.wasteItem
+                are unchanged — the sum-from-above aggregator still
+                groups by exactly those fields.
+
+                Aria-labels stay "Waste group"/"Waste item"/"Include
                 in waste summary"/"Include in cutting summary" (no
                 material suffix) so existing acceptance tests that scope
                 to Material 1 keep working. */}
-            <FieldCell label="Waste group" width={120}>
-              <TooltipSelect
-                value={item.wasteGroup}
-                options={wasteGroupOptions}
-                onChange={(v) => onPatch({ wasteGroup: v, wasteItem: null })}
-                disabled={isAi}
-                ariaLabel="Waste group"
-                style={{ height: 32 }}
-              />
-            </FieldCell>
-            <FieldCell label="Waste item" width={140}>
-              <TooltipSelect
-                value={item.wasteItem}
-                options={wasteItemOptions}
-                onChange={(v) => onPatch({ wasteItem: v })}
-                disabled={isAi || !item.wasteGroup}
-                ariaLabel="Waste item"
-                style={{ height: 32 }}
-              />
-            </FieldCell>
+            {row1WasteAutofilled ? (
+              <FieldCell label="Waste" width={160}>
+                <div
+                  style={{
+                    height: 32,
+                    display: "flex",
+                    alignItems: "center",
+                    fontSize: 11,
+                    color: "var(--text-muted)"
+                  }}
+                  title={`Auto from ${item.materialType}: ${item.wasteGroup} → ${item.wasteItem}`}
+                >
+                  {item.wasteGroup} · {item.wasteItem}
+                </div>
+              </FieldCell>
+            ) : (
+              <>
+                <FieldCell label="Waste group" width={120}>
+                  <TooltipSelect
+                    value={item.wasteGroup}
+                    options={wasteGroupOptions}
+                    onChange={(v) => onPatch({ wasteGroup: v, wasteItem: null })}
+                    disabled={isAi}
+                    ariaLabel="Waste group"
+                    style={{ height: 32 }}
+                  />
+                </FieldCell>
+                <FieldCell label="Waste item" width={140}>
+                  <TooltipSelect
+                    value={item.wasteItem}
+                    options={wasteItemOptions}
+                    onChange={(v) => onPatch({ wasteItem: v })}
+                    disabled={isAi || !item.wasteGroup}
+                    ariaLabel="Waste item"
+                    style={{ height: 32 }}
+                  />
+                </FieldCell>
+                {item.materialType ? (
+                  <div
+                    role="note"
+                    style={{
+                      fontSize: 11,
+                      color: "var(--status-warning, #B45309)",
+                      alignSelf: "flex-end",
+                      paddingBottom: 8,
+                      maxWidth: 180
+                    }}
+                  >
+                    No default waste mapping for {item.materialType} — set one in Rates & Lists → Densities.
+                  </div>
+                ) : null}
+              </>
+            )}
             <FieldCell label="Waste?" width={54}>
               <input
                 type="checkbox"
@@ -1476,7 +1561,7 @@ function MaterialCluster({
   index: number;
   entry: ScopeMaterialEntry;
   materialOptions: TooltipSelectOption<string>[];
-  materialDensityMap: Map<string, { density: string; unit: string; kind: "VOLUME" | "AREA" | "EACH" | "FACTOR" }>;
+  materialDensityMap: Map<string, MaterialLookup>;
   wasteGroupOptions: TooltipSelectOption<string>[];
   wasteItemsByGroup: Map<string, string[]>;
   disabled: boolean;
@@ -1516,6 +1601,15 @@ function MaterialCluster({
   const wasteItemOptions: TooltipSelectOption<string>[] = entry.wasteGroup
     ? (wasteItemsByGroup.get(entry.wasteGroup) ?? []).map((w) => ({ value: w, label: w }))
     : [];
+
+  // PR feat/scope-material-waste-autofill — mirror row-1: hide the
+  // pickers when the selected material carries a default mapping.
+  const entryMaterialLookup = entry.material ? materialDensityMap.get(entry.material) : undefined;
+  const entryWasteAutofilled =
+    !!entryMaterialLookup?.defaultWasteGroup &&
+    !!entryMaterialLookup?.defaultWasteItem &&
+    entry.wasteGroup === entryMaterialLookup.defaultWasteGroup &&
+    entry.wasteItem === entryMaterialLookup.defaultWasteItem;
 
   const materialNo = index + 2;
 
@@ -1602,6 +1696,15 @@ function MaterialCluster({
                 quantity: newKind === "EACH" ? entry.quantity ?? null : null,
                 factor: newKind === "FACTOR" ? entry.factor ?? null : null
               });
+              // PR feat/scope-material-waste-autofill — mirror row-1
+              // autofill: apply the density catalog's default waste
+              // when the material has one, otherwise keep whatever the
+              // user set by hand so the fallback pickers preserve state.
+              const wasteDefaults = lookup
+                ? lookup.defaultWasteGroup && lookup.defaultWasteItem
+                  ? { wasteGroup: lookup.defaultWasteGroup, wasteItem: lookup.defaultWasteItem }
+                  : {}
+                : {};
               onChange({
                 material: v,
                 kind: newKind as "VOLUME" | "AREA" | "EACH" | "FACTOR",
@@ -1611,7 +1714,8 @@ function MaterialCluster({
                 m3: rederived.m3,
                 tonnes: rederived.tonnes,
                 quantity: newKind === "EACH" ? entry.quantity ?? null : null,
-                factor: newKind === "FACTOR" ? entry.factor ?? null : null
+                factor: newKind === "FACTOR" ? entry.factor ?? null : null,
+                ...wasteDefaults
               });
             }}
             disabled={disabled}
@@ -1732,30 +1836,64 @@ function MaterialCluster({
             onBlur={(e) => onChange({ tonnes: numOrNull(e.target.value) })}
           />
         </FieldCell>
-        {/* PR feat/scope-material-inline-waste — per-material waste
-            controls. Bound to this entry's own wasteGroup/wasteItem/
-            wasteIncluded/cuttingIncluded so the sum-from-above aggregator
-            can attribute each material's tonnage to a different group. */}
-        <FieldCell label="Waste group" width={120}>
-          <TooltipSelect
-            value={entry.wasteGroup ?? null}
-            options={wasteGroupOptions}
-            onChange={(v) => onChange({ wasteGroup: v, wasteItem: null })}
-            disabled={disabled}
-            ariaLabel={`Material ${materialNo} waste group`}
-            style={{ height: 32 }}
-          />
-        </FieldCell>
-        <FieldCell label="Waste item" width={140}>
-          <TooltipSelect
-            value={entry.wasteItem ?? null}
-            options={wasteItemOptions}
-            onChange={(v) => onChange({ wasteItem: v })}
-            disabled={disabled || !entry.wasteGroup}
-            ariaLabel={`Material ${materialNo} waste item`}
-            style={{ height: 32 }}
-          />
-        </FieldCell>
+        {/* PR feat/scope-material-waste-autofill — same rule as row 1:
+            hide the two pickers when the selected material has a
+            default (wasteGroup, wasteItem) mapping. Values are still
+            written to entry.wasteGroup / entry.wasteItem exactly as
+            before so the sum-from-above aggregator is unchanged. */}
+        {entryWasteAutofilled ? (
+          <FieldCell label="Waste" width={160}>
+            <div
+              style={{
+                height: 32,
+                display: "flex",
+                alignItems: "center",
+                fontSize: 11,
+                color: "var(--text-muted)"
+              }}
+              title={`Auto from ${entry.material}: ${entry.wasteGroup} → ${entry.wasteItem}`}
+            >
+              {entry.wasteGroup} · {entry.wasteItem}
+            </div>
+          </FieldCell>
+        ) : (
+          <>
+            <FieldCell label="Waste group" width={120}>
+              <TooltipSelect
+                value={entry.wasteGroup ?? null}
+                options={wasteGroupOptions}
+                onChange={(v) => onChange({ wasteGroup: v, wasteItem: null })}
+                disabled={disabled}
+                ariaLabel={`Material ${materialNo} waste group`}
+                style={{ height: 32 }}
+              />
+            </FieldCell>
+            <FieldCell label="Waste item" width={140}>
+              <TooltipSelect
+                value={entry.wasteItem ?? null}
+                options={wasteItemOptions}
+                onChange={(v) => onChange({ wasteItem: v })}
+                disabled={disabled || !entry.wasteGroup}
+                ariaLabel={`Material ${materialNo} waste item`}
+                style={{ height: 32 }}
+              />
+            </FieldCell>
+            {entry.material ? (
+              <div
+                role="note"
+                style={{
+                  fontSize: 11,
+                  color: "var(--status-warning, #B45309)",
+                  alignSelf: "flex-end",
+                  paddingBottom: 8,
+                  maxWidth: 180
+                }}
+              >
+                No default waste mapping for {entry.material} — set one in Rates & Lists → Densities.
+              </div>
+            ) : null}
+          </>
+        )}
         <FieldCell label="Waste?" width={54}>
           <input
             type="checkbox"

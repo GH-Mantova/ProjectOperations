@@ -5,6 +5,7 @@ import { MessageList } from "./MessageList";
 import { useStreamingChat, type ConversationSummary } from "./use-streaming-chat";
 import { chatPanelEmptyHint } from "./chat-helpers";
 import { formatRelativeDate, truncatePreview } from "./date-helpers";
+import { useConfirm } from "../hooks/useConfirm";
 
 const ICON_NEW = (
   <svg
@@ -79,6 +80,7 @@ type View = "chat" | "history";
 
 export function ChatPanel() {
   const { activePersona, contextKey } = useActivePersona();
+  const confirm = useConfirm();
   const slug = activePersona?.persona.slug ?? null;
   const subMode = activePersona?.subMode.name;
   const {
@@ -118,11 +120,13 @@ export function ChatPanel() {
   const emptyHint = chatPanelEmptyHint(activePersona);
 
   const handleNewConversation = async () => {
-    if (
-      messages.length > 0 &&
-      !window.confirm("Start a new conversation? Current chat will be saved to History.")
-    ) {
-      return;
+    if (messages.length > 0) {
+      const ok = await confirm({
+        title: "Start new conversation",
+        message: "Start a new conversation? Current chat will be saved to History.",
+        confirmLabel: "Start new"
+      });
+      if (!ok) return;
     }
     await startNewConversation();
     setView("chat");
@@ -223,6 +227,7 @@ function ConversationHistoryList({
   loadConversation: (id: string) => Promise<void>;
   deleteConversation: (id: string) => Promise<boolean>;
 }) {
+  const confirm = useConfirm();
   const [items, setItems] = useState<ConversationSummary[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -241,9 +246,15 @@ function ConversationHistoryList({
   }, [load]);
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("Delete this conversation? This cannot be undone.")) return;
-    const ok = await deleteConversation(id);
-    if (ok && items) {
+    const ok = await confirm({
+      title: "Delete conversation",
+      message: "Delete this conversation? This cannot be undone.",
+      confirmLabel: "Delete",
+      variant: "danger"
+    });
+    if (!ok) return;
+    const deleted = await deleteConversation(id);
+    if (deleted && items) {
       setItems(items.filter((it) => it.id !== id));
     }
   };

@@ -6,6 +6,7 @@ import type {
   ChatEstimateProposal,
   ChatEstimateWasteLine
 } from "./chat-helpers";
+import { useConfirm } from "../hooks/useConfirm";
 
 // §5A.1 PR D — estimate-item proposal cards. Mirrors ProposalCardList
 // (scope items) but renders the richer estimate-item shape: a header
@@ -50,6 +51,7 @@ export function EstimateProposalCardList({
   onAcceptAll: (messageId: string) => Promise<{ accepted: number; failed: number }>;
   onRejectAll: (messageId: string) => Promise<number>;
 }) {
+  const confirm = useConfirm();
   const pendingCount = proposals.filter((p) => p.status === "pending").length;
   return (
     <div className="persona-window__proposals">
@@ -78,9 +80,14 @@ export function EstimateProposalCardList({
             type="button"
             className="persona-window__proposal-btn persona-window__proposal-btn--ghost"
             onClick={() => {
-              if (window.confirm(`Reject all ${pendingCount} pending proposals?`)) {
-                void onRejectAll(messageId);
-              }
+              void confirm({
+                title: "Reject all pending proposals",
+                message: `Reject all ${pendingCount} pending proposals?`,
+                confirmLabel: "Reject all",
+                variant: "danger"
+              }).then((ok) => {
+                if (ok) void onRejectAll(messageId);
+              });
             }}
           >
             Reject all pending
@@ -106,6 +113,7 @@ function EstimateProposalCard({
   ) => Promise<AcceptResult>;
   onReject: (messageId: string, proposalIndex: number) => Promise<boolean>;
 }) {
+  const confirm = useConfirm();
   const colour = DISCIPLINE_COLOUR[proposal.code];
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Partial<ChatEstimateProposal>>({});
@@ -128,7 +136,13 @@ function EstimateProposalCard({
   };
 
   const handleReject = async () => {
-    if (!window.confirm("Reject this proposal?")) return;
+    const ok = await confirm({
+      title: "Reject proposal",
+      message: "Reject this proposal?",
+      confirmLabel: "Reject",
+      variant: "danger"
+    });
+    if (!ok) return;
     setSubmitting(true);
     await onReject(messageId, proposal.index);
     setSubmitting(false);

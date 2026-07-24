@@ -37,6 +37,7 @@ import { DashboardSwitcher } from "./DashboardSwitcher";
 import { DeleteDashboardModal } from "./DeleteDashboardModal";
 import { WidgetSettingsPopover } from "./WidgetSettingsPopover";
 import { useUserDashboardsActions } from "./userDashboards";
+import { useConfirm } from "../hooks/useConfirm";
 
 type Mode = "by-slug" | "by-id";
 
@@ -609,6 +610,7 @@ function SortableWidget({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({
     id: entry.id
   });
+  const confirm = useConfirm();
   const { colSpan, rowSpan } = resolveSpan(meta, entry);
   const minCol = meta.minColSpan ?? 1;
   const maxCol = meta.maxColSpan ?? 4;
@@ -619,13 +621,14 @@ function SortableWidget({
   const slotRef = useRef<HTMLDivElement | null>(null);
 
   const confirmAndRemove = () => {
-    if (
-      window.confirm(
-        "Remove this widget from the dashboard? You can add it back from Add widget."
-      )
-    ) {
-      onRemove();
-    }
+    void confirm({
+      title: "Remove widget",
+      message: "Remove this widget from the dashboard? You can add it back from Add widget.",
+      confirmLabel: "Remove",
+      variant: "danger"
+    }).then((ok) => {
+      if (ok) onRemove();
+    });
   };
 
   const style: React.CSSProperties = {

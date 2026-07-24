@@ -285,6 +285,148 @@ describe("ContractsService.createContract", () => {
   });
 });
 
+// ─── createFromTender ──────────────────────────────────────────────────────
+
+describe("ContractsService.createFromTender", () => {
+  const tenderBase = (overrides: Record<string, unknown> = {}) => ({
+    id: "tender-1",
+    tenderNumber: "T260612-ACME-Rev1",
+    estimatedValue: null,
+    estimate: null,
+    clientQuotes: [],
+    ...overrides
+  });
+
+  function seedTender(prisma: Record<string, unknown>, tender: Record<string, unknown>, project: unknown = { id: "project-1", contract: null }) {
+    (prisma.tender as { findUnique: jest.Mock }).findUnique = jest.fn().mockResolvedValue(tender);
+    (prisma.project as { findFirst: jest.Mock }).findFirst = jest.fn().mockResolvedValue(project);
+  }
+
+  it("throws NotFoundException when the tender does not exist", async () => {
+    const { service, prisma } = buildService({ tender: { findUnique: jest.fn().mockResolvedValue(null) } });
+    await expect(service.createFromTender("missing", "user-1")).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("throws NotFoundException when the tender has not been converted to a project", async () => {
+    const { service, prisma } = buildService({
+      tender: { findUnique: jest.fn().mockResolvedValue(tenderBase()) },
+      project: { findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn() }
+    });
+    await expect(service.createFromTender("tender-1", "user-1")).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("is idempotent when the project already has a contract", async () => {
+    const { service, prisma } = buildService({
+      tender: { findUnique: jest.fn().mockResolvedValue(tenderBase()) },
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", contract: { id: "contract-existing" } }),
+        findUnique: jest.fn()
+      }
+    });
+    (prisma.contract as { findUnique: jest.Mock }).findUnique.mockResolvedValueOnce(
+      contractRow({ id: "contract-existing" })
+    );
+    await service.createFromTender("tender-1", "user-1");
+    // createContract must NOT run — no numbering, no create call.
+    expect((prisma.contract as { create: jest.Mock }).create).not.toHaveBeenCalled();
+    expect((prisma.contractNumberSequence as { upsert: jest.Mock }).upsert).not.toHaveBeenCalled();
+  });
+
+  it("prefers the latest SENT client quote total as the contract value", async () => {
+    const tender = tenderBase({
+      estimatedValue: 500000,
+      estimate: { markup: 30, items: [] },
+      clientQuotes: [
+        { costLines: [{ price: 12345.67 }, { price: 100 }] }
+      ]
+    });
+    const { service, prisma, audit } = buildService({
+      tender: { findUnique: jest.fn().mockResolvedValue(tender) },
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", contract: null }),
+        findUnique: jest.fn().mockResolvedValue({ id: "project-1", contract: null })
+      }
+    });
+
+    await service.createFromTender("tender-1", "user-1");
+
+    const createArgs = (prisma.contract as { create: jest.Mock }).create.mock.calls[0]?.[0] as {
+      data: Record<string, unknown>;
+    };
+    expect(Number(createArgs.data.contractValue)).toBeCloseTo(12445.67, 2);
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "contracts.autocreate-from-tender",
+        metadata: expect.objectContaining({ priceSource: "quote" })
+      })
+    );
+  });
+
+  it("falls back to the estimate total with markup + provisional when no quote exists", async () => {
+    const tender = tenderBase({
+      estimatedValue: 999999,
+      estimate: {
+        markup: 20,
+        items: [
+          {
+            provisionalAmount: 500,
+            labourLines: [{ qty: 1, days: 2, rate: 100 }], // 200
+            plantLines: [],
+            equipLines: [],
+            wasteLines: [],
+            cuttingLines: []
+          }
+        ]
+      }
+    });
+    const { service, prisma, audit } = buildService({
+      tender: { findUnique: jest.fn().mockResolvedValue(tender) },
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", contract: null }),
+        findUnique: jest.fn().mockResolvedValue({ id: "project-1", contract: null })
+      }
+    });
+
+    await service.createFromTender("tender-1", "user-1");
+
+    const createArgs = (prisma.contract as { create: jest.Mock }).create.mock.calls[0]?.[0] as {
+      data: Record<string, unknown>;
+    };
+    // 200 * 1.20 + 500 = 740
+    expect(Number(createArgs.data.contractValue)).toBeCloseTo(740, 2);
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "contracts.autocreate-from-tender",
+        metadata: expect.objectContaining({ priceSource: "estimate" })
+      })
+    );
+  });
+
+  it("falls back to tender.estimatedValue when no quote/estimate lines are available", async () => {
+    const tender = tenderBase({ estimatedValue: 42000 });
+    const { service, prisma, audit } = buildService({
+      tender: { findUnique: jest.fn().mockResolvedValue(tender) },
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", contract: null }),
+        findUnique: jest.fn().mockResolvedValue({ id: "project-1", contract: null })
+      }
+    });
+
+    await service.createFromTender("tender-1", "user-1");
+
+    const createArgs = (prisma.contract as { create: jest.Mock }).create.mock.calls[0]?.[0] as {
+      data: Record<string, unknown>;
+    };
+    expect(Number(createArgs.data.contractValue)).toBe(42000);
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "contracts.autocreate-from-tender",
+        metadata: expect.objectContaining({ priceSource: "estimatedValue" })
+      })
+    );
+  });
+});
+
 // ─── updateContract ────────────────────────────────────────────────────────
 
 describe("ContractsService.updateContract", () => {

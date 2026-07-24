@@ -21,7 +21,9 @@ describe("TenderingService", () => {
       { sendNotificationEmail: jest.fn() } as never,
       { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never,
       tenderNumberServiceMock() as never,
-      { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never
+      { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never,
+      { convertFromTender: jest.fn().mockResolvedValue(undefined) } as never,
+      { createFromTender: jest.fn().mockResolvedValue(undefined) } as never
     );
 
     await expect(
@@ -52,7 +54,9 @@ describe("TenderingService", () => {
       { sendNotificationEmail: jest.fn() } as never,
       { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never,
       tenderNumberServiceMock() as never,
-      { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never
+      { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never,
+      { convertFromTender: jest.fn().mockResolvedValue(undefined) } as never,
+      { createFromTender: jest.fn().mockResolvedValue(undefined) } as never
     );
 
     return expect(
@@ -83,7 +87,9 @@ describe("TenderingService", () => {
       { sendNotificationEmail: jest.fn() } as never,
       { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never,
       tenderNumberServiceMock() as never,
-      { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never
+      { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never,
+      { convertFromTender: jest.fn().mockResolvedValue(undefined) } as never,
+      { createFromTender: jest.fn().mockResolvedValue(undefined) } as never
     );
 
     const result = await service.previewImport([
@@ -105,7 +111,9 @@ describe("TenderingService", () => {
       { sendNotificationEmail: jest.fn() } as never,
       { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never,
       tenderNumberServiceMock() as never,
-      { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never
+      { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never,
+      { convertFromTender: jest.fn().mockResolvedValue(undefined) } as never,
+      { createFromTender: jest.fn().mockResolvedValue(undefined) } as never
     );
 
     const addNoteSpy = jest.spyOn(service, "addNote").mockResolvedValue({ id: "tender-1" } as never);
@@ -129,6 +137,133 @@ describe("TenderingService", () => {
     );
   });
 
+  it("auto-creates the contract when a tender moves into CONTRACT_ISSUED", async () => {
+    const projects = { convertFromTender: jest.fn().mockResolvedValue(undefined) };
+    const contracts = { createFromTender: jest.fn().mockResolvedValue({ id: "contract-new" }) };
+    const audit = { write: jest.fn().mockResolvedValue(undefined) };
+    const service = new TenderingService(
+      {
+        tender: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "t-1",
+            status: "AWARDED",
+            submittedAt: new Date(),
+            ratesSnapshotAt: new Date(),
+            wonAt: null,
+            lostAt: null,
+            tenderScoreCounted: true
+          }),
+          update: jest.fn().mockResolvedValue({
+            id: "t-1",
+            tenderNumber: "T260612-ACME-Rev1",
+            title: "x",
+            estimatedValue: null,
+            tenderClients: []
+          })
+        },
+        project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) }
+      } as never,
+      audit as never,
+      { sendNotificationEmail: jest.fn() } as never,
+      { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never,
+      tenderNumberServiceMock() as never,
+      { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never,
+      projects as never,
+      contracts as never
+    );
+
+    await service.updateStatus("t-1", "CONTRACT_ISSUED", "user-1");
+
+    // Project already existed — convertFromTender is skipped, contract auto-create runs.
+    expect(projects.convertFromTender).not.toHaveBeenCalled();
+    expect(contracts.createFromTender).toHaveBeenCalledWith("t-1", "user-1");
+  });
+
+  it("converts first, then auto-creates the contract when the tender has no project yet", async () => {
+    const projects = { convertFromTender: jest.fn().mockResolvedValue({ id: "project-new" }) };
+    const contracts = { createFromTender: jest.fn().mockResolvedValue({ id: "contract-new" }) };
+    const service = new TenderingService(
+      {
+        tender: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "t-1",
+            status: "AWARDED",
+            submittedAt: new Date(),
+            ratesSnapshotAt: new Date(),
+            wonAt: null,
+            lostAt: null,
+            tenderScoreCounted: true
+          }),
+          update: jest.fn().mockResolvedValue({
+            id: "t-1",
+            tenderNumber: "T260612-ACME-Rev1",
+            title: "x",
+            estimatedValue: null,
+            tenderClients: []
+          })
+        },
+        project: { findFirst: jest.fn().mockResolvedValue(null) }
+      } as never,
+      { write: jest.fn().mockResolvedValue(undefined) } as never,
+      { sendNotificationEmail: jest.fn() } as never,
+      { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never,
+      tenderNumberServiceMock() as never,
+      { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never,
+      projects as never,
+      contracts as never
+    );
+
+    await service.updateStatus("t-1", "CONTRACT_ISSUED", "user-1");
+
+    expect(projects.convertFromTender).toHaveBeenCalledWith(
+      "t-1",
+      expect.objectContaining({ userId: "user-1" })
+    );
+    expect(contracts.createFromTender).toHaveBeenCalledWith("t-1", "user-1");
+  });
+
+  it("swallows contract auto-create failures and records a warning audit entry", async () => {
+    const contracts = { createFromTender: jest.fn().mockRejectedValue(new Error("boom")) };
+    const audit = { write: jest.fn().mockResolvedValue(undefined) };
+    const service = new TenderingService(
+      {
+        tender: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "t-1",
+            status: "AWARDED",
+            submittedAt: new Date(),
+            ratesSnapshotAt: new Date(),
+            wonAt: null,
+            lostAt: null,
+            tenderScoreCounted: true
+          }),
+          update: jest.fn().mockResolvedValue({
+            id: "t-1",
+            tenderNumber: "T260612-ACME-Rev1",
+            title: "x",
+            estimatedValue: null,
+            tenderClients: []
+          })
+        },
+        project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) }
+      } as never,
+      audit as never,
+      { sendNotificationEmail: jest.fn() } as never,
+      { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never,
+      tenderNumberServiceMock() as never,
+      { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never,
+      { convertFromTender: jest.fn().mockResolvedValue(undefined) } as never,
+      contracts as never
+    );
+
+    const result = await service.updateStatus("t-1", "CONTRACT_ISSUED", "user-1");
+
+    expect(result).toMatchObject({ contractAutoCreateWarning: "boom" });
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "tenders.contract-autocreate.failed" })
+    );
+  });
+
   it("requires due dates for follow-up style unified activities", async () => {
     const service = new TenderingService(
       {} as never,
@@ -136,7 +271,9 @@ describe("TenderingService", () => {
       { sendNotificationEmail: jest.fn() } as never,
       { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never,
       tenderNumberServiceMock() as never,
-      { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never
+      { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never,
+      { convertFromTender: jest.fn().mockResolvedValue(undefined) } as never,
+      { createFromTender: jest.fn().mockResolvedValue(undefined) } as never
     );
 
     await expect(

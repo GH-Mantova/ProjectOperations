@@ -123,6 +123,10 @@ Before showing Marco, run the kill-checklist:
 Present: the final draft, a compressed panel summary (verdicts + unresolved OBJECTs), the
 excluded-lens list, and the lint output. Then STOP and wait for his answer. On explicit
 approval, and only then:
+0. Run `scripts\pipeline\status-sweep.ps1` and OBEY its verdict - staging and materialising
+   ARE board mutations, and the sweep is only valid at the moment it prints. On DO-NOT-ACT
+   or CAUTION: wait, re-run, then proceed. (You do NOT need a sweep before the earlier
+   phases - they are read-only, and Phase 2 does its own live grounding.)
 1. Stage via a docs-only arming PR from a clean worktree off origin/main (`git add -f` -
    *-ready.md is gitignored). Never mix code or sot/.
 2. **MATERIALISE the file into `C:\ProjectOperations2\docs\pr-prompts\`** after the arming PR

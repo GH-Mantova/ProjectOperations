@@ -201,3 +201,64 @@ describe("UserDashboardsService.create — copy-from clones become custom dashbo
     expect(result.config).toEqual(copiedConfig);
   });
 });
+
+
+describe("UserDashboardsService.create - concurrent-create race (P2002)", () => {
+  const dto = {
+    name: "Operations",
+    slug: "operations",
+    config: { period: "30d" as const, widgets: [] }
+  };
+
+  it("returns the existing row instead of throwing when create hits the unique constraint", async () => {
+    const existing = dashboard({ id: "dash-existing" });
+    const p2002 = Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+    const { service, prisma, audit } = makeService({
+      create: jest.fn().mockRejectedValue(p2002),
+      findFirst: jest.fn().mockResolvedValue(existing)
+    });
+
+    const result = await service.create(OWNER, dto);
+
+    expect(result).toEqual(existing);
+    expect(prisma.userDashboard.findFirst).toHaveBeenCalledWith({
+      where: { userId: OWNER, slug: dto.slug, isSystem: false }
+    });
+    // The loser of the race created nothing, so no audit entry is written.
+    expect(audit.write).not.toHaveBeenCalled();
+  });
+
+  it("rethrows P2002 when no existing row can be found (constraint hit for another reason)", async () => {
+    const p2002 = Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+    const { service } = makeService({
+      create: jest.fn().mockRejectedValue(p2002),
+      findFirst: jest.fn().mockResolvedValue(null)
+    });
+
+    await expect(service.create(OWNER, dto)).rejects.toBe(p2002);
+  });
+
+  it("rethrows non-P2002 errors untouched", async () => {
+    const boom = Object.assign(new Error("db down"), { code: "P1001" });
+    const { service, audit } = makeService({
+      create: jest.fn().mockRejectedValue(boom)
+    });
+
+    await expect(service.create(OWNER, dto)).rejects.toBe(boom);
+    expect(audit.write).not.toHaveBeenCalled();
+  });
+
+  it("still writes the audit entry on a clean create", async () => {
+    const record = dashboard({ id: "dash-new" });
+    const { service, audit } = makeService({
+      create: jest.fn().mockResolvedValue(record)
+    });
+
+    const result = await service.create(OWNER, dto);
+
+    expect(result).toEqual(record);
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "userDashboards.create", entityId: "dash-new" })
+    );
+  });
+});

@@ -71,16 +71,31 @@ export class UserDashboardsService {
   }
 
   async create(userId: string, dto: CreateUserDashboardDto) {
-    const record = await this.prisma.userDashboard.create({
-      data: {
-        userId,
-        name: dto.name,
-        slug: dto.slug,
-        isSystem: false,
-        isDefault: false,
-        config: dto.config as unknown as Prisma.InputJsonValue
+    // Create-first, catch P2002: parallel callers (e2e workers, double-clicks)
+    // race the check-then-create at the client and the DB unique constraint
+    // @@unique([userId, slug, isSystem]) must be the arbiter. On duplicate,
+    // return the row the winning request created rather than surfacing a 500.
+    let record;
+    try {
+      record = await this.prisma.userDashboard.create({
+        data: {
+          userId,
+          name: dto.name,
+          slug: dto.slug,
+          isSystem: false,
+          isDefault: false,
+          config: dto.config as unknown as Prisma.InputJsonValue
+        }
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        const existing = await this.prisma.userDashboard.findFirst({
+          where: { userId, slug: dto.slug, isSystem: false }
+        });
+        if (existing) return existing;
       }
-    });
+      throw err;
+    }
     await this.audit.write({
       actorId: userId,
       action: "userDashboards.create",

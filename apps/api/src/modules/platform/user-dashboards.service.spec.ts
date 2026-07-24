@@ -1,4 +1,5 @@
 import { ForbiddenException, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { UserDashboardsService } from "./user-dashboards.service";
 
 const OWNER = "user-1";
@@ -199,5 +200,49 @@ describe("UserDashboardsService.create — copy-from clones become custom dashbo
     });
     expect(result.isSystem).toBe(false);
     expect(result.config).toEqual(copiedConfig);
+  });
+});
+
+describe("UserDashboardsService.create — P2002 concurrent-create race", () => {
+  function p2002(): Error {
+    return new Prisma.PrismaClientKnownRequestError(
+      "Unique constraint failed on the fields: (user_id, slug, is_system)",
+      { code: "P2002", clientVersion: "test", meta: { target: ["user_id", "slug", "is_system"] } }
+    );
+  }
+
+  it("returns the existing row when the unique constraint fires, without throwing", async () => {
+    const existing = dashboard({ id: "dash-existing", isSystem: false });
+    const create = jest.fn().mockRejectedValue(p2002());
+    const findFirst = jest.fn().mockResolvedValue(existing);
+    const { service, audit } = makeService({ create, findFirst });
+
+    const result = await service.create(OWNER, {
+      name: "custom",
+      slug: "custom",
+      config: { period: "30d", widgets: [] } as never
+    });
+
+    expect(result).toEqual(existing);
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { userId: OWNER, slug: "custom", isSystem: false }
+    });
+    // No audit row on the losing side of the race — the winner already wrote one.
+    expect(audit.write).not.toHaveBeenCalled();
+  });
+
+  it("re-throws non-P2002 Prisma errors untouched", async () => {
+    const other = new Prisma.PrismaClientKnownRequestError("boom", {
+      code: "P2000",
+      clientVersion: "test"
+    });
+    const create = jest.fn().mockRejectedValue(other);
+    const findFirst = jest.fn();
+    const { service } = makeService({ create, findFirst });
+
+    await expect(
+      service.create(OWNER, { name: "x", slug: "custom", config: { period: "30d", widgets: [] } as never })
+    ).rejects.toBe(other);
+    expect(findFirst).not.toHaveBeenCalled();
   });
 });

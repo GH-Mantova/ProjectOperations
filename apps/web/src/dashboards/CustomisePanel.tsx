@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { WIDGET_BY_TYPE } from "./widgetRegistry";
 import { PERIOD_LABELS, PERIOD_ORDER, type UserDashboard, type UserDashboardConfig, type WidgetConfigEntry, type WidgetPeriod } from "./types";
+import { useConfirm } from "../hooks/useConfirm";
 
 type Props = {
   open: boolean;
@@ -12,6 +13,7 @@ type Props = {
 };
 
 export function CustomisePanel({ open, onClose, dashboard, canRename, saving, onSave }: Props) {
+  const confirm = useConfirm();
   const [draft, setDraft] = useState<UserDashboardConfig>(dashboard.config);
   const [name, setName] = useState(dashboard.name);
 
@@ -47,9 +49,13 @@ export function CustomisePanel({ open, onClose, dashboard, canRename, saving, on
     });
   };
 
-  const resetToDefaults = () => {
-    if (!window.confirm("Reset widgets to the default layout for this dashboard?")) return;
-    // Use the widget list from registry for this dashboard's slug as the default
+  const resetToDefaults = async () => {
+    const ok = await confirm({
+      title: "Reset widgets",
+      message: "Reset widgets to the default layout for this dashboard?",
+      confirmLabel: "Reset"
+    });
+    if (!ok) return;
     const slugDefaults = defaultsForSlug(dashboard.slug);
     setDraft({
       period: "30d",
@@ -130,7 +136,7 @@ export function CustomisePanel({ open, onClose, dashboard, canRename, saving, on
         </div>
 
         <footer className="slide-over__footer">
-          <button type="button" className="s7-btn s7-btn--ghost" onClick={resetToDefaults}>Reset to defaults</button>
+          <button type="button" className="s7-btn s7-btn--ghost" onClick={() => void resetToDefaults()}>Reset to defaults</button>
           <button type="button" className="s7-btn s7-btn--primary" onClick={save} disabled={saving}>
             {saving ? "Saving…" : "Save"}
           </button>

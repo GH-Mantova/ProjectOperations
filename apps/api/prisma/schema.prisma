@@ -6394,3 +6394,84 @@ model MusterAttendee {
   @@index([musterEventId, status])
   @@map("muster_attendees")
 }
+
+// ─── Interactive SWMS — template catalog (SLICE A1) ─────────────────────────
+// Static, versioned catalog of SWMS templates. A template (e.g. Rev 5) has
+// ordered sections; each section groups controls; each control expands into
+// one or more control rows carrying hazard / risk / PPE detail.
+//
+// Natural keys drive seed idempotency: the A2 seed upserts on template.code,
+// section.number (within template), control.code (within section), and
+// row.code (within control) — never on the autoincrement id, so re-runs
+// converge and future Rev revisions can extend without id drift.
+//
+// A1 is schema-only. Triggers, SOP catalog, document instances, and any
+// UI/API live in later slices per docs/architecture/drafts/swms-build-slice-plan.md.
+
+model SwmsTemplate {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  title     String
+  revision  String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  sections SwmsTemplateSection[]
+
+  @@map("swms_templates")
+}
+
+model SwmsTemplateSection {
+  id         String   @id @default(cuid())
+  templateId String   @map("template_id")
+  number     Int
+  order      Int
+  title      String
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  template SwmsTemplate          @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  controls SwmsTemplateControl[]
+
+  @@unique([templateId, number])
+  @@index([templateId, order])
+  @@map("swms_template_sections")
+}
+
+model SwmsTemplateControl {
+  id           String   @id @default(cuid())
+  sectionId    String   @map("section_id")
+  code         String
+  order        Int
+  headingLabel String   @map("heading_label")
+  subLabel     String?  @map("sub_label")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  section SwmsTemplateSection      @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  rows    SwmsTemplateControlRow[]
+
+  @@unique([sectionId, code])
+  @@index([sectionId, order])
+  @@map("swms_template_controls")
+}
+
+model SwmsTemplateControlRow {
+  id         String   @id @default(cuid())
+  controlId  String   @map("control_id")
+  code       String
+  order      Int
+  hazard     String
+  riskBefore String   @map("risk_before")
+  controls   String
+  riskAfter  String   @map("risk_after")
+  ppe        String?
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  control SwmsTemplateControl @relation(fields: [controlId], references: [id], onDelete: Cascade)
+
+  @@unique([controlId, code])
+  @@index([controlId, order])
+  @@map("swms_template_control_rows")
+}

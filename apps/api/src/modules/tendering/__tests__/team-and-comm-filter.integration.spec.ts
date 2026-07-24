@@ -33,7 +33,9 @@ function makeTenderingService(prismaOverrides: Record<string, unknown> = {}) {
         revisionNumber: 1
       })
     } as never,
-    { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never
+    { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never,
+    { convertFromTender: jest.fn().mockResolvedValue(undefined) } as never,
+    { createFromTender: jest.fn().mockResolvedValue(undefined) } as never
   );
   return { service, prisma, audit };
 }

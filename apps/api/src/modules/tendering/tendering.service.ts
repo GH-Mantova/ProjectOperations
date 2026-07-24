@@ -1,10 +1,12 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, forwardRef } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
+import { ContractsService } from "../contracts/contracts.service";
 import { EmailService } from "../email/email.service";
 import { ClientStatsService } from "../master-data/client-stats.service";
 import { SharePointService } from "../platform/sharepoint.service";
+import { ProjectsService } from "../projects/projects.service";
 import { TenderNumberService } from "./tender-number.service";
 import { clientSlug, FALLBACK_SLUG } from "../../common/id-format/client-slug";
 import { QuickEditDto, TenderQueryDto, TenderSortField } from "./dto/tender-query.dto";
@@ -124,7 +126,13 @@ export class TenderingService {
     private readonly sharePoint: SharePointService,
     private readonly tenderNumberService: TenderNumberService,
     // OWN-1: single writer of record for Client win/loss counters.
-    private readonly clientStats: ClientStatsService
+    private readonly clientStats: ClientStatsService,
+    // Injected via forwardRef because TenderingModule imports ProjectsModule
+    // with forwardRef already; keeps the DI graph consistent even though
+    // ProjectsModule doesn't reach back into TenderingModule today.
+    @Inject(forwardRef(() => ProjectsService))
+    private readonly projects: ProjectsService,
+    private readonly contracts: ContractsService
   ) {}
 
   /**
@@ -953,6 +961,39 @@ export class TenderingService {
       await this.clientStats.recordTenderOutcome(id, { isWin: true, mode: "win-flip" });
     }
 
+    // Auto-create the Contract when the tender moves INTO CONTRACT_ISSUED.
+    // If the tender was never converted to a project, run the conversion
+    // first (extended guard on ProjectsService.convertFromTender accepts
+    // CONTRACT_ISSUED). Failures here must NOT roll back the status update
+    // — same fire-and-forget discipline as the SUBMITTED email below.
+    let contractAutoCreateWarning: string | undefined;
+    if (status === "CONTRACT_ISSUED" && existing.status !== "CONTRACT_ISSUED" && actorId) {
+      try {
+        const existingProject = await this.prisma.project.findFirst({
+          where: { sourceTenderId: id },
+          select: { id: true }
+        });
+        if (!existingProject) {
+          await this.projects.convertFromTender(id, {
+            userId: actorId,
+            permissions: new Set<string>()
+          });
+        }
+        await this.contracts.createFromTender(id, actorId);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`Contract autocreate failed for tender ${id}: ${message}`);
+        contractAutoCreateWarning = message;
+        await this.auditService.write({
+          actorId,
+          action: "tenders.contract-autocreate.failed",
+          entityType: "Tender",
+          entityId: id,
+          metadata: { error: message }
+        });
+      }
+    }
+
     // Fire-and-forget email for the SUBMITTED transition only. sendNotificationEmail
     // already swallows errors internally but the Promise is still detached here
     // so a slow SMTP never blocks the write path.
@@ -967,7 +1008,9 @@ export class TenderingService {
       });
     }
 
-    return tender;
+    return contractAutoCreateWarning
+      ? { ...tender, contractAutoCreateWarning }
+      : tender;
   }
 
   /**

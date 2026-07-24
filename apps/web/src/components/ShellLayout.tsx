@@ -13,6 +13,7 @@ import { NewDashboardModal } from "../dashboards/NewDashboardModal";
 import { useUserDashboards, useUserDashboardsActions } from "../dashboards/userDashboards";
 import { PersonaProvider } from "../personas/PersonaContext";
 import { PersonaWindow } from "../personas/PersonaWindow";
+import { useConfirm } from "../hooks/useConfirm";
 import {
   COMPLIANCE_BADGE_TOOLTIP,
   countComplianceAlerts,
@@ -430,6 +431,7 @@ export function ShellLayout() {
   const { user, logout, authFetch } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const confirm = useConfirm();
   const [collapsed, setCollapsed] = useState(false);
   const [sharedFollowUps, setSharedFollowUps] = useState<SharedFollowUpItem[]>([]);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -575,9 +577,16 @@ export function ShellLayout() {
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      if (!window.confirm(`Remove "${d.name}"?`)) return;
-                      void removeDashboard(d.id).then(() => {
-                        if (isActive) navigate("/");
+                      void confirm({
+                        title: "Remove dashboard",
+                        message: `Remove "${d.name}"?`,
+                        confirmLabel: "Remove",
+                        variant: "danger"
+                      }).then((ok) => {
+                        if (!ok) return;
+                        void removeDashboard(d.id).then(() => {
+                          if (isActive) navigate("/");
+                        });
                       });
                     }}
                   >

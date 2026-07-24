@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { useConfirm } from "../../hooks/useConfirm";
 import { NotesField, OverrideField, TooltipSelect, type TooltipSelectOption } from "../../components";
 import { computeDerivedDimensions, isDimensionOverride } from "./scopeItemDimensions";
 
@@ -175,6 +176,7 @@ export function ScopeQuantitiesTable({
   onItemsChanged
 }: Props) {
   const { authFetch } = useAuth();
+  const confirm = useConfirm();
   const [error, setError] = useState<string | null>(null);
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
   const [deleteWarning, setDeleteWarning] = useState<ScopeItem | null>(null);
@@ -309,11 +311,17 @@ export function ScopeQuantitiesTable({
     }
     await onItemsChanged();
   };
-  const deleteItem = (item: ScopeItem) => {
+  const deleteItem = async (item: ScopeItem) => {
     if (item.estimateItemId) {
       setDeleteWarning(item);
     } else {
-      if (!window.confirm(`Delete ${item.wbsCode}?`)) return;
+      const ok = await confirm({
+        title: "Delete scope item",
+        message: `Delete ${item.wbsCode}?`,
+        confirmLabel: "Delete",
+        variant: "danger"
+      });
+      if (!ok) return;
       void finalDelete(item);
     }
   };

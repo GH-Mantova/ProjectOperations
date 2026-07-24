@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { useAuth } from "../../auth/AuthContext";
+import { useConfirm } from "../../hooks/useConfirm";
 import { NotesField } from "../../components";
 import { SectionMarkupOverride, computeWithMarkup } from "./SectionMarkupOverride";
 
@@ -138,6 +139,7 @@ export function ScopeWasteTab({
   onSectionMarkupChange?: (next: number | null) => Promise<void> | void;
 }) {
   const { authFetch } = useAuth();
+  const confirm = useConfirm();
   const [rows, setRows] = useState<WasteRow[]>([]);
   const [rates, setRates] = useState<WasteRate[]>([]);
   // R3 T-1 - Transport Fees plant rates for the transport picker.
@@ -252,11 +254,14 @@ export function ScopeWasteTab({
     if (!canManage || !cardId) return;
     const autoCount = rows.filter((r) => r.autoSummed).length;
     if (autoCount > 0) {
-      const ok = window.confirm(
-        `This will regenerate ${autoCount} auto-summed waste row${
+      const ok = await confirm({
+        title: "Sum from above",
+        message: `This will regenerate ${autoCount} auto-summed waste row${
           autoCount === 1 ? "" : "s"
-        }. Manual rows will be preserved. Continue?`
-      );
+        }. Manual rows will be preserved. Continue?`,
+        confirmLabel: "Regenerate",
+        variant: "danger"
+      });
       if (!ok) return;
     }
     const response = await authFetch(
@@ -297,9 +302,12 @@ export function ScopeWasteTab({
 
   const escalateVariance = async (id: string) => {
     if (!canManage) return;
-    const ok = window.confirm(
-      "Escalate this waste line for confirmation? The system does not auto-reprice - the responsible role will confirm."
-    );
+    const ok = await confirm({
+      title: "Escalate variance",
+      message:
+        "Escalate this waste line for confirmation? The system does not auto-reprice - the responsible role will confirm.",
+      confirmLabel: "Escalate"
+    });
     if (!ok) return;
     const response = await authFetch(
       `/tenders/${tenderId}/scope/waste/${id}/escalate-variance`,
@@ -318,7 +326,13 @@ export function ScopeWasteTab({
   };
 
   const deleteRow = async (id: string) => {
-    if (!window.confirm("Delete this waste row?")) return;
+    const ok = await confirm({
+      title: "Delete waste row",
+      message: "Delete this waste row?",
+      confirmLabel: "Delete",
+      variant: "danger"
+    });
+    if (!ok) return;
     const response = await authFetch(`/tenders/${tenderId}/scope/waste/${id}`, { method: "DELETE" });
     if (!response.ok) {
       setError(await readApiErrorMessage(response));

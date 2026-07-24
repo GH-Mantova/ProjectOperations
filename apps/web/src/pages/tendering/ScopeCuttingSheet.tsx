@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { useAuth } from "../../auth/AuthContext";
+import { useAlert, useConfirm } from "../../hooks/useConfirm";
 import { NotesField } from "../../components";
 import { SectionMarkupOverride, computeWithMarkup } from "./SectionMarkupOverride";
 
@@ -107,6 +108,8 @@ export function ScopeCuttingSheet({
   onSectionMarkupChange?: (next: number | null) => Promise<void> | void;
 }) {
   const { authFetch } = useAuth();
+  const confirm = useConfirm();
+  const alert = useAlert();
   const [items, setItems] = useState<CuttingItem[]>([]);
   const [otherRates, setOtherRates] = useState<OtherRate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -217,9 +220,13 @@ export function ScopeCuttingSheet({
   // server-side warnings (eg depth > 2000mm) to the user.
   const copyFromAbove = async () => {
     if (!canManage || !cardId) return;
-    const ok = window.confirm(
-      "Replace auto-copied saw-cut rows with current scope items? Manually-added rows will be preserved."
-    );
+    const ok = await confirm({
+      title: "Copy from above",
+      message:
+        "Replace auto-copied saw-cut rows with current scope items? Manually-added rows will be preserved.",
+      confirmLabel: "Replace",
+      variant: "danger"
+    });
     if (!ok) return;
     const response = await authFetch(
       `/tenders/${tenderId}/scope/cards/${cardId}/cutting/copy-from-above`,
@@ -238,7 +245,7 @@ export function ScopeCuttingSheet({
       parts.push(`Warnings:\n- ${result.warnings.join("\n- ")}`);
     }
     // Lightweight notification — full toast system isn't in scope here.
-    window.alert(parts.join("\n\n"));
+    await alert({ title: "Copy from above", message: parts.join("\n\n") });
     await load();
   };
 
@@ -255,7 +262,13 @@ export function ScopeCuttingSheet({
   };
 
   const remove = async (id: string) => {
-    if (!window.confirm("Delete this cutting item?")) return;
+    const ok = await confirm({
+      title: "Delete cutting item",
+      message: "Delete this cutting item?",
+      confirmLabel: "Delete",
+      variant: "danger"
+    });
+    if (!ok) return;
     const response = await authFetch(`/tenders/${tenderId}/scope/cutting-items/${id}`, { method: "DELETE" });
     if (!response.ok) {
       setError(await readApiErrorMessage(response));

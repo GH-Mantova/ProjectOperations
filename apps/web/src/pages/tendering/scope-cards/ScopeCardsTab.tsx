@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../../auth/AuthContext";
+import { useConfirm } from "../../../hooks/useConfirm";
 import { OverrideField } from "../../../components";
 import { ScopeCardTabsRow } from "./ScopeCardTabsRow";
 import { ScopeCardEmptyState } from "./ScopeCardEmptyState";
@@ -36,6 +37,7 @@ export function ScopeCardsTab({
   tenderTitle: string;
 }) {
   const { authFetch } = useAuth();
+  const confirm = useConfirm();
   const {
     cards,
     loading: cardsLoading,
@@ -240,9 +242,12 @@ export function ScopeCardsTab({
             const cuttingCount = cards.filter((c) => c.cuttingMarkupOverride != null).length;
             const total = scopeCount + wasteCount + cuttingCount;
             if (total > 0) {
-              const ok = window.confirm(
-                `Reset every markup override back to the tender default? This affects ${scopeCount} scope card(s), ${wasteCount} waste section(s), and ${cuttingCount} cutting section(s).`
-              );
+              const ok = await confirm({
+                title: "Reset markup overrides",
+                message: `Reset every markup override back to the tender default? This affects ${scopeCount} scope card(s), ${wasteCount} waste section(s), and ${cuttingCount} cutting section(s).`,
+                confirmLabel: "Reset",
+                variant: "danger"
+              });
               if (!ok) return;
             }
             try {

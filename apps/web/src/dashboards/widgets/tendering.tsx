@@ -13,7 +13,7 @@ import {
   XAxis,
   YAxis
 } from "recharts";
-import { Skeleton, TOOLTIP_CONTENT_STYLE, TOOLTIP_ITEM_STYLE, TOOLTIP_LABEL_STYLE } from "@project-ops/ui";
+import { CenteredModal, Skeleton, TOOLTIP_CONTENT_STYLE, TOOLTIP_ITEM_STYLE, TOOLTIP_LABEL_STYLE } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { isComplianceTender, useTenders, type TenderForDashboard } from "../hooks";
 import { LIST_ROW_HEIGHT_PX, GRID_ROW_HEIGHT_PX, periodStart, resolvePeriod, type AggregationOp, type WidgetProps } from "../types";
@@ -321,6 +321,7 @@ export function FollowUpQueuePanel(props: WidgetProps) {
   const { authFetch } = useAuth();
   const { tenders, isLoading } = useCleanTenders();
   const [pendingCallId, setPendingCallId] = useState<string | null>(null);
+  const [logCallDraft, setLogCallDraft] = useState<{ tenderId: string; note: string } | null>(null);
   const daysThreshold = filterNumber(props.config.filters?.daysThreshold, 7);
   const configuredMax = filterNumber(props.config.filters?.maxRows, 5);
   const availableRows = availableRowsFor(props.rowSpan);
@@ -356,14 +357,21 @@ export function FollowUpQueuePanel(props: WidgetProps) {
     .slice(0, maxRows);
   const totalValue = queue.reduce((sum, item) => sum + Number(item.tender.estimatedValue ?? 0), 0);
 
-  const logCall = async (tenderId: string) => {
-    const note = window.prompt("Log a call / follow-up note:");
-    if (!note || !note.trim()) return;
+  const openLogCall = (tenderId: string) => {
+    setLogCallDraft({ tenderId, note: "" });
+  };
+
+  const submitLogCall = async () => {
+    if (!logCallDraft) return;
+    const note = logCallDraft.note.trim();
+    if (!note) return;
+    const tenderId = logCallDraft.tenderId;
+    setLogCallDraft(null);
     setPendingCallId(tenderId);
     try {
       const response = await authFetch(`/tenders/${tenderId}/notes`, {
         method: "POST",
-        body: JSON.stringify({ body: `[Call logged] ${note.trim()}` })
+        body: JSON.stringify({ body: `[Call logged] ${note}` })
       });
       if (!response.ok) throw new Error("Could not log call.");
     } finally {
@@ -444,7 +452,7 @@ export function FollowUpQueuePanel(props: WidgetProps) {
                   <button
                     type="button"
                     className="s7-btn s7-btn--secondary s7-btn--sm"
-                    onClick={() => void logCall(tender.id)}
+                    onClick={() => openLogCall(tender.id)}
                     disabled={pendingCallId === tender.id}
                   >
                     Log call
@@ -455,6 +463,43 @@ export function FollowUpQueuePanel(props: WidgetProps) {
           })}
         </ul>
       )}
+      {logCallDraft ? (
+        <CenteredModal
+          title="Log a call / follow-up note"
+          onClose={() => setLogCallDraft(null)}
+          maxWidth={420}
+          footer={
+            <>
+              <button
+                type="button"
+                className="s7-btn s7-btn--ghost"
+                onClick={() => setLogCallDraft(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="s7-btn s7-btn--primary"
+                onClick={() => void submitLogCall()}
+                disabled={!logCallDraft.note.trim()}
+              >
+                Log
+              </button>
+            </>
+          }
+        >
+          <label className="estimate-editor__field">
+            <span>Note</span>
+            <textarea
+              className="s7-input"
+              rows={3}
+              value={logCallDraft.note}
+              onChange={(e) => setLogCallDraft({ ...logCallDraft, note: e.target.value })}
+              autoFocus
+            />
+          </label>
+        </CenteredModal>
+      ) : null}
     </PanelCard>
   );
 }

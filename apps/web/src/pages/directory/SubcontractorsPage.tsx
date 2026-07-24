@@ -3,6 +3,7 @@ import { readApiErrorMessage } from "../../lib/api-errors";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
+import { useConfirm } from "../../hooks/useConfirm";
 import { ContactsTab } from "../../components/contacts/ContactsTab";
 import { DuplicateWarning } from "../../components/directory/DuplicateWarning";
 
@@ -390,11 +391,13 @@ function SubcontractorDetail({
   onChanged: () => void;
 }) {
   const { authFetch } = useAuth();
+  const confirm = useConfirm();
   const [detail, setDetail] = useState<SubcontractorDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<"overview" | "contacts" | "documents" | "credit">("overview");
   const [docModalOpen, setDocModalOpen] = useState(false);
+  const [prequalDraft, setPrequalDraft] = useState<{ status: string; notes: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -425,17 +428,24 @@ function SubcontractorDetail({
       if (!detail.licences.some((l) => l.status === "active")) missing.push("an active licence");
       if (!detail.insurances.some((i) => i.status === "active")) missing.push("an active insurance");
       if (missing.length > 0) {
-        const proceed = window.confirm(
-          `Incomplete compliance records — missing: ${missing.join(", ")}.\n\nApprove anyway?`
-        );
+        const proceed = await confirm({
+          title: "Incomplete compliance records",
+          message: `Incomplete compliance records — missing: ${missing.join(", ")}.\n\nApprove anyway?`,
+          confirmLabel: "Approve anyway"
+        });
         if (!proceed) return;
       }
     }
-    const notes = window.prompt("Prequalification notes (optional):", detail?.prequalNotes ?? "");
-    if (notes === null) return;
+    setPrequalDraft({ status, notes: detail?.prequalNotes ?? "" });
+  };
+
+  const submitPrequal = async () => {
+    if (!prequalDraft) return;
+    const { status, notes } = prequalDraft;
+    setPrequalDraft(null);
     const response = await authFetch(`/directory/${id}/prequal`, {
       method: "PATCH",
-      body: JSON.stringify({ prequalStatus: status, prequalNotes: notes || null })
+      body: JSON.stringify({ prequalStatus: status, prequalNotes: notes.trim() || null })
     });
     if (!response.ok) {
       setError(await readApiErrorMessage(response));
@@ -459,7 +469,13 @@ function SubcontractorDetail({
   };
 
   const deleteDocument = async (docId: string) => {
-    if (!window.confirm("Delete this document record?")) return;
+    const ok = await confirm({
+      title: "Delete document record",
+      message: "Delete this document record?",
+      confirmLabel: "Delete",
+      variant: "danger"
+    });
+    if (!ok) return;
     const response = await authFetch(`/directory/${id}/documents/${docId}`, { method: "DELETE" });
     if (!response.ok) {
       setError(await readApiErrorMessage(response));
@@ -469,7 +485,13 @@ function SubcontractorDetail({
   };
 
   const softDelete = async () => {
-    if (!window.confirm("Mark this entry inactive?")) return;
+    const ok = await confirm({
+      title: "Mark inactive",
+      message: "Mark this entry inactive?",
+      confirmLabel: "Mark inactive",
+      variant: "danger"
+    });
+    if (!ok) return;
     const response = await authFetch(`/directory/${id}`, { method: "DELETE" });
     if (!response.ok) {
       setError(await readApiErrorMessage(response));
@@ -711,6 +733,33 @@ function SubcontractorDetail({
             if (ok) setDocModalOpen(false);
           }}
         />
+      ) : null}
+
+      {prequalDraft ? (
+        <CenteredModal
+          title={`Set prequalification: ${prequalDraft.status}`}
+          onClose={() => setPrequalDraft(null)}
+          maxWidth={420}
+          footer={
+            <>
+              <button type="button" className="s7-btn s7-btn--ghost" onClick={() => setPrequalDraft(null)}>Cancel</button>
+              <button type="button" className="s7-btn s7-btn--primary" onClick={() => void submitPrequal()}>
+                Save
+              </button>
+            </>
+          }
+        >
+          <label className="estimate-editor__field">
+            <span>Prequalification notes (optional):</span>
+            <textarea
+              className="s7-input"
+              rows={3}
+              value={prequalDraft.notes}
+              onChange={(e) => setPrequalDraft({ ...prequalDraft, notes: e.target.value })}
+              autoFocus
+            />
+          </label>
+        </CenteredModal>
       ) : null}
     </div>
   );

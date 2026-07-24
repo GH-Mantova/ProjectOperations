@@ -3,6 +3,7 @@ import { readApiErrorMessage } from "../../lib/api-errors";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { DraftBanner, SaveDraftButton, useFormDraft } from "../../drafts";
+import { useConfirm } from "../../hooks/useConfirm";
 import { DuplicateContactWarning } from "../directory/DuplicateWarning";
 
 export type ContactRecord = {
@@ -80,6 +81,7 @@ export function ContactsTab({
   onChanged
 }: ContactsTabProps) {
   const { authFetch } = useAuth();
+  const confirm = useConfirm();
   const [items, setItems] = useState<ContactRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -121,7 +123,12 @@ export function ContactsTab({
       setError("Contact must have an email address before inviting.");
       return;
     }
-    if (!window.confirm(`Send a portal invitation to ${row.firstName} ${row.lastName} at ${row.email}?`)) return;
+    const ok = await confirm({
+      title: "Send portal invitation",
+      message: `Send a portal invitation to ${row.firstName} ${row.lastName} at ${row.email}?`,
+      confirmLabel: "Send invitation"
+    });
+    if (!ok) return;
     try {
       const response = await authFetch(`/portal/invites`, {
         method: "POST",
@@ -146,7 +153,13 @@ export function ContactsTab({
   };
 
   const remove = async (row: ContactRecord) => {
-    if (!window.confirm(`Delete ${row.firstName} ${row.lastName}? This cannot be undone.`)) return;
+    const ok = await confirm({
+      title: "Delete contact",
+      message: `Delete ${row.firstName} ${row.lastName}? This cannot be undone.`,
+      confirmLabel: "Delete",
+      variant: "danger"
+    });
+    if (!ok) return;
     const response = await authFetch(`/contacts/${row.id}`, { method: "DELETE" });
     if (!response.ok) {
       setError(await readApiErrorMessage(response));
@@ -402,6 +415,7 @@ export function ContactFormModal({
   onSaved: (msg: string) => void;
 }) {
   const { authFetch, user } = useAuth();
+  const confirm = useConfirm();
   const [form, setForm] = useState<FormState>(existing ? fromRecord(existing) : EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -473,9 +487,11 @@ export function ContactFormModal({
     }
     if (orgChanged) {
       const target = moveOrgOptions.find((o) => o.id === moveOrgId)?.name ?? moveOrgId;
-      const proceed = window.confirm(
-        `Move ${form.firstName} ${form.lastName} to ${target}? This will remove the contact from the current organisation.`
-      );
+      const proceed = await confirm({
+        title: "Move contact",
+        message: `Move ${form.firstName} ${form.lastName} to ${target}? This will remove the contact from the current organisation.`,
+        confirmLabel: "Move contact"
+      });
       if (!proceed) return;
     }
     setSubmitting(true);

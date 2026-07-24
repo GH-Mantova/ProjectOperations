@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useConfirm } from "../hooks/useConfirm";
 import {
   deleteDeadLetter,
   listDeadLetter,
@@ -13,6 +14,7 @@ import { useOffline } from "./OfflineContext";
 // count is zero so the banner stays out of the way on a healthy device.
 export function DeadLetterBanner() {
   const { deadLetterCount, refreshDeadLetterCount, flush } = useOffline();
+  const confirm = useConfirm();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<DeadLetterMutation[]>([]);
   const [busy, setBusy] = useState(false);
@@ -41,7 +43,13 @@ export function DeadLetterBanner() {
   };
 
   const discardOne = async (id: string) => {
-    if (!window.confirm("Discard this failed item? It will be lost permanently.")) return;
+    const ok = await confirm({
+      title: "Discard failed item",
+      message: "Discard this failed item? It will be lost permanently.",
+      confirmLabel: "Discard",
+      variant: "danger"
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       await deleteDeadLetter(id);
@@ -66,7 +74,13 @@ export function DeadLetterBanner() {
   };
 
   const discardAll = async () => {
-    if (!window.confirm(`Discard all ${deadLetterCount} failed items? They will be lost permanently.`)) return;
+    const ok = await confirm({
+      title: "Discard all failed items",
+      message: `Discard all ${deadLetterCount} failed items? They will be lost permanently.`,
+      confirmLabel: "Discard all",
+      variant: "danger"
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       const all = await listDeadLetter();

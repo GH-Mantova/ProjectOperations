@@ -209,6 +209,9 @@ model User {
   musterEventsStarted  MusterEvent[]    @relation("MusterEventStartedBy")
   musterAttendeesChecked MusterAttendee[] @relation("MusterAttendeeCheckedBy")
 
+  // Tendering display-label overrides last touched by this user.
+  tenderingLabelsUpdated TenderingLabel[] @relation("TenderingLabelUpdatedBy")
+
   @@index([isActive])
   @@index([managerId])
   @@map("users")
@@ -1266,6 +1269,22 @@ model TenderFollowUp {
 
   @@index([tenderId, status])
   @@map("tender_follow_ups")
+}
+
+// Org-wide display-label overrides for the Tendering surface. Rows exist only
+// for keys that have been RENAMED away from their in-code default; deleting a
+// row restores the default. `key` is a stable machine identifier (e.g.
+// "field.tenderNumber") owned by apps/web/src/tendering-labels.ts — never a
+// database column, enum value, route, or permission code.
+model TenderingLabel {
+  key         String   @id
+  label       String
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  updatedById String?  @map("updated_by_id")
+  updatedBy   User?    @relation("TenderingLabelUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("tendering_labels")
 }
 
 // PR #18 â€" unified communications panel. One table replaces the three

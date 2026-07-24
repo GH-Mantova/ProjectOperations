@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { CenteredModal, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
+import { useConfirm } from "../../hooks/useConfirm";
 import { QualificationsSection } from "./QualificationsSection";
 import { AvailabilitySection } from "./AvailabilitySection";
 
@@ -43,6 +44,7 @@ export function WorkerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { authFetch, user } = useAuth();
   const navigate = useNavigate();
+  const confirm = useConfirm();
   const [worker, setWorker] = useState<WorkerDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -72,9 +74,13 @@ export function WorkerDetailPage() {
 
   async function handleDeactivate() {
     if (!worker) return;
-    if (!window.confirm(`Deactivate ${worker.firstName} ${worker.lastName}? Existing allocations stay intact.`)) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Deactivate worker",
+      message: `Deactivate ${worker.firstName} ${worker.lastName}? Existing allocations stay intact.`,
+      confirmLabel: "Deactivate",
+      variant: "danger"
+    });
+    if (!ok) return;
     setDeactivating(true);
     try {
       const response = await authFetch(`/workers/${worker.id}`, { method: "DELETE" });

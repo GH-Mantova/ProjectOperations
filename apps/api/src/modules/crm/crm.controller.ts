@@ -135,6 +135,12 @@ class ConvertOpportunityDto {
   @IsOptional() @IsString() proposedStartDate?: string | null;
 }
 
+class GenerateDraftTenderDto {
+  @IsString() siteId!: string;
+  @IsOptional() @IsString() title?: string;
+  @IsOptional() @IsString() clientId?: string;
+}
+
 class ForecastQueryDto {
   @IsOptional() @IsString() ownerId?: string;
 }
@@ -206,6 +212,27 @@ export class CrmController {
   @ApiResponse({ status: 409, description: "Lead already converted." })
   convertLead(@Param("id") id: string, @Body() dto: ConvertLeadDto) {
     return this.service.convertLeadToOpportunity(id, dto as never);
+  }
+
+  @Post("leads/:id/generate-draft-tender")
+  @RequirePermissions("crm.manage")
+  @ApiOperation({
+    summary:
+      "One-click: lead → opportunity → DRAFT Tender in a single call. siteId required."
+  })
+  @ApiParam({ name: "id", description: "Lead id" })
+  @ApiResponse({
+    status: 201,
+    description: "Draft tender created; lead+opportunity linked to it."
+  })
+  @ApiResponse({ status: 400, description: "siteId missing, or lead has no client." })
+  @ApiResponse({ status: 409, description: "Lead already has a draft tender." })
+  generateDraftTender(
+    @Param("id") id: string,
+    @Body() dto: GenerateDraftTenderDto,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.generateDraftTender(id, dto as never, actor.sub);
   }
 
   // ── Opportunities ────────────────────────────────────────────────────────

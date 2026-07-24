@@ -582,3 +582,24 @@ watcher.
 `scripts/pr-watcher/*` internals — the watcher owns its own lifecycle. Scripts listed under
 **Archaeology** are named for one historical incident; do not call them. The playbook you want is
 in `sot/05-decisions-and-lessons.md`.
+
+
+---
+
+## FIX LANE (Marco, 2026-07-24) - fixes outrank everything else on the board
+
+A prompt carrying `fixes_pr: <N>` front-matter is a FIX prompt: the watcher inserts it at the
+FRONT of the queue and the lint kills it automatically once PR N settles (FIX_TARGET_SETTLED).
+Your obligations as supervisor:
+
+1. **Drive fix PRs to merge FIRST.** When a fix agent opens its PR, verify + arm native
+   auto-merge on it before any ordinary PR - one red main check can block the entire serial board.
+2. **A docs-only PR failing a CODE check is instant proof of a MAIN regression** (a docs diff
+   cannot break code). Do not chase the docs PR - author/dispatch a fixes_pr prompt for main,
+   then rerun the docs PR's checks after the fix merges.
+3. Prompts whose `requires_merged` includes a PR under fix stay HELD, not binned - the #760
+   gating handles it; never manually bin a held dependent.
+4. **After a watcher-code PR merges (scripts/pr-watcher/**), the running watcher is still the
+   OLD code** - schedule/perform an idle-window restart (kill wrapper first, then node, relaunch
+   DETACHED via C:\po-watcher\watcher-launcher.ps1) so the new rules take effect. Never restart
+   mid-run.

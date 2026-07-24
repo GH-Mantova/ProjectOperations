@@ -7307,6 +7307,18 @@
           "filterable": false,
           "aggregations": []
         },
+        "defaultWasteGroup": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "defaultWasteItem": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
         "isActive": {
           "role": "filter",
           "label": null,

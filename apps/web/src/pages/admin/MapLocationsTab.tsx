@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { AddressAutocomplete, type AddressSuggestion } from "../../components/AddressAutocomplete";
+import { LocationsMap } from "../../components/LocationsMap";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -144,6 +145,8 @@ export function MapLocationsTab() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [flashMsg, setFlashMsg] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());
 
   // Form state — tip from rates
   const [selectedFacility, setSelectedFacility] = useState("");
@@ -208,6 +211,14 @@ export function MapLocationsTab() {
   const flash = (msg: string) => {
     setFlashMsg(msg);
     setTimeout(() => setFlashMsg((m) => (m === msg ? null : m)), 2000);
+  };
+
+  const handlePinSelect = (id: string) => {
+    setSelectedId(id);
+    const row = rowRefs.current.get(id);
+    if (row) {
+      row.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
   };
 
   const handleDelete = async (loc: MapLocation) => {
@@ -358,6 +369,13 @@ export function MapLocationsTab() {
         Tip sites and points of interest for operations. Tip locations are linked to waste rate
         entries by facility name. Points of interest are categorised by the POI categories list.
       </p>
+
+      {/* Map panel */}
+      <LocationsMap
+        locations={locations}
+        selectedId={selectedId}
+        onSelect={handlePinSelect}
+      />
 
       {/* Filter chips */}
       <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
@@ -616,7 +634,22 @@ export function MapLocationsTab() {
           </thead>
           <tbody>
             {locations.map((loc) => (
-              <tr key={loc.id} style={{ borderBottom: "1px solid var(--border, #f0f0f0)" }}>
+              <tr
+                key={loc.id}
+                ref={(el) => {
+                  if (el) rowRefs.current.set(loc.id, el);
+                  else rowRefs.current.delete(loc.id);
+                }}
+                onClick={() => setSelectedId(loc.id)}
+                style={{
+                  borderBottom: "1px solid var(--border, #f0f0f0)",
+                  cursor: "pointer",
+                  background:
+                    selectedId === loc.id
+                      ? "rgba(0,91,97,0.06)"
+                      : "transparent"
+                }}
+              >
                 <td style={{ padding: "8px 6px", fontWeight: 500 }}>{loc.name}</td>
                 <td style={{ padding: "8px 6px" }}>
                   <span

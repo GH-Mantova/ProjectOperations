@@ -78,6 +78,27 @@ console.log("\n=== exit 1 REJECT: missing required field");
 run("missing-field",
   "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\ngate_allow: none", 1);
 
+console.log("\n=== exit 1 REJECT: migration scope with no rollback_strategy (LL-29)");
+run("migration-no-rollback",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/api/prisma/migrations/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: migrations", 1);
+
+console.log("\n=== exit 1 REJECT: migration scope with empty rollback_strategy");
+run("migration-empty-rollback",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/api/prisma/migrations/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: migrations\nrollback_strategy: ''", 1);
+
+console.log("\n=== exit 0 ADMIT: migration scope WITH rollback_strategy");
+run("migration-with-rollback",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/api/prisma/migrations/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: migrations\n" +
+  "rollback_strategy: 'additive; safe to leave, re-run drops nothing'", 0);
+
+console.log("\n=== exit 0 ADMIT: non-migration prompt without rollback_strategy (still optional)");
+run("non-migration-no-rollback",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none", 0);
+
 rmSync(dir, { recursive: true, force: true });
 console.log("\n=== " + pass + " passed, " + fail + " failed");
 process.exit(fail > 0 ? 1 : 0);

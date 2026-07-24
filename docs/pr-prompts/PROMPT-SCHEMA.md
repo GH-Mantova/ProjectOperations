@@ -77,6 +77,7 @@ size: 6
 gate_allow: none          # none | migrations | env-vars | dependencies
 seed_only: false
 escalates: false          # true if this touches prod data / auth / Azure
+rollback_strategy: ''     # OPTIONAL in general; REQUIRED when scope touches prisma/migrations
 ---
 ```
 
@@ -115,6 +116,25 @@ If the PR will add a migration / env var / dependency, name it here. The pipelin
 marker into the PR body **bare, at column 0** — because `## GATE-ALLOW: migrations` does **not** match
 CP-11's regex, and `GATE-ALLOW: migrations.` (trailing period) doesn't either. **10 PRs failed on
 exactly this.** Stop hand-writing it.
+
+### `rollback_strategy` — required when scope touches `prisma/migrations`
+
+One or two lines saying how to revert or fix-forward if the run dies **mid-flight** — after the
+migration is applied but before the code that depends on it lands. OPTIONAL for every other prompt;
+the linter REJECTs a migration-scoped prompt with a missing or empty `rollback_strategy` as a
+`MISSING_FIELD`-class failure.
+
+Examples of what belongs in the field:
+
+- `migration is additive (adds a nullable column); safe to leave on main, re-run drops nothing`
+- `revert migration 20260722_add_x, then re-apply after code lands`
+- `no rollback — column has a NOT NULL default backfilled in the same migration; forward-only`
+
+Why (LL-29, 2026-07-23): a turn-capped agent left a migration applied on `main` with all of the
+consuming code still uncommitted. The recovery cycle had no prompt-authored note on whether to drop
+the migration or press on and land the code, and burned an entire session guessing. A one-line note
+authored at prompt-write time — when whoever proposed the work still remembers *why* — closes that
+gap for the cost of one field.
 
 ### `escalates`
 
@@ -234,5 +254,5 @@ back-compat) but cannot pass the intake lint — do not use it in new prompts.
 | `PREMISE ALREADY SATISFIED` | The work is done. Binned. This is the lint **working** — 34 runs saved. |
 | `PREMISE INVALID` | The command errored. Your assumption about the repo is wrong. Fix it. |
 | `SIZE TOO LARGE` | Split it. Non-negotiable. |
-| `MISSING FIELD` | Front-matter incomplete. |
+| `MISSING FIELD` | Front-matter incomplete. Also fires when `scope` touches `prisma/migrations` and `rollback_strategy` is missing/empty. |
 | `GATE_ALLOW MISMATCH` | You declared a migration but `scope` has no `migrations/` path (or vice-versa). |

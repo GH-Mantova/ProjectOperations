@@ -162,6 +162,23 @@ function lint(file, opts) {
     return fail("GATE_ALLOW_MISMATCH", "gate_allow declares `migrations` but scope has no migrations/ path.");
   }
 
+  // LL-29 (2026-07-23): a turn-capped agent left a migration applied on main with all the consuming
+  // code uncommitted, and nothing told the recovery path whether to drop the migration or press on.
+  // For migration-scoped prompts, demand a one-line rollback_strategy authored at prompt-write time
+  // when the "why" is still fresh. OPTIONAL for every other prompt; a missing field on a
+  // non-migration prompt must NOT reject.
+  if (scopeHasMigration) {
+    const rb = fm.rollback_strategy;
+    const empty = rb == null || (typeof rb === "string" && rb.trim() === "") || (Array.isArray(rb) && rb.length === 0);
+    if (empty) {
+      return fail("MISSING_FIELD",
+        "scope touches prisma/migrations but `rollback_strategy` is missing/empty.\n" +
+        "        One or two lines on how to revert or fix-forward if the run dies mid-flight\n" +
+        "        (e.g. \"additive; safe to leave, re-run drops nothing\" or \"revert migration X, then re-apply\").\n" +
+        "        See docs/pr-prompts/PROMPT-SCHEMA.md#rollback_strategy.");
+    }
+  }
+
   // THE CHECK THAT PAYS FOR THIS WHOLE FILE.
   const res = runPremise(String(fm.premise), repoRoot);
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { useConfirm } from "../../hooks/useConfirm";
 import {
   copyTextToClipboard,
   performAdminResetPassword,
@@ -21,6 +22,7 @@ type Role = { id: string; name: string };
 
 export function AdminUsersTab() {
   const { authFetch, user } = useAuth();
+  const confirm = useConfirm();
   const [rows, setRows] = useState<Row[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,7 +81,15 @@ export function AdminUsersTab() {
   const toggleActive = async (row: Row) => {
     const next = !row.isActive;
     const label = next ? "Reactivate" : "Deactivate";
-    if (!next && !window.confirm(`Deactivate ${row.firstName} ${row.lastName}? They will lose access immediately.`)) return;
+    if (!next) {
+      const ok = await confirm({
+        title: "Deactivate user",
+        message: `Deactivate ${row.firstName} ${row.lastName}? They will lose access immediately.`,
+        confirmLabel: "Deactivate",
+        variant: "danger"
+      });
+      if (!ok) return;
+    }
     try {
       const response = await authFetch(`/admin/users/${row.id}`, {
         method: next ? "PATCH" : "DELETE",

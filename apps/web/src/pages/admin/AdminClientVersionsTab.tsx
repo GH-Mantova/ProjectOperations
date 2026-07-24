@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { useConfirm } from "../../hooks/useConfirm";
 
 type Row = {
   userId: string;
@@ -40,6 +41,7 @@ function relTime(iso: string | null): string {
 
 export function AdminClientVersionsTab() {
   const { authFetch } = useAuth();
+  const confirm = useConfirm();
   const [data, setData] = useState<ListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,7 +67,12 @@ export function AdminClientVersionsTab() {
   }, [load]);
 
   const requestOne = async (userId: string) => {
-    if (!window.confirm("Ask this user's browser to reload to the latest build?")) return;
+    const ok = await confirm({
+      title: "Request update",
+      message: "Ask this user's browser to reload to the latest build?",
+      confirmLabel: "Request"
+    });
+    if (!ok) return;
     setBusy(userId);
     try {
       const res = await authFetch("/admin/client-versions/request-update", {
@@ -82,7 +89,12 @@ export function AdminClientVersionsTab() {
   };
 
   const requestAll = async () => {
-    if (!window.confirm("Ask every active user's browser to reload to the latest build?")) return;
+    const ok = await confirm({
+      title: "Request update — everyone",
+      message: "Ask every active user's browser to reload to the latest build?",
+      confirmLabel: "Request all"
+    });
+    if (!ok) return;
     setBusy("__all");
     try {
       const res = await authFetch("/admin/client-versions/request-update", {

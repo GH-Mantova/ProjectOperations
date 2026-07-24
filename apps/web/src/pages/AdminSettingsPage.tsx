@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { useConfirm } from "../hooks/useConfirm";
 import { AdminAccessRequestsTab } from "./admin/AdminAccessRequestsTab";
 import { isAdminUser } from "../auth/permissions";
 import { NoAccess } from "../components/NoAccess";
@@ -971,6 +972,7 @@ type IntegrationStatus = {
 
 function IntegrationsKeysTab() {
   const { authFetch } = useAuth();
+  const confirm = useConfirm();
   const [items, setItems] = useState<IntegrationStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1023,13 +1025,13 @@ function IntegrationsKeysTab() {
   };
 
   const clear = async (item: IntegrationStatus) => {
-    if (
-      !window.confirm(
-        `Remove the ${item.label} key? Any feature that uses it will fall back to the Azure env var (if set) or stop working.`
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: `Remove ${item.label} key`,
+      message: `Remove the ${item.label} key? Any feature that uses it will fall back to the Azure env var (if set) or stop working.`,
+      confirmLabel: "Remove",
+      variant: "danger"
+    });
+    if (!ok) return;
     try {
       const response = await authFetch(`/admin/settings/integrations/${item.slug}`, {
         method: "DELETE"
@@ -1162,6 +1164,7 @@ function IntegrationsKeysTab() {
 
 function XeroPanel() {
   const { authFetch } = useAuth();
+  const confirm = useConfirm();
   const [status, setStatus] = useState<{
     connected: boolean;
     tenantName?: string | null;
@@ -1201,7 +1204,13 @@ function XeroPanel() {
   };
 
   const disconnect = async () => {
-    if (!window.confirm("Disconnect Xero? You'll need to re-consent next time.")) return;
+    const ok = await confirm({
+      title: "Disconnect Xero",
+      message: "Disconnect Xero? You'll need to re-consent next time.",
+      confirmLabel: "Disconnect",
+      variant: "danger"
+    });
+    if (!ok) return;
     setBusy(true);
     setError(null);
     try {
@@ -1217,7 +1226,12 @@ function XeroPanel() {
   };
 
   const syncAll = async () => {
-    if (!window.confirm("Push all active clients to Xero now?")) return;
+    const ok = await confirm({
+      title: "Sync all clients to Xero",
+      message: "Push all active clients to Xero now?",
+      confirmLabel: "Sync"
+    });
+    if (!ok) return;
     setBusy(true);
     setError(null);
     setInfo(null);
@@ -1318,6 +1332,7 @@ type SiteOption = { id: string; name: string; code: string | null };
 
 function SiteGeofencesTab() {
   const { authFetch } = useAuth();
+  const confirm = useConfirm();
   const [rows, setRows] = useState<GeofenceRow[] | null>(null);
   const [sites, setSites] = useState<SiteOption[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -1428,7 +1443,13 @@ function SiteGeofencesTab() {
   }
 
   async function remove(row: GeofenceRow) {
-    if (!window.confirm(`Delete geofence "${row.name}"? Timesheet audit references will be cleared to null.`)) return;
+    const ok = await confirm({
+      title: "Delete geofence",
+      message: `Delete geofence "${row.name}"? Timesheet audit references will be cleared to null.`,
+      confirmLabel: "Delete",
+      variant: "danger"
+    });
+    if (!ok) return;
     try {
       const res = await authFetch(`/field/geofences/${row.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error(await res.text());

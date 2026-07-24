@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { isAdminUser } from "../../auth/permissions";
 import { NoAccess } from "../../components/NoAccess";
+import { useConfirm } from "../../hooks/useConfirm";
 
 // ── Types shared with backend DTOs ────────────────────────────────────
 type CompanyProfile = {
@@ -720,9 +722,17 @@ function ComplianceSection({
 }: {
   authFetch: (path: string, init?: RequestInit) => Promise<Response>;
 }) {
+  const confirm = useConfirm();
   const [licences, setLicences] = useState<CompanyLicence[]>([]);
   const [insurances, setInsurances] = useState<CompanyInsurance[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [licenceDraft, setLicenceDraft] = useState<
+    { type: string; number: string; expiry: string } | null
+  >(null);
+  const [insuranceDraft, setInsuranceDraft] = useState<
+    { type: string; insurer: string; policy: string; expiry: string } | null
+  >(null);
+  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     const [lRes, iRes] = await Promise.all([
@@ -741,55 +751,80 @@ function ComplianceSection({
     void load();
   }, [load]);
 
-  const addLicence = async () => {
-    const type = window.prompt("Licence type (e.g. demolition, asbestos_a, qbcc):")?.trim();
+  const openAddLicence = () => setLicenceDraft({ type: "", number: "", expiry: "" });
+  const openAddInsurance = () =>
+    setInsuranceDraft({ type: "", insurer: "", policy: "", expiry: "" });
+
+  const submitLicence = async () => {
+    if (!licenceDraft) return;
+    const type = licenceDraft.type.trim();
     if (!type) return;
-    const number = window.prompt("Licence number:")?.trim() ?? "";
-    const expiry = window.prompt("Expiry date (YYYY-MM-DD):")?.trim() ?? "";
-    const res = await authFetch("/admin/company/licences", {
-      method: "POST",
-      body: JSON.stringify({
-        licenceType: type,
-        licenceNumber: number || null,
-        expiryDate: expiry || undefined
-      })
-    });
-    if (!res.ok) {
-      setError(await res.text());
-      return;
+    setSaving(true);
+    try {
+      const res = await authFetch("/admin/company/licences", {
+        method: "POST",
+        body: JSON.stringify({
+          licenceType: type,
+          licenceNumber: licenceDraft.number.trim() || null,
+          expiryDate: licenceDraft.expiry.trim() || undefined
+        })
+      });
+      if (!res.ok) {
+        setError(await res.text());
+        return;
+      }
+      setLicenceDraft(null);
+      await load();
+    } finally {
+      setSaving(false);
     }
-    await load();
   };
 
-  const addInsurance = async () => {
-    const type = window.prompt("Insurance type (e.g. public_liability, workers_compensation, professional_indemnity):")?.trim();
+  const submitInsurance = async () => {
+    if (!insuranceDraft) return;
+    const type = insuranceDraft.type.trim();
     if (!type) return;
-    const insurer = window.prompt("Insurer name:")?.trim() ?? "";
-    const policy = window.prompt("Policy number:")?.trim() ?? "";
-    const expiry = window.prompt("Expiry date (YYYY-MM-DD):")?.trim() ?? "";
-    const res = await authFetch("/admin/company/insurances", {
-      method: "POST",
-      body: JSON.stringify({
-        insuranceType: type,
-        insurerName: insurer || null,
-        policyNumber: policy || null,
-        expiryDate: expiry || undefined
-      })
-    });
-    if (!res.ok) {
-      setError(await res.text());
-      return;
+    setSaving(true);
+    try {
+      const res = await authFetch("/admin/company/insurances", {
+        method: "POST",
+        body: JSON.stringify({
+          insuranceType: type,
+          insurerName: insuranceDraft.insurer.trim() || null,
+          policyNumber: insuranceDraft.policy.trim() || null,
+          expiryDate: insuranceDraft.expiry.trim() || undefined
+        })
+      });
+      if (!res.ok) {
+        setError(await res.text());
+        return;
+      }
+      setInsuranceDraft(null);
+      await load();
+    } finally {
+      setSaving(false);
     }
-    await load();
   };
 
   const deleteLicence = async (id: string) => {
-    if (!window.confirm("Delete this licence?")) return;
+    const ok = await confirm({
+      title: "Delete licence",
+      message: "Delete this licence?",
+      confirmLabel: "Delete",
+      variant: "danger"
+    });
+    if (!ok) return;
     await authFetch(`/admin/company/licences/${id}`, { method: "DELETE" });
     await load();
   };
   const deleteInsurance = async (id: string) => {
-    if (!window.confirm("Delete this insurance?")) return;
+    const ok = await confirm({
+      title: "Delete insurance",
+      message: "Delete this insurance?",
+      confirmLabel: "Delete",
+      variant: "danger"
+    });
+    if (!ok) return;
     await authFetch(`/admin/company/insurances/${id}`, { method: "DELETE" });
     await load();
   };
@@ -811,7 +846,7 @@ function ComplianceSection({
       )}
 
       <h3>Licences</h3>
-      <button type="button" onClick={addLicence} style={{ padding: "6px 12px", marginBottom: 8, background: "#005B61", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}>
+      <button type="button" onClick={openAddLicence} style={{ padding: "6px 12px", marginBottom: 8, background: "#005B61", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}>
         + Add licence
       </button>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
@@ -837,7 +872,7 @@ function ComplianceSection({
       </table>
 
       <h3 style={{ marginTop: 24 }}>Insurances</h3>
-      <button type="button" onClick={addInsurance} style={{ padding: "6px 12px", marginBottom: 8, background: "#005B61", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}>
+      <button type="button" onClick={openAddInsurance} style={{ padding: "6px 12px", marginBottom: 8, background: "#005B61", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}>
         + Add insurance
       </button>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
@@ -863,6 +898,153 @@ function ComplianceSection({
           ))}
         </tbody>
       </table>
+
+      {licenceDraft ? (
+        <CenteredModal
+          title="Add licence"
+          onClose={() => setLicenceDraft(null)}
+          busy={saving}
+          dataTestId="add-licence-modal"
+          maxWidth={460}
+          footer={
+            <>
+              <button
+                type="button"
+                className="s7-btn s7-btn--ghost"
+                onClick={() => setLicenceDraft(null)}
+                disabled={saving}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="add-licence-form"
+                className="s7-btn s7-btn--primary"
+                disabled={saving || !licenceDraft.type.trim()}
+              >
+                {saving ? "Saving…" : "Add"}
+              </button>
+            </>
+          }
+        >
+          <form
+            id="add-licence-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void submitLicence();
+            }}
+            style={{ display: "flex", flexDirection: "column", gap: 12 }}
+          >
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+              <span>Licence type (e.g. demolition, asbestos_a, qbcc)</span>
+              <input
+                type="text"
+                value={licenceDraft.type}
+                onChange={(e) => setLicenceDraft({ ...licenceDraft, type: e.target.value })}
+                autoFocus
+                style={{ padding: 8, borderRadius: 4, border: "1px solid #d1d5db" }}
+              />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+              <span>Licence number</span>
+              <input
+                type="text"
+                value={licenceDraft.number}
+                onChange={(e) => setLicenceDraft({ ...licenceDraft, number: e.target.value })}
+                style={{ padding: 8, borderRadius: 4, border: "1px solid #d1d5db" }}
+              />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+              <span>Expiry date (YYYY-MM-DD)</span>
+              <input
+                type="date"
+                value={licenceDraft.expiry}
+                onChange={(e) => setLicenceDraft({ ...licenceDraft, expiry: e.target.value })}
+                style={{ padding: 8, borderRadius: 4, border: "1px solid #d1d5db" }}
+              />
+            </label>
+          </form>
+        </CenteredModal>
+      ) : null}
+
+      {insuranceDraft ? (
+        <CenteredModal
+          title="Add insurance"
+          onClose={() => setInsuranceDraft(null)}
+          busy={saving}
+          dataTestId="add-insurance-modal"
+          maxWidth={460}
+          footer={
+            <>
+              <button
+                type="button"
+                className="s7-btn s7-btn--ghost"
+                onClick={() => setInsuranceDraft(null)}
+                disabled={saving}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="add-insurance-form"
+                className="s7-btn s7-btn--primary"
+                disabled={saving || !insuranceDraft.type.trim()}
+              >
+                {saving ? "Saving…" : "Add"}
+              </button>
+            </>
+          }
+        >
+          <form
+            id="add-insurance-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void submitInsurance();
+            }}
+            style={{ display: "flex", flexDirection: "column", gap: 12 }}
+          >
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+              <span>
+                Insurance type (e.g. public_liability, workers_compensation, professional_indemnity)
+              </span>
+              <input
+                type="text"
+                value={insuranceDraft.type}
+                onChange={(e) => setInsuranceDraft({ ...insuranceDraft, type: e.target.value })}
+                autoFocus
+                style={{ padding: 8, borderRadius: 4, border: "1px solid #d1d5db" }}
+              />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+              <span>Insurer name</span>
+              <input
+                type="text"
+                value={insuranceDraft.insurer}
+                onChange={(e) => setInsuranceDraft({ ...insuranceDraft, insurer: e.target.value })}
+                style={{ padding: 8, borderRadius: 4, border: "1px solid #d1d5db" }}
+              />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+              <span>Policy number</span>
+              <input
+                type="text"
+                value={insuranceDraft.policy}
+                onChange={(e) => setInsuranceDraft({ ...insuranceDraft, policy: e.target.value })}
+                style={{ padding: 8, borderRadius: 4, border: "1px solid #d1d5db" }}
+              />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+              <span>Expiry date (YYYY-MM-DD)</span>
+              <input
+                type="date"
+                value={insuranceDraft.expiry}
+                onChange={(e) => setInsuranceDraft({ ...insuranceDraft, expiry: e.target.value })}
+                style={{ padding: 8, borderRadius: 4, border: "1px solid #d1d5db" }}
+              />
+            </label>
+          </form>
+        </CenteredModal>
+      ) : null}
     </div>
   );
 }

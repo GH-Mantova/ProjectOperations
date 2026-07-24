@@ -1,5 +1,6 @@
 import { useRef, useState, type DragEvent } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { useConfirm } from "../../hooks/useConfirm";
 import {
   DEFAULT_DOCUMENT_CATEGORY,
   DOCUMENT_CATEGORIES,
@@ -47,6 +48,7 @@ export function TenderDocumentsPanel({
   canManage: boolean;
 }) {
   const { authFetch } = useAuth();
+  const confirm = useConfirm();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -94,7 +96,13 @@ export function TenderDocumentsPanel({
   };
 
   const removeDocument = async (docId: string, name: string) => {
-    if (!window.confirm(`Delete ${name}? This cannot be undone.`)) return;
+    const ok = await confirm({
+      title: "Delete document",
+      message: `Delete ${name}? This cannot be undone.`,
+      confirmLabel: "Delete",
+      variant: "danger"
+    });
+    if (!ok) return;
     try {
       const response = await authFetch(`/tenders/${tenderId}/documents/${docId}`, { method: "DELETE" });
       if (!response.ok) throw new Error(await response.text());

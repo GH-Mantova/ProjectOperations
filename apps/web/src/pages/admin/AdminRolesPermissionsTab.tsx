@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { useConfirm } from "../../hooks/useConfirm";
 import {
   buildMatrixRoles,
   diffPending,
@@ -30,6 +31,7 @@ import {
  */
 export function AdminRolesPermissionsTab() {
   const { authFetch, user } = useAuth();
+  const confirm = useConfirm();
   const isSuperUser = Boolean(user?.isSuperUser);
 
   const [roles, setRoles] = useState<MatrixRole[]>([]);
@@ -87,19 +89,25 @@ export function AdminRolesPermissionsTab() {
       // Require an explicit confirm before staging a grant for a high-risk
       // permission. Revokes don't confirm — reducing access is the safe
       // direction and delay would frustrate the escalation path.
-      if (willGrant && permission.isHighRisk) {
-        const ok = window.confirm(
-          `"${permission.label || permission.code}" is a high-risk permission (${permission.description ?? permission.code}).\n\n` +
-            `Grant it to "${role.name}"?`
-        );
-        if (!ok) return;
-      }
+      void (async () => {
+        if (willGrant && permission.isHighRisk) {
+          const ok = await confirm({
+            title: "Grant high-risk permission",
+            message:
+              `"${permission.label || permission.code}" is a high-risk permission (${permission.description ?? permission.code}).\n\n` +
+              `Grant it to "${role.name}"?`,
+            confirmLabel: "Grant",
+            variant: "danger"
+          });
+          if (!ok) return;
+        }
 
-      setPending((prev) => togglePending(prev, role, permission.id));
-      setSaveNotice(null);
-      setSaveError(null);
+        setPending((prev) => togglePending(prev, role, permission.id));
+        setSaveNotice(null);
+        setSaveError(null);
+      })();
     },
-    [isSuperUser, pending, saving]
+    [confirm, isSuperUser, pending, saving]
   );
 
   const handleDiscard = useCallback(() => {

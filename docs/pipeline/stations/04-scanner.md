@@ -174,3 +174,21 @@ it directly — fix gates there.
 **Not yours:** every MUTATING script under STATION 00 in the registry (merging, rebasing, arming
 auto-merge, restarting the watcher), the `scripts/pr-watcher/*` internals, and everything under
 MARCO-ONLY. If a finding needs one of those, **report it — do not run it.**
+
+
+---
+
+## FIX LANE (Marco, 2026-07-24) - authoring fix prompts
+
+When your audit finds a regression that blocks other work (a red required check shared across
+PRs, a main regression, a gate failing board-wide), the prompt you propose MUST:
+
+1. Carry `fixes_pr: <N>` front-matter (the OPEN PR it unblocks; for a main regression, the
+   most-blocked open PR) so the watcher front-inserts it. Lint rejects the key if PR N has
+   already settled - re-run your premise before proposing.
+2. Instruct the agent to RE-VERIFY the failure on the CURRENT head from the job log before
+   acting - errors drift between diagnosis and dispatch; the fix chases the log, not the
+   original write-up.
+3. Prefer fix-forward ON the failing PR's existing branch (no new PR) when the defect is in
+   that PR; use a separate fix PR only when the defect is on main.
+Remember: a docs-only PR failing a CODE check = the regression is on MAIN. One fix prompt, not N.

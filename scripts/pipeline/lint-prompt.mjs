@@ -14,8 +14,9 @@
  */
 
 import { readFileSync, readdirSync, renameSync, existsSync } from "node:fs";
-import { execSync } from "node:child_process";
+import { execSync, execFileSync } from "node:child_process";
 import { join, basename } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const MAX_SIZE = 10;
 const REQUIRED = ["premise", "premise_means", "scope", "done_when", "size"];
@@ -27,7 +28,7 @@ const YELLOW = "\x1b[33m";
 const DIM = "\x1b[2m";
 
 /** Minimal YAML front-matter parser. Deliberately dumb: no dependency, no surprises. */
-function parseFrontMatter(text) {
+export function parseFrontMatter(text) {
   const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!m) return null;
   const out = {};
@@ -94,6 +95,57 @@ function findBash() {
 
 const BASH = findBash();
 
+/**
+ * fixes_pr live-check. A fix-lane prompt is authored against an OPEN PR (the
+ * one it fix-forwards). If that PR has since MERGED (the fix landed) or
+ * CLOSED (the target was abandoned), the fix prompt is stale — the linter
+ * REJECTs it with FIX_TARGET_SETTLED. This is a REJECT, not a stale-bin: the
+ * work may still be needed, but the diagnosis and pointer are wrong.
+ *
+ * Pure over an injected `fetchState` so it can be unit-tested without gh.
+ */
+export function checkFixesPrTargetOpen({ fixesPr, fetchState }) {
+  if (fixesPr == null) return { ok: true };
+  let state;
+  try {
+    state = fetchState(fixesPr);
+  } catch (err) {
+    return {
+      ok: false,
+      code: "FIX_TARGET_UNKNOWN",
+      msg:
+        "fixes_pr=" + fixesPr + ": could not read PR state (" + err.message + ").\n" +
+        "        A fix-lane prompt must reference a live OPEN PR. Check the number.",
+    };
+  }
+  if (state === "OPEN") return { ok: true };
+  return {
+    ok: false,
+    code: "FIX_TARGET_SETTLED",
+    msg:
+      "fixes_pr=" + fixesPr + " is " + state + " (needs OPEN). The fix target has settled;\n" +
+      "        this prompt's diagnosis is stale. Re-author against the current head or drop it.",
+  };
+}
+
+function ghFetchPrState(prNumber) {
+  // Guard against shell injection: with shell:true on Windows (needed so
+  // `gh` resolves without .exe), Node interpolates argv back into a command
+  // string. Refuse anything that isn't a bare positive integer.
+  const n = Number(prNumber);
+  if (!Number.isInteger(n) || n <= 0) {
+    throw new Error("invalid PR number: " + JSON.stringify(prNumber));
+  }
+  const gh = process.env.LINT_GH_BIN || "gh";
+  const out = execFileSync(gh, ["pr", "view", String(n), "--json", "state"], {
+    stdio: ["ignore", "pipe", "pipe"],
+    encoding: "utf-8",
+    timeout: 30000,
+    shell: process.platform === "win32",
+  });
+  return JSON.parse(out).state;
+}
+
 function runPremise(cmd, cwd) {
   if (!BASH) {
     // FAIL SAFE. Never bin work because the TOOL is broken.
@@ -121,7 +173,7 @@ function runPremise(cmd, cwd) {
   }
 }
 
-function lint(file, opts) {
+export function lint(file, opts) {
   const dequeue = opts && opts.dequeue;
   const repoRoot = (opts && opts.repoRoot) || process.cwd();
   const name = basename(file);
@@ -162,6 +214,20 @@ function lint(file, opts) {
     return fail("GATE_ALLOW_MISMATCH", "gate_allow declares `migrations` but scope has no migrations/ path.");
   }
 
+  // fixes_pr — a fix-lane prompt is only valid while its target PR is OPEN.
+  // Cheaper than the premise (single gh call, no shell subprocess), so run
+  // it first: a stale fix pointer is a hard reject regardless of premise.
+  if (fm.fixes_pr !== undefined && fm.fixes_pr !== "" && !(Array.isArray(fm.fixes_pr) && fm.fixes_pr.length === 0)) {
+    const fixesPr = Number(fm.fixes_pr);
+    if (!Number.isInteger(fixesPr) || fixesPr <= 0) {
+      return fail("FIX_TARGET_INVALID",
+        "fixes_pr must be a positive integer PR number (got " + JSON.stringify(fm.fixes_pr) + ").");
+    }
+    const fetch = (opts && opts.fetchPrState) || ghFetchPrState;
+    const res = checkFixesPrTargetOpen({ fixesPr, fetchState: fetch });
+    if (!res.ok) return fail(res.code, res.msg);
+  }
+
   // THE CHECK THAT PAYS FOR THIS WHOLE FILE.
   const res = runPremise(String(fm.premise), repoRoot);
 
@@ -190,6 +256,9 @@ function lint(file, opts) {
 
 // ---------------------------------------------------------------------------
 
+// Skip the CLI section when imported as a module (unit tests do this).
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (isMain) {
 const args = process.argv.slice(2);
 if (args.length === 0) {
   console.error("usage: lint-prompt.mjs <file.md> | --all <dir> | --dequeue <file.md>");
@@ -238,3 +307,4 @@ if (files.length > 1) {
 }
 
 process.exit(stale > 0 && files.length === 1 ? 3 : rejected > 0 ? 1 : 0);
+}

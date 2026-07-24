@@ -9,6 +9,7 @@ import { useAuth } from "../../auth/AuthContext";
 type Owner = { id: string; firstName: string; lastName: string };
 type ClientLite = { id: string; name: string };
 type ContactLite = { id: string; firstName: string; lastName: string; email: string | null };
+type SiteLite = { id: string; name: string; suburb: string | null };
 
 type Opportunity = {
   id: string;
@@ -116,6 +117,14 @@ export function CrmBoardPage() {
   const [leadEmail, setLeadEmail] = useState("");
   const [leadSource, setLeadSource] = useState<string>("other");
 
+  // Generate-draft-tender dialog
+  const [draftLead, setDraftLead] = useState<Lead | null>(null);
+  const [sites, setSites] = useState<SiteLite[]>([]);
+  const [draftSiteId, setDraftSiteId] = useState("");
+  const [draftTitle, setDraftTitle] = useState("");
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -216,6 +225,64 @@ export function CrmBoardPage() {
       setLeadError((err as Error).message);
     } finally {
       setLeadSaving(false);
+    }
+  }
+
+  async function openDraftDialog(lead: Lead) {
+    if (!lead.client?.id) {
+      alert(
+        "This lead is not linked to a Client yet. Open the lead, link it to a Client, then retry."
+      );
+      return;
+    }
+    setDraftLead(lead);
+    setDraftSiteId("");
+    setDraftTitle(lead.title);
+    setDraftError(null);
+    try {
+      const res = await authFetch("/master-data/sites?pageSize=100");
+      if (res.ok) {
+        const data = (await res.json()) as { items?: SiteLite[] } | SiteLite[];
+        setSites(Array.isArray(data) ? data : (data.items ?? []));
+      }
+    } catch {
+      // Site list is best-effort; the dialog still submits with any typed id.
+    }
+  }
+
+  async function generateDraftTender() {
+    if (!draftLead) return;
+    if (!draftSiteId) {
+      setDraftError("Site is required to create a Tender.");
+      return;
+    }
+    setDraftSaving(true);
+    setDraftError(null);
+    try {
+      const res = await authFetch(`/crm/leads/${draftLead.id}/generate-draft-tender`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          siteId: draftSiteId,
+          title: draftTitle.trim() || undefined
+        })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const opp = (await res.json()) as Opportunity & {
+        convertedTender?: { id: string } | null;
+      };
+      setDraftLead(null);
+      if (opp.convertedTender?.id) {
+        navigate(`/tenders/${opp.convertedTender.id}`);
+      } else if (opp.convertedTenderId) {
+        navigate(`/tenders/${opp.convertedTenderId}`);
+      } else {
+        await load();
+      }
+    } catch (err) {
+      setDraftError((err as Error).message);
+    } finally {
+      setDraftSaving(false);
     }
   }
 
@@ -415,18 +482,30 @@ export function CrmBoardPage() {
                   {lead.client && <span>Client: {lead.client.name}</span>}
                 </div>
               </div>
-              {lead.status !== "converted" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {lead.status !== "converted" && (
+                  <button
+                    onClick={() => void qualifyLead(lead)}
+                    style={{
+                      padding: "8px 14px", borderRadius: 6, border: "1px solid #ccc",
+                      background: "#fff", cursor: "pointer",
+                      fontWeight: 600, minHeight: 40
+                    }}
+                  >
+                    Qualify → Opportunity
+                  </button>
+                )}
                 <button
-                  onClick={() => void qualifyLead(lead)}
+                  onClick={() => void openDraftDialog(lead)}
                   style={{
                     padding: "8px 14px", borderRadius: 6, border: "none",
                     background: "var(--color-orange, #FEAA6D)", cursor: "pointer",
                     fontWeight: 600, minHeight: 40
                   }}
                 >
-                  Qualify → Opportunity
+                  Generate draft tender
                 </button>
-              )}
+              </div>
             </div>
           ))}
         </div>
@@ -466,6 +545,39 @@ export function CrmBoardPage() {
             onConfirm={() => void handleCreate()}
             confirmLabel={creating ? "Creating…" : "Create"}
             disabled={creating}
+          />
+        </Modal>
+      )}
+
+      {/* Generate draft tender modal */}
+      {draftLead && (
+        <Modal onClose={() => setDraftLead(null)}>
+          <h2 style={{ margin: "0 0 8px", fontFamily: "var(--font-heading, Syne)" }}>
+            Generate draft tender
+          </h2>
+          <p style={{ marginTop: 0, marginBottom: 16, fontSize: 13, color: "var(--text-muted, #666)" }}>
+            Creates a <strong>DRAFT</strong> tender from lead <em>{draftLead.title}</em>. The
+            lead is qualified into an Opportunity and converted in one step — no data re-keying.
+          </p>
+          {draftError && <ErrorBox>{draftError}</ErrorBox>}
+          <Field label="Site *">
+            <select value={draftSiteId} onChange={(e) => setDraftSiteId(e.target.value)} style={inputStyle}>
+              <option value="">Select site…</option>
+              {sites.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}{s.suburb ? ` — ${s.suburb}` : ""}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Tender title">
+            <input type="text" value={draftTitle} onChange={(e) => setDraftTitle(e.target.value)} style={inputStyle} />
+          </Field>
+          <ModalActions
+            onCancel={() => setDraftLead(null)}
+            onConfirm={() => void generateDraftTender()}
+            confirmLabel={draftSaving ? "Generating…" : "Generate draft"}
+            disabled={draftSaving}
           />
         </Modal>
       )}

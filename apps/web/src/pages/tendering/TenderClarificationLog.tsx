@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { EmptyState } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { useConfirm } from "../../hooks/useConfirm";
 import { DraftBanner, SaveDraftButton, useFormDraft } from "../../drafts";
 
 // Unified "Clarifications & Communications" section.
@@ -107,6 +108,7 @@ export function TenderClarificationLog({
   onRfiChanged: () => void;
 }) {
   const { authFetch, user } = useAuth();
+  const confirm = useConfirm();
   const [notes, setNotes] = useState<NoteItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -253,7 +255,13 @@ export function TenderClarificationLog({
   };
 
   const deleteEntry = async (entry: UnifiedEntry) => {
-    if (!window.confirm("Delete this entry?")) return;
+    const ok = await confirm({
+      title: "Delete entry",
+      message: "Delete this entry?",
+      confirmLabel: "Delete",
+      variant: "danger"
+    });
+    if (!ok) return;
     const path =
       entry.kind === "rfi"
         ? `/tenders/${tenderId}/activities/${encodeURIComponent(`clarification:${entry.id}`)}`

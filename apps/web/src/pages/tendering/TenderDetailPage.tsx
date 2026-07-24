@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
+import { useConfirm } from "../../hooks/useConfirm";
 import { QuoteTab } from "./QuoteTab";
 import { AddClientModal } from "./AddClientModal";
 import { TenderDocumentsPanel } from "./TenderDocumentsPanel";
@@ -133,6 +134,7 @@ export function TenderDetailPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { authFetch, user } = useAuth();
+  const confirm = useConfirm();
 
   const tab: Tab = useMemo(() => {
     if (location.pathname.endsWith("/scope")) return "scope";
@@ -753,7 +755,13 @@ export function TenderDetailPage() {
                   setClientMsg("A tender must have at least one client.");
                   return;
                 }
-                if (!window.confirm(`Remove ${tc.client.name} from this tender?`)) return;
+                const ok = await confirm({
+                  title: "Remove client",
+                  message: `Remove ${tc.client.name} from this tender?`,
+                  confirmLabel: "Remove",
+                  variant: "danger"
+                });
+                if (!ok) return;
                 try {
                   const response = await authFetch(`/tenders/${tender.id}/clients/${clientId}`, {
                     method: "DELETE"

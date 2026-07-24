@@ -398,13 +398,115 @@ async function mirrorVerdictToPr(name) {
     await runGh(["pr", "comment", String(prNumber), "--body-file", tmpFile]);
     log("review", `verdict mirrored to PR #${prNumber} as a comment`);
   } catch (err) {
-    log("review", `verdict mirror failed: ${err.message}`);
+    const stderrTail = err.stderr ? ` | gh stderr: ${err.stderr.trim()}` : "";
+    log(
+      "review",
+      `verdict mirror failed for PR #${prNumber}: ${err.message}${stderrTail}`,
+    );
   } finally {
     try {
       unlinkSync(tmpFile);
     } catch {
       // best-effort cleanup
     }
+  }
+}
+
+// Move settled review verdicts (docs/pr-reviews/pr-N-review.md for PRs that
+// are MERGED or CLOSED) out of the live watcher clone into a sibling
+// verdicts-archive directory. Pure over injected deps so the whole thing is
+// unit-testable without spawning gh or writing into REPO_ROOT.
+//
+// Contract:
+//   - reviewsDir missing → no-op, returns zeroed stats.
+//   - state query throws → file is LEFT IN PLACE and logged. A failed call is
+//     NOT a "verdict is stale" signal; we would rather leak a verdict than
+//     silently delete one on a transient gh outage.
+//   - Files whose name doesn't match pr-N-review.md are ignored entirely.
+//   - Archival is always a MOVE, never a delete.
+export async function archiveSettledVerdicts({
+  reviewsDir,
+  archiveDir,
+  fetchPrState,
+  logger = () => {},
+  fsOps,
+} = {}) {
+  const ops = fsOps ?? { readdir, mkdir, rename };
+  const stats = { archived: 0, kept: 0, skipped: 0 };
+  let entries;
+  try {
+    entries = await ops.readdir(reviewsDir);
+  } catch (err) {
+    if (err.code === "ENOENT") return stats;
+    logger("review", `verdict-archive sweep: cannot read ${reviewsDir}: ${err.message}`);
+    return stats;
+  }
+  for (const name of entries) {
+    const m = name.match(/^pr-(\d+)-review\.md$/);
+    if (!m) continue;
+    const prNumber = Number(m[1]);
+    let state;
+    try {
+      state = await fetchPrState(prNumber);
+    } catch (err) {
+      logger(
+        "review",
+        `verdict-archive: state query failed for PR #${prNumber}, leaving ${name} in place: ${err.message}`,
+      );
+      stats.skipped++;
+      continue;
+    }
+    if (state === "MERGED" || state === "CLOSED") {
+      try {
+        await ops.mkdir(archiveDir, { recursive: true });
+        const src = path.join(reviewsDir, name);
+        const dest = path.join(archiveDir, name);
+        await ops.rename(src, dest);
+        logger("review", `verdict-archive: moved ${name} (state=${state}) → ${archiveDir}`);
+        stats.archived++;
+      } catch (err) {
+        logger(
+          "review",
+          `verdict-archive: move failed for ${name}: ${err.message}`,
+        );
+        stats.skipped++;
+      }
+    } else {
+      stats.kept++;
+    }
+  }
+  return stats;
+}
+
+// Wire archiveSettledVerdicts to the watcher's real REPO_ROOT and gh. Never
+// throws into the caller — the sweep is best-effort housekeeping and must
+// not stall startup or the rescan loop.
+async function runArchiveSettledVerdicts() {
+  const reviewsDir = path.join(REPO_ROOT, "docs", "pr-reviews");
+  // Sibling of REPO_ROOT so git never sees it — no gitignore needed, no
+  // status noise, no risk of an accidental `git clean` sweeping verdicts.
+  const archiveDir = path.join(REPO_ROOT, "..", "verdicts-archive");
+  try {
+    const stats = await archiveSettledVerdicts({
+      reviewsDir,
+      archiveDir,
+      fetchPrState: async (prNumber) => {
+        const json = await runGh(
+          ["pr", "view", String(prNumber), "--json", "state"],
+          { json: true },
+        );
+        return json.state;
+      },
+      logger: log,
+    });
+    if (stats.archived + stats.kept + stats.skipped > 0) {
+      log(
+        "review",
+        `verdict-archive sweep: archived=${stats.archived} kept=${stats.kept} skipped=${stats.skipped}`,
+      );
+    }
+  } catch (err) {
+    log("review", `verdict-archive sweep crashed (swallowed): ${err.message}`);
   }
 }
 
@@ -1775,6 +1877,9 @@ async function rescan() {
   } catch (err) {
     log("error", `rescan: ${err.message}`);
   }
+  // Idle poll cycle also sweeps settled verdicts so a long-running watcher
+  // doesn't accumulate untracked pr-*-review.md files in the clone tree.
+  await runArchiveSettledVerdicts();
 }
 
 // Informational scan for stray claude.exe processes. We do NOT auto-kill —
@@ -1883,6 +1988,8 @@ async function main() {
 
   const untrackedCount = await warnOnUntrackedReadyPrompts();
   log("watcher", `preflight: untracked-ready-prompt count = ${untrackedCount}`);
+
+  await runArchiveSettledVerdicts();
 
   await scanExisting();
 

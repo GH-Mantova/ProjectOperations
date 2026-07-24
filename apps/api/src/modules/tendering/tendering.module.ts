@@ -11,6 +11,8 @@ import { TenderNumberService } from "./tender-number.service";
 import { TenderingService } from "./tendering.service";
 import { TenderClientNotesController } from "./tender-client-notes.controller";
 import { TenderClientNotesService } from "./tender-client-notes.service";
+import { TenderLabelsController } from "./tender-labels.controller";
+import { TenderLabelsService } from "./tender-labels.service";
 import { TenderEntriesController } from "./tender-entries.controller";
 import { TenderEntriesService } from "./tender-entries.service";
 import { TenderConvertController } from "./tender-convert.controller";
@@ -32,6 +34,10 @@ import { ClarificationProposalsService } from "./scope/clarification-proposals.s
 @Module({
   imports: [AuditModule, MasterDataModule, PlatformModule, RatesModule, forwardRef(() => ProjectsModule)],
   controllers: [
+    // TenderLabelsController must be registered BEFORE TenderingController so
+    // GET /tenders/labels hits the static-path handler here, not the greedy
+    // GET /tenders/:id inside TenderingController.
+    TenderLabelsController,
     TenderingController,
     TenderClientNotesController,
     TenderEntriesController,
@@ -50,6 +56,7 @@ import { ClarificationProposalsService } from "./scope/clarification-proposals.s
   providers: [
     TenderingService,
     TenderNumberService,
+    TenderLabelsService,
     TenderClientNotesService,
     TenderEntriesService,
     TenderRateSetService,

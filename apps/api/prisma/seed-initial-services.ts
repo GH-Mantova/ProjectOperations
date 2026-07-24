@@ -1,5 +1,4 @@
 import { Prisma, PrismaClient } from "@prisma/client";
-import { randomBytes, scryptSync } from "crypto";
 
 const BASE_DATE = new Date("2026-04-20T00:00:00.000Z");
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -20,12 +19,6 @@ function atTime(date: Date, hours: number, minutes: number): Date {
 
 function weekdaysOfWeek(mondayOffsetDays: number): Date[] {
   return [0, 1, 2, 3, 4].map((offset) => daysFromNow(mondayOffsetDays + offset));
-}
-
-function hashPassword(password: string): string {
-  const salt = randomBytes(16).toString("hex");
-  const derivedKey = scryptSync(password, salt, 64).toString("hex");
-  return `${salt}:${derivedKey}`;
 }
 
 export async function seedOperationalRoles(prisma: PrismaClient) {
@@ -372,7 +365,14 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
         lastName: seed.lastName,
         isActive: true,
         isSuperUser: seed.isSuperUser ?? false,
-        passwordHash: hashPassword("Password123!")
+        // SSO-only sentinel. LocalAuthProvider (apps/api/src/modules/auth/
+        // local-auth.provider.ts) treats any stored hash without a ":" as
+        // unusable and swaps in a random fallback hash, so local password
+        // login is impossible for these accounts. Entra SSO is unaffected.
+        // The `update:` branch above deliberately omits passwordHash so a
+        // re-seed cannot resurrect a usable local password on an SSO-only
+        // account.
+        passwordHash: "SSO-ONLY"
       }
     });
 

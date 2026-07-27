@@ -131,10 +131,26 @@ test.describe("Batch 2 — Tendering pipeline + register (PRs #16, #28-#30, #43,
       while ((await residue.count()) > 0) {
         const before = await residue.count();
         await residue.first().click();
+        // Preset delete now confirms via the in-app ConfirmDialog (useConfirm).
+        await page.getByTestId("confirm-dialog-confirm").click();
+        // The dialog steals focus and the dropdown closes on mouse-leave —
+        // reopen it so the next residue button (if any) is reachable.
+        if ((await residue.count()) >= before && before > 1) {
+          await presetsButton.click();
+        }
         await expect(residue).toHaveCount(before - 1);
       }
       // The dropdown closes on mouse-leave.
       await page.getByPlaceholder("Search number, title, or client").hover();
+    }
+
+    // A residue DEFAULT preset may have auto-applied its filters on load
+    // (deleting the preset does not clear the active chips) — clear them so
+    // the Hot toggle below starts from a clean slate.
+    const clearAll = page.getByRole("button", { name: "Clear all" });
+    if (await clearAll.isVisible()) {
+      await clearAll.click();
+      await expect(clearAll).toHaveCount(0);
     }
 
     // Activate the Hot chip — "Save filter" only renders once a filter is on.
@@ -154,9 +170,11 @@ test.describe("Batch 2 — Tendering pipeline + register (PRs #16, #28-#30, #43,
       "true"
     );
 
-    // Clean up so the run is repeatable.
+    // Clean up so the run is repeatable — the delete confirms via the
+    // in-app ConfirmDialog (useConfirm), not window.confirm.
     await page.getByRole("button", { name: "Presets ▾" }).click();
     await page.getByRole("button", { name: `Delete preset ${presetName}` }).click();
+    await page.getByTestId("confirm-dialog-confirm").click();
     await expect(page.getByRole("button", { name: `Delete preset ${presetName}` })).toHaveCount(0);
   });
 

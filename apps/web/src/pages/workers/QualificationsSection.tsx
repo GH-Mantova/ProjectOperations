@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { useConfirm } from "../../hooks/useConfirm";
 
 type Qualification = {
   id: string;
@@ -72,6 +73,7 @@ export function QualificationsSection({
   canManage: boolean;
 }) {
   const { authFetch } = useAuth();
+  const confirm = useConfirm();
   const [items, setItems] = useState<Qualification[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -98,7 +100,13 @@ export function QualificationsSection({
 
   const remove = async (q: Qualification) => {
     const label = QUAL_TYPE_LABELS[q.qualType as QualType] ?? q.qualType;
-    if (!window.confirm(`Delete ${label}?`)) return;
+    const ok = await confirm({
+      title: "Delete qualification",
+      message: `Delete ${label}?`,
+      confirmLabel: "Delete",
+      variant: "danger"
+    });
+    if (!ok) return;
     const response = await authFetch(`/compliance/workers/${workerProfileId}/qualifications/${q.id}`, {
       method: "DELETE"
     });

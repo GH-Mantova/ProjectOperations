@@ -9,6 +9,7 @@ import {
 } from "react";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { useConfirm } from "../../hooks/useConfirm";
 import { FilterableRateGrid } from "../../components/rates/FilterableRateGrid";
 import type { RateGridColumn, RateGridRow } from "../../components/rates/rateGridModel";
 import {
@@ -68,6 +69,7 @@ function formatCurrency(raw: string, unit: string | null): string {
 
 export function RatesTab({ tenderId, canManage }: { tenderId: string; canManage: boolean }) {
   const { authFetch } = useAuth();
+  const confirm = useConfirm();
   const [set, setSet] = useState<TenderRateSet | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -104,9 +106,13 @@ export function RatesTab({ tenderId, canManage }: { tenderId: string; canManage:
   };
 
   const runUnlock = async () => {
-    if (!window.confirm("Unlock rates? The tender's snapshot will be deleted and any overrides will be lost.")) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Unlock rates",
+      message: "Unlock rates? The tender's snapshot will be deleted and any overrides will be lost.",
+      confirmLabel: "Unlock",
+      variant: "danger"
+    });
+    if (!ok) return;
     setBusy(true);
     setError(null);
     try {

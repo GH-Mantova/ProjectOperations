@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { useConfirm } from "../../hooks/useConfirm";
 import { OverrideField } from "../../components";
 import { ClientQuotesPanel } from "./ClientQuotesPanel";
 
@@ -122,6 +123,7 @@ export function TandCSection({
   onToast: (msg: string) => void;
 }) {
   const { authFetch } = useAuth();
+  const confirm = useConfirm();
   const [clauses, setClauses] = useState<Clause[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -186,7 +188,13 @@ export function TandCSection({
   };
 
   const resetAll = async () => {
-    if (!window.confirm("Reset all T&Cs to IS standard? Your edits will be lost.")) return;
+    const ok = await confirm({
+      title: "Reset T&Cs",
+      message: "Reset all T&Cs to IS standard? Your edits will be lost.",
+      confirmLabel: "Reset",
+      variant: "danger"
+    });
+    if (!ok) return;
     try {
       const response = await authFetch(`/tenders/${tenderId}/tandc/reset`, { method: "POST" });
       if (!response.ok) throw new Error(await response.text());

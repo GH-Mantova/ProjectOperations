@@ -88,8 +88,10 @@ test.describe("Batch 3 — Concrete cutting sheet (PRs #37, #44, #60)", () => {
     await expect(method.getByRole("option", { name: "Low-emission" })).toHaveCount(1);
     await expect(method.getByRole("option", { name: "High-Freq" })).toHaveCount(0);
 
-    // Cleanup via the row's delete control (confirm auto-accepted).
+    // Cleanup via the row's delete control — the delete confirm is now the
+    // in-app ConfirmDialog (useConfirm), not window.confirm.
     await row.getByRole("button", { name: "×" }).click();
+    await page.getByTestId("confirm-dialog-confirm").click();
     await expect(row).toHaveCount(0);
   });
 

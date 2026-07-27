@@ -34,7 +34,7 @@
 //   - The watcher fires, runs the prompt, then moves the file out
 
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, unlinkSync, watch as fsWatch } from "node:fs";
+import { existsSync, readFileSync, unlinkSync, watch as fsWatch } from "node:fs";
 import {
   mkdir,
   readdir,
@@ -355,6 +355,43 @@ function isReviewJob(name) {
   return /^rev-/i.test(name) || /-auto-review-ready\.md$/i.test(name);
 }
 
+// Fix-lane paths (indexed by absolute file path) — tracked in-memory so
+// computeQueueInsertIndex can classify queued entries without re-reading
+// front-matter. Reset only when the process restarts; a fix prompt that
+// completes and leaves the queue is dropped from this set on shift.
+const fixLanePaths = new Set();
+
+// Read `fixes_pr` from the prompt file. Sync so it fits the sync enqueue path.
+// Returns a positive integer or null. Any read/parse failure returns null —
+// the file may have been renamed out from under us (fs.watch races) and a
+// null answer just means "not a fix prompt", which is safe.
+export function readFixesPr(filePath, { readFileSyncImpl = readFileSync } = {}) {
+  let body;
+  try {
+    body = readFileSyncImpl(filePath, "utf-8");
+  } catch {
+    return null;
+  }
+  const deps = parseWatcherFrontMatter(body);
+  return deps.fixesPr ?? null;
+}
+
+// Pure — compute the insertion index for a prompt joining the queue.
+// Priority: fix jobs jump to the front (behind any currently-running job,
+// which the caller has already shifted out); rev/review jobs stack behind
+// existing fix + review jobs; ordinary jobs run in lexicographic name order
+// behind fix + review jobs. Multiple fix jobs stack in arrival order.
+export function computeQueueInsertIndex(queueMeta, incoming) {
+  const { isFix, isReview, name } = incoming;
+  let i = 0;
+  while (i < queueMeta.length && queueMeta[i].isFix) i++;
+  if (isFix) return i;
+  while (i < queueMeta.length && queueMeta[i].isReview) i++;
+  if (isReview) return i;
+  while (i < queueMeta.length && queueMeta[i].name <= name) i++;
+  return i;
+}
+
 // Pull the PR number out of a review-job filename. Supports both the
 // rev-NNN-ready.md convention and the legacy pr-NNN-auto-review-ready.md.
 function reviewJobPrNumber(name) {
@@ -526,26 +563,19 @@ function enqueue(name, { source = "watch" } = {}) {
   if (!existsSync(filePath)) return;
   if (seen.has(name)) return;
   seen.add(name);
-  if (isReviewJob(name)) {
-    // Verdicts unblock Marco's merges; insert after any review jobs already at
-    // the front so the currently-running authoring job is never interrupted but
-    // the next free slot goes to verdicts rather than more authoring work.
-    let insertAt = 0;
-    while (insertAt < queue.length && isReviewJob(path.basename(queue[insertAt]))) {
-      insertAt++;
-    }
-    queue.splice(insertAt, 0, filePath);
-  } else {
-    // Authoring jobs run in lexicographic filename order (numbering =
-    // ordering), always after any review jobs waiting at the front.
-    let insertAt = 0;
-    while (insertAt < queue.length && isReviewJob(path.basename(queue[insertAt]))) {
-      insertAt++;
-    }
-    while (insertAt < queue.length && path.basename(queue[insertAt]) <= name) {
-      insertAt++;
-    }
-    queue.splice(insertAt, 0, filePath);
+  const isReview = isReviewJob(name);
+  const fixesPr = isReview ? null : readFixesPr(filePath);
+  const isFix = fixesPr !== null;
+  if (isFix) fixLanePaths.add(filePath);
+  const queueMeta = queue.map((p) => ({
+    name: path.basename(p),
+    isFix: fixLanePaths.has(p),
+    isReview: isReviewJob(path.basename(p)),
+  }));
+  const insertAt = computeQueueInsertIndex(queueMeta, { isFix, isReview, name });
+  queue.splice(insertAt, 0, filePath);
+  if (isFix) {
+    log("fix-lane", `${name} jumped to front (fixes PR #${fixesPr})`);
   }
   const tail = `depth: ${queue.length}${running ? ", busy" : ""}, source: ${source}`;
   log("queue", `${name} (${tail})`);
@@ -737,13 +767,16 @@ function readYamlFrontMatterDeps(body, deps) {
       if (Number.isInteger(n) && n > 0) deps.requiresMerged.push(n);
     } else if (currentKey === "requires_file_on_main") {
       deps.requiresFilesOnMain.push(inline);
+    } else if (currentKey === "fixes_pr") {
+      const n = Number(inline);
+      if (Number.isInteger(n) && n > 0) deps.fixesPr = n;
     }
     currentKey = null;
   }
 }
 
 export function parseWatcherFrontMatter(body) {
-  const deps = { requiresMerged: [], requiresFilesOnMain: [] };
+  const deps = { requiresMerged: [], requiresFilesOnMain: [], fixesPr: null };
   for (const line of body.split("\n")) {
     const t = line.trim();
     if (t === "") continue;
@@ -1083,6 +1116,7 @@ async function pauseQueue(reason) {
   const drainable = queue.splice(0);
   for (const filePath of drainable) {
     const name = path.basename(filePath);
+    fixLanePaths.delete(filePath);
     try {
       await rename(filePath, path.join(PAUSED_DIR, name));
       log("PAUSE", `moved ${name} → paused/`);
@@ -1475,6 +1509,7 @@ async function drain() {
   running = true;
   await sweepOrphanWorktrees();
   const filePath = queue.shift();
+  fixLanePaths.delete(filePath);
   const name = path.basename(filePath);
 
   let promptBody;

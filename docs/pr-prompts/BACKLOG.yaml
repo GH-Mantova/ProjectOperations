@@ -248,19 +248,43 @@ items:
   # Removed per "when an item IS staged, delete it here; one place, never two." The remaining
   # synthetic-integration-fixtures item stays BLOCKED until the idempotency audit ships on main.
 
-  - id: synthetic-integration-fixtures
-    title: "Synthetic fixtures / mock servers for external integrations (Xero, Graph, Jotform)"
+  # DISCHARGED 2026-07-27 (04-scanner): the audit-gate RELEASED (docs/qa/integration-idempotency-audit.md
+  # is on main) so the parent synthetic-integration-fixtures item was SPLIT and its first slice STAGED.
+  #   * pr-synthetic-fixtures-xero-slice1-ready.md (lint: ADMIT, size 4) -- an in-memory synthetic Xero
+  #     provider + a reusable Case A/Case B/degrade reference + a green jest spec, all under
+  #     apps/api/testing/synthetic-fixtures/. DE-RISKED on purpose: the source item claimed "msw already
+  #     in the pnpm toolchain" -- that is WRONG (msw appears only as a transitive PEER dep; neither msw
+  #     nor nock is installed) and api jest is ts-jest with NO transformIgnorePatterns, so an ESM wire
+  #     mock (msw v2) would break the run. Slice 1 therefore adds ZERO deps and does NO wire mocking.
+  # The remaining two surfaces are re-registered below, gated on that slice landing on main. One place.
+
+  - id: synthetic-fixtures-graph-mail
+    title: "Synthetic fixtures slice 2: Graph-mail surface + idempotency/degrade spec"
     priority: P3
     why: >
-      Integration code cannot be CI-tested against real tenants (Azure/tenant hard stop; no
-      sandbox accounts wired into CI), so retry/idempotency/degrade paths ship unexercised.
-      Deliverable: a testing/synthetic-fixtures area with mock servers (msw or equivalent
-      already in the pnpm toolchain) modelling the Xero, Graph-mail and Jotform surfaces the
-      audit identifies, plus at least one CI spec per integration exercising the Case A/Case B
-      flows in docs/architecture/drafts/idempotency-pattern.md (duplicate-key replay, mid-call
-      failure + reaper, circuit-open degrade). Sequenced AFTER the audit because the audit's
-      call-site inventory defines what the mocks must model.
-    gate: 'test -f docs/qa/integration-idempotency-audit.md'
-    gate_means: 'READY only once the idempotency audit document exists on main; until then the blocker (no call-site inventory) stands. Dies as a blocker the moment the audit ships.'
+      Follow-on to the Xero synthetic-fixtures slice. Model the Graph-mail send surface the audit's
+      M-rows touch (sendNotificationEmail M1, PO email M2, quote send M3, access-request M4, tender
+      task-assign M5) as a synthetic provider under apps/api/testing/synthetic-fixtures/graph-mail/,
+      reusing the Case A/Case B/degrade reference from slice 1, plus a green jest spec exercising the
+      no-dedupe M1 double-send and the graceful-degrade posture. NOTE: pick a jest-compatible approach
+      for any wire-level mocking (msw v2 needs transformIgnorePatterns; nock is CJS but is NOT installed)
+      -- or stay in-memory like slice 1. Not a Marco decision, but flag the tool choice in the PR body.
+    gate: 'test -f apps/api/testing/synthetic-fixtures/xero/synthetic-xero.ts && ! test -d apps/api/testing/synthetic-fixtures/graph-mail'
+    gate_means: 'READY once the slice-1 Xero harness is on main AND the graph-mail fixtures do not exist yet. Dies as a blocker the moment the graph-mail fixtures ship.'
     needs_marco: false
     order: 11
+
+  - id: synthetic-fixtures-forms-ingestion
+    title: "Synthetic fixtures slice 3: native forms-ingestion surface + idempotency spec"
+    priority: P3
+    why: >
+      Follow-on to the Xero synthetic-fixtures slice. The audit found NO live Jotform code; the honest
+      in-repo analogue is the native forms-ingestion surface (F1 public/kiosk submit, F3 legacy raw
+      submit -- both have NO idempotency; F2 engine submit is already covered). Model those submit
+      surfaces as a synthetic ingest fixture under apps/api/testing/synthetic-fixtures/forms/, reusing
+      the slice-1 reference, plus a green jest spec exercising the F1 duplicate-submit (clientSubmissionId
+      replay) and the partial-write posture. Stays test-only; no production forms code, no migration.
+    gate: 'test -f apps/api/testing/synthetic-fixtures/xero/synthetic-xero.ts && ! test -d apps/api/testing/synthetic-fixtures/forms'
+    gate_means: 'READY once the slice-1 Xero harness is on main AND the forms fixtures do not exist yet. Dies as a blocker the moment the forms fixtures ship.'
+    needs_marco: false
+    order: 12

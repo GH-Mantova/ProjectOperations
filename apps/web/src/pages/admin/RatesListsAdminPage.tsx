@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { EmptyState, SkeletonList } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { useConfirm } from "../../hooks/useConfirm";
 import { can } from "../../auth/permissions";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { FilterableRateGrid } from "../../components/rates/FilterableRateGrid";
@@ -614,6 +615,7 @@ function formatValues(values: Record<string, unknown>): string {
 
 function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged: () => Promise<void> }) {
   const { authFetch } = useAuth();
+  const confirm = useConfirm();
   const [pendingError, setPendingError] = useState<string | null>(null);
   const [rowDraft, setRowDraft] = useState<Record<string, unknown> | null>(null);
   const [editRowId, setEditRowId] = useState<string | null>(null);
@@ -650,7 +652,13 @@ function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged
   };
 
   const handleDeleteColumn = async (columnId: string) => {
-    if (!window.confirm("Delete this column? Any values stored for it will be dropped.")) return;
+    const ok = await confirm({
+      title: "Delete column",
+      message: "Delete this column? Any values stored for it will be dropped.",
+      confirmLabel: "Delete",
+      variant: "danger"
+    });
+    if (!ok) return;
     setPendingError(null);
     const res = await authFetch(`/rates/tables/${table.id}/columns/${columnId}`, { method: "DELETE" });
     if (!res.ok) {
@@ -717,7 +725,13 @@ function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged
   };
 
   const handleDeleteRow = async (rowId: string) => {
-    if (!window.confirm("Deactivate this row? It is soft-deleted; snapshots keep resolving.")) return;
+    const ok = await confirm({
+      title: "Deactivate row",
+      message: "Deactivate this row? It is soft-deleted; snapshots keep resolving.",
+      confirmLabel: "Deactivate",
+      variant: "danger"
+    });
+    if (!ok) return;
     setPendingError(null);
     const res = await authFetch(`/rates/tables/${table.id}/rows/${rowId}`, { method: "DELETE" });
     if (!res.ok) {
@@ -1626,6 +1640,7 @@ function ListsPanel() {
 
 function ListItemsTab({ list, onChanged }: { list: ResolvedList; onChanged: () => void }) {
   const { authFetch } = useAuth();
+  const confirm = useConfirm();
   const [showArchived, setShowArchived] = useState(false);
   const [newLabel, setNewLabel] = useState("");
   const [newValue, setNewValue] = useState("");
@@ -1659,7 +1674,13 @@ function ListItemsTab({ list, onChanged }: { list: ResolvedList; onChanged: () =
   };
 
   const archiveItem = async (itemId: string) => {
-    if (!window.confirm("Archive this item? It stays on historical records but disappears from dropdowns.")) return;
+    const ok = await confirm({
+      title: "Archive item",
+      message: "Archive this item? It stays on historical records but disappears from dropdowns.",
+      confirmLabel: "Archive",
+      variant: "danger"
+    });
+    if (!ok) return;
     setError(null);
     const res = await authFetch(`/lists/${list.slug}/items/${itemId}`, { method: "DELETE" });
     if (!res.ok) {

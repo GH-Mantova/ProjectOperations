@@ -465,10 +465,11 @@ function NewTimesheet({
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
           <div>
-            <label className="field-label">Clock on</label>
+            <label className="field-label" htmlFor="ts-clock-on">Clock on</label>
             <input
               type="time"
               className="field-input"
+              id="ts-clock-on"
               value={clockOn}
               onChange={(e) => setClockOn(e.target.value)}
               disabled={clockFieldsDisabled}
@@ -476,10 +477,11 @@ function NewTimesheet({
             />
           </div>
           <div>
-            <label className="field-label">Clock off</label>
+            <label className="field-label" htmlFor="ts-clock-off">Clock off</label>
             <input
               type="time"
               className="field-input"
+              id="ts-clock-off"
               value={clockOff}
               onChange={(e) => setClockOff(e.target.value)}
               disabled={clockFieldsDisabled}

@@ -61,7 +61,9 @@ function makeService(prisma: ReturnType<typeof makePrisma>) {
       bumpRevision: jest.fn(),
       validate: jest.fn(() => null)
     } as never,
-    { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never
+    { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never,
+    { convertFromTender: jest.fn().mockResolvedValue(undefined) } as never,
+    { createFromTender: jest.fn().mockResolvedValue(undefined) } as never
   );
 }
 

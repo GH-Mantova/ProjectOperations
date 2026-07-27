@@ -399,6 +399,9 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
   // production provisioning of a dev-seeded database. It is attached to the
   // wp-user-admin worker record (Sean Lattin) below, so worker-name
   // assertions in the specs are unchanged — only the LOGIN is synthetic.
+  // isSuperUser: true because this login REPLACES Sean as the e2e field
+  // persona, and batch8-admin-portal.spec.ts asserts the Super-User-gated
+  // Company tab on /admin/ai-settings renders for the field persona.
   const fieldE2eUser = await prisma.user.upsert({
     where: { id: "user-field-e2e" },
     update: {
@@ -406,7 +409,7 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       firstName: "Field",
       lastName: "E2E",
       isActive: true,
-      isSuperUser: false,
+      isSuperUser: true,
       passwordHash: hashPassword("Password123!")
     },
     create: {
@@ -415,7 +418,7 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       firstName: "Field",
       lastName: "E2E",
       isActive: true,
-      isSuperUser: false,
+      isSuperUser: true,
       passwordHash: hashPassword("Password123!")
     }
   });

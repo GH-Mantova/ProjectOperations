@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { useConfirm } from "../../hooks/useConfirm";
 
 export type ProviderKey = "anthropic" | "openai" | "gemini" | "groq";
 
@@ -30,6 +31,7 @@ export function ProviderKeyManager({
   description?: string;
 }) {
   const { authFetch } = useAuth();
+  const confirm = useConfirm();
   const [status, setStatus] = useState<StatusMap | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -80,13 +82,13 @@ export function ProviderKeyManager({
   };
 
   const handleDelete = async (provider: ProviderKey): Promise<void> => {
-    if (
-      !window.confirm(
-        `Remove the ${PROVIDER_LABELS[provider]} key? AI features that use this provider will be disabled until a new key is entered.`
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Remove provider key",
+      message: `Remove the ${PROVIDER_LABELS[provider]} key? AI features that use this provider will be disabled until a new key is entered.`,
+      confirmLabel: "Remove",
+      variant: "danger"
+    });
+    if (!ok) return;
     const res = await authFetch(`${path}/${provider}`, { method: "DELETE" });
     if (!res.ok) {
       showToast(`Failed to remove key (status ${res.status})`);

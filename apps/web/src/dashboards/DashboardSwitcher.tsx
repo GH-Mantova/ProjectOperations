@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { CenteredModal } from "@project-ops/ui";
 import { DeleteDashboardModal } from "./DeleteDashboardModal";
 import { NewDashboardModal } from "./NewDashboardModal";
 import { useAuth } from "../auth/AuthContext";
@@ -25,6 +26,9 @@ export function DashboardSwitcher({ slug, dashboards, activeId, onSelect, onList
   const [deleteTarget, setDeleteTarget] = useState<UserDashboard | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [renameTarget, setRenameTarget] = useState<UserDashboard | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [renameBusy, setRenameBusy] = useState(false);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -69,11 +73,31 @@ export function DashboardSwitcher({ slug, dashboards, activeId, onSelect, onList
     }
   };
 
-  const rename = async (dash: UserDashboard) => {
-    const next = window.prompt("New dashboard name:", dash.name);
-    if (!next || !next.trim() || next.trim() === dash.name) return;
-    await renameApi(dash.id, next.trim());
-    onListRefresh();
+  const openRename = (dash: UserDashboard) => {
+    setRenameTarget(dash);
+    setRenameDraft(dash.name);
+  };
+
+  const closeRename = () => {
+    setRenameTarget(null);
+    setRenameDraft("");
+  };
+
+  const submitRename = async () => {
+    if (!renameTarget) return;
+    const next = renameDraft.trim();
+    if (!next || next === renameTarget.name) {
+      closeRename();
+      return;
+    }
+    setRenameBusy(true);
+    try {
+      await renameApi(renameTarget.id, next);
+      onListRefresh();
+      closeRename();
+    } finally {
+      setRenameBusy(false);
+    }
   };
 
   return (
@@ -235,7 +259,7 @@ export function DashboardSwitcher({ slug, dashboards, activeId, onSelect, onList
                     <button
                       type="button"
                       className="s7-btn s7-btn--secondary s7-btn--sm"
-                      onClick={() => void rename(d)}
+                      onClick={() => openRename(d)}
                       disabled={!canRenameDashboard(d, { isAdmin })}
                       title={canRenameDashboard(d, { isAdmin }) ? undefined : "Only admins can rename system dashboards"}
                     >
@@ -265,6 +289,41 @@ export function DashboardSwitcher({ slug, dashboards, activeId, onSelect, onList
           onCancel={closeDeleteConfirm}
           onConfirm={() => void confirmDelete()}
         />
+      ) : null}
+
+      {renameTarget ? (
+        <CenteredModal
+          title="Rename dashboard"
+          onClose={closeRename}
+          busy={renameBusy}
+          maxWidth={420}
+          footer={
+            <>
+              <button type="button" className="s7-btn s7-btn--ghost" onClick={closeRename} disabled={renameBusy}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="s7-btn s7-btn--primary"
+                onClick={() => void submitRename()}
+                disabled={renameBusy}
+              >
+                {renameBusy ? "Renaming…" : "Rename"}
+              </button>
+            </>
+          }
+        >
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
+            <span>New dashboard name</span>
+            <input
+              className="s7-input"
+              value={renameDraft}
+              onChange={(e) => setRenameDraft(e.target.value)}
+              autoFocus
+              disabled={renameBusy}
+            />
+          </label>
+        </CenteredModal>
       ) : null}
     </div>
   );

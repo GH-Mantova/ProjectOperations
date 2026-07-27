@@ -189,6 +189,131 @@ export class ContractsService {
   }
 
   /**
+   * Auto-create the contract for a tender that has just moved to
+   * `CONTRACT_ISSUED`.
+   *
+   * Idempotent: if the tender's converted project already carries a
+   * contract, that contract is returned unchanged (status can flip back
+   * and forth into CONTRACT_ISSUED without minting duplicates).
+   *
+   * contractValue precedence: latest SENT client quote total (sum of
+   * cost lines) > tender estimate total inc. markup + provisional sums
+   * > tender.estimatedValue > 0. The chosen source is recorded in
+   * audit metadata under `priceSource`.
+   *
+   * Reuses `createContract` for numbering + T&C pinning + base audit;
+   * writes an additional `contracts.autocreate-from-tender` audit entry
+   * with the source context.
+   *
+   * @throws NotFoundException when the tender is missing, or when it has
+   *   not yet been converted to a project
+   */
+  async createFromTender(tenderId: string, actorId: string) {
+    const tender = await this.prisma.tender.findUnique({
+      where: { id: tenderId },
+      include: {
+        estimate: {
+          include: {
+            items: {
+              include: {
+                labourLines: true,
+                plantLines: true,
+                equipLines: true,
+                wasteLines: true,
+                cuttingLines: true
+              }
+            }
+          }
+        },
+        clientQuotes: {
+          where: { status: "SENT" },
+          orderBy: [{ revision: "desc" }, { sentAt: "desc" }],
+          include: { costLines: { select: { price: true } } },
+          take: 1
+        }
+      }
+    });
+    if (!tender) throw new NotFoundException("Tender not found.");
+
+    const project = await this.prisma.project.findFirst({
+      where: { sourceTenderId: tenderId },
+      include: { contract: { select: { id: true } } }
+    });
+    if (!project) {
+      throw new NotFoundException("Project not found for tender — convert the tender first.");
+    }
+    if (project.contract) {
+      return this.getContract(project.contract.id);
+    }
+
+    const { contractValue, priceSource } = this.resolveTenderContractValue(tender);
+    const contract = await this.createContract(actorId, {
+      projectId: project.id,
+      contractValue,
+      notes: `Auto-created from tender ${tender.tenderNumber} on CONTRACT_ISSUED (price source: ${priceSource}).`
+    });
+    await this.audit.write({
+      actorId,
+      action: "contracts.autocreate-from-tender",
+      entityType: "Contract",
+      entityId: contract.id,
+      metadata: {
+        tenderId: tender.id,
+        tenderNumber: tender.tenderNumber,
+        projectId: project.id,
+        priceSource,
+        contractValue: contractValue.toFixed(2)
+      }
+    });
+    return contract;
+  }
+
+  private resolveTenderContractValue(
+    tender: {
+      estimatedValue: Prisma.Decimal | null;
+      estimate: {
+        markup: Prisma.Decimal | number;
+        items: Array<{
+          provisionalAmount: Prisma.Decimal | number | null;
+          labourLines: Array<{ qty: Prisma.Decimal | number; days: Prisma.Decimal | number; rate: Prisma.Decimal | number }>;
+          plantLines: Array<{ qty: Prisma.Decimal | number; days: Prisma.Decimal | number; rate: Prisma.Decimal | number }>;
+          equipLines: Array<{ qty: Prisma.Decimal | number; duration: Prisma.Decimal | number; rate: Prisma.Decimal | number }>;
+          wasteLines: Array<{ qtyTonnes: Prisma.Decimal | number; tonRate: Prisma.Decimal | number; loads: Prisma.Decimal | number; loadRate: Prisma.Decimal | number }>;
+          cuttingLines: Array<{ qty: Prisma.Decimal | number; rate: Prisma.Decimal | number }>;
+        }>;
+      } | null;
+      clientQuotes: Array<{ costLines: Array<{ price: Prisma.Decimal | number }> }>;
+    }
+  ): { contractValue: number; priceSource: "quote" | "estimate" | "estimatedValue" | "zero" } {
+    const latestQuote = tender.clientQuotes[0];
+    if (latestQuote) {
+      const total = latestQuote.costLines.reduce((s, l) => s + Number(l.price), 0);
+      if (total > 0) return { contractValue: Number(total.toFixed(2)), priceSource: "quote" };
+    }
+    if (tender.estimate) {
+      const markup = Number(tender.estimate.markup);
+      let lineTotal = 0;
+      let provisionalTotal = 0;
+      for (const item of tender.estimate.items) {
+        for (const l of item.labourLines) lineTotal += Number(l.qty) * Number(l.days) * Number(l.rate);
+        for (const l of item.plantLines) lineTotal += Number(l.qty) * Number(l.days) * Number(l.rate);
+        for (const l of item.equipLines) lineTotal += Number(l.qty) * Number(l.duration) * Number(l.rate);
+        for (const l of item.wasteLines) {
+          lineTotal += Number(l.qtyTonnes) * Number(l.tonRate) + Number(l.loads) * Number(l.loadRate);
+        }
+        for (const l of item.cuttingLines) lineTotal += Number(l.qty) * Number(l.rate);
+        if (item.provisionalAmount) provisionalTotal += Number(item.provisionalAmount);
+      }
+      const total = lineTotal * (1 + markup / 100) + provisionalTotal;
+      if (total > 0) return { contractValue: Number(total.toFixed(2)), priceSource: "estimate" };
+    }
+    if (tender.estimatedValue) {
+      return { contractValue: Number(tender.estimatedValue), priceSource: "estimatedValue" };
+    }
+    return { contractValue: 0, priceSource: "zero" };
+  }
+
+  /**
    * Update a contract; only actors holding `finance.admin` may change
    * contractValue after creation.
    *

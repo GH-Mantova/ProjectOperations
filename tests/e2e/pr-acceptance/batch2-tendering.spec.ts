@@ -144,6 +144,15 @@ test.describe("Batch 2 — Tendering pipeline + register (PRs #16, #28-#30, #43,
       await page.getByPlaceholder("Search number, title, or client").hover();
     }
 
+    // A residue DEFAULT preset may have auto-applied its filters on load
+    // (deleting the preset does not clear the active chips) — clear them so
+    // the Hot toggle below starts from a clean slate.
+    const clearAll = page.getByRole("button", { name: "Clear all" });
+    if (await clearAll.isVisible()) {
+      await clearAll.click();
+      await expect(clearAll).toHaveCount(0);
+    }
+
     // Activate the Hot chip — "Save filter" only renders once a filter is on.
     const presetName = `e2e-b2-${Date.now()}`;
     await page.getByRole("button", { name: "Hot", exact: true }).click();

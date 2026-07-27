@@ -226,29 +226,27 @@ test.describe("Batch 8 — Shell & tendering long tail (PRs #219, #248, #172, #1
   }) => {
     await openScopeTab(page);
 
-    const dialogMessages: string[] = [];
-    page.on("dialog", (dialog) => {
-      dialogMessages.push(dialog.message());
-      void dialog.accept();
-    });
-
     // Seed one override so Reset all has something to clear.
     const cardInput = page.getByLabel("Card markup override percent");
     await cardInput.fill("42");
     await cardInput.blur();
     await expect(page.getByRole("button", { name: "Reset this card" })).toBeVisible();
 
+    // The reset confirm is now the in-app ConfirmDialog (useConfirm).
     await page.getByRole("button", { name: "Reset all" }).click();
+    const resetDialog = page.getByTestId("confirm-dialog");
+    await expect(resetDialog).toContainText(
+      "Reset every markup override back to the tender default"
+    );
+    await page.getByTestId("confirm-dialog-confirm").click();
     await expect(page.getByText(/Cleared: [1-9]\d* scope,/)).toBeVisible();
-    expect(dialogMessages.length).toBe(1);
-    expect(dialogMessages[0]).toContain("Reset every markup override back to the tender default");
     await expect(cardInput).toHaveValue("");
 
     // With no overrides left the second click skips the confirm dialog
     // entirely and reports cardsReset: 0.
     await page.getByRole("button", { name: "Reset all" }).click();
     await expect(page.getByText("Cleared: 0 scope, 0 waste, 0 cutting")).toBeVisible();
-    expect(dialogMessages.length).toBe(1);
+    await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
   });
 
   test("brand fonts: Outfit body text, Syne headings (PR #27)", async ({ page }) => {

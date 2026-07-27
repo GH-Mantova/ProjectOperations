@@ -19,13 +19,15 @@ export const VIEWER = {
 };
 
 /**
- * Seeded Initial Services staff login with id `user-admin`, linked to
- * WorkerProfile `wp-user-admin` (Sean Lattin) — the only seeded login that can
- * use the /field worker surface. ADMIN above has NO worker profile, so it
- * naturally receives the "Mobile access not provisioned" 403 state on /field.
+ * Synthetic e2e login (id `user-field-e2e`) attached to WorkerProfile
+ * `wp-user-admin` (worker: Sean Lattin) — the only seeded login that can use
+ * the /field worker surface. Real staff logins (including Sean's own) are
+ * SSO-only with no usable local password; this dev-marker-domain account
+ * exists purely for the acceptance suite. ADMIN above has NO worker profile,
+ * so it naturally receives the "Mobile access not provisioned" 403 on /field.
  */
 export const FIELD_WORKER = {
-  email: "sean@initialservices.net",
+  email: "field.e2e@projectops.local",
   password: "Password123!",
   workerName: "Sean Lattin"
 };

@@ -472,8 +472,10 @@ test.describe("Batch 6 — Projects + Jobs (PRs #17, #39, #40, #242, #250, #267,
       // navigates back to the /workers register on success.
       await page.getByRole("link", { name: fullName }).click();
       await expect(page.getByRole("heading", { name: fullName })).toBeVisible();
-      page.once("dialog", (d) => void d.accept());
+      // Deactivate now confirms via the in-app ConfirmDialog (useConfirm),
+      // not window.confirm.
       await page.getByRole("button", { name: "Deactivate worker" }).click();
+      await page.getByTestId("confirm-dialog-confirm").click();
       await page.waitForURL(/\/workers$/);
 
       // Hidden from the Active tab, present on Inactive.

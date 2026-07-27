@@ -79,3 +79,18 @@ Reading config already committed to the repo is fine. Mutating tenant state is n
   do not try to retrigger checks on a dirty branch.
 - GATE-ALLOW markers must be BARE at column 0. `## GATE-ALLOW: migrations` (a markdown heading)
   does NOT match CP-11's regex and the gate fails with the marker visibly present.
+
+
+---
+
+## FIX LANE (Marco, 2026-07-24) - what it means for machine health
+
+- Fix prompts (`fixes_pr: <N>` front-matter) jump to queue FRONT. Seeing an ordinary prompt wait
+  behind a fix prompt is CORRECT behaviour, not starvation - do not "unstick" it.
+- When triaging a red board, check for ONE shared failure signature across multiple PRs before
+  treating them as independent: a docs-only PR failing a code check proves the regression is on
+  MAIN, and the remedy is a single fixes_pr prompt, not N per-PR fixes.
+- After any scripts/pr-watcher/** change merges to main, the running watcher still executes the
+  OLD code. A restart is required to adopt it: wait for an idle window (no in-progress run), stop
+  the WRAPPER first, then the node, then relaunch DETACHED via C:\po-watcher\watcher-launcher.ps1
+  and verify the chain survives 40s+ and the clone is 0-behind.

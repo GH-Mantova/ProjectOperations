@@ -148,3 +148,19 @@ If Marco says no or amends, loop back to the phase his feedback touches.
   always agrees is not doing its job.
 - Time-box: if Phase 1 exceeds ~3 question rounds without convergence, summarise the open
   forks as an options table and let Marco pick - do not interrogate him forever.
+
+
+---
+
+## FIX LANE addendum (Marco, 2026-07-24) - Phase 4 gains a fifth artifact type
+
+**FIX-FORWARD PROMPT** - when the brief is "PR N is red / a regression blocks the board":
+- Front-matter carries `fixes_pr: <N>` (an OPEN PR; lint rejects settled targets) so the watcher
+  front-inserts it ahead of ordinary work.
+- The body MUST order the agent to re-verify the failure on the CURRENT head from the job log
+  before acting (errors drift; fix what the log shows, and say so if it changed).
+- Defect in the PR's own diff -> fix ON its existing branch, no new PR. Defect on main -> its
+  own fix PR. A docs-only PR failing a code check is proof the defect is on main.
+- Dependents declare `requires_merged: [N]` and are HELD (not binned) while the fix is in flight.
+Grounding shortcut for red-board briefs: diff the failure SIGNATURES across all red PRs first -
+one shared signature means one fix, not many.

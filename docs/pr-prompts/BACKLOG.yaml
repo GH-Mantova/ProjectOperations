@@ -288,3 +288,20 @@ items:
     gate_means: 'READY once the slice-1 Xero harness is on main AND the forms fixtures do not exist yet. Dies as a blocker the moment the forms fixtures ship.'
     needs_marco: false
     order: 12
+
+  - id: gps-native-wrapper-app
+    title: "Native wrapper app (Capacitor or similar) for true background GPS - TSheets parity"
+    priority: P3
+    why: >
+      Marco's 2026-07-27 GPS ruling (PR Master session): clock events are hard-blocked without GPS
+      (slice A1), a breadcrumb trail runs while the app is open on the clock (slice A2), and all
+      field surfaces capture mandatory GPS (slice A3). Full TSheets parity - tracking that survives
+      the phone being locked or the app backgrounded - is IMPOSSIBLE in a browser/PWA (mobile
+      browsers suspend geolocation when backgrounded). Parity requires shipping the web app inside
+      a native wrapper (e.g. Capacitor) with OS background-location permission, store distribution,
+      and a worker-facing privacy notice. Big, separate project; Marco explicitly parked it here
+      when accepting option A (track-while-open with honest gaps).
+    gate: 'grep -rqi "breadcrumb" apps/api/src/modules/field && ! test -d apps/mobile'
+    gate_means: 'READY to consider once the A2 breadcrumb slice is on main and no native wrapper exists yet. Dies the moment an apps/mobile wrapper ships.'
+    needs_marco: true
+    order: 13

@@ -44,20 +44,24 @@ OAuth2, MYOB CSV, M365 SSO + local JWT + Super User, AI providers + BYOK encrypt
 
 ---
 
-## 2. 🔧 In-PR — open right now (1)
+## 2. 🔧 In-PR — open right now (6)
 
-> Live snapshot read from GitHub at reconcile time (2026-07-22). For richer status/blocker
+> Live snapshot read from GitHub at reconcile time (2026-07-27). For richer status/blocker
 > detail run `scripts/pipeline/bring-up-to-speed.ps1` — its `[LIVE]` lines beat this table
 > the moment it drifts.
 
 | PR | Title | Notes |
 |---|---|---|
-| #735 | feat(ux): fold Archive into Documents and Resources into Workers | |
+| #779 | feat(web): LocationsMap panel — Settings › Map locations (m1b) | leaflet; GATE-ALLOW: dependencies |
+| #787 | chore(deps): bump sharp 0.33.5→0.35.0 | dependabot |
+| #789 | feat(crm): CRM board as second tab on Tenders page | |
+| #796 | fix(seed): SSO-only sentinel for real staff accounts | do-not-merge |
+| #797 | feat(swms): SLICE A1 — template catalog tables | do-not-merge; escalates (schema) |
+| #808 | feat(web): migrate native dialogs to useConfirm (batch A) | |
 
-The previous In-PR batch (#705–#751) has since closed out as `main` advanced to #762 —
-merged or closed. Per-PR history lives in `03-progress-log.md` and the merged-batch summary in
-§1; run `bring-up-to-speed.ps1` for the authoritative live list.
-
+#735 (fold Archive→Documents, Resources→Workers) has since MERGED, along with its spec-retarget
+queue PRs #765/#767 and data-model chores #764/#786. Per-PR history lives in `03-progress-log.md`;
+run `bring-up-to-speed.ps1` for the authoritative live list.
 ---
 
 ## 3. 📦 Staged — prompt written, not yet a PR

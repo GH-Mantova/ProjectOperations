@@ -133,6 +133,59 @@ describe("EstimatesService — protected delete behaviours", () => {
     expect(audit.write).not.toHaveBeenCalled();
   });
 
+  it("upsertMaterialDensity (create) persists defaultWasteGroup/defaultWasteItem verbatim, empty→null", async () => {
+    const audit = buildAudit();
+    const created = { id: "den-9" };
+    const prisma = {
+      estimateMaterialDensity: {
+        create: jest.fn().mockResolvedValue(created),
+        update: jest.fn().mockResolvedValue({ id: "den-9" })
+      }
+    };
+    const service = new EstimatesService(prisma as never, audit as never, buildResolver() as never);
+
+    await service.upsertMaterialDensity(
+      undefined,
+      {
+        materialName: "Reinforced concrete",
+        density: "2400",
+        unit: "kg/m³",
+        defaultWasteGroup: "Clean fill",
+        defaultWasteItem: "Concrete"
+      } as never,
+      "user-1"
+    );
+
+    expect(prisma.estimateMaterialDensity.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        materialName: "Reinforced concrete",
+        defaultWasteGroup: "Clean fill",
+        defaultWasteItem: "Concrete"
+      })
+    });
+
+    // Empty strings from the admin table's "clear the cell" path map to null so
+    // the resolver returns a clean absence (undefined default) rather than "".
+    await service.upsertMaterialDensity(
+      "den-9",
+      {
+        materialName: "Timber",
+        density: "600",
+        unit: "kg/m³",
+        defaultWasteGroup: "",
+        defaultWasteItem: ""
+      } as never,
+      "user-1"
+    );
+    expect(prisma.estimateMaterialDensity.update).toHaveBeenCalledWith({
+      where: { id: "den-9" },
+      data: expect.objectContaining({
+        defaultWasteGroup: null,
+        defaultWasteItem: null
+      })
+    });
+  });
+
   it("deleteMaterialDensity soft-deletes via isActive:false rather than hard delete", async () => {
     const audit = buildAudit();
     const prisma = {

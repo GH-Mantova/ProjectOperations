@@ -110,6 +110,8 @@ test.describe("Batch 1 — Dashboards, KPIs & Widgets (PRs #6, #15, #29, #30, #3
     while ((await residue.count()) > 0) {
       const before = await residue.count();
       await residue.first().click();
+      // Sidebar remove now confirms via the in-app ConfirmDialog (useConfirm).
+      await page.getByTestId("confirm-dialog-confirm").click();
       await expect(residue).toHaveCount(before - 1);
     }
 
@@ -130,8 +132,10 @@ test.describe("Batch 1 — Dashboards, KPIs & Widgets (PRs #6, #15, #29, #30, #3
     // After creation, the new dashboard name should appear in the sidebar
     await expect(nav.getByRole("link", { name: dashName })).toBeVisible({ timeout: 10_000 });
 
-    // Clean up so the test is re-runnable (unique slug constraint above)
+    // Clean up so the test is re-runnable (unique slug constraint above) —
+    // the remove confirms via the in-app ConfirmDialog (useConfirm).
     await nav.getByRole("button", { name: `Remove ${dashName}` }).click();
+    await page.getByTestId("confirm-dialog-confirm").click();
     await expect(nav.getByRole("link", { name: dashName })).not.toBeVisible();
   });
 

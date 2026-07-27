@@ -107,9 +107,12 @@ test.describe("Batch 6 — Contracts (PRs #58, #59)", () => {
       await expect(variationRow).toHaveCount(1, { timeout: VAR_TIMEOUT });
       await expect(variationRow).toContainText("RECEIVED", { timeout: VAR_TIMEOUT });
 
-      page.once("dialog", (d) => void d.accept("5000")); // Priced amount $
-      const pricedResponse = page.waitForResponse(isVariationsCall, { timeout: VAR_TIMEOUT });
+      // "Mark priced" now opens an in-app amount modal (useConfirm migration)
+      // instead of window.prompt.
       await page.getByRole("button", { name: "Mark priced" }).click();
+      await page.getByRole("spinbutton", { name: "Priced amount $:" }).fill("5000");
+      const pricedResponse = page.waitForResponse(isVariationsCall, { timeout: VAR_TIMEOUT });
+      await page.getByRole("button", { name: "OK", exact: true }).click();
       await pricedResponse;
       await expect(variationRow).toContainText("PRICED", { timeout: VAR_TIMEOUT });
 
@@ -118,9 +121,12 @@ test.describe("Batch 6 — Contracts (PRs #58, #59)", () => {
       await submittedResponse;
       await expect(variationRow).toContainText("SUBMITTED", { timeout: VAR_TIMEOUT });
 
-      page.once("dialog", (d) => void d.accept("5000")); // Approved amount $
-      const approvedResponse = page.waitForResponse(isVariationsCall, { timeout: VAR_TIMEOUT });
+      // "Mark approved" opens the same style of amount modal, prefilled with
+      // the priced amount — overwrite with the expected value regardless.
       await page.getByRole("button", { name: "Mark approved" }).click();
+      await page.getByRole("spinbutton", { name: "Approved amount $:" }).fill("5000");
+      const approvedResponse = page.waitForResponse(isVariationsCall, { timeout: VAR_TIMEOUT });
+      await page.getByRole("button", { name: "OK", exact: true }).click();
       await approvedResponse;
       await expect(variationRow).toContainText("APPROVED", { timeout: VAR_TIMEOUT });
 
@@ -132,11 +138,10 @@ test.describe("Batch 6 — Contracts (PRs #58, #59)", () => {
       // check the retention line, then submit the claim.
       await page.getByRole("button", { name: /^Progress claims \(0\)$/ }).click();
       await expect(page.getByText("No progress claims yet.")).toBeVisible();
-      // dialog.accept() with no argument submits an empty string (not the
-      // prompt's default), which aborts claim creation — pass the month.
-      const claimMonth = new Date().toISOString().slice(0, 7);
-      page.once("dialog", (d) => void d.accept(claimMonth));
+      // "+ New claim" now opens an in-app month modal (useConfirm migration),
+      // prefilled with the current YYYY-MM — accept it via Create.
       await page.getByRole("button", { name: "+ New claim" }).click();
+      await page.getByRole("button", { name: "Create", exact: true }).click();
       await expect(page.getByText("DRAFT", { exact: true })).toBeVisible();
 
       await page.getByText("DRAFT", { exact: true }).click(); // select the claim row
@@ -144,8 +149,9 @@ test.describe("Batch 6 — Contracts (PRs #58, #59)", () => {
       await expect(page.getByText("Retention (5.00%)")).toBeVisible();
       await expect(page.getByText("Net this claim")).toBeVisible();
 
-      page.once("dialog", (d) => void d.accept()); // "Submit this claim?"
+      // "Submit claim" confirms via the in-app ConfirmDialog (useConfirm).
       await page.getByRole("button", { name: "Submit claim" }).click();
+      await page.getByTestId("confirm-dialog-confirm").click();
       await expect(page.getByText("SUBMITTED", { exact: true })).toBeVisible();
 
       // Register row: contract listed with project pointer and retention %.

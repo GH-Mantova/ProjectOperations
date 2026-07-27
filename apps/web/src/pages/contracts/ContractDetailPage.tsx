@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
+import { useConfirm } from "../../hooks/useConfirm";
 import { BillingTab } from "./BillingTab";
 import { RecordHistory } from "../../components/RecordHistory";
 
@@ -255,6 +257,13 @@ function VariationsTab({
   const { authFetch } = useAuth();
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [amountDraft, setAmountDraft] = useState<{
+    variationId: string;
+    nextStatus: VariationStatus;
+    fieldName: "pricedAmount" | "approvedAmount";
+    label: string;
+    value: string;
+  } | null>(null);
 
   const addVariation = async (description: string) => {
     try {
@@ -335,17 +344,25 @@ function VariationsTab({
                       onClick={() => {
                         const next: VariationStatus =
                           v.status === "RECEIVED" ? "PRICED" : v.status === "PRICED" ? "SUBMITTED" : "APPROVED";
-                        const extra: Record<string, unknown> = {};
                         if (next === "PRICED") {
-                          const priced = window.prompt("Priced amount $:");
-                          if (priced === null) return;
-                          extra.pricedAmount = Number(priced) || 0;
+                          setAmountDraft({
+                            variationId: v.id,
+                            nextStatus: next,
+                            fieldName: "pricedAmount",
+                            label: "Priced amount $:",
+                            value: ""
+                          });
                         } else if (next === "APPROVED") {
-                          const approved = window.prompt("Approved amount $:", v.pricedAmount ?? "");
-                          if (approved === null) return;
-                          extra.approvedAmount = Number(approved) || 0;
+                          setAmountDraft({
+                            variationId: v.id,
+                            nextStatus: next,
+                            fieldName: "approvedAmount",
+                            label: "Approved amount $:",
+                            value: v.pricedAmount ?? ""
+                          });
+                        } else {
+                          void advance(v.id, next, {});
                         }
-                        void advance(v.id, next, extra);
                       }}
                     >
                       {v.status === "RECEIVED" ? "Mark priced" : v.status === "PRICED" ? "Submit" : "Mark approved"}
@@ -357,6 +374,43 @@ function VariationsTab({
           </tbody>
         </table>
       )}
+      {amountDraft ? (
+        <CenteredModal
+          title={amountDraft.label}
+          onClose={() => setAmountDraft(null)}
+          maxWidth={360}
+          footer={
+            <>
+              <button type="button" className="s7-btn s7-btn--ghost" onClick={() => setAmountDraft(null)}>Cancel</button>
+              <button
+                type="button"
+                className="s7-btn s7-btn--primary"
+                onClick={() => {
+                  const draft = amountDraft;
+                  setAmountDraft(null);
+                  void advance(draft.variationId, draft.nextStatus, {
+                    [draft.fieldName]: Number(draft.value) || 0
+                  });
+                }}
+              >
+                OK
+              </button>
+            </>
+          }
+        >
+          <label className="estimate-editor__field">
+            <span>{amountDraft.label}</span>
+            <input
+              className="s7-input"
+              type="number"
+              step="0.01"
+              value={amountDraft.value}
+              onChange={(e) => setAmountDraft({ ...amountDraft, value: e.target.value })}
+              autoFocus
+            />
+          </label>
+        </CenteredModal>
+      ) : null}
     </section>
   );
 }
@@ -389,13 +443,20 @@ function ClaimsTab({
   const { authFetch } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [selectedClaim, setSelectedClaim] = useState<string | null>(null);
+  const [newClaimMonth, setNewClaimMonth] = useState<string | null>(null);
   const selected = useMemo(
     () => contract.progressClaims.find((c) => c.id === selectedClaim),
     [contract.progressClaims, selectedClaim]
   );
 
-  const createClaim = async () => {
-    const month = window.prompt("Claim month (YYYY-MM):", new Date().toISOString().slice(0, 7));
+  const openCreateClaim = () => {
+    setNewClaimMonth(new Date().toISOString().slice(0, 7));
+  };
+
+  const submitCreateClaim = async () => {
+    if (!newClaimMonth) return;
+    const month = newClaimMonth.trim();
+    setNewClaimMonth(null);
     if (!month) return;
     try {
       const claimMonth = `${month}-01`;
@@ -415,7 +476,7 @@ function ClaimsTab({
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <h3 className="s7-type-section-heading" style={{ margin: 0 }}>Progress claims</h3>
         {canManage ? (
-          <button type="button" className="s7-btn s7-btn--primary s7-btn--sm" onClick={() => void createClaim()}>
+          <button type="button" className="s7-btn s7-btn--primary s7-btn--sm" onClick={openCreateClaim}>
             + New claim
           </button>
         ) : null}
@@ -470,6 +531,38 @@ function ClaimsTab({
           onRefresh={onRefresh}
         />
       ) : null}
+      {newClaimMonth !== null ? (
+        <CenteredModal
+          title="New progress claim"
+          onClose={() => setNewClaimMonth(null)}
+          maxWidth={360}
+          footer={
+            <>
+              <button type="button" className="s7-btn s7-btn--ghost" onClick={() => setNewClaimMonth(null)}>Cancel</button>
+              <button
+                type="button"
+                className="s7-btn s7-btn--primary"
+                onClick={() => void submitCreateClaim()}
+                disabled={!newClaimMonth.trim()}
+              >
+                Create
+              </button>
+            </>
+          }
+        >
+          <label className="estimate-editor__field">
+            <span>Claim month (YYYY-MM)</span>
+            <input
+              className="s7-input"
+              type="text"
+              value={newClaimMonth}
+              onChange={(e) => setNewClaimMonth(e.target.value)}
+              placeholder="YYYY-MM"
+              autoFocus
+            />
+          </label>
+        </CenteredModal>
+      ) : null}
     </section>
   );
 }
@@ -504,10 +597,13 @@ function ClaimEditor({
   onRefresh: () => Promise<void> | void;
 }) {
   const { authFetch } = useAuth();
+  const confirm = useConfirm();
   const [items, setItems] = useState<ClaimLineItem[]>([]);
   const [totalClaimed, setTotalClaimed] = useState(0);
   const [paymentSchedule, setPaymentSchedule] = useState<PaymentSchedule | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [approveDraft, setApproveDraft] = useState<string | null>(null);
+  const [payDraft, setPayDraft] = useState<{ amount: string; date: string } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -543,20 +639,8 @@ function ClaimEditor({
     }
   };
 
-  const transition = async (action: "submit" | "approve" | "pay") => {
+  const doTransition = async (action: "submit" | "approve" | "pay", body: Record<string, unknown>) => {
     try {
-      let body: Record<string, unknown> = {};
-      if (action === "approve") {
-        const amount = window.prompt("Approved amount $:", String(totalClaimed));
-        if (amount === null) return;
-        body = { totalApproved: Number(amount) || 0 };
-      } else if (action === "pay") {
-        const amount = window.prompt("Paid amount $:");
-        if (amount === null) return;
-        const date = window.prompt("Paid date (YYYY-MM-DD):", new Date().toISOString().slice(0, 10));
-        if (date === null) return;
-        body = { totalPaid: Number(amount) || 0, paidDate: date };
-      }
       const response = await authFetch(`/contracts/${contractId}/claims/${claimId}/${action}`, {
         method: "POST",
         body: JSON.stringify(body)
@@ -568,6 +652,19 @@ function ClaimEditor({
       setError((err as Error).message);
     }
   };
+
+  const openSubmit = async () => {
+    const ok = await confirm({
+      title: "Submit claim",
+      message: "Submit this claim?",
+      confirmLabel: "Submit"
+    });
+    if (!ok) return;
+    await doTransition("submit", {});
+  };
+
+  const openApprove = () => setApproveDraft(String(totalClaimed));
+  const openPay = () => setPayDraft({ amount: "", date: new Date().toISOString().slice(0, 10) });
 
   const savePaymentSchedule = async (body: { scheduledAmount: number; reasons?: string | null; respondedAt?: string | null }) => {
     try {
@@ -646,13 +743,13 @@ function ClaimEditor({
 
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {claimStatus === "DRAFT" && canManage ? (
-            <button type="button" className="s7-btn s7-btn--primary" onClick={() => window.confirm("Submit this claim?") && void transition("submit")}>Submit claim</button>
+            <button type="button" className="s7-btn s7-btn--primary" onClick={() => void openSubmit()}>Submit claim</button>
           ) : null}
           {claimStatus === "SUBMITTED" && canAdmin ? (
-            <button type="button" className="s7-btn s7-btn--primary" onClick={() => void transition("approve")}>Approve claim</button>
+            <button type="button" className="s7-btn s7-btn--primary" onClick={openApprove}>Approve claim</button>
           ) : null}
           {claimStatus === "APPROVED" && canAdmin ? (
-            <button type="button" className="s7-btn s7-btn--primary" onClick={() => void transition("pay")}>Record payment</button>
+            <button type="button" className="s7-btn s7-btn--primary" onClick={openPay}>Record payment</button>
           ) : null}
         </div>
       </div>
@@ -663,6 +760,91 @@ function ClaimEditor({
         canManage={canManage}
         onSave={savePaymentSchedule}
       />
+
+      {approveDraft !== null ? (
+        <CenteredModal
+          title="Approve claim"
+          onClose={() => setApproveDraft(null)}
+          maxWidth={360}
+          footer={
+            <>
+              <button type="button" className="s7-btn s7-btn--ghost" onClick={() => setApproveDraft(null)}>Cancel</button>
+              <button
+                type="button"
+                className="s7-btn s7-btn--primary"
+                onClick={() => {
+                  const amount = approveDraft;
+                  setApproveDraft(null);
+                  void doTransition("approve", { totalApproved: Number(amount) || 0 });
+                }}
+              >
+                Approve
+              </button>
+            </>
+          }
+        >
+          <label className="estimate-editor__field">
+            <span>Approved amount $:</span>
+            <input
+              className="s7-input"
+              type="number"
+              step="0.01"
+              value={approveDraft}
+              onChange={(e) => setApproveDraft(e.target.value)}
+              autoFocus
+            />
+          </label>
+        </CenteredModal>
+      ) : null}
+
+      {payDraft ? (
+        <CenteredModal
+          title="Record payment"
+          onClose={() => setPayDraft(null)}
+          maxWidth={360}
+          footer={
+            <>
+              <button type="button" className="s7-btn s7-btn--ghost" onClick={() => setPayDraft(null)}>Cancel</button>
+              <button
+                type="button"
+                className="s7-btn s7-btn--primary"
+                onClick={() => {
+                  const draft = payDraft;
+                  setPayDraft(null);
+                  void doTransition("pay", {
+                    totalPaid: Number(draft.amount) || 0,
+                    paidDate: draft.date
+                  });
+                }}
+                disabled={!payDraft.date}
+              >
+                Record
+              </button>
+            </>
+          }
+        >
+          <label className="estimate-editor__field">
+            <span>Paid amount $:</span>
+            <input
+              className="s7-input"
+              type="number"
+              step="0.01"
+              value={payDraft.amount}
+              onChange={(e) => setPayDraft({ ...payDraft, amount: e.target.value })}
+              autoFocus
+            />
+          </label>
+          <label className="estimate-editor__field">
+            <span>Paid date (YYYY-MM-DD):</span>
+            <input
+              className="s7-input"
+              type="date"
+              value={payDraft.date}
+              onChange={(e) => setPayDraft({ ...payDraft, date: e.target.value })}
+            />
+          </label>
+        </CenteredModal>
+      ) : null}
     </div>
   );
 }

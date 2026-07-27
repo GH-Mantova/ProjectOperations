@@ -16,6 +16,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { useConfirm } from "../../hooks/useConfirm";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { OverrideField } from "../../components";
 import { DISCIPLINE_CODES, DISCIPLINE_LABELS } from "./scope-cards/utils/card-display";
@@ -1949,6 +1950,7 @@ function QuoteScopeTab({
   onDetailLevelChange: (v: "simple" | "detailed") => void;
 }) {
   const { authFetch } = useAuth();
+  const confirm = useConfirm();
   const [rows, setRows] = useState<QuoteScopeItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -2010,7 +2012,13 @@ function QuoteScopeTab({
   };
 
   const deleteRow = async (id: string) => {
-    if (!window.confirm("Remove this item from the quote?")) return;
+    const ok = await confirm({
+      title: "Remove item",
+      message: "Remove this item from the quote?",
+      confirmLabel: "Remove",
+      variant: "danger"
+    });
+    if (!ok) return;
     const response = await authFetch(`${base}/${id}`, { method: "DELETE" });
     if (!response.ok) {
       setError(await readApiErrorMessage(response));
@@ -2053,7 +2061,13 @@ function QuoteScopeTab({
   };
 
   const reset = async () => {
-    if (!window.confirm("This will replace all quote scope items with current scope of works data. Continue?")) return;
+    const ok = await confirm({
+      title: "Reset quote scope",
+      message: "This will replace all quote scope items with current scope of works data. Continue?",
+      confirmLabel: "Reset",
+      variant: "danger"
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       const response = await authFetch(`${base}/reset`, { method: "POST" });

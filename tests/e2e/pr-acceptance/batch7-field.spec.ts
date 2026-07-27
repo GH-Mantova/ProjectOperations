@@ -18,7 +18,7 @@ import {
  * Batch 7 — field/mobile experience + timesheet approval workspace.
  *
  * Identity model (two seeded logins):
- *  - FIELD WORKER: sean@initialservices.net (id user-admin) is the only login
+ *  - FIELD WORKER: field.e2e@projectops.local (id user-field-e2e) is the only login
  *    linked to a WorkerProfile (wp-user-admin) — he drives the /field surface.
  *  - APPROVER: admin@projectops.local has field.manage but NO worker profile,
  *    so he reviews timesheets and naturally hits the "Mobile access not

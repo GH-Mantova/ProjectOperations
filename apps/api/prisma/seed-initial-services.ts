@@ -22,6 +22,8 @@ function weekdaysOfWeek(mondayOffsetDays: number): Date[] {
   return [0, 1, 2, 3, 4].map((offset) => daysFromNow(mondayOffsetDays + offset));
 }
 
+// Used ONLY for the e2e field persona (see the E2E EXEMPTION note in
+// seedInitialServicesDataset) — all other staff logins are SSO-only.
 function hashPassword(password: string): string {
   const salt = randomBytes(16).toString("hex");
   const derivedKey = scryptSync(password, salt, 64).toString("hex");
@@ -363,7 +365,11 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
         firstName: seed.firstName,
         lastName: seed.lastName,
         isActive: true,
-        isSuperUser: seed.isSuperUser ?? false
+        isSuperUser: seed.isSuperUser ?? false,
+        // Also set on UPDATE so re-seeding an EXISTING dev database actively
+        // REVOKES any Password123! hash planted by earlier seed versions —
+        // omitting it here would leave old usable hashes behind forever.
+        passwordHash: "SSO-ONLY"
       },
       create: {
         id: seed.id,
@@ -372,13 +378,52 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
         lastName: seed.lastName,
         isActive: true,
         isSuperUser: seed.isSuperUser ?? false,
-        passwordHash: hashPassword("Password123!")
+        // SSO-only sentinel. LocalAuthProvider (apps/api/src/modules/auth/
+        // local-auth.provider.ts) treats any stored hash without a ":" as
+        // unusable and swaps in a random fallback hash, so local password
+        // login is impossible for these accounts. Entra SSO is unaffected.
+        passwordHash: "SSO-ONLY"
       }
     });
 
     await prisma.userRole.deleteMany({ where: { userId: user.id } });
     await prisma.userRole.create({ data: { userId: user.id, roleId: seed.roleId } });
   }
+
+  // SYNTHETIC E2E FIELD LOGIN (dev seed only). Real staff above are all
+  // SSO-only, but the e2e acceptance suite needs a local-password login that
+  // is linked to a WorkerProfile to drive the /field surface (auth.setup.ts,
+  // pr-acceptance/helpers.ts FIELD_WORKER). This login lives on the
+  // @projectops.local dev-marker domain, so assertNoDevSeedUsers in
+  // seed-users-prod.ts also treats it as a canary that blocks accidental
+  // production provisioning of a dev-seeded database. It is attached to the
+  // wp-user-admin worker record (Sean Lattin) below, so worker-name
+  // assertions in the specs are unchanged — only the LOGIN is synthetic.
+  // isSuperUser: true because this login REPLACES Sean as the e2e field
+  // persona, and batch8-admin-portal.spec.ts asserts the Super-User-gated
+  // Company tab on /admin/ai-settings renders for the field persona.
+  const fieldE2eUser = await prisma.user.upsert({
+    where: { id: "user-field-e2e" },
+    update: {
+      email: "field.e2e@projectops.local",
+      firstName: "Field",
+      lastName: "E2E",
+      isActive: true,
+      isSuperUser: true,
+      passwordHash: hashPassword("Password123!")
+    },
+    create: {
+      id: "user-field-e2e",
+      email: "field.e2e@projectops.local",
+      firstName: "Field",
+      lastName: "E2E",
+      isActive: true,
+      isSuperUser: true,
+      passwordHash: hashPassword("Password123!")
+    }
+  });
+  await prisma.userRole.deleteMany({ where: { userId: fieldE2eUser.id } });
+  await prisma.userRole.create({ data: { userId: fieldE2eUser.id, roleId: adminRole.id } });
 
   // WorkerProfile records for office staff who appear on client-facing
   // documents (PDF contact line reads estimator.workerProfile.phone). Only
@@ -397,7 +442,10 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
   const officeWorkerProfiles: OfficeWorkerProfileSeed[] = [
     {
       id: "wp-user-admin",
-      internalUserId: "user-admin",
+      // The WORKER is Sean Lattin; the attached LOGIN is the synthetic
+      // e2e field account (see SYNTHETIC E2E FIELD LOGIN above). Sean's own
+      // login (user-admin) is SSO-only like every other real staff member.
+      internalUserId: "user-field-e2e",
       firstName: "Sean",
       lastName: "Lattin",
       role: "Company Director",

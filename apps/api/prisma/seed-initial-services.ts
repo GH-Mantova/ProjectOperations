@@ -1,4 +1,5 @@
 import { Prisma, PrismaClient } from "@prisma/client";
+import { randomBytes, scryptSync } from "crypto";
 
 const BASE_DATE = new Date("2026-04-20T00:00:00.000Z");
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -19,6 +20,14 @@ function atTime(date: Date, hours: number, minutes: number): Date {
 
 function weekdaysOfWeek(mondayOffsetDays: number): Date[] {
   return [0, 1, 2, 3, 4].map((offset) => daysFromNow(mondayOffsetDays + offset));
+}
+
+// Used ONLY for the e2e field persona (see the E2E EXEMPTION note in
+// seedInitialServicesDataset) — all other staff logins are SSO-only.
+function hashPassword(password: string): string {
+  const salt = randomBytes(16).toString("hex");
+  const derivedKey = scryptSync(password, salt, 64).toString("hex");
+  return `${salt}:${derivedKey}`;
 }
 
 export async function seedOperationalRoles(prisma: PrismaClient) {
@@ -349,6 +358,14 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
   });
 
   for (const seed of userSeeds) {
+    // E2E EXEMPTION (dev seed only — prod staff are provisioned SSO-only by
+    // seed-users-prod.ts, which refuses to run on dev-seeded databases):
+    // user-admin (Sean Lattin) is the designated e2e FIELD_WORKER persona —
+    // the only seeded login linked to a WorkerProfile (wp-user-admin), so the
+    // whole /field acceptance surface logs in as him (tests/e2e/auth.setup.ts,
+    // tests/e2e/pr-acceptance/helpers.ts). He keeps a usable local password in
+    // this DEV dataset; every other real-staff login is SSO-only.
+    const isE2eFieldPersona = seed.id === "user-admin";
     const user = await prisma.user.upsert({
       where: { id: seed.id },
       update: {
@@ -356,7 +373,8 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
         firstName: seed.firstName,
         lastName: seed.lastName,
         isActive: true,
-        isSuperUser: seed.isSuperUser ?? false
+        isSuperUser: seed.isSuperUser ?? false,
+        ...(isE2eFieldPersona ? { passwordHash: hashPassword("Password123!") } : {})
       },
       create: {
         id: seed.id,
@@ -369,10 +387,10 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
         // local-auth.provider.ts) treats any stored hash without a ":" as
         // unusable and swaps in a random fallback hash, so local password
         // login is impossible for these accounts. Entra SSO is unaffected.
-        // The `update:` branch above deliberately omits passwordHash so a
-        // re-seed cannot resurrect a usable local password on an SSO-only
-        // account.
-        passwordHash: "SSO-ONLY"
+        // The `update:` branch above deliberately omits passwordHash (except
+        // for the e2e field persona) so a re-seed cannot resurrect a usable
+        // local password on an SSO-only account.
+        passwordHash: isE2eFieldPersona ? hashPassword("Password123!") : "SSO-ONLY"
       }
     });
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useConfirm } from "../hooks/useConfirm";
 import { FormDraftStore } from "./FormDraftStore";
 
 // PR #111 — banner shown at the top of a form when a saved draft
@@ -25,6 +26,7 @@ export function DraftBanner({
   onRestore: () => Promise<void> | void;
   onDiscard: () => Promise<void> | void;
 }) {
+  const confirm = useConfirm();
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [busy, setBusy] = useState(false);
   const [hidden, setHidden] = useState(false);
@@ -60,7 +62,13 @@ export function DraftBanner({
   };
 
   const handleDiscard = async () => {
-    if (!window.confirm("Discard this draft? This cannot be undone.")) return;
+    const ok = await confirm({
+      title: "Discard draft",
+      message: "Discard this draft? This cannot be undone.",
+      confirmLabel: "Discard",
+      variant: "danger"
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       await onDiscard();

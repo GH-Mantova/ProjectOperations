@@ -227,6 +227,37 @@ gh/git error counts as unmet (fail closed).
 The legacy `<!-- watcher: requires-... -->` HTML-comment form still parses (for
 back-compat) but cannot pass the intake lint — do not use it in new prompts.
 
+## Optional: `fixes_pr` — the fix lane
+
+When a merged regression or a red PR blocks other work, a fix-forward prompt for
+it must NOT queue behind ordinary work. Add:
+
+```yaml
+---
+fixes_pr: 812
+---
+```
+
+The watcher recognises this as a **fix-lane** prompt and inserts it at the FRONT
+of the queue (behind any currently-running job, in front of every other armed
+prompt — the same mechanism `rev-*` review jobs use). Log line:
+`[fix-lane] <name> jumped to front (fixes PR #N)`.
+
+**Dependency hold pairs with this.** Any dependent prompt that declares
+`requires_merged: [N]` stays HELD (not binned) while the fix is in flight,
+because PR N is still OPEN — the existing dep-gate already defers rather than
+discards when a dep isn't MERGED.
+
+**Intake lint live-checks the target.** At dequeue time the linter runs
+`gh pr view N --json state` and REJECTs `FIX_TARGET_SETTLED` when N is MERGED
+or CLOSED. A fix pointer that has settled is a stale diagnosis; re-author
+against current head or drop the prompt. A gh failure REJECTs with
+`FIX_TARGET_UNKNOWN` (fail closed — never bin work on a broken tool).
+
+**Authoring rule.** A fix prompt SHOULD instruct the agent to **re-verify the
+failure on the current head before acting**. Errors drift — by the time the fix
+runs, the log may point somewhere new. Chase the log, not the original diagnosis.
+
 ## Lint failures you will hit
 
 | Failure | Meaning |
@@ -236,3 +267,6 @@ back-compat) but cannot pass the intake lint — do not use it in new prompts.
 | `SIZE TOO LARGE` | Split it. Non-negotiable. |
 | `MISSING FIELD` | Front-matter incomplete. |
 | `GATE_ALLOW MISMATCH` | You declared a migration but `scope` has no `migrations/` path (or vice-versa). |
+| `FIX_TARGET_SETTLED` | `fixes_pr: N` points at a PR that has MERGED or CLOSED — the fix diagnosis is stale. |
+| `FIX_TARGET_UNKNOWN` | `fixes_pr` state check failed (bad number, network, gh auth). Fix the pointer. |
+| `FIX_TARGET_INVALID` | `fixes_pr` is not a positive integer. |

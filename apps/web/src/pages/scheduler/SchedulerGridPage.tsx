@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { EmptyState, Skeleton } from "@project-ops/ui";
+import { CenteredModal, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import {
   addDaysUtc,
@@ -53,6 +53,12 @@ type PickerState = {
   rowKey?: string;
 } | null;
 
+type OverrideRequest = {
+  title: string;
+  message: string;
+  onSubmit: (reason: string) => Promise<void>;
+};
+
 export function SchedulerGridPage() {
   const { authFetch } = useAuth();
   const [view, setView] = useState<GridView>("month");
@@ -79,6 +85,10 @@ export function SchedulerGridPage() {
 
   const [drag, setDrag] = useState<DragState>(null);
   const dragRowRef = useRef<DragState>(null);
+
+  const [overrideReq, setOverrideReq] = useState<OverrideRequest | null>(null);
+  const [overrideReason, setOverrideReason] = useState("");
+  const [overrideBusy, setOverrideBusy] = useState(false);
 
   const { from, to, days } = useMemo(() => visibleRange(view, cursor), [view, cursor]);
 
@@ -295,13 +305,29 @@ export function SchedulerGridPage() {
   const handlePickWorker = async (worker: EligibleWorker) => {
     if (!picker) return;
     setPickerError(null);
-    let result = await upsertCell(picker.date, picker.projectId, worker.worker.id, picker.jobRoleId);
+    const pickerSnapshot = picker;
+    const result = await upsertCell(pickerSnapshot.date, pickerSnapshot.projectId, worker.worker.id, pickerSnapshot.jobRoleId);
     if (!result.ok && result.needOverride) {
-      const reason = window.prompt(
-        `This worker is not eligible (${(result.reasons ?? []).join(", ") || "unknown"}). Enter override reason to proceed:`
-      );
-      if (!reason || !reason.trim()) return;
-      result = await upsertCell(picker.date, picker.projectId, worker.worker.id, picker.jobRoleId, reason.trim());
+      setOverrideReq({
+        title: "Override eligibility",
+        message: `This worker is not eligible (${(result.reasons ?? []).join(", ") || "unknown"}). Enter override reason to proceed:`,
+        onSubmit: async (reason) => {
+          const retry = await upsertCell(
+            pickerSnapshot.date,
+            pickerSnapshot.projectId,
+            worker.worker.id,
+            pickerSnapshot.jobRoleId,
+            reason
+          );
+          if (!retry.ok) {
+            setPickerError(retry.message ?? "Could not assign worker.");
+            return;
+          }
+          setPicker(null);
+          void load();
+        }
+      });
+      return;
     }
     if (!result.ok) {
       setPickerError(result.message ?? "Could not assign worker.");
@@ -351,26 +377,31 @@ export function SchedulerGridPage() {
     const res = await authFetch("/scheduler/allocations/range", { method: "POST", body });
     if (!res.ok) {
       if (res.status === 409) {
-        const reason = window.prompt("Range contains ineligible days. Enter override reason to fill anyway:");
-        if (!reason || !reason.trim()) return;
-        const body2 = JSON.stringify({
-          from: fromDate,
-          to: toDate,
-          projectId,
-          targetType: "WORKER",
-          workerProfileId,
-          jobRoleId,
-          override: { reason: reason.trim() }
+        setOverrideReq({
+          title: "Override range",
+          message: "Range contains ineligible days. Enter override reason to fill anyway:",
+          onSubmit: async (reason) => {
+            const body2 = JSON.stringify({
+              from: fromDate,
+              to: toDate,
+              projectId,
+              targetType: "WORKER",
+              workerProfileId,
+              jobRoleId,
+              override: { reason }
+            });
+            const res2 = await authFetch("/scheduler/allocations/range", { method: "POST", body: body2 });
+            if (!res2.ok) {
+              setError("Range fill failed.");
+              return;
+            }
+            void load();
+          }
         });
-        const res2 = await authFetch("/scheduler/allocations/range", { method: "POST", body: body2 });
-        if (!res2.ok) {
-          setError("Range fill failed.");
-          return;
-        }
-      } else {
-        setError("Range fill failed.");
         return;
       }
+      setError("Range fill failed.");
+      return;
     }
     void load();
   };
@@ -659,6 +690,67 @@ export function SchedulerGridPage() {
           onClose={() => setPicker(null)}
           onPick={handlePickWorker}
         />
+      ) : null}
+
+      {overrideReq ? (
+        <CenteredModal
+          title={overrideReq.title}
+          onClose={() => {
+            setOverrideReq(null);
+            setOverrideReason("");
+          }}
+          busy={overrideBusy}
+          maxWidth={420}
+          footer={
+            <>
+              <button
+                type="button"
+                className="s7-btn s7-btn--ghost"
+                onClick={() => {
+                  setOverrideReq(null);
+                  setOverrideReason("");
+                }}
+                disabled={overrideBusy}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="s7-btn s7-btn--primary"
+                disabled={overrideBusy || !overrideReason.trim()}
+                onClick={() => {
+                  const req = overrideReq;
+                  const reason = overrideReason.trim();
+                  if (!req || !reason) return;
+                  setOverrideBusy(true);
+                  void (async () => {
+                    try {
+                      await req.onSubmit(reason);
+                    } finally {
+                      setOverrideBusy(false);
+                      setOverrideReq(null);
+                      setOverrideReason("");
+                    }
+                  })();
+                }}
+              >
+                Proceed
+              </button>
+            </>
+          }
+        >
+          <p style={{ marginTop: 0, fontSize: 13 }}>{overrideReq.message}</p>
+          <label className="estimate-editor__field">
+            <span>Override reason:</span>
+            <input
+              className="s7-input"
+              type="text"
+              value={overrideReason}
+              onChange={(e) => setOverrideReason(e.target.value)}
+              autoFocus
+            />
+          </label>
+        </CenteredModal>
       ) : null}
     </div>
   );

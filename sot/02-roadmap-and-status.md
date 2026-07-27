@@ -62,6 +62,7 @@ OAuth2, MYOB CSV, M365 SSO + local JWT + Super User, AI providers + BYOK encrypt
 #735 (fold Archive→Documents, Resources→Workers) has since MERGED, along with its spec-retarget
 queue PRs #765/#767 and data-model chores #764/#786. Per-PR history lives in `03-progress-log.md`;
 run `bring-up-to-speed.ps1` for the authoritative live list.
+
 ---
 
 ## 3. 📦 Staged — prompt written, not yet a PR

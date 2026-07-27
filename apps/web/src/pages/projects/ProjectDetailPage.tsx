@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { CenteredModal, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
+import { useConfirm } from "../../hooks/useConfirm";
 import { AdvanceStatusModal } from "./AdvanceStatusModal";
 import { ConfirmRevertDialog } from "./ConfirmRevertDialog";
 import { GanttChart, type GanttTask } from "./GanttChart";
@@ -476,6 +477,7 @@ function ScopeTab({ project }: { project: ProjectDetail }) {
 function ScheduleTab({ project }: { project: ProjectDetail }) {
   const { authFetch, user } = useAuth();
   const canManage = can(user, "projects.manage");
+  const confirm = useConfirm();
   const [tasks, setTasks] = useState<GanttTask[]>([]);
   const [view, setView] = useState<"gantt" | "list">("gantt");
   const [zoom, setZoom] = useState<"week" | "month" | "quarter">("week");
@@ -499,7 +501,12 @@ function ScheduleTab({ project }: { project: ProjectDetail }) {
   }, [load]);
 
   const generate = async () => {
-    if (!window.confirm("Generate Gantt tasks from the source tender's scope disciplines?")) return;
+    const ok = await confirm({
+      title: "Generate Gantt tasks",
+      message: "Generate Gantt tasks from the source tender's scope disciplines?",
+      confirmLabel: "Generate"
+    });
+    if (!ok) return;
     setBusy(true);
     setError(null);
     try {
@@ -716,6 +723,7 @@ function TeamTab({ project, onProjectUpdated }: { project: ProjectDetail; onProj
   const { authFetch, user } = useAuth();
   const canManageResources = useMemo(() => can(user, "resources.manage"), [user]);
   const canManageProject = useMemo(() => can(user, "projects.manage"), [user]);
+  const confirm = useConfirm();
   const [reqQualsModalOpen, setReqQualsModalOpen] = useState(false);
   const [data, setData] = useState<AllocationsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -749,7 +757,13 @@ function TeamTab({ project, onProjectUpdated }: { project: ProjectDetail; onProj
   }, [toast]);
 
   async function removeAllocation(allocId: string, label: string) {
-    if (!window.confirm(`Remove ${label} from this project?`)) return;
+    const ok = await confirm({
+      title: "Remove allocation",
+      message: `Remove ${label} from this project?`,
+      confirmLabel: "Remove",
+      variant: "danger"
+    });
+    if (!ok) return;
     try {
       const response = await authFetch(`/projects/${project.id}/allocations/${allocId}`, {
         method: "DELETE"

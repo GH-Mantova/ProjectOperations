@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { captureGpsReading, type GpsReading } from "./useAutoGps";
 
 type TimesheetRow = {
   id: string;
@@ -36,6 +37,9 @@ function pillFor(row: Pick<TimesheetRow, "status" | "rejectedReason">) {
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
+
+const GPS_HARD_BLOCK_MSG =
+  "Location is required to clock on/off. Enable location for this site, or see your supervisor to have the entry recorded.";
 
 export function FieldTimesheetPage() {
   const { authFetch } = useAuth();
@@ -179,6 +183,74 @@ export function FieldTimesheetPage() {
   );
 }
 
+// ── Location consent acknowledgement panel ─────────────────────────────────
+function ConsentPanel({ onAcknowledged }: { onAcknowledged: () => void }) {
+  const { authFetch } = useAuth();
+  const [posting, setPosting] = useState(false);
+
+  async function acknowledge() {
+    setPosting(true);
+    try {
+      const res = await authFetch("/field/location-consent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ consent: true })
+      });
+      if (res.ok) onAcknowledged();
+    } finally {
+      setPosting(false);
+    }
+  }
+
+  return (
+    <div
+      style={{
+        background: "#EEF9FA",
+        border: "1px solid #B2DFE3",
+        borderRadius: 8,
+        padding: 14,
+        marginTop: 12,
+        fontSize: 13
+      }}
+    >
+      <strong style={{ display: "block", marginBottom: 8, color: "#003D42" }}>
+        Location access required
+      </strong>
+      <p style={{ margin: "0 0 8px", color: "#374151" }}>
+        To clock on or off, this app captures your GPS location at the time of each event.
+        Here is what you need to know:
+      </p>
+      <ul style={{ margin: "0 0 10px", paddingLeft: 18, color: "#374151" }}>
+        <li>What is captured: latitude, longitude, and accuracy at clock-on and clock-off.</li>
+        <li>When it is captured: only at the moment you clock on or clock off.</li>
+        <li>Who sees it: your supervisor and office staff reviewing your timesheet.</li>
+        <li>Capture stops at clock-off: no background tracking.</li>
+      </ul>
+      <div
+        style={{
+          background: "#FCEBEB",
+          color: "#A32D2D",
+          padding: "8px 10px",
+          borderRadius: 6,
+          marginBottom: 10,
+          fontSize: 12
+        }}
+      >
+        {GPS_HARD_BLOCK_MSG}
+      </div>
+      <button
+        type="button"
+        className="field-btn"
+        style={{ width: "100%" }}
+        disabled={posting}
+        onClick={() => void acknowledge()}
+      >
+        {posting ? "Saving…" : "I understand — enable location for my timesheets"}
+      </button>
+    </div>
+  );
+}
+
 function NewTimesheet({
   preselectAllocationId,
   onCancel,
@@ -202,8 +274,6 @@ function NewTimesheet({
   const [duplicate, setDuplicate] = useState(false);
   const [locationConsent, setLocationConsent] = useState<boolean | null>(null);
   const [gpsStatus, setGpsStatus] = useState<string | null>(null);
-  const [clockOnGps, setClockOnGps] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
-  const [clockOffGps, setClockOffGps] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -254,51 +324,7 @@ function NewTimesheet({
     }
   }
 
-  async function captureGps(slot: "on" | "off") {
-    if (!navigator.geolocation) {
-      setGpsStatus("Geolocation not supported on this device.");
-      return;
-    }
-    if (!locationConsent) {
-      setGpsStatus("Enable GPS clock-on consent first.");
-      return;
-    }
-    setGpsStatus(`Getting ${slot === "on" ? "clock-on" : "clock-off"} location…`);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const reading = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy
-        };
-        if (slot === "on") setClockOnGps(reading);
-        else setClockOffGps(reading);
-        setGpsStatus(`${slot === "on" ? "Clock-on" : "Clock-off"} pinned (±${Math.round(reading.accuracy)}m)`);
-        if (slot === "on") {
-          void autoPickJobFromGeofence(reading.lat, reading.lng);
-        }
-      },
-      (err) => setGpsStatus(`Could not get location: ${err.message}`),
-      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 0 }
-    );
-  }
-
-  async function toggleConsent() {
-    const next = !locationConsent;
-    const response = await authFetch("/field/location-consent", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ consent: next })
-    });
-    if (response.ok) {
-      const body = await response.json();
-      setLocationConsent(Boolean(body.locationConsent));
-      if (!body.locationConsent) {
-        setClockOnGps(null);
-        setClockOffGps(null);
-      }
-    }
-  }
+  const clockFieldsDisabled = locationConsent === false;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -315,9 +341,37 @@ function NewTimesheet({
     setError(null);
     setDuplicate(false);
     try {
-      const allocation = (allocations ?? []).find((a) => a.id === allocationId);
       const clockOnIso = clockOn ? `${date}T${clockOn}:00` : undefined;
       const clockOffIso = clockOff ? `${date}T${clockOff}:00` : undefined;
+
+      // Auto-capture GPS for any clock event that has a time set.
+      let clockOnGps: GpsReading | null = null;
+      let clockOffGps: GpsReading | null = null;
+
+      if (clockOnIso) {
+        setGpsStatus("Getting clock-on location…");
+        const result = await captureGpsReading();
+        if (!result.ok) {
+          setError(GPS_HARD_BLOCK_MSG);
+          return;
+        }
+        clockOnGps = result.reading;
+        setGpsStatus(`Clock-on captured (±${Math.round(result.reading.accuracy)}m)`);
+        void autoPickJobFromGeofence(result.reading.lat, result.reading.lng);
+      }
+
+      if (clockOffIso) {
+        setGpsStatus((prev) => `${prev ?? ""}${prev ? " · " : ""}Getting clock-off location…`);
+        const result = await captureGpsReading();
+        if (!result.ok) {
+          setError(GPS_HARD_BLOCK_MSG);
+          return;
+        }
+        clockOffGps = result.reading;
+        setGpsStatus((prev) => `${prev ?? ""}${prev ? " · " : ""}Clock-off captured (±${Math.round(result.reading.accuracy)}m)`);
+      }
+
+      const allocation = (allocations ?? []).find((a) => a.id === allocationId);
       const createResponse = await authFetch("/field/timesheets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -329,14 +383,14 @@ function NewTimesheet({
           description: description.trim() || undefined,
           clockOnTime: clockOnIso,
           clockOffTime: clockOffIso,
-          ...(locationConsent && clockOnGps
+          ...(clockOnGps
             ? {
                 clockOnLat: clockOnGps.lat,
                 clockOnLng: clockOnGps.lng,
                 clockOnAccuracy: clockOnGps.accuracy
               }
             : {}),
-          ...(locationConsent && clockOffGps
+          ...(clockOffGps
             ? {
                 clockOffLat: clockOffGps.lat,
                 clockOffLng: clockOffGps.lng,
@@ -359,6 +413,7 @@ function NewTimesheet({
       setError((err as Error).message);
     } finally {
       setSubmitting(false);
+      if (!error) setGpsStatus(null);
     }
   }
 
@@ -411,79 +466,43 @@ function NewTimesheet({
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
           <div>
             <label className="field-label">Clock on</label>
-            <input type="time" className="field-input" value={clockOn} onChange={(e) => setClockOn(e.target.value)} />
+            <input
+              type="time"
+              className="field-input"
+              value={clockOn}
+              onChange={(e) => setClockOn(e.target.value)}
+              disabled={clockFieldsDisabled}
+              title={clockFieldsDisabled ? GPS_HARD_BLOCK_MSG : undefined}
+            />
           </div>
           <div>
             <label className="field-label">Clock off</label>
-            <input type="time" className="field-input" value={clockOff} onChange={(e) => setClockOff(e.target.value)} />
+            <input
+              type="time"
+              className="field-input"
+              value={clockOff}
+              onChange={(e) => setClockOff(e.target.value)}
+              disabled={clockFieldsDisabled}
+              title={clockFieldsDisabled ? GPS_HARD_BLOCK_MSG : undefined}
+            />
           </div>
         </div>
 
-        <div
-          style={{
-            background: "#F4F4F4",
-            border: "1px solid #E5E5E5",
-            borderRadius: 6,
-            padding: 12,
-            marginTop: 12,
-            fontSize: 13
-          }}
-        >
-          <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <input
-              type="checkbox"
-              checked={Boolean(locationConsent)}
-              onChange={() => void toggleConsent()}
-            />
-            <span>
-              <strong>GPS clock-on</strong> — pin location to your timesheet
-              <br />
-              <span style={{ color: "#6B7280", fontSize: 11 }}>
-                Stored only if you opt in. You can toggle this anytime.
-              </span>
-            </span>
-          </label>
-          {locationConsent ? (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
-              <button
-                type="button"
-                className="field-btn"
-                onClick={() => void captureGps("on")}
-                style={{
-                  fontSize: 12,
-                  padding: "6px 10px",
-                  background: clockOnGps ? "#005B61" : "#fff",
-                  color: clockOnGps ? "#fff" : "#005B61",
-                  border: "1px solid #005B61",
-                  borderRadius: 4
-                }}
-              >
-                {clockOnGps ? `Clock-on pinned ±${Math.round(clockOnGps.accuracy)}m` : "Pin clock-on"}
-              </button>
-              <button
-                type="button"
-                className="field-btn"
-                onClick={() => void captureGps("off")}
-                style={{
-                  fontSize: 12,
-                  padding: "6px 10px",
-                  background: clockOffGps ? "#005B61" : "#fff",
-                  color: clockOffGps ? "#fff" : "#005B61",
-                  border: "1px solid #005B61",
-                  borderRadius: 4
-                }}
-              >
-                {clockOffGps ? `Clock-off pinned ±${Math.round(clockOffGps.accuracy)}m` : "Pin clock-off"}
-              </button>
-            </div>
-          ) : null}
-          {gpsStatus ? (
-            <p style={{ color: "#6B7280", fontSize: 11, margin: "8px 0 0" }}>{gpsStatus}</p>
-          ) : null}
-        </div>
+        {locationConsent === false ? (
+          <ConsentPanel
+            onAcknowledged={() => setLocationConsent(true)}
+          />
+        ) : null}
+
+        {gpsStatus ? (
+          <p style={{ color: "#6B7280", fontSize: 11, margin: "8px 0 0" }}>{gpsStatus}</p>
+        ) : null}
 
         {error ? (
-          <div style={{ background: "#FCEBEB", color: "#A32D2D", padding: 10, borderRadius: 6, marginTop: 12, fontSize: 13 }}>
+          <div
+            role="alert"
+            style={{ background: "#FCEBEB", color: "#A32D2D", padding: 10, borderRadius: 6, marginTop: 12, fontSize: 13 }}
+          >
             {error}
             {duplicate ? (
               <>
@@ -500,7 +519,7 @@ function NewTimesheet({
           <button type="button" className="field-btn field-btn--ghost" onClick={onCancel} disabled={submitting}>
             Cancel
           </button>
-          <button type="submit" className="field-btn" disabled={submitting}>
+          <button type="submit" className="field-btn" disabled={submitting || locationConsent === false}>
             {submitting ? "Submitting…" : "Submit"}
           </button>
         </div>

@@ -131,6 +131,13 @@ test.describe("Batch 2 — Tendering pipeline + register (PRs #16, #28-#30, #43,
       while ((await residue.count()) > 0) {
         const before = await residue.count();
         await residue.first().click();
+        // Preset delete now confirms via the in-app ConfirmDialog (useConfirm).
+        await page.getByTestId("confirm-dialog-confirm").click();
+        // The dialog steals focus and the dropdown closes on mouse-leave —
+        // reopen it so the next residue button (if any) is reachable.
+        if ((await residue.count()) >= before && before > 1) {
+          await presetsButton.click();
+        }
         await expect(residue).toHaveCount(before - 1);
       }
       // The dropdown closes on mouse-leave.
@@ -154,9 +161,11 @@ test.describe("Batch 2 — Tendering pipeline + register (PRs #16, #28-#30, #43,
       "true"
     );
 
-    // Clean up so the run is repeatable.
+    // Clean up so the run is repeatable — the delete confirms via the
+    // in-app ConfirmDialog (useConfirm), not window.confirm.
     await page.getByRole("button", { name: "Presets ▾" }).click();
     await page.getByRole("button", { name: `Delete preset ${presetName}` }).click();
+    await page.getByTestId("confirm-dialog-confirm").click();
     await expect(page.getByRole("button", { name: `Delete preset ${presetName}` })).toHaveCount(0);
   });
 

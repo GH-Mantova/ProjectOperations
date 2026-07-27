@@ -204,10 +204,12 @@ test.describe("Batch 5 — Clients & master-data workspace (PRs #23, #335, #337)
     await page.getByRole("tab", { name: "Contacts", exact: true }).click();
     await expect(page.getByText("E2e Batch5")).toBeVisible();
 
-    // Delete the contact via the row action (confirm dialog auto-accepted).
+    // Delete the contact via the row action — the delete now confirms via
+    // the in-app ConfirmDialog (useConfirm), not window.confirm.
     // The API soft-deletes (isActive=false, row preserved for history), so
     // the row stays listed; the drawer closing confirms the mutation landed.
     await page.getByRole("button", { name: "Delete", exact: true }).click();
+    await page.getByTestId("confirm-dialog-confirm").click();
     await expect(page.getByRole("heading", { name: `Edit · ${clientName}` })).toBeHidden();
 
     await page.getByRole("button", { name: clientName }).click();

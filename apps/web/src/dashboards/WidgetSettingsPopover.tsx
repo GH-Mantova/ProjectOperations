@@ -17,6 +17,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useTenders, type TenderForDashboard } from "./hooks";
 import { useAuth } from "../auth/AuthContext";
+import { useConfirm } from "../hooks/useConfirm";
 import { resolveVisibleFields } from "./types";
 import type { ConfigField, WidgetConfigEntry, WidgetFilters, WidgetMeta } from "./types";
 
@@ -42,6 +43,7 @@ const POPOVER_WIDTH = 320;
 const VIEWPORT_GUTTER = 8;
 
 export function WidgetSettingsPopover({ meta, entry, anchor, onApply, onClose, onRemove }: Props) {
+  const confirm = useConfirm();
   const [draftFilters, setDraftFilters] = useState<WidgetFilters>(entry.config.filters ?? {});
   const [draftFields, setDraftFields] = useState<string[]>(() => resolveVisibleFields(meta, entry));
   const ref = useRef<HTMLDivElement | null>(null);
@@ -134,14 +136,16 @@ export function WidgetSettingsPopover({ meta, entry, anchor, onApply, onClose, o
 
   const handleRemove = () => {
     if (!onRemove) return;
-    if (
-      window.confirm(
-        "Remove this widget from the dashboard? You can add it back from Add widget."
-      )
-    ) {
+    void confirm({
+      title: "Remove widget",
+      message: "Remove this widget from the dashboard? You can add it back from Add widget.",
+      confirmLabel: "Remove",
+      variant: "danger"
+    }).then((ok) => {
+      if (!ok) return;
       onRemove();
       onClose();
-    }
+    });
   };
 
   // Build the sortable items in "draft order for visible, then hidden appended at the end"

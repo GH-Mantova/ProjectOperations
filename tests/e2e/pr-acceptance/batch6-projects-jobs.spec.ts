@@ -175,7 +175,7 @@ test.describe("Batch 6 — Projects + Jobs (PRs #17, #39, #40, #242, #250, #267,
     await expect(toggle).toHaveAttribute("aria-label", original, { timeout: TOGGLE_TIMEOUT });
   });
 
-  test("convert button hidden at AWARDED, visible at CONTRACT_ISSUED — where the API refuses it (PR #242, drift)", async ({
+  test("convert button hidden at AWARDED, visible at CONTRACT_ISSUED — where the API now converts (PR #798)", async ({
     page,
     request
   }) => {
@@ -187,9 +187,13 @@ test.describe("Batch 6 — Projects + Jobs (PRs #17, #39, #40, #242, #250, #267,
     await expect(page.getByText("T260310-QUEE-Rev1")).toBeVisible();
     await expect(page.getByRole("button", { name: "Convert to project →" })).toHaveCount(0);
 
-    // CONTRACT_ISSUED fixture: button visible, modal opens, but the convert
-    // API only accepts AWARDED — assert the surfaced error (drift, see PR).
+    // CONTRACT_ISSUED fixture: button visible, modal opens, and since PR #798
+    // (auto-contract on CONTRACT_ISSUED) the convert guard accepts AWARDED or
+    // CONTRACT_ISSUED — the convert SUCCEEDS and routes to the new project.
+    // (Replaces the pre-#798 drift assertion that the API refused with
+    // "Tender status must be AWARDED to convert".)
     const fixture = await createFixtureTender(request, token, "CONTRACT_ISSUED", "convert-ui");
+    let convertedProjectId: string | null = null;
     try {
       await page.goto(`/tenders/${fixture.tenderId}`);
       await page.getByRole("button", { name: "Convert to project →" }).click();
@@ -198,12 +202,16 @@ test.describe("Batch 6 — Projects + Jobs (PRs #17, #39, #40, #242, #250, #267,
       await expect(dialog.getByText(fixture.tenderNumber)).toBeVisible();
       await expect(dialog.getByText(/^IS-P\d+$/)).toBeVisible(); // next-number preview
       await dialog.getByRole("button", { name: "Convert to project", exact: true }).click();
-      await expect(dialog.getByRole("alert")).toContainText(
-        "Tender status must be AWARDED to convert"
-      );
-      await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+      await page.waitForURL(/\/projects\//, { timeout: 15_000 });
+      convertedProjectId = page.url().split("/projects/")[1]?.split(/[/?#]/)[0] ?? null;
+      await expect(
+        page.getByRole("link", { name: `From ${fixture.tenderNumber}` })
+      ).toBeVisible();
     } finally {
-      await destroyFixture(request, token, fixture);
+      await destroyFixture(request, token, {
+        tenderId: fixture.tenderId,
+        projectId: convertedProjectId
+      });
     }
   });
 

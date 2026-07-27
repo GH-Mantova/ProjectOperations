@@ -172,15 +172,24 @@ test.describe("Batch 5 — Directory & workers legacy (PR #19 + batch scope)", (
     await page.getByRole("dialog").getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByRole("cell", { name: "Credit application" })).toBeVisible();
 
-    // Prequal walk: pending → approved (confirm fires for the missing
-    // compliance records, prompt for notes) → suspended.
+    // Prequal walk: pending → approved → suspended. Since the useConfirm
+    // migration the missing-compliance confirm is the in-app ConfirmDialog
+    // and the notes prompt is a "Set prequalification" modal with a Save
+    // button (window.confirm/prompt are gone).
     await page.getByRole("button", { name: "Approve prequal" }).click();
+    await page.getByTestId("confirm-dialog-confirm").click(); // "Approve anyway"
+    const prequalModal = page.getByRole("dialog").filter({ hasText: "Prequalification notes" });
+    await prequalModal.getByRole("textbox").fill("e2e-b5 prequal note");
+    await prequalModal.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByText("Prequalified supplier")).toBeVisible();
     await page.getByRole("button", { name: "Suspend", exact: true }).click();
+    const suspendModal = page.getByRole("dialog").filter({ hasText: "Prequalification notes" });
+    await suspendModal.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByText("SUSPENDED — do not engage without approval")).toBeVisible();
 
-    // Cleanup via UI soft delete — hidden from the Active-only default view.
+    // Cleanup via UI soft delete — the confirm is the in-app ConfirmDialog.
     await page.getByRole("button", { name: "Deactivate", exact: true }).click();
+    await page.getByTestId("confirm-dialog-confirm").click();
     await expect(page.getByRole("heading", { name: personName })).toBeHidden();
     await expect(page.getByRole("row", { name: personName })).toBeHidden();
   });
@@ -208,8 +217,9 @@ test.describe("Batch 5 — Directory & workers legacy (PR #19 + batch scope)", (
     await expect(page.getByText("Prequalification pending — review required")).toBeVisible();
 
     // Cleanup via UI soft delete (phase 5 convention — hidden from the
-    // Active-only default view).
+    // Active-only default view). Confirms via the in-app ConfirmDialog.
     await page.getByRole("button", { name: "Deactivate", exact: true }).click();
+    await page.getByTestId("confirm-dialog-confirm").click();
     await expect(page.getByRole("heading", { name: companyName })).toBeHidden();
     await expect(page.getByRole("row", { name: companyName })).toBeHidden();
   });

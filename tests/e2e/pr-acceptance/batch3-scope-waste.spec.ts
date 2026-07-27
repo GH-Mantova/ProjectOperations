@@ -92,8 +92,10 @@ test.describe("Batch 3 — Scope of Works waste subtable (PRs #72, #176, #179, #
       })
       .toEqual({ unit: "m³", rate: true });
 
-    // Cleanup through the UI delete control (confirm auto-accepted).
+    // Cleanup through the UI delete control — the delete confirm is now the
+    // in-app ConfirmDialog (useConfirm), not window.confirm.
     await row.getByLabel("Delete waste row").click();
+    await page.getByTestId("confirm-dialog-confirm").click();
     await expect(page.getByLabel("Delete waste row")).toHaveCount(0);
   });
 
@@ -123,12 +125,6 @@ test.describe("Batch 3 — Scope of Works waste subtable (PRs #72, #176, #179, #
       tonnes: 7,
       m3: 3
     });
-    const dialogs: string[] = [];
-    page.on("dialog", (dialog) => {
-      dialogs.push(dialog.message());
-      void dialog.accept();
-    });
-
     try {
       await openDemCard(page);
       await page.getByRole("button", { name: "Sum from above" }).click();
@@ -163,10 +159,11 @@ test.describe("Batch 3 — Scope of Works waste subtable (PRs #72, #176, #179, #
         )
         .toBe(1);
       await page.getByRole("button", { name: "Sum from above" }).click();
-      await expect
-        .poll(() => dialogs.some((m) => m.includes("auto-summed waste row")))
-        .toBe(true);
-      // window.confirm resolves BEFORE the regeneration POST lands — wait
+      // The regeneration confirm is now the in-app ConfirmDialog (useConfirm).
+      const regenDialog = page.getByTestId("confirm-dialog");
+      await expect(regenDialog).toContainText("auto-summed waste row");
+      await page.getByTestId("confirm-dialog-confirm").click();
+      // The confirm resolves BEFORE the regeneration POST lands — wait
       // for the rebuilt AUTO row (new id) so assertions and cleanup can't
       // race the server-side deleteMany/create transaction.
       await expect

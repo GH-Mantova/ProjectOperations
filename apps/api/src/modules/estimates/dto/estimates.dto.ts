@@ -189,6 +189,12 @@ export class UpsertMaterialDensityDto {
   @IsOptional() @IsString() category?: string;
   /** Optional free-text notes shown alongside the row. */
   @IsOptional() @IsString() notes?: string;
+  /** Default waste group auto-applied to scope rows when this material is
+   *  picked. Plain string matching EstimateWasteRate.wasteGroup. */
+  @IsOptional() @IsString() defaultWasteGroup?: string;
+  /** Default waste item (waste type) auto-applied alongside
+   *  defaultWasteGroup. Plain string matching EstimateWasteRate.wasteType. */
+  @IsOptional() @IsString() defaultWasteItem?: string;
   /** Whether the row is selectable in the picker; defaults true on create. */
   @IsOptional() @IsBoolean() isActive?: boolean;
   /** Manual ordering hint (lower first). */

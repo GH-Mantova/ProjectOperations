@@ -197,16 +197,16 @@ model User {
   caseCommentsAuthored CaseComment[] @relation("CaseCommentAuthor")
 
   // CRM — Leads + Opportunities (sales pipeline that sits BEFORE a Tender).
-  leadsOwned          Lead[]        @relation("LeadOwner")
-  opportunitiesOwned  Opportunity[] @relation("OpportunityOwner")
+  leadsOwned         Lead[]        @relation("LeadOwner")
+  opportunitiesOwned Opportunity[] @relation("OpportunityOwner")
   // Knowledge Base / SOP library (slice 2 — KB articles authored by this user).
-  kbArticlesAuthored KbArticle[] @relation("KbArticleAuthor")
+  kbArticlesAuthored KbArticle[]   @relation("KbArticleAuthor")
 
   // Universal activity Timeline — every note/system entry a user authors.
   activityEntriesAuthored ActivityEntry[] @relation("ActivityEntryAuthor")
 
   // Muster / evacuation roll-call
-  musterEventsStarted  MusterEvent[]    @relation("MusterEventStartedBy")
+  musterEventsStarted    MusterEvent[]    @relation("MusterEventStartedBy")
   musterAttendeesChecked MusterAttendee[] @relation("MusterAttendeeCheckedBy")
 
   // Tendering display-label overrides last touched by this user.
@@ -366,13 +366,13 @@ model AccessRequest {
 // lowercased email, and consumable exactly once within the expiry window.
 // attempts caps brute force per challenge; consumedAt marks single-use.
 model OtpChallenge {
-  id          String    @id @default(cuid())
-  email       String
-  codeHash    String    @map("code_hash")
-  expiresAt   DateTime  @map("expires_at")
-  attempts    Int       @default(0)
-  consumedAt  DateTime? @map("consumed_at")
-  createdAt   DateTime  @default(now()) @map("created_at")
+  id         String    @id @default(cuid())
+  email      String
+  codeHash   String    @map("code_hash")
+  expiresAt  DateTime  @map("expires_at")
+  attempts   Int       @default(0)
+  consumedAt DateTime? @map("consumed_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
 
   @@index([email, expiresAt])
   @@map("otp_challenges")
@@ -2259,17 +2259,24 @@ enum MaterialKind {
 }
 
 model EstimateMaterialDensity {
-  id           String       @id @default(cuid())
-  materialName String       @unique @map("material_name")
-  density      Decimal      @db.Decimal(8, 3)
-  unit         String // "kg/mÂ³" or "kg/mÂ²"
-  kind         MaterialKind @default(VOLUME)
-  category     String? // "concrete" | "masonry" | "soil" | "sheet" | "metal" | "timber"
-  notes        String?
-  isActive     Boolean      @default(true) @map("is_active")
-  sortOrder    Int          @default(0) @map("sort_order")
-  createdAt    DateTime     @default(now()) @map("created_at")
-  updatedAt    DateTime     @updatedAt @map("updated_at")
+  id                String       @id @default(cuid())
+  materialName      String       @unique @map("material_name")
+  density           Decimal      @db.Decimal(8, 3)
+  unit              String // "kg/mÂ³" or "kg/mÂ²"
+  kind              MaterialKind @default(VOLUME)
+  category          String? // "concrete" | "masonry" | "soil" | "sheet" | "metal" | "timber"
+  notes             String?
+  // Default waste classification auto-applied to scope rows when this
+  // material is picked. Values are plain strings matching
+  // EstimateWasteRate.wasteGroup / wasteType so the scope-waste
+  // aggregator's (wasteGroup, wasteItem) grouping keeps working.
+  // Nullable — legacy rows have no mapping until an admin sets one.
+  defaultWasteGroup String?      @map("default_waste_group")
+  defaultWasteItem  String?      @map("default_waste_item")
+  isActive          Boolean      @default(true) @map("is_active")
+  sortOrder         Int          @default(0) @map("sort_order")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
 
   @@map("estimate_material_density")
 }
@@ -6153,17 +6160,17 @@ enum OpportunitySource {
 }
 
 model Lead {
-  id            String     @id @default(cuid())
-  title         String
-  status        LeadStatus @default(new)
-  source        OpportunitySource @default(other)
+  id     String            @id @default(cuid())
+  title  String
+  status LeadStatus        @default(new)
+  source OpportunitySource @default(other)
 
   // Free-text company/contact fields for un-linked leads (before we know
   // the client). Once qualified, clientId + contactId can be populated.
-  companyName   String?    @map("company_name")
-  contactName   String?    @map("contact_name")
-  contactEmail  String?    @map("contact_email")
-  contactPhone  String?    @map("contact_phone")
+  companyName  String? @map("company_name")
+  contactName  String? @map("contact_name")
+  contactEmail String? @map("contact_email")
+  contactPhone String? @map("contact_phone")
 
   clientId  String?  @map("client_id")
   client    Client?  @relation("ClientLeads", fields: [clientId], references: [id], onDelete: SetNull)
@@ -6173,9 +6180,9 @@ model Lead {
   ownerId String? @map("owner_id")
   owner   User?   @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
 
-  notes            String?
-  nextActionAt     DateTime? @map("next_action_at")
-  nextActionNote   String?   @map("next_action_note")
+  notes          String?
+  nextActionAt   DateTime? @map("next_action_at")
+  nextActionNote String?   @map("next_action_note")
 
   // When qualified → converted, the resulting Opportunity is linked here.
   convertedOpportunityId String?      @unique @map("converted_opportunity_id")
@@ -6192,19 +6199,19 @@ model Lead {
 }
 
 model Opportunity {
-  id             String           @id @default(cuid())
+  id             String            @id @default(cuid())
   title          String
   description    String?
-  stage          OpportunityStage @default(new)
+  stage          OpportunityStage  @default(new)
   // Weighted probability 0-100. Server-clamped to that range.
-  probability    Int              @default(20)
+  probability    Int               @default(20)
   // Weighted forecast maths uses estimatedValue * probability / 100.
-  estimatedValue Decimal?         @map("estimated_value") @db.Decimal(14, 2)
+  estimatedValue Decimal?          @map("estimated_value") @db.Decimal(14, 2)
   source         OpportunitySource @default(other)
 
-  clientId  String  @map("client_id")
-  client    Client  @relation("ClientOpportunities", fields: [clientId], references: [id], onDelete: Restrict)
-  contactId String? @map("contact_id")
+  clientId  String   @map("client_id")
+  client    Client   @relation("ClientOpportunities", fields: [clientId], references: [id], onDelete: Restrict)
+  contactId String?  @map("contact_id")
   contact   Contact? @relation("ContactOpportunities", fields: [contactId], references: [id], onDelete: SetNull)
 
   ownerId String? @map("owner_id")
@@ -6300,6 +6307,7 @@ model MapLocation {
   @@index([isActive])
   @@map("map_locations")
 }
+
 // Site sign-in / sign-out — the WHS spine for "who is on site right now".
 // One row per worker-visit: `signedInAt` set on arrival, `signedOutAt` null while
 // the worker is still on site. This is a fact (attendance), not an intention —
@@ -6307,16 +6315,16 @@ model MapLocation {
 // honest. Idempotency lives in the service: signing in twice without signing
 // out returns the existing open row rather than creating a duplicate.
 model SiteAttendance {
-  id              String        @id @default(cuid())
-  siteId          String        @map("site_id")
-  workerProfileId String        @map("worker_profile_id")
-  signedInAt      DateTime      @default(now()) @map("signed_in_at")
-  signedOutAt     DateTime?     @map("signed_out_at")
-  jobId           String?       @map("job_id")
+  id              String           @id @default(cuid())
+  siteId          String           @map("site_id")
+  workerProfileId String           @map("worker_profile_id")
+  signedInAt      DateTime         @default(now()) @map("signed_in_at")
+  signedOutAt     DateTime?        @map("signed_out_at")
+  jobId           String?          @map("job_id")
   method          String?
   notes           String?
-  createdAt       DateTime      @default(now()) @map("created_at")
-  updatedAt       DateTime      @updatedAt @map("updated_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
   site            Site             @relation(fields: [siteId], references: [id], onDelete: Cascade)
   workerProfile   WorkerProfile    @relation(fields: [workerProfileId], references: [id], onDelete: Cascade)
   job             Job?             @relation(fields: [jobId], references: [id], onDelete: SetNull)
@@ -6352,18 +6360,18 @@ enum MusterAttendeeStatus {
 }
 
 model MusterEvent {
-  id            String            @id @default(cuid())
-  siteId        String            @map("site_id")
-  startedAt     DateTime          @default(now()) @map("started_at")
-  startedById   String            @map("started_by_id")
-  status        MusterEventStatus @default(ACTIVE)
-  completedAt   DateTime?         @map("completed_at")
-  createdAt     DateTime          @default(now()) @map("created_at")
-  updatedAt     DateTime          @updatedAt @map("updated_at")
+  id          String            @id @default(cuid())
+  siteId      String            @map("site_id")
+  startedAt   DateTime          @default(now()) @map("started_at")
+  startedById String            @map("started_by_id")
+  status      MusterEventStatus @default(ACTIVE)
+  completedAt DateTime?         @map("completed_at")
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
 
-  site        Site           @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  startedBy   User           @relation("MusterEventStartedBy", fields: [startedById], references: [id], onDelete: Restrict)
-  attendees   MusterAttendee[]
+  site      Site             @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  startedBy User             @relation("MusterEventStartedBy", fields: [startedById], references: [id], onDelete: Restrict)
+  attendees MusterAttendee[]
 
   @@index([siteId, status])
   @@index([startedAt])
@@ -6384,10 +6392,10 @@ model MusterAttendee {
   createdAt        DateTime             @default(now()) @map("created_at")
   updatedAt        DateTime             @updatedAt @map("updated_at")
 
-  musterEvent    MusterEvent    @relation(fields: [musterEventId], references: [id], onDelete: Cascade)
+  musterEvent    MusterEvent     @relation(fields: [musterEventId], references: [id], onDelete: Cascade)
   siteAttendance SiteAttendance? @relation(fields: [siteAttendanceId], references: [id], onDelete: SetNull)
-  workerProfile  WorkerProfile  @relation("MusterAttendeeWorker", fields: [workerProfileId], references: [id], onDelete: Cascade)
-  checkedBy      User?          @relation("MusterAttendeeCheckedBy", fields: [checkedById], references: [id], onDelete: SetNull)
+  workerProfile  WorkerProfile   @relation("MusterAttendeeWorker", fields: [workerProfileId], references: [id], onDelete: Cascade)
+  checkedBy      User?           @relation("MusterAttendeeCheckedBy", fields: [checkedById], references: [id], onDelete: SetNull)
 
   // One snapshot row per worker per muster event.
   @@unique([musterEventId, workerProfileId])

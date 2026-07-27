@@ -560,8 +560,14 @@ export class ProjectsService {
       }
     });
     if (!tender) throw new NotFoundException("Tender not found.");
-    if (tender.status !== "AWARDED") {
-      throw new BadRequestException(`Tender status must be AWARDED to convert (currently ${tender.status}).`);
+    // CONTRACT_ISSUED is also accepted so the tender-status auto-create flow
+    // (TenderingService.updateStatus → ContractsService.createFromTender)
+    // can convert a tender that skipped straight from AWARDED to
+    // CONTRACT_ISSUED without a manual convert step.
+    if (tender.status !== "AWARDED" && tender.status !== "CONTRACT_ISSUED") {
+      throw new BadRequestException(
+        `Tender status must be AWARDED or CONTRACT_ISSUED to convert (currently ${tender.status}).`
+      );
     }
 
     const existingProject = await this.prisma.project.findFirst({

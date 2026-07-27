@@ -110,7 +110,7 @@ test.describe("Batch 6 — Contracts (PRs #58, #59)", () => {
       // "Mark priced" now opens an in-app amount modal (useConfirm migration)
       // instead of window.prompt.
       await page.getByRole("button", { name: "Mark priced" }).click();
-      await page.getByLabel("Priced amount $:").fill("5000");
+      await page.getByRole("spinbutton", { name: "Priced amount $:" }).fill("5000");
       const pricedResponse = page.waitForResponse(isVariationsCall, { timeout: VAR_TIMEOUT });
       await page.getByRole("button", { name: "OK", exact: true }).click();
       await pricedResponse;
@@ -124,7 +124,7 @@ test.describe("Batch 6 — Contracts (PRs #58, #59)", () => {
       // "Mark approved" opens the same style of amount modal, prefilled with
       // the priced amount — overwrite with the expected value regardless.
       await page.getByRole("button", { name: "Mark approved" }).click();
-      await page.getByLabel("Approved amount $:").fill("5000");
+      await page.getByRole("spinbutton", { name: "Approved amount $:" }).fill("5000");
       const approvedResponse = page.waitForResponse(isVariationsCall, { timeout: VAR_TIMEOUT });
       await page.getByRole("button", { name: "OK", exact: true }).click();
       await approvedResponse;

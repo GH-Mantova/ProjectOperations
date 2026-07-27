@@ -620,16 +620,14 @@ export function TenderingPage() {
 
   return (
     <div className="tender-page">
-      <TopTabStrip active={activeTab} onChange={setActiveTab} />
-      {activeTab === "crm" ? (
-        <CrmBoardContent />
-      ) : (
-      <>
       <header className="tender-page__header">
         <div>
-          <p className="s7-type-label">Tendering</p>
-          <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>Tendering</h1>
+          <TopTabStrip active={activeTab} onChange={setActiveTab} />
+          {activeTab === "tenders" ? (
+            <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>Tendering</h1>
+          ) : null}
         </div>
+        {activeTab === "tenders" ? (
         <div className="tender-page__header-actions">
           <div className="tender-page__view-toggle" role="tablist" aria-label="View">
             <button
@@ -667,8 +665,13 @@ export function TenderingPage() {
             + New tender
           </button>
         </div>
+        ) : null}
       </header>
 
+      {activeTab === "crm" ? (
+        <CrmBoardContent />
+      ) : (
+      <>
       {error ? <div className="tender-page__error" role="alert">{error}</div> : null}
       {toast ? (
         <div
@@ -806,8 +809,7 @@ function TopTabStrip({ active, onChange }: { active: TopTab; onChange: (next: To
       style={{
         display: "flex",
         gap: 4,
-        borderBottom: "1px solid #e5e7eb",
-        marginBottom: 12
+        borderBottom: "1px solid #e5e7eb"
       }}
     >
       {tabs.map((t) => {

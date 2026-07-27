@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { useAuth } from "../../auth/AuthContext";
+import { useConfirm } from "../../hooks/useConfirm";
 
 type ListSummary = {
   id: string;
@@ -28,6 +29,7 @@ type ResolvedList = ListSummary & { items: ListItem[] };
 
 export function GlobalListsSection({ isAdmin }: { isAdmin: boolean }) {
   const { authFetch } = useAuth();
+  const confirm = useConfirm();
   const [lists, setLists] = useState<ListSummary[]>([]);
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [selected, setSelected] = useState<ResolvedList | null>(null);
@@ -103,7 +105,13 @@ export function GlobalListsSection({ isAdmin }: { isAdmin: boolean }) {
 
   const archiveItem = async (itemId: string, label: string) => {
     if (!selected) return;
-    if (!window.confirm(`Archive "${label}"? It will no longer appear in dropdowns for new entries but will remain on existing records.`)) return;
+    const ok = await confirm({
+      title: "Archive item",
+      message: `Archive "${label}"? It will no longer appear in dropdowns for new entries but will remain on existing records.`,
+      confirmLabel: "Archive",
+      variant: "danger"
+    });
+    if (!ok) return;
     const response = await authFetch(`/lists/${selected.slug}/items/${itemId}`, { method: "DELETE" });
     if (!response.ok) {
       setError(await readApiErrorMessage(response));

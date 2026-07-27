@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { useConfirm } from "../../hooks/useConfirm";
 import {
   emptyForm,
   formFromRecord,
@@ -15,6 +16,7 @@ const TOUCH_TARGET: CSSProperties = { minHeight: 44, minWidth: 44 };
 
 export function JobRolesPage() {
   const { authFetch } = useAuth();
+  const confirm = useConfirm();
   const [roles, setRoles] = useState<JobRoleRecord[] | null>(null);
   const [competencies, setCompetencies] = useState<Competency[]>([]);
   const [editingId, setEditingId] = useState<string | "new" | null>(null);
@@ -91,7 +93,13 @@ export function JobRolesPage() {
   };
 
   const remove = async (id: string) => {
-    if (!window.confirm("Delete this job role?")) return;
+    const ok = await confirm({
+      title: "Delete job role",
+      message: "Delete this job role?",
+      confirmLabel: "Delete",
+      variant: "danger"
+    });
+    if (!ok) return;
     const res = await authFetch(`/job-roles/${id}`, { method: "DELETE" });
     if (!res.ok) {
       setError("Failed to delete job role.");

@@ -342,10 +342,13 @@ describe("ReadAsbestosRegisterHandler", () => {
   }, 60000);
 
   it("reads a single-page image register and returns one image block", async () => {
-    // 1x1 red PNG
+    // 1x1 red PNG. Regenerated for sharp >= 0.35: its libvips/libpng rejects
+    // the previous hand-rolled fixture bytes ("vipspng: libpng read error").
+    // This blob was produced by @napi-rs/canvas encode("png") and verified
+    // readable by sharp 0.35.3.
     const png = Buffer.from(
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAFklEQVR42mP8z8BQz0AEYBxVSF" +
-        "+FAOMjBgPdLQGqAAAAAElFTkSuQmCC",
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAABHNCSVQICAgIfAhkiAAAAAFz" +
+        "UkdCAK7OHOkAAAANSURBVAiZY/jPwPAfAAUAAf+rzjaJAAAAAElFTkSuQmCC",
       "base64"
     );
     const docs: DocRow[] = [

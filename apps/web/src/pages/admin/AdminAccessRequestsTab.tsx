@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { useConfirm } from "../../hooks/useConfirm";
 
 type AccessRequestRow = {
   id: string;
@@ -22,6 +23,7 @@ type Role = { id: string; name: string };
  */
 export function AdminAccessRequestsTab() {
   const { authFetch } = useAuth();
+  const confirm = useConfirm();
   const [rows, setRows] = useState<AccessRequestRow[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,7 +88,13 @@ export function AdminAccessRequestsTab() {
   };
 
   const deny = async (row: AccessRequestRow) => {
-    if (!window.confirm(`Deny access request from ${row.email}?`)) return;
+    const ok = await confirm({
+      title: "Deny access request",
+      message: `Deny access request from ${row.email}?`,
+      confirmLabel: "Deny",
+      variant: "danger"
+    });
+    if (!ok) return;
     setBusyRowId(row.id);
     setError(null);
     try {

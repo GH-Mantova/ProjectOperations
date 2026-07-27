@@ -358,14 +358,6 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
   });
 
   for (const seed of userSeeds) {
-    // E2E EXEMPTION (dev seed only — prod staff are provisioned SSO-only by
-    // seed-users-prod.ts, which refuses to run on dev-seeded databases):
-    // user-admin (Sean Lattin) is the designated e2e FIELD_WORKER persona —
-    // the only seeded login linked to a WorkerProfile (wp-user-admin), so the
-    // whole /field acceptance surface logs in as him (tests/e2e/auth.setup.ts,
-    // tests/e2e/pr-acceptance/helpers.ts). He keeps a usable local password in
-    // this DEV dataset; every other real-staff login is SSO-only.
-    const isE2eFieldPersona = seed.id === "user-admin";
     const user = await prisma.user.upsert({
       where: { id: seed.id },
       update: {
@@ -374,7 +366,10 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
         lastName: seed.lastName,
         isActive: true,
         isSuperUser: seed.isSuperUser ?? false,
-        ...(isE2eFieldPersona ? { passwordHash: hashPassword("Password123!") } : {})
+        // Also set on UPDATE so re-seeding an EXISTING dev database actively
+        // REVOKES any Password123! hash planted by earlier seed versions —
+        // omitting it here would leave old usable hashes behind forever.
+        passwordHash: "SSO-ONLY"
       },
       create: {
         id: seed.id,
@@ -387,16 +382,45 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
         // local-auth.provider.ts) treats any stored hash without a ":" as
         // unusable and swaps in a random fallback hash, so local password
         // login is impossible for these accounts. Entra SSO is unaffected.
-        // The `update:` branch above deliberately omits passwordHash (except
-        // for the e2e field persona) so a re-seed cannot resurrect a usable
-        // local password on an SSO-only account.
-        passwordHash: isE2eFieldPersona ? hashPassword("Password123!") : "SSO-ONLY"
+        passwordHash: "SSO-ONLY"
       }
     });
 
     await prisma.userRole.deleteMany({ where: { userId: user.id } });
     await prisma.userRole.create({ data: { userId: user.id, roleId: seed.roleId } });
   }
+
+  // SYNTHETIC E2E FIELD LOGIN (dev seed only). Real staff above are all
+  // SSO-only, but the e2e acceptance suite needs a local-password login that
+  // is linked to a WorkerProfile to drive the /field surface (auth.setup.ts,
+  // pr-acceptance/helpers.ts FIELD_WORKER). This login lives on the
+  // @projectops.local dev-marker domain, so assertNoDevSeedUsers in
+  // seed-users-prod.ts also treats it as a canary that blocks accidental
+  // production provisioning of a dev-seeded database. It is attached to the
+  // wp-user-admin worker record (Sean Lattin) below, so worker-name
+  // assertions in the specs are unchanged — only the LOGIN is synthetic.
+  const fieldE2eUser = await prisma.user.upsert({
+    where: { id: "user-field-e2e" },
+    update: {
+      email: "field.e2e@projectops.local",
+      firstName: "Field",
+      lastName: "E2E",
+      isActive: true,
+      isSuperUser: false,
+      passwordHash: hashPassword("Password123!")
+    },
+    create: {
+      id: "user-field-e2e",
+      email: "field.e2e@projectops.local",
+      firstName: "Field",
+      lastName: "E2E",
+      isActive: true,
+      isSuperUser: false,
+      passwordHash: hashPassword("Password123!")
+    }
+  });
+  await prisma.userRole.deleteMany({ where: { userId: fieldE2eUser.id } });
+  await prisma.userRole.create({ data: { userId: fieldE2eUser.id, roleId: adminRole.id } });
 
   // WorkerProfile records for office staff who appear on client-facing
   // documents (PDF contact line reads estimator.workerProfile.phone). Only
@@ -415,7 +439,10 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
   const officeWorkerProfiles: OfficeWorkerProfileSeed[] = [
     {
       id: "wp-user-admin",
-      internalUserId: "user-admin",
+      // The WORKER is Sean Lattin; the attached LOGIN is the synthetic
+      // e2e field account (see SYNTHETIC E2E FIELD LOGIN above). Sean's own
+      // login (user-admin) is SSO-only like every other real staff member.
+      internalUserId: "user-field-e2e",
       firstName: "Sean",
       lastName: "Lattin",
       role: "Company Director",

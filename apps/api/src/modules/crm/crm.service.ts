@@ -597,7 +597,8 @@ export class CrmService {
     return {
       client: { select: { id: true, name: true } },
       contact: { select: { id: true, firstName: true, lastName: true, email: true } },
-      owner: { select: { id: true, firstName: true, lastName: true } }
+      owner: { select: { id: true, firstName: true, lastName: true } },
+      convertedTender: { select: { id: true, tenderNumber: true, status: true } }
     } satisfies Prisma.OpportunityInclude;
   }
 

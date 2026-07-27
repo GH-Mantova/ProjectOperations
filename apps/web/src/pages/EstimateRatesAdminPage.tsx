@@ -11,6 +11,7 @@ import {
 } from "react";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../auth/AuthContext";
+import { useConfirm } from "../hooks/useConfirm";
 import { can, canAny } from "../auth/permissions";
 import { buildPatchBody, createSaveSerializer, type Serializer } from "./estimateRatesCommit";
 
@@ -619,6 +620,7 @@ function EditableRateRow<T extends { id: string }>({
   canAdmin,
   callApi
 }: EditableRateRowProps<T>) {
+  const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Record<string, string>>(
     () => Object.fromEntries(columns.map((c) => [c.key, String((row as unknown as Record<string, unknown>)[c.key] ?? "")]))
@@ -735,8 +737,16 @@ function EditableRateRow<T extends { id: string }>({
   };
 
   const remove = () => {
-    if (!window.confirm(`Delete rate "${deleteLabel}"?`)) return;
-    void callApi(`${basePath}/${row.id}`, "DELETE");
+    void (async () => {
+      const ok = await confirm({
+        title: "Delete rate",
+        message: `Delete rate "${deleteLabel}"?`,
+        confirmLabel: "Delete",
+        variant: "danger"
+      });
+      if (!ok) return;
+      await callApi(`${basePath}/${row.id}`, "DELETE");
+    })();
   };
 
   return (

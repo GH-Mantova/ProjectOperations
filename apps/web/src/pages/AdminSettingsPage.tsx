@@ -109,7 +109,7 @@ export function AdminSettingsPage() {
           {tab === "platform" && (
             <>
               <IntegrationTab
-                href="/admin/platform"
+                href="/settings/administration/platform"
                 label="Platform integrations — SharePoint"
                 body="SharePoint tenant, site, and library bindings plus the root folder tree used by Project Operations. SHAREPOINT_MODE is set by environment."
               />

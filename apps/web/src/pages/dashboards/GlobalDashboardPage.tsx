@@ -120,7 +120,7 @@ export function GlobalDashboardPage() {
             </p>
           ) : null}
         </div>
-        <Link to="/account" style={{ fontSize: 13 }}>
+        <Link to="/settings/account" style={{ fontSize: 13 }}>
           Change default dashboard
         </Link>
       </header>

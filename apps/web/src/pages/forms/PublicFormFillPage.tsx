@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000/api/v1";
+
 // ── Types ────────────────────────────────────────────────────────────────
 
 type FieldRule = {
@@ -146,8 +148,8 @@ function fieldRequired(field: PublicField, values: ValueMap): boolean {
 /**
  * Public / Kiosk form fill page — no authentication required.
  *
- * Fetches the blank template via GET /api/forms/public/:token
- * and submits via POST /api/forms/public/:token/submit.
+ * Fetches the blank template via GET {API_BASE_URL}/forms/public/:token
+ * and submits via POST {API_BASE_URL}/forms/public/:token/submit.
  *
  * In kiosk mode: auto-resets after a successful submit so the next
  * person can fill the form on the same shared device.
@@ -171,7 +173,7 @@ export function PublicFormFillPage() {
     if (!token) return;
     setLoading(true);
     setError(null);
-    fetch(`/api/forms/public/${token}`)
+    fetch(`${API_BASE_URL}/forms/public/${token}`)
       .then(async (res) => {
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as { message?: string };
@@ -233,7 +235,7 @@ export function PublicFormFillPage() {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const res = await fetch(`/api/forms/public/${token}/submit`, {
+      const res = await fetch(`${API_BASE_URL}/forms/public/${token}/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

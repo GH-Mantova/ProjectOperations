@@ -179,19 +179,28 @@ export const NAV_GROUPS: NavGroup[] = [
           path === "/tenders" ||
           (path.startsWith("/tenders/") &&
             !path.startsWith("/tenders/reports") &&
-            !path.startsWith("/tenders/contacts"))
+            !path.startsWith("/tenders/contacts")),
+        requiresPermission: "tenders.view"
       },
       {
+        // Contracts API (contracts.controller.ts) gates reads on finance.view,
+        // NOT contracts.view — legacy naming from when contracts lived under
+        // the finance module. Mirror the API to avoid silent 403s.
         to: "/contracts",
         label: "Contracts",
         icon: ICON_CONTRACTS,
-        match: (path) => path === "/contracts" || path.startsWith("/contracts/")
+        match: (path) => path === "/contracts" || path.startsWith("/contracts/"),
+        requiresPermission: "finance.view"
       },
       {
+        // Directory workspace hits /master-data/* endpoints — gated on
+        // masterdata.view (not directory.view; the directory.controller.ts
+        // is a separate legacy surface).
         to: "/master-data",
         label: "Directory",
         icon: ICON_CLIENTS,
-        match: (path) => path.startsWith("/master-data") || path.startsWith("/directory/")
+        match: (path) => path.startsWith("/master-data") || path.startsWith("/directory/"),
+        requiresPermission: "masterdata.view"
       },
       { to: "/admin/rates-lists", label: "Rates & Lists", icon: ICON_TENDERING },
       {
@@ -207,12 +216,15 @@ export const NAV_GROUPS: NavGroup[] = [
     id: "projects",
     label: "Projects",
     items: [
-      { to: "/jobs", label: "Jobs", icon: ICON_JOBS },
+      { to: "/jobs", label: "Jobs", icon: ICON_JOBS, requiresPermission: "jobs.view" },
       {
+        // Sites list hits /master-data/sites, so the gate mirrors masterdata.view
+        // (sites.controller.ts only exposes attendance endpoints, not the list).
         to: "/sites",
         label: "Sites",
         icon: ICON_SITES,
-        match: (path) => path.startsWith("/sites")
+        match: (path) => path.startsWith("/sites"),
+        requiresPermission: "masterdata.view"
       }
     ]
   },
@@ -224,30 +236,35 @@ export const NAV_GROUPS: NavGroup[] = [
         to: "/scheduler",
         label: "Scheduler",
         icon: ICON_SCHEDULER,
-        match: (path) => path.startsWith("/scheduler")
+        match: (path) => path.startsWith("/scheduler"),
+        requiresPermission: "scheduler.view"
       },
       { to: "/workers/live-crew", label: "Live crew map", icon: ICON_SCHEDULER, requiresPermission: "scheduler.view" },
       {
         // Collapsible sub-group per Marco 2026-07-17. The parent is a toggle
         // button, not a route — /assets, /inventory, /maintenance remain the
-        // real destinations.
+        // real destinations. Children are gated on the underlying API view
+        // permission so users without access don't see dead menu entries.
         to: "operations/assets-equipment",
         label: "Assets & Equipment",
         icon: ICON_ASSETS,
         children: [
-          { to: "/assets", label: "Assets", icon: ICON_ASSETS },
-          { to: "/inventory", label: "Inventory", icon: ICON_ASSETS },
-          { to: "/maintenance", label: "Maintenance", icon: ICON_MAINTENANCE }
+          { to: "/assets", label: "Assets", icon: ICON_ASSETS, requiresPermission: "assets.view" },
+          { to: "/inventory", label: "Inventory", icon: ICON_ASSETS, requiresPermission: "inventory.view" },
+          { to: "/maintenance", label: "Maintenance", icon: ICON_MAINTENANCE, requiresPermission: "maintenance.view" }
         ]
       },
-      { to: "/procurement", label: "Procurement", icon: ICON_ASSETS }
+      { to: "/procurement", label: "Procurement", icon: ICON_ASSETS, requiresPermission: "procurement.view" }
     ]
   },
   {
     id: "hr",
     label: "HR",
     items: [
-      { to: "/workers", label: "Workers", icon: ICON_WORKERS },
+      // Workers roster hits /workers which is gated on resources.view
+      // (legacy naming — the WorkerProfile entity was carved out of the
+      // Resources module). Mirror the API, not the label.
+      { to: "/workers", label: "Workers", icon: ICON_WORKERS, requiresPermission: "resources.view" },
       {
         // §7 payroll export: dedicated page over the existing CSV endpoint.
         // Requires field.manage; NoAccess surfaces the missing code when a
@@ -259,10 +276,13 @@ export const NAV_GROUPS: NavGroup[] = [
         requiresPermission: "field.manage"
       },
       {
+        // Approval page hits /field/timesheets/pending + /all which require
+        // field.manage (same as Payroll Export above).
         to: "/timesheets/approval",
         label: "Timesheet Approval",
         icon: ICON_FORMS,
-        match: (path) => path.startsWith("/timesheets/approval")
+        match: (path) => path.startsWith("/timesheets/approval"),
+        requiresPermission: "field.manage"
       }
     ]
   },
@@ -275,7 +295,8 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Safety",
         icon: ICON_AUDIT,
         match: (path) => path.startsWith("/safety"),
-        badge: "safety"
+        badge: "safety",
+        requiresPermission: "safety.view"
       },
       {
         to: "/cases",
@@ -296,10 +317,11 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Compliance",
         icon: ICON_AUDIT,
         match: (path) => path.startsWith("/compliance"),
-        badge: "compliance"
+        badge: "compliance",
+        requiresPermission: "compliance.view"
       },
-      { to: "/forms", label: "Forms", icon: ICON_FORMS },
-      { to: "/documents", label: "Documents", icon: ICON_DOCUMENTS }
+      { to: "/forms", label: "Forms", icon: ICON_FORMS, requiresPermission: "forms.view" },
+      { to: "/documents", label: "Documents", icon: ICON_DOCUMENTS, requiresPermission: "documents.view" }
     ]
   },
   {
@@ -344,6 +366,9 @@ type SharedFollowUpItem = {
   } | null;
 };
 
+// Breadcrumb map. Keys must resolve to a route that actually RENDERS a page
+// (either directly, or via prefix match for a nested route). Redirect-only
+// routes are omitted so we don't confuse the audit / topbar with dead entries.
 const BREADCRUMBS: Record<string, string> = {
   "/": "Dashboard",
   "/projects": "Projects",
@@ -354,7 +379,6 @@ const BREADCRUMBS: Record<string, string> = {
   "/forms": "Forms",
   "/tenders": "Tendering",
   "/tenders/reports": "Tender Reports",
-  "/tenders/contacts": "Tender Contacts",
   "/workers": "Workers",
   "/workers/live-crew": "Live crew map",
   "/resources": "Workers (legacy)",
@@ -364,15 +388,23 @@ const BREADCRUMBS: Record<string, string> = {
   "/expenses": "Expenses",
   "/cases": "Cases",
   "/knowledge": "Knowledge Base",
+  // /crm route is dead (404) after PR #841; only /crm/opportunities/:id renders,
+  // so keep the deeper prefix so the breadcrumb resolves for the detail page.
   "/crm/opportunities": "CRM",
   "/maintenance": "Maintenance",
   "/master-data": "Master Data",
   "/directory": "Directory",
   "/documents": "Documents",
   "/reports": "Reports",
-  "/account": "My account",
-  "/account/calendar-sync": "Calendar Sync",
-  "/notifications": "Notifications",
+  "/sites": "Sites",
+  "/safety": "Safety",
+  "/compliance": "Compliance",
+  "/dockets": "Dockets",
+  "/archive": "Archive",
+  "/surveys/capture": "Survey Capture",
+  "/surveys/satisfaction": "Client Satisfaction",
+  // /dashboards itself redirects, but /dashboards/:id renders — keep the
+  // prefix so custom dashboards get "Dashboards" in the topbar.
   "/dashboards": "Dashboards",
   "/settings": "Settings",
   "/settings/account": "Settings",
@@ -382,17 +414,10 @@ const BREADCRUMBS: Record<string, string> = {
   "/settings/ai": "Settings",
   "/settings/data-model": "Settings",
   "/settings/administration": "Settings",
-  "/admin/users": "Users",
-  "/admin/roles": "Roles",
   "/admin/estimate-rates": "Legacy estimate rates",
   "/admin/rates-lists": "Rates & Lists",
-  "/admin/permissions": "Permissions",
-  "/admin/audit": "Audit",
-  "/admin/platform": "Platform",
-  "/admin/settings": "Admin Settings",
-  "/admin/company": "Company Profile",
-  "/admin/data-model": "Data-model map",
-  "/admin/job-roles": "Job Roles",
+  "/admin/automations": "Automations",
+  "/admin/ai-settings": "AI Settings",
   "/contracts": "Contracts"
 };
 
@@ -834,10 +859,11 @@ function SidebarPill({
 }
 
 function SidebarSafetyBadge() {
-  const { authFetch, isAuthenticated } = useAuth();
+  const { authFetch, isAuthenticated, user } = useAuth();
+  const allowed = can(user, "safety.view");
   const [count, setCount] = useState(0);
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !allowed) return;
     let cancelled = false;
     const load = async () => {
       try {
@@ -856,15 +882,17 @@ function SidebarSafetyBadge() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [authFetch, isAuthenticated]);
+  }, [authFetch, isAuthenticated, allowed]);
+  if (!allowed) return null;
   return <SidebarPill count={count} tone="danger" />;
 }
 
 function SidebarComplianceBadge() {
-  const { authFetch, isAuthenticated } = useAuth();
+  const { authFetch, isAuthenticated, user } = useAuth();
+  const allowed = can(user, "compliance.view");
   const [count, setCount] = useState(0);
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !allowed) return;
     let cancelled = false;
     const load = async () => {
       try {
@@ -882,6 +910,7 @@ function SidebarComplianceBadge() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [authFetch, isAuthenticated]);
+  }, [authFetch, isAuthenticated, allowed]);
+  if (!allowed) return null;
   return <SidebarPill count={count} tone="warning" title={COMPLIANCE_BADGE_TOOLTIP} />;
 }

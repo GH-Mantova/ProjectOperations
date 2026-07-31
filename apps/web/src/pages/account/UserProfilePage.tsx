@@ -30,7 +30,7 @@ export function UserProfilePage() {
           Connect a personal Google or Outlook calendar so your assigned shifts appear alongside
           the rest of your schedule.
         </p>
-        <Link to="/account/calendar-sync" className="s7-btn s7-btn--secondary s7-btn--sm">
+        <Link to="/settings/calendar-sync" className="s7-btn s7-btn--secondary s7-btn--sm">
           Open calendar sync
         </Link>
       </section>

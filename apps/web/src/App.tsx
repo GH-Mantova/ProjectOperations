@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactElement } from "react";
-import { Navigate, Outlet, Route, Routes } from "react-router-dom";
+import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { can, canAny } from "./auth/permissions";
 import { runDraftPurgeJob } from "./drafts";
@@ -14,7 +14,6 @@ import { AuditLogsPage } from "./pages/AuditLogsPage";
 import { PlatformPage } from "./pages/PlatformPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { ResourcesPage } from "./pages/ResourcesPage";
-import { ArchivePage } from "./pages/archive/ArchivePage";
 import { ArchiveDetailPage } from "./pages/archive/ArchiveDetailPage";
 import { TenderingPage } from "./pages/tendering/TenderingPage";
 import { TenderDetailPage } from "./pages/tendering/TenderDetailPage";
@@ -108,6 +107,19 @@ function ProtectedRoute() {
   const { isAuthenticated } = useAuth();
 
   return isAuthenticated ? <Outlet /> : <Navigate to="/login" replace />;
+}
+
+// Redirects to `to`, merging the inbound location.search into the target.
+// The target's own query keys win (so `?tab=` from the target is preserved)
+// while inbound `?new=1`, `?highlight=…` and friends survive the hop.
+function QueryPreservingRedirect({ to }: { to: string }) {
+  const location = useLocation();
+  const [path, targetSearch = ""] = to.split("?");
+  const merged = new URLSearchParams(location.search);
+  const targetParams = new URLSearchParams(targetSearch);
+  for (const [k, v] of targetParams) merged.set(k, v);
+  const search = merged.toString();
+  return <Navigate to={search ? `${path}?${search}` : path} replace />;
 }
 
 function FieldOnlyGuard({ children }: { children: ReactElement }) {
@@ -266,7 +278,7 @@ export function App() {
             {/* Legacy sub-routes retired in favour of ?view= tabs on the
                 consolidated Scheduler page. Handled by SchedulerHomePage. */}
             <Route path="/scheduler/:legacyView" element={<SchedulerHomePage />} />
-            <Route path="/account/calendar-sync" element={<Navigate to="/settings/calendar-sync" replace />} />
+            <Route path="/account/calendar-sync" element={<QueryPreservingRedirect to="/settings/calendar-sync" />} />
             <Route path="/tenders" element={<TenderingPage />} />
             {/* Codex-era /pipeline + /workspace + /create wrappers were
                 retired in PR #78 alongside the Playwright spec rewrite. The
@@ -280,8 +292,8 @@ export function App() {
                 live on the single Directory surface. TenderClientsPage /
                 TenderContactsPage are still exported for anything importing
                 them directly, but the routes now feed the tabbed page. */}
-            <Route path="/tenders/clients" element={<Navigate to="/directory?tab=clients" replace />} />
-            <Route path="/tenders/contacts" element={<Navigate to="/directory?tab=contacts" replace />} />
+            <Route path="/tenders/clients" element={<QueryPreservingRedirect to="/directory?tab=clients" />} />
+            <Route path="/tenders/contacts" element={<QueryPreservingRedirect to="/directory?tab=contacts" />} />
             <Route path="/tenders/reports" element={<TenderingReportsPage />} />
             <Route path="/tenders/:id" element={<TenderDetailPage />} />
             <Route path="/tenders/:id/scope" element={<TenderDetailPage />} />
@@ -439,13 +451,17 @@ export function App() {
                 shared links, and any lingering deep-links keep working. */}
             <Route
               path="/directory/subcontractors"
-              element={<Navigate to="/directory?tab=subcontractors" replace />}
+              element={<QueryPreservingRedirect to="/directory?tab=subcontractors" />}
             />
             <Route
               path="/directory/contacts"
-              element={<Navigate to="/directory?tab=contacts" replace />}
+              element={<QueryPreservingRedirect to="/directory?tab=contacts" />}
             />
-            <Route path="/archive" element={<ArchivePage />} />
+            {/* /archive is now a redirect into the Documents workspace's
+                Archived tab — the ArchivePage component still renders there
+                (DocumentsWorkspacePage imports it). The /archive/:jobId
+                detail route stays; JobDetailPage links straight into it. */}
+            <Route path="/archive" element={<QueryPreservingRedirect to="/documents?tab=archived" />} />
             <Route path="/archive/:jobId" element={<ArchiveDetailPage />} />
             <Route path="/surveys/capture" element={<SurveyCaptureFormPage />} />
             <Route path="/surveys/satisfaction" element={<ClientSatisfactionPage />} />

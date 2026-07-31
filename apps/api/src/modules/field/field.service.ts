@@ -97,6 +97,83 @@ export class FieldService {
     };
   }
 
+  // GPS-A2: current open timesheet (clockOnTime set, clockOffTime null) for
+  // the signed-in worker. Used by the field app's breadcrumb hook to decide
+  // whether to sample location, and by tests. Returns null when no shift is
+  // open — the client MUST NOT start sampling in that case.
+  async getOpenTimesheet(actor: ActorContext) {
+    const worker = await this.resolveWorkerProfile(actor.userId);
+    const open = await this.prisma.timesheet.findFirst({
+      where: {
+        workerProfileId: worker.id,
+        clockOnTime: { not: null },
+        clockOffTime: null
+      },
+      orderBy: { clockOnTime: "desc" },
+      select: { id: true, projectId: true, clockOnTime: true }
+    });
+    return open
+      ? {
+          timesheetId: open.id,
+          projectId: open.projectId,
+          clockOnTime: open.clockOnTime
+        }
+      : null;
+  }
+
+  // GPS-A2: append a breadcrumb point to the worker's currently-open
+  // timesheet. Server-authoritative — the client does not choose which
+  // timesheet the point belongs to. Rejects if the worker has no consent,
+  // no open shift, or if the last breadcrumb for this shift is <120s old
+  // (floor against a runaway client). No new table: WorkerLocationLog gets
+  // eventType "breadcrumb".
+  async recordLocationBreadcrumb(
+    actor: ActorContext,
+    input: { lat: number; lng: number; accuracy?: number }
+  ) {
+    const worker = await this.resolveWorkerProfile(actor.userId);
+    if (!worker.locationConsent) {
+      throw new ForbiddenException("Location consent is required to record breadcrumbs.");
+    }
+    const open = await this.prisma.timesheet.findFirst({
+      where: {
+        workerProfileId: worker.id,
+        clockOnTime: { not: null },
+        clockOffTime: null
+      },
+      orderBy: { clockOnTime: "desc" },
+      select: { id: true }
+    });
+    if (!open) {
+      throw new ConflictException(
+        "You are not currently on the clock — breadcrumbs are only recorded during an open shift."
+      );
+    }
+    const floorCutoff = new Date(Date.now() - 120_000);
+    const recent = await this.prisma.workerLocationLog.findFirst({
+      where: {
+        timesheetId: open.id,
+        eventType: "breadcrumb",
+        recordedAt: { gte: floorCutoff }
+      },
+      select: { id: true }
+    });
+    if (recent) {
+      return { recorded: false, reason: "throttled" as const, timesheetId: open.id };
+    }
+    await this.prisma.workerLocationLog.create({
+      data: {
+        workerProfileId: worker.id,
+        timesheetId: open.id,
+        eventType: "breadcrumb",
+        latitude: new Prisma.Decimal(input.lat),
+        longitude: new Prisma.Decimal(input.lng),
+        accuracy: input.accuracy !== undefined ? new Prisma.Decimal(input.accuracy) : null
+      }
+    });
+    return { recorded: true as const, timesheetId: open.id };
+  }
+
   private async recordLocationLogs(
     workerProfileId: string,
     timesheetId: string,

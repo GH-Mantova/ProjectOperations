@@ -68,7 +68,7 @@ async function loginAsAdmin(page, baseUrl) {
   await page.getByPlaceholder("Password").fill(ADMIN_PASSWORD);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await page
-    .getByRole("heading", { name: "Operations Overview" })
+    .getByRole("heading", { name: "Home" })
     .waitFor({ state: "visible", timeout: 30_000 });
 }
 

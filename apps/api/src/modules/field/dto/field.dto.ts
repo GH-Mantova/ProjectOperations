@@ -104,6 +104,27 @@ export class WorkerLocationConsentDto {
   consent!: boolean;
 }
 
+export class CreateLocationBreadcrumbDto {
+  @ApiProperty({ minimum: -90, maximum: 90 })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  lat!: number;
+  @ApiProperty({ minimum: -180, maximum: 180 })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  lng!: number;
+  @ApiPropertyOptional({ minimum: 0 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  accuracy?: number;
+}
+
 export class FieldListQueryDto {
   @ApiPropertyOptional() @IsOptional() @IsString() page?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() limit?: string;

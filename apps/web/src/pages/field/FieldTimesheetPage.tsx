@@ -4,6 +4,7 @@ import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { captureGpsReading, type GpsReading } from "./useAutoGps";
 import { ConsentPanel, GPS_HARD_BLOCK_MSG } from "./GpsConsent";
+import { useBreadcrumbTrail } from "./useBreadcrumbTrail";
 
 type TimesheetRow = {
   id: string;
@@ -48,6 +49,7 @@ export function FieldTimesheetPage() {
   const [rows, setRows] = useState<TimesheetRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [openTimesheetId, setOpenTimesheetId] = useState<string | null>(null);
 
   const loadList = useCallback(async () => {
     try {
@@ -60,9 +62,39 @@ export function FieldTimesheetPage() {
     }
   }, [authFetch]);
 
+  const loadOpenShift = useCallback(async () => {
+    try {
+      const response = await authFetch("/field/timesheets/open");
+      if (!response.ok) return;
+      const body = (await response.json()) as { timesheetId: string } | null;
+      setOpenTimesheetId(body?.timesheetId ?? null);
+    } catch {
+      // Non-fatal — no open shift means no breadcrumb sampling.
+    }
+  }, [authFetch]);
+
   useEffect(() => {
     if (view === "list") void loadList();
   }, [loadList, view]);
+
+  useEffect(() => {
+    void loadOpenShift();
+  }, [loadOpenShift, view, success]);
+
+  const postBreadcrumb = useCallback(
+    (body: { lat: number; lng: number; accuracy?: number }) =>
+      authFetch("/field/location-breadcrumbs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      }),
+    [authFetch]
+  );
+
+  useBreadcrumbTrail({
+    enabled: openTimesheetId !== null,
+    post: postBreadcrumb
+  });
 
   if (success) {
     return (

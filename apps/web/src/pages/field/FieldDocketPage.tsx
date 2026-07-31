@@ -47,6 +47,7 @@ export function FieldDocketPage() {
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [lookupNotice, setLookupNotice] = useState<string | null>(null);
 
   // Form state
   const [type, setType] = useState<string>("HAULAGE");
@@ -74,26 +75,29 @@ export function FieldDocketPage() {
   }, [authFetch]);
 
   const loadFormData = useCallback(async () => {
-    try {
-      const [wRes, jRes, aRes] = await Promise.all([
-        authFetch("/workers?limit=200"),
-        authFetch("/jobs?limit=200"),
-        authFetch("/assets?limit=200")
-      ]);
-      if (wRes.ok) {
-        const wb = await wRes.json();
-        setWorkers(wb.items ?? []);
+    setLookupNotice(null);
+    const failed: string[] = [];
+    const settled = await Promise.allSettled([
+      authFetch("/resources/workers?pageSize=100"),
+      authFetch("/jobs?pageSize=100"),
+      authFetch("/assets?pageSize=100")
+    ]);
+    const labels = ["drivers", "jobs", "assets"] as const;
+    const setters = [setWorkers, setJobs, setAssets] as const;
+    for (let i = 0; i < settled.length; i++) {
+      const result = settled[i];
+      if (result.status === "fulfilled" && result.value.ok) {
+        const body = await result.value.json();
+        (setters[i] as (v: unknown[]) => void)(body.items ?? []);
+      } else {
+        failed.push(labels[i]);
       }
-      if (jRes.ok) {
-        const jb = await jRes.json();
-        setJobs(jb.items ?? []);
-      }
-      if (aRes.ok) {
-        const ab = await aRes.json();
-        setAssets(ab.items ?? []);
-      }
-    } catch {
-      // non-fatal — selects will be empty but user can still type IDs
+    }
+    if (failed.length > 0) {
+      setLookupNotice(
+        `Could not load ${failed.join(", ")} — your account may lack permission. ` +
+          `You can still capture a docket by typing the ID manually.`
+      );
     }
   }, [authFetch]);
 
@@ -197,6 +201,12 @@ export function FieldDocketPage() {
           </div>
         )}
 
+        {lookupNotice && (
+          <div style={{ background: "#FEF3C7", color: "#92400E", padding: "0.75rem", borderRadius: "0.375rem", marginBottom: "1rem" }}>
+            {lookupNotice}
+          </div>
+        )}
+
         <form onSubmit={(e) => { void handleSubmit(e); }}>
           <label style={{ display: "block", marginBottom: "0.25rem", fontWeight: 600 }}>
             Type *
@@ -237,7 +247,7 @@ export function FieldDocketPage() {
               value={workerId}
               onChange={(e) => setWorkerId(e.target.value)}
               className="field-input"
-              placeholder="Worker ID"
+              placeholder="Worker ID (manual entry — list unavailable)"
               style={{ marginBottom: "1rem", width: "100%" }}
               required
             />
@@ -266,7 +276,7 @@ export function FieldDocketPage() {
               value={jobId}
               onChange={(e) => setJobId(e.target.value)}
               className="field-input"
-              placeholder="Job ID (optional)"
+              placeholder="Job ID (optional — list unavailable)"
               style={{ marginBottom: "1rem", width: "100%" }}
             />
           )}
@@ -294,7 +304,7 @@ export function FieldDocketPage() {
               value={assetId}
               onChange={(e) => setAssetId(e.target.value)}
               className="field-input"
-              placeholder="Asset ID (optional)"
+              placeholder="Asset ID (optional — list unavailable)"
               style={{ marginBottom: "1rem", width: "100%" }}
             />
           )}

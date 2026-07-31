@@ -677,6 +677,20 @@ export class FieldService {
   }
 
   async createTimesheet(dto: CreateTimesheetDto, actor: ActorContext) {
+    // GPS hard gate: if a clock time is present, the corresponding lat/lng must
+    // also be present. Admin/desktop endpoints bypass this — only the field
+    // worker path calls createTimesheet. The accuracy field stays optional.
+    if (dto.clockOnTime && (dto.clockOnLat === undefined || dto.clockOnLng === undefined)) {
+      throw new BadRequestException(
+        "clockOnLat and clockOnLng are required when clockOnTime is provided."
+      );
+    }
+    if (dto.clockOffTime && (dto.clockOffLat === undefined || dto.clockOffLng === undefined)) {
+      throw new BadRequestException(
+        "clockOffLat and clockOffLng are required when clockOffTime is provided."
+      );
+    }
+
     const worker = await this.resolveWorkerProfile(actor.userId);
     const allocation = await this.prisma.projectAllocation.findUnique({ where: { id: dto.allocationId } });
     if (!allocation || allocation.workerProfileId !== worker.id) {
@@ -751,6 +765,19 @@ export class FieldService {
   }
 
   async updateTimesheet(id: string, dto: UpdateTimesheetDto, actor: ActorContext) {
+    // GPS hard gate (same as createTimesheet): a clock time cannot be set or
+    // updated without its corresponding lat/lng.
+    if (dto.clockOnTime && (dto.clockOnLat === undefined || dto.clockOnLng === undefined)) {
+      throw new BadRequestException(
+        "clockOnLat and clockOnLng are required when clockOnTime is provided."
+      );
+    }
+    if (dto.clockOffTime && (dto.clockOffLat === undefined || dto.clockOffLng === undefined)) {
+      throw new BadRequestException(
+        "clockOffLat and clockOffLng are required when clockOffTime is provided."
+      );
+    }
+
     const worker = await this.resolveWorkerProfile(actor.userId);
     const existing = await this.prisma.timesheet.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException("Timesheet not found.");

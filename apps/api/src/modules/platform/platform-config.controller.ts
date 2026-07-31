@@ -16,14 +16,17 @@ import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { PROVIDER_PRIORITY, PlatformConfigService, type AiProviderName } from "./platform-config.service";
 
+// AI provider API-key write path was consolidated to /ai-settings/company/keys
+// (requires platform.admin AND super-user, live key validation).
+// The fields anthropicApiKey, geminiApiKey, groqApiKey, openaiApiKey are no
+// longer accepted here — PATCH returns 400 with an actionable message if any
+// are sent.
+const AI_KEY_FIELDS = ["anthropicApiKey", "geminiApiKey", "groqApiKey", "openaiApiKey"] as const;
+
 class UpdatePlatformConfigDto {
-  @IsOptional() @IsString() anthropicApiKey?: string;
   @IsOptional() @IsString() anthropicModel?: string | null;
-  @IsOptional() @IsString() geminiApiKey?: string;
   @IsOptional() @IsString() geminiModel?: string | null;
-  @IsOptional() @IsString() groqApiKey?: string;
   @IsOptional() @IsString() groqModel?: string | null;
-  @IsOptional() @IsString() openaiApiKey?: string;
   @IsOptional() @IsString() openaiModel?: string | null;
   @IsOptional()
   @IsIn([...PROVIDER_PRIORITY, "auto"] as string[])
@@ -52,31 +55,36 @@ export class PlatformConfigController {
   @RequirePermissions("platform.admin")
   @ApiOperation({
     summary:
-      "Set or replace any of the AI provider keys + models, and/or pick a preferred provider. All keys are encrypted at rest."
+      "Update AI provider model selection and/or preferred provider. API keys must be set via /ai-settings/company/keys."
   })
   @ApiResponse({ status: 200, description: "Updated integration status." })
+  @ApiResponse({
+    status: 400,
+    description:
+      "AI key fields (anthropicApiKey, geminiApiKey, groqApiKey, openaiApiKey) are rejected — use /ai-settings/company/keys/:provider instead."
+  })
   async update(@Body() dto: UpdatePlatformConfigDto, @CurrentUser() actor: { sub: string }) {
+    // Reject any AI provider key fields. The correct write path is
+    // POST /ai-settings/company/keys/:provider which requires super-user
+    // and performs live key validation.
+    const body = dto as Record<string, unknown>;
+    const sentKeyFields = AI_KEY_FIELDS.filter((field) => body[field] !== undefined);
+    if (sentKeyFields.length > 0) {
+      throw new BadRequestException(
+        `AI provider API keys (${sentKeyFields.join(", ")}) must be set via POST /ai-settings/company/keys/:provider. ` +
+          `That endpoint requires elevated permissions and validates the key against the provider before storing it.`
+      );
+    }
+
     try {
-      if (dto.anthropicApiKey !== undefined) {
-        await this.service.setAnthropicApiKey(dto.anthropicApiKey, actor.sub);
-      }
       if (dto.anthropicModel !== undefined) {
         await this.service.setModel("anthropic", dto.anthropicModel ?? null, actor.sub);
-      }
-      if (dto.geminiApiKey !== undefined) {
-        await this.service.setGeminiApiKey(dto.geminiApiKey, actor.sub);
       }
       if (dto.geminiModel !== undefined) {
         await this.service.setModel("gemini", dto.geminiModel ?? null, actor.sub);
       }
-      if (dto.groqApiKey !== undefined) {
-        await this.service.setGroqApiKey(dto.groqApiKey, actor.sub);
-      }
       if (dto.groqModel !== undefined) {
         await this.service.setModel("groq", dto.groqModel ?? null, actor.sub);
-      }
-      if (dto.openaiApiKey !== undefined) {
-        await this.service.setOpenAiApiKey(dto.openaiApiKey, actor.sub);
       }
       if (dto.openaiModel !== undefined) {
         await this.service.setModel("openai", dto.openaiModel ?? null, actor.sub);

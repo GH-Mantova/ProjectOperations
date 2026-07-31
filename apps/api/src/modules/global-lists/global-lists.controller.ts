@@ -101,10 +101,12 @@ export class GlobalListsController {
   }
 
   @Patch(":slug/items/:itemId")
+  @RequirePermissions("masterdata.manage")
   @ApiOperation({
-    summary: "Update a list item. Creator can edit own items; admins can edit any."
+    summary:
+      "Update a list item. Requires masterdata.manage. Beyond the guard, creator can edit own items; admins can edit any."
   })
-  @ApiResponse({ status: 403, description: "Not creator and not admin." })
+  @ApiResponse({ status: 403, description: "Caller does not hold masterdata.manage (or is not the creator/an admin)." })
   updateItem(
     @Param("slug") slug: string,
     @Param("itemId") itemId: string,
@@ -115,11 +117,13 @@ export class GlobalListsController {
   }
 
   @Delete(":slug/items/:itemId")
+  @RequirePermissions("masterdata.manage")
   @ApiOperation({
     summary:
-      "Archive a list item (never hard-deleted). Archived items keep resolving on existing records but disappear from dropdowns."
+      "Archive a list item (never hard-deleted). Requires masterdata.manage. Archived items keep resolving on existing records but disappear from dropdowns."
   })
   @ApiResponse({ status: 200, description: "Archive a list item (never hard-deleted). Archived items keep resolving on existing records but disappear from dropdowns." })
+  @ApiResponse({ status: 403, description: "Caller does not hold masterdata.manage (or is not the creator/an admin)." })
   archiveItem(
     @Param("slug") slug: string,
     @Param("itemId") itemId: string,
@@ -129,11 +133,12 @@ export class GlobalListsController {
   }
 
   @Post(":slug/items/reorder")
+  @RequirePermissions("masterdata.manage")
   @ApiOperation({
     summary:
-      "Bulk update sortOrder on items in a single transaction. System lists require platform.admin to reorder."
+      "Bulk update sortOrder on items in a single transaction. Requires masterdata.manage. System lists additionally require platform.admin to reorder."
   })
-  @ApiResponse({ status: 403, description: "Non-admin attempted to reorder a system list." })
+  @ApiResponse({ status: 403, description: "Caller does not hold masterdata.manage, or a non-admin attempted to reorder a system list." })
   reorder(@Param("slug") slug: string, @Body() dto: ReorderDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.service.reorder(slug, toActor(actor), dto.order);
   }

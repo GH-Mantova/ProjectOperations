@@ -56,8 +56,8 @@ const ROWS: MatrixRow[] = [
   { group: "users", method: "get", path: "/users", permission: "users.view", viewer: 200, admin: true },
   { group: "users", method: "post", path: "/users", permission: "users.create", body: {}, viewer: 403, admin: true },
   { group: "users", method: "patch", path: `/users/${MISSING}`, permission: "users.update", body: {}, viewer: 403, admin: true },
-  { group: "users", method: "get", path: "/admin/users", permission: "(service tier check)", viewer: 403, admin: true },
-  { group: "users", method: "patch", path: `/admin/users/${MISSING}`, permission: "(service tier check)", body: {}, viewer: 403, admin: true },
+  { group: "users", method: "get", path: "/admin/users", permission: "users.view", viewer: 403, admin: true },
+  { group: "users", method: "patch", path: `/admin/users/${MISSING}`, permission: "users.update", body: {}, viewer: 403, admin: true },
 
   // ── Roles / permissions admin ─────────────────────────────────────────────
   { group: "roles", method: "get", path: "/roles", permission: "roles.view", viewer: 200, admin: true },

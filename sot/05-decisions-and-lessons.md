@@ -1309,6 +1309,10 @@ enable GitHub native auto-merge SELECTIVELY per-PR after reading labels per LL-4
 enforces required checks only, NOT an unticked in-body acceptance checklist, so confirm intent
 before arming UI PRs.
 
+**LL-57 | 2026-07-31 | A PR body note "do NOT auto-merge / leave for review" does NOT park a PR — only the `do-not-merge` LABEL does. #817 carried the body note but no label, so the watcher auto-merged it the moment CI went green.**
+Root cause: both the watcher's merge path and `enable-automerge` key on the `do-not-merge` LABEL (LL-52), never on prose in the PR body. A "leave unmerged for review" / "STANDING AUTHORITY: do not auto-merge" instruction written only in the body is invisible to the automation.
+Standing guard: to actually hold a PR for human review, apply the `do-not-merge` label at open time (escalates:true prompts get it automatically per DOCTRINE 5b). Treat body text as documentation, not a gate. If a green PR must wait, the label is the only thing that stops native auto-merge.
+
 ### Prompt-writing lessons (for PR prompt authors)
 
 **LL-53 | 2026-07-20 | A 15-file batch arming sweep armed an IRREVERSIBLE table-drop prompt whose "Arm ONLY when..." gate lived in the BODY, below the STATUS block the transform touched.**

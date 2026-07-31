@@ -158,7 +158,7 @@ export function OpportunityDetailPage() {
         <div role="alert" style={{ color: "#dc2626", padding: 12, background: "#fef2f2", borderRadius: 6 }}>
           {error}
         </div>
-        <button onClick={() => navigate("/crm")} style={{ marginTop: 12, padding: "8px 14px", borderRadius: 6, border: "1px solid #ccc", background: "#fff", cursor: "pointer" }}>
+        <button onClick={() => navigate("/tenders?tab=crm")} style={{ marginTop: 12, padding: "8px 14px", borderRadius: 6, border: "1px solid #ccc", background: "#fff", cursor: "pointer" }}>
           Back to CRM
         </button>
       </div>
@@ -174,7 +174,7 @@ export function OpportunityDetailPage() {
   return (
     <div style={{ padding: "24px 32px", maxWidth: 960 }}>
       <button
-        onClick={() => navigate("/crm")}
+        onClick={() => navigate("/tenders?tab=crm")}
         style={{ background: "none", border: "none", color: "var(--text-muted, #666)", cursor: "pointer", marginBottom: 8, padding: 0 }}
       >
         ← Back to CRM

@@ -1,6 +1,5 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
-import { isAdminUser } from "../../auth/permissions";
 import { DefaultDashboardSection } from "./DefaultDashboardSection";
 import { GlobalListsSection } from "./GlobalListsSection";
 
@@ -9,7 +8,6 @@ import { GlobalListsSection } from "./GlobalListsSection";
 // page (/admin/ai-settings) under per-persona override controls.
 export function UserProfilePage() {
   const { user } = useAuth();
-  const isAdmin = isAdminUser(user);
 
   return (
     <div style={{ padding: "24px", maxWidth: 980 }}>
@@ -22,7 +20,7 @@ export function UserProfilePage() {
 
       <DefaultDashboardSection />
 
-      <GlobalListsSection isAdmin={isAdmin} />
+      <GlobalListsSection />
 
       <section className="s7-card" style={{ marginTop: 24 }}>
         <h2 className="s7-type-section-heading" style={{ marginTop: 0, marginBottom: 4 }}>

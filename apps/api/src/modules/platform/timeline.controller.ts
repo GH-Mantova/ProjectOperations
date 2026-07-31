@@ -78,7 +78,13 @@ export class TimelineController {
 
   private ensureViewer(entityType: string, user: AuthenticatedUser) {
     const required = VIEW_PERMISSIONS[entityType];
-    if (!required) return;
+    // Fail closed: an entity type without a mapped permission is not viewable
+    // by anyone except super-users, so newly-added entity types can't slip
+    // through unauthenticated if the map isn't updated in the same change.
+    if (!required) {
+      if (user?.isSuperUser) return;
+      throw new ForbiddenException(`No permission mapping for entity type: ${entityType}`);
+    }
     if (user?.isSuperUser) return;
     const permissions = user?.permissions ?? [];
     if (permissions.includes(required)) return;

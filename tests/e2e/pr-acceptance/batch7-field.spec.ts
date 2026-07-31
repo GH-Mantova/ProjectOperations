@@ -32,14 +32,9 @@ import {
  */
 
 const PROJECT_NAME = `${B7_PREFIX} fixture — FIELD`;
-// GPS-A1 (option 1, Marco 2026-07-31): a dedicated project/allocation for the auto-capture
-// test, so it does not consume the shared FIELD allocation's "today" timesheet slot that the
-// "submits for today" spec below relies on (timesheet uniqueness is per allocation + date).
-const PROJECT_NAME_GPS = `${B7_PREFIX} fixture — GPS`;
 
 let fixture: B6Fixture;
 let allocationId: string;
-let gpsFixture: B6Fixture;
 
 function daysAgo(n: number): string {
   const d = new Date();
@@ -59,15 +54,11 @@ test.beforeAll(async ({ request }) => {
     WP_ADMIN_ID,
     daysAgo(10)
   );
-  // GPS-A1 (option 1): a second, dedicated project + allocation for the auto-capture test.
-  gpsFixture = await createB7FixtureProject(request, token, "GPS");
-  await createWorkerAllocation(request, token, gpsFixture.projectId!, WP_ADMIN_ID, daysAgo(10));
 });
 
 test.afterAll(async ({ request }) => {
   const token = await apiToken(request);
   await destroyFixture(request, token, fixture);
-  await destroyFixture(request, token, gpsFixture);
 });
 
 test.describe("Batch 7 — Field mobile experience (PRs #41, #42, #338)", () => {
@@ -144,7 +135,7 @@ test.describe("Batch 7 — Field mobile experience (PRs #41, #42, #338)", () => 
     await page.goto("/field/allocations");
     await page
       .getByRole("article")
-      .filter({ hasText: PROJECT_NAME_GPS })
+      .filter({ hasText: PROJECT_NAME })
       .getByRole("link", { name: "Timesheet" })
       .click();
     await expect(page.getByRole("heading", { name: "New timesheet" })).toBeVisible();

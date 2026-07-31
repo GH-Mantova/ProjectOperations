@@ -162,6 +162,10 @@ test.describe("Batch 7 — Field mobile experience (PRs #41, #42, #338)", () => 
     await context.grantPermissions(["geolocation"]);
     await context.setGeolocation({ latitude: -27.4698, longitude: 153.0251 });
 
+    // GPS-A1 (2026-07-31): submit for a PAST date so this capture test does not consume the
+    // shared allocation's "today" slot that the "submits for today" spec relies on (timesheet
+    // uniqueness is per allocation + date). Auto-capture behaviour is date-agnostic.
+    await page.locator('input[type="date"]').fill(daysAgo(1));
     await page.getByLabel("Clock on").fill("07:30");
     await page.getByRole("button", { name: "Submit", exact: true }).click();
 

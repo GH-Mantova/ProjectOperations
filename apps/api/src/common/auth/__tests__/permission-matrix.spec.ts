@@ -90,6 +90,11 @@ const ROWS: MatrixRow[] = [
   // 17 .view codes intentionally exclude masterdata.manage, so 403.
   { group: "long-tail", method: "post", path: "/lists", permission: "masterdata.manage", body: {}, viewer: 403 },
   { group: "long-tail", method: "post", path: "/lists/worker_status/items", permission: "masterdata.manage", body: {}, viewer: 403 },
+  // Global-list item mutation gates (previously JwtAuthGuard-only) — now gated
+  // by `masterdata.manage`. Viewer's 17 seeded view codes exclude it.
+  { group: "long-tail", method: "patch", path: `/lists/worker_status/items/${MISSING}`, permission: "masterdata.manage", body: {}, viewer: 403 },
+  { group: "long-tail", method: "delete", path: `/lists/worker_status/items/${MISSING}`, permission: "masterdata.manage", viewer: 403 },
+  { group: "long-tail", method: "post", path: "/lists/worker_status/items/reorder", permission: "masterdata.manage", body: { order: [] }, viewer: 403 },
   { group: "long-tail", method: "post", path: "/directory", permission: "directory.manage", body: {}, viewer: 403 },
   { group: "long-tail", method: "post", path: "/assets", permission: "assets.manage", body: {}, viewer: 403 },
   { group: "long-tail", method: "post", path: "/maintenance/plans", permission: "maintenance.manage", body: {}, viewer: 403 },

@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException
 } from "@nestjs/common";
-import { MusterAttendeeStatus, MusterEventStatus } from "@prisma/client";
+import { MusterAttendeeStatus, MusterEventStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 
 /**
@@ -142,10 +142,14 @@ export class MusterService {
   /**
    * Mark an attendee as ACCOUNTED or MISSING.
    *
-   * Only valid while the parent MusterEvent is ACTIVE.
+   * Only valid while the parent MusterEvent is ACTIVE. GPS-A3: also writes a
+   * WorkerLocationLog row (eventType "muster") tied to the ATTENDEE's
+   * workerProfileId — that row is the audit fact "this worker was accounted
+   * for at [lat/lng] at [time]". The location comes from the checker's
+   * phone, so the geo evidence attaches to the person being checked off.
    *
    * @param attendeeId - the MusterAttendee UUID.
-   * @param status - ACCOUNTED or MISSING.
+   * @param input - status + GPS coords (lat/lng required, accuracy optional).
    * @param actorId - JWT subject of the checking officer.
    * @returns the updated MusterAttendee row.
    * @throws NotFoundException - when the attendee does not exist.
@@ -153,9 +157,15 @@ export class MusterService {
    */
   async checkAttendee(
     attendeeId: string,
-    status: MusterAttendeeStatus,
+    input: {
+      status: MusterAttendeeStatus;
+      lat: number;
+      lng: number;
+      accuracy?: number;
+    },
     actorId: string
   ) {
+    const { status } = input;
     if (
       status !== MusterAttendeeStatus.ACCOUNTED &&
       status !== MusterAttendeeStatus.MISSING
@@ -173,6 +183,19 @@ export class MusterService {
         "Attendee can only be checked off while the muster event is ACTIVE."
       );
     }
+
+    await this.prisma.workerLocationLog.create({
+      data: {
+        workerProfileId: attendee.workerProfileId,
+        eventType: "muster",
+        latitude: new Prisma.Decimal(input.lat),
+        longitude: new Prisma.Decimal(input.lng),
+        accuracy:
+          input.accuracy !== undefined
+            ? new Prisma.Decimal(input.accuracy)
+            : null
+      }
+    });
 
     return this.prisma.musterAttendee.update({
       where: { id: attendeeId },

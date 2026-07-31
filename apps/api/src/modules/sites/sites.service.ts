@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException
 } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { SignInDto, SignOutDto } from "./dto/site-attendance.dto";
 
@@ -29,6 +30,27 @@ export class SitesService {
     return worker;
   }
 
+  // GPS-A3: write a WorkerLocationLog row tied to the sign-in/out event.
+  // eventType is "site_attendance" for both directions — the caller's own
+  // audit (SiteAttendance row) tells you which was which. No timesheetId
+  // because attendance is independent of a timesheet. No new column on
+  // site_attendance, so this slice ships without a migration.
+  private async recordAttendanceLocation(
+    workerProfileId: string,
+    dto: { lat: number; lng: number; accuracy?: number }
+  ) {
+    await this.prisma.workerLocationLog.create({
+      data: {
+        workerProfileId,
+        eventType: "site_attendance",
+        latitude: new Prisma.Decimal(dto.lat),
+        longitude: new Prisma.Decimal(dto.lng),
+        accuracy:
+          dto.accuracy !== undefined ? new Prisma.Decimal(dto.accuracy) : null
+      }
+    });
+  }
+
   private async assertSiteExists(siteId: string) {
     const site = await this.prisma.site.findUnique({
       where: { id: siteId },
@@ -46,6 +68,12 @@ export class SitesService {
   async signIn(userId: string, dto: SignInDto) {
     const worker = await this.resolveWorkerProfile(userId);
     await this.assertSiteExists(dto.siteId);
+
+    // GPS-A3: always log the location at event time, even if the underlying
+    // attendance row is the idempotent no-op case. Two rapid taps still
+    // produce two location logs — that IS the audit fact ("worker was at
+    // this position when they hit the button").
+    await this.recordAttendanceLocation(worker.id, dto);
 
     const existing = await this.prisma.siteAttendance.findFirst({
       where: {
@@ -73,6 +101,11 @@ export class SitesService {
   // trained people to ignore real errors.
   async signOut(userId: string, dto: SignOutDto) {
     const worker = await this.resolveWorkerProfile(userId);
+
+    // GPS-A3: log location even on the no-op double-tap case (see signIn
+    // rationale) — the button was pressed, so the location fact stands.
+    await this.recordAttendanceLocation(worker.id, dto);
+
     const open = await this.prisma.siteAttendance.findFirst({
       where: {
         workerProfileId: worker.id,

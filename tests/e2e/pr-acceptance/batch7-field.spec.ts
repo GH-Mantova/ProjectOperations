@@ -236,7 +236,7 @@ test.describe("Batch 7 — GPS-A1 permission-denied hard-block", () => {
     // The hard-block error must be visible.
     await expect(
       page.getByText(
-        "Location is required to clock on/off. Enable location for this site, or see your supervisor to have the entry recorded."
+        "Location is required to record this action. Enable location for this site, or see your supervisor to have the entry recorded."
       )
     ).toBeVisible({ timeout: 15_000 });
 

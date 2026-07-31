@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
-import { IsEnum, IsOptional } from "class-validator";
+import { IsEnum, IsNumber, IsOptional, Max, Min } from "class-validator";
 import { MusterAttendeeStatus, MusterEventStatus } from "@prisma/client";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
@@ -14,9 +14,27 @@ class ListMusterEventsQuery {
   status?: MusterEventStatus;
 }
 
+// GPS-A3: check-off requires the checker's live GPS reading. The muster
+// point IS a location — a check without a location is not a real muster
+// audit trail. lat/lng are required; accuracy is optional.
 class CheckAttendeeDto {
   @IsEnum(MusterAttendeeStatus)
   status!: MusterAttendeeStatus;
+
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  lat!: number;
+
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  lng!: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  accuracy?: number;
 }
 
 /**
@@ -146,7 +164,7 @@ export class MusterController {
     @Body() dto: CheckAttendeeDto,
     @CurrentUser() actor: { sub: string }
   ) {
-    return this.service.checkAttendee(attendeeId, dto.status, actor.sub);
+    return this.service.checkAttendee(attendeeId, dto, actor.sub);
   }
 
   /**

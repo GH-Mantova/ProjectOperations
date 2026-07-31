@@ -3,6 +3,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { useOffline } from "../../offline/OfflineContext";
+import { captureGpsReading } from "./useAutoGps";
+import { ConsentPanel, GPS_HARD_BLOCK_MSG } from "./GpsConsent";
 
 type FetchError = { status: number; message: string };
 
@@ -244,12 +246,14 @@ function SiteSignInCard() {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingState | null>(null);
+  const [locationConsent, setLocationConsent] = useState<boolean | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const [mineRes, sitesRes] = await Promise.all([
+      const [mineRes, sitesRes, consentRes] = await Promise.all([
         authFetch("/sites/attendance/mine"),
-        authFetch("/sites/attendance/available-sites")
+        authFetch("/sites/attendance/available-sites"),
+        authFetch("/field/location-consent")
       ]);
       if (mineRes.ok) {
         const body = (await mineRes.json()) as CurrentAttendance | null;
@@ -259,6 +263,10 @@ function SiteSignInCard() {
         const list = (await sitesRes.json()) as AvailableSite[];
         setSites(list);
         setChosenSiteId((prev) => prev || list[0]?.id || "");
+      }
+      if (consentRes.ok) {
+        const c = (await consentRes.json()) as { locationConsent?: boolean };
+        setLocationConsent(Boolean(c.locationConsent));
       }
       // Server round-trip succeeded → the local optimistic marker can go.
       setPending(null);
@@ -289,9 +297,25 @@ function SiteSignInCard() {
     setBusy(true);
     const site = sites.find((s) => s.id === chosenSiteId);
     try {
+      // GPS-A3: hard-block sign-in when no fix is available. Captured at
+      // click time, not on mount — location must reflect the moment of the
+      // event, not when the page opened.
+      const reading = await captureGpsReading();
+      if (!reading.ok) {
+        setToast(GPS_HARD_BLOCK_MSG);
+        return;
+      }
       const result = await offlineFetch(
         "/sites/attendance/sign-in",
-        { method: "POST", body: { siteId: chosenSiteId } },
+        {
+          method: "POST",
+          body: {
+            siteId: chosenSiteId,
+            lat: reading.reading.lat,
+            lng: reading.reading.lng,
+            accuracy: reading.reading.accuracy
+          }
+        },
         "site-signin"
       );
       if (result.queued) {
@@ -312,9 +336,22 @@ function SiteSignInCard() {
     if (busy) return;
     setBusy(true);
     try {
+      // GPS-A3: same hard-block as sign-in.
+      const reading = await captureGpsReading();
+      if (!reading.ok) {
+        setToast(GPS_HARD_BLOCK_MSG);
+        return;
+      }
       const result = await offlineFetch(
         "/sites/attendance/sign-out",
-        { method: "POST", body: {} },
+        {
+          method: "POST",
+          body: {
+            lat: reading.reading.lat,
+            lng: reading.reading.lng,
+            accuracy: reading.reading.accuracy
+          }
+        },
         "site-signout"
       );
       if (result.queued) {
@@ -374,11 +411,18 @@ function SiteSignInCard() {
             type="button"
             className="field-btn field-btn--teal"
             onClick={doSignOut}
-            disabled={busy}
+            disabled={busy || locationConsent === false}
+            title={locationConsent === false ? GPS_HARD_BLOCK_MSG : undefined}
             style={{ width: "100%" }}
           >
             {busy ? "Signing out…" : "Sign out of site"}
           </button>
+          {locationConsent === false ? (
+            <ConsentPanel
+              context="site-attendance"
+              onAcknowledged={() => setLocationConsent(true)}
+            />
+          ) : null}
         </>
       ) : (
         <>
@@ -410,11 +454,18 @@ function SiteSignInCard() {
                 type="button"
                 className="field-btn"
                 onClick={doSignIn}
-                disabled={busy || !chosenSiteId}
+                disabled={busy || !chosenSiteId || locationConsent === false}
+                title={locationConsent === false ? GPS_HARD_BLOCK_MSG : undefined}
                 style={{ width: "100%" }}
               >
                 {busy ? "Signing in…" : "Sign in to site"}
               </button>
+              {locationConsent === false ? (
+                <ConsentPanel
+                  context="site-attendance"
+                  onAcknowledged={() => setLocationConsent(true)}
+                />
+              ) : null}
             </>
           )}
         </>

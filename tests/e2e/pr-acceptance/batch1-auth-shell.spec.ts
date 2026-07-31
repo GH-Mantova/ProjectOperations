@@ -41,12 +41,12 @@ test.use({ storageState: { cookies: [], origins: [] } });
 test.describe("Batch 1 — Auth, Shell & Sidebar Navigation (PRs #12, #13, #29, #41, #48)", () => {
   // ── Login flow ────────────────────────────────────────────────────────────
 
-  test("valid admin credentials land on Operations Overview dashboard", async ({ page }) => {
+  test("valid admin credentials land on Home dashboard", async ({ page }) => {
     await page.goto("/login");
     await page.getByLabel("Email").fill(ADMIN.email);
     await page.getByPlaceholder("Password").fill(ADMIN.password);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Operations Overview" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Home" })).toBeVisible();
     // URL is / (root)
     await expect(page).toHaveURL("/");
   });
@@ -59,8 +59,8 @@ test.describe("Batch 1 — Auth, Shell & Sidebar Navigation (PRs #12, #13, #29, 
     await expect(page.getByRole("alert")).toBeVisible();
     // Still on the login route
     await expect(page).toHaveURL(/\/login/);
-    // The Operations Overview heading must NOT appear
-    await expect(page.getByRole("heading", { name: "Operations Overview" })).not.toBeVisible();
+    // The Home heading must NOT appear
+    await expect(page.getByRole("heading", { name: "Home" })).not.toBeVisible();
   });
 
   // ── Sidebar visible to admin ──────────────────────────────────────────────

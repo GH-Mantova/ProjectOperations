@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { AddressAutocomplete, type AddressSuggestion } from "../../components/AddressAutocomplete";
 import { LocationsMap } from "../../components/LocationsMap";
+import { TipFinderPanel } from "./TipFinderPanel";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -705,6 +706,9 @@ export function MapLocationsTab() {
           </tbody>
         </table>
       )}
+
+      {/* Tip Finder panel — operational costing tool for picking the best tip */}
+      <TipFinderPanel />
     </section>
   );
 }

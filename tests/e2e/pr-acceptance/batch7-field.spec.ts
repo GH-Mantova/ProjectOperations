@@ -111,7 +111,7 @@ test.describe("Batch 7 — Field mobile experience (PRs #41, #42, #338)", () => 
       page.getByText("No worker profile is linked to your account", { exact: false })
     ).toBeVisible();
     await page.getByRole("button", { name: "Back to web view" }).click();
-    await expect(page.getByRole("heading", { name: "Operations Overview" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Home" })).toBeVisible();
   });
 
   test("forced 500 renders the generic Couldn't load allocations empty state (PR #338)", async ({

@@ -3,6 +3,8 @@ import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from "@ne
 import { IsBoolean, IsEmail, IsOptional, IsString, MinLength } from "class-validator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
+import { RequirePermissions } from "../../common/auth/permissions.decorator";
+import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { AdminUsersService } from "./admin-users.service";
 
 class CreateUserDto {
@@ -24,14 +26,20 @@ class UpdateUserDto {
   @IsOptional() @IsBoolean() isSuperUser?: boolean;
 }
 
+// Declarative permission gates layered on top of the service-side tier check
+// (defence-in-depth). Codes reused from the /users controller so the two
+// user-management surfaces gate on the same registry entries — no new codes.
+// `deactivate` and `resetPassword` are user-state mutations, so both take
+// `users.update`; there is no separate `users.delete` in the registry.
 @ApiTags("Admin Users")
 @ApiBearerAuth()
 @Controller("admin/users")
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class AdminUsersController {
   constructor(private readonly service: AdminUsersService) {}
 
   @Get()
+  @RequirePermissions("users.view")
   @ApiOperation({
     summary:
       "List users visible to the caller. Super Users see everyone; Admins see everyone except Admins and Super Users; others are 403."
@@ -42,6 +50,7 @@ export class AdminUsersController {
   }
 
   @Post()
+  @RequirePermissions("users.create")
   @ApiOperation({
     summary:
       "Create a user. Admins cannot assign the Admin role; only Super Users can create other Super Users."
@@ -52,6 +61,7 @@ export class AdminUsersController {
   }
 
   @Patch(":userId")
+  @RequirePermissions("users.update")
   @ApiOperation({
     summary:
       "Update a user. Admins cannot modify Admins / Super Users. Cannot deactivate your own account."
@@ -66,6 +76,7 @@ export class AdminUsersController {
   }
 
   @Delete(":userId")
+  @RequirePermissions("users.update")
   @ApiOperation({ summary: "Soft-delete (deactivate) a user. Same tier rules as PATCH." })
   @ApiResponse({ status: 200, description: "Soft-delete (deactivate) a user. Same tier rules as PATCH." })
   deactivate(@Param("userId") userId: string, @CurrentUser() actor: { sub: string }) {
@@ -73,6 +84,7 @@ export class AdminUsersController {
   }
 
   @Post(":userId/reset-password")
+  @RequirePermissions("users.update")
   @ApiOperation({
     summary:
       "Reset password for a user — generates a temp password and forces reset on next login."

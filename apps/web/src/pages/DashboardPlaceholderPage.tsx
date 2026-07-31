@@ -5,7 +5,7 @@ export function DashboardPlaceholderPage() {
     <DashboardCanvas
       mode="by-slug"
       dashboardSlug="operations"
-      title="Operations Overview"
+      title="Home"
     />
   );
 }

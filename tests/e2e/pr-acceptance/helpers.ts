@@ -44,7 +44,7 @@ export async function loginViaForm(page: Page, email: string, password: string):
   await page.getByLabel("Email").fill(email);
   await page.getByPlaceholder("Password").fill(password);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await page.getByRole("heading", { name: "Operations Overview" }).waitFor({ state: "visible" });
+  await page.getByRole("heading", { name: "Home" }).waitFor({ state: "visible" });
 }
 
 // Injects a session saved by auth.setup.ts instead of re-submitting the login
@@ -74,7 +74,7 @@ async function loginWithStoredState(
     }
   }, entries);
   await page.goto("/");
-  await page.getByRole("heading", { name: "Operations Overview" }).waitFor({ state: "visible" });
+  await page.getByRole("heading", { name: "Home" }).waitFor({ state: "visible" });
 }
 
 export async function loginAsAdmin(page: Page): Promise<void> {

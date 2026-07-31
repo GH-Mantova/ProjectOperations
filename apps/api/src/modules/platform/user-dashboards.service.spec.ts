@@ -276,6 +276,7 @@ describe("UserDashboardsService.create - concurrent-create race (P2002)", () => 
 describe("UserDashboardsService.list — ensureOperationsSystemDefault", () => {
   function opsDashboard(partial: Partial<{
     id: string;
+    name: string;
     isSystem: boolean;
     isDefault: boolean;
     createdAt: Date;
@@ -283,7 +284,7 @@ describe("UserDashboardsService.list — ensureOperationsSystemDefault", () => {
     return {
       id: "dash-ops",
       userId: OWNER,
-      name: "Operations Overview",
+      name: "Home",
       slug: "operations",
       isSystem: false,
       isDefault: false,
@@ -294,6 +295,7 @@ describe("UserDashboardsService.list — ensureOperationsSystemDefault", () => {
   }
 
   it("returns rows unchanged when a system row already exists — no writes", async () => {
+    // System row already has the new name "Home" — no rename needed.
     const existing = opsDashboard({ isSystem: true });
     const findMany = jest.fn().mockResolvedValue([existing]);
     const update = jest.fn();
@@ -307,6 +309,47 @@ describe("UserDashboardsService.list — ensureOperationsSystemDefault", () => {
     expect(update).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
     expect(audit.write).not.toHaveBeenCalled();
+  });
+
+  it("renames the system row from 'Operations Overview' to 'Home' when found (lazy migration)", async () => {
+    const oldRow = opsDashboard({ id: "dash-ops", isSystem: true, name: "Operations Overview" });
+    const renamedRow = { ...oldRow, name: "Home" };
+    const findMany = jest.fn()
+      .mockResolvedValueOnce([oldRow])
+      .mockResolvedValueOnce([renamedRow]);
+    const update = jest.fn().mockResolvedValue(renamedRow);
+    const { service, audit } = makeService({ findMany, update });
+
+    const result = await service.list(OWNER, "operations");
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "dash-ops" },
+      data: { name: "Home" }
+    });
+    expect(result).toEqual([renamedRow]);
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: OWNER,
+        action: "userDashboards.ensureSystemDefault",
+        entityId: "dash-ops",
+        metadata: expect.objectContaining({ slug: "operations", reason: "renamed" })
+      })
+    );
+    expect(findMany).toHaveBeenCalledTimes(2);
+  });
+
+  it("leaves a system row with a custom admin-chosen name alone", async () => {
+    const customNamed = opsDashboard({ isSystem: true, name: "My Home Board" });
+    const findMany = jest.fn().mockResolvedValue([customNamed]);
+    const update = jest.fn();
+    const { service, audit } = makeService({ findMany, update });
+
+    const result = await service.list(OWNER, "operations");
+
+    expect(result).toEqual([customNamed]);
+    expect(update).not.toHaveBeenCalled();
+    expect(audit.write).not.toHaveBeenCalled();
+    expect(findMany).toHaveBeenCalledTimes(1);
   });
 
   it("promotes the non-system row to isSystem:true when no system row exists", async () => {
@@ -350,7 +393,7 @@ describe("UserDashboardsService.list — ensureOperationsSystemDefault", () => {
     expect(create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         userId: OWNER,
-        name: "Operations Overview",
+        name: "Home",
         slug: "operations",
         isSystem: true,
         isDefault: false

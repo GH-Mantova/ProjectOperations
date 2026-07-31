@@ -63,7 +63,7 @@ test.describe("Batch 1 — Dashboards, KPIs & Widgets (PRs #6, #15, #29, #30, #3
   test("operations dashboard renders with KPI cards — no stuck skeleton", async ({ page }) => {
     await loginAsAdmin(page);
     // Already on / — heading visible from login helper
-    await expect(page.getByRole("heading", { name: "Operations Overview" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Home" })).toBeVisible();
     // KPI label tiles should be visible; each renders a label span with the name
     for (const label of ["Active jobs", "Tender pipeline value", "Open issues", "Upcoming maintenance"]) {
       await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
@@ -86,21 +86,23 @@ test.describe("Batch 1 — Dashboards, KPIs & Widgets (PRs #6, #15, #29, #30, #3
 
   // ── System-default dashboard guards ──────────────────────────────────────
 
-  test("Operations Overview heading is visible and Delete button is disabled (system dashboard)", async ({ page }) => {
+  test("Home heading is visible and Delete button is disabled (system dashboard)", async ({ page }) => {
     await loginAsAdmin(page);
     // Heading must be visible — the server-side ensure guarantees a row always exists.
-    await expect(page.getByRole("heading", { name: "Operations Overview" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Home" })).toBeVisible();
     // Delete button must be disabled for system dashboards.
     const deleteBtn = page.getByTestId("delete-dashboard-button");
     await expect(deleteBtn).toBeVisible();
     await expect(deleteBtn).toBeDisabled();
   });
 
-  test("sidebar Dashboards group does not contain a nav link named 'Operations Overview'", async ({ page }) => {
+  test("sidebar Dashboards group does not contain a nav link named 'Home' from the custom dashboards list", async ({ page }) => {
     await loginAsAdmin(page);
     const nav = page.getByRole("navigation", { name: "Main navigation" });
-    // The system operations dashboard is NOT listed in the sidebar (only !isSystem entries appear).
-    await expect(nav.getByRole("link", { name: "Operations Overview" })).toHaveCount(0);
+    // The system operations dashboard is NOT listed in the sidebar custom entries
+    // (only !isSystem entries appear). There is exactly one "Home" link — the static
+    // entry — not a second one injected by the custom dashboards list.
+    await expect(nav.getByRole("link", { name: "Home" })).toHaveCount(1);
   });
 
   // ── Sidebar Dashboards group integrity ───────────────────────────────────

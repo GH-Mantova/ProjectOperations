@@ -28,15 +28,21 @@ export function SchedulerHomePage() {
   const navigate = useNavigate();
 
   const legacyView = params.legacyView ? LEGACY_SEGMENT_TO_VIEW[params.legacyView] : undefined;
+  // A `:legacyView` segment that isn't in our known map used to fall
+  // through to the Board render at a bogus URL. Redirect to /scheduler
+  // (replace) so stale bookmarks land somewhere honest instead.
+  const unknownLegacySegment = Boolean(params.legacyView) && !legacyView;
 
   useEffect(() => {
     if (legacyView) {
       const search = legacyView === "board" ? "" : `?view=${legacyView}`;
       navigate(`/scheduler${search}`, { replace: true });
+    } else if (unknownLegacySegment) {
+      navigate("/scheduler", { replace: true });
     }
-  }, [legacyView, navigate]);
+  }, [legacyView, unknownLegacySegment, navigate]);
 
-  if (legacyView) return null;
+  if (legacyView || unknownLegacySegment) return null;
 
   const view = resolveView(searchParams.get("view"));
 

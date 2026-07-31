@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { CenteredModal, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { formTemplateAuthority } from "./formTemplateAuthority";
@@ -132,6 +132,7 @@ function fmtDateTime(iso: string | null | undefined): string {
 export function FormsListPage() {
   const { authFetch, user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const canApprove = Boolean(user?.permissions?.includes("forms.approve") || user?.isSuperUser);
   const canManage = Boolean(user?.permissions?.includes("forms.manage") || user?.isSuperUser);
@@ -183,6 +184,19 @@ export function FormsListPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const quickCreateFiredRef = useRef(false);
+  useEffect(() => {
+    if (searchParams.get("new") !== "1") return;
+    const next = new URLSearchParams(searchParams);
+    next.delete("new");
+    setSearchParams(next, { replace: true });
+    if (quickCreateFiredRef.current) return;
+    if (!canManage) return;
+    quickCreateFiredRef.current = true;
+    setTab("templates");
+    void createBlankTemplate();
+  }, [searchParams, setSearchParams, canManage]);
 
   const lastSubmittedByTemplate = useMemo(() => {
     const map = new Map<string, string>();

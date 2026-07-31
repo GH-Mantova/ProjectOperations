@@ -54,33 +54,10 @@ const ITEMS: QuickCreateItem[] = [
     )
   },
   {
-    key: "contact",
-    label: "Contact",
-    to: "/directory/contacts?new=1",
-    permission: "directory.manage",
-    icon: (
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-        <circle cx="12" cy="8" r="4" />
-        <path d="M4 21a8 8 0 0 1 16 0" />
-      </svg>
-    )
-  },
-  {
-    key: "asset",
-    label: "Asset",
-    to: "/assets?new=1",
-    permission: "assets.manage",
-    icon: (
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-        <path d="M12 2l9 5v10l-9 5-9-5V7z" />
-      </svg>
-    )
-  },
-  {
     key: "form",
-    label: "Form entry",
+    label: "Form template",
     to: "/forms?new=1",
-    permission: "forms.view",
+    permission: "forms.manage",
     icon: (
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
         <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />

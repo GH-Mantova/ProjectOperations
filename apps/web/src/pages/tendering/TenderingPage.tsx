@@ -303,6 +303,15 @@ export function TenderingPage() {
   const [resumeDraftId, setResumeDraftId] = useState<string | null>(null);
   const [draftPickerOpen, setDraftPickerOpen] = useState(false);
 
+  useEffect(() => {
+    if (searchParams.get("new") !== "1") return;
+    setResumeDraftId(null);
+    setNewOpen(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete("new");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [presets, setPresets] = useState<FilterPreset[]>([]);
   const [presetsLoaded, setPresetsLoaded] = useState(false);

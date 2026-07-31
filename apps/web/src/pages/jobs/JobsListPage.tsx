@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { JOB_STATUS_LABELS } from "../../constants/statuses";
@@ -50,6 +50,7 @@ function initials(firstName?: string, lastName?: string): string {
 export function JobsListPage() {
   const { authFetch } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [view, setView] = useViewSwitcher("jobs-list", ["grid", "kanban", "table"] as const, "grid");
   const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -86,6 +87,14 @@ export function JobsListPage() {
   useEffect(() => {
     void reload();
   }, [authFetch]);
+
+  useEffect(() => {
+    if (searchParams.get("new") !== "1") return;
+    setNewOpen(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete("new");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     let cancelled = false;

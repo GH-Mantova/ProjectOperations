@@ -405,7 +405,7 @@ export function PersonaWindow() {
           </div>
           <footer className="persona-window__panel-footer">
             <Link
-              to="/admin/ai-settings"
+              to="/settings/ai"
               className="persona-window__icon-button"
               aria-label="AI settings"
               title="AI settings"

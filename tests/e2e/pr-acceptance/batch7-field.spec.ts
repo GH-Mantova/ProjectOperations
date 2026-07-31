@@ -164,8 +164,10 @@ test.describe("Batch 7 — Field mobile experience (PRs #41, #42, #338)", () => 
 
     // GPS-A1 (2026-07-31): submit for a PAST date so this capture test does not consume the
     // shared allocation's "today" slot that the "submits for today" spec relies on (timesheet
-    // uniqueness is per allocation + date). Auto-capture behaviour is date-agnostic.
-    await page.locator('input[type="date"]').fill(daysAgo(1));
+    // uniqueness is per allocation + date). daysAgo(4) is chosen to avoid the dates the approval
+    // fixtures already seed on this allocation (today, daysAgo(1), daysAgo(2), daysAgo(6)).
+    // Auto-capture behaviour is date-agnostic.
+    await page.locator('input[type="date"]').fill(daysAgo(4));
     await page.getByLabel("Clock on").fill("07:30");
     await page.getByRole("button", { name: "Submit", exact: true }).click();
 

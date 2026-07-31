@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { readApiErrorMessage } from "../../lib/api-errors";
 
 type CorrectiveAction = {
   id: string;
@@ -58,8 +59,20 @@ function fmtDate(iso: string | null | undefined) {
 
 export function CorrectiveActionDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const { user } = useAuth();
+  const canManage = user?.isSuperUser || user?.permissions?.includes("forms.manage");
+
+  if (id === "new") {
+    if (!canManage) {
+      return <Navigate to="/forms/corrective-actions" replace />;
+    }
+    return <CorrectiveActionCreatePage />;
+  }
+  return <CorrectiveActionEditView id={id} />;
+}
+
+function CorrectiveActionEditView({ id }: { id: string | undefined }) {
   const { authFetch, user } = useAuth();
-  const navigate = useNavigate();
   const [action, setAction] = useState<CorrectiveAction | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showCloseModal, setShowCloseModal] = useState(false);
@@ -343,6 +356,168 @@ export function CorrectiveActionDetailPage() {
           </div>
         </CenteredModal>
       ) : null}
+    </div>
+  );
+}
+
+const PRIORITIES = ["low", "medium", "high", "critical"] as const;
+
+function CorrectiveActionCreatePage() {
+  const { authFetch } = useAuth();
+  const navigate = useNavigate();
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [assignedToId, setAssignedToId] = useState("");
+  const [assignedToRole, setAssignedToRole] = useState("");
+  const [dueAt, setDueAt] = useState("");
+  const [priority, setPriority] = useState<(typeof PRIORITIES)[number]>("medium");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    if (!title.trim()) {
+      setError("Title is required.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const payload: Record<string, unknown> = { title: title.trim(), priority };
+      if (description.trim()) payload.description = description.trim();
+      if (assignedToId.trim()) payload.assignedToId = assignedToId.trim();
+      if (assignedToRole.trim()) payload.assignedToRole = assignedToRole.trim();
+      if (dueAt) payload.dueAt = new Date(dueAt).toISOString();
+      const res = await authFetch("/forms/corrective-actions", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        setError(await readApiErrorMessage(res, "Failed to create corrective action."));
+        return;
+      }
+      const created = (await res.json()) as { id: string };
+      navigate(`/forms/corrective-actions/${created.id}`, { replace: true });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ maxWidth: 620, margin: "0 auto", padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+      <Link to="/forms/corrective-actions" className="s7-btn s7-btn--ghost s7-btn--sm" style={{ alignSelf: "flex-start" }}>
+        Back to register
+      </Link>
+
+      <h1 style={{ margin: 0, fontSize: 22 }}>New corrective action</h1>
+      <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: -6 }}>
+        Manager-raised action (not tied to a form submission).
+      </div>
+
+      <section className="s7-card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+        <div>
+          <label style={{ fontSize: 13, fontWeight: 600, display: "block", marginBottom: 4 }}>
+            Title <span style={{ color: "var(--status-danger, #DC2626)" }}>*</span>
+          </label>
+          <input
+            type="text"
+            className="s7-input"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            style={{ width: "100%" }}
+            autoFocus
+          />
+        </div>
+
+        <div>
+          <label style={{ fontSize: 13, fontWeight: 600, display: "block", marginBottom: 4 }}>
+            Description
+          </label>
+          <textarea
+            className="s7-textarea"
+            rows={4}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            style={{ width: "100%" }}
+          />
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div>
+            <label style={{ fontSize: 13, fontWeight: 600, display: "block", marginBottom: 4 }}>
+              Priority
+            </label>
+            <select
+              className="s7-select"
+              value={priority}
+              onChange={(e) => setPriority(e.target.value as (typeof PRIORITIES)[number])}
+              style={{ width: "100%" }}
+            >
+              {PRIORITIES.map((p) => (
+                <option key={p} value={p}>{p[0].toUpperCase() + p.slice(1)}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 13, fontWeight: 600, display: "block", marginBottom: 4 }}>
+              Due date
+            </label>
+            <input
+              type="date"
+              className="s7-input"
+              value={dueAt}
+              onChange={(e) => setDueAt(e.target.value)}
+              style={{ width: "100%" }}
+            />
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div>
+            <label style={{ fontSize: 13, fontWeight: 600, display: "block", marginBottom: 4 }}>
+              Assignee user id
+            </label>
+            <input
+              type="text"
+              className="s7-input"
+              placeholder="user id (optional)"
+              value={assignedToId}
+              onChange={(e) => setAssignedToId(e.target.value)}
+              style={{ width: "100%" }}
+            />
+          </div>
+          <div>
+            <label style={{ fontSize: 13, fontWeight: 600, display: "block", marginBottom: 4 }}>
+              Assignee role
+            </label>
+            <input
+              type="text"
+              className="s7-input"
+              placeholder="role key (optional)"
+              value={assignedToRole}
+              onChange={(e) => setAssignedToRole(e.target.value)}
+              style={{ width: "100%" }}
+            />
+          </div>
+        </div>
+
+        {error ? <div style={{ color: "var(--status-danger)", fontSize: 13 }}>{error}</div> : null}
+
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <Link to="/forms/corrective-actions" className="s7-btn s7-btn--ghost">
+            Cancel
+          </Link>
+          <button
+            type="button"
+            className="s7-btn s7-btn--primary"
+            disabled={busy}
+            onClick={() => void submit()}
+          >
+            {busy ? "Creating…" : "Create action"}
+          </button>
+        </div>
+      </section>
     </div>
   );
 }

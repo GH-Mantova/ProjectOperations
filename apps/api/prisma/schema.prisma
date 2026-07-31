@@ -212,6 +212,9 @@ model User {
   // Tendering display-label overrides last touched by this user.
   tenderingLabelsUpdated TenderingLabel[] @relation("TenderingLabelUpdatedBy")
 
+  // Tip Finder recommendation log entries created by this user.
+  tipRecommendationLogs TipRecommendationLog[] @relation("TipRecommendationLogCreatedBy")
+
   @@index([isActive])
   @@index([managerId])
   @@map("users")
@@ -2645,6 +2648,7 @@ model Project {
   createdAt               DateTime             @default(now()) @map("created_at")
   updatedAt               DateTime             @updatedAt @map("updated_at")
   cases                   Case[]               @relation("CaseProject")
+  tipRecommendationLogs   TipRecommendationLog[]
 
   @@index([status])
   @@index([clientId])
@@ -6303,9 +6307,50 @@ model MapLocation {
   createdAt    DateTime        @default(now()) @map("created_at")
   updatedAt    DateTime        @updatedAt @map("updated_at")
 
+  tipRecommendationLogs TipRecommendationLog[]
+
   @@index([kind, facility])
   @@index([isActive])
   @@map("map_locations")
+}
+
+// Tip Recommendation Log — append-only. Written when an operator chooses
+// "use this facility" from the Tip Finder panel. Prices are snapshotted at
+// decision time so the log is not affected by later rate changes.
+// originType: "project" when a project site is selected, "office" when the
+// office fallback coordinates are used.
+model TipRecommendationLog {
+  id                String      @id @default(cuid())
+  // Facility reference (MapLocation FK — soft-delete safe; log row survives)
+  mapLocationId     String      @map("map_location_id")
+  mapLocation       MapLocation @relation(fields: [mapLocationId], references: [id], onDelete: Restrict)
+  // Denormalised snapshot — prices change, log must not recompute
+  facilityName      String      @map("facility_name")
+  facilityLat       Decimal     @map("facility_lat") @db.Decimal(10, 7)
+  facilityLng       Decimal     @map("facility_lng") @db.Decimal(10, 7)
+  wasteTypeCode     String      @map("waste_type_code")
+  loadTonnes        Decimal     @map("load_tonnes") @db.Decimal(8, 3)
+  // Origin: project or office fallback
+  originType        String      @map("origin_type") // "project" | "office"
+  projectId         String?     @map("project_id")
+  project           Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  originLat         Decimal     @map("origin_lat") @db.Decimal(10, 7)
+  originLng         Decimal     @map("origin_lng") @db.Decimal(10, 7)
+  // Costing snapshot
+  distanceKm        Decimal     @map("distance_km") @db.Decimal(8, 3)
+  disposalFee       Decimal     @map("disposal_fee") @db.Decimal(12, 2)
+  travelCost        Decimal     @map("travel_cost") @db.Decimal(12, 2)
+  totalCost         Decimal     @map("total_cost") @db.Decimal(12, 2)
+  // Audit
+  createdAt         DateTime    @default(now()) @map("created_at")
+  createdById       String      @map("created_by_id")
+  createdBy         User        @relation("TipRecommendationLogCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([mapLocationId])
+  @@index([projectId])
+  @@index([createdById])
+  @@index([createdAt])
+  @@map("tip_recommendation_logs")
 }
 
 // Site sign-in / sign-out — the WHS spine for "who is on site right now".

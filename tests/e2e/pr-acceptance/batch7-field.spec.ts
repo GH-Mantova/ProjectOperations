@@ -246,8 +246,17 @@ test.describe("Batch 7 — Timesheet submission (PRs #41, #42)", () => {
   });
 
   test("timesheet submits for today; duplicate attempt shows the friendly 409 message", async ({
-    page
+    page,
+    request
   }) => {
+    // GPS-A1 (option B, Marco 2026-07-31): the mandatory-GPS feature gates EVERY
+    // timesheet submission behind acknowledged location consent — the consent panel
+    // disables Submit until acknowledged. Acknowledge it up front via the API
+    // (deterministic, independent of test order), the same way the permission-denied
+    // spec does, so this pre-existing submission flow is not blocked by the gate.
+    const consentToken = await fieldWorkerToken(request);
+    await apiFetch(request, consentToken, "POST", "/field/location-consent", { consent: true });
+
     await loginAsFieldWorker(page);
     await page.goto("/field/allocations");
     await page

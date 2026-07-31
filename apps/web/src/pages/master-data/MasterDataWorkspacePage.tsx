@@ -117,6 +117,7 @@ type View = "cards" | "table";
 type AuthFetch = ReturnType<typeof useAuth>["authFetch"];
 
 export function ClientsTab({ authFetch }: { authFetch: AuthFetch }) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -125,6 +126,14 @@ export function ClientsTab({ authFetch }: { authFetch: AuthFetch }) {
   const [statusFilter, setStatusFilter] = useState("");
   const [newOpen, setNewOpen] = useState(false);
   const [editing, setEditing] = useState<Client | null>(null);
+
+  useEffect(() => {
+    if (searchParams.get("new") !== "1") return;
+    setNewOpen(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete("new");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const reload = async () => {
     setLoading(true);

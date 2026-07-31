@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { captureGpsReading } from "../field/useAutoGps";
 import { ConsentPanel, GPS_HARD_BLOCK_MSG } from "../field/GpsConsent";
@@ -53,9 +53,15 @@ function fmtDate(iso: string | null): string {
 }
 
 export function MusterPage() {
-  const { eventId } = useParams<{ eventId: string }>();
+  const { eventId, siteId } = useParams<{ eventId: string; siteId: string }>();
   const navigate = useNavigate();
   const { authFetch } = useAuth();
+  // A deep-link into muster (fresh tab from a notification or an SMS)
+  // has no back stack, so a bare `navigate(-1)` would strand the user.
+  // Use the route's siteId for an explicit Link home; only offer the
+  // navigate(-1) affordance when there's actually somewhere to go back to.
+  const siteHref = siteId ? `/sites/${siteId}` : "/sites";
+  const hasHistory = typeof window !== "undefined" && window.history.length > 1;
 
   const [event, setEvent] = useState<MusterEvent | null>(null);
   const [loading, setLoading] = useState(true);
@@ -196,14 +202,25 @@ export function MusterPage() {
       <div style={{ padding: 20, display: "grid", gap: 12, maxWidth: 560 }}>
         <h2 className="s7-type-section-heading" style={{ margin: 0 }}>Couldn't load muster event</h2>
         <p style={{ color: "var(--status-danger)", margin: 0 }}>{error}</p>
-        <button
-          type="button"
-          className="s7-btn s7-btn--ghost s7-btn--sm"
-          onClick={() => navigate(-1)}
-          style={{ minHeight: 44, width: "fit-content" }}
-        >
-          Go back
-        </button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Link
+            to={siteHref}
+            className="s7-btn s7-btn--secondary s7-btn--sm"
+            style={{ minHeight: 44, display: "inline-flex", alignItems: "center" }}
+          >
+            Back to site
+          </Link>
+          {hasHistory ? (
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={() => navigate(-1)}
+              style={{ minHeight: 44 }}
+            >
+              Go back
+            </button>
+          ) : null}
+        </div>
       </div>
     );
   }
@@ -218,15 +235,24 @@ export function MusterPage() {
 
   return (
     <div style={{ padding: 20 }}>
-      <nav style={{ marginBottom: 12 }}>
-        <button
-          type="button"
-          className="s7-btn s7-btn--ghost s7-btn--sm"
-          onClick={() => navigate(-1)}
-          style={{ minHeight: 44, minWidth: 44 }}
+      <nav style={{ marginBottom: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <Link
+          to={siteHref}
+          className="s7-btn s7-btn--secondary s7-btn--sm"
+          style={{ minHeight: 44, minWidth: 44, display: "inline-flex", alignItems: "center" }}
         >
-          Back
-        </button>
+          Back to site
+        </Link>
+        {hasHistory ? (
+          <button
+            type="button"
+            className="s7-btn s7-btn--ghost s7-btn--sm"
+            onClick={() => navigate(-1)}
+            style={{ minHeight: 44, minWidth: 44 }}
+          >
+            Back
+          </button>
+        ) : null}
       </nav>
 
       <header className="s7-card" style={{ padding: 20, marginBottom: 16 }}>

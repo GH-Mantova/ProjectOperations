@@ -191,7 +191,7 @@ export function NotificationsDropdown({ anchorRef, open, onClose, onUnreadCountC
           type="button"
           className="notif-dropdown__see-all"
           onClick={() => {
-            navigate("/notifications");
+            navigate("/settings/notifications");
             onClose();
           }}
         >

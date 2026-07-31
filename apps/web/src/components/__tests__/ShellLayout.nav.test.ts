@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { SafeUser } from "../../auth/AuthContext";
-import { isAdminUser } from "../../auth/permissions";
+import { can, isAdminUser } from "../../auth/permissions";
 import { NAV_GROUPS } from "../ShellLayout";
 
 function fakeUser(overrides: Partial<SafeUser>): SafeUser {
@@ -89,9 +89,10 @@ describe("ShellLayout nav — 7 approved groups (2026-07-17 restructure)", () =>
     group.items.map((item) => ({ groupId: group.id, ...item }))
   );
 
-  it("Estimating carries Tenders, Contracts, Tender Settings, Directory, Rates & Lists, Reports (in order)", () => {
+  it("Estimating carries CRM, Tenders, Contracts, Tender Settings, Directory, Rates & Lists, Reports (in order)", () => {
     const estimating = NAV_GROUPS.find((g) => g.id === "estimating");
     expect(estimating?.items.map((i) => [i.label, i.to])).toEqual([
+      ["CRM (Leads & Opportunities)", "/crm"],
       ["Tenders", "/tenders"],
       ["Contracts", "/contracts"],
       ["Tender Settings", "/tenders/settings"],
@@ -109,10 +110,11 @@ describe("ShellLayout nav — 7 approved groups (2026-07-17 restructure)", () =>
     ]);
   });
 
-  it("Operations carries Scheduler, Assets & Equipment (collapsible), Procurement (in order)", () => {
+  it("Operations carries Scheduler, Live crew map, Assets & Equipment (collapsible), Procurement (in order)", () => {
     const operations = NAV_GROUPS.find((g) => g.id === "operations");
     expect(operations?.items.map((i) => i.label)).toEqual([
       "Scheduler",
+      "Live crew map",
       "Assets & Equipment",
       "Procurement"
     ]);
@@ -157,8 +159,88 @@ describe("ShellLayout nav — 7 approved groups (2026-07-17 restructure)", () =>
     expect(tenders?.match).toBeDefined();
     expect(tenders!.match!("/tenders")).toBe(true);
     expect(tenders!.match!("/tenders/settings")).toBe(false);
-    expect(tenders!.match!("/tenders/dashboard")).toBe(false);
+    // /tenders/dashboard was removed as a route in the sidebar restructure —
+    // the exclusion list intentionally does not carry it any more. Any leftover
+    // /tenders/:id navigation still highlights Tenders, which is what we want.
     expect(tenders!.match!("/tenders/contacts")).toBe(false);
     expect(tenders!.match!("/tenders/reports")).toBe(false);
+  });
+});
+
+// Per-item permission gates (sidebar sanity — audit 2026-07-31). Every entry
+// whose backing API requires a *.view or *.manage permission is hidden from
+// users who lack it, so non-holders don't see a menu full of items that 403.
+// The mapping below mirrors the actual API decorator on each page's primary
+// controller (verified by grepping RequirePermissions per module).
+describe("ShellLayout nav — per-item permission gates", () => {
+  const EXPECTED_GATES: Array<{ label: string; permission: string }> = [
+    { label: "CRM (Leads & Opportunities)", permission: "crm.view" },
+    { label: "Tenders", permission: "tenders.view" },
+    // Contracts API gates on finance.view (legacy naming from when contracts
+    // lived under the finance module), NOT contracts.view.
+    { label: "Contracts", permission: "finance.view" },
+    // Directory workspace hits /master-data/*, gated on masterdata.view.
+    { label: "Directory", permission: "masterdata.view" },
+    { label: "Reports", permission: "reporting.view" },
+    { label: "Jobs", permission: "jobs.view" },
+    // Sites list hits /master-data/sites — masterdata.view, not sites.view.
+    { label: "Sites", permission: "masterdata.view" },
+    { label: "Scheduler", permission: "scheduler.view" },
+    { label: "Live crew map", permission: "scheduler.view" },
+    { label: "Procurement", permission: "procurement.view" },
+    // Workers roster hits /workers which requires resources.view (the
+    // WorkerProfile entity was carved out of the Resources module).
+    { label: "Workers", permission: "resources.view" },
+    { label: "Payroll Export", permission: "field.manage" },
+    { label: "Timesheet Approval", permission: "field.manage" },
+    { label: "Safety", permission: "safety.view" },
+    { label: "Cases", permission: "cases.view" },
+    { label: "Knowledge Base", permission: "knowledge.view" },
+    { label: "Compliance", permission: "compliance.view" },
+    { label: "Forms", permission: "forms.view" },
+    { label: "Documents", permission: "documents.view" }
+  ];
+
+  const EXPECTED_CHILD_GATES: Array<{ label: string; permission: string }> = [
+    { label: "Assets", permission: "assets.view" },
+    { label: "Inventory", permission: "inventory.view" },
+    { label: "Maintenance", permission: "maintenance.view" }
+  ];
+
+  const leafItems = NAV_GROUPS.flatMap((g) => g.items);
+  const childItems = leafItems.flatMap((i) => i.children ?? []);
+
+  it.each(EXPECTED_GATES)("%o is gated on the expected permission", ({ label, permission }) => {
+    const item = leafItems.find((i) => i.label === label);
+    expect(item, `expected leaf item labelled "${label}"`).toBeDefined();
+    expect(item?.requiresPermission).toBe(permission);
+  });
+
+  it.each(EXPECTED_CHILD_GATES)("%o (child) is gated on the expected permission", ({ label, permission }) => {
+    const child = childItems.find((c) => c.label === label);
+    expect(child, `expected child item labelled "${label}"`).toBeDefined();
+    expect(child?.requiresPermission).toBe(permission);
+  });
+
+  it("regression: `can(user)` short-circuits on isSuperUser so gated items still show for super-users (STEP-0 lesson)", () => {
+    // Locking this in a test — the entire per-item gate is safe only because
+    // can() returns true unconditionally when isSuperUser === true. If that
+    // ever regresses, super-users get a blank sidebar.
+    const superUser: SafeUser = {
+      id: "u1",
+      email: "s@example.com",
+      firstName: "S",
+      lastName: "U",
+      isActive: true,
+      isSuperUser: true,
+      roles: [],
+      permissions: []
+    } as SafeUser;
+    for (const { permission } of EXPECTED_GATES) {
+      expect(can(superUser, permission)).toBe(true);
+    }
+    for (const { permission } of EXPECTED_CHILD_GATES) {
+      expect(can(superUser, permission)).toBe(true);
+    }
   });
 });

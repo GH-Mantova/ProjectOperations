@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { useAuth } from "../../auth/AuthContext";
+import { can } from "../../auth/permissions";
 import { useConfirm } from "../../hooks/useConfirm";
 
 type ListSummary = {
@@ -27,8 +28,14 @@ type ListItem = {
 
 type ResolvedList = ListSummary & { items: ListItem[] };
 
-export function GlobalListsSection({ isAdmin }: { isAdmin: boolean }) {
-  const { authFetch } = useAuth();
+export function GlobalListsSection() {
+  const { authFetch, user } = useAuth();
+  // The API gates every mutation on `masterdata.manage`; the isAdmin prop
+  // (role-name === "Admin") is not a reliable proxy — e.g., a super-user or a
+  // custom role can hold the permission without being named "Admin", and a
+  // renamed "Admin" role may not. Trust the actual permission, so the UI never
+  // exposes controls that will 403.
+  const canManage = can(user, "masterdata.manage");
   const confirm = useConfirm();
   const [lists, setLists] = useState<ListSummary[]>([]);
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
@@ -164,12 +171,18 @@ export function GlobalListsSection({ isAdmin }: { isAdmin: boolean }) {
             another module.
           </p>
         </div>
-        {isAdmin ? (
+        {canManage ? (
           <button type="button" className="s7-btn s7-btn--primary s7-btn--sm" onClick={() => setNewListOpen((v) => !v)}>
             {newListOpen ? "Cancel" : "+ New list"}
           </button>
         ) : null}
       </div>
+
+      {!canManage ? (
+        <p style={{ color: "var(--text-muted)", fontSize: 12, margin: "0 0 12px" }}>
+          Read-only — managed by administrators.
+        </p>
+      ) : null}
 
       {newListOpen ? (
         <form
@@ -253,6 +266,7 @@ export function GlobalListsSection({ isAdmin }: { isAdmin: boolean }) {
               setNewLabel={setNewLabel}
               newValue={newValue}
               setNewValue={setNewValue}
+              canManage={canManage}
               onAdd={() => void addItem()}
               onArchive={(id, label) => void archiveItem(id, label)}
               onRestore={(id) => void restoreItem(id)}
@@ -316,6 +330,7 @@ function StaticListView({
   setNewLabel,
   newValue,
   setNewValue,
+  canManage,
   onAdd,
   onArchive,
   onRestore
@@ -329,6 +344,7 @@ function StaticListView({
   setNewLabel: (v: string) => void;
   newValue: string;
   setNewValue: (v: string) => void;
+  canManage: boolean;
   onAdd: () => void;
   onArchive: (id: string, label: string) => void;
   onRestore: (id: string) => void;
@@ -369,47 +385,51 @@ function StaticListView({
               </div>
               <div style={{ fontSize: 11, color: "var(--text-muted)" }}>value: {item.value}</div>
             </div>
-            {item.isArchived ? (
-              <button type="button" className="s7-btn s7-btn--ghost s7-btn--sm" onClick={() => onRestore(item.id)}>Restore</button>
-            ) : (
-              <button
-                type="button"
-                className="s7-btn s7-btn--ghost s7-btn--sm"
-                onClick={() => onArchive(item.id, item.label)}
-                aria-label={`Archive ${item.label}`}
-              >
-                ×
-              </button>
-            )}
+            {canManage ? (
+              item.isArchived ? (
+                <button type="button" className="s7-btn s7-btn--ghost s7-btn--sm" onClick={() => onRestore(item.id)}>Restore</button>
+              ) : (
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--ghost s7-btn--sm"
+                  onClick={() => onArchive(item.id, item.label)}
+                  aria-label={`Archive ${item.label}`}
+                >
+                  ×
+                </button>
+              )
+            ) : null}
           </li>
         ))}
       </ul>
 
-      <form
-        style={{ display: "flex", gap: 6, marginTop: 12 }}
-        onSubmit={(e) => {
-          e.preventDefault();
-          onAdd();
-        }}
-      >
-        <input
-          className="s7-input"
-          value={newLabel}
-          onChange={(e) => setNewLabel(e.target.value)}
-          placeholder="Label (required)"
-          style={{ flex: 2 }}
-        />
-        <input
-          className="s7-input"
-          value={newValue}
-          onChange={(e) => setNewValue(e.target.value)}
-          placeholder="Value (auto from label)"
-          style={{ flex: 1 }}
-        />
-        <button type="submit" className="s7-btn s7-btn--primary" disabled={!newLabel.trim()}>
-          Add
-        </button>
-      </form>
+      {canManage ? (
+        <form
+          style={{ display: "flex", gap: 6, marginTop: 12 }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            onAdd();
+          }}
+        >
+          <input
+            className="s7-input"
+            value={newLabel}
+            onChange={(e) => setNewLabel(e.target.value)}
+            placeholder="Label (required)"
+            style={{ flex: 2 }}
+          />
+          <input
+            className="s7-input"
+            value={newValue}
+            onChange={(e) => setNewValue(e.target.value)}
+            placeholder="Value (auto from label)"
+            style={{ flex: 1 }}
+          />
+          <button type="submit" className="s7-btn s7-btn--primary" disabled={!newLabel.trim()}>
+            Add
+          </button>
+        </form>
+      ) : null}
     </div>
   );
 }

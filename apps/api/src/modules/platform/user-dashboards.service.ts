@@ -60,11 +60,94 @@ export class UserDashboardsService {
     private readonly audit: AuditService
   ) {}
 
-  list(userId: string, slug?: string) {
+  async list(userId: string, slug?: string) {
+    if (slug === "operations") {
+      return this.ensureOperationsSystemDefault(userId);
+    }
     return this.prisma.userDashboard.findMany({
       where: { userId, ...(slug ? { slug } : {}) },
       orderBy: [{ isSystem: "desc" }, { isDefault: "desc" }, { createdAt: "asc" }]
     });
+  }
+
+  /**
+   * Idempotent ensure for the "operations" dashboard.
+   *
+   * Rules (in priority order):
+   *  1. If a system row already exists → return all rows as-is (no write).
+   *  2. If one or more non-system rows exist → promote the best candidate
+   *     (prefer isDefault:true, else oldest createdAt) to isSystem:true.
+   *     The promoted row disappears from the sidebar lazily; no migration needed.
+   *  3. If no rows exist → create a fresh system row with the default config.
+   *
+   * Race safety: both the promote and the create are guarded by the
+   * @@unique([userId, slug, isSystem]) constraint.  On P2002 we re-read and
+   * return, following the same idempotency pattern as create().
+   */
+  private async ensureOperationsSystemDefault(userId: string) {
+    const fetchAll = () =>
+      this.prisma.userDashboard.findMany({
+        where: { userId, slug: "operations" },
+        orderBy: [{ isSystem: "desc" }, { isDefault: "desc" }, { createdAt: "asc" }]
+      });
+
+    const rows = await fetchAll();
+
+    // Case 1: system row already present — nothing to do.
+    if (rows.some((r) => r.isSystem)) {
+      return rows;
+    }
+
+    // Case 2: one or more non-system rows — promote the best candidate.
+    if (rows.length > 0) {
+      const candidate =
+        rows.find((r) => r.isDefault) ?? rows[0];
+      try {
+        await this.prisma.userDashboard.update({
+          where: { id: candidate.id },
+          data: { isSystem: true }
+        });
+        await this.audit.write({
+          actorId: userId,
+          action: "userDashboards.ensureSystemDefault",
+          entityType: "UserDashboard",
+          entityId: candidate.id,
+          metadata: { slug: "operations", reason: "promoted" }
+        });
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error;
+        // Another concurrent request already promoted a row — fall through to re-read.
+      }
+      return fetchAll();
+    }
+
+    // Case 3: no rows at all — create the system default.
+    let newId: string | undefined;
+    try {
+      const created = await this.prisma.userDashboard.create({
+        data: {
+          userId,
+          name: "Operations Overview",
+          slug: "operations",
+          isSystem: true,
+          isDefault: false,
+          config: UserDashboardsService.defaultOperationsConfig() as unknown as import("@prisma/client").Prisma.InputJsonValue
+        }
+      });
+      newId = created.id;
+      await this.audit.write({
+        actorId: userId,
+        action: "userDashboards.ensureSystemDefault",
+        entityType: "UserDashboard",
+        entityId: created.id,
+        metadata: { slug: "operations", reason: "created" }
+      });
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+      // Another concurrent request already created the row — fall through to re-read.
+    }
+    void newId; // suppress lint: may or may not be set; we re-read either way.
+    return fetchAll();
   }
 
   async getById(userId: string, id: string) {

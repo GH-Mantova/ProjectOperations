@@ -1,11 +1,16 @@
 import { ForbiddenException, NotFoundException } from "@nestjs/common";
 import { UserDashboardsService } from "./user-dashboards.service";
 
+// ---------------------------------------------------------------------------
+// Helpers shared across describe blocks
+// ---------------------------------------------------------------------------
+
 const OWNER = "user-1";
 
 function makeService(overrides: {
   findUnique?: jest.Mock;
   findFirst?: jest.Mock;
+  findMany?: jest.Mock;
   delete?: jest.Mock;
   update?: jest.Mock;
   create?: jest.Mock;
@@ -14,6 +19,7 @@ function makeService(overrides: {
     userDashboard: {
       findUnique: overrides.findUnique ?? jest.fn().mockResolvedValue(null),
       findFirst: overrides.findFirst ?? jest.fn().mockResolvedValue(null),
+      findMany: overrides.findMany ?? jest.fn().mockResolvedValue([]),
       delete: overrides.delete ?? jest.fn().mockResolvedValue(undefined),
       update: overrides.update ?? jest.fn().mockResolvedValue(undefined),
       create: overrides.create ?? jest.fn().mockResolvedValue(undefined)
@@ -260,5 +266,136 @@ describe("UserDashboardsService.create - concurrent-create race (P2002)", () => 
     expect(audit.write).toHaveBeenCalledWith(
       expect.objectContaining({ action: "userDashboards.create", entityId: "dash-new" })
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// list("operations") — server-side idempotent ensure
+// ---------------------------------------------------------------------------
+
+describe("UserDashboardsService.list — ensureOperationsSystemDefault", () => {
+  function opsDashboard(partial: Partial<{
+    id: string;
+    isSystem: boolean;
+    isDefault: boolean;
+    createdAt: Date;
+  }> = {}) {
+    return {
+      id: "dash-ops",
+      userId: OWNER,
+      name: "Operations Overview",
+      slug: "operations",
+      isSystem: false,
+      isDefault: false,
+      config: { period: "30d", widgets: [] },
+      createdAt: new Date("2024-01-01T00:00:00Z"),
+      ...partial
+    };
+  }
+
+  it("returns rows unchanged when a system row already exists — no writes", async () => {
+    const existing = opsDashboard({ isSystem: true });
+    const findMany = jest.fn().mockResolvedValue([existing]);
+    const update = jest.fn();
+    const create = jest.fn();
+    const { service, audit } = makeService({ findMany, update, create });
+
+    const result = await service.list(OWNER, "operations");
+
+    expect(result).toEqual([existing]);
+    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(update).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+    expect(audit.write).not.toHaveBeenCalled();
+  });
+
+  it("promotes the non-system row to isSystem:true when no system row exists", async () => {
+    const nonSystem = opsDashboard({ id: "dash-custom", isSystem: false });
+    const promoted = { ...nonSystem, isSystem: true };
+    // First call returns the non-system row; second call (after update) returns the promoted row.
+    const findMany = jest.fn()
+      .mockResolvedValueOnce([nonSystem])
+      .mockResolvedValueOnce([promoted]);
+    const update = jest.fn().mockResolvedValue(promoted);
+    const { service, audit } = makeService({ findMany, update });
+
+    const result = await service.list(OWNER, "operations");
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "dash-custom" },
+      data: { isSystem: true }
+    });
+    expect(result).toEqual([promoted]);
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: OWNER,
+        action: "userDashboards.ensureSystemDefault",
+        entityId: "dash-custom",
+        metadata: expect.objectContaining({ reason: "promoted" })
+      })
+    );
+  });
+
+  it("creates a system default row when no rows exist at all", async () => {
+    const created = opsDashboard({ id: "dash-new", isSystem: true });
+    // First call: no rows; second call (after create): returns the new row.
+    const findMany = jest.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([created]);
+    const create = jest.fn().mockResolvedValue(created);
+    const { service, audit } = makeService({ findMany, create });
+
+    const result = await service.list(OWNER, "operations");
+
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: OWNER,
+        name: "Operations Overview",
+        slug: "operations",
+        isSystem: true,
+        isDefault: false
+      })
+    });
+    expect(result).toEqual([created]);
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: OWNER,
+        action: "userDashboards.ensureSystemDefault",
+        entityId: "dash-new",
+        metadata: expect.objectContaining({ reason: "created" })
+      })
+    );
+  });
+
+  it("re-reads and returns without throwing on P2002 during promote", async () => {
+    const nonSystem = opsDashboard({ id: "dash-custom", isSystem: false });
+    const promoted = { ...nonSystem, isSystem: true };
+    const p2002 = Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+    const findMany = jest.fn()
+      .mockResolvedValueOnce([nonSystem])
+      .mockResolvedValueOnce([promoted]);
+    const update = jest.fn().mockRejectedValue(p2002);
+    const { service, audit } = makeService({ findMany, update });
+
+    const result = await service.list(OWNER, "operations");
+
+    expect(result).toEqual([promoted]);
+    // No audit entry when the update failed with P2002 (another request won the race).
+    expect(audit.write).not.toHaveBeenCalled();
+  });
+
+  it("re-reads and returns without throwing on P2002 during create", async () => {
+    const created = opsDashboard({ id: "dash-winner", isSystem: true });
+    const p2002 = Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+    const findMany = jest.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([created]);
+    const create = jest.fn().mockRejectedValue(p2002);
+    const { service, audit } = makeService({ findMany, create });
+
+    const result = await service.list(OWNER, "operations");
+
+    expect(result).toEqual([created]);
+    expect(audit.write).not.toHaveBeenCalled();
   });
 });

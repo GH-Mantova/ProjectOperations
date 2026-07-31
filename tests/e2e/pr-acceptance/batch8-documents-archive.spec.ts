@@ -6,6 +6,11 @@
  * but the batch 8 prompt names "archive route renders standalone" as a
  * known cluster, so these tests are prompt-directed regression guards
  * rather than inventory conversions. Read-only — no residue.
+ *
+ * #836 made /archive a QueryPreservingRedirect to /documents?tab=archived
+ * (the Documents workspace's Archived tab). DocumentsWorkspacePage still
+ * imports ArchivePage, so the register renders inside that tab. The
+ * /archive/:jobId detail route stays standalone.
  */
 
 import { expect, test } from "@playwright/test";
@@ -16,12 +21,26 @@ test.describe("Batch 8 — Archive route (prompt-directed; no inventory rows)", 
     await loginAsAdmin(page);
   });
 
-  test("archive register renders standalone at /archive with filters and seeded rows", async ({
+  test("/archive redirects into Documents workspace's Archived tab with filters and seeded rows", async ({
     page
   }) => {
     await page.goto("/archive");
 
-    await expect(page.getByRole("heading", { name: "Archive" })).toBeVisible();
+    // Positive end state: URL is the Documents workspace with the Archived
+    // tab selected (post-#836 redirect).
+    await expect(page).toHaveURL(/\/documents\?tab=archived$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Documents" })).toBeVisible();
+    await expect(
+      page.getByRole("tab", { name: "Archived", selected: true })
+    ).toBeVisible();
+
+    // AppCard title inside the tab — `exact: true` so this does not also
+    // match the EmptyState "Nothing archived yet" heading (Playwright
+    // accessible-name matching is case-insensitive substring by default,
+    // and "archived" contains "archive").
+    await expect(
+      page.getByRole("heading", { name: "Archive", exact: true })
+    ).toBeVisible();
     await expect(
       page.getByText("Read-only register of closed and archived jobs")
     ).toBeVisible();
@@ -43,6 +62,7 @@ test.describe("Batch 8 — Archive route (prompt-directed; no inventory rows)", 
 
   test("archive detail opens read-only from the register's View link", async ({ page }) => {
     await page.goto("/archive");
+    await expect(page).toHaveURL(/\/documents\?tab=archived$/);
     // Wait for the register to settle before clicking — otherwise `.first()`
     // can resolve against a stale placeholder row and the SPA transition
     // never lands on the detail URL (see flaky-batch5-sites-post-delete-race).
@@ -51,6 +71,7 @@ test.describe("Batch 8 — Archive route (prompt-directed; no inventory rows)", 
     await page.waitForLoadState("networkidle");
     await viewLink.click();
 
+    // /archive/:jobId still renders standalone.
     await page.waitForURL(/\/archive\/.+/);
     // Detail header is "{jobNumber} — {name}" with the read-only subtitle.
     await expect(page.getByText(/Read-only archive record/)).toBeVisible();

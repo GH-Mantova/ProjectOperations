@@ -11366,6 +11366,12 @@
           "label": null,
           "filterable": false,
           "aggregations": []
+        },
+        "tipRecommendationLogs": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
         }
       }
     },
@@ -13750,6 +13756,12 @@
           "aggregations": []
         },
         "cases": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "tipRecommendationLogs": {
           "role": "system",
           "label": null,
           "filterable": false,
@@ -21219,6 +21231,152 @@
         }
       }
     },
+    "TipRecommendationLog": {
+      "domain": "Unclassified",
+      "wizardVisible": false,
+      "label": null,
+      "reviewed": false,
+      "fields": {
+        "id": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "mapLocationId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "mapLocation": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "facilityName": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "facilityLat": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "facilityLng": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "wasteTypeCode": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "loadTonnes": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
+        },
+        "originType": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "projectId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "project": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "originLat": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "originLng": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "distanceKm": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "disposalFee": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "travelCost": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
+        },
+        "totalCost": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
+        },
+        "createdAt": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "createdById": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "createdBy": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        }
+      }
+    },
     "User": {
       "domain": "Platform",
       "wizardVisible": false,
@@ -22108,6 +22266,12 @@
           "aggregations": []
         },
         "tenderingLabelsUpdated": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "tipRecommendationLogs": {
           "role": "system",
           "label": null,
           "filterable": false,

@@ -84,6 +84,25 @@ test.describe("Batch 1 — Dashboards, KPIs & Widgets (PRs #6, #15, #29, #30, #3
   // render/Recent-wins tests were removed with it. The operations/home
   // dashboard (/) is covered above.
 
+  // ── System-default dashboard guards ──────────────────────────────────────
+
+  test("Operations Overview heading is visible and Delete button is disabled (system dashboard)", async ({ page }) => {
+    await loginAsAdmin(page);
+    // Heading must be visible — the server-side ensure guarantees a row always exists.
+    await expect(page.getByRole("heading", { name: "Operations Overview" })).toBeVisible();
+    // Delete button must be disabled for system dashboards.
+    const deleteBtn = page.getByTestId("delete-dashboard-button");
+    await expect(deleteBtn).toBeVisible();
+    await expect(deleteBtn).toBeDisabled();
+  });
+
+  test("sidebar Dashboards group does not contain a nav link named 'Operations Overview'", async ({ page }) => {
+    await loginAsAdmin(page);
+    const nav = page.getByRole("navigation", { name: "Main navigation" });
+    // The system operations dashboard is NOT listed in the sidebar (only !isSystem entries appear).
+    await expect(nav.getByRole("link", { name: "Operations Overview" })).toHaveCount(0);
+  });
+
   // ── Sidebar Dashboards group integrity ───────────────────────────────────
 
   test("exactly one Dashboards group in sidebar — no duplicate entry", async ({ page }) => {

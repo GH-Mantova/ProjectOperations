@@ -45,8 +45,6 @@ type Props = {
   mode?: Mode;
   dashboardSlug?: string;
   dashboardId?: string;
-  defaultConfig?: UserDashboardConfig;
-  defaultName?: string;
   title?: string;
   actions?: ReactNode;
 };
@@ -57,8 +55,6 @@ export function DashboardCanvas({
   mode = "by-slug",
   dashboardSlug,
   dashboardId,
-  defaultConfig,
-  defaultName,
   title,
   actions
 }: Props) {
@@ -94,26 +90,14 @@ export function DashboardCanvas({
       if (chosen) {
         setActive(chosen);
         activeIdRef.current = chosen.id;
-      } else if (defaultConfig) {
-        const createResponse = await authFetch(`/user-dashboards`, {
-          method: "POST",
-          body: JSON.stringify({
-            name: defaultName ?? title ?? "Dashboard",
-            slug,
-            config: defaultConfig
-          })
-        });
-        if (!createResponse.ok) throw new Error("Could not create default dashboard.");
-        const created = (await createResponse.json()) as UserDashboard;
-        setDashboards([created]);
-        setActive(created);
-        activeIdRef.current = created.id;
-        invalidate();
       } else {
+        // Server-side ensure guarantees a row always exists for slug="operations".
+        // An empty list here is an unexpected server error — surface it.
+        setError("Unable to load dashboards.");
         setActive(null);
       }
     },
-    [authFetch, defaultConfig, defaultName, title, invalidate]
+    [authFetch]
   );
 
   const loadById = useCallback(

@@ -3,8 +3,7 @@
 // ShellLayout (it owns the "+ new dashboard" affordance and the dynamic list
 // of user-created dashboards), so NAV_GROUPS carries the other six. These
 // tests lock the group ids/labels/ordering, the role gate on the Settings
-// group, and the "Tenders" active-match rule that used to swallow
-// /tenders/settings and /tenders/dashboard.
+// group, and the "Tenders" active-match rule.
 
 import { describe, expect, it } from "vitest";
 import type { SafeUser } from "../../auth/AuthContext";
@@ -89,13 +88,11 @@ describe("ShellLayout nav — 7 approved groups (2026-07-17 restructure)", () =>
     group.items.map((item) => ({ groupId: group.id, ...item }))
   );
 
-  it("Estimating carries CRM, Tenders, Contracts, Tender Settings, Directory, Rates & Lists, Reports (in order)", () => {
+  it("Estimating carries Tenders, Contracts, Directory, Rates & Lists, Reports (in order)", () => {
     const estimating = NAV_GROUPS.find((g) => g.id === "estimating");
     expect(estimating?.items.map((i) => [i.label, i.to])).toEqual([
-      ["CRM (Leads & Opportunities)", "/crm"],
       ["Tenders", "/tenders"],
       ["Contracts", "/contracts"],
-      ["Tender Settings", "/tenders/settings"],
       ["Directory", "/master-data"],
       ["Rates & Lists", "/admin/rates-lists"],
       ["Reports", "/reports"]
@@ -153,17 +150,15 @@ describe("ShellLayout nav — 7 approved groups (2026-07-17 restructure)", () =>
     }
   });
 
-  it("the Tenders active-match rule does not swallow settings/dashboard/contacts/reports", () => {
+  it("the Tenders active-match rule does not swallow contacts/reports (and settings is deleted)", () => {
     const tenders = allItems.find((i) => i.to === "/tenders" && i.label === "Tenders");
     expect(tenders).toBeDefined();
     expect(tenders?.match).toBeDefined();
     expect(tenders!.match!("/tenders")).toBe(true);
-    expect(tenders!.match!("/tenders/settings")).toBe(false);
-    // /tenders/dashboard was removed as a route in the sidebar restructure —
-    // the exclusion list intentionally does not carry it any more. Any leftover
-    // /tenders/:id navigation still highlights Tenders, which is what we want.
     expect(tenders!.match!("/tenders/contacts")).toBe(false);
     expect(tenders!.match!("/tenders/reports")).toBe(false);
+    // /tenders/settings no longer exists as a route (deleted by PR #841); the
+    // match falling through here is harmless because the sidebar entry is gone.
   });
 });
 
@@ -174,7 +169,8 @@ describe("ShellLayout nav — 7 approved groups (2026-07-17 restructure)", () =>
 // controller (verified by grepping RequirePermissions per module).
 describe("ShellLayout nav — per-item permission gates", () => {
   const EXPECTED_GATES: Array<{ label: string; permission: string }> = [
-    { label: "CRM (Leads & Opportunities)", permission: "crm.view" },
+    // CRM sidebar entry deleted by PR #841 — CRM now lives only as a tab on
+    // the Tenders page, so there's no top-level nav item to gate.
     { label: "Tenders", permission: "tenders.view" },
     // Contracts API gates on finance.view (legacy naming from when contracts
     // lived under the finance module), NOT contracts.view.

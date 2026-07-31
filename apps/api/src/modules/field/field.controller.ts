@@ -17,6 +17,7 @@ import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import {
   BulkApproveTimesheetsDto,
+  CreateLocationBreadcrumbDto,
   CreatePreStartDto,
   CreateSiteGeofenceDto,
   CreateTimesheetDto,
@@ -220,6 +221,33 @@ export class FieldController {
   @ApiResponse({ status: 409, description: "A timesheet for this job on this date already exists." })
   createTimesheet(@Body() dto: CreateTimesheetDto, @CurrentUser() user: RequestUser) {
     return this.service.createTimesheet(dto, ctx(user));
+  }
+
+  @Get("timesheets/open")
+  @RequirePermissions("field.view")
+  @ApiOperation({
+    summary:
+      "Return the signed-in worker's currently-open shift (clockOnTime set, clockOffTime null) or null. Used by the breadcrumb hook to decide whether to sample GPS."
+  })
+  @ApiResponse({ status: 200, description: "Open timesheet summary or null." })
+  getOpenTimesheet(@CurrentUser() user: RequestUser) {
+    return this.service.getOpenTimesheet(ctx(user));
+  }
+
+  @Post("location-breadcrumbs")
+  @RequirePermissions("field.view")
+  @ApiOperation({
+    summary:
+      "Append a GPS breadcrumb to the worker's open shift. Requires location consent + an open timesheet; a 120s server-side floor throttles floods."
+  })
+  @ApiResponse({ status: 201, description: "Breadcrumb recorded or throttled (recorded=false)." })
+  @ApiResponse({ status: 403, description: "Worker has not granted location consent." })
+  @ApiResponse({ status: 409, description: "Worker is not currently on the clock." })
+  recordBreadcrumb(
+    @Body() dto: CreateLocationBreadcrumbDto,
+    @CurrentUser() user: RequestUser
+  ) {
+    return this.service.recordLocationBreadcrumb(ctx(user), dto);
   }
 
   @Patch("timesheets/:id")

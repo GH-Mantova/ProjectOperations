@@ -3,6 +3,8 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000/api/v1";
+
 type Field = {
   id: string;
   fieldKey: string;
@@ -515,7 +517,7 @@ export function FormSubmissionDetailPage() {
       {/* Action bar */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <a
-          href={`/api/v1/forms/submissions/${submission.id}/pdf`}
+          href={`${API_BASE_URL}/forms/submissions/${submission.id}/pdf`}
           target="_blank"
           rel="noreferrer"
           className="s7-btn s7-btn--secondary"

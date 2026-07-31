@@ -287,7 +287,12 @@ export function TenderingPage() {
   const confirm = useConfirm();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab: TopTab = searchParams.get("tab") === "crm" ? "crm" : "tenders";
+  // CRM parity with the old sidebar CRM entry (gated on crm.view). Users
+  // without the permission cannot see the tab and cannot land on it via
+  // ?tab=crm — they fall through to the tenders view.
+  const canViewCrm = can(user, "crm.view");
+  const activeTab: TopTab =
+    searchParams.get("tab") === "crm" && canViewCrm ? "crm" : "tenders";
   const setActiveTab = (next: TopTab) => {
     const nextParams = new URLSearchParams(searchParams);
     if (next === "crm") nextParams.set("tab", "crm");
@@ -622,7 +627,7 @@ export function TenderingPage() {
     <div className="tender-page">
       <header className="tender-page__header">
         <div>
-          <TopTabStrip active={activeTab} onChange={setActiveTab} />
+          <TopTabStrip active={activeTab} onChange={setActiveTab} showCrm={canViewCrm} />
           {activeTab === "tenders" ? (
             <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>Tendering</h1>
           ) : null}
@@ -797,10 +802,18 @@ export function TenderingPage() {
   );
 }
 
-function TopTabStrip({ active, onChange }: { active: TopTab; onChange: (next: TopTab) => void }) {
+function TopTabStrip({
+  active,
+  onChange,
+  showCrm
+}: {
+  active: TopTab;
+  onChange: (next: TopTab) => void;
+  showCrm: boolean;
+}) {
   const tabs: { key: TopTab; label: string }[] = [
     { key: "tenders", label: "Tenders" },
-    { key: "crm", label: "CRM" }
+    ...(showCrm ? ([{ key: "crm", label: "CRM" }] as const) : [])
   ];
   return (
     <div

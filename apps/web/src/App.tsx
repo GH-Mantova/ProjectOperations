@@ -13,7 +13,6 @@ import { PermissionsPage } from "./pages/PermissionsPage";
 import { AuditLogsPage } from "./pages/AuditLogsPage";
 import { PlatformPage } from "./pages/PlatformPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
-import { TenderingSettingsPage } from "./pages/TenderingSettingsPage";
 import { ResourcesPage } from "./pages/ResourcesPage";
 import { ArchivePage } from "./pages/archive/ArchivePage";
 import { ArchiveDetailPage } from "./pages/archive/ArchiveDetailPage";
@@ -283,7 +282,6 @@ export function App() {
                 them directly, but the routes now feed the tabbed page. */}
             <Route path="/tenders/clients" element={<Navigate to="/directory?tab=clients" replace />} />
             <Route path="/tenders/contacts" element={<Navigate to="/directory?tab=contacts" replace />} />
-            <Route path="/tenders/settings" element={<TenderingSettingsPage />} />
             <Route path="/tenders/reports" element={<TenderingReportsPage />} />
             <Route path="/tenders/:id" element={<TenderDetailPage />} />
             <Route path="/tenders/:id/scope" element={<TenderDetailPage />} />
@@ -430,9 +428,9 @@ export function App() {
             <Route path="/cases/:id" element={<CaseDetailPage />} />
             <Route path="/knowledge" element={<KbListPage />} />
             <Route path="/knowledge/:id" element={<KbArticlePage />} />
-            {/* CRM is a tab on the Tenders page; /crm redirects to keep old
-                bookmarks working. The opportunity detail page stays standalone. */}
-            <Route path="/crm" element={<Navigate to="/tenders?tab=crm" replace />} />
+            {/* CRM lives ONLY as a tab on the Tenders page (Marco 2026-07-31);
+                /crm is dead and falls through to NotFoundPage. The opportunity
+                detail page stays standalone. */}
             <Route path="/crm/opportunities/:id" element={<OpportunityDetailPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/directory" element={<DirectoryPage />} />

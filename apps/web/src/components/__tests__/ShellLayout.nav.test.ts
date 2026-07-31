@@ -3,8 +3,7 @@
 // ShellLayout (it owns the "+ new dashboard" affordance and the dynamic list
 // of user-created dashboards), so NAV_GROUPS carries the other six. These
 // tests lock the group ids/labels/ordering, the role gate on the Settings
-// group, and the "Tenders" active-match rule that used to swallow
-// /tenders/settings and /tenders/dashboard.
+// group, and the "Tenders" active-match rule.
 
 import { describe, expect, it } from "vitest";
 import type { SafeUser } from "../../auth/AuthContext";
@@ -89,12 +88,11 @@ describe("ShellLayout nav — 7 approved groups (2026-07-17 restructure)", () =>
     group.items.map((item) => ({ groupId: group.id, ...item }))
   );
 
-  it("Estimating carries Tenders, Contracts, Tender Settings, Directory, Rates & Lists, Reports (in order)", () => {
+  it("Estimating carries Tenders, Contracts, Directory, Rates & Lists, Reports (in order)", () => {
     const estimating = NAV_GROUPS.find((g) => g.id === "estimating");
     expect(estimating?.items.map((i) => [i.label, i.to])).toEqual([
       ["Tenders", "/tenders"],
       ["Contracts", "/contracts"],
-      ["Tender Settings", "/tenders/settings"],
       ["Directory", "/master-data"],
       ["Rates & Lists", "/admin/rates-lists"],
       ["Reports", "/reports"]
@@ -109,10 +107,11 @@ describe("ShellLayout nav — 7 approved groups (2026-07-17 restructure)", () =>
     ]);
   });
 
-  it("Operations carries Scheduler, Assets & Equipment (collapsible), Procurement (in order)", () => {
+  it("Operations carries Scheduler, Live crew map, Assets & Equipment (collapsible), Procurement (in order)", () => {
     const operations = NAV_GROUPS.find((g) => g.id === "operations");
     expect(operations?.items.map((i) => i.label)).toEqual([
       "Scheduler",
+      "Live crew map",
       "Assets & Equipment",
       "Procurement"
     ]);
@@ -151,14 +150,14 @@ describe("ShellLayout nav — 7 approved groups (2026-07-17 restructure)", () =>
     }
   });
 
-  it("the Tenders active-match rule does not swallow settings/dashboard/contacts/reports", () => {
+  it("the Tenders active-match rule does not swallow contacts/reports (and settings is deleted)", () => {
     const tenders = allItems.find((i) => i.to === "/tenders" && i.label === "Tenders");
     expect(tenders).toBeDefined();
     expect(tenders?.match).toBeDefined();
     expect(tenders!.match!("/tenders")).toBe(true);
-    expect(tenders!.match!("/tenders/settings")).toBe(false);
-    expect(tenders!.match!("/tenders/dashboard")).toBe(false);
     expect(tenders!.match!("/tenders/contacts")).toBe(false);
     expect(tenders!.match!("/tenders/reports")).toBe(false);
+    // /tenders/settings no longer exists as a route; the match falling
+    // through here is harmless because the sidebar entry itself is gone.
   });
 });

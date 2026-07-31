@@ -172,13 +172,6 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Estimating",
     items: [
       {
-        to: "/crm",
-        label: "CRM (Leads & Opportunities)",
-        icon: ICON_TENDERING,
-        match: (path) => path.startsWith("/crm"),
-        requiresPermission: "crm.view"
-      },
-      {
         to: "/tenders",
         label: "Tenders",
         icon: ICON_TENDERING,
@@ -186,20 +179,13 @@ export const NAV_GROUPS: NavGroup[] = [
           path === "/tenders" ||
           (path.startsWith("/tenders/") &&
             !path.startsWith("/tenders/reports") &&
-            !path.startsWith("/tenders/contacts") &&
-            !path.startsWith("/tenders/settings"))
+            !path.startsWith("/tenders/contacts"))
       },
       {
         to: "/contracts",
         label: "Contracts",
         icon: ICON_CONTRACTS,
         match: (path) => path === "/contracts" || path.startsWith("/contracts/")
-      },
-      {
-        to: "/tenders/settings",
-        label: "Tender Settings",
-        icon: ICON_AUDIT,
-        match: (path) => path.startsWith("/tenders/settings")
       },
       {
         to: "/master-data",
@@ -369,7 +355,6 @@ const BREADCRUMBS: Record<string, string> = {
   "/tenders": "Tendering",
   "/tenders/reports": "Tender Reports",
   "/tenders/contacts": "Tender Contacts",
-  "/tenders/settings": "Tendering Settings",
   "/workers": "Workers",
   "/workers/live-crew": "Live crew map",
   "/resources": "Workers (legacy)",
@@ -379,7 +364,7 @@ const BREADCRUMBS: Record<string, string> = {
   "/expenses": "Expenses",
   "/cases": "Cases",
   "/knowledge": "Knowledge Base",
-  "/crm": "CRM",
+  "/crm/opportunities": "CRM",
   "/maintenance": "Maintenance",
   "/master-data": "Master Data",
   "/directory": "Directory",

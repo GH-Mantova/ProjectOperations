@@ -500,7 +500,7 @@ export class ProcurementService {
           title: `Procurement approval required: ${reference}`,
           body: `Request ${reference} totalling $${total.toFixed(2)} exceeds your delegated limit and needs your approval.`,
           severity: "info",
-          linkUrl: `/procurement/${reference}`
+          linkUrl: "/procurement"
         }
       });
     } catch (err) {

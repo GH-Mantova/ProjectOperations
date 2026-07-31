@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { captureGpsReading, type GpsReading } from "./useAutoGps";
+import { ConsentPanel, GPS_HARD_BLOCK_MSG } from "./GpsConsent";
 
 type TimesheetRow = {
   id: string;
@@ -37,9 +38,6 @@ function pillFor(row: Pick<TimesheetRow, "status" | "rejectedReason">) {
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
-
-const GPS_HARD_BLOCK_MSG =
-  "Location is required to clock on/off. Enable location for this site, or see your supervisor to have the entry recorded.";
 
 export function FieldTimesheetPage() {
   const { authFetch } = useAuth();
@@ -179,74 +177,6 @@ export function FieldTimesheetPage() {
       <p style={{ color: "#6B7280", fontSize: 12, marginTop: 16 }}>
         <Link to="/field/allocations" style={{ color: "#005B61" }}>← My jobs</Link>
       </p>
-    </div>
-  );
-}
-
-// ── Location consent acknowledgement panel ─────────────────────────────────
-function ConsentPanel({ onAcknowledged }: { onAcknowledged: () => void }) {
-  const { authFetch } = useAuth();
-  const [posting, setPosting] = useState(false);
-
-  async function acknowledge() {
-    setPosting(true);
-    try {
-      const res = await authFetch("/field/location-consent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ consent: true })
-      });
-      if (res.ok) onAcknowledged();
-    } finally {
-      setPosting(false);
-    }
-  }
-
-  return (
-    <div
-      style={{
-        background: "#EEF9FA",
-        border: "1px solid #B2DFE3",
-        borderRadius: 8,
-        padding: 14,
-        marginTop: 12,
-        fontSize: 13
-      }}
-    >
-      <strong style={{ display: "block", marginBottom: 8, color: "#003D42" }}>
-        Location access required
-      </strong>
-      <p style={{ margin: "0 0 8px", color: "#374151" }}>
-        To clock on or off, this app captures your GPS location at the time of each event.
-        Here is what you need to know:
-      </p>
-      <ul style={{ margin: "0 0 10px", paddingLeft: 18, color: "#374151" }}>
-        <li>What is captured: latitude, longitude, and accuracy at clock-on and clock-off.</li>
-        <li>When it is captured: only at the moment you clock on or clock off.</li>
-        <li>Who sees it: your supervisor and office staff reviewing your timesheet.</li>
-        <li>Capture stops at clock-off: no background tracking.</li>
-      </ul>
-      <div
-        style={{
-          background: "#FCEBEB",
-          color: "#A32D2D",
-          padding: "8px 10px",
-          borderRadius: 6,
-          marginBottom: 10,
-          fontSize: 12
-        }}
-      >
-        {GPS_HARD_BLOCK_MSG}
-      </div>
-      <button
-        type="button"
-        className="field-btn"
-        style={{ width: "100%" }}
-        disabled={posting}
-        onClick={() => void acknowledge()}
-      >
-        {posting ? "Saving…" : "I understand — enable location for my timesheets"}
-      </button>
     </div>
   );
 }
@@ -492,6 +422,7 @@ function NewTimesheet({
 
         {locationConsent === false ? (
           <ConsentPanel
+            context="timesheet"
             onAcknowledged={() => setLocationConsent(true)}
           />
         ) : null}

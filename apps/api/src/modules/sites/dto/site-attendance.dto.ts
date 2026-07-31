@@ -1,5 +1,11 @@
-import { IsOptional, IsString, MaxLength } from "class-validator";
+import { IsNumber, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+
+// GPS-A3: mandatory GPS on site sign-in/out. Latitude and longitude are
+// required — the auto-captured reading is bundled with the event. Accuracy
+// is optional (some devices don't report it) but persisted when supplied.
+// The client (FieldAllocationsPage / SiteSignInCard) hard-blocks the button
+// when no fix is available; server treats missing coords as a 400.
 
 export class SignInDto {
   @ApiProperty({ description: "Site the worker is signing in to." })
@@ -22,6 +28,24 @@ export class SignInDto {
   @IsString()
   @MaxLength(500)
   notes?: string;
+
+  @ApiProperty({ description: "Latitude captured at the moment of sign-in. Required — mirrors the client hard-block." })
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  lat!: number;
+
+  @ApiProperty({ description: "Longitude captured at the moment of sign-in. Required — mirrors the client hard-block." })
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  lng!: number;
+
+  @ApiPropertyOptional({ description: "Reported horizontal accuracy in metres, if the device supplied it." })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  accuracy?: number;
 }
 
 export class SignOutDto {
@@ -35,4 +59,22 @@ export class SignOutDto {
   @IsString()
   @MaxLength(500)
   notes?: string;
+
+  @ApiProperty({ description: "Latitude captured at the moment of sign-out. Required — mirrors the client hard-block." })
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  lat!: number;
+
+  @ApiProperty({ description: "Longitude captured at the moment of sign-out. Required — mirrors the client hard-block." })
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  lng!: number;
+
+  @ApiPropertyOptional({ description: "Reported horizontal accuracy in metres, if the device supplied it." })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  accuracy?: number;
 }

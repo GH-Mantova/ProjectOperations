@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { FormDraftStore } from "../../drafts";
+import { captureGpsReading } from "../field/useAutoGps";
+import { ConsentPanel, GPS_HARD_BLOCK_MSG } from "../field/GpsConsent";
 import { readTemplateLayout, resolveEffectiveLayout, type FormLayout } from "./formLayoutResolver";
 
 // ── Types matching the engine response shape ─────────────────────────────
@@ -81,7 +83,13 @@ type Submission = {
   templateVersion: {
     id: string;
     versionNumber: number;
-    template: { id: string; name: string; category?: string | null; settings?: unknown };
+    template: {
+      id: string;
+      name: string;
+      category?: string | null;
+      settings?: unknown;
+      geolocationEnabled?: boolean;
+    };
     sections: Section[];
   };
 };
@@ -287,7 +295,30 @@ export function FormFillPage() {
   const [submitted, setSubmitted] = useState<{ ref: string; created: { type: string; id: string }[] } | null>(null);
   const [gps, setGps] = useState<{ lat?: number; lng?: number; status: "idle" | "loading" | "ok" | "error"; message?: string }>({ status: "idle" });
   const [online, setOnline] = useState<boolean>(typeof navigator === "undefined" ? true : navigator.onLine);
+  const [locationConsent, setLocationConsent] = useState<boolean | null>(null);
   const saveTimerRef = useRef<number | null>(null);
+
+  // GPS-A3: load location consent for authenticated submitters. The panel is
+  // only shown when the template requires GPS and consent hasn't been
+  // acknowledged; the check runs whether or not GPS ends up mandatory so the
+  // state is already there by the time the user hits Submit.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await authFetch("/field/location-consent");
+        if (res.ok && !cancelled) {
+          const body = (await res.json()) as { locationConsent?: boolean };
+          setLocationConsent(Boolean(body.locationConsent));
+        }
+      } catch {
+        // Non-fatal — the submit-time hard-block still guards the action.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch]);
 
   // Online/offline tracking
   useEffect(() => {
@@ -549,9 +580,31 @@ export function FormFillPage() {
     try {
       // Flush any pending values first
       await persistDraft(values, sectionIndex);
+
+      // GPS-A3: when the template requires geolocation, authenticated
+      // submitters MUST include a fix. The mount-time capture is best-effort
+      // (low accuracy, older reading acceptable); when it fell short, do one
+      // fresh high-accuracy attempt here before hard-blocking. Public-link
+      // submissions do not go through this component.
+      let submitLat = gps.lat;
+      let submitLng = gps.lng;
+      if (submission.templateVersion.template.geolocationEnabled === true) {
+        if (submitLat === undefined || submitLng === undefined) {
+          const reading = await captureGpsReading();
+          if (reading.ok) {
+            submitLat = reading.reading.lat;
+            submitLng = reading.reading.lng;
+            setGps({ status: "ok", lat: reading.reading.lat, lng: reading.reading.lng });
+          } else {
+            setError(GPS_HARD_BLOCK_MSG);
+            return;
+          }
+        }
+      }
+
       const res = await authFetch(`/forms/submissions/${submission.id}/submit`, {
         method: "POST",
-        body: JSON.stringify({ gpsLat: gps.lat, gpsLng: gps.lng })
+        body: JSON.stringify({ gpsLat: submitLat, gpsLng: submitLng })
       });
       if (res.status === 422) {
         const body = await res.json();
@@ -562,6 +615,13 @@ export function FormFillPage() {
         } else {
           setError("Validation failed.");
         }
+        return;
+      }
+      if (res.status === 400) {
+        // GPS-A3: forms-engine returns 400 with a location-required message
+        // when the template demands GPS and none was supplied. Surface the
+        // shared hard-block copy either way.
+        setError(GPS_HARD_BLOCK_MSG);
         return;
       }
       if (!res.ok) throw new Error(await res.text());
@@ -753,6 +813,14 @@ export function FormFillPage() {
 
       {error ? <p style={{ color: "var(--status-danger)", fontSize: 13 }}>{error}</p> : null}
 
+      {submission.templateVersion.template.geolocationEnabled === true &&
+      locationConsent === false ? (
+        <ConsentPanel
+          context="form"
+          onAcknowledged={() => setLocationConsent(true)}
+        />
+      ) : null}
+
       {/* Footer nav */}
       <footer
         style={{
@@ -780,7 +848,17 @@ export function FormFillPage() {
             className="s7-btn s7-btn--primary"
             style={{ background: "#FEAA6D", color: "#242424", borderColor: "#FEAA6D", minWidth: 140 }}
             onClick={() => void submit()}
-            disabled={submitting}
+            disabled={
+              submitting ||
+              (submission.templateVersion.template.geolocationEnabled === true &&
+                locationConsent === false)
+            }
+            title={
+              submission.templateVersion.template.geolocationEnabled === true &&
+              locationConsent === false
+                ? GPS_HARD_BLOCK_MSG
+                : undefined
+            }
           >
             {submitting ? "Submitting…" : "Submit"}
           </button>

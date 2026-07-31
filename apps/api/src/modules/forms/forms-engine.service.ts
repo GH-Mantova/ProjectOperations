@@ -445,6 +445,26 @@ export class FormsEngineService {
     const submission = await this.requireOwnedDraft(submissionId, userId);
     const template = await this.loadTemplateForVersion(submission.templateVersionId);
     const settings = (template.template.settings ?? {}) as TemplateSettings;
+
+    // GPS-A3: when the template requires geolocation, the authenticated
+    // submit path hard-blocks a missing fix — mirroring the client-side
+    // gate. Public-link submissions run through publicSubmit() in
+    // PublicLinkService and are DELIBERATELY exempt: an external submitter
+    // has no employment relationship, so we have no policy footing to demand
+    // their location. Any change to that exemption belongs in publicSubmit,
+    // not here.
+    if (
+      template.template.geolocationEnabled === true &&
+      (gpsLat === undefined ||
+        gpsLng === undefined ||
+        gpsLat === null ||
+        gpsLng === null)
+    ) {
+      throw new BadRequestException(
+        "This form requires location. Enable location for this site, or see your supervisor to have the entry recorded."
+      );
+    }
+
     const collected = await this.collectValues(submission.id);
     // Recompute calculation fields server-side — the client value is never
     // trusted. The updated map feeds validation and every downstream step.

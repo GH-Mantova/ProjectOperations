@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { captureGpsReading } from "../field/useAutoGps";
+import { ConsentPanel, GPS_HARD_BLOCK_MSG } from "../field/GpsConsent";
 
 type MusterAttendee = {
   id: string;
@@ -62,6 +64,26 @@ export function MusterPage() {
   const [completing, setCompleting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [locationConsent, setLocationConsent] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await authFetch("/field/location-consent");
+        if (res.ok && !cancelled) {
+          const body = (await res.json()) as { locationConsent?: boolean };
+          setLocationConsent(Boolean(body.locationConsent));
+        }
+      } catch {
+        // Non-fatal — if the consent endpoint is unreachable we default the
+        // panel closed; the button click will still hard-block on GPS.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch]);
 
   const load = useCallback(async () => {
     if (!eventId) return;
@@ -91,10 +113,22 @@ export function MusterPage() {
       setCheckingId(attendeeId);
       setActionError(null);
       try {
+        // GPS-A3: the checker's GPS at the moment of check-off IS the muster
+        // audit fact. Hard-block if we can't get a fix.
+        const reading = await captureGpsReading();
+        if (!reading.ok) {
+          setActionError(GPS_HARD_BLOCK_MSG);
+          return;
+        }
         const res = await authFetch(`/safety/muster/attendees/${attendeeId}/check`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status })
+          body: JSON.stringify({
+            status,
+            lat: reading.reading.lat,
+            lng: reading.reading.lng,
+            accuracy: reading.reading.accuracy
+          })
         });
         if (!res.ok) {
           const body = (await res.json().catch(() => null)) as { message?: string } | null;
@@ -265,6 +299,13 @@ export function MusterPage() {
         </div>
       ) : null}
 
+      {isActive && locationConsent === false ? (
+        <ConsentPanel
+          context="muster"
+          onAcknowledged={() => setLocationConsent(true)}
+        />
+      ) : null}
+
       {/* Roll-call table */}
       <section className="s7-card" style={{ padding: 16, marginBottom: 16 }}>
         <h2 className="s7-type-section-heading" style={{ margin: "0 0 12px" }}>Roll call</h2>
@@ -318,7 +359,8 @@ export function MusterPage() {
                           <button
                             type="button"
                             className="s7-btn s7-btn--sm"
-                            disabled={checkingId === att.id || att.status === "ACCOUNTED"}
+                            disabled={checkingId === att.id || att.status === "ACCOUNTED" || locationConsent === false}
+                            title={locationConsent === false ? GPS_HARD_BLOCK_MSG : undefined}
                             onClick={() => void checkAttendee(att.id, "ACCOUNTED")}
                             style={{
                               minHeight: 36,
@@ -332,7 +374,8 @@ export function MusterPage() {
                           <button
                             type="button"
                             className="s7-btn s7-btn--sm"
-                            disabled={checkingId === att.id || att.status === "MISSING"}
+                            disabled={checkingId === att.id || att.status === "MISSING" || locationConsent === false}
+                            title={locationConsent === false ? GPS_HARD_BLOCK_MSG : undefined}
                             onClick={() => void checkAttendee(att.id, "MISSING")}
                             style={{
                               minHeight: 36,

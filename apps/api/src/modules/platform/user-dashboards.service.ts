@@ -93,8 +93,24 @@ export class UserDashboardsService {
 
     const rows = await fetchAll();
 
-    // Case 1: system row already present — nothing to do.
+    // Case 1: system row already present — nothing to do, unless it still carries
+    // the old default name "Operations Overview" (lazy rename to "Home").
     if (rows.some((r) => r.isSystem)) {
+      const sys = rows.find((r) => r.isSystem)!;
+      if (sys.name === "Operations Overview") {
+        await this.prisma.userDashboard.update({
+          where: { id: sys.id },
+          data: { name: "Home" }
+        });
+        await this.audit.write({
+          actorId: userId,
+          action: "userDashboards.ensureSystemDefault",
+          entityType: "UserDashboard",
+          entityId: sys.id,
+          metadata: { slug: "operations", reason: "renamed" }
+        });
+        return fetchAll();
+      }
       return rows;
     }
 
@@ -127,7 +143,7 @@ export class UserDashboardsService {
       const created = await this.prisma.userDashboard.create({
         data: {
           userId,
-          name: "Operations Overview",
+          name: "Home",
           slug: "operations",
           isSystem: true,
           isDefault: false,

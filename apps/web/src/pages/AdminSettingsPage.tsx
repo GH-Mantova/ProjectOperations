@@ -100,9 +100,9 @@ export function AdminSettingsPage() {
           {tab === "access-requests" && <AdminAccessRequestsTab />}
           {tab === "ai" && (
             <IntegrationTab
-              href="/admin/platform"
+              href="/settings/ai"
               label="AI provider configuration"
-              body="Manage Anthropic, Gemini, Groq, and OpenAI API keys and the preferred provider for scope drafting. Personal AI keys live on each user's /account page."
+              body="Manage Anthropic, Gemini, Groq, and OpenAI API keys and the preferred provider for scope drafting."
             />
           )}
           {tab === "integrations" && <IntegrationsKeysTab />}

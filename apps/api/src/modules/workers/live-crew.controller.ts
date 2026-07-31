@@ -1,9 +1,16 @@
-import { BadRequestException, Controller, Get, Query, UseGuards } from "@nestjs/common";
+import { BadRequestException, Controller, Get, NotFoundException, Param, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { LiveCrewService } from "./live-crew.service";
+
+type RequestUser = { sub: string; permissions: string[] };
+
+function actorCtx(user: RequestUser) {
+  return { userId: user.sub, permissions: new Set(user.permissions ?? []) };
+}
 
 /**
  * Live crew map endpoints under /workers/live-crew.
@@ -44,5 +51,28 @@ export class LiveCrewController {
     }
     const limitNum = limit === undefined ? undefined : Number(limit);
     return this.service.nearestWorker(latNum, lngNum, limitNum);
+  }
+
+  // GPS-A2 trail endpoint. No @RequirePermissions — the service enforces
+  // "scheduler.view OR self-worker" itself so both dispatchers (using the
+  // live crew map) and workers (checking their own recorded trail) can hit
+  // the same route.
+  @Get(":workerProfileId/trail")
+  @ApiOperation({
+    summary:
+      "Ordered trail (clock-on pin + breadcrumbs) for the given worker's currently-open shift. Dispatchers (scheduler.view) can read any worker; workers can read only their own."
+  })
+  @ApiResponse({ status: 200, description: "Trail points for the open shift." })
+  @ApiResponse({ status: 403, description: "Not allowed to view another worker's trail." })
+  @ApiResponse({ status: 404, description: "Worker has no open shift right now." })
+  async getTrail(
+    @Param("workerProfileId") workerProfileId: string,
+    @CurrentUser() user: RequestUser
+  ) {
+    const trail = await this.service.getTrail(workerProfileId, actorCtx(user));
+    if (!trail) {
+      throw new NotFoundException("Worker has no open shift right now.");
+    }
+    return trail;
   }
 }

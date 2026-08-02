@@ -1,12 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import type { WidgetProps } from "../types";
 import { KpiTile } from "./shared";
 
 // ── Client Satisfaction KPI tile ────────────────────────────────────────────
 // Shows mean survey score across all responses in the last 30 days,
-// plus total response count. Navigates to /surveys/satisfaction.
+// plus total response count. Renders read-only — the /surveys/satisfaction
+// standalone page was retired (PR #844); the surveys API stays and may return
+// re-specced later, at which point the CTA can be re-added.
 
 type SatisfactionSummary = {
   clientId: string;
@@ -70,9 +71,5 @@ export function ClientSatisfactionKpi(_props: WidgetProps) {
     ? data.meanScore >= 4 ? "#22C55E" : data.meanScore >= 3 ? "#FEAA6D" : "#EF4444"
     : "#94A3B8";
 
-  return (
-    <Link to="/surveys/satisfaction" style={{ textDecoration: "none", color: "inherit", height: "100%", display: "block" }}>
-      <KpiTile label="Client satisfaction" value={value} subtitle={subtitle} accent={accent} />
-    </Link>
-  );
+  return <KpiTile label="Client satisfaction" value={value} subtitle={subtitle} accent={accent} />;
 }

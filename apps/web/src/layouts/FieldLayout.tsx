@@ -15,8 +15,10 @@ const NAV_ITEMS: Array<{ to: string; label: string; icon: string }> = [
   { to: "/field/allocations", label: "Home", icon: "🏠" },
   { to: "/field/pre-start", label: "Pre-Start", icon: "✅" },
   { to: "/field/timesheet", label: "Timesheet", icon: "⏱" },
+  { to: "/field/dockets", label: "Dockets", icon: "📋" },
   { to: "/field/expenses", label: "Expenses", icon: "💵" },
   { to: "/field/documents", label: "Documents", icon: "📄" },
+  { to: "/field/leave", label: "Leave", icon: "🌴" },
   { to: "/field/safety", label: "Safety", icon: "⚠️" }
 ];
 
@@ -24,8 +26,10 @@ const PAGE_TITLES: Record<string, string> = {
   "/field/allocations": "My Jobs",
   "/field/pre-start": "Pre-Start",
   "/field/timesheet": "Timesheet",
+  "/field/dockets": "Dockets",
   "/field/expenses": "Expenses",
   "/field/documents": "Documents",
+  "/field/leave": "Leave",
   "/field/safety": "Safety"
 };
 

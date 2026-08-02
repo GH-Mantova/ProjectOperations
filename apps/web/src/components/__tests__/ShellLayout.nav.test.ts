@@ -123,10 +123,11 @@ describe("ShellLayout nav — 7 approved groups (2026-07-17 restructure)", () =>
     ]);
   });
 
-  it("HR carries Workers, Payroll Export, Timesheet Approval (in order)", () => {
+  it("HR carries Workers, Leave Approvals, Payroll Export, Timesheet Approval (in order)", () => {
     const hr = NAV_GROUPS.find((g) => g.id === "hr");
     expect(hr?.items.map((i) => [i.label, i.to])).toEqual([
       ["Workers", "/workers"],
+      ["Leave Approvals", "/workers/leave-approvals"],
       ["Payroll Export", "/timesheets/payroll-export"],
       ["Timesheet Approval", "/timesheets/approval"]
     ]);
@@ -187,6 +188,9 @@ describe("ShellLayout nav — per-item permission gates", () => {
     // Workers roster hits /workers which requires resources.view (the
     // WorkerProfile entity was carved out of the Resources module).
     { label: "Workers", permission: "resources.view" },
+    // Leave Approvals hits /workers/leave-requests/pending + /decide which
+    // require workers.manage (leave-request.controller.ts:124,135,160).
+    { label: "Leave Approvals", permission: "workers.manage" },
     { label: "Payroll Export", permission: "field.manage" },
     { label: "Timesheet Approval", permission: "field.manage" },
     { label: "Safety", permission: "safety.view" },

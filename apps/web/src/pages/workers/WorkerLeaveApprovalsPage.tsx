@@ -1,6 +1,8 @@
 import { type ReactElement, useCallback, useEffect, useState } from "react";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { can } from "../../auth/permissions";
+import { NoAccess } from "../../components/NoAccess";
 
 type LeaveRequest = {
   id: string;
@@ -32,12 +34,31 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
+// Turn a fetch Response body into a short, readable message. Server responses
+// can be raw text, JSON `{ message: "..." }` (Nest default) or an array of
+// messages (class-validator). Falls back to the HTTP status label so the UI
+// never dumps a JSON blob at the user.
+async function readErrorMessage(resp: Response, fallback: string): Promise<string> {
+  const raw = await resp.text().catch(() => "");
+  if (!raw) return fallback;
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed?.message === "string") return parsed.message;
+    if (Array.isArray(parsed?.message)) return parsed.message.join("; ");
+    if (typeof parsed?.error === "string") return parsed.error;
+  } catch {
+    // not JSON — fall through and use the raw string
+  }
+  return raw.length > 240 ? fallback : raw;
+}
+
 /**
  * Manager approvals surface for leave requests.
  * Shows PENDING requests from the manager's direct reports and an org chart.
  */
 export function WorkerLeaveApprovalsPage() {
-  const { authFetch } = useAuth();
+  const { user, authFetch } = useAuth();
+  const canManage = can(user, "workers.manage");
   const [tab, setTab] = useState<"approvals" | "org">("approvals");
   const [requests, setRequests] = useState<LeaveRequest[] | null>(null);
   const [orgNodes, setOrgNodes] = useState<OrgNode[] | null>(null);
@@ -49,7 +70,9 @@ export function WorkerLeaveApprovalsPage() {
     setError(null);
     try {
       const resp = await authFetch("/workers/leave-requests/pending");
-      if (!resp.ok) throw new Error(await resp.text());
+      if (!resp.ok) {
+        throw new Error(await readErrorMessage(resp, "Could not load pending leave requests."));
+      }
       const body = await resp.json();
       setRequests(Array.isArray(body) ? body : []);
     } catch (err) {
@@ -60,7 +83,9 @@ export function WorkerLeaveApprovalsPage() {
   const loadOrg = useCallback(async () => {
     try {
       const resp = await authFetch("/workers/leave-requests/org-chart");
-      if (!resp.ok) throw new Error(await resp.text());
+      if (!resp.ok) {
+        throw new Error(await readErrorMessage(resp, "Could not load the org chart."));
+      }
       const body = await resp.json();
       setOrgNodes(Array.isArray(body) ? body : []);
     } catch (err) {
@@ -69,12 +94,14 @@ export function WorkerLeaveApprovalsPage() {
   }, [authFetch]);
 
   useEffect(() => {
+    if (!canManage) return;
     void loadRequests();
-  }, [loadRequests]);
+  }, [canManage, loadRequests]);
 
   useEffect(() => {
+    if (!canManage) return;
     if (tab === "org" && !orgNodes) void loadOrg();
-  }, [tab, orgNodes, loadOrg]);
+  }, [canManage, tab, orgNodes, loadOrg]);
 
   const decide = useCallback(
     async (id: string, decision: "APPROVED" | "REJECTED") => {
@@ -86,7 +113,9 @@ export function WorkerLeaveApprovalsPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ decision })
         });
-        if (!resp.ok) throw new Error(await resp.text());
+        if (!resp.ok) {
+          throw new Error(await readErrorMessage(resp, "Could not update this leave request."));
+        }
         setToast(`Request ${decision === "APPROVED" ? "approved" : "rejected"}.`);
         setTimeout(() => setToast(null), 3000);
         await loadRequests();
@@ -98,6 +127,8 @@ export function WorkerLeaveApprovalsPage() {
     },
     [authFetch, loadRequests]
   );
+
+  if (!canManage) return <NoAccess required="workers.manage" />;
 
   // Build a simple tree from org nodes
   function buildOrgTree(nodes: OrgNode[]): Map<string | null, OrgNode[]> {

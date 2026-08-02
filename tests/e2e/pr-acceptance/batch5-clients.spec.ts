@@ -1,5 +1,11 @@
 /**
- * Batch 5 — Clients & master-data workspace (PRs #23, #335, #337)
+ * Batch 5 — Clients workspace (PRs #23, #335, #337)
+ *
+ * Post 2026-08-03 (directory-canonical PR): the unified /directory is the
+ * canonical Clients surface. The legacy /master-data URL now redirects into
+ * /directory?tab=clients; ?tab=sites still renders the master-data Sites
+ * sub-view (SiteSlideOver has AU-postcode validation SiteFormModal lacks)
+ * and ?tab=workers still redirects to /workers.
  *
  * Triage (full table in the PR body)
  * ─────────────────────────────────────────────────────────────────────────────
@@ -34,7 +40,7 @@ const LONG_EMAIL = "daniel.reilly@brisbane.qld.gov.au";
 const SHORT_EMAIL = "sienna.howard@brisbane.qld.gov.au";
 
 async function openClientsTab(page: Page) {
-  await page.goto("/master-data");
+  await page.goto("/directory?tab=clients");
   await expect(page.getByPlaceholder("Search name, code, email")).toBeVisible();
 }
 
@@ -54,14 +60,29 @@ async function createClient(page: Page, name: string) {
   await expect(page.getByRole("heading", { name: "New client", exact: true })).toBeHidden();
 }
 
-test.describe("Batch 5 — Clients & master-data workspace (PRs #23, #335, #337)", () => {
+test.describe("Batch 5 — Clients workspace (PRs #23, #335, #337)", () => {
   test.beforeEach(async ({ page }) => {
     await loginAsAdmin(page);
   });
 
-  test("workers tab redirects to /workers with URL replace", async ({ page }) => {
-    // Land on master-data first so goBack() has a real history entry to test
-    // the replace semantics against (no /master-data?tab=workers in history).
+  test("legacy /master-data redirects into /directory?tab=clients", async ({ page }) => {
+    // Naked URL and ?tab=clients both funnel into the unified Directory.
+    await page.goto("/master-data");
+    await expect(page).toHaveURL(/\/directory\?tab=clients/);
+    await expect(page.getByPlaceholder("Search name, code, email")).toBeVisible();
+
+    await page.goto("/master-data?tab=clients");
+    await expect(page).toHaveURL(/\/directory\?tab=clients/);
+  });
+
+  test("legacy /master-data preserves query params through the redirect", async ({ page }) => {
+    await page.goto("/master-data?highlight=abc");
+    await expect(page).toHaveURL(/\/directory\?tab=clients&highlight=abc/);
+  });
+
+  test("legacy ?tab=workers still redirects to /workers with URL replace", async ({ page }) => {
+    // Land on the canonical clients surface first so goBack() has a real
+    // history entry (no /master-data?tab=workers in history).
     await openClientsTab(page);
     await page.goto("/master-data?tab=workers");
     await expect(page).toHaveURL(/\/workers$/);
@@ -69,25 +90,20 @@ test.describe("Batch 5 — Clients & master-data workspace (PRs #23, #335, #337)
     await expect(page).not.toHaveURL(/tab=workers/);
   });
 
-  test("redirect preserves query params (search passthrough)", async ({ page }) => {
+  test("legacy ?tab=workers preserves query params (search passthrough)", async ({ page }) => {
     await page.goto("/master-data?tab=workers&search=jane");
     await expect(page).toHaveURL(/\/workers\?search=jane$/);
   });
 
-  test("tab param resolution — sites honoured, unknown falls back to Clients", async ({ page }) => {
+  test("legacy ?tab=sites still renders the master-data Sites sub-view", async ({ page }) => {
+    // Kept alive because SiteSlideOver enforces AU-postcode validation the
+    // /sites SiteFormModal does not (see PR body follow-up).
     await page.goto("/master-data?tab=sites");
     await expect(page.getByRole("tab", { name: "Sites", exact: true })).toHaveAttribute(
       "aria-selected",
       "true"
     );
     await expect(page.getByPlaceholder("Search name, code, address, suburb")).toBeVisible();
-
-    await page.goto("/master-data?tab=mystery");
-    await expect(page.getByRole("tab", { name: "Clients", exact: true })).toHaveAttribute(
-      "aria-selected",
-      "true"
-    );
-    await expect(page.getByPlaceholder("Search name, code, email")).toBeVisible();
   });
 
   test("Workers → strip navigates to /workers", async ({ page }) => {
@@ -99,6 +115,12 @@ test.describe("Batch 5 — Clients & master-data workspace (PRs #23, #335, #337)
     await expect(page).toHaveURL(/\/workers/);
     await page.goto("/workers?tab=availability");
     await expect(page.getByText("Workers in scope")).toBeVisible();
+  });
+
+  test("unknown tab redirects into /directory?tab=clients", async ({ page }) => {
+    await page.goto("/master-data?tab=mystery");
+    await expect(page).toHaveURL(/\/directory\?tab=clients/);
+    await expect(page.getByPlaceholder("Search name, code, email")).toBeVisible();
   });
 
   test("clients list — seeded data, search, status filter, cards/table toggle", async ({ page }) => {

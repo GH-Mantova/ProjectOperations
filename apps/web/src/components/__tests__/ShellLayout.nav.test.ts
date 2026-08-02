@@ -150,15 +150,15 @@ describe("ShellLayout nav — 7 approved groups (2026-07-17 restructure)", () =>
     }
   });
 
-  it("the Tenders active-match rule does not swallow contacts/reports (and settings is deleted)", () => {
+  it("the Tenders active-match rule does not swallow contacts (and settings/reports are deleted)", () => {
     const tenders = allItems.find((i) => i.to === "/tenders" && i.label === "Tenders");
     expect(tenders).toBeDefined();
     expect(tenders?.match).toBeDefined();
     expect(tenders!.match!("/tenders")).toBe(true);
     expect(tenders!.match!("/tenders/contacts")).toBe(false);
-    expect(tenders!.match!("/tenders/reports")).toBe(false);
-    // /tenders/settings no longer exists as a route (deleted by PR #841); the
-    // match falling through here is harmless because the sidebar entry is gone.
+    // /tenders/settings and /tenders/reports no longer exist as routes (deleted
+    // by PR #841 and PR #844); the match falling through them is harmless
+    // because neither renders a page nor has a sidebar entry.
   });
 });
 

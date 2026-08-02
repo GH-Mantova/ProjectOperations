@@ -4,11 +4,12 @@ export type MasterDataTabResolution =
   | { kind: "tab"; tab: MasterDataTab }
   | { kind: "redirect"; to: string };
 
-const WORKERS_REDIRECT_PATH = "/resources";
+const WORKERS_REDIRECT_PATH = "/workers";
 
-// `?tab=workers` is a legacy deep-link — workers actually live at /resources
-// (the master-data tab strip already links there). Redirect rather than silently
-// rewrite the URL, so external links remain meaningful.
+// `?tab=workers` is a legacy deep-link — the standalone /resources page was
+// retired (PR #844) and workers now live at /workers with tabbed sub-views.
+// Redirect rather than silently rewrite the URL, so external links remain
+// meaningful.
 export function resolveMasterDataTab(
   searchParams: URLSearchParams
 ): MasterDataTabResolution {

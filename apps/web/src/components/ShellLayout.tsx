@@ -177,9 +177,7 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: ICON_TENDERING,
         match: (path) =>
           path === "/tenders" ||
-          (path.startsWith("/tenders/") &&
-            !path.startsWith("/tenders/reports") &&
-            !path.startsWith("/tenders/contacts")),
+          (path.startsWith("/tenders/") && !path.startsWith("/tenders/contacts")),
         requiresPermission: "tenders.view"
       },
       {
@@ -378,10 +376,8 @@ const BREADCRUMBS: Record<string, string> = {
   "/scheduler": "Scheduler",
   "/forms": "Forms",
   "/tenders": "Tendering",
-  "/tenders/reports": "Tender Reports",
   "/workers": "Workers",
   "/workers/live-crew": "Live crew map",
-  "/resources": "Workers (legacy)",
   "/assets": "Assets",
   "/inventory": "Inventory",
   "/procurement": "Procurement",
@@ -401,8 +397,6 @@ const BREADCRUMBS: Record<string, string> = {
   "/compliance": "Compliance",
   "/dockets": "Dockets",
   "/archive": "Archive",
-  "/surveys/capture": "Survey Capture",
-  "/surveys/satisfaction": "Client Satisfaction",
   // /dashboards itself redirects, but /dashboards/:id renders — keep the
   // prefix so custom dashboards get "Dashboards" in the topbar.
   "/dashboards": "Dashboards",

@@ -5,11 +5,11 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * PR   | Item (truncated)                                    | Decision
  * -----|-----------------------------------------------------|-----------------
- * #337 | ?tab=workers → /resources, replace, back ≠ workers  | CONVERT → "workers tab redirects"
- * #337 | ?tab=workers&search=jane → /resources?search=jane   | CONVERT → "redirect preserves query params"
+ * #337 | ?tab=workers → /workers, replace, back ≠ workers    | CONVERT → "workers tab redirects"
+ * #337 | ?tab=workers&search=jane → /workers?search=jane     | CONVERT → "redirect preserves query params"
  * #337 | ?tab=sites still shows Sites tab                    | CONVERT → "tab param resolution"
  * #337 | ?tab=mystery falls back to Clients                  | CONVERT → "tab param resolution"
- * #337 | Workers → strip navigates to /resources             | CONVERT → "Workers strip navigates"
+ * #337 | Workers → strip navigates to /workers               | CONVERT → "Workers strip navigates"
  * #335 | Open client with long-email contact                 | CONVERT → "contacts email title tooltip"
  * #335 | Open Contacts tab in client drawer                  | CONVERT → same test
  * #335 | Long emails truncate with ellipsis at ~220px        | CONVERT (title-attr assertion per batch
@@ -59,19 +59,19 @@ test.describe("Batch 5 — Clients & master-data workspace (PRs #23, #335, #337)
     await loginAsAdmin(page);
   });
 
-  test("workers tab redirects to /resources with URL replace", async ({ page }) => {
+  test("workers tab redirects to /workers with URL replace", async ({ page }) => {
     // Land on master-data first so goBack() has a real history entry to test
     // the replace semantics against (no /master-data?tab=workers in history).
     await openClientsTab(page);
     await page.goto("/master-data?tab=workers");
-    await expect(page).toHaveURL(/\/resources$/);
+    await expect(page).toHaveURL(/\/workers$/);
     await page.goBack();
     await expect(page).not.toHaveURL(/tab=workers/);
   });
 
   test("redirect preserves query params (search passthrough)", async ({ page }) => {
     await page.goto("/master-data?tab=workers&search=jane");
-    await expect(page).toHaveURL(/\/resources\?search=jane$/);
+    await expect(page).toHaveURL(/\/workers\?search=jane$/);
   });
 
   test("tab param resolution — sites honoured, unknown falls back to Clients", async ({ page }) => {
@@ -90,10 +90,10 @@ test.describe("Batch 5 — Clients & master-data workspace (PRs #23, #335, #337)
     await expect(page.getByPlaceholder("Search name, code, email")).toBeVisible();
   });
 
-  test("Workers → strip navigates to /resources", async ({ page }) => {
+  test("Workers → strip navigates to /workers", async ({ page }) => {
     await openClientsTab(page);
     await page.getByRole("tab", { name: "Workers" }).click();
-    // §9 fold: Resources is absorbed into Workers — the tab now lands on /workers.
+    // §9 fold + PR #844: standalone /resources retired; Workers tab lands on /workers.
     // The KPI strip only renders on non-Roster tabs (Availability et al.), so
     // switch to that tab before asserting the KPI text.
     await expect(page).toHaveURL(/\/workers/);

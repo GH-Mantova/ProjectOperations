@@ -17,16 +17,16 @@ describe("resolveMasterDataTab", () => {
     expect(result).toEqual({ kind: "tab", tab: "clients" });
   });
 
-  it("redirects ?tab=workers to /resources rather than silently rewriting the URL", () => {
+  it("redirects ?tab=workers to /workers rather than silently rewriting the URL", () => {
     const result = resolveMasterDataTab(new URLSearchParams("tab=workers"));
-    expect(result).toEqual({ kind: "redirect", to: "/resources" });
+    expect(result).toEqual({ kind: "redirect", to: "/workers" });
   });
 
   it("preserves other query params when redirecting workers", () => {
     const result = resolveMasterDataTab(new URLSearchParams("tab=workers&search=jane&status=ACTIVE"));
     expect(result.kind).toBe("redirect");
     if (result.kind !== "redirect") return;
-    expect(result.to.startsWith("/resources?")).toBe(true);
+    expect(result.to.startsWith("/workers?")).toBe(true);
     const query = new URLSearchParams(result.to.split("?")[1]);
     expect(query.get("search")).toBe("jane");
     expect(query.get("status")).toBe("ACTIVE");

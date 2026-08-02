@@ -13,11 +13,9 @@ import { PermissionsPage } from "./pages/PermissionsPage";
 import { AuditLogsPage } from "./pages/AuditLogsPage";
 import { PlatformPage } from "./pages/PlatformPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
-import { ResourcesPage } from "./pages/ResourcesPage";
 import { ArchiveDetailPage } from "./pages/archive/ArchiveDetailPage";
 import { TenderingPage } from "./pages/tendering/TenderingPage";
 import { TenderDetailPage } from "./pages/tendering/TenderDetailPage";
-import { TenderingReportsPage } from "./pages/tendering/TenderingReportsPage";
 import { JobsListPage } from "./pages/jobs/JobsListPage";
 import { JobDetailPage } from "./pages/jobs/JobDetailPage";
 import { ProjectsListPage } from "./pages/projects/ProjectsListPage";
@@ -99,8 +97,6 @@ import { OfflineProvider } from "./offline/OfflineContext";
 import { OfflineIndicator } from "./offline/OfflineIndicator";
 import { InstallPrompt } from "./offline/InstallPrompt";
 import { UpdatePromptToast } from "./pwa/UpdatePromptToast";
-import { SurveyCaptureFormPage } from "./pages/surveys/SurveyCaptureFormPage";
-import { ClientSatisfactionPage } from "./pages/surveys/ClientSatisfactionPage";
 import { ConfirmProvider } from "./hooks/useConfirm";
 
 function ProtectedRoute() {
@@ -294,7 +290,6 @@ export function App() {
                 them directly, but the routes now feed the tabbed page. */}
             <Route path="/tenders/clients" element={<QueryPreservingRedirect to="/directory?tab=clients" />} />
             <Route path="/tenders/contacts" element={<QueryPreservingRedirect to="/directory?tab=contacts" />} />
-            <Route path="/tenders/reports" element={<TenderingReportsPage />} />
             <Route path="/tenders/:id" element={<TenderDetailPage />} />
             <Route path="/tenders/:id/scope" element={<TenderDetailPage />} />
             <Route path="/tenders/:id/quote" element={<TenderDetailPage />} />
@@ -311,7 +306,6 @@ export function App() {
             <Route path="/workers/live-crew" element={<LiveCrewMapPage />} />
             <Route path="/workers/leave-approvals" element={<WorkerLeaveApprovalsPage />} />
             <Route path="/workers/:id" element={<WorkerDetailPage />} />
-            <Route path="/resources" element={<ResourcesPage />} />
             <Route path="/assets" element={<AssetsListPage />} />
             <Route path="/assets/:id" element={<AssetDetailPage />} />
             <Route path="/inventory" element={<InventoryPage />} />
@@ -463,8 +457,6 @@ export function App() {
                 detail route stays; JobDetailPage links straight into it. */}
             <Route path="/archive" element={<QueryPreservingRedirect to="/documents?tab=archived" />} />
             <Route path="/archive/:jobId" element={<ArchiveDetailPage />} />
-            <Route path="/surveys/capture" element={<SurveyCaptureFormPage />} />
-            <Route path="/surveys/satisfaction" element={<ClientSatisfactionPage />} />
           </Route>
         </Route>
           <Route path="*" element={<NotFoundPage />} />

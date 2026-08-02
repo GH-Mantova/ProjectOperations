@@ -124,6 +124,17 @@ export class CompanyProfileController {
     return this.service.getProfile();
   }
 
+  @Post("profile")
+  @RequirePermissions("platform.admin")
+  @ApiOperation({
+    summary:
+      "Bootstrap the company profile singleton on a fresh environment. Idempotent: returns the existing profile if one is already present. Super-user only."
+  })
+  bootstrapProfile(@Req() req: AuthenticatedRequest) {
+    this.service.assertSuperUser(req.user);
+    return this.service.bootstrapProfile(req.user!.sub);
+  }
+
   @Patch("profile")
   @RequirePermissions("platform.admin")
   @ApiOperation({

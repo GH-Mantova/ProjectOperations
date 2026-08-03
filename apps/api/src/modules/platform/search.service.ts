@@ -150,7 +150,7 @@ export class SearchService {
           entityId: c.id,
           title: c.name,
           subtitle: c.code ? `${c.code} • ${c.status}` : c.status,
-          url: `/master-data?tab=clients&highlight=${encodeURIComponent(c.id)}`
+          url: `/directory?tab=clients&highlight=${encodeURIComponent(c.id)}`
         });
       }
     }

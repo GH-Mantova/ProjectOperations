@@ -4,6 +4,7 @@ import { CenteredModal, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
 import { ResourcesPage, type ResourcesSection } from "../ResourcesPage";
+import { useHighlightParam } from "../../hooks/useHighlightParam";
 
 type WorkersTab = "roster" | "availability" | "suitability" | "competencies";
 
@@ -97,6 +98,7 @@ function WorkersRosterTab() {
   const [activeOnly, setActiveOnly] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const { registerHighlightRef, isHighlighted } = useHighlightParam();
 
   const canManage = useMemo(() => can(user, "resources.manage"), [user]);
 
@@ -199,7 +201,11 @@ function WorkersRosterTab() {
             </thead>
             <tbody>
               {data.items.map((worker) => (
-                <tr key={worker.id}>
+                <tr
+                  key={worker.id}
+                  ref={registerHighlightRef(worker.id)}
+                  className={isHighlighted(worker.id) ? "search-highlight" : undefined}
+                >
                   <td>
                     <Link
                       to={`/workers/${worker.id}`}

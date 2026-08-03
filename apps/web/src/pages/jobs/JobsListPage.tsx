@@ -6,6 +6,7 @@ import { JOB_STATUS_LABELS } from "../../constants/statuses";
 import { progressPercent } from "./jobsListLogic";
 import { ViewSwitcher, useViewSwitcher } from "../../components/ViewSwitcher";
 import { JobsKanbanView } from "./JobsKanbanView";
+import { useHighlightParam } from "../../hooks/useHighlightParam";
 
 type JobListItem = {
   id: string;
@@ -68,6 +69,7 @@ export function JobsListPage() {
     dateFrom: "",
     dateTo: ""
   });
+  const { registerHighlightRef, isHighlighted } = useHighlightParam();
 
   const reload = async () => {
     setLoading(true);
@@ -266,7 +268,12 @@ export function JobsListPage() {
             filtered.map((job) => {
               const percent = progressPercent(job);
               return (
-                <Link key={job.id} to={`/jobs/${job.id}`} className="jobs-card">
+                <Link
+                  key={job.id}
+                  to={`/jobs/${job.id}`}
+                  className={`jobs-card${isHighlighted(job.id) ? " search-highlight" : ""}`}
+                  ref={registerHighlightRef(job.id)}
+                >
                   <div className="jobs-card__head">
                     <span className="jobs-card__number">{job.jobNumber}</span>
                     <span className={STATUS_CLASS[job.status] ?? "s7-badge s7-badge--neutral"}>
@@ -336,7 +343,8 @@ export function JobsListPage() {
                   return (
                     <tr
                       key={job.id}
-                      className="s7-table__row--clickable"
+                      ref={registerHighlightRef(job.id)}
+                      className={`s7-table__row--clickable${isHighlighted(job.id) ? " search-highlight" : ""}`}
                       onClick={() => navigate(`/jobs/${job.id}`)}
                     >
                       <td><strong>{job.jobNumber}</strong></td>

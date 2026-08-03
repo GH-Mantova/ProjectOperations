@@ -16,7 +16,8 @@ function buildService(extraPrisma: Record<string, unknown> = {}) {
   const prisma: Record<string, unknown> = {
     companyProfile: {
       findUnique: jest.fn(),
-      update: jest.fn()
+      update: jest.fn(),
+      create: jest.fn()
     },
     companyLegalDocument: {
       findFirst: jest.fn(),
@@ -88,6 +89,76 @@ describe("CompanyProfileService.getProfile", () => {
       expect.arrayContaining(["whsOfficerUserId", "logoLightUrl", "pdfLetterheadUrl"])
     );
     expect(result.completeness.usingDefaultIdentity).toBe(true);
+  });
+});
+
+describe("CompanyProfileService.bootstrapProfile", () => {
+  it("creates the singleton with seed defaults when no profile exists", async () => {
+    const { service, prisma, auditWrite } = buildService();
+    const findUniqueMock = (prisma.companyProfile as { findUnique: jest.Mock }).findUnique;
+    const createMock = (prisma.companyProfile as { create: jest.Mock }).create;
+
+    const seededRow = {
+      id: COMPANY_PROFILE_ID,
+      legalName: "Initial Services Group Pty Ltd",
+      tradingName: "Initial Services",
+      abn: "75 631 222 556",
+      primaryEmail: "admin@initialservices.net",
+      primaryPhone: "(07) 3888 0539",
+      registeredAddressLine1: "10 Grice St",
+      registeredSuburb: "Clontarf",
+      registeredState: "QLD",
+      registeredPostcode: "4019",
+      whsOfficerUserId: null,
+      logoLightUrl: null,
+      pdfLetterheadUrl: null,
+      whsOfficer: null
+    };
+    findUniqueMock
+      .mockResolvedValueOnce(null) // initial bootstrap probe
+      .mockResolvedValueOnce(seededRow); // getProfile() at the end
+    createMock.mockResolvedValueOnce(seededRow);
+
+    const result = await service.bootstrapProfile("actor-1");
+
+    expect(createMock).toHaveBeenCalledTimes(1);
+    const createArgs = createMock.mock.calls[0][0];
+    expect(createArgs.data.id).toBe(COMPANY_PROFILE_ID);
+    expect(createArgs.data.legalName).toBe("Initial Services Group Pty Ltd");
+    expect(createArgs.data.tradingName).toBe("Initial Services");
+    expect(createArgs.data.updatedById).toBe("actor-1");
+    expect(auditWrite).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: "actor-1",
+        action: "companyProfile.bootstrap",
+        entityType: "CompanyProfile",
+        entityId: COMPANY_PROFILE_ID
+      })
+    );
+    expect(result.id).toBe(COMPANY_PROFILE_ID);
+  });
+
+  it("returns the existing singleton without creating a duplicate (idempotent)", async () => {
+    const { service, prisma, auditWrite } = buildService();
+    const findUniqueMock = (prisma.companyProfile as { findUnique: jest.Mock }).findUnique;
+    const createMock = (prisma.companyProfile as { create: jest.Mock }).create;
+
+    const existing = {
+      id: COMPANY_PROFILE_ID,
+      legalName: "Another Company Pty Ltd",
+      tradingName: "Another Co",
+      whsOfficer: null
+    };
+    findUniqueMock
+      .mockResolvedValueOnce(existing) // bootstrap probe finds row
+      .mockResolvedValueOnce(existing); // getProfile() at the end
+
+    const result = await service.bootstrapProfile("actor-1");
+
+    expect(createMock).not.toHaveBeenCalled();
+    expect(auditWrite).not.toHaveBeenCalled();
+    expect(result.id).toBe(COMPANY_PROFILE_ID);
+    expect(result.legalName).toBe("Another Company Pty Ltd");
   });
 });
 

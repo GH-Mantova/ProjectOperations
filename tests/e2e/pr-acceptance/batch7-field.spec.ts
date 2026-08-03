@@ -68,7 +68,7 @@ test.describe("Batch 7 — Field mobile experience (PRs #41, #42, #338)", () => 
     geolocation: { latitude: -27.4698, longitude: 153.0251 } // Brisbane CBD
   });
 
-  test("FieldLayout at 390px — bottom nav with 5 items, 64px bar, 44px+ touch targets", async ({
+  test("FieldLayout at 390px — bottom nav, 64px bar, 44px+ touch targets", async ({
     page
   }) => {
     await loginAsFieldWorker(page);
@@ -77,7 +77,16 @@ test.describe("Batch 7 — Field mobile experience (PRs #41, #42, #338)", () => 
 
     const nav = page.getByRole("navigation", { name: "Field navigation" });
     await expect(nav).toBeVisible();
-    for (const label of ["Home", "Pre-Start", "Timesheet", "Documents", "Safety"]) {
+    for (const label of [
+      "Home",
+      "Pre-Start",
+      "Timesheet",
+      "Dockets",
+      "Expenses",
+      "Documents",
+      "Leave",
+      "Safety"
+    ]) {
       await expect(nav.getByRole("link", { name: label })).toBeVisible();
     }
     const navBox = await nav.boundingBox();

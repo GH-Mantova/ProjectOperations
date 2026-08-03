@@ -243,13 +243,13 @@ test.describe("Batch 3 — Scope of Works items (PRs #43, #44, #60, #72, #175, #
     }
   });
 
-  // QUARANTINED 2026-07-20 - flaky, not broken. Failed then PASSED on the identical sha
-  // on a docs-only PR (2026-07-19). tendering-e2e is a required check on a serialised
-  // merge path, so one flake here blocks every queued PR. Tracked in BACKLOG.yaml as
-  // flaky-batch3-plant-pills. Re-enable ONLY with a fix for the underlying race - the
-  // suspected cause is the same class as flaky-batch5-sites-post-delete-race: an
-  // assertion that proceeds before the list has settled.
-  test.skip("plant pills: add a plant cluster, set qty/days, remove it (PRs #241, #72)", async ({
+  // De-quarantined 2026-08-03 — flake root cause was two racing PATCHes on the
+  // same scope-item: the qty/days blur PATCH and the "Remove Plant" PATCH could
+  // arrive at the server in either order, and if the qty/days PATCH landed
+  // second the removed plant was resurrected. Each mutating step now waits on
+  // its scope-item PATCH response before dispatching the next, which serialises
+  // the client and eliminates the race.
+  test("plant pills: add a plant cluster, set qty/days, remove it (PRs #241, #72)", async ({
     page,
     request
   }) => {
@@ -264,17 +264,35 @@ test.describe("Batch 3 — Scope of Works items (PRs #43, #44, #60, #72, #175, #
       await openScopeTab(page);
       const article = await expandItem(page, desc);
 
+      const isScopeItemPatch = (r: import("@playwright/test").Response) =>
+        r.request().method() === "PATCH" &&
+        /\/tenders\/[^/]+\/scope\/items\/[^/]+(?:\?|$)/.test(r.url());
+
       await article.getByRole("button", { name: "+ Plant" }).click();
       const plantSelect = article.getByLabel("Plant 1 rate");
       await expect(plantSelect).toBeVisible();
       // First real option (index 0 is the "—" placeholder) — seeded plant
       // rate names embed seed-dependent labels, so select by position.
+      const ratePatch = page.waitForResponse(isScopeItemPatch);
       await plantSelect.selectOption({ index: 1 });
+      expect((await ratePatch).ok()).toBeTruthy();
+
       await article.getByPlaceholder("qty").fill("2");
+
+      // Focusing days blurs qty, firing the qty-persist PATCH. Wait for it
+      // before triggering the days PATCH so patchItem's refetch has landed
+      // and item.plantItems includes qty=2 when the days-blur handler runs.
+      const qtyPatch = page.waitForResponse(isScopeItemPatch);
       await article.getByPlaceholder("days").fill("1.5");
+      expect((await qtyPatch).ok()).toBeTruthy();
+
+      const daysPatch = page.waitForResponse(isScopeItemPatch);
       await article.getByPlaceholder("days").blur();
+      expect((await daysPatch).ok()).toBeTruthy();
 
       // Pill row re-renders cleanly after removal (PR #241 state isolation).
+      // The remove PATCH must not fire until the days PATCH above has
+      // resolved, or a late-arriving days PATCH will resurrect the plant.
       await article.getByRole("button", { name: "Remove Plant 1" }).click();
       await expect(article.getByLabel("Plant 1 rate")).toHaveCount(0);
       await expect(article.getByRole("button", { name: "+ Plant" })).toBeVisible();

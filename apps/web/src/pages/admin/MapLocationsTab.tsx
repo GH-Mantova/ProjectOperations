@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { AddressAutocomplete, type AddressSuggestion } from "../../components/AddressAutocomplete";
 import { LocationsMap } from "../../components/LocationsMap";
+import { useConfirm } from "../../hooks/useConfirm";
 import { TipFinderPanel } from "./TipFinderPanel";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -136,6 +137,7 @@ function blankAddress(): AddressFields {
 
 export function MapLocationsTab() {
   const { authFetch } = useAuth();
+  const confirm = useConfirm();
   const [filter, setFilter] = useState<"all" | "TIP" | "POI">("all");
   const [locations, setLocations] = useState<MapLocation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -223,7 +225,12 @@ export function MapLocationsTab() {
   };
 
   const handleDelete = async (loc: MapLocation) => {
-    if (!window.confirm(`Deactivate "${loc.name}"?`)) return;
+    const ok = await confirm({
+      title: "Deactivate location",
+      message: `Deactivate "${loc.name}"?`,
+      variant: "danger"
+    });
+    if (!ok) return;
     try {
       const res = await authFetch(`/map-locations/${loc.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error(await res.text());

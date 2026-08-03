@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { useConfirm } from "../../hooks/useConfirm";
 
 type MilestoneTrigger = "DATE" | "PERCENT_COMPLETE" | "EVENT";
 type MilestoneAmountType = "FIXED" | "PERCENT_OF_CONTRACT";
@@ -74,6 +75,7 @@ export function BillingTab({
   onRefresh: () => Promise<void> | void;
 }) {
   const { authFetch } = useAuth();
+  const confirm = useConfirm();
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [revRec, setRevRec] = useState<RevRec | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -141,7 +143,12 @@ export function BillingTab({
   };
 
   const deleteMilestone = async (m: Milestone) => {
-    if (!window.confirm(`Delete milestone "${m.name}"?`)) return;
+    const ok = await confirm({
+      title: "Delete milestone",
+      message: `Delete milestone "${m.name}"?`,
+      variant: "danger"
+    });
+    if (!ok) return;
     try {
       const response = await authFetch(`/contracts/${contractId}/milestones/${m.id}`, { method: "DELETE" });
       if (!response.ok) throw new Error(await response.text());

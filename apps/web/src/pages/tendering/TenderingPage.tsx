@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useHighlightParam } from "../../hooks/useHighlightParam";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { useConfirm } from "../../hooks/useConfirm";
@@ -335,6 +336,7 @@ export function TenderingPage() {
   } | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const canManage = can(user, "tenders.manage");
+  const { registerHighlightRef, isHighlighted } = useHighlightParam();
 
   const canUseView: View = view;
 
@@ -723,6 +725,8 @@ export function TenderingPage() {
                 onOpen={(id) => navigate(`/tenders/${id}`)}
                 onDelete={canManage ? startDelete : undefined}
                 canManage={canManage}
+                registerHighlightRef={registerHighlightRef}
+                isHighlighted={isHighlighted}
               />
             );
           })}
@@ -755,6 +759,8 @@ export function TenderingPage() {
           onQuickEdit={(t) => setQuickEditTarget(t)}
           onDelete={startDelete}
           onNewTender={() => setNewOpen(true)}
+          registerHighlightRef={registerHighlightRef}
+          isHighlighted={isHighlighted}
         />
       )}
 
@@ -924,6 +930,8 @@ type RegisterViewProps = {
   onQuickEdit: (tender: TenderListItem) => void;
   onDelete: (tender: TenderListItem) => void;
   onNewTender: () => void;
+  registerHighlightRef: (id: string) => (el: HTMLElement | null) => void;
+  isHighlighted: (id: string) => boolean;
 };
 
 function RegisterView(props: RegisterViewProps) {
@@ -953,7 +961,9 @@ function RegisterView(props: RegisterViewProps) {
     onOpen,
     onQuickEdit,
     onDelete,
-    onNewTender
+    onNewTender,
+    registerHighlightRef,
+    isHighlighted
   } = props;
 
   const [advancedOpen, setAdvancedOpen] = useState(
@@ -1092,6 +1102,8 @@ function RegisterView(props: RegisterViewProps) {
                   onQuickEdit={() => onQuickEdit(tender)}
                   onDelete={() => onDelete(tender)}
                   canManage={canManage}
+                  highlightRef={registerHighlightRef(tender.id)}
+                  highlighted={isHighlighted(tender.id)}
                 />
               ))
             )}
@@ -1634,7 +1646,9 @@ function RegisterRow({
   onOpen,
   onQuickEdit,
   onDelete,
-  canManage
+  canManage,
+  highlightRef,
+  highlighted
 }: {
   tender: TenderListItem;
   visibleColumns: ColumnKey[];
@@ -1644,6 +1658,8 @@ function RegisterRow({
   onQuickEdit: () => void;
   onDelete: () => void;
   canManage: boolean;
+  highlightRef: (el: HTMLElement | null) => void;
+  highlighted: boolean;
 }) {
   const clients = tender.tenderClients.map((tc) => tc.client.name).join(", ") || "—";
   const [hover, setHover] = useState(false);
@@ -1700,7 +1716,8 @@ function RegisterRow({
 
   return (
     <tr
-      className="s7-table__row--clickable"
+      ref={highlightRef}
+      className={`s7-table__row--clickable${highlighted ? " search-highlight" : ""}`}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
@@ -1997,9 +2014,11 @@ type KanbanColumnProps = {
   onOpen: (tenderId: string) => void;
   onDelete?: (tender: TenderListItem) => void;
   canManage?: boolean;
+  registerHighlightRef: (id: string) => (el: HTMLElement | null) => void;
+  isHighlighted: (id: string) => boolean;
 };
 
-function KanbanColumn({ stage, items, total, loading, onDrop, onOpen, onDelete, canManage }: KanbanColumnProps) {
+function KanbanColumn({ stage, items, total, loading, onDrop, onOpen, onDelete, canManage, registerHighlightRef, isHighlighted }: KanbanColumnProps) {
   const [dragOver, setDragOver] = useState(false);
   return (
     <div
@@ -2041,6 +2060,8 @@ function KanbanColumn({ stage, items, total, loading, onDrop, onOpen, onDelete, 
               onOpen={() => onOpen(tender.id)}
               onDelete={() => onDelete?.(tender)}
               canManage={canManage}
+              highlightRef={registerHighlightRef(tender.id)}
+              highlighted={isHighlighted(tender.id)}
             />
           ))
         )}
@@ -2054,15 +2075,18 @@ type TenderCardProps = {
   onOpen: () => void;
   onDelete?: () => void;
   canManage?: boolean;
+  highlightRef: (el: HTMLElement | null) => void;
+  highlighted: boolean;
 };
 
-function TenderCard({ tender, onOpen, onDelete, canManage }: TenderCardProps) {
+function TenderCard({ tender, onOpen, onDelete, canManage, highlightRef, highlighted }: TenderCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const clients = tender.tenderClients.map((tc) => tc.client.name).join(", ");
   const assignee = tender.estimator ? `${tender.estimator.firstName} ${tender.estimator.lastName}` : null;
   return (
     <article
-      className="tender-card"
+      ref={highlightRef}
+      className={`tender-card${highlighted ? " search-highlight" : ""}`}
       draggable
       onDragStart={(event) => {
         event.dataTransfer.setData("text/tender-id", tender.id);

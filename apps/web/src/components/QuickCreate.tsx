@@ -44,7 +44,7 @@ const ITEMS: QuickCreateItem[] = [
   {
     key: "client",
     label: "Client",
-    to: "/master-data?tab=clients&new=1",
+    to: "/directory?tab=clients&new=1",
     permission: "directory.manage",
     icon: (
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

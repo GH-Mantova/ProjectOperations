@@ -3,9 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ContactsTab } from "../../components/contacts/ContactsTab";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
-import { resolveMasterDataTab, type MasterDataTab } from "./master-data-tab-helpers";
-
-type Tab = MasterDataTab;
+import { resolveMasterDataTab } from "./master-data-tab-helpers";
 
 type Client = {
   id: string;
@@ -39,12 +37,16 @@ const STATUS_CLASS: Record<string, string> = {
   ARCHIVED: "s7-badge s7-badge--warning"
 };
 
+// Legacy shim: only the Sites sub-view still renders here. Clients moved to
+// the unified /directory (Marco ruling 2026-08-03); resolveMasterDataTab
+// redirects the naked route, ?tab=clients, and unknown values there. Kept
+// alive because the SiteSlideOver below enforces AU-postcode validation the
+// /sites SiteFormModal does not — follow-up: port validation, then delete.
 export function MasterDataWorkspacePage() {
-  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { authFetch } = useAuth();
+  const [searchParams] = useSearchParams();
   const resolution = resolveMasterDataTab(searchParams);
-  const isWorkersRedirect = resolution.kind === "redirect";
   const redirectTo = resolution.kind === "redirect" ? resolution.to : null;
 
   useEffect(() => {
@@ -53,47 +55,33 @@ export function MasterDataWorkspacePage() {
     }
   }, [redirectTo, navigate]);
 
-  const [tab, setTab] = useState<Tab>(resolution.kind === "tab" ? resolution.tab : "clients");
-
-  useEffect(() => {
-    if (isWorkersRedirect) return;
-    if (tab !== searchParams.get("tab")) {
-      const next = new URLSearchParams(searchParams);
-      next.set("tab", tab);
-      setSearchParams(next, { replace: true });
-    }
-  }, [tab, searchParams, setSearchParams, isWorkersRedirect]);
-
-  if (isWorkersRedirect) return null;
+  if (resolution.kind === "redirect") return null;
 
   return (
     <div className="mdata-page">
       <header className="workers-page__header">
         <div>
           <p className="s7-type-label">Data</p>
-          <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>
-            {tab === "clients" ? "Clients" : tab === "sites" ? "Sites" : "Contacts"}
-          </h1>
+          <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>Sites</h1>
         </div>
         <div className="tender-page__view-toggle" role="tablist">
           <button
             type="button"
             role="tab"
-            aria-selected={tab === "clients"}
-            className={tab === "clients" ? "tender-page__view-btn tender-page__view-btn--active" : "tender-page__view-btn"}
-            onClick={() => setTab("clients")}
-          >
-            Clients
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "sites"}
-            className={tab === "sites" ? "tender-page__view-btn tender-page__view-btn--active" : "tender-page__view-btn"}
-            onClick={() => setTab("sites")}
+            aria-selected
+            className="tender-page__view-btn tender-page__view-btn--active"
           >
             Sites
           </button>
+          <Link
+            to="/directory?tab=clients"
+            className="tender-page__view-btn"
+            role="tab"
+            aria-selected={false}
+            title="Clients live in the Directory workspace"
+          >
+            Clients →
+          </Link>
           <Link
             to="/workers"
             className="tender-page__view-btn"
@@ -106,8 +94,7 @@ export function MasterDataWorkspacePage() {
         </div>
       </header>
 
-      {tab === "clients" ? <ClientsTab authFetch={authFetch} /> : null}
-      {tab === "sites" ? <SitesTab authFetch={authFetch} /> : null}
+      <SitesTab authFetch={authFetch} />
     </div>
   );
 }
@@ -618,6 +605,7 @@ function ClientSlideOver({ existing, onClose, onSaved }: ClientSlideOverProps) {
           <nav
             className="tender-detail__tabs"
             role="tablist"
+            aria-label="Client detail"
             style={{ display: "flex", gap: 4, padding: "8px 16px 0", borderBottom: "1px solid var(--border, #e5e7eb)" }}
           >
             <button

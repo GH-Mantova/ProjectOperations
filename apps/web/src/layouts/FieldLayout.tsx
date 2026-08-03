@@ -26,7 +26,8 @@ const PAGE_TITLES: Record<string, string> = {
   "/field/timesheet": "Timesheet",
   "/field/expenses": "Expenses",
   "/field/documents": "Documents",
-  "/field/safety": "Safety"
+  "/field/safety": "Safety",
+  "/field/notifications": "Notifications"
 };
 
 export function FieldLayout() {
@@ -90,7 +91,7 @@ export function FieldLayout() {
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <Link
-            to="/notifications"
+            to="/field/notifications"
             aria-label="Notifications"
             style={{
               width: 44,

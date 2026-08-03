@@ -162,10 +162,7 @@ const ICON_EXPAND = (
 // Sidebar structure — 7 approved groups (Marco 2026-07-17). The Dashboards
 // group is rendered separately in ShellLayout (it owns the "+ new dashboard"
 // affordance and the dynamic list of user-created dashboards); NAV_GROUPS
-// carries the other six. This PR only changes menu structure/labels/ordering
-// and role gating — routes are unchanged (Directory still points at
-// /master-data, Rates & Lists at /admin/rates-lists, etc.). Later staged PRs
-// will move/merge pages behind these menu entries.
+// carries the other six.
 export const NAV_GROUPS: NavGroup[] = [
   {
     id: "estimating",
@@ -191,14 +188,16 @@ export const NAV_GROUPS: NavGroup[] = [
         requiresPermission: "finance.view"
       },
       {
-        // Directory workspace hits /master-data/* endpoints — gated on
-        // masterdata.view (not directory.view; the directory.controller.ts
-        // is a separate legacy surface).
-        to: "/master-data",
+        // Unified Directory (Clients / Subcontractors & Suppliers / Contacts).
+        // Gated on directory.view — the primary gate on directory.controller.ts.
+        // The legacy /master-data URL now redirects into /directory?tab=clients
+        // (App.tsx MasterDataOrRedirect), so the match rule covers both so an
+        // in-flight user landing on the old URL still highlights this entry.
+        to: "/directory",
         label: "Directory",
         icon: ICON_CLIENTS,
-        match: (path) => path.startsWith("/master-data") || path.startsWith("/directory/"),
-        requiresPermission: "masterdata.view"
+        match: (path) => path === "/directory" || path.startsWith("/directory/") || path.startsWith("/master-data"),
+        requiresPermission: "directory.view"
       },
       { to: "/admin/rates-lists", label: "Rates & Lists", icon: ICON_TENDERING },
       {
@@ -406,7 +405,10 @@ const BREADCRUMBS: Record<string, string> = {
   // so keep the deeper prefix so the breadcrumb resolves for the detail page.
   "/crm/opportunities": "CRM",
   "/maintenance": "Maintenance",
-  "/master-data": "Master Data",
+  // /master-data now only serves the Sites sub-view (fallback route until the
+  // /sites SiteFormModal ports the postcode validation from SiteSlideOver);
+  // the naked URL redirects to /directory?tab=clients.
+  "/master-data": "Sites",
   "/directory": "Directory",
   "/documents": "Documents",
   "/reports": "Reports",

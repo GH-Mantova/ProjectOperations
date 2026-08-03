@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { ClientsTab } from "../master-data/MasterDataWorkspacePage";
 import { SubcontractorsPage } from "./SubcontractorsPage";
@@ -27,6 +27,7 @@ function resolveTab(raw: string | null): Tab {
  */
 export function DirectoryPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const { authFetch } = useAuth();
   const [tab, setTab] = useState<Tab>(resolveTab(searchParams.get("tab")));
 
@@ -74,6 +75,16 @@ export function DirectoryPage() {
               {entry.label}
             </button>
           ))}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={false}
+            className="tender-page__view-btn"
+            title="Workers live in the Workers workspace"
+            onClick={() => navigate("/workers")}
+          >
+            Workers
+          </button>
         </div>
       </header>
 

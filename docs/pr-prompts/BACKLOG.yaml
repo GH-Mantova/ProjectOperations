@@ -304,4 +304,12 @@ items:
     gate: 'grep -rqi "breadcrumb" apps/api/src/modules/field && ! test -d apps/mobile'
     gate_means: 'READY to consider once the A2 breadcrumb slice is on main and no native wrapper exists yet. Dies the moment an apps/mobile wrapper ships.'
     needs_marco: true
+    marco_note: >
+      DECIDED 2026-08-03 (Marco): Option A (track-while-open, honest gaps) STANDS; the native wrapper
+      stays PARKED. This is the standing answer - do NOT re-surface it as a fresh question each scan.
+      Revisit ONLY if a client contractually requires a gapless location trail (or WHS/commercial
+      evidence needs continuous shift tracking); the revisit path is Option B (Capacitor, field-surface
+      -only), which must scope the worker privacy notice + device model (company vs BYOD) as its first
+      sub-decisions. Option C (React Native / full native rewrite) rejected - two frontends, not worth
+      it over Capacitor. Item kept registered (valid gate, legitimate future option); not deleted.
     order: 13

@@ -61,26 +61,16 @@ items:
   # Its gate had released (quote-PDF fix on main) and it was the only clean, un-staged ready item.
   # -------------------------------------------------------------------------------------------
 
-  - id: flaky-batch3-plant-pills
-    title: "Fix the plant-pills e2e race and un-quarantine the spec"
-    priority: P2
-    why: >
-      tests/e2e/pr-acceptance/batch3-scope-items.spec.ts "plant pills: add a plant cluster, set
-      qty/days, remove it" is CONFIRMED FLAKY, not failing: on 2026-07-19 it failed and then passed
-      on the IDENTICAL sha, on a docs-only PR that could not have affected it. tendering-e2e is a
-      required status check on a serialised (no merge queue, strict) main, so a single flake there
-      blocks EVERY queued PR, not just its own. Marco's decision 2026-07-20 was to QUARANTINE the
-      one spec and track the real fix here - not to add retries and not to weaken branch protection.
-      The suspected cause is the same class as the sites post-delete race: an assertion that proceeds
-      before the list has settled. The real work is fixing that race, then removing the test.skip.
-    gate: '! grep -q "test.skip(\"plant pills" tests/e2e/pr-acceptance/batch3-scope-items.spec.ts'
-    gate_means: The quarantine is no longer in place - the spec is running again, so either someone fixed the race or the skip was lost and this needs attention.
-    needs_marco: false
-    marco_note: >
-      DECIDED 2026-07-20 (Marco): quarantine the single spec, keep tendering-e2e required, no blanket
-      Playwright retries, no branch-protection change. Re-enable ONLY with a fix for the underlying
-      race, as its own reviewable PR.
-    order: 6
+  # DISCHARGED 2026-08-03 (04-scanner): SHIPPED. flaky-batch3-plant-pills was un-quarantined and its
+  # underlying race FIXED by PR #856 (c08742a2 "test(e2e): un-quarantine plant-pills spec; serialize
+  # scope-item PATCHes"), verified an ancestor of origin/main. The spec's "plant pills" test is ACTIVE
+  # (no test.skip anywhere in batch3-scope-items.spec.ts) and now serialises the three scope-item
+  # PATCHes -- ratePatch, then qtyPatch, then daysPatch, each awaited in turn -- exactly the
+  # settle-before-proceed fix this item prescribed. The registered gate
+  # ('! grep test.skip("plant pills ...') flips to READY once the skip is gone, but the skip is gone
+  # BECAUSE the fix shipped, not because it was lost -- a false-ready of the SAME CLASS as the
+  # batch5-sites post-delete race discharged 2026-07-18. Staging a fix prompt would burn an agent run
+  # re-doing shipped work (lint-prompt.mjs would exit 3). Removed per "one place, never two."
 
   # DISCHARGED 2026-07-21 (04-scanner): its gate RELEASED. SLICE 0 (the ordered build plan) shipped
   # as PR #751 -- docs/architecture/drafts/swms-build-slice-plan.md is now on origin/main and NO SWMS

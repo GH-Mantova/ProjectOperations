@@ -358,6 +358,15 @@ export const NAV_GROUPS: NavGroup[] = [
   }
 ];
 
+// Mobile tab bar picks ONE item per group. Skips sub-group parents (their `to`
+// is a relative collapse-toggle key like "operations/assets-equipment", not a
+// real route) so a mobile tap never lands on an unroutable URL. Permission
+// filtering happens upstream on `filteredGroups`, so callers pass already-
+// filtered groups here.
+export function pickMobileTabItem(group: NavGroup): NavItem | undefined {
+  return group.items.find((item) => item.to.startsWith("/"));
+}
+
 type SharedFollowUpItem = {
   id: string;
   title: string;
@@ -678,22 +687,32 @@ export function ShellLayout() {
       </aside>
 
       <nav className="shell__tab-bar" aria-label="Mobile navigation">
-        {filteredGroups.flatMap((group) =>
-          group.items.slice(0, 1).map((item) => {
-            const isActive = item.match ? item.match(location.pathname) : location.pathname === item.to;
-            return (
-              <NavLink
-                key={`tab-${group.id}`}
-                to={item.to}
-                className={isActive ? "shell__tab shell__tab--active" : "shell__tab"}
-                aria-label={group.label}
-              >
-                <span className="shell__tab-icon">{item.icon}</span>
-                <span className="shell__tab-label">{group.label}</span>
-              </NavLink>
-            );
-          })
-        )}
+        <NavLink
+          key="tab-home"
+          to="/"
+          end
+          className={({ isActive }) => (isActive ? "shell__tab shell__tab--active" : "shell__tab")}
+          aria-label="Home"
+        >
+          <span className="shell__tab-icon">{ICON_DASHBOARD}</span>
+          <span className="shell__tab-label">Home</span>
+        </NavLink>
+        {filteredGroups.flatMap((group) => {
+          const item = pickMobileTabItem(group);
+          if (!item) return [];
+          const isActive = item.match ? item.match(location.pathname) : location.pathname === item.to;
+          return [
+            <NavLink
+              key={`tab-${group.id}`}
+              to={item.to}
+              className={isActive ? "shell__tab shell__tab--active" : "shell__tab"}
+              aria-label={group.label}
+            >
+              <span className="shell__tab-icon">{item.icon}</span>
+              <span className="shell__tab-label">{group.label}</span>
+            </NavLink>
+          ];
+        })}
       </nav>
 
       <div className="shell__main">

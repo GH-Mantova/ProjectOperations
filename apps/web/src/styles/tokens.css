@@ -316,6 +316,24 @@
   50% { opacity: 1; }
 }
 
+/* Search-result highlight: applied briefly to a row/card when the Command
+   Palette / Global Search navigates here with ?highlight=<id>. */
+@keyframes search-highlight-fade {
+  0% {
+    background-color: color-mix(in srgb, var(--brand-accent) 32%, transparent);
+    box-shadow: 0 0 0 2px var(--brand-accent);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.search-highlight {
+  animation: search-highlight-fade 2.4s ease-out;
+  border-radius: var(--radius-sm, 6px);
+}
+
 .skeleton {
   animation: pulse 1.5s ease-in-out infinite;
   background: var(--border-default);

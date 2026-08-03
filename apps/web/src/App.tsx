@@ -27,6 +27,7 @@ import { WorkerDetailPage } from "./pages/workers/WorkerDetailPage";
 import { WorkerLeaveApprovalsPage } from "./pages/workers/WorkerLeaveApprovalsPage";
 import { LiveCrewMapPage } from "./pages/workers/LiveCrewMapPage";
 import { FieldLeavePage } from "./pages/field/FieldLeavePage";
+import { FieldNotificationsPage } from "./pages/field/FieldNotificationsPage";
 import { AssetsListPage } from "./pages/assets/AssetsListPage";
 import { AssetDetailPage } from "./pages/assets/AssetDetailPage";
 import { InventoryPage } from "./pages/inventory/InventoryPage";
@@ -260,6 +261,7 @@ export function App() {
             <Route path="dockets" element={<FieldDocketPage />} />
             <Route path="expenses" element={<FieldExpensePage />} />
             <Route path="leave" element={<FieldLeavePage />} />
+            <Route path="notifications" element={<FieldNotificationsPage />} />
           </Route>
           <Route element={<ShellLayout />}>
             <Route

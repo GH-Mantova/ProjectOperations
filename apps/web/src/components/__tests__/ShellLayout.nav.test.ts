@@ -8,7 +8,7 @@
 import { describe, expect, it } from "vitest";
 import type { SafeUser } from "../../auth/AuthContext";
 import { can, isAdminUser } from "../../auth/permissions";
-import { NAV_GROUPS } from "../ShellLayout";
+import { NAV_GROUPS, pickMobileTabItem } from "../ShellLayout";
 
 function fakeUser(overrides: Partial<SafeUser>): SafeUser {
   return {
@@ -217,6 +217,40 @@ describe("ShellLayout nav — per-item permission gates", () => {
     const child = childItems.find((c) => c.label === label);
     expect(child, `expected child item labelled "${label}"`).toBeDefined();
     expect(child?.requiresPermission).toBe(permission);
+  });
+
+  it("mobile tab bar: pickMobileTabItem skips sub-group parents (relative `to`) and returns a routable item", () => {
+    // Operations' first item is Scheduler (routable); the Assets & Equipment
+    // bundle at index 2 is a collapsible parent with a relative `to`. Even if
+    // Scheduler were filtered out by permissions, the picker must still skip
+    // the bundle parent and land on Procurement, never on the relative path.
+    const operations = NAV_GROUPS.find((g) => g.id === "operations")!;
+    for (const item of operations.items) {
+      if (item.to.startsWith("/")) continue;
+      // Confirms the picker skips this exact shape (a sub-group parent).
+      expect(item.children).toBeDefined();
+    }
+    const picked = pickMobileTabItem(operations);
+    expect(picked?.to.startsWith("/")).toBe(true);
+
+    // Synthetic: a group whose only qualifying item is the bundle parent
+    // must produce no tab (undefined) rather than an unroutable URL.
+    const bundleOnly = {
+      id: "x",
+      label: "X",
+      items: [operations.items.find((i) => !i.to.startsWith("/"))!]
+    };
+    expect(pickMobileTabItem(bundleOnly)).toBeUndefined();
+  });
+
+  it("mobile tab bar: every NAV_GROUPS picked item is an absolute route", () => {
+    // Every group with at least one routable item must yield a `/`-prefixed
+    // tab target; the Home tab (rendered separately in ShellLayout) covers
+    // "/" itself.
+    for (const group of NAV_GROUPS) {
+      const picked = pickMobileTabItem(group);
+      if (picked) expect(picked.to.startsWith("/")).toBe(true);
+    }
   });
 
   it("regression: `can(user)` short-circuits on isSuperUser so gated items still show for super-users (STEP-0 lesson)", () => {

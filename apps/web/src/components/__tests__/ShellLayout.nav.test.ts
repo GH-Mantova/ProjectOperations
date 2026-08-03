@@ -93,7 +93,7 @@ describe("ShellLayout nav — 7 approved groups (2026-07-17 restructure)", () =>
     expect(estimating?.items.map((i) => [i.label, i.to])).toEqual([
       ["Tenders", "/tenders"],
       ["Contracts", "/contracts"],
-      ["Directory", "/master-data"],
+      ["Directory", "/directory"],
       ["Rates & Lists", "/admin/rates-lists"],
       ["Reports", "/reports"]
     ]);
@@ -175,8 +175,9 @@ describe("ShellLayout nav — per-item permission gates", () => {
     // Contracts API gates on finance.view (legacy naming from when contracts
     // lived under the finance module), NOT contracts.view.
     { label: "Contracts", permission: "finance.view" },
-    // Directory workspace hits /master-data/*, gated on masterdata.view.
-    { label: "Directory", permission: "masterdata.view" },
+    // Unified Directory (/directory) — clients, subcontractors & suppliers,
+    // contacts. Primary API is directory.controller.ts (directory.view).
+    { label: "Directory", permission: "directory.view" },
     { label: "Reports", permission: "reporting.view" },
     { label: "Jobs", permission: "jobs.view" },
     // Sites list hits /master-data/sites — masterdata.view, not sites.view.

@@ -120,6 +120,71 @@ export class CompanyProfileService {
     private readonly audit: AuditService
   ) {}
 
+  /** Bootstrap the singleton profile if it does not yet exist. Idempotent:
+   * returns the existing row unchanged when one is already present, so a
+   * double-click on the "Create company profile" empty-state button never
+   * creates a duplicate (the DB CHECK constraint on id="singleton" also
+   * enforces this). Field defaults mirror `seed-company-profile.ts` so a
+   * UI-created profile is byte-identical to a seeded one on a fresh DB.
+   */
+  async bootstrapProfile(actorId: string) {
+    const existing = await this.prisma.companyProfile.findUnique({
+      where: { id: COMPANY_PROFILE_ID }
+    });
+    if (existing) {
+      return this.getProfile();
+    }
+
+    await this.prisma.companyProfile.create({
+      data: {
+        id: COMPANY_PROFILE_ID,
+        legalName: "Initial Services Group Pty Ltd",
+        tradingName: "Initial Services",
+        abn: "75 631 222 556",
+        entityType: "PTY_LTD",
+        primaryEmail: "admin@initialservices.net",
+        primaryPhone: "(07) 3888 0539",
+        website: "https://initialservices.net",
+        registeredAddressLine1: "10 Grice St",
+        registeredSuburb: "Clontarf",
+        registeredState: "QLD",
+        registeredPostcode: "4019",
+        registeredCountry: "Australia",
+        postalAddressLine1: "10 Grice St",
+        postalSuburb: "Clontarf",
+        postalState: "QLD",
+        postalPostcode: "4019",
+        postalCountry: "Australia",
+        gstRate: 10,
+        currency: "AUD",
+        financialYearStartMonth: 7,
+        timezone: "Australia/Brisbane",
+        defaultPaymentTermsDays: 25,
+        defaultQuoteValidityDays: 30,
+        defaultMarkupPercent: 15,
+        tenderNumberPrefix: "T",
+        quoteNumberPrefix: "Q",
+        jobNumberPrefix: "J",
+        projectNumberPrefix: "IS-P",
+        variationNumberPrefix: "V",
+        claimNumberPrefix: "PC",
+        incidentNumberPrefix: "INC",
+        primaryColorHex: "#005B61",
+        secondaryColorHex: "#FEAA6D",
+        updatedById: actorId
+      }
+    });
+
+    await this.audit.write({
+      actorId,
+      action: "companyProfile.bootstrap",
+      entityType: "CompanyProfile",
+      entityId: COMPANY_PROFILE_ID
+    });
+
+    return this.getProfile();
+  }
+
   /** Read the singleton profile with completeness indicator. Throws if
    * absent — the seed must have run.
    */

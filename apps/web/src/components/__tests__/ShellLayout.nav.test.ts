@@ -123,13 +123,15 @@ describe("ShellLayout nav — 7 approved groups (2026-07-17 restructure)", () =>
     ]);
   });
 
-  it("HR carries Workers, Leave Approvals, Payroll Export, Timesheet Approval (in order)", () => {
+  it("HR carries Workers, Leave Approvals, Payroll Export, Timesheet Approval, Dockets, Expenses (in order)", () => {
     const hr = NAV_GROUPS.find((g) => g.id === "hr");
     expect(hr?.items.map((i) => [i.label, i.to])).toEqual([
       ["Workers", "/workers"],
       ["Leave Approvals", "/workers/leave-approvals"],
       ["Payroll Export", "/timesheets/payroll-export"],
-      ["Timesheet Approval", "/timesheets/approval"]
+      ["Timesheet Approval", "/timesheets/approval"],
+      ["Dockets", "/dockets"],
+      ["Expenses", "/expenses"]
     ]);
   });
 
@@ -194,6 +196,10 @@ describe("ShellLayout nav — per-item permission gates", () => {
     { label: "Leave Approvals", permission: "workers.manage" },
     { label: "Payroll Export", permission: "field.manage" },
     { label: "Timesheet Approval", permission: "field.manage" },
+    // Back-office dockets register — GET /field/dockets is field.view.
+    { label: "Dockets", permission: "field.view" },
+    // Expenses register — GET /expenses is expenses.view.
+    { label: "Expenses", permission: "expenses.view" },
     { label: "Safety", permission: "safety.view" },
     { label: "Cases", permission: "cases.view" },
     { label: "Knowledge Base", permission: "knowledge.view" },

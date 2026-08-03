@@ -291,6 +291,24 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: ICON_FORMS,
         match: (path) => path.startsWith("/timesheets/approval"),
         requiresPermission: "field.manage"
+      },
+      {
+        // Back-office dockets register (DocketsRegisterPage). The GET /field/dockets
+        // list endpoint is gated on field.view; export uses field.manage but a viewer
+        // still gets a usable page.
+        to: "/dockets",
+        label: "Dockets",
+        icon: ICON_FORMS,
+        match: (path) => path === "/dockets" || path.startsWith("/dockets/"),
+        requiresPermission: "field.view"
+      },
+      {
+        // Expenses register. GET /expenses is gated on expenses.view.
+        to: "/expenses",
+        label: "Expenses",
+        icon: ICON_CONTRACTS,
+        match: (path) => path === "/expenses" || path.startsWith("/expenses/"),
+        requiresPermission: "expenses.view"
       }
     ]
   },

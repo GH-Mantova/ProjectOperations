@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { CenteredModal, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
@@ -381,8 +382,6 @@ function AllTab() {
   const [dateTo, setDateTo] = useState("");
   const [drawerTarget, setDrawerTarget] = useState<Timesheet | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [exporting, setExporting] = useState(false);
-  const [exportError, setExportError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -410,34 +409,6 @@ function AllTab() {
     const t = setTimeout(() => setToast(null), 3000);
     return () => clearTimeout(t);
   }, [toast]);
-
-  async function exportCsv() {
-    if (!dateFrom || !dateTo) {
-      setExportError("Set a From and To date to export approved timesheets.");
-      return;
-    }
-    setExporting(true);
-    setExportError(null);
-    try {
-      const params = new URLSearchParams({ from: dateFrom, to: dateTo });
-      const response = await authFetch(`/field/timesheets/payroll-export.csv?${params.toString()}`);
-      if (!response.ok) throw new Error((await response.text()) || `Export failed (${response.status})`);
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `approved-timesheets_${dateFrom}_to_${dateTo}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-      setToast("CSV exported");
-    } catch (err) {
-      setExportError((err as Error).message);
-    } finally {
-      setExporting(false);
-    }
-  }
 
   const workerOptions = useMemo(() => {
     const m = new Map<string, string>();
@@ -490,32 +461,15 @@ function AllTab() {
         <Field label="To">
           <input type="date" className="s7-input" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
         </Field>
-        <button
-          type="button"
+        <Link
+          to="/timesheets/payroll-export"
           className="s7-btn s7-btn--secondary"
-          style={{ minHeight: 44 }}
-          onClick={() => void exportCsv()}
-          disabled={exporting || !dateFrom || !dateTo}
-          aria-busy={exporting}
-          title={
-            !dateFrom || !dateTo
-              ? "Set a From and To date to export approved timesheets"
-              : "Export approved timesheets in this date range as CSV"
-          }
+          style={{ minHeight: 44, display: "inline-flex", alignItems: "center" }}
+          title="Open the Payroll Export page to preview and download approved timesheets as CSV"
         >
-          {exporting ? "Exporting…" : "Export CSV"}
-        </button>
+          Payroll export →
+        </Link>
       </section>
-
-      {exportError ? (
-        <div
-          className="s7-card"
-          role="alert"
-          style={{ borderColor: "var(--status-danger)", color: "var(--status-danger)", marginBottom: 16 }}
-        >
-          {exportError}
-        </div>
-      ) : null}
 
       {error ? (
         <div className="s7-card" role="alert" style={{ borderColor: "var(--status-danger)", color: "var(--status-danger)" }}>

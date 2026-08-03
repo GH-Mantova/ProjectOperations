@@ -95,7 +95,7 @@ function urlFor(entityType: string, entityId: string, fallback?: string | null):
   switch (entityType) {
     case "Job": return `/jobs?highlight=${encodeURIComponent(entityId)}`;
     case "Tender": return `/tenders?highlight=${encodeURIComponent(entityId)}`;
-    case "Client": return `/master-data?tab=clients&highlight=${encodeURIComponent(entityId)}`;
+    case "Client": return `/directory?tab=clients&highlight=${encodeURIComponent(entityId)}`;
     case "Worker": return `/workers?highlight=${encodeURIComponent(entityId)}`;
     case "Asset": return `/assets?highlight=${encodeURIComponent(entityId)}`;
     case "FormTemplate": return `/forms?highlight=${encodeURIComponent(entityId)}`;

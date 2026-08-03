@@ -3,6 +3,7 @@ import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
 import { NoAccess } from "../../components/NoAccess";
+import { useAlert, useConfirm } from "../../hooks/useConfirm";
 import { readApiErrorMessage } from "../../lib/api-errors";
 
 // Whitelisted values — keep in sync with dto/automation.dto.ts on the API.
@@ -68,6 +69,8 @@ const EMPTY_DRAFT: Draft = {
 
 export function AutomationsPage() {
   const { user, authFetch } = useAuth();
+  const confirm = useConfirm();
+  const alert = useAlert();
   const canView = can(user, "automations.view");
   const canManage = can(user, "automations.manage");
 
@@ -193,7 +196,12 @@ export function AutomationsPage() {
   };
 
   const remove = async (rule: Rule) => {
-    if (!window.confirm(`Delete automation rule "${rule.name}"?`)) return;
+    const ok = await confirm({
+      title: "Delete automation rule",
+      message: `Delete automation rule "${rule.name}"?`,
+      variant: "danger"
+    });
+    if (!ok) return;
     const res = await authFetch(`/automations/${rule.id}`, { method: "DELETE" });
     if (res.ok) await load();
   };
@@ -212,7 +220,7 @@ export function AutomationsPage() {
     try {
       payload = JSON.parse(raw);
     } catch {
-      window.alert("Payload must be valid JSON.");
+      await alert({ title: "Test fire", message: "Payload must be valid JSON." });
       return;
     }
     const res = await authFetch(`/automations/${rule.id}/test-fire`, {
@@ -221,7 +229,10 @@ export function AutomationsPage() {
       body: JSON.stringify({ payload })
     });
     if (!res.ok) {
-      window.alert(await readApiErrorMessage(res, "Test fire failed."));
+      await alert({
+        title: "Test fire failed",
+        message: await readApiErrorMessage(res, "Test fire failed.")
+      });
       return;
     }
     await showRuns(rule);

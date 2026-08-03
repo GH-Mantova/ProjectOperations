@@ -251,7 +251,7 @@ test.describe("Batch 8 — Shell & tendering long tail (PRs #219, #248, #172, #1
 
   test("brand fonts: Outfit body text, Syne headings (PR #27)", async ({ page }) => {
     await page.goto("/archive");
-    await expect(page.getByRole("heading", { name: "Archive" })).toHaveCSS(
+    await expect(page.getByRole("heading", { name: "Archive", exact: true })).toHaveCSS(
       "font-family",
       /Syne/
     );

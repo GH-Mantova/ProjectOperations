@@ -32,7 +32,7 @@ function downloadCsv(filename: string, rows: string[][]) {
 }
 
 function orgHref(type: string, id: string): string | null {
-  if (type === "CLIENT") return `/master-data?tab=clients`;
+  if (type === "CLIENT") return `/directory?tab=clients`;
   if (type === "SUBCONTRACTOR" || type === "SUPPLIER") return `/directory/subcontractors`;
   return null;
 }

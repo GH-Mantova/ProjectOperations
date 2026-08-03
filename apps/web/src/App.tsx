@@ -44,7 +44,6 @@ import { CorrectiveActionsPage } from "./pages/forms/CorrectiveActionsPage";
 import { CorrectiveActionDetailPage } from "./pages/forms/CorrectiveActionDetailPage";
 import { DocumentsWorkspacePage } from "./pages/documents/DocumentsWorkspacePage";
 import { MasterDataWorkspacePage } from "./pages/master-data/MasterDataWorkspacePage";
-import { ClientsGridPage } from "./pages/master-data/ClientsGridPage";
 import { DirectoryPage } from "./pages/directory/DirectoryPage";
 import { SitesListPage } from "./pages/sites/SitesListPage";
 import { SiteDetailPage } from "./pages/sites/SiteDetailPage";
@@ -425,8 +424,16 @@ export function App() {
             <Route path="/dashboards" element={<DashboardRedirectPage />} />
             <Route path="/dashboards/global/:id" element={<GlobalDashboardPage />} />
             <Route path="/dashboards/:id" element={<UserDashboardPage />} />
+            {/* /master-data was the legacy "Directory" workspace. Marco ruling
+                2026-08-03: the unified /directory is canonical (Clients +
+                Subcontractors + Contacts). The naked route redirects into
+                /directory?tab=clients; the Sites sub-view stays reachable at
+                /master-data?tab=sites because its slide-over enforces AU
+                postcode validation that the /sites SiteFormModal does not
+                (follow-up: port validation to SiteFormModal, then delete this
+                shim entirely). MasterDataWorkspacePage also still exports the
+                ClientsTab that DirectoryPage renders. */}
             <Route path="/master-data" element={<MasterDataWorkspacePage />} />
-            <Route path="/master-data/clients-grid" element={<ClientsGridPage />} />
             <Route path="/sites" element={<SitesListPage />} />
             <Route path="/sites/:id" element={<SiteDetailPage />} />
             <Route path="/sites/:siteId/muster/:eventId" element={<MusterPage />} />

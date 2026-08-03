@@ -162,10 +162,7 @@ const ICON_EXPAND = (
 // Sidebar structure — 7 approved groups (Marco 2026-07-17). The Dashboards
 // group is rendered separately in ShellLayout (it owns the "+ new dashboard"
 // affordance and the dynamic list of user-created dashboards); NAV_GROUPS
-// carries the other six. This PR only changes menu structure/labels/ordering
-// and role gating — routes are unchanged (Directory still points at
-// /master-data, Rates & Lists at /admin/rates-lists, etc.). Later staged PRs
-// will move/merge pages behind these menu entries.
+// carries the other six.
 export const NAV_GROUPS: NavGroup[] = [
   {
     id: "estimating",
@@ -191,14 +188,16 @@ export const NAV_GROUPS: NavGroup[] = [
         requiresPermission: "finance.view"
       },
       {
-        // Directory workspace hits /master-data/* endpoints — gated on
-        // masterdata.view (not directory.view; the directory.controller.ts
-        // is a separate legacy surface).
-        to: "/master-data",
+        // Unified Directory (Clients / Subcontractors & Suppliers / Contacts).
+        // Gated on directory.view — the primary gate on directory.controller.ts.
+        // The legacy /master-data URL now redirects into /directory?tab=clients
+        // (App.tsx MasterDataOrRedirect), so the match rule covers both so an
+        // in-flight user landing on the old URL still highlights this entry.
+        to: "/directory",
         label: "Directory",
         icon: ICON_CLIENTS,
-        match: (path) => path.startsWith("/master-data") || path.startsWith("/directory/"),
-        requiresPermission: "masterdata.view"
+        match: (path) => path === "/directory" || path.startsWith("/directory/") || path.startsWith("/master-data"),
+        requiresPermission: "directory.view"
       },
       { to: "/admin/rates-lists", label: "Rates & Lists", icon: ICON_TENDERING },
       {
@@ -281,6 +280,24 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: ICON_FORMS,
         match: (path) => path.startsWith("/timesheets/approval"),
         requiresPermission: "field.manage"
+      },
+      {
+        // Back-office dockets register (DocketsRegisterPage). The GET /field/dockets
+        // list endpoint is gated on field.view; export uses field.manage but a viewer
+        // still gets a usable page.
+        to: "/dockets",
+        label: "Dockets",
+        icon: ICON_FORMS,
+        match: (path) => path === "/dockets" || path.startsWith("/dockets/"),
+        requiresPermission: "field.view"
+      },
+      {
+        // Expenses register. GET /expenses is gated on expenses.view.
+        to: "/expenses",
+        label: "Expenses",
+        icon: ICON_CONTRACTS,
+        match: (path) => path === "/expenses" || path.startsWith("/expenses/"),
+        requiresPermission: "expenses.view"
       }
     ]
   },
@@ -341,6 +358,15 @@ export const NAV_GROUPS: NavGroup[] = [
   }
 ];
 
+// Mobile tab bar picks ONE item per group. Skips sub-group parents (their `to`
+// is a relative collapse-toggle key like "operations/assets-equipment", not a
+// real route) so a mobile tap never lands on an unroutable URL. Permission
+// filtering happens upstream on `filteredGroups`, so callers pass already-
+// filtered groups here.
+export function pickMobileTabItem(group: NavGroup): NavItem | undefined {
+  return group.items.find((item) => item.to.startsWith("/"));
+}
+
 type SharedFollowUpItem = {
   id: string;
   title: string;
@@ -388,7 +414,10 @@ const BREADCRUMBS: Record<string, string> = {
   // so keep the deeper prefix so the breadcrumb resolves for the detail page.
   "/crm/opportunities": "CRM",
   "/maintenance": "Maintenance",
-  "/master-data": "Master Data",
+  // /master-data now only serves the Sites sub-view (fallback route until the
+  // /sites SiteFormModal ports the postcode validation from SiteSlideOver);
+  // the naked URL redirects to /directory?tab=clients.
+  "/master-data": "Sites",
   "/directory": "Directory",
   "/documents": "Documents",
   "/reports": "Reports",
@@ -658,22 +687,32 @@ export function ShellLayout() {
       </aside>
 
       <nav className="shell__tab-bar" aria-label="Mobile navigation">
-        {filteredGroups.flatMap((group) =>
-          group.items.slice(0, 1).map((item) => {
-            const isActive = item.match ? item.match(location.pathname) : location.pathname === item.to;
-            return (
-              <NavLink
-                key={`tab-${group.id}`}
-                to={item.to}
-                className={isActive ? "shell__tab shell__tab--active" : "shell__tab"}
-                aria-label={group.label}
-              >
-                <span className="shell__tab-icon">{item.icon}</span>
-                <span className="shell__tab-label">{group.label}</span>
-              </NavLink>
-            );
-          })
-        )}
+        <NavLink
+          key="tab-home"
+          to="/"
+          end
+          className={({ isActive }) => (isActive ? "shell__tab shell__tab--active" : "shell__tab")}
+          aria-label="Home"
+        >
+          <span className="shell__tab-icon">{ICON_DASHBOARD}</span>
+          <span className="shell__tab-label">Home</span>
+        </NavLink>
+        {filteredGroups.flatMap((group) => {
+          const item = pickMobileTabItem(group);
+          if (!item) return [];
+          const isActive = item.match ? item.match(location.pathname) : location.pathname === item.to;
+          return [
+            <NavLink
+              key={`tab-${group.id}`}
+              to={item.to}
+              className={isActive ? "shell__tab shell__tab--active" : "shell__tab"}
+              aria-label={group.label}
+            >
+              <span className="shell__tab-icon">{item.icon}</span>
+              <span className="shell__tab-label">{group.label}</span>
+            </NavLink>
+          ];
+        })}
       </nav>
 
       <div className="shell__main">

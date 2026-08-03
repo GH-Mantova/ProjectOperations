@@ -8,7 +8,7 @@
 import { describe, expect, it } from "vitest";
 import type { SafeUser } from "../../auth/AuthContext";
 import { can, isAdminUser } from "../../auth/permissions";
-import { NAV_GROUPS } from "../ShellLayout";
+import { NAV_GROUPS, pickMobileTabItem } from "../ShellLayout";
 
 function fakeUser(overrides: Partial<SafeUser>): SafeUser {
   return {
@@ -93,7 +93,7 @@ describe("ShellLayout nav — 7 approved groups (2026-07-17 restructure)", () =>
     expect(estimating?.items.map((i) => [i.label, i.to])).toEqual([
       ["Tenders", "/tenders"],
       ["Contracts", "/contracts"],
-      ["Directory", "/master-data"],
+      ["Directory", "/directory"],
       ["Rates & Lists", "/admin/rates-lists"],
       ["Reports", "/reports"]
     ]);
@@ -123,12 +123,14 @@ describe("ShellLayout nav — 7 approved groups (2026-07-17 restructure)", () =>
     ]);
   });
 
-  it("HR carries Workers, Payroll Export, Timesheet Approval (in order)", () => {
+  it("HR carries Workers, Payroll Export, Timesheet Approval, Dockets, Expenses (in order)", () => {
     const hr = NAV_GROUPS.find((g) => g.id === "hr");
     expect(hr?.items.map((i) => [i.label, i.to])).toEqual([
       ["Workers", "/workers"],
       ["Payroll Export", "/timesheets/payroll-export"],
-      ["Timesheet Approval", "/timesheets/approval"]
+      ["Timesheet Approval", "/timesheets/approval"],
+      ["Dockets", "/dockets"],
+      ["Expenses", "/expenses"]
     ]);
   });
 
@@ -175,8 +177,9 @@ describe("ShellLayout nav — per-item permission gates", () => {
     // Contracts API gates on finance.view (legacy naming from when contracts
     // lived under the finance module), NOT contracts.view.
     { label: "Contracts", permission: "finance.view" },
-    // Directory workspace hits /master-data/*, gated on masterdata.view.
-    { label: "Directory", permission: "masterdata.view" },
+    // Unified Directory (/directory) — clients, subcontractors & suppliers,
+    // contacts. Primary API is directory.controller.ts (directory.view).
+    { label: "Directory", permission: "directory.view" },
     { label: "Reports", permission: "reporting.view" },
     { label: "Jobs", permission: "jobs.view" },
     // Sites list hits /master-data/sites — masterdata.view, not sites.view.
@@ -189,6 +192,10 @@ describe("ShellLayout nav — per-item permission gates", () => {
     { label: "Workers", permission: "resources.view" },
     { label: "Payroll Export", permission: "field.manage" },
     { label: "Timesheet Approval", permission: "field.manage" },
+    // Back-office dockets register — GET /field/dockets is field.view.
+    { label: "Dockets", permission: "field.view" },
+    // Expenses register — GET /expenses is expenses.view.
+    { label: "Expenses", permission: "expenses.view" },
     { label: "Safety", permission: "safety.view" },
     { label: "Cases", permission: "cases.view" },
     { label: "Knowledge Base", permission: "knowledge.view" },
@@ -216,6 +223,40 @@ describe("ShellLayout nav — per-item permission gates", () => {
     const child = childItems.find((c) => c.label === label);
     expect(child, `expected child item labelled "${label}"`).toBeDefined();
     expect(child?.requiresPermission).toBe(permission);
+  });
+
+  it("mobile tab bar: pickMobileTabItem skips sub-group parents (relative `to`) and returns a routable item", () => {
+    // Operations' first item is Scheduler (routable); the Assets & Equipment
+    // bundle at index 2 is a collapsible parent with a relative `to`. Even if
+    // Scheduler were filtered out by permissions, the picker must still skip
+    // the bundle parent and land on Procurement, never on the relative path.
+    const operations = NAV_GROUPS.find((g) => g.id === "operations")!;
+    for (const item of operations.items) {
+      if (item.to.startsWith("/")) continue;
+      // Confirms the picker skips this exact shape (a sub-group parent).
+      expect(item.children).toBeDefined();
+    }
+    const picked = pickMobileTabItem(operations);
+    expect(picked?.to.startsWith("/")).toBe(true);
+
+    // Synthetic: a group whose only qualifying item is the bundle parent
+    // must produce no tab (undefined) rather than an unroutable URL.
+    const bundleOnly = {
+      id: "x",
+      label: "X",
+      items: [operations.items.find((i) => !i.to.startsWith("/"))!]
+    };
+    expect(pickMobileTabItem(bundleOnly)).toBeUndefined();
+  });
+
+  it("mobile tab bar: every NAV_GROUPS picked item is an absolute route", () => {
+    // Every group with at least one routable item must yield a `/`-prefixed
+    // tab target; the Home tab (rendered separately in ShellLayout) covers
+    // "/" itself.
+    for (const group of NAV_GROUPS) {
+      const picked = pickMobileTabItem(group);
+      if (picked) expect(picked.to.startsWith("/")).toBe(true);
+    }
   });
 
   it("regression: `can(user)` short-circuits on isSuperUser so gated items still show for super-users (STEP-0 lesson)", () => {

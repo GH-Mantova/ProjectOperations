@@ -115,6 +115,21 @@ jobs:
           PUPPETEER_CACHE_DIR="$PWD/.cache/puppeteer" \
             node node_modules/puppeteer/lib/esm/puppeteer/node/cli.js \
               browsers install chrome
+      # Chrome BINARY is not enough — the App Service Linux runtime image lacks
+      # the shared libs Chrome dynamically links against (libglib-2.0.so.0,
+      # libnss3, libgtk-3, libatk, libcups, ...). Ship startup.sh so
+      # install-deps runs at container init and libglib/libnss3/libgtk (etc.)
+      # exist by the time puppeteer.launch() runs.
+      # NOTE: Marco must set the App Service Startup Command to
+      # `bash /home/site/wwwroot/startup.sh` in the portal (one-time step,
+      # documented in the PR body). Without that, apt-get install-deps is
+      # skipped and PDF export continues to 500 with the shared-library error.
+      - name: Ship Chrome install-deps startup script into bundle
+        run: |
+          set -euo pipefail
+          cp apps/api/startup.sh deploy-api/startup.sh
+          chmod +x deploy-api/startup.sh
+          echo "startup.sh (install-deps: libglib libnss3 libgtk ...) copied into bundle"
       # App Service Node reads .env at app root (ConfigModule.forRoot in
       # apps/api/src/app.module.ts). Writing GIT_SHA here is the least-risky
       # way to advertise the running commit without adding az-cli/OIDC to

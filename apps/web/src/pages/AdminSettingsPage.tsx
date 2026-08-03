@@ -1352,7 +1352,7 @@ function SiteGeofencesTab() {
     try {
       const [gRes, sRes] = await Promise.all([
         authFetch("/field/geofences"),
-        authFetch("/master-data/sites?limit=500")
+        authFetch("/master-data/sites?page=1&pageSize=100")
       ]);
       if (!gRes.ok) throw new Error(await gRes.text());
       if (!sRes.ok) throw new Error(await sRes.text());

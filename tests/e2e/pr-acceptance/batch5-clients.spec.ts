@@ -157,7 +157,10 @@ test.describe("Batch 5 — Clients workspace (PRs #23, #335, #337)", () => {
     page
   }) => {
     await openClientDrawer(page, "Brisbane City Council");
-    await page.getByRole("tab", { name: "Contacts", exact: true }).click();
+    await page
+      .getByRole("tablist", { name: "Client detail" })
+      .getByRole("tab", { name: "Contacts", exact: true })
+      .click();
 
     // Seeded BCC contacts render with flags.
     await expect(page.getByText("Daniel Reilly")).toBeVisible();
@@ -211,7 +214,10 @@ test.describe("Batch 5 — Clients workspace (PRs #23, #335, #337)", () => {
 
     await page.getByPlaceholder("Search name, code, email").fill(clientName);
     await page.getByRole("button", { name: clientName }).click();
-    await page.getByRole("tab", { name: "Contacts", exact: true }).click();
+    await page
+      .getByRole("tablist", { name: "Client detail" })
+      .getByRole("tab", { name: "Contacts", exact: true })
+      .click();
     await expect(page.getByText("No contacts yet")).toBeVisible();
 
     // Add a contact. Saving fires onChanged → the parent closes the drawer,
@@ -223,7 +229,10 @@ test.describe("Batch 5 — Clients workspace (PRs #23, #335, #337)", () => {
     await page.getByRole("dialog").getByRole("button", { name: "Add contact", exact: true }).click();
 
     await page.getByRole("button", { name: clientName }).click();
-    await page.getByRole("tab", { name: "Contacts", exact: true }).click();
+    await page
+      .getByRole("tablist", { name: "Client detail" })
+      .getByRole("tab", { name: "Contacts", exact: true })
+      .click();
     await expect(page.getByText("E2e Batch5")).toBeVisible();
 
     // Delete the contact via the row action — the delete now confirms via
@@ -235,7 +244,10 @@ test.describe("Batch 5 — Clients workspace (PRs #23, #335, #337)", () => {
     await expect(page.getByRole("heading", { name: `Edit · ${clientName}` })).toBeHidden();
 
     await page.getByRole("button", { name: clientName }).click();
-    await page.getByRole("tab", { name: "Contacts", exact: true }).click();
+    await page
+      .getByRole("tablist", { name: "Client detail" })
+      .getByRole("tab", { name: "Contacts", exact: true })
+      .click();
     await expect(page.getByText("E2e Batch5")).toBeVisible();
     await expect(page.getByText("1 contact", { exact: true })).toBeVisible();
   });

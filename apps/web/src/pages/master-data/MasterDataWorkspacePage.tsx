@@ -605,6 +605,7 @@ function ClientSlideOver({ existing, onClose, onSaved }: ClientSlideOverProps) {
           <nav
             className="tender-detail__tabs"
             role="tablist"
+            aria-label="Client detail"
             style={{ display: "flex", gap: 4, padding: "8px 16px 0", borderBottom: "1px solid var(--border, #e5e7eb)" }}
           >
             <button

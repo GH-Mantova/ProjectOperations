@@ -31,7 +31,10 @@ export function resolveMasterDataTab(
 
   if (rawTab === "sites") return { kind: "tab", tab: "sites" };
 
-  const next = new URLSearchParams(searchParams);
+  const next = new URLSearchParams();
   next.set("tab", "clients");
+  for (const [key, value] of searchParams) {
+    if (key !== "tab") next.append(key, value);
+  }
   return { kind: "redirect", to: `${DIRECTORY_CLIENTS_PATH}?${next.toString()}` };
 }

@@ -263,6 +263,17 @@ export const NAV_GROUPS: NavGroup[] = [
       // Resources module). Mirror the API, not the label.
       { to: "/workers", label: "Workers", icon: ICON_WORKERS, requiresPermission: "resources.view" },
       {
+        // Leave Approvals is the canonical home for approving field-submitted
+        // LeaveRequest rows (Marco ruling 2026-08-03). The controller gates
+        // /workers/leave-requests/pending + /decide on workers.manage, so
+        // mirror that here — the sidebar entry hides for users who lack it.
+        to: "/workers/leave-approvals",
+        label: "Leave Approvals",
+        icon: ICON_WORKERS,
+        match: (path) => path.startsWith("/workers/leave-approvals"),
+        requiresPermission: "workers.manage"
+      },
+      {
         // §7 payroll export: dedicated page over the existing CSV endpoint.
         // Requires field.manage; NoAccess surfaces the missing code when a
         // user without the permission lands on the route.
@@ -403,6 +414,7 @@ const BREADCRUMBS: Record<string, string> = {
   "/forms": "Forms",
   "/tenders": "Tendering",
   "/workers": "Workers",
+  "/workers/leave-approvals": "Leave Approvals",
   "/workers/live-crew": "Live crew map",
   "/assets": "Assets",
   "/inventory": "Inventory",

@@ -109,6 +109,21 @@ if (-not $repointed) {
 }
 Step ("smoke DB: " + $SmokeDb + " (developer database untouched)")
 
+# --- relax auth login throttle for the smoke env (parity with CI). ----------------------
+# The API enforces 5 logins / 60s per IP (auth-throttle.config.ts). The pr-acceptance suite
+# runs 4 parallel Playwright workers; per-worker token caches mean 4 cold admin+field-worker
+# logins from 127.0.0.1 burst past the limit and every later /auth/login returns 429, failing
+# unrelated specs. CI's playwright.yml sets AUTH_THROTTLE_LIMIT=1000 and
+# AUTH_THROTTLE_REFRESH_LIMIT=1000 for the same reason -- that is why CI is green while this
+# local smoke 429s. Bring the disposable smoke env into parity; production defaults untouched.
+foreach ($envFile in @($DstRoot, $DstApi)) {
+    if (Test-Path $envFile) {
+        Add-Content -Path $envFile -Value "AUTH_THROTTLE_LIMIT=1000" -Encoding ASCII
+        Add-Content -Path $envFile -Value "AUTH_THROTTLE_REFRESH_LIMIT=1000" -Encoding ASCII
+    }
+}
+Step "relaxed AUTH_THROTTLE_LIMIT/REFRESH_LIMIT for smoke env (parity with CI; prod untouched)"
+
 # --- build. A smoke against a stale dist/ proves nothing. --------------------------------
 Step "pnpm install"
 pnpm install --frozen-lockfile 2>&1 | Select-Object -Last 3 | ForEach-Object { Write-Output ("    " + $_) }

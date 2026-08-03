@@ -715,6 +715,11 @@ role import CSV) reads these codes.
 
 ## 9. PENDING-MARCO — shape-changing decisions before code slices start
 
+> **DECIDED 2026-08-03 (Marco): Option A — full consolidation with `IssueMovement`.**
+> Proceed on the Option A path. Option B (below) is retained as the escalation
+> fallback only if SLICE 6's backfill dry-run diffs. The append-only movement log
+> carries the WHS statutory audit-trail duty (sot/01:258-280).
+
 ### 9.1 Full consolidation vs SafetyIncident-kept-separate
 **Question:** WHS audit obligations require that a safety incident's audit
 trail is provably immutable and provably tied to a WHS-officer close-out.

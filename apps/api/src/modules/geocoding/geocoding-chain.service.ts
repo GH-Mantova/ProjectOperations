@@ -1,6 +1,10 @@
-import { Inject, Injectable, Logger } from "@nestjs/common";
+import { Inject, Injectable, Logger, Optional, type OnModuleInit } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ApiKeysService } from "../api-keys/api-keys.service";
+import {
+  ApiKeyMutationEvents,
+  GeocodingAdapterRegistry
+} from "../api-keys/api-key-mutation-events";
 import { CustomRestAdapter } from "./adapters/custom-rest.adapter";
 import { GeoapifyAdapter } from "./adapters/geoapify.adapter";
 import { GeocodifyAdapter } from "./adapters/geocodify.adapter";
@@ -34,7 +38,7 @@ interface ChainRow {
 const CHAIN_TTL_MS = 30_000;
 
 @Injectable()
-export class GeocodingChainService {
+export class GeocodingChainService implements OnModuleInit {
   private readonly logger = new Logger(GeocodingChainService.name);
 
   private readonly adaptersByKey = new Map<string, GeocodingAdapter>();
@@ -50,7 +54,9 @@ export class GeocodingChainService {
     @Inject(GeocodifyAdapter) geocodify: GeocodifyAdapter,
     @Inject(MapTilerAdapter) maptiler: MapTilerAdapter,
     @Inject(NominatimAdapter) nominatim: NominatimAdapter,
-    @Inject(CustomRestAdapter) customRest: CustomRestAdapter
+    @Inject(CustomRestAdapter) customRest: CustomRestAdapter,
+    @Optional() private readonly mutationEvents?: ApiKeyMutationEvents,
+    @Optional() private readonly adapterRegistry?: GeocodingAdapterRegistry
   ) {
     this.register(geoapify);
     this.register(google);
@@ -60,8 +66,27 @@ export class GeocodingChainService {
     this.register(customRest);
   }
 
+  onModuleInit(): void {
+    // Subscribe the 30s memoiser invalidator to the vault's write bus so an
+    // ApiCredential change is reflected in the next autocomplete without
+    // waiting for the TTL. The TTL is the belt-and-braces path if the bus is
+    // absent (e.g. in a stripped unit-test wiring).
+    this.mutationEvents?.onWrite(() => this.invalidate());
+    // Publish adapter instances to the shared registry so ApiKeysService can
+    // run the "Test now" probe without importing GeocodingModule.
+    if (this.adapterRegistry) {
+      for (const adapter of this.adaptersByKey.values()) {
+        this.adapterRegistry.register(adapter.key, adapter);
+      }
+    }
+  }
+
   register(adapter: GeocodingAdapter): void {
     this.adaptersByKey.set(adapter.key, adapter);
+  }
+
+  getAdapter(key: string): GeocodingAdapter | null {
+    return this.adaptersByKey.get(key) ?? null;
   }
 
   // Callers on the ApiCredential write path invoke this to invalidate the

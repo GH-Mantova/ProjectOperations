@@ -62,6 +62,7 @@ import { ListBindingsModule } from "./modules/list-bindings/list-bindings.module
 import { CommsApprovalsModule } from "./modules/comms-approvals/comms-approvals.module";
 import { ProcurementModule } from "./modules/procurement/procurement.module";
 import { ClientVersionsModule } from "./modules/client-versions/client-versions.module";
+import { ApiKeysModule } from "./modules/api-keys/api-keys.module";
 import { IntegrationKeysModule } from "./common/integrations/integration-keys.module";
 import { GeocodingModule } from "./modules/geocoding/geocoding.module";
 import { ExpensesModule } from "./modules/expenses/expenses.module";
@@ -84,6 +85,7 @@ import { SitesModule } from "./modules/sites/sites.module";
     SecurityModule,
     PrismaModule,
     IntegrationKeysModule,
+    ApiKeysModule,
     HealthModule,
     EmailModule,
     AccessRequestsModule,

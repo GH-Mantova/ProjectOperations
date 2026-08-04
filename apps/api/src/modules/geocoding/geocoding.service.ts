@@ -1,12 +1,13 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { IntegrationKeysService } from "../../common/integrations/integration-keys.service";
+import { ApiKeysService } from "../api-keys/api-keys.service";
 
 // Server-side proxy over the Geoapify Address Autocomplete API. The Geoapify
-// key is read from IntegrationCredential storage via IntegrationKeysService and
-// is NEVER shipped to the browser — every autocomplete/geocode call has to
-// originate from the API layer. When no key is configured we return a
-// non-error payload so the caller can render a "not configured" hint instead
-// of a 500.
+// key is read via ApiKeysService.resolve (SLICE-2 seam — falls back to
+// IntegrationCredential/env-var storage until the vault backfill lands in
+// SLICE-3) and is NEVER shipped to the browser — every autocomplete/geocode
+// call has to originate from the API layer. When no key is configured we
+// return a non-error payload so the caller can render a "not configured"
+// hint instead of a 500.
 export interface GeoapifySuggestion {
   formatted: string;
   addressLine1: string | null;
@@ -33,13 +34,13 @@ const AUTOCOMPLETE_TIMEOUT_MS = 3_500;
 export class GeocodingService {
   private readonly logger = new Logger(GeocodingService.name);
 
-  constructor(private readonly integrationKeys: IntegrationKeysService) {}
+  constructor(private readonly apiKeys: ApiKeysService) {}
 
   async autocomplete(text: string): Promise<GeoAutocompleteResult> {
     const query = (text ?? "").trim();
     if (query.length < 3) return { configured: true, results: [] };
 
-    const apiKey = await this.integrationKeys.resolveIntegrationKey("geoapify");
+    const apiKey = await this.apiKeys.resolve("geoapify", "company");
     if (!apiKey) {
       return {
         configured: false,

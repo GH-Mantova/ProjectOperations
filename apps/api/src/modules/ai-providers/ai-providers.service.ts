@@ -5,6 +5,7 @@ import { getPersonaBySlug } from "../personas/persona-registry";
 import { GLOBAL_RATE_FABRICATION_PROHIBITION } from "../personas/definitions/shared-prompts";
 import type { PersonaDefinition, PersonaSubMode } from "../personas/personas.types";
 import { KeyEncryptionService } from "../security/key-encryption.service";
+import { ApiKeysService } from "../api-keys/api-keys.service";
 import {
   ToolingNotSupportedError,
   type ChatRequest,
@@ -31,7 +32,8 @@ export class AiProvidersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly platformConfig: PlatformConfigService,
-    private readonly encryption: KeyEncryptionService
+    private readonly encryption: KeyEncryptionService,
+    private readonly apiKeys: ApiKeysService
   ) {}
 
   // Resolves which provider+key+model to use for a given user+persona.
@@ -130,32 +132,17 @@ export class AiProvidersService {
     throw new ProviderNotConfiguredError(null);
   }
 
-  // Per-user BYOK lookup. Returns null when the user has no key for the
-  // provider, OR when the encrypted blob fails to decrypt (logged via
-  // KeyEncryptionService.tryDecrypt with context, falls through to company
-  // key — does NOT throw, so a corrupted user key blob doesn't take down
-  // chat for that user).
+  // Per-user BYOK lookup. Routes through ApiKeysService (SLICE-2 seam) — the
+  // legacy path there reads the same User.<provider>KeyEncrypted column and
+  // tryDecrypts with the same subjectId context, so behaviour is unchanged;
+  // once SLICE-3 flips the seam to vault-primary, per-user vault rows will
+  // start winning here transparently.
   private async getUserKey(userId: string, provider: ProviderId): Promise<string | null> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        anthropicKeyEncrypted: true,
-        openaiKeyEncrypted: true
-      }
-    });
-    if (!user) return null;
-    const encrypted =
-      provider === "anthropic" ? user.anthropicKeyEncrypted : user.openaiKeyEncrypted;
-    return this.encryption.tryDecrypt(encrypted, {
-      provider,
-      scope: "user",
-      subjectId: userId
-    });
+    return this.apiKeys.resolve(provider, "user", userId);
   }
 
   private async resolveCompanyKey(provider: ProviderId): Promise<string | null> {
-    if (provider === "anthropic") return this.platformConfig.getAnthropicApiKey();
-    return this.platformConfig.getOpenAiApiKey();
+    return this.apiKeys.resolve(provider, "company");
   }
 
   // Model precedence: env var (deployment override) → PlatformConfig

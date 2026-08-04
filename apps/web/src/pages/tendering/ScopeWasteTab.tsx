@@ -244,6 +244,20 @@ export function ScopeWasteTab({
       setError(await readApiErrorMessage(response));
       return;
     }
+    // openTransportByDefault: seed the freshly-created row's id into
+    // `expanded` so the transport sub-row is reachable without a click.
+    // Server-loaded rows are unaffected — they keep the collapsed default.
+    const openTransportByDefault = true;
+    if (openTransportByDefault) {
+      try {
+        const created = (await response.json()) as { id?: string };
+        if (created?.id) {
+          setExpanded((prev) => ({ ...prev, [created.id!]: true }));
+        }
+      } catch {
+        // No JSON body — skip auto-expand; load() below still refreshes.
+      }
+    }
     await load();
   };
 

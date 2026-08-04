@@ -2544,6 +2544,40 @@ model IntegrationCredential {
   @@map("integration_credentials")
 }
 
+model ApiKeyType {
+  id          String          @id @default(uuid())
+  name        String          @unique
+  description String?
+  systemKind  String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  credentials ApiCredential[]
+
+  @@map("api_key_type")
+}
+
+model ApiCredential {
+  id             String     @id @default(uuid())
+  name           String
+  typeId         String
+  type           ApiKeyType @relation(fields: [typeId], references: [id])
+  adapter        String?
+  scope          String     @default("company")
+  userId         String?
+  valueEncrypted String?
+  validatedAt    DateTime?
+  enabled        Boolean    @default(true)
+  order          Int?
+  config         Json?
+  updatedById    String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@index([typeId])
+  @@index([scope, userId])
+  @@map("api_credential")
+}
+
 // UserAiProvider and UserAiPreference models were removed in Â§5A.1 PR 8
 // (PR #132) â€" provider selection moved to persona settings. Tables dropped
 // via migration 20260502_chore_remove_legacy_ai_provider_tables.

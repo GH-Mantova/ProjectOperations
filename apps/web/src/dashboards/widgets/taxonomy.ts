@@ -91,6 +91,7 @@ export const WIDGET_TAXONOMY: Record<string, WidgetTaxonomyEntry> = {
   forms_approvals_waiting_kpi: { module: "Operations", submodule: "Forms" },
   forms_approvals_waiting_panel: { module: "Operations", submodule: "Forms" },
   forms_prestarts_today_kpi: { module: "Operations", submodule: "Forms" },
+  cv_client_satisfaction_kpi: { module: "Operations", submodule: "Forms" },
 
   // ── Operations — Safety ───────────────────────────────────
   safety_incidents_open: { module: "Operations", submodule: "Safety" },

@@ -5,6 +5,7 @@ import {
   ApiKeyMutationEvents,
   GeocodingAdapterRegistry
 } from "../api-keys/api-key-mutation-events";
+import { CustomRestAdapter } from "./adapters/custom-rest.adapter";
 import { GeoapifyAdapter } from "./adapters/geoapify.adapter";
 import { GeocodifyAdapter } from "./adapters/geocodify.adapter";
 import { GoogleAdapter } from "./adapters/google.adapter";
@@ -53,6 +54,7 @@ export class GeocodingChainService implements OnModuleInit {
     @Inject(GeocodifyAdapter) geocodify: GeocodifyAdapter,
     @Inject(MapTilerAdapter) maptiler: MapTilerAdapter,
     @Inject(NominatimAdapter) nominatim: NominatimAdapter,
+    @Inject(CustomRestAdapter) customRest: CustomRestAdapter,
     @Optional() private readonly mutationEvents?: ApiKeyMutationEvents,
     @Optional() private readonly adapterRegistry?: GeocodingAdapterRegistry
   ) {
@@ -61,6 +63,7 @@ export class GeocodingChainService implements OnModuleInit {
     this.register(geocodify);
     this.register(maptiler);
     this.register(nominatim);
+    this.register(customRest);
   }
 
   onModuleInit(): void {

@@ -3,6 +3,12 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagg
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { MetadataService } from "./metadata.service";
 
+/**
+ * Catalog resolution order (see docs/plans/smart-wizard-catalog-deploy-plan.md §3):
+ *   1. METADATA_CATALOG_PATH env var (if set and file exists).
+ *   2. Build-bundled copy at <__dirname>/assets/metadata-catalog.json (production path).
+ *   3. Repo-root walk with tryGenerate() (dev fallback only).
+ */
 @ApiTags("Metadata")
 @ApiBearerAuth()
 @Controller("meta")

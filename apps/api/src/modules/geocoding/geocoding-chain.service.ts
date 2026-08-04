@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ApiKeysService } from "../api-keys/api-keys.service";
+import { CustomRestAdapter } from "./adapters/custom-rest.adapter";
 import { GeoapifyAdapter } from "./adapters/geoapify.adapter";
 import { GeocodifyAdapter } from "./adapters/geocodify.adapter";
 import { GoogleAdapter } from "./adapters/google.adapter";
@@ -48,13 +49,15 @@ export class GeocodingChainService {
     @Inject(GoogleAdapter) google: GoogleAdapter,
     @Inject(GeocodifyAdapter) geocodify: GeocodifyAdapter,
     @Inject(MapTilerAdapter) maptiler: MapTilerAdapter,
-    @Inject(NominatimAdapter) nominatim: NominatimAdapter
+    @Inject(NominatimAdapter) nominatim: NominatimAdapter,
+    @Inject(CustomRestAdapter) customRest: CustomRestAdapter
   ) {
     this.register(geoapify);
     this.register(google);
     this.register(geocodify);
     this.register(maptiler);
     this.register(nominatim);
+    this.register(customRest);
   }
 
   register(adapter: GeocodingAdapter): void {

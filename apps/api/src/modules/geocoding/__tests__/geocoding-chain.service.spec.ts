@@ -71,7 +71,8 @@ function build(
     forward: async () => [],
     reverse: async () => []
   };
-  // Stub out the four new SLICE-6 adapters so the constructor doesn't fail.
+  // Stub out the four new SLICE-6 adapters + the SLICE-7 custom-rest adapter
+  // so the constructor doesn't fail.
   const makeStub = (key: string) => ({
     key,
     autocomplete: async () => [],
@@ -85,7 +86,8 @@ function build(
     makeStub("google") as never,
     makeStub("geocodify") as never,
     makeStub("maptiler") as never,
-    makeStub("nominatim") as never
+    makeStub("nominatim") as never,
+    makeStub("custom-rest") as never
   );
   return { service, findMany, apiKeys, geoapify };
 }

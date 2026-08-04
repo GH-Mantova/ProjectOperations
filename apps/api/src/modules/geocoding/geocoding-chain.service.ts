@@ -2,9 +2,14 @@ import { Inject, Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ApiKeysService } from "../api-keys/api-keys.service";
 import { GeoapifyAdapter } from "./adapters/geoapify.adapter";
+import { GeocodifyAdapter } from "./adapters/geocodify.adapter";
+import { GoogleAdapter } from "./adapters/google.adapter";
+import { MapTilerAdapter } from "./adapters/maptiler.adapter";
+import { NominatimAdapter } from "./adapters/nominatim.adapter";
 import { GeoapifySuggestion, GeocodingAdapter } from "./geocoding-adapter";
 
-// Ordered provider-failover chain for AUTOCOMPLETE (plan §4e).
+// Ordered provider-failover chain for AUTOCOMPLETE, FORWARD, and REVERSE
+// geocode (plan §4e / §4f).
 //
 // The chain query: enabled ApiCredential rows whose ApiKeyType.systemKind is
 // "geocoding", ordered by `order` ASC with NULLS LAST (plan §2c). We iterate
@@ -39,12 +44,17 @@ export class GeocodingChainService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly apiKeys: ApiKeysService,
-    @Inject(GeoapifyAdapter) geoapify: GeoapifyAdapter
+    @Inject(GeoapifyAdapter) geoapify: GeoapifyAdapter,
+    @Inject(GoogleAdapter) google: GoogleAdapter,
+    @Inject(GeocodifyAdapter) geocodify: GeocodifyAdapter,
+    @Inject(MapTilerAdapter) maptiler: MapTilerAdapter,
+    @Inject(NominatimAdapter) nominatim: NominatimAdapter
   ) {
-    // SLICE-5 wires only Geoapify. SLICE-6 will register the additional
-    // adapters (google, geocodify, maptiler, nominatim) alongside forward /
-    // reverse geocode.
     this.register(geoapify);
+    this.register(google);
+    this.register(geocodify);
+    this.register(maptiler);
+    this.register(nominatim);
   }
 
   register(adapter: GeocodingAdapter): void {
@@ -104,6 +114,80 @@ export class GeocodingChainService {
       configured: true,
       results: [],
       reason: lastReason ? `Address lookup unavailable (${lastReason}).` : "Address lookup unavailable."
+    };
+  }
+
+  // Forward geocode: iterates the same chain with the same fall-through
+  // semantics as autocomplete. Not wired to any route in SLICE-6 — callers
+  // that already exist on main will consume it directly.
+  async forward(query: string): Promise<{
+    configured: boolean;
+    results: GeoapifySuggestion[];
+    reason?: string;
+  }> {
+    return this.runChainOp(
+      async (adapter, apiKey, config) => adapter.forward(query, apiKey, config),
+      "forward"
+    );
+  }
+
+  // Reverse geocode: iterates the same chain with the same fall-through
+  // semantics as autocomplete.
+  async reverse(lat: number, lon: number): Promise<{
+    configured: boolean;
+    results: GeoapifySuggestion[];
+    reason?: string;
+  }> {
+    return this.runChainOp(
+      async (adapter, apiKey, config) => adapter.reverse(lat, lon, apiKey, config),
+      "reverse"
+    );
+  }
+
+  // Shared iteration logic for forward + reverse (same as autocomplete but
+  // extracted to avoid repetition).
+  private async runChainOp(
+    invoke: (adapter: GeocodingAdapter, apiKey: string, config: unknown) => Promise<GeoapifySuggestion[]>,
+    opLabel: string
+  ): Promise<{ configured: boolean; results: GeoapifySuggestion[]; reason?: string }> {
+    const chain = await this.loadChain();
+    if (chain.length === 0) {
+      return {
+        configured: false,
+        results: [],
+        reason:
+          "No geocoding provider is configured. An admin can add one in Admin → Settings → Integrations."
+      };
+    }
+
+    let lastReason: string | undefined;
+    for (const row of chain) {
+      const adapter = this.adaptersByKey.get(row.adapter);
+      if (!adapter) {
+        this.logger.debug(`Chain row ${row.id} references unknown adapter '${row.adapter}'; skipping.`);
+        continue;
+      }
+      const apiKey = await this.apiKeys.resolve(row.adapter, "company");
+      if (!apiKey) {
+        continue;
+      }
+
+      try {
+        const results = await invoke(adapter, apiKey, row.config);
+        if (results.length > 0) return { configured: true, results };
+        lastReason = `${row.adapter}: no results`;
+      } catch (err) {
+        lastReason = `${row.adapter}: ${(err as Error).message}`;
+        this.logger.warn(`${opLabel} via ${row.adapter} failed: ${lastReason}`);
+      }
+    }
+
+    return {
+      configured: true,
+      results: [],
+      reason: lastReason
+        ? `Address lookup unavailable (${lastReason}).`
+        : "Address lookup unavailable."
     };
   }
 

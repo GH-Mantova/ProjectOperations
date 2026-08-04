@@ -18,7 +18,9 @@ function makeAdapter(
 ): GeocodingAdapter {
   return {
     key,
-    autocomplete: behaviour
+    autocomplete: behaviour,
+    forward: async () => [],
+    reverse: async () => []
   };
 }
 
@@ -65,9 +67,26 @@ function build(
   const geoapify = {
     key: "geoapify",
     autocomplete:
-      opts.geoapifyBehaviour ?? (async () => [suggestion("Geoapify Result 1"), suggestion("Geoapify Result 2")])
+      opts.geoapifyBehaviour ?? (async () => [suggestion("Geoapify Result 1"), suggestion("Geoapify Result 2")]),
+    forward: async () => [],
+    reverse: async () => []
   };
-  const service = new GeocodingChainService(prisma, apiKeys, geoapify as never);
+  // Stub out the four new SLICE-6 adapters so the constructor doesn't fail.
+  const makeStub = (key: string) => ({
+    key,
+    autocomplete: async () => [],
+    forward: async () => [],
+    reverse: async () => []
+  });
+  const service = new GeocodingChainService(
+    prisma,
+    apiKeys,
+    geoapify as never,
+    makeStub("google") as never,
+    makeStub("geocodify") as never,
+    makeStub("maptiler") as never,
+    makeStub("nominatim") as never
+  );
   return { service, findMany, apiKeys, geoapify };
 }
 

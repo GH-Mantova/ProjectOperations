@@ -80,12 +80,14 @@ function build(
     reverse: opts.primaryBehaviour?.reverse ?? (async () => [suggestion("Geoapify reverse")])
   });
 
-  // Stub out the other four adapters that the constructor now injects
+  // Stub out the other four SLICE-6 adapters + the SLICE-7 custom-rest adapter
+  // that the constructor now injects.
   const stub = (key: string) => makeAdapter(key, {});
   const google = stub("google");
   const geocodify = stub("geocodify");
   const maptiler = stub("maptiler");
   const nominatim = stub("nominatim");
+  const customRest = stub("custom-rest");
 
   const service = new GeocodingChainService(
     prisma,
@@ -94,7 +96,8 @@ function build(
     google as never,
     geocodify as never,
     maptiler as never,
-    nominatim as never
+    nominatim as never,
+    customRest as never
   );
   return { service, findMany, apiKeys, primaryAdapter };
 }

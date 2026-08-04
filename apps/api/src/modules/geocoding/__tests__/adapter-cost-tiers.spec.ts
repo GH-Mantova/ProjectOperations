@@ -2,7 +2,14 @@
 // Assert every built-in adapterHint has a cost tier and the tiers are correct.
 import { ADAPTER_COST_TIERS, AdapterCostTier } from "../geocoding-adapter";
 
-const BUILTIN_ADAPTERS = ["geoapify", "google", "geocodify", "maptiler", "nominatim"] as const;
+const BUILTIN_ADAPTERS = [
+  "geoapify",
+  "google",
+  "geocodify",
+  "maptiler",
+  "nominatim",
+  "custom-rest"
+] as const;
 
 describe("ADAPTER_COST_TIERS", () => {
   it("contains every built-in geocoding adapter", () => {
@@ -15,8 +22,8 @@ describe("ADAPTER_COST_TIERS", () => {
     expect(ADAPTER_COST_TIERS["nominatim"]).toBe("free");
   });
 
-  it("assigns paid-metered to geoapify, google, geocodify, maptiler", () => {
-    const paidAdapters = ["geoapify", "google", "geocodify", "maptiler"] as const;
+  it("assigns paid-metered to geoapify, google, geocodify, maptiler, custom-rest", () => {
+    const paidAdapters = ["geoapify", "google", "geocodify", "maptiler", "custom-rest"] as const;
     for (const adapter of paidAdapters) {
       expect(ADAPTER_COST_TIERS[adapter]).toBe("paid-metered");
     }

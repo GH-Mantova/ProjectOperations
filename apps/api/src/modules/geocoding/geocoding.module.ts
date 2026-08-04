@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { CustomRestAdapter } from "./adapters/custom-rest.adapter";
 import { GeoapifyAdapter } from "./adapters/geoapify.adapter";
 import { GeocodifyAdapter } from "./adapters/geocodify.adapter";
 import { GoogleAdapter } from "./adapters/google.adapter";
@@ -19,7 +20,8 @@ import { SiteResolverService } from "./site-resolver.service";
     GoogleAdapter,
     GeocodifyAdapter,
     MapTilerAdapter,
-    NominatimAdapter
+    NominatimAdapter,
+    CustomRestAdapter
   ],
   exports: [GeocodingService, SiteResolverService, GeocodingChainService]
 })

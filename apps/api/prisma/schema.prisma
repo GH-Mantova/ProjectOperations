@@ -2548,9 +2548,9 @@ model ApiKeyType {
   id          String          @id @default(uuid())
   name        String          @unique
   description String?
-  systemKind  String?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  systemKind  String?         @map("system_kind")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
   credentials ApiCredential[]
 
   @@map("api_key_type")
@@ -2559,19 +2559,19 @@ model ApiKeyType {
 model ApiCredential {
   id             String     @id @default(uuid())
   name           String
-  typeId         String
+  typeId         String     @map("type_id")
   type           ApiKeyType @relation(fields: [typeId], references: [id])
   adapter        String?
   scope          String     @default("company")
-  userId         String?
-  valueEncrypted String?
-  validatedAt    DateTime?
+  userId         String?    @map("user_id")
+  valueEncrypted String?    @map("value_encrypted")
+  validatedAt    DateTime?  @map("validated_at")
   enabled        Boolean    @default(true)
   order          Int?
   config         Json?
-  updatedById    String?
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  updatedById    String?    @map("updated_by_id")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
 
   @@index([typeId])
   @@index([scope, userId])

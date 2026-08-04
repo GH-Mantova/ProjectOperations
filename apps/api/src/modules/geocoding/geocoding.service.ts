@@ -2,9 +2,9 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ApiKeysService } from "../api-keys/api-keys.service";
 
 // Server-side proxy over the Geoapify Address Autocomplete API. The Geoapify
-// key is read via ApiKeysService.resolve (SLICE-2 seam — falls back to
-// IntegrationCredential/env-var storage until the vault backfill lands in
-// SLICE-3) and is NEVER shipped to the browser — every autocomplete/geocode
+// key is read via ApiKeysService.resolve (vault-first as of SLICE-3;
+// IntegrationCredential + env-var remain as fallback) and is NEVER shipped
+// to the browser — every autocomplete/geocode
 // call has to originate from the API layer. When no key is configured we
 // return a non-error payload so the caller can render a "not configured"
 // hint instead of a 500.

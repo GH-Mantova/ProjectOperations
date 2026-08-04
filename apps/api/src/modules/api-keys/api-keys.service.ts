@@ -601,35 +601,28 @@ export class ApiKeysService {
     if (!autocompletePath) {
       return { ok: false, reason: "config.autocompletePath is required for custom REST." };
     }
+    // Fetch-free pre-check: reject an obviously unsafe base URL (non-https or a
+    // literal private/loopback host) with a friendly reason before touching the
+    // network at all.
     try {
       assertSafeUrl(baseUrl);
     } catch (err) {
       return { ok: false, reason: (err as Error).message };
     }
-    const url = joinUrl(baseUrl, autocompletePath, { text: "Brisbane" });
-    const headerName = typeof cfg.headerName === "string" ? cfg.headerName : "Authorization";
-    const headerPrefix = typeof cfg.headerPrefix === "string" ? cfg.headerPrefix : "Bearer ";
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3500);
+    // Delegate the actual probe to the hardened CustomRestAdapter (request-time
+    // DNS-rebind IP allow-check, https-only, redirect re-check, timeout). The
+    // vault never issues a user-controlled fetch itself — routing every custom
+    // egress through the adapter keeps the SSRF surface in one audited place.
+    const impl = this.geocodingRegistry.get("custom-rest");
+    if (!impl) {
+      return { ok: false, reason: "custom-rest: adapter unavailable." };
+    }
     try {
-      const res = await fetch(url, {
-        method: "GET",
-        signal: controller.signal,
-        headers: { [headerName]: `${headerPrefix}${key}` }
-      });
-      if (!res.ok) return { ok: false, reason: `custom-rest: HTTP ${res.status}` };
-      const body = (await res.json().catch(() => null)) as unknown;
-      const hasRow = Array.isArray(body)
-        ? body.length > 0
-        : Boolean(body && typeof body === "object" && Array.isArray((body as { results?: unknown }).results) &&
-            ((body as { results: unknown[] }).results.length > 0));
-      if (hasRow) return { ok: true };
+      const results = await impl.autocomplete("Brisbane", key, config);
+      if (Array.isArray(results) && results.length > 0) return { ok: true };
       return { ok: false, reason: "custom-rest: no rows in response." };
     } catch (err) {
-      const message = (err as Error).name === "AbortError" ? "custom-rest: request timed out." : `custom-rest: ${(err as Error).message}`;
-      return { ok: false, reason: message };
-    } finally {
-      clearTimeout(timer);
+      return { ok: false, reason: `custom-rest: ${(err as Error).message}` };
     }
   }
 
@@ -755,10 +748,4 @@ function assertSafeUrl(rawUrl: string): void {
   if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(host)) {
     throw new Error("Custom REST base URL resolves to a private range (172.16/12).");
   }
-}
-
-function joinUrl(base: string, path: string, params: Record<string, string>): string {
-  const url = new URL(path, base.endsWith("/") ? base : `${base}/`);
-  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  return url.toString();
 }

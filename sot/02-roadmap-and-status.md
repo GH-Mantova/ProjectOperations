@@ -1,6 +1,6 @@
 # 02 — Roadmap & Status
 
-**Last updated:** 2026-07-21 (AEST) · **Owner:** any chat, via doc-reconcile PR (sot/ only, per CP-24).
+**Last updated:** 2026-08-04 (AEST) · **Owner:** any chat, via doc-reconcile PR (sot/ only, per CP-24).
 Single forward-looking roadmap for ProjectOperations. Supersedes the old `roadmap.md`,
 `development-plan.md`, `development-backlog.md`, and the sanity-check/QA planning docs.
 
@@ -42,34 +42,62 @@ OAuth2, MYOB CSV, M365 SSO + local JWT + Super User, AI providers + BYOK encrypt
 - **Master data / QA:** client win/loss counters (#486), analytics status casing (#487), jobs progress from stage activities (#488), scheduler month grid (#489), sites job count (#490), findings batch 1 (#491)
 - **Infra/docs:** data-model map + SoT TOC infra (#493), watcher hardening (#495), GATE-ALLOW migrations (#496), SoT reconcile (#498), pr-watcher no-PR routing fix (#528, merged 2026-07-09), watcher prompt-dir hardening (#533, merged 2026-07-10), classify all 48 Unclassified models across 6 new/refined domains (#539, merged 2026-07-13 — Unclassified is now empty; Procurement, Inventory, Communications, Authorization added)
 
+**Shipped since the last reconcile (2026-07-21 → 2026-08-04, ~#742–#893; full program audit filed 2026-08-04):**
+
+- **Nav / IA redesign:** 7-group sidebar (#746), Tenders consolidation + delete dead Tender Settings (#841), `/directory` canonical + drop master-data/clients-grid (#847), mobile tab bar (#851), Dockets/Expenses into HR nav (#848/#854), every nav item gated on its API view-permission (#834), orphan-route cleanup + redirects (#836/#845), H1 titles aligned to sidebar (#777).
+- **Dialogs → useConfirm:** COMPLETE across all surfaces (#807–#812, stragglers #870); `usePrompt` text-input primitive armed (in-flight).
+- **Field / GPS:** A1 mandatory hard-block on clock-on/off (#817), A2 foreground breadcrumb trail (#820), A3 mandatory GPS across attendance/muster/forms (#821); mobile-native notifications (#849).
+- **Safety / WHS:** muster/evacuation roll-call + headcount widget (#776); SWMS SLICE A1 template-catalog tables (#797).
+- **Tendering / estimating:** waste transport cost engine R3-T1 (#745), material-derived waste group/item (#795), Assumptions & Exclusions tab (#879), transport sub-row expand-by-default (#880), DB-backed org-wide label overrides (#799), auto-create Contract on CONTRACT_ISSUED (#798), CRM board as 2nd tab on Tenders (#789), one-click generate-draft-tender from a lead (#788).
+- **Rates / Xero:** rates xlsx import with preview/confirm (#748), fallback-audit + miss-warn (#747); Xero push ACCPAY bills + pull payment status (#754).
+- **Dashboards / wizard:** Smart Wizard reads metadata catalog at runtime (#750), Home rename + server-owned system default (#824/#828).
+- **Map / ops:** LocationsMap panel — Settings › Map locations, m1b (#779), OPS-M2 tip finder + `TipRecommendationLog` (#819).
+- **Security:** permission guards on admin-users/access-requests/global-lists/timeline (#837/#838/#839), single write path for AI keys (#829), super-user parity (#780/#782), seed hardening → SSO-only (#796).
+- **Last-mile UI (previously listed as pending in §4):** timesheet→payroll export page `PayrollExportPage.tsx`, plant-utilisation report page `PlantUtilisationReportPage.tsx`.
+- **Pipeline / infra:** PR Master station (#791), FIX LANE (#801/#806), front-matter dependency gating (#760), watcher verdict archival (#800), synthetic Xero fixtures slice-1 (#883), smoke throttle parity fix (#882).
+
 ---
 
-## 2. 🔧 In-PR — open right now (6)
+## 2. 🔧 In-PR — open right now (2)
 
-> Live snapshot read from GitHub at reconcile time (2026-07-27). For richer status/blocker
+> Live snapshot read from GitHub at reconcile time (2026-08-04). For richer status/blocker
 > detail run `scripts/pipeline/bring-up-to-speed.ps1` — its `[LIVE]` lines beat this table
 > the moment it drifts.
 
 | PR | Title | Notes |
 |---|---|---|
-| #779 | feat(web): LocationsMap panel — Settings › Map locations (m1b) | leaflet; GATE-ALLOW: dependencies |
-| #787 | chore(deps): bump sharp 0.33.5→0.35.0 | dependabot |
-| #789 | feat(crm): CRM board as second tab on Tenders page | |
-| #796 | fix(seed): SSO-only sentinel for real staff accounts | do-not-merge |
-| #797 | feat(swms): SLICE A1 — template catalog tables | do-not-merge; escalates (schema) |
-| #808 | feat(web): migrate native dialogs to useConfirm (batch A) | |
+| #895 | feat(api): SLICE-3 backfill ApiCredential vault + flip resolve() to vault-first | do-not-merge; escalates (prod-data backfill) — Marco reviews |
+| #894 | docs(queue): stage Smart Wizard metadata-catalog fix prompts (SLICE 1-3) | docs-only staging |
 
-#735 (fold Archive→Documents, Resources→Workers) has since MERGED, along with its spec-retarget
-queue PRs #765/#767 and data-model chores #764/#786. Per-PR history lives in `03-progress-log.md`;
+The entire 2026-07-27 In-PR set (#779/#787/#789/#796/#797/#808) has since MERGED. Also in-flight but
+not yet a PR: `pr-dialogs-prompt-primitive` (the `usePrompt` text-input primitive) — re-armed
+2026-08-04 once its stragglers dependency (#870) landed. Per-PR history lives in `03-progress-log.md`;
 run `bring-up-to-speed.ps1` for the authoritative live list.
 
 ---
 
 ## 3. 📦 Staged — prompt written, not yet a PR
 
-- **`rev-503-smoke-verify`, `rev-506-apitest-verify`, `rev-508`** — verification re-runs for the open PRs above.
-- **`pr-cors-multi-origin`** — parse `CORS_ORIGIN` as comma-separated list for custom-domain cutover (e.g. operations.initialservices.net) without breaking the azurestaticapps host. Backend config only.
-- **`pr-fv2-fields-basic`** (currently `-HOLD`) — Forms FV2 basic/survey/layout field wire-ups (email, phone, address, time, radio, rating, scale/nps, heading, paragraph, divider, image). Gate was "after F-1 merges" — **F-1 (#499) has merged, so this can be activated now** by renaming to `-ready`.
+> **Reconcile 2026-08-04:** the older per-prompt entries here (rev-503/506/508 and the 3a/3b/3c
+> batches below) are largely **consumed or shipped** — the queue is currently drained (0 armed). The
+> live "planned next" set is now the **SLICE-0 plan docs on `docs/plans/`** plus the in-progress
+> programs. Verify any individual prompt against `main` before re-arming (5 of 7 re-queued prompts
+> historically turned out already shipped). Full inventory: `03-progress-log.md` + the 2026-08-04 audit.
+
+**Planned build programs — SLICE-0 design on `main`, code partly/not built (`docs/plans/`):**
+- `settings-restructure-plan` (+ `-permission-map`) — **building** (SLICE 1/2 merged #877/#878; reconciler #884).
+- `model-merge-plan` — B-P0a Job/Project then B-P0b Worker/WorkerProfile (**destructive, Marco-present only**).
+- `smart-wizard-catalog-deploy-plan` — **building** (fix prompts staged #894).
+- `issue-register-consolidation-plan` — one Issue engine for Case/CorrectiveAction/Safety+Hazard.
+- `assets-equipment-tabs-plan` — consolidate Assets/Inventory/Maintenance/Procurement into one tabbed page.
+- `job-stage-durations-plan` — editable Job/Stage durations driving scheduler resource allocation.
+- `reporting-dashboard-layout-plan` — user-composed reports as a dashboard.
+- `site-dissolution-plan` — dissolve Site → physical to Job, commercial to Client, Directory to Clients.
+- `merge-liberty-and-speed-plan` — pipeline self-improvement (do-not-merge).
+- SWMS `swms-build-slice-plan` — A1 shipped (#797); A2..A11 / B1..B5 remaining.
+
+**Active build programs (not on `docs/plans/`):** unified API-key vault + geocoding failover (SLICE-1/2
+merged #889/#892; SLICE-3 open #895); synthetic integration fixtures (Xero slice-1 #883; slices 2+3 staged #891).
 
 ### 3a. 📦 Forms & inspection engine — gap prompts (staged 2026-07-15; PR #609 for durability)
 
@@ -105,7 +133,7 @@ Power Pages external portal). See `project_d365_parity_program` + `project_jotfo
 - Widgets batch 2 (composed) — form-approvals-waiting, quotes-drafted-not-sent, pre-starts-today, recent-site-photos, "My day". Gate: after #503 merges.
 - Widgets batch 3 — site weather (Open-Meteo, platform's first external data dep) + role-based default dashboards. Gate: after batch 2 merges.
 
-**Data-model consolidation (design locked; destructive, phased, human-reviewed):**
+**Data-model consolidation (design locked; destructive, phased, human-reviewed — now planned via `model-merge-plan`, #871):**
 - Job + Project full merge — survivor Project (Phase A links already merged #500; remaining phases).
 - Worker/WorkerProfile consolidation — WorkerProfile canonical (design #475; migrate scheduler + competency code, then drop Worker).
 
@@ -120,7 +148,7 @@ Power Pages external portal). See `project_d365_parity_program` + `project_jotfo
 - F-2 rules engine, F-3 repeating sections, F-4 advanced fields (Lookup/Calculation/Table/UniqueID/Terms), F-5/F-6 Worker/Asset/Location/Weather/Photo/Signature, full PDF export, analytics page, F-9 web push, F-11 output channels, F-12/F-13 AI.
 
 **Partial last-mile (from codebase-verified `development-plan.md` — finish the last 20%):**
-- Timesheet→payroll export UI (backend + CSV endpoint done); plant-utilisation report page (endpoint done); error-envelope humane FE render; `Project`/`Job` `siteId` hard NOT-NULL FK (**still Open** — verified 2026-07-08: `siteId` remains nullable/SetNull, backfill pending); AI provider abstraction collapse; auto SharePoint Lost/Archived re-org. *(Gantt drag-to-reschedule — **Done**, #446, in the projects Gantt `GanttChart.tsx`, not the scheduler grid.)*
+- error-envelope humane FE render; `Project`/`Job` `siteId` hard NOT-NULL FK (**still Open** — verified 2026-08-04: `siteId` remains nullable (`String?`) on four models, backfill pending — see `pr-siteid-notnull-backfill-HOLD`); AI provider abstraction collapse; auto SharePoint Lost/Archived re-org. *(**Now Done → moved to §1:** timesheet→payroll export page `PayrollExportPage.tsx` and plant-utilisation report page `PlantUtilisationReportPage.tsx`. Gantt drag-to-reschedule also Done, #446.)*
 - Blocked on **Entra grants**: calendar live adapter, correspondence live Graph ingestion, Azure Mail.Send production email.
 
 **Phase 6 tech debt:** PWA OfflineProvider boundary, SW autoUpdate race, dead-letter UX; orphaned cardless waste rows. *(Verified 2026-07-08 and closed: `directory.finance` is **N/A** — intentional field-masking `maskBank`/`stripBankFromInput`, not a missing guard; `subcontractor_contacts` **already dropped** — migration `20260426_feat_drop_deprecated_tables`; `ScopeWasteItem.wasteTonnes → qty` rename **Done** — migration `20260701_..._waste_rename_qty` (the remaining `ScopeOfWorksItem.wasteTonnes` is a separate deprecated legacy column).)*
@@ -145,6 +173,11 @@ form-builder conditional logic · maintenance scheduling automation.
 3. **Entra grants** (Mail.Read / Calendars.ReadWrite / Mail.Send) — biggest single unlock: flips calendar sync, correspondence ingestion, and production email from mock to live.
 4. **PR-213 subcontractor assignment model** — unblocks the subcontractor portal.
 5. **Raj + Sean tendering sign-off** + their Variation / Schedule-of-Rates PDF templates.
+6. **#895 API-key vault SLICE-3** — production-data backfill + `resolve()` vault-flip; open, do-not-merge, awaiting your review of the rendered diff.
+7. **#876 field-worker `expenses.view` / `expenses.manage`** — permission grant; needs your call.
+
+> Items 1–2 (#503 route bug, #507 deploy.yml) are ~2 weeks old — **re-verify against the current board** before acting; they may already be resolved.
+> **Top strategic unblock:** item 3 (Entra grants) gates the largest cluster of stalled work — calendar sync, correspondence ingestion, and production email.
 
 ---
 

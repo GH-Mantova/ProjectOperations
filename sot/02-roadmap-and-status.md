@@ -96,6 +96,14 @@ run `bring-up-to-speed.ps1` for the authoritative live list.
 - `merge-liberty-and-speed-plan` — pipeline self-improvement (do-not-merge).
 - SWMS `swms-build-slice-plan` — A1 shipped (#797); A2..A11 / B1..B5 remaining.
 
+**Newly planned 2026-08-04 (moved here from §4/§5 in the disposition pass; SLICE-0 plans on `docs/plans/`, do-not-merge #903/#905 — nothing armed):**
+- `forms-v2-program-plan` — the WHOLE Forms Engine v2 build **F-2 → F-13** as one sequential launch chain (was §4 "5C Forms v2"; maintenance-scheduling automation folds into F-8, was §5).
+- `subcontractor-rate-cards-slice-plan` — additive `SubcontractorRate` (was §5). Locked: explicit "price from subbie" action, canonical 4-scope-code, append-only supersede; RC-3 gated behind PR-213.
+- `realtime-websockets-plan` — scheduler + safety live updates (was §5). Needs the WebSocket-vs-SSE / App-Service call (§6).
+- `multi-tenant-plan` — sister-company multi-tenancy (was §5). Needs the tenancy-model A/B/C call (§6); recommend A.
+- `progress-claim-autogen-plan` — reuses the existing pro-forma DRAFT engine; generate + manual edit (was §5).
+- `tender-winloss-datacapture-plan` — capture-first on the existing `TenderOutcome` model; ML deferred (was §5).
+
 **Active build programs (not on `docs/plans/`):** unified API-key vault + geocoding failover (SLICE-1/2
 merged #889/#892; SLICE-3 open #895); synthetic integration fixtures (Xero slice-1 #883; slices 2+3 staged #891).
 
@@ -129,40 +137,35 @@ Power Pages external portal). See `project_d365_parity_program` + `project_jotfo
 
 ## 4. 🧊 Awaiting-staging — agreed/needed, no live prompt yet
 
-**Dashboards (Marco approved full catalogue 2026-07-03; gated in sequence):**
-- Widgets batch 2 (composed) — form-approvals-waiting, quotes-drafted-not-sent, pre-starts-today, recent-site-photos, "My day". Gate: after #503 merges.
-- Widgets batch 3 — site weather (Open-Meteo, platform's first external data dep) + role-based default dashboards. Gate: after batch 2 merges.
+> **Cleared 2026-08-04 (disposition pass).** Every prior §4 item was dispositioned — planned → §3, shipped → §1, parked/retired → §5, or a Marco decision → §6. Summary below.
 
-**Data-model consolidation (design locked; destructive, phased, human-reviewed — now planned via `model-merge-plan`, #871):**
-- Job + Project full merge — survivor Project (Phase A links already merged #500; remaining phases).
-- Worker/WorkerProfile consolidation — WorkerProfile canonical (design #475; migrate scheduler + competency code, then drop Worker).
+**Dashboards** — **Done/removed:** widgets batch 2 (form-approvals-waiting, pre-starts-today, recent-site-photos, "My day") and site-weather are already on `main` (widgetRegistry). Role-based default dashboards was **cancelled** (per-user `defaultDashboardId` chosen instead).
 
-**5A Tendering sign-off gate (still the pilot-facing release blocker):**
-- Floating AI window shell; AI Settings tab (Sean + user views); remaining persona sub-mode tooling.
-- 5A.3 end-to-end workflow review with Raj → fix PRs → **Raj + Sean sign-off**.
-- Clarification Call/Email/Meeting/Note first-class types — **Done (types wired)** (verified 2026-07-08): typed end-to-end via `TenderClarificationNote.noteType` (call/email/meeting/note/response, PR #72; `@IsIn` API validation + UI filter) and `TenderEntry.type` (PR #18 unified comms panel). *(The earlier "email-only" read looked at the Correspondence Hub and missed the clarification-note subsystem; if #260 intended richer per-type workflows beyond the discriminator, re-scope that separately.)*
-- Quote PDF enhancements — **all Done** (verified 2026-07-08; drop from this gate at next reconcile): PR A density-as-lookup shipped incl. seed (`EstimateMaterialDensity` + admin UI + 44 seeded rows); PR B card-header summaries / override / proportional cost-line allocation (`client-quotes.service.ts`); PR C floating Assumptions/Exclusions editor, Alt+A (`AssumptionsExclusionsFloatingEditor.tsx`).
-- Variation PDF + Schedule-of-Rates PDF HTML→PDF migration (deferred pending Sean's templates).
+**Data-model consolidation** — **planned → §3** via `model-merge-plan` (#871): B-P0a Job/Project then B-P0b Worker/WorkerProfile (destructive, Marco-present).
 
-**5C Forms Engine v2 remaining slices (spec: `06-active-specs.md`):**
-- F-2 rules engine, F-3 repeating sections, F-4 advanced fields (Lookup/Calculation/Table/UniqueID/Terms), F-5/F-6 Worker/Asset/Location/Weather/Photo/Signature, full PDF export, analytics page, F-9 web push, F-11 output channels, F-12/F-13 AI.
+**5A Tendering sign-off gate** — Floating AI window / AI Settings tab **parked** (a persona assistant + `AiSettingsPage` already exist). Clarification types and Quote-PDF enhancements **Done**. What remains is a **Marco/human gate → §6:** Raj + Sean end-to-end sign-off, and the Variation / Schedule-of-Rates PDF templates from Sean.
 
-**Partial last-mile (from codebase-verified `development-plan.md` — finish the last 20%):**
-- error-envelope humane FE render; `Project`/`Job` `siteId` hard NOT-NULL FK (**still Open** — verified 2026-08-04: `siteId` remains nullable (`String?`) on four models, backfill pending — see `pr-siteid-notnull-backfill-HOLD`); AI provider abstraction collapse; auto SharePoint Lost/Archived re-org. *(**Now Done → moved to §1:** timesheet→payroll export page `PayrollExportPage.tsx` and plant-utilisation report page `PlantUtilisationReportPage.tsx`. Gantt drag-to-reschedule also Done, #446.)*
-- Blocked on **Entra grants**: calendar live adapter, correspondence live Graph ingestion, Azure Mail.Send production email.
+**Forms Engine v2 (F-2 → F-13)** — **planned → §3** as `forms-v2-program-plan` (one sequential launch chain; design spec in `06-active-specs.md`).
 
-**Phase 6 tech debt:** PWA OfflineProvider boundary, SW autoUpdate race, dead-letter UX; orphaned cardless waste rows. *(Verified 2026-07-08 and closed: `directory.finance` is **N/A** — intentional field-masking `maskBank`/`stripBankFromInput`, not a missing guard; `subcontractor_contacts` **already dropped** — migration `20260426_feat_drop_deprecated_tables`; `ScopeWasteItem.wasteTonnes → qty` rename **Done** — migration `20260701_..._waste_rename_qty` (the remaining `ScopeOfWorksItem.wasteTonnes` is a separate deprecated legacy column).)*
+**Partial last-mile** — error-envelope humane render **Done** (`lib/api-errors.ts`, 16 files); AI-provider abstraction **resolved** (#829). Payroll-export + plant-utilisation pages **Done → §1**. Still open: `siteId` NOT-NULL backfill (HOLD `pr-siteid-notnull-backfill`, prod-data → §6) and auto SharePoint Lost/Archived re-org (Entra-blocked → §6). Blocked on **Entra grants** (§6): calendar adapter, correspondence Graph ingestion, Azure Mail.Send.
+
+**Phase 6 tech debt** — OfflineProvider error-boundary **armed** (#902). SW auto-update race, dead-letter UX, and orphaned cardless-waste rows are **already resolved/closed** (prompt-based SW updates; `DeadLetterBanner`; `ScopeWasteItem.cardId` now required + cascade). `directory.finance`/`subcontractor_contacts`/`wasteTonnes→qty` items were already verified closed 2026-07-08.
 
 ---
 
 ## 5. 💡 Ideas / future (Phase 7–8 — not yet decided)
 
-Subcontractor portal `/portal/sub` (needs PR-213 assignment-model decision) · custom
-dashboard widget builder (**already SHIPPED** — verified 2026-07-08, `CustomBuilderWidget.tsx`, bounded to 5 data sources × 3 metrics × 3 chart types; historical, not a future idea) · calendar sync
-(Google + Microsoft) · two-way email reply parsing · MYOB live (OAuth2) · web push · websockets
-(real-time scheduler/safety) · subcontractor rate cards · asset GPS tracking · document OCR ·
-automated progress-claim generation · tender win/loss ML · multi-company · SWMS builder ·
-form-builder conditional logic · maintenance scheduling automation.
+**Moved to Planned (§3) 2026-08-04:** websockets (real-time scheduler/safety), subcontractor rate cards,
+automated progress-claim generation, tender win/loss (data-capture first), multi-company/multi-tenant, and
+maintenance scheduling automation (folded into Forms v2 F-8). SWMS builder, web push, and form-builder
+conditional logic are covered by the Forms v2 program (SWMS slice plan; F-9 push; F-2 rules).
+
+**Retired 2026-08-04:** asset GPS tracking — needs per-unit hardware + a service subscription (Marco).
+**Parked 2026-08-04:** subcontractor portal `/portal/sub` (future; gated on PR-213); MYOB live (OAuth2) —
+stay on CSV. Custom dashboard widget builder is **already shipped** (`CustomBuilderWidget.tsx`).
+
+**Still genuinely open / undecided:** calendar sync (Google + Microsoft) and two-way email reply parsing
+(both Entra-blocked — see §6); document OCR (a `pr-vendor-invoice-ocr-HOLD` exists; needs a doc-AI key).
 
 ---
 
@@ -175,6 +178,7 @@ form-builder conditional logic · maintenance scheduling automation.
 5. **Raj + Sean tendering sign-off** + their Variation / Schedule-of-Rates PDF templates.
 6. **#895 API-key vault SLICE-3** — production-data backfill + `resolve()` vault-flip; open, do-not-merge, awaiting your review of the rendered diff.
 7. **#876 field-worker `expenses.view` / `expenses.manage`** — permission grant; needs your call.
+> **Resolved 2026-08-04 (were #8/#9):** **Websockets transport → SSE** (server-sent events; no Azure change needed). **Multi-tenant model → A, row-level `tenantId`** (nullable; null = shared master data, set = company-owned transactions). Both baked into their §3 plan docs — those two programs are unblocked (RT-1 / MT-0 armable).
 
 > Items 1–2 (#503 route bug, #507 deploy.yml) are ~2 weeks old — **re-verify against the current board** before acting; they may already be resolved.
 > **Top strategic unblock:** item 3 (Entra grants) gates the largest cluster of stalled work — calendar sync, correspondence ingestion, and production email.

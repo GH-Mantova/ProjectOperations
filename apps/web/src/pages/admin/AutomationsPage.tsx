@@ -3,7 +3,7 @@ import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
 import { NoAccess } from "../../components/NoAccess";
-import { useAlert, useConfirm } from "../../hooks/useConfirm";
+import { useAlert, useConfirm, usePrompt } from "../../hooks/useConfirm";
 import { readApiErrorMessage } from "../../lib/api-errors";
 
 // Whitelisted values — keep in sync with dto/automation.dto.ts on the API.
@@ -71,6 +71,7 @@ export function AutomationsPage() {
   const { user, authFetch } = useAuth();
   const confirm = useConfirm();
   const alert = useAlert();
+  const prompt = usePrompt();
   const canView = can(user, "automations.view");
   const canManage = can(user, "automations.manage");
 
@@ -214,15 +215,22 @@ export function AutomationsPage() {
   };
 
   const testFire = async (rule: Rule) => {
-    const raw = window.prompt("Test payload (JSON object):", "{}");
+    const raw = await prompt({
+      title: "Test payload",
+      message: "JSON object",
+      defaultValue: "{}",
+      multiline: true,
+      validate: (v) => {
+        try {
+          JSON.parse(v);
+          return null;
+        } catch {
+          return "Payload must be valid JSON.";
+        }
+      }
+    });
     if (raw === null) return;
-    let payload: unknown;
-    try {
-      payload = JSON.parse(raw);
-    } catch {
-      await alert({ title: "Test fire", message: "Payload must be valid JSON." });
-      return;
-    }
+    const payload: unknown = JSON.parse(raw);
     const res = await authFetch(`/automations/${rule.id}/test-fire`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

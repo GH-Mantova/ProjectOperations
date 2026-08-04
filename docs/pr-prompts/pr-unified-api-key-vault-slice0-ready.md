@@ -45,18 +45,21 @@ Author docs/architecture/plans/unified-api-key-vault-and-geocoding-failover.md s
 2. ApiKeysService.resolve(adapter, scope, userId?) seam with LEGACY FALLBACK during transition.
 3. Migration strategy: dual-read BEFORE backfill; idempotent backfill of all three stores; flip to
    prefer the vault; legacy = fallback only. Per-user rows never cross-read.
-4. Permission preservation: AI keys stay super-user + platform.admin; others platform.admin.
+4. Permission model (Marco 2026-08-04): COMPANY-scope keys require super-user + platform.admin -
+   this TIGHTENS integration keys (geoapify/fuelpricesqld), which are platform.admin-only today, up
+   to super-user. USER-scope (personal/BYOK) keys are self-managed by the owning user (userId taken
+   from the JWT; a user can only read/write their own, never another user's, never a company key).
 5. Validation preservation: per-type validation-on-save (AI validates live; geocoding cheap ping;
    passive/custom skip).
 6. Compliance rule: persist textual address only; discard provider lat/lon + place_id at save.
-7. Custom REST adapter: SSRF-hardened (https only, block private/link-local ranges), platform.admin.
+7. Custom REST adapter: SSRF-hardened (https only, block private/link-local ranges), super-user.
 
 8. The slice sequence, each with a one-line EXECUTABLE premise sketch. The doc MUST contain the
    literal markers SLICE-1 through SLICE-7:
    - SLICE-1 models + additive migration + map regen + sot/04 doc-reconcile companion.
    - SLICE-2 resolve() seam with legacy fallback; route existing consumers through it (no behaviour change).
    - SLICE-3 idempotent backfill; flip to vault; seed built-in types + adapters.
-   - SLICE-4 unified Admin UI (Name/Type/Key table, Manage Types rename-cascade, company/personal
+   - SLICE-4 unified Admin UI (Name/Type/Key table, Manage Types rename-cascade, company vs personal
      scope); retire the two old screens; requires_merged the pr-sec-ai-keys-single-path work + the
      AdminSettingsPage restructure.
    - SLICE-5 GeocodingChainService over geocoding-type rows (fall-through on timeout/error/empty),

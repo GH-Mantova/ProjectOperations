@@ -87,10 +87,10 @@ describe("PALETTE_GROUPS (Basic / Choice / Survey / Layout / Advanced category m
     expect(new Set(survey.entries.map((e) => e.type))).toEqual(new Set(["rating", "scale"]));
   });
 
-  it("groups the four static layout blocks under Layout", () => {
+  it("groups the static layout blocks under Layout", () => {
     const layout = PALETTE_GROUPS.find((g) => g.key === "layout")!;
     expect(new Set(layout.entries.map((e) => e.type))).toEqual(
-      new Set(["heading", "paragraph", "divider", "image"])
+      new Set(["heading", "paragraph", "divider", "image", "content_block"])
     );
   });
 

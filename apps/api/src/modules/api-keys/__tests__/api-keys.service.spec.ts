@@ -1,4 +1,5 @@
 import { ApiKeysService } from "../api-keys.service";
+import { ApiKeyMutationEvents, GeocodingAdapterRegistry } from "../api-key-mutation-events";
 
 type AnyRecord = Record<string, unknown>;
 
@@ -55,7 +56,10 @@ function buildService(opts: {
     opts.integrationValue === undefined ? null : opts.integrationValue
   );
   const integrationKeys = { resolveIntegrationKey } as never;
-  const service = new ApiKeysService(prisma, encryption, integrationKeys);
+  const validator = { validate: jest.fn(async () => ({ valid: true })) } as never;
+  const events = new ApiKeyMutationEvents();
+  const registry = new GeocodingAdapterRegistry();
+  const service = new ApiKeysService(prisma, encryption, integrationKeys, validator, events, registry);
   return {
     service,
     prisma,

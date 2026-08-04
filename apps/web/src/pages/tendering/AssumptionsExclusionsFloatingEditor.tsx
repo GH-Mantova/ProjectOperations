@@ -9,6 +9,96 @@ type Props = {
   readOnly?: boolean;
 };
 
+// ── Embedded (tab) mode ────────────────────────────────────────────────
+//
+// Renders the two-column assumptions/exclusions editor without the
+// floating-window chrome (no position, no resize handle, no close
+// button). Drop this directly into a tab or any container that already
+// provides its own layout.
+
+export type AssumptionsExclusionsTabContentProps = {
+  tenderId: string;
+  readOnly?: boolean;
+};
+
+export function AssumptionsExclusionsTabContent({ tenderId, readOnly }: AssumptionsExclusionsTabContentProps) {
+  const { authFetch } = useAuth();
+  const [assumptions, setAssumptions] = useState<Entry[]>([]);
+  const [exclusions, setExclusions] = useState<Entry[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [aRes, eRes] = await Promise.all([
+          authFetch(`/tenders/${tenderId}/assumptions`),
+          authFetch(`/tenders/${tenderId}/exclusions`)
+        ]);
+        if (cancelled) return;
+        if (aRes.ok) setAssumptions(await aRes.json() as Entry[]);
+        if (eRes.ok) setExclusions(await eRes.json() as Entry[]);
+      } catch { /* non-fatal */ }
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [authFetch, tenderId]);
+
+  const refetchOnFocus = useCallback(() => {
+    (async () => {
+      try {
+        const [aRes, eRes] = await Promise.all([
+          authFetch(`/tenders/${tenderId}/assumptions`),
+          authFetch(`/tenders/${tenderId}/exclusions`)
+        ]);
+        if (aRes.ok) setAssumptions(await aRes.json() as Entry[]);
+        if (eRes.ok) setExclusions(await eRes.json() as Entry[]);
+      } catch { /* non-fatal */ }
+    })();
+  }, [authFetch, tenderId]);
+
+  useEffect(() => {
+    window.addEventListener("focus", refetchOnFocus);
+    return () => window.removeEventListener("focus", refetchOnFocus);
+  }, [refetchOnFocus]);
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "1fr 1fr",
+        flex: 1,
+        overflow: "hidden",
+        minHeight: 0,
+        height: "100%"
+      }}
+      data-testid="assumptions-exclusions-tab-content"
+    >
+      <EntryColumn
+        kind="assumptions"
+        title="Assumptions"
+        tenderId={tenderId}
+        entries={assumptions}
+        setEntries={setAssumptions}
+        loading={loading}
+        authFetch={authFetch}
+        readOnly={readOnly}
+      />
+      <EntryColumn
+        kind="exclusions"
+        title="Exclusions"
+        tenderId={tenderId}
+        entries={exclusions}
+        setEntries={setExclusions}
+        loading={loading}
+        authFetch={authFetch}
+        borderLeft
+        readOnly={readOnly}
+      />
+    </div>
+  );
+}
+
 const LS_KEY = "tendering.assumptionsExclusionsEditor.size";
 const DEFAULT_WIDTH = 520;
 const DEFAULT_HEIGHT = 460;

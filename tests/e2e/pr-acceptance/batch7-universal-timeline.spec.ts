@@ -200,7 +200,6 @@ test.describe("Batch 7 — Universal activity Timeline (PR #672)", () => {
 
     const jobId = await openSeedJob(page);
     await timelineSettled(page);
-    const before = await page.getByTestId("timeline-item").count();
 
     const token = await apiToken(request);
     await apiFetch(request, token, "POST", `/jobs/${jobId}/issues`, {
@@ -212,11 +211,12 @@ test.describe("Batch 7 — Universal activity Timeline (PR #672)", () => {
     await expect(page.getByTestId("timeline-panel")).toBeVisible({ timeout: 15_000 });
     await timelineSettled(page);
 
-    // Greater-than rather than exactly before+1: the projection may emit more
-    // than one row for a single issue, and this test is about the system entry
-    // appearing, not about the projection's cardinality.
-    expect(await page.getByTestId("timeline-item").count()).toBeGreaterThan(before);
-
+    // Assert the system entry APPEARS, not that the visible count grew. The timeline
+    // endpoint returns a capped, newest-first window (DEFAULT_LIMIT=50 in timeline.service.ts),
+    // so once a job has >=50 items a newly-created entry cannot push the visible count above
+    // the cap even though it exists -- a count>before precondition is structurally
+    // unsatisfiable at the cap. The new entry is the newest, so it is inside the window:
+    // verify it by kind + unique title instead.
     await page.getByTestId("timeline-filter-system").click();
     const systemItems = page.getByTestId("timeline-item");
     await expect(systemItems.first()).toHaveAttribute("data-kind", "system");

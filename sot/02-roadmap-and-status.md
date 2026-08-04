@@ -178,8 +178,7 @@ stay on CSV. Custom dashboard widget builder is **already shipped** (`CustomBuil
 5. **Raj + Sean tendering sign-off** + their Variation / Schedule-of-Rates PDF templates.
 6. **#895 API-key vault SLICE-3** — production-data backfill + `resolve()` vault-flip; open, do-not-merge, awaiting your review of the rendered diff.
 7. **#876 field-worker `expenses.view` / `expenses.manage`** — permission grant; needs your call.
-8. **Websockets transport** (§3 `realtime-websockets-plan`) — WebSocket vs SSE; live WebSockets need App Service WebSockets **enabled** (Azure config — you). SSE avoids the Azure dependency. Decide before arming WS-1.
-9. **Multi-tenant tenancy model** (§3 `multi-tenant-plan`) — row-level `tenantId` (A) vs schema-per-tenant (B) vs DB-per-tenant (C). Recommend **A** for the sister-company start. Lock before MT-0.
+> **Resolved 2026-08-04 (were #8/#9):** **Websockets transport → SSE** (server-sent events; no Azure change needed). **Multi-tenant model → A, row-level `tenantId`** (nullable; null = shared master data, set = company-owned transactions). Both baked into their §3 plan docs — those two programs are unblocked (RT-1 / MT-0 armable).
 
 > Items 1–2 (#503 route bug, #507 deploy.yml) are ~2 weeks old — **re-verify against the current board** before acting; they may already be resolved.
 > **Top strategic unblock:** item 3 (Entra grants) gates the largest cluster of stalled work — calendar sync, correspondence ingestion, and production email.

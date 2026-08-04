@@ -34,9 +34,30 @@ export interface GeocodingAdapter {
   readonly key: string;
 
   autocomplete(text: string, apiKey: string, config?: unknown): Promise<GeoapifySuggestion[]>;
+
+  // Forward geocode: resolve a text address to one or more candidate positions.
+  // Returns the same GeoapifySuggestion shape as autocomplete (compliance §6).
+  forward(text: string, apiKey: string, config?: unknown): Promise<GeoapifySuggestion[]>;
+
+  // Reverse geocode: resolve a lat/lon to one or more candidate addresses.
+  // Returns the same GeoapifySuggestion shape as autocomplete (compliance §6).
+  reverse(lat: number, lon: number, apiKey: string, config?: unknown): Promise<GeoapifySuggestion[]>;
 }
 
-// The end-to-end timeout every autocomplete adapter is expected to honour.
-// Matches the value the Geoapify service used pre-chain so behaviour is
-// byte-identical for a single-provider setup.
+// The end-to-end timeout every autocomplete/forward/reverse adapter is expected
+// to honour. Matches the value the Geoapify service used pre-chain so behaviour
+// is byte-identical for a single-provider setup.
 export const AUTOCOMPLETE_TIMEOUT_MS = 3_500;
+
+// Advisory cost tiers for built-in adapters (plan §4f). Used by the Admin UI
+// to show a badge so the ordering is a deliberate financial choice. Enforcement
+// stays a human decision — the chain never blocks a row on cost.
+export type AdapterCostTier = "free" | "paid-metered" | "paid-fixed";
+
+export const ADAPTER_COST_TIERS: Record<string, AdapterCostTier> = {
+  geoapify: "paid-metered",
+  google: "paid-metered",
+  geocodify: "paid-metered",
+  maptiler: "paid-metered",
+  nominatim: "free"
+};

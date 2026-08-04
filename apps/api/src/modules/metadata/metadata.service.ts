@@ -51,17 +51,18 @@ export class MetadataService {
   /**
    * Resolve the catalog path using the three-source ordered lookup.
    * Returns the winning absolute path, or null if all sources were exhausted.
-   * The outcome object also carries human-readable diagnostics for each
-   * source so the terminal 503 can enumerate what was tried.
+   * The outcome object also carries the winning source name ("env" / "bundle" /
+   * "walker") and human-readable diagnostics for each source so the terminal
+   * 503 can enumerate what was tried.
    */
-  resolveCatalogPath(): { filePath: string | null; diagnostics: string[] } {
+  resolveCatalogPath(): { filePath: string | null; source: string | null; diagnostics: string[] } {
     const diagnostics: string[] = [];
 
     // Source 1: METADATA_CATALOG_PATH env override.
     const envPath = process.env.METADATA_CATALOG_PATH;
     if (envPath) {
       if (fs.existsSync(envPath)) {
-        return { filePath: envPath, diagnostics };
+        return { filePath: envPath, source: "env", diagnostics };
       }
       diagnostics.push(`env METADATA_CATALOG_PATH set but file not found at: ${envPath}`);
     } else {
@@ -73,7 +74,7 @@ export class MetadataService {
     // resolves to dist/src/modules/metadata/assets/metadata-catalog.json.
     const bundledPath = path.join(__dirname, "assets", "metadata-catalog.json");
     if (fs.existsSync(bundledPath)) {
-      return { filePath: bundledPath, diagnostics };
+      return { filePath: bundledPath, source: "bundle", diagnostics };
     }
     diagnostics.push(`bundle not found at: ${bundledPath}`);
 
@@ -85,24 +86,33 @@ export class MetadataService {
         this.tryGenerate(repoRoot);
       }
       if (fs.existsSync(walkerPath)) {
-        return { filePath: walkerPath, diagnostics };
+        return { filePath: walkerPath, source: "walker", diagnostics };
       }
       diagnostics.push(`walker found repo root at ${repoRoot} but catalog still absent after tryGenerate()`);
     } else {
       diagnostics.push("walker: repo root not found (no scripts/data-model/build-relationship-map.mjs in any ancestor)");
     }
 
-    return { filePath: null, diagnostics };
+    return { filePath: null, source: null, diagnostics };
   }
 
+  // Latch so the resolution source is logged only once — zero per-request cost
+  // after the first successful getCatalog() call.
+  private catalogSourceLogged = false;
+
   getCatalog(): unknown {
-    const { filePath, diagnostics } = this.resolveCatalogPath();
+    const { filePath, source, diagnostics } = this.resolveCatalogPath();
 
     if (!filePath) {
       const detail = diagnostics.join("; ");
       throw new ServiceUnavailableException(
         `Metadata catalog unavailable. Sources tried: ${detail}`
       );
+    }
+
+    if (!this.catalogSourceLogged) {
+      this.logger.log(`Metadata catalog resolved via ${source}`);
+      this.catalogSourceLogged = true;
     }
 
     try {

@@ -69,23 +69,23 @@ function buildService(opts: {
   };
 }
 
-describe("ApiKeysService.resolve — legacy-primary (SLICE-2)", () => {
+describe("ApiKeysService.resolve — vault-first (SLICE-3)", () => {
   describe("AI adapters — company scope", () => {
-    it("returns the decrypted PlatformConfig key when set (legacy path fires)", async () => {
-      const { service, apiCredentialFindMany } = buildService({
+    it("returns the decrypted PlatformConfig key via legacy fallback when vault empty", async () => {
+      const { service, apiCredentialFindMany, platformConfigFindUnique } = buildService({
         platformConfig: { anthropicKeyEncrypted: "enc-company-ant" }
       });
       const result = await service.resolve("anthropic", "company");
       expect(result).toBe("decrypted:enc-company-ant");
-      // vault query is only reached when legacy returns null
-      expect(apiCredentialFindMany).not.toHaveBeenCalled();
+      // vault query is always attempted first (vault-first), then legacy fires
+      expect(apiCredentialFindMany).toHaveBeenCalledTimes(1);
+      expect(platformConfigFindUnique).toHaveBeenCalledTimes(1);
     });
 
     it("returns null when PlatformConfig row missing AND vault empty", async () => {
       const { service, apiCredentialFindMany } = buildService({ platformConfig: null });
       const result = await service.resolve("anthropic", "company");
       expect(result).toBeNull();
-      // legacy returned null → vault was queried
       expect(apiCredentialFindMany).toHaveBeenCalledTimes(1);
     });
 
@@ -162,30 +162,35 @@ describe("ApiKeysService.resolve — legacy-primary (SLICE-2)", () => {
       const result = await service.resolve("geoapify", "user", "user-1");
       expect(result).toBeNull();
       expect(resolveIntegrationKey).not.toHaveBeenCalled();
-      // legacy returned null → vault path still runs, but no matching row exists
+      // vault path always runs first; no matching row exists in this fixture
       expect(apiCredentialFindMany).toHaveBeenCalledTimes(1);
     });
   });
 
-  describe("Vault fallback (empty until SLICE-3)", () => {
+  describe("Vault-first behaviour (SLICE-3 flip)", () => {
     it("returns null for unknown adapters when nothing is configured", async () => {
       const { service } = buildService();
       const result = await service.resolve("something-not-registered", "company");
       expect(result).toBeNull();
     });
 
-    it("uses a vault row when legacy path returns null and a matching row exists", async () => {
-      const { service } = buildService({
-        platformConfig: null,
-        vaultRows: [
-          {
-            adapter: "anthropic",
-            valueEncrypted: "enc-vault-ant"
-          }
-        ]
+    it("vault hit wins over legacy — legacy is not queried at all", async () => {
+      const { service, platformConfigFindUnique } = buildService({
+        platformConfig: { anthropicKeyEncrypted: "enc-legacy-ant" },
+        vaultRows: [{ adapter: "anthropic", valueEncrypted: "enc-vault-ant" }]
       });
       const result = await service.resolve("anthropic", "company");
       expect(result).toBe("decrypted:enc-vault-ant");
+      expect(platformConfigFindUnique).not.toHaveBeenCalled();
+    });
+
+    it("legacy still fires when vault has no matching row", async () => {
+      const { service, platformConfigFindUnique } = buildService({
+        platformConfig: { anthropicKeyEncrypted: "enc-legacy-ant" }
+      });
+      const result = await service.resolve("anthropic", "company");
+      expect(result).toBe("decrypted:enc-legacy-ant");
+      expect(platformConfigFindUnique).toHaveBeenCalledTimes(1);
     });
 
     it("passes the requested adapter into the vault query (no cross-adapter match)", async () => {
@@ -200,7 +205,7 @@ describe("ApiKeysService.resolve — legacy-primary (SLICE-2)", () => {
   });
 
   describe("Corrupted ciphertext (tryDecrypt returns null)", () => {
-    it("never throws — returns null when both legacy and vault decrypt fail", async () => {
+    it("never throws — returns null when both vault and legacy decrypt fail", async () => {
       const { service } = buildService({
         platformConfig: { anthropicKeyEncrypted: "corrupt" },
         tryDecrypt: jest.fn(() => null)

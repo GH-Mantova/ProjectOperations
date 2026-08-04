@@ -9322,6 +9322,14 @@ textarea {
 .persona-window__history-row-delete:hover {
   color: #B91C1C;
 }
+/* Extra tab content area (host-injected tabs after History) */
+.persona-window__extra-tab-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
 /* §5A.1 PR 11 — scope proposal cards inline in chat */
 .persona-window__proposals {
   display: flex;

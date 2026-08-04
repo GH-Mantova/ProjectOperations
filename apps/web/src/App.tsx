@@ -5,6 +5,7 @@ import { can, canAny } from "./auth/permissions";
 import { runDraftPurgeJob } from "./drafts";
 import { LoginPage } from "./pages/LoginPage";
 import { ShellLayout } from "./components/ShellLayout";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { DashboardPlaceholderPage } from "./pages/DashboardPlaceholderPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { UsersPage } from "./pages/UsersPage";
@@ -243,11 +244,44 @@ export function App() {
             path="/field"
             element={
               <FieldOnlyGuard>
-                <OfflineProvider>
-                  <OfflineIndicator />
-                  <InstallPrompt />
-                  <FieldLayout />
-                </OfflineProvider>
+                <ErrorBoundary
+                  sectionName="Field offline layer"
+                  fallback={
+                    <div
+                      role="alert"
+                      style={{
+                        padding: 24,
+                        margin: 16,
+                        borderRadius: 8,
+                        background: "var(--surface-2, #fff4e5)",
+                        color: "var(--text, #1f1f1f)",
+                        border: "1px solid var(--border, #f0c674)",
+                      }}
+                    >
+                      <p style={{ margin: "0 0 8px", fontWeight: 600 }}>
+                        Offline mode unavailable
+                      </p>
+                      <p style={{ margin: "0 0 12px" }}>
+                        We couldn't start the offline queue on this device, so this session
+                        will work online only. Any pending offline data was not lost — reload
+                        once you have signal to try again.
+                      </p>
+                      <button
+                        type="button"
+                        className="s7-btn s7-btn--primary s7-btn--sm"
+                        onClick={() => window.location.reload()}
+                      >
+                        Reload
+                      </button>
+                    </div>
+                  }
+                >
+                  <OfflineProvider>
+                    <OfflineIndicator />
+                    <InstallPrompt />
+                    <FieldLayout />
+                  </OfflineProvider>
+                </ErrorBoundary>
               </FieldOnlyGuard>
             }
           >

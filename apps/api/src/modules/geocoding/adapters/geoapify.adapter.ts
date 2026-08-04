@@ -5,13 +5,15 @@ import {
   GeocodingAdapter
 } from "../geocoding-adapter";
 
-// Geoapify autocomplete adapter. Extracted 1:1 out of the previous
-// geocoding.service.ts implementation so a single-provider (Geoapify-only)
-// chain returns the exact same suggestion payload the browser rendered
-// pre-chain — same URL, same query params, same 3.5 s timeout, same
+// Geoapify autocomplete/forward/reverse adapter. Extracted 1:1 out of the
+// previous geocoding.service.ts implementation so a single-provider
+// (Geoapify-only) chain returns the exact same suggestion payload the browser
+// rendered pre-chain — same URL, same query params, same 3.5 s timeout, same
 // RawGeoapifyResult -> GeoapifySuggestion mapping.
 
 const AUTOCOMPLETE_URL = "https://api.geoapify.com/v1/geocode/autocomplete";
+const FORWARD_URL = "https://api.geoapify.com/v1/geocode/search";
+const REVERSE_URL = "https://api.geoapify.com/v1/geocode/reverse";
 
 type RawGeoapifyResult = {
   formatted?: string;
@@ -47,6 +49,40 @@ export class GeoapifyAdapter implements GeocodingAdapter {
       // Bubble non-2xx up as an error so the chain treats it as a fall-through
       // signal (same class as timeout / network error).
       this.logger.warn(`Geoapify autocomplete returned ${res.status}`);
+      throw new Error(`geoapify_http_${res.status}`);
+    }
+    const body = (await res.json()) as { results?: RawGeoapifyResult[] };
+    return Array.isArray(body?.results) ? body.results.map(trimSuggestion) : [];
+  }
+
+  async forward(text: string, apiKey: string): Promise<GeoapifySuggestion[]> {
+    const url = new URL(FORWARD_URL);
+    url.searchParams.set("text", text);
+    url.searchParams.set("filter", "countrycode:au");
+    url.searchParams.set("format", "json");
+    url.searchParams.set("limit", "6");
+    url.searchParams.set("apiKey", apiKey);
+
+    const res = await this.timedFetch(url.toString(), AUTOCOMPLETE_TIMEOUT_MS);
+    if (!res.ok) {
+      this.logger.warn(`Geoapify forward returned ${res.status}`);
+      throw new Error(`geoapify_http_${res.status}`);
+    }
+    const body = (await res.json()) as { results?: RawGeoapifyResult[] };
+    return Array.isArray(body?.results) ? body.results.map(trimSuggestion) : [];
+  }
+
+  async reverse(lat: number, lon: number, apiKey: string): Promise<GeoapifySuggestion[]> {
+    const url = new URL(REVERSE_URL);
+    url.searchParams.set("lat", String(lat));
+    url.searchParams.set("lon", String(lon));
+    url.searchParams.set("filter", "countrycode:au");
+    url.searchParams.set("format", "json");
+    url.searchParams.set("apiKey", apiKey);
+
+    const res = await this.timedFetch(url.toString(), AUTOCOMPLETE_TIMEOUT_MS);
+    if (!res.ok) {
+      this.logger.warn(`Geoapify reverse returned ${res.status}`);
       throw new Error(`geoapify_http_${res.status}`);
     }
     const body = (await res.json()) as { results?: RawGeoapifyResult[] };

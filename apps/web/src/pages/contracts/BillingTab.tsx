@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
-import { useConfirm } from "../../hooks/useConfirm";
+import { useConfirm, usePrompt } from "../../hooks/useConfirm";
 
 type MilestoneTrigger = "DATE" | "PERCENT_COMPLETE" | "EVENT";
 type MilestoneAmountType = "FIXED" | "PERCENT_OF_CONTRACT";
@@ -76,6 +76,7 @@ export function BillingTab({
 }) {
   const { authFetch } = useAuth();
   const confirm = useConfirm();
+  const prompt = usePrompt();
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [revRec, setRevRec] = useState<RevRec | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -159,7 +160,11 @@ export function BillingTab({
   };
 
   const previewProForma = async () => {
-    const month = window.prompt("Preview month (YYYY-MM):", new Date().toISOString().slice(0, 7));
+    const month = await prompt({
+      title: "Preview month",
+      message: "YYYY-MM",
+      defaultValue: new Date().toISOString().slice(0, 7)
+    });
     if (!month) return;
     try {
       const response = await authFetch(`/contracts/${contractId}/claims/pro-forma/preview`, {

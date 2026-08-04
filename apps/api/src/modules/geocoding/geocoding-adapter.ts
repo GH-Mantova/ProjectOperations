@@ -59,5 +59,8 @@ export const ADAPTER_COST_TIERS: Record<string, AdapterCostTier> = {
   google: "paid-metered",
   geocodify: "paid-metered",
   maptiler: "paid-metered",
-  nominatim: "free"
+  nominatim: "free",
+  // Custom REST endpoints bill however the operator's provider bills. Advisory
+  // "paid-metered" is the safe default for the Admin UI badge (plan §4f/§4g).
+  "custom-rest": "paid-metered"
 };

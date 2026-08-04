@@ -11,8 +11,9 @@ import { FeedbackButton } from "./FeedbackButton";
 import { ThemeToggle } from "./ThemeToggle";
 import { NewDashboardModal } from "../dashboards/NewDashboardModal";
 import { useUserDashboards, useUserDashboardsActions } from "../dashboards/userDashboards";
-import { PersonaProvider } from "../personas/PersonaContext";
+import { PersonaProvider, useActivePersona } from "../personas/PersonaContext";
 import { PersonaWindow } from "../personas/PersonaWindow";
+import { AssumptionsExclusionsTabContent } from "../pages/tendering/AssumptionsExclusionsFloatingEditor";
 import { useConfirm } from "../hooks/useConfirm";
 import {
   COMPLIANCE_BADGE_TOOLTIP,
@@ -792,10 +793,37 @@ export function ShellLayout() {
           onCreated={() => setNewDashboardOpen(false)}
         />
       ) : null}
-      <PersonaWindow />
+      <TenderingPersonaWindow />
     </div>
     </PersonaProvider>
   );
+}
+
+// Rendered inside PersonaProvider so it can read contextKey (= tender id
+// when on a tender-scoped route). Passes the Assumptions & Exclusions
+// tab to PersonaWindow only when on a tender; other pages get nothing.
+function TenderingPersonaWindow() {
+  const { contextKey } = useActivePersona();
+  const { user } = useAuth();
+  const canManage = can(user, "tenders.manage");
+
+  const extraTabs = useMemo(() => {
+    if (!contextKey) return [];
+    return [
+      {
+        id: "assumptions-exclusions",
+        label: "A & E",
+        content: (
+          <AssumptionsExclusionsTabContent
+            tenderId={contextKey}
+            readOnly={!canManage}
+          />
+        )
+      }
+    ];
+  }, [contextKey, canManage]);
+
+  return <PersonaWindow extraTabs={extraTabs} />;
 }
 
 function isItemActive(item: NavItem, pathname: string): boolean {

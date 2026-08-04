@@ -248,36 +248,14 @@ items:
   #     mock (msw v2) would break the run. Slice 1 therefore adds ZERO deps and does NO wire mocking.
   # The remaining two surfaces are re-registered below, gated on that slice landing on main. One place.
 
-  - id: synthetic-fixtures-graph-mail
-    title: "Synthetic fixtures slice 2: Graph-mail surface + idempotency/degrade spec"
-    priority: P3
-    why: >
-      Follow-on to the Xero synthetic-fixtures slice. Model the Graph-mail send surface the audit's
-      M-rows touch (sendNotificationEmail M1, PO email M2, quote send M3, access-request M4, tender
-      task-assign M5) as a synthetic provider under apps/api/testing/synthetic-fixtures/graph-mail/,
-      reusing the Case A/Case B/degrade reference from slice 1, plus a green jest spec exercising the
-      no-dedupe M1 double-send and the graceful-degrade posture. NOTE: pick a jest-compatible approach
-      for any wire-level mocking (msw v2 needs transformIgnorePatterns; nock is CJS but is NOT installed)
-      -- or stay in-memory like slice 1. Not a Marco decision, but flag the tool choice in the PR body.
-    gate: 'test -f apps/api/testing/synthetic-fixtures/xero/synthetic-xero.ts && ! test -d apps/api/testing/synthetic-fixtures/graph-mail'
-    gate_means: 'READY once the slice-1 Xero harness is on main AND the graph-mail fixtures do not exist yet. Dies as a blocker the moment the graph-mail fixtures ship.'
-    needs_marco: false
-    order: 11
-
-  - id: synthetic-fixtures-forms-ingestion
-    title: "Synthetic fixtures slice 3: native forms-ingestion surface + idempotency spec"
-    priority: P3
-    why: >
-      Follow-on to the Xero synthetic-fixtures slice. The audit found NO live Jotform code; the honest
-      in-repo analogue is the native forms-ingestion surface (F1 public/kiosk submit, F3 legacy raw
-      submit -- both have NO idempotency; F2 engine submit is already covered). Model those submit
-      surfaces as a synthetic ingest fixture under apps/api/testing/synthetic-fixtures/forms/, reusing
-      the slice-1 reference, plus a green jest spec exercising the F1 duplicate-submit (clientSubmissionId
-      replay) and the partial-write posture. Stays test-only; no production forms code, no migration.
-    gate: 'test -f apps/api/testing/synthetic-fixtures/xero/synthetic-xero.ts && ! test -d apps/api/testing/synthetic-fixtures/forms'
-    gate_means: 'READY once the slice-1 Xero harness is on main AND the forms fixtures do not exist yet. Dies as a blocker the moment the forms fixtures ship.'
-    needs_marco: false
-    order: 12
+  # DISCHARGED 2026-08-04 (04-scanner): both follow-on synthetic-fixtures surfaces had RELEASED gates
+  # (slice-1 xero harness on main; neither target dir exists) and were STAGED + ARMED (lint: ADMIT,
+  # size 3 each) in this docs-only PR:
+  #   * synthetic-fixtures-graph-mail    -> pr-synthetic-fixtures-graph-mail-slice2-ready.md
+  #   * synthetic-fixtures-forms-ingestion -> pr-synthetic-fixtures-forms-ingestion-slice3-ready.md
+  # Both are in-memory, zero-dependency, test-only (no src, no schema, no migration), mirroring slice 1
+  # and requires_file_on_main the slice-1 harness. Removed per "when an item IS staged, delete it here;
+  # one place, never two." Positive+negative control verified: XERO_PRESENT, GRAPHMAIL_ABSENT, FORMS_ABSENT.
 
   - id: gps-native-wrapper-app
     title: "Native wrapper app (Capacitor or similar) for true background GPS - TSheets parity"

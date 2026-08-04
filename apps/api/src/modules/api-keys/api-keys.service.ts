@@ -3,23 +3,24 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { KeyEncryptionService } from "../security/key-encryption.service";
 import { IntegrationKeysService } from "../../common/integrations/integration-keys.service";
 
-// SLICE-2 seam. One method — resolve(adapter, scope, userId?) — that every
-// server-side key consumer routes through. See
+// The one seam every server-side key consumer routes through. See
 // docs/architecture/plans/unified-api-key-vault-and-geocoding-failover.md
 // (§3 signature, §3b wiring, §3c compat contract).
 //
-// LEGACY-PRIMARY for this slice. The two internal branches below run in
-// this order:
+// VAULT-FIRST as of SLICE-3. The two internal branches below run in this
+// order:
 //
-//   1. legacyResolve — reads existing stores today
-//        (IntegrationCredential row → env var for integrations;
-//         PlatformConfig.<provider>KeyEncrypted for company AI;
-//         User.<provider>KeyEncrypted for per-user AI).
-//   2. vaultResolve  — queries the new ApiCredential vault (SLICE-1).
+//   1. vaultResolve  — queries the ApiCredential vault (SLICE-1 tables,
+//                      populated by the SLICE-3 backfill migration).
+//   2. legacyResolve — falls back to the pre-vault stores when the vault
+//                      has no matching row
+//                        (IntegrationCredential → env var for integrations;
+//                         PlatformConfig.<provider>KeyEncrypted for company AI;
+//                         User.<provider>KeyEncrypted for per-user AI).
 //
-// SLICE-3 flips these by swapping the two lines inside resolve() — nothing
-// else changes. Because SLICE-1 shipped the tables with no seed data, the
-// vault query never hits today, so behaviour is byte-identical to pre-slice.
+// The flip is a single-line reorder (per plan §3c). Rollback = swap the
+// two lines back to legacy-first and the vault rows can stay in the DB
+// harmlessly.
 export type KeyScope = "company" | "user";
 
 const INTEGRATION_ADAPTERS = new Set(["geoapify", "fuelpricesqld"]);
@@ -40,11 +41,11 @@ export class ApiKeysService {
     // the caller's JWT (req.user.sub); missing userId = deny.
     if (scope === "user" && !userId) return null;
 
-    // SLICE-3 will swap these two lines (vault first, legacy fallback). No
-    // other behaviour change is required for the flip.
-    const primary = await this.legacyResolve(adapter, scope, userId);
+    // Vault-first (SLICE-3 flip). Rollback = swap these two lines back to
+    // legacy-first; the vault rows in the DB remain harmless.
+    const primary = await this.vaultResolve(adapter, scope, userId);
     if (primary !== null) return primary;
-    return this.vaultResolve(adapter, scope, userId);
+    return this.legacyResolve(adapter, scope, userId);
   }
 
   private async legacyResolve(
@@ -120,10 +121,10 @@ export class ApiKeysService {
     scope: KeyScope,
     userId?: string
   ): Promise<string | null> {
-    // ApiKeyType.adapterHint is not on the SLICE-1 schema, so the SLICE-3
-    // backfill will populate row.adapter on every credential; the coalesce
-    // over type.adapterHint from plan §3a lands only once that column
-    // exists. Until then, match on row.adapter directly.
+    // ApiKeyType.adapterHint is not on the SLICE-1 schema; the SLICE-3
+    // backfill populates row.adapter on every credential instead, so the
+    // coalesce over type.adapterHint from plan §3a collapses to a direct
+    // match on row.adapter until that column is added.
     const rows = await this.prisma.apiCredential.findMany({
       where: {
         enabled: true,

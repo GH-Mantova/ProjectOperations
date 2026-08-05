@@ -206,3 +206,43 @@ the existing `test:web:logic` / api-test lane, not the Playwright suite.
 - [x] No new `needs-marco/` parking class for routine work; SLICE 4's routing is optional and named
       as a tension in §5.3.
 - [ ] `pnpm build && pnpm lint` (run at PR-open time).
+
+---
+
+## 8. Decision log
+
+### 2026-08-05 — Marco: "raise the floor now, revisit if a novel one slips."
+
+**Context.** In review we established that Gate A's *general* protection (SLICE 3 lint) enforces that a
+backfill migration NAMES a test file, but cannot verify the test is *adequate* — a weak/trivial test
+satisfies the lint while a novel semantic backfill bug still passes green. The layer that actually caught
+#923 (adversarial semantic reading of the migration diff) is SLICE 4, deliberately OPTIONAL / default-off.
+
+**Decision.** Ship the deterministic floor now — Gate B (SLICE 1) + Gate A CI test (SLICE 2) + Gate A
+standalone lint (SLICE 3). Do NOT, for now, promote SLICE 4 to default-on, and do NOT harden the lint to
+verify test efficacy. The residual gap is accepted *knowingly*, not overlooked.
+
+**Known residual gap (watch for this).** A NOVEL migration-backfill correctness bug — a new migration
+whose authored test is weak or absent-in-substance — can still reach `main` green. Also uncovered by
+scope: backend authz gaps, and a *present-but-wrong-permission-code* guard (Gate B proves a guard is
+present, not that its code is correct or that the API is authorized).
+
+**Revisit trigger.** A backfill-correctness bug, OR an authz gap of the #922 family, reaches `main`
+DESPITE these gates.
+
+**Where to start when it happens** (for whoever picks this up — Marco, another chat, or an agent):
+1. Read this plan's §2 Gate A + §5.3 (backfill soft spot) and §5.1 (Gate B limits).
+2. Pick the lever that fits the miss:
+   - *Novel backfill bug* → EITHER strengthen SLICE 3's lint so the backfill test must reference the
+     canonical enum / assert contract-validity (something CI can grep), OR promote SLICE 4 (AI
+     migration-reviewer) from optional to default-on for backfill migrations, accepting the per-PR
+     agent-run cost and the false-positive-to-`needs-marco/` risk.
+   - *Present-but-wrong-code guard, or unguarded backend* → extend Gate B beyond "guard present" to
+     cross-check the guard's permission code against `permission-registry.ts`, and add a backend
+     authz-parity check. Neither is in this plan today.
+3. The instrument that actually caught #923 was a human/AI adversarial read of the migration diff
+   (this session, PR #923, fix `23dcf30b`). Reproduce THAT as the reviewer — it is the known-good method.
+
+**Why recorded here.** So the residual gap is not re-discovered from scratch. SLICE 5 folds this entry
+into `sot/05`; until then this section is the durable record (mirrored in project memory:
+`project_pipeline_correctness_gates_decision.md`).

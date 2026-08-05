@@ -441,6 +441,18 @@ export function App() {
                   </AdminOnly>
                 }
               />
+              {/* SLICE 10 (settings-restructure §3): Automations moves
+                  under Administration. AutomationsPage self-gates on
+                  automations.view; AdminOnly matches the sibling
+                  administration/* wrappers. */}
+              <Route
+                path="administration/automations"
+                element={
+                  <AdminOnly>
+                    <AutomationsPage />
+                  </AdminOnly>
+                }
+              />
             </Route>
             {/* Legacy path redirects — keep bookmarks working. */}
             <Route path="/admin/users" element={<Navigate to="/settings/administration/users" replace />} />
@@ -459,7 +471,7 @@ export function App() {
             <Route path="/contracts/:id" element={<ContractDetailPage />} />
             <Route path="/admin/estimate-rates" element={<EstimateRatesAdminPage />} />
             <Route path="/admin/rates-lists" element={<Navigate to="/settings/reference-data" replace />} />
-            <Route path="/admin/automations" element={<AutomationsPage />} />
+            <Route path="/admin/automations" element={<Navigate to="/settings/administration/automations" replace />} />
             <Route path="/admin/job-roles" element={<Navigate to="/settings/administration/job-roles" replace />} />
             <Route path="/account" element={<Navigate to="/settings/account" replace />} />
             {/* SLICE 4: /inbox is the new top-level route for the follow-up

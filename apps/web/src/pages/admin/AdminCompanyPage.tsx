@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { isAdminUser } from "../../auth/permissions";
@@ -521,7 +521,164 @@ function CommercialSection({ profile, onPatch, savedFlash }: SectionProps) {
       <Field label="Default payment terms (days)" field="defaultPaymentTermsDays" value={profile.defaultPaymentTermsDays} type="number" onPatch={onPatch} savedFlash={savedFlash} hint="Seeds new quote/invoice; BIFA §17 defaults 25 days." />
       <Field label="Default quote validity (days)" field="defaultQuoteValidityDays" value={profile.defaultQuoteValidityDays} type="number" onPatch={onPatch} savedFlash={savedFlash} />
       <Field label="Default markup (%)" field="defaultMarkupPercent" value={profile.defaultMarkupPercent as number} type="number" onPatch={onPatch} savedFlash={savedFlash} />
+      <OperationsSettingsPanel />
     </div>
+  );
+}
+
+// ── Operations / Fuel (waste-transport cost engine R3) ───────────────────
+// Backs OperationsSettings singleton. Marco enters the fuel price manually
+// here; T-2 will refresh it from a feed. travelRatePerKm is an interim flat
+// rate used by the SoW line until T-1 wires fuel × consumption × distance.
+type OperationsSettings = {
+  id: string;
+  fuelPricePerLitre: string | number | null;
+  fuelPriceSource: string | null;
+  fuelPriceFetchedAt: string | null;
+  travelRatePerKm: string | number | null;
+  updatedAt: string;
+  updatedById: string | null;
+};
+
+function OperationsSettingsPanel() {
+  const { authFetch } = useAuth();
+  const [config, setConfig] = useState<OperationsSettings | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const [fuelPrice, setFuelPrice] = useState("");
+  const [fuelSource, setFuelSource] = useState("");
+  const [travelRate, setTravelRate] = useState("");
+  const loadedRef = useRef(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await authFetch("/admin/settings/operations");
+      if (!response.ok) throw new Error(await response.text());
+      const body = (await response.json()) as OperationsSettings;
+      setConfig(body);
+      if (!loadedRef.current) {
+        setFuelPrice(body.fuelPricePerLitre != null ? String(body.fuelPricePerLitre) : "");
+        setFuelSource(body.fuelPriceSource ?? "");
+        setTravelRate(body.travelRatePerKm != null ? String(body.travelRatePerKm) : "");
+        loadedRef.current = true;
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, [authFetch]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const patch: Record<string, unknown> = {};
+      patch.fuelPricePerLitre = fuelPrice.trim() === "" ? null : Number(fuelPrice);
+      patch.fuelPriceSource = fuelSource.trim() === "" ? null : fuelSource.trim();
+      patch.travelRatePerKm = travelRate.trim() === "" ? null : Number(travelRate);
+      const response = await authFetch("/admin/settings/operations", {
+        method: "PATCH",
+        body: JSON.stringify(patch)
+      });
+      if (!response.ok) throw new Error(await response.text());
+      setConfig((await response.json()) as OperationsSettings);
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 1500);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section
+      style={{
+        marginTop: 24,
+        paddingTop: 16,
+        borderTop: "1px solid var(--border, #e5e7eb)",
+        display: "flex",
+        flexDirection: "column",
+        gap: 12
+      }}
+    >
+      <div>
+        <h3 style={{ margin: 0 }}>Operations / Fuel</h3>
+        <p style={{ color: "var(--text-muted)", marginTop: 4, marginBottom: 0, fontSize: 13 }}>
+          Fuel price and interim travel rate used by the waste-transport cost engine (R3). Per-truck
+          fuel consumption lives on each Asset; per-material load capacity lives in the Transport
+          capacity reference table under Rates &amp; Lists.
+        </p>
+      </div>
+      {error ? <p style={{ color: "var(--status-danger)" }}>{error}</p> : null}
+
+      {loading || !config ? (
+        <p style={{ color: "var(--text-muted)" }}>Loading…</p>
+      ) : (
+        <>
+          <label className="estimate-editor__field">
+            <span>Fuel price (per litre, AUD)</span>
+            <input
+              className="s7-input"
+              type="number"
+              step="0.001"
+              min="0"
+              value={fuelPrice}
+              onChange={(e) => setFuelPrice(e.target.value)}
+              placeholder="e.g. 2.150"
+            />
+          </label>
+          <label className="estimate-editor__field">
+            <span>Fuel price source</span>
+            <input
+              className="s7-input"
+              value={fuelSource}
+              onChange={(e) => setFuelSource(e.target.value)}
+              placeholder="Manual entry / feed name (T-2 will populate this automatically)"
+            />
+          </label>
+          <label className="estimate-editor__field">
+            <span>Travel rate (per km, AUD) — interim</span>
+            <input
+              className="s7-input"
+              type="number"
+              step="0.01"
+              min="0"
+              value={travelRate}
+              onChange={(e) => setTravelRate(e.target.value)}
+              placeholder="Interim flat rate — replaced by fuel × consumption × distance in T-1"
+            />
+          </label>
+
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <button
+              type="button"
+              className="s7-btn s7-btn--primary"
+              onClick={() => void save()}
+              disabled={saving}
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+            {savedFlash ? <span style={{ fontSize: 12, color: "#16A34A" }}>✓ Saved</span> : null}
+          </div>
+
+          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+            Last updated: {new Date(config.updatedAt).toLocaleString("en-AU")}
+            {config.fuelPriceFetchedAt
+              ? ` · fuel price fetched ${new Date(config.fuelPriceFetchedAt).toLocaleString("en-AU")}`
+              : ""}
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 

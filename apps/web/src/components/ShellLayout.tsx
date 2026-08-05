@@ -445,6 +445,7 @@ const BREADCRUMBS: Record<string, string> = {
   "/dashboards": "Dashboards",
   "/settings": "Settings",
   "/settings/account": "Settings",
+  "/inbox": "Inbox",
   "/settings/notifications": "Settings",
   "/settings/calendar-sync": "Settings",
   "/settings/company": "Settings",

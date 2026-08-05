@@ -354,11 +354,12 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     // Single entry that opens the unified Settings shell (#739). The old
     // scattered /admin/* and /account/* pages redirect into /settings/*.
-    // Administration items are surfaced inside the shell and remain
-    // admin/super-only via this group-level gate.
+    // SLICE 3 (settings-restructure): the group is visible to every
+    // authenticated user — the shell then hides per-item entries the
+    // caller lacks the permission code for. Self-service items (Account,
+    // Notifications, Calendar sync) remain reachable by everyone.
     id: "settings",
     label: "Settings",
-    adminOnly: true,
     items: [
       {
         to: "/settings",

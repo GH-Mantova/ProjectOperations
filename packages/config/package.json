@@ -4,7 +4,29 @@
   "private": true,
   "type": "module",
   "main": "./src/index.ts",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./forms-rule-definition": {
+      "source": "./src/forms-rule-definition.ts",
+      "types": "./dist/forms-rule-definition.d.ts",
+      "import": "./dist/forms-rule-definition.js",
+      "default": "./dist/forms-rule-definition.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.2"
   }
 }

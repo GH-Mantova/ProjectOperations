@@ -131,7 +131,14 @@ export default defineConfig({
     // tooling (e.g. Claude Design's /design-sync); in-repo, source is faster
     // and avoids needing to rebuild packages/ui between edits.
     alias: {
-      "@project-ops/ui": resolve(__dirname, "../../packages/ui/src/index.ts")
+      "@project-ops/ui": resolve(__dirname, "../../packages/ui/src/index.ts"),
+      // Resolve the shared config package straight to source so we don't
+      // need to build packages/config/dist first (matches the ui alias).
+      "@project-ops/config/forms-rule-definition": resolve(
+        __dirname,
+        "../../packages/config/src/forms-rule-definition.ts"
+      ),
+      "@project-ops/config": resolve(__dirname, "../../packages/config/src/index.ts")
     }
   },
   define: {

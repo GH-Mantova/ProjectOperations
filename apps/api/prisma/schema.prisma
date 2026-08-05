@@ -2106,6 +2106,9 @@ model FormSubmissionValue {
   // straight at a SharePoint or filesystem path without spawning rows there)
   valueBoolean  Boolean?       @map("value_boolean")
   filePath      String?        @map("file_path")
+  // F-3: which repeat "entry" of a repeating FormSection this value belongs to.
+  // Default 0 preserves the implicit single-entry semantics of existing rows.
+  entryIndex    Int            @default(0) @map("entry_index")
   createdAt     DateTime       @default(now()) @map("created_at")
   submission    FormSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
   field         FormField?     @relation(fields: [fieldId], references: [id], onDelete: SetNull)

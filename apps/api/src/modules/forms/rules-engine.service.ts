@@ -10,7 +10,8 @@ import type {
   ConditionOperator,
   FieldRule,
   RuleAction,
-  RuleActionType
+  RuleActionType,
+  SectionEntriesMap
 } from "@project-ops/config/forms-rule-definition";
 
 // Re-export the shared types so existing imports from this module still work
@@ -21,7 +22,8 @@ export type {
   ConditionOperator,
   FieldRule,
   RuleAction,
-  RuleActionType
+  RuleActionType,
+  SectionEntriesMap
 } from "@project-ops/config/forms-rule-definition";
 
 /** Per-field validation constraint stored in FormField.validations. */
@@ -76,8 +78,12 @@ export class RulesEngineService {
    * signature stable while adding the server-only warning for unknown
    * operators (the shared evaluator returns false silently).
    */
-  evaluateCondition(condition: Condition, values: ValueMap): boolean {
-    const result = sharedEvaluateCondition(condition, values);
+  evaluateCondition(
+    condition: Condition,
+    values: ValueMap,
+    sectionEntries?: SectionEntriesMap
+  ): boolean {
+    const result = sharedEvaluateCondition(condition, values, sectionEntries);
     // The shared evaluator returns false for unknown operators without logging;
     // keep the server-side warning so misconfigured templates surface in logs.
     const known: ConditionOperator[] = [
@@ -91,7 +97,10 @@ export class RulesEngineService {
       "is_empty",
       "is_not_empty",
       "is_one_of",
-      "is_not_one_of"
+      "is_not_one_of",
+      "has_any_entry_where",
+      "entry_count",
+      "column_total"
     ];
     if (!known.includes(condition.operator)) {
       this.logger.warn(`Unknown operator: ${condition.operator as string}`);
@@ -105,8 +114,12 @@ export class RulesEngineService {
    * Delegates to the shared pure evaluator; kept as an instance method so
    * existing NestJS callers (FormsEngineService) don't need to change.
    */
-  evaluateConditionGroup(group: ConditionGroup, values: ValueMap): boolean {
-    return sharedEvaluateConditionGroup(group, values);
+  evaluateConditionGroup(
+    group: ConditionGroup,
+    values: ValueMap,
+    sectionEntries?: SectionEntriesMap
+  ): boolean {
+    return sharedEvaluateConditionGroup(group, values, sectionEntries);
   }
 
   /**
@@ -121,14 +134,15 @@ export class RulesEngineService {
    */
   evaluateFieldVisibility(
     fieldConditions: FieldRule[] | undefined,
-    values: ValueMap
+    values: ValueMap,
+    sectionEntries?: SectionEntriesMap
   ): boolean {
     if (!Array.isArray(fieldConditions) || fieldConditions.length === 0) return true;
     // A visibility rule is one whose actions include show/hide. If any matching
     // rule says "hide", the field is hidden; "show" rules pass through. Default
     // is visible.
     for (const rule of fieldConditions) {
-      const matched = this.evaluateConditionGroup(rule.conditionGroup, values);
+      const matched = this.evaluateConditionGroup(rule.conditionGroup, values, sectionEntries);
       if (!matched) continue;
       for (const action of rule.actions) {
         if (action.type === "hide") return false;
@@ -152,12 +166,13 @@ export class RulesEngineService {
   evaluateFieldRequired(
     isRequiredBase: boolean,
     fieldConditions: FieldRule[] | undefined,
-    values: ValueMap
+    values: ValueMap,
+    sectionEntries?: SectionEntriesMap
   ): boolean {
     if (!Array.isArray(fieldConditions) || fieldConditions.length === 0) return isRequiredBase;
     let required = isRequiredBase;
     for (const rule of fieldConditions) {
-      if (!this.evaluateConditionGroup(rule.conditionGroup, values)) continue;
+      if (!this.evaluateConditionGroup(rule.conditionGroup, values, sectionEntries)) continue;
       for (const action of rule.actions) {
         if (action.type === "require") required = true;
         else if (action.type === "unrequire") required = false;
@@ -177,7 +192,8 @@ export class RulesEngineService {
    */
   collectOnSubmitActions(
     template: { sections?: Array<{ fields?: Array<{ actions?: unknown }> }> },
-    values: ValueMap
+    values: ValueMap,
+    sectionEntries?: SectionEntriesMap
   ): RuleAction[] {
     const actions: RuleAction[] = [];
     const sections = template.sections ?? [];
@@ -187,7 +203,7 @@ export class RulesEngineService {
         if (!Array.isArray(rules)) continue;
         for (const rule of rules) {
           if (rule.trigger !== "on_submit") continue;
-          if (!this.evaluateConditionGroup(rule.conditionGroup, values)) continue;
+          if (!this.evaluateConditionGroup(rule.conditionGroup, values, sectionEntries)) continue;
           for (const action of rule.actions ?? []) {
             actions.push(action);
           }
@@ -258,6 +274,7 @@ export class RulesEngineService {
   validateValues(
     template: {
       sections?: Array<{
+        isRepeating?: boolean;
         fields?: Array<{
           fieldKey: string;
           label: string;
@@ -268,20 +285,27 @@ export class RulesEngineService {
         }>;
       }>;
     },
-    values: ValueMap
+    values: ValueMap,
+    sectionEntries?: SectionEntriesMap
   ): { valid: boolean; errors: Record<string, string> } {
     const errors: Record<string, string> = {};
     for (const section of template.sections ?? []) {
+      // F-3: fields inside a repeating section are validated per-entry, not
+      // against the top-level `values` map. Per-entry validation is deferred
+      // to a later slice — this one just ships the storage + UI plumbing.
+      if (section.isRepeating) continue;
       for (const field of section.fields ?? []) {
         const visible = this.evaluateFieldVisibility(
           (field.conditions as FieldRule[]) ?? [],
-          values
+          values,
+          sectionEntries
         );
         if (!visible) continue;
         const required = this.evaluateFieldRequired(
           field.isRequired,
           (field.conditions as FieldRule[]) ?? [],
-          values
+          values,
+          sectionEntries
         );
         const value = values[field.fieldKey];
         if (required && isEmpty(value)) {

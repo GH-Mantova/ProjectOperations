@@ -86,6 +86,12 @@ export class FormSectionInputDto {
   @IsOptional() @IsString() description?: string;
   /** Render order within the template version (ascending). */
   @Type(() => Number) @IsInt() sectionOrder!: number;
+  /** F-3 — when true, the section renders as N add/removable entries at fill time. */
+  @IsOptional() @IsBoolean() isRepeating?: boolean;
+  /** F-3 — minimum entry count (only meaningful when isRepeating). */
+  @IsOptional() @Type(() => Number) @IsInt() minRepeat?: number;
+  /** F-3 — maximum entry count (only meaningful when isRepeating). */
+  @IsOptional() @Type(() => Number) @IsInt() maxRepeat?: number;
   /** Ordered field definitions belonging to this section. */
   @IsArray() @ValidateNested({ each: true }) @Type(() => FormFieldInputDto) fields!: FormFieldInputDto[];
 }

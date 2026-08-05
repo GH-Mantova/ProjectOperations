@@ -77,7 +77,10 @@ export const OPERATOR_LABELS: Record<ConditionOperator, string> = {
   is_empty: "is empty",
   is_not_empty: "is not empty",
   is_one_of: "is one of",
-  is_not_one_of: "is not one of"
+  is_not_one_of: "is not one of",
+  has_any_entry_where: "has any entry where…",
+  entry_count: "entry count equals",
+  column_total: "column total equals"
 };
 
 export const ACTION_TYPE_LABELS: Record<RuleActionType, string> = {

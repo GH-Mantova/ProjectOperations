@@ -104,6 +104,13 @@ export type DraftSection = {
   description?: string;
   sectionOrder: number;
   fields: DraftField[];
+  // F-3 — repeating sections. `isRepeating: true` renders the section as N
+  // add/removable entries at fill time; `minRepeat`/`maxRepeat` clamp the
+  // count. The Add-button label is derived from the section title (no new
+  // column in this slice per the F-3 scope note).
+  isRepeating?: boolean;
+  minRepeat?: number;
+  maxRepeat?: number;
 };
 
 export type DraftRule = {

@@ -79,7 +79,7 @@ export class FormsEngineController {
     @Body() body: UpdateSubmissionValuesDto,
     @CurrentUser() user: AuthenticatedUser
   ) {
-    return this.engine.updateValues(id, user.sub, body.values);
+    return this.engine.updateValues(id, user.sub, body.values, body.sectionEntries);
   }
 
   /**

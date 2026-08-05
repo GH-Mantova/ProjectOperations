@@ -77,11 +77,7 @@ const SECTIONS: NavSection[] = [
       // those write paths (registry:19). SLICE 14 dissolves the mega-page.
       { to: "/settings/administration/system", label: "Admin settings", requiresPermission: "platform.admin" },
       { to: "/settings/administration/users", label: "Users", requiresPermission: "users.view" },
-      // Roles + Permissions are two separate items today; SLICE 8 folds
-      // them into a single "Roles & Permissions" screen gated on the
-      // manage/update code. Until then, gate each on its read code.
-      { to: "/settings/administration/roles", label: "Roles", requiresPermission: "roles.view" },
-      { to: "/settings/administration/permissions", label: "Permissions", requiresPermission: "permissions.view" },
+      { to: "/settings/administration/roles", label: "Roles & Permissions", requiresPermission: "roles.view" },
       { to: "/settings/administration/audit", label: "Audit", requiresPermission: "audit.view" },
       // platform.manage is the SLICE-1 target code; it does not exist yet.
       // Fall back to the existing platform.admin (registry:19) — same

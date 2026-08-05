@@ -105,7 +105,13 @@ export class FormsEngineController {
     @Body() body: SubmitSubmissionDto,
     @CurrentUser() user: AuthenticatedUser
   ) {
-    return this.engine.submitForm(id, user.sub, body.gpsLat, body.gpsLng);
+    return this.engine.submitForm(
+      id,
+      user.sub,
+      body.gpsLat,
+      body.gpsLng,
+      body.acknowledgedWarnings
+    );
   }
 
   /**

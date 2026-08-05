@@ -440,7 +440,8 @@ export class FormsEngineService {
     submissionId: string,
     userId: string,
     gpsLat?: number,
-    gpsLng?: number
+    gpsLng?: number,
+    acknowledgedWarnings: string[] = []
   ) {
     const submission = await this.requireOwnedDraft(submissionId, userId);
     const template = await this.loadTemplateForVersion(submission.templateVersionId);
@@ -494,11 +495,53 @@ export class FormsEngineService {
       throw new UnprocessableEntityException({ complianceFailures: gateResult.failures });
     }
 
+    // 2b. F-2c submit-time rule gates. Evaluate every on_submit rule now so
+    // BLOCK actions hard-stop and unacknowledged WARN actions bounce back to
+    // the client with the message copy — the client re-submits with the
+    // matching keys in `acknowledgedWarnings` once the user OKs them. The
+    // remaining (non-gate) actions are handled in step 5 below.
+    const allOnSubmitActions = this.rules.collectOnSubmitActions(template, merged);
+    const blockingActions = this.rules.collectBlockingActions(allOnSubmitActions);
+    if (blockingActions.length > 0) {
+      throw new UnprocessableEntityException({
+        blocks: blockingActions.map(
+          (a) => a.blockMessage ?? "This submission is blocked by a form rule."
+        )
+      });
+    }
+    const warningActions = this.rules.collectWarningActions(allOnSubmitActions);
+    const ackSet = new Set(acknowledgedWarnings);
+    const unacknowledged = warningActions.filter(
+      (a) => !ackSet.has(this.rules.warnActionKey(a))
+    );
+    if (unacknowledged.length > 0) {
+      throw new UnprocessableEntityException({
+        warnings: unacknowledged.map((a) => ({
+          key: this.rules.warnActionKey(a),
+          message: a.warnMessage ?? "Please review before submitting."
+        }))
+      });
+    }
+
     // 3. Compute inspection score + outcome (null when template has no
     // scoreConfig anywhere — the field is just a data-collection form).
     const scoring = computeScoring(template, merged);
 
-    // 4. Mark submitted, capture GPS + scoring result
+    // 4. Mark submitted, capture GPS + scoring result. Acknowledged WARN
+    // keys are persisted alongside the existing context blob so the audit
+    // trail can show which warnings the submitter OK'd — no schema change
+    // required (F-2c is a non-schema slice).
+    const contextWithAcks =
+      warningActions.length > 0
+        ? {
+            ...((submission.context ?? {}) as Record<string, unknown>),
+            acknowledgedWarnings: warningActions.map((a) => ({
+              key: this.rules.warnActionKey(a),
+              message: a.warnMessage ?? null,
+              acknowledgedAt: new Date().toISOString()
+            }))
+          }
+        : ((submission.context ?? {}) as Record<string, unknown>);
     const updated = await this.prisma.formSubmission.update({
       where: { id: submission.id },
       data: {
@@ -509,13 +552,16 @@ export class FormsEngineService {
         score: scoring.score !== null ? new Prisma.Decimal(scoring.score) : null,
         maxScore: scoring.maxScore !== null ? new Prisma.Decimal(scoring.maxScore) : null,
         scorePct: scoring.scorePct !== null ? new Prisma.Decimal(scoring.scorePct) : null,
-        outcome: scoring.outcome
+        outcome: scoring.outcome,
+        context: contextWithAcks as Prisma.InputJsonValue
       }
     });
 
-    // 5. Run on_submit actions — create records, send notifications
-    const actions = this.rules.collectOnSubmitActions(template, merged);
-    await this.executeServerActions(actions, updated, merged);
+    // 5. Run on_submit side-effect actions — create records, send
+    // notifications. The WARN/BLOCK gate actions are stripped here because
+    // they were already handled in step 2b.
+    const sideEffectActions = this.rules.stripGateActions(allOnSubmitActions);
+    await this.executeServerActions(sideEffectActions, updated, merged);
 
     // 6. Approval chain (if configured)
     if (settings.requiresApproval && Array.isArray(settings.approvalChain) && settings.approvalChain.length > 0) {

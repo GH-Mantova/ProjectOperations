@@ -57,7 +57,13 @@ export type RuleActionType =
   | "send_notification"
   | "create_record"
   | "add_repeating_row"
-  | "remove_repeating_row";
+  | "remove_repeating_row"
+  // F-2c submit-time gates. `warn` requires the submitter to acknowledge the
+  // message before the submission proceeds; `block` hard-stops it and returns
+  // a validation error. Both are only meaningful on `on_submit`-triggered
+  // FieldRules and are enforced by FormsEngineService.submitForm.
+  | "warn"
+  | "block";
 
 /**
  * One effect emitted by a matched rule. UI action types are interpreted by
@@ -75,6 +81,11 @@ export interface RuleAction {
   correctiveActionAssignToRole?: string;
   notificationTarget?: string; // role or userId
   notificationMessage?: string;
+  // F-2c — human-readable copy shown on `warn` / `block` actions. Both fall
+  // back to a generic message when omitted so a rule author who forgets to
+  // set one still gets a functioning gate.
+  warnMessage?: string;
+  blockMessage?: string;
 }
 
 /**

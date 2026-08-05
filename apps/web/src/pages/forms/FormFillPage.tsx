@@ -225,6 +225,14 @@ export function FormFillPage() {
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState<{ ref: string; created: { type: string; id: string }[] } | null>(null);
+  // F-2c — WARN gate: when the server returns 422 with `warnings`, the
+  // submitter must acknowledge each entry before the resubmit carries the
+  // keys back. BLOCK gates return 422 with `blocks` and are surfaced as a
+  // plain error — the user has to change form values to clear them.
+  const [pendingWarnings, setPendingWarnings] = useState<
+    Array<{ key: string; message: string }>
+  >([]);
+  const [ackKeys, setAckKeys] = useState<Set<string>>(new Set());
   const [gps, setGps] = useState<{ lat?: number; lng?: number; status: "idle" | "loading" | "ok" | "error"; message?: string }>({ status: "idle" });
   const [online, setOnline] = useState<boolean>(typeof navigator === "undefined" ? true : navigator.onLine);
   const [locationConsent, setLocationConsent] = useState<boolean | null>(null);
@@ -536,7 +544,13 @@ export function FormFillPage() {
 
       const res = await authFetch(`/forms/submissions/${submission.id}/submit`, {
         method: "POST",
-        body: JSON.stringify({ gpsLat: submitLat, gpsLng: submitLng })
+        body: JSON.stringify({
+          gpsLat: submitLat,
+          gpsLng: submitLng,
+          // F-2c — echo prior acknowledgements. First submit sends empty;
+          // subsequent submits after the WARN modal add the OK'd keys.
+          acknowledgedWarnings: Array.from(ackKeys)
+        })
       });
       if (res.status === 422) {
         const body = await res.json();
@@ -544,6 +558,14 @@ export function FormFillPage() {
           setErrors(body.errors as Record<string, string>);
         } else if (Array.isArray(body?.complianceFailures)) {
           setError(body.complianceFailures.join(" "));
+        } else if (Array.isArray(body?.blocks)) {
+          // F-2c BLOCK — hard-stop; no acknowledgement path.
+          setError(body.blocks.join(" "));
+        } else if (Array.isArray(body?.warnings)) {
+          // F-2c WARN — surface an acknowledgement banner. When the user
+          // OKs it, the ack keys land in ackKeys and the resubmit clears
+          // the gate.
+          setPendingWarnings(body.warnings as Array<{ key: string; message: string }>);
         } else {
           setError("Validation failed.");
         }
@@ -744,6 +766,56 @@ export function FormFillPage() {
       </section>
 
       {error ? <p style={{ color: "var(--status-danger)", fontSize: 13 }}>{error}</p> : null}
+
+      {/* F-2c — WARN acknowledgement banner. Shown when the server returned
+          `warnings` on the last submit; the submitter must OK each warning
+          before the resubmit clears the gate. */}
+      {pendingWarnings.length > 0 ? (
+        <div
+          role="alertdialog"
+          aria-labelledby="warn-ack-heading"
+          data-testid="warn-ack-banner"
+          style={{
+            border: "1px solid var(--status-warning, #f59e0b)",
+            background: "rgba(245, 158, 11, 0.08)",
+            padding: 12,
+            borderRadius: 4
+          }}
+        >
+          <h3 id="warn-ack-heading" style={{ margin: "0 0 8px", fontSize: 14 }}>
+            Please review before submitting
+          </h3>
+          <ul style={{ margin: "0 0 8px", paddingLeft: 20 }}>
+            {pendingWarnings.map((w) => (
+              <li key={w.key}>{w.message}</li>
+            ))}
+          </ul>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              className="s7-btn s7-btn--primary"
+              onClick={() => {
+                setAckKeys(
+                  (prev) =>
+                    new Set<string>([...prev, ...pendingWarnings.map((w) => w.key)])
+                );
+                setPendingWarnings([]);
+                void submit();
+              }}
+              data-testid="warn-ack-confirm"
+            >
+              I understand — submit anyway
+            </button>
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost"
+              onClick={() => setPendingWarnings([])}
+            >
+              Go back
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {submission.templateVersion.template.geolocationEnabled === true &&
       locationConsent === false ? (

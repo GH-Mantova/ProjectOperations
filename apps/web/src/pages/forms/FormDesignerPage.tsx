@@ -347,6 +347,10 @@ export function FormDesignerPage() {
           }}
         />
         <button type="button" className="fv2-tbtn">Versions</button>
+        {/* F-2c — entry point to the full-screen rules builder. */}
+        <Link to={`/forms/designer/${templateId}/rules`} className="fv2-tbtn">
+          Rules
+        </Link>
         <button
           type="button"
           className="fv2-tbtn fv2-tbtn--primary"

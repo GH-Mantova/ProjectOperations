@@ -5,7 +5,10 @@ import { FormDraftStore } from "../../drafts";
 import { captureGpsReading } from "../field/useAutoGps";
 import { ConsentPanel, GPS_HARD_BLOCK_MSG } from "../field/GpsConsent";
 import { readTemplateLayout, resolveEffectiveLayout, type FormLayout } from "./formLayoutResolver";
-import type { FieldRule, Condition, ConditionGroup } from "@project-ops/config/forms-rule-definition";
+import {
+  evaluateConditionGroup,
+  type FieldRule
+} from "@project-ops/config/forms-rule-definition";
 
 type Field = {
   id: string;
@@ -79,17 +82,10 @@ type ValueMap = Record<string, unknown>;
 
 // ── Local rules eval (mirrors RulesEngineService for live UI updates) ─────
 // Server is still authoritative — this just keeps the form responsive while
-// the user types so we don't roundtrip on every keystroke.
-
-function isGroup(node: Condition | ConditionGroup): node is ConditionGroup {
-  return (node as ConditionGroup).conditions !== undefined;
-}
-
-function toNumber(v: unknown): number | null {
-  if (v === null || v === undefined || v === "") return null;
-  const n = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(n) ? n : null;
-}
+// the user types so we don't roundtrip on every keystroke. Condition/group
+// evaluation now lives in @project-ops/config/forms-rule-definition so client
+// and server share ONE evaluator (F-2b). The formRulesContract test proves
+// this consumer and RulesEngineService return identical results.
 
 function isEmpty(v: unknown): boolean {
   if (v === null || v === undefined) return true;
@@ -98,56 +94,11 @@ function isEmpty(v: unknown): boolean {
   return false;
 }
 
-function evalCondition(c: Condition, values: ValueMap): boolean {
-  const actual = values[c.fieldKey];
-  const expected = c.value;
-  switch (c.operator) {
-    case "equals":
-      return actual == expected;
-    case "not_equals":
-      return actual != expected;
-    case "contains":
-      if (Array.isArray(actual)) return actual.includes(expected as never);
-      return String(actual ?? "").includes(String(expected ?? ""));
-    case "not_contains":
-      if (Array.isArray(actual)) return !actual.includes(expected as never);
-      return !String(actual ?? "").includes(String(expected ?? ""));
-    case "greater_than": {
-      const a = toNumber(actual), b = toNumber(expected);
-      return a !== null && b !== null && a > b;
-    }
-    case "less_than": {
-      const a = toNumber(actual), b = toNumber(expected);
-      return a !== null && b !== null && a < b;
-    }
-    case "between": {
-      const a = toNumber(actual), lo = toNumber(expected), hi = toNumber(c.value2);
-      return a !== null && lo !== null && hi !== null && a >= lo && a <= hi;
-    }
-    case "is_empty":
-      return isEmpty(actual);
-    case "is_not_empty":
-      return !isEmpty(actual);
-    case "is_one_of":
-      return Array.isArray(expected) && expected.includes(actual as never);
-    case "is_not_one_of":
-      return Array.isArray(expected) && !expected.includes(actual as never);
-    default:
-      return false;
-  }
-}
-
-function evalGroup(g: ConditionGroup, values: ValueMap): boolean {
-  if (!g || !Array.isArray(g.conditions) || g.conditions.length === 0) return true;
-  const evals = g.conditions.map((n) => (isGroup(n) ? evalGroup(n, values) : evalCondition(n, values)));
-  return g.logic === "OR" ? evals.some(Boolean) : evals.every(Boolean);
-}
-
 function fieldVisible(field: Field, values: ValueMap): boolean {
   const rules = field.conditions ?? [];
   if (rules.length === 0) return true;
   for (const rule of rules) {
-    if (!evalGroup(rule.conditionGroup, values)) continue;
+    if (!evaluateConditionGroup(rule.conditionGroup, values)) continue;
     for (const action of rule.actions) {
       if (action.type === "hide") return false;
       if (action.type === "show") return true;
@@ -161,7 +112,7 @@ function fieldRequired(field: Field, values: ValueMap): boolean {
   if (rules.length === 0) return field.isRequired;
   let required = field.isRequired;
   for (const rule of rules) {
-    if (!evalGroup(rule.conditionGroup, values)) continue;
+    if (!evaluateConditionGroup(rule.conditionGroup, values)) continue;
     for (const action of rule.actions) {
       if (action.type === "require") required = true;
       else if (action.type === "unrequire") required = false;

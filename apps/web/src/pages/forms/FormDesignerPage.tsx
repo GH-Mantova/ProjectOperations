@@ -38,6 +38,9 @@ type TemplateVersion = {
     title: string;
     description?: string | null;
     sectionOrder: number;
+    isRepeating?: boolean;
+    minRepeat?: number | null;
+    maxRepeat?: number | null;
     fields: Array<{
       id: string;
       fieldKey: string;
@@ -120,6 +123,9 @@ export function FormDesignerPage() {
             title: section.title,
             description: section.description ?? undefined,
             sectionOrder: section.sectionOrder ?? i + 1,
+            isRepeating: section.isRepeating ?? false,
+            minRepeat: section.minRepeat ?? undefined,
+            maxRepeat: section.maxRepeat ?? undefined,
             fields: section.fields.map((field, j) => ({
               tempId: uid(),
               fieldKey: field.fieldKey,
@@ -267,6 +273,9 @@ export function FormDesignerPage() {
           title: section.title,
           description: section.description,
           sectionOrder: section.sectionOrder,
+          isRepeating: section.isRepeating ?? false,
+          minRepeat: section.minRepeat,
+          maxRepeat: section.maxRepeat,
           fields: section.fields.map(fieldToPublishPayload)
         })),
         rules: draft.rules.map((rule) => ({
@@ -466,6 +475,47 @@ export function FormDesignerPage() {
                         onChange={(e) => handleUpdateSection(section.tempId, { description: e.target.value })}
                       />
                     </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <input
+                        type="checkbox"
+                        checked={section.isRepeating ?? false}
+                        onChange={(e) =>
+                          handleUpdateSection(section.tempId, { isRepeating: e.target.checked })
+                        }
+                        aria-label="Repeating section"
+                      />
+                      Repeating section
+                    </label>
+                    {section.isRepeating ? (
+                      <>
+                        <label>
+                          Minimum entries
+                          <input
+                            type="number"
+                            min={0}
+                            value={section.minRepeat ?? ""}
+                            onChange={(e) =>
+                              handleUpdateSection(section.tempId, {
+                                minRepeat: e.target.value === "" ? undefined : Number(e.target.value)
+                              })
+                            }
+                          />
+                        </label>
+                        <label>
+                          Maximum entries
+                          <input
+                            type="number"
+                            min={1}
+                            value={section.maxRepeat ?? ""}
+                            onChange={(e) =>
+                              handleUpdateSection(section.tempId, {
+                                maxRepeat: e.target.value === "" ? undefined : Number(e.target.value)
+                              })
+                            }
+                          />
+                        </label>
+                      </>
+                    ) : null}
                     <button
                       type="button"
                       className="fv2-danger"

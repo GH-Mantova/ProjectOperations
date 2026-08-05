@@ -661,7 +661,10 @@ export class FormsService {
           versionId: version.id,
           title: sectionInput.title,
           description: sectionInput.description ?? null,
-          sectionOrder: sectionInput.sectionOrder
+          sectionOrder: sectionInput.sectionOrder,
+          isRepeating: sectionInput.isRepeating ?? false,
+          minRepeat: sectionInput.minRepeat ?? null,
+          maxRepeat: sectionInput.maxRepeat ?? null
         }
       });
 

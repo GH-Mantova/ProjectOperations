@@ -9091,6 +9091,12 @@
           "filterable": false,
           "aggregations": []
         },
+        "entryIndex": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
         "createdAt": {
           "role": "system",
           "label": null,

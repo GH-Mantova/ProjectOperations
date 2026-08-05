@@ -10,9 +10,15 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { NotificationsService } from "../platform/notifications.service";
-import { RulesEngineService, type FieldRule, type RuleAction } from "./rules-engine.service";
+import {
+  RulesEngineService,
+  type FieldRule,
+  type RuleAction,
+  type SectionEntriesMap
+} from "./rules-engine.service";
 
 type ValueMap = Record<string, unknown>;
+type SectionEntriesPayload = Record<string, Array<Record<string, unknown>>>;
 
 /**
  * Reduce a list of numeric operands using the named operation. Returns
@@ -373,7 +379,12 @@ export class FormsEngineService {
    * @throws ForbiddenException when the draft belongs to another user
    * @throws BadRequestException when the submission is not in draft status
    */
-  async updateValues(submissionId: string, userId: string, values: ValueMap) {
+  async updateValues(
+    submissionId: string,
+    userId: string,
+    values: ValueMap,
+    sectionEntries?: SectionEntriesPayload
+  ) {
     const submission = await this.requireOwnedDraft(submissionId, userId);
     const template = await this.loadTemplateForVersion(submission.templateVersionId);
 
@@ -382,12 +393,26 @@ export class FormsEngineService {
     // current payload — a partial PATCH should not blow them away.
     const allFields = (template.sections ?? []).flatMap((s) => s.fields ?? []);
     const fieldByKey = new Map(allFields.map((f) => [f.fieldKey, f]));
+    // F-3: keys that live inside a repeating section — persisted per entry, so
+    // they must skip the flat (entryIndex=0) upsert path below.
+    const repeatingFieldKeys = new Set<string>();
+    const repeatingSectionByKey = new Map<
+      string,
+      { section: (typeof template.sections)[number]; fieldKeysInSection: string[] }
+    >();
+    for (const section of template.sections ?? []) {
+      if (!section.isRepeating) continue;
+      const fieldKeysInSection = (section.fields ?? []).map((f) => f.fieldKey);
+      for (const k of fieldKeysInSection) repeatingFieldKeys.add(k);
+      repeatingSectionByKey.set(section.id, { section, fieldKeysInSection });
+    }
 
     for (const [fieldKey, raw] of Object.entries(values)) {
       const field = fieldByKey.get(fieldKey);
       if (!field) continue;
+      if (repeatingFieldKeys.has(fieldKey)) continue;
       const existing = await this.prisma.formSubmissionValue.findFirst({
-        where: { submissionId: submission.id, fieldKey }
+        where: { submissionId: submission.id, fieldKey, entryIndex: 0 }
       });
       const data = this.shapeValue(field.fieldType, raw);
       if (existing) {
@@ -397,23 +422,70 @@ export class FormsEngineService {
         });
       } else {
         await this.prisma.formSubmissionValue.create({
-          data: { submissionId: submission.id, fieldKey, fieldId: field.id, ...data }
+          data: {
+            submissionId: submission.id,
+            fieldKey,
+            fieldId: field.id,
+            entryIndex: 0,
+            ...data
+          }
         });
+      }
+    }
+
+    // F-3: persist repeating-section entries. Replace-all semantics per
+    // section: if the caller included a sectionKey in sectionEntries, we
+    // delete that section's existing rows and rewrite them in array order.
+    // Sections not present in the payload keep their stored entries.
+    if (sectionEntries) {
+      for (const [sectionId, entries] of Object.entries(sectionEntries)) {
+        const meta = repeatingSectionByKey.get(sectionId);
+        if (!meta) continue; // unknown or non-repeating section — ignore
+        await this.prisma.formSubmissionValue.deleteMany({
+          where: {
+            submissionId: submission.id,
+            fieldKey: { in: meta.fieldKeysInSection }
+          }
+        });
+        if (!Array.isArray(entries)) continue;
+        for (let entryIndex = 0; entryIndex < entries.length; entryIndex++) {
+          const entry = entries[entryIndex] ?? {};
+          for (const field of meta.section.fields ?? []) {
+            const raw = (entry as Record<string, unknown>)[field.fieldKey];
+            if (raw === undefined) continue;
+            const data = this.shapeValue(field.fieldType, raw);
+            await this.prisma.formSubmissionValue.create({
+              data: {
+                submissionId: submission.id,
+                fieldKey: field.fieldKey,
+                fieldId: field.id,
+                entryIndex,
+                ...data
+              }
+            });
+          }
+        }
       }
     }
 
     // After save, evaluate field visibility + required state across ALL stored
     // values so the client can update the form without a page reload.
     const merged = await this.collectValues(submission.id);
+    const collectedEntries = await this.collectSectionEntries(submission.id, template);
     const fieldVisibility: Record<string, boolean> = {};
     const fieldRequired: Record<string, boolean> = {};
     for (const field of allFields) {
       const conditions = (field.conditions ?? []) as unknown as FieldRule[];
-      fieldVisibility[field.fieldKey] = this.rules.evaluateFieldVisibility(conditions, merged);
+      fieldVisibility[field.fieldKey] = this.rules.evaluateFieldVisibility(
+        conditions,
+        merged,
+        collectedEntries
+      );
       fieldRequired[field.fieldKey] = this.rules.evaluateFieldRequired(
         field.isRequired,
         conditions,
-        merged
+        merged,
+        collectedEntries
       );
     }
     return { fieldVisibility, fieldRequired };
@@ -467,12 +539,13 @@ export class FormsEngineService {
     }
 
     const collected = await this.collectValues(submission.id);
+    const collectedEntries = await this.collectSectionEntries(submission.id, template);
     // Recompute calculation fields server-side — the client value is never
     // trusted. The updated map feeds validation and every downstream step.
     const merged = await this.recomputeCalculations(submission.id, template, collected);
 
     // 1. Validate
-    const validation = this.rules.validateValues(template, merged);
+    const validation = this.rules.validateValues(template, merged, collectedEntries);
     if (!validation.valid) {
       throw new UnprocessableEntityException({ errors: validation.errors });
     }
@@ -500,7 +573,7 @@ export class FormsEngineService {
     // the client with the message copy — the client re-submits with the
     // matching keys in `acknowledgedWarnings` once the user OKs them. The
     // remaining (non-gate) actions are handled in step 5 below.
-    const allOnSubmitActions = this.rules.collectOnSubmitActions(template, merged);
+    const allOnSubmitActions = this.rules.collectOnSubmitActions(template, merged, collectedEntries);
     const blockingActions = this.rules.collectBlockingActions(allOnSubmitActions);
     if (blockingActions.length > 0) {
       throw new UnprocessableEntityException({
@@ -1281,7 +1354,13 @@ export class FormsEngineService {
   }
 
   private async collectValues(submissionId: string): Promise<ValueMap> {
-    const rows = await this.prisma.formSubmissionValue.findMany({ where: { submissionId } });
+    // F-3: the flat value map only carries entry 0 (the implicit single-entry
+    // slot every non-repeating field lives in, and the first entry of a
+    // repeating section). Repeating-section entries beyond index 0 live in the
+    // SectionEntriesMap built by collectSectionEntries.
+    const rows = await this.prisma.formSubmissionValue.findMany({
+      where: { submissionId, entryIndex: 0 }
+    });
     const out: ValueMap = {};
     for (const r of rows) {
       if (r.valueText !== null) out[r.fieldKey] = r.valueText;
@@ -1289,6 +1368,49 @@ export class FormsEngineService {
       else if (r.valueBoolean !== null) out[r.fieldKey] = r.valueBoolean;
       else if (r.valueDateTime !== null) out[r.fieldKey] = r.valueDateTime;
       else if (r.valueJson !== null) out[r.fieldKey] = r.valueJson;
+    }
+    return out;
+  }
+
+  /**
+   * F-3 — build `{ sectionId: [entry-0 values, entry-1 values, …] }` for
+   * every repeating section on the template so rules using repeating-section
+   * operators (has_any_entry_where, entry_count, column_total) can evaluate.
+   * Non-repeating sections are omitted; a repeating section with no submitted
+   * values yet resolves to an empty array.
+   */
+  private async collectSectionEntries(
+    submissionId: string,
+    template: { sections?: Array<{ id: string; isRepeating: boolean; fields?: Array<{ fieldKey: string }> }> }
+  ): Promise<SectionEntriesMap> {
+    const out: SectionEntriesMap = {};
+    for (const section of template.sections ?? []) {
+      if (!section.isRepeating) continue;
+      const fieldKeysInSection = (section.fields ?? []).map((f) => f.fieldKey);
+      if (fieldKeysInSection.length === 0) {
+        out[section.id] = [];
+        continue;
+      }
+      const rows = await this.prisma.formSubmissionValue.findMany({
+        where: { submissionId, fieldKey: { in: fieldKeysInSection } },
+        orderBy: [{ entryIndex: "asc" }, { fieldKey: "asc" }]
+      });
+      const byIndex = new Map<number, ValueMap>();
+      let maxIdx = -1;
+      for (const r of rows) {
+        const idx = r.entryIndex;
+        maxIdx = Math.max(maxIdx, idx);
+        const bucket = byIndex.get(idx) ?? {};
+        if (r.valueText !== null) bucket[r.fieldKey] = r.valueText;
+        else if (r.valueNumber !== null) bucket[r.fieldKey] = Number(r.valueNumber);
+        else if (r.valueBoolean !== null) bucket[r.fieldKey] = r.valueBoolean;
+        else if (r.valueDateTime !== null) bucket[r.fieldKey] = r.valueDateTime;
+        else if (r.valueJson !== null) bucket[r.fieldKey] = r.valueJson;
+        byIndex.set(idx, bucket);
+      }
+      const arr: ValueMap[] = [];
+      for (let i = 0; i <= maxIdx; i++) arr.push(byIndex.get(i) ?? {});
+      out[section.id] = arr;
     }
     return out;
   }

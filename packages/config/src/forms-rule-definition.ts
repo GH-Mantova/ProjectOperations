@@ -22,11 +22,29 @@ export type ConditionOperator =
   | "is_empty"
   | "is_not_empty"
   | "is_one_of"
-  | "is_not_one_of";
+  | "is_not_one_of"
+  // F-3 — repeating-section operators. These read from `sectionEntries` (a
+  // map of sectionKey → per-entry RuleValueMap) rather than the flat `values`
+  // map, so they only fire when the caller passes sectionEntries in.
+  //
+  // has_any_entry_where: true when at least one entry in the referenced
+  //   sectionKey satisfies `subCondition` (a nested Condition/ConditionGroup
+  //   evaluated against that entry's own value map).
+  // entry_count:         true when the number of entries in the referenced
+  //   sectionKey equals `value` (numeric).
+  // column_total:        true when the sum of numeric `fieldKey` values across
+  //   every entry of `sectionKey` equals `value` (numeric).
+  | "has_any_entry_where"
+  | "entry_count"
+  | "column_total";
 
 /**
  * A single comparison: the stored value at `fieldKey` is tested with
  * `operator` against `value` (and `value2` for the "between" operator).
+ *
+ * For F-3 repeating-section operators, `sectionKey` names the repeating
+ * section and `subCondition` (used only by `has_any_entry_where`) is the
+ * per-entry test.
  */
 export interface Condition {
   id?: string;
@@ -34,6 +52,8 @@ export interface Condition {
   operator: ConditionOperator;
   value?: unknown;
   value2?: unknown;
+  sectionKey?: string;
+  subCondition?: Condition | ConditionGroup;
 }
 
 /** Recursive AND/OR grouping of Conditions and nested ConditionGroups. */
@@ -108,6 +128,15 @@ export interface FieldRule {
 /** Map of fieldKey → current stored value used during evaluation. */
 export type RuleValueMap = Record<string, unknown>;
 
+/**
+ * F-3 — Map of repeating sectionKey → array of per-entry RuleValueMaps.
+ * Only the entries of the same repeating section are grouped together; a
+ * non-repeating section's values remain in the flat `values` map alongside
+ * every other field. When a rule references a section that has no entries,
+ * the operator returns false (never throws).
+ */
+export type SectionEntriesMap = Record<string, RuleValueMap[]>;
+
 /** Type guard: node is a nested ConditionGroup rather than a leaf Condition. */
 export function isConditionGroup(node: Condition | ConditionGroup): node is ConditionGroup {
   return (node as ConditionGroup).conditions !== undefined;
@@ -133,7 +162,11 @@ function isEmptyValue(v: unknown): boolean {
  * return false when either side is not a finite number. Unknown operators
  * return false silently — callers may log if they need diagnostics.
  */
-export function evaluateCondition(condition: Condition, values: RuleValueMap): boolean {
+export function evaluateCondition(
+  condition: Condition,
+  values: RuleValueMap,
+  sectionEntries?: SectionEntriesMap,
+): boolean {
   const actual = values[condition.fieldKey];
   const expected = condition.value;
   switch (condition.operator) {
@@ -173,6 +206,36 @@ export function evaluateCondition(condition: Condition, values: RuleValueMap): b
       return Array.isArray(expected) && expected.includes(actual as never);
     case "is_not_one_of":
       return Array.isArray(expected) && !expected.includes(actual as never);
+    case "has_any_entry_where": {
+      if (!sectionEntries || !condition.sectionKey || !condition.subCondition) return false;
+      const entries = sectionEntries[condition.sectionKey];
+      if (!Array.isArray(entries) || entries.length === 0) return false;
+      const sub = condition.subCondition;
+      return entries.some((entry) =>
+        isConditionGroup(sub)
+          ? evaluateConditionGroup(sub, entry, sectionEntries)
+          : evaluateCondition(sub, entry, sectionEntries),
+      );
+    }
+    case "entry_count": {
+      if (!sectionEntries || !condition.sectionKey) return false;
+      const entries = sectionEntries[condition.sectionKey];
+      const count = Array.isArray(entries) ? entries.length : 0;
+      const b = toNumber(expected);
+      return b !== null && count === b;
+    }
+    case "column_total": {
+      if (!sectionEntries || !condition.sectionKey) return false;
+      const entries = sectionEntries[condition.sectionKey];
+      if (!Array.isArray(entries)) return false;
+      let sum = 0;
+      for (const entry of entries) {
+        const n = toNumber(entry[condition.fieldKey]);
+        if (n !== null) sum += n;
+      }
+      const b = toNumber(expected);
+      return b !== null && sum === b;
+    }
     default:
       return false;
   }
@@ -185,14 +248,20 @@ export function evaluateCondition(condition: Condition, values: RuleValueMap): b
  * evaluated eagerly (no short-circuit). An empty/missing group means "no
  * constraint" and returns true.
  */
-export function evaluateConditionGroup(group: ConditionGroup, values: RuleValueMap): boolean {
+export function evaluateConditionGroup(
+  group: ConditionGroup,
+  values: RuleValueMap,
+  sectionEntries?: SectionEntriesMap,
+): boolean {
   if (!group || !Array.isArray(group.conditions) || group.conditions.length === 0) {
     // Empty group ≡ no constraint ≡ true. Matches the natural reading of
     // "show this field if [no conditions]" — the field stays shown.
     return true;
   }
   const evals = group.conditions.map((node) =>
-    isConditionGroup(node) ? evaluateConditionGroup(node, values) : evaluateCondition(node, values)
+    isConditionGroup(node)
+      ? evaluateConditionGroup(node, values, sectionEntries)
+      : evaluateCondition(node, values, sectionEntries),
   );
   return group.logic === "OR" ? evals.some(Boolean) : evals.every(Boolean);
 }

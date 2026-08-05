@@ -1,11 +1,13 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { DefaultDashboardSection } from "./DefaultDashboardSection";
-import { GlobalListsSection } from "./GlobalListsSection";
 
 // §5A.1 PR 8 (PR #132): the legacy "My AI providers" section was removed
 // here. Personal AI keys / provider preferences now live on the AI Settings
 // page (/admin/ai-settings) under per-persona override controls.
+// SLICE 6 (settings-restructure): the company-wide GlobalListsSection was
+// removed from this personal page and now lives at /settings/reference-data
+// (the Rates & Lists admin surface); UserProfilePage is personal-only again.
 export function UserProfilePage() {
   const { user } = useAuth();
 
@@ -19,8 +21,6 @@ export function UserProfilePage() {
       ) : null}
 
       <DefaultDashboardSection />
-
-      <GlobalListsSection />
 
       <section className="s7-card" style={{ marginTop: 24 }}>
         <h2 className="s7-type-section-heading" style={{ marginTop: 0, marginBottom: 4 }}>

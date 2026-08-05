@@ -369,6 +369,13 @@ export function App() {
               <Route path="calendar-sync" element={<CalendarSyncPage />} />
               <Route path="company" element={<AdminCompanyPage />} />
               <Route path="ai" element={<AiSettingsPage />} />
+              {/* SLICE 6: Reference data & Lists — single Company home for the
+                  rates/lists surface previously mounted on UserProfilePage
+                  (GlobalListsSection) and reachable at /admin/rates-lists.
+                  Renders the existing RatesListsAdminPage unchanged; that
+                  page gates internally on rates.manage || lists.manage
+                  (settings-restructure-plan §3, §4 redirect map). */}
+              <Route path="reference-data" element={<RatesListsAdminPage />} />
               <Route
                 path="data-model"
                 element={
@@ -450,7 +457,7 @@ export function App() {
             <Route path="/contracts" element={<ContractsListPage />} />
             <Route path="/contracts/:id" element={<ContractDetailPage />} />
             <Route path="/admin/estimate-rates" element={<EstimateRatesAdminPage />} />
-            <Route path="/admin/rates-lists" element={<RatesListsAdminPage />} />
+            <Route path="/admin/rates-lists" element={<Navigate to="/settings/reference-data" replace />} />
             <Route path="/admin/automations" element={<AutomationsPage />} />
             <Route path="/admin/job-roles" element={<Navigate to="/settings/administration/job-roles" replace />} />
             <Route path="/account" element={<Navigate to="/settings/account" replace />} />

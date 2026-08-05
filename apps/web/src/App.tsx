@@ -340,6 +340,10 @@ export function App() {
             <Route path="/workers" element={<WorkersListPage />} />
             <Route path="/workers/live-crew" element={<LiveCrewMapPage />} />
             <Route path="/workers/leave-approvals" element={<WorkerLeaveApprovalsPage />} />
+            {/* SLICE 15 (settings-restructure §3): Job roles moves out of
+                Settings/Administration into the Workers area. Registered
+                BEFORE /workers/:id so "job-roles" is not captured as an id. */}
+            <Route path="/workers/job-roles" element={<JobRolesPage />} />
             <Route path="/workers/:id" element={<WorkerDetailPage />} />
             <Route path="/assets" element={<AssetsListPage />} />
             <Route path="/assets/:id" element={<AssetDetailPage />} />
@@ -433,13 +437,12 @@ export function App() {
                   </AdminOnly>
                 }
               />
+              {/* SLICE 15 (settings-restructure §3, §4 redirect map): Job
+                  roles moved to /workers/job-roles. Keep the old Settings URL
+                  reachable as a redirect so bookmarks resolve. */}
               <Route
                 path="administration/job-roles"
-                element={
-                  <AdminOnly>
-                    <JobRolesPage />
-                  </AdminOnly>
-                }
+                element={<Navigate to="/workers/job-roles" replace />}
               />
               {/* SLICE 10 (settings-restructure §3): Automations moves
                   under Administration. AutomationsPage self-gates on
@@ -472,7 +475,9 @@ export function App() {
             <Route path="/admin/estimate-rates" element={<EstimateRatesAdminPage />} />
             <Route path="/admin/rates-lists" element={<Navigate to="/settings/reference-data" replace />} />
             <Route path="/admin/automations" element={<Navigate to="/settings/administration/automations" replace />} />
-            <Route path="/admin/job-roles" element={<Navigate to="/settings/administration/job-roles" replace />} />
+            {/* SLICE 15: /admin/job-roles retargets to the new Workers URL
+                directly (was previously chained through /settings). */}
+            <Route path="/admin/job-roles" element={<Navigate to="/workers/job-roles" replace />} />
             <Route path="/account" element={<Navigate to="/settings/account" replace />} />
             {/* SLICE 4: /inbox is the new top-level route for the follow-up
                 inbox. Legacy /notifications now redirects here (settings-

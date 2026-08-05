@@ -83,10 +83,6 @@ const SECTIONS: NavSection[] = [
       // Fall back to the existing platform.admin (registry:19) — same
       // audience today. SLICE 12 tightens once platform.manage lands.
       { to: "/settings/administration/platform", label: "Platform", requiresPermission: "platform.admin" },
-      // Job roles is a scheduler competency bundle (SLICE 15 moves it to
-      // /workers/job-roles). resources.manage governs worker competencies
-      // and is the closest existing code.
-      { to: "/settings/administration/job-roles", label: "Job roles", requiresPermission: "resources.manage" },
       // SLICE 10 (settings-restructure §3): Automations adopted from the
       // top-level /admin/automations into the Administration nav. Page
       // self-gates on automations.view; declare the same code here so the

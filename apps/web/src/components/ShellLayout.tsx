@@ -275,6 +275,16 @@ export const NAV_GROUPS: NavGroup[] = [
         requiresPermission: "workers.manage"
       },
       {
+        // SLICE 15 (settings-restructure §3): Job roles moved out of Settings
+        // Administration into the Workers area. Scheduler competency bundles
+        // are gated on resources.manage — same code the old Settings item used.
+        to: "/workers/job-roles",
+        label: "Job roles",
+        icon: ICON_WORKERS,
+        match: (path) => path.startsWith("/workers/job-roles"),
+        requiresPermission: "resources.manage"
+      },
+      {
         // §7 payroll export: dedicated page over the existing CSV endpoint.
         // Requires field.manage; NoAccess surfaces the missing code when a
         // user without the permission lands on the route.
@@ -418,6 +428,7 @@ const BREADCRUMBS: Record<string, string> = {
   "/workers": "Workers",
   "/workers/leave-approvals": "Leave Approvals",
   "/workers/live-crew": "Live crew map",
+  "/workers/job-roles": "Job roles",
   "/assets": "Assets",
   "/inventory": "Inventory",
   "/procurement": "Procurement",

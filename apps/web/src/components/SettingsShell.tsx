@@ -22,6 +22,10 @@ type NavItem = {
   // the closest-existing-code fallbacks where the plan's target code did
   // not yet exist in the registry.
   requiresPermission?: string;
+  // Show the item when the user has ANY of the listed codes. Used by items
+  // (e.g. Reference data & Lists, SLICE 6) whose backing page gates on more
+  // than one code internally.
+  requiresAnyPermission?: string[];
   superUserOnly?: boolean;
 };
 
@@ -52,6 +56,15 @@ const SECTIONS: NavSection[] = [
       // once it is added to the registry alongside the seed.
       { to: "/settings/company", label: "Company", requiresPermission: "platform.admin" },
       { to: "/settings/ai", label: "AI settings", requiresPermission: "platform.admin" },
+      // SLICE 6 (settings-restructure §2): single Company home for the
+      // rates/lists reference-data surface. Gate mirrors the page's own
+      // check (rates.manage || lists.manage); both codes exist in the
+      // permission registry (rates:86, lists:87).
+      {
+        to: "/settings/reference-data",
+        label: "Reference data & Lists",
+        requiresAnyPermission: ["rates.manage", "lists.manage"]
+      },
       { to: "/settings/data-model", label: "Data model", superUserOnly: true }
     ]
   },
@@ -91,6 +104,9 @@ export function SettingsShell() {
     items: section.items.filter((item) => {
       if (item.superUserOnly && !isSuperUser) return false;
       if (item.requiresPermission && !can(user, item.requiresPermission)) return false;
+      if (item.requiresAnyPermission && !item.requiresAnyPermission.some((code) => can(user, code))) {
+        return false;
+      }
       return true;
     })
   })).filter((section) => section.items.length > 0);

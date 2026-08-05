@@ -18,7 +18,7 @@ SET "definition" = jsonb_build_object(
     'conditions', jsonb_build_array(
       jsonb_build_object(
         'fieldKey', source_field_key,
-        'operator', operator,
+        'operator', lower(operator),
         'value',    comparison_value
       )
     )

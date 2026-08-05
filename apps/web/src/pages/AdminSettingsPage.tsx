@@ -47,8 +47,7 @@ const TABS = [
   { id: "platform", label: "Platform" },
   { id: "geofences", label: "Site geofences" },
   { id: "client-versions", label: "Client versions" },
-  { id: "map-locations", label: "Map locations" },
-  { id: "audit", label: "Audit log" }
+  { id: "map-locations", label: "Map locations" }
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
@@ -116,7 +115,6 @@ export function AdminSettingsPage() {
           {tab === "geofences" && <SiteGeofencesTab />}
           {tab === "client-versions" && <AdminClientVersionsTab />}
           {tab === "map-locations" && <MapLocationsTab />}
-          {tab === "audit" && <StubCard title="System audit log" body="Coming soon. All admin actions are recorded." />}
         </div>
       </div>
     </div>
@@ -129,15 +127,6 @@ function IntegrationTab({ href, label, body }: { href: string; label: string; bo
       <h2 className="s7-type-section-heading" style={{ marginTop: 0 }}>{label}</h2>
       <p style={{ color: "var(--text-muted)" }}>{body}</p>
       <Link to={href} className="s7-btn s7-btn--primary">Open settings</Link>
-    </section>
-  );
-}
-
-function StubCard({ title, body }: { title: string; body: string }) {
-  return (
-    <section className="s7-card">
-      <h2 className="s7-type-section-heading" style={{ marginTop: 0 }}>{title}</h2>
-      <p style={{ color: "var(--text-muted)" }}>{body}</p>
     </section>
   );
 }

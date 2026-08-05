@@ -8,7 +8,7 @@ import { ShellLayout } from "./components/ShellLayout";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { DashboardPlaceholderPage } from "./pages/DashboardPlaceholderPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
-import { UsersPage } from "./pages/UsersPage";
+import { AdminUsersTab } from "./pages/admin/AdminUsersTab";
 import { RolesPage } from "./pages/RolesPage";
 import { PermissionsPage } from "./pages/PermissionsPage";
 import { AuditLogsPage } from "./pages/AuditLogsPage";
@@ -389,7 +389,7 @@ export function App() {
                 path="administration/users"
                 element={
                   <AdminOnly>
-                    <UsersPage />
+                    <AdminUsersTab />
                   </AdminOnly>
                 }
               />

@@ -143,7 +143,6 @@ test.describe("Batch 8 — Admin & portal (PRs #219, #26, #29)", () => {
     for (const label of [
       "Notifications",
       "Email",
-      "Users",
       "AI & Integrations",
       "Platform",
       "Permissions",
@@ -157,6 +156,13 @@ test.describe("Batch 8 — Admin & portal (PRs #219, #26, #29)", () => {
     await sections.getByRole("button", { name: "Permissions" }).click();
     await expect(page.getByRole("heading", { name: "Roles & permissions" })).toBeVisible();
     await expect(page.getByTestId("roles-permissions-matrix")).toBeVisible();
+  });
+
+  test("Users admin surface renders at /settings/administration/users (SLICE 7)", async ({ page }) => {
+    await loginAsAdmin(page);
+    await page.goto("/settings/administration/users");
+    // AdminUsersTab renders the admin users table with an Add button.
+    await expect(page.getByRole("button", { name: /Add user/i })).toBeVisible();
   });
 
   test("viewer sees NoAccess on admin settings, not a silent redirect (#544)", async ({ page }) => {

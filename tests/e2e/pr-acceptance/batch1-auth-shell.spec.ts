@@ -84,15 +84,17 @@ test.describe("Batch 1 — Auth, Shell & Sidebar Navigation (PRs #12, #13, #29, 
 
   // ── Sidebar visible to viewer ─────────────────────────────────────────────
 
-  test("viewer does not see the Admin sidebar section", async ({ page }) => {
+  test("viewer sees Settings alongside the other §9 groups (SLICE 3: per-item gating)", async ({ page }) => {
     await loginAsViewer(page);
     const nav = page.getByRole("navigation", { name: "Main navigation" });
-    // The non-admin §9 groups should be present
-    for (const section of ["Estimating", "Projects", "Operations", "HR", "Safety & Compliance"]) {
+    // SLICE 3 (settings-restructure): the Settings group is no longer
+    // adminOnly. A viewer needs to reach self-service items (Account,
+    // Notification preferences, Calendar sync); the SettingsShell hides
+    // Administration entries via per-item permission-code gates. So the
+    // sidebar Settings label MUST be visible to a non-admin viewer.
+    for (const section of ["Estimating", "Projects", "Operations", "HR", "Safety & Compliance", "Settings"]) {
       await expect(nav.getByText(section, { exact: true }).first()).toBeVisible();
     }
-    // The Settings group is adminOnly — a viewer must not see it
-    await expect(nav.getByText("Settings", { exact: true })).not.toBeVisible();
   });
 
   // ── Sidebar Dashboards group ──────────────────────────────────────────────

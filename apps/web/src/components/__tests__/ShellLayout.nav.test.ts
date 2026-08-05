@@ -72,9 +72,13 @@ describe("ShellLayout nav — 7 approved groups (2026-07-17 restructure)", () =>
     });
   });
 
-  it("Settings is the only role-gated group", () => {
+  it("no sidebar group is role-gated at the group level (SLICE 3: settings-restructure)", () => {
+    // SLICE 3 drops adminOnly on the Settings group. Every group now
+    // renders for all authenticated users; per-item requiresPermission
+    // decides which entries surface inside a group. The SettingsShell
+    // then does the same for its own sub-nav (Company/Administration).
     const adminOnly = NAV_GROUPS.filter((group) => group.adminOnly);
-    expect(adminOnly.map((g) => g.id)).toEqual(["settings"]);
+    expect(adminOnly).toEqual([]);
   });
 
   it("Settings surfaces a single entry that opens the Settings shell", () => {

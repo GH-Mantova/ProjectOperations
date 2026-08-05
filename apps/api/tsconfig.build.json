@@ -1,5 +1,12 @@
 {
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@project-ops/config/*": ["../../packages/config/dist/*"],
+      "@project-ops/ui": ["../../packages/ui/src/index.ts"],
+      "@project-ops/ui/*": ["../../packages/ui/src/*"]
+    }
+  },
   "exclude": [
     "node_modules",
     "test",

@@ -5,26 +5,7 @@ import { FormDraftStore } from "../../drafts";
 import { captureGpsReading } from "../field/useAutoGps";
 import { ConsentPanel, GPS_HARD_BLOCK_MSG } from "../field/GpsConsent";
 import { readTemplateLayout, resolveEffectiveLayout, type FormLayout } from "./formLayoutResolver";
-
-// ── Types matching the engine response shape ─────────────────────────────
-
-type FieldRule = {
-  trigger: "on_change" | "on_load" | "on_submit";
-  conditionGroup: ConditionGroup;
-  actions: Array<{ type: string; target?: string; value?: unknown }>;
-};
-
-type Condition = {
-  fieldKey: string;
-  operator: string;
-  value?: unknown;
-  value2?: unknown;
-};
-
-type ConditionGroup = {
-  logic: "AND" | "OR";
-  conditions: Array<Condition | ConditionGroup>;
-};
+import type { FieldRule, Condition, ConditionGroup } from "@project-ops/config/forms-rule-definition";
 
 type Field = {
   id: string;

@@ -1892,6 +1892,11 @@ model FormRule {
   operator        String
   comparisonValue String?             @map("comparison_value")
   effect          String              @default("SHOW")
+  // F-2a: rich rule-definition in the canonical FieldRule JSON contract shape.
+  // Nullable so existing rows are not broken; backfilled by migration.
+  // Legacy columns (source/target/operator/comparisonValue/effect) are kept
+  // per the soak-before-drop rule — do not remove until F-2c.
+  definition      Json?
   createdAt       DateTime            @default(now()) @map("created_at")
   version         FormTemplateVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
 

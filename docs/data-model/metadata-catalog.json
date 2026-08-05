@@ -8517,6 +8517,12 @@
           "filterable": false,
           "aggregations": []
         },
+        "definition": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
         "createdAt": {
           "role": "system",
           "label": null,

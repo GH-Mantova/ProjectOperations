@@ -1,90 +1,24 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
+import type {
+  Condition,
+  ConditionGroup,
+  ConditionOperator,
+  FieldRule,
+  RuleAction,
+  RuleActionType
+} from "@project-ops/config/forms-rule-definition";
 
-// ── Types ────────────────────────────────────────────────────────────────
-// These mirror the JSON shapes stored in FormField.conditions / .actions /
-// .validations, FormSection.conditions, and FormTemplate.settings. The engine
-// is shape-agnostic at evaluation time; consumers can layer DTO-validation on
-// top if they want stricter input checking.
-
-/** Comparison operators a single Condition may use against a field value. */
-export type ConditionOperator =
-  | "equals"
-  | "not_equals"
-  | "contains"
-  | "not_contains"
-  | "greater_than"
-  | "less_than"
-  | "between"
-  | "is_empty"
-  | "is_not_empty"
-  | "is_one_of"
-  | "is_not_one_of";
-
-/**
- * A single comparison: the stored value at `fieldKey` is tested with
- * `operator` against `value` (and `value2` for the "between" operator).
- */
-export interface Condition {
-  id?: string;
-  fieldKey: string;
-  operator: ConditionOperator;
-  value?: unknown;
-  value2?: unknown;
-}
-
-/** Recursive AND/OR grouping of Conditions and nested ConditionGroups. */
-export interface ConditionGroup {
-  logic: "AND" | "OR";
-  conditions: Array<Condition | ConditionGroup>;
-}
-
-/** Action kinds a matched rule may emit (UI effects plus server-side record creation/notifications). */
-export type RuleActionType =
-  | "show"
-  | "hide"
-  | "require"
-  | "unrequire"
-  | "set_value"
-  | "clear_value"
-  | "lock"
-  | "unlock"
-  | "jump_to_section"
-  | "submit_form"
-  | "send_notification"
-  | "create_record"
-  | "add_repeating_row"
-  | "remove_repeating_row";
-
-/**
- * One effect emitted by a matched rule. UI action types are interpreted by
- * the client; `create_record` and `send_notification` are executed
- * server-side by FormsEngineService after submit.
- */
-export interface RuleAction {
-  type: RuleActionType;
-  target?: string;
-  value?: unknown;
-  recordType?: "safety_incident" | "hazard_observation" | "maintenance_job" | "corrective_action";
-  correctiveActionTitle?: string;
-  correctiveActionDescription?: string;
-  correctiveActionPriority?: "low" | "medium" | "high" | "critical";
-  correctiveActionAssignToRole?: string;
-  notificationTarget?: string; // role or userId
-  notificationMessage?: string;
-}
-
-/**
- * The rule shape stored on FormField.conditions / .actions: when
- * `conditionGroup` evaluates true for the given trigger, every action in
- * `actions` applies.
- */
-export interface FieldRule {
-  id?: string;
-  trigger: "on_change" | "on_load" | "on_submit";
-  conditionGroup: ConditionGroup;
-  actions: RuleAction[];
-}
+// Re-export the shared types so existing imports from this module still work
+// (e.g. the spec file: `import type { Condition, ConditionGroup } from "./rules-engine.service"`).
+export type {
+  Condition,
+  ConditionGroup,
+  ConditionOperator,
+  FieldRule,
+  RuleAction,
+  RuleActionType
+} from "@project-ops/config/forms-rule-definition";
 
 /** Per-field validation constraint stored in FormField.validations. */
 export interface ValidationRule {

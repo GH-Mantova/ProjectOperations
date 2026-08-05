@@ -10,6 +10,7 @@ import { DashboardPlaceholderPage } from "./pages/DashboardPlaceholderPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { AdminUsersTab } from "./pages/admin/AdminUsersTab";
 import { RolesPermissionsPage } from "./pages/administration/RolesPermissionsPage";
+import { AdministrationLandingPage } from "./pages/administration/AdministrationLandingPage";
 import { AuditLogsPage } from "./pages/AuditLogsPage";
 import { PlatformPage } from "./pages/PlatformPage";
 import { InboxPage } from "./pages/InboxPage";
@@ -387,6 +388,18 @@ export function App() {
                   <SuperUserOnly>
                     <DataModelMapPage />
                   </SuperUserOnly>
+                }
+              />
+              {/* SLICE 16 (settings-restructure §3): fix direct-hit 404 on
+                  /settings/administration by mounting a landing hub that lists
+                  the accessible Administration sub-pages. Wrapped with the same
+                  AdminOnly guard as its siblings. */}
+              <Route
+                path="administration"
+                element={
+                  <AdminOnly>
+                    <AdministrationLandingPage />
+                  </AdminOnly>
                 }
               />
               <Route

@@ -2,19 +2,15 @@
   "name": "@project-ops/config",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "source": "./src/index.ts",
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./forms-rule-definition": {
-      "source": "./src/forms-rule-definition.ts",
       "types": "./dist/forms-rule-definition.d.ts",
-      "import": "./dist/forms-rule-definition.js",
       "default": "./dist/forms-rule-definition.js"
     },
     "./package.json": "./package.json"
@@ -24,7 +20,8 @@
     "src"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json"
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "tsc -p tsconfig.build.json"
   },
   "devDependencies": {
     "typescript": "^5.8.2"

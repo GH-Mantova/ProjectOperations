@@ -197,7 +197,7 @@ function getPromptStateLabel(item?: SharedFollowUpItem) {
   };
 }
 
-export function NotificationsPage() {
+export function InboxPage() {
   const { authFetch, user } = useAuth();
   const navigate = useNavigate();
   const [items, setItems] = useState<NotificationItem[]>([]);

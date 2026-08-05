@@ -13,6 +13,8 @@ gate_allow: none
 seed_only: false
 escalates: false
 rollback_strategy: ''
+requires_merged:
+  - 923
 ---
 
 # F-2b — one rule evaluator, contract-tested

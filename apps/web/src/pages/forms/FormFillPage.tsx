@@ -5,6 +5,7 @@ import { FormDraftStore } from "../../drafts";
 import { captureGpsReading } from "../field/useAutoGps";
 import { ConsentPanel, GPS_HARD_BLOCK_MSG } from "../field/GpsConsent";
 import { readTemplateLayout, resolveEffectiveLayout, type FormLayout } from "./formLayoutResolver";
+import { RepeatingSectionEntries } from "./RepeatingSectionEntries";
 import {
   evaluateConditionGroup,
   type FieldRule
@@ -47,6 +48,10 @@ type Section = {
   title: string;
   description?: string | null;
   sectionOrder: number;
+  // F-3 — repeating section metadata.
+  isRepeating?: boolean;
+  minRepeat?: number | null;
+  maxRepeat?: number | null;
   fields: Field[];
 };
 
@@ -63,6 +68,7 @@ type Submission = {
     valueDateTime: string | null;
     valueJson: unknown;
     filePath: string | null;
+    entryIndex?: number;
   }>;
   templateVersion: {
     id: string;
@@ -186,13 +192,55 @@ function computeLiveScore(
 
 function buildInitialValues(submission: Submission): ValueMap {
   const out: ValueMap = {};
+  // F-3: the flat map only carries entryIndex 0. Repeating-section entries at
+  // higher indices live in the sectionEntries map built below.
   for (const v of submission.values) {
+    if ((v.entryIndex ?? 0) !== 0) continue;
     if (v.valueText !== null) out[v.fieldKey] = v.valueText;
     else if (v.valueNumber !== null) out[v.fieldKey] = Number(v.valueNumber);
     else if (v.valueBoolean !== null) out[v.fieldKey] = v.valueBoolean;
     else if (v.valueDateTime !== null) out[v.fieldKey] = v.valueDateTime;
     else if (v.valueJson !== null) out[v.fieldKey] = v.valueJson;
     else if (v.filePath !== null) out[v.fieldKey] = v.filePath;
+  }
+  return out;
+}
+
+type SectionEntriesState = Record<string, Array<Record<string, unknown>>>;
+
+/**
+ * F-3 — reconstruct `{ sectionId: [entry-0 fields, entry-1 fields, …] }` from
+ * the persisted submission rows so a returning submitter picks up their
+ * in-flight entries. Only repeating sections are considered; non-repeating
+ * sections stay in the flat value map.
+ */
+function buildInitialSectionEntries(submission: Submission): SectionEntriesState {
+  const out: SectionEntriesState = {};
+  const sections = submission.templateVersion.sections ?? [];
+  for (const section of sections) {
+    if (!section.isRepeating) continue;
+    const fieldKeys = new Set((section.fields ?? []).map((f) => f.fieldKey));
+    let maxIdx = -1;
+    const byIndex = new Map<number, Record<string, unknown>>();
+    for (const v of submission.values) {
+      if (!fieldKeys.has(v.fieldKey)) continue;
+      const idx = v.entryIndex ?? 0;
+      maxIdx = Math.max(maxIdx, idx);
+      const bucket = byIndex.get(idx) ?? {};
+      if (v.valueText !== null) bucket[v.fieldKey] = v.valueText;
+      else if (v.valueNumber !== null) bucket[v.fieldKey] = Number(v.valueNumber);
+      else if (v.valueBoolean !== null) bucket[v.fieldKey] = v.valueBoolean;
+      else if (v.valueDateTime !== null) bucket[v.fieldKey] = v.valueDateTime;
+      else if (v.valueJson !== null) bucket[v.fieldKey] = v.valueJson;
+      else if (v.filePath !== null) bucket[v.fieldKey] = v.filePath;
+      byIndex.set(idx, bucket);
+    }
+    const arr: Array<Record<string, unknown>> = [];
+    for (let i = 0; i <= maxIdx; i++) arr.push(byIndex.get(i) ?? {});
+    // Ensure at least minRepeat entries so the section renders correctly.
+    const min = Math.max(0, section.minRepeat ?? 0);
+    while (arr.length < min) arr.push({});
+    out[section.id] = arr;
   }
   return out;
 }
@@ -215,6 +263,7 @@ export function FormFillPage() {
 
   const [submission, setSubmission] = useState<Submission | null>(null);
   const [values, setValues] = useState<ValueMap>({});
+  const [sectionEntries, setSectionEntries] = useState<SectionEntriesState>({});
   const [sectionIndex, setSectionIndex] = useState(0);
   const [cardFieldIndex, setCardFieldIndex] = useState(0);
   const [viewportWidth, setViewportWidth] = useState<number>(
@@ -297,19 +346,27 @@ export function FormFillPage() {
         // is IndexedDB (PR #111) — see FormDraftStore. Pre-#111 localStorage
         // drafts were migrated by the one-shot draftPurgeJob on app boot.
         const initial = buildInitialValues(body);
+        const initialEntries = buildInitialSectionEntries(body);
         try {
           const draft = user?.id
             ? await FormDraftStore.get(user.id, FORM_FILL_FORM_TYPE)
             : null;
           if (draft && draft.contextKey === body.id) {
-            const payload = draft.data as { values: ValueMap; sectionIndex?: number };
+            const payload = draft.data as {
+              values: ValueMap;
+              sectionIndex?: number;
+              sectionEntries?: SectionEntriesState;
+            };
             setValues({ ...initial, ...(payload.values ?? {}) });
+            setSectionEntries(payload.sectionEntries ?? initialEntries);
             if (typeof payload.sectionIndex === "number") setSectionIndex(payload.sectionIndex);
           } else {
             setValues(initial);
+            setSectionEntries(initialEntries);
           }
         } catch {
           setValues(initial);
+          setSectionEntries(initialEntries);
         }
       } catch (err) {
         if (!cancelled) setError((err as Error).message);
@@ -333,7 +390,7 @@ export function FormFillPage() {
   // that accidentally includes a "password" field would surface a
   // SensitiveFieldError instead of silently caching it.
   const persistDraft = useCallback(
-    async (next: ValueMap, idx: number) => {
+    async (next: ValueMap, idx: number, entries: SectionEntriesState) => {
       if (!submission) return;
       if (user?.id) {
         try {
@@ -341,7 +398,7 @@ export function FormFillPage() {
             user.id,
             FORM_FILL_FORM_TYPE,
             submission.id,
-            { values: next, sectionIndex: idx },
+            { values: next, sectionIndex: idx, sectionEntries: entries },
             FORM_FILL_SCHEMA_VERSION
           );
         } catch {
@@ -357,7 +414,7 @@ export function FormFillPage() {
       try {
         const res = await authFetch(`/forms/submissions/${submission.id}/values`, {
           method: "PATCH",
-          body: JSON.stringify({ values: next })
+          body: JSON.stringify({ values: next, sectionEntries: entries })
         });
         if (!res.ok) throw new Error(await res.text());
         setSaveStatus("saved");
@@ -369,10 +426,10 @@ export function FormFillPage() {
   );
 
   const scheduleSave = useCallback(
-    (next: ValueMap, idx: number) => {
+    (next: ValueMap, idx: number, entries: SectionEntriesState) => {
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
       saveTimerRef.current = window.setTimeout(() => {
-        void persistDraft(next, idx);
+        void persistDraft(next, idx, entries);
       }, 700);
     },
     [persistDraft]
@@ -402,9 +459,9 @@ export function FormFillPage() {
   // Reconnect: flush local draft to server
   useEffect(() => {
     if (online && submission && saveStatus === "error") {
-      void persistDraft(values, sectionIndex);
+      void persistDraft(values, sectionIndex, sectionEntries);
     }
-  }, [online, submission, saveStatus, persistDraft, values, sectionIndex]);
+  }, [online, submission, saveStatus, persistDraft, values, sectionIndex, sectionEntries]);
 
   const setValue = (fieldKey: string, value: unknown) => {
     const next = { ...values, [fieldKey]: value };
@@ -416,11 +473,22 @@ export function FormFillPage() {
         return out;
       });
     }
-    scheduleSave(next, sectionIndex);
+    scheduleSave(next, sectionIndex, sectionEntries);
+  };
+
+  // F-3 — set the full entries list for one repeating section, then autosave.
+  const setSectionEntriesFor = (sectionId: string, entries: Array<Record<string, unknown>>) => {
+    const nextEntries = { ...sectionEntries, [sectionId]: entries };
+    setSectionEntries(nextEntries);
+    scheduleSave(values, sectionIndex, nextEntries);
   };
 
   const visibleFields = useMemo(() => {
     if (!currentSection) return [] as Field[];
+    // Repeating sections render their fields per-entry via RepeatingSectionEntries
+    // and are not part of the flat visibleFields flow (validation, card
+    // progression). See F-3 scope note.
+    if (currentSection.isRepeating) return [] as Field[];
     return currentSection.fields
       .slice()
       .sort((a, b) => a.fieldOrder - b.fieldOrder)
@@ -455,7 +523,7 @@ export function FormFillPage() {
         const next = sectionIndex + 1;
         setSectionIndex(next);
         setCardFieldIndex(0);
-        scheduleSave(values, next);
+        scheduleSave(values, next, sectionEntries);
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
       return;
@@ -463,7 +531,7 @@ export function FormFillPage() {
     if (sectionIndex < sections.length - 1) {
       const next = sectionIndex + 1;
       setSectionIndex(next);
-      scheduleSave(values, next);
+      scheduleSave(values, next, sectionEntries);
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   };
@@ -502,6 +570,9 @@ export function FormFillPage() {
     const allErrors: Record<string, string> = {};
     let firstErrorSection = -1;
     for (let i = 0; i < sections.length; i++) {
+      // F-3: skip per-entry required checks for repeating sections at the
+      // top level — that check belongs per-entry and is deferred.
+      if (sections[i].isRepeating) continue;
       for (const f of sections[i].fields ?? []) {
         if (!fieldVisible(f, values)) continue;
         if (fieldRequired(f, values) && isEmpty(values[f.fieldKey])) {
@@ -519,7 +590,7 @@ export function FormFillPage() {
     setError(null);
     try {
       // Flush any pending values first
-      await persistDraft(values, sectionIndex);
+      await persistDraft(values, sectionIndex, sectionEntries);
 
       // GPS-A3: when the template requires geolocation, authenticated
       // submitters MUST include a fix. The mount-time capture is best-effort
@@ -744,25 +815,51 @@ export function FormFillPage() {
           <p style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 0 }}>{currentSection.description}</p>
         ) : null}
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {cardFieldsRendered.map((field) => {
-            const required = fieldRequired(field, values);
-            const errorMsg = errors[field.fieldKey];
-            return (
+        {currentSection.isRepeating ? (
+          <RepeatingSectionEntries
+            section={{
+              id: currentSection.id,
+              title: currentSection.title,
+              minRepeat: currentSection.minRepeat ?? null,
+              maxRepeat: currentSection.maxRepeat ?? null,
+              fields: currentSection.fields
+            }}
+            entries={sectionEntries[currentSection.id] ?? []}
+            onChange={(entries) => setSectionEntriesFor(currentSection.id, entries)}
+            renderField={({ field, value, onChange }) => (
               <FieldRender
                 key={field.id}
-                field={field}
-                required={required}
-                value={values[field.fieldKey]}
-                onChange={(v) => setValue(field.fieldKey, v)}
-                error={errorMsg}
+                field={field as Field}
+                required={field.isRequired}
+                value={value}
+                onChange={onChange}
                 context={ctx as Record<string, string | undefined>}
                 gps={gps}
-                responseSet={resolveResponseSet(field, templateSettings)}
+                responseSet={resolveResponseSet(field as Field, templateSettings)}
               />
-            );
-          })}
-        </div>
+            )}
+          />
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {cardFieldsRendered.map((field) => {
+              const required = fieldRequired(field, values);
+              const errorMsg = errors[field.fieldKey];
+              return (
+                <FieldRender
+                  key={field.id}
+                  field={field}
+                  required={required}
+                  value={values[field.fieldKey]}
+                  onChange={(v) => setValue(field.fieldKey, v)}
+                  error={errorMsg}
+                  context={ctx as Record<string, string | undefined>}
+                  gps={gps}
+                  responseSet={resolveResponseSet(field, templateSettings)}
+                />
+              );
+            })}
+          </div>
+        )}
       </section>
 
       {error ? <p style={{ color: "var(--status-danger)", fontSize: 13 }}>{error}</p> : null}

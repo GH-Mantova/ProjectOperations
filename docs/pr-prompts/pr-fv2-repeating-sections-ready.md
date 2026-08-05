@@ -17,6 +17,8 @@ gate_allow: migrations
 seed_only: false
 escalates: true
 rollback_strategy: DROP COLUMN "entry_index" from "form_submission_values"; additive/nullable-with-default column, no data loss on rollback since existing (non-repeating) rows keep their implicit single-entry semantics.
+requires_merged:
+  - 943
 ---
 
 # F-3 — repeating sections: entryIndex, designer toggle, fill UI, rule operators

@@ -5,7 +5,6 @@ import { useConfirm } from "../hooks/useConfirm";
 import { AdminAccessRequestsTab } from "./admin/AdminAccessRequestsTab";
 import { isAdminUser } from "../auth/permissions";
 import { NoAccess } from "../components/NoAccess";
-import { AdminUsersTab } from "./admin/AdminUsersTab";
 import { AdminRolesPermissionsTab } from "./admin/AdminRolesPermissionsTab";
 import { AdminClientVersionsTab } from "./admin/AdminClientVersionsTab";
 import { MapLocationsTab } from "./admin/MapLocationsTab";
@@ -43,7 +42,6 @@ const TABS = [
   { id: "notifications", label: "Notifications" },
   { id: "email", label: "Email" },
   { id: "operations", label: "Operations" },
-  { id: "users", label: "Users" },
   { id: "access-requests", label: "Access requests" },
   { id: "ai", label: "AI & Integrations" },
   { id: "integrations", label: "Integrations / API keys" },
@@ -96,7 +94,6 @@ export function AdminSettingsPage() {
           {tab === "notifications" && <NotificationsTab />}
           {tab === "email" && <EmailTab />}
           {tab === "operations" && <OperationsTab />}
-          {tab === "users" && <AdminUsersTab />}
           {tab === "access-requests" && <AdminAccessRequestsTab />}
           {tab === "ai" && (
             <IntegrationTab

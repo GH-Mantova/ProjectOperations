@@ -197,6 +197,52 @@ export class RulesEngineService {
     return actions;
   }
 
+  // F-2c — submit-time gate splitters. Given the on_submit action list
+  // produced by collectOnSubmitActions, partition it into the three
+  // categories the engine cares about at submit time:
+  //   BLOCK  → hard-stop; return a validation-style 422 with the message list
+  //   WARN   → soft-stop; the submitter must acknowledge each warning before
+  //            the submit proceeds. Each warning is identified by a stable
+  //            hash of its message so client-side ACKs can be matched back.
+  //   OTHER  → the existing side-effect actions (create_record,
+  //            send_notification, …) — passed through to executeServerActions.
+
+  /** Extract every `block` action from an on_submit action list. */
+  collectBlockingActions(actions: RuleAction[]): RuleAction[] {
+    return actions.filter((a) => a.type === "block");
+  }
+
+  /** Extract every `warn` action from an on_submit action list. */
+  collectWarningActions(actions: RuleAction[]): RuleAction[] {
+    return actions.filter((a) => a.type === "warn");
+  }
+
+  /**
+   * Discard the WARN/BLOCK gate actions so the remainder can be passed to
+   * the server-side executor (create_record, send_notification, …). Keeps
+   * F-2c gate logic separate from the pre-existing side-effect pipeline.
+   */
+  stripGateActions(actions: RuleAction[]): RuleAction[] {
+    return actions.filter((a) => a.type !== "warn" && a.type !== "block");
+  }
+
+  /**
+   * Stable key for a WARN action — clients acknowledge warnings by echoing
+   * this key back on submit. Uses the message text (or a fallback) so a
+   * template author can reword copy without invalidating any in-flight
+   * drafts. Two warnings with identical copy share one ACK by design.
+   */
+  warnActionKey(action: RuleAction): string {
+    const msg = action.warnMessage ?? "";
+    // Simple, deterministic hash — good enough for a form-scoped ACK map.
+    let hash = 0;
+    for (let i = 0; i < msg.length; i++) {
+      hash = (hash << 5) - hash + msg.charCodeAt(i);
+      hash |= 0;
+    }
+    return `warn:${Math.abs(hash).toString(36)}`;
+  }
+
   // ── Validation ─────────────────────────────────────────────────────────
 
   /**

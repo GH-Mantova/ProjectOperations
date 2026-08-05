@@ -62,6 +62,17 @@ export class FormFieldInputDto {
    * `_snippet` on the field when a template version is fetched.
    */
   @IsOptional() @IsString() snippetCode?: string;
+  /**
+   * F-2c — FieldRule[] used by RulesEngineService for visibility/required
+   * evaluation. Optional; persisted to FormField.conditions when supplied.
+   */
+  @IsOptional() conditions?: unknown;
+  /**
+   * F-2c — FieldRule[] used by RulesEngineService for on_change / on_submit
+   * side-effect and gate actions (WARN, BLOCK, create_record, …).
+   * Persisted to FormField.actions when supplied.
+   */
+  @IsOptional() actions?: unknown;
 }
 
 /**
@@ -213,4 +224,12 @@ export class SubmitFormDto {
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => FormAttachmentInputDto) attachments?: FormAttachmentInputDto[];
   /** Optional signatures captured with the submission. */
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => FormSignatureInputDto) signatures?: FormSignatureInputDto[];
+  /**
+   * F-2c — keys of WARN-typed on_submit rule actions the submitter has
+   * acknowledged. Each key is produced by
+   * `RulesEngineService.warnActionKey`; unacknowledged WARN actions bounce
+   * the submit with a 422 whose body carries the missing keys + messages so
+   * the client can prompt and re-submit.
+   */
+  @IsOptional() @IsArray() @IsString({ each: true }) acknowledgedWarnings?: string[];
 }

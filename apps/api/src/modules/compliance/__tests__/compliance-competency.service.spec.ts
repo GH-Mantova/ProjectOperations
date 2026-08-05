@@ -18,7 +18,21 @@ function makeService(opts: {
   };
   const notifications = {};
   const email = {};
-  const service = new ComplianceService(prisma as never, notifications as never, email as never);
+  // SLICE-5: notification-preferences dependency (unused on the competency path;
+  // echo the admin default to stay safe if a case ever reaches dispatch).
+  const notifPrefs = {
+    resolveEffectiveChannelForUser: jest
+      .fn()
+      .mockImplementation((_userId: string, _trigger: string, adminMethod: string) =>
+        Promise.resolve(adminMethod)
+      )
+  };
+  const service = new ComplianceService(
+    prisma as never,
+    notifications as never,
+    email as never,
+    notifPrefs as never
+  );
   return { service, mocks: { workerProfileFindUnique, workerQualificationFindMany } };
 }
 

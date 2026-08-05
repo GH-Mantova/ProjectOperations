@@ -17,6 +17,8 @@ gate_allow: none
 seed_only: false
 escalates: false
 rollback_strategy: ''
+requires_merged:
+  - 933
 ---
 
 # F-2c — full-screen rules builder + WARN/BLOCK submit actions + acknowledgement

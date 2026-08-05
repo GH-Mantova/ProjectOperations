@@ -13,7 +13,7 @@ import { RolesPage } from "./pages/RolesPage";
 import { PermissionsPage } from "./pages/PermissionsPage";
 import { AuditLogsPage } from "./pages/AuditLogsPage";
 import { PlatformPage } from "./pages/PlatformPage";
-import { NotificationsPage } from "./pages/NotificationsPage";
+import { InboxPage } from "./pages/InboxPage";
 import { ArchiveDetailPage } from "./pages/archive/ArchiveDetailPage";
 import { TenderingPage } from "./pages/tendering/TenderingPage";
 import { TenderDetailPage } from "./pages/tendering/TenderDetailPage";
@@ -362,7 +362,10 @@ export function App() {
             <Route path="/settings" element={<SettingsShell />}>
               <Route index element={<Navigate to="account" replace />} />
               <Route path="account" element={<UserProfilePage />} />
-              <Route path="notifications" element={<NotificationsPage />} />
+              {/* SLICE 4: Notifications inbox moved out to top-level /inbox.
+                  Route stays as a redirect until SLICE 5 replaces it with the
+                  Notification-preferences screen (settings-restructure-plan §3). */}
+              <Route path="notifications" element={<Navigate to="/inbox" replace />} />
               <Route path="calendar-sync" element={<CalendarSyncPage />} />
               <Route path="company" element={<AdminCompanyPage />} />
               <Route path="ai" element={<AiSettingsPage />} />
@@ -451,7 +454,11 @@ export function App() {
             <Route path="/admin/automations" element={<AutomationsPage />} />
             <Route path="/admin/job-roles" element={<Navigate to="/settings/administration/job-roles" replace />} />
             <Route path="/account" element={<Navigate to="/settings/account" replace />} />
-            <Route path="/notifications" element={<Navigate to="/settings/notifications" replace />} />
+            {/* SLICE 4: /inbox is the new top-level route for the follow-up
+                inbox. Legacy /notifications now redirects here (settings-
+                restructure-plan §4 redirect map). */}
+            <Route path="/inbox" element={<InboxPage />} />
+            <Route path="/notifications" element={<Navigate to="/inbox" replace />} />
             {/* /dashboards now redirects to the user's first custom dashboard
                 (or to / if they have none). /dashboards/:id still serves the
                 user-owned dashboard system built on DashboardCanvas. */}

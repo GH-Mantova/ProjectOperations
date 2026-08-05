@@ -454,7 +454,6 @@ const BREADCRUMBS: Record<string, string> = {
   "/settings/administration": "Settings",
   "/admin/estimate-rates": "Legacy estimate rates",
   "/admin/rates-lists": "Rates & Lists",
-  "/admin/automations": "Automations",
   "/admin/ai-settings": "AI Settings",
   "/contracts": "Contracts"
 };

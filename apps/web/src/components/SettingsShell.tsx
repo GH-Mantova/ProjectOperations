@@ -86,7 +86,12 @@ const SECTIONS: NavSection[] = [
       // Job roles is a scheduler competency bundle (SLICE 15 moves it to
       // /workers/job-roles). resources.manage governs worker competencies
       // and is the closest existing code.
-      { to: "/settings/administration/job-roles", label: "Job roles", requiresPermission: "resources.manage" }
+      { to: "/settings/administration/job-roles", label: "Job roles", requiresPermission: "resources.manage" },
+      // SLICE 10 (settings-restructure §3): Automations adopted from the
+      // top-level /admin/automations into the Administration nav. Page
+      // self-gates on automations.view; declare the same code here so the
+      // item hides for users who cannot access the page.
+      { to: "/settings/administration/automations", label: "Automations", requiresPermission: "automations.view" }
     ]
   }
 ];

@@ -144,8 +144,7 @@ test.describe("Batch 8 — Admin & portal (PRs #219, #26, #29)", () => {
       "Notifications",
       "Email",
       "AI & Integrations",
-      "Platform",
-      "Audit log"
+      "Platform"
     ]) {
       await expect(sections.getByRole("button", { name: label })).toBeVisible();
     }

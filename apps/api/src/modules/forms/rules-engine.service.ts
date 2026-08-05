@@ -1,5 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
+import {
+  evaluateCondition as sharedEvaluateCondition,
+  evaluateConditionGroup as sharedEvaluateConditionGroup
+} from "@project-ops/config/forms-rule-definition";
 import type {
   Condition,
   ConditionGroup,
@@ -29,9 +33,8 @@ export interface ValidationRule {
 
 type ValueMap = Record<string, unknown>;
 
-function isGroup(node: Condition | ConditionGroup): node is ConditionGroup {
-  return (node as ConditionGroup).conditions !== undefined;
-}
+// Local helpers used by validateValues; the condition/group evaluators live in
+// @project-ops/config/forms-rule-definition so server and client cannot drift.
 
 function toNumber(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
@@ -68,78 +71,42 @@ export class RulesEngineService {
   /**
    * Evaluate one Condition against the current value map.
    *
-   * Equality is loose (==) by design; numeric operators coerce both sides
-   * and return false when either side is not a finite number.
-   *
-   * @param condition - the comparison to run
-   * @param values - fieldKey to current value map
-   * @returns true when the condition holds; false for unknown operators (with a warning log)
+   * Thin wrapper over the shared pure evaluator in
+   * `@project-ops/config/forms-rule-definition` — keeps the public method
+   * signature stable while adding the server-only warning for unknown
+   * operators (the shared evaluator returns false silently).
    */
   evaluateCondition(condition: Condition, values: ValueMap): boolean {
-    const actual = values[condition.fieldKey];
-    const expected = condition.value;
-    switch (condition.operator) {
-      case "equals":
-        // Loose equality so "5" == 5 holds — submission values come from
-        // text inputs and still need to match number rules.
-        return actual == expected;
-      case "not_equals":
-        return actual != expected;
-      case "contains":
-        if (Array.isArray(actual)) return actual.includes(expected as never);
-        return String(actual ?? "").includes(String(expected ?? ""));
-      case "not_contains":
-        if (Array.isArray(actual)) return !actual.includes(expected as never);
-        return !String(actual ?? "").includes(String(expected ?? ""));
-      case "greater_than": {
-        const a = toNumber(actual);
-        const b = toNumber(expected);
-        return a !== null && b !== null && a > b;
-      }
-      case "less_than": {
-        const a = toNumber(actual);
-        const b = toNumber(expected);
-        return a !== null && b !== null && a < b;
-      }
-      case "between": {
-        const a = toNumber(actual);
-        const lo = toNumber(expected);
-        const hi = toNumber(condition.value2);
-        return a !== null && lo !== null && hi !== null && a >= lo && a <= hi;
-      }
-      case "is_empty":
-        return isEmpty(actual);
-      case "is_not_empty":
-        return !isEmpty(actual);
-      case "is_one_of":
-        return Array.isArray(expected) && expected.includes(actual as never);
-      case "is_not_one_of":
-        return Array.isArray(expected) && !expected.includes(actual as never);
-      default:
-        this.logger.warn(`Unknown operator: ${condition.operator as string}`);
-        return false;
+    const result = sharedEvaluateCondition(condition, values);
+    // The shared evaluator returns false for unknown operators without logging;
+    // keep the server-side warning so misconfigured templates surface in logs.
+    const known: ConditionOperator[] = [
+      "equals",
+      "not_equals",
+      "contains",
+      "not_contains",
+      "greater_than",
+      "less_than",
+      "between",
+      "is_empty",
+      "is_not_empty",
+      "is_one_of",
+      "is_not_one_of"
+    ];
+    if (!known.includes(condition.operator)) {
+      this.logger.warn(`Unknown operator: ${condition.operator as string}`);
     }
+    return result;
   }
 
   /**
    * Recursively evaluate a ConditionGroup.
    *
-   * AND requires every child to pass, OR requires at least one. All
-   * children are evaluated eagerly (no short-circuit). An empty or
-   * missing group means "no constraint" and returns true.
-   *
-   * @returns the boolean result of the group
+   * Delegates to the shared pure evaluator; kept as an instance method so
+   * existing NestJS callers (FormsEngineService) don't need to change.
    */
   evaluateConditionGroup(group: ConditionGroup, values: ValueMap): boolean {
-    if (!group || !Array.isArray(group.conditions) || group.conditions.length === 0) {
-      // Empty group ≡ no constraint ≡ true. This matches the natural reading
-      // of "show this field if [no conditions]" — the field stays shown.
-      return true;
-    }
-    const evals = group.conditions.map((node) =>
-      isGroup(node) ? this.evaluateConditionGroup(node, values) : this.evaluateCondition(node, values)
-    );
-    return group.logic === "OR" ? evals.some(Boolean) : evals.every(Boolean);
+    return sharedEvaluateConditionGroup(group, values);
   }
 
   /**

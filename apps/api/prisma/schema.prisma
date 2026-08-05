@@ -215,6 +215,11 @@ model User {
   // Tip Finder recommendation log entries created by this user.
   tipRecommendationLogs TipRecommendationLog[] @relation("TipRecommendationLogCreatedBy")
 
+  // SLICE 5 (settings-restructure): per-user notification channel preferences.
+  // A missing row means "inherit admin default". onDelete: Cascade so removing
+  // a user deletes their preferences automatically.
+  notificationPreferences NotificationPreference[]
+
   @@index([isActive])
   @@index([managerId])
   @@map("users")
@@ -3662,6 +3667,28 @@ model NotificationTriggerConfig {
   updatedAt        DateTime @updatedAt @map("updated_at")
 
   @@map("notification_trigger_configs")
+}
+
+// SLICE 5 (settings-restructure): per-user notification channel preference.
+// Granularity: one row per (user, trigger). A missing row means the user
+// inherits the admin-configured deliveryMethod for that trigger — no write
+// needed for the default case. The stored `channel` can only NARROW the
+// admin's choice (mute-only semantics); effective channel = admin ∩ user.
+// `channel` mirrors the NotificationTriggerConfig.deliveryMethod vocabulary
+// plus "off" (the empty-set / full mute).
+model NotificationPreference {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  trigger   String
+  channel   String   // one of: both | email | inapp | off
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, trigger])
+  @@index([userId])
+  @@map("notification_preferences")
 }
 
 // Singleton row (id="singleton") holding the active email provider + sender

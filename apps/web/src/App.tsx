@@ -14,6 +14,7 @@ import { AdministrationLandingPage } from "./pages/administration/Administration
 import { AuditLogsPage } from "./pages/AuditLogsPage";
 import { PlatformPage } from "./pages/PlatformPage";
 import { InboxPage } from "./pages/InboxPage";
+import { NotificationPreferencesPage } from "./pages/settings/NotificationPreferencesPage";
 import { ArchiveDetailPage } from "./pages/archive/ArchiveDetailPage";
 import { TenderingPage } from "./pages/tendering/TenderingPage";
 import { TenderDetailPage } from "./pages/tendering/TenderDetailPage";
@@ -368,10 +369,10 @@ export function App() {
             <Route path="/settings" element={<SettingsShell />}>
               <Route index element={<Navigate to="account" replace />} />
               <Route path="account" element={<UserProfilePage />} />
-              {/* SLICE 4: Notifications inbox moved out to top-level /inbox.
-                  Route stays as a redirect until SLICE 5 replaces it with the
-                  Notification-preferences screen (settings-restructure-plan §3). */}
-              <Route path="notifications" element={<Navigate to="/inbox" replace />} />
+              {/* SLICE 5 (settings-restructure §3): Notification preferences
+                  screen. Replaced the SLICE-4 /inbox redirect with the actual
+                  per-user channel-preference page. */}
+              <Route path="notifications" element={<NotificationPreferencesPage />} />
               <Route path="calendar-sync" element={<CalendarSyncPage />} />
               <Route path="company" element={<AdminCompanyPage />} />
               <Route path="ai" element={<AiSettingsPage />} />

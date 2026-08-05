@@ -4,6 +4,10 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { NotificationsService } from "../platform/notifications.service";
 import { EmailService } from "../email/email.service";
 import {
+  NotificationPreferencesService,
+  type DeliveryChannel
+} from "../notification-preferences/notification-preferences.service";
+import {
   CompetencyGateResult,
   checkCompetencyGate
 } from "./competency-gate";
@@ -149,7 +153,8 @@ export class ComplianceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
-    private readonly email: EmailService
+    private readonly email: EmailService,
+    private readonly notifPrefs: NotificationPreferencesService
   ) {}
 
   // ─── Status computation ─────────────────────────────────────────────────
@@ -393,6 +398,10 @@ export class ComplianceService {
         )
         .join("\n");
 
+      // TODO(SLICE-5): email path sends to ALL recipients via a single bulk
+      // call; per-user channel narrowing requires per-user email dispatch.
+      // Wire resolveEffectiveChannelForUser here once sendNotificationEmail
+      // is refactored to accept per-user filtering.
       void this.email.sendNotificationEmail({
         trigger: "compliance.expiry_reminder",
         subject,
@@ -401,6 +410,16 @@ export class ComplianceService {
       });
 
       for (const user of recipients) {
+        // SLICE-5: narrow in-app delivery by the user's channel preference.
+        const adminMethod = "both" as DeliveryChannel; // compliance.expiry_reminder default
+        const effective = await this.notifPrefs.resolveEffectiveChannelForUser(
+          user.id,
+          "compliance.expiry_reminder",
+          adminMethod
+        );
+        const wantsInapp = effective === "both" || effective === "inapp";
+        if (!wantsInapp) continue; // user muted in-app for this trigger
+
         for (const row of newRows) {
           const title =
             tier.alertType === "expired"
@@ -744,6 +763,8 @@ export class ComplianceService {
 
     let sent = 0;
 
+    // TODO(SLICE-5): email path sends to ALL recipients via a single bulk
+    // call; per-user channel narrowing on email requires per-user dispatch.
     if (trigger.deliveryMethod !== "inapp") {
       void this.email.sendNotificationEmail({
         trigger: "competency.expiry_digest",
@@ -754,7 +775,17 @@ export class ComplianceService {
       sent += 1;
     }
 
+    const adminMethod = trigger.deliveryMethod as DeliveryChannel;
     for (const user of recipients) {
+      // SLICE-5: narrow in-app delivery by the user's channel preference.
+      const effective = await this.notifPrefs.resolveEffectiveChannelForUser(
+        user.id,
+        "competency.expiry_digest",
+        adminMethod
+      );
+      const wantsInapp = effective === "both" || effective === "inapp";
+      if (!wantsInapp) continue; // user muted in-app for this trigger
+
       await this.notifications.create({
         userId: user.id,
         title: subject,
@@ -995,6 +1026,17 @@ export class ComplianceService {
   private async notifyAdmins(title: string, body: string, severity: "LOW" | "HIGH") {
     const recipients = await this.findComplianceAdmins();
     for (const user of recipients) {
+      // SLICE-5: narrow in-app delivery by user's channel preference.
+      // Auto-block/unblock alerts use "compliance.expiry_reminder" trigger as
+      // the closest matching admin-configured trigger for this audience.
+      const effective = await this.notifPrefs.resolveEffectiveChannelForUser(
+        user.id,
+        "compliance.expiry_reminder",
+        "both" as DeliveryChannel
+      );
+      const wantsInapp = effective === "both" || effective === "inapp";
+      if (!wantsInapp) continue; // user muted in-app for compliance alerts
+
       await this.notifications.create({
         userId: user.id,
         title,

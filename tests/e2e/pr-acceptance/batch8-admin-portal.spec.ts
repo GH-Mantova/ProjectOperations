@@ -166,6 +166,22 @@ test.describe("Batch 8 — Admin & portal (PRs #219, #26, #29)", () => {
     await expect(page.getByRole("heading", { name: "Roles & permissions" })).toBeVisible();
   });
 
+  test("Administration landing hub renders at /settings/administration (SLICE 16)", async ({
+    page
+  }) => {
+    // SLICE 16: a direct visit to /settings/administration used to 404 because
+    // only administration/* children were registered. AdministrationLandingPage
+    // is now mounted at the bare path and lists the accessible sub-pages.
+    await loginAsAdmin(page);
+    await page.goto("/settings/administration");
+    await expect(page).toHaveURL(/\/settings\/administration$/);
+    const hub = page.getByTestId("administration-landing");
+    await expect(hub).toBeVisible();
+    for (const label of ["Admin settings", "Users", "Roles & Permissions", "Audit", "Platform", "Automations"]) {
+      await expect(hub.getByRole("link", { name: label })).toBeVisible();
+    }
+  });
+
   test("Users admin surface renders at /settings/administration/users (SLICE 7)", async ({ page }) => {
     await loginAsAdmin(page);
     await page.goto("/settings/administration/users");

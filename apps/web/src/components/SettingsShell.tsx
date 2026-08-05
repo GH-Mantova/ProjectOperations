@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom";
-import { useAuth } from "../auth/AuthContext";
+import { useAuth, type SafeUser } from "../auth/AuthContext";
 import { can, isAdminUser } from "../auth/permissions";
 import { NoAccess } from "./NoAccess";
 
@@ -12,7 +12,7 @@ import { NoAccess } from "./NoAccess";
 // role — per-item permission-code gates are authoritative, super-user bypass
 // in can() remains the escape hatch. FIELD nav is untouched.
 
-type NavItem = {
+export type SettingsNavItem = {
   to: string;
   label: string;
   // Per-item permission gate (SLICE 3). When set, the item is hidden from
@@ -32,8 +32,42 @@ type NavItem = {
 type NavSection = {
   id: string;
   label: string;
-  items: NavItem[];
+  items: SettingsNavItem[];
 };
+
+// SLICE 16: Administration nav items exported so the AdministrationLandingPage
+// hub (/settings/administration) lists exactly the same destinations the shell
+// sub-nav shows, gated on the exact same codes.
+export const ADMINISTRATION_ITEMS: SettingsNavItem[] = [
+  // AdminSettingsPage aggregates the AI/notifications/email/integrations
+  // tabs; gate on the umbrella platform.admin code that already governs
+  // those write paths (registry:19). SLICE 14 dissolves the mega-page.
+  { to: "/settings/administration/system", label: "Admin settings", requiresPermission: "platform.admin" },
+  { to: "/settings/administration/users", label: "Users", requiresPermission: "users.view" },
+  { to: "/settings/administration/roles", label: "Roles & Permissions", requiresPermission: "roles.view" },
+  { to: "/settings/administration/audit", label: "Audit", requiresPermission: "audit.view" },
+  // platform.manage is the SLICE-1 target code; it does not exist yet.
+  // Fall back to the existing platform.admin (registry:19) — same
+  // audience today. SLICE 12 tightens once platform.manage lands.
+  { to: "/settings/administration/platform", label: "Platform", requiresPermission: "platform.admin" },
+  // SLICE 10 (settings-restructure §3): Automations adopted from the
+  // top-level /admin/automations into the Administration nav. Page
+  // self-gates on automations.view; declare the same code here so the
+  // item hides for users who cannot access the page.
+  { to: "/settings/administration/automations", label: "Automations", requiresPermission: "automations.view" }
+];
+
+export function filterSettingsNavItems(items: SettingsNavItem[], user: SafeUser | null): SettingsNavItem[] {
+  const isSuperUser = user?.isSuperUser === true;
+  return items.filter((item) => {
+    if (item.superUserOnly && !isSuperUser) return false;
+    if (item.requiresPermission && !can(user, item.requiresPermission)) return false;
+    if (item.requiresAnyPermission && !item.requiresAnyPermission.some((code) => can(user, code))) {
+      return false;
+    }
+    return true;
+  });
+}
 
 const SECTIONS: NavSection[] = [
   {
@@ -71,41 +105,16 @@ const SECTIONS: NavSection[] = [
   {
     id: "administration",
     label: "Administration",
-    items: [
-      // AdminSettingsPage aggregates the AI/notifications/email/integrations
-      // tabs; gate on the umbrella platform.admin code that already governs
-      // those write paths (registry:19). SLICE 14 dissolves the mega-page.
-      { to: "/settings/administration/system", label: "Admin settings", requiresPermission: "platform.admin" },
-      { to: "/settings/administration/users", label: "Users", requiresPermission: "users.view" },
-      { to: "/settings/administration/roles", label: "Roles & Permissions", requiresPermission: "roles.view" },
-      { to: "/settings/administration/audit", label: "Audit", requiresPermission: "audit.view" },
-      // platform.manage is the SLICE-1 target code; it does not exist yet.
-      // Fall back to the existing platform.admin (registry:19) — same
-      // audience today. SLICE 12 tightens once platform.manage lands.
-      { to: "/settings/administration/platform", label: "Platform", requiresPermission: "platform.admin" },
-      // SLICE 10 (settings-restructure §3): Automations adopted from the
-      // top-level /admin/automations into the Administration nav. Page
-      // self-gates on automations.view; declare the same code here so the
-      // item hides for users who cannot access the page.
-      { to: "/settings/administration/automations", label: "Automations", requiresPermission: "automations.view" }
-    ]
+    items: ADMINISTRATION_ITEMS
   }
 ];
 
 export function SettingsShell() {
   const { user } = useAuth();
-  const isSuperUser = user?.isSuperUser === true;
 
   const visibleSections = SECTIONS.map((section) => ({
     ...section,
-    items: section.items.filter((item) => {
-      if (item.superUserOnly && !isSuperUser) return false;
-      if (item.requiresPermission && !can(user, item.requiresPermission)) return false;
-      if (item.requiresAnyPermission && !item.requiresAnyPermission.some((code) => can(user, code))) {
-        return false;
-      }
-      return true;
-    })
+    items: filterSettingsNavItems(section.items, user)
   })).filter((section) => section.items.length > 0);
 
   return (

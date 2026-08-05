@@ -18,9 +18,9 @@ The hard-stop list is four classes only — `azure`, `prod-auth`, `human-identit
 Migrations and permission/authz changes are deliberately NOT hard-stops; they auto-merge on green.
 
 This plan does **NOT** re-widen the human bottleneck and adds **no** new `needs-marco/` parking
-class. It adds **automated gates that replace human oversight** for two failure modes that pass
-green CI today — exactly the "strengthen the gates before liberty widens" discipline merge-liberty
-§1.5 asks for. Nothing here weakens a hard-stop; nothing here parks routine work on a human.
+class for routine work. It adds **automated gates that replace human oversight** for two failure
+modes that pass green CI today — exactly the "strengthen the gates before liberty widens" discipline
+merge-liberty §1.5 asks for. Nothing here weakens a hard-stop.
 
 ---
 
@@ -59,30 +59,40 @@ CI proves **"green + the claimed files are present"** (`Assert-SmokeGreen` +
 ## 2. Target policy — two automated gates
 
 ### Gate A — migration backfill correctness (closes #923)
-A migration that *backfills* (contains an `UPDATE … SET`) must ship with a test that runs the
-backfill against a seeded legacy row and asserts the produced value is contract-valid. Three layers:
+A migration that *backfills* (contains an `UPDATE … SET`) must ship with a test that runs the backfill
+against a seeded legacy row and asserts the produced value is contract-valid. Three layers, ordered so
+the independent, load-bearing pieces do not wait on any other plan:
 
-- **Intake lint (deterministic).** Extend `scripts/pipeline/lint-prompt.mjs`: when `scope` includes
-  `apps/api/prisma/migrations/**` AND the migration body matches a backfill signature
-  (`/UPDATE\s+.*\sSET\s/i`), REQUIRE a `must_contain:` entry naming a backfill test file. Missing →
-  `MISSING_FIELD`, prompt rejected before an agent runs. (Reuses merge-liberty SLICE 2's
-  `must_contain` + `Assert-BodyClaimsAreReal` — no new field invented.)
-- **CI (proves it).** A required job runs the backfill test on a seeded row and asserts every
-  transformed token is a valid enum member of the canonical contract. A test of this shape, existing,
-  goes RED on `'EQUALS'` — i.e. it catches #923.
+- **CI test (proves it) — ships first, depends on nothing.** A required job runs a backfill test on a
+  seeded row and asserts every transformed token is a valid enum member of the canonical contract. A
+  reference test for `FormRule.definition` (operators/effects lowercase-normalized) is included — a
+  test of this shape, existing, goes RED on `'EQUALS'`, i.e. it catches #923.
+- **Intake lint (makes it general) — STANDALONE, no merge-liberty dependency.** Extend
+  `scripts/pipeline/lint-prompt.mjs`: when `scope` includes `apps/api/prisma/migrations/**` AND the
+  migration body matches a backfill signature (`/UPDATE\s+.*\sSET\s/i`), REQUIRE that `scope` also
+  names a test file (`*.spec.ts` / `*.test.ts`). Missing → `MISSING_FIELD`, prompt rejected before an
+  agent runs. This rule stands on its own; IF merge-liberty's `must_contain` field later lands, the
+  rule upgrades to also assert the named test appears in the diff (`Assert-BodyClaimsAreReal`) — an
+  enhancement, not a prerequisite.
 - **AI reviewer (optional backstop, SLICE 4).** Before merge, a subagent adversarially reads any diff
-  touching `prisma/migrations/**` (the exact read that caught #923: is every transformed column
-  normalized to its canonical vocabulary? NULL / case / enum mismatches?). On a CONFIRMED blocker it
-  **routes the PR's prompt to `needs-marco/`** — it can only fail *toward* a human, never auto-approve.
+  touching `prisma/migrations/**` (the read that caught #923: is every transformed column normalized to
+  its canonical vocabulary? NULL / case / enum mismatches?). On a CONFIRMED blocker it routes the PR's
+  prompt to `needs-marco/` — fail toward a human, never auto-approve. See §5.3 for its tension with
+  merge-liberty; it is genuinely optional and the two layers above stand without it.
 
 ### Gate B — authz route-guard consistency (closes #922)
-A static test that enumerates the admin/settings routes in `apps/web/src/App.tsx` and asserts each is
-either wrapped in a guard (`AdminOnly` / `SuperUserOnly` / `RequirePermissions`) or the target page
-self-guards. Deterministic, fast, no human. It fails closed on an unrecognised element shape, and it
-would have flagged `/settings/company` immediately.
+A static test over `apps/web/src/App.tsx` asserting **every route that renders an admin/super/platform
+page** is either wrapped in a guard (`AdminOnly` / `SuperUserOnly` / `RequirePermissions`) **or** listed
+in an explicit `SELF_GUARDED_ROUTES` allowlist. Each allowlist entry carries a comment naming the
+in-component guard it relies on (e.g. `/settings/ai` → `canViewAiSettingsPage` / `canViewCompanyTab`).
+The test FAILS CLOSED on any admin-rendering route that is neither wrapped nor allow-listed — so
+`/settings/company` (the #922 gap) reds immediately, while `/settings/ai` (correctly self-guarding)
+passes only because it is a deliberate, reviewed allowlist entry visible in the diff. The test cannot be
+silently satisfied. Scope note: the enumeration is by "renders an admin/super page," not just the
+`/settings/*` prefix, so admin routes elsewhere in `App.tsx` are covered too.
 
-Both gates plug into machinery that already exists (`lint-prompt.mjs`, `Assert-BodyClaimsAreReal`,
-the CI suite, the `needs-marco/` router). Neither parks routine work on a human.
+Both gates plug into machinery that already exists (`lint-prompt.mjs`, the CI suite, the `needs-marco/`
+router). Gates A (CI + lint) and B introduce no new human bottleneck.
 
 ---
 
@@ -95,37 +105,39 @@ the CI suite, the `needs-marco/` router). Neither parks routine work on a human.
 - **Requires:** nothing.
 
 ### SLICE 1 — Gate B: authz route-guard consistency test `size:2`
-- **Files:** `apps/web/src/components/__tests__/route-guards.authz.test.ts` (new — parses `App.tsx`
-  route table, asserts each `/settings/administration/*`, `/settings/company`, `/settings/ai`,
-  `/settings/data-model` route is guarded or its page self-guards); tiny helper if needed.
-- **Independent** (no dependency on merge-liberty). Cheapest, highest signal — ship first.
+- **Files:** `apps/web/src/components/__tests__/route-guards.authz.test.ts` (new — parses the `App.tsx`
+  route table; asserts every admin/super-rendering route is guarded or on `SELF_GUARDED_ROUTES`);
+  a small `SELF_GUARDED_ROUTES` allowlist constant with justifying comments, seeded with `/settings/ai`.
+- **Independent** — no dependency on merge-liberty. Cheapest, highest signal — ship first.
 - **Gate:** `pnpm --filter @project-ops/web lint && pnpm --filter @project-ops/web test`.
 - **Requires:** SLICE 0.
 
-### SLICE 2 — Gate A intake lint: require a backfill test `size:3`
-- **Files:** `scripts/pipeline/lint-prompt.mjs` (+ its test); `docs/pr-prompts/PROMPT-SCHEMA.md`
-  (document the rule).
-- **Requires:** SLICE 0; merge-liberty SLICE 2 (the `must_contain` field). If merge-liberty has not
-  landed `must_contain` yet, this slice defines the minimal field locally and merge-liberty adopts it —
-  note the coordination in the PR body.
+### SLICE 2 — Gate A: CI backfill test + reference FormRule test `size:4`
+- **Files:** a backfill test for `FormRule.definition` (seeds a legacy row, runs the backfill, asserts
+  the result is a valid `FieldRule` with lowercase-normalized operators/effects); `.github/workflows/*.yml`
+  wiring it as a required job in the existing fast (non-Playwright) lane. `gate_allow: none`.
+- **Independent** — no dependency on merge-liberty. This is the piece that would have caught #923;
+  ship it early.
+- **Requires:** SLICE 0.
 
-### SLICE 3 — Gate A CI job + reference backfill test `size:4`
-- **Files:** a backfill test for `FormRule.definition` (asserts a seeded legacy row backfills to a
-  valid `FieldRule`, operators/effects lowercase-normalized); `.github/workflows/*.yml` wiring the
-  job as required. `gate_allow: none` (tests + CI only, no schema).
-- **Requires:** SLICE 2.
+### SLICE 3 — Gate A: standalone intake-lint rule `size:3`
+- **Files:** `scripts/pipeline/lint-prompt.mjs` (+ its test); `docs/pr-prompts/PROMPT-SCHEMA.md`.
+- Backfill-signature migrations must name a test file in `scope` (standalone rule). Optionally upgrades
+  to assert-in-diff IF/when merge-liberty's `must_contain` lands — documented as an enhancement, not a
+  prerequisite.
+- **Requires:** SLICE 0. (Independent of merge-liberty.)
 
 ### SLICE 4 — (optional) AI migration-reviewer gate `size:5`
-- **Files:** `scripts/pr-watcher/index.mjs` and/or `scripts/pipeline/*` — before merge, dispatch an
-  adversarial migration review on any diff touching `prisma/migrations/**`; CONFIRMED blocker routes
-  the prompt to `needs-marco/`. Behind an env flag (default off) so it can land dark.
-- **Requires:** SLICE 1 of **merge-liberty** (positive-control gate tests) — see Risk 5.3 there: never
-  parallelise an unproven instrument. Ships only after those pass.
+- **Files:** `scripts/pr-watcher/index.mjs` and/or `scripts/pipeline/*` — adversarial migration review
+  on any diff touching `prisma/migrations/**`; CONFIRMED blocker routes the prompt to `needs-marco/`.
+  Behind an env flag, default off, so it lands dark.
+- **Requires:** merge-liberty SLICE 1 (positive-control gate tests) — see §5.3 (broken-instrument + the
+  human-gate tension). Ships only after those pass. Skippable entirely.
 
 ### SLICE 5 — sot/05 decision entry (docs-only, doc-reconcile) `size:1`
-- **Files:** `sot/05-decisions-and-lessons.md` (record the two gates + the #923/#922 lessons);
-  `docs/pipeline/DOCTRINE.md` cross-link. CP-24 sot-purity: never mixed with code.
-- **Requires:** SLICES 1–3 (4 if taken).
+- **Files:** `sot/05-decisions-and-lessons.md`; `docs/pipeline/DOCTRINE.md` cross-link. CP-24: never
+  mixed with code.
+- **Requires:** SLICES 1–3 (and 4 if taken).
 
 ---
 
@@ -133,44 +145,45 @@ the CI suite, the `needs-marco/` router). Neither parks routine work on a human.
 
 | Incident | Failure CI missed | Gate | Slice |
 |---|---|---|---|
-| #923 | migration backfill wrote invalid enum tokens; JSONB not type-checked, no backfill test | Gate A (lint + CI + optional AI reviewer) | 2, 3, (4) |
-| #922 | admin route unguarded; e2e checked sidebar label, not URL authz | Gate B (static route-guard test) | 1 |
+| #923 | migration backfill wrote invalid enum tokens; JSONB not type-checked, no backfill test | Gate A (CI test + standalone lint; optional AI reviewer) | 2, 3, (4) |
+| #922 | admin route unguarded; e2e checked sidebar label, not URL authz | Gate B (static route-guard test + reviewed allowlist) | 1 |
 
-Each gate is automated and fails safe: Gate B fails CI red; Gate A fails intake (lint) or CI red, and
-the optional reviewer can only route to `needs-marco/`. No gate can silently pass a bad input, and none
-introduces a new human bottleneck.
+Each gate is automated and fails safe: Gate B fails CI red (fail-closed on un-allow-listed admin
+routes); Gate A fails intake (lint) or CI red; the optional reviewer can only route to `needs-marco/`.
+No gate can silently pass a bad input.
 
 ---
 
 ## 5. Risks
 
-### 5.1 Gate B test rots as new route patterns appear
-A new guard component or route shape the test doesn't recognise could slip through. **Mitigation:** the
-test enumerates by route-path prefix and FAILS CLOSED on an unknown element type for a matched path —
-an unrecognised shape is a red, not a silent pass. New guard components are added to the allow-list in
-the same PR that introduces them.
+### 5.1 Gate B allowlist could rubber-stamp
+`SELF_GUARDED_ROUTES` is the escape hatch; a careless addition re-opens the #922 class.
+**Mitigation:** each entry requires a justifying comment naming the in-component guard, and appears in
+the PR diff where a reviewer sees it. The test fails closed on any admin route neither wrapped nor
+listed — silence is a red, not a pass. Keep the allowlist tiny; prefer a real route guard.
 
 ### 5.2 Gate A lint false-positives on additive, non-backfill migrations
-A pure `ADD COLUMN` with no data movement should not need a backfill test. **Mitigation:** the lint
-only triggers on the backfill signature (`UPDATE … SET`), never on `ADD COLUMN` / `CREATE` alone.
+**Mitigation:** the lint triggers only on the backfill signature (`UPDATE … SET`), never on
+`ADD COLUMN` / `CREATE` alone.
 
-### 5.3 The AI reviewer (SLICE 4) is a "broken instrument, parallelised" risk
-Merge-liberty §5.3: a confident-wrong instrument run repeatedly is the worst failure mode.
-**Mitigation:** the reviewer can only route to `needs-marco/` (fail toward a human), never auto-approve
-or auto-merge; it lands behind an env flag; and it ships only after merge-liberty SLICE 1's
-positive-control tests are green. It is a backstop, not a load-bearing gate — Gates A(lint+CI) and B
-stand without it.
+### 5.3 SLICE 4 reintroduces a human gate for the migration class
+Routing a flagged migration to `needs-marco/` is, for that PR, a human stop — mild tension with
+merge-liberty's "merge anything but hard-stops on green" (migrations are NOT a hard-stop). And
+(merge-liberty §5.3) a confident-wrong reviewer run repeatedly is the worst failure mode.
+**Mitigation:** SLICE 4 is OPTIONAL and env-flag-gated (default off); it can only route to
+`needs-marco/`, never auto-approve; and it lands only after merge-liberty SLICE 1's positive-control
+tests are green. Gates A (CI + lint) and B carry the plan without it — SLICE 4 is a backstop, not
+load-bearing. If it proves noisy, drop it.
 
-### 5.4 Dependency on merge-liberty (`must_contain`, `Assert-BodyClaimsAreReal`)
-If merge-liberty stalls in review, Gate A's lint layer has no `must_contain` field to hang on.
-**Mitigation:** SLICE 1 (Gate B) and SLICE 3's CI test are fully independent and ship regardless;
-only SLICE 2's *intake-lint* layer depends on merge-liberty, and it can define the field locally if
-needed.
+### 5.4 Coupling to merge-liberty
+Only two things touch merge-liberty now: the OPTIONAL `must_contain` upgrade of SLICE 3's lint, and
+SLICE 4. **Mitigation:** SLICE 1 (Gate B), SLICE 2 (CI test), and SLICE 3's standalone lint all ship
+regardless of merge-liberty's status — the general #923 gate does not wait on a stalled plan.
 
 ### 5.5 CI wall-clock
 A new required backfill-test job adds CI time to an already-serial `main` (merge-liberty §1.2).
 **Mitigation:** the backfill test is a fast unit/integration test (seeded row, no browser); it runs in
-the existing `test:web:logic`/api-test lane, not the Playwright suite.
+the existing `test:web:logic` / api-test lane, not the Playwright suite.
 
 ---
 
@@ -187,7 +200,9 @@ the existing `test:web:logic`/api-test lane, not the Playwright suite.
 ## 7. Verification of this document
 - [x] `test -f docs/plans/pipeline-correctness-gates-plan.md`
 - [x] Each incident in §1 is pinned to the file/commit that caused and fixed it.
-- [x] Each gate maps to the incident it prevents (§4) and names where it plugs into existing machinery.
-- [x] No new `needs-marco/` parking class for routine work; consistent with merge-liberty's
-      "merge anything but hard-stops on green."
+- [x] The general #923 gate (SLICE 2 CI test + SLICE 3 standalone lint) ships independently of
+      merge-liberty; only the optional `must_contain` upgrade and SLICE 4 couple to it.
+- [x] Gate B specifies the reviewed `SELF_GUARDED_ROUTES` allowlist mechanism and fails closed.
+- [x] No new `needs-marco/` parking class for routine work; SLICE 4's routing is optional and named
+      as a tension in §5.3.
 - [ ] `pnpm build && pnpm lint` (run at PR-open time).

@@ -5,7 +5,6 @@ import { useConfirm } from "../hooks/useConfirm";
 import { AdminAccessRequestsTab } from "./admin/AdminAccessRequestsTab";
 import { isAdminUser } from "../auth/permissions";
 import { NoAccess } from "../components/NoAccess";
-import { AdminRolesPermissionsTab } from "./admin/AdminRolesPermissionsTab";
 import { AdminClientVersionsTab } from "./admin/AdminClientVersionsTab";
 import { MapLocationsTab } from "./admin/MapLocationsTab";
 
@@ -47,7 +46,6 @@ const TABS = [
   { id: "integrations", label: "Integrations / API keys" },
   { id: "platform", label: "Platform" },
   { id: "geofences", label: "Site geofences" },
-  { id: "permissions", label: "Permissions" },
   { id: "client-versions", label: "Client versions" },
   { id: "map-locations", label: "Map locations" },
   { id: "audit", label: "Audit log" }
@@ -116,7 +114,6 @@ export function AdminSettingsPage() {
             </>
           )}
           {tab === "geofences" && <SiteGeofencesTab />}
-          {tab === "permissions" && <AdminRolesPermissionsTab />}
           {tab === "client-versions" && <AdminClientVersionsTab />}
           {tab === "map-locations" && <MapLocationsTab />}
           {tab === "audit" && <StubCard title="System audit log" body="Coming soon. All admin actions are recorded." />}

@@ -9,8 +9,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { DashboardPlaceholderPage } from "./pages/DashboardPlaceholderPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { AdminUsersTab } from "./pages/admin/AdminUsersTab";
-import { RolesPage } from "./pages/RolesPage";
-import { PermissionsPage } from "./pages/PermissionsPage";
+import { RolesPermissionsPage } from "./pages/administration/RolesPermissionsPage";
 import { AuditLogsPage } from "./pages/AuditLogsPage";
 import { PlatformPage } from "./pages/PlatformPage";
 import { InboxPage } from "./pages/InboxPage";
@@ -404,17 +403,17 @@ export function App() {
                 path="administration/roles"
                 element={
                   <AdminOnly>
-                    <RolesPage />
+                    <RolesPermissionsPage />
                   </AdminOnly>
                 }
               />
+              {/* SLICE 8: Permissions folded into the Roles & Permissions page.
+                  The in-Settings /administration/permissions URL now redirects
+                  to the merged surface so bookmarks + the /admin/permissions
+                  legacy hop below still resolve. */}
               <Route
                 path="administration/permissions"
-                element={
-                  <AdminOnly>
-                    <PermissionsPage />
-                  </AdminOnly>
-                }
+                element={<Navigate to="/settings/administration/roles" replace />}
               />
               <Route
                 path="administration/audit"

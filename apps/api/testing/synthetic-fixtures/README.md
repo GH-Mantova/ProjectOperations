@@ -19,7 +19,36 @@ model the surfaces the audit's call sites touch, expose deterministic fault
 injection (throw once, open a circuit, probe for landed entities), and let a
 jest spec assert on entity counts and record states.
 
-## Slice 1 (this slice) — Xero, in-memory
+## Slice 3 — native forms ingestion, in-memory
+
+Contains:
+
+- `forms/synthetic-forms.ts` — in-memory forms ingestion provider modelling F1
+  (public/kiosk unauthenticated submit via `publicSubmit`) and F3 (legacy raw
+  submit via `legacySubmit`). Both surfaces share the same idempotency gap:
+  they perform an unconditional write with no `clientSubmissionId` deduplication,
+  so a retried call lands a duplicate. The provider exposes `failNextCall()`,
+  `openCircuit()` / `closeCircuit()`, `probe(clientSubmissionId)`, and
+  `countSubmissionsWith(clientSubmissionId)` for the Case B reaper.
+- `forms/synthetic-forms.spec.ts` — jest spec that exercises:
+  1. F1 duplicate-submit gap (with and without `runCaseA` guard).
+  2. Partial-write posture (Case B PROCESSING + probe).
+  3. Graceful degrade (circuit-open, `withDegrade`, Forms v2 §4.4 bar).
+
+### Deliberate design choices
+
+- **In-memory, zero new dependencies.** Same rationale as Slice 1: `ts-jest`
+  has no `transformIgnorePatterns`; the ESM-only wire-mock libraries (msw v2)
+  break the jest run out of the box. This slice ships pure TypeScript that the
+  existing `ts-jest` compiles.
+- **No production imports.** Nothing here imports from `apps/api/src/**`.
+- **F2 not modelled.** The audit marks F2 (authenticated engine submit) as
+  already covered: the submit is a status flip on an existing draft row, and a
+  retry is safely rejected by `requireOwnedDraft`. No synthetic fixture needed.
+- **Not linted.** Same scope rationale as Slice 1 — `apps/api/eslint.config.js`
+  only globs `src/**/*.ts`.
+
+## Slice 1 — Xero, in-memory
 
 Contains:
 
@@ -62,6 +91,3 @@ These are separately-gated and will land as their own PRs:
 - **Graph mail synthetic provider.** Mirror this slice's shape for the
   M-rows (notification, PO issued, quote send, OTP, access request, tender
   notify) so the M1–M6 fixes can be tested.
-- **Native forms ingestion synthetic driver.** For the F-rows (public/kiosk
-  submit, engine submit, legacy submit) — a synthetic form-source that can
-  replay retries with and without `clientSubmissionId`.

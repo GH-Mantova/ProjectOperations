@@ -8771,6 +8771,18 @@
           "filterable": false,
           "aggregations": []
         },
+        "requiredRole": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "signedById": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
         "submission": {
           "role": "dimension",
           "label": null,
@@ -9041,6 +9053,12 @@
           "role": "dimension",
           "label": null,
           "filterable": true,
+          "aggregations": []
+        },
+        "sealedAt": {
+          "role": "time",
+          "label": null,
+          "filterable": false,
           "aggregations": []
         }
       }

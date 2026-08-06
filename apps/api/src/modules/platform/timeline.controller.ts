@@ -1,11 +1,11 @@
-import { Body, Controller, ForbiddenException, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { IsString, MaxLength, MinLength } from "class-validator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
-import { TimelineService, type TimelineItem } from "./timeline.service";
+import { TimelineService, type TimelineItem, type TimelineCursor } from "./timeline.service";
 
 // The permission a caller needs to READ a given entity's timeline. Writes
 // re-use the same guard — anyone who can see the record can drop a note
@@ -44,12 +44,33 @@ export class TimelineController {
     required: false,
     description: "Comma-separated filter: note,status,attachment,system,correspondence,progress."
   })
-  @ApiResponse({ status: 200, description: "{ entityType, entityId, items[] } sorted newest first." })
+  @ApiQuery({
+    name: "from",
+    required: false,
+    description: "ISO date string (YYYY-MM-DD). Filter to items with createdAt >= from."
+  })
+  @ApiQuery({
+    name: "to",
+    required: false,
+    description: "ISO date string (YYYY-MM-DD). Filter to items with createdAt <= end-of-day(to) (inclusive)."
+  })
+  @ApiQuery({
+    name: "cursor",
+    required: false,
+    description: "Opaque base64-encoded cursor string from a previous response's nextCursor field. Only valid within the same from/to/kinds filter."
+  })
+  @ApiResponse({
+    status: 200,
+    description: "{ entityType, entityId, items[], nextCursor } sorted newest first. nextCursor is a base64 string when a further page exists, else null."
+  })
   async list(
     @Param("entityType") entityTypeRaw: string,
     @Param("entityId") entityId: string,
     @Query("limit") limitRaw: string | undefined,
     @Query("kinds") kindsRaw: string | undefined,
+    @Query("from") fromRaw: string | undefined,
+    @Query("to") toRaw: string | undefined,
+    @Query("cursor") cursorRaw: string | undefined,
     @CurrentUser() user: AuthenticatedUser
   ) {
     const entityType = this.service.parseEntityType(entityTypeRaw);
@@ -58,7 +79,51 @@ export class TimelineController {
     const kinds = kindsRaw
       ? (kindsRaw.split(",").map((s) => s.trim()).filter(Boolean) as TimelineItem["kind"][])
       : undefined;
-    return this.service.list(entityType, entityId, { limit, kinds });
+
+    // Parse from/to date strings
+    let from: Date | undefined;
+    let to: Date | undefined;
+    if (fromRaw !== undefined) {
+      if (isNaN(Date.parse(fromRaw))) {
+        throw new BadRequestException(`Invalid "from" date: "${fromRaw}". Expected an ISO date string.`);
+      }
+      from = new Date(fromRaw);
+    }
+    if (toRaw !== undefined) {
+      if (isNaN(Date.parse(toRaw))) {
+        throw new BadRequestException(`Invalid "to" date: "${toRaw}". Expected an ISO date string.`);
+      }
+      to = new Date(toRaw);
+    }
+
+    // Decode opaque base64 cursor
+    let cursor: TimelineCursor | undefined;
+    if (cursorRaw !== undefined) {
+      try {
+        const decoded = Buffer.from(cursorRaw, "base64").toString("utf8");
+        const parsed = JSON.parse(decoded) as { createdAt: string; id: string };
+        cursor = { createdAt: new Date(parsed.createdAt), id: parsed.id };
+        if (isNaN(cursor.createdAt.getTime()) || typeof cursor.id !== "string") {
+          throw new Error("invalid fields");
+        }
+      } catch {
+        throw new BadRequestException(`Invalid cursor value. Expected a base64-encoded cursor string from a previous response.`);
+      }
+    }
+
+    const result = await this.service.list(entityType, entityId, { limit, kinds, from, to, cursor });
+
+    // Re-encode nextCursor as opaque base64 string for the wire format
+    const nextCursor: string | null = result.nextCursor !== null
+      ? Buffer.from(JSON.stringify({ createdAt: result.nextCursor.createdAt.toISOString(), id: result.nextCursor.id })).toString("base64")
+      : null;
+
+    return {
+      entityType: result.entityType,
+      entityId: result.entityId,
+      items: result.items,
+      nextCursor
+    };
   }
 
   @Post(":entityType/:entityId/notes")

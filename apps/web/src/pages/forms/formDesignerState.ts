@@ -37,6 +37,7 @@ export type FieldType =
   | "worker_picker"
   | "asset_picker"
   | "location_stamp"
+  | "weather_capture"
   // Advanced (F-4)
   | "lookup"
   | "calculation"
@@ -161,7 +162,8 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
       { type: "existing_site", label: "Existing site", icon: "\u{1F3D7}" },
       { type: "worker_picker", label: "Worker", icon: "\u{1F464}" },
       { type: "asset_picker", label: "Asset", icon: "\u{1F527}" },
-      { type: "location_stamp", label: "Location stamp", icon: "\u{1F4CD}" }
+      { type: "location_stamp", label: "Location stamp", icon: "\u{1F4CD}" },
+      { type: "weather_capture", label: "Weather", icon: "\u{1F324}" }
     ]
   },
   {
@@ -271,7 +273,8 @@ const DEFAULT_LABEL: Partial<Record<string, string>> = {
   worker_picker: "Worker",
   asset_picker: "Asset",
   location_stamp: "Location stamp",
-  image_capture: "Photo"
+  image_capture: "Photo",
+  weather_capture: "Weather"
 };
 
 function defaultConfigFor(fieldType: FieldType | string): Record<string, unknown> | undefined {

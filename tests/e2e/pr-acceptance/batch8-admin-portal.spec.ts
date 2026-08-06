@@ -177,7 +177,7 @@ test.describe("Batch 8 — Admin & portal (PRs #219, #26, #29)", () => {
     await expect(page).toHaveURL(/\/settings\/administration$/);
     const hub = page.getByTestId("administration-landing");
     await expect(hub).toBeVisible();
-    for (const label of ["Admin settings", "Users", "Roles & Permissions", "Audit", "Platform", "Automations"]) {
+    for (const label of ["Admin settings", "Users", "Roles & Permissions", "Audit", "Platform", "Automations", "Client versions", "Map locations"]) {
       await expect(hub.getByRole("link", { name: label })).toBeVisible();
     }
   });

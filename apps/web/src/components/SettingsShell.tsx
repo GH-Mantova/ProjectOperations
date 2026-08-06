@@ -54,7 +54,13 @@ export const ADMINISTRATION_ITEMS: SettingsNavItem[] = [
   // top-level /admin/automations into the Administration nav. Page
   // self-gates on automations.view; declare the same code here so the
   // item hides for users who cannot access the page.
-  { to: "/settings/administration/automations", label: "Automations", requiresPermission: "automations.view" }
+  { to: "/settings/administration/automations", label: "Automations", requiresPermission: "automations.view" },
+  // SLICE 14 (settings-restructure §3): Client versions and Map locations
+  // dissolved from AdminSettingsPage tabs into standalone Administration
+  // pages. Both are admin-config surfaces; gate on platform.admin (registry:19),
+  // same code used by the sibling Administration entries.
+  { to: "/settings/administration/client-versions", label: "Client versions", requiresPermission: "platform.admin" },
+  { to: "/settings/administration/map-locations", label: "Map locations", requiresPermission: "platform.admin" }
 ];
 
 export function filterSettingsNavItems(items: SettingsNavItem[], user: SafeUser | null): SettingsNavItem[] {

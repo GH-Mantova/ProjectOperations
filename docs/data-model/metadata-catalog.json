@@ -10673,6 +10673,12 @@
           "filterable": false,
           "aggregations": []
         },
+        "projectId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
         "carriedDocuments": {
           "role": "filter",
           "label": null,
@@ -10698,6 +10704,12 @@
           "aggregations": []
         },
         "job": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "project": {
           "role": "dimension",
           "label": null,
           "filterable": true,
@@ -14160,6 +14172,12 @@
           "aggregations": []
         },
         "contract": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "jobConversion": {
           "role": "system",
           "label": null,
           "filterable": false,

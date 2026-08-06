@@ -308,3 +308,32 @@ items:
       default toward MAX_LIMIT=200? Only implement across API + timeline panel once you choose. If the
       answer is "50 is fine", say so and this can be deleted. Parked here, not auto-staged.
     order: 14
+
+  # ADDED 2026-08-06 (PR Master + Marco): the settings-restructure IA moves (SLICE 11 rates
+  # retire, SLICE 14 tab dissolve, SLICE 17 guard unification) drift the source-of-truth nav/IA
+  # docs. SLICE 20 is the sot/01 s9 nav-IA doc-reconcile that squares /sot/ back up. It cannot
+  # run until those slices actually land on main, and it is STATION 05 SoT-KEEPER work only.
+  # -------------------------------------------------------------------------------------------
+  - id: settings-restructure-sot-nav-reconcile
+    title: "SLICE 20 - sot/01 s9 nav-IA doc-reconcile after the settings-restructure moves land"
+    priority: P2
+    why: >
+      The settings-restructure changed the live nav/IA (Client versions + Map locations moved to
+      /settings/administration in SLICE 14; AdminOnly route guards replaced by per-screen
+      permissions incl. the new system.manage code in SLICE 17; /admin/estimate-rates retired in
+      SLICE 11b). sot/01 s9 (nav authority) and sot/04 (data-model, incl. the dropped Estimate*Rate
+      tables at SLICE 11c) will be stale once these land. This is the deliberate doc-reconcile step.
+      NOTE also: SLICE 14 was narrowed this session to Client versions + Map locations only -
+      geofences was carved out to the site-dissolution plan (SiteGeofence -> JobGeofence, B-SD-6),
+      so the reconcile must reflect the narrowed scope, not the plan's original broad SLICE 14.
+    gate: 'test -f apps/web/src/pages/administration/MapLocationsPage.tsx && ! test -f docs/audits/settings-restructure-sot-reconcile.md'
+    gate_means: >
+      READY once SLICE 14 has landed (MapLocationsPage exists on main) AND the reconcile has not yet
+      shipped. Discharges when the reconcile lands its marker docs/audits/settings-restructure-sot-reconcile.md.
+      Hidden (not-ready) before SLICE 14 lands.
+    needs_marco: false
+    marco_note: >
+      STATION 05 SoT-KEEPER ONLY. Do NOT stage this as an ordinary watcher prompt and do NOT let a
+      non-sot-keeper agent touch /sot/. Run the sot-keeper reconcile once the settings + rates slices
+      are on main; it lands via a doc-reconcile PR and drops the marker doc named in the gate.
+    order: 15

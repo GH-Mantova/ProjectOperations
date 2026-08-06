@@ -6,6 +6,7 @@ import { PdfRenderingModule } from "../pdf-rendering/pdf-rendering.module";
 import { PlatformModule } from "../platform/platform.module";
 import { FormsController } from "./forms.controller";
 import { FormsService } from "./forms.service";
+import { FormNumberSequenceService } from "./form-number-sequence.service";
 import { FormsEngineController } from "./forms-engine.controller";
 import { FormsEngineService } from "./forms-engine.service";
 import { RulesEngineService } from "./rules-engine.service";
@@ -49,6 +50,7 @@ import { PublicLinkService } from "./public-link.service";
   ],
   providers: [
     FormsService,
+    FormNumberSequenceService,
     FormsEngineService,
     RulesEngineService,
     FormsSnippetsService,

@@ -91,7 +91,8 @@ import { SavedViewsService } from "./saved-views.service";
     PlatformConfigService,
     ProcessFlowsService,
     AutomationEngineService,
-    TimelineService
+    TimelineService,
+    WeatherService
   ]
 })
 export class PlatformModule {}

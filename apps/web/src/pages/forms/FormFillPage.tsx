@@ -1531,6 +1531,8 @@ function FieldInput({
       return <AssetPicker field={field} value={value as string | null} onChange={onChange} context={context} />;
     case "location_stamp":
       return <LocationStamp value={value as { lat: number; lng: number; capturedAt: string } | null} onChange={onChange} gps={gps} />;
+    case "weather_capture":
+      return <WeatherCapture value={value as WeatherCaptureValue | null} onChange={onChange} siteId={context.siteId ?? null} />;
     case "calculation":
       return <CalculationDisplay field={field} values={values ?? {}} />;
     case "unique_id":
@@ -2242,6 +2244,162 @@ function LocationStamp({
       {err ? (
         <p style={{ fontSize: 11, color: "var(--status-danger, #DC2626)", marginTop: 4 }}>{err}</p>
       ) : null}
+    </div>
+  );
+}
+
+// F-6 — Weather auto-capture. Reads the submission's `siteId` from context,
+// calls the same `/dashboards/weather/site/:siteId` endpoint the dashboard
+// widget uses, renders the current conditions read-only, and writes the
+// resolved summary into the FormSubmissionValue via onChange so downstream
+// audit / PDF export can show what the weather was at fill time.
+type WeatherCaptureValue = {
+  siteId: string;
+  temperatureC: number | null;
+  windKph: number | null;
+  weatherCode: number | null;
+  observedAt: string | null;
+  source: string;
+  capturedAt: string;
+};
+
+type WeatherApiResponse =
+  | {
+      unavailable: false;
+      site: { id: string; name: string };
+      current: {
+        temperatureC: number;
+        windKph: number | null;
+        weatherCode: number | null;
+        observedAt: string;
+      } | null;
+      source: string;
+    }
+  | { unavailable: true; site: { id: string; name: string }; reason: string };
+
+function WeatherCapture({
+  value,
+  onChange,
+  siteId
+}: {
+  value: WeatherCaptureValue | null;
+  onChange: (v: unknown) => void;
+  siteId: string | null;
+}) {
+  const { authFetch } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [current, setCurrent] = useState<WeatherApiResponse | null>(null);
+  const capturedForRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!siteId) return;
+    // Only capture once per siteId per mount — the value belongs on the
+    // submission, not on every re-render.
+    if (capturedForRef.current === siteId && value) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    (async () => {
+      try {
+        const res = await authFetch(`/dashboards/weather/site/${encodeURIComponent(siteId)}`);
+        if (!res.ok) throw new Error(`weather ${res.status}`);
+        const body = (await res.json()) as WeatherApiResponse;
+        if (cancelled) return;
+        setCurrent(body);
+        capturedForRef.current = siteId;
+        if (body.unavailable) {
+          // Persist a "captured but unavailable" marker so the audit trail
+          // shows we tried, without failing the field.
+          onChange({
+            siteId,
+            temperatureC: null,
+            windKph: null,
+            weatherCode: null,
+            observedAt: null,
+            source: "unavailable",
+            capturedAt: new Date().toISOString()
+          } satisfies WeatherCaptureValue);
+        } else {
+          onChange({
+            siteId,
+            temperatureC: body.current?.temperatureC ?? null,
+            windKph: body.current?.windKph ?? null,
+            weatherCode: body.current?.weatherCode ?? null,
+            observedAt: body.current?.observedAt ?? null,
+            source: body.source,
+            capturedAt: new Date().toISOString()
+          } satisfies WeatherCaptureValue);
+        }
+      } catch (err) {
+        if (!cancelled) setError((err as Error).message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch, siteId, value, onChange]);
+
+  if (!siteId) {
+    return (
+      <div style={{ padding: 10, background: "var(--surface-muted, #F6F6F6)", borderRadius: 6, fontSize: 13 }}>
+        No site linked to this submission — weather will be captured on submit if a site is set.
+      </div>
+    );
+  }
+  if (loading && !value) {
+    return (
+      <div style={{ padding: 10, background: "var(--surface-muted, #F6F6F6)", borderRadius: 6, fontSize: 13 }}>
+        Fetching current weather…
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div style={{ padding: 10, background: "#FEF3C7", color: "#92400E", borderRadius: 6, fontSize: 12 }}>
+        Weather unavailable right now — the submission will save without a reading.
+      </div>
+    );
+  }
+  if (current?.unavailable) {
+    return (
+      <div style={{ padding: 10, background: "var(--surface-muted, #F6F6F6)", borderRadius: 6, fontSize: 13 }}>
+        Weather unavailable: {current.reason}.
+      </div>
+    );
+  }
+  const display = value ?? {
+    temperatureC: current && !current.unavailable ? (current.current?.temperatureC ?? null) : null,
+    windKph: current && !current.unavailable ? (current.current?.windKph ?? null) : null,
+    observedAt: current && !current.unavailable ? (current.current?.observedAt ?? null) : null
+  };
+  return (
+    <div
+      style={{
+        padding: 12,
+        background: "var(--surface-muted, #F6F6F6)",
+        borderRadius: 6,
+        fontSize: 13,
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        gap: 12
+      }}
+    >
+      <div>
+        <div style={{ fontSize: 18, fontWeight: 600 }}>
+          {display.temperatureC !== null ? `${Math.round(display.temperatureC)}°C` : "—"}
+        </div>
+        <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
+          {display.windKph !== null && display.windKph !== undefined
+            ? `Wind ${Math.round(display.windKph)} km/h`
+            : "Wind —"}
+          {display.observedAt ? ` · ${new Date(display.observedAt).toLocaleString()}` : ""}
+        </div>
+      </div>
+      <span style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase" }}>auto</span>
     </div>
   );
 }

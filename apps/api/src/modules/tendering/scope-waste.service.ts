@@ -598,6 +598,11 @@ export class ScopeWasteService {
     ]
       .filter((s): s is string => s !== null)
       .join(", ") || "no live rate available";
+    // TODO(SLICE-5): narrow via resolveEffectiveChannel. For each recipient,
+    // call NotificationPreferencesService.resolveEffectiveChannelForUser with
+    // trigger="waste_line.rate_variance_escalated" and skip users whose
+    // effective channel is "off" or "email" (this path is in-app only).
+    // Requires importing NotificationPreferencesModule into TenderingModule.
     let sent = 0;
     for (const user of recipients) {
       await this.notifications.create(

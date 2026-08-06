@@ -11769,6 +11769,56 @@
         }
       }
     },
+    "NotificationPreference": {
+      "domain": "Platform",
+      "wizardVisible": false,
+      "label": "Notification Preference",
+      "reviewed": false,
+      "fields": {
+        "id": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "userId": {
+          "role": "fk",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "trigger": {
+          "role": "attribute",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "channel": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "createdAt": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "updatedAt": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "user": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        }
+      }
+    },
     "NotificationTriggerConfig": {
       "domain": "Platform",
       "wizardVisible": false,
@@ -22432,6 +22482,12 @@
           "aggregations": []
         },
         "tipRecommendationLogs": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "notificationPreferences": {
           "role": "system",
           "label": null,
           "filterable": false,

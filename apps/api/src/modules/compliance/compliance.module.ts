@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { EmailModule } from "../email/email.module";
 import { PlatformModule } from "../platform/platform.module";
+import { NotificationPreferencesModule } from "../notification-preferences/notification-preferences.module";
 import { ComplianceController } from "./compliance.controller";
 import { ComplianceService } from "./compliance.service";
 import { PrequalController } from "./prequal.controller";
@@ -20,7 +21,7 @@ import { PrequalService } from "./prequal.service";
  * `SubcontractorSupplier`.
  */
 @Module({
-  imports: [PlatformModule, EmailModule],
+  imports: [PlatformModule, EmailModule, NotificationPreferencesModule],
   controllers: [ComplianceController, PrequalController],
   providers: [ComplianceService, PrequalService],
   exports: [ComplianceService, PrequalService]

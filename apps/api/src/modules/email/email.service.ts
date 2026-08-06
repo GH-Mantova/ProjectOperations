@@ -68,6 +68,18 @@ export class EmailService {
    * break because the mail server had a hiccup.
    */
   async sendNotificationEmail(input: NotificationEmailInput): Promise<void> {
+    // TODO(SLICE-5): narrow email recipients per-user via resolveEffectiveChannel.
+    // Currently this method sends to all eligible recipients from the trigger config
+    // without consulting NotificationPreference rows. To wire narrowing here:
+    //   1. Resolve eligible user IDs from recipientUserIds + recipientRoles (see resolveRecipientEmails below).
+    //   2. For each user, call NotificationPreferencesService.resolveEffectiveChannelForUser
+    //      and skip users whose effective channel is "inapp" or "off".
+    //   3. Build the recipient email list from the filtered set.
+    // NotificationPreferencesService cannot be injected here without introducing a
+    // circular dependency (EmailModule <-> NotificationPreferencesModule). The clean
+    // resolution is to lift the per-user email filtering into the calling service
+    // (ComplianceService already has resolveEffectiveChannelForUser; other callers
+    // should follow the same pattern). Tracked in SLICE-5 PR body.
     try {
       const trigger = await this.prisma.notificationTriggerConfig.findUnique({
         where: { trigger: input.trigger }

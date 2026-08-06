@@ -11,6 +11,7 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { NotificationsService } from "../platform/notifications.service";
+import { WeatherService, type WeatherResponse } from "../platform/weather.service";
 import {
   RulesEngineService,
   type FieldRule,
@@ -291,8 +292,27 @@ export class FormsEngineService {
     private readonly rules: RulesEngineService,
     private readonly notifications: NotificationsService,
     private readonly audit: AuditService,
-    private readonly formNumberSequence: FormNumberSequenceService
+    private readonly formNumberSequence: FormNumberSequenceService,
+    private readonly weather: WeatherService
   ) {}
+
+  /**
+   * F-6 — resolve the current weather for a submission's site so the
+   * `weather_capture` field and any downstream context-auto-fill callers
+   * can share one shape. Returns `null` when the site is unknown or the
+   * upstream weather service can't produce a reading — never throws, so a
+   * weather-fetch failure can't block a submission.
+   */
+  async resolveSiteWeather(siteId: string | null | undefined): Promise<WeatherResponse | null> {
+    if (!siteId) return null;
+    try {
+      const result = await this.weather.getSiteWeather(siteId);
+      if (result.unavailable) return null;
+      return result;
+    } catch {
+      return null;
+    }
+  }
 
   // ── Draft creation ────────────────────────────────────────────────────
 
@@ -338,7 +358,7 @@ export class FormsEngineService {
         clockOffTime: null
       },
       include: {
-        project: { select: { id: true, projectManagerId: true, supervisorId: true } },
+        project: { select: { id: true, siteId: true, projectManagerId: true, supervisorId: true } },
         allocation: { select: { id: true } },
         workerProfile: { select: { id: true } }
       },
@@ -359,6 +379,14 @@ export class FormsEngineService {
       // `prefillFromAllocation` is on.
       if (activeTimesheet.workerProfile?.id) {
         context.workerProfileId = activeTimesheet.workerProfile.id;
+      }
+      // F-6 — snapshot the site's current weather so `weather_capture`
+      // fields have a value even before the client renders. Null when the
+      // site is unknown or the upstream service can't produce a reading.
+      if (activeTimesheet.project?.siteId) {
+        context.siteId = activeTimesheet.project.siteId;
+        const weather = await this.resolveSiteWeather(activeTimesheet.project.siteId);
+        if (weather) context.weather = weather;
       }
     }
 

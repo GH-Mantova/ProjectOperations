@@ -5,8 +5,6 @@ import { useConfirm } from "../hooks/useConfirm";
 import { AdminAccessRequestsTab } from "./admin/AdminAccessRequestsTab";
 import { isAdminUser } from "../auth/permissions";
 import { NoAccess } from "../components/NoAccess";
-import { AdminClientVersionsTab } from "./admin/AdminClientVersionsTab";
-import { MapLocationsTab } from "./admin/MapLocationsTab";
 
 type Trigger = {
   id: string;
@@ -43,9 +41,7 @@ const TABS = [
   { id: "access-requests", label: "Access requests" },
   { id: "ai", label: "AI & Integrations" },
   { id: "integrations", label: "Integrations / API keys" },
-  { id: "geofences", label: "Site geofences" },
-  { id: "client-versions", label: "Client versions" },
-  { id: "map-locations", label: "Map locations" }
+  { id: "geofences", label: "Site geofences" }
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
@@ -98,8 +94,6 @@ export function AdminSettingsPage() {
           )}
           {tab === "integrations" && <IntegrationsKeysTab />}
           {tab === "geofences" && <SiteGeofencesTab />}
-          {tab === "client-versions" && <AdminClientVersionsTab />}
-          {tab === "map-locations" && <MapLocationsTab />}
         </div>
       </div>
     </div>

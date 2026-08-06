@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ContactsTab } from "../../components/contacts/ContactsTab";
-import { EmptyState, Skeleton } from "@project-ops/ui";
+import { CenteredModal, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { useConfirm } from "../../hooks/useConfirm";
 import { resolveMasterDataTab } from "./master-data-tab-helpers";
 
 type Client = {
@@ -501,18 +502,23 @@ type ClientSlideOverProps = {
 
 function ClientSlideOver({ existing, onClose, onSaved }: ClientSlideOverProps) {
   const { authFetch } = useAuth();
-  const [form, setForm] = useState<ClientFormState>({
-    name: existing?.name ?? "",
-    code: existing?.code ?? "",
-    status: existing?.status ?? "ACTIVE",
-    email: existing?.email ?? "",
-    phone: existing?.phone ?? "",
-    notes: existing?.notes ?? "",
-    claimCutoffDay:
-      (existing as unknown as { claimCutoffDay?: number | null } | null)?.claimCutoffDay?.toString() ?? "",
-    claimReminderUserId:
-      (existing as unknown as { claimReminderUserId?: string | null } | null)?.claimReminderUserId ?? ""
-  });
+  const confirm = useConfirm();
+  const initialForm = useMemo<ClientFormState>(
+    () => ({
+      name: existing?.name ?? "",
+      code: existing?.code ?? "",
+      status: existing?.status ?? "ACTIVE",
+      email: existing?.email ?? "",
+      phone: existing?.phone ?? "",
+      notes: existing?.notes ?? "",
+      claimCutoffDay:
+        (existing as unknown as { claimCutoffDay?: number | null } | null)?.claimCutoffDay?.toString() ?? "",
+      claimReminderUserId:
+        (existing as unknown as { claimReminderUserId?: string | null } | null)?.claimReminderUserId ?? ""
+    }),
+    [existing]
+  );
+  const [form, setForm] = useState<ClientFormState>(initialForm);
   const [reminderUsers, setReminderUsers] = useState<ReminderUserOption[]>([]);
   const [tab, setTab] = useState<"details" | "contacts">("details");
   useEffect(() => {
@@ -528,15 +534,26 @@ function ClientSlideOver({ existing, onClose, onSaved }: ClientSlideOverProps) {
   }, [authFetch]);
   const [errors, setErrors] = useState<Partial<Record<keyof ClientFormState | "form", string>>>({});
   const [submitting, setSubmitting] = useState(false);
-  const panelRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", handleKey);
-    return () => document.removeEventListener("keydown", handleKey);
-  }, [onClose]);
+  const isDirty = useMemo(
+    () => JSON.stringify(form) !== JSON.stringify(initialForm),
+    [form, initialForm]
+  );
+
+  const handleClose = async () => {
+    if (submitting) return;
+    if (tab === "details" && isDirty) {
+      const ok = await confirm({
+        title: "Discard unsaved changes?",
+        message: "Your edits to this client will be lost.",
+        confirmLabel: "Discard",
+        cancelLabel: "Keep editing",
+        variant: "danger"
+      });
+      if (!ok) return;
+    }
+    onClose();
+  };
 
   const validate = (): boolean => {
     const next: typeof errors = {};
@@ -585,166 +602,184 @@ function ClientSlideOver({ existing, onClose, onSaved }: ClientSlideOverProps) {
     }
   };
 
+  const formId = "client-detail-form";
+  const footer =
+    tab === "contacts" && existing ? (
+      <button type="button" className="s7-btn s7-btn--ghost" onClick={() => void handleClose()}>
+        Close
+      </button>
+    ) : (
+      <>
+        <button
+          type="button"
+          className="s7-btn s7-btn--ghost"
+          onClick={() => void handleClose()}
+          disabled={submitting}
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          form={formId}
+          className="s7-btn s7-btn--primary"
+          disabled={submitting}
+        >
+          {submitting ? "Saving…" : existing ? "Save changes" : "Create client"}
+        </button>
+      </>
+    );
+
   return (
-    <div className="slide-over-overlay" role="dialog" aria-modal="true" onClick={onClose}>
-      <div ref={panelRef} className="slide-over" onClick={(event) => event.stopPropagation()}>
-        <header className="slide-over__header">
-          <div>
-            <h2 className="s7-type-section-heading" style={{ margin: 0 }}>
-              {existing ? `Edit · ${existing.name}` : "New client"}
-            </h2>
-            <p className="slide-over__subtitle">Client details, contacts, and commercial notes.</p>
-          </div>
-          <button type="button" className="slide-over__close" onClick={onClose} aria-label="Close">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M6 6l12 12M6 18L18 6" />
-            </svg>
-          </button>
-        </header>
-        {existing ? (
-          <nav
-            className="tender-detail__tabs"
-            role="tablist"
-            aria-label="Client detail"
-            style={{ display: "flex", gap: 4, padding: "8px 16px 0", borderBottom: "1px solid var(--border, #e5e7eb)" }}
+    <CenteredModal
+      title={existing ? `Edit · ${existing.name}` : "New client"}
+      subtitle="Client details, contacts, and commercial notes."
+      onClose={() => void handleClose()}
+      busy={submitting}
+      maxWidth={640}
+      footer={footer}
+    >
+      {existing ? (
+        <nav
+          className="tender-detail__tabs"
+          role="tablist"
+          aria-label="Client detail"
+          style={{
+            display: "flex",
+            gap: 4,
+            marginBottom: 12,
+            borderBottom: "1px solid var(--border, #e5e7eb)"
+          }}
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "details"}
+            className={tab === "details" ? "tender-detail__tab tender-detail__tab--active" : "tender-detail__tab"}
+            onClick={() => setTab("details")}
           >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === "details"}
-              className={tab === "details" ? "tender-detail__tab tender-detail__tab--active" : "tender-detail__tab"}
-              onClick={() => setTab("details")}
-            >
-              Details
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === "contacts"}
-              className={tab === "contacts" ? "tender-detail__tab tender-detail__tab--active" : "tender-detail__tab"}
-              onClick={() => setTab("contacts")}
-            >
-              Contacts
-            </button>
-          </nav>
-        ) : null}
+            Details
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "contacts"}
+            className={tab === "contacts" ? "tender-detail__tab tender-detail__tab--active" : "tender-detail__tab"}
+            onClick={() => setTab("contacts")}
+          >
+            Contacts
+          </button>
+        </nav>
+      ) : null}
+
+      <div style={{ maxHeight: "70vh", overflowY: "auto" }}>
         {tab === "contacts" && existing ? (
-          <div className="slide-over__body" style={{ padding: 16 }}>
-            <ContactsTab
-              organisationType="CLIENT"
-              organisationId={existing.id}
-              canManage
-              onChanged={onSaved}
-            />
-          </div>
+          <ContactsTab
+            organisationType="CLIENT"
+            organisationId={existing.id}
+            canManage
+            onChanged={onSaved}
+          />
         ) : (
-        <form onSubmit={submit} className="slide-over__body mdata-form">
-          {errors.form ? <div className="login-card__error" role="alert">{errors.form}</div> : null}
+          <form id={formId} onSubmit={submit} className="mdata-form">
+            {errors.form ? <div className="login-card__error" role="alert">{errors.form}</div> : null}
 
-          <fieldset className="mdata-fieldset">
-            <legend>Identification</legend>
-            <label className="tender-form__field">
-              <span className="s7-type-label">Name *</span>
-              <input className="s7-input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-              {errors.name ? <span className="mdata-field-error">{errors.name}</span> : null}
-            </label>
-            <label className="tender-form__field">
-              <span className="s7-type-label">Code</span>
-              <input className="s7-input" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="e.g. QTI" />
-            </label>
-            <label className="tender-form__field">
-              <span className="s7-type-label">Status</span>
-              <select className="s7-select" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-                <option value="ACTIVE">Active</option>
-                <option value="INACTIVE">Inactive</option>
-                <option value="ARCHIVED">Archived</option>
-              </select>
-            </label>
-          </fieldset>
+            <fieldset className="mdata-fieldset">
+              <legend>Identification</legend>
+              <label className="tender-form__field">
+                <span className="s7-type-label">Name *</span>
+                <input className="s7-input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                {errors.name ? <span className="mdata-field-error">{errors.name}</span> : null}
+              </label>
+              <label className="tender-form__field">
+                <span className="s7-type-label">Code</span>
+                <input className="s7-input" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="e.g. QTI" />
+              </label>
+              <label className="tender-form__field">
+                <span className="s7-type-label">Status</span>
+                <select className="s7-select" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+                  <option value="ACTIVE">Active</option>
+                  <option value="INACTIVE">Inactive</option>
+                  <option value="ARCHIVED">Archived</option>
+                </select>
+              </label>
+            </fieldset>
 
-          <fieldset className="mdata-fieldset">
-            <legend>Contact</legend>
-            <label className="tender-form__field">
-              <span className="s7-type-label">Email</span>
-              <input className="s7-input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-              {errors.email ? <span className="mdata-field-error">{errors.email}</span> : null}
-            </label>
-            <label className="tender-form__field">
-              <span className="s7-type-label">Phone</span>
-              <input className="s7-input" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-            </label>
-          </fieldset>
+            <fieldset className="mdata-fieldset">
+              <legend>Contact</legend>
+              <label className="tender-form__field">
+                <span className="s7-type-label">Email</span>
+                <input className="s7-input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                {errors.email ? <span className="mdata-field-error">{errors.email}</span> : null}
+              </label>
+              <label className="tender-form__field">
+                <span className="s7-type-label">Phone</span>
+                <input className="s7-input" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+              </label>
+            </fieldset>
 
-          <fieldset className="mdata-fieldset">
-            <legend>Notes</legend>
-            <label className="tender-form__field">
-              <span className="s7-type-label">Commercial notes</span>
-              <textarea className="s7-textarea" rows={4} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-            </label>
-          </fieldset>
+            <fieldset className="mdata-fieldset">
+              <legend>Notes</legend>
+              <label className="tender-form__field">
+                <span className="s7-type-label">Commercial notes</span>
+                <textarea className="s7-textarea" rows={4} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+              </label>
+            </fieldset>
 
-          <fieldset className="mdata-fieldset">
-            <legend>Progress claims</legend>
-            <label className="tender-form__field">
-              <span className="s7-type-label">Monthly claim cut-off</span>
-              <input
-                className="s7-input"
-                type="number"
-                min={1}
-                max={28}
-                step={1}
-                placeholder="Not set"
-                value={form.claimCutoffDay}
-                onChange={(e) => setForm({ ...form, claimCutoffDay: e.target.value })}
-                style={{ maxWidth: 120 }}
-              />
-              {errors.claimCutoffDay ? (
-                <span className="mdata-field-error">{errors.claimCutoffDay}</span>
-              ) : null}
-              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                {form.claimCutoffDay &&
-                Number.isInteger(Number(form.claimCutoffDay)) &&
-                Number(form.claimCutoffDay) >= 1 &&
-                Number(form.claimCutoffDay) <= 28
-                  ? `Progress claims for this client are due by the ${ordinalSuffix(Number(form.claimCutoffDay))} of each month (enter day 1–28).`
-                  : "Progress claims for this client are due by the Nth of each month (enter day 1–28)."}
-              </span>
-            </label>
-            <label className="tender-form__field">
-              <span className="s7-type-label">Progress claim reminder — assigned to</span>
-              <select
-                className="s7-input"
-                value={form.claimReminderUserId}
-                onChange={(e) => setForm({ ...form, claimReminderUserId: e.target.value })}
-                disabled={reminderUsers.length === 0}
-              >
-                <option value="">— none —</option>
-                {reminderUsers.map((u) => {
-                  const role = u.roles?.[0]?.name;
-                  const suffix = role ? ` · ${role}` : u.email ? ` · ${u.email}` : "";
-                  return (
-                    <option key={u.id} value={u.id}>
-                      {u.firstName} {u.lastName}{suffix}
-                    </option>
-                  );
-                })}
-              </select>
-              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                This IS staff member receives a 7-day reminder before each claim cut-off.
-              </span>
-            </label>
-          </fieldset>
-
-          <footer className="slide-over__footer mdata-footer">
-            <button type="button" className="s7-btn s7-btn--ghost" onClick={onClose}>Cancel</button>
-            <button type="submit" className="s7-btn s7-btn--primary" disabled={submitting}>
-              {submitting ? "Saving…" : existing ? "Save changes" : "Create client"}
-            </button>
-          </footer>
-        </form>
+            <fieldset className="mdata-fieldset">
+              <legend>Progress claims</legend>
+              <label className="tender-form__field">
+                <span className="s7-type-label">Monthly claim cut-off</span>
+                <input
+                  className="s7-input"
+                  type="number"
+                  min={1}
+                  max={28}
+                  step={1}
+                  placeholder="Not set"
+                  value={form.claimCutoffDay}
+                  onChange={(e) => setForm({ ...form, claimCutoffDay: e.target.value })}
+                  style={{ maxWidth: 120 }}
+                />
+                {errors.claimCutoffDay ? (
+                  <span className="mdata-field-error">{errors.claimCutoffDay}</span>
+                ) : null}
+                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                  {form.claimCutoffDay &&
+                  Number.isInteger(Number(form.claimCutoffDay)) &&
+                  Number(form.claimCutoffDay) >= 1 &&
+                  Number(form.claimCutoffDay) <= 28
+                    ? `Progress claims for this client are due by the ${ordinalSuffix(Number(form.claimCutoffDay))} of each month (enter day 1–28).`
+                    : "Progress claims for this client are due by the Nth of each month (enter day 1–28)."}
+                </span>
+              </label>
+              <label className="tender-form__field">
+                <span className="s7-type-label">Progress claim reminder — assigned to</span>
+                <select
+                  className="s7-input"
+                  value={form.claimReminderUserId}
+                  onChange={(e) => setForm({ ...form, claimReminderUserId: e.target.value })}
+                  disabled={reminderUsers.length === 0}
+                >
+                  <option value="">— none —</option>
+                  {reminderUsers.map((u) => {
+                    const role = u.roles?.[0]?.name;
+                    const suffix = role ? ` · ${role}` : u.email ? ` · ${u.email}` : "";
+                    return (
+                      <option key={u.id} value={u.id}>
+                        {u.firstName} {u.lastName}{suffix}
+                      </option>
+                    );
+                  })}
+                </select>
+                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                  This IS staff member receives a 7-day reminder before each claim cut-off.
+                </span>
+              </label>
+            </fieldset>
+          </form>
         )}
       </div>
-    </div>
+    </CenteredModal>
   );
 }
 

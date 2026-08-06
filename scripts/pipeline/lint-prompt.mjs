@@ -231,6 +231,31 @@ export function lint(file, opts) {
     }
   }
 
+  // Gate A / pipeline-correctness-gates §2 (closes the #923 class): a migration-scoped prompt must
+  // EITHER also name a test file in `scope`, OR declare `backfill: false` to assert the migration
+  // does no data backfill. #923 was a backfill migration whose SQL wrote invalid enum tokens; CI
+  // stayed green because nothing ran the backfill against a seeded row.
+  //
+  // The linter runs at INTAKE — the migration file does not exist yet, so we cannot inspect its
+  // body for `UPDATE … SET`. Instead we force the AUTHOR to make the choice up front: bring a test,
+  // or consciously assert "no backfill." This is the standalone general layer; SLICE 2 (#957) adds
+  // the FormRule-specific CI test. The rule is additive — existing migration prompts that already
+  // name a test (or add `backfill: false`) still pass. See docs/plans/pipeline-correctness-gates-plan.md §2 Gate A.
+  if (scopeHasMigration) {
+    const scopeItems = Array.isArray(fm.scope) ? fm.scope : [fm.scope];
+    const namesTest = scopeItems.some((s) => /\.(spec|test)\.[tj]s$/.test(String(s)));
+    const backfillDeclared = fm.backfill != null && String(fm.backfill).trim() !== "";
+    const backfillFalse = backfillDeclared && /^false$/i.test(String(fm.backfill).trim());
+    if (!namesTest && !backfillFalse) {
+      return fail("BACKFILL_TEST_REQUIRED",
+        "scope touches prisma/migrations but names no test file (*.spec.ts / *.test.ts) and does not declare `backfill: false`.\n" +
+        "        Gate A (docs/plans/pipeline-correctness-gates-plan.md §2) requires EITHER a test file in `scope`\n" +
+        "        that exercises the migration, OR the explicit assertion `backfill: false` for pure additive\n" +
+        "        migrations (ADD COLUMN / CREATE with no UPDATE ... SET). Closes the #923 class where a\n" +
+        "        backfill migration shipped without a test and wrote invalid enum tokens to prod-shaped data.");
+    }
+  }
+
   // fixes_pr — a fix-lane prompt is only valid while its target PR is OPEN.
   // Cheaper than the premise (single gh call, no shell subprocess), so run
   // it first: a stale fix pointer is a hard reject regardless of premise.

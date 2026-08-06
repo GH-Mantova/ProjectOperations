@@ -50,18 +50,39 @@ Contains:
   (unused-import for illustrative types, `any` for fault-injection callbacks,
   etc.) don't need suppression comments.
 
+## Slice 2 — Graph mail, in-memory
+
+Contains:
+
+- `graph-mail/synthetic-graph-mail.ts` — in-memory Graph-mail provider
+  modelling a `sendMail`-style surface, keyed by a caller-supplied
+  `reference` (e.g. `notify:<eventId>`, `po-issued:<purchaseOrderId>`,
+  `quote-send:<quoteId>`, `access-request-notify:<id>`,
+  `tender-assign:<id>`). Exposes `failNextCall()`, `openCircuit()` /
+  `closeCircuit()`, and `probe(reference)` for the Case B reaper. Like
+  slice 1, the provider does NOT dedupe on its own — a second send with
+  the same reference lands a second message (that non-dedupe is the whole
+  point of the audit's M1 finding).
+- `graph-mail/synthetic-graph-mail.spec.ts` — jest spec covering the M-row
+  shapes: (M1) raw double-send vs Case A guarded send, (M2/M3) Case B
+  PROCESSING + probing reaper with no wire re-fire, and (M4) `withDegrade`
+  on circuit-open leaving the primary action intact.
+
+Reuses `../idempotency-reference.ts` unchanged — no duplication.
+
+Same deliberate design choices as slice 1 apply: pure in-memory
+TypeScript (no msw/nock — ESM breaks the ts-jest run), no imports from
+`apps/api/src/**`, not linted.
+
 ## Roadmap — later slices
 
 These are separately-gated and will land as their own PRs:
 
 - **HTTP-level wire mocks.** Replace the in-memory provider with a
   jest-compatible HTTP fake (msw-node with a jest-side ESM workaround, or
-  nock) so the real `apps/api/src/modules/xero/xero.service.ts` can be tested
-  end-to-end. Requires an inventory of the per-integration HTTP client layer
-  first.
-- **Graph mail synthetic provider.** Mirror this slice's shape for the
-  M-rows (notification, PO issued, quote send, OTP, access request, tender
-  notify) so the M1–M6 fixes can be tested.
+  nock) so the real `apps/api/src/modules/xero/xero.service.ts` and the
+  Graph-mail callsites can be tested end-to-end. Requires an inventory of
+  the per-integration HTTP client layer first.
 - **Native forms ingestion synthetic driver.** For the F-rows (public/kiosk
   submit, engine submit, legacy submit) — a synthetic form-source that can
   replay retries with and without `clientSubmissionId`.

@@ -15,6 +15,8 @@ gate_allow: migrations
 seed_only: false
 escalates: true
 rollback_strategy: DROP TABLE "form_number_sequences"; additive-only table, no existing data touched, safe to drop on rollback since nothing else references it yet.
+requires_merged:
+  - 957
 ---
 
 # F-4 — Forms Engine v2 field types, wave 1

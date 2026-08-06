@@ -25,16 +25,20 @@ rollback_strategy: >-
 
 # SLICE 11c — remove the legacy rates tables, API, and resolver fallback
 
-## ⛔ HARD STOP — MARCO SIGN-OFF + DB BACKUP REQUIRED BEFORE MERGE ⛔
-This slice DROPS database tables. It is permanent and NOT auto-revertable. The
-resulting feature PR MUST be labelled **do-not-merge** and left for Marco. Do
-NOT merge it — and Marco must not merge it — until BOTH are true:
+## ⛔ HARD STOP — OPEN AS DRAFT; MARCO SIGN-OFF + DB BACKUP BEFORE MERGE ⛔
+This slice DROPS database tables. It is permanent and NOT auto-revertable.
+**Open the resulting feature PR as a DRAFT** (`gh pr create --draft ...`) so
+GitHub itself refuses the merge until Marco explicitly marks it ready — this is
+the hard, automation-proof lock. Do NOT arm auto-merge. The PR MUST also be
+labelled **do-not-merge** and left for Marco. Do NOT merge it — and Marco must
+not mark it ready / merge it — until BOTH are true:
 1. A production DB backup of the `Estimate*Rate` + `EstimateMaterialDensity`
    tables has been taken.
 2. A full real pricing cycle has run on `RATES_CANONICAL_SOURCE=ratetable` and
    `node scripts/rates/fallback-audit.mjs` shows ZERO fallbacks.
-The slice may RUN and go green (proving the drop compiles/passes); the MERGE
-waits on the two conditions above. This is the point of no return for the plan.
+The slice may RUN and go green (proving the drop compiles/passes) while staying
+a DRAFT; the MERGE waits on the two conditions above and Marco marking it ready.
+This is the point of no return for the plan.
 
 Read `docs/plans/rates-migration-plan.md` (section "11c") first. Gated on 11b
 (STEP-11B-DONE.md on main).
@@ -54,7 +58,8 @@ Read `docs/plans/rates-migration-plan.md` (section "11c") first. Gated on 11b
    model.
 
 ## Do NOT
-- Do NOT merge (see HARD STOP). Do NOT skip the backup.
+- Do NOT open as a normal (non-draft) PR. Do NOT arm auto-merge. Do NOT merge
+  (see HARD STOP). Do NOT skip the backup.
 - Do NOT change any surviving rate value.
 
 ## Verify

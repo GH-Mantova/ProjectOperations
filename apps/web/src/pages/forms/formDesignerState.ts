@@ -39,6 +39,7 @@ export type FieldType =
   | "calculation"
   | "table"
   | "terms"
+  | "unique_id"
   // Content library (forms-content-library)
   | "content_block";
 
@@ -80,7 +81,8 @@ export const ADVANCED_TYPES: ReadonlySet<string> = new Set<string>([
   "lookup",
   "calculation",
   "table",
-  "terms"
+  "terms",
+  "unique_id"
 ]);
 
 export type DraftField = {
@@ -206,7 +208,8 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
       { type: "lookup", label: "Lookup", icon: "\u{1F50D}" },
       { type: "calculation", label: "Calculation", icon: "\u{1F9EE}" },
       { type: "table", label: "Table", icon: "\u{1F4CB}" },
-      { type: "terms", label: "Terms", icon: "\u{1F4DC}" }
+      { type: "terms", label: "Terms", icon: "\u{1F4DC}" },
+      { type: "unique_id", label: "Unique ID", icon: "#" }
     ]
   }
 ];
@@ -257,6 +260,7 @@ const DEFAULT_LABEL: Partial<Record<string, string>> = {
   calculation: "Calculated total",
   table: "Table",
   terms: "Terms & conditions",
+  unique_id: "Unique ID",
   existing_site: "Site"
 };
 
@@ -281,6 +285,9 @@ function defaultConfigFor(fieldType: FieldType | string): Record<string, unknown
       termsText: "I agree to the terms and conditions.",
       termsVersion: "1"
     };
+  }
+  if (fieldType === "unique_id") {
+    return { prefix: "", padLength: 4 };
   }
   return undefined;
 }

@@ -21,11 +21,13 @@ projects / jobs — the operational Jobs list/board stays as-is (additive, not a
 **A1 — Directory keeps its name.** The sidebar entry and route stay **"Directory" / `/directory`**.
 The rename to "Clients" / `/clients` is **DROPPED** — ignore every "Directory → Clients",
 "`/clients`", and `/directory → /clients` redirect reference below (the title, §1.4, §2 target IA,
-the §5 redirect-map rows for `/directory*`, §6.5, and the sot/01 §9 reconcile line). **The
-clients-only refactor still proceeds UNDER the name "Directory":** subcontractors/suppliers still
-rehome (B-SD-10) and the client-portfolio tabs still land (B-SD-9), but the client detail stays at
-`/directory/:id`. B-SD-11 is rewritten below to a name-preserving consolidation (no relabel, no
-route change). The `directory.view` permission code is unchanged (as already noted).
+the §5 redirect-map rows for `/directory*`, §6.5, and the sot/01 §9 reconcile line). **Directory is left ENTIRELY as-is** (Marco 2026-08-06 — updated ruling): the name AND all three
+tabs (**Clients | Subcontractors & Suppliers | Contacts**) are retained. The Directory-side of this
+plan is **DROPPED** — **B-SD-10** (rehome Subs/Suppliers out of Directory) and **B-SD-11** (clients-
+only consolidation) are **CUT**. **B-SD-9** (client-portfolio tabs on the client detail) is
+optional/additive and **decoupled** from this fold — revisit separately, NOT part of #7. **#7 is
+now purely the Site physical layer → Job fold; Directory is untouched.** The `directory.view`
+permission code is unchanged.
 
 **A2 — Worksite folds into each Job; an address is NOT unique (clarified).** Each Job carries its
 own **independent** worksite (address, geofence, attendance, muster, diary) — that validates
@@ -42,6 +44,11 @@ Job active at that row's timestamp), which is deterministic for sequential jobs.
 B-SD-2/-5/-6 is retained ONLY for the genuinely ambiguous case of two Jobs active at the same address
 at the same time — that requires manual disposition, it is not an error to design out. (Optional,
 additive: an address-based "other jobs at this worksite" lookup, since addresses legitimately repeat.)
+
+**A3 — `site-unassigned` disposition = DELETE (Marco 2026-08-06).** The tender/job/project rows
+still pointing at the `site-unassigned` placeholder are **mock-up / test data**, not real jobs.
+B-SD-2's disposition is therefore a clean **DELETE** of those rows, guarded so no genuine row is
+caught — no backfill or placeholder-worksite path is needed.
 
 This is a schema + IA program. No irreversible action lands in this SLICE-0 PR. Nothing here
 changes underlying behaviour of the compliance surfaces (attendance, muster, geofence, diary)

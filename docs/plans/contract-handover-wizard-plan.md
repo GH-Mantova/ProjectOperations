@@ -121,8 +121,8 @@ the escalating schema + job-creation slices remain the human gates.
 | B-HW-1 | `handovertemplate.manage` perm + HandoverTemplate/Section/Field schema + seed default template | `apps/api/prisma/seeds/handover-default-template.ts` | plan.md | 7 | migrations | **yes** |
 | B-HW-2 | Template CRUD + explicit publish/versioning API (grantable, admin-assignable) | `apps/api/src/modules/handover-templates/handover-templates.service.ts` | B-HW-1 seed | 6 | none | no |
 | B-HW-3 | Template editor UI (Settings → Handover Template) | `apps/web/src/pages/settings/HandoverTemplatePage.tsx` | B-HW-2 service | 8 | none | no |
-| B-HW-4 | Contract-at-issue: Contract.projectId nullable + tenderId/tenderClientId; issueContract creates prefilled Contract; /contracts shows it | `apps/api/src/modules/contracts/contract-at-issue.service.ts` | plan.md | 8 | migrations | **yes** |
-| B-HW-5 | Handover instance schema (Handover + Value + Compliance/Subcontractor/Attachment) pinned to templateVersion | `apps/api/src/modules/handovers/handover.types.ts` | B-HW-1 seed, B-HW-4 service | 8 | migrations | **yes** |
+| ~~B-HW-4~~ **FOLDED INTO B-P0a-4** | Contract-at-issue is merged into the B-P0a-4 conversion-unify slice (see §6) — one coherent rewrite of `jobs.issueContract`. That Marco-present slice creates `apps/api/src/modules/contracts/contract-at-issue.service.ts`, makes `Contract.projectId` nullable, and adds `tenderId`/`tenderClientId`. Standalone `pr-hw-4` prompt removed. | (produced by B-P0a-4) | — | — | — | via B-P0a |
+| B-HW-5 | Handover instance schema (Handover + Value + Compliance/Subcontractor/Attachment) pinned to templateVersion | `apps/api/src/modules/handovers/handover.types.ts` | B-HW-1 seed, `contract-at-issue.service.ts` (created by B-P0a-4) | 8 | migrations | **yes** |
 | B-HW-6 | Handover API: create-on-contract, get/patch values, one-way prefill from awarded quote, completeness, section-done | `apps/api/src/modules/handovers/handovers.service.ts` | B-HW-5 types | 8 | none | no |
 | B-HW-7 | Wizard UI shell: launch from confirm, render pinned template as steps, draft/resume, completion bar | `apps/web/src/pages/handover/HandoverWizardPage.tsx` | B-HW-6 service, B-HW-3 page | 9 | none | no |
 | B-HW-8 | Auto-field safeguards: edited badge + reset, pre-finalise re-sync, derived variance | `apps/web/src/pages/handover/autoFieldSafeguards.ts` | B-HW-7 page | 6 | none | no |
@@ -133,13 +133,17 @@ the escalating schema + job-creation slices remain the human gates.
 **B-HW-12 (SoT reconcile)** — sot/04 data-model additions + sot/01 nav if changed. **SoT-Keeper
 only**; NOT staged here (the pipeline routes `/sot/` edits to station 05).
 
-**Sequencing.** Template chain (1→2→3) and contract-at-issue (4) run in parallel behind the plan;
-B-HW-5 waits for both; 6 gates 7/9/10; 11 waits for 8+9+10. Every schema change (1,4,5) and the
-job-creation step (11) escalate — they open PRs but wait for Marco to merge.
+**Sequencing.** Template chain (1→2→3) runs behind the plan; **contract-at-issue is delivered by
+B-P0a-4 (Marco-present, §6), not a standalone B-HW slice**; B-HW-5 waits for B-HW-1 + the
+`contract-at-issue.service.ts` that B-P0a-4 creates; 6 gates 7/9/10; 11 waits for 8+9+10. Schema
+changes (B-HW-1, B-HW-5) and the job-creation step (B-HW-11) escalate — they open PRs but wait for
+Marco to merge.
 
 ---
 
 ## 6. Cross-references
+
+- **B-P0a-4 absorbs contract-at-issue (Marco 2026-08-06).** B-P0a is mid-flight — slices B-P0a-1/-2/-2b/-3 are already merged; the frontier is **B-P0a-4** (conversion-unify). B-P0a-4 already rewrites `jobs.issueContract` (delegate to `ContractsService`) and re-points `JobConversion → projectId`. Rather than have the standalone B-HW-4 rewrite the same method, contract-at-issue is **folded into B-P0a-4**: that one Marco-present slice unifies conversion AND creates the `Contract` at issue, creating `apps/api/src/modules/contracts/contract-at-issue.service.ts` (so B-HW-5's gate is satisfied), making `Contract.projectId` nullable, and adding `tenderId`/`tenderClientId`. The standalone `pr-hw-4-contract-at-issue-ready.md` prompt is removed so it can never run into the active merge. **Follow-up for SoT-Keeper:** reconcile `sot/04-data-model.md` B-P0a-4 scope to note the added contract-at-issue behaviour.
 
 - **#1 (contract value breakdown)** ships as the wizard's Pricing & budget step (B-HW-6/7 render it
   from `QuoteCostLine` + `QuoteProvisionalLine`); there is no separate #1 program.

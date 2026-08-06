@@ -13,9 +13,12 @@ scope:
 done_when: pnpm build && pnpm lint && grep -q "location_stamp" apps/web/src/pages/forms/formDesignerState.ts && grep -q "sealedAt" apps/api/prisma/schema.prisma
 size: 10
 gate_allow: migrations
+backfill: false
 seed_only: false
 escalates: true
 rollback_strategy: Drop the sealedAt column on FormSubmission and the signedById/requiredRole columns on FormSignature via a down migration; no backfill was written so the drop is safe.
+requires_merged:
+  - 981
 ---
 
 # Forms Engine v2 — WHS field wave (F-5)

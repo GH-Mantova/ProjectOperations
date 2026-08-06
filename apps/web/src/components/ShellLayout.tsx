@@ -200,7 +200,6 @@ export const NAV_GROUPS: NavGroup[] = [
         match: (path) => path === "/directory" || path.startsWith("/directory/") || path.startsWith("/master-data"),
         requiresPermission: "directory.view"
       },
-      { to: "/admin/rates-lists", label: "Rates & Lists", icon: ICON_TENDERING },
       {
         to: "/reports",
         label: "Reports",
@@ -464,7 +463,6 @@ const BREADCRUMBS: Record<string, string> = {
   "/settings/data-model": "Settings",
   "/settings/administration": "Settings",
   "/admin/estimate-rates": "Legacy estimate rates",
-  "/admin/rates-lists": "Rates & Lists",
   "/admin/ai-settings": "AI Settings",
   "/contracts": "Contracts"
 };

@@ -16,6 +16,7 @@ import {
   type RuleAction,
   type SectionEntriesMap
 } from "./rules-engine.service";
+import { FormNumberSequenceService } from "./form-number-sequence.service";
 
 type ValueMap = Record<string, unknown>;
 type SectionEntriesPayload = Record<string, Array<Record<string, unknown>>>;
@@ -287,7 +288,8 @@ export class FormsEngineService {
     private readonly prisma: PrismaService,
     private readonly rules: RulesEngineService,
     private readonly notifications: NotificationsService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly formNumberSequence: FormNumberSequenceService
   ) {}
 
   // ── Draft creation ────────────────────────────────────────────────────
@@ -595,6 +597,13 @@ export class FormsEngineService {
         }))
       });
     }
+
+    // 2c. Assign unique_id values (server-generated, not user-entered).
+    // Any field with fieldType === "unique_id" that hasn't been assigned yet
+    // gets an atomic sequential ID from FormNumberSequenceService and is
+    // persisted into the submission values so it round-trips back on the
+    // final getSubmissionDetail response.
+    await this.assignUniqueIds(submission.id, template, merged);
 
     // 3. Compute inspection score + outcome (null when template has no
     // scoreConfig anywhere — the field is just a data-collection form).
@@ -1582,6 +1591,62 @@ export class FormsEngineService {
     return merged;
   }
 
+  /**
+   * For every `unique_id` field in the template that doesn't yet have a
+   * persisted value, claim the next number from FormNumberSequenceService
+   * (atomically row-locked) and write it to the submission's value row.
+   *
+   * Config shape: `{ prefix?: string, padLength?: number }` — both optional.
+   * The generated string is stored as `valueText` so it can be read back
+   * like any other text field.
+   *
+   * Called on the submit path only — drafts show the placeholder instead.
+   */
+  private async assignUniqueIds(
+    submissionId: string,
+    template: { sections?: Array<{ fields?: Array<{ id: string; fieldKey: string; fieldType: string; config?: unknown }> }> },
+    values: ValueMap
+  ): Promise<void> {
+    for (const section of template.sections ?? []) {
+      for (const field of section.fields ?? []) {
+        if (field.fieldType !== "unique_id") continue;
+        // Skip if already assigned (e.g. on a resubmit path).
+        if (values[field.fieldKey] !== undefined && values[field.fieldKey] !== null) continue;
+        const config = (field.config ?? {}) as { prefix?: string; padLength?: number };
+        const prefix = String(config.prefix ?? "");
+        const padLength = typeof config.padLength === "number" ? config.padLength : 4;
+        const generated = await this.formNumberSequence.next(prefix, padLength);
+        // Persist as valueText.
+        const existing = await this.prisma.formSubmissionValue.findFirst({
+          where: { submissionId, fieldKey: field.fieldKey, entryIndex: 0 }
+        });
+        if (existing) {
+          await this.prisma.formSubmissionValue.update({
+            where: { id: existing.id },
+            data: { valueText: generated, fieldId: field.id }
+          });
+        } else {
+          await this.prisma.formSubmissionValue.create({
+            data: {
+              submissionId,
+              fieldKey: field.fieldKey,
+              fieldId: field.id,
+              entryIndex: 0,
+              valueText: generated,
+              valueNumber: null,
+              valueBoolean: null,
+              valueDateTime: null,
+              valueJson: Prisma.JsonNull as Prisma.NullableJsonNullValueInput
+            }
+          });
+        }
+        // Update the in-memory merged map so downstream steps (scoring, etc.)
+        // see the assigned value.
+        values[field.fieldKey] = generated;
+      }
+    }
+  }
+
   private stringValue(values: ValueMap, key: string): string | null {
     const v = values[key];
     if (v === undefined || v === null) return null;
@@ -1596,7 +1661,7 @@ export class FormsEngineService {
     return Number.isNaN(d.getTime()) ? null : d;
   }
 
-  private async nextSeq(table: "safety_incident_number_sequences" | "hazard_number_sequences") {
+  private async nextSeq(table: "safety_incident_number_sequences" | "hazard_number_sequences" | "form_number_sequences") {
     // Row-locked sequence — same pattern used by SafetyService.
     const result = await this.prisma.$queryRawUnsafe<Array<{ last_number: number }>>(
       `UPDATE "${table}" SET "last_number" = "last_number" + 1 WHERE "id" = 1 RETURNING "last_number"`

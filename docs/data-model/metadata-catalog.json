@@ -8353,6 +8353,32 @@
         }
       }
     },
+    "FormNumberSequence": {
+      "domain": "Forms",
+      "wizardVisible": true,
+      "label": null,
+      "reviewed": false,
+      "fields": {
+        "id": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "lastNumber": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
+        }
+      }
+    },
     "FormPublicLink": {
       "domain": "Forms",
       "wizardVisible": true,

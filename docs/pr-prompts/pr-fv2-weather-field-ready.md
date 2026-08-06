@@ -12,6 +12,8 @@ gate_allow: none
 seed_only: false
 escalates: false
 rollback_strategy: ''
+requires_merged:
+  - 998
 ---
 
 # Forms Engine v2 — weather auto-capture field (F-6)

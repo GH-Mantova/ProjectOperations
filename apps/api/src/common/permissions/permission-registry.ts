@@ -126,7 +126,12 @@ export const permissionRegistry = [
   { code: "reporting.view", module: "reporting", label: "View cross-module reports", description: "View and export the cross-module reporting surface (pipeline, win-rate, jobs, competency expiry, asset utilisation)" },
   // Site sign-in / sign-out (WHS spine — muster roll reads this back).
   { code: "sites.view", module: "sites", label: "View who is currently signed in on a site", description: "View site sign-in/out attendance — current on-site headcount and my own attendance" },
-  { code: "sites.manage", module: "sites", label: "Sign in and sign out of a site", description: "Record site sign-in / sign-out for the field worker app" }
+  { code: "sites.manage", module: "sites", label: "Sign in and sign out of a site", description: "Record site sign-in / sign-out for the field worker app" },
+  // Contract handover wizard (B-HW-1). Grantable + admin-assignable.
+  // Grouped under "tendering" — template management is part of the tender→contract handover
+  // surface, consistent with tenderconversion.manage and estimates.admin in that module.
+  // Seeded to Marco, Colin and Sean via the Admin role (which receives every permission).
+  { code: "handovertemplate.manage", module: "tendering", label: "Manage handover template versions", description: "Create, edit, and publish handover template versions for the contract handover wizard" }
 ] as const;
 
 export type PermissionRegistryEntry = (typeof permissionRegistry)[number];

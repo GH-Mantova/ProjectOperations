@@ -1083,6 +1083,36 @@ function AdvancedOptionsEditor({
     );
   }
 
+  if (field.fieldType === "unique_id") {
+    return (
+      <>
+        <label>
+          Prefix
+          <input
+            type="text"
+            value={String(config.prefix ?? "")}
+            onChange={(e) => patchConfig({ prefix: e.target.value })}
+            placeholder="e.g. FORM- or INS-"
+          />
+        </label>
+        <label>
+          Number length (digits, zero-padded)
+          <input
+            type="number"
+            min={1}
+            max={10}
+            value={Number(config.padLength ?? 4)}
+            onChange={(e) => patchConfig({ padLength: Number(e.target.value) })}
+          />
+        </label>
+        <p style={{ fontSize: 11, color: "var(--fv2-muted, #64748B)", margin: "4px 0 0" }}>
+          Example: prefix <code>FORM-</code> + length <code>4</code> → <code>FORM-0001</code>.
+          The ID is generated server-side on submission and cannot be changed by the user.
+        </p>
+      </>
+    );
+  }
+
   return (
     <div className="fv2-props__empty" style={{ padding: 0 }}>
       No options to configure for this field type.

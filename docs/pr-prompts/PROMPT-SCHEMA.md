@@ -78,6 +78,7 @@ gate_allow: none          # none | migrations | env-vars | dependencies
 seed_only: false
 escalates: false          # true if this touches prod data / auth / Azure
 rollback_strategy: ''     # OPTIONAL in general; REQUIRED when scope touches prisma/migrations
+backfill: false           # OPTIONAL; only meaningful for migration-scoped prompts (see Gate A below)
 ---
 ```
 
@@ -135,6 +136,25 @@ consuming code still uncommitted. The recovery cycle had no prompt-authored note
 the migration or press on and land the code, and burned an entire session guessing. A one-line note
 authored at prompt-write time — when whoever proposed the work still remembers *why* — closes that
 gap for the cost of one field.
+
+### `backfill` and the Gate A test rule — required for migration-scoped prompts
+
+Gate A (`docs/plans/pipeline-correctness-gates-plan.md` §2, closes the #923 class): a migration-scoped
+prompt (any `scope` entry under `apps/api/prisma/migrations/**`) must satisfy **one** of the following,
+or the linter REJECTs with `BACKFILL_TEST_REQUIRED`:
+
+1. **Name a test file in `scope`** matching `*.spec.ts` / `*.spec.js` / `*.test.ts` / `*.test.js` — a
+   test that exercises the migration against a seeded legacy row and asserts the produced value is
+   contract-valid. This is the layer that would have caught #923.
+2. **Declare `backfill: false`** as a front-matter boolean — the author's explicit assertion that the
+   migration is purely additive (`ADD COLUMN` / `CREATE`) and performs no `UPDATE … SET` data
+   transformation. Use this for migrations that genuinely need no backfill test.
+
+Why: the intake linter runs BEFORE the migration file exists on disk, so it cannot inspect the SQL
+body for the backfill signature (`/UPDATE\s+.*\sSET\s/i`). Instead it forces the author to make the
+choice up front: bring the test, or consciously assert "no backfill." This closes the #923 class
+without false-positiving on genuinely additive migrations. See SLICE 2 of the plan for the
+FormRule-specific CI test that pairs with this general lint rule.
 
 ### `escalates`
 
@@ -287,6 +307,7 @@ runs, the log may point somewhere new. Chase the log, not the original diagnosis
 | `SIZE TOO LARGE` | Split it. Non-negotiable. |
 | `MISSING FIELD` | Front-matter incomplete. Also fires when `scope` touches `prisma/migrations` and `rollback_strategy` is missing/empty. |
 | `GATE_ALLOW MISMATCH` | You declared a migration but `scope` has no `migrations/` path (or vice-versa). |
+| `BACKFILL_TEST_REQUIRED` | `scope` touches `prisma/migrations/**` but names no `*.spec.ts` / `*.test.ts` file and does not declare `backfill: false`. Gate A (closes the #923 class): bring a test that runs the backfill, or assert the migration is purely additive. See `docs/plans/pipeline-correctness-gates-plan.md` §2 Gate A. |
 | `FIX_TARGET_SETTLED` | `fixes_pr: N` points at a PR that has MERGED or CLOSED — the fix diagnosis is stale. |
 | `FIX_TARGET_UNKNOWN` | `fixes_pr` state check failed (bad number, network, gh auth). Fix the pointer. |
 | `FIX_TARGET_INVALID` | `fixes_pr` is not a positive integer. |

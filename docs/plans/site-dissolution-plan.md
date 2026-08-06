@@ -14,6 +14,23 @@ renamed **Clients** (clients-only); Subcontractor/Supplier rehome elsewhere. Sit
 a standalone nav destination. A new **client portfolio** view groups a client's tenders /
 projects / jobs — the operational Jobs list/board stays as-is (additive, not a move).
 
+---
+
+## 0. Amendments (Marco, 2026-08-06) — these SUPERSEDE any conflicting text below
+
+**A1 — Directory keeps its name.** The sidebar entry and route stay **"Directory" / `/directory`**.
+The rename to "Clients" / `/clients` is **DROPPED** — ignore every "Directory → Clients",
+"`/clients`", and `/directory → /clients` redirect reference below (the title, §1.4, §2 target IA,
+the §5 redirect-map rows for `/directory*`, §6.5, and the sot/01 §9 reconcile line). **The
+clients-only refactor still proceeds UNDER the name "Directory":** subcontractors/suppliers still
+rehome (B-SD-10) and the client-portfolio tabs still land (B-SD-9), but the client detail stays at
+`/directory/:id`. B-SD-11 is rewritten below to a name-preserving consolidation (no relabel, no
+route change). The `directory.view` permission code is unchanged (as already noted).
+
+**A2 — One job = one site (confirmed).** A worksite is never shared across jobs, validating the 1:1
+physical fold. The legacy multi-job-site abort-guard in B-SD-2/-5/-6 is retained purely as a safety
+net for historical data predating this rule; on current data it should never fire.
+
 This is a schema + IA program. No irreversible action lands in this SLICE-0 PR. Nothing here
 changes underlying behaviour of the compliance surfaces (attendance, muster, geofence, diary)
 unless a slice explicitly says so — those move, they are not rewritten and no history is
@@ -339,18 +356,17 @@ these slices sequence STRICTLY behind the corresponding B-P0a slice. **b** = int
 - **Requires:** assets-tabs plan MERGED to the Procurement-tab-lives stage (B-AT-X in that
   plan; look up the slice number when arming).
 
-### B-SD-11 — Rename Directory → Clients `size:6` [b — after B-SD-10]
-- **Files:** `ShellLayout.tsx:190-201` (label "Directory" → "Clients"; route `/directory` →
-  `/clients`; add a `/directory` → `/clients` `Navigate replace` redirect). `App.tsx` route
-  rename; `directory.controller.ts` stays (endpoint URL is `/directory`, a later API-rename
-  slice is out of scope here — the API URL change is a separate housekeeping slice, not
-  planned here). Update every internal link (`QuickCreate`, `CommandPalette`, `search.service`,
-  breadcrumbs) — grep sweep.
-- **e2e:** `batch1-auth-shell.spec.ts` (sidebar label), plus any breadcrumb specs.
-- **Non-goal:** do NOT rename the `directory.view` permission code (grep at slice arm time;
-  if the ratio is unfavourable, the code rename is a separate slice).
-- **Requires:** B-SD-10 (Subs/Suppliers already out of Directory; renaming to "Clients" is
-  now factually accurate).
+### B-SD-11 — Directory clients-only consolidation (name RETAINED, per Amendment A1) `size:4` [b — after B-SD-10]
+- **Superseded scope:** the original rename to "Clients" / `/clients` is DROPPED (Amendment A1).
+  Directory keeps its label and its `/directory` route. NO relabel, NO route change, NO
+  `/directory → /clients` redirect, NO internal-link sweep for a rename.
+- **Files:** none for a rename. This slice only confirms the clients-only end-state under the
+  existing name — the client detail lives at `/directory/:id` with the portfolio tabs from B-SD-9,
+  and Subs/Suppliers are already rehomed by B-SD-10. If B-SD-9/-10 deliver that fully, this slice
+  is a NO-OP audit: verify no stray Subs/Suppliers tab remains on the Directory surface.
+- **e2e:** `batch1-auth-shell.spec.ts` — assert the sidebar label STAYS "Directory".
+- **Non-goal:** do NOT rename `directory.view`, the `/directory` route, or the `/api/directory/*` URL.
+- **Requires:** B-SD-9, B-SD-10.
 
 ### B-SD-12 — sot/04-data-model.md doc-reconcile `size:1` [b, docs-only]
 - **Files:** `sot/04-data-model.md` — remove Domain: Sites (§1929-1971); update every model

@@ -200,7 +200,7 @@ export function AvailabilityReportPage() {
       ) : !report || report.groups.length === 0 ? (
         <EmptyState heading="No workers" subtext="Workers will appear here once seeded." />
       ) : (
-        <section className="s7-card" style={{ padding: 16, overflowX: "auto" }} aria-label="Availability heatmap">
+        <section className="s7-card" style={{ padding: 16, overflowX: "auto" }} aria-label="Availability report table">
           <table className="avail-table" role="table">
             <thead>
               <tr>

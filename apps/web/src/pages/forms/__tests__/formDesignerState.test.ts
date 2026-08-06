@@ -94,17 +94,17 @@ describe("PALETTE_GROUPS (Basic / Choice / Survey / Layout / Advanced category m
     );
   });
 
-  it("surfaces the four F-4 advanced tiles under Advanced", () => {
+  it("surfaces the five F-4 advanced tiles under Advanced", () => {
     const advanced = PALETTE_GROUPS.find((g) => g.key === "advanced")!;
     expect(new Set(advanced.entries.map((e) => e.type))).toEqual(
-      new Set(["lookup", "calculation", "table", "terms"])
+      new Set(["lookup", "calculation", "table", "terms", "unique_id"])
     );
   });
 
-  it("keeps the still-deferred F-4/F-5 tiles out of the palette", () => {
+  it("keeps the still-deferred F-5 tiles out of the palette", () => {
     const flat = PALETTE_GROUPS.flatMap((g) => g.entries.map((e) => e.type));
-    // Unique ID needs the fv2_form_number_sequence migration; the rest are F-5.
-    for (const deferred of ["unique_id", "worker", "asset", "location", "weather"]) {
+    // Unique ID is now live (fv2_form_number_sequence migration shipped in this slice); the rest are F-5.
+    for (const deferred of ["worker", "asset", "location", "weather"]) {
       expect(flat).not.toContain(deferred);
     }
   });

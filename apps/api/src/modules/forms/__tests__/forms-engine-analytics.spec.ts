@@ -18,6 +18,7 @@ describe("FormsEngineService.getAnalytics — status casing fold (S3-006)", () =
     prisma as never,
     {} as never,
     {} as never,
+    {} as never,
     {} as never
   );
 

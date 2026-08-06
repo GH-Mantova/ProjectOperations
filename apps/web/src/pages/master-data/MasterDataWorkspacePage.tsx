@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ContactsTab } from "../../components/contacts/ContactsTab";
-import { EmptyState, Skeleton } from "@project-ops/ui";
+import { CenteredModal, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { useConfirm } from "../../hooks/useConfirm";
 import { resolveMasterDataTab } from "./master-data-tab-helpers";
 
 type Client = {
@@ -501,7 +502,9 @@ type ClientSlideOverProps = {
 
 function ClientSlideOver({ existing, onClose, onSaved }: ClientSlideOverProps) {
   const { authFetch } = useAuth();
-  const [form, setForm] = useState<ClientFormState>({
+  const confirm = useConfirm();
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const initialForm = useMemo<ClientFormState>(() => ({
     name: existing?.name ?? "",
     code: existing?.code ?? "",
     status: existing?.status ?? "ACTIVE",
@@ -512,7 +515,8 @@ function ClientSlideOver({ existing, onClose, onSaved }: ClientSlideOverProps) {
       (existing as unknown as { claimCutoffDay?: number | null } | null)?.claimCutoffDay?.toString() ?? "",
     claimReminderUserId:
       (existing as unknown as { claimReminderUserId?: string | null } | null)?.claimReminderUserId ?? ""
-  });
+  }), []);
+  const [form, setForm] = useState<ClientFormState>(initialForm);
   const [reminderUsers, setReminderUsers] = useState<ReminderUserOption[]>([]);
   const [tab, setTab] = useState<"details" | "contacts">("details");
   useEffect(() => {
@@ -528,15 +532,25 @@ function ClientSlideOver({ existing, onClose, onSaved }: ClientSlideOverProps) {
   }, [authFetch]);
   const [errors, setErrors] = useState<Partial<Record<keyof ClientFormState | "form", string>>>({});
   const [submitting, setSubmitting] = useState(false);
-  const panelRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", handleKey);
-    return () => document.removeEventListener("keydown", handleKey);
-  }, [onClose]);
+  const isDirty = useMemo(() => {
+    return (Object.keys(initialForm) as Array<keyof ClientFormState>).some(
+      (key) => form[key] !== initialForm[key]
+    );
+  }, [form, initialForm]);
+
+  const handleClose = async () => {
+    if (isDirty) {
+      const discard = await confirm({
+        title: "Discard changes?",
+        message: "You have unsaved changes. Close and discard them?",
+        confirmLabel: "Discard",
+        variant: "danger"
+      });
+      if (!discard) return;
+    }
+    onClose();
+  };
 
   const validate = (): boolean => {
     const next: typeof errors = {};
@@ -553,8 +567,7 @@ function ClientSlideOver({ existing, onClose, onSaved }: ClientSlideOverProps) {
     return Object.keys(next).length === 0;
   };
 
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const doSave = async () => {
     if (!validate()) return;
     setSubmitting(true);
     try {
@@ -586,59 +599,63 @@ function ClientSlideOver({ existing, onClose, onSaved }: ClientSlideOverProps) {
   };
 
   return (
-    <div className="slide-over-overlay" role="dialog" aria-modal="true" onClick={onClose}>
-      <div ref={panelRef} className="slide-over" onClick={(event) => event.stopPropagation()}>
-        <header className="slide-over__header">
-          <div>
-            <h2 className="s7-type-section-heading" style={{ margin: 0 }}>
-              {existing ? `Edit · ${existing.name}` : "New client"}
-            </h2>
-            <p className="slide-over__subtitle">Client details, contacts, and commercial notes.</p>
-          </div>
-          <button type="button" className="slide-over__close" onClick={onClose} aria-label="Close">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M6 6l12 12M6 18L18 6" />
-            </svg>
-          </button>
-        </header>
-        {existing ? (
-          <nav
-            className="tender-detail__tabs"
-            role="tablist"
-            aria-label="Client detail"
-            style={{ display: "flex", gap: 4, padding: "8px 16px 0", borderBottom: "1px solid var(--border, #e5e7eb)" }}
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === "details"}
-              className={tab === "details" ? "tender-detail__tab tender-detail__tab--active" : "tender-detail__tab"}
-              onClick={() => setTab("details")}
-            >
-              Details
+    <CenteredModal
+      title={existing ? `Edit · ${existing.name}` : "New client"}
+      subtitle="Client details, contacts, and commercial notes."
+      onClose={() => void handleClose()}
+      busy={submitting}
+      maxWidth={620}
+      footer={
+        tab === "details" ? (
+          <>
+            <button type="button" className="s7-btn s7-btn--ghost" onClick={() => void handleClose()}>Cancel</button>
+            <button type="button" className="s7-btn s7-btn--primary" disabled={submitting} onClick={() => void doSave()}>
+              {submitting ? "Saving…" : existing ? "Save changes" : "Create client"}
             </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === "contacts"}
-              className={tab === "contacts" ? "tender-detail__tab tender-detail__tab--active" : "tender-detail__tab"}
-              onClick={() => setTab("contacts")}
-            >
-              Contacts
-            </button>
-          </nav>
-        ) : null}
-        {tab === "contacts" && existing ? (
-          <div className="slide-over__body" style={{ padding: 16 }}>
-            <ContactsTab
-              organisationType="CLIENT"
-              organisationId={existing.id}
-              canManage
-              onChanged={onSaved}
-            />
-          </div>
+          </>
         ) : (
-        <form onSubmit={submit} className="slide-over__body mdata-form">
+          <button type="button" className="s7-btn s7-btn--ghost" onClick={() => void handleClose()}>Close</button>
+        )
+      }
+    >
+      {existing ? (
+        <nav
+          className="tender-detail__tabs"
+          role="tablist"
+          aria-label="Client detail"
+          style={{ display: "flex", gap: 4, marginBottom: 16, borderBottom: "1px solid var(--border, #e5e7eb)", paddingBottom: 0 }}
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "details"}
+            className={tab === "details" ? "tender-detail__tab tender-detail__tab--active" : "tender-detail__tab"}
+            onClick={() => setTab("details")}
+          >
+            Details
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "contacts"}
+            className={tab === "contacts" ? "tender-detail__tab tender-detail__tab--active" : "tender-detail__tab"}
+            onClick={() => setTab("contacts")}
+          >
+            Contacts
+          </button>
+        </nav>
+      ) : null}
+      {tab === "contacts" && existing ? (
+        <div style={{ minHeight: 320 }}>
+          <ContactsTab
+            organisationType="CLIENT"
+            organisationId={existing.id}
+            canManage
+            onChanged={onSaved}
+          />
+        </div>
+      ) : (
+        <form ref={formRef} onSubmit={(e) => { e.preventDefault(); void doSave(); }} className="mdata-form">
           {errors.form ? <div className="login-card__error" role="alert">{errors.form}</div> : null}
 
           <fieldset className="mdata-fieldset">
@@ -734,17 +751,9 @@ function ClientSlideOver({ existing, onClose, onSaved }: ClientSlideOverProps) {
               </span>
             </label>
           </fieldset>
-
-          <footer className="slide-over__footer mdata-footer">
-            <button type="button" className="s7-btn s7-btn--ghost" onClick={onClose}>Cancel</button>
-            <button type="submit" className="s7-btn s7-btn--primary" disabled={submitting}>
-              {submitting ? "Saving…" : existing ? "Save changes" : "Create client"}
-            </button>
-          </footer>
         </form>
-        )}
-      </div>
-    </div>
+      )}
+    </CenteredModal>
   );
 }
 
